@@ -6704,3 +6704,52 @@ describe('the survival floor is stated', () => {
     expect(combat()['minSurvival']).toBe(0.9);
   });
 });
+
+describe('walking while losing hit points is stated', () => {
+  let home: Home;
+  let dir: string;
+  const said: string[] = [];
+
+  const migrate = (): void =>
+    migrateHome({ home, legacyOptions: [], note: (message) => said.push(message) });
+
+  const movement = (): Record<string, unknown> =>
+    ((parse(fs.readFileSync(home.options, 'utf8')).automation as Record<string, unknown>)[
+      'movement'
+    ] ?? {}) as Record<string, unknown>;
+
+  beforeEach(() => {
+    said.length = 0;
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mudengine-losing-hp-'));
+    home = homeAt(dir);
+    fs.mkdirSync(path.dirname(home.options), { recursive: true });
+  });
+
+  afterEach(() => fs.rmSync(dir, { recursive: true, force: true }));
+
+  it('writes it off after walkWhileConfused, once', () => {
+    fs.writeFileSync(
+      home.options,
+      'automation:\n  movement:\n    walkWhileConfused: false\n    collectKeys: true\n',
+      'utf8'
+    );
+    migrate();
+    expect(movement()['walkWhileLosingHp']).toBe(false);
+    const text = fs.readFileSync(home.options, 'utf8');
+    expect(text.indexOf('walkWhileLosingHp:')).toBeGreaterThan(text.indexOf('walkWhileConfused:'));
+    expect(text.indexOf('walkWhileLosingHp:')).toBeLessThan(text.indexOf('collectKeys:'));
+    expect(said.filter((line) => line.includes('Walk While Losing HP'))).toHaveLength(1);
+    migrate();
+    expect(fs.readFileSync(home.options, 'utf8')).toBe(text);
+  });
+
+  it('leaves a stated switch alone', () => {
+    fs.writeFileSync(
+      home.options,
+      'automation:\n  movement:\n    walkWhileLosingHp: true\n',
+      'utf8'
+    );
+    migrate();
+    expect(movement()['walkWhileLosingHp']).toBe(true);
+  });
+});

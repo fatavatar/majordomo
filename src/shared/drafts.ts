@@ -493,6 +493,7 @@ export interface ProfileDraft {
     walkWhileBlind: boolean;
     walkWhilePoisoned: boolean;
     walkWhileConfused: boolean;
+    walkWhileLosingHp: boolean;
     fightOnArrival: boolean;
     /** Ways and places routes keep out of. See `MovementConfig`. */
     keepOutOf: string[];
@@ -988,6 +989,7 @@ export function asProfileDraft(value: unknown): ProfileDraft | null {
       walkWhileBlind: movement['walkWhileBlind'] === true,
       walkWhilePoisoned: movement['walkWhilePoisoned'] === true,
       walkWhileConfused: movement['walkWhileConfused'] === true,
+      walkWhileLosingHp: movement['walkWhileLosingHp'] === true,
       // `!== false`: on unless it was turned off. See the field.
       fightOnArrival: movement['fightOnArrival'] !== false,
       // A list or nothing: a payload that failed to send it keeps the shipped

@@ -1878,6 +1878,12 @@ export interface MovementConfig {
    */
   walkWhileConfused: boolean;
   /**
+   * Walk on while the realm's message table says the character is losing hit
+   * points — burning, bleeding, acid, plague. Off by default: MegaMUD rests
+   * until such a row's ending. See `afflictionHolding`.
+   */
+  walkWhileLosingHp: boolean;
+  /**
    * Pick up a key an exit of this room needs, when it is lying on the floor of
    * it — and only then.
    *
@@ -2961,6 +2967,7 @@ export const DEFAULT_CONFIG: AppConfig = {
       walkWhileBlind: false,
       walkWhilePoisoned: false,
       walkWhileConfused: false,
+      walkWhileLosingHp: false,
       fightOnArrival: true,
       keepOutOf: ['vortex', 'Negative Power Plane'],
       collectKeys: true
@@ -4219,6 +4226,7 @@ function normalizeMovement(value: unknown): MovementConfig {
     walkWhileBlind: bool(raw['walkWhileBlind'], d.walkWhileBlind),
     walkWhilePoisoned: bool(raw['walkWhilePoisoned'], d.walkWhilePoisoned),
     walkWhileConfused: bool(raw['walkWhileConfused'], d.walkWhileConfused),
+    walkWhileLosingHp: bool(raw['walkWhileLosingHp'], d.walkWhileLosingHp),
     fightOnArrival: bool(raw['fightOnArrival'], d.fightOnArrival),
     // One word once, however it was spelt: two spellings of one word are one
     // place kept out of.

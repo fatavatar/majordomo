@@ -723,6 +723,7 @@ interface CharacterForm {
   walkWhileBlind: boolean;
   walkWhilePoisoned: boolean;
   walkWhileConfused: boolean;
+  walkWhileLosingHp: boolean;
   /** The dangerous regions route planning keeps out of unless told. */
   fightOnArrival: boolean;
   /** Ways and places routes keep out of. See `MovementConfig`. */
@@ -925,6 +926,7 @@ function formOf(entry: ProfileEditable): CharacterForm {
     walkWhileBlind: entry.movement.walkWhileBlind,
     walkWhilePoisoned: entry.movement.walkWhilePoisoned,
     walkWhileConfused: entry.movement.walkWhileConfused,
+    walkWhileLosingHp: entry.movement.walkWhileLosingHp,
     fightOnArrival: entry.movement.fightOnArrival,
     keepOutOf: [...entry.movement.keepOutOf],
     collectKeys: entry.movement.collectKeys,
@@ -1163,6 +1165,7 @@ function draftOf(form: CharacterForm): ProfileDraft {
       walkWhileBlind: form.walkWhileBlind,
       walkWhilePoisoned: form.walkWhilePoisoned,
       walkWhileConfused: form.walkWhileConfused,
+      walkWhileLosingHp: form.walkWhileLosingHp,
       fightOnArrival: form.fightOnArrival,
       keepOutOf: form.keepOutOf,
       collectKeys: form.collectKeys
@@ -1502,6 +1505,7 @@ function emptyForm(
     walkWhileBlind: movement.walkWhileBlind,
     walkWhilePoisoned: movement.walkWhilePoisoned,
     walkWhileConfused: movement.walkWhileConfused,
+    walkWhileLosingHp: movement.walkWhileLosingHp,
     fightOnArrival: movement.fightOnArrival,
     keepOutOf: [...movement.keepOutOf],
     collectKeys: movement.collectKeys,
@@ -4405,6 +4409,13 @@ export default function SettingsScreen({
                           label={t('settings.movement.walkWhileConfused')}
                           name="walk-while-confused"
                           onChange={(value) => patch({ walkWhileConfused: value })}
+                        />
+                        <CheckField
+                          checked={form.walkWhileLosingHp}
+                          hint={t('settings.movement.walkWhileLosingHpHint')}
+                          label={t('settings.movement.walkWhileLosingHp')}
+                          name="walk-while-losing-hp"
+                          onChange={(value) => patch({ walkWhileLosingHp: value })}
                         />
                         <CheckField
                           checked={form.fightOnArrival}

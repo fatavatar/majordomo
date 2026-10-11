@@ -296,6 +296,7 @@ describe('a character', () => {
         walkWhileBlind: false,
         walkWhilePoisoned: false,
         walkWhileConfused: false,
+        walkWhileLosingHp: false,
         // Off unless said: the dangerous regions stay out of planning.
         fightOnArrival: true,
         // A list the payload did not send keeps the shipped words, since an
@@ -378,6 +379,7 @@ describe('a character', () => {
         walkWhileBlind: false,
         walkWhilePoisoned: false,
         walkWhileConfused: false,
+        walkWhileLosingHp: false,
         // Off unless said: the dangerous regions stay out of planning.
         fightOnArrival: true,
         keepOutOf: ['vortex', 'Negative Power Plane'],

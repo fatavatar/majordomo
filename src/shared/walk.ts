@@ -192,7 +192,7 @@ export type WalkHold =
  */
 export function afflictionHolding(
   afflictions: Afflictions,
-  movement: Pick<MovementConfig, 'walkWhileBlind' | 'walkWhilePoisoned' | 'walkWhileConfused'>,
+  movement: ConditionSwitches,
   stated: readonly StatedEffect[] = []
 ): 'blind' | 'held' | 'poisoned' | 'condition' | null {
   if (afflictions.held === 'yes') return 'held';
@@ -207,19 +207,22 @@ export function afflictionHolding(
  * MegaMUD's own readings of its boxes: a confused character waits the
  * confusion out unless the player said to ignore it (`walkWhileConfused`, its
  * *Ignore Confusion*); one losing hit points to fire, acid or a wound rests
- * until it stops; and a row whose action is *wait until it wears off* or
+ * until it stops, unless the player said to walk on (`walkWhileLosingHp`); and a row whose action is *wait until it wears off* or
  * *rest until full* means exactly that. The rest of what a row can mean is
  * not a movement matter — blind, poisoned and held reach the walk as the
  * afflictions above, which a row sets too.
  */
-function statedHolds(
-  entry: StatedEffect,
-  movement: Pick<MovementConfig, 'walkWhileConfused'>
-): boolean {
+function statedHolds(entry: StatedEffect, movement: ConditionSwitches): boolean {
   if (entry.effects.includes('confused') && !movement.walkWhileConfused) return true;
-  if (entry.effects.includes('losing-hp')) return true;
+  if (entry.effects.includes('losing-hp') && !movement.walkWhileLosingHp) return true;
   return entry.action === 'wait' || entry.action === 'rest-hp' || entry.action === 'rest-mana';
 }
+
+/** The movement switches that say which conditions a walk goes on through. */
+export type ConditionSwitches = Pick<
+  MovementConfig,
+  'walkWhileBlind' | 'walkWhilePoisoned' | 'walkWhileConfused' | 'walkWhileLosingHp'
+>;
 
 /** Why a character would stand still rather than travel. */
 export type StillReason = NonNullable<ReturnType<typeof afflictionHolding>> | 'health' | 'mana';
@@ -243,7 +246,7 @@ export function stillFor(
   state: Pick<CharacterState, 'afflictions' | 'heard' | 'vitals'>,
   config: {
     health: HealthConfig;
-    movement: Pick<MovementConfig, 'walkWhileBlind' | 'walkWhilePoisoned' | 'walkWhileConfused'>;
+    movement: ConditionSwitches;
   },
   holding: StillReason | null,
   margin: number

@@ -62,7 +62,12 @@ describe('the rooms still too recently fled to go back into', () => {
 });
 
 describe("what the realm's messages say stands a walk still", () => {
-  const movement = { walkWhileBlind: false, walkWhilePoisoned: false, walkWhileConfused: false };
+  const movement = {
+    walkWhileBlind: false,
+    walkWhilePoisoned: false,
+    walkWhileConfused: false,
+    walkWhileLosingHp: false
+  };
   const stated = (patch: Partial<StatedEffect>): StatedEffect => ({
     name: 'row',
     effects: [],
@@ -89,6 +94,19 @@ describe("what the realm's messages say stands a walk still", () => {
     expect(afflictionHolding(NO_AFFLICTIONS, movement, [stated({ action: 'rest-hp' })])).toBe(
       'condition'
     );
+  });
+
+  /* The player's switch for it (2026-10-11), as `walkWhileConfused` is for confusion. */
+  it('walks on while losing hit points, when the player said to', () => {
+    const burning = [stated({ effects: ['losing-hp'] })];
+    expect(
+      afflictionHolding(NO_AFFLICTIONS, { ...movement, walkWhileLosingHp: true }, burning)
+    ).toBeNull();
+    // A row that also says to wait is still waited out.
+    const waiting = [stated({ effects: ['losing-hp'], action: 'wait' })];
+    expect(
+      afflictionHolding(NO_AFFLICTIONS, { ...movement, walkWhileLosingHp: true }, waiting)
+    ).toBe('condition');
   });
 
   it('does not hold for what is not a movement matter', () => {
