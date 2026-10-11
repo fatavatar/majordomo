@@ -842,6 +842,12 @@ automation:
     # or a loop stands still. A confused character's commands misfire.
     walkWhileConfused: false
 
+    # And losing hit points -- burning, bleeding, acid, plague, as a realm's
+    # message table states it. Off, a route or a loop stands still until the
+    # row's ending, as MegaMUD rests it out; on, it walks on and leaves the
+    # health thresholds to stop it if the damage adds up.
+    walkWhileLosingHp: false
+
 
     # Ways and places routes keep out of, in the realm's own words: a way whose
     # script phrase says one (`go vortex`), or a room whose name does (the

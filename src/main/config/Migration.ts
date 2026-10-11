@@ -277,6 +277,7 @@ function migrateAll(options: MigrationOptions): void {
   statedTheRegenSpells(home, note, options.template);
   statedThePartyRank(home, note, options.template);
   statedTheSurvivalFloor(home, note, options.template);
+  statedTheLosingHpWait(home, note, options.template);
 }
 
 /**
@@ -6572,6 +6573,51 @@ function statedTheSurvivalFloor(
     stated.length === 1
       ? t('notices.migration.survivalFloorStated.one', params)
       : t('notices.migration.survivalFloorStated.many', params)
+  );
+}
+
+/**
+ * `automation.movement.walkWhileLosingHp` into every file that states
+ * `movement:` without it, off, after `walkWhileConfused` with the template's
+ * paragraph (2026-10-11): a switch for the one condition that waited with
+ * none. Off is what the client already did. Idempotent; nothing stated is
+ * overwritten.
+ */
+function statedTheLosingHpWait(
+  home: Home,
+  note: (message: string) => void,
+  template: string | undefined
+): void {
+  const comment = templateComments(template, 'automation').get(
+    'automation.movement.walkWhileLosingHp'
+  );
+  const files = [home.options, ...directories(home.profilesDir).map((id) => home.profile(id).file)];
+  const stated: string[] = [];
+
+  for (const file of files) {
+    edit(file, (document) => {
+      const movement = document.getIn(['automation', 'movement'], true);
+      if (!isMap(movement) || movement.has('walkWhileLosingHp')) return false;
+      const pair = document.createPair(
+        'walkWhileLosingHp',
+        DEFAULT_CONFIG.automation.movement.walkWhileLosingHp
+      ) as Pair;
+      if (typeof comment === 'string' && isScalar(pair.key)) pair.key.commentBefore = comment;
+      const after = movement.items.findIndex(
+        (item) => isScalar(item.key) && item.key.value === 'walkWhileConfused'
+      );
+      movement.items.splice(after === -1 ? movement.items.length : after + 1, 0, pair);
+      stated.push(file);
+      return true;
+    });
+  }
+
+  if (stated.length === 0) return;
+  const params = { count: stated.length, fileList: stated.join(', ') };
+  note(
+    stated.length === 1
+      ? t('notices.migration.losingHpWaitStated.one', params)
+      : t('notices.migration.losingHpWaitStated.many', params)
   );
 }
 

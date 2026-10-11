@@ -2009,6 +2009,17 @@ export default function GlobalSettings({
                 }
               />
               <CheckField
+                checked={draft.automation.movement.walkWhileLosingHp}
+                hint={t('settings.movement.walkWhileLosingHpHint')}
+                label={t('settings.movement.walkWhileLosingHp')}
+                name="global-walk-while-losing-hp"
+                onChange={(value) =>
+                  automation({
+                    movement: { ...draft.automation.movement, walkWhileLosingHp: value }
+                  })
+                }
+              />
+              <CheckField
                 checked={draft.automation.movement.fightOnArrival}
                 hint={t('settings.movement.fightOnArrivalHint')}
                 label={t('settings.movement.fightOnArrival')}

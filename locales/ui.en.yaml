@@ -209,6 +209,9 @@ notices:
     survivalFloorStated:
       many: 'Only Open Fights Survived % was added, off, to {count} files: {fileList}'
       one: 'Only Open Fights Survived % was added, off, to {fileList}'
+    losingHpWaitStated:
+      many: 'Walk While Losing HP was added, off, to {count} files: {fileList}'
+      one: 'Walk While Losing HP was added, off, to {fileList}'
     partyRankStated:
       many: 'Auto-Rank (MegaMUD''s Party Rank) was added, off and at Mid, to {count} files: {fileList}'
       one: 'Auto-Rank (MegaMUD''s Party Rank) was added, off and at Mid, to {fileList}'
@@ -3793,6 +3796,10 @@ settings:
     walkWhilePoisonedHint:
       Off, a route or a loop stands still until the poison runs its course — MegaMUD's IgnorePoison
       default. Paralysis always holds; a step while held is refused.
+    walkWhileLosingHp: Walk While Losing HP
+    walkWhileLosingHpHint:
+      Off, a route or a loop stands still while this realm's messages say the character is losing
+      hit points — burning, bleeding, acid, plague — until the row's ending, as MegaMUD rests it out.
     fightOnArrival: Auto-Combat On at Arrival
     fightOnArrivalHint:
       Turns auto-combat back on when a route you asked for arrives, since walking with it off is how
