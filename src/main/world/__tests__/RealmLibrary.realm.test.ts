@@ -11,6 +11,7 @@
  * iteration loop only.
  */
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -147,6 +148,26 @@ withRealm('converting a realm somebody chose', () => {
     library().load(copy);
     expect(notices.filter((notice) => /Converting/.test(notice))).toHaveLength(1);
     expect(fs.readdirSync(cacheDir)).toHaveLength(2);
+  }, 180_000);
+
+  /*
+   * A build of the rejected upstream merge left a `v48` cache in this home on
+   * 2026-09-28, and this fork's own format 48 read it back as current
+   * (2026-10-11): the two lines number their formats apart.
+   */
+  it('does not read a cache another line of builds keyed under the same number', () => {
+    const copy = copyOfRealm(dir);
+    const stat = fs.statSync(copy);
+    const theirs = crypto
+      .createHash('sha1')
+      .update(`v${REALM_FORMAT}|${path.resolve(copy)}|${stat.size}|${stat.mtimeMs}`)
+      .digest('hex')
+      .slice(0, 16);
+    fs.mkdirSync(cacheDir, { recursive: true });
+    fs.writeFileSync(path.join(cacheDir, `${theirs}.jsonl.gz`), zlib.gzipSync('{"v":48}\n'));
+    notices = [];
+    library().load(copy);
+    expect(notices.filter((notice) => /Converting/.test(notice))).toHaveLength(1);
   }, 180_000);
 
   it('leaves no half-written cache behind', () => {

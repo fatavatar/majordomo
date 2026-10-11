@@ -1503,6 +1503,12 @@ export interface WorldSpell {
    */
   abilities?: Array<[number, number]>;
   /**
+   * The spells this spell's script casts — `BuiltSpell.cs`, format 48. What a
+   * spell whose effect is a `TextBlock` actually does: `cure disease` casts
+   * `cure disease 1` and `cure disease 2`. See `WorldGraph.servingAbilities`.
+   */
+  casts?: number[];
+  /**
    * How much the spell does, before level scales it — `MinBase`–`MaxBase`.
    *
    * **This is where a spell's numbers actually live**, and its absence is what

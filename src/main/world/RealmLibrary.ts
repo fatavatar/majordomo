@@ -399,6 +399,14 @@ export class RealmLibrary {
  * go on reading it for as long as the realm file itself sat untouched, which
  * for a database somebody downloaded once is for ever.
  *
+ * **And whose numbering the version is.** This fork and upstream number their
+ * formats independently — upstream's 48 is what a class may wield, this
+ * one's is what a spell's script casts — and both write into the same
+ * `realms/` directory when both have run against one home. A build of the
+ * rejected upstream merge left a cache keyed `v48` on 2026-09-28, and this
+ * fork's own format 48 read it back as current and lacking the field it was
+ * bumped for (2026-10-11). `CACHE_LINE` keeps the two numberings apart.
+ *
  * Hashed rather than used raw so the result is a legal filename on every
  * platform whatever the path contained.
  */
@@ -406,10 +414,13 @@ function identity(file: string): string {
   const stat = fs.statSync(file);
   return crypto
     .createHash('sha1')
-    .update(`v${REALM_FORMAT}|${path.resolve(file)}|${stat.size}|${stat.mtimeMs}`)
+    .update(`${CACHE_LINE}|v${REALM_FORMAT}|${path.resolve(file)}|${stat.size}|${stat.mtimeMs}`)
     .digest('hex')
     .slice(0, 16);
 }
+
+/** Which line of builds `REALM_FORMAT` is numbered by. See `identity`. */
+const CACHE_LINE = 'fatavatar';
 
 function reason(error: unknown): string {
   return error instanceof Error ? error.message : 'unknown error';
