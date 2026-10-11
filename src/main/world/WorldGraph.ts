@@ -3095,7 +3095,7 @@ export class WorldGraph {
       if (invocation === null) continue;
       const spell = this.spellById(invocation.spell);
       if (spell === null) continue;
-      if (!spellServes(spell.abilities)[condition]) continue;
+      if (!spellServes(this.servingAbilities(spell))[condition]) continue;
       found.push(item);
     }
     /*
@@ -3443,9 +3443,25 @@ export class WorldGraph {
         targeting: spellTargeting(spell.targets),
         // What the realm says it serves, so the three cure fields can each
         // offer the spells that answer their own question (todo 00).
-        serves: spellServes(spell.abilities, (id) => this.spellById(id)?.abilities)
+        serves: spellServes(this.servingAbilities(spell), (id) => this.spellById(id)?.abilities)
       }))
       .sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  /**
+   * A spell's own ability rows and those of the spells its script casts, for
+   * the readings that ask what a spell *ends* — the cure pickers and gates.
+   *
+   * mudrev's `cure disease` carries one row, `TextBlock 8290`, and the
+   * `RemovesSpell` rows that end a disease are on the two spells that block
+   * casts (format 48); read alone, the Disease field never offered it. The
+   * hazard and damage readers keep the spell's own rows. Undefined where the
+   * realm states neither, which every cure reader takes as *it may*.
+   */
+  servingAbilities(spell: WorldSpell): Array<[number, number]> | undefined {
+    const cast = (spell.casts ?? []).flatMap((id) => this.spellById(id)?.abilities ?? []);
+    if (cast.length === 0) return spell.abilities;
+    return [...(spell.abilities ?? []), ...cast];
   }
 
   /**
@@ -4659,6 +4675,11 @@ export class WorldGraph {
       // said nothing about: 1,985 of the realm's 1,990 spells carry these.
       const abilities = readAbilities(record);
       if (abilities.length > 0) spell.abilities = abilities;
+      // What its script casts — format 48; a file written before it names none.
+      const casts = Array.isArray(record['cs'])
+        ? (record['cs'] as unknown[]).filter((id): id is number => Number.isInteger(id))
+        : [];
+      if (casts.length > 0) spell.casts = casts;
       /*
        * And how much of it — format 16. The `Abil-n` row above names what a
        * spell affects; on 1,410 spells the magnitude is here instead, and the

@@ -95,9 +95,10 @@ import {
  * | 44 | **The quest indexer keeps the roll and the delay** (todo 106). `testskill <stat> <value>` is a roll — the stat less the value, clamped 2..98, against 1–100 (`TextBlockPart.cs:1139`) — and `adddelay N` holds the rest of the block N seconds (`ContinueTextblockCommand`); `roomScript.ts` dropped both. `readQuestScript` keeps the roll as a `skill` gate and the delay on the line, `stepsInBlock` carries the longest onto `QuestStep.delaySeconds`, and the runner reads them: a step that rolls is asked again, after its delay, a bounded number of times. The red book at 12/2248 is the one case in the Dao Lord chain |
  * | 45 | **`checkspell` is what the waterskin does to the desert, on the data that spells it that way.** Format 43 followed a `checkspell <spell> <block>` gate and deliberately declined to read it as *this spell stops the room*, on the ground that the two GreaterMUD builds answer the verb opposite ways. `TextBlockPart.cs:479` returns `Failed` unconditionally and runs the block only for a character the spell is **not** on, and `ExecuteOnMatch` breaks the line on `Failed`, so the block is the whole of what the room does and it is `failspell`'s shape exactly. Live, Festus took *You suffer in the desert heat…* 24 times, typed `drink water` — spell 711 — and crossed 26 more desert rooms without it printing once. The two shipped worlds spell the desert's own gate differently: Paradigm and GreaterMUD write `failspell 711 2654` and already named the ward, MajorMUD's v1.11p data writes `checkspell 711 2654` and named none — so stock goes from **0 warded room spells to 3** (946 rooms, 945 of them desert) and Paradigm from 2 to 4 (+57 rooms). No hazard loses a figure, since the block was already followed. Bumped for the **cache**, like 19, 26 and 27 — todo 02 |
  * | 46 | **A gate on level says *which* character, and the router is planning for one.** Format 43 follows `minlevel` / `maxlevel` at full weight — what stands behind a gate happens to *somebody* — and then flattened it, so the desert's sandstorm (`86:maxlevel 19:cast 713`, a one-in-a-hundred teleport) was priced as *it moves you somewhere else* on all 979 of Paradigm's desert rooms, for a level 21 character it cannot touch. Reported as *it is set to maxlevel 19 so in this case festus is level 21 so it wont execute and can be ignored*. `BuiltSpellHazard.lv` carries the band each of `d`, `tp` and `sm` was recorded under — a gate governs the rest of its own line, so the band is taken back at the end of each — and `hazardFor` (`src/shared/world.ts`) narrows a hazard to the character's level at `WorldGraph.hazardOf`, the one join. **An unstated level keeps the whole hazard**, and an effect recorded both inside a gate and outside one is ungated: the reassuring answer here is *it cannot happen to you* — todo 01 |
+ * | 48 | **What a spell's script casts.** A spell whose whole effect is a `TextBlock` read as one that does nothing: mudrev's `cure disease` is `TextBlock 8290`, and `TBInfo 8290` is `cast 2132:cast 2133` — `cure disease 1` and `cure disease 2`, whose `RemovesSpell` rows end plague, leprosy and rotting flesh. The cure pickers read only a spell's own rows, so the Disease field never offered the spell that cures disease (skinny, 2026-10-11). `BuiltSpell.cs` carries the spells a spell's block casts (`TBInfo`, which does not ship, read at the build as format 40 reads an item's), and `WorldGraph.servingAbilities` folds their rows in for the readings that ask what a spell ends; the hazard and damage readers keep the spell's own |
  * | 47 | **The coin a price is counted in.** `Items.Currency` was never read, so the realm's `Price` was a number in no unit and a counter's charge could not be known before `list` was spent on it: a quest run walked to the General Store for two waterskins, was quoted 50 silver nobles each against an empty purse, and stood there with 8.6 million copper in the Bank of Godfrey. `BuiltItem.cur` carries the code (0 copper … 4 runic, `BuyCommand.GetCopperValue`) where it is not copper, and `WorldGraph.priceAt` multiplies it through the shop's markup exactly as the server does, so the supplies errand knows what to withdraw before it walks — todo 00 |
  */
-export const REALM_FORMAT = 47;
+export const REALM_FORMAT = 48;
 
 /**
  * What `build-world.mjs` says about a world it is bundling: which of the two
@@ -428,6 +429,13 @@ export interface BuiltSpell {
   pw?: [number, number];
   /** `Cap` — the ceiling the scaling reaches. 508 spells. */
   cap?: number;
+  /**
+   * The spells this spell's `TextBlock` casts — format 48: every `cast <id>`
+   * step of the block its `TextBlock` ability names. `TBInfo` does not ship,
+   * so this is the only place a reader can learn that `cure disease` is
+   * `cure disease 1` and `cure disease 2`. Omitted where it casts nothing.
+   */
+  cs?: number[];
   /**
    * `Spells.Targets` — who the realm lets this spell be cast on. Format 17.
    *
@@ -1762,6 +1770,12 @@ export function indexShops(source: RealmSource): BuiltShop[] {
 export function indexSpells(source: RealmSource): BuiltSpell[] {
   const spells = source.table('Spells');
   if (spells === null) return [];
+  const blocks = new Map<number, string>();
+  for (const row of source.table('TBInfo')?.rows ?? []) {
+    const id = number(row['Number']);
+    // NUL padding stripped, as `indexSpellHazards` strips it.
+    if (id !== null) blocks.set(id, text(row['Action']).replaceAll('\u0000', '').trim());
+  }
 
   const built: BuiltSpell[] = [];
   for (const row of spells.rows) {
@@ -1814,6 +1828,15 @@ export function indexSpells(source: RealmSource): BuiltSpell[] {
     }
     const ab = abilityPairs(row);
     if (ab.length > 0) entry.ab = ab;
+    // What its script casts — format 48. See `BuiltSpell.cs`.
+    const casts = [
+      ...new Set(
+        ab
+          .filter(([ability, value]) => ability === HAZARD_ABILITY.textBlock && value > 0)
+          .flatMap(([, block]) => castsInBlock(blocks.get(block) ?? ''))
+      )
+    ].filter((cast) => cast !== id);
+    if (casts.length > 0) entry.cs = casts;
     /*
      * The spell's own magnitude — format 16.
      *
@@ -1844,6 +1867,23 @@ export function indexSpells(source: RealmSource): BuiltSpell[] {
   }
 
   return built.sort((a, b) => a.id - b.id);
+}
+
+/**
+ * Every `cast <id>` step in a text block: lines of `:`-separated steps, a
+ * roll table's lines led by their threshold (`77:cast 713`), a gate
+ * governing the rest of its line (`86:maxlevel 19:cast 713`). A gated cast
+ * is still a cast this spell can make, so it is kept.
+ */
+export function castsInBlock(action: string): number[] {
+  const casts: number[] = [];
+  for (const line of action.split('\n')) {
+    for (const step of line.split(':')) {
+      const match = /^cast\s+(\d+)\b/i.exec(step.trim());
+      if (match) casts.push(Number(match[1]));
+    }
+  }
+  return casts;
 }
 
 /**

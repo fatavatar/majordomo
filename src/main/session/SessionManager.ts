@@ -2782,7 +2782,14 @@ export class SessionManager {
       automation.enabled,
       this.queue,
       undefined,
-      realmSpell,
+      // With what its script casts folded in (`servingAbilities`): what a cure
+      // ends is on `cure disease 1` and `2`, not on `cure disease` itself.
+      (name) => {
+        const row = realmSpell(name);
+        if (row === null || this.world === null || this.world === undefined) return row;
+        const abilities = this.world.servingAbilities(row);
+        return abilities === undefined ? row : { ...row, abilities };
+      },
       { notice: (message) => this.sink.notice(message) }
     );
     this.regen = new Regen(

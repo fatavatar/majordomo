@@ -8,6 +8,7 @@ import {
   indexItems,
   indexMobs,
   indexShops,
+  castsInBlock,
   indexSpells,
   indexRaces,
   indexItemNames,
@@ -739,6 +740,14 @@ describe('naming what a shop stocks', () => {
  * the whole table and the item index does not: an exit says in advance which
  * key it wants, and nothing says in advance which spell somebody will look up.
  */
+describe('the casts in a text block', () => {
+  it('reads every cast step, a roll table’s and a gated one’s included', () => {
+    expect(castsInBlock('message 12:cast 2132:cast 2133')).toEqual([2132, 2133]);
+    expect(castsInBlock('77:addexp 0\n86:maxlevel 19:cast 713\n100:message 9')).toEqual([713]);
+    expect(castsInBlock('')).toEqual([]);
+  });
+});
+
 describe('naming the spells a realm has', () => {
   it('keeps every named spell, with what the realm states about it', () => {
     const spells = indexSpells(
@@ -771,6 +780,25 @@ describe('naming the spells a realm has', () => {
 
   it('survives a realm with no Spells table at all', () => {
     expect(indexSpells(fake({ Rooms: [room()] }))).toEqual([]);
+  });
+
+  /*
+   * mudrev's `cure disease` is one row, `TextBlock 8290`, and `TBInfo 8290` is
+   * `cast 2132:cast 2133` — the two spells whose `RemovesSpell` rows end a
+   * disease (2026-10-11). Format 48.
+   */
+  it('keeps the spells a spell’s script casts', () => {
+    const spells = indexSpells(
+      fake({
+        Spells: [
+          { Number: 150, Name: 'cure disease', 'Abil-0': 148, 'AbilVal-0': 8290 },
+          { Number: 2132, Name: 'cure disease 1', 'Abil-0': 122, 'AbilVal-0': 143 }
+        ],
+        TBInfo: [{ Number: 8290, Action: 'cast 2132:cast 2133\u0000\u0000' }]
+      })
+    );
+    expect(spells[0]).toMatchObject({ id: 150, cs: [2132, 2133] });
+    expect(spells[1]).not.toHaveProperty('cs');
   });
 
   /* Zero is the realm's *never resisted* and reads back as the cast that

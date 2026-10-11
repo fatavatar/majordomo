@@ -2695,7 +2695,10 @@ function registerIpc(): void {
             ...(row === undefined || row === null
               ? {}
               : {
-                  serves: spellServes(row.abilities, (id) => world?.spellById(id)?.abilities)
+                  serves: spellServes(
+                    world?.servingAbilities(row) ?? row.abilities,
+                    (id) => world?.spellById(id)?.abilities
+                  )
                 })
           };
         }),
@@ -2704,7 +2707,12 @@ function registerIpc(): void {
         cureGates:
           world === undefined
             ? null
-            : cureGates(book.map((spell) => world.spellNamed(spell.name)?.abilities))
+            : cureGates(
+                book.map((spell) => {
+                  const row = world.spellNamed(spell.name);
+                  return row === null ? undefined : world.servingAbilities(row);
+                })
+              )
       };
     },
     /*

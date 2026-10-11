@@ -7445,3 +7445,41 @@ describe('a way that is materially different from the plan', () => {
     expect(route.another).toBeUndefined();
   });
 });
+
+/*
+ * mudrev's `cure disease` is `TextBlock 8290`, which casts `cure disease 1` and
+ * `cure disease 2`; the `RemovesSpell` rows that end a disease are on those
+ * (format 48). Read alone, the Disease field never offered it (2026-10-11).
+ */
+describe('what a spell ends, through what its script casts', () => {
+  const graph = (): WorldGraph =>
+    makeWorld(
+      corridor(1),
+      {
+        spells: [
+          { id: 150, n: 'cure disease', short: 'cdes', mana: 22, ab: [[148, 8290]], cs: [2132] },
+          { id: 2132, n: 'cure disease 1', ab: [[122, 143]] },
+          { id: 8, n: 'bless', short: 'bles', mana: 5, ab: [[3, 10]] }
+        ]
+      },
+      3
+    );
+
+  it('folds the cast spells’ rows in, and leaves a spell that casts nothing alone', () => {
+    const world = graph();
+    expect(world.servingAbilities(world.spellNamed('cure disease')!)).toEqual([
+      [148, 8290],
+      [122, 143]
+    ]);
+    expect(world.servingAbilities(world.spellNamed('bless')!)).toEqual([[3, 10]]);
+  });
+
+  it('offers it to the Disease field', () => {
+    const offered = Object.fromEntries(
+      graph()
+        .castableSpells()
+        .map((spell) => [spell.name, spell.serves?.diseased])
+    );
+    expect(offered).toEqual({ bless: false, 'cure disease': true });
+  });
+});
