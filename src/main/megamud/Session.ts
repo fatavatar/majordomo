@@ -369,6 +369,12 @@ export class Session extends RawFields {
   /** 0xe2fc: why it is resting, 100 characters. */
   restReason = '';
 
+  /** 0xa320: auto-combat to restore after a detour (-1 none). */
+  detourCombat = -1;
+  /** 0xa324: auto-combat to restore when going idle (`NoModeDefs` 1). */
+  idleCombat = 0;
+  /** 0xe16c: which mode's defaults were applied last (0 idle, 1 active; -1 none yet). */
+  modeApplied = -1;
   /** 0xa3d4: the "too few monsters to nuke" warning is still to be shown this session. */
   warnFewMonsters = 1;
   /** 0xdb38: the exit to leave by, as a direction (-1 none). */
@@ -378,6 +384,16 @@ export class Session extends RawFields {
 
   /** 0x8420/0x8424: what is carried, in the inventory listing's order. */
   inventory: Carried[] = [];
+  /**
+   * 0x8174 (rooms), 0x819c (paths, 14 characters), 0x8228 (why, 50
+   * characters): the detours queued (to a shop "for" an item, and back), the
+   * first under way.
+   */
+  detours: { room: number; path: string; why: string }[] = Array.from({ length: 10 }, () => ({
+    room: 0,
+    path: '',
+    why: ''
+  }));
   /** 0x8474: an item being picked up, until the inventory lists it, 31 characters. */
   s_8474 = '';
   /** 0x8493: 31 characters, cleared by each inventory. */

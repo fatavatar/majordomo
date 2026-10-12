@@ -10,7 +10,7 @@
  */
 import { atoi, indexFrom, indexOf, leadingNumber, trimSpaces } from '../cstr';
 import { findClass, newItem } from '../data';
-import { findItem } from '../room/checkNames';
+import { coinValue, findItem } from '../room/checkNames';
 import { corpseOrLootbox } from '../room/notice';
 import { hangUp } from '../script/game';
 import { queueCommand } from '../script/send';
@@ -94,19 +94,19 @@ function coinWeight(s: Session): number {
 }
 
 /**
- * `0x452e00` (with `0x453600`): with a weight check asked for, the one item
- * of unknown weight carried singly is weighed: the encumbrance less the
- * rest.
+ * `0x453600`: what the inventory weighs as far as is known (the coins, and
+ * every item of known weight), and the first item of unknown weight and how
+ * many such are carried. Null when a line has no item record.
  */
-function weighUnknown(s: Session): void {
-  if (s.f_8470 === 0) return;
-  s.f_8470 = 0;
+export function weighInventory(
+  s: Session
+): { weight: number; unknown: Carried | null; unknownCount: number } | null {
   let known = 0;
   let unknown: Carried | null = null;
   let unknownCount = 0;
   for (const c of s.inventory) {
     const item = c.item;
-    if (!item) return;
+    if (!item) return null;
     if ((item.flags & COIN) !== 0) continue;
     if (item.weight < 0) {
       unknownCount += c.count;
@@ -115,13 +115,86 @@ function weighUnknown(s: Session): void {
       known += item.weight * c.count;
     }
   }
-  if (!unknown || unknownCount !== 1 || unknown.count === 0 || !unknown.item) return;
-  const weight = s.f_8464 - (coinWeight(s) + known);
+  return { weight: coinWeight(s) + known, unknown, unknownCount };
+}
+
+/**
+ * `0x452e00`: with a weight check asked for, the one item of unknown weight
+ * carried singly is weighed: the encumbrance less the rest.
+ */
+function weighUnknown(s: Session): void {
+  if (s.f_8470 === 0) return;
+  s.f_8470 = 0;
+  const w = weighInventory(s);
+  if (!w || !w.unknown || w.unknownCount !== 1 || w.unknown.count === 0 || !w.unknown.item) return;
+  const weight = s.f_8464 - w.weight;
   if (weight < 0) return;
-  unknown.item.weight = weight;
-  unknown.item.flags |= LEARNED;
+  w.unknown.item.weight = weight;
+  w.unknown.item.flags |= LEARNED;
   s.f_e258 = 1;
-  s.host.show(`[${unknown.item.name} weight calculated as ${weight}]`);
+  s.host.show(`[${w.unknown.item.name} weight calculated as ${weight}]`);
+}
+
+/** `0x453580`: the weight `count` more of a coin stack adds (three coins to the pound). */
+function coinWeightAdded(s: Session, c: Carried, count: number): number {
+  if (count < 0 && c.count < -count) count = -c.count;
+  const coins = s.inventory.reduce(
+    (n, x) => (x.item && (x.item.flags & COIN) !== 0 ? n + x.count : n),
+    0
+  );
+  const before = s.BBS_GreaterMUD !== 0 ? coins : c.count;
+  const after = Math.max(0, before + count);
+  return Math.trunc(after / 3) - Math.trunc(before / 3);
+}
+
+/**
+ * `0x4532d0`: `count` of `name` picked up (or given): carried, learned if
+ * unknown, and the encumbrance and wealth adjusted. When the weights were
+ * all known and added up before, and one unknown is now carried singly,
+ * the next inventory weighs it (`0x4561e0`).
+ */
+export function carryMore(s: Session, name: string, count: number): number {
+  const before = weighInventory(s);
+  const exact = !!before && before.unknownCount === 0 && before.weight === s.f_8464;
+  if (corpseOrLootbox(name) !== 0) return 1;
+  let item = findItem(s, name);
+  if (!item) {
+    item = newItem(s.data);
+    item.name = name.slice(0, 30);
+    item.flags |= LEARNED | 1;
+    item.weight = -1;
+    s.f_e258 = 1;
+    s.host.show(`[${name} added to known items]`);
+  }
+  let c = findCarried(s, name);
+  if (!c) {
+    c = { count: 0, flags: 0, item };
+    s.inventory.push(c);
+  }
+  if ((item.flags & COIN) === 0) {
+    s.f_8464 += item.weight * count;
+    s.f_8450 += count;
+  } else {
+    s.f_8464 += coinWeightAdded(s, c, count);
+    s.f_8438 += coinValue(s, name) * count;
+  }
+  c.count += count;
+  const after = weighInventory(s);
+  if (!after || after.unknownCount !== 1) {
+    s.f_8470 = 0;
+  } else if (exact) {
+    s.f_8470 = 1;
+    s.f_8468 = 0;
+  }
+  return 1;
+}
+
+/** `0x452cb0`: the wealth carried, in copper. */
+export function wealthCarried(s: Session): void {
+  s.f_8428 = 0;
+  for (const c of s.inventory) {
+    if (c.item && (c.item.flags & COIN) !== 0) s.f_8428 += coinValue(s, c.item.name) * c.count;
+  }
 }
 
 /** `0x452d40`: carrying nothing but coins and keepsakes (and no wealth): died, with `HangupNaked`. */
@@ -357,4 +430,57 @@ export function inventoryLine(s: Session, line: string, last: number): number {
     at = line[end] === ',' || line[end] === '.' ? end + 1 : end;
     if (line[at] === ' ') at += 1;
   }
+}
+
+/**
+ * `0x453900`: `count` of `name` no longer carried (dropped `0x1d`, hidden
+ * `0x1e`, sold `0x29`): the encumbrance and wealth adjusted, and the line
+ * gone when none are left.
+ */
+export function carryLess(s: Session, name: string, count: number, how: number): number {
+  const c = findCarried(s, name);
+  if (!c) return 0;
+  const item = c.item;
+  if (item) {
+    if ((item.flags & COIN) === 0) {
+      s.f_8464 -= item.weight * count;
+      if (how === 0x1e) s.f_8458 += count;
+      else if (how === 0x29) s.f_8454 += count;
+    } else {
+      s.f_8464 += coinWeightAdded(s, c, -count);
+      const value = coinValue(s, name) * count;
+      if (how === 0x1e) s.f_8448 += value;
+      else s.f_8438 -= value;
+    }
+  }
+  c.count -= count;
+  if (c.count < 1) {
+    const i = s.inventory.indexOf(c);
+    if (i !== -1) s.inventory.splice(i, 1);
+  }
+  return 1;
+}
+
+/** `0x452f50`: the coins carried made again from the wealth, in the fewest coins, and the weight adjusted. */
+export function coinsFromWealth(s: Session): void {
+  const before = coinWeight(s);
+  let w = s.f_8428;
+  const runic = Math.trunc(w / 1000000);
+  w %= 1000000;
+  const platinum = Math.trunc(w / 10000);
+  w %= 10000;
+  const gold = Math.trunc(w / 100);
+  w %= 100;
+  const silver = Math.trunc(w / 10);
+  const copper = w % 10;
+  dropCoins(s);
+  const add = (count: number, name: string): void => {
+    if (count !== 0) s.inventory.push({ count, flags: 0, item: findItem(s, name) });
+  };
+  add(runic, s.runicName);
+  add(platinum, 'platinum pieces');
+  add(gold, 'gold crowns');
+  add(silver, 'silver noble');
+  add(copper, 'copper farthing');
+  s.f_8464 += coinWeight(s) - before;
 }
