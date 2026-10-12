@@ -114,3 +114,20 @@ export function indexOfNoCase(hay: string, needle: string): number {
   if (hay.length === 0) return -1;
   return hay.toLowerCase().indexOf(needle.toLowerCase());
 }
+
+/**
+ * `0x4ad530`: a number at the front (after spaces, with an optional `-`), and
+ * where it ends. No digits read as 0.
+ */
+export function leadingNumber(text: string): [number, number] {
+  let i = 0;
+  while (text[i] === ' ') i += 1;
+  const negative = text[i] === '-';
+  if (negative) i += 1;
+  let n = 0;
+  while (i < text.length && text[i]! >= '0' && text[i]! <= '9') {
+    n = (n * 10 + (text.charCodeAt(i) - 48)) | 0;
+    i += 1;
+  }
+  return [negative ? -n : n, i];
+}

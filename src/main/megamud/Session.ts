@@ -11,7 +11,7 @@
  * by the once-a-second timer and a few other places; every timing test reads
  * the stamp, never a live clock. `tick()` is `GetTickCount64`.
  */
-import type { MegaData, MonsterRec } from './data';
+import type { ItemRec, MegaData, MonsterRec, PlayerRec, RoomRec } from './data';
 import { RawFields } from './RawFields';
 import type { Pending } from './script/send';
 
@@ -21,18 +21,18 @@ export interface RoomEntity {
   type: number;
   /** +0x04: what it is to us: 2 charmed/white, 3 cyan, 4–6 hostile. */
   kind: number;
-  /** +0x08. */
-  f08: number;
-  /** +0x0c. */
-  f0c: number;
+  /** +0x08: its attack priority (`0x474a90`); 999 and -999 are pinned. */
+  priority: number;
+  /** +0x0c: how many (an item stack). */
+  count: number;
   /** +0x10, 30 characters. */
   name: string;
-  /** +0x30. */
-  f30: number;
+  /** +0x30: its player record, when it is a player. */
+  player: PlayerRec | null;
   /** +0x34: its monster record, when it is a known monster. */
   mon: MonsterRec | null;
-  /** +0x38. */
-  f38: number;
+  /** +0x38: its item record, when it is an item. */
+  item: ItemRec | null;
   /** +0x3c: 1 kept, 4 not yet seen in this listing, 8 charmed, 0x10. */
   flags: number;
   /** +0x40. */
@@ -47,28 +47,24 @@ export interface PartyMember {
   name: string;
   /** +0x28 */
   flags28: number;
-  /** +0x38: attacking without the party (`0x42bef0` clears it). */
-  f38: number;
-  /** +0x42 */
-  flags42: number;
-  /** +0x52: what it is attacking, 30 characters (`Party.AttackLate`). */
+  /** +0x38: what it is attacking, 30 characters (`Party.AttackLate`; `0x42bef0` clears it). */
   target: string;
 }
 
 export function newMember(): PartyMember {
-  return { name: '', flags28: 0, f38: 0, flags42: 0, target: '' };
+  return { name: '', flags28: 0, target: '' };
 }
 
 export function newEntity(): RoomEntity {
   return {
     type: 0,
     kind: 0,
-    f08: 0,
-    f0c: 0,
+    priority: 0,
+    count: 0,
     name: '',
-    f30: 0,
+    player: null,
     mon: null,
-    f38: 0,
+    item: null,
     flags: 0,
     f40: 0,
     f44: 0
@@ -103,6 +99,8 @@ export interface SessionHost {
   alert?(which: string): void;
   /** The task changed (`0x4aac80`). */
   task?(task: number): void;
+  /** A move arrived while walking a path (`0x45fa60`'s place): our walker takes it from here. */
+  arrived?(step: number): void;
 }
 
 export class Session extends RawFields {
@@ -233,6 +231,30 @@ export class Session extends RawFields {
   room: RoomEntity[] = [];
   /** 0x24f4: the selected entry, or -1. */
   roomSelected = -1;
+  /** 0x805c: the room's name, as the exits line confirmed it. */
+  roomName = '';
+  /** 0x8091: the last room name seen (a bright yellow line), 52 characters. */
+  roomNameSeen = '';
+  /** 0x8134: that name's hash, in the top twelve bits. */
+  roomNameHash = 0;
+  /** 0x8130: the room's signature: the name's hash and two bits an exit (`0x4386d0`). */
+  f_8130 = 0;
+  /** 0x8164: the room's record in Rooms.md, when it has one. */
+  roomRecord: RoomRec | null = null;
+  /** 0xd910: what is left of a listing that runs onto the next line, 0x200 characters. */
+  s_d910 = '';
+  /** 0x813c: the room's exits, ten words in `0x4c03b0`'s order (north … down). */
+  roomExits: number[] = Array.from({ length: 10 }, () => 0);
+  /** 0x2500: an unknown player-shaped name already asked about, 31 characters. */
+  s_2500 = '';
+  /** 0x2524: marks remembered for monsters by name (up to 500). */
+  monsterMarks: { name: string; flags: number }[] = [];
+  /** 0x6b78: marks remembered for players by name (up to 100). */
+  playerMarks: { name: string; flags: number }[] = [];
+  /** 0x71c0/0x71b8: the players online, from the last `who` (their names, at `+0x10`). */
+  whoList: string[] = [];
+  /** 0x7e74: what the realm calls its runic coin. */
+  runicName = 'runic coin';
 
   // ------------------------------------------------------------ conditions
 

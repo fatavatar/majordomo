@@ -159,7 +159,7 @@ export function clearAlignment(s: Session): void {
   s.f_324a8 = 0;
   s.f_324b0 = 0;
   s.f_324b8 = 0;
-  for (const member of s.party) member.f38 = 0;
+  for (const member of s.party) member.target = '';
 }
 
 /** `0x42c110`: the counts, the casts and the target. */
@@ -290,4 +290,22 @@ export function sawWeapons(s: Session, which: number): void {
   if ((which & 1) !== 0) s.f_b100 = 1;
   if ((which & 2) !== 0) s.f_b104 = 1;
   if ((which & 4) !== 0) s.f_b108 = 1;
+}
+
+/**
+ * `0x472ed0`: the monster being fought left. With no hostile monster here the
+ * fight is over; otherwise combat drops so the scheduler picks the next one.
+ */
+export function targetLeft(s: Session): void {
+  if (enemiesHere(s, 0) === 0) {
+    combatOff(s);
+    setState(s, 0);
+    return;
+  }
+  if (s.debug !== 0 && s.inCombat !== 0) s.host.trace('{C10}');
+  s.inCombat = 0;
+  s.f_e1d8 = 0;
+  clearTargetCasts(s);
+  clearCastMode(s);
+  setState(s, 0);
 }

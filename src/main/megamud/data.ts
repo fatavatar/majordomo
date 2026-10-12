@@ -60,7 +60,7 @@ export interface ItemRec {
   min: number;
   /** +0x68 (B+0x59). */
   max: number;
-  /** +0x6c (B+0x5d). */
+  /** +0x6c (B+0x5d); -1 on an item learned in play. */
   weight: number;
   /** +0x70 (B+0x5f). */
   price: number;
@@ -240,12 +240,99 @@ export function classFrom(body: Uint8Array, layer: number): ClassRec {
   };
 }
 
-/** MegaMUD's databases for one character. */
+/** `0x491870`: one known player, 0xe0 bytes (Players.md). */
+export interface PlayerRec {
+  /** +0x00: the layer (2 for one learned in play). */
+  layer: number;
+  /** +0x01, 11 bytes. */
+  name: string;
+  /** +0x54: 1 learned, 2 its level is a guess, 0x40 chase if seen, 0x8000 seen this session, 0x20000 greeted. */
+  flags: number;
+  /** +0x64: what it is to us, as a room entry's kind (3 unknown). */
+  kind: number;
+  /** +0x68: its level (1 until known). */
+  level: number;
+  /** +0x78: how many sessions it has been seen in. */
+  seen: number;
+  /** +0x80: when it was last greeted or seen afresh. */
+  greetedAt: number;
+  /** +0x88: when it was last seen. */
+  seenAt: number;
+  /** +0x90, 0x50 bytes: where it was last seen ("Room (Exits: n, s)"). */
+  where: string;
+}
+
+/** One room from Rooms.md, found by its signature (`0x4983d0`). Not read yet. */
+export interface RoomRec {
+  /** +0x44: the room's signature (`0x8130`). */
+  signature: number;
+  name: string;
+}
+
+/** MegaMUD's databases for one character. Records learned in play are added to them. */
 export interface MegaData {
   monsters: MonsterRec[];
   items: ItemRec[];
   spells: SpellRec[];
   classes?: ClassRec[];
+  players?: PlayerRec[];
+  rooms?: RoomRec[];
+}
+
+/** `0x46c220`: a new, empty monster record, added. */
+export function newMonster(data: MegaData): MonsterRec {
+  const rec: MonsterRec = {
+    layer: 0,
+    name: '',
+    id: 0,
+    flags: 0,
+    relationship: 0,
+    exp: 0,
+    maxHp: 0,
+    preSpell: '',
+    attackSpell: '',
+    preMax: 0,
+    attackMax: 0
+  };
+  data.monsters.push(rec);
+  return rec;
+}
+
+/** `0x4565c0`: a new, empty item record, added. */
+export function newItem(data: MegaData): ItemRec {
+  const rec: ItemRec = {
+    id: 0,
+    layer: 0,
+    name: '',
+    shop: '',
+    ifNeeded: '',
+    flags: 0,
+    type: 0,
+    location: 0,
+    min: 0,
+    max: 0,
+    weight: 0,
+    price: 0
+  };
+  data.items.push(rec);
+  return rec;
+}
+
+/** `0x491870`: a new player record, added, as MegaMUD fills it in. */
+export function newPlayer(data: MegaData, now: number): PlayerRec {
+  const rec: PlayerRec = {
+    layer: 2,
+    name: '',
+    flags: 1,
+    kind: 3,
+    level: 1,
+    seen: 0,
+    greetedAt: 0,
+    seenAt: now,
+    where: ''
+  };
+  (data.players ??= []).push(rec);
+  return rec;
 }
 
 /** Reads the `.md` files a loader would, from their bytes; a missing file is empty. */
