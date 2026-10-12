@@ -299,6 +299,10 @@ export class Session extends RawFields {
   typedAt = 0;
   /** 0x7cf7: the command that relogs. */
   s_7cf7 = '';
+  /** 0x7cb9: the game menu's own prompt (beside `[MAJORMUD]:`), from the BBS set-up; not read yet. */
+  s_7cb9 = '';
+  /** 0x7d7d: a line that means the account is wanted elsewhere, from the BBS set-up; not read yet. */
+  s_7d7d = '';
   /** 0xdb94: the last command sent, 256 characters. */
   lastSent = '';
   /** 0xdb90: how many times running it has been sent. */
