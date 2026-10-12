@@ -7,6 +7,7 @@
 import { expandMacros, noteCommands, send } from '../script/send';
 import { setState } from '../script/state';
 import type { Session } from '../Session';
+import { unported } from '../unported';
 
 function issue(s: Session, command: string, what: string): number {
   s.waitLines = 2;
@@ -122,6 +123,23 @@ export function postMeditate(s: Session, force: number): number {
         force !== 0)
     ) {
       return issue(s, s.Health_PostMedCmd, 'Issuing post-meditate');
+    }
+  }
+  return 0;
+}
+
+/** `0x413d60`: the pre-backstab command (Combat tab), owed once; `force` sends it regardless. */
+export function preBackstab(s: Session, force: number): number {
+  if (s.owedPostBackstab === 0 || force !== 0) {
+    s.owedPostBackstab = 1;
+    if (
+      s.Combat_PreBsCmd !== '' &&
+      ((s.f_a32c === 0 && s.Combat_PrePostBackstab !== 0 && s.Combat_CanBackStab !== 0) ||
+        force !== 0)
+    ) {
+      issue(s, s.Combat_PreBsCmd, 'Issuing pre-bs');
+      if (force !== 0) unported('40b520');
+      return 1;
     }
   }
   return 0;

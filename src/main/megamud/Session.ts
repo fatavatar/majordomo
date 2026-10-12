@@ -178,6 +178,12 @@ export class Session extends RawFields {
 
   // ------------------------------------------------------------ sending
 
+  /** 0xddf4: the last command typed (or sent from the pending list), 256 characters. */
+  lastTyped = '';
+  /** 0xdef8: when it was typed (`GetTickCount64`). */
+  typedAt = 0;
+  /** 0x7cf7: the command that relogs. */
+  s_7cf7 = '';
   /** 0xdb94: the last command sent, 256 characters. */
   lastSent = '';
   /** 0xdb90: how many times running it has been sent. */
@@ -294,6 +300,8 @@ export class Session extends RawFields {
   owedPostRest = 0;
   /** 0xe1b0: a post-meditate command is owed. */
   owedPostMeditate = 0;
+  /** 0xe1b4: a post-backstab command is owed. */
+  owedPostBackstab = 0;
   /** 0xe1cc: hidden. */
   hidden = 0;
   /** 0xe2f0: holding for the party. */

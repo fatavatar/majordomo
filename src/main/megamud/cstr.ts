@@ -131,3 +131,74 @@ export function leadingNumber(text: string): [number, number] {
   }
   return [negative ? -n : n, i];
 }
+
+/**
+ * `0x4acaf0`: `needle` read against `hay` the way MegaMUD matches an
+ * abbreviation: they agree, without regard to case, for at least `min`
+ * characters, and where they part `hay` ends or has a space (or `needle`
+ * ran out first). So `abbrev("sn", "sneak", 2)` and `abbrev("attack x",
+ * "att", 1)` hold.
+ */
+export function abbrev(hay: string, needle: string, min: number): number {
+  let matched = 0;
+  for (let i = 0; i < needle.length; i += 1) {
+    if (i >= hay.length) return matched >= min ? 1 : 0;
+    if (hay[i]!.toLowerCase() !== needle[i]!.toLowerCase()) {
+      if (matched < min) return 0;
+      return hay[matched] === ' ' || hay[matched] === undefined ? 1 : 0;
+    }
+    matched += 1;
+  }
+  return matched >= min ? 1 : 0;
+}
+
+/**
+ * `0x4adb80`: the first word of `text` (up to `sep`, a line end, or `size`
+ * characters), trailing blanks dropped, and what follows it, leading spaces
+ * dropped.
+ */
+export function splitWord(text: string, sep: string, size: number): [string, string] {
+  let i = 0;
+  let word = '';
+  while (
+    i < text.length &&
+    text[i] !== '\n' &&
+    text[i] !== '\r' &&
+    text[i] !== sep &&
+    word.length < size - 1
+  ) {
+    word += text[i];
+    i += 1;
+  }
+  word = word.replace(/[ \n\r]+$/, '');
+  if (text[i] === sep) i += 1;
+  while (text[i] === ' ' || text[i] === '\r') i += 1;
+  return [word, text.slice(i)];
+}
+
+const DIR_SHORT = ['n', 's', 'e', 'w', 'ne', 'nw', 'se', 'sw', 'u', 'd'];
+const DIR_LONG = [
+  'north',
+  'south',
+  'east',
+  'west',
+  'northeast',
+  'northwest',
+  'southeast',
+  'southwest',
+  'up',
+  'down'
+];
+
+/** `0x4c0320`: a direction typed short or in full (optionally followed by `[`), 0 north … 9 down; else -1. */
+export function typedDirection(word: string): number {
+  for (let i = 9; i >= 0; i -= 1) {
+    for (const name of [DIR_SHORT[i]!, DIR_LONG[i]!]) {
+      if (strnicmp(word, name, name.length) === 0) {
+        const after = word[name.length];
+        if (after === undefined || after === '[') return i;
+      }
+    }
+  }
+  return -1;
+}
