@@ -171,18 +171,17 @@ export function parseData(s: Session, t: TerminalState, chunk: string): number {
         // A bell: MegaMUD beeps.
         break;
       case 8:
-        if (s.lineText.length > 0) {
-          s.lineText = s.lineText.slice(0, -1);
-          s.lineAttr = s.lineAttr.slice(0, -1);
+        if (s.line.text.length > 0) {
+          s.line.text = s.line.text.slice(0, -1);
+          s.line.attr.pop();
         }
         break;
       case 10:
       case 13:
         if (ch !== 10) break;
         s.lineFlags &= ~3;
-        dispatchLine(s, s.lineText, 1, 0);
-        s.lineText = '';
-        s.lineAttr = [];
+        dispatchLine(s, s.line, 1, 0);
+        s.line = { text: '', attr: [] };
         s.lineFlags &= ~3;
         refreshStatus(s);
         break;
@@ -190,19 +189,16 @@ export function parseData(s: Session, t: TerminalState, chunk: string): number {
         escapeChar(t, s, ch);
         break;
       default:
-        if (s.lineText.length < 0x10000) {
-          s.lineText += String.fromCharCode(ch);
-          s.lineAttr.push(t.attr === 0 ? 7 : t.attr);
+        if (s.line.text.length < 0x10000) {
+          s.line.text += String.fromCharCode(ch);
+          s.line.attr.push(t.attr === 0 ? 7 : t.attr);
         } else {
           s.host.trace('[ParseData: line exceeded line-buffer capacity]');
         }
     }
   }
-  if (dispatchLine(s, s.lineText, 0, 0) !== 0) {
-    s.lineText = '';
-    s.lineAttr = [];
-  }
-  if (s.lineText.length === 0) {
+  if (dispatchLine(s, s.line, 0, 0) !== 0) s.line = { text: '', attr: [] };
+  if (s.line.text.length === 0) {
     if ((s.lineFlags & 1) !== 0) {
       schedule(s);
       return 1;
@@ -212,13 +208,13 @@ export function parseData(s: Session, t: TerminalState, chunk: string): number {
       s.f_e57c === 0 &&
       s.f_a5f8 === 0 &&
       s.waitLines < 2 &&
-      s.scripting !== 0 &&
-      s.f_e15c !== 0 &&
+      s.inGame !== 0 &&
+      s.online !== 0 &&
       s.f_a32c === 0 &&
       s.f_e2b8 !== 0 &&
-      (s.f_e1d4 !== 0 || enemiesHere(s, 0) > 0) &&
-      (s.f_a580 === 0 || s.f_e1d4 !== 0) &&
-      s.f_db24 !== 0x13 &&
+      (s.inCombat !== 0 || enemiesHere(s, 0) > 0) &&
+      (s.f_a580 === 0 || s.inCombat !== 0) &&
+      s.task !== 0x13 &&
       (s.state === 0 || f_426ab0(s, 0) !== 0 || s.state === 0x11) &&
       runCheck(s) !== 0
     ) {

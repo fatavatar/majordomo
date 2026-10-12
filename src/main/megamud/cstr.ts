@@ -95,3 +95,22 @@ export function atoi(text: string): number {
 export function idiv(a: number, b: number): number {
   return Math.trunc(a / b);
 }
+
+/**
+ * `0x4ad340`: where `needle` occurs at or after `from`, without regard to
+ * ASCII case, or -1. MegaMUD only searches when `from` is no more than the
+ * needle's length (a quirk of its guard), which every caller's 0 satisfies.
+ */
+export function findNoCase(hay: string, from: number, needle: string): number {
+  if (from > needle.length) return -1;
+  for (let i = from; i < hay.length; i += 1) {
+    if (strnicmp(hay.slice(i), needle, needle.length) === 0) return i;
+  }
+  return -1;
+}
+
+/** `0x4ad6c0`: where `needle` first occurs in `hay`, without regard to case, or -1. */
+export function indexOfNoCase(hay: string, needle: string): number {
+  if (hay.length === 0) return -1;
+  return hay.toLowerCase().indexOf(needle.toLowerCase());
+}

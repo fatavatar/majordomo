@@ -80,10 +80,10 @@ export interface SpellRec {
   item: string;
   /** +0x54 (B+0x27, `& 0x3fffefff`). */
   flags: number;
-  /** +0x58 (B+0x63). */
-  f58: number;
-  /** +0x5c (B+0x54). */
-  f5c: number;
+  /** +0x58 (B+0x63): which magic it is (1–3 mage, 4–6 priest, 7–9 druid, 0xb kai, 10/12/13 the rest). */
+  magic: number;
+  /** +0x5c (B+0x54): the level it needs. */
+  level: number;
   /** +0x60 (B+0x56): the mana it costs. */
   cost: number;
 }
@@ -176,8 +176,8 @@ export function spellFrom(body: Uint8Array, layer: number): SpellRec {
     name: str(body, 0x02, 0x1f),
     item: str(body, 0x2b, 0x29),
     flags: u32(body, 0x27) & 0x3fffefff,
-    f58: u8(body, 0x63),
-    f5c: u8(body, 0x54),
+    magic: u8(body, 0x63),
+    level: u8(body, 0x54),
     cost: i16(body, 0x56)
   };
 }
@@ -200,11 +200,52 @@ export function coinItems(runic: string): ItemRec[] {
   }));
 }
 
+/** `0x422790`: one class (Classes.md). */
+export interface ClassRec {
+  /** +0x00 (B+0x00). */
+  id: number;
+  /** +0x02. */
+  layer: number;
+  /** +0x08, 31 bytes (B+0x02). */
+  name: string;
+  /** +0x28 (B+0x20). */
+  f28: number;
+  /** +0x2a–0x2e (B+0x22–0x26). */
+  bytes: [number, number, number, number, number];
+  /** +0x30 (B+0x27): magic, the type in the high byte (5 is kai) and the level in the low. */
+  magic: number;
+  /** +0x32, ten words (B+0x29). */
+  abilities: number[];
+  /** +0x46, ten words (B+0x3d). */
+  values: number[];
+}
+
+/** `0x422790`'s copy of one record. */
+export function classFrom(body: Uint8Array, layer: number): ClassRec {
+  const abilities: number[] = [];
+  const values: number[] = [];
+  for (let i = 0; i < 10; i += 1) {
+    abilities.push(i16(body, 0x29 + i * 2));
+    values.push(i16(body, 0x3d + i * 2));
+  }
+  return {
+    id: i16(body, 0x00),
+    layer,
+    name: str(body, 0x02, 0x1f),
+    f28: i16(body, 0x20),
+    bytes: [u8(body, 0x22), u8(body, 0x23), u8(body, 0x24), u8(body, 0x25), u8(body, 0x26)],
+    magic: u16(body, 0x27),
+    abilities,
+    values
+  };
+}
+
 /** MegaMUD's databases for one character. */
 export interface MegaData {
   monsters: MonsterRec[];
   items: ItemRec[];
   spells: SpellRec[];
+  classes?: ClassRec[];
 }
 
 /** Reads the `.md` files a loader would, from their bytes; a missing file is empty. */
@@ -212,9 +253,11 @@ export function readData(files: {
   monsters?: Uint8Array;
   items?: Uint8Array;
   spells?: Uint8Array;
+  classes?: Uint8Array;
   runic?: string;
 }): MegaData {
   return {
+    classes: files.classes ? readMdb2(files.classes).map((r) => classFrom(r.body, 0)) : [],
     monsters: files.monsters ? readMdb2(files.monsters).map((r) => monsterFrom(r.body, 0)) : [],
     items: [
       ...coinItems(files.runic ?? 'runic coin'),
@@ -224,10 +267,13 @@ export function readData(files: {
   };
 }
 
-/**
- * `0x422640` then the record's `+0x30` high byte: the class's magic type
- * (5 is kai). Classes are not read yet, so there is none.
- */
-export function classMagic(_data: MegaData, _classId: number): number | null {
-  return null;
+/** `0x422640`: the class with this id, if Classes.md has it. */
+export function findClass(data: MegaData, id: number): ClassRec | null {
+  return data.classes?.find((c) => c.id === (id << 16) >> 16) ?? null;
+}
+
+/** A class's magic type, the high byte of `+0x30` (5 is kai), or null for an unknown class. */
+export function classMagic(data: MegaData, id: number): number | null {
+  const rec = findClass(data, id);
+  return rec ? rec.magic >> 8 : null;
 }

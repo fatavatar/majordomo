@@ -36,8 +36,8 @@ describe('framing lines (0x479630)', () => {
   it('hands each whole line over with the colour each character was drawn in', () => {
     const { s } = session();
     const seen: [string, number[], number][] = [];
-    const spy = vi.spyOn(dispatch, 'dispatchLine').mockImplementation((sess, line, complete) => {
-      seen.push([line, [...sess.lineAttr], complete]);
+    const spy = vi.spyOn(dispatch, 'dispatchLine').mockImplementation((_sess, line, complete) => {
+      seen.push([line.text, [...line.attr], complete]);
       return 0;
     });
     parseData(s, newTerminal(), '\x1b[35mAlso\x1b[0m x\r\n');
@@ -49,7 +49,7 @@ describe('framing lines (0x479630)', () => {
     const { s } = session();
     const lines: string[] = [];
     const spy = vi.spyOn(dispatch, 'dispatchLine').mockImplementation((_s, line, complete) => {
-      if (complete) lines.push(line);
+      if (complete) lines.push(line.text);
       return 0;
     });
     parseData(s, newTerminal(), 'abx\bc\n');
@@ -61,10 +61,10 @@ describe('framing lines (0x479630)', () => {
     const { s } = session();
     const spy = vi.spyOn(dispatch, 'dispatchLine').mockReturnValue(0);
     parseData(s, newTerminal(), '[HP=10]:');
-    expect(s.lineText).toBe('[HP=10]:');
+    expect(s.line.text).toBe('[HP=10]:');
     spy.mockReturnValue(1);
     parseData(s, newTerminal(), '');
-    expect(s.lineText).toBe('');
+    expect(s.line.text).toBe('');
     spy.mockRestore();
   });
 });

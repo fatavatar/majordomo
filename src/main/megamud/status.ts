@@ -53,7 +53,7 @@ const NAMES: Record<number, string> = {
 
 /** The idle state's name: the last condition that holds wins. */
 function idleName(s: Session): string {
-  if (s.scripting === 0) return 'Nothing';
+  if (s.inGame === 0) return 'Nothing';
   let name = s.hidden !== 0 ? 'Hidden' : 'Nothing';
   if (s.following !== 0) name = 'Following';
   if (s.f_a5f8 >= 1) name = 'Mass Equip';

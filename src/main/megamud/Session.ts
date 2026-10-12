@@ -13,10 +13,11 @@
  */
 import type { MegaData, MonsterRec } from './data';
 import { RawFields } from './RawFields';
+import type { Pending } from './script/send';
 
 /** One entry in the room's contents (`0x471190`, 0x48 bytes). */
 export interface RoomEntity {
-  /** +0x00: 0 player, 2 monster, 3 item (as `0x471a10` sorts them). */
+  /** +0x00: 0 not yet known, 1 player, 2 monster, 3 item (as `0x471a10` sorts them). */
   type: number;
   /** +0x04: what it is to us: 2 charmed/white, 3 cyan, 4–6 hostile. */
   kind: number;
@@ -40,6 +41,24 @@ export interface RoomEntity {
   f44: number;
 }
 
+/** One party member (`0x8918 + i * 0x58`). */
+export interface PartyMember {
+  /** +0x00 */
+  name: string;
+  /** +0x28 */
+  flags28: number;
+  /** +0x38: attacking without the party (`0x42bef0` clears it). */
+  f38: number;
+  /** +0x42 */
+  flags42: number;
+  /** +0x52: what it is attacking, 30 characters (`Party.AttackLate`). */
+  target: string;
+}
+
+export function newMember(): PartyMember {
+  return { name: '', flags28: 0, f38: 0, flags42: 0, target: '' };
+}
+
 export function newEntity(): RoomEntity {
   return {
     type: 0,
@@ -54,6 +73,12 @@ export function newEntity(): RoomEntity {
     f40: 0,
     f44: 0
   };
+}
+
+/** A line and the attribute of each of its characters. */
+export interface LineBuf {
+  text: string;
+  attr: number[];
 }
 
 /** What the engine sends, logs and reads the time from. */
@@ -72,6 +97,12 @@ export interface SessionHost {
   tickMs(): number;
   /** The status text (`0x4ac2a0`), when it changes. */
   status?(text: string): void;
+  /** A command shown as sent (`Display.ShowSend`, and pending commands). */
+  echo?(text: string): void;
+  /** One of MegaMUD's alert sounds (`0x4c0640`). */
+  alert?(which: string): void;
+  /** The task changed (`0x4aac80`). */
+  task?(task: number): void;
 }
 
 export class Session extends RawFields {
@@ -95,6 +126,16 @@ export class Session extends RawFields {
   mana = 0;
   /** 0xd8a4: mana at the previous reading. */
   manaPrev = 0;
+  /** 0xd898: HP at the previous reading. */
+  hpPrev = 0;
+  /** 0xd828: when the last mana tick was measured. */
+  lastTickAt = 0;
+  /** 0xd834: the last mana tick; -999 until one is measured. */
+  lastTick = -999;
+  /** 0xd838: the next reading only re-baselines (a cast spent mana). */
+  skipTick = 0;
+  /** 0xe210: the flux monitor asks for the mana regen again. */
+  fluxRecast = 0;
 
   // ------------------------------------------------------------ activity
 
@@ -106,11 +147,19 @@ export class Session extends RawFields {
   stateAwaited = 0;
   /** 0x32488: when the state last changed. */
   stateSince = 0;
-  /** 0xdb24 */
-  f_db24 = 0;
+  /** 0xdb24: what MegaMUD is doing at the top level (`Task` in `script/task.ts`, set by `0x4aac80`). */
+  task = 0;
+  /** 0xdb14: the line handler being run (`0x479b20`'s parse step), for the trace. */
+  parseStep = 0;
+  /** 0x31824: the last `{P…}` traced. */
+  lastPromptTrace = '';
 
-  /** 0xe164: automation on. */
-  scripting = 0;
+  /** 0xe164: in the game: set by the first prompt after the connection reached it (`0x47b070`). */
+  inGame = 0;
+  /** 0xe168: automation on (the caption's ACTIVE rather than MANUAL). */
+  active = 0;
+  /** 0xe15c: the connection has reached the game (`0x42de00` with 1); cleared on leaving it. */
+  online = 0;
   /** 0xd904: line flags; bit 0, a prompt has been seen since the last command. */
   lineFlags = 0;
   /** 0xd908: lines still awaited before acting. */
@@ -120,12 +169,63 @@ export class Session extends RawFields {
 
   /** 0x30e0c: MegaMUD's debug trace (`{D%d}`, `{P%d}`, …) is on. */
   debug = 0;
-  /** 0x105aa: the line being received, without its colours. */
-  lineText = '';
-  /** 0x205ab: the attribute each character of `lineText` was drawn in. */
-  lineAttr: number[] = [];
+  /**
+   * 0x105aa/0x205ab: the line being received and, beside it, the attribute
+   * each character was drawn in. Handlers may cut it (the status line takes
+   * its prompt off the front), so it is passed by reference.
+   */
+  line: LineBuf = { text: '', attr: [] };
   /** The status last handed to the host. */
   statusShown = '';
+
+  // ------------------------------------------------------------ sending
+
+  /** 0xdb94: the last command sent, 256 characters. */
+  lastSent = '';
+  /** 0xdb90: how many times running it has been sent. */
+  sameSent = 0;
+  /** The pending list (`0x5c6d40`…, count `0x2374`). */
+  pending: Pending[] = [];
+  /** 0x59cb80: the pending command just sent should not set the Pending Cmd state. */
+  pendingQuiet = 0;
+  /** 0x14c: the last `@wait`/`@comeback` telepath sent. */
+  lastWaitSent = '';
+  /** 0x278: the last `@ok` telepath sent. */
+  lastResumeSent = '';
+  /** 0x7d21: what is said before `@kill`, `@party`, `@panic!`. */
+  s_7d21 = '';
+
+  // ------------------------------------------------------------ fight
+
+  /** 0xe1d4: combat is engaged (`*Combat Engaged*` until `*Combat Off*`). */
+  inCombat = 0;
+  /** 0xa444: the attack the fight is engaged in (0x11 attack, 0x12 backstab, 9–15 the casts). */
+  engagedMode = 0;
+  /** 0xdd14 */
+  s_dd14 = '';
+  /** 0xdca8: the monster being fought, 100 characters. */
+  target = '';
+  /** 0xdd88: the monster fought last, 100 characters. */
+  lastTarget = '';
+  /** 0xa468: the short name of the spell being cast in the fight, 0x51 characters. */
+  castShort = '';
+  /** 0xa4b9: that spell's name, 0x51 characters. */
+  castName = '';
+  /** 0xaf9d: the alt-attack spell, 11 characters. */
+  altSpell = '';
+  /** 0xafa8: the user-attack spell, 11 characters. */
+  userSpell = '';
+  /** 0xa528 */
+  s_a528 = '';
+  /** 0xe2fc: why it is resting, 100 characters. */
+  restReason = '';
+
+  // ------------------------------------------------------------ party
+
+  /** 0x8b28: the party leader's name. */
+  leaderName = '';
+  /** 0x8918: the party, six records of 0x58 bytes. */
+  party: PartyMember[] = Array.from({ length: 6 }, () => newMember());
 
   // ------------------------------------------------------------ room
 

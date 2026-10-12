@@ -2,6 +2,7 @@
  * The room's contents: the list `0x471190` grows and the functions around it
  * (`0x4726a0`, `0x472270`, `0x472830`, …) read and prune. Read 2026-10-12.
  */
+import { indexOfNoCase, stricmp, strnicmp } from '../cstr';
 import { newEntity, type RoomEntity, type Session } from '../Session';
 
 /** The record's `+0x24` bit for "not hostile" (Monsters.md). */
@@ -86,4 +87,91 @@ export function stopToKill(s: Session): number {
     }
   }
   return 0;
+}
+
+/**
+ * `0x472490`: the room entry named `name`. A name matches when it is the
+ * entry's whole name, or its start followed by a space, `.` or `,` (so "rat"
+ * finds "rat", and the server's "rat." finds it too). While exiting the game
+ * (task `0x13`), leading dots are skipped. With `loose`, any entry whose name
+ * contains `name` does, failing that.
+ */
+export function findEntity(s: Session, name: string, loose: number): RoomEntity | null {
+  let n = name;
+  for (const e of s.room) {
+    if (e.type === 3) continue;
+    if (s.task === 0x13) n = n.replace(/^\.+/, '');
+    const len = e.name.length;
+    if (strnicmp(e.name, n, len) === 0) {
+      const after = n[len];
+      if (after === undefined || after === ' ' || after === '.' || after === ',') return e;
+    }
+  }
+  if (loose !== 0) {
+    for (const e of s.room) {
+      if (e.type === 3) continue;
+      if (s.task === 0x13) n = n.replace(/^\.+/, '');
+      if (n !== '' && indexOfNoCase(e.name, n) !== -1) return e;
+    }
+  }
+  return null;
+}
+
+/**
+ * `0x4726f0`: the entry being fought. The target by name; else the cast's
+ * target; else, in a fight, the target by a looser name when it is hostile or
+ * has attacked; else the first entry when that is hostile. One the realm says
+ * to flee (kind 5) gives way to the first monster flagged "stop to kill",
+ * which becomes hostile.
+ */
+export function currentTarget(s: Session): RoomEntity | null {
+  let found: RoomEntity | null = null;
+  const hostile = (e: RoomEntity): boolean =>
+    e.kind === 4 || e.kind === 5 || e.kind === 6 || e.kind === 3 || (e.flags & 0x10) !== 0;
+  if (s.target !== '') found = findEntity(s, s.target, 0);
+  if (!found && s.s_a528 !== '') found = findEntity(s, s.s_a528, 0);
+  if (!found) {
+    let picked: RoomEntity | null = null;
+    if (s.inCombat !== 0 && s.target !== '') {
+      const e = findEntity(s, s.target, 1);
+      if (e && hostile(e)) picked = e;
+    }
+    if (!picked) {
+      const first = s.room[0];
+      if (first && first.type !== 3 && hostile(first)) picked = first;
+    }
+    found = picked;
+  }
+  if (found && found.kind !== 5) return found;
+  for (const e of s.room) {
+    if (e.type === 2 && e.mon && (e.mon.flags & 0x800) !== 0) {
+      e.kind = 4;
+      return e;
+    }
+  }
+  return found;
+}
+
+/**
+ * `0x4749d0`: everyone here may be hit by a room spell. Items, hostile
+ * entries and attackers aside: a player only when PvP is "attack all" (5) or
+ * when it is a party member not flagged `4`; a monster only when it is not a
+ * friend (kind 2); anything else, never.
+ */
+export function allAttackable(s: Session): number {
+  for (const e of s.room) {
+    if (e.type === 3 || e.kind === 4 || (e.flags & 0x10) !== 0) continue;
+    if (e.type === 1) {
+      if (s.PvP_PvpAction !== 5) {
+        if (s.partySize < 1) return 0;
+        const i = s.party
+          .slice(0, s.partySize)
+          .findIndex((m) => (m.flags28 & 4) === 0 && stricmp(e.name, m.name) === 0);
+        if (i === -1) return 0;
+      }
+    } else if (e.type !== 2 || e.kind === 2) {
+      return 0;
+    }
+  }
+  return 1;
 }
