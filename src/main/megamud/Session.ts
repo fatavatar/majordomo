@@ -45,14 +45,18 @@ export interface RoomEntity {
 export interface PartyMember {
   /** +0x00 */
   name: string;
-  /** +0x28 */
+  /** +0x10: its HP, as last reported. */
+  hp: number;
+  /** +0x14: its maximum HP. */
+  maxHp: number;
+  /** +0x28: 2 hit since its last report, 4 invited, 0x8c out of step. */
   flags28: number;
   /** +0x38: what it is attacking, 30 characters (`Party.AttackLate`; `0x42bef0` clears it). */
   target: string;
 }
 
 export function newMember(): PartyMember {
-  return { name: '', flags28: 0, target: '' };
+  return { name: '', hp: 0, maxHp: 0, flags28: 0, target: '' };
 }
 
 export function newEntity(): RoomEntity {

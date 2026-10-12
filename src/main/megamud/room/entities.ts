@@ -3,6 +3,7 @@
  * (`0x4726a0`, `0x472270`, `0x472830`, …) read and prune. Read 2026-10-12.
  */
 import { indexOfNoCase, stricmp, strnicmp } from '../cstr';
+import { findMonster as findMonsterNamed, stripAdjective as stripAdjectiveOf } from './checkNames';
 import { newEntity, type RoomEntity, type Session } from '../Session';
 
 /** The record's `+0x24` bit for "not hostile" (Monsters.md). */
@@ -174,4 +175,31 @@ export function allAttackable(s: Session): number {
     }
   }
   return 1;
+}
+
+/**
+ * `0x423e60`: an attacker the room has not listed (the character is blind or
+ * it is dark), added when its name (or that name without an adjective) is a
+ * known monster: hostile, attacking.
+ */
+export function newMonsterEntity(s: Session, text: string): RoomEntity | null {
+  const name = text.slice(0, 99).trim();
+  if (name === '' || name.length >= 0x1f) return null;
+  let mon = findMonsterNamed(s, name);
+  if (!mon) {
+    const bare = stripAdjectiveOf(name);
+    if (bare === name) return null;
+    mon = findMonsterNamed(s, bare);
+    if (!mon) return null;
+  }
+  const e = addEntity(s);
+  e.name = name.slice(0, 0x1e);
+  e.type = 2;
+  e.kind =
+    mon.relationship === 4 || mon.relationship === 5 || mon.relationship === 6
+      ? mon.relationship
+      : 4;
+  e.flags |= 0x11;
+  e.mon = mon;
+  return e;
 }
