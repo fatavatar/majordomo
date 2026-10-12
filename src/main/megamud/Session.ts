@@ -324,6 +324,8 @@ export class Session extends RawFields {
   /** 0xe2fc: why it is resting, 100 characters. */
   restReason = '';
 
+  /** 0xa3d4: the "too few monsters to nuke" warning is still to be shown this session. */
+  warnFewMonsters = 1;
   /** 0xdb38: the exit to leave by, as a direction (-1 none). */
   runDirection = -1;
 

@@ -12,16 +12,16 @@
  *
  * Returns 1 when a spell was sent (or is still awaited), 0 otherwise.
  */
-import { findSpell } from '../spells/lookup';
+import { idiv } from '../cstr';
 import { castSpell, equipForSpell } from '../health/cast';
 import { allAttackable, currentTarget, enemiesHere } from '../room/entities';
 import { forgetAwaited, setState } from '../script/state';
 import type { RoomEntity, Session } from '../Session';
+import { findSpell } from '../spells/lookup';
 import { unported } from '../unported';
 import { beginCast, countCast, damageFor, spellTakesTarget } from './casts';
 import { attackLateMark, targetChanged } from './engaged';
 import { castAllowed } from './timer';
-import { idiv } from '../cstr';
 
 const UNLIMITED = 99999;
 

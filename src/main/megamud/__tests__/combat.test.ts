@@ -5,6 +5,7 @@ import { combatStep, partyHeal, selfHeal } from '../combat/heal';
 import type { SpellRec } from '../data';
 import { addEntity } from '../room/entities';
 import type { Session } from '../Session';
+import { runCheck } from '../script/run';
 import { session } from './fixture';
 
 /* `0x4120b0`, `0x412b10`, `0x412120` and `0x40f510`, read 2026-10-12. */
@@ -185,5 +186,68 @@ describe('attack spells (0x40f510)', () => {
     expect(attack(s, 0xb, monster(s, 'orc'))).toBe(0);
     s.MegaMud_AutoPreAttack = 1;
     expect(attack(s, 0xb, monster(s, 'orc'))).toBe(1);
+  });
+});
+
+describe('running and attacking (0x40e190)', () => {
+  it('attacks the monster with the attack command', () => {
+    const { s, out } = fighter([]);
+    monster(s, 'giant rat');
+    expect(runCheck(s)).toBe(1);
+    expect(out.sent).toEqual(['a giant rat\r']);
+    expect(s.state).toBe(0x11);
+    expect(s.target).toBe('giant rat');
+    expect(out.activity).toContain('Attacking giant rat');
+  });
+
+  it('opens with the attack spell before the attack command', () => {
+    const { s, out } = fighter([spell('mmis', 0x20)]);
+    s.Combat_AttackSpl = 'mmis';
+    s.Combat_MaxCastCnt = 3;
+    s.Combat_AttMaxDmg = 1000;
+    monster(s, 'giant rat');
+    expect(runCheck(s)).toBe(1);
+    expect(out.sent).toEqual(['mmis giant rat\r']);
+  });
+
+  it('backstabs while sneaking', () => {
+    const { s, out } = fighter([]);
+    s.f_e1c4 = 1;
+    s.Combat_CanBackStab = 1;
+    monster(s, 'giant rat');
+    expect(runCheck(s)).toBe(1);
+    expect(out.sent).toEqual(['bs giant rat\r']);
+    expect(s.state).toBe(0x12);
+  });
+
+  it('runs when HP fall below HpRun% while walking', () => {
+    const { s, out } = fighter([]);
+    s.f_e184 = 1;
+    s.Health_HpRunPct = 30;
+    s.Combat_RunRooms = 2;
+    s.hp = 20;
+    monster(s, 'giant rat');
+    expect(runCheck(s)).toBe(0);
+    expect(s.runCount).toBe(2);
+    expect(out.sent).toEqual([]);
+    expect(out.activity).toContain('Running: HP is too low');
+  });
+
+  it('runs from too many monsters', () => {
+    const { s, out } = fighter([]);
+    s.f_e184 = 1;
+    s.Combat_MaxMstrs = 2;
+    monster(s, 'giant rat');
+    monster(s, 'giant rat');
+    monster(s, 'orc');
+    expect(runCheck(s)).toBe(0);
+    expect(s.runCount).toBe(1);
+    expect(out.activity).toContain('Running: too many monsters');
+  });
+
+  it('does nothing with no monster here', () => {
+    const { s, out } = fighter([]);
+    expect(runCheck(s)).toBe(0);
+    expect(out.sent).toEqual([]);
   });
 });

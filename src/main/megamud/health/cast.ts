@@ -6,8 +6,8 @@
  * sent as that command, macros expanded, instead of its short name. A spell
  * that costs mana waits for the round timer (`0x49af50`), and stamps it.
  */
-import { castStamp, castAllowed } from '../combat/timer';
 import { spellTakesTarget } from '../combat/casts';
+import { castAllowed, castStamp } from '../combat/timer';
 import { enemiesHere } from '../room/entities';
 import { expandMacros, noteCommands, send } from '../script/send';
 import { setState } from '../script/state';

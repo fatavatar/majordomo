@@ -4,10 +4,10 @@
  * item equipped first, if it is cast from one), else a light source from the
  * inventory (`0x453760`). Not while hidden, nor against monsters here.
  */
-import { castSpell, equipForSpell } from './cast';
 import { enemiesHere } from '../room/entities';
 import type { Session } from '../Session';
 import { unported } from '../unported';
+import { castSpell, equipForSpell } from './cast';
 
 export function healStep(s: Session): number {
   if (s.hp < 1) return 0;
