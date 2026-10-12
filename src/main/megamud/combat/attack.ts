@@ -18,10 +18,10 @@ import { allAttackable, currentTarget, enemiesHere } from '../room/entities';
 import { forgetAwaited, setState } from '../script/state';
 import type { RoomEntity, Session } from '../Session';
 import { findSpell } from '../spells/lookup';
-import { unported } from '../unported';
 import { beginCast, countCast, damageFor, spellTakesTarget } from './casts';
 import { attackLateMark, targetChanged } from './engaged';
 import { castAllowed } from './timer';
+import { normalWeapon } from './weapons';
 
 const UNLIMITED = 99999;
 
@@ -306,7 +306,7 @@ function cast(s: Session, mode: number, e: RoomEntity, plan: Plan): number | nul
   if (mode !== 0xf && mode !== 0xe) {
     const equipped = equipForSpell(s, plan.spell);
     if (equipped === 0) {
-      if (s.Combat_UseNrmWeapForSpells !== 0 && unported('410f50') !== 0) return 1;
+      if (s.Combat_UseNrmWeapForSpells !== 0 && normalWeapon(s) !== 0) return 1;
     } else if (equipped === 1) {
       return 1;
     }

@@ -343,6 +343,10 @@ export class Session extends RawFields {
 
   /** 0x8420/0x8424: what is carried, in the inventory listing's order. */
   inventory: Carried[] = [];
+  /** 0x8474: an item being picked up, until the inventory lists it, 31 characters. */
+  s_8474 = '';
+  /** 0x8493: 31 characters, cleared by each inventory. */
+  s_8493 = '';
   /** 0xa5d9: the item being equipped, 31 characters. */
   equipping = '';
 

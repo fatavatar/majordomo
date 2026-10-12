@@ -8,6 +8,7 @@
  * else the plain attack command.
  */
 import { attack } from '../combat/attack';
+import { normalWeapon } from '../combat/weapons';
 import { f_426ab0, wantsRoomSpell } from '../combat/casts';
 import { attackLateMark, clearCastMode, rememberTarget, targetChanged } from '../combat/engaged';
 import { combatRoundEnd } from '../combat/rounds';
@@ -392,7 +393,7 @@ function fight(s: Session, stop: number): number {
     if (attack(s, 0xc, e) !== 0) return 1;
     if (attack(s, 0xd, e) !== 0) return 1;
   }
-  if (unported('410f50') !== 0) return 1;
+  if (normalWeapon(s) !== 0) return 1;
 
   const recent =
     s.inCombat === 0 && s.now - s.f_322d8 < s.Comms_LagWait + 4 && s.f_324c0 === s.f_324c4;
