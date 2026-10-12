@@ -202,3 +202,13 @@ export function typedDirection(word: string): number {
   }
   return -1;
 }
+
+/** `0x4c0300`: a direction's word (0 north … 9 down), or "(unknown dir)". */
+export function directionWord(dir: number): string {
+  return dir >= 0 && dir <= 9 ? DIR_LONG[dir]! : '(unknown dir)';
+}
+
+/** `0x4c03b0`: a direction's abbreviation (`n` … `d`), or "(unknown dir)". */
+export function directionShort(dir: number): string {
+  return dir >= 0 && dir <= 9 ? DIR_SHORT[dir]! : '(unknown dir)';
+}

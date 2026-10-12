@@ -139,6 +139,8 @@ export class Session extends RawFields {
   /** 0xe210: the flux monitor asks for the mana regen again. */
   fluxRecast = 0;
 
+  /** The direction the leader is bashing, for `Party.HelpBash` (passed to `0x408870`). */
+  f_db30help = -1;
   /** 0xd870: experience (64-bit). */
   exp = 0;
   /** 0xd878: experience still needed for the next level, or -1 when not known. */
