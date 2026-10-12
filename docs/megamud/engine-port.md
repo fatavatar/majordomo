@@ -11,8 +11,26 @@ The readings behind every step are in `megamud-exe.md`, with addresses.
 
 ## The shape of MegaMUD's engine
 
-**One scheduler, `0x40bab0`, run from `ParseData` (`0x479630`)** after each
-chunk the server sends. It is driven by input, never by a timer. Each pass
+**Three entry points**, all window messages handled by `0x4657f0`:
+
+- **Data** (`0x499`, from the network thread `0x42c910`) → `0x462c00` →
+  `ParseData` (`0x479630`). It frames characters into a line buffer, keeping
+  each character's colour beside it (handlers test colours: `Also here:` must
+  be magenta or green), then hands each line to `0x479b20`, which dispatches to
+  the line handlers.
+- **Once a second** (`WM_TIMER` 100) → `0x4653d0`. It stamps the clock
+  (`0x32290`, `_time64`). Every timing test reads that stamp, never a live
+  clock. Then come AFK, events, lag re-prompts after `Comms.LagWait` and the
+  periodic checks.
+- **Silence** (`0x49c`, after 2, 5, 10, 30 and 60 seconds without data) →
+  `0x464910`, which includes the `{30s}` tick (`0x40a9c0`).
+
+The activity state (`db28`, set by `0x4aa770`) is one of the 48 the status
+bar names (`0x4ac2a0`): 0 Nothing, 3 Resting, 5 Meditating, 9–15 the attack
+casts, 0x11 Attacking, 0x16 Moving/Running, … See `states.ts`.
+
+**One scheduler, `0x40bab0`, run from `ParseData`** after a chunk, when no
+partial line is held and bit 0 of `d904` is set. Each pass
 asks the steps below in order, and the first that sends something ends the
 pass. The numbers are the `{D%d}` debug tags MegaMUD logs.
 
