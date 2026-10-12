@@ -25,3 +25,8 @@ export function withdrawCash(_s: Session): number {
 export function stashItems(_s: Session): number {
   return unported('40ce50');
 }
+
+/** `0x43cf30`: a detour to the bank to bring the wealth up to `amount` copper. Not ported yet. */
+export function fetchCash(_s: Session, _how: number, _amount: number): number {
+  return unported('43cf30');
+}
