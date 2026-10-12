@@ -57,12 +57,12 @@ export function setState(s: Session, next: number): void {
   if (next === 0) {
     const manaFull = idiv(s.Player_MaxMana * s.Health_ManaFullPct, 100);
     let meditate = false;
-    if (s.f_e1a4 === 0 || s.inGame === 0) {
+    if (s.resting === 0 || s.inGame === 0) {
       meditate = true;
     } else if (s.hp < idiv(s.Player_MaxHP * s.Health_HpFullPct, 100)) {
       next = 3;
       s.state = 3;
-    } else if (s.f_e228 === 0 || manaFull <= s.mana) {
+    } else if (s.restManaToFull === 0 || manaFull <= s.mana) {
       meditate = true;
     } else {
       next = 3;

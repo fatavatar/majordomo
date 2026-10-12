@@ -118,7 +118,7 @@ export function schedule(s: Session): boolean {
     s.f_2378 += 1;
     if (s.debug !== 0) s.host.trace(`{D5:${s.f_2378}}`);
   }
-  const lit = s.blind === 0 && s.f_dca4 < 2;
+  const lit = s.blind === 0 && s.darkness < 2;
   if (
     s.f_e290 === 1 &&
     lit &&

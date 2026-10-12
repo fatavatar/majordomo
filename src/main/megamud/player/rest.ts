@@ -23,7 +23,7 @@ export const MEDITATE = 'med\r';
 
 export function restLine(s: Session, line: string): number {
   if (indexOf(line, 'You are now resting') !== -1) {
-    s.f_e1a4 = 1;
+    s.resting = 1;
     s.meditating = 0;
     s.hidden = 0;
     s.f_e1c4 = 0;
@@ -32,7 +32,7 @@ export function restLine(s: Session, line: string): number {
     return 1;
   }
   if (indexOf(line, 'You are now meditating') !== -1) {
-    s.f_e1a4 = 0;
+    s.resting = 0;
     s.meditating = 1;
     s.hidden = 0;
     s.f_e1c4 = 0;
@@ -48,7 +48,7 @@ export function restLine(s: Session, line: string): number {
     return 1;
   }
   if (indexOf(line, 'You awake from deep meditation feeling stronger') !== -1) {
-    s.f_e1a4 = 0;
+    s.resting = 0;
     s.meditating = 0;
     s.hidden = 0;
     s.f_e1c4 = 0;
@@ -83,14 +83,14 @@ export function restLine(s: Session, line: string): number {
     indexOf(line, 'The room is barely visible') !== -1 ||
     indexOf(line, 'The room is dimly lit') !== -1
   ) {
-    s.f_dca4 = 1;
+    s.darkness = 1;
     return 1;
   }
   if (
     indexOf(line, 'The room is pitch black') !== -1 ||
     indexOf(line, 'The room is very dark') !== -1
   ) {
-    if (s.f_dca4 < 2) s.f_dca4 = 2;
+    if (s.darkness < 2) s.darkness = 2;
     if (s.f_e294 !== 0 || s.state === 0x2b) s.waitLines = 0;
     if (s.state === 0x16) {
       s.f_e290 = 0;
@@ -129,7 +129,7 @@ export function restLine(s: Session, line: string): number {
     if (s.f_a32c === 0) {
       const n = Math.min(went, 10);
       s.chaseTarget = line.slice(0, n);
-      if (s.f_db38 === -1) s.f_db38 = directionOf(line.slice(n + 6));
+      if (s.runDirection === -1) s.runDirection = directionOf(line.slice(n + 6));
     }
     setState(s, 0);
     return 1;

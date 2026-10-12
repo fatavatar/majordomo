@@ -276,7 +276,7 @@ function struck(s: Session, line: string, name: string, damage: number): number 
   s.hidden = 0;
   s.f_32604 = 1;
   roundEvent(s, RoundEvent.Combat);
-  const blind = s.blind !== 0 || s.f_dca4 > 1;
+  const blind = s.blind !== 0 || s.darkness > 1;
   let e: RoomEntity | null = findEntity(s, name, 0);
   if (!e) {
     for (const x of s.room) {
@@ -333,7 +333,7 @@ function struck(s: Session, line: string, name: string, damage: number): number 
       added.flags |= 0x11;
     } else if (
       s.blind === 0 &&
-      s.f_dca4 < 2 &&
+      s.darkness < 2 &&
       (s.runCount === 0 || s.following === 1 || s.held === 1)
     ) {
       if (name === '' && s.msgSpell !== '') {

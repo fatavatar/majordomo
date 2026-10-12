@@ -71,27 +71,27 @@ export function statusLine(s: Session, buf: LineBuf, complete: number): number {
       while (line[end] === ' ') end += 1;
       s.mana = Math.min(s.mana, s.Player_MaxMana);
       // MegaMUD refreshes its window while minimised here; nothing to do.
-      if (s.f_e224 === 0 || s.Player_MaxHP < 1) {
-        if (s.f_e234 > 0 && s.hp < s.f_e234) {
-          s.f_e234 = 0;
+      if (s.restHpToFull === 0 || s.Player_MaxHP < 1) {
+        if (s.hpFullAt > 0 && s.hp < s.hpFullAt) {
+          s.hpFullAt = 0;
           if (s.debug !== 0) s.host.trace('{hp-r2}');
         }
       } else if (idiv(s.Health_HpFullPct * s.Player_MaxHP, 100) <= s.hp) {
-        s.f_e224 = 0;
-        s.f_e234 = s.hp;
+        s.restHpToFull = 0;
+        s.hpFullAt = s.hp;
         if (s.debug !== 0) s.host.trace(`{hp-${s.hp}}`);
       }
-      if (s.f_e228 === 0 || s.Player_MaxMana < 1) {
-        if (s.f_e238 > 0) {
+      if (s.restManaToFull === 0 || s.Player_MaxMana < 1) {
+        if (s.manaFullAt > 0) {
           const pct = Math.max(s.Health_ManaFullPct, s.Health_ManaRestPct);
-          if (s.mana < idiv(pct * s.f_e238, 100)) {
-            s.f_e238 = 0;
+          if (s.mana < idiv(pct * s.manaFullAt, 100)) {
+            s.manaFullAt = 0;
             if (s.debug !== 0) s.host.trace('{ma-r2}');
           }
         }
       } else if (idiv(s.Health_ManaFullPct * s.Player_MaxMana, 100) <= s.mana) {
-        s.f_e228 = 0;
-        s.f_e238 = s.mana;
+        s.restManaToFull = 0;
+        s.manaFullAt = s.mana;
         if (s.debug !== 0) s.host.trace(`{ma-${s.mana}}`);
       }
       from = end;
@@ -103,19 +103,19 @@ export function statusLine(s: Session, buf: LineBuf, complete: number): number {
   const meditating = indexFrom(line, promptStart, '(Meditating) ');
   let restMark = false;
   if (resting >= promptStart && resting <= end) {
-    s.f_e1a4 = 1;
+    s.resting = 1;
     s.meditating = 0;
     if (end <= resting + 10) end = resting + 10;
     if (s.state !== 0x16 || s.now - s.f_32320 > s.Comms_LagWait + 4) setState(s, 3);
     restMark = true;
   } else if (meditating >= promptStart && meditating <= end) {
-    s.f_e1a4 = 0;
+    s.resting = 0;
     s.meditating = 1;
     if (end <= meditating + 0xd) end = meditating + 0xd;
     if (s.state !== 0x16 || s.now - s.f_32320 > s.Comms_LagWait + 4) setState(s, 5);
     restMark = true;
   } else if (sawPrompt && complete === 0) {
-    s.f_e1a4 = 0;
+    s.resting = 0;
     s.meditating = 0;
     if (s.state === 3 || s.state === 5) setState(s, 0);
   }

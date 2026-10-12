@@ -178,7 +178,7 @@ export function messageLine(s: Session, line: string, anywhere: number): number 
       forgetLastTarget(s);
       if (s.state === 0x19) s.f_e2e4 = 1;
       setState(s, 0);
-      if (s.following !== 0 || s.f_e2ec !== 0 || s.f_e2f8 !== 0) resendPartyHold(s);
+      if (s.following !== 0 || s.f_e2ec !== 0 || s.holdingLeader !== 0) resendPartyHold(s);
     }
     result = 1;
     if (rec.endMsg === '') {
@@ -230,9 +230,9 @@ export function messageLine(s: Session, line: string, anywhere: number): number 
       if (out.length === 0 || !out.endsWith('\r')) out += '\r';
       queueCommand(s, out, 1, 0, 1);
     }
-    if ((eff & 0x10) !== 0 && s.following !== 0 && s.f_e2f8 === 0 && s.f_a32c === 0) {
+    if ((eff & 0x10) !== 0 && s.following !== 0 && s.holdingLeader === 0 && s.f_a32c === 0) {
       s.f_32338 = s.now;
-      s.f_e2f8 = 1;
+      s.holdingLeader = 1;
       if (s.restReason === '') s.restReason = "can't move";
       const wait = s.Party_PartyWaitCmd !== '' ? s.Party_PartyWaitCmd : '@wait';
       queue(s, `/${s.leaderName} ${wait} (can't move)\r`);
@@ -332,10 +332,10 @@ function actOnNumber(s: Session, rec: MessageRec): void {
       break;
     }
     case 3:
-      s.f_e224 = 1;
+      s.restHpToFull = 1;
       break;
     case 4:
-      s.f_e228 = 1;
+      s.restManaToFull = 1;
       break;
     case 5:
       s.runCount = s.Combat_RunRooms;
@@ -445,4 +445,25 @@ export function messageEnded(s: Session, line: string | null, rec: MessageRec): 
     }
   }
   return 1;
+}
+
+/**
+ * `0x46c180`: the rows that poison (effect 4) are cured (`start` 0): no longer
+ * active, nor rested off; or started (`start` 1), now.
+ */
+export function poisonRows(s: Session, start: number): void {
+  for (const rec of s.data.messages ?? []) {
+    if ((rec.effects & 4) === 0) continue;
+    if (start !== 0) {
+      rec.flags |= 1;
+      rec.firedAt = s.now;
+      continue;
+    }
+    const was = rec.flags;
+    rec.flags = was & ~1;
+    if ((was & 2) !== 0) {
+      rec.flags = was & ~3;
+      s.restUntilOff -= 1;
+    }
+  }
 }

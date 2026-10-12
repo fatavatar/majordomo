@@ -34,8 +34,8 @@ export function combatEngaged(s: Session, line: string): number {
     }
     s.f_a580 =
       (f_426ab0(s, 0) === 0 && f_426ab0(s, 1) === 0) || s.f_a464 === 0 || s.f_a460 !== 0 ? 0 : 1;
-    s.f_e234 = 0;
-    s.f_e238 = 0;
+    s.hpFullAt = 0;
+    s.manaFullAt = 0;
     s.f_32600 = -1;
     s.f_32604 = 0;
     s.f_e2b8 = 0;

@@ -45,6 +45,8 @@ export interface RoomEntity {
 export interface PartyMember {
   /** +0x00 */
   name: string;
+  /** +0x0c: its HP, percent of its maximum. */
+  hpPct: number;
   /** +0x10: its HP, as last reported. */
   hp: number;
   /** +0x14: its maximum HP. */
@@ -56,7 +58,7 @@ export interface PartyMember {
 }
 
 export function newMember(): PartyMember {
-  return { name: '', hp: 0, maxHp: 0, flags28: 0, target: '' };
+  return { name: '', hpPct: 0, hp: 0, maxHp: 0, flags28: 0, target: '' };
 }
 
 export function newEntity(): RoomEntity {
@@ -164,6 +166,18 @@ export class Session extends RawFields {
   spellLocks = 0;
   /** 0x32688: three or more locks without a round event. */
   spellLockStuck = 0;
+
+  // ------------------------------------------------------------ ability monitors
+
+  /** 0x23d8 (on), 0x23e0 (since, seconds), 0x23e8 (checked, ms): the monitors watching a rest. */
+  restMonitor = { on: 0, since: 0, checkedAt: 0 };
+  /** 0x23f4 (on), 0x23f8 (since, seconds), 0x2400 (checked, ms): the monitors watching a meditation. */
+  meditateMonitor = { on: 0, since: 0, checkedAt: 0 };
+
+  // ------------------------------------------------------------ light
+
+  /** 0xdca4: how dark the room is (0 lit, 1 dim, 2 dark, 3 dark by the path's own mark). */
+  darkness = 0;
 
   // ------------------------------------------------------------ vitals
 
@@ -310,6 +324,9 @@ export class Session extends RawFields {
   /** 0xe2fc: why it is resting, 100 characters. */
   restReason = '';
 
+  /** 0xdb38: the exit to leave by, as a direction (-1 none). */
+  runDirection = -1;
+
   // ------------------------------------------------------------ party
 
   /** 0x8b28: the party leader's name. */
@@ -368,8 +385,22 @@ export class Session extends RawFields {
   manaRegen = 0;
   /** 0xe214: can't move. */
   held = 0;
+  /** 0xe1a4: resting (`rest` sent, or the prompt's rest mark). */
+  resting = 0;
   /** 0xe1a8 */
   meditating = 0;
+  /** 0xe224: resting HP to full: HP fell below `HpRest%` and are not yet back to `HpFull%`. */
+  restHpToFull = 0;
+  /** 0xe228: resting mana to full, the same with `ManaRest%` and `ManaFull%`. */
+  restManaToFull = 0;
+  /** 0xe234: the HP when they last reached full (`HpFull%`); falling below it ends the latch. */
+  hpFullAt = 0;
+  /** 0xe238: the mana when it last reached full. */
+  manaFullAt = 0;
+  /** 0xe2b0: must rest (can't move, while following). */
+  mustRest = 0;
+  /** 0xe2f8: holding the party leader (`@wait` sent). */
+  holdingLeader = 0;
   /** 0xe1ac: a post-rest command is owed. */
   owedPostRest = 0;
   /** 0xe1b0: a post-meditate command is owed. */

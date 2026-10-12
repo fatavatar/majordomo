@@ -21,7 +21,7 @@ export function illLine(s: Session, line: string): number {
     return 1;
   }
   if (indexOf(line, 'You are too sick to rest') !== -1) {
-    s.f_e1a4 = 0;
+    s.resting = 0;
     s.meditating = 0;
     s.poisoned = 1;
     s.f_e1f8 = 1;

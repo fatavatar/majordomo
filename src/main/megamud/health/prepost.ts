@@ -4,6 +4,7 @@
  * per sit-down (`0x4140c0`, `0x413c50`, `0x413e80`, `0x413b50`). See
  * docs/megamud/megamud-exe.md, *Rest and meditate: pre/post commands*.
  */
+import { enemiesHere } from '../room/entities';
 import { expandMacros, noteCommands, send } from '../script/send';
 import { setState } from '../script/state';
 import type { Session } from '../Session';
@@ -143,4 +144,38 @@ export function preBackstab(s: Session, force: number): number {
     }
   }
   return 0;
+}
+
+/**
+ * `0x4139e0`: the post-backstab command, when owed (or `force`d). Sent with
+ * items being equipped and a fight on, it marks the room to be looked at.
+ */
+export function postBackstab(s: Session, force: number): number {
+  if (s.owedPostBackstab === 0 && force === 0) return 0;
+  s.owedPostBackstab = 0;
+  const command = s.Combat_PostBsCmd;
+  if (
+    command === '' ||
+    !(
+      (s.f_a32c === 0 && s.Combat_PrePostBackstab !== 0 && s.Combat_CanBackStab !== 0) ||
+      force !== 0
+    )
+  ) {
+    return 0;
+  }
+  s.waitLines = 2;
+  noteCommands(s, command);
+  setState(s, 0x2e);
+  s.host.activity('Issuing post-bs');
+  const out = expandMacros(s, command);
+  if (s.f_a5f8 > 0 && (s.inCombat !== 0 || enemiesHere(s, 0) >= 1)) {
+    if (s.f_e1d8 === 0) {
+      if (s.debug !== 0) s.host.trace('{I12+}');
+      s.f_e1d8 = 1;
+    }
+    s.f_e2b8 = 1;
+  }
+  send(s, out);
+  if (!out.includes('\r')) send(s, '\r');
+  return 1;
 }

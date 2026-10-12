@@ -192,7 +192,7 @@ function finish(s: Session, before: number): number {
     if (s.f_db30 !== -1) s.host.arrived?.(s.f_db30);
   }
   if (s.state === 0x16 || s.state === 0x2b) setState(s, 0);
-  s.f_dca4 = 0;
+  s.darkness = 0;
   s.blind = 0;
   s.f_e290 = 0;
   s.f_e294 = 0;

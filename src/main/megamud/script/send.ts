@@ -140,7 +140,7 @@ export function pendingPump(s: Session): number {
       if (s.pendingQuiet === 0) setState(s, 0x2d);
       s.waitLines = 2;
       send(s, out);
-      if (text.startsWith('/') && (s.following !== 0 || s.f_e2ec !== 0 || s.f_e2f8 !== 0)) {
+      if (text.startsWith('/') && (s.following !== 0 || s.f_e2ec !== 0 || s.holdingLeader !== 0)) {
         const waitCmd = s.Party_PartyWaitCmd !== '' ? s.Party_PartyWaitCmd : '@wait';
         const isWait = findNoCase(text, 0, waitCmd) !== -1;
         const isComeback = findNoCase(text, 0, '@comeback') !== -1;
@@ -149,12 +149,12 @@ export function pendingPump(s: Session): number {
           if (findNoCase(text, 0, okCmd) !== -1) {
             s.lastResumeSent = out.slice(0, 299);
             s.f_32340 = s.now;
-            s.f_e2f8 = 0;
+            s.holdingLeader = 0;
           }
         } else {
           s.lastWaitSent = out.slice(0, 299);
           s.f_32338 = s.now;
-          if (isWait) s.f_e2f8 = 1;
+          if (isWait) s.holdingLeader = 1;
         }
       }
       if (first.checked === 0) s.host.echo?.(out.split('\r')[0] ?? out);

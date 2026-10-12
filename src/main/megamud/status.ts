@@ -83,7 +83,7 @@ export function statusText(s: Session): string {
       name = 'resting';
       break;
     case 3:
-      name = s.f_e224 !== 0 || s.f_e228 !== 0 ? 'Resting (to full)' : 'Resting';
+      name = s.restHpToFull !== 0 || s.restManaToFull !== 0 ? 'Resting (to full)' : 'Resting';
       if (
         idiv(s.Player_MaxHP * s.Health_HpFullPct, 100) <= s.hp &&
         s.mana < idiv(s.Player_MaxMana * s.Health_ManaFullPct, 100)
@@ -96,7 +96,7 @@ export function statusText(s: Session): string {
       name = 'meditating';
       break;
     case 5:
-      name = s.f_e228 !== 0 ? 'Medi. to Full' : 'Meditating';
+      name = s.restManaToFull !== 0 ? 'Medi. to Full' : 'Meditating';
       break;
     case 0x16:
       name = s.rescueCount >= 1 ? 'Rescuing' : s.runCount >= 1 ? 'Running' : 'Moving';

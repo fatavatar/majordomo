@@ -156,8 +156,8 @@ function departed(s: Session, line: string, who: string): number {
   if (indexOf(line, 'and rows out into the river') !== -1) dir = s.roomExits[0] === 0 ? 1 : 0;
   if (indexOf(line, 'scales the ') !== -1) dir = s.roomExits[8] !== 0 ? 8 : 9;
   else if (dir === -1) return 0;
-  s.f_db38 = dir;
+  s.runDirection = dir;
   s.chaseTarget = name.slice(0, 10);
-  if (unported('408540') !== 0) s.f_db38 = -1;
+  if (unported('408540') !== 0) s.runDirection = -1;
   return 1;
 }
