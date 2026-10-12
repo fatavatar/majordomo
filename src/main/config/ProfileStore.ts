@@ -22,9 +22,10 @@ import path from 'node:path';
 import { parse } from 'yaml';
 
 import { mergeLoops, type Loop } from '../../shared/loops';
+import { settingsFromIni } from '../../shared/megamud/settings';
 import { resolveProfile, type Profile } from '../../shared/profiles';
 import { errorMessage } from '../../shared/values';
-import { PROFILE_FILE } from '../app/home';
+import { MEGAMUD_FILE, PROFILE_FILE } from '../app/home';
 import { directoryNames } from './dirs';
 import { Poller } from './Poller';
 
@@ -166,12 +167,15 @@ export class ProfileStore extends EventEmitter {
     try {
       return this.ids()
         .map((id) => {
-          try {
-            const stat = fs.statSync(path.join(this.dir, id, PROFILE_FILE));
-            return `${id}:${stat.mtimeMs}:${stat.size}`;
-          } catch {
-            return `${id}:gone`;
-          }
+          const stamp = (file: string): string => {
+            try {
+              const stat = fs.statSync(path.join(this.dir, id, file));
+              return `${stat.mtimeMs}:${stat.size}`;
+            } catch {
+              return 'gone';
+            }
+          };
+          return `${id}:${stamp(PROFILE_FILE)}:${stamp(MEGAMUD_FILE)}`;
         })
         .join('|');
     } catch {
@@ -256,6 +260,19 @@ export class ProfileStore extends EventEmitter {
           result.profile.config.automation.loops,
           lent
         );
+      }
+      /*
+       * MegaMUD's settings, read as MegaMUD reads them. A file that will not
+       * read is reported and the character keeps its defaults, as MegaMUD
+       * itself does with a missing key.
+       */
+      const ini = path.join(this.dir, id, MEGAMUD_FILE);
+      if (fs.existsSync(ini)) {
+        try {
+          result.profile.megamud = settingsFromIni(fs.readFileSync(ini, 'latin1'));
+        } catch (error) {
+          errors.push(`${id}: ${MEGAMUD_FILE}: ${errorMessage(error)}`);
+        }
       }
       profiles.push(result.profile);
     }

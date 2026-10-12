@@ -4,7 +4,8 @@ import os from 'node:os';
 import path from 'node:path';
 
 import { ProfileStore, type ProfileSnapshot } from '../ProfileStore';
-import { PROFILE_FILE } from '../../app/home';
+import { MEGAMUD_FILE, PROFILE_FILE } from '../../app/home';
+import { num } from '../../../shared/megamud/settings';
 
 let dir: string;
 let stores: ProfileStore[];
@@ -153,6 +154,26 @@ describe('ProfileStore', () => {
     write('thorn.yaml', 'server: local\nname: Thorn the Unready\n');
 
     expect((await changed).profiles[0]?.name).toBe('Thorn the Unready');
+  });
+
+  it('reads MegaMUD settings from megamud.ini beside the file, defaults without one', () => {
+    write('thorn.yaml', 'server: local\n');
+    write('mara.yaml', 'server: local\n');
+    fs.writeFileSync(path.join(dir, 'thorn', MEGAMUD_FILE), '[Health]\r\nHpRest%=55\r\n');
+    const [mara, thorn] = open().profiles;
+    expect(num(thorn!.megamud, 'Health', 'HpRest%')).toBe(55);
+    expect(num(mara!.megamud, 'Health', 'HpRest%')).toBe(90);
+  });
+
+  it('notices an edit to megamud.ini', async () => {
+    write('thorn.yaml', 'server: local\n');
+    const store = open();
+    store.watch();
+    const changed = nextChange(store);
+
+    fs.writeFileSync(path.join(dir, 'thorn', MEGAMUD_FILE), '[Health]\r\nHpRest%=42\r\n');
+
+    expect(num((await changed).profiles[0]!.megamud, 'Health', 'HpRest%')).toBe(42);
   });
 
   it('reapplies every overlay when the options file underneath changes', () => {
