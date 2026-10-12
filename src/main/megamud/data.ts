@@ -262,6 +262,93 @@ export interface PlayerRec {
   where: string;
 }
 
+/** `0x467b60`: one Messages.md row (0x128 bytes in memory). */
+export interface MessageRec {
+  /** +0x00 */
+  layer: number;
+  /** +0x01, 31 bytes: the row's name (a spell's name for a spell's message). */
+  name: string;
+  /** +0x20, 81 bytes: the line that starts it. */
+  msg: string;
+  /** +0x71, 81 bytes: the line that ends it (empty for a message with no duration). */
+  endMsg: string;
+  /** +0xc2, 82 bytes: the command it sends. */
+  action: string;
+  /** +0x114: the effect bits (1 blind … 0x200 mana regen; 0x100 early, 0x400 anywhere, 0x4000 chase, 0x8000 off). */
+  effects: number;
+  /** +0x116: 1 active, 2 rested on, 4 its start has fields, 8 its end has fields. */
+  flags: number;
+  /** +0x118: what it makes MegaMUD do (1 look, 2 rest it off, 3 rest HP full, 4 mana full, 5 run, 6 hang up). */
+  number: number;
+  /** +0x120: when it started. */
+  firedAt: number;
+}
+
+/** Two hex digits, as `0x4ad190` reads them (a missing digit reads as 0). */
+function hexByte(text: string, at: number): [number, number] {
+  let value = 0;
+  let i = at;
+  for (let n = 0; n < 2 && i < text.length && /[0-9A-Fa-f]/.test(text[i]!); n += 1, i += 1) {
+    value = value * 16 + Number.parseInt(text[i]!, 16);
+  }
+  return [value, i];
+}
+
+/**
+ * `0x467b60`: Messages.md, three lines a row: `name:EFFECTS:number:action`,
+ * the start, the end. A row whose name and start are already known
+ * replaces it.
+ */
+export function messagesFrom(text: string, layer = 0): MessageRec[] {
+  const lines = text.split(/\r?\n/);
+  const out: MessageRec[] = [];
+  for (let i = 0; i < lines.length; i += 3) {
+    const head = lines[i] ?? '';
+    const colon = head.indexOf(':');
+    const name = (colon === -1 ? head : head.slice(0, colon)).slice(0, 30).trim();
+    if (name === '') break;
+    let rest = colon === -1 ? '' : head.slice(colon + 1);
+    let [effects, at] = hexByte(rest, 0);
+    if (at < rest.length && /[0-9A-Fa-f]/.test(rest[at]!)) {
+      const [low, next] = hexByte(rest, at);
+      effects = ((effects << 8) | low) & 0xffff;
+      at = next;
+    }
+    rest = rest.slice(at);
+    if (rest.startsWith(':')) rest = rest.slice(1);
+    const num = /^\s*(-?\d+)/.exec(rest);
+    const number = num ? Number(num[1]) : 0;
+    rest = rest.slice(num ? num[0].length : 0);
+    if (rest.startsWith(':')) rest = rest.slice(1);
+    const action = rest.split('\n')[0]!.slice(0, 0x50);
+    const msg = (lines[i + 1] ?? '').slice(0, 0x50).trim();
+    const endMsg = (lines[i + 2] ?? '').slice(0, 0x50).trim();
+    // A row cut short is "Invalid data in MESSAGES.MD.", and reading stops.
+    if (lines[i + 1] === undefined || lines[i + 2] === undefined) break;
+    if (msg === '') break;
+    let flags = 0;
+    if (msg.includes('{')) flags |= 4;
+    if (endMsg.includes('{')) flags |= 8;
+    const rec: MessageRec = {
+      layer,
+      name,
+      msg,
+      endMsg,
+      action,
+      effects,
+      flags,
+      number,
+      firedAt: 0
+    };
+    const known = out.findIndex(
+      (m) => m.name.toLowerCase() === name.toLowerCase() && m.msg === msg
+    );
+    if (known === -1) out.push(rec);
+    else out[known] = rec;
+  }
+  return out;
+}
+
 /** One room from Rooms.md, found by its signature (`0x4983d0`). Not read yet. */
 export interface RoomRec {
   /** +0x44: the room's signature (`0x8130`). */
@@ -277,6 +364,7 @@ export interface MegaData {
   classes?: ClassRec[];
   players?: PlayerRec[];
   rooms?: RoomRec[];
+  messages?: MessageRec[];
 }
 
 /** `0x46c220`: a new, empty monster record, added. */

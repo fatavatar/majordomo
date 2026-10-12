@@ -98,3 +98,11 @@ export function magicSuits(s: Session, spell: SpellRec): number {
   }
   return low <= m && m <= high ? 1 : 0;
 }
+
+/** `0x4a24e0`: the spell this character can cast whose full name is `name`. */
+export function findSpellByName(s: Session, name: string): SpellRec | null {
+  for (const spell of s.data.spells) {
+    if (castable(s, spell) !== 0 && stricmp(name, spell.name) === 0) return spell;
+  }
+  return null;
+}

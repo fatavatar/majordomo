@@ -233,6 +233,24 @@ export class Session extends RawFields {
   userSpell = '';
   /** 0xa528 */
   s_a528 = '';
+  /** 0x71d0: the Messages.md row that matched last (its name), 31 characters. */
+  msgSpell = '';
+  /** 0x71ef: its `{source}`, 81 characters. */
+  msgSource = '';
+  /** 0x7240: its `{target}`, 81 characters. */
+  msgTarget = '';
+  /** 0x7294: its `{dmg}`. */
+  msgDamage = 0;
+  /** 0x7298…: its `{1}` to `{5}`, 81 characters each; kept until a row sets them again. */
+  msgArgs: string[] = ['', '', '', '', ''];
+  /** 0xdb84: how many active rows are being rested off (number 2). */
+  restUntilOff = 0;
+  /** 0x742d: the last row rested off, 31 characters. */
+  s_742d = '';
+  /** 0xb060: the weapon wielded, 31 characters. */
+  s_b060 = '';
+  /** 0x59c2ec: the stash run-away warning was shown. */
+  warnedStashRun = false;
   /** 0xe2fc: why it is resting, 100 characters. */
   restReason = '';
 
