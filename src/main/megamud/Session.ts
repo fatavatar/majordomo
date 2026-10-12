@@ -139,6 +139,11 @@ export class Session extends RawFields {
   /** 0xe210: the flux monitor asks for the mana regen again. */
   fluxRecast = 0;
 
+  /** 0xd870: experience (64-bit). */
+  exp = 0;
+  /** 0xd878: experience still needed for the next level, or -1 when not known. */
+  expToLevel = -1;
+
   // ------------------------------------------------------------ activity
 
   /** 0xdb28: the activity state (`states.ts`). */
