@@ -20,7 +20,7 @@ import type { Session } from '../Session';
 import { refreshStatus } from '../status';
 import { blessStep } from './bless';
 import { depositCash, discardCash, shareCash, stashItems, withdrawCash } from './cash';
-import { combatStep } from './combat';
+import { combatStep } from '../combat/heal';
 import { recoverCorpse } from './corpse';
 import { cureStep } from './cures';
 import { escapeCheck } from './escape';
