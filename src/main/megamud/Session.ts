@@ -299,6 +299,22 @@ export class Session extends RawFields {
   typedAt = 0;
   /** 0x7cf7: the command that relogs. */
   s_7cf7 = '';
+  /**
+   * 0x7d2b, 0x7d54 (BBS chat), 0x7da6 (broadcast), 0x7dcf, 0x7df8, 0x7e21
+   * (with their flags 0x7e4c–0x7e54: a message follows on the next line):
+   * the BBS's own talk lines, from the BBS set-up; not read yet.
+   */
+  bbsTalk: { chat: string[]; broadcast: string; notices: { text: string; more: number }[] } = {
+    chat: ['', ''],
+    broadcast: '',
+    notices: [
+      { text: '', more: 0 },
+      { text: '', more: 0 },
+      { text: '', more: 0 }
+    ]
+  };
+  /** 0xdf17: the player talk is diverted to (`@divert`), 11 characters. */
+  divertTo = '';
   /** 0x7cb9: the game menu's own prompt (beside `[MAJORMUD]:`), from the BBS set-up; not read yet. */
   s_7cb9 = '';
   /** 0x7d7d: a line that means the account is wanted elsewhere, from the BBS set-up; not read yet. */

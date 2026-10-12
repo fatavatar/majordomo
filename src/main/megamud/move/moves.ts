@@ -30,7 +30,7 @@ const BLOCKED = [
 ];
 
 /** `0x482de0`: a path step not taken: taken back. */
-function stepBack(s: Session): number {
+export function stepBack(s: Session): number {
   if (s.f_e408 > 0 && s.f_e414 !== s.f_e410) {
     s.f_e410 = s.f_e414;
     s.f_e408 -= 1;
