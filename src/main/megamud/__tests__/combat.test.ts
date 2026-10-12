@@ -5,6 +5,7 @@ import { combatStep, partyHeal, selfHeal } from '../combat/heal';
 import type { SpellRec } from '../data';
 import { addEntity } from '../room/entities';
 import type { Session } from '../Session';
+import { escapeCheck } from '../script/escape';
 import { runCheck } from '../script/run';
 import { session } from './fixture';
 
@@ -248,6 +249,42 @@ describe('running and attacking (0x40e190)', () => {
   it('does nothing with no monster here', () => {
     const { s, out } = fighter([]);
     expect(runCheck(s)).toBe(0);
+    expect(out.sent).toEqual([]);
+  });
+});
+
+describe("the MUD op's escape (0x40dc20)", () => {
+  function op() {
+    const r = fighter([]);
+    const { s } = r;
+    s.BBS_IsMudop = 1;
+    s.BBS_SysGoto = '1/1';
+    s.active = 1;
+    s.Health_HpLogoffPct = 20;
+    s.hp = 10;
+    return r;
+  }
+
+  it('sys gotos away and rests when HP are critical', () => {
+    const { s, out } = op();
+    expect(escapeCheck(s, 'incoming attack')).toBe(1);
+    expect(out.sent).toEqual(['break\r', 'sys goto ', '1/1', '\r', 'rest\r']);
+    expect(s.state).toBe(0x2a);
+    expect(s.restHpToFull).toBe(1);
+    expect(out.trace).toContain('[HPs critical; mudop escape: incoming attack]');
+  });
+
+  it('waits before trying again', () => {
+    const { s, out } = op();
+    escapeCheck(s, '');
+    expect(escapeCheck(s, '')).toBe(0);
+    expect(out.activity).toContain('Waiting to retry low-HP MudOp escape');
+  });
+
+  it('is only for a MUD op', () => {
+    const { s, out } = op();
+    s.BBS_IsMudop = 0;
+    expect(escapeCheck(s, '')).toBe(0);
     expect(out.sent).toEqual([]);
   });
 });
