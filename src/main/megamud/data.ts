@@ -76,7 +76,11 @@ export interface SpellRec {
   short: string;
   /** +0x0b, 31 bytes (B+0x02). */
   name: string;
-  /** +0x2a, 41 bytes (B+0x2b): the item it needs worn. */
+  /**
+   * +0x2a, 41 bytes (B+0x2b): the command that casts it, when it is not cast
+   * by its short name (an item's `use`, say); macros are expanded and the
+   * target added (`0x40c8a0`).
+   */
   item: string;
   /** +0x54 (B+0x27, `& 0x3fffefff`). */
   flags: number;

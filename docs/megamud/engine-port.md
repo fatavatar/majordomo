@@ -182,3 +182,18 @@ MegaMUD is kept in it:
   (`ApplySession.java`, built from the loader by `port/inischema.py`). Name
   more fields in `~/tools/port/session-fields.txt` and re-run it as they are
   read.
+
+## Notes: the round timer (read 2026-10-12, not yet ported)
+
+- `0x49af50` castAllowed = !`0x49af70`. `0x49af70(s, secs)` is 1 (too soon) when the
+  last cast stamp (`0x32308` seconds, or `0x32668` ticks when set) is under `secs + 5`
+  seconds old; the tick path is used once `0x32668` is set.
+- `0x49b080` stamps a cast: `0x32308 = now`, `0x32660 = 1`, `0x32668 = ticks`, clears
+  `0x32670..0x32680`. `0x49ad90` clears the stamps.
+- `0x49bb90` expires the stamps after 5000 ms, or at the next round boundary
+  (`0x49bfd0`/`0x49b5d0`, 75-tick window via `0x49b890(s, 0x4b)`).
+- `0x49bb00(s, kind)` = `0x49b9a0`: a round event (`0x32654` count, `0x32658` ticks,
+  `0x3264c` kind); kind 3 → `0x49bb30` (miss streak, `0x32684`, `0x32688` after 3);
+  kind 4 resets via `0x49ade0` + `0x49b080`. Events under 1500 ms apart are merged.
+- Still to read: `0x49b220`, `0x49b5d0`, `0x49b610`, `0x49bfd0`, `0x49bf20`, `0x49bf70`,
+  `0x49be90`, `0x49ade0`.
