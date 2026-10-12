@@ -377,6 +377,14 @@ export class Session extends RawFields {
   modeApplied = -1;
   /** 0xa3d4: the "too few monsters to nuke" warning is still to be shown this session. */
   warnFewMonsters = 1;
+  /** 0xdf2d: the reply a `room` (MUD op) is asked for, 100 characters; sent with what it finds. */
+  roomReply = '';
+  /** 0x59c71c: the specific monster is alive (a global in MegaMUD). */
+  spawnAlive = 0;
+  /** 0x59c5f0: the specific monster's name. */
+  spawnMonster = '';
+  /** 0x59c6b8: what is known of its respawn ("Regens in …", "Should be alive!", "Alive now!"). */
+  spawnText = '';
   /** 0xdb38: the exit to leave by, as a direction (-1 none). */
   runDirection = -1;
 

@@ -49,3 +49,31 @@ export function modeDefaults(s: Session): void {
   else if (s.MegaMud_NoModeDefs === 1) s.MegaMud_AutoCombat = s.idleCombat;
   if (s.detours[0]!.room === 0) s.detourCombat = -1;
 }
+
+/**
+ * `0x4bfa20`: walking resumes: auto-combat and auto-heal come back on if they
+ * would be (`AutoAutoCombat`, `AutoAutoHeal`, or a mode default), unless the
+ * user has locked them off (`0x48fcc0`, the toolbar's lock: not kept here).
+ */
+export function reEngage(s: Session): void {
+  if (s.MegaMud_AutoCombat === 0) {
+    if (
+      s.idleCombat !== 0 ||
+      s.Other_AutoAutoCombat !== 0 ||
+      (s.MegaMud_NoModeDefs === 0 && (s.MegaMud_DefCombat1 !== 0 || s.MegaMud_DefCombat2 !== 0))
+    ) {
+      s.MegaMud_AutoCombat = 1;
+      s.host.show('[Auto-combat re-engaged]');
+    }
+  }
+  if (s.MegaMud_AutoHeal === 0) {
+    if (
+      s.Other_AutoAutoHeal !== 0 ||
+      (s.MegaMud_NoModeDefs === 0 && (s.MegaMud_DefHeal1 !== 0 || s.MegaMud_DefHeal2 !== 0))
+    ) {
+      s.MegaMud_AutoHeal = 1;
+      s.host.show('[Auto-rest/heal re-engaged]');
+    }
+  }
+  s.detourCombat = -1;
+}
