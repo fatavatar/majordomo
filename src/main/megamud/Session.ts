@@ -41,6 +41,16 @@ export interface RoomEntity {
   f44: number;
 }
 
+/** One inventory line (`0x452ba0`, 12 bytes). */
+export interface Carried {
+  /** +0x00: how many. */
+  count: number;
+  /** +0x04: 1 equipped. */
+  flags: number;
+  /** +0x08: its item record. */
+  item: ItemRec | null;
+}
+
 /** One party member (`0x8918 + i * 0x58`). */
 export interface PartyMember {
   /** +0x00 */
@@ -329,6 +339,13 @@ export class Session extends RawFields {
   /** 0xdb38: the exit to leave by, as a direction (-1 none). */
   runDirection = -1;
 
+  // ------------------------------------------------------------ inventory
+
+  /** 0x8420/0x8424: what is carried, in the inventory listing's order. */
+  inventory: Carried[] = [];
+  /** 0xa5d9: the item being equipped, 31 characters. */
+  equipping = '';
+
   // ------------------------------------------------------------ party
 
   /** 0x8b28: the party leader's name. */
@@ -409,6 +426,8 @@ export class Session extends RawFields {
   owedPostMeditate = 0;
   /** 0xe1b4: a post-backstab command is owed. */
   owedPostBackstab = 0;
+  /** 0xe1c4: sneaking (`sn` sent, not yet broken). */
+  sneaking = 0;
   /** 0xe1cc: hidden. */
   hidden = 0;
   /** 0xe2f0: holding for the party. */

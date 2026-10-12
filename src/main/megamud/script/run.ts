@@ -149,7 +149,7 @@ function runChecks(s: Session, stop: number): { stop: number } | number {
       }
       if (
         ((s.active === 0 && !moving(s)) || s.f_a32c !== 0) &&
-        (s.f_e1c4 !== 0 || s.hidden !== 0)
+        (s.sneaking !== 0 || s.hidden !== 0)
       ) {
         forgetAwaited(s, s.state);
         setState(s, 0);
@@ -245,7 +245,7 @@ function reasonsToRun(s: Session, stop: number): { stop: number; fled: boolean }
 /** `Other.AutoAutoCombat`: auto-combat turns itself on when a fight is due (`0x40e938`). */
 function autoAutoCombat(s: Session, stop: number): void {
   if (s.MegaMud_AutoCombat !== 0 || s.Other_AutoAutoCombat === 0) return;
-  if (!((stop !== 0 && s.f_a32c === 0) || (s.hidden === 0 && s.f_e1c4 === 0))) return;
+  if (!((stop !== 0 && s.f_a32c === 0) || (s.hidden === 0 && s.sneaking === 0))) return;
   if (!((s.active !== 0 || moving(s)) && s.f_a32c === 0)) return;
   if (moving(s)) s.f_a328 = 1;
   s.MegaMud_AutoCombat = 1;
@@ -325,7 +325,7 @@ function fight(s: Session, stop: number): number {
   }
   if (s.state === 0x12) {
     // The backstab was sent: the fight is on.
-    if (s.f_e1c4 !== 0) return 1;
+    if (s.sneaking !== 0) return 1;
     if (
       stop === 0 &&
       s.Combat_RunIfBsFails !== 0 &&
@@ -352,7 +352,7 @@ function fight(s: Session, stop: number): number {
     combatRoundEnd(s);
   }
   if (
-    s.f_e1c4 !== 0 &&
+    s.sneaking !== 0 &&
     s.Combat_CanBackStab !== 0 &&
     (s.Combat_DontBsIfMulti === 0 || wantsRoomSpell(s, 0) === 0)
   ) {
@@ -431,10 +431,10 @@ function fight(s: Session, stop: number): number {
   setState(s, 0x11);
   s.host.activity(`Attacking ${e.name}`);
   const cmd = s.Combat_AttackCmd;
-  if (s.f_e1c4 !== 0) {
+  if (s.sneaking !== 0) {
     if (abbrev(cmd, 'punch', 2) !== 0 || (abbrev(cmd, 'attack', 1) !== 0 && s.s_b060 === '')) {
       send(s, 'break\r');
-      s.f_e1c4 = 0;
+      s.sneaking = 0;
     }
   }
   const bare =

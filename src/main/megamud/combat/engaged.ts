@@ -64,7 +64,7 @@ export function combatEngaged(s: Session, line: string): number {
   }
   if (f_426ab0(s, 0) === 0) clearCastMode(s);
   s.f_32600 = 0;
-  s.f_e1c4 = 0;
+  s.sneaking = 0;
   s.hidden = 0;
   s.engagedMode = 0;
   clearNoMessageRounds(s);

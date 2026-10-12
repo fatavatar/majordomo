@@ -140,7 +140,7 @@ function castOrAttempt(
     s.spellLocks = 0;
     s.f_322e8 = s.now;
     castStamp(s);
-    s.f_e1c4 = 0;
+    s.sneaking = 0;
     s.hidden = 0;
     s.engagedMode = 0;
     if (!counted) {
@@ -180,7 +180,7 @@ function castOrAttempt(
     if (!already) return 0;
     spellLocked(s);
     s.f_322e8 = s.now;
-    s.f_e1c4 = 0;
+    s.sneaking = 0;
     s.hidden = 0;
     if (counted) {
       if (s.debug !== 0 && s.inCombat !== 0) s.host.trace('{C13}');
@@ -233,7 +233,7 @@ function castOrAttempt(
   if (!counted) {
     s.f_a3e0 += 1;
     s.f_a3e4 += 1;
-    s.f_e1c4 = 0;
+    s.sneaking = 0;
     s.hidden = 0;
     s.engagedMode = 0;
     setState(s, 0);
@@ -248,7 +248,7 @@ function castOrAttempt(
     if (s.debug !== 0) s.host.trace(`{${s.castShort}^}`);
     s.lineFlags |= 0x20;
     s.f_322e8 = s.now;
-    s.f_e1c4 = 0;
+    s.sneaking = 0;
     s.hidden = 0;
     s.f_e1d8 = 0;
     s.f_a44c = 1;

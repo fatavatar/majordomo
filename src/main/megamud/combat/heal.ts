@@ -94,7 +94,7 @@ export function selfHeal(s: Session): number {
   if (s.f_a32c !== 0 || s.hp < 1 || s.Player_MaxHP === 0 || s.Player_MaxMana === 0) return 0;
   const n = enemiesHere(s, 0);
   if (s.state === 0x12) return 0;
-  if (s.state === 0 && s.f_e1c4 !== 0 && s.f_e184 !== 0 && n > 0) return 0;
+  if (s.state === 0 && s.sneaking !== 0 && s.f_e184 !== 0 && n > 0) return 0;
   if (fluxRecast(s) !== 0) return 1;
   if (s.MegaMud_AutoHeal === 0) return 0;
   if (s.now - s.f_32398 < 8) s.f_e360 = 1;
@@ -297,7 +297,7 @@ export function partyHeal(s: Session): number {
     return s.Party_HealLowest === 0 ? 0 : selfHeal(s);
   }
   if (s.state === 0x12) return 0;
-  if (s.state === 0 && s.f_e1c4 !== 0 && s.f_e184 !== 0 && enemiesHere(s, 0) > 0) return 0;
+  if (s.state === 0 && s.sneaking !== 0 && s.f_e184 !== 0 && enemiesHere(s, 0) > 0) return 0;
   const since = s.now - s.f_32318;
   if (since < s.Health_HpHealPeriod || since < s.Comms_LagWait + 4) return 0;
 

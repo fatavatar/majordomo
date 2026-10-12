@@ -272,7 +272,7 @@ function struck(s: Session, line: string, name: string, damage: number): number 
     s.hp -= damage;
     if (s.partySize !== 0) unported('4816b0');
   }
-  s.f_e1c4 = 0;
+  s.sneaking = 0;
   s.hidden = 0;
   s.f_32604 = 1;
   roundEvent(s, RoundEvent.Combat);

@@ -87,7 +87,7 @@ function inGame(
     if (stealthy && abbrev(word1, 'sneak', 2) !== 0) {
       if (s.Combat_CanBackStab !== 0 && s.f_a32c === 0 && s.MegaMud_AutoSneak !== 0)
         preBackstab(s, 0);
-      s.f_e1c4 = 1;
+      s.sneaking = 1;
       s.f_e2bc = 0;
       s.f_e1c8 = 0;
       s.waitLines = 2;

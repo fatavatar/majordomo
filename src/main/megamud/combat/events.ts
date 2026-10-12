@@ -101,7 +101,7 @@ export function combatEventLine(s: Session, line: string): number {
   if (indexOf(line, 'You cannot backstab with') !== -1) {
     if (s.Combat_RunIfBsFails === 0 && s.held === 0 && stopToKill(s) === 0)
       s.runCount = s.Combat_RunRooms;
-    s.f_e1c4 = 0;
+    s.sneaking = 0;
     s.hidden = 0;
     s.f_e1b8 = 1;
     return 1;
@@ -278,7 +278,7 @@ function noEffect(s: Session, line: string): number {
       if (s.debug !== 0) s.host.trace('{W-esc}');
       s.host.show(`[melee ineffective vs ${s.target}]`);
       s.f_8bec = 1;
-      s.f_e1c4 = 0;
+      s.sneaking = 0;
       s.hidden = 0;
       s.inCombat = 0;
       s.f_e2b8 = enemiesHere(s, 0) > 0 ? 1 : 0;
@@ -322,7 +322,7 @@ function noEffect(s: Session, line: string): number {
       s.host.show(`[${target.name} now immune to: ${immunityText(target.flags)}]`);
   }
   if (s.target !== '' && s.f_8bec === 0) {
-    s.f_e1c4 = 0;
+    s.sneaking = 0;
     s.hidden = 0;
     s.inCombat = 0;
     s.f_b0fc = 1;
@@ -330,7 +330,7 @@ function noEffect(s: Session, line: string): number {
     setState(s, 0);
     return 1;
   }
-  s.f_e1c4 = 0;
+  s.sneaking = 0;
   s.hidden = 0;
   const e = s.target === '' ? null : findEntity(s, s.target, 0);
   clearTargetCasts(s);
@@ -367,7 +367,7 @@ function blameTarget(s: Session): [number, RoomEntity | null] {
 /** `0x42b8f0`: a player moving against this character. Not ported yet. */
 function pvp(s: Session, name: string): number {
   s.hidden = 0;
-  s.f_e1c4 = 0;
+  s.sneaking = 0;
   void name;
   unported('42b8f0');
   return 1;

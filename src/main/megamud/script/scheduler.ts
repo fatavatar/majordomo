@@ -22,7 +22,7 @@ import { blessStep } from './bless';
 import { depositCash, discardCash, shareCash, stashItems, withdrawCash } from './cash';
 import { combatStep } from '../combat/heal';
 import { recoverCorpse } from './corpse';
-import { cureStep } from './cures';
+import { cureStep, selfCures } from './cures';
 import { escapeCheck } from './escape';
 import { eventsStep } from './events';
 import { exitStep } from './exit';
@@ -35,7 +35,7 @@ import { runCheck } from './run';
 import { pendingPump, send } from './send';
 import { gameSetup, listingTimedOut, refreshInventory, refreshStats, refreshWho } from './setup';
 import { forgetAwaited, setState } from './state';
-import { hideStep, sneakStep, stayHidden } from './stealth';
+import { hideStep, sneakStep } from './stealth';
 
 /** Nothing of a fight is left (`0x40c07d`'s long test). */
 function fightClear(s: Session): boolean {
@@ -167,7 +167,7 @@ export function schedule(s: Session): boolean {
         [0x15, () => step21(s)],
         [0x16, () => blessStep(s, 1)],
         [0x17, () => combatStep(s)],
-        [0x18, () => stayHidden(s, 1)],
+        [0x18, () => selfCures(s, 1)],
         [0x19, () => blessStep(s, 0)],
         [0x1a, () => cureStep(s, 1)],
         [0x1b, () => invitePlayers(s)],
@@ -203,7 +203,7 @@ function afterRun(s: Session, at: (step: number) => void): number {
   const chain: [number, () => number][] = [[0x1f, () => exitStep(s)]];
   if (s.MegaMud_NoEventsInCombat !== 0) chain.push([0x20, () => eventsStep(s)]);
   chain.push(
-    [0x21, () => stayHidden(s, 0)],
+    [0x21, () => selfCures(s, 0)],
     [0x22, () => cureStep(s, 0)],
     [0x23, () => lookAtPlayer(s)],
     [0x24, () => trackPlayer(s)],

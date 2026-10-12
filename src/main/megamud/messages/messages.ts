@@ -269,7 +269,7 @@ function countedByMessage(s: Session, spell: SpellRec | null): number {
   resetNoMessage(s, s.f_a448);
   countCast(s, s.f_a448, 1);
   s.lineFlags |= 0x20;
-  s.f_e1c4 = 0;
+  s.sneaking = 0;
   s.hidden = 0;
   s.f_e1d8 = 0;
   s.f_a44c = 1;
@@ -447,13 +447,10 @@ export function messageEnded(s: Session, line: string | null, rec: MessageRec): 
   return 1;
 }
 
-/**
- * `0x46c180`: the rows that poison (effect 4) are cured (`start` 0): no longer
- * active, nor rested off; or started (`start` 1), now.
- */
-export function poisonRows(s: Session, start: number): void {
+/** The rows matching `which` are cured (`start` 0): no longer active, nor rested off; or started (`start` 1), now. */
+function conditionRows(s: Session, which: (rec: MessageRec) => boolean, start: number): void {
   for (const rec of s.data.messages ?? []) {
-    if ((rec.effects & 4) === 0) continue;
+    if (!which(rec)) continue;
     if (start !== 0) {
       rec.flags |= 1;
       rec.firedAt = s.now;
@@ -466,4 +463,14 @@ export function poisonRows(s: Session, start: number): void {
       s.restUntilOff -= 1;
     }
   }
+}
+
+/** `0x46c180`: the rows that poison (effect 4). */
+export function poisonRows(s: Session, start: number): void {
+  conditionRows(s, (rec) => (rec.effects & 4) !== 0, start);
+}
+
+/** `0x46c0f0`: the rows that hold (effect exactly 0x10). */
+export function heldRows(s: Session, start: number): void {
+  conditionRows(s, (rec) => (rec.effects & 0xffff) === 0x10, start);
 }

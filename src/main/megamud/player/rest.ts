@@ -26,7 +26,7 @@ export function restLine(s: Session, line: string): number {
     s.resting = 1;
     s.meditating = 0;
     s.hidden = 0;
-    s.f_e1c4 = 0;
+    s.sneaking = 0;
     if (s.state === 2 || s.state === 4) setState(s, 3);
     if (s.f_a32c === 0 && s.MegaMud_AutoHeal !== 0 && preRest(s, 0) !== 0) send(s, 'rest\r');
     return 1;
@@ -35,7 +35,7 @@ export function restLine(s: Session, line: string): number {
     s.resting = 0;
     s.meditating = 1;
     s.hidden = 0;
-    s.f_e1c4 = 0;
+    s.sneaking = 0;
     if (s.state === 2 || s.state === 4) setState(s, 5);
     if (
       s.f_a32c === 0 &&
@@ -51,7 +51,7 @@ export function restLine(s: Session, line: string): number {
     s.resting = 0;
     s.meditating = 0;
     s.hidden = 0;
-    s.f_e1c4 = 0;
+    s.sneaking = 0;
     if (s.state === 5) setState(s, 0);
     postMeditate(s, 0);
     return 1;
@@ -64,7 +64,7 @@ export function restLine(s: Session, line: string): number {
   }
   if (indexOf(line, 'Your search revealed nothing') !== -1) {
     s.hidden = 0;
-    s.f_e1c4 = 0;
+    s.sneaking = 0;
     setState(s, 0);
     return 1;
   }

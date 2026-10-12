@@ -1,18 +1,115 @@
 /**
- * Curing: blindness, disease, being held, poison, for this character and the
- * party. The step itself (`0x410130`) is not ported yet; the checks the heals
- * ask first (`0x415ad0`, `CureOverMinorHeal`) are, read 2026-10-12.
+ * Curing blindness, disease, being held and poison, read 2026-10-12: this
+ * character (`0x410440`, D24 in a fight and D33 out of one) and the party
+ * (`0x410130`, D26 and D34), and the checks the heals ask first (`0x415ad0`,
+ * `CureOverMinorHeal`). In a fight only blindness and disease are cured (and
+ * being held, when running); out of one, being held and poison.
  */
 import { castAllowed } from '../combat/timer';
+import { castSpell, equipForSpell } from '../health/cast';
+import { heldRows } from '../messages/messages';
 import { findPlayer } from '../room/checkNames';
 import { enemiesHere } from '../room/entities';
 import type { Session } from '../Session';
 import { findSpell } from '../spells/lookup';
-import { unported } from '../unported';
 
-/** `0x410130`: cures (D26 in a fight, D34 out of one). Not ported yet. */
-export function cureStep(_s: Session, _fighting: number): number {
-  return unported('410130');
+/** Cast a cure (equipping its item first). 1 when sent. */
+function cure(s: Session, short: string, at: string | null): number {
+  if (equipForSpell(s, short) === 1) return 1;
+  return castSpell(s, short, at);
+}
+
+/** `0x410440`: cure this character. */
+export function selfCures(s: Session, fighting: number): number {
+  if (s.f_a32c !== 0 || s.MegaMud_AutoHeal === 0 || s.hp < 1) return 0;
+  if (s.Player_MaxHP === 0 || s.Player_MaxMana === 0 || s.state === 0x12) return 0;
+  if (s.state === 0 && s.sneaking !== 0 && s.f_e184 !== 0 && enemiesHere(s, 0) > 0) return 0;
+  if (!castAllowed(s, s.Comms_LagWait)) return 0;
+  if (fighting !== 0) {
+    if (s.blind !== 0 && s.Other_IgnoreBlind === 0 && s.Spells_BlindCmd !== '') {
+      if (cure(s, s.Spells_BlindCmd, null) !== 0) {
+        s.blind = 0;
+        return 1;
+      }
+    }
+    if (s.diseased !== 0 && s.Spells_DiseaseCmd !== '') {
+      if (cure(s, s.Spells_DiseaseCmd, null) !== 0) {
+        s.diseased = 0;
+        return 1;
+      }
+    }
+    if (s.runCount < 1) return 0;
+  } else {
+    if (s.state === 2 || s.state === 4) return 1;
+    if (busyRunning(s)) return 0;
+    if (
+      s.hidden !== 0 &&
+      (s.mustRest === 0 || s.f_e1a0 !== 0 || s.partyWait !== 0) &&
+      s.holdingLeader === 0 &&
+      s.now - s.f_32300 < s.PvP_HideDelay
+    ) {
+      s.host.activity('Remaining hidden');
+      return 1;
+    }
+  }
+  if (s.held !== 0 && s.Spells_FreedomCmd !== '') {
+    if (cure(s, s.Spells_FreedomCmd, null) !== 0) {
+      s.held = 0;
+      heldRows(s, 0);
+      return 1;
+    }
+  }
+  if (
+    fighting === 0 &&
+    s.poisoned !== 0 &&
+    s.Other_IgnorePoison === 0 &&
+    s.Spells_PoisonCmd !== ''
+  ) {
+    if (cure(s, s.Spells_PoisonCmd, null) !== 0) {
+      s.poisoned = 0;
+      s.f_e1f8 = 0;
+      return 1;
+    }
+  }
+  return 0;
+}
+
+/**
+ * `0x410130`: cure a party member: in a fight blindness (`0x4000`) and
+ * disease (`0x2000`); out of one being held (`0x8000`, with no monsters here)
+ * and poison (`0x1000`, out of combat). The member's mark is cleared on
+ * casting.
+ */
+export function cureStep(s: Session, fighting: number): number {
+  if (s.f_a32c !== 0 || s.MegaMud_AutoHeal === 0 || s.partySize < 1) return 0;
+  if (s.hp < 1 || s.Player_MaxHP === 0 || s.state === 0x12) return 0;
+  if (s.state === 0 && s.sneaking !== 0 && s.f_e184 !== 0 && enemiesHere(s, 0) >= 1) return 0;
+  if (!castAllowed(s, s.Comms_LagWait)) return 0;
+  for (let i = 0; i < s.partySize; i += 1) {
+    const m = s.party[i]!;
+    if ((m.flags28 & 0x8f) !== 0 || m.name === s.Player_Name) continue;
+    const known = findPlayer(s, m.name);
+    if (known && (known.flags & 0x2000) !== 0) continue;
+    const tries: [number, string, boolean][] =
+      fighting === 0
+        ? [
+            [0x8000, s.Spells_FreedomCmd, enemiesHere(s, 0) === 0],
+            [0x1000, s.Spells_PoisonCmd, s.inCombat === 0 && enemiesHere(s, 0) === 0]
+          ]
+        : [
+            [0x4000, s.Spells_BlindCmd, true],
+            [0x2000, s.Spells_DiseaseCmd, true]
+          ];
+    for (const [mark, short, now] of tries) {
+      if ((m.flags28 & mark) === 0 || short === '' || s.MegaMud_AutoHeal === 0 || !now) continue;
+      if (equipForSpell(s, short) === 1) return 1;
+      if (castSpell(s, short, m.name) !== 0) {
+        m.flags28 &= ~mark;
+        return 1;
+      }
+    }
+  }
+  return 0;
 }
 
 /** `0x40df50`: a cure spell is set, and unknown or affordable. */
@@ -40,7 +137,7 @@ function busyRunning(s: Session): boolean {
 export function selfCureWanted(s: Session, fighting: number): boolean {
   if (s.f_a32c !== 0 || s.MegaMud_AutoHeal === 0 || s.hp < 1) return false;
   if (s.Player_MaxHP === 0 || s.Player_MaxMana === 0 || s.state === 0x12) return false;
-  if (s.state === 0 && s.f_e1c4 !== 0 && s.f_e184 !== 0 && enemiesHere(s, 0) > 0) return false;
+  if (s.state === 0 && s.sneaking !== 0 && s.f_e184 !== 0 && enemiesHere(s, 0) > 0) return false;
   if (!castAllowed(s, s.Comms_LagWait)) return false;
   if (fighting !== 0) {
     if (s.blind !== 0 && s.Other_IgnoreBlind === 0 && cureCastable(s, s.Spells_BlindCmd))
@@ -76,7 +173,7 @@ export function selfCureWanted(s: Session, fighting: number): boolean {
 export function partyCureWanted(s: Session, fighting: number): boolean {
   if (s.f_a32c !== 0 || s.MegaMud_AutoHeal === 0 || s.partySize < 1) return false;
   if (s.hp < 1 || s.Player_MaxHP === 0 || s.state === 0x12) return false;
-  if (s.state === 0 && s.f_e1c4 !== 0 && s.f_e184 !== 0 && enemiesHere(s, 0) >= 1) return false;
+  if (s.state === 0 && s.sneaking !== 0 && s.f_e184 !== 0 && enemiesHere(s, 0) >= 1) return false;
   if (!castAllowed(s, s.Comms_LagWait)) return false;
   for (let i = 0; i < s.partySize; i += 1) {
     const m = s.party[i]!;

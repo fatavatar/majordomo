@@ -213,7 +213,7 @@ describe('running and attacking (0x40e190)', () => {
 
   it('backstabs while sneaking', () => {
     const { s, out } = fighter([]);
-    s.f_e1c4 = 1;
+    s.sneaking = 1;
     s.Combat_CanBackStab = 1;
     monster(s, 'giant rat');
     expect(runCheck(s)).toBe(1);

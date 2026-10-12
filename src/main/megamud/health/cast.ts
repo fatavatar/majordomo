@@ -8,12 +8,13 @@
  */
 import { spellTakesTarget } from '../combat/casts';
 import { castAllowed, castStamp } from '../combat/timer';
+import { findCarried } from '../items/inventory';
 import { enemiesHere } from '../room/entities';
 import { expandMacros, noteCommands, send } from '../script/send';
 import { setState } from '../script/state';
 import type { Session } from '../Session';
 import { castable, findSpell } from '../spells/lookup';
-import { unported } from '../unported';
+import { postMeditate, postRest } from './prepost';
 
 /** `0x4ad9a0`: a trailing `^M` dropped. */
 function dropCaretM(text: string): string {
@@ -45,7 +46,7 @@ export function castSpell(s: Session, short: string, target: string | null): num
     arg = (spell.flags & 0x60) !== 0 ? target : null;
     if ((spell.flags & 0x90) === 0 && arg === null) return 0;
   }
-  s.f_e1c4 = 0;
+  s.sneaking = 0;
   s.hidden = 0;
   s.f_a3e0 = 0;
   s.f_a3e4 = 0;
@@ -84,6 +85,22 @@ export function equipForSpell(s: Session, short: string): number {
   const spell = findSpell(s, short);
   if (spell === null || (spell.cost !== 0 && spell.cost > s.mana)) return 0;
   if (spell.item === '' || castable(s, spell) === 0) return 0;
-  unported('4530c0');
-  return 0;
+  const carried = findCarried(s, spell.name);
+  const item = carried?.item;
+  if (!carried || !item || !(item.type === 1 || (item.type === 0 && item.location !== 0))) return 0;
+  if ((carried.flags & 1) !== 0) return -1;
+  const rested = postRest(s, 8, 0);
+  const meditated = postMeditate(s, 0);
+  if (rested === 0 && meditated === 0) {
+    if (item.type === 1) s.s_b060 = item.name.slice(0, 30);
+    s.f_a5f8 += 1;
+    s.waitLines = 2;
+    s.f_e1d8 = 0;
+    s.stateBefore = 0;
+    s.equipping = item.name.slice(0, 30);
+    setState(s, 0x1f);
+    s.host.activity(`Equipping item ${item.name} for spell`);
+    send(s, `equip ${item.name}\r`);
+  }
+  return 1;
 }

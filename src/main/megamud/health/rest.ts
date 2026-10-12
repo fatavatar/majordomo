@@ -34,7 +34,7 @@ function because(s: Session, reason: string): void {
 /** `0x415f60`: holding for the party, as its leader, and this character is what they wait on. */
 export function partyNeedsRest(s: Session): number {
   if (s.partyWait === 0 || s.following !== 0) return 0;
-  if (s.leaderName !== s.Player_Name || s.f_e1c4 !== 0 || s.hidden !== 0) return 0;
+  if (s.leaderName !== s.Player_Name || s.sneaking !== 0 || s.hidden !== 0) return 0;
   for (let i = 0; i < s.partySize; i += 1) {
     const m = s.party[i]!;
     if (m.name === s.Player_Name || (m.flags28 & 0x20) === 0) continue;
@@ -69,7 +69,7 @@ export function meditate(s: Session): number {
   s.waitLines = 2;
   s.resting = 0;
   s.meditating = 1;
-  s.f_e1c4 = 0;
+  s.sneaking = 0;
   s.hidden = 0;
   setState(s, 4);
   send(s, 'meditate\r');
@@ -517,7 +517,7 @@ export function healthStep(s: Session): number {
     s.hp === s.Player_MaxHP &&
     partyWaits === 0 &&
     s.Health_PreRestCmd === '' &&
-    (s.hidden !== 0 || hideStep(s) !== 0 || s.f_e1c4 !== 0 || sneakStep(s) !== 0)
+    (s.hidden !== 0 || hideStep(s) !== 0 || s.sneaking !== 0 || sneakStep(s) !== 0)
   ) {
     s.f_32604 = 0;
     s.f_32600 = 0;
@@ -540,7 +540,7 @@ export function healthStep(s: Session): number {
   s.waitLines = 2;
   s.resting = 1;
   s.meditating = 0;
-  s.f_e1c4 = 0;
+  s.sneaking = 0;
   s.hidden = 0;
   s.f_32310 = s.now;
   setState(s, 2);

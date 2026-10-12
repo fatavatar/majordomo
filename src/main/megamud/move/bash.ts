@@ -18,7 +18,7 @@ export function bashLine(s: Session, line: string): number {
     } else {
       s.f_e290 = 1;
     }
-    s.f_e1c4 = 0;
+    s.sneaking = 0;
     s.hidden = 0;
     setState(s, 0);
     return 1;
@@ -26,7 +26,7 @@ export function bashLine(s: Session, line: string): number {
   if (indexOf(line, 'Your attempts to bash ') !== -1) {
     if (s.state === 0x17 && s.f_db30 !== -1) s.roomExits[s.f_db30] = 2;
     s.f_db48 += 1;
-    s.f_e1c4 = 0;
+    s.sneaking = 0;
     s.hidden = 0;
     if (
       s.active === 0 &&

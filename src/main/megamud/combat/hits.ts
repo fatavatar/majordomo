@@ -266,7 +266,7 @@ export function hitLine(s: Session, line: string): number {
   }
   s.lineFlags |= 0x20;
   s.f_322e8 = s.now;
-  s.f_e1c4 = 0;
+  s.sneaking = 0;
   s.hidden = 0;
   if (s.debug !== 0 && s.f_e1d8 !== 0) s.host.trace('{I7-}');
   s.f_e1d8 = 0;
@@ -316,7 +316,7 @@ function clearWeaponImmunity(s: Session): void {
 function landed(s: Session): void {
   s.lineFlags |= 0x20;
   s.f_322e8 = s.now;
-  s.f_e1c4 = 0;
+  s.sneaking = 0;
   s.hidden = 0;
   if (s.debug !== 0 && s.f_e1d8 !== 0) s.host.trace('{I6-}');
   s.f_e1d8 = 0;
