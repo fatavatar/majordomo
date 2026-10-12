@@ -31,7 +31,7 @@ import { forgetAwaited, setState } from '../script/state';
 import type { Session } from '../Session';
 import { findSpell } from '../spells/lookup';
 import { isCastState } from '../states';
-import { unported } from '../unported';
+import { castForgotten, castStamp, roundEvent, RoundEvent, spellLocked } from '../combat/timer';
 
 const CAST_OPENINGS = [
   'You cast ',
@@ -137,9 +137,9 @@ function castOrAttempt(
     indexOf(line, 'You attempt to invoke ') !== -1 ||
     indexOf(line, 'You attempt to sing ') !== -1
   ) {
-    s.f_32684 = 0;
+    s.spellLocks = 0;
     s.f_322e8 = s.now;
-    unported('49b080');
+    castStamp(s);
     s.f_e1c4 = 0;
     s.hidden = 0;
     s.engagedMode = 0;
@@ -156,7 +156,7 @@ function castOrAttempt(
       return 1;
     }
     if (area !== 0) {
-      unported('49ad90');
+      castForgotten(s);
       s.skipTick = 1;
     }
     if (s.debug !== 0) s.host.trace(`{${s.castShort}^}`);
@@ -178,7 +178,7 @@ function castOrAttempt(
     indexOf(line, 'You sing ') !== -1;
   if (!cast) {
     if (!already) return 0;
-    unported('49bb30');
+    spellLocked(s);
     s.f_322e8 = s.now;
     s.f_e1c4 = 0;
     s.hidden = 0;
@@ -215,9 +215,9 @@ function castOrAttempt(
     s.f_a3e0 += 1;
     return 1;
   }
-  if (s.f_32688 !== 0 && s.f_32684 > 2) unported('49b9a0');
-  s.f_32684 = 0;
-  s.f_32688 = 0;
+  if (s.spellLockStuck !== 0 && s.spellLocks > 2) roundEvent(s, RoundEvent.Probe);
+  s.spellLocks = 0;
+  s.spellLockStuck = 0;
   if (s.state === 0x10 && !counted) {
     s.f_a3e0 += 1;
     s.f_a3e4 += 1;
@@ -240,7 +240,7 @@ function castOrAttempt(
     return 1;
   }
   if (area !== 0) {
-    unported('49ad90');
+    castForgotten(s);
     s.skipTick = 1;
   }
   if (hitLine(s, line) === 0) {

@@ -15,8 +15,8 @@ import { findEntity, stopToKill } from '../room/entities';
 import type { Session } from '../Session';
 import { findSpell } from '../spells/lookup';
 import { isCastState } from '../states';
-import { unported } from '../unported';
 import { castSpellFor, countCast, f_426ab0, resetNoMessage, spellTakesTarget } from './casts';
+import { blowStruck, castForgotten } from './timer';
 
 const FOES = [
   ' your foe',
@@ -185,7 +185,7 @@ export function hitLine(s: Session, line: string): number {
     indexOf(line, ' damage!') === -1
   ) {
     s.f_32540 += 1;
-    unported('49ad90');
+    castForgotten(s);
     landed(s);
     return 1;
   }
@@ -206,7 +206,7 @@ export function hitLine(s: Session, line: string): number {
       } else {
         s.f_32540 += 1;
       }
-      unported('49ad90');
+      castForgotten(s);
       landed(s);
       return 1;
     }
@@ -223,7 +223,7 @@ export function hitLine(s: Session, line: string): number {
   if (casting) {
     spell ??= castSpellFor(s, mode, 1);
     if (spell && spellTakesTarget(spell) !== 0) {
-      unported('49ad90');
+      castForgotten(s);
       s.skipTick = 1;
     }
   }
@@ -237,7 +237,7 @@ export function hitLine(s: Session, line: string): number {
       s.f_e1b8 = 1;
       s.f_e1bc = 1;
       surprised = true;
-      unported('49ad90');
+      castForgotten(s);
       if (!attacksPlainly(s) || (s.owedPostBackstab !== 0 && s.Combat_PostBsCmd === ''))
         s.f_e2b8 = 1;
     }
@@ -251,10 +251,7 @@ export function hitLine(s: Session, line: string): number {
   ) {
     s.runCount = s.Combat_RunRooms;
   }
-  unported('49b8d0');
-  s.f_32600 = 1;
-  s.f_32604 = 1;
-  s.f_3260c = 1;
+  blowStruck(s);
   s.f_32614 += dealt;
   s.f_32618 += dealt;
   if (dealt >= 1 && !weaponHit && !casting && sameTargetHere(s)) clearWeaponImmunity(s);
@@ -323,10 +320,7 @@ function landed(s: Session): void {
   s.hidden = 0;
   if (s.debug !== 0 && s.f_e1d8 !== 0) s.host.trace('{I6-}');
   s.f_e1d8 = 0;
-  unported('49b8d0');
-  s.f_32600 = 1;
-  s.f_32604 = 1;
-  s.f_3260c = 1;
+  blowStruck(s);
 }
 
 /**
@@ -336,7 +330,7 @@ function landed(s: Session): void {
  */
 function staleCombat(s: Session): void {
   const quiet = (t: number): boolean => s.now - t > 0x1e;
-  if ([s.f_322e8, s.f_322d8, s.f_32490, s.f_32498, s.f_32320, s.f_322d0, s.f_32308].every(quiet)) {
+  if ([s.f_322e8, s.f_322d8, s.f_32490, s.f_32498, s.f_32320, s.f_322d0, s.castAt].every(quiet)) {
     if (s.debug !== 0) s.host.trace('{combat??}');
     s.inCombat = 0;
     s.f_e2b8 = 1;

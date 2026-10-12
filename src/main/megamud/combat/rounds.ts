@@ -9,7 +9,7 @@ import { setState } from '../script/state';
 import { castCount, f_426ab0, MODE_LABEL, NO_MESSAGE, resetNoMessage } from './casts';
 import { clearCastMode, clearNoMessageRounds } from './engaged';
 import { currentTarget } from '../room/entities';
-import { unported } from '../unported';
+import { castForgotten } from './timer';
 
 /**
  * `0x425c40`: a round's damage is totalled (fewest and most, and the sum),
@@ -85,7 +85,7 @@ export function castWatchdog(s: Session): number {
   }
   if (s.debug !== 0 && s.inCombat !== 0) s.host.trace('{C7}');
   s.inCombat = 0;
-  unported('49ad90');
+  castForgotten(s);
   s.f_e1d8 = 0;
   clearCastMode(s);
   setState(s, 0);

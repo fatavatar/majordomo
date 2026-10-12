@@ -46,6 +46,7 @@ import { isCastState } from '../states';
 import { unported } from '../unported';
 import { immunityText } from '../player/cast';
 import { newMonster } from '../data';
+import { castForgotten, roundEvent, RoundEvent } from './timer';
 
 /** The weapons (`0x53eb48`): bit, letter. */
 const WEAPONS: [number, string][] = [
@@ -476,7 +477,7 @@ export function pin(s: Session, e: RoomEntity, first: number): void {
  * (it still has monsters, casts and damage left) or the fight is over.
  */
 function killedSomething(s: Session): number {
-  unported('49bb00');
+  roundEvent(s, RoundEvent.Experience);
   if (s.Party_ParAfterRound !== 0) s.f_32328 = 0;
   s.f_32530 += 1;
   combatRoundEnd(s);
@@ -494,7 +495,7 @@ function killedSomething(s: Session): number {
     }
   }
   removeEntity(s, Math.max(index, 0));
-  unported('49ad90');
+  castForgotten(s);
   if (multiStillWanted(s)) {
     if (s.debug !== 0 && s.f_e1d8 !== 0) s.host.trace('{I3-}');
     s.f_e1d8 = 0;
@@ -579,7 +580,7 @@ function attackRefused(s: Session): number {
   const st = s.state;
   s.inCombat = 0;
   s.f_e2b8 = 0;
-  if (st === 0x10 || st === 0x15 || isCastState(st)) unported('49ad90');
+  if (st === 0x10 || st === 0x15 || isCastState(st)) castForgotten(s);
   clearTargetCasts(s);
   clearCastMode(s);
   forgetAwaited(s, s.state);

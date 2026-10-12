@@ -28,6 +28,7 @@ import type { Session } from '../Session';
 import { findSpell, findSpellByName } from '../spells/lookup';
 import { unported } from '../unported';
 import { blessCommand } from '../player/cast';
+import { blowStruck, castForgotten } from '../combat/timer';
 
 /** What a template's fields captured (`0x59c300`…), kept on the session when it matches. */
 interface Captures {
@@ -261,7 +262,7 @@ export function messageLine(s: Session, line: string, anywhere: number): number 
 function countedByMessage(s: Session, spell: SpellRec | null): number {
   const area = spellTakesTarget(spell);
   if (area !== 0) {
-    unported('49ad90');
+    castForgotten(s);
     s.skipTick = 1;
   }
   if (s.debug !== 0) s.host.trace(`{${s.msgSpell}+}`);
@@ -273,10 +274,7 @@ function countedByMessage(s: Session, spell: SpellRec | null): number {
   s.f_e1d8 = 0;
   s.f_a44c = 1;
   if (area !== 0) {
-    s.f_32600 = 1;
-    s.f_32604 = 1;
-    s.f_3260c = 1;
-    unported('49b9a0');
+    blowStruck(s);
   }
   if (
     s.f_a448 === 0xb &&

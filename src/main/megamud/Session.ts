@@ -120,6 +120,51 @@ export class Session extends RawFields {
   /** 0x32290: the clock stamp, seconds. */
   now = 0;
 
+  // ------------------------------------------------------------ round timer
+
+  /** 0x32628: where in the 5-second round (ms, 0–4999) rounds begin. */
+  roundAnchor = 0;
+  /** 0x3262c: round events sampled (up to 32). */
+  roundSamples = 0;
+  /** 0x32630: the last event's distance past the round's start, ms. */
+  roundDrift = 0;
+  /** 0x32634: events in a row that were off the round by 150–2500 ms. */
+  roundOffCount = 0;
+  /** 0x32638: events in a row far off the round (over 2500 ms). */
+  roundJumps = 0;
+  /** 0x3263c: the phase the far-off events agree on. */
+  roundJumpPhase = 0;
+  /** 0x32640: events in a row slipping 150–2500 ms. */
+  roundSlips = 0;
+  /** 0x32644: the phase the slipping events agree on. */
+  roundSlipPhase = 0;
+  /** 0x32648: rounds are synced (1). */
+  roundSynced = 0;
+  /** 0x3264c: the last round event's kind (1 combat, 2 experience, 3 spelllock, 4 probe). */
+  roundEventKind = 0;
+  /** 0x32650: confidence in the round's timing, 0–100. */
+  roundConfidence = 0;
+  /** 0x32654: round events counted. */
+  roundEvents = 0;
+  /** 0x32658: when the last round event came, ms. */
+  roundEventAt = 0;
+  /** 0x32308: when a spell was last cast, seconds (the clock). */
+  castAt = 0;
+  /** 0x32660: a cast is stamped this round. */
+  castStamped = 0;
+  /** 0x32668: when a spell was last cast, ms. */
+  castTick = 0;
+  /** 0x32670: the game said a spell was already cast this round. */
+  spellLock = 0;
+  /** 0x32678: when the spell lock was seen, ms. */
+  spellLockAt = 0;
+  /** 0x32680: the lock was lifted by a new round. */
+  spellLockLifted = 0;
+  /** 0x32684: spell locks seen since the last round event. */
+  spellLocks = 0;
+  /** 0x32688: three or more locks without a round event. */
+  spellLockStuck = 0;
+
   // ------------------------------------------------------------ vitals
 
   /** 0xd894 */

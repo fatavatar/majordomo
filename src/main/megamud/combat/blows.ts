@@ -17,6 +17,7 @@ import { setState } from '../script/state';
 import type { RoomEntity, Session } from '../Session';
 import { unported } from '../unported';
 import { areaDamage } from './hits';
+import { roundEvent, RoundEvent } from './timer';
 
 /** The verbs a blow is struck with (the table at `0x5603e0`). */
 const VERBS = [
@@ -274,7 +275,7 @@ function struck(s: Session, line: string, name: string, damage: number): number 
   s.f_e1c4 = 0;
   s.hidden = 0;
   s.f_32604 = 1;
-  unported('49bb00');
+  roundEvent(s, RoundEvent.Combat);
   const blind = s.blind !== 0 || s.f_dca4 > 1;
   let e: RoomEntity | null = findEntity(s, name, 0);
   if (!e) {

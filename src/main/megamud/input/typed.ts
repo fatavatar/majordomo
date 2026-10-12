@@ -21,6 +21,7 @@ import { setTask } from '../script/task';
 import type { Session } from '../Session';
 import { findSpell } from '../spells/lookup';
 import { unported } from '../unported';
+import { castStamp } from '../combat/timer';
 
 export function typedCommand(s: Session, from: number, text: string): void {
   s.lastTyped = text.slice(0, 0x100);
@@ -173,7 +174,7 @@ function typedSpell(s: Session, word1: string, word2: string): void {
       s.f_e2b8 = 1;
       s.waitLines = 2;
     }
-    unported('49b080');
+    castStamp(s);
     s.skipTick = 1;
     setState(s, 0x15);
     return;
@@ -191,7 +192,7 @@ function typedSpell(s: Session, word1: string, word2: string): void {
     s.f_8be4 = 1;
     s.f_e2b8 = 1;
     s.waitLines = 2;
-    unported('49b080');
+    castStamp(s);
     s.skipTick = 1;
     if (untargeted) s.target = '';
     else setTarget(s, word2);
