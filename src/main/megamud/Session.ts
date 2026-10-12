@@ -210,6 +210,10 @@ export class Session extends RawFields {
 
   /** The direction the leader is bashing, for `Party.HelpBash` (passed to `0x408870`). */
   f_db30help = -1;
+  /** 0xd8ac: the armour class, from `stat`. */
+  armourClass = 0;
+  /** 0xd8b0: the damage resistance beside it. */
+  damageResist = 0;
   /** 0xd870: experience (64-bit). */
   exp = 0;
   /** 0xd878: experience still needed for the next level, or -1 when not known. */

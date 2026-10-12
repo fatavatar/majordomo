@@ -244,18 +244,53 @@ export function classFrom(body: Uint8Array, layer: number): ClassRec {
   };
 }
 
+/** `0x495990`: one race (Races.md), 0x60 bytes in memory; only its id and name are read yet. */
+export interface RaceRec {
+  /** +0x00 (B+0x00). */
+  id: number;
+  /** +0x02. */
+  layer: number;
+  /** +0x08, 31 bytes (B+0x02). */
+  name: string;
+}
+
+/** `0x495990`'s copy of one record. */
+export function raceFrom(body: Uint8Array, layer: number): RaceRec {
+  return { id: i16(body, 0x00), layer, name: str(body, 0x02, 0x1f) };
+}
+
+/** `0x495880`: the race of this name (exactly), if Races.md has it. */
+export function findRaceByName(data: MegaData, name: string): RaceRec | null {
+  return data.races?.find((r) => r.name === name) ?? null;
+}
+
+/** `0x422680`: the class of this name (exactly), if Classes.md has it. */
+export function findClassByName(data: MegaData, name: string): ClassRec | null {
+  return data.classes?.find((c) => c.name === name) ?? null;
+}
+
 /** `0x491870`: one known player, 0xe0 bytes (Players.md). */
 export interface PlayerRec {
   /** +0x00: the layer (2 for one learned in play). */
   layer: number;
   /** +0x01, 11 bytes. */
   name: string;
+  /** +0x0c, 19 bytes: the surname. */
+  surname: string;
   /** +0x54: 1 learned, 2 its level is a guess, 0x40 chase if seen, 0x8000 seen this session, 0x20000 greeted. */
   flags: number;
+  /** +0x58: the race. */
+  race: number;
+  /** +0x5c: the class. */
+  cls: number;
   /** +0x64: what it is to us, as a room entry's kind (3 unknown). */
   kind: number;
   /** +0x68: its level (1 until known). */
   level: number;
+  /** +0x70: its experience. */
+  exp: number;
+  /** +0x74: the character's own `0xd874` (its experience's high half, when it is this character). */
+  f74: number;
   /** +0x78: how many sessions it has been seen in. */
   seen: number;
   /** +0x80: when it was last greeted or seen afresh. */
@@ -366,6 +401,7 @@ export interface MegaData {
   items: ItemRec[];
   spells: SpellRec[];
   classes?: ClassRec[];
+  races?: RaceRec[];
   players?: PlayerRec[];
   rooms?: RoomRec[];
   messages?: MessageRec[];
@@ -415,9 +451,14 @@ export function newPlayer(data: MegaData, now: number): PlayerRec {
   const rec: PlayerRec = {
     layer: 2,
     name: '',
+    surname: '',
     flags: 1,
+    race: 0,
+    cls: 0,
     kind: 3,
     level: 1,
+    exp: 0,
+    f74: 0,
     seen: 0,
     greetedAt: 0,
     seenAt: now,
@@ -433,10 +474,12 @@ export function readData(files: {
   items?: Uint8Array;
   spells?: Uint8Array;
   classes?: Uint8Array;
+  races?: Uint8Array;
   runic?: string;
 }): MegaData {
   return {
     classes: files.classes ? readMdb2(files.classes).map((r) => classFrom(r.body, 0)) : [],
+    races: files.races ? readMdb2(files.races).map((r) => raceFrom(r.body, 0)) : [],
     monsters: files.monsters ? readMdb2(files.monsters).map((r) => monsterFrom(r.body, 0)) : [],
     items: [
       ...coinItems(files.runic ?? 'runic coin'),
