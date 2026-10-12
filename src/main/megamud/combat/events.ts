@@ -365,7 +365,7 @@ function blameTarget(s: Session): [number, RoomEntity | null] {
 }
 
 /** `0x42b8f0`: a player moving against this character. Not ported yet. */
-function pvp(s: Session, name: string): number {
+export function pvp(s: Session, name: string): number {
   s.hidden = 0;
   s.sneaking = 0;
   void name;

@@ -49,6 +49,7 @@ import { comingsLine } from '../room/comings';
 import { noticeLine } from '../room/notice';
 import { roomLine } from '../room/room';
 import { roomNameLine } from '../room/roomName';
+import { locationLine } from '../room/where';
 import { forgetAwaited, setState } from '../script/state';
 import type { LineBuf, Session } from '../Session';
 import { spellbookLine } from '../spells/spellbook';
@@ -58,7 +59,7 @@ import { refreshStatus } from '../status';
 import { talkLine } from '../talk/talk';
 import { bbsLine, connectThreadLine } from './connect';
 import { pagerPrompts } from './pager';
-import { locationLine, statusLine } from './statline';
+import { statusLine } from './statline';
 
 /** The handlers after the in-game checks, each with its parse step. */
 const CHAIN: [number, (s: Session, line: string) => number][] = [

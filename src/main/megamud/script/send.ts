@@ -170,6 +170,54 @@ export function expandMacros(_s: Session, text: string): string {
   return text.slice(0, 299);
 }
 
+/** `0x4ad5f0`: a text's alternatives, `||` between them. */
+function alternatives(text: string): string[] {
+  return text === '' ? [] : text.split('||');
+}
+
+/**
+ * `0x4ad7c0`: a text as plain words: one of its alternatives at random, each
+ * `{userid}`, `{pswd}`, `{source}`, `{target}`, `{dmg}` and `{1}`–`{5}` cut to
+ * its `{`, `~` dropped (unless `0x327a4` is 99), `^M` a carriage return and
+ * any other `^x` dropped.
+ */
+export function plainText(s: Session, text: string): string {
+  const alts = alternatives(text);
+  if (alts.length > 1) {
+    const r = s.host.rand?.() ?? Math.floor(Math.random() * 0x8000);
+    text = alts[r % alts.length]!;
+  }
+  const tokens = [
+    '{userid}',
+    '{pswd}',
+    '{source}',
+    '{target}',
+    '{dmg}',
+    '{1}',
+    '{2}',
+    '{3}',
+    '{4}',
+    '{5}'
+  ];
+  let out = '';
+  for (let i = 0; i < text.length; i += 1) {
+    const c = text[i]!;
+    if (c === '{') {
+      const token = tokens.find((k) => text.startsWith(k, i));
+      out += c;
+      if (token) i += token.length - 1;
+    } else if (c === '~') {
+      if (s.f_327a4 === 99) out += c;
+    } else if (c === '^') {
+      i += 1;
+      if (text[i] === 'M') out += '\r';
+    } else {
+      out += c;
+    }
+  }
+  return out;
+}
+
 /** The length of an equip verb at `at` (`eq`, `equ`, `equi`, `equip`, `wea`, `wear`), or 0. */
 function equipVerb(text: string, at: number, end: number): number {
   const c = (i: number): string => (at + i < end ? text[at + i]!.toLowerCase() : '');

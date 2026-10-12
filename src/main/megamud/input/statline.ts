@@ -1,6 +1,6 @@
 /**
  * The prompt: `[HP=120/MA=40]:` and its `(Resting)`/`(Meditating)` marks,
- * read by `0x47b070`, and the `Location:` line (`0x47a430`). Read 2026-10-12.
+ * read by `0x47b070`. Read 2026-10-12.
  *
  * The status handler takes the prompt off the front of the line (and off its
  * colours), so whatever the server printed after it on the same line goes on
@@ -275,10 +275,5 @@ function criticalHp(s: Session): number {
   s.f_e184 = 0;
   hangUp(s, 1);
   s.host.alert?.('lowHp');
-  return 0;
-}
-
-/** `0x47a430`: `Location: x,y` (for the map), when `0xe164`'s neighbour asks for it. Map only. */
-export function locationLine(_s: Session, _line: string): number {
   return 0;
 }

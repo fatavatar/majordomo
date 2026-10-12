@@ -146,6 +146,10 @@ export interface SessionHost {
   alert?(which: string): void;
   /** The task changed (`0x4aac80`). */
   task?(task: number): void;
+  /** The task's caption (the status bar's first pane, `0x4aac80`'s text). */
+  caption?(): string;
+  /** C's `rand()`, 0 to 32767 (Math.random when absent). */
+  rand?(): number;
   /** A move arrived while walking a path (`0x45fa60`'s place): our walker takes it from here. */
   arrived?(step: number): void;
 }
@@ -315,6 +319,21 @@ export class Session extends RawFields {
   };
   /** 0xdf17: the player talk is diverted to (`@divert`), 11 characters. */
   divertTo = '';
+  /** 0xdf22: the player `@debug` was asked by, 11 characters. */
+  debugTo = '';
+  /** 0x8e5a: the AFK reply sent last, 500 characters. */
+  afkReplied = '';
+  /**
+   * 0xdfa0/0xe130: the `@where` replies waiting on the `rm` (`Talk.WhereUseRm`),
+   * up to four, each its reply prefix (100 characters).
+   */
+  whereAsked: string[] = [];
+  /** 0xdf98: when the `rm` for them was sent (`GetTickCount64`). */
+  whereAskedAt = 0;
+  /** 0x80fb: the destination's name, 51 characters. */
+  destination = '';
+  /** 0xe3a0: the path's own name (a pointer in MegaMUD), shown beside the path file. */
+  pathTitle = '';
   /** 0x7cb9: the game menu's own prompt (beside `[MAJORMUD]:`), from the BBS set-up; not read yet. */
   s_7cb9 = '';
   /** 0x7d7d: a line that means the account is wanted elsewhere, from the BBS set-up; not read yet. */

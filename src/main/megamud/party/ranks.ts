@@ -61,6 +61,16 @@ function invited(s: Session, line: string, at: number): number {
     s.host.show('[Already following]');
     return 1;
   }
+  joinLeader(s, p.name);
+  return 1;
+}
+
+/**
+ * Join `name`'s party (an invitation, or `@join`): auto-combat and auto-heal
+ * re-engaged on a path, the asked-for rank taken, and if held, the leader
+ * asked to wait.
+ */
+export function joinLeader(s: Session, name: string): void {
   if (s.task === 0xe || s.task === 0xf) {
     if (s.MegaMud_AutoCombat === 0 && s.active !== 0 && s.Other_AutoAutoCombat !== 0) {
       s.host.show('[Auto-combat re-engaged]');
@@ -72,8 +82,8 @@ function invited(s: Session, line: string, at: number): number {
     }
   }
   s.chaseTarget = '';
-  s.leaderName = p.name.slice(0, 10);
-  queue(s, `join ${p.name}\r`);
+  s.leaderName = name.slice(0, 10);
+  queue(s, `join ${name}\r`);
   if (s.held === 0) {
     askForHelp(s);
   } else {
@@ -85,7 +95,6 @@ function invited(s: Session, line: string, at: number): number {
   if (s.Party_PartyRank === 0) queue(s, 'frontrank\r');
   else if (s.Party_PartyRank === 2) queue(s, 'backrank\r');
   s.f_e2ac = 1;
-  return 1;
 }
 
 function noLongerFollowing(s: Session): number {

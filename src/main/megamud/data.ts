@@ -277,6 +277,8 @@ export interface PlayerRec {
   name: string;
   /** +0x0c, 19 bytes: the surname. */
   surname: string;
+  /** +0x1f, 31 bytes: the BBS user ID (who pages come from). */
+  userId: string;
   /** +0x3e, 21 bytes: the gang. */
   gang: string;
   /** +0x54: 1 learned, 2 its level is a guess, 0x40 chase if seen, 0x8000 seen this session, 0x20000 greeted. */
@@ -291,6 +293,13 @@ export interface PlayerRec {
   kind: number;
   /** +0x68: its level (1 until known). */
   level: number;
+  /**
+   * +0x6c: the remote control it is allowed (`0x4ae4a0`): 1 version (and
+   * `@home`), 2 experience, 4 health and status, 0x10 location, 0x20
+   * inventory, 0x40 invite, 0x100 move, 0x200 commands, 0x400 hang up, 0x800
+   * settings, 0x1000 divert, 0x2000 MUD-op `sys` commands.
+   */
+  remote: number;
   /** +0x70: its experience. */
   exp: number;
   /** +0x74: the character's own `0xd874` (its experience's high half, when it is this character). */
@@ -407,6 +416,8 @@ export function messagesFrom(text: string, layer = 0): MessageRec[] {
 
 /** One room from Rooms.md, found by its signature (`0x4983d0`). Not read yet. */
 export interface RoomRec {
+  /** +0x01, 4 characters: the room's code. */
+  code?: string;
   /** +0x44: the room's signature (`0x8130`). */
   signature: number;
   name: string;
@@ -469,6 +480,7 @@ export function newPlayer(data: MegaData, now: number): PlayerRec {
     layer: 2,
     name: '',
     surname: '',
+    userId: '',
     gang: '',
     flags: 1,
     race: 0,
@@ -476,6 +488,7 @@ export function newPlayer(data: MegaData, now: number): PlayerRec {
     alignment: 0,
     kind: 3,
     level: 1,
+    remote: 0,
     exp: 0,
     f74: 0,
     seen: 0,
