@@ -303,6 +303,19 @@ export interface PlayerRec {
   seenAt: number;
   /** +0x90, 0x50 bytes: where it was last seen ("Room (Exits: n, s)"). */
   where: string;
+  /**
+   * What a `look` at it suggested (Players.md's own record: health,
+   * strength, agility, intellect, wisdom, charm), each the level a word in
+   * its description stands for.
+   */
+  traits?: {
+    health: number;
+    strength: number;
+    agility: number;
+    intellect: number;
+    wisdom: number;
+    charm: number;
+  };
 }
 
 /** `0x467b60`: one Messages.md row (0x128 bytes in memory). */
