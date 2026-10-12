@@ -10,3 +10,8 @@ export function abilityLine(_s: Session, _line: string): number {
 export function abilityPrompt(_s: Session): void {
   unported('403280');
 }
+
+/** `0x403c70`: the ability monitors' checks (D50). Not ported yet. */
+export function abilityMonitors(_s: Session): number {
+  return unported('403c70');
+}
