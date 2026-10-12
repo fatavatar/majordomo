@@ -61,14 +61,33 @@ export interface PartyMember {
   hp: number;
   /** +0x14: its maximum HP. */
   maxHp: number;
-  /** +0x28: 2 hit since its last report, 4 invited, 0x8c out of step. */
+  /** +0x18: its mana, percent of its maximum. */
+  manaPct: number;
+  /** +0x1c: its mana. */
+  mana: number;
+  /** +0x20: its maximum mana. */
+  maxMana: number;
+  /** +0x24: its class. */
+  cls: number;
+  /** +0x28: 2 hit since its last report, 4 invited, 8 not in the last listing, 0x80 not online, 0x1000 poisoned. */
   flags28: number;
   /** +0x38: what it is attacking, 30 characters (`Party.AttackLate`; `0x42bef0` clears it). */
   target: string;
 }
 
 export function newMember(): PartyMember {
-  return { name: '', hpPct: 0, hp: 0, maxHp: 0, flags28: 0, target: '' };
+  return {
+    name: '',
+    hpPct: 0,
+    hp: 0,
+    maxHp: 0,
+    manaPct: 0,
+    mana: 0,
+    maxMana: 0,
+    cls: 0,
+    flags28: 0,
+    target: ''
+  };
 }
 
 export function newEntity(): RoomEntity {

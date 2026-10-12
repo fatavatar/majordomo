@@ -1,6 +1,7 @@
 /** The party list (`0x8918`, six records). Read 2026-10-12. */
 import type { Session } from '../Session';
-import { findPlayer } from '../room/checkNames';
+import { newPlayer } from '../data';
+import { findPlayer, looksLikeName } from '../room/checkNames';
 import { queueCommand } from '../script/send';
 import { newMember } from '../Session';
 
@@ -68,5 +69,46 @@ export function askParty(s: Session, what: string): number {
   s.f_32398 = s.now;
   const other = onlyOtherMember(s);
   queueCommand(s, other !== null ? `/${other} @${what}\r` : `${s.s_7d21}@${what}\r`, 0, 0, 1);
+  return 1;
+}
+
+/**
+ * `0x47d9a0`: a member joins the list (when not on it): learned as a known
+ * player if new, and with `leader`, the party's leader (and friendly).
+ */
+export function addMember(s: Session, name: string, leader: number): number {
+  if (looksLikeName(name) === 0) {
+    s.f_e2ac = 1;
+    return 0;
+  }
+  let p = findPlayer(s, name);
+  if (!p) {
+    p = newPlayer(s.data, s.now);
+    p.name = name.slice(0, 10);
+    s.f_e24c = 1;
+    s.host.show(`[${name} added to known players]`);
+  }
+  if (leader !== 0) {
+    s.leaderName = name.slice(0, 10);
+    if (p.kind === 0) {
+      p.kind = 2;
+      s.f_e24c = 1;
+      if (name !== s.Player_Name) s.host.show(`[${name} upgraded to friendly]`);
+    }
+  }
+  for (let i = 0; i < s.partySize; i += 1) if (s.party[i]!.name === name) return 1;
+  if (s.partySize >= 6) return 0;
+  s.party[s.partySize] = {
+    ...newMember(),
+    name: name.slice(0, 10),
+    hpPct: -1,
+    maxHp: -1,
+    manaPct: -1,
+    maxMana: -1,
+    cls: p.cls,
+    flags28: 2
+  };
+  s.partySize += 1;
+  s.f_324a8 = 0;
   return 1;
 }
