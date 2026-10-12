@@ -277,12 +277,16 @@ export interface PlayerRec {
   name: string;
   /** +0x0c, 19 bytes: the surname. */
   surname: string;
+  /** +0x3e, 21 bytes: the gang. */
+  gang: string;
   /** +0x54: 1 learned, 2 its level is a guess, 0x40 chase if seen, 0x8000 seen this session, 0x20000 greeted. */
   flags: number;
   /** +0x58: the race. */
   race: number;
   /** +0x5c: the class. */
   cls: number;
+  /** +0x60: the alignment `who` shows (1 Lawful, 2 Saint, 3 Good, 4 neutral, 5 Seedy … 9 FIEND). */
+  alignment: number;
   /** +0x64: what it is to us, as a room entry's kind (3 unknown). */
   kind: number;
   /** +0x68: its level (1 until known). */
@@ -452,9 +456,11 @@ export function newPlayer(data: MegaData, now: number): PlayerRec {
     layer: 2,
     name: '',
     surname: '',
+    gang: '',
     flags: 1,
     race: 0,
     cls: 0,
+    alignment: 0,
     kind: 3,
     level: 1,
     exp: 0,

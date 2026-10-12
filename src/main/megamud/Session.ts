@@ -41,6 +41,16 @@ export interface RoomEntity {
   f44: number;
 }
 
+/** One player online (`0x4c0f00`, 0x48 bytes). */
+export interface WhoEntry {
+  /** +0x04: what it is to us, as a room entry's kind (3 unknown). */
+  kind: number;
+  /** +0x10, 31 characters. */
+  name: string;
+  /** +0x30: its player record. */
+  player: PlayerRec | null;
+}
+
 /** One inventory line (`0x452ba0`, 12 bytes). */
 export interface Carried {
   /** +0x00: how many. */
@@ -71,6 +81,8 @@ export interface PartyMember {
   cls: number;
   /** +0x28: 2 hit since its last report, 4 invited, 8 not in the last listing, 0x80 not online, 0x1000 poisoned. */
   flags28: number;
+  /** +0x4a: when it left the realm. */
+  leftAt?: number;
   /** +0x38: what it is attacking, 30 characters (`Party.AttackLate`; `0x42bef0` clears it). */
   target: string;
 }
@@ -406,8 +418,8 @@ export class Session extends RawFields {
   monsterMarks: { name: string; flags: number }[] = [];
   /** 0x6b78: marks remembered for players by name (up to 100). */
   playerMarks: { name: string; flags: number }[] = [];
-  /** 0x71c0/0x71b8: the players online, from the last `who` (their names, at `+0x10`). */
-  whoList: string[] = [];
+  /** 0x71c0/0x71b8: the players online, from the last `who` and the arrivals since. */
+  whoList: WhoEntry[] = [];
   /** 0x7e74: what the realm calls its runic coin. */
   runicName = 'runic coin';
 

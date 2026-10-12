@@ -123,7 +123,7 @@ function arrival(s: Session, line: string): number {
   if (s.Combat_ResetMultiOnMobEntry !== 0) clearMultiCounts(s);
   if (s.f_e21c !== 0) {
     if (s.whoList.length < 1) return 1;
-    if (!s.whoList.some((name: string) => line.startsWith(name))) return 1;
+    if (!s.whoList.some((w) => line.startsWith(w.name))) return 1;
   }
   s.f_32390 = 0;
   s.f_e290 = 1;

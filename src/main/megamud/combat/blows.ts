@@ -338,7 +338,10 @@ function struck(s: Session, line: string, name: string, damage: number): number 
     ) {
       if (name === '' && s.msgSpell !== '') {
         // A spell from someone unnamed: just read the room again below.
-      } else if (s.f_e21c !== 0 && (name === '' || !s.whoList.some((w) => name.startsWith(w)))) {
+      } else if (
+        s.f_e21c !== 0 &&
+        (name === '' || !s.whoList.some((w) => name.startsWith(w.name)))
+      ) {
         return 1;
       }
       if (!(name === '' && s.msgSpell !== '')) {

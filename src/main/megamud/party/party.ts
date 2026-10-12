@@ -25,7 +25,7 @@ function moving(s: Session): boolean {
 
 /** `0x4c1150`: the player is on the last `who`. */
 function online(s: Session, name: string): boolean {
-  return s.whoList.includes(name);
+  return s.whoList.some((w) => w.name === name);
 }
 
 /** Points from a percent: the fewest that show as that percent of `max`. */
