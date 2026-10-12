@@ -197,6 +197,18 @@ export class Session extends RawFields {
 
   /** 0xe1d4: combat is engaged (`*Combat Engaged*` until `*Combat Off*`). */
   inCombat = 0;
+  /** 0xa588: the spell last sent by command (its short name), 0x51 characters. */
+  lastCast = '';
+  /** 0xa584: the blessing slot (0–9) being cast, or -1. */
+  blessSlot = -1;
+  /** 0x323a8: when each blessing slot was last cast (14 slots). */
+  blessCastAt: number[] = Array.from({ length: 14 }, () => 0);
+  /** 0x32418: when each blessing slot was last seen to take. */
+  blessSeenAt: number[] = Array.from({ length: 14 }, () => 0);
+  /** 0xe22c: the HP-full spell has been cast since HP last fell below `HpFull%`. */
+  hpFullCast = 0;
+  /** 0xe230: the mana-full spell has been cast since mana last fell below `ManaFull%`. */
+  manaFullCast = 0;
   /** 0xa444: the attack the fight is engaged in (0x11 attack, 0x12 backstab, 9–15 the casts). */
   engagedMode = 0;
   /** 0xdd14 */
@@ -278,6 +290,10 @@ export class Session extends RawFields {
   held = 0;
   /** 0xe1a8 */
   meditating = 0;
+  /** 0xe1ac: a post-rest command is owed. */
+  owedPostRest = 0;
+  /** 0xe1b0: a post-meditate command is owed. */
+  owedPostMeditate = 0;
   /** 0xe1cc: hidden. */
   hidden = 0;
   /** 0xe2f0: holding for the party. */

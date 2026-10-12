@@ -169,3 +169,63 @@ export function expandMacros(_s: Session, text: string): string {
   unported('4acc40');
   return text.slice(0, 299);
 }
+
+/** The length of an equip verb at `at` (`eq`, `equ`, `equi`, `equip`, `wea`, `wear`), or 0. */
+function equipVerb(text: string, at: number, end: number): number {
+  const c = (i: number): string => (at + i < end ? text[at + i]!.toLowerCase() : '');
+  if (c(0) === 'e' && c(1) === 'q') {
+    if (c(2) !== 'u') return 2;
+    if (c(3) !== 'i') return 3;
+    return c(4) === 'p' ? 5 : 4;
+  }
+  if (at + 3 <= end && c(0) === 'w' && c(1) === 'e' && c(2) === 'a') return c(3) === 'r' ? 4 : 3;
+  return 0;
+}
+
+/**
+ * `0x47a540`: what MegaMUD is about to send, read for what it will do. Its
+ * commands (split on `\r` or `^M`) are prompts to wait for; the equip
+ * commands among them (`eq`, `equip`, `wear` and the like, with an argument
+ * and no `^`) are the "Mass Equip" count. 1 when it holds an equip.
+ */
+export function noteCommands(s: Session, text: string): number {
+  if (text === '' || s.Other_DisableMsgEquipProcessing !== 0) return 0;
+  const n = text.length;
+  let commands = 0;
+  let equips = 0;
+  let i = 0;
+  for (;;) {
+    let end = i;
+    while (
+      end < n &&
+      text[end] !== '\r' &&
+      !(text[end] === '^' && end + 1 < n && text[end + 1] === 'M')
+    )
+      end += 1;
+    const term = end < n ? (text[end] === '\r' ? 1 : 2) : 0;
+    let p = i;
+    if (end < n || p < end) {
+      commands += 1;
+      while (p < end && (text[p] === ' ' || text[p] === '\t')) p += 1;
+    }
+    if (p + 2 <= end) {
+      const verb = equipVerb(text, p, end);
+      if (verb > 0) {
+        let q = p + verb;
+        if (q < end && (text[q] === ' ' || text[q] === '\t')) {
+          while (q < end && (text[q] === ' ' || text[q] === '\t')) q += 1;
+          if (q < end && !text.slice(q, end).includes('^')) equips += 1;
+        }
+      }
+    }
+    if (end >= n) break;
+    i = end + term;
+    if (i >= n) break;
+  }
+  if (commands >= 2) s.waitPrompt += commands;
+  if (equips === 0) return 0;
+  if (commands < 2) s.waitPrompt += commands;
+  s.f_a5f8 += equips;
+  s.lineFlags &= ~1;
+  return 1;
+}

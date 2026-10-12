@@ -135,9 +135,7 @@ export class RawFields extends SettingsFields {
   f_2520 = 0;
   f_6b74 = 0;
   f_6b84 = 0;
-  f_71b8 = 0;
   f_71bc = 0;
-  f_71c0 = 0;
   f_71c4 = 0;
   f_71c8 = 0;
   f_71cc = 0;
@@ -349,8 +347,6 @@ export class RawFields extends SettingsFields {
   f_a529 = 0;
   f_a57c = 0;
   f_a580 = 0;
-  f_a584 = 0;
-  f_a588 = 0;
   f_a589 = 0;
   f_a5d9 = 0;
   f_a5f8 = 0;
@@ -465,8 +461,6 @@ export class RawFields extends SettingsFields {
   f_e19c = 0;
   f_e1a0 = 0;
   f_e1a4 = 0;
-  f_e1ac = 0;
-  f_e1b0 = 0;
   f_e1b4 = 0;
   f_e1b8 = 0;
   f_e1bc = 0;
@@ -485,8 +479,6 @@ export class RawFields extends SettingsFields {
   f_e220 = 0;
   f_e224 = 0;
   f_e228 = 0;
-  f_e22c = 0;
-  f_e230 = 0;
   f_e234 = 0;
   f_e238 = 0;
   f_e23c = 0;
@@ -686,7 +678,6 @@ export class RawFields extends SettingsFields {
   f_3239c = 0;
   f_323a0 = 0;
   f_323a4 = 0;
-  f_323a8 = 0;
   f_323ac = 0;
   f_323b0 = 0;
   f_323b4 = 0;
@@ -706,7 +697,6 @@ export class RawFields extends SettingsFields {
   f_323ec = 0;
   f_323f0 = 0;
   f_323f4 = 0;
-  f_32418 = 0;
   f_3241c = 0;
   f_3248c = 0;
   f_32490 = 0;
