@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import type { MessageImport, MessageTable, MessageTrigger } from '@shared/messageTriggers';
 import type { MonsterImport, MonsterRule, MonsterTable } from '@shared/monsterRules';
+import type { ItemImport, ItemRule, ItemTable } from '@shared/itemRules';
 import type { LoopImport, MegaMudPath } from '@shared/megamudPaths';
 import { asShippedWorld } from '@shared/worlds';
 import { DENOMINATIONS } from '@shared/character';
@@ -15,6 +16,7 @@ import type { AlertRule } from '@shared/notifications';
 import AlertList from './AlertList';
 import RealmMessages from './RealmMessages';
 import RealmMonsters from './RealmMonsters';
+import RealmItems from './RealmItems';
 import { MonsterRuleList } from './MonsterRules';
 import SettingsNav, { type NavFieldset } from './SettingsNav';
 import GearSetList from './GearSetList';
@@ -353,6 +355,10 @@ export interface SettingsScreenProps {
   loadMonsters(realm: string): Promise<MonsterTable>;
   importMonsters(realm: string, fileName: string, monsters: MonsterRule[]): Promise<MonsterImport>;
   saveMonsters(realm: string, monsters: MonsterRule[]): Promise<string | null>;
+  /** A realm's item table, by name. See `RealmItems`. */
+  loadItems(realm: string): Promise<ItemTable>;
+  importItems(realm: string, fileName: string, items: ItemRule[]): Promise<ItemImport>;
+  saveItems(realm: string, items: ItemRule[]): Promise<string | null>;
   /** A MegaMUD folder's loops onto a realm. See `MegaMudLoopImport`. */
   importLoops(realm: string, paths: MegaMudPath[]): Promise<LoopImport>;
   /**
@@ -1677,6 +1683,9 @@ export default function SettingsScreen({
   loadMonsters,
   importMonsters,
   saveMonsters,
+  loadItems,
+  importItems,
+  saveItems,
   importLoops,
   loadLoops,
   loadTrainers,
@@ -5042,6 +5051,22 @@ export default function SettingsScreen({
                       load={loadMonsters}
                       realm={serverPick === NEW_SERVER ? null : serverPick}
                       save={saveMonsters}
+                    />
+                  </fieldset>
+
+                  {/*
+                    And what to do about particular items: the realm's table
+                    from MegaMUD's Items.md, the choices half of its item
+                    details. The facts are the realm data's.
+                  */}
+                  <fieldset className="settings-menus" data-fieldset="realm-items">
+                    <legend>{t('settings.items.legend')}</legend>
+                    <p className="settings-note">{t('settings.items.note')}</p>
+                    <RealmItems
+                      importRows={importItems}
+                      load={loadItems}
+                      realm={serverPick === NEW_SERVER ? null : serverPick}
+                      save={saveItems}
                     />
                   </fieldset>
 

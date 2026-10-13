@@ -159,7 +159,7 @@ async function settled(hp: number): Promise<void> {
 }
 
 /** A realm with nothing imported and no coins renamed, for `configureRealm`. */
-const NO_REALM: RealmData = { messages: [], monsters: [], coins: {} };
+const NO_REALM: RealmData = { messages: [], monsters: [], items: [], coins: {} };
 
 describe('the raw byte record', () => {
   /*

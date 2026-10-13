@@ -93,6 +93,8 @@ app:
       That file has no MegaMUD messages in it, so the realm's table was left as it was. Choose
       the Messages.md from a MegaMUD data folder.
     unreadable: The file could not be read.
+  items:
+    noRows: There were no item rows to import, so the realm's table was left as it was.
   monsters:
     noRows: There were no monster rows to import, so the realm's table was left as it was.
   servers:
@@ -122,6 +124,9 @@ notices:
     messages:
       lostRows: 'The message table would have saved {wrote} rows and read back {read}, so it was not saved.'
       readError: '{file} could not be read, so this realm answers no messages until it is fixed: {message}'
+    items:
+      lostRows: 'The item table would have saved {wrote} rows and read back {read}, so it was not saved.'
+      readError: '{file} could not be read, so this realm has no item table until it is fixed: {message}'
     monsters:
       lostRows: 'The monster table would have saved {wrote} rows and read back {read}, so it was not saved.'
       readError: '{file} could not be read, so this realm has no monster table until it is fixed: {message}'
@@ -3763,6 +3768,60 @@ settings:
     source: 'from {file}, {date}'
     switchedOff: Message switched off.
     switchedOn: Message switched on.
+    unreadable: That file could not be read.
+  items:
+    add: Add an item
+    cancel: Cancel
+    confirmReplace: Replace this realm's {count} item rows with the ones in {file}? Edits made here are lost.
+    count:
+      many: '{count} items'
+      one: '1 item'
+    duplicate: '{item} already has a row; edit that one.'
+    flags:
+      backstab: Can use to backstab
+      buy: Auto-buy
+      cannotTake: Cannot be taken
+      collect: Auto-collect
+      discard: Auto-discard
+      equip: Auto-equip
+      find: Auto-find
+      mustHaveMin: Must have minimum
+      open: Auto-open
+      sell: Auto-sell (or stash)
+    flagsLabel: Options
+    ifNeededHint: The path walked to get it when there is too little — a MegaMUD path's file name.
+    ifNeededLabel: If Needed, Do
+    import: Import Items.md…
+    imported: 'Imported {count} items with something to say, of the {read} the file names.'
+    keepChip: 'keep {count}'
+    keepLabel: Min. to Keep
+    legend: Items
+    loading: Reading this realm's items…
+    more: 'Showing {shown} of {count}. Search to find the rest.'
+    mostChip: 'max {count}'
+    mostLabel: Max to Get
+    nameLabel: Item
+    namePlaceholder: healing potion
+    needsName: A row needs an item.
+    noMatch: No item matches that search.
+    none: No items yet. Import the Items.md from a MegaMUD data folder, or add one.
+    note:
+      What to do about particular items here — MegaMUD's item details, used by every character that
+      plays this realm. Weight, price, type and where it is worn come from the realm's own data.
+      A character's own item rows change only what they state. Importing replaces the table.
+    nothingSaid: '{file} names {count} items but says nothing particular about any of them, so the realm''s table was left as it was.'
+    notItems: '{file} is not a MegaMUD item database. Choose the Items.md from a MegaMUD data folder.'
+    removedRow: Item removed.
+    removeRow: Remove
+    replace: Replace
+    saveFirst: Add the realm first; its items are kept with it.
+    savedRow: Item saved.
+    saveRow: Save item
+    searchLabel: Search items
+    searchPlaceholder: Search items…
+    shopHint: The shop it is bought at or sold to.
+    shopLabel: Bought/Sold
+    source: 'from {file}, {date}'
     unreadable: That file could not be read.
   monsters:
     add: Add a monster

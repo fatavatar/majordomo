@@ -94,6 +94,7 @@ import type { CardChrome } from './components/BentoCard';
 import type { AppConfig } from '@shared/config';
 import type { MessageTrigger } from '@shared/messageTriggers';
 import type { MonsterRule } from '@shared/monsterRules';
+import type { ItemRule } from '@shared/itemRules';
 import type { MegaMudPath } from '@shared/megamudPaths';
 import type { IpcApi } from '@shared/ipc';
 import type { MegaSettings } from '@shared/megamud/settings';
@@ -2976,6 +2977,10 @@ export default function App() {
         api.importMonsters(realm, fileName, monsters),
       importLoops: (realm: string, paths: MegaMudPath[]) => api.importLoops(realm, paths),
       saveMonsters: (realm: string, monsters: MonsterRule[]) => api.saveMonsters(realm, monsters),
+      loadItems: (realm: string) => api.loadItems(realm),
+      importItems: (realm: string, fileName: string, items: ItemRule[]) =>
+        api.importItems(realm, fileName, items),
+      saveItems: (realm: string, items: ItemRule[]) => api.saveItems(realm, items),
       // The shelf of shipped loops, for the Movement tab. Asked for when
       // that picker opens rather than with the snapshot: four hundred
       // loops, and most visits to that screen are about a password.
@@ -6116,6 +6121,9 @@ export default function App() {
         importMonsters={settingsApi.importMonsters}
         importLoops={settingsApi.importLoops}
         saveMonsters={settingsApi.saveMonsters}
+        loadItems={settingsApi.loadItems}
+        importItems={settingsApi.importItems}
+        saveItems={settingsApi.saveItems}
         loadLoops={settingsApi.loadLoops}
         loadTrainers={settingsApi.loadTrainers}
         loadBanks={settingsApi.loadBanks}

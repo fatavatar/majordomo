@@ -34,6 +34,7 @@ import { LoginAutomator, type StandDown } from '../automation/LoginAutomator';
 import { RuleEngine } from '../automation/RuleEngine';
 import { MessageTriggers } from '../automation/MessageTriggers';
 import type { MessageTrigger } from '../../shared/messageTriggers';
+import type { ItemRule } from '../../shared/itemRules';
 import {
   relationshipOf,
   withRealmMonsters,
@@ -460,10 +461,11 @@ function encumbered(exit: { note: string | null; requirement?: unknown }): boole
 export interface RealmTables {
   messages: readonly MessageTrigger[];
   monsters: readonly MonsterRule[];
+  items: readonly ItemRule[];
 }
 
 /** A realm with no directory: nothing imported. */
-export const NO_REALM_TABLES: RealmTables = { messages: [], monsters: [] };
+export const NO_REALM_TABLES: RealmTables = { messages: [], monsters: [], items: [] };
 
 /** What `configureRealm` is told: the tables, and what the realm calls its coins. */
 export interface RealmData extends RealmTables {

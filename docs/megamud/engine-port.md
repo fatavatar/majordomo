@@ -307,6 +307,20 @@ The modules being deleted, with what replaces each:
 The settings that belonged to the deleted modules go with them. A character's
 current settings are converted to `megamud.ini` once, wherever a key maps.
 
+## Known issues kept from MegaMUD
+
+- **A double step after a heal** (seen 2026-10-13 in Skinny's logs, kept as
+  MegaMUD has it for now). A heal sent as a fight ends, then the server's
+  redraw of the room arriving before the heal's answer: the prompt handler
+  (`0x47b070`) takes any two whole lines after a command as its answer, so
+  the cast (state `0x15`) is done and the next path step is sent (state
+  `0x16`). The heal's own "You cast …" line then sets the state to 0 on the
+  uncounted branch of `0x47c280`, which, unlike its other branches, does not
+  spare `0x16`. So the step after is taken before the room the last one led
+  to is seen: two steps, the first room's monsters walked past. The fix
+  offered: `walkPath` (`0x409170`) holding the next step until the last
+  one's room is seen, refused, or given up on (`0x40aae0`).
+
 ## Order of work
 
 1. **Settings.** The schema from the loader, INI read and write, import of a

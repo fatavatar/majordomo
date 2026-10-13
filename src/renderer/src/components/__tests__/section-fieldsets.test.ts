@@ -37,6 +37,7 @@ describe.each([
       'realm-mob-rules',
       'realm-messages',
       'realm-monsters',
+      'realm-items',
       'realm-hang-penalties',
       'realm-coins',
       'realm-bbs'

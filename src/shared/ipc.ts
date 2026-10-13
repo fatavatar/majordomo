@@ -15,6 +15,7 @@
  * no session, because they belong to the client rather than to a character.
  */
 import type { MessageImport, MessageTable, MessageTrigger } from './messageTriggers';
+import type { ItemImport, ItemRule, ItemTable } from './itemRules';
 import type { MonsterImport, MonsterRule, MonsterTable } from './monsterRules';
 import type { LoopImport, MegaMudPath } from './megamudPaths';
 import type { AutomationSnapshot } from './automation';
@@ -921,6 +922,12 @@ export const Invoke = {
   importMonsters: 'settings:import-monsters',
   /** Writes one realm's whole monster table, after an edit on its page. */
   saveMonsters: 'settings:save-monsters',
+  /** One realm's item table (`servers/<id>/items.yaml`), by the realm's name. */
+  loadItems: 'settings:items',
+  /** Replaces one realm's item table with what a MegaMUD `Items.md` says, decoded in the window for `importMonsters`' reason. */
+  importItems: 'settings:import-items',
+  /** Writes one realm's whole item table, after an edit on its page. */
+  saveItems: 'settings:save-items',
   /**
    * Adds the loops in a MegaMUD folder to one realm's own
    * (`servers/<id>/loops/`), converted against that realm's data. The window
@@ -1359,6 +1366,12 @@ export interface IpcApi {
   importMonsters(realm: string, fileName: string, monsters: MonsterRule[]): Promise<MonsterImport>;
   /** Resolves to why it refused, or null. */
   saveMonsters(realm: string, monsters: MonsterRule[]): Promise<string | null>;
+  /** One realm's item table, by the realm's name. Empty when it has none. */
+  loadItems(realm: string): Promise<ItemTable>;
+  /** Replaces a realm's table with the rows an `Items.md` decoded to. */
+  importItems(realm: string, fileName: string, items: ItemRule[]): Promise<ItemImport>;
+  /** Resolves to why it refused, or null. */
+  saveItems(realm: string, items: ItemRule[]): Promise<string | null>;
   /** Adds a MegaMUD folder's loops to a realm's, and says how many came across. */
   importLoops(realm: string, paths: MegaMudPath[]): Promise<LoopImport>;
   /*

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { isMdb2, readMdb2, readMegaMudMonsters } from '../megamudDb';
+import { isMdb2, readMdb2, readMegaMudItems, readMegaMudMonsters } from '../megamudDb';
 
 /*
  * A MegaMUD database built the way `megamud.exe` lays one out (see the
@@ -151,5 +151,66 @@ describe('Monsters.md', () => {
   it('keys the name the way the room is keyed', () => {
     expect(read({ id: 3, name: 'The Gnome' })?.rule.mob).toBe('gnome');
     expect(read({ id: 3, name: 'The Gnome' })?.name).toBe('The Gnome');
+  });
+});
+
+/** The item loader's record, as far as dialog 316's choices go. */
+function itemBody(i: {
+  id: number;
+  name: string;
+  flags?: number;
+  shop?: string;
+  ifNeeded?: string;
+  min?: number;
+  max?: number;
+}): Uint8Array {
+  const body = new Uint8Array(0xa4);
+  const view = new DataView(body.buffer);
+  view.setUint16(0x00, i.id, true);
+  body.set(ascii(i.name), 0x02);
+  if (i.shop) body.set(ascii(i.shop), 0x20);
+  if (i.ifNeeded) body.set(ascii(i.ifNeeded), 0x49);
+  view.setInt16(0x57, i.min ?? 0, true);
+  view.setInt16(0x59, i.max ?? 0, true);
+  view.setUint32(0x63, i.flags ?? 0, true);
+  return body;
+}
+
+describe("an Items.md's choices", () => {
+  it('reads the options, the counts, the path and the shop', () => {
+    const items = readMegaMudItems(
+      file(
+        page(0, [
+          record(
+            '1',
+            itemBody({
+              id: 1,
+              name: 'Healing Potion',
+              flags: 0x2 | 0x4 | 0x400 | 0x20000,
+              shop: 'General Store',
+              ifNeeded: 'SLMBLOOP.mp',
+              min: 5,
+              max: 10
+            })
+          ),
+          record('2', itemBody({ id: 2, name: 'rusty dagger', flags: 0x200 | 0x800 })),
+          record('3', itemBody({ id: 3, name: 'rock' }))
+        ])
+      )
+    );
+    expect(items.map((item) => item.rule)).toEqual([
+      {
+        item: 'healing potion',
+        collect: true,
+        buy: true,
+        mustHaveMin: true,
+        keep: 5,
+        most: 10,
+        ifNeeded: 'SLMBLOOP.mp',
+        shop: 'General Store'
+      },
+      { item: 'rusty dagger', backstab: true, discard: true },
+      { item: 'rock' }
+    ]);
   });
 });

@@ -31,7 +31,10 @@ const NECROLYTE: ClassRec = {
 };
 
 function stated() {
-  const r = session({ classes: [NECROLYTE], races: [{ id: 4, layer: 0, name: 'Wood-Elf', exp: 0 }] });
+  const r = session({
+    classes: [NECROLYTE],
+    races: [{ id: 4, layer: 0, name: 'Wood-Elf', exp: 0 }]
+  });
   r.s.inGame = 1;
   r.s.Player_Name = 'Skinny';
   r.s.blind = 1;

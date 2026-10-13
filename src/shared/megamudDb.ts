@@ -20,6 +20,7 @@
  * at pages, and a file whose tree is damaged still has every record on a leaf.
  */
 import type { MobPriorityBand } from './config';
+import { ITEM_FLAG_BITS, ITEM_FLAGS, itemKey, type ItemRule } from './itemRules';
 import type { MonsterRule, Relationship } from './monsterRules';
 import { mobKey } from './world';
 
@@ -184,4 +185,60 @@ export function readMegaMudMonsters(bytes: Uint8Array): MegaMudMonster[] {
 function castCount(view: DataView, offset: number): number {
   const value = view.getInt16(offset, true);
   return value > 0 ? value : 0;
+}
+
+/* ------------------------------------------------------------ items */
+
+/*
+ * Offsets into the loader's record (0x459860), as dialog 316 edits them. The
+ * rest of the record — type, weight, price, body location, the abilities that
+ * make an item loyal — is the realm's own data, which this client has.
+ */
+const ITEM = {
+  id: 0x00,
+  name: 0x02,
+  nameSize: 31,
+  shop: 0x20,
+  shopSize: 41,
+  ifNeeded: 0x49,
+  ifNeededSize: 14,
+  min: 0x57,
+  max: 0x59,
+  flags: 0x63
+} as const;
+
+/** One item as MegaMUD's database holds it: its id, name and what was chosen for it. */
+export interface MegaMudItem {
+  id: number;
+  name: string;
+  rule: ItemRule;
+}
+
+/**
+ * Every item in an `Items.md`, and what MegaMUD was told about each. `rule`
+ * states only the choices that are on and the fields that are filled.
+ */
+export function readMegaMudItems(bytes: Uint8Array): MegaMudItem[] {
+  const out: MegaMudItem[] = [];
+  for (const record of readMdb2(bytes)) {
+    const body = record.body;
+    if (body.length < ITEM.flags + 4) continue;
+    const view = new DataView(body.buffer, body.byteOffset, body.byteLength);
+    const name = field(body, ITEM.name, ITEM.nameSize);
+    const item = itemKey(name);
+    if (item.length === 0) continue;
+    const flags = view.getUint32(ITEM.flags, true) & 0x38ffffff;
+    const rule: ItemRule = { item };
+    for (const flag of ITEM_FLAGS) if (flags & ITEM_FLAG_BITS[flag]) rule[flag] = true;
+    const keep = view.getInt16(ITEM.min, true);
+    if (keep > 0) rule.keep = keep;
+    const most = view.getInt16(ITEM.max, true);
+    if (most > 0) rule.most = most;
+    const ifNeeded = field(body, ITEM.ifNeeded, ITEM.ifNeededSize);
+    if (ifNeeded.length > 0) rule.ifNeeded = ifNeeded;
+    const shop = field(body, ITEM.shop, ITEM.shopSize);
+    if (shop.length > 0) rule.shop = shop;
+    out.push({ id: view.getUint16(ITEM.id, true), name, rule });
+  }
+  return out;
 }

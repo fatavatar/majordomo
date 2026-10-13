@@ -24,6 +24,7 @@ import { ProfileStore, type ProfileSnapshot } from './config/ProfileStore';
 import { ServerStore } from './config/ServerStore';
 import {
   MESSAGE_TABLE,
+  ITEM_TABLE,
   MONSTER_TABLE,
   RealmTableStore,
   type RealmTable,
@@ -127,6 +128,12 @@ import {
   type MonsterImport,
   type MonsterTable
 } from '../shared/monsterRules';
+import {
+  asItemRules,
+  itemSaysAnything,
+  type ItemImport,
+  type ItemTable
+} from '../shared/itemRules';
 import { asMegaMudPaths, type LoopImport } from '../shared/megamudPaths';
 import { settingsFromDraft } from '../shared/megamud/settings';
 import { megamudFromConfig } from '../shared/megamud/fromConfig';
@@ -229,9 +236,10 @@ let profiles: ProfileStore | null = null;
 let servers: ServerStore | null = null;
 /** The loops on disk, at all three scopes. See `LoopStore`. */
 let loops: LoopStore | null = null;
-/** Each realm's imported tables: `servers/<id>/messages.yaml` and `monsters.yaml`. See `RealmTableStore`. */
+/** Each realm's imported tables: `servers/<id>/messages.yaml`, `monsters.yaml` and `items.yaml`. See `RealmTableStore`. */
 let realmMessages: RealmTableStore<MessageTable> | null = null;
 let realmMonsters: RealmTableStore<MonsterTable> | null = null;
+let realmItems: RealmTableStore<ItemTable> | null = null;
 /**
  * Every realm the client has been asked for.
  *
@@ -1291,7 +1299,7 @@ function createServers(): ServerStore {
 
 function createRealmTable<T extends RealmTable>(
   kind: TableKind<T>,
-  channel: 'messages' | 'monsters'
+  channel: 'messages' | 'monsters' | 'items'
 ): RealmTableStore<T> {
   const store = new RealmTableStore(home, kind, (message) => announce(channel, message));
   // A table imported, edited on the settings page or by hand reaches the
@@ -1314,7 +1322,8 @@ function realmTablesFor(id: SessionId): RealmTables {
   if (serverId === undefined) return NO_REALM_TABLES;
   return {
     messages: realmMessages?.forServer(serverId).triggers ?? [],
-    monsters: realmMonsters?.forServer(serverId).monsters ?? []
+    monsters: realmMonsters?.forServer(serverId).monsters ?? [],
+    items: realmItems?.forServer(serverId).items ?? []
   };
 }
 
@@ -2927,6 +2936,39 @@ function registerIpc(): void {
     return result.ok ? null : result.error;
   });
 
+  /* A realm's item table, the same way: the window decodes `Items.md`. */
+  handle(Invoke.loadItems, (_caller, realm: unknown) => {
+    const at = tableAt(realmItems, realm);
+    return at === null ? ITEM_TABLE.empty : at.store.forServer(at.serverId);
+  });
+
+  handle(Invoke.importItems, (_caller, realm: unknown, fileName: unknown, rows: unknown) => {
+    const at = tableAt(realmItems, realm);
+    if (at === null)
+      return { ok: false, error: t('app.servers.noSuchServer') } satisfies ItemImport;
+    const items = asItemRules(rows).filter(itemSaysAnything);
+    // Refused rather than written, for `importMessages`' reason.
+    if (items.length === 0) {
+      return { ok: false, error: t('app.items.noRows') } satisfies ItemImport;
+    }
+    const result = at.store.write(at.serverId, {
+      source: importedFrom(fileName, 'Items.md'),
+      items
+    });
+    if (!result.ok) return { ok: false, error: result.error } satisfies ItemImport;
+    return { ok: true, count: items.length } satisfies ItemImport;
+  });
+
+  handle(Invoke.saveItems, (_caller, realm: unknown, rows: unknown) => {
+    const at = tableAt(realmItems, realm);
+    if (at === null) return t('app.servers.noSuchServer');
+    const result = at.store.write(at.serverId, {
+      source: at.store.forServer(at.serverId).source,
+      items: asItemRules(rows)
+    });
+    return result.ok ? null : result.error;
+  });
+
   /*
    * A MegaMUD folder's loops onto a realm, converted against **that realm's**
    * data: a loop is a walk through rooms, and the rooms are the realm's. The
@@ -3372,6 +3414,7 @@ function build(): void {
   loops = createLoops();
   realmMessages = createRealmTable(MESSAGE_TABLE, 'messages');
   realmMonsters = createRealmTable(MONSTER_TABLE, 'monsters');
+  realmItems = createRealmTable(ITEM_TABLE, 'items');
   publishTree();
   internal = createInternal();
   lore = createLore();
@@ -3513,6 +3556,8 @@ function teardown(): void {
     realmMessages = null;
     realmMonsters?.dispose();
     realmMonsters = null;
+    realmItems?.dispose();
+    realmItems = null;
   });
   settle('options', () => {
     config?.dispose();

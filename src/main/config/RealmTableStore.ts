@@ -5,6 +5,7 @@
  * servers/<id>/server.yaml     host, port, the menus
  * servers/<id>/messages.yaml   what the realm's sentences mean
  * servers/<id>/monsters.yaml   what to do about particular monsters
+ * servers/<id>/items.yaml      what to do about particular items
  * ```
  *
  * **A file of its own rather than a key in `server.yaml`.** An imported table
@@ -38,6 +39,12 @@ import {
   triggerForFile,
   type MessageTable
 } from '../../shared/messageTriggers';
+import {
+  asItemTable,
+  EMPTY_ITEM_TABLE,
+  itemRuleForFile,
+  type ItemTable
+} from '../../shared/itemRules';
 import {
   asMonsterTable,
   EMPTY_MONSTER_TABLE,
@@ -106,6 +113,24 @@ export const MONSTER_TABLE: TableKind<MonsterTable> = {
   rowsForFile: (table) => table.monsters.map(ruleForFile),
   readError: (file, message) => t('notices.config.monsters.readError', { file, message }),
   lostRows: (wrote, read) => t('notices.config.monsters.lostRows', { wrote, read })
+};
+
+export const ITEM_TABLE: TableKind<ItemTable> = {
+  file: 'items.yaml',
+  header: ` What to do about particular items in this realm.
+
+ Imported from MegaMUD's Items.md on the realm's settings page, and editable
+ there. Each row names an item and only what is chosen for it: collect,
+ discard, equip, find, open, buy, sell (or stash), cannotTake, backstab and
+ mustHaveMin, the least to keep (keep) and the most to get (most), the path
+ that gets it (ifNeeded) and the shop it is bought at or sold to (shop).
+ A character's own automation.loot.items rows are laid over these.`,
+  key: 'items',
+  empty: EMPTY_ITEM_TABLE,
+  read: asItemTable,
+  rowsForFile: (table) => table.items.map(itemRuleForFile),
+  readError: (file, message) => t('notices.config.items.readError', { file, message }),
+  lostRows: (wrote, read) => t('notices.config.items.lostRows', { wrote, read })
 };
 
 export interface RealmTableStoreEvents {
