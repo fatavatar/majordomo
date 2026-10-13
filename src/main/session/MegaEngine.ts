@@ -28,7 +28,7 @@ import { menuCommand } from '../megamud/move/buttons';
 import { blessCommand } from '../megamud/player/cast';
 import { clearDetours, goTo, headFor, startWalking } from '../megamud/move/destinations';
 import { copyPath, freeSteps } from '../megamud/move/path';
-import { connected, connectionClosed } from '../megamud/script/game';
+import { connected, connectFailed, connectionClosed } from '../megamud/script/game';
 import { forgetAwaited, setState } from '../megamud/script/state';
 import {
   dataArrived,
@@ -46,6 +46,7 @@ import {
   type SessionHost
 } from '../megamud/Session';
 import { findSpell } from '../megamud/spells/lookup';
+import { setTask } from '../megamud/script/task';
 import {
   rememberItem,
   rememberPlayers,
@@ -111,6 +112,8 @@ export interface MegaEngineHost {
   toggled?(): void;
   /** Its walk or loop moved on, as the cards draw them: see `MegaEngine.progress`. */
   progressed?(walk: WalkProgress, loop: LoopProgress): void;
+  /** It began or stopped waiting to dial back: see `MegaEngine.redialing`. */
+  redialChanged?(): void;
 }
 
 /** One of our loops made a MegaMUD loop: its stops, and the step each leg to the next begins at. */
@@ -343,6 +346,8 @@ export class MegaEngine {
   private lastingMarked = false;
   /** The walk and loop as last said (`noteProgress`). */
   private progressed = '';
+  /** Waiting to redial, as last said. */
+  private wasRedialing = false;
   /**
    * The run of a loop: when it was started, and when it first stood on the
    * loop itself rather than on the way out to it. Null with no loop taken up.
@@ -568,6 +573,33 @@ export class MegaEngine {
     if (this.s.f_e29c === 0) this.s.f_e29c = 1;
   }
 
+  /**
+   * Waiting to dial back (`0xe544` 3, task 9), as `0x4653d0` counts down
+   * `Comms.RedialPause` after a drop, a full game or a stuck log-on.
+   */
+  get redialing(): boolean {
+    return this.s.f_e544 === 3 && this.s.task === 9;
+  }
+
+  /** Seconds until that redial, 0 when none is waited on. */
+  get redialIn(): number {
+    return this.redialing ? Math.max(0, this.s.f_32298 - this.s.host.clock()) : 0;
+  }
+
+  /** A dial failed: redialled by MegaMUD's rule for that (`0x4b71d0`). */
+  connectFailed(): void {
+    this.safely(() => connectFailed(this.s));
+    this.noteToggles();
+  }
+
+  /** The redial waited on called off, the player's Disconnect: offline, idle (task `0x14`). */
+  cancelRedial(): void {
+    if (!this.redialing) return;
+    this.s.f_e544 = 0;
+    setTask(this.s, 0x14);
+    this.noteToggles();
+  }
+
   /** Text from the socket. */
   received(text: string): void {
     dataArrived(this.quiet, Date.now());
@@ -730,6 +762,10 @@ export class MegaEngine {
   /** Says so when the toggles or the walking moved since last said: a press, a mode's defaults, a remote, a step. */
   private noteToggles(): void {
     this.noteProgress();
+    if (this.redialing !== this.wasRedialing) {
+      this.wasRedialing = this.redialing;
+      this.host.redialChanged?.();
+    }
     const { on, walking, looping, canGo } = this.toggles;
     const now = JSON.stringify([on, walking, looping, canGo]);
     if (now === this.toggled) return;

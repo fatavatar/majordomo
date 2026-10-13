@@ -543,6 +543,14 @@ export interface SessionSink {
    * test needs it") was answered by the test file, which implements it.
    */
   dropped(why: StandDown | null): void;
+  /**
+   * The MegaMUD engine dials back, on its own redial rules (`Comms.Redial…`):
+   * through the host, as a dial anybody asked for, so the log and capture
+   * turn over per connection. Without it the manager dials itself.
+   */
+  redial?(target: ConnectionTarget): void;
+  /** The engine's redial began or stopped waiting: see `megaRedialing`. */
+  retrying?(): void;
   telnet(event: TelnetEvent): void;
   /** An engine message to surface inline in the terminal. */
   notice(message: string): void;
@@ -3736,6 +3744,8 @@ export class SessionManager {
       const detail = errorMessage(error);
       this.patch({ phase: 'error', detail });
       this.sink.notice(t('session.connection.failed', { detail }));
+      // MegaMUD's own rule for a dial that failed (`Comms.RedialConnect`).
+      this.mega?.connectFailed();
     }
 
     return this.current;
@@ -4717,7 +4727,16 @@ export class SessionManager {
           hangUp: () => this.disconnect('client'),
           dial: () => {
             const target = this.current.target;
-            if (target !== null && !this.client.connected) void this.connect(target);
+            if (target === null || this.client.connected) return;
+            if (this.sink.redial) this.sink.redial(target);
+            else void this.connect(target);
+          },
+          redialChanged: () => {
+            const seconds = this.mega?.redialIn ?? 0;
+            if (this.mega?.redialing === true) {
+              this.sink.notice(t('session.megamud.redialing', { seconds }));
+            }
+            this.sink.retrying?.();
           },
           here: () => roomAddress(this.tracker.current.room),
           locate: () => this.megaLocate(),
@@ -4748,6 +4767,19 @@ export class SessionManager {
       if (this.client.connected) this.mega.connected();
     }
     if (this.configured !== null) this.configure(...this.configured);
+  }
+
+  /**
+   * The engine is waiting out `Comms.RedialPause` (or `CleanupPeriod`) to
+   * dial back: for the rail, as `Reconnect.pending` is for ours.
+   */
+  get megaRedialing(): boolean {
+    return this.mega?.redialing ?? false;
+  }
+
+  /** Stop trying: the engine's redial called off, as Disconnect calls ours off. */
+  stopRedial(): void {
+    this.mega?.cancelRedial();
   }
 
   /** Whether the MegaMUD engine runs this character. */

@@ -165,6 +165,13 @@ the swap. For such a character:
   to the socket, observed as automation's are, a macro's `~` a half-second
   pause. What the player types is shown to it (`0x465d90`).
 - **Clocks**: `secondTick` every second, `quietTick` every quarter.
+- **Redial** is MegaMUD's for a character the engine runs, and our
+  auto-reconnect (`Reconnect`) stands down for it, so the two never both
+  dial. The engine redials after a drop in play (`Comms.RedialCarrier`), a
+  BBS shutdown, a full game, a stuck log-on and a dial that failed
+  (`Comms.RedialConnect`, `0x4b71d0`, up to `Comms.RedialMax`), each after
+  its pause, through the host's dial so the log and capture turn over. The
+  wait shows on the tab rail as ours does, and Disconnect calls it off.
 - **Blessings** are kept up from our tracker's buff list (`MegaEngine.buffs`),
   since a realm's Messages.md names few: a buff going up stamps its slot as
   cast, one going down makes it due. The tracker settles an ending it cannot

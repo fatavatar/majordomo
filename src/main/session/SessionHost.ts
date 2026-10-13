@@ -329,7 +329,7 @@ export class SessionHost {
         server,
         accent,
         state: slot.manager.state,
-        retrying: slot.reconnect.pending
+        retrying: slot.reconnect.pending || slot.manager.megaRedialing
       };
     });
   }
@@ -347,7 +347,9 @@ export class SessionHost {
      * point of use, so nothing here pins a value the player can still change.
      */
     const reconnect = new Reconnect({
-      enabled: () => this.options.autoReconnect(id),
+      // A character the MegaMUD engine runs is dialled back by MegaMUD's own
+      // rules (`Comms.Redial…`, `SessionSink.redial`), never by both.
+      enabled: () => this.options.autoReconnect(id) && this.slots.get(id)?.manager.megaMud !== true,
       // `dial` rather than `connect`, deliberately: `connect` calls a scheduled
       // retry off, and a retry calling itself off is a ladder with one rung.
       dial: (target) => this.dial(this.ensure(id), target),
@@ -472,6 +474,8 @@ export class SessionHost {
         // A socket that went without this client asking. Only these are ever
         // dialled again — see `Reconnect` for what the other closes are.
         dropped: (why) => reconnect.lost(why),
+        redial: (target) => void this.dial(slot, target),
+        retrying: () => this.options.publishRoster(),
         telnet: (event) => {
           debug.telnet(event);
           this.options.toAll(Push.telnet, { session: id, payload: event });
@@ -557,6 +561,7 @@ export class SessionHost {
      * the player just made.
      */
     slot.reconnect.cancel();
+    slot.manager.stopRedial();
     return this.dial(slot, target);
   }
 
@@ -667,6 +672,7 @@ export class SessionHost {
     const slot = this.slots.get(id);
     if (!slot) return null;
     slot.reconnect.cancel();
+    slot.manager.stopRedial();
     return slot.manager.disconnect();
   }
 

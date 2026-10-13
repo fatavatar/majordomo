@@ -318,6 +318,35 @@ export function connectionClosed(s: Session): void {
 }
 
 /**
+ * `0x4b71d0`: a dial that failed. With `Comms.RedialConnect` it is counted
+ * and dialled again after `Comms.RedialPause`, until `Comms.RedialMax`
+ * failures, when redialling is given up ("[Re-dial maximum exceeded]") and
+ * stays prevented. 1 when it was taken up.
+ */
+export function connectFailed(s: Session): number {
+  if (s.Comms_RedialConnect === 0) return 0;
+  s.f_30dc8 += 1;
+  if (s.Comms_RedialMax <= s.f_30dc8) {
+    s.f_30de8 = 1;
+    s.host.show(`[Re-dial maximum exceeded (${s.f_30dc8})]`);
+    setTask(s, 0xb);
+    return 1;
+  }
+  if (s.f_30de8 !== 0) {
+    s.host.show('[Re-dial prevented]');
+    setTask(s, 0xb);
+    return 1;
+  }
+  s.now = s.host.clock();
+  s.f_e544 = 3;
+  s.f_32298 = s.now + s.Comms_RedialPause;
+  s.f_30de4 = 0;
+  goOnline(s, 0);
+  setTask(s, 9);
+  return 1;
+}
+
+/**
  * `0x42d3f0`: the connection given up on (no BBS response, no log-on
  * progress): hung up, out of the game, and redialled after
  * `Comms.RedialPause` with `Comms.RedialNoResponse`.

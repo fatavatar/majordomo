@@ -6,6 +6,7 @@ import { grantPlayers, loadCharacter, remoteBits } from '../character';
 import { newPath } from '../Session';
 import {
   connected,
+  connectFailed,
   connectionClosed,
   enterGame,
   goOnline,
@@ -213,6 +214,30 @@ describe('the socket gone (0x42c910)', () => {
     connectionClosed(s);
     expect(out.shown).toEqual([]);
     expect(s.f_e158).toBe(0);
+  });
+});
+
+/* `0x4b71d0`, read 2026-10-13. */
+describe('a dial that failed (0x4b71d0)', () => {
+  it('is dialled again after Comms.RedialPause, until Comms.RedialMax, then prevented', () => {
+    const { s, out, clock } = session();
+    s.Comms_RedialConnect = 1;
+    s.Comms_RedialPause = 7;
+    s.Comms_RedialMax = 2;
+    expect(connectFailed(s)).toBe(1);
+    expect([s.task, s.f_e544, s.f_32298]).toEqual([9, 3, clock.now + 7]);
+    expect(connectFailed(s)).toBe(1);
+    expect(out.shown).toEqual(['[Re-dial maximum exceeded (2)]']);
+    expect(s.task).toBe(0xb);
+    connectFailed(s);
+    expect(out.shown.at(-1)).toBe('[Re-dial maximum exceeded (3)]');
+  });
+
+  it('is left alone without Comms.RedialConnect', () => {
+    const { s } = session();
+    s.Comms_RedialConnect = 0;
+    expect(connectFailed(s)).toBe(0);
+    expect(s.f_e544).not.toBe(3);
   });
 });
 

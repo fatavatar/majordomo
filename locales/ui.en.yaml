@@ -4512,6 +4512,8 @@ errors:
 session:
   megamud:
     noEngine: 'This character is not run by the MegaMUD engine, so it has no MegaMUD toggles.'
+    # MegaMUD's own redial (Comms settings) waiting to dial back after a drop or a failed dial.
+    redialing: 'MegaMUD redials in {seconds}s.'
     # MegaMUD's alerts, where it would play the sound its [Alerts] section names.
     alert:
       idle: 'MegaMUD alert: idle, with nothing left to do.'
