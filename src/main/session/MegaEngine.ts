@@ -520,31 +520,46 @@ export class MegaEngine {
     this.noteToggles();
   }
 
-  /** The toggles as they stand, and which this character's toolbar shows. */
+  /**
+   * The toggles as MegaMUD's window draws them (`0x460d50`), which this
+   * character's toolbar shows, and whether it is walking: with All Off on,
+   * every other toggle reads off and Go is not to be pressed.
+   */
   get toggles(): MegaToggles {
     const s = this.s;
+    const allOff = s.f_a32c !== 0;
+    const lit = (value: number): boolean => !allOff && value !== 0;
     const on: Record<MegaToggle, boolean> = {
-      allOff: s.f_a32c !== 0,
-      combat: s.MegaMud_AutoCombat !== 0,
-      preAttack: s.MegaMud_AutoPreAttack !== 0,
-      melee: s.f_8be8 !== 0,
-      nuke: s.MegaMud_AutoNuke !== 0,
-      heal: s.MegaMud_AutoHeal !== 0,
-      bless: s.MegaMud_AutoBless !== 0,
-      light: s.MegaMud_AutoLight !== 0,
-      get: s.MegaMud_AutoGet !== 0,
-      cash: s.MegaMud_AutoCash !== 0,
-      sneak: s.MegaMud_AutoSneak !== 0,
-      hide: s.MegaMud_AutoHide !== 0,
-      search: s.MegaMud_AutoSearch !== 0,
-      afk: s.active !== 0
+      allOff,
+      combat: lit(s.MegaMud_AutoCombat),
+      preAttack: lit(s.MegaMud_AutoPreAttack),
+      melee: lit(s.f_8be8),
+      nuke: lit(s.MegaMud_AutoNuke),
+      heal: lit(s.MegaMud_AutoHeal),
+      bless: lit(s.MegaMud_AutoBless),
+      light: lit(s.MegaMud_AutoLight),
+      get: lit(s.MegaMud_AutoGet),
+      cash: lit(s.MegaMud_AutoCash),
+      sneak: lit(s.MegaMud_AutoSneak),
+      hide: lit(s.MegaMud_AutoHide),
+      search: lit(s.MegaMud_AutoSearch),
+      afk: lit(s.active)
     };
-    return { on, shown: this.shown };
+    // `0x803`'s Go finds nothing to walk without a destination or roaming.
+    const somewhere = s.detours[0]!.room !== 0 || s.detours[0]!.path !== '' || s.roaming !== 0;
+    return {
+      on,
+      shown: this.shown,
+      walking: s.walking !== 0,
+      looping: s.looping !== 0,
+      canGo: s.inGame !== 0 && !allOff && somewhere
+    };
   }
 
-  /** Says so when the toggles moved since last said: a press, a mode's defaults, a remote. */
+  /** Says so when the toggles or the walking moved since last said: a press, a mode's defaults, a remote, a step. */
   private noteToggles(): void {
-    const now = JSON.stringify(this.toggles.on);
+    const { on, walking, looping, canGo } = this.toggles;
+    const now = JSON.stringify([on, walking, looping, canGo]);
     if (now === this.toggled) return;
     this.toggled = now;
     this.host.toggled?.();

@@ -143,7 +143,8 @@ import { IDLE_WALK, type WalkProgress } from '@shared/walk';
 import { DEFAULT_INTERNAL, type InternalConfig } from '@shared/internal';
 import type { HuntingRoom } from '@shared/hunting';
 import { NO_LOOP, type Loop, type LoopProgress } from '@shared/loops';
-import { movementOf, type MovementConfirm } from '@shared/movement';
+import { movementOf, type Movement, type MovementConfirm } from '@shared/movement';
+import { megaMovement } from '@shared/megamud/toggles';
 import type { CombatTally } from '@shared/tally';
 import { EMPTY_AUTOMATION, type AutomationSnapshot } from '@shared/automation';
 import { EMPTY_ROOM_VERDICT, type RoomVerdict } from '@shared/verdict';
@@ -358,6 +359,14 @@ const NO_SESSIONS: SessionSummary[] = [];
 /** A character whose file names no supplies. One list, so a card's props hold still. */
 const NO_SUPPLIES: SupplyItem[] = [];
 
+/**
+ * What is moving a character: the MegaMUD engine's own walking where one runs
+ * it, since the walker and loop runner stand idle then, else theirs.
+ */
+function movementIn(view: SessionView): Movement {
+  const mega = view.automation.mega;
+  return mega ? megaMovement(mega) : movementOf(view.walk, view.loop);
+}
 /**
  * The totals as they stand, written down as the Combat Stats card's baseline.
  *
@@ -941,7 +950,7 @@ function cardElement(id: CardId, ctx: CardContext): ReactNode {
             And whether a walk or a lap is moving it, so an open plan holds its
             ground until the walk ends rather than being asked at every room.
           */
-          moving={movementOf(view.walk, view.loop).moving}
+          moving={movementIn(view).moving}
           /*
             The realm's own count of each quest counter, where the realm has a
             command that prints one. It outranks the marks the player has left
@@ -4495,7 +4504,7 @@ export default function App() {
        * the reason the toolbar has one button: *stop* means the same thing
        * whether the character is routing or looping.
        */
-      ...(movementOf(view.walk, view.loop).moving
+      ...(movementIn(view).moving
         ? [
             {
               id: 'move:stop',
@@ -5175,7 +5184,7 @@ export default function App() {
           // One reading of the two progresses, shared with the Navigation
           // card, so the button and the card cannot disagree about whether
           // this character is going anywhere.
-          movement: movementOf(v.walk, v.loop),
+          movement: movementIn(v),
           /*
            * The same function main will run when the button is pressed, over
            * the same two facts — so a button that is lit is a button that will

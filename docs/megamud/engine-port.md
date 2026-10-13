@@ -176,7 +176,12 @@ the swap. For such a character:
   would on the Toolbar card, those the character's `[Toolbar]` shows (Settings
   → MegaMUD → Toolbar), and are drawn from the automation snapshot, pushed
   whenever they change — a press, a mode's defaults, a remote. They are the
-  session's: a settings save keeps them as they stand.
+  session's: a settings save keeps them as they stand. They are drawn as
+  MegaMUD's window draws them (`0x460d50`): with All Off on, every other one
+  reads off and is greyed, and so is the transport. The snapshot also says
+  whether the engine is walking or looping, and the transport, the Navigation
+  card and the palette's stop read that in place of the walker's and loop
+  runner's progress, which stand idle while the engine walks.
 - **Its questions** (MegaMUD's message boxes: a path step to relearn, the
   key, gold or level a destination needs) are answered *no* where asked, as
   MegaMUD cannot be kept waiting here, and put to the player in a dialog; a

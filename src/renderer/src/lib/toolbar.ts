@@ -412,6 +412,8 @@ export function toolbarButtons(subject: ToolbarSubject): ToolbarButton[] {
           label: megaLabel(name),
           icon: MEGA_ICONS[name],
           on: mega.on[name],
+          // MegaMUD greys every toggle but All Off itself while it is on (`0x460d50`).
+          disabled: name !== 'allOff' && mega.on.allOff,
           fixed: true,
           run: () => setMegaToggle(name)
         }))
@@ -476,7 +478,8 @@ export function toolbarButtons(subject: ToolbarSubject): ToolbarButton[] {
       label: movement.moving ? t('toolbar.stopMoving') : t('toolbar.startMoving'),
       icon: movement.moving ? 'stop' : 'play',
       on: movement.moving,
-      disabled: !inRealm || (!movement.moving && !movement.resumable),
+      // And under MegaMUD's All Off, its Go/Stop greyed (`0x460d50`).
+      disabled: !inRealm || (!movement.moving && !movement.resumable) || mega?.on.allOff === true,
       run: () => (movement.moving ? stopMoving() : startMoving())
     },
     {

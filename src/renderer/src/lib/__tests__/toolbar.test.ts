@@ -4,6 +4,7 @@ import { AUTOMATION_SWITCH_NAMES, automationSwitches, DEFAULT_CONFIG } from '@sh
 import { DEFAULT_INTERNAL } from '@shared/internal';
 
 import { NOT_MOVING, type Movement } from '@shared/movement';
+import { megaMovement } from '@shared/megamud/toggles';
 
 import { shippedToolbar } from '../../hooks/useToolbarPins';
 import { TOOLBAR_ACTIONS, toolbarButtons, type ToolbarSubject } from '../toolbar';
@@ -274,7 +275,10 @@ describe('the MegaMUD engine’s toggles', () => {
       search: false,
       afk: false
     },
-    shown: ['combat' as const, 'nuke' as const]
+    shown: ['combat' as const, 'nuke' as const, 'allOff' as const],
+    walking: false,
+    looping: false,
+    canGo: true
   };
 
   it('stand where the switches would, those the character shows, fixed on the row', () => {
@@ -282,9 +286,32 @@ describe('the MegaMUD engine’s toggles', () => {
     const toggles = buttons.filter((b) => b.id.startsWith('mega:'));
     expect(toggles.map((b) => [b.id, b.on, b.fixed])).toEqual([
       ['mega:combat', true, true],
-      ['mega:nuke', false, true]
+      ['mega:nuke', false, true],
+      ['mega:allOff', false, true]
     ]);
     expect(buttons.some((b) => b.id === 'combat')).toBe(false);
+  });
+
+  /* `0x460d50`: All Off greys every toggle but itself, and Go/Stop. */
+  it('are greyed under All Off, all but All Off itself, and the transport with them', () => {
+    const off = { ...mega, on: { ...mega.on, allOff: true, combat: false } };
+    const buttons = toolbarButtons(subject({ mega: off, movement: megaMovement(off) }));
+    const greyed = (id: string) => buttons.find((b) => b.id === id)?.disabled === true;
+    expect([greyed('mega:combat'), greyed('mega:nuke'), greyed('mega:allOff')]).toEqual([
+      true,
+      true,
+      false
+    ]);
+    expect(greyed('move:toggle')).toBe(true);
+  });
+
+  /* Looping, the transport showed a greyed play, not a stop (2026-10-13). */
+  it('make the transport a stop while the engine walks', () => {
+    const walking = { ...mega, walking: true, looping: true };
+    const move = toolbarButtons(subject({ mega: walking, movement: megaMovement(walking) })).find(
+      (b) => b.id === 'move:toggle'
+    );
+    expect([move!.icon, move!.disabled]).toEqual(['stop', false]);
   });
 
   it('press the engine’s toggle', () => {

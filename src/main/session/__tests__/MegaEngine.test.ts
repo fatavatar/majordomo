@@ -427,6 +427,26 @@ describe('the toolbar’s toggles on the engine', () => {
     e.dispose();
   });
 
+  /* `0x460d50`: under All Off every other toggle is drawn off, and Go cannot be pressed. */
+  it('read off under All Off, and walking as the engine walks', () => {
+    const { e } = engine();
+    e.s.inGame = 1;
+    e.s.MegaMud_AutoCombat = 1;
+    e.s.detours[0]!.path = 'loop';
+    expect([e.toggles.on.combat, e.toggles.canGo]).toEqual([true, true]);
+    e.toggle('allOff');
+    expect([e.toggles.on.allOff, e.toggles.on.combat, e.toggles.canGo]).toEqual([
+      true,
+      false,
+      false
+    ]);
+    e.toggle('allOff');
+    e.s.walking = 1;
+    e.s.looping = 1;
+    expect([e.toggles.walking, e.toggles.looping, e.toggles.on.combat]).toEqual([true, true, true]);
+    e.dispose();
+  });
+
   it('are kept through a settings reload', () => {
     const { e } = engine();
     const before = e.toggles.on.nuke;

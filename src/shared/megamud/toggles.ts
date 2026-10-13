@@ -1,3 +1,5 @@
+import type { Movement } from '../movement';
+
 /**
  * MegaMUD's automation toggles, its toolbar's switches: each the window
  * command that flips it (`0x462d20`, read 2026-10-13) and the `[Toolbar]`
@@ -28,9 +30,29 @@ export type MegaToggle = (typeof MEGA_TOGGLES)[number]['name'];
 
 /** A character's toggles as the MegaMUD engine has them, and which its toolbar shows. */
 export interface MegaToggles {
+  /**
+   * Each toggle as MegaMUD draws it: with All Off on, every other one reads
+   * off (`0x460d50`), whatever it will be when All Off is let go.
+   */
   on: Record<MegaToggle, boolean>;
   /** Those its `[Toolbar]` marks visible, in the table's order. */
   shown: MegaToggle[];
+  /** Walking a path (`0xe184`), its Go/Stop lit. */
+  walking: boolean;
+  /** The path walked is the loop (`0xe188`). */
+  looping: boolean;
+  /** Go would walk something: in the game, not All Off, with a path or roaming to pick up. */
+  canGo: boolean;
+}
+
+/**
+ * The engine's walking as the transport reads it, in place of the walker's
+ * and loop runner's progress, which stand idle while the engine walks.
+ */
+export function megaMovement(mega: MegaToggles): Movement {
+  if (mega.walking)
+    return { kind: mega.looping ? 'loop' : 'route', moving: true, resumable: false };
+  return { kind: null, moving: false, resumable: mega.canGo };
 }
 
 /** A toggle's name off the wire, or null. */
