@@ -420,7 +420,10 @@ export interface RoomRec {
   code?: string;
   /** +0x44: the room's signature (`0x8130`). */
   signature: number;
+  /** +0x06 */
   name: string;
+  /** +0x48: 2 a shop. */
+  flags?: number;
 }
 
 /** MegaMUD's databases for one character. Records learned in play are added to them. */

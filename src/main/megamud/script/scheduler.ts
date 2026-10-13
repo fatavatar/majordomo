@@ -33,7 +33,8 @@ import { invitePlayers, lookAtPlayer, partyStatus, trackPlayer } from './party';
 import { noAllowedExits, pathCommands, walkPath } from './path';
 import { runCheck } from './run';
 import { pendingPump, send } from './send';
-import { gameSetup, listingTimedOut, refreshInventory, refreshStats, refreshWho } from './setup';
+import { gameSetup, refreshInventory, refreshStats, refreshWho } from './setup';
+import { listingTimedOut } from './waits';
 import { forgetAwaited, setState } from './state';
 import { hideStep, sneakStep } from './stealth';
 

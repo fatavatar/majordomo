@@ -81,7 +81,7 @@ export function findCarried(s: Session, name: string): Carried | null {
 }
 
 /** `0x4534b0`/`0x453500`: the coins' weight (three to the pound; GreaterMUD counts them all together). */
-function coinWeight(s: Session): number {
+export function coinWeight(s: Session): number {
   let all = 0;
   let each = 0;
   for (const c of s.inventory) {
@@ -135,14 +135,15 @@ function weighUnknown(s: Session): void {
   s.host.show(`[${w.unknown.item.name} weight calculated as ${weight}]`);
 }
 
+/** `0x4534b0`: how many coins are carried. */
+export function coinCount(s: Session): number {
+  return s.inventory.reduce((n, x) => (x.item && (x.item.flags & COIN) !== 0 ? n + x.count : n), 0);
+}
+
 /** `0x453580`: the weight `count` more of a coin stack adds (three coins to the pound). */
-function coinWeightAdded(s: Session, c: Carried, count: number): number {
-  if (count < 0 && c.count < -count) count = -c.count;
-  const coins = s.inventory.reduce(
-    (n, x) => (x.item && (x.item.flags & COIN) !== 0 ? n + x.count : n),
-    0
-  );
-  const before = s.BBS_GreaterMUD !== 0 ? coins : c.count;
+export function coinWeightAdded(s: Session, c: Carried | null, count: number): number {
+  if (count < 0 && c && c.count < -count) count = -c.count;
+  const before = s.BBS_GreaterMUD !== 0 ? coinCount(s) : (c?.count ?? 0);
   const after = Math.max(0, before + count);
   return Math.trunc(after / 3) - Math.trunc(before / 3);
 }

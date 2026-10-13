@@ -11,6 +11,7 @@ import { findNoCase, strcmp } from '../cstr';
 import type { Session } from '../Session';
 import { unported } from '../unported';
 import { setState } from './state';
+import { clearPending, sixtySeconds, tenSeconds, thirtySeconds } from './waits';
 
 /** One pending command (`0x5c6d40`, `0x5c76a0`, `0x5c7380`, `0x5c7060`). */
 export interface Pending {
@@ -66,9 +67,10 @@ export function send(s: Session, text: string): number {
 }
 
 function resetWaits(s: Session, harder: boolean): void {
-  if (harder) unported('48b180');
-  unported('40a6c0');
-  unported(harder ? '40ad70' : '40a9c0');
+  if (harder) clearPending(s);
+  tenSeconds(s);
+  if (harder) sixtySeconds(s);
+  else thirtySeconds(s);
   s.f_e29c = 1;
   s.f_e2ac = 1;
   s.f_8468 = 0;
