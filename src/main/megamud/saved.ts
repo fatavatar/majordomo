@@ -80,35 +80,39 @@ export function savedItems(s: Session): LearnedItem[] {
     }));
 }
 
-/** The monster's record on the engine's list, made as the loader would have read it when it is not there. */
-function monsterRecord(s: Session, name: string): MonsterRec {
+/**
+ * The monster's records on the engine's list — one for each of the realm's
+ * rows of the name (`megamud/fromWorld.ts`) — or one made as the loader would
+ * have read it when there are none.
+ */
+function monsterRecords(s: Session, name: string): MonsterRec[] {
   const key = mobKey(name);
-  let rec = s.data.monsters.find((m) => mobKey(m.name) === key);
-  if (!rec) {
-    rec = {
-      layer: 0,
-      name: name.slice(0, 30),
-      id: 0,
-      flags: 0,
-      relationship: 0,
-      exp: 0,
-      maxHp: 0,
-      preSpell: '',
-      attackSpell: '',
-      preMax: 0,
-      attackMax: 0
-    } satisfies MonsterRec;
-    s.data.monsters.push(rec);
-  }
-  return rec;
+  const found = s.data.monsters.filter((m) => mobKey(m.name) === key);
+  if (found.length > 0) return found;
+  const rec: MonsterRec = {
+    layer: 0,
+    name: name.slice(0, 30),
+    id: 0,
+    flags: 0,
+    relationship: 0,
+    exp: 0,
+    maxHp: 0,
+    preSpell: '',
+    attackSpell: '',
+    preMax: 0,
+    attackMax: 0
+  };
+  s.data.monsters.push(rec);
+  return [rec];
 }
 
 /** A monster learned before, put on the engine's list as the loader would have read it. */
 export function rememberStance(s: Session, name: string, relationship: Relationship): void {
-  const rec = monsterRecord(s, name);
-  rec.relationship = RELATIONSHIP_NUMBER[relationship];
-  // "Marked as non-enemy" sets 2 beside avoid (`0x426940`).
-  if (relationship === 'avoid') rec.flags |= 2;
+  for (const rec of monsterRecords(s, name)) {
+    rec.relationship = RELATIONSHIP_NUMBER[relationship];
+    // "Marked as non-enemy" sets 2 beside avoid (`0x426940`).
+    if (relationship === 'avoid') rec.flags |= 2;
+  }
 }
 
 /** The priority nibble's bands (`readMegaMudMonsters` reads them the other way). */
@@ -130,7 +134,10 @@ const STOP_TO_KILL = 0x800;
  * combat setting, as MegaMUD's does. Not marked changed: it is ours already.
  */
 export function rememberRule(s: Session, rule: MonsterRule): void {
-  const rec = monsterRecord(s, rule.mob);
+  for (const rec of monsterRecords(s, rule.mob)) ruleOnto(rec, rule);
+}
+
+function ruleOnto(rec: MonsterRec, rule: MonsterRule): void {
   if (rule.relationship !== undefined) {
     rec.relationship = RELATIONSHIP_NUMBER[rule.relationship];
     if (rule.relationship === 'avoid') rec.flags |= 2;

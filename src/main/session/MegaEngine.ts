@@ -17,7 +17,7 @@
  */
 
 import { stricmp } from '../megamud/cstr';
-import type { MegaData } from '../megamud/data';
+import type { ItemRec, MegaData } from '../megamud/data';
 import { applyItemRule } from '../megamud/fromWorld';
 import { bbsSetup } from '../megamud/bbs';
 import { grantPlayers, loadCharacter } from '../megamud/character';
@@ -327,6 +327,11 @@ export class MegaEngine {
   private alerts: Readonly<Record<string, unknown>>;
   /** Where what is learned is kept; null when nowhere. */
   private readonly memory: EngineMemory | null;
+  /** The databases this engine's copy was taken from, so new ones are seen. */
+  private dataFrom: MegaData;
+  /** Our monster and item tables as last put on, to put on a new copy too. */
+  private monsterRules: readonly MonsterRule[] = [];
+  private itemRules: readonly ItemRule[] = [];
   /** Signatures learned since they were last kept. */
   private readonly unkept = new Map<RoomId, number>();
   /** When our tracker had each of the ten blessing slots put up, at the last look; null when down. */
@@ -355,6 +360,7 @@ export class MegaEngine {
       blessingsCleared: () => this.blessingsCleared()
     };
     this.memory = setup.memory ?? null;
+    this.dataFrom = setup.data;
     this.shown = shownToggles(setup.settings.live['Toolbar']);
     this.alerts = setup.settings.live['Alerts'] ?? {};
     // A copy: the data read is shared between sessions, and the engine changes it as it learns.
@@ -395,6 +401,7 @@ export class MegaEngine {
    * `Monsters.md` and the lore said: the player's word is the last.
    */
   useMonsters(rules: readonly MonsterRule[]): void {
+    this.monsterRules = rules;
     for (const rule of rules) rememberRule(this.s, rule);
     findLongestFirst(this.s);
   }
@@ -405,6 +412,7 @@ export class MegaEngine {
    * while the character plays reaches it, as the monster table does.
    */
   useItems(rules: readonly ItemRule[]): void {
+    this.itemRules = rules;
     for (const rule of rules) {
       let rec = this.s.data.items.find((item) => itemKey(item.name) === rule.item);
       if (!rec) {
@@ -438,7 +446,40 @@ export class MegaEngine {
     if (s.eventsChanged !== 0) [s.events, s.eventNext] = [events, eventNext];
     if (s.monitorsChanged !== 0) s.monitors = monitors;
     grantPlayers(s, setup.grants);
+    if (setup.data !== this.dataFrom) this.newData(setup.data);
     this.noteToggles();
+  }
+
+  /**
+   * New databases for a running engine — the realm's data arrived or changed
+   * after the engine started, which MegaMUD would have read at its next
+   * start. A fresh copy with what the engine knows put back on it: the
+   * players and rooms it has met, what our stores remember, our tables; and
+   * what it is carrying and looking at found again by name.
+   */
+  private newData(data: MegaData): void {
+    const s = this.s;
+    const was = s.data;
+    this.dataFrom = data;
+    s.data = structuredClone(data);
+    s.data.players = was.players;
+    s.data.rooms = was.rooms;
+    if (this.memory) {
+      for (const [name, relationship] of this.memory.stances) rememberStance(s, name, relationship);
+      for (const item of this.memory.items) rememberItem(s, item);
+    }
+    this.useMonsters(this.monsterRules);
+    this.useItems(this.itemRules);
+    const item = (rec: ItemRec | null): ItemRec | null =>
+      rec === null ? null : (s.data.items.find((i) => i.name === rec.name) ?? rec);
+    for (const c of s.inventory) c.item = item(c.item);
+    for (const e of s.room) {
+      e.item = item(e.item);
+      if (e.mon !== null) {
+        const name = e.mon.name;
+        e.mon = s.data.monsters.find((m) => m.name === name) ?? e.mon;
+      }
+    }
   }
 
   /**

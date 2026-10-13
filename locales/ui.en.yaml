@@ -773,6 +773,7 @@ notices:
         for the next launch.'
     closeRefused: '{refusalReason} Disconnect it before closing the tab.'
   world:
+    megamudData: 'MegaMUD data for {name} from {realm}: {monsters} monsters, {items} items, {spells} spells, {messages} messages.'
     converted: 'Realm {file}: {rooms} rooms in {seconds}s.'
     converting: Converting the realm database {file}…
     destinations:

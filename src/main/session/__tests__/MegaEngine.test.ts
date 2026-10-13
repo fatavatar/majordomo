@@ -425,6 +425,37 @@ describe('what the engine learns, kept between sessions', () => {
   });
 });
 
+describe('databases that arrive after the engine started', () => {
+  /*
+   * 2026-10-13: an engine set up before its realm's data was in hand kept the
+   * empty databases it started with, and knew no monster all session.
+   */
+  it('are taken up on the next reload, with our tables and what it carries kept', () => {
+    const { e } = engine();
+    const settings = defaultSettings();
+    e.useMonsters([{ mob: 'forgotten dragon slayer', relationship: 'escape' }]);
+    e.s.inventory.push({ count: 1, flags: 0, item: { ...coinItems('runic')[0]! } });
+    const data = {
+      monsters: [
+        {
+          ...newMonster({ monsters: [], items: [], spells: [] }),
+          name: 'forgotten dragon slayer',
+          exp: 900
+        }
+      ],
+      items: coinItems('runic'),
+      spells: []
+    };
+    e.reload({ settings, data, grants: {} });
+    expect(e.s.data.monsters.map((m) => [m.name, m.exp, m.relationship])).toEqual([
+      ['forgotten dragon slayer', 900, 5]
+    ]);
+    expect(e.s.inventory[0]!.item).toBe(e.s.data.items[0]);
+    expect(data.monsters[0]!.relationship).toBe(0);
+    e.dispose();
+  });
+});
+
 describe('blessings the realm says last', () => {
   /*
    * Spells.md had necropotence without the lasting bit a blessing needs, so

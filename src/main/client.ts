@@ -897,6 +897,19 @@ function megamudFor(id: SessionId): { key: string; setup: MegaEngineSetup } | nu
       data: megaDataFrom(world, { items: tables.items, messages: tables.messages }, runic)
     };
     megaDataBuilt.set(id, built);
+    // Said once a build, so what a character's engine was given is on record.
+    announce(
+      'world',
+      t('notices.world.megamudData', {
+        name: profile.name,
+        realm: world?.info.source || '-',
+        monsters: built.data.monsters.length,
+        items: built.data.items.length,
+        spells: built.data.spells.length,
+        messages: built.data.messages?.length ?? 0
+      }),
+      'log'
+    );
   }
   const data = built.data;
   const dataKey = `${world?.info.source ?? ''}|${runic ?? ''}`;

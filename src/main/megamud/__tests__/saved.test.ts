@@ -90,6 +90,16 @@ describe('our monster table on the engine’s records', () => {
     expect(rec.flags & 0x40000000).toBe(0);
   });
 
+  // `giant rat` is eight realm rows, a record each: the row is for all of them.
+  it('puts a row on every record of the name', () => {
+    const { s } = session();
+    s.data.monsters = [];
+    const one = Object.assign(newMonster(s.data), { name: 'giant rat', id: 1 });
+    const two = Object.assign(newMonster(s.data), { name: 'giant rat', id: 1007 });
+    rememberRule(s, { mob: 'giant rat', relationship: 'escape' });
+    expect([one.relationship, two.relationship]).toEqual([5, 5]);
+  });
+
   it('makes a record for a monster the realm’s data never named', () => {
     const { s } = session();
     s.data.monsters = [];
