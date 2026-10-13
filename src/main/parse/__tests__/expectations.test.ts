@@ -438,6 +438,17 @@ describe('a step unanswered is probed, and an ordered answer settles it', () => 
   });
   afterEach(() => vi.useRealTimers());
 
+  /*
+   * The MegaMUD engine's bare Enters were each probed and announced as a
+   * move nothing answered (2026-10-13); nothing waits on a re-read.
+   */
+  it('probes a move, not a re-read', () => {
+    const memory = new Expectations();
+    const at = Date.now();
+    memory.noteReread(true);
+    expect(memory.staleProbe(at + probe)).toBeNull();
+  });
+
   it('names the head once it is past the probe clock, once, and then waits the longer life', () => {
     const memory = new Expectations();
     const at = Date.now();

@@ -3825,6 +3825,7 @@ export class SessionManager {
         // as the walker's nudge does, and the block it produces has to be
         // attributed to it for the same reason. Same gate, same door.
         this.tracker.observeReread();
+        this.mega?.playerSent();
       }
       this.sink.command?.(this.reportable(command), 'user');
       if (command.length > 0) {

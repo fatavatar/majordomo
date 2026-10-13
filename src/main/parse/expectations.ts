@@ -713,10 +713,14 @@ export class Expectations {
    *
    * The caller sends the probe only where the realm has the word; on a realm
    * without one nothing is marked and the flat clock stands.
+   *
+   * A move only: nothing waits on a re-read or a peek, and the notice says
+   * "the last move". The MegaMUD engine's bare Enters were each probed and
+   * announced as a move nothing answered (2026-10-13).
    */
   staleProbe(now: number): string | null {
     const head = this.pending[0];
-    if (head === undefined || head.probedAt !== undefined) return null;
+    if (head === undefined || head.kind !== 'move' || head.probedAt !== undefined) return null;
     if (this.typingHolds(now)) return null;
     if (now - this.reachedAt(head) < tuning().parse.staleProbeMs) return null;
     head.probedAt = now;

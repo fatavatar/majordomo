@@ -365,7 +365,19 @@ export class MegaEngine {
 
   /** A command the player typed. */
   typed(command: string): void {
+    this.playerSent();
     this.safely(() => typedCommand(this.s, 0, command));
+  }
+
+  /**
+   * The player sent a line, a bare Enter among them. MegaMUD sends the
+   * player's line itself (`0x48e7f0` → `0x42d9f0`), which stamps the clock
+   * its re-prompt counts from: a bare Enter after `LagWait` + 15 seconds
+   * with nothing sent (`0x4653d0`). Ours go out past it, so it is stamped here.
+   */
+  playerSent(): void {
+    this.s.now = Math.floor(Date.now() / 1000);
+    this.s.f_322a0 = this.s.now;
   }
 
   connected(): void {

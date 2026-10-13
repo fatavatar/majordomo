@@ -276,3 +276,21 @@ describe('blessings told by our tracker’s buffs', () => {
     expect(e.s.blessCastAt[0]).toBe(0);
   });
 });
+
+describe('the player sending a line', () => {
+  /*
+   * MegaMUD's re-prompt is a bare Enter after `LagWait` + 15 seconds with
+   * nothing sent (`0x4653d0`), counted from its sender, which sends the
+   * player's lines too. Ours go out past it, and the Enter cut into what the
+   * player was typing (2026-10-13).
+   */
+  it('starts the re-prompt clock over', () => {
+    const { e } = engine();
+    e.s.f_322a0 = 1;
+    e.typed('gossip hello');
+    expect(e.s.f_322a0).toBe(Math.floor(Date.now() / 1000));
+    e.s.f_322a0 = 1;
+    e.playerSent();
+    expect(e.s.f_322a0).toBe(Math.floor(Date.now() / 1000));
+  });
+});
