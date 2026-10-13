@@ -34,7 +34,7 @@ import { LoginAutomator, type StandDown } from '../automation/LoginAutomator';
 import { RuleEngine } from '../automation/RuleEngine';
 import { MessageTriggers } from '../automation/MessageTriggers';
 import type { MessageTrigger } from '../../shared/messageTriggers';
-import type { ItemRule } from '../../shared/itemRules';
+import { mergeItemRules, type ItemRule } from '../../shared/itemRules';
 import {
   relationshipOf,
   withRealmMonsters,
@@ -4360,7 +4360,7 @@ export class SessionManager {
     this.useCoins(realm.coins);
     this.useMonsters(realm.monsters);
     this.realmItems = realm.items;
-    this.mega?.useItems(realm.items);
+    this.mega?.useItems(this.megaItems());
   }
 
   /**
@@ -4770,7 +4770,7 @@ export class SessionManager {
         { ...setup, learned: setup.learned ?? learned }
       );
       this.mega.useMonsters(this.automationConfig.combat.monsters);
-      this.mega.useItems(this.realmItems);
+      this.mega.useItems(this.megaItems());
       if (this.client.connected) this.mega.connected();
     }
     if (this.configured !== null) this.configure(...this.configured);
@@ -4787,6 +4787,11 @@ export class SessionManager {
   /** Stop trying: the engine's redial called off, as Disconnect calls ours off. */
   stopRedial(): void {
     this.mega?.cancelRedial();
+  }
+
+  /** The realm's item table with this character's own rows laid over it, field by field. */
+  private megaItems(): ItemRule[] {
+    return mergeItemRules(this.realmItems, this.automationConfig.loot.itemDetails);
   }
 
   /** Whether the MegaMUD engine runs this character. */
@@ -4875,6 +4880,7 @@ export class SessionManager {
     const previousParty = this.automationConfig.party;
     this.automationConfig = automation;
     this.mega?.useMonsters(automation.combat.monsters);
+    this.mega?.useItems(this.megaItems());
     this.locateMethod = locate;
     this.rewriter.configure(rewrites);
     // A new design gets to be refused once, out loud, if it is too wide. By

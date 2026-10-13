@@ -25,6 +25,7 @@ import type { Home } from '../app/home';
 import { t } from '../app/i18n';
 import {
   ownHangPenalties,
+  ownItemRules,
   ownMonsterRules,
   PROFILE_ACCENTS,
   resolveProfile,
@@ -1295,7 +1296,11 @@ export class SettingsEditor {
         train: effective?.automation.train ?? DEFAULT_CONFIG.automation.train,
         quests: effective?.automation.quests ?? DEFAULT_CONFIG.automation.quests,
         gear: effective?.automation.gear ?? DEFAULT_CONFIG.automation.gear,
-        loot: effective?.automation.loot ?? DEFAULT_CONFIG.automation.loot,
+        // The item rows the character's own, for `monsters`' reason above.
+        loot: {
+          ...(effective?.automation.loot ?? DEFAULT_CONFIG.automation.loot),
+          itemDetails: ownItemRules(record)
+        },
         drop: effective?.automation.drop ?? DEFAULT_CONFIG.automation.drop,
         search: effective?.automation.search ?? DEFAULT_CONFIG.automation.search,
         banking: effective?.automation.banking ?? DEFAULT_CONFIG.automation.banking,

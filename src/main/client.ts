@@ -131,6 +131,7 @@ import {
 import {
   asItemRules,
   itemSaysAnything,
+  mergeItemRules,
   type ItemImport,
   type ItemTable
 } from '../shared/itemRules';
@@ -889,12 +890,15 @@ function megamudFor(id: SessionId): { key: string; setup: MegaEngineSetup } | nu
   const runic = profile.config.connection.coins.runic;
   const world = worldFor(id);
   const tables = realmTablesFor(id);
-  const from = [world, tables.items, tables.messages, runic] as const;
+  const own = profile.config.automation.loot.itemDetails;
+  const from = [world, tables.items, own, tables.messages, runic] as const;
   let built = megaDataBuilt.get(id);
   if (built === undefined || built.from.some((part, i) => part !== from[i])) {
+    // The realm's item table with the character's own rows laid over it.
+    const items = mergeItemRules(tables.items, own);
     built = {
       from,
-      data: megaDataFrom(world, { items: tables.items, messages: tables.messages }, runic)
+      data: megaDataFrom(world, { items, messages: tables.messages }, runic)
     };
     megaDataBuilt.set(id, built);
     // Said once a build, so what a character's engine was given is on record.

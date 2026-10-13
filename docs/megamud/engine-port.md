@@ -163,7 +163,10 @@ the swap. For such a character:
 
   The player's choices come from the realm's tables: `monsters.yaml`,
   `items.yaml` (MegaMUD's item details) and `messages.yaml`, the last two
-  also put on a running engine when edited. A character's own MegaMUD
+  also put on a running engine when edited. Over the realm's tables go the
+  options file's and then the character's own rows, field by field:
+  `combat.monsters` and `loot.itemDetails` (the Item Details list beside
+  Auto-Looting). A character's own MegaMUD
   folder (`profiles/<id>/Default`) is taken into those tables once, where
   the realm has none, and renamed `Default.imported`. Without realm data
   MegaMUD learns monsters and items as it meets them and knows no spells.

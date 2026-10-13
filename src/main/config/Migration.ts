@@ -290,6 +290,7 @@ function migrateAll(options: MigrationOptions): void {
   statedTheLosingHpWait(home, note, options.template);
   theMegaMudSettingsMovedIn(home, note);
   theMegaMudDataMovedIn(home, note);
+  statedTheItemDetails(home, note, options.template);
 }
 
 /**
@@ -7672,5 +7673,45 @@ function theMegaMudDataMovedIn(home: Home, note: (message: string) => void): voi
     moved.length === 1
       ? t('notices.migration.megamudDataMovedIn.one', params)
       : t('notices.migration.megamudDataMovedIn.many', params)
+  );
+}
+
+/**
+ * `automation.loot.itemDetails` into every file that states `loot:` without
+ * it, empty, after `maxEncumbrance` with the template's paragraph
+ * (2026-10-13): MegaMUD's item details at the scope of a character or the
+ * options file, laid over the realm's item table. Empty is what the engine
+ * already did. Idempotent; nothing stated is overwritten.
+ */
+function statedTheItemDetails(
+  home: Home,
+  note: (message: string) => void,
+  template: string | undefined
+): void {
+  const comment = templateComments(template, 'automation').get('automation.loot.itemDetails');
+  const files = [home.options, ...directories(home.profilesDir).map((id) => home.profile(id).file)];
+  const stated: string[] = [];
+
+  for (const file of files) {
+    edit(file, (document) => {
+      const loot = document.getIn(['automation', 'loot'], true);
+      if (!isMap(loot) || loot.has('itemDetails')) return false;
+      const pair = document.createPair('itemDetails', document.createNode([])) as Pair;
+      if (typeof comment === 'string' && isScalar(pair.key)) pair.key.commentBefore = comment;
+      const after = loot.items.findIndex(
+        (item) => isScalar(item.key) && item.key.value === 'maxEncumbrance'
+      );
+      loot.items.splice(after === -1 ? loot.items.length : after + 1, 0, pair);
+      stated.push(file);
+      return true;
+    });
+  }
+
+  if (stated.length === 0) return;
+  const params = { count: stated.length, fileList: stated.join(', ') };
+  note(
+    stated.length === 1
+      ? t('notices.migration.itemDetailsStated.one', params)
+      : t('notices.migration.itemDetailsStated.many', params)
   );
 }

@@ -1,5 +1,6 @@
 import FormField, { CheckField, NumberField, SelectField, TextField } from './FormField';
 
+import { ItemRuleList } from './ItemRules';
 import { keepFocus } from '../lib/focus';
 import { t } from '../lib/i18n';
 import { GRADE_OPTIONS, joinNames, splitNames } from '../lib/form';
@@ -220,6 +221,28 @@ export default function CarrySections({
               setLoot({ maxEncumbrance: Math.max(0, Number.parseInt(value, 10) || 0) })
             }
             value={String(loot.maxEncumbrance)}
+          />
+        </div>
+      </fieldset>
+
+      {/*
+        MegaMUD's item details at this scope, laid over the realm's item table
+        field by field (`loot.itemDetails`). Part of the form's draft, so it
+        saves with it, as the monster rows do.
+      */}
+      <fieldset className="settings-menus">
+        <legend>{t('settings.movement.itemRowsLegend')}</legend>
+        <p className="settings-note">{t('settings.movement.itemRowsNote')}</p>
+        <div className="realm-messages">
+          <ItemRuleList
+            addLabel={t('settings.items.add')}
+            emptyText={t('settings.movement.itemRowsNone')}
+            namePrefix={id('item-row')}
+            onChange={(rows) => {
+              setLoot({ itemDetails: rows });
+              return Promise.resolve(null);
+            }}
+            rows={loot.itemDetails}
           />
         </div>
       </fieldset>

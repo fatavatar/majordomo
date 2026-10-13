@@ -6831,3 +6831,40 @@ describe("a character's MegaMUD databases", () => {
     );
   });
 });
+
+describe('Item Details stated', () => {
+  const loot = (): Record<string, unknown> =>
+    ((parse(fs.readFileSync(home.options, 'utf8')).automation as Record<string, unknown>)['loot'] ??
+      {}) as Record<string, unknown>;
+
+  beforeEach(() => {
+    fs.mkdirSync(path.dirname(home.options), { recursive: true });
+  });
+
+  it('writes it empty after maxEncumbrance, once, with the template’s words', () => {
+    fs.writeFileSync(
+      home.options,
+      'automation:\n  loot:\n    coins: true\n    maxEncumbrance: 0\n    stopAtGrade: never\n',
+      'utf8'
+    );
+    migrate(true);
+    expect(loot()['itemDetails']).toEqual([]);
+    const text = fs.readFileSync(home.options, 'utf8');
+    expect(text.indexOf('itemDetails:')).toBeGreaterThan(text.indexOf('maxEncumbrance:'));
+    expect(text.indexOf('itemDetails:')).toBeLessThan(text.indexOf('stopAtGrade:'));
+    expect(text).toContain("MegaMUD's Game Item");
+    expect(said.filter((line) => line.includes('Item Details'))).toHaveLength(1);
+    migrate(true);
+    expect(fs.readFileSync(home.options, 'utf8')).toBe(text);
+  });
+
+  it('leaves stated rows alone', () => {
+    fs.writeFileSync(
+      home.options,
+      'automation:\n  loot:\n    itemDetails:\n      - { item: rope, buy: true }\n',
+      'utf8'
+    );
+    migrate();
+    expect(loot()['itemDetails']).toEqual([{ item: 'rope', buy: true }]);
+  });
+});

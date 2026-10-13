@@ -217,6 +217,9 @@ notices:
     survivalFloorStated:
       many: 'Only Open Fights Survived % was added, off, to {count} files: {fileList}'
       one: 'Only Open Fights Survived % was added, off, to {fileList}'
+    itemDetailsStated:
+      many: 'Item Details (MegaMUD''s item choices, laid over the realm''s item table) were added, empty, to {count} files: {fileList}'
+      one: 'Item Details (MegaMUD''s item choices, laid over the realm''s item table) were added, empty, to {fileList}'
     losingHpWaitStated:
       many: 'Walk While Losing HP was added, off, to {count} files: {fileList}'
       one: 'Walk While Losing HP was added, off, to {fileList}'
@@ -4035,6 +4038,13 @@ settings:
     lootItemsLabel: Auto-Get Items List
     lootItemsPlaceholder: gem, scroll
     lootLegend: Auto-Looting
+    itemRowsLegend: Item Details
+    itemRowsNone: No item rows here. The realm's item table applies as it is.
+    itemRowsNote:
+      'What the MegaMUD engine does differently about particular items here — MegaMUD''s item
+      details, laid over the realm''s item table one field at a time: collect, discard, equip, buy
+      or sell, the least to keep and the most to get. A field left blank keeps the realm''s answer;
+      a character''s own rows are laid over the ones on the Global page.'
     bashDoors: Auto-Bash Doors
     bashDoorsHint:
       Brute force, when your strength is close to what the realm records for the door. It

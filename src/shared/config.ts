@@ -59,6 +59,7 @@ import { isRemoteName, type PlayerGrant, type RemoteName } from './remotes';
 import type { ConnectionTarget, StreamEncoding } from './types';
 import { mobKey } from './world';
 import { asMonsterRules, type MonsterRule } from './monsterRules';
+import { asItemRules, type ItemRule } from './itemRules';
 // A value import, and safe: `commands.ts` imports nothing from `shared/`, so
 // there is no cycle for a bundler to resolve the wrong way round.
 import { REREAD_ROOM } from './commands';
@@ -1253,6 +1254,14 @@ export interface LootConfig {
   convertAt: EncumbranceGate;
   /** Item names to pick up whenever a look lists them. Prefixes, as `get` reads them. */
   items: string[];
+  /**
+   * What this character says about particular items — MegaMUD's *Game Item
+   * Details* (`shared/itemRules.ts`, 2026-10-13), for the MegaMUD engine.
+   * Laid field by field over the realm's own table
+   * (`servers/<id>/items.yaml`), as `combat.monsters` is over the realm's
+   * monster table, and the options file's rows under a character's own.
+   */
+  itemDetails: ItemRule[];
   /**
    * Also pick up anything the realm prices at or above this, in copper.
    * 0 never does.
@@ -2931,6 +2940,7 @@ export const DEFAULT_CONFIG: AppConfig = {
       coinKinds: [...DENOMINATIONS],
       discardKinds: [],
       items: [],
+      itemDetails: [],
       minPrice: 0,
       maxEncumbrance: 0,
       stopAtGrade: 'never',
@@ -4130,6 +4140,7 @@ function normalizeLoot(value: unknown): LootConfig {
     convertWith: str(raw['convertWith'], d.convertWith).trim(),
     convertAt: gate(raw['convertAt'], d.convertAt),
     items,
+    itemDetails: asItemRules(raw['itemDetails']),
     // Capped well above any price the shipped realm states, so a typo cannot
     // make the field mean "never", and floored at 0, which is what off means.
     minPrice: int(raw['minPrice'], d.minPrice, 0, 100_000_000),

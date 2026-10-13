@@ -975,6 +975,24 @@ automation:
     minPrice: 0
     maxEncumbrance: 0
 
+    # What this character says about particular items -- MegaMUD's Game Item
+    # Details, one row per item, for the MegaMUD engine. Each row names an
+    # item and only what is chosen for it: collect, discard, equip, find,
+    # open, buy, sell (or stash), cannotTake, backstab and mustHaveMin, the
+    # least to keep (keep), the most to get (most), the path that gets it
+    # (ifNeeded) and the shop it is bought at or sold to (shop, as the realm
+    # names the shop).
+    #
+    #   itemDetails:
+    #     - { item: healing potion, buy: true, mustHaveMin: true, keep: 5 }
+    #     - { item: rusty dagger, discard: true }
+    #
+    # Laid one field at a time over the realm's own table
+    # (servers/<id>/items.yaml, imported from Items.md on the realm's page): a
+    # field left out keeps what the realm's row says. The item's weight,
+    # price, type and where it is worn are the realm data's.
+    itemDetails: []
+
   # Dropping named junk, unasked -- the other half of MegaMUD's drop list, and
   # what keeps auto-loot from hoarding a pack over the encumbrance the walker
   # then stalls under.

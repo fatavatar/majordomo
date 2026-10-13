@@ -79,6 +79,7 @@ import type { TrainedAttribute } from './training';
 import type { StreamEncoding } from './types';
 import { isRecord } from './values';
 import { isRemoteName, type PlayerGrant, type RemoteName } from './remotes';
+import { asItemRules, type ItemRule } from './itemRules';
 import { asMonsterRules, type MonsterRule } from './monsterRules';
 
 const ENCODINGS: readonly StreamEncoding[] = ['cp437', 'utf8', 'latin1'];
@@ -536,6 +537,8 @@ export interface ProfileDraft {
     coinKinds: Denomination[];
     discardKinds: Denomination[];
     items: string[];
+    /** This character's own item rows, laid over the realm's. See `LootConfig`. */
+    itemDetails: ItemRule[];
     minPrice: number;
     maxEncumbrance: number;
     stopAtGrade: EncumbranceGate;
@@ -1055,6 +1058,7 @@ export function asProfileDraft(value: unknown): ProfileDraft | null {
       convertWith: text(loot['convertWith']).slice(0, 40),
       convertAt: asGate(loot['convertAt']),
       items: words(loot['items'], 32),
+      itemDetails: asItemRules(loot['itemDetails']),
       minPrice: Math.max(0, Math.round(Number(loot['minPrice']) || 0)),
       maxEncumbrance: Math.max(0, Math.round(Number(loot['maxEncumbrance']) || 0))
     },

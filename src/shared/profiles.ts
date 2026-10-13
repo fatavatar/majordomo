@@ -34,6 +34,7 @@ import {
 import { asCoinNames, type CoinNames } from './coins';
 import { asBbsSettings, type BbsSettings } from './megamud/bbs';
 import { defaultSettings, settingsFromStored, type MegaSettings } from './megamud/settings';
+import { asItemRules, mergeItemRules, type ItemRule } from './itemRules';
 import { asMonsterRules, mergeMonsterRules, type MonsterRule } from './monsterRules';
 import type { ConnectionTarget } from './types';
 import { isRecord, str } from './values';
@@ -265,6 +266,36 @@ function withGlobalMonsters(
 }
 
 /**
+ * `loot.itemDetails` across the two scopes, as `withGlobalMonsters` merges
+ * `combat.monsters` and for its reason: a row is addressed by item, and the
+ * realm's imported table goes under both when the engine's data is built.
+ */
+function withGlobalItems(
+  config: AppConfig,
+  global: ItemRule[],
+  raw: Record<string, unknown>
+): AppConfig {
+  const own = ownItemRules(raw);
+  if (global.length === 0 || own.length === 0) return config;
+  return {
+    ...config,
+    automation: {
+      ...config.automation,
+      loot: { ...config.automation.loot, itemDetails: mergeItemRules(global, own) }
+    }
+  };
+}
+
+/** The item rows a character's own file states, for `ownMonsterRules`' reason. */
+export function ownItemRules(raw: Record<string, unknown>): ItemRule[] {
+  const automation = raw['automation'];
+  if (!isRecord(automation)) return [];
+  const loot = automation['loot'];
+  if (!isRecord(loot)) return [];
+  return asItemRules(loot['itemDetails']);
+}
+
+/**
  * The monster rows a character's own file states, before `overlay` flattened
  * them.
  *
@@ -446,9 +477,13 @@ export function resolveProfile(id: string, raw: unknown, baseSource: unknown): P
       // options file goes through: one place decides what a valid value is, and
       // it runs exactly once.
       config: withRealmHangPenalties(
-        withGlobalMonsters(
-          normalizeConfig(overlay(baseSource, patch)),
-          base.automation.combat.monsters,
+        withGlobalItems(
+          withGlobalMonsters(
+            normalizeConfig(overlay(baseSource, patch)),
+            base.automation.combat.monsters,
+            raw
+          ),
+          base.automation.loot.itemDetails,
           raw
         ),
         server.hangPenalties,

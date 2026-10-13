@@ -373,3 +373,34 @@ describe('the monster rows, across global and character', () => {
     ]);
   });
 });
+
+/* The item rows (MegaMUD's item details) merge across the two scopes as the monster rows do. */
+describe('the item rows, across global and character', () => {
+  const realm = { name: 'GreaterMUD (local)', host: 'gmud-tgs', port: 2427, encoding: 'cp437' };
+  const withGlobal: Record<string, unknown> = {
+    servers: [realm],
+    automation: { loot: { itemDetails: [{ item: 'rope', buy: true, keep: 1 }] } }
+  };
+
+  it('lays a character’s row over the global one, field by field', () => {
+    const profile = resolve(
+      {
+        name: 'Thorn',
+        server: 'GreaterMUD (local)',
+        automation: {
+          loot: {
+            itemDetails: [
+              { item: 'rope', keep: 3 },
+              { item: 'torch', collect: true }
+            ]
+          }
+        }
+      },
+      withGlobal
+    );
+    expect(profile.config.automation.loot.itemDetails).toEqual([
+      { item: 'rope', buy: true, keep: 3 },
+      { item: 'torch', collect: true }
+    ]);
+  });
+});
