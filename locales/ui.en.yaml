@@ -4118,6 +4118,31 @@ settings:
     themeSystem: Follow the system
     usernameLabel: Username
   realms:
+    bbsLegend: MegaMUD BBS Set-up
+    bbsNote:
+      What MegaMUD's BBS.INI would say about this realm, for a character the MegaMUD engine runs.
+      A key left blank is MegaMUD's own default, shown in the field. The runic coin's name is the
+      Coin Names above.
+    bbs:
+      MenuPrompt: Game menu prompt
+      LogoffCmd: Log-off command
+      RelogCmd: Relog command
+      AnsiCmd: ANSI command
+      SpeechPrefix: Speech prefix
+      BroadcastPrefix: Broadcast prefix
+      LogonMsg: Log-on message
+      LogoffMsg: Log-off message
+      ShutDownMsg: Shutdown message
+      BroadcastMsg: Broadcast message
+      Global1Msg: Global message 1
+      Global1Two: Global 1 is two lines
+      Global2Msg: Global message 2
+      Global2Two: Global 2 is two lines
+      Global3Msg: Global message 3
+      Global3Two: Global 3 is two lines
+      MaxInputSize: Longest line typed
+      PvpLevel: PvP level
+      MaxHrsPerDay: Hours allowed a day
     coinsLegend: Coin Names
     coinsNote:
       What this realm calls its coins, where it renames them — one realm prints its runic coins as

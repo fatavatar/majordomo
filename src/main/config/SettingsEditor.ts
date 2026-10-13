@@ -812,6 +812,11 @@ export class SettingsEditor {
         const coins = Object.entries(draft.coins).filter(([, name]) => name.length > 0);
         if (coins.length > 0) document.setIn(['coins'], Object.fromEntries(coins));
         else if (document.hasIn(['coins'])) document.deleteIn(['coins']);
+
+        // And its MegaMUD BBS set-up: only the keys it states, for the same reason.
+        const bbs = Object.entries(draft.bbs).filter(([, value]) => value.length > 0);
+        if (bbs.length > 0) document.setIn(['bbs'], Object.fromEntries(bbs));
+        else if (document.hasIn(['bbs'])) document.deleteIn(['bbs']);
       },
       verify: (value) => {
         const server = asServer(value, id);

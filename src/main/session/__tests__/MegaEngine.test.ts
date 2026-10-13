@@ -461,6 +461,22 @@ describe('blessings the realm says last', () => {
   });
 });
 
+describe('the realm’s BBS set-up', () => {
+  /* MegaMUD's BBS.INI keys, from the realm's own settings (2026-10-13). */
+  it('is read at the start and again on a settings reload', () => {
+    const { e } = engine();
+    expect(e.s.logoffCmd).toBe('');
+    e.reload({
+      settings: defaultSettings(),
+      data: e.s.data,
+      grants: {},
+      bbs: { LogoffCmd: 'x', PvpLevel: '40' }
+    });
+    expect([e.s.logoffCmd, e.s.pvpLevel]).toEqual(['x', 40]);
+    e.dispose();
+  });
+});
+
 describe('the realm’s coins', () => {
   /* Skinny Inc's runic coin is a Krabby Patty: `g Krabby Patties` without a count was refused 2,375 times (2026-10-13). */
   it('picks up a renamed runic coin as a coin, by its count', () => {

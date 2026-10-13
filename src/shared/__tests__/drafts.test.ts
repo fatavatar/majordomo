@@ -59,7 +59,8 @@ describe('a saved server', () => {
       // Absent above: a realm rules nothing until somebody playing it says so.
       hangPenalties: null,
       // And renames no coin until it says so.
-      coins: {}
+      coins: {},
+      bbs: {}
     });
   });
 

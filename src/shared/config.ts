@@ -34,6 +34,7 @@ import {
   type VitalThresholds
 } from './character';
 import { asCoinNames, type CoinNames } from './coins';
+import { asBbsSettings, type BbsSettings } from './megamud/bbs';
 import {
   DEFAULT_CONSOLE_PALETTE,
   DEFAULT_THEME,
@@ -179,6 +180,8 @@ export interface ConnectionConfig {
   locate: LocateMethod;
   /** The realm's names for its coins. Resolved from the server's own; see `Server.coins`. */
   coins: CoinNames;
+  /** The realm's MegaMUD BBS set-up. Resolved from the server's own; see `Server.bbs`. */
+  bbs: BbsSettings;
 }
 
 /**
@@ -260,6 +263,12 @@ export interface Server {
    * the same pack and the same floor, so the name is a fact about the place.
    */
   coins: CoinNames;
+  /**
+   * What MegaMUD's `BBS.INI` would say about this realm, for the MegaMUD
+   * engine: only the keys it states, MegaMUD's defaults for the rest. See
+   * `shared/megamud/bbs.ts`.
+   */
+  bbs: BbsSettings;
 }
 
 export interface FontConfig {
@@ -2703,7 +2712,9 @@ export const DEFAULT_CONFIG: AppConfig = {
     // Paradigm's word. A realm without it says so in its own `locate:`.
     locate: 'rm',
     // The stock names. A realm that renames a coin says so in its own `coins:`.
-    coins: {}
+    coins: {},
+    // MegaMUD's defaults. A realm that differs says so in its own `bbs:`.
+    bbs: {}
   },
   /*
    * None. A realm is a directory under `realms/`, and the client seeds one
@@ -3274,7 +3285,8 @@ export function normalizeConfig(input: unknown): AppConfig {
         ['rm', 'sys-status', 'none'],
         DEFAULT_CONFIG.connection.locate
       ),
-      coins: asCoinNames(connection['coins'])
+      coins: asCoinNames(connection['coins']),
+      bbs: asBbsSettings(connection['bbs'])
     },
     // Both keys, oldest last: `profiles:` was this block's name before a
     // profile came to mean a character.
@@ -3588,7 +3600,8 @@ function normalizeServer(value: unknown): Server | null {
      */
     database: str(value['database'], ''),
     hangPenalties: typeof value['hangPenalties'] === 'boolean' ? value['hangPenalties'] : null,
-    coins: asCoinNames(value['coins'])
+    coins: asCoinNames(value['coins']),
+    bbs: asBbsSettings(value['bbs'])
   };
 }
 

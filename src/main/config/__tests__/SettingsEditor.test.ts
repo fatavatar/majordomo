@@ -365,6 +365,7 @@ describe('servers, one directory each', () => {
     database: '',
     hangPenalties: null,
     coins: {},
+    bbs: {},
     ...draft
   });
 
@@ -400,6 +401,15 @@ describe('servers, one directory each', () => {
     editor.saveServer('Bearfather', server({ coins: {} }));
     expect(new ServerStore(home).all[0]!.server.coins).toEqual({});
     expect(fs.readFileSync(home.server('bearfather').file, 'utf8')).not.toContain('coins');
+  });
+
+  /* MegaMUD's BBS set-up for the realm: only the keys it states, and no key for none. */
+  it('writes the realm’s BBS set-up only where it states a key', () => {
+    editor.saveServer(null, server({ bbs: { LogoffCmd: 'x', RelogCmd: '' } }));
+    expect(new ServerStore(home).all[0]!.server.bbs).toEqual({ LogoffCmd: 'x' });
+    editor.saveServer('Bearfather', server({ bbs: {} }));
+    expect(new ServerStore(home).all[0]!.server.bbs).toEqual({});
+    expect(fs.readFileSync(home.server('bearfather').file, 'utf8')).not.toMatch(/^bbs:/m);
   });
 
   it('updates one in place rather than adding a second', () => {
@@ -494,7 +504,8 @@ describe('servers, one directory each', () => {
       loops: [],
       database: '',
       hangPenalties: null,
-      coins: {}
+      coins: {},
+      bbs: {}
     });
     expect(servers()).toEqual([
       { id: 'greatermud-local', name: 'GreaterMUD (local)', host: '127.0.0.1' }
@@ -569,7 +580,8 @@ describe('credentials in the messages', () => {
       loops: [],
       database: '',
       hangPenalties: null,
-      coins: {}
+      coins: {},
+      bbs: {}
     });
     for (const file of fs.readdirSync(dir)) {
       if (!fs.statSync(path.join(dir, file)).isFile()) continue;
@@ -1009,7 +1021,8 @@ describe('the loops a character owns', () => {
       loops: [arena],
       database: '',
       hangPenalties: null,
-      coins: {}
+      coins: {},
+      bbs: {}
     });
     editor.saveProfile('vaelor', draft());
 
@@ -1091,7 +1104,8 @@ describe('filing one loop from the Loops modal', () => {
       loops: [],
       database: '',
       hangPenalties: null,
-      coins: {}
+      coins: {},
+      bbs: {}
     });
     expect(editor.addLoop('server', 'GreaterMUD (local)', sewers)).toEqual({ ok: true });
     const store = new LoopStore(home);
@@ -1150,7 +1164,8 @@ describe('filing a MegaMUD folder of loops on a realm', () => {
     loops,
     database: '',
     hangPenalties: null,
-    coins: {}
+    coins: {},
+    bbs: {}
   });
   const loop = (name: string): Loop => ({
     name,

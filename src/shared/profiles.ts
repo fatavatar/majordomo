@@ -32,6 +32,7 @@ import {
   type Server
 } from './config';
 import { asCoinNames, type CoinNames } from './coins';
+import { asBbsSettings, type BbsSettings } from './megamud/bbs';
 import { defaultSettings, type MegaSettings } from './megamud/settings';
 import { asMonsterRules, mergeMonsterRules, type MonsterRule } from './monsterRules';
 import type { ConnectionTarget } from './types';
@@ -168,6 +169,7 @@ function resolveServer(
   database: string;
   hangPenalties: boolean | null;
   coins: CoinNames;
+  bbs: BbsSettings;
 } | null {
   if (typeof value === 'string') {
     const found = byName(servers, value);
@@ -179,7 +181,8 @@ function resolveServer(
           locate: found.locate,
           database: found.database,
           hangPenalties: found.hangPenalties,
-          coins: found.coins
+          coins: found.coins,
+          bbs: found.bbs
         }
       : null;
   }
@@ -213,6 +216,7 @@ function resolveServer(
       // What an inline realm calls its coins, which it may state for the
       // reason it may state its database: there is nowhere else to say it.
       coins: asCoinNames(value['coins']),
+      bbs: asBbsSettings(value['bbs']),
       target: {
         host,
         port,
@@ -401,6 +405,8 @@ export function resolveProfile(id: string, raw: unknown, baseSource: unknown): P
         locate: server.locate,
         // And what it calls its coins, for the same reason.
         coins: server.coins,
+        // And its MegaMUD BBS set-up.
+        bbs: server.bbs,
         login: {
           enabled: credentials.username.length > 0,
           /*

@@ -185,7 +185,8 @@ describe('normalizeConfig', () => {
         locate: 'rm',
         database: '',
         hangPenalties: null,
-        coins: {}
+        coins: {},
+        bbs: {}
       }
     ]);
   });

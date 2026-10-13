@@ -445,6 +445,7 @@ export class MegaEngine {
     // they are the toolbar's, not the file's.
     const toggles = TOGGLE_FIELDS.map((field) => s[field]);
     loadCharacter(s, setup.settings);
+    bbsSetup(s, (key) => setup.bbs?.[key]);
     [s.MegaMud_CurPath, s.MegaMud_SelPath, s.MegaMud_CurPathStep] = kept;
     TOGGLE_FIELDS.forEach((field, i) => (s[field] = toggles[i]!));
     if (s.rulesChanged !== 0) [s.rules, s.ruleAt] = [rules, ruleAt];

@@ -912,14 +912,20 @@ function megamudFor(id: SessionId): { key: string; setup: MegaEngineSetup } | nu
       }
     };
   }
+  // The BBS set-up MegaMUD reads from BBS.INI, from the realm's own settings:
+  // its `bbs:`, and its runic coin's name (`coins: runic`).
+  const bbs: Record<string, string> = {
+    ...profile.config.connection.bbs,
+    ...(runic !== undefined ? { RunicName: runic } : {})
+  };
   return {
-    key: `${dataKey}\n${settingsToIni(profile.megamud)}\n${JSON.stringify(grants)}`,
+    key: `${dataKey}\n${settingsToIni(profile.megamud)}\n${JSON.stringify([grants, bbs])}`,
     setup: {
       settings: profile.megamud,
       data,
       grants,
       ...(memory ? { memory } : {}),
-      ...(runic !== undefined ? { bbs: { RunicName: runic } } : {})
+      bbs
     }
   };
 }

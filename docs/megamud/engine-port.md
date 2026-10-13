@@ -165,6 +165,12 @@ the swap. For such a character:
   to the socket, observed as automation's are, a macro's `~` a half-second
   pause. What the player types is shown to it (`0x465d90`).
 - **Clocks**: `secondTick` every second, `quietTick` every quarter.
+- **The BBS set-up** MegaMUD reads from `BBS.INI` (`0x41bcf0`: the menu
+  prompt, log-off and relog commands, speech and broadcast prefixes, the
+  BBS's talk lines, its limits) is the realm's own `bbs:` in `server.yaml`,
+  edited under the realm's settings, MegaMUD's defaults for any key it does
+  not state; the runic coin's name is its `coins: runic`. No MegaMUD file is
+  read for it, and it is applied again when the settings are saved.
 - **Redial** is MegaMUD's for a character the engine runs, and our
   auto-reconnect (`Reconnect`) stands down for it, so the two never both
   dial. The engine redials after a drop in play (`Comms.RedialCarrier`), a

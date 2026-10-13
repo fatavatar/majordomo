@@ -33,7 +33,14 @@ function drawn(source: string): string[] {
 describe.each([
   [
     'SettingsScreen.tsx',
-    ['realm-mob-rules', 'realm-messages', 'realm-monsters', 'realm-hang-penalties', 'realm-coins']
+    [
+      'realm-mob-rules',
+      'realm-messages',
+      'realm-monsters',
+      'realm-hang-penalties',
+      'realm-coins',
+      'realm-bbs'
+    ]
   ],
   ['GlobalSettings.tsx', [] as string[]]
 ])('%s', (file, notNavigable) => {

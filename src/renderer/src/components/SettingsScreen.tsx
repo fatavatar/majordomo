@@ -5,6 +5,7 @@ import type { LoopImport, MegaMudPath } from '@shared/megamudPaths';
 import { asShippedWorld } from '@shared/worlds';
 import { DENOMINATIONS } from '@shared/character';
 import { STOCK_COINS } from '@shared/coins';
+import { BBS_KEYS, type BbsKey } from '@shared/megamud/bbs';
 import type { StatlineFigures } from '@shared/statline';
 import type { TerminalPalette } from '@shared/themes';
 import type { GearSet } from '@shared/gear';
@@ -1327,7 +1328,9 @@ function emptyServerForm(defaults: GlobalDraft | null): ServerDraft {
     database: '',
     hangPenalties: null,
     // The stock names until somebody says this realm renames one.
-    coins: {}
+    coins: {},
+    // MegaMUD's defaults until somebody says this realm differs.
+    bbs: {}
   };
 }
 
@@ -1605,6 +1608,50 @@ function emptyForm(
  * A dialog that takes typed input, so it honours the focus policy: it holds the
  * caret while open and hands it back to the terminal on any exit.
  */
+/** A `BBS.INI` key's label. */
+function bbsLabel(key: BbsKey): string {
+  switch (key) {
+    case 'MenuPrompt':
+      return t('settings.realms.bbs.MenuPrompt');
+    case 'LogoffCmd':
+      return t('settings.realms.bbs.LogoffCmd');
+    case 'RelogCmd':
+      return t('settings.realms.bbs.RelogCmd');
+    case 'AnsiCmd':
+      return t('settings.realms.bbs.AnsiCmd');
+    case 'SpeechPrefix':
+      return t('settings.realms.bbs.SpeechPrefix');
+    case 'BroadcastPrefix':
+      return t('settings.realms.bbs.BroadcastPrefix');
+    case 'LogonMsg':
+      return t('settings.realms.bbs.LogonMsg');
+    case 'LogoffMsg':
+      return t('settings.realms.bbs.LogoffMsg');
+    case 'ShutDownMsg':
+      return t('settings.realms.bbs.ShutDownMsg');
+    case 'BroadcastMsg':
+      return t('settings.realms.bbs.BroadcastMsg');
+    case 'Global1Msg':
+      return t('settings.realms.bbs.Global1Msg');
+    case 'Global1Two':
+      return t('settings.realms.bbs.Global1Two');
+    case 'Global2Msg':
+      return t('settings.realms.bbs.Global2Msg');
+    case 'Global2Two':
+      return t('settings.realms.bbs.Global2Two');
+    case 'Global3Msg':
+      return t('settings.realms.bbs.Global3Msg');
+    case 'Global3Two':
+      return t('settings.realms.bbs.Global3Two');
+    case 'MaxInputSize':
+      return t('settings.realms.bbs.MaxInputSize');
+    case 'PvpLevel':
+      return t('settings.realms.bbs.PvpLevel');
+    case 'MaxHrsPerDay':
+      return t('settings.realms.bbs.MaxHrsPerDay');
+  }
+}
+
 export default function SettingsScreen({
   open,
   openAt = null,
@@ -5041,6 +5088,34 @@ export default function SettingsScreen({
                           placeholder={STOCK_COINS[which]}
                           spellCheck={false}
                           value={serverForm.coins[which] ?? ''}
+                        />
+                      ))}
+                    </div>
+                  </fieldset>
+
+                  {/*
+                    MegaMUD's BBS.INI for this realm (`Server.bbs`), for the
+                    MegaMUD engine. Blank is MegaMUD's default, which the
+                    placeholder shows.
+                  */}
+                  <fieldset data-fieldset="realm-bbs">
+                    <legend>{t('settings.realms.bbsLegend')}</legend>
+                    <p className="settings-note">{t('settings.realms.bbsNote')}</p>
+                    <div className="settings-inline">
+                      {BBS_KEYS.map(({ key, fallback }) => (
+                        <TextField
+                          key={key}
+                          label={bbsLabel(key)}
+                          name={`realm-bbs-${key}`}
+                          onChange={(value) =>
+                            setServerForm({
+                              ...serverForm,
+                              bbs: { ...serverForm.bbs, [key]: value }
+                            })
+                          }
+                          placeholder={fallback}
+                          spellCheck={false}
+                          value={serverForm.bbs[key] ?? ''}
                         />
                       ))}
                     </div>

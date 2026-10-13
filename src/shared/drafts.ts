@@ -38,6 +38,7 @@ import {
 } from './config';
 import { DENOMINATIONS, type Denomination } from './character';
 import { asCoinNames, type CoinNames } from './coins';
+import { asBbsSettings, type BbsSettings } from './megamud/bbs';
 import {
   DEFAULT_ALERT_DEBOUNCE_SECONDS,
   isAlertEvent,
@@ -157,6 +158,8 @@ export interface ServerDraft {
   hangPenalties: boolean | null;
   /** What this realm calls its coins, where it renames them. See `Server.coins`. */
   coins: CoinNames;
+  /** Its MegaMUD BBS set-up: only the keys it states. See `Server.bbs`. */
+  bbs: BbsSettings;
 }
 
 /**
@@ -739,7 +742,8 @@ export function asServerDraft(value: unknown): ServerDraft | null {
     loops: asLoops(value['loops'], LOOP_LIMITS),
     database: text(value['database']).slice(0, 400),
     hangPenalties: typeof value['hangPenalties'] === 'boolean' ? value['hangPenalties'] : null,
-    coins: asCoinNames(value['coins'])
+    coins: asCoinNames(value['coins']),
+    bbs: asBbsSettings(value['bbs'])
   };
 }
 
