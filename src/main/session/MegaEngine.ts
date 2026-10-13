@@ -247,7 +247,8 @@ export class MegaEngine {
       dial: () => this.host.dial(),
       route: (from, to) => this.route(from, to),
       readPath: (name) => this.readPath(name),
-      saveSteps: (p) => this.saveSteps(p)
+      saveSteps: (p) => this.saveSteps(p),
+      blessingsCleared: () => this.blessingsCleared()
     };
     this.s = new Session(engineHost, setup.data);
     loadCharacter(this.s, setup.settings);
@@ -332,6 +333,19 @@ export class MegaEngine {
         s.blessCastAt[i] = 0;
         if (s.debug !== 0 && spell) s.host.trace(`{bless-down:${spell.name}}`);
       }
+    }
+  }
+
+  /**
+   * The `stat` display took every blessing as gone. The display goes on to
+   * print each effect still up, and our tracker has read it whole before the
+   * engine sees it: the blessings it has up are seen again, as each one's
+   * row would see it on the display (`0x46a920`).
+   */
+  private blessingsCleared(): void {
+    const s = this.s;
+    for (let i = 0; i < 10; i += 1) {
+      if (this.blessUp[i] !== null && this.blessUp[i] !== undefined) s.blessCastAt[i] = s.now;
     }
   }
 

@@ -51,6 +51,7 @@ function nameLine(s: Session, line: string): void {
   for (let i = 0; i < 10; i += 1) s.blessCastAt[i] = 0;
   s.restUntilOff = 0;
   for (const rec of s.data.messages ?? []) rec.flags &= ~3;
+  s.host.blessingsCleared?.();
 }
 
 /** The wisdom line: this character's player record, kept to what `stat` shows. */

@@ -388,6 +388,12 @@ export interface SessionHost {
   /** `0x45fa60`: a move arrived (its direction), for the map to follow (ours). */
   arrived?(step: number): void;
   /**
+   * The `stat` display took every blessing as gone (`0x494e70`); MegaMUD
+   * sees the ones still up again on the display's own lines, by their
+   * Messages.md rows. Ours: the blessings our tracker has up, put back.
+   */
+  blessingsCleared?(): void;
+  /**
    * `0x43fd90`: the way from one room to another (signatures), over the
    * paths known; our world graph's in place of MegaMUD's path search.
    */

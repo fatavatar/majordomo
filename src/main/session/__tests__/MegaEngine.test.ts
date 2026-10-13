@@ -257,6 +257,19 @@ describe('blessings told by our tracker’s buffs', () => {
     expect(e.s.blessCastAt[0]).not.toBe(5);
   });
 
+  /*
+   * The stat display takes every blessing as gone (`0x494e70`), and MegaMUD
+   * sees each one still up again on the display's lines. Skinny's `st`
+   * had all of his cast again on 13 October 2026.
+   */
+  it('keeps one up through the stat display', () => {
+    const e = blessed();
+    e.s.inGame = 1;
+    e.buffs(up(1));
+    e.received('Name: Skinny Fatterson                 Lives/CP:      9/7    \r\n');
+    expect(e.s.blessCastAt[0]).not.toBe(0);
+  });
+
   it('leaves alone a buff somebody else cast', () => {
     const e = blessed();
     e.buffs([{ spell: 'necropotence', by: 'Fatty', appliedAt: 1 }]);
