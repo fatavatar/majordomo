@@ -605,7 +605,12 @@ export class CharacterTracker {
    * ended, which is then learned. Bounded, and aged out by
    * `tuning.spells.pendingStopMs`.
    */
-  private pendingStops: Array<{ text: string; at: number; suspects: string[] }> = [];
+  /**
+   * `wearOff`: the realm's wear-off frame, so the sentence is certainly an
+   * ending, and one the sheet settles replaces a learned ending it had.
+   */
+  private pendingStops: Array<{ text: string; at: number; suspects: string[]; wearOff?: true }> =
+    [];
   /**
    * Buffs a *learned* ending removed, by spell key, with when. A buff that
    * reappears unprompted inside `tuning.spells.stopContradictionMs` — the
@@ -3225,6 +3230,79 @@ export class CharacterTracker {
     );
   }
 
+  /**
+   * A sentence no frame claims, no cast in front of it: maybe the ending of
+   * a buff that is up whose ending the client cannot recognise. See the
+   * `unknown` case.
+   *
+   * `wearOff`: the realm's own frame for an effect ending, naming nothing
+   * that is up. That something ended is then certain, so with no buff whose
+   * ending is unknown it suspects those whose ending was only *learned* and
+   * the sheet would speak for, and asks the sheet: a learned ending can be
+   * wrong (spiritual power's was `You hear movement below you!`, 2026-10-13).
+   */
+  private possibleEnding(
+    s: CharacterState,
+    text: string,
+    at: number,
+    wearOff = false
+  ): CharacterState | null {
+    /*
+     * **A line of the sheet is the listing restating what is up**, not an
+     * event, so it ends nothing. It is still worth a candidate: the sheet
+     * printing a sentence nothing recognises is the positive statement
+     * that it is a lasting effect, and `readSheet` reads that off the
+     * batch a moment later.
+     */
+    /*
+     * **Every unclaimed sentence is a candidate onset**, whatever else is
+     * made of it below. No cast of this character's is in front of it, so
+     * it is either an effect somebody else landed — which the learning
+     * here could never see, reading own casts only — or the end of one
+     * that is up, or no effect at all. The sheet is the one thing that
+     * separates the three, and holding the sentence against all of them
+     * until it arrives is what stops the client choosing early.
+     */
+    this.suspectEffect(text, at);
+    // A line of the sheet is the listing restating what is up, not an
+    // event: it ends nothing.
+    if (this.sheetOpen) return null;
+    let suspects = s.buffs.filter((buff) => !this.knowsStop(buff));
+    if (suspects.length === 0 && wearOff) {
+      suspects = s.buffs.filter((buff) => buff.by === null && this.knowsStart(buff));
+    }
+    if (suspects.length === 0) return null;
+    // Either way the sheet is worth asking for, if it can speak: a
+    // suspect whose start it would print is one it can confirm gone, or
+    // still up — which is the contradiction that takes a lesson back.
+    this.sheetWanted ||= suspects.some((buff) => this.knowsStart(buff));
+    /*
+     * One suspect is taken at once only where the sheet cannot speak for
+     * it. Where it can, the sheet asked for above is the check the player
+     * asked for (2026-09-23): the ending is learned when the sheet stops
+     * printing the start (`settlePending`), never on the coincidence alone.
+     */
+    // A wear-off naming nothing up may be a debuff's ending as well as a
+    // buff's: never taken on the coincidence alone.
+    if (!wearOff && suspects.length === 1 && !this.knowsStart(suspects[0]!)) {
+      const buff = suspects[0]!;
+      this.spellLore.learn(buff.spell, 'stop', text, at);
+      this.recentlyStopped.set(spellKey(buff.spell), at);
+      this.actedAsStop(text, buff.spell);
+      this.buffsEnded([buff], at, false);
+      return { ...s, buffs: s.buffs.filter((held) => held !== buff) };
+    }
+    this.pendingStops.push({
+      text,
+      at,
+      suspects: suspects.map((buff) => buff.spell),
+      ...(wearOff ? { wearOff: true as const } : {})
+    });
+    // A list-size bound, not a knob: a sheet resolves these long before.
+    if (this.pendingStops.length > 20) this.pendingStops.shift();
+    return null;
+  }
+
   /** The sentence was read as this buff's ending; a sheet can take that back. */
   private actedAsStop(text: string, spell: string): void {
     const key = effectKey(text);
@@ -3256,6 +3334,9 @@ export class CharacterTracker {
       // start and has stopped printing it. A buff the sheet cannot speak
       // about keeps the sentence waiting.
       if (this.spellLore.startOf(name) === null) return true;
+      // The realm said an effect ended and the sheet says it was this one:
+      // a learned ending it had was not its ending.
+      if (pending.wearOff) this.spellLore.unlearn(name, 'stop');
       this.spellLore.learn(name, 'stop', pending.text, pending.at);
       // Cast, ended and checked: the one duration this client trusts.
       const ended = buffs.find((buff) => buff.cast === true && this.buffMatches(buff, [name]));
@@ -6356,7 +6437,16 @@ export class CharacterTracker {
         // A wear-off naming nothing on the list is still a fact — a debuff
         // ending, or a buff cast before this session — and may have turned a
         // condition off above even when it ends no buff.
-        if (ended.length === 0) return next === s ? null : next;
+        if (ended.length === 0) {
+          if (next !== s) return next;
+          /*
+           * Naming nothing that is up, it may still be one of them ending in
+           * the realm's words for its effect rather than its spell: Skinny
+           * Inc ends spiritual power with `The effects of dark power wear
+           * off.` (2026-10-13). Heard as any sentence nothing claims is.
+           */
+          return this.possibleEnding(s, block.text.trim(), block.at, true);
+        }
         this.buffsEnded(ended, block.at, true);
         return { ...next, buffs: next.buffs.filter((buff) => !ended.includes(buff)) };
       }
@@ -6942,54 +7032,7 @@ export class CharacterTracker {
           // it landed, and nothing else will list it.
           return this.withBuff(s, { spell: cast.spell, by: null, appliedAt: cast.at, cast: true });
         }
-        /*
-         * **A line of the sheet is the listing restating what is up**, not an
-         * event, so it ends nothing. It is still worth a candidate: the sheet
-         * printing a sentence nothing recognises is the positive statement
-         * that it is a lasting effect, and `readSheet` reads that off the
-         * batch a moment later.
-         */
-        /*
-         * **Every unclaimed sentence is a candidate onset**, whatever else is
-         * made of it below. No cast of this character's is in front of it, so
-         * it is either an effect somebody else landed — which the learning
-         * here could never see, reading own casts only — or the end of one
-         * that is up, or no effect at all. The sheet is the one thing that
-         * separates the three, and holding the sentence against all of them
-         * until it arrives is what stops the client choosing early.
-         */
-        this.suspectEffect(text, block.at);
-        // A line of the sheet is the listing restating what is up, not an
-        // event: it ends nothing.
-        if (this.sheetOpen) return null;
-        const suspects = s.buffs.filter((buff) => !this.knowsStop(buff));
-        if (suspects.length === 0) return null;
-        // Either way the sheet is worth asking for, if it can speak: a
-        // suspect whose start it would print is one it can confirm gone, or
-        // still up — which is the contradiction that takes a lesson back.
-        this.sheetWanted ||= suspects.some((buff) => this.knowsStart(buff));
-        /*
-         * One suspect is taken at once only where the sheet cannot speak for
-         * it. Where it can, the sheet asked for above is the check the player
-         * asked for (2026-09-23): the ending is learned when the sheet stops
-         * printing the start (`settlePending`), never on the coincidence alone.
-         */
-        if (suspects.length === 1 && !this.knowsStart(suspects[0]!)) {
-          const buff = suspects[0]!;
-          this.spellLore.learn(buff.spell, 'stop', text, block.at);
-          this.recentlyStopped.set(spellKey(buff.spell), block.at);
-          this.actedAsStop(text, buff.spell);
-          this.buffsEnded([buff], block.at, false);
-          return { ...s, buffs: s.buffs.filter((held) => held !== buff) };
-        }
-        this.pendingStops.push({
-          text,
-          at: block.at,
-          suspects: suspects.map((buff) => buff.spell)
-        });
-        // A list-size bound, not a knob: a sheet resolves these long before.
-        if (this.pendingStops.length > 20) this.pendingStops.shift();
-        return null;
+        return this.possibleEnding(s, text, block.at);
       }
 
       default:

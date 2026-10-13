@@ -12,7 +12,7 @@ import {
   type EngineMemory,
   type MegaEngineHost
 } from '../MegaEngine';
-import { coinItems, newMonster, type MonsterRec } from '../../megamud/data';
+import { coinItems, newMonster, type MonsterRec, type SpellRec } from '../../megamud/data';
 import { collectItems } from '../../megamud/script/items';
 import { newEntity } from '../../megamud/Session';
 import type { PlayerFacts } from '../../../shared/players';
@@ -421,6 +421,42 @@ describe('what the engine learns, kept between sessions', () => {
     const e = new MegaEngine(host, { settings: defaultSettings(), data, grants: {} });
     e.s.data.monsters[0]!.relationship = 2;
     expect(data.monsters[0]!.relationship).toBe(4);
+    e.dispose();
+  });
+});
+
+describe('blessings the realm says last', () => {
+  /*
+   * Spells.md had necropotence without the lasting bit a blessing needs, so
+   * it was never cast; the realm's spell table says it lasts (2026-10-13).
+   */
+  it('are marked lasting from the realm’s spell table, once it is loaded', () => {
+    const { e } = engine();
+    const host = (e as unknown as { host: MegaEngineHost }).host;
+    const npot = { short: 'npot', name: 'necropotence', flags: 0x18 } as never as SpellRec;
+    const mend = { short: 'gmen', name: 'greater mend', flags: 0x18 } as never as SpellRec;
+    e.s.data.spells.push(npot, mend);
+    const world = host.world();
+    host.world = () =>
+      ({
+        ...world,
+        spellNamed: (name: string) =>
+          name === 'necropotence' ? { durationGrowth: [5, 1] } : { duration: undefined }
+      }) as never;
+    e.buffs([]);
+    expect([npot.flags & 2, mend.flags & 2]).toEqual([2, 0]);
+    e.dispose();
+  });
+
+  /* Our tracker asks for a sheet through the engine's own wish for one (`0xe29c`). */
+  it('want a stat sheet when our tracker asks, without undoing a forced one', () => {
+    const { e } = engine();
+    e.s.f_e29c = 0;
+    e.wantStat();
+    expect(e.s.f_e29c).toBe(1);
+    e.s.f_e29c = -1;
+    e.wantStat();
+    expect(e.s.f_e29c).toBe(-1);
     e.dispose();
   });
 });

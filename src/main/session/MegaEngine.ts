@@ -72,6 +72,7 @@ import {
   asRoomReference,
   DIRECTIONS,
   roomId,
+  spellLasts,
   type RequirementKind,
   type Route,
   type RoomId,
@@ -338,6 +339,8 @@ export class MegaEngine {
   private wasInGame = false;
   /** The toggles as last said (`noteToggles`). */
   private toggled = '';
+  /** The realm's own word on which spells last has been put on the spell list. */
+  private lastingMarked = false;
   /** The walk and loop as last said (`noteProgress`). */
   private progressed = '';
   /**
@@ -493,6 +496,7 @@ export class MegaEngine {
   buffs(up: readonly ActiveBuff[]): void {
     const s = this.s;
     s.now = Math.floor(Date.now() / 1000);
+    this.markLasting();
     for (let i = 0; i < 10; i += 1) {
       const command = blessCommand(s, i);
       const spell = command === '' ? null : findSpell(s, command);
@@ -526,6 +530,24 @@ export class MegaEngine {
   }
 
   /**
+   * Spells.md's lasting bit (`2`, which a blessing needs) set on every spell
+   * the realm's own spell table says lasts, once that table is loaded. A
+   * MegaMUD database can miss it: the shipped one has necropotence, which
+   * lasts, without it, so it was never cast as a blessing (2026-10-13).
+   */
+  private markLasting(): void {
+    if (this.lastingMarked) return;
+    const world = this.host.world();
+    if (!world) return;
+    this.lastingMarked = true;
+    for (const spell of this.s.data.spells) {
+      if ((spell.flags & 2) !== 0) continue;
+      const known = world.spellNamed(spell.name);
+      if (known !== null && spellLasts(known)) spell.flags |= 2;
+    }
+  }
+
+  /**
    * The `stat` display took every blessing as gone. The display goes on to
    * print each effect still up, and our tracker has read it whole before the
    * engine sees it: the blessings it has up are seen again, as each one's
@@ -536,6 +558,14 @@ export class MegaEngine {
     for (let i = 0; i < 10; i += 1) {
       if (this.blessUp[i] !== null && this.blessUp[i] !== undefined) s.blessCastAt[i] = s.now;
     }
+  }
+
+  /**
+   * A stat sheet wanted, as MegaMUD wants one after a level or a death
+   * (`0xe29c`): sent by `0x40d0e0` when its scheduler next may, out of a fight.
+   */
+  wantStat(): void {
+    if (this.s.f_e29c === 0) this.s.f_e29c = 1;
   }
 
   /** Text from the socket. */

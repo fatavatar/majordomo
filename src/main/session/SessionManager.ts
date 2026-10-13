@@ -4639,6 +4639,9 @@ export class SessionManager {
   private megaHeldTimer: NodeJS.Timeout | null = null;
   /** When the half-typed line on the wire was begun; 0 with none. */
   private typingSince = 0;
+  /** When the engine was last asked for a stat sheet for our tracker, and the ask held back. */
+  private megaSheetAt: number | null = null;
+  private megaSheetTimer: NodeJS.Timeout | null = null;
   /** The engine's loop run's start, and the experience the character had then. */
   private megaLoopRun: { startedAt: number | null; exp: number | null } = {
     startedAt: null,
@@ -4659,6 +4662,31 @@ export class SessionManager {
     }
     this.sink.walk?.(walk);
     this.sink.loop?.({ ...loop, expAtStart: this.megaLoopRun.exp });
+  }
+
+  /**
+   * The tracker wants a stat sheet to settle a buff's ending, and with the
+   * routines standing down for the engine it is the engine's to send: its
+   * own wish for one (`0xe29c`), sent when its scheduler next may, out of a
+   * fight. The bless bridge (`MegaEngine.buffs`) reads what the sheet says.
+   * At most once per `tuning.spells.sheetAskMs`, as `Routines.askSheet`.
+   */
+  private megaAskSheet(): void {
+    const floor = tuning().spells.sheetAskMs;
+    const now = Date.now();
+    if (this.megaSheetAt !== null && now - this.megaSheetAt < floor) {
+      this.megaSheetTimer ??= setTimeout(
+        () => {
+          this.megaSheetTimer = null;
+          this.megaAskSheet();
+        },
+        floor - (now - this.megaSheetAt)
+      );
+      this.megaSheetTimer.unref?.();
+      return;
+    }
+    this.megaSheetAt = now;
+    this.mega?.wantStat();
   }
 
   /** Runs the MegaMUD engine for this character, or stops it (null). */
@@ -5093,6 +5121,7 @@ export class SessionManager {
 
   dispose(): void {
     if (this.megaHeldTimer !== null) clearTimeout(this.megaHeldTimer);
+    if (this.megaSheetTimer !== null) clearTimeout(this.megaSheetTimer);
     this.mega?.dispose();
     this.mega = null;
     this.clearFollowerWaitLimit();
@@ -5569,7 +5598,10 @@ export class SessionManager {
     const changed = lineChanged || batchChanged;
     // The tracker records that a stat sheet would settle a buff ending; the
     // routine is what asks for one. Facts fan out, actions funnel in.
-    if (this.tracker.takeSheetRequest()) this.routines.askSheet();
+    if (this.tracker.takeSheetRequest()) {
+      if (this.mega !== null) this.megaAskSheet();
+      else this.routines.askSheet();
+    }
     // Likewise a prompt that stopped fitting what `pro` said the line was.
     if (this.tracker.takeStatlineRequest()) this.routines.askProfile();
     /*

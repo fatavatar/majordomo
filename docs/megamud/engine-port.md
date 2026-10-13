@@ -165,6 +165,14 @@ the swap. For such a character:
   to the socket, observed as automation's are, a macro's `~` a half-second
   pause. What the player types is shown to it (`0x465d90`).
 - **Clocks**: `secondTick` every second, `quietTick` every quarter.
+- **Blessings** are kept up from our tracker's buff list (`MegaEngine.buffs`),
+  since a realm's Messages.md names few: a buff going up stamps its slot as
+  cast, one going down makes it due. The tracker settles an ending it cannot
+  read with a stat sheet, and under the engine that sheet is the engine's own
+  wish for one (`0xe29c`, `wantStat`), sent out of a fight at most once per
+  `tuning.spells.sheetAskMs`. A spell the realm's spell table says lasts is
+  given Spells.md's lasting bit (`2`) when the database lacks it, so it is
+  cast as a blessing (necropotence).
 - **The buttons**: the loop card's play is `@loop`'s start of a loop (or Go
   with none named), its stop is Go/Stop (`0x803`), the step back `0x869`,
   and a route asked for is the Go To dialog to its last room.

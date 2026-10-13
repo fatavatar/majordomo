@@ -548,6 +548,29 @@ describe("Paramud's own words for its own spells", () => {
    * protection from good wear off!` — and the two share a message record, so
    * the start sentence says it is the same effect ending (skinny, 2026-09-23).
    */
+  /*
+   * Skinny Inc ends spiritual power with `The effects of dark power wear
+   * off.`, naming no spell that is up, and a wrong ending had been learned
+   * for it, so it stayed up until a sheet by hand (2026-10-13).
+   */
+  it('asks the sheet about a wear-off naming nothing up, and learns it as the ending', () => {
+    const lore = shippedSpellLore(realm);
+    lore.learn('spiritual power', 'start', 'A surge of dark power races through your body!', 1);
+    lore.learn('spiritual power', 'stop', 'You hear movement below you!', 1);
+    const { tracker, feed, send } = feeder(lore);
+    feed('[HP=585/MA=420]:');
+    feed('You cast spiritual power on Skinny!');
+    feed('A surge of dark power races through your body!');
+    expect(held(tracker)).toContain('spiritual power');
+    tracker.takeSheetRequest();
+
+    expect(feed('The effects of dark power wear off.')).toBe('user-buff-expired');
+    expect(tracker.takeSheetRequest()).toBe(true);
+    stat(feed, send);
+    expect(held(tracker)).not.toContain('spiritual power');
+    expect(lore.stopOf('spiritual power')).toBe('The effects of dark power wear off.');
+  });
+
   it('ends a buff on a wear-off naming another spell with the same effect', () => {
     const { tracker, feed } = feeder(shippedSpellLore(realm));
     feed('[HP=585/MA=420]:');
