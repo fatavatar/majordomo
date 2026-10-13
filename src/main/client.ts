@@ -129,6 +129,7 @@ import {
 } from '../shared/monsterRules';
 import { asMegaMudPaths, type LoopImport } from '../shared/megamudPaths';
 import { settingsFromDraft } from '../shared/megamud/settings';
+import { megamudFromConfig } from '../shared/megamud/fromConfig';
 import { asMegaToggle } from '../shared/megamud/toggles';
 import type { MegaData } from './megamud/data';
 import { readMegaData, type EngineMemory, type MegaEngineSetup } from './session/MegaEngine';
@@ -2977,8 +2978,15 @@ function registerIpc(): void {
   handle(Invoke.megamudSettings, (_caller, rawId: unknown) => {
     const id = asProfileId(rawId);
     const profile = id === null ? undefined : profileFor(id);
-    if (profile === undefined) return null;
-    const settings = structuredClone(profile.megamud);
+    if (profile === undefined || id === null) return null;
+    // A character with none yet starts from what it does now (`megamudFromConfig`).
+    const world = worldFor(id);
+    const settings = profile.megamudOn
+      ? structuredClone(profile.megamud)
+      : megamudFromConfig(
+          profile.config.automation,
+          (spell) => world?.spellNamed(spell)?.short ?? spell
+        );
     const password = String(settings.live['BBS']?.['Password'] ?? '');
     settings.live['BBS']!['Password'] = '';
     return {

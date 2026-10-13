@@ -165,6 +165,14 @@ the swap. For such a character:
   to the socket, observed as automation's are, a macro's `~` a half-second
   pause. What the player types is shown to it (`0x465d90`).
 - **Clocks**: `secondTick` every second, `quietTick` every quarter.
+- **A character's MegaMUD settings** are its `profile.yaml`'s `megamud:`,
+  in MegaMUD's sections and keys where they differ from MegaMUD's defaults,
+  read through MegaMUD's loader rules (`settingsFromStored`); having them is
+  what runs the character on the engine. A `megamud.ini` beside the file is
+  taken in once at launch and renamed `megamud.ini.imported`. A character
+  with none is offered settings started from its old automation
+  (`megamudFromConfig`) where MegaMUD has the same setting, saved only when
+  the player saves.
 - **The BBS set-up** MegaMUD reads from `BBS.INI` (`0x41bcf0`: the menu
   prompt, log-off and relog commands, speech and broadcast prefixes, the
   BBS's talk lines, its limits) is the realm's own `bbs:` in `server.yaml`,
