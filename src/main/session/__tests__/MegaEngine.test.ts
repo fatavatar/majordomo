@@ -12,7 +12,9 @@ import {
   type EngineMemory,
   type MegaEngineHost
 } from '../MegaEngine';
-import { newMonster, type MonsterRec } from '../../megamud/data';
+import { coinItems, newMonster, type MonsterRec } from '../../megamud/data';
+import { collectItems } from '../../megamud/script/items';
+import { newEntity } from '../../megamud/Session';
 import type { PlayerFacts } from '../../../shared/players';
 
 function room(map: number, number: number, name: string, exits: WorldRoom['exits']): WorldRoom {
@@ -374,6 +376,38 @@ describe('what the engine learns, kept between sessions', () => {
     const e = new MegaEngine(host, { settings: defaultSettings(), data, grants: {} });
     e.s.data.monsters[0]!.relationship = 2;
     expect(data.monsters[0]!.relationship).toBe(4);
+    e.dispose();
+  });
+});
+
+describe('the realm’s coins', () => {
+  /* Skinny Inc's runic coin is a Krabby Patty: `g Krabby Patties` without a count was refused 2,375 times (2026-10-13). */
+  it('picks up a renamed runic coin as a coin, by its count', () => {
+    const { e: plain, sent } = engine();
+    const host = (plain as unknown as { host: MegaEngineHost }).host;
+    plain.dispose();
+    const e = new MegaEngine(host, {
+      settings: defaultSettings(),
+      data: { monsters: [], items: coinItems('Krabby Patties'), spells: [] },
+      grants: {},
+      bbs: { RunicName: 'Krabby Patties' }
+    });
+    const { s } = e;
+    s.hp = 100;
+    s.f_8468 = 1000;
+    s.MegaMud_AutoCash = 1;
+    s.Cash_WantRunic = 1;
+    s.room = [
+      Object.assign(newEntity(), {
+        type: 3,
+        count: 23,
+        name: 'Krabby Patties',
+        item: s.data.items[4]
+      })
+    ];
+    sent.length = 0;
+    expect(collectItems(s)).toBe(1);
+    expect(sent).toContain('g 23 Krabby Patties\r');
     e.dispose();
   });
 });

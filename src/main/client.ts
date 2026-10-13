@@ -914,7 +914,13 @@ function megamudFor(id: SessionId): { key: string; setup: MegaEngineSetup } | nu
   }
   return {
     key: `${dataKey}\n${settingsToIni(profile.megamud)}\n${JSON.stringify(grants)}`,
-    setup: { settings: profile.megamud, data, grants, ...(memory ? { memory } : {}) }
+    setup: {
+      settings: profile.megamud,
+      data,
+      grants,
+      ...(memory ? { memory } : {}),
+      ...(runic !== undefined ? { bbs: { RunicName: runic } } : {})
+    }
   };
 }
 

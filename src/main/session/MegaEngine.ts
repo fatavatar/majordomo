@@ -115,6 +115,8 @@ export interface MegaEngineSetup {
   learned?: ReadonlyMap<RoomId, number>;
   /** What it knows from before, from our stores, and where what it learns goes. */
   memory?: EngineMemory;
+  /** The realm's `BBS.INI` keys we hold elsewhere: `RunicName` from its `coins:`. */
+  bbs?: Readonly<Record<string, string>>;
 }
 
 /**
@@ -348,7 +350,7 @@ export class MegaEngine {
     // A copy: the data read is shared between sessions, and the engine changes it as it learns.
     this.s = new Session(engineHost, structuredClone(setup.data));
     loadCharacter(this.s, setup.settings);
-    bbsSetup(this.s, () => undefined);
+    bbsSetup(this.s, (key) => setup.bbs?.[key]);
     this.s.now = engineHost.clock();
     const memory = setup.memory;
     if (memory) {
