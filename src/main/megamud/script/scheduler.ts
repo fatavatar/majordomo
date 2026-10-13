@@ -12,6 +12,7 @@
  * - one pending command is sent (at most five passes running).
  */
 import { abilityMonitors } from '../abilities/monitors';
+import { recoverCorpse } from '../player/corpse';
 import { combatOff } from '../combat/engaged';
 import { healStep } from '../health/heal';
 import { healthStep } from '../health/rest';
@@ -21,14 +22,14 @@ import { refreshStatus } from '../status';
 import { blessStep } from './bless';
 import { depositCash, discardCash, shareCash, stashItems, withdrawCash } from './cash';
 import { combatStep } from '../combat/heal';
-import { recoverCorpse } from './corpse';
 import { cureStep, selfCures } from './cures';
 import { escapeCheck } from './escape';
 import { eventsStep } from './events';
 import { exitStep } from './exit';
 import { enterGame } from './game';
 import { autoEquip, buyItems, collectItems, sellItems } from './items';
-import { roomCheck, searchRoom, step21 } from './misc';
+import { roomCheck, searchRoom } from './misc';
+import { rulesStep } from './rules';
 import { invitePlayers, lookAtPlayer, partyStatus, trackPlayer } from './party';
 import { noAllowedExits, pathCommands, walkPath } from './path';
 import { runCheck } from './run';
@@ -165,7 +166,7 @@ export function schedule(s: Session): boolean {
         [0x33, () => recoverCorpse(s)],
         [0x13, () => collectItems(s)],
         [0x14, () => autoEquip(s)],
-        [0x15, () => step21(s)],
+        [0x15, () => rulesStep(s)],
         [0x16, () => blessStep(s, 1)],
         [0x17, () => combatStep(s)],
         [0x18, () => selfCures(s, 1)],

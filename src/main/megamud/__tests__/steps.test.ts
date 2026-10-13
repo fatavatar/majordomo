@@ -1,7 +1,14 @@
 import { describe, expect, it } from 'vitest';
 
 import type { ItemRec } from '../data';
-import { newItem } from '../data';
+import { newItem, newPlayer } from '../data';
+import { addMember } from '../party/members';
+import { recoverCorpse } from '../player/corpse';
+import { eventsStep, loadEvents, nextEvent, saveEvents } from '../script/events';
+import { exitStep } from '../script/exit';
+import { searchRoom } from '../script/misc';
+import { invitePlayers, lookAtPlayer, partyStatus } from '../script/party';
+import { loadRules, rulesStep } from '../script/rules';
 import { depositCash, discardCash, shareCash, stashItems, withdrawCash } from '../script/cash';
 import { autoEquip, buyItems, collectItems, sellItems } from '../script/items';
 import { gameSetup, refreshInventory, refreshStats, refreshWho } from '../script/setup';
@@ -178,5 +185,96 @@ describe('items (D19, D20, D42, D43)', () => {
     s.inventory = [{ count: 1, flags: 0, item: pelt }];
     expect(sellItems(s)).toBe(1);
     expect(sent(out)).toEqual(['buy torch\r', 'sell pelt\r']);
+  });
+});
+
+describe('exit, corpse and searching (D31, D51, D45)', () => {
+  it('leaves the game for a relog once no monster is here', () => {
+    const { s, out } = game();
+    s.f_e28c = 1;
+    s.Other_ExitCmd = 'rest';
+    expect(exitStep(s)).toBe(1);
+    expect(sent(out)).toEqual(['rest\r', 'x\r']);
+    expect(s.task).toBe(0x13);
+  });
+
+  it("recovers this character's corpse (GreaterMUD)", () => {
+    const { s, out } = game();
+    s.BBS_GreaterMUD = 1;
+    s.MegaMud_AutoGet = 1;
+    s.Cash_AutoRecoverCorpse = 1;
+    s.Player_Name = 'Skinny';
+    s.room = [
+      Object.assign(newEntity(), { type: 3, count: 1, name: 'corpse of Skinny', flags: 0x8000 })
+    ];
+    expect(recoverCorpse(s)).toBe(1);
+    expect(sent(out)).toEqual(['recover corpse of Skinny\r']);
+  });
+
+  it('searches for an item a path needs, up to the limit', () => {
+    const { s, out } = game();
+    s.s_8474 = 'key';
+    s.f_db60 = 1;
+    expect(searchRoom(s)).toBe(1);
+    expect(searchRoom(s)).toBe(0);
+    expect(sent(out)).toEqual(['sea\r']);
+  });
+});
+
+describe('party and players (D17, D27, D35)', () => {
+  it('asks for the party when a member is unknown, and a member for its health', () => {
+    const { s, out } = game();
+    s.Player_Name = 'Skinny';
+    addMember(s, 'Skinny', 1);
+    addMember(s, 'Fatty', 0);
+    s.party[1]!.flags28 = 2;
+    expect(partyStatus(s)).toBe(1);
+    s.party[1]!.flags28 = 1;
+    expect(partyStatus(s)).toBe(1);
+    expect(sent(out)).toEqual(['par\r', '/Fatty @health\r']);
+  });
+
+  it('invites a player it invites when seen', () => {
+    const { s, out } = game();
+    const p = newPlayer(s.data, 0);
+    Object.assign(p, { name: 'Fatty', flags: 0x10 });
+    s.room = [Object.assign(newEntity(), { type: 1, name: 'Fatty', player: p })];
+    expect(invitePlayers(s)).toBe(1);
+    expect(sent(out)).toEqual(['invite Fatty\r']);
+    expect(s.party[0]!.flags28 & 4).toBe(4);
+  });
+
+  it('looks at a player whose race is unknown', () => {
+    const { s, out } = game();
+    s.Talk_LookPlayers = 1;
+    const p = newPlayer(s.data, 0);
+    p.name = 'Warrax';
+    s.room = [Object.assign(newEntity(), { type: 1, name: 'Warrax', player: p })];
+    expect(lookAtPlayer(s)).toBe(1);
+    expect(sent(out)).toEqual(['l Warrax\r']);
+  });
+});
+
+describe('timed events and rules (D29, D21)', () => {
+  it('reads [Schedule] and runs a command every few minutes', () => {
+    const { s, out, clock } = game();
+    loadEvents(s, (k) => ({ Event0: '5:-1:10:say hi' })[k] ?? '');
+    expect(saveEvents(s)).toEqual({ Event0: '5:-1:10:say hi' });
+    s.eventNext = nextEvent(s);
+    expect(s.eventNext).toBe(0);
+    expect(eventsStep(s)).toBe(0);
+    s.now = clock.now + 600;
+    expect(eventsStep(s)).toBe(1);
+    expect(sent(out)).toEqual(['say hi', '\r']);
+  });
+
+  it('reads [Rules] and runs an action when its conditions hold', () => {
+    const { s, out } = game();
+    loadRules(s, (k) => ({ R1: '0:0:0:low', R2: '1:1:4:50', R3: '3:14:0:quaff potion' })[k] ?? '');
+    s.hp = 40;
+    expect(rulesStep(s)).toBe(1);
+    expect(sent(out)).toEqual(['quaff potion\r']);
+    s.hp = 90;
+    expect(rulesStep(s)).toBe(0);
   });
 });

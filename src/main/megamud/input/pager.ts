@@ -99,7 +99,7 @@ export function pagerPrompts(s: Session, line: string, complete: number): number
       hangUp(s, 0);
       setTask(s, 0x14);
     }
-    s.f_2354 = nextEvent(s);
+    s.eventNext = nextEvent(s);
     return 1;
   }
   const version = paradigmVersion(line);

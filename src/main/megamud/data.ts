@@ -36,6 +36,8 @@ export interface MonsterRec {
   preMax: number;
   /** +0x44 (B+0x32). */
   attackMax: number;
+  /** B+0x51 and B+0x4f, as `sys stat room` takes them: where it lives (read from the file, `0x46c5e0`). */
+  home?: [number, number];
 }
 
 /** `0x459860`: one item, 0x78 bytes. */
@@ -145,7 +147,8 @@ export function monsterFrom(body: Uint8Array, layer: number): MonsterRec {
     preSpell: str(body, 0x26, 5),
     attackSpell: str(body, 0x2b, 5),
     preMax: i16(body, 0x30),
-    attackMax: i16(body, 0x32)
+    attackMax: i16(body, 0x32),
+    home: [u16(body, 0x51), u16(body, 0x4f)]
   };
 }
 

@@ -1,22 +1,187 @@
+/**
+ * The scheduler's party and player steps, read 2026-10-12: the party's
+ * status and members' health asked for (D17), players invited (D27), looked
+ * at (D35) and tracked (D36).
+ */
+import { addMember } from '../party/members';
+import { findPlayer, partyIndex } from '../room/checkNames';
+import { enemiesHere } from '../room/entities';
 import type { Session } from '../Session';
 import { unported } from '../unported';
+import { send } from './send';
+import { sneakStep } from './stealth';
+import { setState } from './state';
 
-/** `0x408e40`: party status and @health (D17). Not ported yet. */
-export function partyStatus(_s: Session): number {
-  return unported('408e40');
+function moving(s: Session): boolean {
+  return s.active !== 0 || s.f_e184 !== 0 || s.f_e18c !== 0 || s.f_e178 !== 0;
 }
 
-/** `0x407ee0`: inviting players (D27). Not ported yet. */
-export function invitePlayers(_s: Session): number {
-  return unported('407ee0');
+/** Ask for the party (`par`). */
+function askParty(s: Session, why: string): number {
+  s.waitLines = 2;
+  s.f_32328 = s.now;
+  s.f_e2ac = 0;
+  setState(s, 0x2e);
+  s.host.activity(why);
+  send(s, 'par\r');
+  return 1;
 }
 
-/** `0x408100`: looking at a player (D35). Not ported yet. */
-export function lookAtPlayer(_s: Session): number {
-  return unported('408100');
+/**
+ * `0x408e40` (D17): in a party, `par` when a member is unknown (`2`), or
+ * timed (`Party.ParPeriod`; twice as long out of a fight, or when asked,
+ * `0xe2ac`); a member whose numbers are unknown asked for `@health`
+ * (`Party.AskHealth`, unless they do not run MegaMUD, player flag 8).
+ */
+export function partyStatus(s: Session): number {
+  if (s.partySize < 2 && s.f_e2ac === 0) {
+    s.partyWait = 0;
+    s.f_e298 = 0;
+    return 0;
+  }
+  if (s.hp < 1) return 0;
+  if (s.inCombat === 0 && s.MegaMud_AutoCombat === 1 && enemiesHere(s, 0) > 0) return 0;
+  const fighting = s.inCombat !== 0 && s.MegaMud_AutoCombat !== 0;
+  if (!fighting && s.now - s.f_32328 > s.Comms_LagWait + 3) {
+    for (let i = 0; i < s.partySize; i += 1) {
+      const m = s.party[i]!;
+      if ((m.flags28 & 2) !== 0)
+        return askParty(s, `Getting party status (member ${m.name} unknown)`);
+    }
+  }
+  for (let i = 0; i < s.partySize; i += 1) {
+    const m = s.party[i]!;
+    if (m.name === s.Player_Name) {
+      if ((m.flags28 & 1) !== 0) {
+        m.hp = s.hp;
+        m.maxHp = s.Player_MaxHP;
+      }
+      continue;
+    }
+    if ((m.flags28 & 0x8d) !== 1) continue;
+    m.flags28 &= ~1;
+    if (s.Party_AskHealth === 0) continue;
+    const p = findPlayer(s, m.name);
+    if (p && (p.flags & 8) !== 0) continue;
+    s.waitLines = 2;
+    setState(s, 0x2e);
+    s.host.activity(`Getting party member health from ${m.name}`);
+    send(s, `/${m.name} @health\r`);
+    return 1;
+  }
+  const elapsed = s.now - s.f_32328;
+  if (elapsed <= s.Comms_LagWait + 3) return 0;
+  if (s.f_e2ac === 0 && elapsed < s.Party_ParPeriod * 2) {
+    if (elapsed < s.Party_ParPeriod || enemiesHere(s, 0) < 1) return 0;
+  }
+  return askParty(s, 'Getting party status (timed)');
 }
 
-/** `0x40d2e0`: tracking a player (D36). Not ported yet. */
-export function trackPlayer(_s: Session): number {
-  return unported('40d2e0');
+/**
+ * `0x407ee0` (D27): a player here invited: one to invite if seen (player
+ * flag `0x10`), or a member gone from the party (`0x188`) when this
+ * character leads; one already invited (`4`) asked to `@join` instead, once
+ * (`0x200`).
+ */
+export function invitePlayers(s: Session): number {
+  if (s.following === 1 || !moving(s) || s.f_a32c !== 0 || s.hp <= 0) return 0;
+  for (const e of s.room) {
+    if (e.type !== 1) continue;
+    let invite = e.player !== null && (e.player.flags & 0x10) !== 0;
+    let join = false;
+    const i = s.leaderName !== '' && s.Player_Name === s.leaderName ? partyIndex(s, e.name) : -1;
+    if (i !== -1) {
+      const f = s.party[i]!.flags28;
+      invite = (f & 0x188) !== 0;
+      if ((f & 4) !== 0) {
+        if ((f & 0x200) !== 0) continue;
+        join = true;
+        invite = true;
+      }
+    }
+    if (!invite) continue;
+    s.rescueCount = 0;
+    s.waitLines = 2;
+    setState(s, 0x2e);
+    s.host.activity(`Inviting player ${e.name}`);
+    send(s, join ? `/${e.name} @join\r` : `invite ${e.name}\r`);
+    addMember(s, e.name, 0);
+    const j = partyIndex(s, e.name);
+    if (j === -1) continue;
+    const m = s.party[j]!;
+    m.flags28 = (m.flags28 | 4 | (join ? 0x200 : 0)) & ~0x188;
+    return 1;
+  }
+  return 0;
+}
+
+/**
+ * `0x408100` (D35): with `Talk.LookPlayers`, a player here not looked at
+ * yet (entry flag 2) whose race or class is unknown (or not greeted),
+ * looked at, at most every `LagWait` + 3 seconds; not while hidden.
+ */
+export function lookAtPlayer(s: Session): number {
+  if (s.hp <= 0 || s.Talk_LookPlayers === 0) return 0;
+  if (s.state === 0x20) return 1;
+  if (s.now - s.f_32388 <= s.Comms_LagWait + 3 || s.hidden !== 0 || s.f_a32c !== 0) return 0;
+  for (let i = 0; i < s.room.length; i += 1) {
+    const e = s.room[i]!;
+    const p = e.player;
+    if (e.type !== 1 || !p || (e.flags & 2) !== 0 || (p.flags & 0x400) !== 0) continue;
+    if (p.race !== 0 && p.cls !== 0 && (p.flags & 0x20000) !== 0) continue;
+    s.roomSelected = i;
+    s.waitLines = 2;
+    s.lineFlags = (s.lineFlags & ~0x4003) | 0x80000;
+    s.f_32388 = s.now;
+    setState(s, 0x20);
+    s.host.activity(`Looking at player ${e.name}`);
+    send(s, `l ${e.name}\r`);
+    return 1;
+  }
+  return 0;
+}
+
+/**
+ * `0x40d2e0` (D36): following a track (`runDirection`, or the last `track`'s
+ * direction, `0x437ae0`) while walking; else with `MegaMud.AutoTrack` and
+ * `PvP.TrackEnemies`, an enemy online (or the one being chased) tracked,
+ * each at most every `PvP.TrackDelay` seconds. The move itself (`0x408870`,
+ * `0x408540`) is the walker's, not ported yet.
+ */
+export function trackPlayer(s: Session): number {
+  if (s.f_a32c !== 0 || s.hp < 1) return 0;
+  if (s.f_e184 !== 0 && s.chaseTarget !== '') {
+    const w = s.whoList.find((x) => x.name === s.chaseTarget);
+    if (w && w.kind === 5) {
+      s.chaseTarget = '';
+      s.runDirection = -1;
+    }
+  }
+  let follow = s.runDirection !== -1;
+  if (!follow && s.f_90c8 !== 0) {
+    s.runDirection = unported('437ae0') || -1;
+    if (s.runDirection === -1) s.f_90c8 = 0;
+    else follow = true;
+  }
+  if (follow && s.f_e184 !== 0) {
+    if (unported('408870') !== 0 || sneakStep(s) !== 0 || unported('408540') !== 0) return 1;
+  }
+  if (s.Player_Tracking === 0 || s.MegaMud_AutoTrack === 0 || s.PvP_TrackEnemies === 0) {
+    s.runDirection = -1;
+    return 0;
+  }
+  for (const entry of s.whoList) {
+    let w = s.chaseTarget !== '' ? (s.whoList.find((x) => x.name === s.chaseTarget) ?? null) : null;
+    if (!w) w = entry.kind === 4 ? entry : null;
+    if (!w) continue;
+    if (s.now - (w.trackedAt ?? 0) < s.PvP_TrackDelay) continue;
+    w.trackedAt = s.now;
+    s.waitLines = 2;
+    s.f_90c8 = 1;
+    setState(s, 0x22);
+    s.host.activity(`Tracking player ${w.name}`);
+    send(s, `track ${w.name}\r`);
+    return 1;
+  }
+  return 0;
 }

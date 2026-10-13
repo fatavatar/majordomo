@@ -68,13 +68,14 @@ export interface AbilityMonitor {
   message: string;
   /**
    * +0xc4: when to check: 1 every `interval` seconds, 2 before resting, 4
-   * after, 0x20 before meditating, 0x40 after, 0x80 after its spell is cast,
-   * 0x100 on `message`.
+   * after, 8 after a combat round, 0x10 at the start of a path or loop, 0x20
+   * before meditating, 0x40 after, 0x80 after its spell is cast, 0x100 on
+   * `message`.
    */
   when: number;
   /** +0xc8: seconds between checks (5 at least). */
   interval: number;
-  /** +0xcc: firing checks the rest of its chain. */
+  /** +0xcc: "Re-check value after action": firing checks its chain again. */
   chainOn: number;
   /** +0xd0: chained to the monitor before it. */
   chained: number;
@@ -125,6 +126,40 @@ export function newMonitor(): AbilityMonitor {
   };
 }
 
+/** One rule (`[Rules]` `RN`, 0x38 bytes). */
+export interface Rule {
+  /** +0x00: 0 a rule's name, 1 or 2 a condition, 3 or 4 an action. */
+  kind: number;
+  /**
+   * +0x04: a condition's value: 1 HP %, 2 mana %, 3 the weakest member's HP %,
+   * 4 members here, 5 monsters here, 6 `text` is here, 7 the room is `text`;
+   * an action: 0 rest, 1 rest to full HP, 2 rest to full mana, 3 run, 4 hang
+   * up, 0xe send `text`.
+   */
+  what: number;
+  /** +0x08: a condition's test: 0 =, 1 ≠, 2 >, 3 ≥, 4 <, 5 ≤ (`text` as a number). */
+  test: number;
+  /** +0x0c, 41 characters. */
+  text: string;
+}
+
+/** One timed event (`[Schedule]` `EventN`, 0x70 bytes). */
+export interface TimedEvent {
+  /** +0x04: 1 log on, 2 log off, 3 relog, 4 detour to a room, 5 a command, 6 change loop. */
+  type: number;
+  /**
+   * +0x08: the hour it is due daily; or -1 every `minute` minutes, -2 every
+   * `minute` seconds, -3 every `minute` hours.
+   */
+  hour: number;
+  /** +0x0c: the minute it is due, or the interval. */
+  minute: number;
+  /** +0x10, 81 characters: the room, command or loop. */
+  text: string;
+  /** +0x68: when it is next due (seconds; 0 not worked out yet). */
+  dueAt: number;
+}
+
 /** One player online (`0x4c0f00`, 0x48 bytes). */
 export interface WhoEntry {
   /** +0x04: what it is to us, as a room entry's kind (3 unknown). */
@@ -133,6 +168,8 @@ export interface WhoEntry {
   name: string;
   /** +0x30: its player record. */
   player: PlayerRec | null;
+  /** +0x40: when it was last tracked (seconds). */
+  trackedAt?: number;
 }
 
 /** One inventory line (`0x452ba0`, 12 bytes). */
@@ -295,6 +332,26 @@ export class Session extends RawFields {
   spellLocks = 0;
   /** 0x32688: three or more locks without a round event. */
   spellLockStuck = 0;
+
+  // ------------------------------------------------------------ rules
+
+  /** 0x22d0/0x22d8: the rules (`[Rules]`, `0x49c820`). */
+  rules: Rule[] = [];
+  /** 0x22a0: the rule the next pass starts at. */
+  ruleAt = 0;
+  /** 0x22a4: the name of the rule being read. */
+  ruleName = '';
+  /** 0xe248: they changed since they were saved. */
+  rulesChanged = 0;
+
+  // ------------------------------------------------------------ timed events
+
+  /** 0x2358/0x236c: the timed events (`[Schedule]`, `0x437870`). */
+  events: TimedEvent[] = [];
+  /** 0x2354: the next one due (-1 none). */
+  eventNext = -1;
+  /** 0xe274: they changed since they were saved. */
+  eventsChanged = 0;
 
   // ------------------------------------------------------------ ability monitors
 

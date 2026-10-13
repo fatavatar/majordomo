@@ -5,6 +5,7 @@
  * recovered the corpse of <me>.` (the corpse gone from the room). Each ends
  * the recovery (state `0x2f`).
  */
+import { send } from '../script/send';
 import { forgetAwaited, setState } from '../script/state';
 import type { RoomEntity, Session } from '../Session';
 import { removeEntity } from '../room/entities';
@@ -70,6 +71,31 @@ export function corpseLine(s: Session, line: string): number {
       if (e.count < 1) removeEntity(s, s.room.indexOf(e));
     }
     return done('rc-ok');
+  }
+  return 0;
+}
+
+/**
+ * `0x497840` (D51): with `MegaMud.AutoGet` and `Cash.AutoRecoverCorpse`, this
+ * character's corpse here (a corpse-marked item, `0x18000`) recovered
+ * (`recover corpse of <me>`, state `0x2f`). GreaterMUD only.
+ */
+export function recoverCorpse(s: Session): number {
+  if (s.hp <= 0 || s.f_a32c !== 0 || s.MegaMud_AutoGet === 0 || s.BBS_GreaterMUD === 0) return 0;
+  if (s.f_8558 !== 0 || s.f_e1e4 !== 0 || s.darkness === 2) return 0;
+  if (s.Player_Name === '' || s.Player_Name.startsWith('*')) return 0;
+  for (const e of s.room) {
+    if (e.type !== 3 || (e.flags & 0x18000) === 0) continue;
+    // `0x497dd0`: the row's setting (row 1, `Cash.AutoRecoverCorpse`).
+    if (s.Cash_AutoRecoverCorpse === 0 || !isMyCorpse(s, e)) continue;
+    s.f_8558 = 1;
+    s.f_8560 = s.now;
+    s.waitLines = 2;
+    setState(s, 0x2f);
+    s.host.activity(`Recovering ${e.name}`);
+    send(s, `recover corpse of ${s.Player_Name}\r`);
+    if (s.debug !== 0) s.host.trace('{rc-go0}');
+    return 1;
   }
   return 0;
 }

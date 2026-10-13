@@ -268,8 +268,12 @@ export function abilTimedOut(s: Session): void {
   }
 }
 
-/** `0x402e80`: the monitors checked on `bit` (4 after resting, 0x40 after meditating) are due. */
-function dueOn(s: Session, bit: number): number {
+/**
+ * `0x402e80`: the monitors checked on `bit` are due: 4 after resting, 8 after
+ * a combat round (`0x402f60`), 0x10 at the start of a path or loop
+ * (`0x402f40`), 0x40 after meditating.
+ */
+export function dueOn(s: Session, bit: number): number {
   if (s.monitors.length === 0 || s.MegaMud_DisableAbilMon !== 0) return 0;
   let any = 0;
   for (let i = 0; i < s.monitors.length; i += 1) {

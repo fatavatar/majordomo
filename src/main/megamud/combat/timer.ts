@@ -11,8 +11,8 @@
  *
  * Ticks are milliseconds (`GetTickCount64`, here the host's `tickMs`).
  */
+import { dueOn } from '../abilities/monitors';
 import type { Session } from '../Session';
-import { unported } from '../unported';
 
 const ROUND = 5000;
 /** The confidence the cast gate wants before it trusts the round. */
@@ -160,7 +160,8 @@ function roundPassed(s: Session, last: number, t: number, kind: number): void {
   if (s.roundSynced !== 1 || last === 0) return;
   if (roundOf(s, last) >= roundOf(s, t)) return;
   if (s.debug !== 0) s.host.trace(`{rnd:${kind}}`);
-  if (s.inCombat !== 0) unported('402e80');
+  // `0x402f60`: the monitors checked after a combat round.
+  if (s.inCombat !== 0) dueOn(s, 8);
   s.spellLock = 0;
   s.spellLockAt = 0;
   s.spellLockLifted = 0;
