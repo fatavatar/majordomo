@@ -18,14 +18,12 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { stricmp } from '../megamud/cstr';
-import { coinItems, messagesFrom, readData, type MegaData, type MessageRec } from '../megamud/data';
+import { coinItems, messagesFrom, readData, type MegaData } from '../megamud/data';
 import { bbsSetup } from '../megamud/bbs';
 import { grantPlayers, loadCharacter } from '../megamud/character';
 import { newTerminal, parseData, type TerminalState } from '../megamud/input/ParseData';
 import { typedCommand } from '../megamud/input/typed';
 import { menuCommand } from '../megamud/move/buttons';
-import { blessCommand } from '../megamud/player/cast';
 import { clearDetours, goTo, headFor, startWalking } from '../megamud/move/destinations';
 import { copyPath, freeSteps } from '../megamud/move/path';
 import { connected, connectionClosed } from '../megamud/script/game';
@@ -36,7 +34,6 @@ import {
   secondTick,
   type QuietClock
 } from '../megamud/script/timer';
-import { findSpell } from '../megamud/spells/lookup';
 import {
   newPath,
   Session,
@@ -82,11 +79,6 @@ export interface MegaEngineHost {
   loopRooms(name: string): { rooms: RoomId[]; bounce: boolean } | string;
   /** MegaMUD's yes-or-no questions; no when absent. */
   ask?(text: string): boolean;
-  /**
-   * The sentences a spell prints landing and ending on this realm, shipped
-   * and learned by our tracker (`SpellLore`); null where none is known.
-   */
-  spellSentences?(spell: string): { start: string | null; stop: string | null };
 }
 
 export interface MegaEngineSetup {
@@ -228,8 +220,6 @@ export class MegaEngine {
   private locateGaveUp = false;
   /** In the game at the last chunk: entering it is when a room is first wanted. */
   private wasInGame = false;
-  /** Messages.md as read, before `teachBlessings` puts its rows behind it. */
-  private readonly readMessages: readonly MessageRec[];
 
   constructor(
     private readonly host: MegaEngineHost,
@@ -253,9 +243,7 @@ export class MegaEngine {
       saveSteps: (p) => this.saveSteps(p)
     };
     this.s = new Session(engineHost, setup.data);
-    this.readMessages = setup.data.messages ?? [];
     loadCharacter(this.s, setup.settings);
-    this.teachBlessings();
     bbsSetup(this.s, () => undefined);
     this.s.now = engineHost.clock();
     grantPlayers(this.s, setup.grants);
@@ -283,55 +271,6 @@ export class MegaEngine {
     if (s.eventsChanged !== 0) [s.events, s.eventNext] = [events, eventNext];
     if (s.monitorsChanged !== 0) s.monitors = monitors;
     grantPlayers(s, setup.grants);
-    this.teachBlessings();
-  }
-
-  /**
-   * A blessing is known to have taken by a Messages.md row named after its
-   * spell (`0x46a920`), and due again when that row's end is seen
-   * (`0x46bb70`); without one it is cast again at every step. So each
-   * blessing Messages.md has no row for is given one from the sentences our
-   * tracker reads by, shipped or learned on this realm. Built again when the
-   * settings or the lessons change; the rows Messages.md has are untouched,
-   * and the list is this session's own (the data read is shared).
-   */
-  teachBlessings(): void {
-    const s = this.s;
-    const rows = [...this.readMessages];
-    const sentences = this.host.spellSentences;
-    if (sentences) {
-      const commands = Array.from({ length: 10 }, (_, i) => blessCommand(s, i));
-      for (let n = 1; n <= 4; n += 1) {
-        commands.push((s as unknown as Record<string, string>)[`Party_PartyBless${n}`] ?? '');
-      }
-      for (const command of commands) {
-        if (command === '') continue;
-        const spell = findSpell(s, command);
-        if (!spell || (spell.flags & 2) === 0) continue;
-        if (rows.some((row) => stricmp(row.name, spell.name) === 0)) continue;
-        const { start, stop } = sentences(spell.name);
-        if (start === null) continue;
-        rows.push({
-          layer: 0,
-          name: spell.name.slice(0, 30),
-          msg: start.slice(0, 80),
-          endMsg: (stop ?? '').slice(0, 80),
-          action: '',
-          effects: 0,
-          flags: 0,
-          number: 0,
-          firedAt: 0
-        });
-      }
-    }
-    // A row already taught keeps its state (active, and since when).
-    const before = s.data.messages ?? [];
-    s.data = {
-      ...s.data,
-      messages: rows.map(
-        (row) => before.find((old) => old.name === row.name && old.msg === row.msg) ?? row
-      )
-    };
   }
 
   dispose(): void {
