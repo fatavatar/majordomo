@@ -1008,6 +1008,33 @@ describe('a person at the keyboard', () => {
   }, 15_000);
 });
 
+describe('the MegaMUD engine and a half-typed line', () => {
+  /*
+   * The engine writes straight to the socket, past the queue's typing hold,
+   * and its bare Enter landed in the middle of what Skinny's player was
+   * typing (2026-10-13).
+   */
+  it('holds what the engine writes until the line is committed or erased', async () => {
+    const { sink } = collect();
+    manager = new SessionManager(sink);
+    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
+    const socket = await client();
+    const chunks: Buffer[] = [];
+    socket.on('data', (chunk) => chunks.push(chunk));
+    const engine = manager as unknown as { megaWrite(text: string): void };
+
+    manager.send('g');
+    engine.megaWrite('\r');
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    expect(Buffer.concat(chunks).toString('latin1')).toBe('g');
+
+    manager.send('\b');
+    // Telnet's end of line is CR LF.
+    await until(() => Buffer.concat(chunks).length === 4);
+    expect(Buffer.concat(chunks).toString('latin1')).toBe('g\b\r\n');
+  });
+});
+
 describe('the decision trace', () => {
   /** Drives the fixture to the realm, which is what makes the probe fire. */
   async function reachTheRealm(socket: net.Socket): Promise<void> {

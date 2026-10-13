@@ -3753,6 +3753,7 @@ export class SessionManager {
      * that rule: a control byte the server keeps nothing of must not leave a
      * line here that stands automation down for twenty seconds.
      */
+    if (this.outbound.length === 0) this.typingSince = Date.now();
     for (const ch of editorInput(outgoing)) {
       if (ch === '\x7f' || ch === '\b') this.outbound = this.outbound.slice(0, -1);
       else this.outbound += ch;
@@ -3863,6 +3864,8 @@ export class SessionManager {
     this.queue.noteTyping(this.outbound.length > 0);
     // And the server holds its answers behind that line, so no claim ages.
     this.tracker.noteTyping(this.outbound.length > 0);
+    // The line committed or erased: what the engine wrote meanwhile goes now.
+    if (this.outbound.length === 0 && this.megaHeld !== '') this.releaseMega();
   }
 
   /**
@@ -4582,6 +4585,17 @@ export class SessionManager {
   private configured: Parameters<SessionManager['configure']> | null = null;
   /** What the engine has written since its last return, for the tracker. */
   private megaLine = '';
+  /**
+   * What the engine wrote while the player had a line half typed, held back
+   * from the socket: the realm would glue it onto that line (an Enter of the
+   * engine's sending the half of `gossip hel` typed so far). Sent when the
+   * line is committed or erased, or once it has been left `abandonedLineMs`,
+   * as the old queue's typing hold did.
+   */
+  private megaHeld = '';
+  private megaHeldTimer: NodeJS.Timeout | null = null;
+  /** When the half-typed line on the wire was begun; 0 with none. */
+  private typingSince = 0;
 
   /** Runs the MegaMUD engine for this character, or stops it (null). */
   useMegaMud(setup: MegaEngineSetup | null): void {
@@ -4593,6 +4607,7 @@ export class SessionManager {
     this.mega?.dispose();
     this.mega = null;
     this.megaLine = '';
+    this.megaHeld = '';
     if (setup !== null) {
       this.mega = new MegaEngine(
         {
@@ -4647,6 +4662,12 @@ export class SessionManager {
 
   /** The engine's writes, observed as automation's commands are. */
   private megaWrite(text: string): void {
+    const abandonedAt = this.typingSince + tuning().queue.abandonedLineMs;
+    if (this.outbound.length > 0 && Date.now() < abandonedAt) {
+      this.megaHeld += text;
+      this.megaHeldTimer ??= setTimeout(() => this.releaseMega(), abandonedAt - Date.now());
+      return;
+    }
     this.megaLine += text;
     for (;;) {
       const end = this.megaLine.indexOf('\r');
@@ -4664,6 +4685,15 @@ export class SessionManager {
       this.link.noteSent();
     }
     this.client.send(text);
+  }
+
+  /** The engine's writes held behind a half-typed line, sent now. */
+  private releaseMega(): void {
+    if (this.megaHeldTimer !== null) clearTimeout(this.megaHeldTimer);
+    this.megaHeldTimer = null;
+    const held = this.megaHeld;
+    this.megaHeld = '';
+    if (held !== '' && this.client.connected) this.megaWrite(held);
   }
 
   /** One of MegaMUD's own lines, on the console. */
@@ -4982,6 +5012,7 @@ export class SessionManager {
   private reconsiderTimer: NodeJS.Timeout | null = null;
 
   dispose(): void {
+    if (this.megaHeldTimer !== null) clearTimeout(this.megaHeldTimer);
     this.mega?.dispose();
     this.mega = null;
     this.clearFollowerWaitLimit();
