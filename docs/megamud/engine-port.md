@@ -25,6 +25,12 @@ The readings behind every step are in `megamud-exe.md`, with addresses.
 - **Silence** (`0x49c`, after 2, 5, 10, 30 and 60 seconds without data) →
   `0x464910`, which includes the `{30s}` tick (`0x40a9c0`).
 
+The port has these as `script/timer.ts`: the host calls `secondTick` once a
+second, `dataArrived` whenever data is read, and `quietTick` from its read
+loop. `quietTick` is the network thread's part (`0x42c910`): with nothing
+received it runs the data message (and so the scheduler) once a second and
+the silences after `Comms.LagWait` + 2, + 6 and + 10 seconds.
+
 The activity state (`db28`, set by `0x4aa770`) is one of the 48 the status
 bar names (`0x4ac2a0`): 0 Nothing, 3 Resting, 5 Meditating, 9–15 the attack
 casts, 0x11 Attacking, 0x16 Moving/Running, … See `states.ts`.
