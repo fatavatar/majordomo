@@ -24,7 +24,7 @@ import { setState } from './state';
 const COIN = 0x8000000;
 
 function moving(s: Session): boolean {
-  return s.active !== 0 || s.f_e184 !== 0 || s.f_e18c !== 0 || s.f_e178 !== 0;
+  return s.active !== 0 || s.walking !== 0 || s.roaming !== 0 || s.importing !== 0;
 }
 
 /**

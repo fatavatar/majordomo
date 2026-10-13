@@ -223,7 +223,7 @@ describe('running and attacking (0x40e190)', () => {
 
   it('runs when HP fall below HpRun% while walking', () => {
     const { s, out } = fighter([]);
-    s.f_e184 = 1;
+    s.walking = 1;
     s.Health_HpRunPct = 30;
     s.Combat_RunRooms = 2;
     s.hp = 20;
@@ -236,7 +236,7 @@ describe('running and attacking (0x40e190)', () => {
 
   it('runs from too many monsters', () => {
     const { s, out } = fighter([]);
-    s.f_e184 = 1;
+    s.walking = 1;
     s.Combat_MaxMstrs = 2;
     monster(s, 'giant rat');
     monster(s, 'giant rat');

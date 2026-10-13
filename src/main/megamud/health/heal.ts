@@ -13,7 +13,7 @@ export function healStep(s: Session): number {
   if (s.hp < 1) return 0;
   const st = s.state;
   if (st === 0x11 || st === 0x12) return 0;
-  if (st === 0 && s.sneaking !== 0 && s.f_e184 !== 0 && enemiesHere(s, 0) > 0) return 0;
+  if (st === 0 && s.sneaking !== 0 && s.walking !== 0 && enemiesHere(s, 0) > 0) return 0;
   if (s.MegaMud_AutoLight === 0 || s.hidden !== 0) return 0;
   if (s.sneaking !== 0 && enemiesHere(s, 0) > 0) return 0;
   const dark = s.darkness;

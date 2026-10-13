@@ -16,7 +16,7 @@ import type { Session } from '../Session';
 import { recheckStats } from '../stats/exp';
 
 function automated(s: Session): boolean {
-  return s.active !== 0 || s.f_e184 !== 0 || s.f_e18c !== 0 || s.f_e178 !== 0;
+  return s.active !== 0 || s.walking !== 0 || s.roaming !== 0 || s.importing !== 0;
 }
 
 /** `0x4ac960`: the version in a `P A R A D I G M` banner (`v1.2.3`), or null. */

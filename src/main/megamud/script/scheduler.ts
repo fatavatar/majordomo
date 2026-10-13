@@ -228,7 +228,7 @@ function afterRun(s: Session, at: (step: number) => void): number {
     if (sent !== 0) return sent;
   }
   at(0x31);
-  if ((s.f_e184 === 0 && s.f_e178 === 0 && s.f_e18c === 0) || s.following !== 0) {
+  if ((s.walking === 0 && s.importing === 0 && s.roaming === 0) || s.following !== 0) {
     let sent = 0;
     if (s.following === 0 && s.f_e2ec === 0) sent = hideStep(s);
     if (sent === 0) sent = sneakStep(s);

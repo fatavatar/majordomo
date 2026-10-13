@@ -173,6 +173,117 @@ export interface WhoEntry {
 }
 
 /** One inventory line (`0x452ba0`, 12 bytes). */
+/**
+ * `0x43fd90`'s answer: `flags` 0 found, 1 no way, 2 and 4 too low or too
+ * high a level, 8 short of gold, 0x10 an item needed, 0x20 cancelled; the
+ * path to take first (`special` -3 to -8 for a MUD op's `sys goto`), and the
+ * steps to go.
+ */
+export interface RouteFound {
+  flags: number;
+  path: PathRec | null;
+  special?: number;
+  steps: number;
+  /** 0x5664f0, 0x5664f4: the levels the way allows. */
+  minLevel?: number;
+  maxLevel?: number;
+  /** 0x5664f8: the gold it costs. */
+  gold?: number;
+  /** 0x566500: the item it needs. */
+  item?: string;
+  /** 0x566520: the room the restriction is on. */
+  via?: number;
+}
+
+/** `0x99999999`: a path step taken from any room (roaming steps, `0x409170`). */
+export const ANY_ROOM = 0x99999999 | 0;
+
+/** One step of a path (a `.mp` file's `room:flags:command` line, `0x482fc0`). */
+export interface PathStep {
+  /** +0x00: the signature (`0x8130`) of the room it is taken from; -1 not learned yet. */
+  room: number;
+  /**
+   * +0x04: 1 the room's light is known, 2 rest to full before it, 4 sets
+   * `f_e2b4`, 8 dark, 0x10 stash there, 0x20 and 0x40 don't attack there,
+   * 0x80 relearn its room, 0x100 its room uncertain, 0x200 trapped, 0x8000
+   * resynced to.
+   */
+  flags: number;
+  /** +0x06: what is typed: a direction, or a command (`[key]` text for a door). */
+  command: string;
+}
+
+/**
+ * A path, `0x84` bytes: the one walked (`0xe39c`), the loop (`0xe4a4`), and
+ * the paths known (`0x7f20`). The walked path's name is `MegaMud.CurPath`
+ * and its step `MegaMud.CurPathStep`; the loop's name `MegaMud.SelPath`.
+ */
+export interface PathRec {
+  /** +0x04: its title. */
+  title: string;
+  /** +0x08: who recorded it. */
+  author: string;
+  /** +0x0c, 14 characters: its file. */
+  name: string;
+  /** +0x39, 14 characters: the path to take when a door's `[fail]` stops this one. */
+  retry: string;
+  /** +0x47, 14 characters: the path that follows this one. */
+  next: string;
+  /** +0x58: the signature of the room it starts from. */
+  start: number;
+  /** +0x5c: the room it ends in (the start, for a loop). */
+  end: number;
+  /** +0x6c: how many steps. */
+  count: number;
+  /** +0x70: the step reached. */
+  at: number;
+  /** +0x74: the step record reached (a byte offset in MegaMUD, an index here). */
+  step: number;
+  /** +0x78: the step record before it. */
+  prev: number;
+  /** +0x7c/+0x80: the steps, once loaded (`0x482fc0`). */
+  steps: PathStep[] | null;
+}
+
+export function newPath(): PathRec {
+  return {
+    title: '',
+    author: '',
+    name: '',
+    retry: '',
+    next: '',
+    start: 0,
+    end: 0,
+    count: 0,
+    at: 0,
+    step: 0,
+    prev: 0,
+    steps: null
+  };
+}
+
+/** A path record whose name and step are two of the settings (`0xe3a8`, `0xe40c`; `0xe4b0`). */
+function settingsPath<K extends 'MegaMud_CurPath' | 'MegaMud_SelPath'>(
+  s: Session,
+  name: K,
+  at: 'MegaMud_CurPathStep' | null
+): PathRec {
+  const p = newPath();
+  Object.defineProperty(p, 'name', {
+    enumerable: true,
+    get: () => s[name],
+    set: (v: string) => (s[name] = v)
+  });
+  if (at) {
+    Object.defineProperty(p, 'at', {
+      enumerable: true,
+      get: () => s[at],
+      set: (v: number) => (s[at] = v)
+    });
+  }
+  return p;
+}
+
 export interface Carried {
   /** +0x00: how many. */
   count: number;
@@ -271,8 +382,26 @@ export interface SessionHost {
   caption?(): string;
   /** C's `rand()`, 0 to 32767 (Math.random when absent). */
   rand?(): number;
-  /** A move arrived while walking a path (`0x45fa60`'s place): our walker takes it from here. */
+  /** `0x45fa60`: a move arrived (its direction), for the map to follow (ours). */
   arrived?(step: number): void;
+  /**
+   * `0x43fd90`: the way from one room to another (signatures), over the
+   * paths known; our world graph's in place of MegaMUD's path search.
+   */
+  route?(from: number, to: number): RouteFound;
+  /**
+   * `0x482fc0`'s file: a path by its name (a `route`'s among them); the
+   * paths known (`Session.paths`) are looked in when this is absent or null.
+   */
+  readPath?(name: string): PathRec | null;
+  /** `0x4888e0`: a path whose steps changed, written back; nonzero when it was. */
+  saveSteps?(path: PathRec): number;
+  /** `0x4bf9e0`: a yes-or-no question put to the player (no when absent). */
+  ask?(text: string): boolean;
+  /** `0x4bf7e0`: a message box. */
+  message?(text: string): void;
+  /** `0x460b90`: a menu command posted to the window, run after this message (`menuCommand`). */
+  post?(command: number): void;
 }
 
 export class Session extends RawFields {
@@ -426,8 +555,6 @@ export class Session extends RawFields {
   /** 0xe210: the flux monitor asks for the mana regen again. */
   fluxRecast = 0;
 
-  /** The direction the leader is bashing, for `Party.HelpBash` (passed to `0x408870`). */
-  f_db30help = -1;
   /** 0xd8ac: the armour class, from `stat`. */
   armourClass = 0;
   /** 0xd8b0: the damage resistance beside it. */
@@ -515,8 +642,6 @@ export class Session extends RawFields {
   whereAskedAt = 0;
   /** 0x80fb: the destination's name, 51 characters. */
   destination = '';
-  /** 0xe3a0: the path's own name (a pointer in MegaMUD), shown beside the path file. */
-  pathTitle = '';
   /** 0x7cb9: the game menu's own prompt (beside `[MAJORMUD]:`), from the BBS set-up; not read yet. */
   s_7cb9 = '';
   /** 0x7d7d: a line that means the account is wanted elsewhere, from the BBS set-up; not read yet. */
@@ -626,6 +751,46 @@ export class Session extends RawFields {
   }));
   /** 0x8474: an item being picked up, until the inventory lists it, 31 characters. */
   s_8474 = '';
+  /** 0x8460: the cash limit's no-bank warning has been shown (`0x406f20`). */
+  f_8460 = 0;
+
+  // ------------------------------------------------------------ paths
+
+  /**
+   * 0xe39c: the path walked: 0xe3a0 its title, 0xe3a4 its author, 0xe3a8 its name, 0xe3d5 the
+   * retry path, 0xe3e3 the next, 0xe3f4 its start, 0xe3f8 its end, 0xe408
+   * its count, 0xe40c the step reached, 0xe410 that step's record, 0xe414
+   * the one before, 0xe418 and 0xe41c the steps.
+   */
+  path: PathRec = settingsPath(this, 'MegaMud_CurPath', 'MegaMud_CurPathStep');
+  /** 0xe4a4: the loop, walked again from its start (0xe4fc, 0xe500 its start and end). */
+  loopPath: PathRec = settingsPath(this, 'MegaMud_SelPath', null);
+  /** 0x7f18/0x7f20: the paths known, by file and title (`0x482bd0`). */
+  paths: PathRec[] = [];
+  /** 0xe184: walking a path (the Go/Stop button, `0x803`). */
+  walking = 0;
+  /** 0xe188: looping: the path walked is the loop. */
+  looping = 0;
+  /** 0xe18c: roaming by allowed exits (the Roam button, `0x808`). */
+  roaming = 0;
+  /** 0xe190: lost: on no path, roaming until a known room or a path's room. */
+  lost = 0;
+  /** 0xe178: walking an imported path's commands (`0x4451e0`). */
+  importing = 0;
+  /** 0x7f24: the imported text's format (1–5; 3 skips past a `:`, 4 is one per line, 5 cuts at `~`). */
+  importFormat = 0;
+  /** 0x7f28: the imported text. */
+  importText = '';
+  /** 0x7f2c: where the next imported command starts. */
+  importAt = 0;
+  /** 0x7f30: where the last one started (a refused move goes back to it). */
+  importFrom = 0;
+  /** 0xdb30: the direction of the move under way (-1 none). */
+  moveDir = 0;
+  /** 0xdb40: the steps to go (-1 not known). */
+  stepsToGo = 0;
+  /** 0xdb70: tries at the step reached while its room is not the one here. */
+  stepTries = 0;
   /** 0x8493: 31 characters, cleared by each inventory. */
   s_8493 = '';
   /** 0xa5d9: the item being equipped, 31 characters. */

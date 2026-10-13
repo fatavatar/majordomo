@@ -31,9 +31,9 @@ const BLOCKED = [
 
 /** `0x482de0`: a path step not taken: taken back. */
 export function stepBack(s: Session): number {
-  if (s.f_e408 > 0 && s.f_e414 !== s.f_e410) {
-    s.f_e410 = s.f_e414;
-    s.f_e408 -= 1;
+  if (s.path.count > 0 && s.path.prev !== s.path.step) {
+    s.path.step = s.path.prev;
+    s.path.count -= 1;
     setTask(s, 0xc);
     return 1;
   }
@@ -52,7 +52,11 @@ function noExit(s: Session): number {
   s.f_32390 = 0;
   s.f_8138 = 0;
   const lost =
-    s.f_e184 !== 0 && s.f_e18c === 0 && s.following === 0 && s.f_e41c !== 0 && s.darkness > 1;
+    s.walking !== 0 &&
+    s.roaming === 0 &&
+    s.following === 0 &&
+    s.path.steps !== null &&
+    s.darkness > 1;
   if (!lost || ++s.f_db74 < 2) {
     s.f_e290 = 1;
     setState(s, 0);
@@ -67,12 +71,12 @@ function noExit(s: Session): number {
       stopWalking(s, '[Lost in the dark - trying to find the way back]');
     }
   } else {
-    if (s.f_e188 === 0) {
+    if (s.looping === 0) {
       s.f_db78 = 0;
-      s.f_e190 = 1;
-      s.f_e184 = 0;
-      s.f_e18c = 0;
-      s.f_e188 = 0;
+      s.lost = 1;
+      s.walking = 0;
+      s.roaming = 0;
+      s.looping = 0;
       modeDefaults(s);
       reEngage(s);
       setTask(s, 0x11);
@@ -90,7 +94,7 @@ function noExit(s: Session): number {
   s.f_8130 = 0;
   s.roomNameHash = 0;
   s.roomRecord = null;
-  s.f_e190 = 1;
+  s.lost = 1;
   s.f_e198 = 1;
   setState(s, 0);
   return 1;
@@ -106,12 +110,12 @@ export function moveLine(s: Session, line: string): number {
   const door = line.indexOf('The ');
   if (door === 0 && (line.includes(' is closed!') || line.includes(' is Closed!'))) {
     if (s.f_e174 !== 0) stepBack(s);
-    if (s.f_e178 !== 0) s.f_7f2c = s.f_7f30;
-    if (s.state === 0x16 && s.darkness > 1 && s.f_db30 !== -1) {
+    if (s.importing !== 0) s.importAt = s.importFrom;
+    if (s.state === 0x16 && s.darkness > 1 && s.moveDir !== -1) {
       s.MegaMud_CurPathStep -= 1;
-      s.f_e410 = s.f_e414;
-      if (s.task === 0xe) s.f_db40 += 1;
-      s.roomExits[s.f_db30] = 2;
+      s.path.step = s.path.prev;
+      if (s.task === 0xe) s.stepsToGo += 1;
+      s.roomExits[s.moveDir] = 2;
     } else {
       s.f_e290 = 1;
     }
@@ -120,20 +124,20 @@ export function moveLine(s: Session, line: string): number {
     return 1;
   }
   if (door !== -1 && line.includes(' is locked')) {
-    if (s.state === 0x1a && s.f_db30 !== -1) {
-      s.roomExits[s.f_db30] = 2;
+    if (s.state === 0x1a && s.moveDir !== -1) {
+      s.roomExits[s.moveDir] = 2;
       s.lineFlags |= 4;
       setState(s, 0);
       return 1;
     }
     if (s.f_e174 !== 0) stepBack(s);
-    if (s.f_e178 !== 0) s.f_7f2c = s.f_7f30;
+    if (s.importing !== 0) s.importAt = s.importFrom;
     setState(s, 0);
     return 1;
   }
   if (door !== -1 && line.includes(' is now open')) {
-    if (s.state === 0x1a && s.f_db30 !== -1) {
-      s.roomExits[s.f_db30] = 3;
+    if (s.state === 0x1a && s.moveDir !== -1) {
+      s.roomExits[s.moveDir] = 3;
       s.lineFlags |= 4;
       s.f_e290 = 0;
     } else {
@@ -152,10 +156,10 @@ export function moveLine(s: Session, line: string): number {
   }
   if (!BLOCKED.some((b) => line.includes(b))) return 0;
   if (s.f_e174 !== 0) stepBack(s);
-  s.f_db34 = s.f_db30;
+  s.f_db34 = s.moveDir;
   setState(s, 0);
-  if (s.f_e184 !== 0 && s.f_e190 === 0 && s.f_e18c === 0) {
-    s.f_e184 = 0;
+  if (s.walking !== 0 && s.lost === 0 && s.roaming === 0) {
+    s.walking = 0;
     modeDefaults(s);
     reEngage(s);
     setTask(s, 0xb);

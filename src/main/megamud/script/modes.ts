@@ -8,7 +8,7 @@ import type { Session } from '../Session';
 
 export function modeDefaults(s: Session): void {
   const active =
-    (s.active !== 0 || s.f_e184 !== 0 || s.f_e18c !== 0 || s.f_e178 !== 0) && s.f_a32c === 0
+    (s.active !== 0 || s.walking !== 0 || s.roaming !== 0 || s.importing !== 0) && s.f_a32c === 0
       ? 1
       : 0;
   if (s.modeApplied !== -1 && s.modeApplied === active) return;

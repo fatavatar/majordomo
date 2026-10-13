@@ -81,8 +81,8 @@ export function buyLine(s: Session, line: string): number {
     s.s_8474 = '';
     forgetAwaited(s, s.state);
     setState(s, 0);
-    if (s.f_e184 !== 0) {
-      s.f_e184 = 0;
+    if (s.walking !== 0) {
+      s.walking = 0;
       modeDefaults(s);
       s.host.alert?.('idle');
     }

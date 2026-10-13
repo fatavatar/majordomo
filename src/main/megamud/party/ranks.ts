@@ -30,8 +30,8 @@ import { enemiesHere, findEntity, unkeepAll } from '../room/entities';
 import { queue, send } from '../script/send';
 import { setState } from '../script/state';
 import type { Session } from '../Session';
-import { unported } from '../unported';
 import { addMember, askParty, removeMember } from './members';
+import { freeSteps } from '../move/path';
 
 /** The name before `at` (up to 10 characters). */
 function nameBefore(line: string, at: number): string {
@@ -111,7 +111,7 @@ function noLongerFollowing(s: Session): number {
   s.following = 0;
   s.f_e2ec = 1;
   s.partySize = 0;
-  if (s.active !== 0 && s.f_e188 === 0 && s.f_e18c === 0) s.host.alert?.('idle');
+  if (s.active !== 0 && s.looping === 0 && s.roaming === 0) s.host.alert?.('idle');
   return 1;
 }
 
@@ -152,7 +152,7 @@ function movedWithParty(s: Session, line: string, at: number): number {
     }
     healthStep(s);
   }
-  s.f_db30 = directionOf(line.slice(at + 0x1f));
+  s.moveDir = directionOf(line.slice(at + 0x1f));
   s.f_32320 = s.now;
   s.f_32378 = s.now;
   s.f_32310 = 0;
@@ -180,7 +180,7 @@ function movedWithParty(s: Session, line: string, at: number): number {
   s.f_db60 = s.Other_SearchMax;
   s.f_db68 = 0;
   s.f_db6c = 0;
-  s.f_db70 = 0;
+  s.stepTries = 0;
   s.f_db48 = 0;
   s.f_db50 = 0;
   s.f_db58 = 0;
@@ -243,8 +243,8 @@ export function rankLine(s: Session, line: string): number {
     s.following = 1;
     s.f_e2ec = 0;
     stopHolding(s);
-    // `0x482e30` twice: this character's own paths are let go.
-    unported('482e30');
+    freeSteps(s.loopPath);
+    freeSteps(s.path);
     return 1;
   }
   if (line.indexOf('You are no longer following') !== -1) return noLongerFollowing(s);

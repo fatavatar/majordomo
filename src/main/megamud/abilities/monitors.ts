@@ -19,7 +19,7 @@
 import { atoi, indexOf, stricmp } from '../cstr';
 import type { AbilityMonitor, Session } from '../Session';
 import { newMonitor } from '../Session';
-import { expandMacros, queueCommand, send } from '../script/send';
+import { expandMacros, queueCommand, send, wake } from '../script/send';
 import { setState } from '../script/state';
 import { findSpell } from '../spells/lookup';
 
@@ -293,12 +293,6 @@ function stillGoing(s: Session, bit: number): number {
     if (live(m) && (chainWhen(s, i) & bit) !== 0 && (m.due !== 0 || m.state !== 0)) return 1;
   }
   return 0;
-}
-
-/** `0x42e0e0`: wake the scheduler. */
-function wake(s: Session): void {
-  s.lineFlags |= 1;
-  s.f_e544 = 4;
 }
 
 /**

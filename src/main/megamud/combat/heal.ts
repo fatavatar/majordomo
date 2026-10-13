@@ -78,7 +78,7 @@ function fluxRecast(s: Session): number {
 function mayDrain(s: Session): boolean {
   let allowed = true;
   if (s.MegaMud_AutoCombat === 0 || s.runCount > 0) {
-    const moving = s.f_e184 !== 0 || s.f_e18c !== 0 || s.f_e178 !== 0;
+    const moving = s.walking !== 0 || s.roaming !== 0 || s.importing !== 0;
     if (moving && s.held === 0 && s.partyWait === 0) allowed = false;
     if (s.MegaMud_AutoCombat === 0 && (s.following !== 0 || !moving)) allowed = false;
   }
@@ -94,7 +94,7 @@ export function selfHeal(s: Session): number {
   if (s.f_a32c !== 0 || s.hp < 1 || s.Player_MaxHP === 0 || s.Player_MaxMana === 0) return 0;
   const n = enemiesHere(s, 0);
   if (s.state === 0x12) return 0;
-  if (s.state === 0 && s.sneaking !== 0 && s.f_e184 !== 0 && n > 0) return 0;
+  if (s.state === 0 && s.sneaking !== 0 && s.walking !== 0 && n > 0) return 0;
   if (fluxRecast(s) !== 0) return 1;
   if (s.MegaMud_AutoHeal === 0) return 0;
   if (s.now - s.f_32398 < 8) s.f_e360 = 1;
@@ -297,7 +297,7 @@ export function partyHeal(s: Session): number {
     return s.Party_HealLowest === 0 ? 0 : selfHeal(s);
   }
   if (s.state === 0x12) return 0;
-  if (s.state === 0 && s.sneaking !== 0 && s.f_e184 !== 0 && enemiesHere(s, 0) > 0) return 0;
+  if (s.state === 0 && s.sneaking !== 0 && s.walking !== 0 && enemiesHere(s, 0) > 0) return 0;
   const since = s.now - s.f_32318;
   if (since < s.Health_HpHealPeriod || since < s.Comms_LagWait + 4) return 0;
 

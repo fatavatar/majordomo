@@ -12,7 +12,7 @@ import { send } from './send';
 import { setState } from './state';
 
 function moving(s: Session): boolean {
-  return s.f_e184 !== 0 || s.f_e18c !== 0 || s.f_e178 !== 0;
+  return s.walking !== 0 || s.roaming !== 0 || s.importing !== 0;
 }
 
 /** `0x472aa0`: the monsters here. */

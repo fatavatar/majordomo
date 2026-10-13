@@ -9,11 +9,12 @@
  */
 import { enemiesHere } from '../room/entities';
 import type { Session, TimedEvent } from '../Session';
-import { unported } from '../unported';
 import { leaveGame } from './exit';
 import { expandMacros, noteCommands, send } from './send';
 import { setState } from './state';
 import { setTask } from './task';
+import { clearDetours, goTo, headFor, roomByName } from '../move/destinations';
+import { copyPath, findPath, freeSteps } from '../move/path';
 
 /** `0x4aa6c0`: the local time, `2026-10-12 14:05:00`. */
 export function stamp(s: Session): string {
@@ -108,8 +109,8 @@ export function eventsStep(s: Session): number {
       if (s.online !== 0 || s.f_30de8 !== 0 || (s.task !== 0 && s.task !== 0xb)) return 0;
       s.host.trace(`[${stamp(s)} event: Logon (${e.text})]`);
       s.task = 0xb;
-      // `0x460b90` with 0x7d4: the Connect button (the app's).
-      unported('460b90');
+      // `0x460b90`: the Connect button (`0x7d4`, the app's).
+      s.host.post?.(0x7d4);
       return eventDone(s);
     case 2:
       if (s.online === 0 || s.f_e288 !== 0) return 0;
@@ -137,18 +138,29 @@ export function eventsStep(s: Session): number {
       return 1;
     case 4:
       if (s.online === 0 || s.inGame === 0) return 0;
-      // `0x498470`, `0x43fc60`, `0x43d2a0`: the detour to the room is the walker's (not ported yet).
-      if (unported('43fc60') !== 0) {
-        s.detours[0]!.why = 'timed event';
-        s.host.trace(`[${stamp(s)} event: Detour (${e.text})]`);
+      {
+        const room = roomByName(s, e.text);
+        if (room && goTo(s, room.signature, null) !== 0) {
+          s.detours[0]!.why = 'timed event';
+          s.host.trace(`[${stamp(s)} event: Detour (${e.text})]`);
+          headFor(s, 0);
+        }
       }
       return eventDone(s);
     case 6:
       if (s.online === 0 || s.inGame === 0) return 0;
-      // `0x482bd0` and the rest: the loop change is the walker's (not ported yet).
-      if (unported('482bd0') !== 0) {
-        s.host.trace(`[${stamp(s)} event: Loop Path Change (${e.text})]`);
-        s.detours[0]!.why = 'timed event';
+      {
+        const p = findPath(s, e.text);
+        if (p) {
+          clearDetours(s);
+          if (goTo(s, 0, p) !== 0) {
+            s.host.trace(`[${stamp(s)} event: Loop Path Change (${e.text})]`);
+            s.detours[0]!.why = 'timed event';
+            freeSteps(s.loopPath);
+            copyPath(s, s.loopPath, p, 0);
+            headFor(s, 0);
+          }
+        }
       }
       return eventDone(s);
     case 5: {

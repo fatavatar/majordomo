@@ -172,8 +172,8 @@ function ownSpeech(s: Session, line: string): number {
       return attackSaid(s);
   }
   if (line.includes('You say "bs ')) return attackSaid(s);
-  if (line.includes('You say "bash ') && s.f_e18c !== 0 && s.state === 0x17 && s.f_db30 !== -1) {
-    s.f_db34 = s.f_db30;
+  if (line.includes('You say "bash ') && s.roaming !== 0 && s.state === 0x17 && s.moveDir !== -1) {
+    s.f_db34 = s.moveDir;
     s.f_e2dc = 0;
     forgetAwaited(s, 0x17);
     setState(s, 0);

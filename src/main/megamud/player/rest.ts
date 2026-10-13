@@ -98,9 +98,9 @@ export function restLine(s: Session, line: string): number {
       const expected = s.f_8138;
       const was = s.f_8130;
       if (
-        s.f_e184 !== 0 &&
+        s.walking !== 0 &&
         s.following === 0 &&
-        s.f_e41c !== 0 &&
+        s.path.steps !== null &&
         expected !== 0 &&
         expected !== was
       ) {

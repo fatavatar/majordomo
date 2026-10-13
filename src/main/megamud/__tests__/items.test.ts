@@ -103,8 +103,8 @@ describe('buying and selling (0x453a70, 0x455d30)', () => {
 
   it('stops walking when the shop cannot help', () => {
     const { s } = carrying();
-    s.f_e184 = 1;
+    s.walking = 1;
     buyLine(s, 'You cannot afford a lantern.');
-    expect(s.f_e184).toBe(0);
+    expect(s.walking).toBe(0);
   });
 });

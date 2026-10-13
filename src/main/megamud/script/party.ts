@@ -7,13 +7,13 @@ import { addMember } from '../party/members';
 import { findPlayer, partyIndex } from '../room/checkNames';
 import { enemiesHere } from '../room/entities';
 import type { Session } from '../Session';
-import { unported } from '../unported';
 import { send } from './send';
 import { sneakStep } from './stealth';
 import { setState } from './state';
+import { awayExit, doors, move } from '../move/go';
 
 function moving(s: Session): boolean {
-  return s.active !== 0 || s.f_e184 !== 0 || s.f_e18c !== 0 || s.f_e178 !== 0;
+  return s.active !== 0 || s.walking !== 0 || s.roaming !== 0 || s.importing !== 0;
 }
 
 /** Ask for the party (`par`). */
@@ -150,7 +150,7 @@ export function lookAtPlayer(s: Session): number {
  */
 export function trackPlayer(s: Session): number {
   if (s.f_a32c !== 0 || s.hp < 1) return 0;
-  if (s.f_e184 !== 0 && s.chaseTarget !== '') {
+  if (s.walking !== 0 && s.chaseTarget !== '') {
     const w = s.whoList.find((x) => x.name === s.chaseTarget);
     if (w && w.kind === 5) {
       s.chaseTarget = '';
@@ -159,12 +159,13 @@ export function trackPlayer(s: Session): number {
   }
   let follow = s.runDirection !== -1;
   if (!follow && s.f_90c8 !== 0) {
-    s.runDirection = unported('437ae0') || -1;
+    s.runDirection = awayExit(s);
     if (s.runDirection === -1) s.f_90c8 = 0;
     else follow = true;
   }
-  if (follow && s.f_e184 !== 0) {
-    if (unported('408870') !== 0 || sneakStep(s) !== 0 || unported('408540') !== 0) return 1;
+  if (follow && s.walking !== 0) {
+    if (doors(s, s.runDirection, 0, null) !== 0 || sneakStep(s) !== 0) return 1;
+    if (move(s, s.runDirection, 1) !== 0) return 1;
   }
   if (s.Player_Tracking === 0 || s.MegaMud_AutoTrack === 0 || s.PvP_TrackEnemies === 0) {
     s.runDirection = -1;

@@ -4,16 +4,10 @@
  * typed but not sent (`0x4bb920`, the app's typed line: left out), and ends
  * waking the scheduler (`0x42e0e0`). An item's `0x8000000` is a coin.
  */
-import { queue } from '../script/send';
+import { queue, wake } from '../script/send';
 import type { Session } from '../Session';
 
 const COIN = 0x8000000;
-
-/** `0x42e0e0`: wake the scheduler. */
-function wake(s: Session): void {
-  s.lineFlags |= 1;
-  s.f_e544 = 4;
-}
 
 /**
  * `0x4bc390`: everything here not marked never to take (`0x40`) marked to

@@ -116,7 +116,7 @@ export function tenSeconds(s: Session): number {
   clearMultiCounts(s);
   s.f_db68 = 0;
   s.f_db6c = 0;
-  s.f_db70 = 0;
+  s.stepTries = 0;
   s.runDirection = -1;
   s.f_e1d0 = 0;
   if (s.debug !== 0 && s.inCombat !== 0) s.host.trace('{C3}');
@@ -141,7 +141,7 @@ export function thirtySeconds(s: Session): number {
   twoSeconds(s);
   listingTimedOut(s);
   if (s.hp < s.Player_MaxHP || (s.Player_MaxMana >= 1 && s.mana < s.Player_MaxMana)) return 0;
-  if (s.f_a32c === 0 && (s.active !== 0 || s.f_e184 !== 0 || s.f_e18c !== 0 || s.f_e178 !== 0))
+  if (s.f_a32c === 0 && (s.active !== 0 || s.walking !== 0 || s.roaming !== 0 || s.importing !== 0))
     s.host.alert?.('idle');
   s.blind = 0;
   s.confused = 0;

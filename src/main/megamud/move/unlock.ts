@@ -17,8 +17,8 @@ export function unlockLine(s: Session, line: string): number {
     indexOf(line, 'There is no benefit to picking') !== -1;
   if (opened) {
     if (s.state === 0x18) {
-      if (s.f_db30 !== -1) {
-        s.roomExits[s.f_db30] = 5;
+      if (s.moveDir !== -1) {
+        s.roomExits[s.moveDir] = 5;
         s.lineFlags |= 4;
       }
     } else if (s.state === 0x2e || s.state === 0x2d || s.state === 0x1a) {
@@ -32,7 +32,7 @@ export function unlockLine(s: Session, line: string): number {
   if (indexOf(line, 'Your skill fails you ') === -1) return 0;
   s.f_db50 += 1;
   const tries = s.f_db50;
-  const dir = s.f_db30;
+  const dir = s.moveDir;
   if (s.state === 0x18 && dir !== -1) {
     if (tries < s.Other_PickMax * 2) {
       if (tries === s.Other_PickMax) {
@@ -48,9 +48,9 @@ export function unlockLine(s: Session, line: string): number {
     }
   }
   const automated =
-    s.active !== 0 || s.f_e184 !== 0 || s.f_e18c !== 0 || s.f_e178 !== 0 || s.f_a32c !== 0;
-  if (!automated && s.state === 0x18 && s.f_db30 !== -1) {
-    if (s.f_db50 < s.Other_PickMax) queue(s, `pick ${directionShort(s.f_db30)}\r`);
+    s.active !== 0 || s.walking !== 0 || s.roaming !== 0 || s.importing !== 0 || s.f_a32c !== 0;
+  if (!automated && s.state === 0x18 && s.moveDir !== -1) {
+    if (s.f_db50 < s.Other_PickMax) queue(s, `pick ${directionShort(s.moveDir)}\r`);
     else s.f_db50 = 0;
   }
   s.f_e290 = 0;

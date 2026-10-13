@@ -19,8 +19,7 @@
  *
  * Left out: the toolbar, party window and stats window refreshes, the
  * settings window's own switches (`0x48fd40`), and `@capture`'s file name.
- * Walking (`@goto`, `@loop`, `@looponce`, the Go/Stop button) is the
- * walker's, not ported yet.
+ * The way to a room or a loop's start is the host's route (`0x43fd90`).
  */
 import { pvp } from '../combat/events';
 import { clearAlignment } from '../combat/engaged';
@@ -44,7 +43,10 @@ import { findPlayer, partyIndex } from '../room/checkNames';
 import { whereAgo, whereText, roomKnown } from '../room/where';
 import { hangUp } from '../script/game';
 import { expandMacros, plainText, queue, send } from '../script/send';
-import type { Session } from '../Session';
+import { goStop } from '../move/buttons';
+import { clearDetours, goTo, headFor, startWalking } from '../move/destinations';
+import { clearPath, copyPath, freeSteps, stepsShown } from '../move/path';
+import type { PathRec, Session } from '../Session';
 import { unported } from '../unported';
 
 /** The reply prefix for each kind (the table at `0x4b2fb4`). */
@@ -168,7 +170,7 @@ function health(c: Ctx): number {
     text += `${s.mana}/${s.Player_MaxMana}`;
   }
   if (s.resting !== 0) text += ', Resting';
-  if (s.f_e190 !== 0) text += ', Lost';
+  if (s.lost !== 0) text += ', Lost';
   if (s.blind !== 0) text += ', Blind';
   if (s.confused !== 0) text += ', Confused';
   if (s.poisoned !== 0) text += ', Poisoned';
@@ -253,13 +255,13 @@ function partyOk(c: Ctx, i: number): number {
 function comeback(c: Ctx, i: number): number {
   const s = c.s;
   if (s.rescueCount !== 0) return reply0(c, `${c.to} {I am!}\r`);
-  if (s.f_e18c !== 0) return reply0(c, `${c.to} {can't - I'm moving randomly}\r`);
-  if (s.f_e184 === 0) return reply0(c, `${c.to} {can't - I'm not moving}\r`);
+  if (s.roaming !== 0) return reply0(c, `${c.to} {can't - I'm moving randomly}\r`);
+  if (s.walking === 0) return reply0(c, `${c.to} {can't - I'm not moving}\r`);
   if (s.leaderName !== s.Player_Name && i !== -1 && (s.party[i]!.flags28 & 8) !== 0)
     s.leaderName = s.Player_Name.slice(0, 10);
   if (s.leaderName !== s.Player_Name) return reply0(c, `${c.to} {can't - I'm not the leader}\r`);
   s.f_e2ac = 1;
-  s.rescueCount = Math.max(s.f_e408, 15);
+  s.rescueCount = Math.max(s.path.count, 15);
   s.f_32330 = s.now;
   if (i !== -1) s.party[i]!.flags28 |= 0x108;
   queue(s, `${c.to} {ok}\r`);
@@ -338,22 +340,10 @@ function where(c: Ctx): number {
   return reply0(c, `${c.to} {${desc}${whereAgo(s)}}\r`);
 }
 
-/** `0x4aa600`: the steps still to go (-1 not known). */
-function stepsToGo(s: Session): number {
-  if (s.f_e188 !== 0) return Math.max(s.f_e408 - s.MegaMud_CurPathStep, 0);
-  let n = s.f_db40;
-  if (n < 0) {
-    if (s.detours[0]!.room !== s.f_e3f8 || s.detours[1]!.room !== 0) return -1;
-    n = s.f_e408 - s.MegaMud_CurPathStep;
-    if (n < 0) return -1;
-  }
-  return n >>> 0 > 1999 ? -1 : n;
-}
-
 /** `0x4ac1d0`: `12 steps to go` (or `to lap end`, looping). */
 function stepsText(s: Session): string {
-  const n = stepsToGo(s);
-  const to = s.f_e188 === 0 ? 'go' : 'lap end';
+  const n = stepsShown(s);
+  const to = s.looping === 0 ? 'go' : 'lap end';
   if (n < 0) return `? steps to ${to}`;
   return `${n} step${n === 1 ? '' : 's'} to ${to}`;
 }
@@ -363,8 +353,8 @@ function path(c: Ctx): number {
   const s = c.s;
   if (s.MegaMud_CurPath === '') return reply0(c, `${c.to} {none}\r`);
   let text = `${c.to} {${s.MegaMud_CurPath}`;
-  if (s.pathTitle !== '') text += ` (${s.pathTitle})`;
-  if (s.f_e188 === 0 && s.destination !== '') {
+  if (s.path.title !== '') text += ` (${s.path.title})`;
+  if (s.looping === 0 && s.destination !== '') {
     text += ` -> ${s.destination}`;
     if (s.detours[1]!.room !== 0 && s.detours[0]!.why !== '') text += ` (${s.detours[0]!.why})`;
   }
@@ -408,7 +398,16 @@ function have(c: Ctx): number {
   return reply0(c, `${c.to} {no}\r`);
 }
 
-/** `@goto <room>` (its name or code): the walker's. */
+/** Walking started to the destination just queued: `{ok}`, or `{failed}`. */
+function walkTo(c: Ctx, queued: number): number {
+  if (queued !== 0) {
+    startWalking(c.s);
+    if (headFor(c.s, 0) === 0) return reply(c, `${c.to} {ok}\r`);
+  }
+  return reply(c, `${c.to} {failed}\r`);
+}
+
+/** `@goto <room>` (its Rooms.md name or code): the loop let go, walked there. */
 function gotoRoom(c: Ctx): number {
   const s = c.s;
   const name = trimSpaces(c.cmd.slice(6, 46));
@@ -416,20 +415,42 @@ function gotoRoom(c: Ctx): number {
     (r) => stricmp(r.name, name) === 0 || stricmp(r.code ?? '', name) === 0
   );
   if (!room) return reply(c, `${c.to} {unknown - "${name}"}\r`);
-  s.f_e188 = 0;
-  s.f_e18c = 0;
-  // `0x482e30`, `0x43cc70`, `0x43fc60` (the route to `room.signature`), `0x4b4590`, `0x43d2a0`.
-  unported('43fc60');
-  return reply(c, `${c.to} {failed}\r`);
+  s.looping = 0;
+  s.roaming = 0;
+  clearPath(s.loopPath);
+  clearDetours(s);
+  return walkTo(c, goTo(s, room.signature, null));
 }
 
-/**
- * `@loop`, `@looponce <path>`: the loop list (`0x7f18`, each by its name or
- * file) is the walker's and not held here, so none is known yet.
- */
-function loop(c: Ctx, from: number): number {
-  const name = trimSpaces(c.cmd.slice(from, from + 40));
-  return reply(c, `${c.to} {unknown - "${name}"}\r`);
+/** A known path by its title or file (`0x7f20`). */
+function knownPath(s: Session, name: string): PathRec | null {
+  return s.paths.find((p) => stricmp(p.title, name) === 0 || stricmp(p.name, name) === 0) ?? null;
+}
+
+/** `@loop <path>`: the path made the loop, walked to its start. */
+function loop(c: Ctx): number {
+  const s = c.s;
+  const name = trimSpaces(c.cmd.slice(6, 46));
+  const p = knownPath(s, name);
+  if (!p) return reply(c, `${c.to} {unknown - "${name}"}\r`);
+  clearDetours(s);
+  freeSteps(s.loopPath);
+  copyPath(s, s.loopPath, p, 0);
+  if (goTo(s, 0, p) === 0) return reply(c, `${c.to} {failed}\r`);
+  startWalking(s);
+  if (headFor(s, 0) !== 0) return reply(c, `${c.to} {failed}\r`);
+  s.f_db44 = 0;
+  return reply(c, `${c.to} {ok}\r`);
+}
+
+/** `@looponce <path>`: walked once, from its start. */
+function loopOnce(c: Ctx): number {
+  const s = c.s;
+  const name = trimSpaces(c.cmd.slice(10, 50));
+  const p = knownPath(s, name);
+  if (!p) return reply(c, `${c.to} {unknown - "${name}"}\r`);
+  freeSteps(s.loopPath);
+  return walkTo(c, goTo(s, 0, p));
 }
 
 /** `@settings`: the switches on, then those off. */
@@ -813,22 +834,21 @@ export function remoteCommand(s: Session, line: string, kind: number): number {
   }
   if ((perms & 0x100) !== 0) {
     if (is('@stop')) {
-      // The Go/Stop button (`0x803`): the walker's.
-      if (s.f_e184 !== 0) unported('803');
+      if (s.walking !== 0) goStop(s);
       return reply(c, `${to} {ok}\r`);
     }
     if (is('@rego')) {
-      if (s.f_e184 === 0) unported('803');
-      return reply(c, s.f_e184 !== 0 ? `${to} {ok}\r` : `${to} {can't}\r`);
+      if (s.walking === 0) goStop(s);
+      return reply(c, s.walking !== 0 ? `${to} {ok}\r` : `${to} {can't}\r`);
     }
     if (starts('@goto ')) return gotoRoom(c);
-    if (starts('@loop ')) return loop(c, 6);
-    if (starts('@looponce ')) return loop(c, 10);
+    if (starts('@loop ')) return loop(c);
+    if (starts('@looponce ')) return loopOnce(c);
     if (starts('@roam ')) {
-      if (indexOfNoCase(cmd, ' on') !== -1) s.f_e18c = 1;
-      if (indexOfNoCase(cmd, ' off') !== -1) s.f_e18c = 0;
-      if (s.f_e18c !== 0) s.f_e184 = 1;
-      return reply(c, `${to} {auto-roam: ${ON(s.f_e18c)}}\r`);
+      if (indexOfNoCase(cmd, ' on') !== -1) s.roaming = 1;
+      if (indexOfNoCase(cmd, ' off') !== -1) s.roaming = 0;
+      if (s.roaming !== 0) s.walking = 1;
+      return reply(c, `${to} {auto-roam: ${ON(s.roaming)}}\r`);
     }
   }
   if ((perms & 0x800) !== 0) {

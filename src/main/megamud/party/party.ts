@@ -20,7 +20,7 @@ import type { PartyMember, Session } from '../Session';
 import { addMember, removeMember } from './members';
 
 function moving(s: Session): boolean {
-  return s.f_e184 !== 0 || s.f_e18c !== 0 || s.f_e178 !== 0;
+  return s.walking !== 0 || s.roaming !== 0 || s.importing !== 0;
 }
 
 /** `0x4c1150`: the player is on the last `who`. */
@@ -48,7 +48,7 @@ function noParty(s: Session, line: string): number {
     }
   } else {
     s.partySize = 0;
-    if (s.active !== 0 && s.f_e188 === 0 && s.f_e18c === 0) s.host.alert?.('idle');
+    if (s.active !== 0 && s.looping === 0 && s.roaming === 0) s.host.alert?.('idle');
   }
   for (let i = 0; i < s.partySize; i += 1) s.party[i]!.flags28 &= ~2;
   if (line.indexOf('Your party has been disbanded') === -1) {

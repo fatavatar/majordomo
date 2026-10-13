@@ -272,7 +272,7 @@ function criticalHp(s: Session): number {
   }
   s.f_30de4 = 1;
   s.f_30de8 = 1;
-  s.f_e184 = 0;
+  s.walking = 0;
   hangUp(s, 1);
   s.host.alert?.('lowHp');
   return 0;

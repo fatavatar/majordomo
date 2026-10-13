@@ -80,6 +80,13 @@ function resetWaits(s: Session, harder: boolean): void {
   s.lineFlags |= 1;
 }
 
+/** `0x42e0e0`: wake the scheduler. */
+export function wake(s: Session): number {
+  s.lineFlags |= 1;
+  s.f_e544 = 4;
+  return 1;
+}
+
 /** `0x48ab60`: queue `text`, macros expanded, unchecked. */
 export function queue(s: Session, text: string): number {
   return queueCommand(s, text, 0, 1, 0);
@@ -172,6 +179,11 @@ export function expandMacros(_s: Session, text: string): string {
   return text.slice(0, 299);
 }
 
+/** C's `rand()`, 0 to 32767: the host's, else `Math.random`. */
+export function rand(s: Session): number {
+  return s.host.rand?.() ?? Math.floor(Math.random() * 0x8000);
+}
+
 /** `0x4ad5f0`: a text's alternatives, `||` between them. */
 function alternatives(text: string): string[] {
   return text === '' ? [] : text.split('||');
@@ -186,8 +198,7 @@ function alternatives(text: string): string[] {
 export function plainText(s: Session, text: string): string {
   const alts = alternatives(text);
   if (alts.length > 1) {
-    const r = s.host.rand?.() ?? Math.floor(Math.random() * 0x8000);
-    text = alts[r % alts.length]!;
+    text = alts[rand(s) % alts.length]!;
   }
   const tokens = [
     '{userid}',

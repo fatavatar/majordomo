@@ -425,8 +425,13 @@ export interface RoomRec {
   signature: number;
   /** +0x06 */
   name: string;
-  /** +0x48: 2 a shop. */
+  /** +0x48: 2 a shop, 8 a trainer (not with 0x20), 0x10 stop before entering, 0x80 a Go To favourite. */
   flags?: number;
+  /** +0x4c, +0x50: a trainer's levels. */
+  minLevel?: number;
+  maxLevel?: number;
+  /** +0x54: a trainer's class (0 any). */
+  cls?: number;
 }
 
 /** MegaMUD's databases for one character. Records learned in play are added to them. */

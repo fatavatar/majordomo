@@ -48,9 +48,9 @@ describe('death', () => {
   it('ends the party and the path', () => {
     const { s } = fightingRat();
     s.partySize = 3;
-    s.f_e184 = 1;
+    s.walking = 1;
     combatEventLine(s, 'You have been killed!');
     expect(s.partySize).toBe(0);
-    expect(s.f_e184).toBe(0);
+    expect(s.walking).toBe(0);
   });
 });

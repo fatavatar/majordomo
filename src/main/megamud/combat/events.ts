@@ -47,6 +47,7 @@ import { unported } from '../unported';
 import { immunityText } from '../player/cast';
 import { newMonster } from '../data';
 import { castForgotten, roundEvent, RoundEvent } from './timer';
+import { goTo, headFor } from '../move/destinations';
 
 /** The weapons (`0x53eb48`): bit, letter. */
 const WEAPONS: [number, string][] = [
@@ -188,7 +189,7 @@ function killed(s: Session): number {
   s.f_e1e4 = 0;
   if (s.f_8130 !== 0x67110001) {
     s.f_e398 = 1;
-    s.f_e184 = 0;
+    s.walking = 0;
     s.rescueCount = 0;
     setTask(s, 0xb);
     if (hangupAllowed(s) !== 0) {
@@ -201,10 +202,10 @@ function killed(s: Session): number {
     s.f_8468 = 0;
     return 1;
   }
-  if ((s.active !== 0 || s.f_e184 !== 0 || s.f_e18c !== 0 || s.f_e178 !== 0) && s.f_a32c === 0)
+  if ((s.active !== 0 || s.walking !== 0 || s.roaming !== 0 || s.importing !== 0) && s.f_a32c === 0)
     return 1;
-  unported('43fc60');
-  unported('43d2a0');
+  goTo(s, 0x67110001, null);
+  headFor(s, 0);
   return 1;
 }
 

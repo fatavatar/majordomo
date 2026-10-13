@@ -202,12 +202,12 @@ export function wealthCarried(s: Session): void {
 function nakedCheck(s: Session): number {
   if (s.f_8428 !== 0) return 0;
   for (const c of s.inventory) if (c.item && (c.item.flags & 0x20000) === 0) return 0;
-  if (s.f_e184 !== 0 && s.f_a32c === 0 && s.Other_HangupNaked !== 0 && s.MegaMud_NoHangup === 0) {
+  if (s.walking !== 0 && s.f_a32c === 0 && s.Other_HangupNaked !== 0 && s.MegaMud_NoHangup === 0) {
     s.lineFlags &= ~0x1801;
     s.host.trace('[Naked! - Must have died!]');
     s.f_30de4 = 1;
     s.f_30de8 = 1;
-    s.f_e184 = 0;
+    s.walking = 0;
     hangUp(s, 1);
   }
   return 1;

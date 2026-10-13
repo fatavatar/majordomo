@@ -23,7 +23,7 @@ function cure(s: Session, short: string, at: string | null): number {
 export function selfCures(s: Session, fighting: number): number {
   if (s.f_a32c !== 0 || s.MegaMud_AutoHeal === 0 || s.hp < 1) return 0;
   if (s.Player_MaxHP === 0 || s.Player_MaxMana === 0 || s.state === 0x12) return 0;
-  if (s.state === 0 && s.sneaking !== 0 && s.f_e184 !== 0 && enemiesHere(s, 0) > 0) return 0;
+  if (s.state === 0 && s.sneaking !== 0 && s.walking !== 0 && enemiesHere(s, 0) > 0) return 0;
   if (!castAllowed(s, s.Comms_LagWait)) return 0;
   if (fighting !== 0) {
     if (s.blind !== 0 && s.Other_IgnoreBlind === 0 && s.Spells_BlindCmd !== '') {
@@ -83,7 +83,7 @@ export function selfCures(s: Session, fighting: number): number {
 export function cureStep(s: Session, fighting: number): number {
   if (s.f_a32c !== 0 || s.MegaMud_AutoHeal === 0 || s.partySize < 1) return 0;
   if (s.hp < 1 || s.Player_MaxHP === 0 || s.state === 0x12) return 0;
-  if (s.state === 0 && s.sneaking !== 0 && s.f_e184 !== 0 && enemiesHere(s, 0) >= 1) return 0;
+  if (s.state === 0 && s.sneaking !== 0 && s.walking !== 0 && enemiesHere(s, 0) >= 1) return 0;
   if (!castAllowed(s, s.Comms_LagWait)) return 0;
   for (let i = 0; i < s.partySize; i += 1) {
     const m = s.party[i]!;
@@ -137,7 +137,7 @@ function busyRunning(s: Session): boolean {
 export function selfCureWanted(s: Session, fighting: number): boolean {
   if (s.f_a32c !== 0 || s.MegaMud_AutoHeal === 0 || s.hp < 1) return false;
   if (s.Player_MaxHP === 0 || s.Player_MaxMana === 0 || s.state === 0x12) return false;
-  if (s.state === 0 && s.sneaking !== 0 && s.f_e184 !== 0 && enemiesHere(s, 0) > 0) return false;
+  if (s.state === 0 && s.sneaking !== 0 && s.walking !== 0 && enemiesHere(s, 0) > 0) return false;
   if (!castAllowed(s, s.Comms_LagWait)) return false;
   if (fighting !== 0) {
     if (s.blind !== 0 && s.Other_IgnoreBlind === 0 && cureCastable(s, s.Spells_BlindCmd))
@@ -173,7 +173,7 @@ export function selfCureWanted(s: Session, fighting: number): boolean {
 export function partyCureWanted(s: Session, fighting: number): boolean {
   if (s.f_a32c !== 0 || s.MegaMud_AutoHeal === 0 || s.partySize < 1) return false;
   if (s.hp < 1 || s.Player_MaxHP === 0 || s.state === 0x12) return false;
-  if (s.state === 0 && s.sneaking !== 0 && s.f_e184 !== 0 && enemiesHere(s, 0) >= 1) return false;
+  if (s.state === 0 && s.sneaking !== 0 && s.walking !== 0 && enemiesHere(s, 0) >= 1) return false;
   if (!castAllowed(s, s.Comms_LagWait)) return false;
   for (let i = 0; i < s.partySize; i += 1) {
     const m = s.party[i]!;

@@ -17,6 +17,7 @@ import { forgetLastTarget } from '../room/roomName';
 import { setState } from '../script/state';
 import type { Session } from '../Session';
 import { unported } from '../unported';
+import { stepBack } from './moves';
 
 /** `0x4c01e0`: the direction a word starts with (0 north … 9 down), else -1. */
 export function directionOf(text: string): number {
@@ -70,7 +71,7 @@ export function exitsLine(s: Session, text: string): number {
     s.f_e29c = 1;
   }
   if (s.state === 0x16 && s.held !== 0) {
-    if (s.f_e174 !== 0) unported('482de0');
+    if (s.f_e174 !== 0) stepBack(s);
     s.f_e290 = 1;
     setState(s, 0);
     return 1;
@@ -189,7 +190,7 @@ function finish(s: Session, before: number): number {
   s.lineFlags = (s.lineFlags | 4) & ~1;
   if (s.state === 0x16) {
     s.f_db34 = -1;
-    if (s.f_db30 !== -1) s.host.arrived?.(s.f_db30);
+    if (s.moveDir !== -1) s.host.arrived?.(s.moveDir);
   }
   if (s.state === 0x16 || s.state === 0x2b) setState(s, 0);
   s.darkness = 0;

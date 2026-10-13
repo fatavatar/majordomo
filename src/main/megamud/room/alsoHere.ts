@@ -153,7 +153,7 @@ export function prioritize(s: Session): void {
     if (e.kind === 6) {
       e.priority = 0x10;
     } else if (e.kind === 5) {
-      e.priority = s.f_e184 !== 0 || s.f_e178 !== 0 || s.f_e18c !== 0 ? 0xf : 9;
+      e.priority = s.walking !== 0 || s.importing !== 0 || s.roaming !== 0 ? 0xf : 9;
     } else if (!e.player) {
       if (e.kind === 4) {
         e.priority = 0xb;

@@ -26,7 +26,7 @@ import { forgetAwaited, setState } from './state';
 import { hideStep, sneakStep } from './stealth';
 
 function moving(s: Session): boolean {
-  return s.f_e184 !== 0 || s.f_e18c !== 0 || s.f_e178 !== 0;
+  return s.walking !== 0 || s.roaming !== 0 || s.importing !== 0;
 }
 
 /** A reason to run: counted, `Combat.RunRooms` (or one) rooms, the alert, and the message. */
@@ -114,7 +114,7 @@ function breakOff(s: Session): number {
  * returns, or `{ stop }` to go on.
  */
 function runChecks(s: Session, stop: number): { stop: number } | number {
-  const polite = s.f_e184 !== 0 && s.Combat_PoliteAttacks !== 0 && s.f_e2b8 === 0;
+  const polite = s.walking !== 0 && s.Combat_PoliteAttacks !== 0 && s.f_e2b8 === 0;
   let fled = false;
   if (!polite || s.runCount === 0) {
     if (polite && s.following === 0 && s.partyWait === 0 && stop === 0 && strangersHere(s) > 0) {
@@ -259,7 +259,7 @@ export function runCheck(s: Session): number {
       s.host.trace('[Delayed PvP Hangup]');
       s.f_30de4 = 1;
       s.f_30de8 = 1;
-      s.f_e184 = 0;
+      s.walking = 0;
       s.host.activity('Hanging up after PvP timeout');
       hangUp(s, 0);
       s.host.alert?.('hangup');
@@ -312,7 +312,7 @@ export function runCheck(s: Session): number {
 function fight(s: Session, stop: number): number {
   if (s.MegaMud_AutoCombat === 0) {
     if (s.following !== 0) return 0;
-    if (s.f_e184 === 0 && s.f_e178 === 0) return 0;
+    if (s.walking === 0 && s.importing === 0) return 0;
   }
   if (s.f_e218 !== 0) return 0;
   if (s.f_e21c !== 0 && s.held === 0) return 0;

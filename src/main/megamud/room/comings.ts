@@ -13,10 +13,10 @@ import { clearMultiCounts, targetLeft } from '../combat/engaged';
 import { indexFrom, indexOf, stricmp, trimSpaces } from '../cstr';
 import { removeMember } from '../party/members';
 import type { Session } from '../Session';
-import { unported } from '../unported';
 import { prioritize } from './alsoHere';
 import { checkNames, findPlayer, partyIndex } from './checkNames';
 import { findEntity, removeEntity, stopToKill } from './entities';
+import { move } from '../move/go';
 
 const ARRIVALS = [
   ' in the room ',
@@ -109,7 +109,7 @@ function arrival(s: Session, line: string): number {
     const name = s.party[i]!.name;
     if (line.startsWith(name)) return 1;
   }
-  if (s.f_e184 !== 0 && s.held === 0 && s.f_e18c === 0 && s.following === 0) {
+  if (s.walking !== 0 && s.held === 0 && s.roaming === 0 && s.following === 0) {
     if (s.MegaMud_AutoCombat === 0) {
       if (s.runCount === 0 && stopToKill(s) === 0) s.runCount = s.Combat_RunRooms;
       s.f_e2d8 = 1;
@@ -158,6 +158,6 @@ function departed(s: Session, line: string, who: string): number {
   else if (dir === -1) return 0;
   s.runDirection = dir;
   s.chaseTarget = name.slice(0, 10);
-  if (unported('408540') !== 0) s.runDirection = -1;
+  if (move(s, dir, 1) !== 0) s.runDirection = -1;
   return 1;
 }

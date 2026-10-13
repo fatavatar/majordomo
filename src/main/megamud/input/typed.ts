@@ -22,6 +22,7 @@ import type { Session } from '../Session';
 import { findSpell } from '../spells/lookup';
 import { unported } from '../unported';
 import { castStamp } from '../combat/timer';
+import { move } from '../move/go';
 
 export function typedCommand(s: Session, from: number, text: string): void {
   s.lastTyped = text.slice(0, 0x100);
@@ -57,11 +58,11 @@ function inGame(
 ): void {
   if (s.s_7d21.length === 1 && word1[0] === s.s_7d21) return;
   const dir = typedDirection(word1);
-  if (dir !== -1 && from !== -1 && word2 === '' && unported('408540') !== 0) {
-    s.f_e184 = 0;
-    s.f_e188 = 0;
-    s.f_e18c = 0;
-    s.f_e178 = 0;
+  if (dir !== -1 && from !== -1 && word2 === '' && move(s, dir, 0) !== 0) {
+    s.walking = 0;
+    s.looping = 0;
+    s.roaming = 0;
+    s.importing = 0;
     if (s.following !== 0) {
       s.partySize = 0;
       s.following = 0;
@@ -71,7 +72,7 @@ function inGame(
   if (abbrev(word1, 'bash', 3) !== 0) {
     const d = typedDirection(word2);
     if (d !== -1) {
-      s.f_db30 = d;
+      s.moveDir = d;
       setState(s, 0x17);
     }
   }
@@ -106,11 +107,11 @@ function inGame(
     }
   }
   if (abbrev(word1, 'picklock', 2) !== 0) {
-    s.f_db30 = typedDirection(word2);
+    s.moveDir = typedDirection(word2);
     setState(s, 0x18);
   }
   if (abbrev(word1, 'open', 2) !== 0) {
-    s.f_db30 = typedDirection(word2);
+    s.moveDir = typedDirection(word2);
     setState(s, 0x1a);
   }
   if ((abbrev(word1, 'inventory', 1) !== 0 || abbrev(word1, 'wealth', 3) !== 0) && word2 === '')

@@ -58,7 +58,7 @@ export function blessStep(s: Session, fighting: number): number {
   if (
     s.state === 0 &&
     s.sneaking !== 0 &&
-    s.f_e184 !== 0 &&
+    s.walking !== 0 &&
     enemiesHere(s, s.Combat_AttackNeutral) >= 1
   ) {
     return 0;

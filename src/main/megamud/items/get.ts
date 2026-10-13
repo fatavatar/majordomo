@@ -14,7 +14,7 @@ import { queue } from '../script/send';
 import { forgetAwaited, setState } from '../script/state';
 import { setTask } from '../script/task';
 import type { RoomEntity, Session } from '../Session';
-import { detourDone } from './detours';
+import { detourDone } from '../move/destinations';
 import { carryMore, wealthCarried } from './inventory';
 
 /** `0x472420`: the item here of this name. */

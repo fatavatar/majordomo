@@ -71,11 +71,11 @@ pass. The numbers are the `{D%d}` debug tags MegaMUD logs.
 | 41 | `0x40d8a0` | withdraw |
 | 42 | `0x406b60` | buy |
 | 43 | `0x40b0b0` | sell |
-| 44 | `0x407c90` | path commands |
+| 44 | `0x407c90` | an imported path's commands |
 | 45 | `0x40aff0` | search |
 | 46 | `0x40ce50` | stash |
-| 47 | `0x408270` | no allowed exits |
-| 48 | `0x409170` | **walk the path: kept as ours (`Walker`/`LoopRunner`)** |
+| 47 | `0x408270` | roaming, and finding the way back when lost |
+| 48 | `0x409170` | walk the path (the way to it is our world graph's) |
 | 49 | `0x407ac0`, `0x40b520` | hide, sneak |
 
 After a pass that sent, the status (`0x4ac2a0`: Resting, Meditating, Party
@@ -108,11 +108,27 @@ branches in the same order, and tested with cases read off that decompile.
 - Data: MegaMUD's records (monsters, items, spells, messages, players) from the
   realm imports we already have, extended where a step reads a field we drop.
 
+## Walking
+
+MegaMUD walks paths: recorded `.mp` files, each step the room it is taken
+from (its signature, `0x8130`), its flags and what is typed. The port walks
+them the same way (`script/path.ts`, `move/`): the room checks, the resync,
+doors and keys, running back, roaming, the destinations queued and the loop
+taken up again. Two things are the host's (`SessionHost`):
+
+- `route(from, to)` in place of MegaMUD's search over its path files
+  (`0x43fd90`): our world graph plans the way and hands it over as a path,
+  with the rooms' signatures.
+- `readPath(name)` in place of reading a path file (`0x482fc0`); without it,
+  the paths known (`Session.paths`, MegaMUD's `0x7f20`) are looked in. Our
+  loops are made paths this way.
+
 ## Kept, outside the loop
 
 These are user-started actions that hand control to the loop as a path does:
-`Walker`, `LoopRunner`, auto-hunt, the quest runner, item errands, wards and
-auto-keys. The login automator also stays.
+auto-hunt, the quest runner, item errands, wards and auto-keys. `Walker` and
+`LoopRunner` become the route and loop planners behind `route` and
+`readPath`. The login automator also stays.
 
 ## Deleted at the swap
 

@@ -7,7 +7,7 @@
 import type { ItemRec } from '../data';
 import { findCarried, sameItemName } from '../items/inventory';
 import type { Session } from '../Session';
-import { unported } from '../unported';
+import { goTo, headFor, roomByName } from '../move/destinations';
 import { queue, send } from './send';
 import { setState } from './state';
 
@@ -20,7 +20,7 @@ export function itemWord(s: Session, item: ItemRec | null): string {
 }
 
 function moving(s: Session): boolean {
-  return s.active !== 0 || s.f_e184 !== 0 || s.f_e18c !== 0 || s.f_e178 !== 0;
+  return s.active !== 0 || s.walking !== 0 || s.roaming !== 0 || s.importing !== 0;
 }
 
 /** In the bank (`Cash.Bank`, the room's record's name). */
@@ -162,7 +162,43 @@ export function stashItems(s: Session): number {
   return 0;
 }
 
-/** `0x43cf30`: a detour to the bank to bring the wealth up to `amount` copper. Not ported yet. */
-export function fetchCash(_s: Session, _how: number, _amount: number): number {
-  return unported('43cf30');
+/**
+ * `0x43cf30`: a detour to the bank (`Cash.Bank`) to bring the wealth up to
+ * `amount` copper (`0x8430`, the most asked). 0 on the way or there
+ * already; 8 no bank to go to; 0x20 cancelled (`how`: asked whether to go
+ * on without).
+ */
+export function fetchCash(s: Session, how: number, amount: number): number {
+  let result = 8;
+  s.f_8430 = Math.max(amount >>> 0, s.f_8430 >>> 0);
+  const bank = s.Cash_Bank !== '' ? roomByName(s, s.Cash_Bank) : null;
+  if (bank) {
+    if (s.f_8130 === bank.signature) return 0;
+    if (goTo(s, bank.signature, null) !== 0) {
+      s.detours[0]!.why = 'for cash';
+      result = headFor(s, how);
+      if (result === 0) return 0;
+      if (result === 0x20) return 0x20;
+      if (how === 0) return 0;
+    }
+  }
+  if (s.f_e36c === 1) return 0;
+  if (how === 0) return result;
+  s.f_e36c = 1;
+  const yes = s.host.ask?.(
+    `You require ${Math.trunc((amount >>> 0) / 100)} gold to go here.\nDo you wish to continue?`
+  );
+  return yes ? 0 : 0x20;
+}
+
+/** `0x40db90`: more cash than `Cash.LimitWealth` or `Cash.LimitCoins` allow, and more than is kept. */
+export function overCash(s: Session): number {
+  const kept = s.f_850c >>> 0 < s.f_8428 >>> 0 ? 1 : 0;
+  if (s.Cash_LimitWealth !== 0 && s.f_8510 >>> 0 < s.f_8428 >>> 0) return kept;
+  if (s.Cash_LimitCoins !== 0) {
+    let coins = 0;
+    for (const c of s.inventory) if (c.item && (c.item.flags & COIN) !== 0) coins += c.count;
+    if (s.f_8514 >>> 0 < coins >>> 0) return kept;
+  }
+  return 0;
 }

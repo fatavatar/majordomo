@@ -408,7 +408,7 @@ export function healthStep(s: Session): number {
     }
     if (!wantRest) return 0;
     if (s.following === 0) {
-      if (s.f_e184 !== 0 || s.f_e178 !== 0 || s.f_e18c !== 0) return 0;
+      if (s.walking !== 0 || s.importing !== 0 || s.roaming !== 0) return 0;
     } else if (s.f_e1c0 === 0) {
       return 0;
     }
@@ -445,7 +445,8 @@ export function healthStep(s: Session): number {
       }
     }
     if (
-      ((s.active === 0 && s.f_e184 === 0 && s.f_e18c === 0 && s.f_e178 === 0) || s.f_a32c !== 0) &&
+      ((s.active === 0 && s.walking === 0 && s.roaming === 0 && s.importing === 0) ||
+        s.f_a32c !== 0) &&
       (wantRest || mustRest) &&
       s.resting !== 0 &&
       !meditateNow
@@ -457,8 +458,8 @@ export function healthStep(s: Session): number {
 
   // Not straight after moving or a fight.
   if (
-    s.f_e184 === 0 &&
-    s.f_e178 === 0 &&
+    s.walking === 0 &&
+    s.importing === 0 &&
     s.mustRest === 0 &&
     s.holdingLeader === 0 &&
     !urgent &&

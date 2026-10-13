@@ -8,12 +8,12 @@ import { directionWord, indexFrom, indexOf } from '../cstr';
 import { queue } from '../script/send';
 import { setState } from '../script/state';
 import type { Session } from '../Session';
-import { unported } from '../unported';
+import { doors } from './go';
 
 export function bashLine(s: Session, line: string): number {
   if (indexOf(line, 'You bashed the ') !== -1 || indexOf(line, ' is already open.') !== -1) {
-    if (s.state === 0x17 && s.f_db30 !== -1) {
-      s.roomExits[s.f_db30] = 3;
+    if (s.state === 0x17 && s.moveDir !== -1) {
+      s.roomExits[s.moveDir] = 3;
       s.lineFlags |= 4;
     } else {
       s.f_e290 = 1;
@@ -24,20 +24,20 @@ export function bashLine(s: Session, line: string): number {
     return 1;
   }
   if (indexOf(line, 'Your attempts to bash ') !== -1) {
-    if (s.state === 0x17 && s.f_db30 !== -1) s.roomExits[s.f_db30] = 2;
+    if (s.state === 0x17 && s.moveDir !== -1) s.roomExits[s.moveDir] = 2;
     s.f_db48 += 1;
     s.sneaking = 0;
     s.hidden = 0;
     if (
       s.active === 0 &&
-      s.f_e184 === 0 &&
-      s.f_e18c === 0 &&
-      s.f_e178 === 0 &&
+      s.walking === 0 &&
+      s.roaming === 0 &&
+      s.importing === 0 &&
       s.f_a32c === 0 &&
       s.state === 0x17 &&
-      s.f_db30 !== -1
+      s.moveDir !== -1
     ) {
-      if (s.f_db48 < s.Other_BashMax) queue(s, `bash ${directionWord(s.f_db30)}\r`);
+      if (s.f_db48 < s.Other_BashMax) queue(s, `bash ${directionWord(s.moveDir)}\r`);
       else s.f_db48 = 0;
     }
     setState(s, 0);
@@ -59,8 +59,7 @@ export function bashLine(s: Session, line: string): number {
       dir = directionOf(line.slice(to + 7));
       if (dir === -1) return 1;
     }
-    s.f_db30help = dir;
-    unported('408870');
+    doors(s, dir, 0, null);
   }
   return 1;
 }
