@@ -58,6 +58,27 @@ export function nameIn(text: string, name: string): number {
   return 0;
 }
 
+/**
+ * Find first (flag 8) set on every monster whose name holds another's as
+ * whole words, and those put in front longest first, so `findMonster` takes
+ * `forgotten dragon slayer` for itself rather than for the `forgotten dragon`
+ * its name holds. MegaMUD leaves the flag to be set by hand (its Monster
+ * Details' *Find first*); our monster table always means the longest name
+ * (`ruleFor`), so the engine sets it wherever it is needed (2026-10-13: the
+ * slayer, read as the dragon, was fought with the dragon's settings).
+ */
+export function findLongestFirst(s: Session): void {
+  const monsters = s.data.monsters;
+  for (const m of monsters) {
+    if (monsters.some((o) => o.name.length < m.name.length && nameIn(m.name, o.name) !== 0))
+      m.flags |= 8;
+  }
+  const first = monsters
+    .filter((m) => (m.flags & 8) !== 0)
+    .sort((a, b) => b.name.length - a.name.length);
+  s.data.monsters = [...first, ...monsters.filter((m) => (m.flags & 8) === 0)];
+}
+
 /** `0x46c3f0`: the monster whose name `text` holds; "find first" monsters (flag 8) are tried first. */
 export function findMonster(s: Session, text: string): MonsterRec | null {
   for (const m of s.data.monsters) if ((m.flags & 8) !== 0 && nameIn(text, m.name) !== 0) return m;

@@ -46,6 +46,7 @@ import {
   type SessionHost
 } from '../megamud/Session';
 import { findSpell } from '../megamud/spells/lookup';
+import { findLongestFirst } from '../megamud/room/checkNames';
 import { setTask } from '../megamud/script/task';
 import {
   rememberItem,
@@ -401,6 +402,7 @@ export class MegaEngine {
       rememberPlayers(this.s, memory.players);
     }
     grantPlayers(this.s, setup.grants);
+    findLongestFirst(this.s);
     for (const [room, sig] of memory?.signatures ?? []) this.learn(room, sig);
     for (const [room, sig] of setup.learned ?? []) this.learn(room, sig);
     this.unkept.clear();
@@ -427,6 +429,7 @@ export class MegaEngine {
    */
   useMonsters(rules: readonly MonsterRule[]): void {
     for (const rule of rules) rememberRule(this.s, rule);
+    findLongestFirst(this.s);
   }
 
   /**
