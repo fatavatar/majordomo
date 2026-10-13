@@ -1433,13 +1433,28 @@ export class SessionManager {
   ) {
     this.locateMethod = locate;
     this.fightRecord = fights;
+    this.spellLore = spellLore;
     this.tracker = new CharacterTracker(
       world,
       lore,
       (discovery) => this.remember(discovery),
       fights,
       players,
-      spellLore
+      {
+        match: (text) => spellLore.match(text),
+        startOf: (spell) => spellLore.startOf(spell),
+        stopOf: (spell) => spellLore.stopOf(spell),
+        effects: spellLore.effects,
+        // A lesson reaches the MegaMUD engine's blessings as it is learned.
+        learn: (...lesson) => {
+          spellLore.learn(...lesson);
+          this.mega?.teachBlessings();
+        },
+        unlearn: (...lesson) => {
+          spellLore.unlearn(...lesson);
+          this.mega?.teachBlessings();
+        }
+      }
     );
     this.useRealm(players);
     /*
@@ -4576,6 +4591,8 @@ export class SessionManager {
    * it runs, the automation below stands down (see `MegaEngine`).
    */
   private mega: MegaEngine | null = null;
+  /** The realm's spell sentences, which the engine's blessings are taught from. */
+  private readonly spellLore: SpellLore;
   /** The last `configure`, applied again when the engine comes or goes. */
   private configured: Parameters<SessionManager['configure']> | null = null;
   /** What the engine has written since its last return, for the tracker. */
@@ -4603,6 +4620,10 @@ export class SessionManager {
           },
           here: () => roomAddress(this.tracker.current.room),
           locate: () => this.megaLocate(),
+          spellSentences: (spell) => ({
+            start: this.spellLore.startOf(spell),
+            stop: this.spellLore.stopOf(spell)
+          }),
           world: () => this.world,
           plan: (from, to) =>
             this.world?.route(from, to, this.lapTraveller(this.tracker.current)) ??
