@@ -43,6 +43,7 @@ import { FindBook } from './world/FindBook';
 import { WorldBook } from './world/WorldBook';
 import { SplitMemory } from './world/SplitMemory';
 import { NO_REALM_TABLES, type RealmMemory, type RealmTables } from './session/SessionManager';
+import { MegaLearned, type MegaLearnedData } from './world/MegaLearned';
 import { RealmLore, realmKey } from './world/RealmLore';
 import { PlayerBook, realmAddress } from './world/PlayerBook';
 import { cureGates, spellServes, spellTargeting } from '../shared/spellcraft';
@@ -262,6 +263,12 @@ let shippedSentences: ShippedSentences | null = null;
  */
 let playerBook: PlayerBook | null = null;
 /**
+ * What the MegaMUD engine learns in play — monsters, items and players met,
+ * room signatures — per realm, as MegaMUD keeps them in its data files. See
+ * `MegaLearned`.
+ */
+let megaLearned: MegaLearned | null = null;
+/**
  * Where characters on this machine have walked, per realm.
  *
  * One store, keyed on the realm *file* rather than on the address dialled — the
@@ -316,6 +323,14 @@ function createPlayerBook(): PlayerBook {
   return new PlayerBook({
     file: home.state('players.json'),
     notify: (message) => announce('players', message)
+  });
+}
+
+/** Beside the lore, for the same reasons `createLore` gives. */
+function createMegaLearned(): MegaLearned {
+  return new MegaLearned({
+    file: home.state('megamud-learned.json'),
+    notify: (message) => announce('world', message)
   });
 }
 
@@ -871,9 +886,19 @@ function megamudFor(id: SessionId): { key: string; setup: MegaEngineSetup } | nu
     data = readMegaData(dirs, runic);
     megaDataRead.set(dataKey, data);
   }
+  // What it learned before on this realm, and where what it learns now goes.
+  const realm = worldFor(id)?.info.source ?? '';
+  const store = megaLearned;
+  const memory =
+    store === null || realm === ''
+      ? undefined
+      : {
+          kept: store.forRealm(realm),
+          keep: (learned: MegaLearnedData) => store.keep(realm, learned)
+        };
   return {
     key: `${dataKey}\n${settingsToIni(profile.megamud)}\n${JSON.stringify(grants)}`,
-    setup: { settings: profile.megamud, data, grants }
+    setup: { settings: profile.megamud, data, grants, ...(memory ? { memory } : {}) }
   };
 }
 
@@ -3305,6 +3330,7 @@ function build(): void {
   internal = createInternal();
   lore = createLore();
   playerBook = createPlayerBook();
+  megaLearned = createMegaLearned();
   destinations = createDestinations();
   worldBook = createWorldBook();
   realms = createRealms();
@@ -3426,6 +3452,8 @@ function teardown(): void {
     host?.disposeAll();
     host = null;
   });
+  // After the sessions: each MegaMUD engine hands over what it learned as it goes.
+  settle('megamud learned', () => megaLearned?.flush());
   settle('profiles', () => {
     profiles?.dispose();
     profiles = null;

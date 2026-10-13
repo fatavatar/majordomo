@@ -147,6 +147,16 @@ the swap. For such a character:
   `MegaMud.DataDir` when that is a folder here, else the ini's own folder,
   each with its `Default` beneath. Without them MegaMUD learns monsters and
   items as it meets them and knows no spells.
+- **Learned data** is kept as MegaMUD keeps it, in our own file
+  (`megamud-learned.json`, per realm, `src/main/world/MegaLearned.ts`):
+  MegaMUD marks the databases it changed in play (`0xe24c` players, `0xe254`
+  monsters, `0xe258` items) and on the way out writes the marked ones
+  (`0x43bfa0`); the engine hands them over a second after one is marked and
+  when the session ends, with what each writer does to a record on the way
+  (`megamud/saved.ts`: a new record numbered from 10000, players unseen in
+  `Other.DelPlayers` days removed). The room signatures learned go with them.
+  Each engine starts from its own copy of the realm's data with what was kept
+  laid over it by name. MegaMUD's own `.md` files are only read.
 - **Text in**: every chunk the socket gives, after our own reading, so the
   engine can learn the room our tracker placed. **Commands out**: straight
   to the socket, observed as automation's are, a macro's `~` a half-second

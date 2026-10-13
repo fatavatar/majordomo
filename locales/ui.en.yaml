@@ -782,6 +782,12 @@ notices:
       effectCauseSuspected: '"{text}" is suspected of causing {condition} — nothing else up explains it.'
       effectCauseConfirmed: '"{text}" causes {condition} — the condition ended with the effect.'
       effectCauseDropped: '"{text}" does not cause {condition} after all — the condition arrived without it.'
+    megaLearned:
+      parseSuspended:
+        '{fileName} will not parse ({message}). What the MegaMUD engine learns in play is not
+        kept on disk until it is fixed or removed.'
+      readError: 'could not read {file}: {message}'
+      writeError: 'could not write {file}: {message}'
     spellMessages:
       readError: 'could not read the spell message table {file}: {message}'
       empty: 'the spell message table {file} holds no rows; buff endings fall back to the frames'

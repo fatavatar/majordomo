@@ -46,6 +46,8 @@ import {
   type SessionHost
 } from '../megamud/Session';
 import { findSpell } from '../megamud/spells/lookup';
+import { savedItems, savedMonsters, savedPlayers } from '../megamud/saved';
+import type { MegaLearnedData } from '../world/MegaLearned';
 import type { ActiveBuff } from '../../shared/character';
 import type { MegaSettings } from '../../shared/megamud/settings';
 import type { RemoteName } from '../../shared/remotes';
@@ -93,6 +95,37 @@ export interface MegaEngineSetup {
   grants: Readonly<Record<string, { allow: readonly RemoteName[]; deny: readonly RemoteName[] }>>;
   /** Signatures learned before, by room. */
   learned?: ReadonlyMap<RoomId, number>;
+  /**
+   * What the engine learned in earlier sessions on this realm, laid over
+   * `data`, and where what it learns now is kept (`MegaLearned`).
+   */
+  memory?: { kept: MegaLearnedData; keep(learned: MegaLearnedData): void };
+}
+
+/**
+ * The realm's data for one engine, with what was learned before laid over
+ * it by name, as the loader lays a higher layer over a lower one. A copy:
+ * the data read is shared between sessions, and the engine changes its
+ * records as it learns. Flags are masked as each loader masks them.
+ */
+export function withKept(data: MegaData, kept: MegaLearnedData | undefined): MegaData {
+  const copy = structuredClone(data);
+  if (!kept) return copy;
+  const over = <T extends { name: string }>(
+    list: T[],
+    recs: readonly T[],
+    mask: (r: T) => T
+  ): void => {
+    for (const rec of recs) {
+      const at = list.findIndex((r) => r.name.toLowerCase() === rec.name.toLowerCase());
+      if (at === -1) list.push(mask(structuredClone(rec)));
+      else list[at] = mask(structuredClone(rec));
+    }
+  };
+  over(copy.monsters, kept.monsters, (r) => ({ ...r, flags: r.flags & 0x3fffffff }));
+  over(copy.items, kept.items, (r) => ({ ...r, flags: r.flags & 0x38ffffff }));
+  over((copy.players ??= []), kept.players, (r) => ({ ...r, flags: r.flags & 0xffff3fff }));
+  return copy;
 }
 
 /**
@@ -225,6 +258,10 @@ export class MegaEngine {
   private locateGaveUp = false;
   /** In the game at the last chunk: entering it is when a room is first wanted. */
   private wasInGame = false;
+  /** Where what is learned is kept; null when nowhere. */
+  private readonly memory: NonNullable<MegaEngineSetup['memory']> | null;
+  /** Signatures learned since they were last kept. */
+  private readonly unkept = new Map<RoomId, number>();
   /** When our tracker had each of the ten blessing slots put up, at the last look; null when down. */
   private readonly blessUp: (number | null)[] = [];
 
@@ -250,15 +287,25 @@ export class MegaEngine {
       saveSteps: (p) => this.saveSteps(p),
       blessingsCleared: () => this.blessingsCleared()
     };
-    this.s = new Session(engineHost, setup.data);
+    this.memory = setup.memory ?? null;
+    this.s = new Session(engineHost, withKept(setup.data, setup.memory?.kept));
     loadCharacter(this.s, setup.settings);
     bbsSetup(this.s, () => undefined);
     this.s.now = engineHost.clock();
     grantPlayers(this.s, setup.grants);
+    for (const [room, sig] of setup.memory?.kept.signatures ?? []) this.learn(room, sig);
     for (const [room, sig] of setup.learned ?? []) this.learn(room, sig);
+    this.unkept.clear();
     this.quiet = newQuietClock(Date.now());
     this.timers.push(
-      setInterval(() => this.safely(() => secondTick(this.s)), SECOND_MS),
+      setInterval(
+        () =>
+          this.safely(() => {
+            secondTick(this.s);
+            this.keepLearned();
+          }),
+        SECOND_MS
+      ),
       setInterval(() => this.safely(() => quietTick(this.s, this.t, this.quiet)), QUIET_POLL_MS),
       setInterval(() => this.safely(() => this.parkedTimeout()), QUIET_POLL_MS)
     );
@@ -281,7 +328,39 @@ export class MegaEngine {
     grantPlayers(s, setup.grants);
   }
 
+  /**
+   * The databases MegaMUD marked changed (`0xe24c` players, `0xe254`
+   * monsters, `0xe258` items) and the signatures learned since, handed to be
+   * kept: `0x43bfa0`, which MegaMUD runs on the way out, run here as soon as
+   * something is marked, and on the way out as well.
+   */
+  private keepLearned(): void {
+    const s = this.s;
+    if (this.memory === null) return;
+    if (s.f_e24c === 0 && s.f_e254 === 0 && s.f_e258 === 0 && this.unkept.size === 0) return;
+    const kept = this.memory.kept;
+    const players =
+      s.f_e24c !== 0
+        ? savedPlayers(s, (name) =>
+            kept.players.find((p) => p.name.toLowerCase() === name.toLowerCase())
+          )
+        : { players: [], removed: [] };
+    const learned: MegaLearnedData = {
+      monsters: s.f_e254 !== 0 ? savedMonsters(s) : [],
+      items: s.f_e258 !== 0 ? savedItems(s) : [],
+      players: players.players,
+      signatures: [...this.unkept],
+      ...(players.removed.length > 0 ? { removedPlayers: players.removed } : {})
+    };
+    s.f_e24c = 0;
+    s.f_e254 = 0;
+    s.f_e258 = 0;
+    this.unkept.clear();
+    this.memory.keep(learned);
+  }
+
   dispose(): void {
+    this.safely(() => this.keepLearned());
     this.disposed = true;
     for (const timer of this.timers) clearInterval(timer);
     this.timers.length = 0;
@@ -391,6 +470,7 @@ export class MegaEngine {
     this.outbound = [];
     this.parked = null;
     this.safely(() => connectionClosed(this.s));
+    this.safely(() => this.keepLearned());
   }
 
   /** Go/Stop (`0x803`), Roam (`0x808`), AFK (`0x809`), Step Back (`0x869`). */
@@ -480,6 +560,7 @@ export class MegaEngine {
 
   private learn(room: RoomId, sig: number): void {
     const was = this.learned.get(room);
+    if (was !== sig) this.unkept.set(room, sig);
     if (was !== undefined) this.learnedRooms.get(was)?.delete(room);
     this.learned.set(room, sig);
     let rooms = this.learnedRooms.get(sig);

@@ -446,13 +446,13 @@ export interface MegaData {
   messages?: MessageRec[];
 }
 
-/** `0x46c220`: a new, empty monster record, added. */
+/** `0x46c220`: a new, empty monster record, added: flag 2, and `0x40000000`, which has it saved. */
 export function newMonster(data: MegaData): MonsterRec {
   const rec: MonsterRec = {
     layer: 0,
     name: '',
     id: 0,
-    flags: 0,
+    flags: 0x40000002,
     relationship: 0,
     exp: 0,
     maxHp: 0,
@@ -465,7 +465,7 @@ export function newMonster(data: MegaData): MonsterRec {
   return rec;
 }
 
-/** `0x4565c0`: a new, empty item record, added. */
+/** `0x4565c0`: a new, empty item record, added: flag 1, and `0x40000000`, which has it saved. */
 export function newItem(data: MegaData): ItemRec {
   const rec: ItemRec = {
     id: 0,
@@ -473,7 +473,7 @@ export function newItem(data: MegaData): ItemRec {
     name: '',
     shop: '',
     ifNeeded: '',
-    flags: 0,
+    flags: 0x40000001,
     type: 0,
     location: 0,
     min: 0,
