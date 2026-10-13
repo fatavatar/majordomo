@@ -382,6 +382,124 @@ Decoded 2026-09-23 from the loaders: monsters at `0x46c690` and items at
 The relationship value table is at `0x562410` (lookup `0x4462e0`, id 10). Our
 readers are in `src/shared/megamudDb.ts`.
 
+## The settings dialog (`0x49eea0`)
+
+Read 2026-10-13. The settings dialog is one property sheet of sixteen pages.
+In order, with each page's dialog template in `MegaRes.dll` and its procedure:
+
+| Tab | Template | Procedure |
+|---|---|---|
+| Auto-roam | 302 | `0x419180` |
+| Talk | 361 | `0x477f60` |
+| Statline | 365 | `0x4a6320` |
+| Sounds | 301 | `0x4a12e0` |
+| Other | 326 | `0x476250` |
+| Health | 315 | `0x442dc0` |
+| Spells | 345 | `0x4a09b0` (`0x4441a0`) |
+| Combat | 308 | `0x424540` |
+| PvP | 336 | `0x42b230` |
+| Party | 327 | `0x47f690` |
+| Loot | 307 | `0x41f200` |
+| General | 370 | `0x4771f0` |
+| Display | 310 | `0x4753d0` |
+| Toolbar | 367 | `0x4ba7b0` |
+| BBS | 304 | `0x419e80` |
+| Events | 341 | `0x404a30` |
+
+**The profiled tabs** (Health, Spells and Combat) each hand a descriptor to
+`0x4a01e0`:
+
+| Tab | Descriptor | Profile record size | Controls → record | Record → controls |
+|---|---|---|---|---|
+| Combat | `0x560534` | `0x348` | `0x422df0` | `0x4234c0` |
+| Health | `0x560564` | `0x44c` | `0x4420b0` | `0x442420` |
+| Spells | `0x560588` | `0x214` | `0x442870` | `0x442b30` |
+
+Each descriptor also holds the first id of the four profile buttons and the
+first id of the Enabled boxes. The record's offsets are the profile tables'.
+
+**Lists of switches**:
+- `0x4201e0(hwnd, list, text, flags)` adds a row. `flags` is one of:
+  - `0x200`: a heading;
+  - `0x10`/`0x11`: a switch, off or on;
+  - `0x120`/`0x121`: one of a set of choices, off or on. Loot's
+    Discard/Ignore/Collect rows per coin are these, with values -1, 0 and 1.
+- `0x420df0(hwnd, list, row)` reads a row back.
+- `0x420e20` sets a row by its index.
+
+On Auto-roam, the Special Rooms' Room and Command boxes edit whichever entry
+of `AutoRoom0..9`/`AutoCmd0..9` is chosen in the list.
+
+## The BBS set-up (`0x41bcf0`)
+
+The BBS set-up is read from `<DataDir>\BBS\<name>\BBS.INI`, into the session
+at `0x74d0`. Besides the log-on prompts and replies, it holds:
+
+| Key | Default | Offset |
+|---|---|---|
+| MenuPrompt | `[MAJORMUD]:` | `0x7cb9` |
+| LogoffCmd | (none) | `0x7ce2` |
+| RelogCmd | `;relog` | `0x7cf7` |
+| AnsiCmd | `=a` | `0x7d0c` |
+| SpeechPrefix | `.` | `0x7d21` |
+| BroadcastPrefix | `'` | `0x7d26` |
+| LogonMsg / LogoffMsg | `logs ON` / `logs OFF` | `0x7d2b` / `0x7d54` |
+| ShutDownMsg | `Please finish up and log off` | `0x7d7d` |
+| BroadcastMsg | `Broadcast` | `0x7da6` |
+| Global1Msg…Global3Msg | `--Unused--` | `0x7dcf`, `0x7df8`, `0x7e21` |
+| Global1Two…Global3Two | 0 | `0x7e4c`–`0x7e54` |
+| MaxInputSize | 127 | `0x7e68` |
+| PvpLevel | 99 | `0x7e6c` |
+| MaxHrsPerDay | 24 | `0x7e70` |
+| RunicName | `runic coin` | `0x7e74` |
+
+When the shutdown message is seen, `0xe284` is set, and the exit step
+(`0x4118f0`) acts on it.
+
+## Macros (`0x4acc40`)
+
+First, one of the text's `||` alternatives is picked at random (`0x4ad5f0`).
+Then the macros are filled in:
+- `{userid}`;
+- `{pswd}`, only at task 10 or below. It sets `0x7ed4`;
+- `{source}`;
+- `{target}`, or else the first thing in the room;
+- `{dmg}`;
+- `{1}`–`{5}`.
+
+A `~` becomes `\x01`, unless `0x327a4` is 99. The sender (`0x42e1c0`) turns
+each `\x01` into a 500 ms pause. `^x` is the control character, so `^M` is a
+return.
+
+The port keeps these quirks:
+- An empty `{userid}` or `{pswd}`, or a trailing `^`, ends the text.
+- `{target}` with nothing to fill in leaves its `{`.
+- `^^` and `^~` also swallow the character after them.
+
+## Online, hanging up and the socket lost
+
+- **Online (`0x42de00(s, on)`)**:
+  - On: the clock is stamped and the start task (`0xdb20`) is taken from
+    `MegaMud.StartTask`. With StartTask 1, the default loop is loaded.
+  - Off: the time online is added up, and the ability monitors and the
+    `@where` replies are forgotten.
+- **The first prompt (`0x47b070`'s tail)** enters the game:
+  - It runs the start task: 0 nothing, 1 the loop, 2 roam.
+  - It calls back a leader the character was following.
+  - It applies the mode defaults.
+  - It sends `Other.EntryCmd`, then a return.
+- **Hanging up (`0x42d510(s, how)`)** happens once until the socket closes
+  (`0xe158`). It sends `break` if fighting. Then either:
+  - it sends the BBS's LogoffCmd and closes the socket (`0x4b6fe0`, which
+    shows "[Session ended]"); or
+  - with `Other.RelogInstead` and `how` 1, it sends RelogCmd and logs on
+    again.
+- **The socket lost (the end of the network thread, `0x42c910`)**:
+  - Without a hang-up, it says "Unexpected disconnection." With
+    `Comms.RedialCarrier` it redials after `Comms.RedialPause`.
+  - After a BBS shutdown, with `Comms.RedialCleanup`, it redials after
+    `Comms.CleanupPeriod` minutes.
+
 ## Open questions
 
 - The spell record's layout (`0x4a2410`): cost at `+0x60`, required item at
