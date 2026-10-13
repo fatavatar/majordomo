@@ -50,7 +50,7 @@ pass. The numbers are the `{D%d}` debug tags MegaMUD logs.
 | 51 | `0x497840` | recover a corpse |
 | 19 | `0x40e080` | get what we collect |
 | 20 | `0x410d00` | auto-equip |
-| 21 | `0x49c570` | (to read) |
+| 21 | `0x49c570` | rules (`[Rules]`): conditions and actions |
 | 22 | `0x4066f0` | bless, in combat |
 | 23 | `0x4120b0` | combat: heal (`0x412120`) and attack (`0x412b10` → `0x40f510`) |
 | 24 | `0x410440` | stay hidden, in combat |
