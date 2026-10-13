@@ -215,7 +215,7 @@ export interface ClassRec {
   layer: number;
   /** +0x08, 31 bytes (B+0x02). */
   name: string;
-  /** +0x28 (B+0x20). */
+  /** +0x28 (B+0x20): its experience percentage, with the race's the level chart (`0x4a7250`). */
   f28: number;
   /** +0x2a–0x2e (B+0x22–0x26). */
   bytes: [number, number, number, number, number];
@@ -247,7 +247,7 @@ export function classFrom(body: Uint8Array, layer: number): ClassRec {
   };
 }
 
-/** `0x495990`: one race (Races.md), 0x60 bytes in memory; only its id and name are read yet. */
+/** `0x495990`: one race (Races.md), 0x60 bytes in memory; its id, name and experience. */
 export interface RaceRec {
   /** +0x00 (B+0x00). */
   id: number;
@@ -255,11 +255,18 @@ export interface RaceRec {
   layer: number;
   /** +0x08, 31 bytes (B+0x02). */
   name: string;
+  /** +0x34 (B+0x2d): its experience percentage, added to the class's for the level chart (`0x4a7250`). */
+  exp: number;
 }
 
 /** `0x495990`'s copy of one record. */
 export function raceFrom(body: Uint8Array, layer: number): RaceRec {
-  return { id: i16(body, 0x00), layer, name: str(body, 0x02, 0x1f) };
+  return {
+    id: i16(body, 0x00),
+    layer,
+    name: str(body, 0x02, 0x1f),
+    exp: body.length > 0x2e ? i16(body, 0x2d) : 0
+  };
 }
 
 /** `0x495880`: the race of this name (exactly), if Races.md has it. */
@@ -541,4 +548,9 @@ export function findClass(data: MegaData, id: number): ClassRec | null {
 export function classMagic(data: MegaData, id: number): number | null {
   const rec = findClass(data, id);
   return rec ? rec.magic >> 8 : null;
+}
+
+/** `0x495840`: the race with this id, if Races.md has it. */
+export function findRace(data: MegaData, id: number): RaceRec | null {
+  return data.races?.find((r) => r.id === (id << 16) >> 16) ?? null;
 }

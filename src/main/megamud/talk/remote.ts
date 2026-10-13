@@ -21,6 +21,7 @@
  * settings window's own switches (`0x48fd40`), and `@capture`'s file name.
  * The way to a room or a loop's start is the host's route (`0x43fd90`).
  */
+import { expMeter } from '../stats/expMeter';
 import { pvp } from '../combat/events';
 import { clearAlignment } from '../combat/engaged';
 import {
@@ -771,10 +772,17 @@ export function remoteCommand(s: Session, line: string, kind: number): number {
     return 1;
   }
   if ((perms & 2) !== 0 && (is('@exp') || is('@level'))) {
-    // `0x4a7250`: the stats window's experience meter (not ported yet).
-    unported('4a7250');
-    if (is('@exp')) return reply0(c, `${to} {Made: ?  Needed: ?  Rate: ?  Will level in: ?}\r`);
-    return reply0(c, `${to} {Level: ${s.Player_Level}  Needed: ?  Will level in: ?}\r`);
+    // `0x4a7250`: the stats window's experience meter.
+    const m = expMeter(s);
+    if (is('@exp'))
+      return reply0(
+        c,
+        `${to} {Made: ${m.made}  Needed: ${m.needed}  Rate: ${m.rate}  Will level in: ${m.levelIn}}\r`
+      );
+    return reply0(
+      c,
+      `${to} {Level: ${s.Player_Level}  Needed: ${m.needed}  Will level in: ${m.levelIn}}\r`
+    );
   }
   if ((perms & 0x10) !== 0) {
     if (is('@where')) return where(c);

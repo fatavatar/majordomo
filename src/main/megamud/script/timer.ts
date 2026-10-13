@@ -65,7 +65,7 @@ export function silence(s: Session, secs: number): void {
 }
 
 /** `0x4ab5b0`'s part that is not the status bar: the experience baseline, and the time online. */
-function expBaseline(s: Session): void {
+export function expBaseline(s: Session): void {
   if (s.f_e180 === 0 && (s.online === 0 || s.inGame === 0)) return;
   if (s.f_324c8 === 0 || s.exp < s.f_324c8) {
     s.f_324c8 = s.exp;
