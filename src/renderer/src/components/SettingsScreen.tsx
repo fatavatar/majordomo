@@ -37,6 +37,8 @@ import FormActions from './FormActions';
 import GlobalSettings from './GlobalSettings';
 import LoopSection from './LoopSection';
 import MegaMudLoopImport from './MegaMudLoopImport';
+import MegaMudSettings from './MegaMudSettings';
+import type { MegaSettings } from '@shared/megamud/settings';
 import RemoteList from './RemoteList';
 import RewritesDesigner from './RewriteDesigner';
 
@@ -78,7 +80,12 @@ import type {
   RegenDraft
 } from '@shared/drafts';
 import type { Loop, ScopedLoop } from '@shared/loops';
-import type { ProfileEditable, SessionId, SettingsSnapshot } from '@shared/ipc';
+import type {
+  MegaMudSettingsView,
+  ProfileEditable,
+  SessionId,
+  SettingsSnapshot
+} from '@shared/ipc';
 import type { StreamEncoding } from '@shared/types';
 import {
   DEFAULT_CONFIG,
@@ -326,6 +333,9 @@ export interface SettingsScreenProps {
   load(): Promise<SettingsSnapshot>;
   saveProfile(id: string, draft: ProfileDraft): Promise<string | null>;
   deleteProfile(id: string): Promise<string | null>;
+  /** A character's MegaMUD settings, read and written. See `MegaMudSettings`. */
+  megamudSettings(id: string): Promise<MegaMudSettingsView | null>;
+  saveMegamud(id: string, settings: MegaSettings): Promise<string | null>;
   saveServer(previousName: string | null, draft: ServerDraft): Promise<string | null>;
   deleteServer(name: string): Promise<string | null>;
   /** Writes the options file everything is inherited from. */
@@ -1606,6 +1616,8 @@ export default function SettingsScreen({
   load,
   saveProfile,
   deleteProfile,
+  megamudSettings,
+  saveMegamud,
   saveServer,
   deleteServer,
   saveGlobal,
@@ -1633,7 +1645,7 @@ export default function SettingsScreen({
    * `client` is MudEngine and `defaults` is Global: two views of one file, so
    * they share a draft, a form and a save. See `GlobalSettings`.
    */
-  const [tab, setTab] = useState<GlobalTab | 'characters' | 'servers'>('characters');
+  const [tab, setTab] = useState<GlobalTab | 'characters' | 'servers' | 'megamud'>('characters');
   const [selected, setSelected] = useState<string | null>(null);
   /**
    * The character form, and every step back from it.
@@ -2557,6 +2569,16 @@ export default function SettingsScreen({
             >
               {t('settings.crumbs.characters')}
             </button>
+            <button
+              className="crumb"
+              data-active={tab === 'megamud' ? 'true' : 'false'}
+              onClick={() => setTab('megamud')}
+              onMouseDown={keepFocus}
+              onPointerDown={stopDrag}
+              type="button"
+            >
+              {t('settings.crumbs.megamud')}
+            </button>
           </h2>
           {/*
             Absent rather than disabled while there is no character: a greyed
@@ -2616,6 +2638,19 @@ export default function SettingsScreen({
                 picking={picking}
               />
             )
+          ) : tab === 'megamud' ? (
+            <MegaMudSettings
+              characters={characters
+                .filter((entry) => entry.error === undefined)
+                .map((entry) => ({
+                  id: entry.id,
+                  name: entry.name,
+                  detail: entry.serverName ?? entry.target.host,
+                  accent: entry.accent
+                }))}
+              load={megamudSettings}
+              save={saveMegamud}
+            />
           ) : tab === 'characters' ? (
             <>
               {/*

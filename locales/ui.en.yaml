@@ -69,6 +69,9 @@ app:
     loadFailed: Character not loaded — {error}
     noSuchCharacter: No such character.
     stillConnected: '{name} is still connected.'
+  megamud:
+    invalidSettings: Those MegaMUD settings could not be read.
+    writeFailed: The MegaMUD settings were not written — {error}
   quit:
     cancelButton: Cancel
     confirmButton: Quit and disconnect
@@ -3344,8 +3347,18 @@ settings:
   crumbs:
     characters: Characters
     global: Global
+    megamud: MegaMUD
     mudEngine: MudEngine
     realms: Realms
+  megamud:
+    create: Create megamud.ini
+    loading: Loading MegaMUD settings…
+    # Shown while the character has no megamud.ini yet.
+    noFile: This character is not run by the MegaMUD engine yet. Saving these settings writes its megamud.ini and switches it to the MegaMUD engine.
+    passwordKept: (unchanged)
+    revert: Revert
+    save: Save
+    saved: Saved to megamud.ini.
   dialog:
     closeAria: Close settings
     # The corner of the panel. Drag to resize, double-click to put it back.

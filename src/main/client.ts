@@ -13,7 +13,7 @@
  * window that will show it.
  */
 import fs from 'node:fs/promises';
-import { cpSync, existsSync } from 'node:fs';
+import { cpSync, existsSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 
 import { ConfigStore } from './config/ConfigStore';
@@ -33,7 +33,7 @@ import { LoopStore } from './config/LoopStore';
 import { SettingsEditor, type SettingsEditorOptions } from './config/SettingsEditor';
 import { LoopCatalogue } from './config/LoopCatalogue';
 import { migrateHome } from './config/Migration';
-import { homeAt, homeRoot, type Home } from './app/home';
+import { homeAt, homeRoot, MEGAMUD_FILE, type Home } from './app/home';
 import { WorldGraph, type Traveller } from './world/WorldGraph';
 import { RealmLibrary } from './world/RealmLibrary';
 import { loopsFromMegaMud } from './world/megamudLoops';
@@ -127,10 +127,10 @@ import {
   type MonsterTable
 } from '../shared/monsterRules';
 import { asMegaMudPaths, type LoopImport } from '../shared/megamudPaths';
-import { settingsToIni } from '../shared/megamud/settings';
+import { settingsFromDraft, settingsToIni } from '../shared/megamud/settings';
 import type { MegaData } from './megamud/data';
 import { readMegaData, type MegaEngineSetup } from './session/MegaEngine';
-import type { SessionSummary } from '../shared/ipc';
+import type { MegaMudSettingsView, SessionSummary } from '../shared/ipc';
 import { EMPTY_CHARACTER } from '../shared/character';
 import { IDLE_WALK } from '../shared/walk';
 import { isLoopScope, mergeLoops, NO_LOOP } from '../shared/loops';
@@ -2919,6 +2919,40 @@ function registerIpc(): void {
     // The store polls, so the new character appears without being told; saying
     // so here as well would report it twice.
     return result.ok ? null : result.error;
+  });
+
+  handle(Invoke.megamudSettings, (_caller, rawId: unknown) => {
+    const id = asProfileId(rawId);
+    const profile = id === null ? undefined : profileFor(id);
+    if (profile === undefined) return null;
+    const settings = structuredClone(profile.megamud);
+    const password = String(settings.live['BBS']?.['Password'] ?? '');
+    settings.live['BBS']!['Password'] = '';
+    return {
+      file: profile.megamudFile !== undefined,
+      settings,
+      hasPassword: password !== ''
+    } satisfies MegaMudSettingsView;
+  });
+
+  handle(Invoke.saveMegamud, (_caller, rawId: unknown, raw: unknown) => {
+    const id = asProfileId(rawId);
+    const profile = id === null ? undefined : profileFor(id);
+    if (profile === undefined || id === null) return t('app.profiles.noSuchCharacter');
+    const settings = settingsFromDraft(raw, profile.megamud);
+    if (settings === null) return t('app.megamud.invalidSettings');
+    // Empty is "leave it alone": the password never crossed.
+    if (settings.live['BBS']!['Password'] === '') {
+      settings.live['BBS']!['Password'] = profile.megamud.live['BBS']?.['Password'] ?? '';
+    }
+    const file = profile.megamudFile ?? path.join(home.profilesDir, id, MEGAMUD_FILE);
+    try {
+      writeFileSync(file, settingsToIni(settings), 'latin1');
+    } catch (error) {
+      return t('app.megamud.writeFailed', { error: errorMessage(error) });
+    }
+    // The store polls, and the session picks the file up from it.
+    return null;
   });
 
   handle(Invoke.deleteProfile, (_caller, rawId: unknown) => {

@@ -121,6 +121,8 @@ const api: IpcApi = {
 
   saveProfile: (id, draft) => ipcRenderer.invoke(Invoke.saveProfile, id, draft),
   deleteProfile: (id) => ipcRenderer.invoke(Invoke.deleteProfile, id),
+  megamudSettings: (id) => ipcRenderer.invoke(Invoke.megamudSettings, id),
+  saveMegamud: (id, settings) => ipcRenderer.invoke(Invoke.saveMegamud, id, settings),
   saveServer: (previousName, draft) => ipcRenderer.invoke(Invoke.saveServer, previousName, draft),
   deleteServer: (name) => ipcRenderer.invoke(Invoke.deleteServer, name),
   settingsSnapshot: () => ipcRenderer.invoke(Invoke.settingsSnapshot),

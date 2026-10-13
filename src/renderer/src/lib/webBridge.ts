@@ -245,6 +245,8 @@ export function createWebBridge(): IpcApi {
 
     saveProfile: (id, draft) => invoke(Invoke.saveProfile, id, draft),
     deleteProfile: (id) => invoke(Invoke.deleteProfile, id),
+    megamudSettings: (id) => invoke(Invoke.megamudSettings, id),
+    saveMegamud: (id, settings) => invoke(Invoke.saveMegamud, id, settings),
     saveServer: (previousName, draft) => invoke(Invoke.saveServer, previousName, draft),
     deleteServer: (name) => invoke(Invoke.deleteServer, name),
     settingsSnapshot: () => invoke(Invoke.settingsSnapshot),

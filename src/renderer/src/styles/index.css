@@ -12732,3 +12732,115 @@ tr:hover .row-action.worn,
   max-width: 34rem;
   padding: 20px 26px;
 }
+
+/*
+ * MegaMUD's settings tabs (`MegaMudSettings`): each control placed where
+ * MegaMUD's dialog template puts it, in scaled dialog units, so the page reads
+ * as the dialog a MegaMUD player knows. The page scrolls sideways inside the
+ * form rather than reflowing, because the positions are the point.
+ */
+.megamud-settings {
+  overflow: auto;
+}
+.megamud-page {
+  position: relative;
+  flex: none;
+  /*
+   * Proportional, as MegaMUD's MS Sans Serif 8 is: its labels are sized to
+   * that face, and the console's monospace runs them off their boxes.
+   */
+  font-family: Tahoma, Verdana, 'Segoe UI', system-ui, sans-serif;
+  font-size: 11px;
+  color: var(--text);
+}
+.megamud-control {
+  position: absolute;
+  box-sizing: border-box;
+  margin: 0;
+}
+.megamud-label {
+  display: flex;
+  align-items: flex-start;
+  color: var(--text-lo);
+  white-space: nowrap;
+  overflow: hidden;
+}
+.megamud-group {
+  border: 1px solid var(--rule);
+  border-radius: var(--r-chip);
+  padding: 0;
+  pointer-events: none;
+}
+.megamud-group legend {
+  padding: 0 4px;
+  margin-left: 6px;
+  color: var(--text-hi);
+  font-size: 11px;
+}
+.megamud-check {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  cursor: pointer;
+}
+.megamud-check input {
+  margin: 0;
+  flex: none;
+}
+.megamud-edit,
+.megamud-combo {
+  padding: 0 4px;
+  font: inherit;
+  min-height: 0;
+  color: var(--text-hi);
+  background: var(--ink-raised);
+  border: 1px solid var(--ink-edge);
+  border-radius: var(--r-control);
+}
+.megamud-edit:disabled {
+  opacity: 0.5;
+}
+.megamud-button {
+  font-size: 11px;
+  padding: 0 4px;
+  min-height: 0;
+}
+.megamud-button[data-active='true'] {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+.megamud-list {
+  overflow-y: auto;
+  border: 1px solid var(--ink-edge);
+  border-radius: var(--r-control);
+  background: var(--ink-raised);
+  padding: 2px 4px;
+}
+.megamud-list label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+.megamud-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: flex-end;
+  padding-block: 12px;
+}
+.megamud-list-head {
+  display: block;
+  color: var(--text-hi);
+  font-weight: 600;
+}
+.megamud-list label[data-choice='true'] {
+  padding-left: 12px;
+}
+.settings-form.megamud-settings {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}

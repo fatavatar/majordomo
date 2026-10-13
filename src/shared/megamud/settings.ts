@@ -349,3 +349,53 @@ export function switchProfile(settings: MegaSettings, to: number): MegaSettings 
   next.live['Profiles']!['ActiveProfile'] = to;
   return next;
 }
+
+/** A value for one key from an untrusted draft: its own type, text cut to the loader's buffer and kept to one line. */
+function draftValue(def: SettingDef, raw: unknown): SettingValue {
+  if (def.kind === 'str') {
+    if (typeof raw !== 'string') return def.default;
+    return raw.replace(/[\r\n\0]/g, '').slice(0, (def.size ?? 257) - 1);
+  }
+  if (typeof raw !== 'number' || !Number.isFinite(raw)) return def.default;
+  return Math.trunc(raw);
+}
+
+/**
+ * Settings from a draft the window sent, over `base` (the file as it is):
+ * every schema key taken at its own type, anything else ignored, and the
+ * sections outside the schema kept from `base` alone. Null for a draft that
+ * is not settings at all. Read back through the loader, so its clamps apply.
+ */
+export function settingsFromDraft(raw: unknown, base: MegaSettings): MegaSettings | null {
+  if (typeof raw !== 'object' || raw === null) return null;
+  const draft = raw as { live?: unknown; profiles?: unknown };
+  if (typeof draft.live !== 'object' || draft.live === null) return null;
+  const live = draft.live as Record<string, Record<string, unknown> | undefined>;
+  const next: MegaSettings = structuredClone(base);
+  for (const [section, defs] of BY_SECTION) {
+    const from = live[section];
+    if (typeof from !== 'object' || from === null) continue;
+    for (const def of defs) {
+      if (def.key in from) next.live[section]![def.key] = draftValue(def, from[def.key]);
+    }
+  }
+  const profiles = (draft.profiles ?? {}) as Record<string, unknown>;
+  for (const section of PROFILED_SECTIONS) {
+    const slots = profiles[section];
+    if (!Array.isArray(slots)) continue;
+    next.profiles[section] = [0, 1, 2, 3].map((i) => {
+      const slot = slots[i] as { enabled?: unknown; values?: unknown } | null | undefined;
+      if (typeof slot !== 'object' || slot === null)
+        return i === 0 ? next.profiles[section][0]! : null;
+      const values: SectionValues = {};
+      const given = (
+        typeof slot.values === 'object' && slot.values !== null ? slot.values : {}
+      ) as Record<string, unknown>;
+      for (const def of sectionDefs(section)) {
+        if (def.profiled) values[def.key] = draftValue(def, given[def.key]);
+      }
+      return { enabled: i === 0 || slot.enabled !== false, values };
+    });
+  }
+  return settingsFromIni(settingsToIni(next));
+}
