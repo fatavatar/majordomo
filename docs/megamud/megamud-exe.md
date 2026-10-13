@@ -456,6 +456,26 @@ shown, 2 shown after a separator. The Toolbar tab (`0x4bb4d0`) ticks Visible
 when the value is above 0 and Separator when above 1. `AllOff` and `AFK`
 default to 2.
 
+## Redrawing the window (`0x460d50`)
+
+Read 2026-10-13. After each command `0x462d20` redraws the window: every
+menu item is enabled (`EnableMenuItem` 0, else 3 for greyed) and checked
+from the session, then `0x4b9020` brings the toolbar into line with the menu.
+
+- **All Off (`0xa32c`)** is checked while on. While it is on, every auto
+  toggle is drawn *unchecked and greyed*, whatever its own field holds:
+  Auto-Combat `0x7d3`, Pre-Attack `0x829`, Prefer Melee `0x8a4`, Nuke
+  `0x86a`, Heal `0x7dc`, Bless `0x82a`, Light `0x870`, Cash `0x823`, Get
+  `0x7d9`, Sneak `0x801`, Hide `0x815`, Search `0x7f2`, Track `0x804`, and AFK
+  `0x809`. The fields are untouched, so each comes back as it was when All
+  Off is let go.
+- **Go/Stop (`0x803`)**, the path walk `0x7da`, the loop `0x7ea` and Roam
+  `0x808` are enabled only in the game and not under All Off. The path walk
+  is checked while walking (`0xe184`) a path that is neither the loop
+  (`0xe188`) nor roaming (`0xe18c`); the loop with `0xe184` and `0xe188`; Roam
+  with `0xe184` and `0xe18c`.
+- Step back (`0x869`) is enabled in the game while not walking.
+
 ## The settings dialog (`0x49eea0`)
 
 Read 2026-10-13. The settings dialog is one property sheet of sixteen pages.
