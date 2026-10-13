@@ -297,6 +297,7 @@ import {
 } from '../../shared/survival';
 import { deathRisk, hangUpCost, runDue } from '../../shared/danger';
 import { withFled } from '../../shared/fled';
+import { MegaEngine, type MegaEngineSetup } from './MegaEngine';
 
 /**
  * The part of a chunk of keystrokes the server's line editor would keep.
@@ -3088,6 +3089,8 @@ export class SessionManager {
        */
       if (this.tailIsWholePrompt()) this.flushPending();
       else this.armIdleFlush();
+      // After our own reading, so the engine learns rooms our tracker has placed.
+      this.mega?.received(text);
       /*
        * Deliberately *not* `routines.noteSent()`: the keep-alive counts this
        * client's own silence, and bytes arriving are not it. This realm
@@ -3107,6 +3110,7 @@ export class SessionManager {
 
     this.client.on('close', (graceful) => {
       this.flushPending();
+      this.mega?.closed();
       // Nothing is owed across a closed socket, and a deadline left armed
       // would hang up the *next* connection this session opens.
       this.link.reset();
@@ -3687,6 +3691,7 @@ export class SessionManager {
       // output correctly from the first screen rather than after a resize.
       this.client.resize(this.lastSize);
       this.patch({ phase: 'connected', connectedAt: Date.now(), detail: null });
+      this.mega?.connected();
       this.sink.notice(t('session.connection.connected', { host: target.host, port: target.port }));
     } catch (error) {
       if (error instanceof DialCancelled) return this.current; // `close` reports it
@@ -3807,6 +3812,7 @@ export class SessionManager {
         if (opensStatScreen(command)) this.holdForStatScreen(t('session.stats.asked'));
         this.statScreen.noteSent(command, 'user');
         this.noteSent(command, 'user');
+        this.mega?.typed(command);
         this.noteQuestSaid(command);
         // A person is at the keyboard: the away clock starts over.
         this.afk.noteAttended();
@@ -4564,12 +4570,108 @@ export class SessionManager {
     }
   }
 
+  /**
+   * The ported MegaMUD engine, for a character with a `megamud.ini`: while
+   * it runs, the automation below stands down (see `MegaEngine`).
+   */
+  private mega: MegaEngine | null = null;
+  /** The last `configure`, applied again when the engine comes or goes. */
+  private configured: Parameters<SessionManager['configure']> | null = null;
+  /** What the engine has written since its last return, for the tracker. */
+  private megaLine = '';
+
+  /** Runs the MegaMUD engine for this character, or stops it (null). */
+  useMegaMud(setup: MegaEngineSetup | null): void {
+    if (this.mega !== null && setup !== null) {
+      this.mega.reload(setup);
+      return;
+    }
+    const learned = this.mega?.learned;
+    this.mega?.dispose();
+    this.mega = null;
+    this.megaLine = '';
+    if (setup !== null) {
+      this.mega = new MegaEngine(
+        {
+          write: (text) => this.megaWrite(text),
+          show: (text) => this.megaShow(text),
+          hangUp: () => this.disconnect('client'),
+          dial: () => {
+            const target = this.current.target;
+            if (target !== null && !this.client.connected) void this.connect(target);
+          },
+          here: () => roomAddress(this.tracker.current.room),
+          world: () => this.world,
+          plan: (from, to) =>
+            this.world?.route(from, to, this.lapTraveller(this.tracker.current)) ??
+            t('session.loop.noRealmData'),
+          loopRooms: (name) => {
+            const loop = this.loopNamed(name);
+            if (loop === undefined) return t('session.move.noSuchLoop', { name });
+            const rooms: RoomId[] = [];
+            for (const stop of loop.stops) {
+              const found = this.findStop(splitStop(stop));
+              if (typeof found === 'string') return found;
+              rooms.push(roomId(found.map, found.room));
+            }
+            return { rooms, bounce: loop.bounce === true };
+          }
+        },
+        { ...setup, learned: setup.learned ?? learned }
+      );
+      if (this.client.connected) this.mega.connected();
+    }
+    if (this.configured !== null) this.configure(...this.configured);
+  }
+
+  /** Whether the MegaMUD engine runs this character. */
+  get megaMud(): boolean {
+    return this.mega !== null;
+  }
+
+  /** The engine's writes, observed as automation's commands are. */
+  private megaWrite(text: string): void {
+    this.megaLine += text;
+    for (;;) {
+      const end = this.megaLine.indexOf('\r');
+      if (end === -1) break;
+      const command = this.megaLine.slice(0, end).trim();
+      this.megaLine = this.megaLine.slice(end + 1);
+      if (command.length > 0) {
+        this.tracker.observeCommand(command);
+        this.classifier.observeCommand(command);
+        this.sink.command?.(this.reportable(command), 'automation');
+        this.noteSent(command, 'automation');
+      } else {
+        this.tracker.observeReread();
+      }
+      this.link.noteSent();
+    }
+    this.client.send(text);
+  }
+
+  /** One of MegaMUD's own lines, on the console. */
+  private megaShow(text: string): void {
+    this.seq += 1;
+    this.sink.data({ seq: this.seq, at: Date.now(), text: `\r\n\x1b[36m${text}\x1b[0m\r\n` });
+  }
+
   configure(
     stated: AutomationConfig,
     login: LoginConfig,
     rewrites: RewritesUiConfig = DEFAULT_CONFIG.ui.rewrites,
     locate: LocateMethod = DEFAULT_CONFIG.connection.locate
   ): void {
+    this.configured = [stated, login, rewrites, locate];
+    // The MegaMUD engine decides for itself: nothing here acts beside it.
+    if (this.mega !== null) {
+      stated = {
+        ...stated,
+        enabled: false,
+        rules: [],
+        remotes: { ...stated.remotes, enabled: false }
+      };
+    }
     // The realm's monster table under the character's own rows: every module
     // below is handed what this character actually does about each monster.
     this.statedCombat = stated.combat;
@@ -4864,6 +4966,8 @@ export class SessionManager {
   private reconsiderTimer: NodeJS.Timeout | null = null;
 
   dispose(): void {
+    this.mega?.dispose();
+    this.mega = null;
     this.clearFollowerWaitLimit();
     this.cancelIdleFlush();
     this.forgetPlayers();
@@ -9077,6 +9181,9 @@ export class SessionManager {
   }
 
   walkRoute(route: Route, run = false): string | null {
+    // MegaMUD's Go To: the room the route ends in, the way its own.
+    const end = route.steps.at(-1)?.to;
+    if (this.mega !== null && end !== undefined) return this.mega.walkTo(end);
     // The counters, if this way turns on one nobody has read yet.
     this.askCountersFor(route);
     /*
@@ -9135,6 +9242,10 @@ export class SessionManager {
    * with extra steps.
    */
   stepBack(confirmed: number | null): MovementStart {
+    if (this.mega !== null) {
+      this.mega.button(0x869);
+      return { started: true };
+    }
     const state = this.tracker.current;
     if (state.phase !== 'in-game') return { refused: t('session.back.notInRealm') };
     if (this.tracker.pendingMoves > 0) return { refused: t('session.back.moveInFlight') };
@@ -9213,6 +9324,11 @@ export class SessionManager {
    * keeps its route, which is what `startMoving` picks back up.
    */
   stopMoving(): void {
+    // MegaMUD's Stop: its Go/Stop button, when it is going.
+    if (this.mega !== null) {
+      if (this.mega.walking) this.mega.button(0x803);
+      return;
+    }
     // A walk home the player stops is not carried past the fight it stops in.
     this.homeward = null;
     const reason = t('session.walk.stoppedByPlayer');
@@ -9248,6 +9364,15 @@ export class SessionManager {
    * and `mudengine-automation` for why the lap's own leg is not the figure.
    */
   startMoving(loopName: string | null, confirmed: number | null): MovementStart {
+    if (this.mega !== null) {
+      // A loop named is made MegaMUD's loop (`@loop`); none is its Go.
+      if (loopName !== null) {
+        const refused = this.mega.startLoop(loopName);
+        return refused === null ? { started: true } : { refused };
+      }
+      if (!this.mega.walking) this.mega.button(0x803);
+      return this.mega.walking ? { started: true } : { refused: t('session.move.nothingToResume') };
+    }
     const state = this.tracker.current;
     const movement = this.movement;
     if (movement.moving) return { refused: t('session.move.alreadyMoving') };
@@ -9283,6 +9408,10 @@ export class SessionManager {
    * the mirror of the failure `walkRoute` stops a running lap to avoid.
    */
   startLoop(loop: Loop): MovementStart {
+    if (this.mega !== null) {
+      const refused = this.mega.startLoop(loop.name);
+      return refused === null ? { started: true } : { refused };
+    }
     if (this.walker.walking) this.walker.stop(t('session.loop.stoppedForLoop'));
     // Both destinations the walk was owed die with it: the shop it was going
     // to and the route it was shopping on behalf of are about a journey the

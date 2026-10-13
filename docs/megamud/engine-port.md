@@ -129,6 +129,43 @@ taken up again. Two things are the host's (`SessionHost`):
   the paths known (`Session.paths`, MegaMUD's `0x7f20`) are looked in. Our
   loops are made paths this way.
 
+## Running it
+
+A character with a `megamud.ini` beside its profile is run by the port
+(`src/main/session/MegaEngine.ts`); one without keeps the old engine until
+the swap. For such a character:
+
+- **The old automation stands down** (`SessionManager.configure`): every
+  module, the rule engine and the old `@` answers. The login, the display,
+  the map and the planners stay.
+- **Settings** are the ini's (`megamud/character.ts`, `0x449aa0`), with
+  `[AbilMon]`, `[Schedule]` and `[Rules]` read by their own loaders. The
+  app's per-player remote grants are turned into MegaMUD's remote bits until
+  Players.md is read. The BBS set-up is at the loader's defaults
+  (`megamud/bbs.ts`, `0x41bcf0`); the realm's `BBS.INI` is not read yet.
+- **Data** is MegaMUD's own `.md` files from the character's data folder:
+  `MegaMud.DataDir` when that is a folder here, else the ini's own folder,
+  each with its `Default` beneath. Without them MegaMUD learns monsters and
+  items as it meets them and knows no spells.
+- **Text in**: every chunk the socket gives, after our own reading, so the
+  engine can learn the room our tracker placed. **Commands out**: straight
+  to the socket, observed as automation's are, a macro's `~` a half-second
+  pause. What the player types is shown to it (`0x465d90`).
+- **Clocks**: `secondTick` every second, `quietTick` every quarter.
+- **The buttons**: the loop card's play is `@loop`'s start of a loop (or Go
+  with none named), its stop is Go/Stop (`0x803`), the step back `0x869`,
+  and a route asked for is the Go To dialog to its last room.
+- **Paths**: our loops and routes are made MegaMUD paths. A room's
+  signature is learned whenever the engine and our tracker stand in it
+  together, else worked out from the realm data (`worldSignature`); a room
+  whose exits the realm data cannot say how the game lists is given the
+  relearn mark (`0x80`), which the first walk through fills in. MegaMUD heads
+  for destinations only from rooms in its room list (`0x43cb90`): the rooms
+  learned and every path's ends are put in it.
+- **The connection**: `connected` and `connectionClosed` (`0x42c910`'s end)
+  from the socket; the engine's hang-up closes it, and its redial (task 2)
+  dials the realm again.
+
 ## Kept, outside the loop
 
 These are user-started actions that hand control to the loop as a path does:

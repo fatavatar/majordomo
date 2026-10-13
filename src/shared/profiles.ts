@@ -112,6 +112,12 @@ export interface Profile {
    */
   megamud: MegaSettings;
   /**
+   * The `megamud.ini` those settings were read from, when the character has
+   * one: such a character is run by the ported MegaMUD engine, its data
+   * folder (`Monsters.md` and the rest) `MegaMud.DataDir` or this file's own.
+   */
+  megamudFile?: string;
+  /**
    * The complete options this character runs under: the global file with this
    * profile's overlay applied. Never a partial.
    */

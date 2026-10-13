@@ -1,0 +1,138 @@
+import { afterEach, describe, expect, it, vi } from 'vitest';
+
+import { newTerminal, parseData } from '../../megamud/input/ParseData';
+import { defaultSettings } from '../../../shared/megamud/settings';
+import type { Route, RouteStep, WorldRoom } from '../../../shared/world';
+import { session } from '../../megamud/__tests__/fixture';
+import { MegaEngine, nameHash, worldSignature, type MegaEngineHost } from '../MegaEngine';
+
+function room(map: number, number: number, name: string, exits: WorldRoom['exits']): WorldRoom {
+  return { map, room: number, name, exits } as WorldRoom;
+}
+
+function exit(direction: 'n' | 's' | 'e' | 'w', to: number, kind: string | null = null) {
+  return {
+    direction,
+    map: 1,
+    room: to,
+    requirement: kind === null ? null : ({ kind, raw: '' } as never)
+  };
+}
+
+const SQUARE = room(1, 1, 'Town Square', [exit('n', 2), exit('e', 3, 'door')]);
+const ALLEY = room(1, 2, 'Dark Alley', [exit('s', 1)]);
+const SHOP = room(1, 3, 'Shop', [exit('w', 1, 'door')]);
+const ROOMS = [SQUARE, ALLEY, SHOP];
+
+function step(from: number, to: number, command: string): RouteStep {
+  return { from: `1/${from}`, to: `1/${to}`, direction: command, command } as RouteStep;
+}
+
+/** The ways between the three rooms. */
+function plan(from: string, to: string): Route {
+  const ways: Record<string, RouteStep[]> = {
+    '1/1>1/2': [step(1, 2, 'n')],
+    '1/2>1/1': [step(2, 1, 's')],
+    '1/1>1/3': [step(1, 3, 'e')],
+    '1/3>1/1': [step(3, 1, 'w')],
+    '1/2>1/3': [step(2, 1, 's'), step(1, 3, 'e')],
+    '1/3>1/2': [step(3, 1, 'w'), step(1, 2, 'n')]
+  };
+  return { steps: ways[`${from}>${to}`] ?? [], cost: 1, blocked: false };
+}
+
+function engine(here: string | null = '1/1') {
+  const sent: string[] = [];
+  const shown: string[] = [];
+  const world = {
+    get: (map: number, n: number) => ROOMS.find((r) => r.map === map && r.room === n),
+    everyRoom: () => ROOMS.values()
+  };
+  const at = { here };
+  const host: MegaEngineHost = {
+    write: (text) => sent.push(text),
+    show: (text) => shown.push(text),
+    hangUp: () => {},
+    dial: () => {},
+    here: () => at.here,
+    world: () => world as never,
+    plan,
+    loopRooms: (name) =>
+      name === 'Ring' ? { rooms: ['1/2', '1/3'], bounce: false } : 'no such loop'
+  };
+  const e = new MegaEngine(host, {
+    settings: defaultSettings(),
+    data: { monsters: [], items: [], spells: [] },
+    grants: {}
+  });
+  return { e, sent, shown, at };
+}
+
+afterEach(() => vi.useRealTimers());
+
+describe('room signatures from the realm data', () => {
+  it('match what the engine reads off the screen', () => {
+    const { s } = session();
+    s.inGame = 1;
+    parseData(
+      s,
+      newTerminal(),
+      '\x1b[1;36mTown Square\r\n\x1b[0;32mObvious exits: north, closed door east\r\n'
+    );
+    expect(s.f_8130).not.toBe(0);
+    expect(worldSignature(SQUARE)).toBe(s.f_8130);
+    expect(nameHash('Town Square') & 0xfff00000).toBe(s.f_8130 & 0xfff00000);
+  });
+
+  it('are unsure of an exit whose listing the realm data cannot say', () => {
+    expect(worldSignature(room(1, 9, 'Gate', [exit('n', 1, 'toll')]))).toBeNull();
+  });
+});
+
+describe('the engine in a session', () => {
+  it('walks a loop of ours as MegaMUD’s loop, from the room it is in', () => {
+    vi.useFakeTimers();
+    const { e, sent } = engine('1/1');
+    e.s.inGame = 1;
+    e.s.online = 1;
+    e.received('\x1b[1;36mTown Square\r\n\x1b[0;32mObvious exits: north, closed door east\r\n');
+    expect(e.s.f_8130).toBe(worldSignature(SQUARE));
+    expect(e.startLoop('Ring')).toBeNull();
+    expect(e.s.loopPath.start).toBe(worldSignature(ALLEY));
+    // Loaded when it is walked (`0x482600` without loading); the path made:
+    expect(e.s.paths[0]!.steps!.map((st) => st.command)).toEqual(['s', 'e', 'w', 'n']);
+    // On the way to its start: the route from here is the path walked.
+    expect(e.s.walking).toBe(1);
+    expect(e.s.path.steps!.map((st) => st.command)).toEqual(['n']);
+    expect(sent).toEqual([]);
+    e.dispose();
+  });
+
+  it('refuses a loop it cannot make', () => {
+    vi.useFakeTimers();
+    const { e } = engine();
+    expect(e.startLoop('Nowhere')).toBe('no such loop');
+    e.dispose();
+  });
+
+  it('learns a room’s signature when it and the tracker stand there together', () => {
+    vi.useFakeTimers();
+    const { e } = engine('1/2');
+    e.s.inGame = 1;
+    e.received('\x1b[1;36mDark Alley\r\n\x1b[0;32mObvious exits: south, west\r\n');
+    expect(e.learned.get('1/2')).toBe(e.s.f_8130);
+    expect(e.signatureOf('1/2')).toBe(e.s.f_8130);
+    e.dispose();
+  });
+
+  it('pauses half a second at a macro’s ~', () => {
+    vi.useFakeTimers();
+    const { e, sent } = engine();
+    e.s.host.write('say a\r\x01say b\r');
+    e.s.host.write('look\r');
+    expect(sent).toEqual(['say a\r']);
+    vi.advanceTimersByTime(500);
+    expect(sent).toEqual(['say a\r', 'say b\r', 'look\r']);
+    e.dispose();
+  });
+});

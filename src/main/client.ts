@@ -127,6 +127,9 @@ import {
   type MonsterTable
 } from '../shared/monsterRules';
 import { asMegaMudPaths, type LoopImport } from '../shared/megamudPaths';
+import { settingsToIni } from '../shared/megamud/settings';
+import type { MegaData } from './megamud/data';
+import { readMegaData, type MegaEngineSetup } from './session/MegaEngine';
 import type { SessionSummary } from '../shared/ipc';
 import { EMPTY_CHARACTER } from '../shared/character';
 import { IDLE_WALK } from '../shared/walk';
@@ -844,6 +847,36 @@ function loopCatalogue(): LoopCatalogue {
   return catalogue;
 }
 
+/** MegaMUD's databases, by the folders they were read from: read once each. */
+const megaDataRead = new Map<string, MegaData>();
+
+/**
+ * The ported MegaMUD engine's set-up, for a character with a `megamud.ini`:
+ * its settings, its data folder's databases (`MegaMud.DataDir` when that is
+ * a folder here, and the ini's own) and its per-player remote grants.
+ */
+function megamudFor(id: SessionId): { key: string; setup: MegaEngineSetup } | null {
+  const profile = profileFor(id);
+  if (profile?.megamudFile === undefined) return null;
+  const grants = profile.config.automation.remotes.players;
+  const dataDir = String(profile.megamud.live['MegaMud']?.['DataDir'] ?? '');
+  const dirs = [dataDir, path.dirname(profile.megamudFile)].filter(
+    (dir) => dir !== '' && existsSync(dir)
+  );
+  // The realm's name for its runic coin (BBS.INI's `RunicName`, ours per realm).
+  const runic = profile.config.connection.coins.runic;
+  const dataKey = `${dirs.join('|')}|${runic ?? ''}`;
+  let data = megaDataRead.get(dataKey);
+  if (data === undefined) {
+    data = readMegaData(dirs, runic);
+    megaDataRead.set(dataKey, data);
+  }
+  return {
+    key: `${dataKey}\n${settingsToIni(profile.megamud)}\n${JSON.stringify(grants)}`,
+    setup: { settings: profile.megamud, data, grants }
+  };
+}
+
 /** The character with this id, if a profile file defines one. */
 function profileFor(id: SessionId): Profile | undefined {
   return profiles?.profiles.find((profile) => profile.id === id);
@@ -1377,6 +1410,7 @@ function createHost(): SessionHost {
     // the values it started with.
     configFor,
     realmTablesFor,
+    megamudFor,
     /*
      * Whether a lost connection is dialled back, per character, read through
      * for the reason `configFor` is: profiles are watched, so switching it off

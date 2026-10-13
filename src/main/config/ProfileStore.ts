@@ -270,6 +270,7 @@ export class ProfileStore extends EventEmitter {
       if (fs.existsSync(ini)) {
         try {
           result.profile.megamud = settingsFromIni(fs.readFileSync(ini, 'latin1'));
+          result.profile.megamudFile = ini;
         } catch (error) {
           errors.push(`${id}: ${MEGAMUD_FILE}: ${errorMessage(error)}`);
         }

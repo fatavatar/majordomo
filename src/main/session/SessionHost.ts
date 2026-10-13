@@ -25,6 +25,7 @@ import { Backscroll } from './Backscroll';
 import { SessionCapture } from './SessionCapture';
 import { SessionLog } from './SessionLog';
 import { Reconnect } from './Reconnect';
+import type { MegaEngineSetup } from './MegaEngine';
 import {
   BUSY_PHASES,
   NO_REALM_TABLES,
@@ -72,6 +73,8 @@ export interface SessionSlot {
   readonly reconnect: Reconnect;
   log: SessionLog | null;
   capture: SessionCapture | null;
+  /** The MegaMUD engine's set-up as last applied (`megamudFor`'s key), null without one. */
+  megaKey: string | null;
   /**
    * The debug ring, for the debug window and for a bug report.
    *
@@ -111,6 +114,12 @@ export interface SessionHostOptions {
    * exist.
    */
   worldFor(id: SessionId): WorldGraph | undefined;
+  /**
+   * The ported MegaMUD engine's set-up for a character that has a
+   * `megamud.ini`, with a key that changes when it does; null for one that
+   * has none. See `MegaEngine`.
+   */
+  megamudFor?(id: SessionId): { key: string; setup: MegaEngineSetup } | null;
   /** Write one automation switch into a character's file; whether it was written. See `CombatLease`. */
   flipSwitch?(id: SessionId, name: AutomationSwitch, on: boolean): boolean;
   /**
@@ -502,6 +511,8 @@ export class SessionHost {
 
     manager.configureInternal(this.options.internal());
     manager.configureRealm(this.realmFor(id, config));
+    const mega = this.options.megamudFor?.(id) ?? null;
+    manager.useMegaMud(mega?.setup ?? null);
     const slot: SessionSlot = {
       id,
       manager,
@@ -514,7 +525,8 @@ export class SessionHost {
       log: null,
       capture: null,
       debug,
-      named: null
+      named: null,
+      megaKey: mega?.key ?? null
     };
     this.slots.set(id, slot);
     /*
@@ -632,6 +644,11 @@ export class SessionHost {
       );
       slot.manager.configureInternal(this.options.internal());
       slot.manager.configureRealm(this.realmFor(slot.id, config));
+      const mega = this.options.megamudFor?.(slot.id) ?? null;
+      if ((mega?.key ?? null) !== slot.megaKey) {
+        slot.megaKey = mega?.key ?? null;
+        slot.manager.useMegaMud(mega?.setup ?? null);
+      }
       slot.backscroll.setLimit(config.terminal.scrollback);
     }
   }
