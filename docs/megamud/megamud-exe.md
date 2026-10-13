@@ -593,6 +593,14 @@ The port keeps these quirks:
     `Comms.RedialCarrier` it redials after `Comms.RedialPause`.
   - After a BBS shutdown, with `Comms.RedialCleanup`, it redials after
     `Comms.CleanupPeriod` minutes.
+- **A dial that failed (`0x4b71d0`, read 2026-10-13)**, called by the
+  telnet connect (`0x4b6e00`) with `Comms.RedialConnect`: the failure is
+  counted (`0x30dc8`). At `Comms.RedialMax` it shows "[Re-dial maximum
+  exceeded (%s)]", prevents redialling (`0x30de8`) and goes idle (task
+  `0xb`). Already prevented, it shows "[Re-dial prevented]". Otherwise it
+  waits `Comms.RedialPause` (`0xe544` 3, task 9) and the second timer
+  (`0x4653d0`) dials again. The modem path (`0x45ad00`, BUSY, NO ANSWER, NO
+  CARRIER) does the same with prevention value 2.
 
 ## Open questions
 
