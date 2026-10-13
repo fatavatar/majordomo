@@ -298,7 +298,7 @@ import {
 import { deathRisk, hangUpCost, runDue } from '../../shared/danger';
 import { withFled } from '../../shared/fled';
 import type { MegaToggle } from '../../shared/megamud/toggles';
-import { MegaEngine, type MegaEngineSetup } from './MegaEngine';
+import { MegaEngine, type MegaAlert, type MegaEngineSetup } from './MegaEngine';
 
 /**
  * The part of a chunk of keystrokes the server's line editor would keep.
@@ -655,6 +655,40 @@ interface HuntPriced extends HuntPrice {
   group: HuntGroup;
   /** Every room of the group, nearest first. */
   rooms: HuntingRoom[];
+}
+
+/** What one of MegaMUD's alerts says, one literal key each for the coverage test. */
+function megaAlertText(which: MegaAlert): string {
+  switch (which) {
+    case 'idle':
+      return t('session.megamud.alert.idle');
+    case 'train':
+      return t('session.megamud.alert.train');
+    case 'lowHp':
+      return t('session.megamud.alert.lowHp');
+    case 'hangup':
+      return t('session.megamud.alert.hangup');
+    case 'playerEntered':
+      return t('session.megamud.alert.playerEntered');
+    case 'telepath':
+      return t('session.megamud.alert.telepath');
+    case 'page':
+      return t('session.megamud.alert.page');
+    case 'say':
+      return t('session.megamud.alert.say');
+    case 'gangpath':
+      return t('session.megamud.alert.gangpath');
+    case 'gossip':
+      return t('session.megamud.alert.gossip');
+    case 'auction':
+      return t('session.megamud.alert.auction');
+    case 'broadcast':
+      return t('session.megamud.alert.broadcast');
+    default: {
+      const unreachable: never = which;
+      return unreachable;
+    }
+  }
 }
 
 export class SessionManager {
@@ -4587,6 +4621,12 @@ export class SessionManager {
   private configured: Parameters<SessionManager['configure']> | null = null;
   /** What the engine has written since its last return, for the tracker. */
   private megaLine = '';
+  /** The question MegaMUD is waiting on the player for, if any. See `megaAsk`. */
+  private megaQuestion: string | null = null;
+  /** The question the player said yes to, for the engine to be told when it asks again. */
+  private megaAgreed: string | null = null;
+  /** The player's last action on the engine, run again after a yes. */
+  private megaRetry: (() => unknown) | null = null;
   /**
    * What the engine wrote while the player had a line half typed, held back
    * from the socket: the realm would glue it onto that line (an Enter of the
@@ -4610,6 +4650,9 @@ export class SessionManager {
     this.mega = null;
     this.megaLine = '';
     this.megaHeld = '';
+    this.megaQuestion = null;
+    this.megaAgreed = null;
+    this.megaRetry = null;
     if (setup !== null) {
       this.mega = new MegaEngine(
         {
@@ -4623,6 +4666,9 @@ export class SessionManager {
           here: () => roomAddress(this.tracker.current.room),
           locate: () => this.megaLocate(),
           toggled: () => this.publishAutomation(),
+          ask: (text) => this.megaAsk(text),
+          // Where MegaMUD would play the sound its `[Alerts]` names.
+          alert: (which) => this.sink.notice(megaAlertText(which)),
           world: () => this.world,
           plan: (from, to) =>
             this.world?.route(from, to, this.lapTraveller(this.tracker.current)) ??
@@ -9233,7 +9279,10 @@ export class SessionManager {
   walkRoute(route: Route, run = false): string | null {
     // MegaMUD's Go To: the room the route ends in, the way its own.
     const end = route.steps.at(-1)?.to;
-    if (this.mega !== null && end !== undefined) return this.mega.walkTo(end);
+    if (this.mega !== null && end !== undefined) {
+      const mega = this.mega;
+      return this.megaAct(() => mega.walkTo(end));
+    }
     // The counters, if this way turns on one nobody has read yet.
     this.askCountersFor(route);
     /*
@@ -9416,12 +9465,13 @@ export class SessionManager {
   startMoving(loopName: string | null, confirmed: number | null): MovementStart {
     if (this.mega !== null) {
       // A loop named is made MegaMUD's loop (`@loop`); none is its Go.
+      const mega = this.mega;
       if (loopName !== null) {
-        const refused = this.mega.startLoop(loopName);
+        const refused = this.megaAct(() => mega.startLoop(loopName));
         return refused === null ? { started: true } : { refused };
       }
-      if (!this.mega.walking) this.mega.button(0x803);
-      return this.mega.walking ? { started: true } : { refused: t('session.move.nothingToResume') };
+      if (!mega.walking) this.megaAct(() => mega.button(0x803));
+      return mega.walking ? { started: true } : { refused: t('session.move.nothingToResume') };
     }
     const state = this.tracker.current;
     const movement = this.movement;
@@ -9459,7 +9509,8 @@ export class SessionManager {
    */
   startLoop(loop: Loop): MovementStart {
     if (this.mega !== null) {
-      const refused = this.mega.startLoop(loop.name);
+      const mega = this.mega;
+      const refused = this.megaAct(() => mega.startLoop(loop.name));
       return refused === null ? { started: true } : { refused };
     }
     if (this.walker.walking) this.walker.stop(t('session.loop.stoppedForLoop'));
@@ -9953,8 +10004,47 @@ export class SessionManager {
         .reverse(),
       safety: [...this.safetyLog].reverse(),
       engagements: [...this.engageLog].reverse(),
-      ...(this.mega ? { mega: this.mega.toggles } : {})
+      ...(this.mega ? { mega: this.mega.toggles } : {}),
+      ...(this.megaQuestion !== null ? { megaQuestion: this.megaQuestion } : {})
     };
+  }
+
+  /**
+   * MegaMUD's yes-or-no questions (its message boxes: a step to relearn, a
+   * key or gold or a level the way to a destination needs). MegaMUD waits on
+   * the answer; this client cannot, so a question is answered *no* where it
+   * is asked and put to the player, and a *yes* is kept for that question and
+   * the player's action that asked it run again (`megaAct`), where MegaMUD
+   * asks it once more and is told yes. A question asked while walking needs
+   * no re-running: MegaMUD asks it again on its next try.
+   */
+  private megaAsk(text: string): boolean {
+    if (this.megaAgreed === text) {
+      this.megaAgreed = null;
+      return true;
+    }
+    if (this.megaQuestion !== text) {
+      this.megaQuestion = text;
+      this.publishAutomation();
+    }
+    return false;
+  }
+
+  /** A player's action on the engine, kept so a question it asks can be answered by running it again. */
+  private megaAct<T>(act: () => T): T {
+    this.megaRetry = act;
+    return act();
+  }
+
+  /** The player's answer to the question MegaMUD asked. */
+  megaAnswer(question: string, yes: boolean): void {
+    if (this.megaQuestion !== question) return;
+    this.megaQuestion = null;
+    this.publishAutomation();
+    if (!yes || this.mega === null) return;
+    this.megaAgreed = question;
+    const retry = this.megaRetry;
+    if (retry !== null) retry();
   }
 
   /** One of the MegaMUD engine's toolbar toggles pressed; why not, when it cannot be. */

@@ -3095,6 +3095,11 @@ function registerIpc(): void {
     return slot.manager.megaToggle(parsed);
   });
 
+  handle(Invoke.megamudAnswer, (_caller, session: unknown, question: unknown, yes: unknown) => {
+    if (typeof session !== 'string' || typeof question !== 'string') return;
+    host?.get(session as SessionId)?.manager.megaAnswer(question, yes === true);
+  });
+
   handle(Invoke.setAutomationSwitch, (_caller, session: unknown, name: unknown, on: unknown) => {
     if (typeof session !== 'string') return t('app.profiles.noSuchCharacter');
     // Parsed rather than checked: this crossed the wire, and a path built

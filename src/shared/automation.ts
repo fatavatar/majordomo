@@ -175,6 +175,8 @@ export interface AutomationSnapshot {
    * automation is set to do, pushed whenever they change.
    */
   mega?: MegaToggles;
+  /** A yes-or-no question the MegaMUD engine is waiting on the player for. */
+  megaQuestion?: string;
 }
 
 export const EMPTY_AUTOMATION: AutomationSnapshot = {

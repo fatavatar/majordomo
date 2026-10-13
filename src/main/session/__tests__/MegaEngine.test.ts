@@ -402,3 +402,26 @@ describe('the toolbar’s toggles on the engine', () => {
     e.dispose();
   });
 });
+
+describe('MegaMUD’s alerts', () => {
+  /* `0x4c0640`: sound on, a sound named, and with AlertWhenAfk only while AFK. */
+  it('are said where MegaMUD would play a sound', () => {
+    const settings = defaultSettings();
+    settings.live['Alerts']!['AlertIdle'] = 'ding.wav';
+    const { e } = engine();
+    const host = (e as unknown as { host: MegaEngineHost }).host;
+    const said: string[] = [];
+    host.alert = (which) => said.push(which);
+    e.reload({ settings, data: e.s.data, grants: {} });
+    const alert = (which: string) => e.s.host.alert?.(which);
+    e.s.Alerts_AlertWhenAfk = 1;
+    e.s.active = 0;
+    alert('idle');
+    expect(said).toEqual([]);
+    e.s.active = 1;
+    alert('idle');
+    alert('train');
+    expect(said).toEqual(['idle']);
+    e.dispose();
+  });
+});

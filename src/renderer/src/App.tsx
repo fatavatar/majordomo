@@ -158,6 +158,7 @@ import { isTalkBlock } from '@shared/talk';
 import type { Discovery } from '@shared/memory';
 import { roomsWithFinds, type Find } from '@shared/finds';
 import type { Addressed, ResetNotice } from '@shared/ipc';
+import MegaMudQuestion from './components/MegaMudQuestion';
 import MovementPrompt from './components/MovementPrompt';
 import ResetPrompt from './components/ResetPrompt';
 import type { GlobalDraft, ProfileDraft, ServerDraft } from '@shared/drafts';
@@ -1207,6 +1208,16 @@ export default function App() {
   const [profilesKnown, setProfilesKnown] = useState(false);
 
   const view = views[session] ?? EMPTY_VIEW;
+  /** A question MegaMUD is waiting on, the shown character's first. See `MegaMudQuestion`. */
+  const asking = useMemo((): readonly [SessionId, string] | null => {
+    const own = views[session]?.automation.megaQuestion;
+    if (own !== undefined) return [session, own];
+    for (const [id, v] of Object.entries(views)) {
+      const question = v.automation.megaQuestion;
+      if (question !== undefined) return [id as SessionId, question];
+    }
+    return null;
+  }, [views, session]);
   const { state, character, walk, automation, lines } = view;
   const telnetEvents = view.telnet;
   const [size, setSize] = useState<TerminalSize>({ cols: 80, rows: 24 });
@@ -6043,6 +6054,20 @@ export default function App() {
           else if (asked) startMovingIn(asked.session, asked.loop, asked.steps);
           returnFocus();
         }}
+      />
+      {/*
+        MegaMUD's own yes-or-no questions, the shown character's first: one
+        answered no where it was asked, held here (`SessionManager.megaAsk`).
+      */}
+      <MegaMudQuestion
+        characterName={
+          profiles.find((profile) => profile.id === asking?.[0])?.name ?? asking?.[0] ?? ''
+        }
+        onAnswer={(yes) => {
+          if (asking) void api.megamudAnswer(asking[0], asking[1], yes);
+          returnFocus();
+        }}
+        question={asking?.[1] ?? null}
       />
       <ResetPrompt
         characterName={

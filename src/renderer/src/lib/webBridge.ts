@@ -192,6 +192,7 @@ export function createWebBridge(): IpcApi {
     setAutomationSwitch: (session, name, on) =>
       invoke(Invoke.setAutomationSwitch, session, name, on),
     megamudToggle: (session, name) => invoke(Invoke.megamudToggle, session, name),
+    megamudAnswer: (session, question, yes) => invoke(Invoke.megamudAnswer, session, question, yes),
     setSupplies: (session, items) => invoke(Invoke.setSupplies, session, items),
     addLoop: (scope, owner, loop) => invoke(Invoke.addLoop, scope, owner, loop),
     runLoop: (session, loop) => invoke(Invoke.runLoop, session, loop),

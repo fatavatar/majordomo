@@ -32,6 +32,7 @@ import type { FledEntry } from '../../../shared/fled';
 import type { Belongings } from '../Belongings';
 import type { Survival } from '../../../shared/survival';
 import { DEFAULT_INTERNAL } from '../../../shared/internal';
+import { defaultSettings } from '../../../shared/megamud/settings';
 import { setTuning, tuning } from '../../app/tuning';
 import type { RewriteDesign } from '../../../shared/rewrites';
 import type { RewritesUiConfig } from '../../../shared/config';
@@ -8100,5 +8101,59 @@ describe('a realm that renames a coin', () => {
     socket.write('1 Krabby Patties drop to the ground.\r\n[HP=100/MA=50]:');
     await until(() => wire.includes('get krabby\r\n'));
     expect(wire).not.toContain('get runic');
+  });
+});
+
+describe('the MegaMUD engine’s questions', () => {
+  /*
+   * MegaMUD waits on its message boxes; this client answers no where it asks,
+   * holds the question for the player, and on a yes runs the player's action
+   * again for MegaMUD to be told yes (2026-10-13).
+   */
+  it('answers no and holds the question, then a yes runs the action again to a yes', () => {
+    const { sink } = collect();
+    manager = new SessionManager(sink);
+    manager.useMegaMud({
+      settings: defaultSettings(),
+      data: { monsters: [], items: [], spells: [] },
+      grants: {}
+    });
+    const inside = manager as unknown as {
+      megaAsk(text: string): boolean;
+      megaAct<T>(act: () => T): T;
+    };
+    const answers: boolean[] = [];
+    inside.megaAct(() => answers.push(inside.megaAsk('You need a key to go here.')));
+    expect(answers).toEqual([false]);
+    expect(manager.automation.megaQuestion).toBe('You need a key to go here.');
+
+    manager.megaAnswer('Something else?', true);
+    expect(answers).toEqual([false]);
+
+    manager.megaAnswer('You need a key to go here.', true);
+    expect(answers).toEqual([false, true]);
+    expect(manager.automation.megaQuestion).toBeUndefined();
+  });
+
+  it('leaves it at no on a no', () => {
+    const { sink } = collect();
+    manager = new SessionManager(sink);
+    manager.useMegaMud({
+      settings: defaultSettings(),
+      data: { monsters: [], items: [], spells: [] },
+      grants: {}
+    });
+    const inside = manager as unknown as {
+      megaAsk(text: string): boolean;
+      megaAct<T>(act: () => T): T;
+    };
+    let asked = 0;
+    inside.megaAct(() => {
+      asked += 1;
+      return inside.megaAsk('Update it now?');
+    });
+    manager.megaAnswer('Update it now?', false);
+    expect(asked).toBe(1);
+    expect(manager.automation.megaQuestion).toBeUndefined();
   });
 });

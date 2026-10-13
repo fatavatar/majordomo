@@ -177,6 +177,15 @@ the swap. For such a character:
   → MegaMUD → Toolbar), and are drawn from the automation snapshot, pushed
   whenever they change — a press, a mode's defaults, a remote. They are the
   session's: a settings save keeps them as they stand.
+- **Its questions** (MegaMUD's message boxes: a path step to relearn, the
+  key, gold or level a destination needs) are answered *no* where asked, as
+  MegaMUD cannot be kept waiting here, and put to the player in a dialog; a
+  *yes* is kept for that question and the player's action that asked it
+  (Go To, a loop's start) is run again, where MegaMUD asks once more and is
+  told yes (`SessionManager.megaAsk`).
+- **Its alerts** (`0x4c0640`) are said in the console where MegaMUD would
+  play the sound `[Alerts]` names for one: with sound on, a sound named, and
+  with `AlertWhenAfk` only while AFK.
 - **Paths**: our loops and routes are made MegaMUD paths. A room's
   signature is learned whenever the engine and our tracker stand in it
   together, else worked out from the realm data (`worldSignature`); a room

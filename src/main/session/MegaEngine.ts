@@ -100,6 +100,8 @@ export interface MegaEngineHost {
   loopRooms(name: string): { rooms: RoomId[]; bounce: boolean } | string;
   /** MegaMUD's yes-or-no questions; no when absent. */
   ask?(text: string): boolean;
+  /** One of MegaMUD's alerts, where it would play its sound. See `MegaEngine.alert`. */
+  alert?(which: MegaAlert): void;
   /** Its toggles changed (`0x460d50` redraws the toolbar): see `MegaEngine.toggles`. */
   toggled?(): void;
 }
@@ -214,6 +216,24 @@ export function worldSignature(room: WorldRoom): number | null {
   return sig | 0;
 }
 
+/** MegaMUD's alerts (`0x4c0640`'s callers), each the `[Alerts]` key naming its sound. */
+export const MEGA_ALERTS = {
+  idle: 'AlertIdle',
+  train: 'AlertTrain',
+  lowHp: 'AlertLowHPs',
+  hangup: 'AlertHangup',
+  playerEntered: 'AlertPvP',
+  telepath: 'AlertTele',
+  page: 'AlertPage',
+  say: 'AlertTalk',
+  gangpath: 'AlertGangpath',
+  gossip: 'AlertGossip',
+  auction: 'AlertAuction',
+  broadcast: 'AlertBroadcast'
+} as const;
+
+export type MegaAlert = keyof typeof MEGA_ALERTS;
+
 /** The session fields the toolbar's toggles flip, kept across a settings reload. */
 const TOGGLE_FIELDS = [
   'f_a32c',
@@ -291,6 +311,8 @@ export class MegaEngine {
   private toggled = '';
   /** The toggles this character's `[Toolbar]` shows. */
   private shown: MegaToggle[];
+  /** The character's `[Alerts]`: the sound each alert plays. */
+  private alerts: Readonly<Record<string, unknown>>;
   /** Where what is learned is kept; null when nowhere. */
   private readonly memory: EngineMemory | null;
   /** Signatures learned since they were last kept. */
@@ -309,7 +331,7 @@ export class MegaEngine {
       show: (text) => this.host.show(text),
       clock: () => Math.floor(Date.now() / 1000),
       tickMs: () => Date.now(),
-      alert: () => {},
+      alert: (which) => this.alert(which),
       message: (text) => this.host.show(`[${text}]`),
       ask: (text) => this.host.ask?.(text) ?? false,
       post: (command) => queueMicrotask(() => !this.disposed && menuCommand(this.s, command)),
@@ -322,6 +344,7 @@ export class MegaEngine {
     };
     this.memory = setup.memory ?? null;
     this.shown = shownToggles(setup.settings.live['Toolbar']);
+    this.alerts = setup.settings.live['Alerts'] ?? {};
     // A copy: the data read is shared between sessions, and the engine changes it as it learns.
     this.s = new Session(engineHost, structuredClone(setup.data));
     loadCharacter(this.s, setup.settings);
@@ -360,6 +383,7 @@ export class MegaEngine {
    */
   reload(setup: MegaEngineSetup): void {
     this.shown = shownToggles(setup.settings.live['Toolbar']);
+    this.alerts = setup.settings.live['Alerts'] ?? {};
     this.toggled = '';
     const s = this.s;
     const kept = [s.MegaMud_CurPath, s.MegaMud_SelPath, s.MegaMud_CurPathStep] as const;
@@ -512,6 +536,20 @@ export class MegaEngine {
     if (now === this.toggled) return;
     this.toggled = now;
     this.host.toggled?.();
+  }
+
+  /**
+   * `0x4c0640`: one of MegaMUD's alerts. It plays the sound `[Alerts]` names
+   * for it — with sound on, a sound named, and (with `AlertWhenAfk`) only
+   * while AFK; here the host is told where it would.
+   */
+  private alert(which: string): void {
+    const key = (MEGA_ALERTS as Record<string, string>)[which];
+    if (key === undefined) return;
+    const s = this.s;
+    if (s.MegaMud_Sound === 0 || (s.Alerts_AlertWhenAfk === 1 && s.active === 0)) return;
+    if (String(this.alerts[key] ?? '').trim() === '') return;
+    this.host.alert?.(which as MegaAlert);
   }
 
   /** A toolbar toggle pressed: its window command. */

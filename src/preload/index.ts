@@ -93,6 +93,8 @@ const api: IpcApi = {
   setAutomationSwitch: (session, name, on) =>
     ipcRenderer.invoke(Invoke.setAutomationSwitch, session, name, on),
   megamudToggle: (session, name) => ipcRenderer.invoke(Invoke.megamudToggle, session, name),
+  megamudAnswer: (session, question, yes) =>
+    ipcRenderer.invoke(Invoke.megamudAnswer, session, question, yes),
   setSupplies: (session, items) => ipcRenderer.invoke(Invoke.setSupplies, session, items),
   addLoop: (scope, owner, loop) => ipcRenderer.invoke(Invoke.addLoop, scope, owner, loop),
   runLoop: (session, loop) => ipcRenderer.invoke(Invoke.runLoop, session, loop),

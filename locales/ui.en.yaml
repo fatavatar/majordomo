@@ -1028,6 +1028,12 @@ terminal:
 # What each toolbar button is called. The row shows only a glyph, so this is
 # the tooltip, the accessible name and the row in the button picker — the
 # words follow the settings screen's, because the two edit the same key.
+megamud:
+  # One of MegaMUD's own message boxes, its question in its own words below.
+  question:
+    title: '{name}: MegaMUD asks'
+    yes: 'Yes'
+    no: 'No'
 toolbar:
   # MegaMUD's own toolbar toggles, for a character the MegaMUD engine runs,
   # in MegaMUD's words.
@@ -4506,6 +4512,20 @@ errors:
 session:
   megamud:
     noEngine: 'This character is not run by the MegaMUD engine, so it has no MegaMUD toggles.'
+    # MegaMUD's alerts, where it would play the sound its [Alerts] section names.
+    alert:
+      idle: 'MegaMUD alert: idle, with nothing left to do.'
+      train: 'MegaMUD alert: time to train.'
+      lowHp: 'MegaMUD alert: hit points low.'
+      hangup: 'MegaMUD alert: hanging up.'
+      playerEntered: 'MegaMUD alert: a player it watches for is about.'
+      telepath: 'MegaMUD alert: a telepath.'
+      page: 'MegaMUD alert: a page.'
+      say: 'MegaMUD alert: somebody spoke in the room.'
+      gangpath: 'MegaMUD alert: gang chat.'
+      gossip: 'MegaMUD alert: gossip.'
+      auction: 'MegaMUD alert: an auction.'
+      broadcast: 'MegaMUD alert: a broadcast.'
   # Under a timed spell the way in cast (todo 104): said once going in and
   # once coming out, because every routine stands down in between.
   corridor:

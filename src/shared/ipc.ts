@@ -863,6 +863,12 @@ export const Invoke = {
    */
   megamudToggle: 'megamud:toggle',
   /**
+   * The player's answer to a question the MegaMUD engine asked
+   * (`AutomationSnapshot.megaQuestion`). The question goes back with it, so an
+   * answer to one that has since gone is no answer to the next.
+   */
+  megamudAnswer: 'megamud:answer',
+  /**
    * This character's whole supplies list, from the Self card or the item
    * panel — `automation.supplies.items`, written whole for the reason the
    * gang list is: the surface shows the whole list, and a min changed on one
@@ -1327,6 +1333,8 @@ export interface IpcApi {
   ): Promise<string | null>;
   /** Presses one MegaMUD toggle on a character's engine. See `Invoke.megamudToggle`. */
   megamudToggle(session: SessionId, name: MegaToggle): Promise<string | null>;
+  /** Answers the MegaMUD engine's question. See `Invoke.megamudAnswer`. */
+  megamudAnswer(session: SessionId, question: string, yes: boolean): Promise<void>;
   /** Writes this character's whole supplies list. See `Invoke.setSupplies`. */
   setSupplies(session: SessionId, items: SupplyItem[]): Promise<string | null>;
   /**
