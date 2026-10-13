@@ -17,7 +17,9 @@ import { findClassByName, findRaceByName, newPlayer } from './data';
 import type { ItemRec, MonsterRec } from './data';
 import type { Session } from './Session';
 import type { Alignment } from '../../shared/alignment';
-import type { Relationship } from '../../shared/monsterRules';
+import type { MobPriorityBand } from '../../shared/config';
+import type { MonsterRule, Relationship } from '../../shared/monsterRules';
+import { mobKey } from '../../shared/world';
 import type { PlayerFacts } from '../../shared/players';
 import type { LearnedItem } from '../world/MegaLearned';
 
@@ -78,10 +80,10 @@ export function savedItems(s: Session): LearnedItem[] {
     }));
 }
 
-/** A monster learned before, put on the engine's list as the loader would have read it. */
-export function rememberStance(s: Session, name: string, relationship: Relationship): void {
-  const key = name.toLowerCase();
-  let rec = s.data.monsters.find((m) => m.name.toLowerCase() === key);
+/** The monster's record on the engine's list, made as the loader would have read it when it is not there. */
+function monsterRecord(s: Session, name: string): MonsterRec {
+  const key = mobKey(name);
+  let rec = s.data.monsters.find((m) => mobKey(m.name) === key);
   if (!rec) {
     rec = {
       layer: 0,
@@ -98,9 +100,57 @@ export function rememberStance(s: Session, name: string, relationship: Relations
     } satisfies MonsterRec;
     s.data.monsters.push(rec);
   }
+  return rec;
+}
+
+/** A monster learned before, put on the engine's list as the loader would have read it. */
+export function rememberStance(s: Session, name: string, relationship: Relationship): void {
+  const rec = monsterRecord(s, name);
   rec.relationship = RELATIONSHIP_NUMBER[relationship];
   // "Marked as non-enemy" sets 2 beside avoid (`0x426940`).
   if (relationship === 'avoid') rec.flags |= 2;
+}
+
+/** The priority nibble's bands (`readMegaMudMonsters` reads them the other way). */
+const PRIORITY_BITS: Record<MobPriorityBand, number> = {
+  first: 0x80,
+  high: 0x40,
+  default: 0,
+  low: 0x20,
+  last: 0x10
+};
+const NO_BACKSTAB = 0x100;
+const NOT_HOSTILE = 0x200;
+const STOP_TO_KILL = 0x800;
+
+/**
+ * A row of our monster table put on the engine's record for that monster, as
+ * MegaMUD's Monster Details dialog would have edited it. What the row does
+ * not say is left as the record has it; a cast count of 0 leaves it to the
+ * combat setting, as MegaMUD's does. Not marked changed: it is ours already.
+ */
+export function rememberRule(s: Session, rule: MonsterRule): void {
+  const rec = monsterRecord(s, rule.mob);
+  if (rule.relationship !== undefined) {
+    rec.relationship = RELATIONSHIP_NUMBER[rule.relationship];
+    if (rule.relationship === 'avoid') rec.flags |= 2;
+    else rec.flags &= ~2;
+  }
+  if (rule.priority !== undefined) rec.flags = (rec.flags & ~0xf0) | PRIORITY_BITS[rule.priority];
+  const bit = (on: boolean | undefined, mask: number): void => {
+    if (on !== undefined) rec.flags = on ? rec.flags | mask : rec.flags & ~mask;
+  };
+  bit(rule.noBackstab, NO_BACKSTAB);
+  bit(rule.notHostile, NOT_HOSTILE);
+  bit(rule.stopToKill, STOP_TO_KILL);
+  if (rule.preAttack) {
+    rec.preSpell = rule.preAttack.spell.slice(0, 4);
+    rec.preMax = rule.preAttack.max;
+  }
+  if (rule.attack) {
+    rec.attackSpell = rule.attack.spell.slice(0, 4);
+    rec.attackMax = rule.attack.max;
+  }
 }
 
 /** An item learned before, put on the engine's list as the loader would have read it. */

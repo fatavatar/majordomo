@@ -14,6 +14,7 @@ import {
   type RealmFinds,
   type SessionSink
 } from '../SessionManager';
+import type { MegaEngine } from '../MegaEngine';
 import { DEFAULT_CONFIG, type AutomationConfig, type RetreatConfig } from '../../../shared/config';
 import { blankTrigger } from '../../../shared/messageTriggers';
 import { WorldGraph } from '../../world/WorldGraph';
@@ -8101,6 +8102,41 @@ describe('a realm that renames a coin', () => {
     socket.write('1 Krabby Patties drop to the ground.\r\n[HP=100/MA=50]:');
     await until(() => wire.includes('get krabby\r\n'));
     expect(wire).not.toContain('get runic');
+  });
+});
+
+describe('the MegaMUD engine’s monsters', () => {
+  /* Skinny's Flee for the forgotten dragon slayer never reached the engine, which fought it (2026-10-13). */
+  it('are our monster table: the realm’s rows under the character’s, then and on a change', () => {
+    const { sink } = collect();
+    manager = new SessionManager(sink, undefined, {
+      ...DEFAULT_CONFIG.automation,
+      combat: {
+        ...DEFAULT_CONFIG.automation.combat,
+        monsters: [{ mob: 'forgotten dragon slayer', relationship: 'escape' }]
+      }
+    });
+    manager.configureRealm({
+      ...NO_REALM,
+      monsters: [{ mob: 'forgotten dragon slayer', relationship: 'friend', notHostile: true }]
+    });
+    manager.useMegaMud({
+      settings: defaultSettings(),
+      data: { monsters: [], items: [], spells: [] },
+      grants: {}
+    });
+    const mega = (manager as unknown as { mega: MegaEngine }).mega;
+    const slayer = () => mega.s.data.monsters.find((m) => m.name === 'forgotten dragon slayer');
+    expect(slayer()).toMatchObject({ relationship: 5 });
+    expect(slayer()!.flags & 0x200).toBe(0x200);
+
+    manager.configureRealm({
+      ...NO_REALM,
+      monsters: [{ mob: 'lost soul', relationship: 'friend' }]
+    });
+    expect(mega.s.data.monsters.find((m) => m.name === 'lost soul')).toMatchObject({
+      relationship: 2
+    });
   });
 });
 

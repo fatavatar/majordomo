@@ -1,7 +1,14 @@
 import { describe, expect, it } from 'vitest';
 
 import { newItem, newMonster } from '../data';
-import { rememberItem, rememberPlayers, rememberStance, savedItems, savedStances } from '../saved';
+import {
+  rememberItem,
+  rememberPlayers,
+  rememberRule,
+  rememberStance,
+  savedItems,
+  savedStances
+} from '../saved';
 import type { PlayerFacts } from '../../../shared/players';
 import { session } from './fixture';
 
@@ -55,5 +62,40 @@ describe('what MegaMUD saves, in our shapes', () => {
       }) as PlayerFacts;
     rememberPlayers(s, [facts('Oldtimer', 5), facts('Fatty', 99)]);
     expect(s.data.players.map((p) => [p.name, p.level, p.alignment])).toEqual([['Fatty', 64, 2]]);
+  });
+});
+
+/* Skinny's forgotten dragon slayer: Flee in his own rows over the realm's Friend, fought anyway (2026-10-13). */
+describe('our monster table on the engine’s records', () => {
+  it('puts a row on the monster’s record as the Monster Details dialog would', () => {
+    const { s } = session();
+    s.data.monsters = [];
+    const rec = Object.assign(newMonster(s.data), {
+      name: 'forgotten dragon slayer',
+      relationship: 2,
+      flags: 0x200 | 0x10,
+      attackSpell: 'nuke',
+      attackMax: 3
+    });
+    rememberRule(s, {
+      mob: 'forgotten dragon slayer',
+      relationship: 'escape',
+      priority: 'first',
+      noBackstab: true,
+      attack: { spell: 'ltch', max: 0 }
+    });
+    expect(rec.relationship).toBe(5);
+    expect(rec.flags & 0xff0).toBe(0x200 | 0x100 | 0x80);
+    expect([rec.attackSpell, rec.attackMax]).toEqual(['ltch', 0]);
+    expect(rec.flags & 0x40000000).toBe(0);
+  });
+
+  it('makes a record for a monster the realm’s data never named', () => {
+    const { s } = session();
+    s.data.monsters = [];
+    rememberRule(s, { mob: 'giant pink bunny', relationship: 'avoid', stopToKill: true });
+    expect(s.data.monsters).toMatchObject([
+      { name: 'giant pink bunny', relationship: 3, flags: 2 | 0x800 }
+    ]);
   });
 });

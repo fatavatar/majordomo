@@ -49,11 +49,12 @@ import { findSpell } from '../megamud/spells/lookup';
 import {
   rememberItem,
   rememberPlayers,
+  rememberRule,
   rememberStance,
   savedItems,
   savedStances
 } from '../megamud/saved';
-import type { Relationship } from '../../shared/monsterRules';
+import type { MonsterRule, Relationship } from '../../shared/monsterRules';
 import type { PlayerFacts } from '../../shared/players';
 import type { LearnedItem } from '../world/MegaLearned';
 import type { ActiveBuff } from '../../shared/character';
@@ -376,6 +377,15 @@ export class MegaEngine {
       setInterval(() => this.safely(() => quietTick(this.s, this.t, this.quiet)), QUIET_POLL_MS),
       setInterval(() => this.safely(() => this.parkedTimeout()), QUIET_POLL_MS)
     );
+  }
+
+  /**
+   * Our monster table, the realm's rows with the character's own laid over
+   * them, written onto MegaMUD's monster records over what the realm's
+   * `Monsters.md` and the lore said: the player's word is the last.
+   */
+  useMonsters(rules: readonly MonsterRule[]): void {
+    for (const rule of rules) rememberRule(this.s, rule);
   }
 
   /**

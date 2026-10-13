@@ -4360,6 +4360,7 @@ export class SessionManager {
       combat: withRealmMonsters(this.statedCombat, rows)
     };
     this.automationConfig = automation;
+    this.mega?.useMonsters(automation.combat.monsters);
     this.combat.configure(
       automation.combat,
       automation.enabled,
@@ -4687,6 +4688,7 @@ export class SessionManager {
         },
         { ...setup, learned: setup.learned ?? learned }
       );
+      this.mega.useMonsters(this.automationConfig.combat.monsters);
       if (this.client.connected) this.mega.connected();
     }
     if (this.configured !== null) this.configure(...this.configured);
@@ -4777,6 +4779,7 @@ export class SessionManager {
     // To tell a changed rank setting from a reload that left it alone.
     const previousParty = this.automationConfig.party;
     this.automationConfig = automation;
+    this.mega?.useMonsters(automation.combat.monsters);
     this.locateMethod = locate;
     this.rewriter.configure(rewrites);
     // A new design gets to be refused once, out loud, if it is too wide. By
