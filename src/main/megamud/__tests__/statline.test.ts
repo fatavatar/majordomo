@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { combatEngaged } from '../combat/engaged';
+import { newTerminal, parseData } from '../input/ParseData';
 import { statusLine } from '../input/statline';
 import { setState } from '../script/state';
 import type { LineBuf } from '../Session';
@@ -96,6 +97,19 @@ describe('combat frames (0x428ab0)', () => {
   it('ignores other lines', () => {
     const { s } = inGame();
     expect(combatEngaged(s, 'You are in combat.')).toBe(0);
+  });
+
+  /*
+   * MudRev draws each line over its prompt (`ESC[79D ESC[K`), so the prompt
+   * and the line arrive as one; Skinny's spell attack was sent twenty times in
+   * a second on 13 October 2026 when the engagement behind one went unseen.
+   */
+  it('reads a line that came behind its prompt', () => {
+    const { s } = inGame();
+    parseData(s, newTerminal(), '[HP=57/MA=6');
+    parseData(s, newTerminal(), '0]:\x1b[79D\x1b[K*Combat Engaged*\r\n');
+    expect(s.hp).toBe(57);
+    expect(s.inCombat).toBe(1);
   });
 });
 

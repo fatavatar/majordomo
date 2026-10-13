@@ -2951,7 +2951,12 @@ function registerIpc(): void {
     } catch (error) {
       return t('app.megamud.writeFailed', { error: errorMessage(error) });
     }
-    // The store polls, and the session picks the file up from it.
+    /*
+     * Read back now rather than on the store's next poll: the window asks for
+     * the settings again straight after saving, and the running engine takes
+     * them from the store.
+     */
+    profiles?.refresh();
     return null;
   });
 

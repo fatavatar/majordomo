@@ -151,8 +151,12 @@ export function dispatchLine(s: Session, buf: LineBuf, complete: number, nested:
   }
 
   s.parseStep = 5;
-  if (nested === 0 && statusLine(s, buf, complete) !== 0) {
-    line = buf.text;
+  const prompt = nested === 0 ? statusLine(s, buf, complete) : 0;
+  // The prompt is cut off the buffer in place, and the C reads the buffer on
+  // whatever `statusLine` answered: a whole line behind a prompt
+  // (`[HP=…]:*Combat Engaged*`) is read without it.
+  line = buf.text;
+  if (prompt !== 0) {
     dispatchLine(s, { text: '', attr: [] }, 1, 1);
     if (line.length === 0 && complete === 0) return 0;
     s.lineFlags &= ~3;
