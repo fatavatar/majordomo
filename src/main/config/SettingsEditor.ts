@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import { settingsToStored, type MegaSettings } from '../../shared/megamud/settings';
 import path from 'node:path';
 import { isMap, isSeq, parse, Scalar } from 'yaml';
 
@@ -544,6 +545,21 @@ export class SettingsEditor {
     const gang = [...new Set(remotes)];
     return editYaml(file, {
       mutate: (document) => document.setIn(['automation', 'remotes', 'gang'], gang)
+    });
+  }
+
+  /**
+   * This character's MegaMUD settings, whole, as its `megamud:` mapping
+   * (`settingsToStored`: MegaMUD's sections and keys, what differs from its
+   * defaults). Having them is what runs the character on the MegaMUD engine.
+   */
+  saveMegamud(id: string, settings: MegaSettings): EditResult {
+    const file = this.profilePath(id);
+    if (!fs.existsSync(file)) {
+      return { ok: false, error: t('errors.settings.characterNotFound', { id }) };
+    }
+    return editYaml(file, {
+      mutate: (document) => document.setIn(['megamud'], settingsToStored(settings))
     });
   }
 

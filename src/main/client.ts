@@ -13,7 +13,7 @@
  * window that will show it.
  */
 import fs from 'node:fs/promises';
-import { cpSync, existsSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync } from 'node:fs';
 import path from 'node:path';
 
 import { ConfigStore } from './config/ConfigStore';
@@ -33,7 +33,7 @@ import { LoopStore } from './config/LoopStore';
 import { SettingsEditor, type SettingsEditorOptions } from './config/SettingsEditor';
 import { LoopCatalogue } from './config/LoopCatalogue';
 import { migrateHome } from './config/Migration';
-import { homeAt, homeRoot, MEGAMUD_FILE, type Home } from './app/home';
+import { homeAt, homeRoot, type Home } from './app/home';
 import { WorldGraph, type Traveller } from './world/WorldGraph';
 import { RealmLibrary } from './world/RealmLibrary';
 import { loopsFromMegaMud } from './world/megamudLoops';
@@ -128,7 +128,7 @@ import {
   type MonsterTable
 } from '../shared/monsterRules';
 import { asMegaMudPaths, type LoopImport } from '../shared/megamudPaths';
-import { settingsFromDraft, settingsToIni } from '../shared/megamud/settings';
+import { settingsFromDraft } from '../shared/megamud/settings';
 import { asMegaToggle } from '../shared/megamud/toggles';
 import type { MegaData } from './megamud/data';
 import { readMegaData, type EngineMemory, type MegaEngineSetup } from './session/MegaEngine';
@@ -867,16 +867,16 @@ function loopCatalogue(): LoopCatalogue {
 const megaDataRead = new Map<string, MegaData>();
 
 /**
- * The ported MegaMUD engine's set-up, for a character with a `megamud.ini`:
+ * The ported MegaMUD engine's set-up, for a character with MegaMUD settings:
  * its settings, its data folder's databases (`MegaMud.DataDir` when that is
  * a folder here, and the ini's own) and its per-player remote grants.
  */
 function megamudFor(id: SessionId): { key: string; setup: MegaEngineSetup } | null {
   const profile = profileFor(id);
-  if (profile?.megamudFile === undefined) return null;
+  if (profile === undefined || !profile.megamudOn) return null;
   const grants = profile.config.automation.remotes.players;
   const dataDir = String(profile.megamud.live['MegaMud']?.['DataDir'] ?? '');
-  const dirs = [dataDir, path.dirname(profile.megamudFile)].filter(
+  const dirs = [dataDir, path.join(home.profilesDir, id)].filter(
     (dir) => dir !== '' && existsSync(dir)
   );
   // The realm's name for its runic coin (BBS.INI's `RunicName`, ours per realm).
@@ -919,7 +919,7 @@ function megamudFor(id: SessionId): { key: string; setup: MegaEngineSetup } | nu
     ...(runic !== undefined ? { RunicName: runic } : {})
   };
   return {
-    key: `${dataKey}\n${settingsToIni(profile.megamud)}\n${JSON.stringify([grants, bbs])}`,
+    key: `${dataKey}\n${JSON.stringify([profile.megamud, grants, bbs])}`,
     setup: {
       settings: profile.megamud,
       data,
@@ -2982,7 +2982,7 @@ function registerIpc(): void {
     const password = String(settings.live['BBS']?.['Password'] ?? '');
     settings.live['BBS']!['Password'] = '';
     return {
-      file: profile.megamudFile !== undefined,
+      engine: profile.megamudOn,
       settings,
       hasPassword: password !== ''
     } satisfies MegaMudSettingsView;
@@ -2998,12 +2998,8 @@ function registerIpc(): void {
     if (settings.live['BBS']!['Password'] === '') {
       settings.live['BBS']!['Password'] = profile.megamud.live['BBS']?.['Password'] ?? '';
     }
-    const file = profile.megamudFile ?? path.join(home.profilesDir, id, MEGAMUD_FILE);
-    try {
-      writeFileSync(file, settingsToIni(settings), 'latin1');
-    } catch (error) {
-      return t('app.megamud.writeFailed', { error: errorMessage(error) });
-    }
+    const written = editor().saveMegamud(id, settings);
+    if (!written.ok) return t('app.megamud.writeFailed', { error: written.error });
     /*
      * Read back now rather than on the store's next poll: the window asks for
      * the settings again straight after saving, and the running engine takes

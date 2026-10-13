@@ -7,6 +7,8 @@ import {
   parseIni,
   settingsFromIni,
   settingsToIni,
+  settingsToStored,
+  settingsFromStored,
   switchProfile,
   text
 } from '../settings';
@@ -128,6 +130,19 @@ describe('profile copies', () => {
     expect(num(switched, 'Profiles', 'ActiveProfile')).toBe(1);
     expect(num(switched, 'Health', 'HpRest%')).toBe(40);
     expect(switched.profiles.Health[1]?.values['HpRest%']).toBe(70);
+  });
+});
+
+describe('our own storage', () => {
+  it('keeps only what differs from MegaMUD’s defaults, and reads back the same', () => {
+    const source =
+      '[Health]\nHpRest%=61\nSomethingNew=yes\n[Health.P2]\nEnabled=0\nHpRest%=40\n[Mystery]\nA=1\n';
+    const read = settingsFromIni(source);
+    const stored = settingsToStored(read);
+    expect(stored['Health']).toEqual({ 'HpRest%': 61, SomethingNew: 'yes' });
+    expect(stored['Health.P2']).toMatchObject({ Enabled: 0, 'HpRest%': 40 });
+    expect(settingsFromStored(stored)).toEqual(read);
+    expect(settingsFromStored(settingsToStored(defaultSettings()))).toEqual(defaultSettings());
   });
 });
 

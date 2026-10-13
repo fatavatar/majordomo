@@ -33,7 +33,7 @@ import {
 } from './config';
 import { asCoinNames, type CoinNames } from './coins';
 import { asBbsSettings, type BbsSettings } from './megamud/bbs';
-import { defaultSettings, type MegaSettings } from './megamud/settings';
+import { defaultSettings, settingsFromStored, type MegaSettings } from './megamud/settings';
 import { asMonsterRules, mergeMonsterRules, type MonsterRule } from './monsterRules';
 import type { ConnectionTarget } from './types';
 import { isRecord, str } from './values';
@@ -107,17 +107,16 @@ export interface Profile {
   autoReconnect: boolean;
   accent: ProfileAccent;
   /**
-   * MegaMUD's own settings for this character, from `megamud.ini` beside its
-   * file (2026-10-12): what the ported engine runs on. Defaults until the
-   * store reads the file. See `megamud/settings`.
+   * MegaMUD's own settings for this character, the `megamud:` mapping of its
+   * file (2026-10-13; `megamud.ini` beside it until then): what the ported
+   * engine runs on. Defaults when it has none. See `megamud/settings`.
    */
   megamud: MegaSettings;
   /**
-   * The `megamud.ini` those settings were read from, when the character has
-   * one: such a character is run by the ported MegaMUD engine, its data
-   * folder (`Monsters.md` and the rest) `MegaMud.DataDir` or this file's own.
+   * It has MegaMUD settings, so the ported MegaMUD engine runs it, its data
+   * folder (`Monsters.md` and the rest) `MegaMud.DataDir` or its own directory.
    */
-  megamudFile?: string;
+  megamudOn: boolean;
   /**
    * The complete options this character runs under: the global file with this
    * profile's overlay applied. Never a partial.
@@ -441,7 +440,8 @@ export function resolveProfile(id: string, raw: unknown, baseSource: unknown): P
       // otherwise. See the field.
       autoReconnect: raw['autoReconnect'] !== false,
       accent: isProfileAccent(accent) ? accent : accentFor(id),
-      megamud: defaultSettings(),
+      megamud: isRecord(raw['megamud']) ? settingsFromStored(raw['megamud']) : defaultSettings(),
+      megamudOn: isRecord(raw['megamud']),
       // Merged onto the file as written, then coerced by the same function the
       // options file goes through: one place decides what a valid value is, and
       // it runs exactly once.
@@ -468,7 +468,9 @@ export function resolveProfile(id: string, raw: unknown, baseSource: unknown): P
  * misleading to read.
  */
 function withoutProfileKeys(raw: Record<string, unknown>): Record<string, unknown> {
-  const { server, account, login, name, accent, autoConnect, autoReconnect, ...rest } = raw;
+  const { server, account, login, name, accent, autoConnect, autoReconnect, megamud, ...rest } =
+    raw;
+  void megamud;
   void server;
   void account;
   void login;

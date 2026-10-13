@@ -60,7 +60,8 @@ import { DEFAULT_REWRITES, type RewriteDesign, type RewriteEntity } from '../../
 import { DEFAULT_INTERNAL } from '../../shared/internal';
 import { asShippedWorld } from '../../shared/worlds';
 import { DENOMINATIONS } from '../../shared/character';
-import { SERVER_FILE, type Home } from '../app/home';
+import { MEGAMUD_FILE, SERVER_FILE, type Home } from '../app/home';
+import { settingsFromIni, settingsToStored } from '../../shared/megamud/settings';
 import { directoryNames } from './dirs';
 import { MONSTER_TABLE } from './RealmTableStore';
 import { discoveryKey, type Discovery } from '../../shared/memory';
@@ -278,6 +279,7 @@ function migrateAll(options: MigrationOptions): void {
   statedThePartyRank(home, note, options.template);
   statedTheSurvivalFloor(home, note, options.template);
   statedTheLosingHpWait(home, note, options.template);
+  theMegaMudSettingsMovedIn(home, note);
 }
 
 /**
@@ -5869,6 +5871,10 @@ function stringify(node: Node, lead?: string | null): string {
  * only copy, and a document rebuilt from the parts that did parse discards the
  * rest without asking.
  */
+const MEGAMUD_COMMENT = ` MegaMUD's own settings for this character, in MegaMUD's sections and keys
+ and only where they differ from MegaMUD's defaults. Having them runs the
+ character on the MegaMUD engine. Edit them under Settings -> MegaMUD.`;
+
 const AUTO_RECONNECT_COMMENT = ` Dial this character again when a connection is LOST -- a link that dropped,
  a server that went away. On by default, and not the same question as the one
  above: that one opens a connection you did not ask for, this one puts back
@@ -7522,3 +7528,49 @@ const RESUME_ASK_COMMENT = ` How far the character may have wandered from what i
  movement stopped -- for a route and for a lap alike, so a movement stopped and
  started again from the same room never asks however far it still has to go,
  and a character killed and reborn two maps away does.`;
+
+/**
+ * A character's `megamud.ini` taken into its `profile.yaml` as `megamud:`
+ * (2026-10-13): MegaMUD's settings kept in our own storage, as the user
+ * asked ("move away from using any ini's from megamud and just use our own
+ * storage system"). Read as MegaMUD's loader reads the file, written in
+ * MegaMUD's sections and keys where they differ from its defaults; the file
+ * is then renamed `megamud.ini.imported`, so nothing reads it again and
+ * nothing in it is lost. A character that already states `megamud:` keeps
+ * it, and its file is left alone.
+ */
+function theMegaMudSettingsMovedIn(home: Home, note: (message: string) => void): void {
+  const moved: string[] = [];
+  for (const id of directories(home.profilesDir)) {
+    const ini = path.join(home.profilesDir, id, MEGAMUD_FILE);
+    const file = home.profile(id).file;
+    if (!fs.existsSync(ini) || !fs.existsSync(file)) continue;
+    let text: string;
+    try {
+      text = fs.readFileSync(ini, 'latin1');
+    } catch {
+      continue;
+    }
+    let written = false;
+    edit(file, (document) => {
+      const root = document.contents;
+      if (!isMap(root) || root.has('megamud')) return false;
+      const pair = document.createPair('megamud', settingsToStored(settingsFromIni(text))) as Pair;
+      if (isScalar(pair.key)) pair.key.commentBefore = MEGAMUD_COMMENT;
+      root.items.push(pair);
+      written = true;
+      return true;
+    });
+    // Renamed only once the character's file is seen to hold them.
+    if (!written || !/^megamud:/m.test(fs.readFileSync(file, 'utf8'))) continue;
+    fs.renameSync(ini, `${ini}.imported`);
+    moved.push(file);
+  }
+  if (moved.length === 0) return;
+  const params = { count: moved.length, fileList: moved.join(', ') };
+  note(
+    moved.length === 1
+      ? t('notices.migration.megamudSettingsMovedIn.one', params)
+      : t('notices.migration.megamudSettingsMovedIn.many', params)
+  );
+}

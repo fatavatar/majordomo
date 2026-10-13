@@ -75,8 +75,8 @@ import type { MegaToggle } from './megamud/toggles';
 
 /** A character's MegaMUD settings as the window edits them. */
 export interface MegaMudSettingsView {
-  /** It has a `megamud.ini`, so the MegaMUD engine runs it. */
-  file: boolean;
+  /** It has MegaMUD settings, so the MegaMUD engine runs it. */
+  engine: boolean;
   /** `BBS.Password` always empty here. */
   settings: MegaSettings;
   hasPassword: boolean;
@@ -813,10 +813,10 @@ export const Invoke = {
   saveProfile: 'settings:save-profile',
   deleteProfile: 'settings:delete-profile',
   /**
-   * A character's MegaMUD settings (`megamud.ini`), read and written whole.
-   * The password stays in main: it crosses as empty, and an empty one written
-   * back leaves the file's alone. Writing the file is what turns the ported
-   * MegaMUD engine on for the character.
+   * A character's MegaMUD settings (its `profile.yaml`'s `megamud:`), read
+   * and written whole. The password stays in main: it crosses as empty, and an
+   * empty one written back leaves the stored one alone. Saving them is what
+   * turns the ported MegaMUD engine on for the character.
    */
   megamudSettings: 'settings:megamud',
   saveMegamud: 'settings:save-megamud',
@@ -1292,9 +1292,9 @@ export interface IpcApi {
   deleteProfile(id: string): Promise<string | null>;
   saveServer(previousName: string | null, draft: ServerDraft): Promise<string | null>;
   deleteServer(name: string): Promise<string | null>;
-  /** A character's MegaMUD settings, and whether it has its `megamud.ini` yet; null for no such character. */
+  /** A character's MegaMUD settings, and whether it has them yet; null for no such character. */
   megamudSettings(id: string): Promise<MegaMudSettingsView | null>;
-  /** Writes a character's `megamud.ini`; why it refused, or null. */
+  /** Writes a character's MegaMUD settings; why it refused, or null. */
   saveMegamud(id: string, settings: MegaSettings): Promise<string | null>;
   /**
    * Writes the options file everything is inherited from.

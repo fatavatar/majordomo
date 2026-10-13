@@ -146,7 +146,7 @@ export default function MegaMudSettings({ characters, load, save }: MegaMudSetti
           <div className="settings-form empty">{t('settings.megamud.loading')}</div>
         ) : (
           <>
-            {!view.file && <p className="settings-warn">{t('settings.megamud.noFile')}</p>}
+            {!view.engine && <p className="settings-warn">{t('settings.megamud.noFile')}</p>}
             <TabPage
               controls={page.controls}
               draft={draft}
@@ -178,8 +178,8 @@ export default function MegaMudSettings({ characters, load, save }: MegaMudSetti
               >
                 {t('settings.megamud.revert')}
               </button>
-              <button disabled={(!changed && view.file) || saving} type="submit">
-                {view.file ? t('settings.megamud.save') : t('settings.megamud.create')}
+              <button disabled={(!changed && view.engine) || saving} type="submit">
+                {view.engine ? t('settings.megamud.save') : t('settings.megamud.create')}
               </button>
             </div>
           </>

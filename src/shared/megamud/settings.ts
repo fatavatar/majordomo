@@ -213,7 +213,11 @@ function clampBelow(
 
 /** Reads a character's INI text the way MegaMUD's loader does. */
 export function settingsFromIni(text: string): MegaSettings {
-  const ini = parseIni(text);
+  return settingsFromSections(parseIni(text));
+}
+
+/** Reads sections of keys the way MegaMUD's loader reads its INI. */
+function settingsFromSections(ini: IniSection[]): MegaSettings {
   const settings = defaultSettings();
   for (const [section, defs] of BY_SECTION) {
     const found = find(ini, section);
@@ -312,6 +316,64 @@ export function settingsToIni(settings: MegaSettings): string {
     for (const [key, value] of extra.entries) lines.push(`${key}=${value}`);
   }
   return lines.join('\r\n') + '\r\n';
+}
+
+/**
+ * A character's MegaMUD settings as our own storage keeps them, the
+ * `megamud:` mapping of its `profile.yaml` (2026-10-13): MegaMUD's sections
+ * and keys, so the settings keep MegaMUD's layout, but only what differs from
+ * MegaMUD's defaults. A profile copy (`Health.P2`) is written with its
+ * `Enabled` and the keys it sets, as its missing keys read 0 or empty.
+ */
+export type StoredSettings = Record<string, Record<string, SettingValue>>;
+
+/** The settings as `profile.yaml` keeps them. See `StoredSettings`. */
+export function settingsToStored(settings: MegaSettings): StoredSettings {
+  const out: StoredSettings = {};
+  const defaults = defaultSettings();
+  const put = (section: string, key: string, value: SettingValue): void => {
+    (out[section] ??= {})[key] = value;
+  };
+  for (const [section, defs] of BY_SECTION) {
+    for (const def of defs) {
+      if (LEGACY_KEYS.has(`${section}.${def.key}`)) continue;
+      const value = settings.live[section]?.[def.key] ?? def.default;
+      if (value !== defaults.live[section]?.[def.key]) put(section, def.key, value);
+    }
+    if (!(PROFILED_SECTIONS as readonly string[]).includes(section)) continue;
+    settings.profiles[section as ProfiledSection].forEach((slot, i) => {
+      if (!slot) return;
+      const name = `${section}.P${i + 1}`;
+      put(name, 'Enabled', slot.enabled ? 1 : 0);
+      for (const def of defs) {
+        const value = slot.values[def.key];
+        if (def.profiled && value !== undefined && value !== 0 && value !== '')
+          put(name, def.key, value);
+      }
+    });
+  }
+  for (const extra of settings.extra) {
+    for (const [key, value] of extra.entries) put(extra.name, key, value);
+  }
+  return out;
+}
+
+/** Settings from `profile.yaml`'s `megamud:`, read as the loader reads its INI. */
+export function settingsFromStored(value: unknown): MegaSettings {
+  const sections: IniSection[] = [];
+  if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+    for (const [name, keys] of Object.entries(value as Record<string, unknown>)) {
+      if (typeof keys !== 'object' || keys === null || Array.isArray(keys)) continue;
+      const entries: [string, string][] = [];
+      for (const [key, raw] of Object.entries(keys as Record<string, unknown>)) {
+        if (typeof raw === 'number' && Number.isFinite(raw)) entries.push([key, String(raw)]);
+        else if (typeof raw === 'string') entries.push([key, raw]);
+        else if (typeof raw === 'boolean') entries.push([key, raw ? '1' : '0']);
+      }
+      sections.push({ name, entries });
+    }
+  }
+  return settingsFromSections(sections);
 }
 
 /** A number setting; 0 for a key the schema does not know. */

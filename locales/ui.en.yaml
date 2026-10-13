@@ -305,6 +305,14 @@ notices:
       you edit. {file}'
     tuningNothingAdded: nothing
     tuningNothingRemoved: nothing
+    megamudSettingsMovedIn:
+      many:
+        'The MegaMUD settings of {count} characters were moved from their megamud.ini into their
+        character files, under megamud:, and each megamud.ini was renamed megamud.ini.imported.
+        {fileList}'
+      one:
+        'The MegaMUD settings were moved from megamud.ini into {fileList}, under megamud:, and the
+        megamud.ini was renamed megamud.ini.imported.'
     autoReconnectStated:
       many:
         '"Reconnect if the connection drops" was written into {count} character files, on, with the
@@ -3380,10 +3388,10 @@ settings:
     mudEngine: MudEngine
     realms: Realms
   megamud:
-    create: Create megamud.ini
+    create: Switch to the MegaMUD engine
     loading: Loading MegaMUD settings…
-    # Shown while the character has no megamud.ini yet.
-    noFile: This character is not run by the MegaMUD engine yet. Saving these settings writes its megamud.ini and switches it to the MegaMUD engine.
+    # Shown while the character has no MegaMUD settings yet.
+    noFile: This character is not run by the MegaMUD engine yet. Saving these settings keeps them with the character and switches it to the MegaMUD engine.
     passwordKept: (unchanged)
     revert: Revert
     save: Save
