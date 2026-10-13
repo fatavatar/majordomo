@@ -13,6 +13,7 @@
  * realm's tables, a version or two behind; the realm is the authority.
  */
 import type { WorldGraph } from '../world/WorldGraph';
+import { RELATIONSHIP_NUMBER } from './saved';
 import { COPPER_PER, counterPriceInCopper } from '../../shared/coins';
 import { ITEM_KINDS } from '../../shared/items';
 import { ITEM_FLAG_BITS, ITEM_FLAGS, itemKey, type ItemRule } from '../../shared/itemRules';
@@ -159,7 +160,11 @@ function monsterRecs(world: WorldGraph, mob: WorldMob): MonsterRec[] {
       name: mob.name.slice(0, 30),
       id,
       flags: 0,
-      relationship: 0,
+      // Enemy: what MegaMUD's own database said of every monster nothing set
+      // otherwise (1,117 of Skinny's 1,475, and none at 0), and what our
+      // monster table means by a monster with no row. 0 is a monster met in
+      // play and not yet known, which the engine does not start on.
+      relationship: RELATIONSHIP_NUMBER.enemy,
       exp: row
         ? (row.experience ?? 0) * (row.expMulti ?? 1)
         : (mob.experience ?? 0) * (mob.expMulti ?? 1),

@@ -128,7 +128,14 @@ describe("MegaMUD's databases from the realm's own data", () => {
       NONE
     );
     expect(data.monsters).toEqual([
-      expect.objectContaining({ name: 'mosquito swarm', id: 12, exp: 24576528, maxHp: 50 })
+      expect.objectContaining({
+        name: 'mosquito swarm',
+        id: 12,
+        exp: 24576528,
+        maxHp: 50,
+        // Enemy, as MegaMUD's own database had every monster nothing set otherwise.
+        relationship: 4
+      })
     ]);
   });
 
