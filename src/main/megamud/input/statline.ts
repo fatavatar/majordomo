@@ -203,7 +203,7 @@ function lowHpAndEntry(s: Session, complete: number): number {
     return criticalHp(s);
   }
   if ((s.lineFlags & 1) !== 0) {
-    if (s.f_2390 !== 0 || s.f_23b4 !== 0) abilityPrompt(s);
+    if (s.abilAsking !== 0 || s.abilUnasked !== 0) abilityPrompt(s);
     let st = s.state;
     const done = (): void => {
       forgetAwaited(s, st);

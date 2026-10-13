@@ -25,12 +25,12 @@ export interface Pending {
 
 /** `0x42d9f0`: send `text` now. Returns 1. */
 export function send(s: Session, text: string): number {
-  s.f_2410 = 0;
+  s.lastAbil.valid = 0;
   if (text !== '\r' && text !== 'par\r') {
     s.f_db8c = 0;
     s.f_db88 = 0;
   }
-  if (s.f_2408 === 0) {
+  if (s.abilSending === 0) {
     if (s.f_e57c === 0 && s.inGame !== 0) {
       const last = s.lastSent;
       if (last.length > 1 && strcmp(text, last) === 0) {
@@ -53,7 +53,7 @@ export function send(s: Session, text: string): number {
       s.lastSent = '';
     }
   } else {
-    s.f_2408 = 0;
+    s.abilSending = 0;
   }
   s.f_322a0 = s.now;
   s.host.write(text);
@@ -107,7 +107,7 @@ export function queueCommand(
     s.lineFlags |= 1;
     return 1;
   }
-  s.pending.push({ text, expand, checked, tag: s.f_240c });
+  s.pending.push({ text, expand, checked, tag: s.monitorQueuing });
   s.lineFlags |= 1;
   return 1;
 }

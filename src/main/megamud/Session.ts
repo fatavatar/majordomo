@@ -41,6 +41,90 @@ export interface RoomEntity {
   f44: number;
 }
 
+/**
+ * One ability monitor (`[AbilMon]` `MonitorN`, 0x108 bytes): when ability
+ * `ability`'s value (or one part of it) compares to `value`, cast `spell` or
+ * send `command`. Checked every `interval` seconds, around rests and
+ * meditations, after a spell, or when a line starts with `message`.
+ */
+export interface AbilityMonitor {
+  /** +0x00 */
+  disabled: number;
+  /** +0x04 */
+  ability: number;
+  /** +0x08: 0 the total, 1 granted, 2 worn, 3 spells, 4 race, 5 class. */
+  part: number;
+  /** +0x0c: fires when the value is 0 below, 1 equal to, 2 above `value`. */
+  compare: number;
+  /** +0x10 */
+  value: number;
+  /** +0x14: 0 cast `spell`, 1 send `command`. */
+  useCommand: number;
+  /** +0x18, 7 characters: a spell's short name. */
+  spell: string;
+  /** +0x1f, 81 characters. */
+  command: string;
+  /** +0x70, 81 characters (`MonitorNMsg`): a line starting with it triggers a check. */
+  message: string;
+  /**
+   * +0xc4: when to check: 1 every `interval` seconds, 2 before resting, 4
+   * after, 0x20 before meditating, 0x40 after, 0x80 after its spell is cast,
+   * 0x100 on `message`.
+   */
+  when: number;
+  /** +0xc8: seconds between checks (5 at least). */
+  interval: number;
+  /** +0xcc: firing checks the rest of its chain. */
+  chainOn: number;
+  /** +0xd0: chained to the monitor before it. */
+  chained: number;
+  /** +0xd4: its command jumps the pending list. */
+  urgent: number;
+  /** +0xd8: 0 idle, 1 being checked, 2 suspended. */
+  state: number;
+  /** +0xdc: a check is due. */
+  due: number;
+  /** +0xe0: since when (seconds). */
+  dueAt: number;
+  /** +0xe8: due because its chain fired. */
+  byChain: number;
+  /** +0xf0: when the next timed check is (seconds; 0 not set). */
+  nextAt: number;
+  /** +0xf8: the value last read. */
+  lastValue: number;
+  /** +0xfc: `abil` asks gone unanswered. */
+  noReply: number;
+  /** +0x100: told that the ability has no separate part. */
+  warnedPart: number;
+}
+
+export function newMonitor(): AbilityMonitor {
+  return {
+    disabled: 0,
+    ability: 0,
+    part: 0,
+    compare: 0,
+    value: 0,
+    useCommand: 0,
+    spell: '',
+    command: '',
+    message: '',
+    when: 0,
+    interval: 0,
+    chainOn: 0,
+    chained: 0,
+    urgent: 0,
+    state: 0,
+    due: 0,
+    dueAt: 0,
+    byChain: 0,
+    nextAt: 0,
+    lastValue: 0,
+    noReply: 0,
+    warnedPart: 0
+  };
+}
+
 /** One player online (`0x4c0f00`, 0x48 bytes). */
 export interface WhoEntry {
   /** +0x04: what it is to us, as a room entry's kind (3 unknown). */
@@ -213,6 +297,48 @@ export class Session extends RawFields {
   spellLockStuck = 0;
 
   // ------------------------------------------------------------ ability monitors
+
+  /** 0x237c/0x2384: the ability monitors (`[AbilMon]`, `0x404140`), chains in order. */
+  monitors: AbilityMonitor[] = [];
+  /** 0xe278: they changed since they were saved. */
+  monitorsChanged = 0;
+  /** 0x238c: the monitor whose `abil N` reply is awaited (-1 none). */
+  monitorAsked = -1;
+  /** 0x2390: an `abil N` reply is awaited. */
+  abilAsking = 0;
+  /** 0x2394: the reply has given a value. */
+  abilGot = 0;
+  /** 0x2398: it gave the parts (granted, worn, …) separately. */
+  abilParts = 0;
+  /** 0x239c: the reply's values: the total, granted, worn, spells, race, class. */
+  abilValues: number[] = [0, 0, 0, 0, 0, 0];
+  /** 0x23b4: an `abil` reply not asked for (the player's own) is being read. */
+  abilUnasked = 0;
+  /** 0x23b8: its ability. */
+  abilUnaskedNo = 0;
+  /** 0x23c0: when an `abil` was last asked (seconds). */
+  abilAskedAt = 0;
+  /** 0x23c8: since when a reply has been awaited (seconds; 0 none). */
+  abilWaitSince = 0;
+  /**
+   * 0x23d0: why the monitors were not checked (`{am-b}`): 1 a reply awaited,
+   * 2 one not asked for being read, 3 one being read, 4 just read, 5 asked
+   * this second, 6 they cannot be.
+   */
+  monitorBlocked = 0;
+  /** 0x23d4: resting, as the timer last saw. */
+  monitorSawRest = 0;
+  /** 0x23f0: meditating, as the timer last saw. */
+  monitorSawMeditate = 0;
+  /** 0x2408: the `abil` being sent is not counted as a repeat. */
+  abilSending = 0;
+  /** 0x240c: a monitor's command is being queued (1, or 2 urgent). */
+  monitorQueuing = 0;
+  /**
+   * 0x2410…0x243c: the last reply read, reused by a chained monitor of the
+   * same ability within two seconds (valid until anything is sent).
+   */
+  lastAbil = { valid: 0, ability: 0, monitor: -1, parts: 0, at: 0, values: [0, 0, 0, 0, 0, 0] };
 
   /** 0x23d8 (on), 0x23e0 (since, seconds), 0x23e8 (checked, ms): the monitors watching a rest. */
   restMonitor = { on: 0, since: 0, checkedAt: 0 };

@@ -8,6 +8,7 @@
  * The dispatcher calls this twice a line: first (`anywhere` 1) for the rows
  * flagged `0x100`, early; then (0) for the rest, after the room handlers.
  */
+import { spellCastSeen } from '../abilities/monitors';
 import {
   countCast,
   f_426ab0,
@@ -26,7 +27,6 @@ import { expandMacros, noteCommands, queue, queueCommand, send } from '../script
 import { forgetAwaited, setState } from '../script/state';
 import type { Session } from '../Session';
 import { findSpell, findSpellByName } from '../spells/lookup';
-import { unported } from '../unported';
 import { blessCommand } from '../player/cast';
 import { blowStruck, castForgotten } from '../combat/timer';
 
@@ -372,7 +372,7 @@ function blessingsSeen(s: Session, rec: MessageRec): void {
       s.blessCastAt[i] = s.now;
     }
   }
-  unported('402f90');
+  spellCastSeen(s, rec.name);
   if (first && s.state === 0x10) {
     s.f_a3e0 += 1;
     s.f_a3e4 += 1;
