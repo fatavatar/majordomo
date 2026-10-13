@@ -70,7 +70,7 @@ import {
 import { resolveByDeadReckoning, resolveFromCoordinates, resolveRoom } from '../world/resolve';
 import type { WorldGraph } from '../world/WorldGraph';
 import type { Direction, RoomId, TrailStep, WorldRoom } from '../../shared/world';
-import { mobKey, nameAnswersTo, roomAddress, roomId } from '../../shared/world';
+import { mobKey, nameAnswersTo, roomAddress, roomId, spellLasts } from '../../shared/world';
 import type { Block } from '../../shared/blocks';
 import { NO_LORE, type MobLore } from '../../shared/lore';
 import type { RealmFamily } from '../../shared/realm';
@@ -1040,7 +1040,7 @@ export class CharacterTracker {
     const spell = this.spellCalled(word);
     if (spell === null) return;
     const known = this.world?.spellNamed(spell) ?? null;
-    if (known !== null && known.duration === undefined) return;
+    if (known !== null && !spellLasts(known)) return;
     this.settleOnset();
     this.lastSelfCast = { spell, at, confirmed: false };
   }
@@ -6095,7 +6095,7 @@ export class CharacterTracker {
          * and its life is bounded by the configured fallback clock.
          */
         const known = this.world?.spellNamed(spell) ?? null;
-        if (known !== null && known.duration === undefined) return null;
+        if (known !== null && !spellLasts(known)) return null;
         /*
          * Replacing whatever answers to the name, candidates included: the
          * sheet may have listed this effect under another spell that shares
@@ -6187,6 +6187,33 @@ export class CharacterTracker {
             appliedAt: cast.at,
             cast: true
           });
+        }
+
+        /*
+         * A sentence only learned for other spells — a guess from an earlier
+         * adjacency — landing on the cast of a spell whose own sentence is
+         * not known: the cast names it, and the sentence is learned for this
+         * spell as well. Not taken from the others: two spells may print one
+         * line, and the cast says only which one this was. Skinny's
+         * `You are consumed from within by necropotence!` had been learned
+         * for cure poison, and every cast of necropotence was listed as that
+         * (2026-10-13).
+         */
+        if (
+          followsCast &&
+          this.spellLore.startOf(cast.spell) === null &&
+          candidates.every(
+            (candidate) => !isUnnamedEffect(candidate) && this.spellLore.taught(candidate, 'start')
+          )
+        ) {
+          if (effect) this.buffEffects.set(effect, cast.spell);
+          this.spellLore.learn(cast.spell, 'start', block.text.trim(), block.at);
+          this.lastSelfCast = null;
+          const rest = base.buffs.filter((buff) => !this.buffMatches(buff, candidates));
+          return this.withBuff(
+            { ...base, buffs: rest },
+            { spell: cast.spell, by: null, appliedAt: cast.at, cast: true }
+          );
         }
 
         /*

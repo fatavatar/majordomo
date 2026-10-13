@@ -1550,6 +1550,17 @@ export interface WorldSpell {
 }
 
 /**
+ * Whether a spell lasts: a `Dur`, or a duration that grows with level from
+ * none (`scaledDuration`). MudRev's necropotence is `Dur` 0 with `DurInc` 1
+ * per 5 levels, and was read as instant (2026-10-13).
+ */
+export function spellLasts(spell: WorldSpell): boolean {
+  if (spell.duration !== undefined) return true;
+  const growth = spell.durationGrowth;
+  return growth !== undefined && growth[0] !== 0 && growth[1] !== 0;
+}
+
+/**
  * A race the realm offers.
  *
  * The stat pair is `[minimum, maximum]` — where the race starts and the ceiling

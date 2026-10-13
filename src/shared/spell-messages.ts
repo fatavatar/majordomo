@@ -474,6 +474,11 @@ export interface SpellLore {
   learn(spell: string, kind: SpellMessageKind, text: string, at: number): void;
   /** A learned sentence the wire has since contradicted. */
   unlearn(spell: string, kind: SpellMessageKind): void;
+  /**
+   * Whether the spell's sentence of this kind is only one the wire taught —
+   * a guess from adjacency — rather than the realm's own.
+   */
+  taught(spell: string, kind: SpellMessageKind): boolean;
   /** What this realm has worked out about the effects it cannot name. */
   readonly effects: EffectLedger;
 }
@@ -485,6 +490,7 @@ export const NO_SPELL_LORE: SpellLore = {
   stopOf: () => null,
   learn: () => {},
   unlearn: () => {},
+  taught: () => false,
   effects: NO_EFFECT_LEDGER
 };
 
@@ -526,6 +532,10 @@ export function spellLoreOf(
     unlearn: (spell, kind) => {
       if (learned.remove(spell, kind)) hooks.unlearned?.(spell, kind);
     },
+    taught: (spell, kind) =>
+      kind === 'start'
+        ? shipped.startOf(spell) === null && learned.startOf(spell) !== null
+        : shipped.stopOf(spell) === null && learned.stopOf(spell) !== null,
     effects: hooks.effects ?? NO_EFFECT_LEDGER
   };
 }

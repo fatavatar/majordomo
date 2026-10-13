@@ -201,3 +201,65 @@ describe('the engine in a session', () => {
     e.dispose();
   });
 });
+
+describe('blessings told by our tracker’s buffs', () => {
+  /*
+   * MudRev's Messages.md names none of Skinny's blessings, so on 13 October
+   * 2026 the engine cast them again at every step while our tracker had
+   * every one of them up.
+   */
+  function blessed() {
+    const settings = defaultSettings();
+    settings.live['Spells']!['BlessCmd1'] = 'npot';
+    const { e } = engine();
+    e.s.data.spells = [
+      {
+        layer: 0,
+        id: 1526,
+        short: 'npot',
+        name: 'necropotence',
+        item: '',
+        flags: 26,
+        magic: 3,
+        level: 76,
+        cost: 28
+      }
+    ];
+    e.reload({ settings, data: e.s.data, grants: {} });
+    return e;
+  }
+
+  const up = (appliedAt: number) => [{ spell: 'necropotence', by: null, appliedAt }];
+
+  it('takes one going up as cast, settling the cast awaited', () => {
+    const e = blessed();
+    e.s.state = 0x10;
+    e.s.blessSlot = 0;
+    e.buffs(up(1));
+    expect(e.s.blessCastAt[0]).not.toBe(0);
+    expect(e.s.state).toBe(0);
+  });
+
+  it('makes one going down due again', () => {
+    const e = blessed();
+    e.buffs(up(1));
+    e.buffs([]);
+    expect(e.s.blessCastAt[0]).toBe(0);
+  });
+
+  it('takes one put up again as cast again', () => {
+    const e = blessed();
+    e.buffs(up(1));
+    e.s.blessCastAt[0] = 5;
+    e.buffs(up(1));
+    expect(e.s.blessCastAt[0]).toBe(5);
+    e.buffs(up(2));
+    expect(e.s.blessCastAt[0]).not.toBe(5);
+  });
+
+  it('leaves alone a buff somebody else cast', () => {
+    const e = blessed();
+    e.buffs([{ spell: 'necropotence', by: 'Fatty', appliedAt: 1 }]);
+    expect(e.s.blessCastAt[0]).toBe(0);
+  });
+});

@@ -18,15 +18,18 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
+import { stricmp } from '../megamud/cstr';
 import { coinItems, messagesFrom, readData, type MegaData } from '../megamud/data';
 import { bbsSetup } from '../megamud/bbs';
 import { grantPlayers, loadCharacter } from '../megamud/character';
 import { newTerminal, parseData, type TerminalState } from '../megamud/input/ParseData';
 import { typedCommand } from '../megamud/input/typed';
 import { menuCommand } from '../megamud/move/buttons';
+import { blessCommand } from '../megamud/player/cast';
 import { clearDetours, goTo, headFor, startWalking } from '../megamud/move/destinations';
 import { copyPath, freeSteps } from '../megamud/move/path';
 import { connected, connectionClosed } from '../megamud/script/game';
+import { forgetAwaited, setState } from '../megamud/script/state';
 import {
   dataArrived,
   newQuietClock,
@@ -42,6 +45,8 @@ import {
   type RouteFound,
   type SessionHost
 } from '../megamud/Session';
+import { findSpell } from '../megamud/spells/lookup';
+import type { ActiveBuff } from '../../shared/character';
 import type { MegaSettings } from '../../shared/megamud/settings';
 import type { RemoteName } from '../../shared/remotes';
 import {
@@ -220,6 +225,8 @@ export class MegaEngine {
   private locateGaveUp = false;
   /** In the game at the last chunk: entering it is when a room is first wanted. */
   private wasInGame = false;
+  /** When our tracker had each of the ten blessing slots put up, at the last look; null when down. */
+  private readonly blessUp: (number | null)[] = [];
 
   constructor(
     private readonly host: MegaEngineHost,
@@ -278,6 +285,54 @@ export class MegaEngine {
     for (const timer of this.timers) clearInterval(timer);
     this.timers.length = 0;
     this.outbound = [];
+  }
+
+  /**
+   * Our tracker's buffs, before the chunk that may change them reaches the
+   * engine. MegaMUD knows a blessing took only by a Messages.md row named
+   * after its spell (`0x46a920`) and that it ended by the row's end
+   * (`0x46bb70`); a realm's Messages.md names few, and without one a
+   * blessing is cast again at every step. The tracker reads every way a buff
+   * shows — the cast's own frame, the sentences shipped and learned, the
+   * sheet, the wear-off naming the spell — so its list stands in for the
+   * rows: a blessing going up (or put up again: a recast renews it) is
+   * stamped as cast, and settles one awaited, as a row's start does; one
+   * going down is due again, as a row's end makes it. This character's ten only: the party's four wear off on the
+   * members' screens.
+   */
+  buffs(up: readonly ActiveBuff[]): void {
+    const s = this.s;
+    s.now = Math.floor(Date.now() / 1000);
+    for (let i = 0; i < 10; i += 1) {
+      const command = blessCommand(s, i);
+      const spell = command === '' ? null : findSpell(s, command);
+      const buff =
+        spell === null || (spell.flags & 2) === 0
+          ? undefined
+          : up.find(
+              (b) =>
+                b.by === null &&
+                (stricmp(b.spell, spell.name) === 0 ||
+                  (b.candidates ?? []).some((name) => stricmp(name, spell.name) === 0))
+            );
+      const at = buff?.appliedAt ?? null;
+      const was = this.blessUp[i] ?? null;
+      this.blessUp[i] = at;
+      if (at !== null && at !== was) {
+        s.blessCastAt[i] = s.now;
+        s.blessSeenAt[i] = s.now;
+        if (s.debug !== 0) s.host.trace(`{bless-up:${spell!.name}}`);
+        if (s.state === 0x10 && s.blessSlot === i) {
+          s.f_a3e0 += 1;
+          s.f_a3e4 += 1;
+          forgetAwaited(s, 0x10);
+          setState(s, 0);
+        }
+      } else if (at === null && was !== null) {
+        s.blessCastAt[i] = 0;
+        if (s.debug !== 0 && spell) s.host.trace(`{bless-down:${spell.name}}`);
+      }
+    }
   }
 
   /** Text from the socket. */

@@ -14,6 +14,7 @@ import {
   type RealmSpellRow,
   type SpellLore
 } from '../../../shared/spell-messages';
+import { spellLasts, type WorldSpell } from '../../../shared/world';
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -564,5 +565,64 @@ describe("Paramud's own words for its own spells", () => {
     feed('You do not have enough mana to cast that spell.');
     feed('You feel a chill wind!');
     expect(held(tracker)).toEqual([]);
+  });
+});
+
+/*
+ * Skinny on MudRev (2026-10-13): necropotence is `Dur` 0 growing with level,
+ * so its cast was taken for an instant one; and its onset had been learned
+ * for cure poison, so every cast of it was listed as that.
+ */
+describe('a lasting spell whose onset was learned for another', () => {
+  const SPELLS: Record<string, WorldSpell> = {
+    npot: {
+      id: 1526,
+      name: 'necropotence',
+      short: 'npot',
+      durationGrowth: [5, 1]
+    } as WorldSpell,
+    cure: { id: 7, name: 'cure poison', short: 'cure' } as WorldSpell
+  };
+  const world = {
+    spellNamed: (word: string) =>
+      Object.values(SPELLS).find((spell) => spell.short === word || spell.name === word) ?? null
+  } as unknown as WorldGraph;
+  const ONSET = 'You are consumed from within by necropotence!';
+
+  function wrongly(): SpellLore {
+    const learned = new SpellMessageBook();
+    learned.add('cure poison', 'start', ONSET);
+    return spellLoreOf(new SpellMessageBook(), learned);
+  }
+
+  it('is named by the cast, and its onset learned for it', () => {
+    const lore = wrongly();
+    const { tracker, feed, send } = feeder(lore, world);
+    feed('[HP=1252/MA=1016]:', 'flush');
+    send('npot');
+    feed(ONSET);
+    expect(tracker.current.buffs.map((buff) => buff.spell)).toEqual(['necropotence']);
+    expect(lore.startOf('necropotence')).toBe(ONSET);
+  });
+
+  it('keeps a sentence the realm ships for another spell', () => {
+    const shipped = new SpellMessageBook();
+    shipped.add('cure poison', 'start', ONSET);
+    const lore = spellLoreOf(shipped, new SpellMessageBook());
+    const { tracker, feed, send } = feeder(lore, world);
+    feed('[HP=1252/MA=1016]:', 'flush');
+    send('npot');
+    feed(ONSET);
+    expect(tracker.current.buffs.map((buff) => buff.spell)).toEqual(['cure poison']);
+    expect(lore.startOf('necropotence')).toBeNull();
+  });
+});
+
+describe('spellLasts', () => {
+  it('takes a duration that grows from none as lasting', () => {
+    expect(spellLasts({ durationGrowth: [5, 1] } as WorldSpell)).toBe(true);
+    expect(spellLasts({ duration: 40 } as WorldSpell)).toBe(true);
+    expect(spellLasts({} as WorldSpell)).toBe(false);
+    expect(spellLasts({ durationGrowth: [0, 0] } as WorldSpell)).toBe(false);
   });
 });

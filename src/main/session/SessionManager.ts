@@ -3090,7 +3090,9 @@ export class SessionManager {
        */
       if (this.tailIsWholePrompt()) this.flushPending();
       else this.armIdleFlush();
-      // After our own reading, so the engine learns rooms our tracker has placed.
+      // After our own reading, so the engine learns rooms our tracker has
+      // placed and the buffs it has seen go up and down.
+      this.mega?.buffs(this.tracker.current.buffs);
       this.mega?.received(text);
       /*
        * Deliberately *not* `routines.noteSent()`: the keep-alive counts this
