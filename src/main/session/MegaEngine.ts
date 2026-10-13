@@ -66,7 +66,10 @@ import {
   type MegaToggles
 } from '../../shared/megamud/toggles';
 import type { RemoteName } from '../../shared/remotes';
+import { IDLE_WALK, type WalkProgress } from '../../shared/walk';
+import { NO_LOOP, type LoopProgress } from '../../shared/loops';
 import {
+  asRoomReference,
   DIRECTIONS,
   roomId,
   type RequirementKind,
@@ -105,6 +108,29 @@ export interface MegaEngineHost {
   alert?(which: MegaAlert): void;
   /** Its toggles changed (`0x460d50` redraws the toolbar): see `MegaEngine.toggles`. */
   toggled?(): void;
+  /** Its walk or loop moved on, as the cards draw them: see `MegaEngine.progress`. */
+  progressed?(walk: WalkProgress, loop: LoopProgress): void;
+}
+
+/** One of our loops made a MegaMUD loop: its stops, and the step each leg to the next begins at. */
+interface MadeLoop {
+  name: string;
+  /** The stops as walked, a bounce loop's way back included. */
+  stops: RoomId[];
+  /** How many stops the loop itself lists: past them, a bounce loop is on its way back. */
+  listed: number;
+  bounce: boolean;
+  /** `begins[i]`: the step the leg out of stop `i` begins at. */
+  begins: number[];
+}
+
+/** A path the engine made from one of our routes or loops, with the room each step is taken from. */
+interface MadePath {
+  path: PathRec;
+  rooms: (RoomId | null)[];
+  /** The room it ends in. */
+  end: RoomId | null;
+  loop: MadeLoop | null;
 }
 
 export interface MegaEngineSetup {
@@ -287,7 +313,7 @@ export class MegaEngine {
   private computed: Map<number, RoomId[]> | null = null;
   private computedFor: WorldGraph | undefined;
   /** The paths made for the engine, by name, with the room each step is taken from. */
-  private readonly made = new Map<string, { path: PathRec; rooms: (RoomId | null)[] }>();
+  private readonly made = new Map<string, MadePath>();
   private routes = 0;
   /** Writes waiting behind a `~` pause. */
   private outbound: string[] = [];
@@ -312,6 +338,13 @@ export class MegaEngine {
   private wasInGame = false;
   /** The toggles as last said (`noteToggles`). */
   private toggled = '';
+  /** The walk and loop as last said (`noteProgress`). */
+  private progressed = '';
+  /**
+   * The run of a loop: when it was started, and when it first stood on the
+   * loop itself rather than on the way out to it. Null with no loop taken up.
+   */
+  private loopRun: { name: string; startedAt: number; lapBegunAt: number | null } | null = null;
   /** The toggles this character's `[Toolbar]` shows. */
   private shown: MegaToggle[];
   /** The character's `[Alerts]`: the sound each alert plays. */
@@ -556,8 +589,117 @@ export class MegaEngine {
     };
   }
 
+  /**
+   * The engine's walk and loop as the cards draw them, in place of the
+   * walker's and loop runner's, which stand idle while it walks: the path
+   * walked (`0xe39c`) and the step reached, the loop (`0xe4a4`), and its laps
+   * (`0xdb44`, counted as `0x43d2a0` takes the loop up again).
+   */
+  get progress(): { walk: WalkProgress; loop: LoopProgress } {
+    const s = this.s;
+    const walking = s.walking !== 0;
+    const made = this.made.get(s.path.name.toLowerCase()) ?? null;
+    const lap = this.made.get(s.loopPath.name.toLowerCase())?.loop ?? null;
+    const run = this.loopRun !== null && lap !== null && lap.name === this.loopRun.name;
+    const holding = s.inCombat !== 0 ? 'fight' : s.resting !== 0 ? 'resting' : null;
+
+    let loop: LoopProgress = NO_LOOP;
+    if (run && lap !== null) {
+      const onLoop = made?.loop === lap;
+      // The stop the leg being walked leads to, as the loop lists it.
+      const leg = onLoop ? lap.begins.findLastIndex((at) => at <= s.path.at) : -1;
+      const next = onLoop ? (Math.max(leg, 0) + 1) % lap.stops.length : 0;
+      const back = lap.bounce && next >= lap.listed;
+      // One-based, as the loop runner counts.
+      const stop = (back ? lap.stops.length - next : next) + 1;
+      loop = {
+        status: walking ? 'running' : 'stopped',
+        name: lap.name,
+        stop,
+        stops: lap.listed,
+        stopName: this.roomName(lap.stops[next] ?? null),
+        remainingStops: onLoop ? lap.stops.slice(next) : [...lap.stops],
+        stopNames: lap.stops.slice(0, lap.listed).map((room) => this.roomName(room) ?? room),
+        laps: Math.max(0, s.f_db44),
+        reason: null,
+        hold: walking && holding !== null ? (holding === 'fight' ? 'fight' : 'health') : null,
+        startedAt: this.loopRun!.startedAt,
+        lapBegunAt: this.loopRun!.lapBegunAt,
+        expAtStart: null,
+        forward: !back,
+        bounce: lap.bounce
+      };
+    }
+
+    let walk: WalkProgress = IDLE_WALK;
+    const steps = made?.path.steps ?? null;
+    if (made !== null && steps !== null && s.lost === 0 && s.roaming === 0) {
+      const at = s.path.at;
+      // A lap's leg runs to its next stop; a route to its end.
+      const legEnd = made.loop
+        ? (made.loop.begins.find((begin) => begin > at) ?? made.rooms.length)
+        : made.rooms.length;
+      const rooms = made.rooms.slice(at, legEnd).filter((room): room is RoomId => room !== null);
+      const end = made.loop ? (made.rooms[legEnd] ?? made.end) : made.end;
+      if (end !== null && rooms.at(-1) !== end) rooms.push(end);
+      const arrived = at >= made.path.count;
+      const status = walking ? 'walking' : arrived ? 'arrived' : 'stopped';
+      if (walking || !run) {
+        const to = made.rooms[at + 1] ?? made.end;
+        walk = {
+          status,
+          asked: made.loop === null && !run,
+          done: Math.min(at, made.path.count),
+          total: made.path.count,
+          destination: this.roomName(end),
+          destinationRoom: end === null ? null : asRoomReference(end),
+          step:
+            walking && steps[at] !== undefined
+              ? {
+                  command: steps[at].command,
+                  name: this.roomName(to) ?? '',
+                  note: null,
+                  to: to === null ? null : asRoomReference(to)
+                }
+              : null,
+          path: walking ? rooms : [],
+          ahead: walking ? rooms.slice(1).map((room) => this.roomName(room) ?? room) : [],
+          reason: null,
+          hold: walking ? holding : null
+        };
+      }
+    }
+    return { walk, loop };
+  }
+
+  /** A room's name, from the realm's data. */
+  private roomName(room: RoomId | null): string | null {
+    const place = room === null ? null : asRoomReference(room);
+    if (place === null) return null;
+    return this.host.world()?.get(place.map, place.room)?.name ?? room;
+  }
+
+  /** Says so when the walk or the loop moved on: a step, a stop, a lap, a fight. */
+  private noteProgress(): void {
+    const s = this.s;
+    const lap = this.made.get(s.loopPath.name.toLowerCase())?.loop ?? null;
+    // A loop MegaMUD took up itself (a remote's `@loop`, a destination done) is a run too.
+    if (this.loopRun === null && s.looping !== 0 && lap !== null) {
+      this.loopRun = { name: lap.name, startedAt: Date.now(), lapBegunAt: null };
+    }
+    if (this.loopRun !== null && this.loopRun.lapBegunAt === null && s.looping !== 0) {
+      this.loopRun.lapBegunAt = Date.now();
+    }
+    const { walk, loop } = this.progress;
+    const now = JSON.stringify([walk, loop]);
+    if (now === this.progressed) return;
+    this.progressed = now;
+    this.host.progressed?.(walk, loop);
+  }
+
   /** Says so when the toggles or the walking moved since last said: a press, a mode's defaults, a remote, a step. */
   private noteToggles(): void {
+    this.noteProgress();
     const { on, walking, looping, canGo } = this.toggles;
     const now = JSON.stringify([on, walking, looping, canGo]);
     if (now === this.toggled) return;
@@ -643,6 +785,8 @@ export class MegaEngine {
     startWalking(s);
     headFor(s, 0);
     s.f_db44 = 0;
+    this.loopRun = { name, startedAt: Date.now(), lapBegunAt: null };
+    this.noteToggles();
     return null;
   }
 
@@ -653,6 +797,10 @@ export class MegaEngine {
     clearDetours(this.s);
     goTo(this.s, sig, null);
     headFor(this.s, 1);
+    // A route taken in place of the loop: MegaMUD walks it and then the loop
+    // again, but the run the card counted is over.
+    this.loopRun = null;
+    this.noteToggles();
     return null;
   }
 
@@ -793,7 +941,7 @@ export class MegaEngine {
     const last = legs.at(-1)?.steps.at(-1)?.to;
     if (first !== undefined) this.know(first, start);
     if (last !== undefined) this.know(last, end);
-    this.made.set(name.toLowerCase(), { path: p, rooms });
+    this.made.set(name.toLowerCase(), { path: p, rooms, end: last ?? null, loop: null });
     return p;
   }
 
@@ -853,7 +1001,10 @@ export class MegaEngine {
     const start = this.signatureOf(rooms[0]!);
     if (start === null) return `The loop "${name}" starts in a room with no signature yet.`;
     const legs: Route[] = [];
+    const begins: number[] = [];
+    let steps = 0;
     for (let i = 0; i < rooms.length; i += 1) {
+      begins.push(steps);
       const from = rooms[i]!;
       const to = rooms[(i + 1) % rooms.length]!;
       if (from === to) continue;
@@ -861,8 +1012,16 @@ export class MegaEngine {
       if (typeof plan === 'string') return plan;
       if (plan.blocked) return plan.reason ?? `No way from ${from} to ${to}.`;
       legs.push(plan);
+      steps += plan.steps.length;
     }
     const p = this.makePath(shortName('L', name), name, legs, start, start);
+    this.made.get(p.name.toLowerCase())!.loop = {
+      name,
+      stops: rooms,
+      listed: stops.rooms.length,
+      bounce: stops.bounce,
+      begins
+    };
     if (!this.s.paths.includes(p)) this.s.paths.push(p);
     return p;
   }

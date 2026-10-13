@@ -182,6 +182,15 @@ the swap. For such a character:
   whether the engine is walking or looping, and the transport, the Navigation
   card and the palette's stop read that in place of the walker's and loop
   runner's progress, which stand idle while the engine walks.
+- **The walk and the loop on the cards** are the engine's
+  (`MegaEngine.progress`): the path walked and the step reached, the room each
+  step leaves from and the leg's end as the route or loop it was made from
+  said them, the loop's stops and the one being walked to, and its laps
+  (`0xdb44`). They go out as the walker's and loop runner's `WalkProgress` and
+  `LoopProgress` would, whenever they move on, so the Navigation and Loops
+  cards, the map's route line and the Combat Stats lap all follow the engine.
+  A run started by `@loop` or by MegaMUD taking the loop up again counts as a
+  run; a route walked in its place ends it.
 - **Its questions** (MegaMUD's message boxes: a path step to relearn, the
   key, gold or level a destination needs) are answered *no* where asked, as
   MegaMUD cannot be kept waiting here, and put to the player in a dialog; a

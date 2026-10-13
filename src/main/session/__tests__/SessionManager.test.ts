@@ -14,7 +14,9 @@ import {
   type RealmFinds,
   type SessionSink
 } from '../SessionManager';
-import type { MegaEngine } from '../MegaEngine';
+import type { MegaEngine, MegaEngineHost } from '../MegaEngine';
+import { NO_LOOP, type LoopProgress } from '../../../shared/loops';
+import { IDLE_WALK, type WalkProgress } from '../../../shared/walk';
 import { DEFAULT_CONFIG, type AutomationConfig, type RetreatConfig } from '../../../shared/config';
 import { blankTrigger } from '../../../shared/messageTriggers';
 import { WorldGraph } from '../../world/WorldGraph';
@@ -8137,6 +8139,31 @@ describe('the MegaMUD engine’s monsters', () => {
     expect(mega.s.data.monsters.find((m) => m.name === 'lost soul')).toMatchObject({
       relationship: 2
     });
+  });
+});
+
+describe('the MegaMUD engine’s progress', () => {
+  /* The cards drew the old loop runner's idle progress while the engine looped (2026-10-13). */
+  it('reaches the cards in place of the walker’s, with the experience at the run’s start', () => {
+    const { sink } = collect();
+    const loops: LoopProgress[] = [];
+    const walks: WalkProgress[] = [];
+    sink.loop = (progress) => loops.push(progress);
+    sink.walk = (progress) => walks.push(progress);
+    manager = new SessionManager(sink);
+    manager.useMegaMud({
+      settings: defaultSettings(),
+      data: { monsters: [], items: [], spells: [] },
+      grants: {}
+    });
+    const host = (manager as unknown as { mega: { host: MegaEngineHost } }).mega.host;
+    const running = { ...NO_LOOP, status: 'running' as const, name: 'Ring', startedAt: 1000 };
+    host.progressed!(IDLE_WALK, running);
+    expect(loops.at(-1)).toMatchObject({ name: 'Ring', expAtStart: null });
+    expect(walks.at(-1)).toBe(IDLE_WALK);
+
+    manager.useMegaMud(null);
+    expect(loops.at(-1)!.status).toBe('idle');
   });
 });
 

@@ -4639,6 +4639,27 @@ export class SessionManager {
   private megaHeldTimer: NodeJS.Timeout | null = null;
   /** When the half-typed line on the wire was begun; 0 with none. */
   private typingSince = 0;
+  /** The engine's loop run's start, and the experience the character had then. */
+  private megaLoopRun: { startedAt: number | null; exp: number | null } = {
+    startedAt: null,
+    exp: null
+  };
+
+  /**
+   * The engine's walk and loop to the cards, the map and the palette, in
+   * place of the walker's and loop runner's: the experience at the run's
+   * start is ours to know, read off the tracker as `LoopRunner` reads it.
+   */
+  private megaProgressed(walk: WalkProgress, loop: LoopProgress): void {
+    if (loop.startedAt !== this.megaLoopRun.startedAt) {
+      this.megaLoopRun = {
+        startedAt: loop.startedAt,
+        exp: loop.startedAt === null ? null : this.tracker.current.progress.exp
+      };
+    }
+    this.sink.walk?.(walk);
+    this.sink.loop?.({ ...loop, expAtStart: this.megaLoopRun.exp });
+  }
 
   /** Runs the MegaMUD engine for this character, or stops it (null). */
   useMegaMud(setup: MegaEngineSetup | null): void {
@@ -4647,8 +4668,14 @@ export class SessionManager {
       return;
     }
     const learned = this.mega?.learned;
+    const had = this.mega !== null;
     this.mega?.dispose();
     this.mega = null;
+    // The cards back on the walker's and loop runner's own progress.
+    if (had && setup === null) {
+      this.sink.walk?.(this.walker.progress);
+      this.sink.loop?.(this.loops.progress);
+    }
     this.megaLine = '';
     this.megaHeld = '';
     this.megaQuestion = null;
@@ -4667,6 +4694,7 @@ export class SessionManager {
           here: () => roomAddress(this.tracker.current.room),
           locate: () => this.megaLocate(),
           toggled: () => this.publishAutomation(),
+          progressed: (walk, loop) => this.megaProgressed(walk, loop),
           ask: (text) => this.megaAsk(text),
           // Where MegaMUD would play the sound its `[Alerts]` names.
           alert: (which) => this.sink.notice(megaAlertText(which)),

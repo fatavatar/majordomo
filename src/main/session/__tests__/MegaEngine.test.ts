@@ -16,6 +16,8 @@ import { coinItems, newMonster, type MonsterRec } from '../../megamud/data';
 import { collectItems } from '../../megamud/script/items';
 import { newEntity } from '../../megamud/Session';
 import type { PlayerFacts } from '../../../shared/players';
+import type { WalkProgress } from '../../../shared/walk';
+import type { LoopProgress } from '../../../shared/loops';
 
 function room(map: number, number: number, name: string, exits: WorldRoom['exits']): WorldRoom {
   return { map, room: number, name, exits } as WorldRoom;
@@ -120,6 +122,49 @@ describe('the engine in a session', () => {
     expect(e.s.walking).toBe(1);
     expect(e.s.path.steps!.map((st) => st.command)).toEqual(['n']);
     expect(sent).toEqual([]);
+    e.dispose();
+  });
+
+  /* The cards drew the old loop runner's idle progress while the engine looped (2026-10-13). */
+  it('says its walk and loop as the cards draw them', () => {
+    vi.useFakeTimers();
+    const { e } = engine('1/1');
+    const host = (e as unknown as { host: MegaEngineHost }).host;
+    const said: [WalkProgress, LoopProgress][] = [];
+    host.progressed = (walk, loop) => said.push([walk, loop]);
+    e.s.inGame = 1;
+    e.s.online = 1;
+    e.received('\x1b[1;36mTown Square\r\n\x1b[0;32mObvious exits: north, closed door east\r\n');
+    expect(e.startLoop('Ring')).toBeNull();
+    // On the way out to the loop: the lap's footwork, not a route asked for.
+    const [walk, loop] = said.at(-1)!;
+    expect(loop).toMatchObject({
+      status: 'running',
+      name: 'Ring',
+      stop: 1,
+      stops: 2,
+      stopNames: ['Dark Alley', 'Shop'],
+      laps: 0,
+      lapBegunAt: null
+    });
+    expect(walk).toMatchObject({
+      status: 'walking',
+      asked: false,
+      destination: 'Dark Alley',
+      path: ['1/1', '1/2'],
+      step: { command: 'n', name: 'Dark Alley' }
+    });
+
+    // On the loop, a step into the leg from the alley to the shop.
+    e.s.path.name = e.s.loopPath.name;
+    e.s.path.at = 1;
+    e.s.looping = 1;
+    expect(e.progress.loop).toMatchObject({ stop: 2, stopName: 'Shop', remainingStops: ['1/3'] });
+    expect(e.progress.walk).toMatchObject({ destination: 'Shop', path: ['1/1', '1/3'] });
+
+    e.s.walking = 0;
+    expect(e.progress.loop.status).toBe('stopped');
+    expect(e.progress.walk.status).toBe('idle');
     e.dispose();
   });
 
