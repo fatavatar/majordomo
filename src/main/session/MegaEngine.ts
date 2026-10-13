@@ -58,6 +58,12 @@ import type { PlayerFacts } from '../../shared/players';
 import type { LearnedItem } from '../world/MegaLearned';
 import type { ActiveBuff } from '../../shared/character';
 import type { MegaSettings } from '../../shared/megamud/settings';
+import {
+  MEGA_TOGGLES,
+  shownToggles,
+  type MegaToggle,
+  type MegaToggles
+} from '../../shared/megamud/toggles';
 import type { RemoteName } from '../../shared/remotes';
 import {
   DIRECTIONS,
@@ -94,6 +100,8 @@ export interface MegaEngineHost {
   loopRooms(name: string): { rooms: RoomId[]; bounce: boolean } | string;
   /** MegaMUD's yes-or-no questions; no when absent. */
   ask?(text: string): boolean;
+  /** Its toggles changed (`0x460d50` redraws the toolbar): see `MegaEngine.toggles`. */
+  toggled?(): void;
 }
 
 export interface MegaEngineSetup {
@@ -206,6 +214,25 @@ export function worldSignature(room: WorldRoom): number | null {
   return sig | 0;
 }
 
+/** The session fields the toolbar's toggles flip, kept across a settings reload. */
+const TOGGLE_FIELDS = [
+  'f_a32c',
+  'MegaMud_AutoCombat',
+  'MegaMud_AutoPreAttack',
+  'f_8be8',
+  'MegaMud_AutoNuke',
+  'MegaMud_AutoHeal',
+  'MegaMud_AutoBless',
+  'MegaMud_AutoLight',
+  'MegaMud_AutoGet',
+  'MegaMud_AutoCash',
+  'MegaMud_AutoSneak',
+  'MegaMud_AutoHide',
+  'MegaMud_AutoSearch',
+  'MegaMud_AutoTrack',
+  'active'
+] as const;
+
 /** MegaMUD's once-a-second timer (`WM_TIMER` 100, set to 1000 ms). */
 const SECOND_MS = 1000;
 /**
@@ -260,6 +287,10 @@ export class MegaEngine {
   private locateGaveUp = false;
   /** In the game at the last chunk: entering it is when a room is first wanted. */
   private wasInGame = false;
+  /** The toggles as last said (`noteToggles`). */
+  private toggled = '';
+  /** The toggles this character's `[Toolbar]` shows. */
+  private shown: MegaToggle[];
   /** Where what is learned is kept; null when nowhere. */
   private readonly memory: EngineMemory | null;
   /** Signatures learned since they were last kept. */
@@ -290,6 +321,7 @@ export class MegaEngine {
       blessingsCleared: () => this.blessingsCleared()
     };
     this.memory = setup.memory ?? null;
+    this.shown = shownToggles(setup.settings.live['Toolbar']);
     // A copy: the data read is shared between sessions, and the engine changes it as it learns.
     this.s = new Session(engineHost, structuredClone(setup.data));
     loadCharacter(this.s, setup.settings);
@@ -312,6 +344,7 @@ export class MegaEngine {
           this.safely(() => {
             secondTick(this.s);
             this.keepLearned();
+            this.noteToggles();
           }),
         SECOND_MS
       ),
@@ -326,15 +359,22 @@ export class MegaEngine {
    * walked and the loop kept.
    */
   reload(setup: MegaEngineSetup): void {
+    this.shown = shownToggles(setup.settings.live['Toolbar']);
+    this.toggled = '';
     const s = this.s;
     const kept = [s.MegaMud_CurPath, s.MegaMud_SelPath, s.MegaMud_CurPathStep] as const;
     const { rules, ruleAt, events, eventNext, monitors } = s;
+    // The toggles as they stand: MegaMUD's dialog edits them in place, and
+    // they are the toolbar's, not the file's.
+    const toggles = TOGGLE_FIELDS.map((field) => s[field]);
     loadCharacter(s, setup.settings);
     [s.MegaMud_CurPath, s.MegaMud_SelPath, s.MegaMud_CurPathStep] = kept;
+    TOGGLE_FIELDS.forEach((field, i) => (s[field] = toggles[i]!));
     if (s.rulesChanged !== 0) [s.rules, s.ruleAt] = [rules, ruleAt];
     if (s.eventsChanged !== 0) [s.events, s.eventNext] = [events, eventNext];
     if (s.monitorsChanged !== 0) s.monitors = monitors;
     grantPlayers(s, setup.grants);
+    this.noteToggles();
   }
 
   /**
@@ -441,12 +481,50 @@ export class MegaEngine {
     if (this.s.inGame !== 0 && !this.wasInGame && this.host.here() === null) this.host.locate();
     this.wasInGame = this.s.inGame !== 0;
     if (this.parked !== null && this.host.here() !== null) this.safely(() => this.unpark());
+    this.noteToggles();
+  }
+
+  /** The toggles as they stand, and which this character's toolbar shows. */
+  get toggles(): MegaToggles {
+    const s = this.s;
+    const on: Record<MegaToggle, boolean> = {
+      allOff: s.f_a32c !== 0,
+      combat: s.MegaMud_AutoCombat !== 0,
+      preAttack: s.MegaMud_AutoPreAttack !== 0,
+      melee: s.f_8be8 !== 0,
+      nuke: s.MegaMud_AutoNuke !== 0,
+      heal: s.MegaMud_AutoHeal !== 0,
+      bless: s.MegaMud_AutoBless !== 0,
+      light: s.MegaMud_AutoLight !== 0,
+      get: s.MegaMud_AutoGet !== 0,
+      cash: s.MegaMud_AutoCash !== 0,
+      sneak: s.MegaMud_AutoSneak !== 0,
+      hide: s.MegaMud_AutoHide !== 0,
+      search: s.MegaMud_AutoSearch !== 0,
+      afk: s.active !== 0
+    };
+    return { on, shown: this.shown };
+  }
+
+  /** Says so when the toggles moved since last said: a press, a mode's defaults, a remote. */
+  private noteToggles(): void {
+    const now = JSON.stringify(this.toggles.on);
+    if (now === this.toggled) return;
+    this.toggled = now;
+    this.host.toggled?.();
+  }
+
+  /** A toolbar toggle pressed: its window command. */
+  toggle(name: MegaToggle): void {
+    const toggle = MEGA_TOGGLES.find((t) => t.name === name);
+    if (toggle) this.button(toggle.command);
   }
 
   /** A command the player typed. */
   typed(command: string): void {
     this.playerSent();
     this.safely(() => typedCommand(this.s, 0, command));
+    this.noteToggles();
   }
 
   /**
@@ -477,6 +555,7 @@ export class MegaEngine {
   /** Go/Stop (`0x803`), Roam (`0x808`), AFK (`0x809`), Step Back (`0x869`). */
   button(command: number): void {
     this.safely(() => menuCommand(this.s, command));
+    this.noteToggles();
   }
 
   /** Whether the engine is walking (Go is on). */

@@ -1029,6 +1029,23 @@ terminal:
 # the tooltip, the accessible name and the row in the button picker — the
 # words follow the settings screen's, because the two edit the same key.
 toolbar:
+  # MegaMUD's own toolbar toggles, for a character the MegaMUD engine runs,
+  # in MegaMUD's words.
+  mega:
+    allOff: All Off
+    combat: Auto-Combat
+    preAttack: Auto-Pre-Attack
+    melee: Prefer Melee
+    nuke: Auto-Nuke (Attack Spells)
+    heal: Auto-Heal
+    bless: Auto-Bless
+    light: Auto-Light
+    get: Auto-Get (Items)
+    cash: Auto-Cash (Coins)
+    sneak: Auto-Sneak
+    hide: Auto-Hide
+    search: Auto-Search
+    afk: AFK
   invokeItems: Bless from an item
   provideLight: Auto-Light (Light Dark Rooms)
   supplies: Auto-Buy Supplies
@@ -4487,6 +4504,8 @@ errors:
     profileUnreadable: could not be read
 # What a session reports: connection, walking, safety, memory.
 session:
+  megamud:
+    noEngine: 'This character is not run by the MegaMUD engine, so it has no MegaMUD toggles.'
   # Under a timed spell the way in cast (todo 104): said once going in and
   # once coming out, because every routine stands down in between.
   corridor:

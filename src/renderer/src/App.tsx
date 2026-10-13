@@ -5175,6 +5175,8 @@ export default function App() {
           restoreGear: () => void api.gear(sid, 'restore'),
           setSwitch: (name, on) =>
             void api.setAutomationSwitch(sid, name, on).then(sayRefusal(sid)),
+          mega: v.automation.mega ?? null,
+          setMegaToggle: (name) => void api.megamudToggle(sid, name).then(sayRefusal(sid)),
           connect: () => dial(sid),
           disconnect: () => hangUp(sid),
           // The picker is the card's; the toolbar presses play on whatever

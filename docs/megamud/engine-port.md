@@ -168,6 +168,15 @@ the swap. For such a character:
 - **The buttons**: the loop card's play is `@loop`'s start of a loop (or Go
   with none named), its stop is Go/Stop (`0x803`), the step back `0x869`,
   and a route asked for is the Go To dialog to its last room.
+- **The toolbar's toggles** are MegaMUD's (`shared/megamud/toggles.ts`):
+  All Off, Auto-Combat, -Pre-Attack, -Nuke, -Heal, -Bless, -Light, -Get,
+  -Cash, -Sneak, -Hide, -Search, Prefer Melee and AFK, each pressing its
+  window command (`0x462d20`, `megamud/move/buttons.ts`) with the side
+  effects MegaMUD's has. They stand where the old automation's switches
+  would on the Toolbar card, those the character's `[Toolbar]` shows (Settings
+  → MegaMUD → Toolbar), and are drawn from the automation snapshot, pushed
+  whenever they change — a press, a mode's defaults, a remote. They are the
+  session's: a settings save keeps them as they stand.
 - **Paths**: our loops and routes are made MegaMUD paths. A room's
   signature is learned whenever the engine and our tracker stand in it
   together, else worked out from the realm data (`worldSignature`); a room

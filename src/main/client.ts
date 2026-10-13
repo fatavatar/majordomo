@@ -129,6 +129,7 @@ import {
 } from '../shared/monsterRules';
 import { asMegaMudPaths, type LoopImport } from '../shared/megamudPaths';
 import { settingsFromDraft, settingsToIni } from '../shared/megamud/settings';
+import { asMegaToggle } from '../shared/megamud/toggles';
 import type { MegaData } from './megamud/data';
 import { readMegaData, type EngineMemory, type MegaEngineSetup } from './session/MegaEngine';
 import type { MegaMudSettingsView, SessionSummary } from '../shared/ipc';
@@ -3085,6 +3086,15 @@ function registerIpc(): void {
    * `ProfileSummary`, which is pushed rather than polled — without it the
    * button would stay where it was until something else moved.
    */
+  handle(Invoke.megamudToggle, (_caller, session: unknown, name: unknown) => {
+    const slot = typeof session === 'string' ? host?.get(session as SessionId) : undefined;
+    if (!slot) return t('app.session.notConnected');
+    // Parsed rather than trusted: this crossed the wire.
+    const parsed = asMegaToggle(name);
+    if (parsed === null) return t('app.automation.unknownSwitch');
+    return slot.manager.megaToggle(parsed);
+  });
+
   handle(Invoke.setAutomationSwitch, (_caller, session: unknown, name: unknown, on: unknown) => {
     if (typeof session !== 'string') return t('app.profiles.noSuchCharacter');
     // Parsed rather than checked: this crossed the wire, and a path built

@@ -191,6 +191,7 @@ export function createWebBridge(): IpcApi {
     setRemoteGangpath: (session, on) => invoke(Invoke.setRemoteGangpath, session, on),
     setAutomationSwitch: (session, name, on) =>
       invoke(Invoke.setAutomationSwitch, session, name, on),
+    megamudToggle: (session, name) => invoke(Invoke.megamudToggle, session, name),
     setSupplies: (session, items) => invoke(Invoke.setSupplies, session, items),
     addLoop: (scope, owner, loop) => invoke(Invoke.addLoop, scope, owner, loop),
     runLoop: (session, loop) => invoke(Invoke.runLoop, session, loop),

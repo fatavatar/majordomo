@@ -297,6 +297,7 @@ import {
 } from '../../shared/survival';
 import { deathRisk, hangUpCost, runDue } from '../../shared/danger';
 import { withFled } from '../../shared/fled';
+import type { MegaToggle } from '../../shared/megamud/toggles';
 import { MegaEngine, type MegaEngineSetup } from './MegaEngine';
 
 /**
@@ -4621,6 +4622,7 @@ export class SessionManager {
           },
           here: () => roomAddress(this.tracker.current.room),
           locate: () => this.megaLocate(),
+          toggled: () => this.publishAutomation(),
           world: () => this.world,
           plan: (from, to) =>
             this.world?.route(from, to, this.lapTraveller(this.tracker.current)) ??
@@ -9950,8 +9952,16 @@ export class SessionManager {
         .sort((a, b) => a.at - b.at)
         .reverse(),
       safety: [...this.safetyLog].reverse(),
-      engagements: [...this.engageLog].reverse()
+      engagements: [...this.engageLog].reverse(),
+      ...(this.mega ? { mega: this.mega.toggles } : {})
     };
+  }
+
+  /** One of the MegaMUD engine's toolbar toggles pressed; why not, when it cannot be. */
+  megaToggle(name: MegaToggle): string | null {
+    if (this.mega === null) return t('session.megamud.noEngine');
+    this.mega.toggle(name);
+    return null;
   }
 
   /**

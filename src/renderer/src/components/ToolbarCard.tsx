@@ -59,7 +59,7 @@ export default function ToolbarCard({
   ...chrome
 }: ToolbarCardProps) {
   const all = toolbarButtons(subject);
-  const shown = all.filter((button) => pinnedButtons.has(button.id));
+  const shown = all.filter((button) => button.fixed === true || pinnedButtons.has(button.id));
   const kebab = useRef<HTMLButtonElement | null>(null);
   const [menu, setMenu] = useState(false);
 
@@ -95,18 +95,20 @@ export default function ToolbarCard({
       {menu && kebab.current && (
         <PopupMenu
           at={kebab.current}
-          items={all.map((button) => ({
-            /*
-             * The pin state is in the *label* rather than in a separate
-             * control, because this menu has one job. The palette's rows are
-             * commands with a pin at the end; here the row **is** the pin.
-             */
-            label: pinnedButtons.has(button.id)
-              ? t('cards.toolbar.unpin', { label: button.label })
-              : t('cards.toolbar.pin', { label: button.label }),
-            icon: button.icon,
-            run: () => onPinButton(button.id)
-          }))}
+          items={all
+            .filter((button) => button.fixed !== true)
+            .map((button) => ({
+              /*
+               * The pin state is in the *label* rather than in a separate
+               * control, because this menu has one job. The palette's rows are
+               * commands with a pin at the end; here the row **is** the pin.
+               */
+              label: pinnedButtons.has(button.id)
+                ? t('cards.toolbar.unpin', { label: button.label })
+                : t('cards.toolbar.pin', { label: button.label }),
+              icon: button.icon,
+              run: () => onPinButton(button.id)
+            }))}
           onDismiss={() => {
             setMenu(false);
             chrome.returnFocus?.();

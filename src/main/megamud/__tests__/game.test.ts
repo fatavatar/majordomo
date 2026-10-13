@@ -13,6 +13,7 @@ import {
   sessionEnded
 } from '../script/game';
 import { expandMacros } from '../script/send';
+import { menuCommand } from '../move/buttons';
 import { session } from './fixture';
 
 /* `0x42de00`, `0x47b070`'s tail, `0x42d510`, `0x4b6fe0`, `0x42c910`'s end, `0x4acc40` and `0x41bcf0`, read 2026-10-13. */
@@ -212,5 +213,46 @@ describe('the socket gone (0x42c910)', () => {
     connectionClosed(s);
     expect(out.shown).toEqual([]);
     expect(s.f_e158).toBe(0);
+  });
+});
+
+/* `0x462d20`'s toggles, read 2026-10-13. */
+describe('the toolbar’s toggles', () => {
+  it('flip Auto-Nuke, and back to idle only in a fight', () => {
+    const { s } = session();
+    s.MegaMud_AutoNuke = 0;
+    s.state = 0xd;
+    menuCommand(s, 0x86a);
+    expect(s.MegaMud_AutoNuke).toBe(1);
+    expect(s.state).toBe(0xd);
+    s.inCombat = 1;
+    menuCommand(s, 0x86a);
+    expect(s.state).toBe(0);
+  });
+
+  it('call off a rest when Auto-Heal goes off', () => {
+    const { s } = session();
+    s.MegaMud_AutoHeal = 1;
+    s.restHpToFull = 1;
+    menuCommand(s, 0x7dc);
+    expect(s.MegaMud_AutoHeal).toBe(0);
+    expect(s.restHpToFull).toBe(0);
+  });
+
+  it('call off a run when Auto-Combat comes on', () => {
+    const { s } = session();
+    s.MegaMud_AutoCombat = 0;
+    s.runCount = 3;
+    menuCommand(s, 0x7d3);
+    expect(s.MegaMud_AutoCombat).toBe(1);
+    expect(s.runCount).toBe(0);
+  });
+
+  it('flip All Off', () => {
+    const { s } = session();
+    menuCommand(s, 0x821);
+    expect(s.f_a32c).toBe(1);
+    menuCommand(s, 0x821);
+    expect(s.f_a32c).toBe(0);
   });
 });

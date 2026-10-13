@@ -4,6 +4,7 @@ import {
   type AutomationSwitches
 } from '@shared/config';
 
+import type { MegaToggle, MegaToggles } from '@shared/megamud/toggles';
 import type { Movement } from '@shared/movement';
 
 import type { IconName } from '../components/Icon';
@@ -29,7 +30,7 @@ import { t } from './i18n';
  * room for words, which is the whole reason `Icon` is required here as it is
  * on a `MenuItem`.
  */
-export type ToolbarItemId = AutomationSwitch | ToolbarActionId;
+export type ToolbarItemId = AutomationSwitch | ToolbarActionId | `mega:${MegaToggle}`;
 
 export const TOOLBAR_ACTIONS = [
   'connect',
@@ -192,6 +193,65 @@ function switchLabel(name: AutomationSwitch): string {
   }
 }
 
+/**
+ * The glyph for each of the MegaMUD engine's toggles. Exhaustive for the
+ * reason `SWITCH_ICONS` is.
+ */
+const MEGA_ICONS: Record<MegaToggle, IconName> = {
+  allOff: 'bolt',
+  combat: 'sword',
+  preAttack: 'crosshair',
+  melee: 'hammer',
+  nuke: 'broadcast',
+  heal: 'heart',
+  bless: 'sparkle',
+  light: 'flame',
+  get: 'bag',
+  cash: 'coins',
+  sneak: 'eyeOff',
+  hide: 'door',
+  search: 'search',
+  afk: 'moon'
+};
+
+/** The label for each MegaMUD toggle, one literal key per line for `switchLabel`'s reason. */
+function megaLabel(name: MegaToggle): string {
+  switch (name) {
+    case 'allOff':
+      return t('toolbar.mega.allOff');
+    case 'combat':
+      return t('toolbar.mega.combat');
+    case 'preAttack':
+      return t('toolbar.mega.preAttack');
+    case 'melee':
+      return t('toolbar.mega.melee');
+    case 'nuke':
+      return t('toolbar.mega.nuke');
+    case 'heal':
+      return t('toolbar.mega.heal');
+    case 'bless':
+      return t('toolbar.mega.bless');
+    case 'light':
+      return t('toolbar.mega.light');
+    case 'get':
+      return t('toolbar.mega.get');
+    case 'cash':
+      return t('toolbar.mega.cash');
+    case 'sneak':
+      return t('toolbar.mega.sneak');
+    case 'hide':
+      return t('toolbar.mega.hide');
+    case 'search':
+      return t('toolbar.mega.search');
+    case 'afk':
+      return t('toolbar.mega.afk');
+    default: {
+      const unreachable: never = name;
+      return unreachable;
+    }
+  }
+}
+
 /** One button, resolved against a character: what it says and what it does. */
 export interface ToolbarButton {
   id: ToolbarItemId;
@@ -209,6 +269,12 @@ export interface ToolbarButton {
    * button that moves as the game moves is one nobody can reach for.
    */
   disabled?: boolean;
+  /**
+   * On the row whatever the pins say, and not in the kebab: a MegaMUD toggle,
+   * which the character's own `[Toolbar]` puts on its toolbar (Settings →
+   * MegaMUD → Toolbar), as MegaMUD's own toolbar does.
+   */
+  fixed?: boolean;
   run(): void;
 }
 
@@ -242,6 +308,14 @@ export interface ToolbarSubject {
    */
   canRestoreGear: boolean;
   setSwitch(name: AutomationSwitch, on: boolean): void;
+  /**
+   * The MegaMUD engine's toggles, for a character it runs; null for one the
+   * old automation runs. When present they stand where the switches would:
+   * the old automation stands down for such a character, so its switches
+   * would turn nothing on or off.
+   */
+  mega: MegaToggles | null;
+  setMegaToggle(name: MegaToggle): void;
   /** Put back what was last worn. See `shared/gear.ts`. */
   restoreGear(): void;
   connect(): void;
@@ -287,6 +361,8 @@ export function toolbarButtons(subject: ToolbarSubject): ToolbarButton[] {
     inRealm,
     movement,
     setSwitch,
+    mega,
+    setMegaToggle,
     connect,
     disconnect,
     startMoving,
@@ -329,13 +405,23 @@ export function toolbarButtons(subject: ToolbarSubject): ToolbarButton[] {
     run: restoreGear
   };
 
-  const switches_: ToolbarButton[] = AUTOMATION_SWITCH_NAMES.map((name) => ({
-    id: name,
-    label: switchLabel(name),
-    icon: SWITCH_ICONS[name],
-    on: switches[name],
-    run: () => setSwitch(name, !switches[name])
-  }));
+  const switches_: ToolbarButton[] =
+    mega !== null
+      ? mega.shown.map((name) => ({
+          id: `mega:${name}` as const,
+          label: megaLabel(name),
+          icon: MEGA_ICONS[name],
+          on: mega.on[name],
+          fixed: true,
+          run: () => setMegaToggle(name)
+        }))
+      : AUTOMATION_SWITCH_NAMES.map((name) => ({
+          id: name,
+          label: switchLabel(name),
+          icon: SWITCH_ICONS[name],
+          on: switches[name],
+          run: () => setSwitch(name, !switches[name])
+        }));
 
   const shelf: ToolbarButton[] =
     openLoops === null

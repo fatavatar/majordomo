@@ -18,6 +18,8 @@ const subject = (over: Partial<ToolbarSubject> = {}): ToolbarSubject => ({
   movement: NOT_MOVING,
   canRestoreGear: false,
   setSwitch: vi.fn(),
+  mega: null,
+  setMegaToggle: vi.fn(),
   restoreGear: vi.fn(),
   connect: vi.fn(),
   disconnect: vi.fn(),
@@ -246,5 +248,49 @@ describe('the loop builder on the toolbar', () => {
       .find((button) => button.id === 'loop:build')
       ?.run();
     expect(openBuilder).toHaveBeenCalledTimes(1);
+  });
+});
+
+/*
+ * A character the MegaMUD engine runs has the old automation standing down,
+ * so its switches would turn nothing on or off; the toolbar draws MegaMUD's
+ * own toggles in their place, those its `[Toolbar]` shows (2026-10-13).
+ */
+describe('the MegaMUD engine’s toggles', () => {
+  const mega = {
+    on: {
+      allOff: false,
+      combat: true,
+      preAttack: true,
+      melee: false,
+      nuke: false,
+      heal: true,
+      bless: true,
+      light: true,
+      get: true,
+      cash: true,
+      sneak: false,
+      hide: false,
+      search: false,
+      afk: false
+    },
+    shown: ['combat' as const, 'nuke' as const]
+  };
+
+  it('stand where the switches would, those the character shows, fixed on the row', () => {
+    const buttons = toolbarButtons(subject({ mega }));
+    const toggles = buttons.filter((b) => b.id.startsWith('mega:'));
+    expect(toggles.map((b) => [b.id, b.on, b.fixed])).toEqual([
+      ['mega:combat', true, true],
+      ['mega:nuke', false, true]
+    ]);
+    expect(buttons.some((b) => b.id === 'combat')).toBe(false);
+  });
+
+  it('press the engine’s toggle', () => {
+    const setMegaToggle = vi.fn();
+    const nuke = toolbarButtons(subject({ mega, setMegaToggle })).find((b) => b.id === 'mega:nuke');
+    nuke!.run();
+    expect(setMegaToggle).toHaveBeenCalledWith('nuke');
   });
 });

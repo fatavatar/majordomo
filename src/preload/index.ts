@@ -92,6 +92,7 @@ const api: IpcApi = {
   setRemoteGangpath: (session, on) => ipcRenderer.invoke(Invoke.setRemoteGangpath, session, on),
   setAutomationSwitch: (session, name, on) =>
     ipcRenderer.invoke(Invoke.setAutomationSwitch, session, name, on),
+  megamudToggle: (session, name) => ipcRenderer.invoke(Invoke.megamudToggle, session, name),
   setSupplies: (session, items) => ipcRenderer.invoke(Invoke.setSupplies, session, items),
   addLoop: (scope, owner, loop) => ipcRenderer.invoke(Invoke.addLoop, scope, owner, loop),
   runLoop: (session, loop) => ipcRenderer.invoke(Invoke.runLoop, session, loop),

@@ -377,3 +377,28 @@ describe('what the engine learns, kept between sessions', () => {
     e.dispose();
   });
 });
+
+describe('the toolbar’s toggles on the engine', () => {
+  it('say when they change, and press through to MegaMUD’s commands', () => {
+    const { e } = engine();
+    const host = (e as unknown as { host: MegaEngineHost }).host;
+    let said = 0;
+    host.toggled = () => (said += 1);
+    const before = e.toggles.on.nuke;
+    e.toggle('nuke');
+    expect(e.toggles.on.nuke).toBe(!before);
+    expect(said).toBe(1);
+    e.typed('look');
+    expect(said).toBe(1);
+    e.dispose();
+  });
+
+  it('are kept through a settings reload', () => {
+    const { e } = engine();
+    const before = e.toggles.on.nuke;
+    e.toggle('nuke');
+    e.reload({ settings: defaultSettings(), data: e.s.data, grants: {} });
+    expect(e.toggles.on.nuke).toBe(!before);
+    e.dispose();
+  });
+});

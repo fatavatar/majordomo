@@ -9,6 +9,7 @@
  * as a string union in `rules.ts` — which is the same mistake as holding two
  * representations of a direction: the two agree until one of them is edited.
  */
+import type { MegaToggles } from './megamud/toggles';
 import type { RuleFiring } from './rules';
 
 /**
@@ -168,6 +169,12 @@ export interface AutomationSnapshot {
   safety: SafetyDecision[];
   /** Newest first. What auto-combat opened on, or declined to and why. */
   engagements: EngageDecision[];
+  /**
+   * The MegaMUD engine's toolbar toggles, for a character it runs; absent for
+   * one the old automation runs. Here because they are what this character's
+   * automation is set to do, pushed whenever they change.
+   */
+  mega?: MegaToggles;
 }
 
 export const EMPTY_AUTOMATION: AutomationSnapshot = {

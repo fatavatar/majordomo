@@ -71,6 +71,7 @@ import type { CureGates, SpellTargeting } from './spellcraft';
 import type { ThemePreference } from './themes';
 import type { ProfileAccent } from './profiles';
 import type { MegaSettings } from './megamud/settings';
+import type { MegaToggle } from './megamud/toggles';
 
 /** A character's MegaMUD settings as the window edits them. */
 export interface MegaMudSettingsView {
@@ -856,6 +857,12 @@ export const Invoke = {
    */
   setAutomationSwitch: 'settings:automation-switch',
   /**
+   * One of the MegaMUD engine's toolbar toggles pressed (`MEGA_TOGGLES`):
+   * its window command, run on the character's engine. Nothing is written —
+   * MegaMUD's toggles are the session's, and its modes change them as it goes.
+   */
+  megamudToggle: 'megamud:toggle',
+  /**
    * This character's whole supplies list, from the Self card or the item
    * panel — `automation.supplies.items`, written whole for the reason the
    * gang list is: the surface shows the whole list, and a min changed on one
@@ -1318,6 +1325,8 @@ export interface IpcApi {
     name: AutomationSwitch,
     on: boolean
   ): Promise<string | null>;
+  /** Presses one MegaMUD toggle on a character's engine. See `Invoke.megamudToggle`. */
+  megamudToggle(session: SessionId, name: MegaToggle): Promise<string | null>;
   /** Writes this character's whole supplies list. See `Invoke.setSupplies`. */
   setSupplies(session: SessionId, items: SupplyItem[]): Promise<string | null>;
   /**

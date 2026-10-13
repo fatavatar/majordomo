@@ -1,10 +1,14 @@
 /**
  * The window's buttons (`0x462d20`'s commands), read 2026-10-13: Go/Stop
- * (`0x803`), Roam (`0x808`), AFK (`0x809`) and Step Back (`0x869`). The
- * app's buttons and the remote `@stop`/`@rego` call these.
+ * (`0x803`), Roam (`0x808`), AFK (`0x809`), Step Back (`0x869`) and the
+ * toolbar's toggles (`shared/megamud/toggles.ts`). The app's buttons and the
+ * remote `@stop`/`@rego` call these. Each toggle ends as MegaMUD's do, by
+ * waking the scheduler (`0x42e0e0`); the window's redraw (`0x460d50`) is
+ * ours, when the engine reports its toggles changed.
  */
 import { modeDefaults, reEngage } from '../script/modes';
-import { wake } from '../script/send';
+import { send, wake } from '../script/send';
+import { setState } from '../script/state';
 import { setActive } from '../script/timer';
 import { setTask } from '../script/task';
 import type { Session } from '../Session';
@@ -72,10 +76,99 @@ export function stepBack(s: Session): void {
   runBack(s, 1);
 }
 
+/** `0x4aa740`: back to idle, unless waiting on one of the states above `0x14`. */
+function settle(s: Session): void {
+  if (s.state <= 0x14) setState(s, 0);
+}
+
+/** `0x7d3`: auto-combat. On, a run is called off. */
+function autoCombat(s: Session): void {
+  const was = s.MegaMud_AutoCombat;
+  s.MegaMud_AutoCombat = was === 0 ? 1 : 0;
+  if (s.detourCombat === -1) s.idleCombat = s.MegaMud_AutoCombat;
+  else if (was === 0) s.idleCombat = 1;
+  if (s.inCombat !== 0) settle(s);
+  if (s.MegaMud_AutoCombat !== 0) {
+    s.runCount = 0;
+    s.f_907c = 0;
+  }
+  wake(s);
+}
+
+/** `0x7dc`: auto-heal. Off, any resting it had begun is called off. */
+function autoHeal(s: Session): void {
+  const was = s.MegaMud_AutoHeal;
+  s.MegaMud_AutoHeal = was === 0 ? 1 : 0;
+  if (was !== 0) {
+    s.resting = 0;
+    s.restHpToFull = 0;
+    s.restManaToFull = 0;
+    s.hpFullAt = 0;
+    s.manaFullAt = 0;
+  }
+  settle(s);
+  wake(s);
+}
+
+/** `0x821`: all off. Back on outside the game, a return is sent to wake it. */
+function allOff(s: Session): void {
+  const was = s.f_a32c;
+  s.f_e398 = 0;
+  s.f_a32c = was === 0 ? 1 : 0;
+  if (was !== 0 && s.inGame === 0) {
+    s.f_7ed4 = 0;
+    send(s, '\r');
+  }
+  wake(s);
+}
+
+type Toggled =
+  | 'MegaMud_AutoGet'
+  | 'MegaMud_AutoSearch'
+  | 'MegaMud_AutoSneak'
+  | 'MegaMud_AutoTrack'
+  | 'MegaMud_AutoHide'
+  | 'MegaMud_AutoCash'
+  | 'MegaMud_AutoBless'
+  | 'MegaMud_AutoLight'
+  | 'MegaMud_AutoPreAttack'
+  | 'MegaMud_AutoNuke'
+  | 'f_8be8';
+
+/**
+ * The plain toggles: flipped, and then idle again — always (`0x82a` bless,
+ * `0x870` light), only in a fight (`0x829` pre-attack, `0x86a` nuke,
+ * `0x8a4` melee), or not at all (the rest).
+ */
+const PLAIN: Record<number, [Toggled, 'always' | 'fighting' | 'never']> = {
+  0x7d9: ['MegaMud_AutoGet', 'never'],
+  0x7f2: ['MegaMud_AutoSearch', 'never'],
+  0x801: ['MegaMud_AutoSneak', 'never'],
+  0x804: ['MegaMud_AutoTrack', 'never'],
+  0x815: ['MegaMud_AutoHide', 'never'],
+  0x823: ['MegaMud_AutoCash', 'never'],
+  0x82a: ['MegaMud_AutoBless', 'always'],
+  0x870: ['MegaMud_AutoLight', 'always'],
+  0x829: ['MegaMud_AutoPreAttack', 'fighting'],
+  0x86a: ['MegaMud_AutoNuke', 'fighting'],
+  0x8a4: ['f_8be8', 'fighting']
+};
+
 /** A window command posted (`0x460b90`) and run now: the ones the engine has. */
 export function menuCommand(s: Session, command: number): void {
   if (command === 0x803) goStop(s);
   else if (command === 0x808) roam(s);
   else if (command === 0x809) afk(s);
   else if (command === 0x869) stepBack(s);
+  else if (command === 0x7d3) autoCombat(s);
+  else if (command === 0x7dc) autoHeal(s);
+  else if (command === 0x821) allOff(s);
+  else {
+    const plain = PLAIN[command];
+    if (!plain) return;
+    const [field, idle] = plain;
+    s[field] = s[field] === 0 ? 1 : 0;
+    if (idle === 'always' || (idle === 'fighting' && s.inCombat !== 0)) settle(s);
+    wake(s);
+  }
 }
