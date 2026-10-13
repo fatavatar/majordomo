@@ -382,6 +382,59 @@ Decoded 2026-09-23 from the loaders: monsters at `0x46c690` and items at
 The relationship value table is at `0x562410` (lookup `0x4462e0`, id 10). Our
 readers are in `src/shared/megamudDb.ts`.
 
+## Saving the data files (`0x43bfa0`)
+
+Read 2026-10-13. MegaMUD keeps its databases in memory and saves them in one
+routine, `0x43bfa0`. It is called:
+- from the end of `0x466d00` (WinMain), after the message loop, on the way
+  out;
+- by the Game Data menu (`0x43ae40`), the path recorder (`0x4827e0`,
+  `0x483dd0`) and the path scan (`0x4822c0`, `0x489ab0`).
+
+**What is saved:** each database whose changed flag is set, into each of its
+four layer folders:
+
+| Flag | Database | Writer |
+|---|---|---|
+| `0xe27c` | Races.md | `0x497440` |
+| `0xe280` | Classes.md | `0x4229e0` |
+| `0xe24c` | Players.md | `0x494640` |
+| `0xe254` | Monsters.md | `0x46fa70` |
+| `0xe258` | Items.md | `0x45a240` |
+| `0xe25c` | Spells.md | `0x4a2e60` |
+| `0xe260` | Messages.md | `0x46be20` |
+| `0xe264` | Rooms.md | `0x49ab30` |
+| `0xe26c` | Paths.md | `0x488ba0` |
+| `0xe270` | Macros.md | `0x45c8a0` |
+
+In play, only Players, Monsters and Items are marked; the rest are marked by
+the editors and the path recorder. Each writer clears its own flag.
+
+**Monsters and items** (`0x46fa70`, `0x45a240`):
+- A record is written only if it carries `0x40000000` (changed) and not
+  `0x80000000` (deleted). Deleted ones are removed from the file and the
+  list.
+- New records get `0x40000000` when they are made: `0x46c220` gives a
+  monster flags `0x40000002`, and `0x4565c0` gives an item `0x40000001`. The
+  bit is not cleared after saving.
+- A record with id 0 is given one more than the highest id of any other, and
+  no lower than 10000.
+- The fields written are those the loader reads, with flags masked as it
+  masks them (`& 0x3fffffff` for monsters, `& 0x38ffffff` for items). The
+  rest of the stored record is kept as it was on file.
+
+**Players** (`0x494640`) are all written; there is no changed bit:
+- A player never stamped as seen (`+0x88`) is stamped now.
+- A player not seen for more than `Other.DelPlayers` days, and not marked
+  `0x200`, is removed instead, with `[Inactive player "%s" removed (not
+  seen for %d days)]`.
+- Flag 1 is set, then cleared if race, class and kind are all known.
+- Flags are written `& 0xffff3fff`, dropping the session's own bits. A kind
+  of 7 is not written; the stored kind stays.
+
+The port keeps the rules but writes its own store, not the `.md` files
+(`src/main/megamud/saved.ts`, `src/main/world/MegaLearned.ts`).
+
 ## The settings dialog (`0x49eea0`)
 
 Read 2026-10-13. The settings dialog is one property sheet of sixteen pages.
