@@ -3,8 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-import { MegaLearned, type MegaLearnedData } from '../MegaLearned';
-import type { MonsterRec, PlayerRec } from '../../megamud/data';
+import { MegaLearned } from '../MegaLearned';
 import type { RoomId } from '../../../shared/world';
 
 let dir: string;
@@ -17,63 +16,66 @@ beforeEach(() => {
 
 afterEach(() => fs.rmSync(dir, { recursive: true, force: true }));
 
-const hatchling = {
-  layer: 0,
-  name: 'mutated dragon hatchling',
-  id: 10000,
-  flags: 0x40000002,
-  relationship: 4,
-  exp: 63520,
-  maxHp: 0,
-  preSpell: '',
-  attackSpell: '',
-  preMax: 0,
-  attackMax: 0
-} satisfies MonsterRec;
+const PATTIE = { name: 'Krabby Pattie', weight: 2, slot: null, weapon: false };
 
-const fatty = { name: 'Fatty', layer: 2, flags: 0, level: 64 } as PlayerRec;
-
-function learned(over: Partial<MegaLearnedData> = {}): MegaLearnedData {
-  return { monsters: [], items: [], players: [], signatures: [], ...over };
-}
-
-describe('what the MegaMUD engine learned, kept between sessions', () => {
+describe('what the MegaMUD engine learned of items and rooms, kept between sessions', () => {
   it('is read back by realm after it is written', () => {
     const store = new MegaLearned({ file, saveDelayMs: 0 });
-    store.keep('mudrev.mdb', learned({ monsters: [hatchling], players: [fatty] }));
-    store.keep('mudrev.mdb', learned({ signatures: [['1/9650' as RoomId, 0x36804010]] }));
+    store.keep('mudrev.mdb', { items: [PATTIE], signatures: [] });
+    store.keep('mudrev.mdb', { items: [], signatures: [['1/9650' as RoomId, 0x36804010]] });
     store.flush();
 
     const again = new MegaLearned({ file });
-    const back = again.forRealm('mudrev.mdb');
-    expect(back.monsters).toEqual([hatchling]);
-    expect(back.players.map((p) => p.name)).toEqual(['Fatty']);
-    expect(back.signatures).toEqual([['1/9650', 0x36804010]]);
-    expect(again.forRealm('paradigm').monsters).toEqual([]);
+    expect(again.forRealm('mudrev.mdb')).toEqual({
+      items: [PATTIE],
+      signatures: [['1/9650', 0x36804010]]
+    });
+    expect(again.forRealm('paradigm')).toEqual({ items: [], signatures: [] });
   });
 
-  it('keeps a record by name, the newer over the older', () => {
+  it('keeps an item by name, the newer over the older', () => {
     const store = new MegaLearned({ file, saveDelayMs: 0 });
-    store.keep('r', learned({ monsters: [hatchling] }));
-    store.keep(
-      'r',
-      learned({ monsters: [{ ...hatchling, name: 'Mutated Dragon Hatchling', exp: 1 }] })
+    store.keep('r', { items: [PATTIE], signatures: [] });
+    store.keep('r', { items: [{ ...PATTIE, name: 'krabby pattie', weight: 3 }], signatures: [] });
+    expect(store.forRealm('r').items.map((i) => i.weight)).toEqual([3]);
+  });
+
+  /* The first version, written 13 October 2026, kept MegaMUD's own records. */
+  it('takes up the first version: items and signatures kept, stances handed on, players dropped', () => {
+    fs.writeFileSync(
+      file,
+      JSON.stringify({
+        v: 1,
+        realms: {
+          'mudrev.mdb': {
+            monsters: [{ name: 'mutated dragon hatchling', relationship: 4 }],
+            items: [{ name: 'Staff of the Undead', weight: 300, type: 1, location: 0 }],
+            players: [{ name: 'Fatty' }],
+            signatures: [['1/2', 7]]
+          }
+        }
+      })
     );
-    expect(store.forRealm('r').monsters.map((m) => m.exp)).toEqual([1]);
-  });
-
-  it('forgets a player MegaMUD removed', () => {
     const store = new MegaLearned({ file, saveDelayMs: 0 });
-    store.keep('r', learned({ players: [fatty] }));
-    store.keep('r', learned({ removedPlayers: ['fatty'] }));
-    expect(store.forRealm('r').players).toEqual([]);
+    expect(store.forRealm('mudrev.mdb')).toEqual({
+      items: [{ name: 'Staff of the Undead', weight: 300, slot: null, weapon: true }],
+      signatures: [['1/2', 7]]
+    });
+    expect(store.takeStances()).toEqual([
+      { realm: 'mudrev.mdb', mob: 'mutated dragon hatchling', relationship: 'enemy' }
+    ]);
+    expect(store.takeStances()).toEqual([]);
+    store.flush();
+    const written = JSON.parse(fs.readFileSync(file, 'utf8'));
+    expect(written.v).toBe(2);
+    expect(Object.keys(written.realms['mudrev.mdb'])).toEqual(['items', 'signatures']);
   });
 
   it('writes nothing over a file that will not parse, and says so', () => {
     fs.writeFileSync(file, '{ not json');
     const said: string[] = [];
     const store = new MegaLearned({ file, saveDelayMs: 0, notify: (m) => said.push(m) });
-    store.keep('r', learned({ monsters: [hatchling] }));
+    store.keep('r', { items: [PATTIE], signatures: [] });
     store.flush();
     expect(fs.readFileSync(file, 'utf8')).toBe('{ not json');
     expect(said).toHaveLength(1);

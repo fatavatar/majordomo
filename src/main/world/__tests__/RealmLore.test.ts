@@ -528,3 +528,26 @@ describe('the effects a realm could not name', () => {
     expect(effects.seen('You are poisoned!')).toBeNull();
   });
 });
+
+/*
+ * What the MegaMUD engine learns a monster is to us — an enemy for swinging
+ * first, avoided for not being worth a fight — kept beside its health
+ * (13 October 2026), in the monster table's words.
+ */
+describe('what a monster was learned to be', () => {
+  it('is kept per realm and read back', () => {
+    const lore = store();
+    lore.learnStance('mudrev.mdb', 'Mutated Dragon Hatchling', 'enemy', 1);
+    lore.flush();
+    const again = store();
+    expect([...again.stancesFor('mudrev.mdb')]).toEqual([['mutated dragon hatchling', 'enemy']]);
+    expect(again.stancesFor('paradigm').size).toBe(0);
+  });
+
+  it('takes the newer word', () => {
+    const lore = store();
+    lore.learnStance('r', 'kobold', 'enemy', 1);
+    lore.learnStance('r', 'kobold', 'avoid', 2);
+    expect(lore.stancesFor('r').get('kobold')).toBe('avoid');
+  });
+});

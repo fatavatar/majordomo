@@ -1,42 +1,48 @@
 /**
- * What the MegaMUD engine learns in play, kept between sessions.
+ * What the MegaMUD engine learns in play that no other store of ours holds:
+ * items it has met (their weight, and whether a weapon or worn where) and the
+ * room signatures (`0x8130`) it learned where it and our tracker stood
+ * together, so a path is not relearned on every launch.
  *
- * MegaMUD keeps its databases in memory, marks each one it changed while
- * playing — a monster or item seen for the first time, a player met, a
- * monster's experience or an item's weight worked out (`0xe24c` players,
- * `0xe254` monsters, `0xe258` items) — and on the way out writes the marked
- * ones back to their `.md` files (`0x43bfa0`, called from the end of
- * `0x466d00`). The logic is MegaMUD's; the storage is this client's own, as
- * its other learned files are: a realm-keyed JSON file beside them, written
- * lazily by temp file and rename. MegaMUD's own files are only ever read.
+ * MegaMUD keeps its databases in memory, marks those it changed in play
+ * (`0xe24c` players, `0xe254` monsters, `0xe258` items) and writes the marked
+ * ones on the way out (`0x43bfa0`). The decision is MegaMUD's; where it goes
+ * is ours: a monster's stance to the realm lore (`RealmLore.learnStance`), a
+ * player to nothing at all (our tracker already writes what it sees of them
+ * to `PlayerBook`), and the rest here — a realm-keyed JSON file beside the
+ * others, written lazily by temp file and rename, as `RealmLore` is.
  *
- * Records are kept whole, by name (monsters, items, players) — the engine
- * lays them over the realm's `.md` data when it starts — and room signatures
- * by room, so a path learned once is not relearned on every launch.
+ * **Keyed by realm**, as `RealmLore` is: an item's weight is a fact about the
+ * world, and two characters on one realm learn it once between them.
  *
- * **Keyed by realm**, as `RealmLore` is: a monster's experience is a fact
- * about the world, and two characters on one realm learn it once between
- * them.
+ * The first version of this file (13 October 2026) kept MegaMUD's own records
+ * whole. It is read once more on the way in: its items and signatures are
+ * kept, its monsters' stances handed to the lore (`takeStances`), and its
+ * players dropped.
  */
 import fs from 'node:fs';
 import path from 'node:path';
 
 import { t } from '../app/i18n';
 import { tuning } from '../app/tuning';
-import type { ItemRec, MonsterRec, PlayerRec } from '../megamud/data';
-import type { RoomId } from '../../shared/world';
+import { RELATIONSHIPS, type Relationship } from '../../shared/monsterRules';
 import { errorMessage } from '../../shared/values';
+import type { RoomId } from '../../shared/world';
 import { realmKey } from './RealmLore';
 
-/** What one realm's engine has learned. */
+/** An item as the engine learned it. Null where it has not found out. */
+export interface LearnedItem {
+  name: string;
+  weight: number | null;
+  /** Worn where (MegaMUD's location number), when known to be worn. */
+  slot: number | null;
+  weapon: boolean;
+}
+
+/** What one realm's engine learned that is kept here. */
 export interface MegaLearnedData {
-  monsters: MonsterRec[];
-  items: ItemRec[];
-  players: PlayerRec[];
-  /** Room signatures (`0x8130`) learned where the engine and our tracker stood together. */
+  items: LearnedItem[];
   signatures: [RoomId, number][];
-  /** Players MegaMUD removed for not being seen in `Other.DelPlayers` days (`0x494640`). */
-  removedPlayers?: string[];
 }
 
 export interface MegaLearnedOptions {
@@ -48,37 +54,57 @@ export interface MegaLearnedOptions {
   notify?(message: string): void;
 }
 
+const VERSION = 2;
+
 interface LearnedFile {
   v: number;
   realms: Record<string, MegaLearnedData>;
 }
 
 interface RealmTables {
-  monsters: Map<string, MonsterRec>;
-  items: Map<string, ItemRec>;
-  players: Map<string, PlayerRec>;
+  items: Map<string, LearnedItem>;
   signatures: Map<RoomId, number>;
 }
 
-function emptyTables(): RealmTables {
-  return { monsters: new Map(), items: new Map(), players: new Map(), signatures: new Map() };
-}
+/** MegaMUD's relationship numbers, as the first version kept them. */
+const RELATIONSHIP_OF: Record<number, Relationship> = {
+  2: 'friend',
+  3: 'avoid',
+  4: 'enemy',
+  5: 'escape',
+  6: 'hangup'
+};
 
 /** A name's key: MegaMUD finds its records without regard to case. */
 function nameKey(name: string): string {
   return name.toLowerCase();
 }
 
-function records<T extends { name: string }>(raw: unknown): T[] {
-  if (!Array.isArray(raw)) return [];
-  return raw.filter(
-    (rec): rec is T =>
-      typeof rec === 'object' && rec !== null && typeof (rec as T).name === 'string'
-  );
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+function asItem(raw: unknown, version: number): LearnedItem | null {
+  if (!isRecord(raw) || typeof raw['name'] !== 'string') return null;
+  if (version < 2) {
+    // MegaMUD's item record: weight -1 unknown, type 1 a weapon, location where worn.
+    const weight = typeof raw['weight'] === 'number' && raw['weight'] >= 0 ? raw['weight'] : null;
+    const weapon = raw['type'] === 1;
+    const location = typeof raw['location'] === 'number' ? raw['location'] : 0;
+    return { name: raw['name'], weight, slot: !weapon && location > 0 ? location : null, weapon };
+  }
+  return {
+    name: raw['name'],
+    weight: typeof raw['weight'] === 'number' ? raw['weight'] : null,
+    slot: typeof raw['slot'] === 'number' ? raw['slot'] : null,
+    weapon: raw['weapon'] === true
+  };
 }
 
 export class MegaLearned {
   private readonly realms = new Map<string, RealmTables>();
+  /** Stances found in a first-version file, for the lore. See `takeStances`. */
+  private legacyStances: { realm: string; mob: string; relationship: Relationship }[] = [];
   private timer: NodeJS.Timeout | null = null;
   private dirty = false;
   private loaded = false;
@@ -91,29 +117,34 @@ export class MegaLearned {
   forRealm(realm: string): MegaLearnedData {
     this.load();
     const tables = this.realms.get(realmKey(realm));
-    if (!tables) return { monsters: [], items: [], players: [], signatures: [] };
+    if (!tables) return { items: [], signatures: [] };
     return structuredClone({
-      monsters: [...tables.monsters.values()],
       items: [...tables.items.values()],
-      players: [...tables.players.values()],
       signatures: [...tables.signatures]
     });
   }
 
-  /** Records and signatures the engine changed, kept over what is on file. */
+  /** Items and signatures the engine learned, kept over what is on file. */
   keep(realm: string, learned: MegaLearnedData): void {
     this.load();
     if (this.suspended) return;
     const key = realmKey(realm);
     let tables = this.realms.get(key);
-    if (!tables) this.realms.set(key, (tables = emptyTables()));
-    for (const rec of learned.monsters)
-      tables.monsters.set(nameKey(rec.name), structuredClone(rec));
-    for (const rec of learned.items) tables.items.set(nameKey(rec.name), structuredClone(rec));
-    for (const rec of learned.players) tables.players.set(nameKey(rec.name), structuredClone(rec));
-    for (const name of learned.removedPlayers ?? []) tables.players.delete(nameKey(name));
+    if (!tables) this.realms.set(key, (tables = { items: new Map(), signatures: new Map() }));
+    for (const item of learned.items) tables.items.set(nameKey(item.name), { ...item });
     for (const [room, sig] of learned.signatures) tables.signatures.set(room, sig);
     this.schedule();
+  }
+
+  /**
+   * The monsters' stances a first-version file held, taken once, for the
+   * caller to hand to the realm lore; the file is then rewritten without them.
+   */
+  takeStances(): { realm: string; mob: string; relationship: Relationship }[] {
+    this.load();
+    const taken = this.legacyStances;
+    this.legacyStances = [];
+    return taken;
   }
 
   /** Read once, on the first question asked; see `RealmLore.load`. */
@@ -152,24 +183,33 @@ export class MegaLearned {
       return;
     }
     this.suspended = false;
-    const file = parsed as Partial<LearnedFile>;
-    for (const [realm, data] of Object.entries(file.realms ?? {})) {
-      if (typeof data !== 'object' || data === null) continue;
-      const tables = emptyTables();
-      for (const rec of records<MonsterRec>(data.monsters)) {
-        tables.monsters.set(nameKey(rec.name), rec);
+    const file = isRecord(parsed) ? parsed : {};
+    const version = typeof file['v'] === 'number' ? file['v'] : VERSION;
+    for (const [realm, data] of Object.entries(isRecord(file['realms']) ? file['realms'] : {})) {
+      if (!isRecord(data)) continue;
+      const tables: RealmTables = { items: new Map(), signatures: new Map() };
+      for (const raw of Array.isArray(data['items']) ? data['items'] : []) {
+        const item = asItem(raw, version);
+        if (item) tables.items.set(nameKey(item.name), item);
       }
-      for (const rec of records<ItemRec>(data.items)) tables.items.set(nameKey(rec.name), rec);
-      for (const rec of records<PlayerRec>(data.players)) {
-        tables.players.set(nameKey(rec.name), rec);
-      }
-      for (const pair of Array.isArray(data.signatures) ? data.signatures : []) {
+      for (const pair of Array.isArray(data['signatures']) ? data['signatures'] : []) {
         if (Array.isArray(pair) && typeof pair[0] === 'string' && typeof pair[1] === 'number') {
           tables.signatures.set(pair[0] as RoomId, pair[1]);
         }
       }
+      if (version < 2) {
+        for (const mon of Array.isArray(data['monsters']) ? data['monsters'] : []) {
+          if (!isRecord(mon) || typeof mon['name'] !== 'string') continue;
+          const relationship = RELATIONSHIP_OF[Number(mon['relationship'])];
+          if (relationship && RELATIONSHIPS.includes(relationship)) {
+            this.legacyStances.push({ realm, mob: mon['name'], relationship });
+          }
+        }
+      }
       this.realms.set(realm, tables);
     }
+    // A first-version file is rewritten in this one's shape.
+    if (version < VERSION) this.schedule();
   }
 
   private schedule(): void {
@@ -186,14 +226,12 @@ export class MegaLearned {
   save(): void {
     if (this.suspended || !this.dirty) return;
     this.dirty = false;
-    const byName = <T extends { name: string }>(a: T, b: T): number =>
-      a.name < b.name ? -1 : a.name > b.name ? 1 : 0;
     const realms: LearnedFile['realms'] = {};
     for (const [realm, tables] of [...this.realms].sort(([a], [b]) => (a < b ? -1 : 1))) {
       realms[realm] = {
-        monsters: [...tables.monsters.values()].sort(byName),
-        items: [...tables.items.values()].sort(byName),
-        players: [...tables.players.values()].sort(byName),
+        items: [...tables.items.values()].sort((a, b) =>
+          a.name < b.name ? -1 : a.name > b.name ? 1 : 0
+        ),
         signatures: [...tables.signatures].sort(([a], [b]) => (a < b ? -1 : 1))
       };
     }
@@ -202,7 +240,7 @@ export class MegaLearned {
       fs.mkdirSync(path.dirname(this.options.file), { recursive: true });
       fs.writeFileSync(
         temporary,
-        `${JSON.stringify({ v: 1, realms } satisfies LearnedFile, null, 2)}\n`
+        `${JSON.stringify({ v: VERSION, realms } satisfies LearnedFile, null, 2)}\n`
       );
       fs.renameSync(temporary, this.options.file);
     } catch (error) {

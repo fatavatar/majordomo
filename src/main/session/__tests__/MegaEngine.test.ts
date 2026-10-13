@@ -4,9 +4,16 @@ import { newTerminal, parseData } from '../../megamud/input/ParseData';
 import { defaultSettings } from '../../../shared/megamud/settings';
 import type { RoomId, Route, RouteStep, WorldRoom } from '../../../shared/world';
 import { session } from '../../megamud/__tests__/fixture';
-import { MegaEngine, nameHash, worldSignature, type MegaEngineHost } from '../MegaEngine';
-import { newMonster } from '../../megamud/data';
-import type { MegaLearnedData } from '../../world/MegaLearned';
+import {
+  MegaEngine,
+  nameHash,
+  worldSignature,
+  type EngineLessons,
+  type EngineMemory,
+  type MegaEngineHost
+} from '../MegaEngine';
+import { newMonster, type MonsterRec } from '../../megamud/data';
+import type { PlayerFacts } from '../../../shared/players';
 
 function room(map: number, number: number, name: string, exits: WorldRoom['exits']): WorldRoom {
   return { map, room: number, name, exits } as WorldRoom;
@@ -300,13 +307,13 @@ describe('the player sending a line', () => {
 describe('what the engine learns, kept between sessions', () => {
   /*
    * MegaMUD writes the databases it marked changed on the way out
-   * (`0x43bfa0`); ours are handed to `MegaLearned`. Until 13 October 2026
-   * every monster, item, player and room signature learned was lost with the
+   * (`0x43bfa0`); ours go to our own stores. Until 13 October 2026 every
+   * monster, item, player and room signature learned was lost with the
    * session.
    */
-  function remembering(kept: MegaLearnedData) {
+  function remembering(memory: Partial<EngineMemory> = {}) {
     vi.useFakeTimers();
-    const handed: MegaLearnedData[] = [];
+    const handed: EngineLessons[] = [];
     const { e: plain } = engine();
     const host = (plain as unknown as { host: MegaEngineHost }).host;
     plain.dispose();
@@ -314,46 +321,40 @@ describe('what the engine learns, kept between sessions', () => {
       settings: defaultSettings(),
       data: { monsters: [], items: [], spells: [] },
       grants: {},
-      memory: { kept, keep: (learned) => handed.push(learned) }
+      memory: {
+        stances: new Map(),
+        players: [],
+        items: [],
+        signatures: [],
+        keep: (lessons) => handed.push(lessons),
+        ...memory
+      }
     });
     return { e, handed };
   }
 
-  const KOBOLD = {
-    layer: 0,
-    name: 'kobold thief',
-    id: 10000,
-    flags: 0x40000002,
-    relationship: 4,
-    exp: 120,
-    maxHp: 0,
-    preSpell: '',
-    attackSpell: '',
-    preMax: 0,
-    attackMax: 0
-  };
-
-  it('starts from what it learned before, flags as MegaMUD reads them', () => {
+  it('starts from what our stores know', () => {
     const { e } = remembering({
-      monsters: [KOBOLD],
-      items: [],
-      players: [],
+      stances: new Map([['kobold thief', 'enemy']]),
+      items: [{ name: 'Krabby Pattie', weight: 2, slot: null, weapon: false }],
+      players: [{ name: 'Fatty', lastSeen: Date.now(), level: 64 } as PlayerFacts],
       signatures: [['1/2' as RoomId, 0x36804010]]
     });
-    expect(e.s.data.monsters).toEqual([{ ...KOBOLD, flags: 2 }]);
+    expect(e.s.data.monsters.map((m) => [m.name, m.relationship])).toEqual([['kobold thief', 4]]);
+    expect(e.s.data.items.find((i) => i.name === 'Krabby Pattie')?.weight).toBe(2);
+    expect(e.s.data.players?.find((p) => p.name === 'Fatty')?.level).toBe(64);
     expect(e.learned.get('1/2' as RoomId)).toBe(0x36804010);
     e.dispose();
   });
 
   it('hands over what it marks changed at the next second, and the rest on the way out', () => {
-    const { e, handed } = remembering({ monsters: [], items: [], players: [], signatures: [] });
+    const { e, handed } = remembering();
     const mon = newMonster(e.s.data);
     mon.name = 'mutated dragon hatchling';
+    mon.relationship = 4;
     e.s.f_e254 = 1;
     vi.advanceTimersByTime(1000);
-    expect(handed.map((l) => l.monsters.map((m) => m.name))).toEqual([
-      ['mutated dragon hatchling']
-    ]);
+    expect(handed.map((l) => l.stances)).toEqual([[['mutated dragon hatchling', 'enemy']]]);
     expect(e.s.f_e254).toBe(0);
     vi.advanceTimersByTime(1000);
     expect(handed).toHaveLength(1);
@@ -362,7 +363,11 @@ describe('what the engine learns, kept between sessions', () => {
   });
 
   it('copies the data it was given, which other sessions share', () => {
-    const data = { monsters: [{ ...KOBOLD, flags: 2 }], items: [], spells: [] };
+    const data = {
+      monsters: [{ name: 'kobold', relationship: 4 } as MonsterRec],
+      items: [],
+      spells: []
+    };
     const { e: plain } = engine();
     const host = (plain as unknown as { host: MegaEngineHost }).host;
     plain.dispose();

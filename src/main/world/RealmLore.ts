@@ -23,6 +23,7 @@ import {
   type SlotLoreEntry
 } from '../../shared/lore';
 import { rowNameOf } from '../../shared/mobs';
+import { RELATIONSHIPS, type Relationship } from '../../shared/monsterRules';
 import { mobKey, type RoomId } from '../../shared/world';
 import { errorMessage } from '../../shared/values';
 import { t } from '../app/i18n';
@@ -86,11 +87,24 @@ interface LoreFile {
    */
   deaths?: Record<string, Record<string, LearnedDeath>>;
   /**
+   * What each monster is to us, as the MegaMUD engine learned it in play —
+   * an enemy for swinging first, avoided for not being worth a fight —
+   * per realm, keyed by `mobKey`, in the monster table's own words. Optional
+   * for the same reason `slots` is.
+   */
+  stances?: Record<string, Record<string, LearnedStance>>;
+  /**
    * What each realm worked out about the effects it could not name, keyed by
    * the sentence that announces one (todo 00, 2026-09-12). See
    * {@link LearnedEffect}. Optional for the same reason `slots` is.
    */
   effects?: Record<string, Record<string, LearnedEffect>>;
+}
+
+/** What one monster was learned to be to us, and when. */
+export interface LearnedStance {
+  relationship: Relationship;
+  at: number;
 }
 
 /** What one realm taught about one spell's sentences. Either half may be absent. */
@@ -107,6 +121,8 @@ export class RealmLore {
   private readonly spells = new Map<string, Map<string, LearnedSpellMessages>>();
   /** The learned half of each realm's `SpellLore`, built once per realm. */
   private readonly spellBooks = new Map<string, SpellMessageBook>();
+  /** What each monster is to us, per realm, per `mobKey`. See `LoreFile.stances`. */
+  private readonly stances = new Map<string, Map<string, LearnedStance>>();
   /** How each monster dies, per realm, per `mobKey`. See `LoreFile.deaths`. */
   private readonly deaths = new Map<string, Map<string, LearnedDeath>>();
   /**
@@ -166,6 +182,31 @@ export class RealmLore {
           at
         )
     };
+  }
+
+  /* ------------------------------------------------------------- stances */
+
+  /** What this realm's monsters were learned to be, by `mobKey`. */
+  stancesFor(realm: string): ReadonlyMap<string, Relationship> {
+    this.load();
+    const table = this.stances.get(realmKey(realm));
+    return new Map([...(table ?? [])].map(([key, entry]) => [key, entry.relationship]));
+  }
+
+  /** A monster learned to be `relationship` to us. */
+  learnStance(realm: string, mob: string, relationship: Relationship, at: number): void {
+    this.load();
+    const key = mobKey(mob);
+    if (key.length === 0) return;
+    const realmName = realmKey(realm);
+    let table = this.stances.get(realmName);
+    if (!table) {
+      table = new Map();
+      this.stances.set(realmName, table);
+    }
+    if (table.get(key)?.relationship === relationship) return;
+    table.set(key, { relationship, at });
+    this.schedule();
   }
 
   /* -------------------------------------------------------------- deaths */
@@ -603,6 +644,22 @@ export class RealmLore {
       this.deaths.set(realmKey(realm), table);
       this.indexDeaths(realmKey(realm));
     }
+    for (const [realm, entries] of Object.entries(file.stances ?? {})) {
+      if (typeof entries !== 'object' || entries === null) continue;
+      const table = new Map<string, LearnedStance>();
+      for (const [name, value] of Object.entries(entries)) {
+        const entry = value as Partial<LearnedStance> | null;
+        if (
+          entry &&
+          (RELATIONSHIPS as readonly string[]).includes(entry.relationship ?? '') &&
+          typeof entry.at === 'number' &&
+          mobKey(name).length > 0
+        ) {
+          table.set(mobKey(name), { relationship: entry.relationship!, at: entry.at });
+        }
+      }
+      this.stances.set(realmKey(realm), table);
+    }
     for (const [realm, entries] of Object.entries(file.spells ?? {})) {
       if (typeof entries !== 'object' || entries === null) continue;
       const table = new Map<string, LearnedSpellMessages>();
@@ -669,6 +726,12 @@ export class RealmLore {
       spells[realm] = Object.fromEntries([...table].sort(([a], [b]) => (a < b ? -1 : 1)));
     }
 
+    const stances: NonNullable<LoreFile['stances']> = {};
+    for (const [realm, table] of this.stances) {
+      if (table.size === 0) continue;
+      stances[realm] = Object.fromEntries([...table].sort(([a], [b]) => (a < b ? -1 : 1)));
+    }
+
     const deaths: NonNullable<LoreFile['deaths']> = {};
     for (const [realm, table] of this.deaths) {
       if (table.size === 0) continue;
@@ -693,6 +756,7 @@ export class RealmLore {
             ...(Object.keys(slots).length > 0 ? { slots } : {}),
             ...(Object.keys(spells).length > 0 ? { spells } : {}),
             ...(Object.keys(deaths).length > 0 ? { deaths } : {}),
+            ...(Object.keys(stances).length > 0 ? { stances } : {}),
             ...(Object.keys(effects).length > 0 ? { effects } : {})
           } satisfies LoreFile,
           null,

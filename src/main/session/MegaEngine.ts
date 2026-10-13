@@ -46,8 +46,16 @@ import {
   type SessionHost
 } from '../megamud/Session';
 import { findSpell } from '../megamud/spells/lookup';
-import { savedItems, savedMonsters, savedPlayers } from '../megamud/saved';
-import type { MegaLearnedData } from '../world/MegaLearned';
+import {
+  rememberItem,
+  rememberPlayers,
+  rememberStance,
+  savedItems,
+  savedStances
+} from '../megamud/saved';
+import type { Relationship } from '../../shared/monsterRules';
+import type { PlayerFacts } from '../../shared/players';
+import type { LearnedItem } from '../world/MegaLearned';
 import type { ActiveBuff } from '../../shared/character';
 import type { MegaSettings } from '../../shared/megamud/settings';
 import type { RemoteName } from '../../shared/remotes';
@@ -95,37 +103,31 @@ export interface MegaEngineSetup {
   grants: Readonly<Record<string, { allow: readonly RemoteName[]; deny: readonly RemoteName[] }>>;
   /** Signatures learned before, by room. */
   learned?: ReadonlyMap<RoomId, number>;
-  /**
-   * What the engine learned in earlier sessions on this realm, laid over
-   * `data`, and where what it learns now is kept (`MegaLearned`).
-   */
-  memory?: { kept: MegaLearnedData; keep(learned: MegaLearnedData): void };
+  /** What it knows from before, from our stores, and where what it learns goes. */
+  memory?: EngineMemory;
 }
 
 /**
- * The realm's data for one engine, with what was learned before laid over
- * it by name, as the loader lays a higher layer over a lower one. A copy:
- * the data read is shared between sessions, and the engine changes its
- * records as it learns. Flags are masked as each loader masks them.
+ * What the engine starts from beside the realm's `.md` data, out of our own
+ * stores, and where what it learns in play is kept (see `megamud/saved.ts`).
  */
-export function withKept(data: MegaData, kept: MegaLearnedData | undefined): MegaData {
-  const copy = structuredClone(data);
-  if (!kept) return copy;
-  const over = <T extends { name: string }>(
-    list: T[],
-    recs: readonly T[],
-    mask: (r: T) => T
-  ): void => {
-    for (const rec of recs) {
-      const at = list.findIndex((r) => r.name.toLowerCase() === rec.name.toLowerCase());
-      if (at === -1) list.push(mask(structuredClone(rec)));
-      else list[at] = mask(structuredClone(rec));
-    }
-  };
-  over(copy.monsters, kept.monsters, (r) => ({ ...r, flags: r.flags & 0x3fffffff }));
-  over(copy.items, kept.items, (r) => ({ ...r, flags: r.flags & 0x38ffffff }));
-  over((copy.players ??= []), kept.players, (r) => ({ ...r, flags: r.flags & 0xffff3fff }));
-  return copy;
+export interface EngineMemory {
+  /** Monsters' stances learned before (`RealmLore`), by name. */
+  stances: ReadonlyMap<string, Relationship>;
+  /** The players this realm has seen (`PlayerBook`). */
+  players: readonly PlayerFacts[];
+  /** Items learned before (`MegaLearned`). */
+  items: readonly LearnedItem[];
+  /** Room signatures learned before (`MegaLearned`). */
+  signatures: readonly [RoomId, number][];
+  keep(lessons: EngineLessons): void;
+}
+
+/** What the engine learned since it last said: MegaMUD's marked databases, in our shapes. */
+export interface EngineLessons {
+  stances: [string, Relationship][];
+  items: LearnedItem[];
+  signatures: [RoomId, number][];
 }
 
 /**
@@ -259,7 +261,7 @@ export class MegaEngine {
   /** In the game at the last chunk: entering it is when a room is first wanted. */
   private wasInGame = false;
   /** Where what is learned is kept; null when nowhere. */
-  private readonly memory: NonNullable<MegaEngineSetup['memory']> | null;
+  private readonly memory: EngineMemory | null;
   /** Signatures learned since they were last kept. */
   private readonly unkept = new Map<RoomId, number>();
   /** When our tracker had each of the ten blessing slots put up, at the last look; null when down. */
@@ -288,12 +290,19 @@ export class MegaEngine {
       blessingsCleared: () => this.blessingsCleared()
     };
     this.memory = setup.memory ?? null;
-    this.s = new Session(engineHost, withKept(setup.data, setup.memory?.kept));
+    // A copy: the data read is shared between sessions, and the engine changes it as it learns.
+    this.s = new Session(engineHost, structuredClone(setup.data));
     loadCharacter(this.s, setup.settings);
     bbsSetup(this.s, () => undefined);
     this.s.now = engineHost.clock();
+    const memory = setup.memory;
+    if (memory) {
+      for (const [name, relationship] of memory.stances) rememberStance(this.s, name, relationship);
+      for (const item of memory.items) rememberItem(this.s, item);
+      rememberPlayers(this.s, memory.players);
+    }
     grantPlayers(this.s, setup.grants);
-    for (const [room, sig] of setup.memory?.kept.signatures ?? []) this.learn(room, sig);
+    for (const [room, sig] of memory?.signatures ?? []) this.learn(room, sig);
     for (const [room, sig] of setup.learned ?? []) this.learn(room, sig);
     this.unkept.clear();
     this.quiet = newQuietClock(Date.now());
@@ -338,25 +347,17 @@ export class MegaEngine {
     const s = this.s;
     if (this.memory === null) return;
     if (s.f_e24c === 0 && s.f_e254 === 0 && s.f_e258 === 0 && this.unkept.size === 0) return;
-    const kept = this.memory.kept;
-    const players =
-      s.f_e24c !== 0
-        ? savedPlayers(s, (name) =>
-            kept.players.find((p) => p.name.toLowerCase() === name.toLowerCase())
-          )
-        : { players: [], removed: [] };
-    const learned: MegaLearnedData = {
-      monsters: s.f_e254 !== 0 ? savedMonsters(s) : [],
+    const lessons: EngineLessons = {
+      stances: s.f_e254 !== 0 ? savedStances(s) : [],
       items: s.f_e258 !== 0 ? savedItems(s) : [],
-      players: players.players,
-      signatures: [...this.unkept],
-      ...(players.removed.length > 0 ? { removedPlayers: players.removed } : {})
+      signatures: [...this.unkept]
     };
+    // Players are our tracker's to keep (`PlayerBook`): the mark is only cleared.
     s.f_e24c = 0;
     s.f_e254 = 0;
     s.f_e258 = 0;
     this.unkept.clear();
-    this.memory.keep(learned);
+    this.memory.keep(lessons);
   }
 
   dispose(): void {

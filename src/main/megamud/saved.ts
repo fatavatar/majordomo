@@ -1,98 +1,157 @@
 /**
- * What MegaMUD's database writers save of each record, read 2026-10-13:
- * monsters (`0x46fa70`), items (`0x45a240`) and players (`0x494640`), called
- * by `0x43bfa0` for each database marked changed. The writing itself is this
- * client's (`MegaLearned`); which records go, and what is done to them on
- * the way, is MegaMUD's.
+ * What MegaMUD's database writers save of each record, read 2026-10-13 —
+ * monsters (`0x46fa70`), items (`0x45a240`) and players (`0x494640`), run by
+ * `0x43bfa0` for each database marked changed — and what of it reaches our
+ * own stores. The decisions are MegaMUD's; the shapes are ours (a monster's
+ * stance in the monster table's words, an item's weight and slot).
  *
  * - **Monsters and items** go when they carry `0x40000000` (set by
  *   `newMonster`/`newItem` and by whatever changes one in play) and are not
- *   deleted (`0x80000000`). One with no number is given the next above every
- *   other record's, and no lower than 10000. Their flags go masked as the
- *   loader masks them.
- * - **Players** all go. One never stamped as seen is stamped now; one not
- *   seen for `Other.DelPlayers` days (and not kept, `0x200`) is removed
- *   instead. Flag 1 ("details wanted") is set, and cleared again when race,
- *   class and kind are all known; the session's own bits (`0xc000`) are not
- *   kept, nor a kind of 7.
+ *   deleted (`0x80000000`).
+ * - **Players** are not saved by the engine: our tracker writes what it sees
+ *   of them to `PlayerBook`, and the engine starts from that. MegaMUD's own
+ *   rule for them stands: one not seen for `Other.DelPlayers` days (and not
+ *   kept, `0x200`) is dropped, here when the engine takes them up.
  */
-import type { ItemRec, MonsterRec, PlayerRec } from './data';
+import { findClassByName, findRaceByName, newPlayer } from './data';
+import type { ItemRec, MonsterRec } from './data';
 import type { Session } from './Session';
+import type { Alignment } from '../../shared/alignment';
+import type { Relationship } from '../../shared/monsterRules';
+import type { PlayerFacts } from '../../shared/players';
+import type { LearnedItem } from '../world/MegaLearned';
 
 const CHANGED = 0x40000000;
 const DELETED = 0x80000000;
-const FIRST_LEARNED_ID = 10000;
 const SECONDS_A_DAY = 0x15180;
 
-/** `0x46fa70`/`0x45a240`'s numbering of a record with none: past every other, from 10000. */
-function number<T extends { id: number }>(rec: T, all: readonly T[]): void {
-  if (rec.id !== 0) return;
-  for (const other of all) if (other !== rec && rec.id <= other.id) rec.id = other.id + 1;
-  if (rec.id < FIRST_LEARNED_ID + 1) rec.id = FIRST_LEARNED_ID;
-}
+/** MegaMUD's relationship numbers (`MonsterRec.relationship`) in the monster table's words. */
+export const RELATIONSHIP_NUMBER: Record<Relationship, number> = {
+  friend: 2,
+  avoid: 3,
+  enemy: 4,
+  escape: 5,
+  hangup: 6
+};
+
+const RELATIONSHIP_WORD = new Map(
+  Object.entries(RELATIONSHIP_NUMBER).map(([word, n]) => [n, word as Relationship])
+);
+
+/** `who`'s alignment numbers (`players/who.ts`): 4 is neutral. */
+const ALIGNMENT_NUMBER: Record<Alignment, number> = {
+  Lawful: 1,
+  Saint: 2,
+  Good: 3,
+  Neutral: 4,
+  Seedy: 5,
+  Outlaw: 6,
+  Criminal: 7,
+  Villain: 8,
+  FIEND: 9
+};
 
 function changed(flags: number): boolean {
   return (flags & DELETED) === 0 && (flags & CHANGED) !== 0;
 }
 
-/** `0x46fa70`: the monsters to save. */
-export function savedMonsters(s: Session): MonsterRec[] {
-  const all = s.data.monsters;
-  return all
-    .filter((rec) => changed(rec.flags))
-    .map((rec) => {
-      number(rec, all);
-      return { ...rec, flags: rec.flags & 0x3fffffff };
-    });
+/** `0x46fa70`: the monsters to save, as the stance each was learned to have. */
+export function savedStances(s: Session): [string, Relationship][] {
+  const stances: [string, Relationship][] = [];
+  for (const rec of s.data.monsters) {
+    if (!changed(rec.flags)) continue;
+    const word = RELATIONSHIP_WORD.get(rec.relationship);
+    if (word) stances.push([rec.name, word]);
+  }
+  return stances;
 }
 
-/** `0x45a240`: the items to save. */
-export function savedItems(s: Session): ItemRec[] {
-  const all = s.data.items;
-  return all
+/** `0x45a240`: the items to save, as what was learned of each. */
+export function savedItems(s: Session): LearnedItem[] {
+  return s.data.items
     .filter((rec) => changed(rec.flags))
-    .map((rec) => {
-      number(rec, all);
-      return { ...rec, flags: rec.flags & 0x38ffffff };
-    });
+    .map((rec) => ({
+      name: rec.name,
+      weight: rec.weight >= 0 ? rec.weight : null,
+      slot: rec.type === 0 && rec.location > 0 ? rec.location : null,
+      weapon: rec.type === 1
+    }));
+}
+
+/** A monster learned before, put on the engine's list as the loader would have read it. */
+export function rememberStance(s: Session, name: string, relationship: Relationship): void {
+  const key = name.toLowerCase();
+  let rec = s.data.monsters.find((m) => m.name.toLowerCase() === key);
+  if (!rec) {
+    rec = {
+      layer: 0,
+      name: name.slice(0, 30),
+      id: 0,
+      flags: 0,
+      relationship: 0,
+      exp: 0,
+      maxHp: 0,
+      preSpell: '',
+      attackSpell: '',
+      preMax: 0,
+      attackMax: 0
+    } satisfies MonsterRec;
+    s.data.monsters.push(rec);
+  }
+  rec.relationship = RELATIONSHIP_NUMBER[relationship];
+  // "Marked as non-enemy" sets 2 beside avoid (`0x426940`).
+  if (relationship === 'avoid') rec.flags |= 2;
+}
+
+/** An item learned before, put on the engine's list as the loader would have read it. */
+export function rememberItem(s: Session, item: LearnedItem): void {
+  const key = item.name.toLowerCase();
+  let rec: ItemRec | undefined = s.data.items.find((i) => i.name.toLowerCase() === key);
+  if (!rec) {
+    rec = {
+      id: 0,
+      layer: 0,
+      name: item.name.slice(0, 30),
+      shop: '',
+      ifNeeded: '',
+      flags: 1,
+      type: 0,
+      location: 0,
+      min: 0,
+      max: 0,
+      weight: -1,
+      price: 0
+    } satisfies ItemRec;
+    s.data.items.push(rec);
+  }
+  if (item.weight !== null) rec.weight = item.weight;
+  if (item.weapon) rec.type = 1;
+  else if (item.slot !== null) {
+    rec.type = 0;
+    rec.location = item.slot;
+  }
 }
 
 /**
- * `0x494640`: the players to save, and those removed for not being seen in
- * `Other.DelPlayers` days (taken off the list, as the writer does).
- * `kept` is a player's record as it was last saved, for the kind a 7 keeps.
+ * The players this realm has seen, put on the engine's list: every one
+ * `PlayerBook` holds but those MegaMUD would have dropped for not being seen
+ * in `Other.DelPlayers` days (`0x494640`).
  */
-export function savedPlayers(
-  s: Session,
-  kept: (name: string) => PlayerRec | undefined
-): { players: PlayerRec[]; removed: string[] } {
-  const players: PlayerRec[] = [];
-  const removed: string[] = [];
-  for (const rec of [...(s.data.players ?? [])]) {
-    if (rec.flags < 0 || (rec.flags & DELETED) !== 0) continue;
-    if (rec.seenAt === 0) rec.seenAt = s.now;
-    const days = Math.trunc((s.now - rec.seenAt) / SECONDS_A_DAY);
-    if (
-      s.now > rec.seenAt &&
-      (rec.flags & 0x200) === 0 &&
-      s.Other_DelPlayers >= 1 &&
-      days > s.Other_DelPlayers
-    ) {
-      rec.flags |= DELETED;
-      s.host.trace(`[Inactive player "${rec.name}" removed (not seen for ${days} days)]`);
-      removed.push(rec.name);
-      continue;
-    }
-    rec.flags |= 1;
-    if (rec.race !== 0 && rec.cls !== 0 && rec.kind !== 0) rec.flags &= ~1;
-    players.push({
-      ...rec,
-      flags: rec.flags & 0xffff3fff,
-      kind: rec.kind === 7 ? (kept(rec.name)?.kind ?? 0) : rec.kind
-    });
+export function rememberPlayers(s: Session, players: readonly PlayerFacts[]): void {
+  const list = (s.data.players ??= []);
+  for (const facts of players) {
+    const seenAt = Math.floor(facts.lastSeen / 1000);
+    const days = Math.trunc((s.now - seenAt) / SECONDS_A_DAY);
+    if (s.Other_DelPlayers >= 1 && s.now > seenAt && days > s.Other_DelPlayers) continue;
+    if (list.some((p) => p.name.toLowerCase() === facts.name.toLowerCase())) continue;
+    const rec = newPlayer(s.data, seenAt);
+    rec.name = facts.name.slice(0, 10);
+    rec.gang = (facts.gang ?? '').slice(0, 20);
+    if (facts.level !== null) rec.level = facts.level;
+    if (facts.alignment !== null) rec.alignment = ALIGNMENT_NUMBER[facts.alignment];
+    if (facts.race !== null) rec.race = findRaceByName(s.data, facts.race)?.id ?? 0;
+    if (facts.className !== null) rec.cls = findClassByName(s.data, facts.className)?.id ?? 0;
+    // Details wanted until race and class are known (`0x494640`).
+    if (rec.race !== 0 && rec.cls !== 0) rec.flags &= ~1;
   }
-  if (removed.length > 0) {
-    s.data.players = (s.data.players ?? []).filter((rec) => (rec.flags & DELETED) === 0);
-  }
-  return { players, removed };
 }

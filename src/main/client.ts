@@ -43,7 +43,7 @@ import { FindBook } from './world/FindBook';
 import { WorldBook } from './world/WorldBook';
 import { SplitMemory } from './world/SplitMemory';
 import { NO_REALM_TABLES, type RealmMemory, type RealmTables } from './session/SessionManager';
-import { MegaLearned, type MegaLearnedData } from './world/MegaLearned';
+import { MegaLearned } from './world/MegaLearned';
 import { RealmLore, realmKey } from './world/RealmLore';
 import { PlayerBook, realmAddress } from './world/PlayerBook';
 import { cureGates, spellServes, spellTargeting } from '../shared/spellcraft';
@@ -130,7 +130,7 @@ import {
 import { asMegaMudPaths, type LoopImport } from '../shared/megamudPaths';
 import { settingsFromDraft, settingsToIni } from '../shared/megamud/settings';
 import type { MegaData } from './megamud/data';
-import { readMegaData, type MegaEngineSetup } from './session/MegaEngine';
+import { readMegaData, type EngineMemory, type MegaEngineSetup } from './session/MegaEngine';
 import type { MegaMudSettingsView, SessionSummary } from '../shared/ipc';
 import { EMPTY_CHARACTER } from '../shared/character';
 import { IDLE_WALK } from '../shared/walk';
@@ -886,16 +886,31 @@ function megamudFor(id: SessionId): { key: string; setup: MegaEngineSetup } | nu
     data = readMegaData(dirs, runic);
     megaDataRead.set(dataKey, data);
   }
-  // What it learned before on this realm, and where what it learns now goes.
+  // What it knows from before on this realm, out of our stores, and where
+  // what it learns goes: stances to the lore, the rest to `MegaLearned`.
+  // Players our tracker keeps in `PlayerBook` already.
   const realm = worldFor(id)?.info.source ?? '';
   const store = megaLearned;
-  const memory =
-    store === null || realm === ''
-      ? undefined
-      : {
-          kept: store.forRealm(realm),
-          keep: (learned: MegaLearnedData) => store.keep(realm, learned)
-        };
+  const realmLore = lore;
+  let memory: EngineMemory | undefined;
+  if (store !== null && realmLore !== null && realm !== '') {
+    const kept = store.forRealm(realm);
+    memory = {
+      stances: realmLore.stancesFor(realm),
+      players: playersAt(profile.target).recall(),
+      items: kept.items,
+      signatures: kept.signatures,
+      keep: (lessons) => {
+        const at = Date.now();
+        for (const [mob, relationship] of lessons.stances) {
+          realmLore.learnStance(realm, mob, relationship, at);
+        }
+        if (lessons.items.length > 0 || lessons.signatures.length > 0) {
+          store.keep(realm, { items: lessons.items, signatures: lessons.signatures });
+        }
+      }
+    };
+  }
   return {
     key: `${dataKey}\n${settingsToIni(profile.megamud)}\n${JSON.stringify(grants)}`,
     setup: { settings: profile.megamud, data, grants, ...(memory ? { memory } : {}) }
@@ -3331,6 +3346,10 @@ function build(): void {
   lore = createLore();
   playerBook = createPlayerBook();
   megaLearned = createMegaLearned();
+  // What the first version of that file held of monsters belongs to the lore now.
+  for (const { realm, mob, relationship } of megaLearned.takeStances()) {
+    lore.learnStance(realm, mob, relationship, Date.now());
+  }
   destinations = createDestinations();
   worldBook = createWorldBook();
   realms = createRealms();
