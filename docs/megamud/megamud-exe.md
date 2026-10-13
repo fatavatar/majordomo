@@ -435,6 +435,27 @@ the editors and the path recorder. Each writer clears its own flag.
 The port keeps the rules but writes its own store, not the `.md` files
 (`src/main/megamud/saved.ts`, `src/main/world/MegaLearned.ts`).
 
+## The toolbar's toggles (`0x462d20`)
+
+Read 2026-10-13. The window's command handler flips each toggle, then wakes
+the scheduler (`0x42e0e0`) and redraws the window (`0x460d50`). Some first
+return to idle (`0x4aa740`: state 0 unless the state is above `0x14`):
+
+| Command | Toggle | Field | Also |
+|---|---|---|---|
+| `0x7d3` | Auto-Combat | `AutoCombat` | sets `idleCombat` (or, during a detour, sets it to 1 when turning on); idle if fighting; on, `runCount` and `0x907c` cleared |
+| `0x7dc` | Auto-Heal | `AutoHeal` | off: resting, rest-to-full and full marks cleared; idle |
+| `0x82a`, `0x870` | Auto-Bless, Auto-Light | `AutoBless`, `AutoLight` | idle |
+| `0x829`, `0x86a`, `0x8a4` | Pre-Attack, Nuke, Prefer Melee | `AutoPreAttack`, `AutoNuke`, `0x8be8` | idle if fighting |
+| `0x7d9`, `0x7f2`, `0x801`, `0x804`, `0x815`, `0x823` | Get, Search, Sneak, Track, Hide, Cash | `Auto…` | none |
+| `0x821` | All Off | `0xa32c` | `0xe398` cleared; back on outside the game, `0x7ed4` cleared and a return sent |
+| `0x809` | AFK | `active` (`0x4c09a0`) | mode defaults |
+
+**Which toggles the toolbar shows:** each `[Toolbar]` key is 0 hidden, 1
+shown, 2 shown after a separator. The Toolbar tab (`0x4bb4d0`) ticks Visible
+when the value is above 0 and Separator when above 1. `AllOff` and `AFK`
+default to 2.
+
 ## The settings dialog (`0x49eea0`)
 
 Read 2026-10-13. The settings dialog is one property sheet of sixteen pages.
