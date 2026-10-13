@@ -358,7 +358,10 @@ export interface LineBuf {
 
 /** What the engine sends, logs and reads the time from. */
 export interface SessionHost {
-  /** The socket write under `0x42d9f0`. */
+  /**
+   * The socket write under `0x42d9f0`. A `\x01` (a macro's `~`) is a
+   * half-second pause before the rest (`0x42e1c0`).
+   */
   write(text: string): void;
   /** `0x4bd580`: MegaMUD's trace (the `{D%d}` lines and the bracketed notes). */
   trace(text: string): void;
@@ -402,6 +405,10 @@ export interface SessionHost {
   message?(text: string): void;
   /** `0x460b90`: a menu command posted to the window, run after this message (`menuCommand`). */
   post?(command: number): void;
+  /** `0x4b6fe0`'s `closesocket`: the engine hangs up (`connectionClosed` follows from the host). */
+  hangUp?(): void;
+  /** `0x45a6b0`: the connect started again (task 2, after the redial pause). */
+  dial?(): void;
 }
 
 export class Session extends RawFields {
@@ -611,20 +618,33 @@ export class Session extends RawFields {
   lastTyped = '';
   /** 0xdef8: when it was typed (`GetTickCount64`). */
   typedAt = 0;
-  /** 0x7cf7: the command that relogs. */
-  s_7cf7 = '';
+  /** 0x7cf7: the command that relogs (BBS.INI `RelogCmd`). */
+  s_7cf7 = ';relog';
+  /** 0x7ce2: the command that logs off the BBS after leaving the game (BBS.INI `LogoffCmd`). */
+  logoffCmd = '';
+  /** 0x7d0c: the command that turns ANSI on (BBS.INI `AnsiCmd`). */
+  ansiCmd = '=a';
+  /** 0x7d26: what is typed before a broadcast (BBS.INI `BroadcastPrefix`). */
+  broadcastPrefix = "'";
+  /** 0x7e68: the longest line the BBS takes (BBS.INI `MaxInputSize`). */
+  maxInput = 0x7f;
+  /** 0x7e6c: the levels either side a player can be attacked at (BBS.INI `PvpLevel`). */
+  pvpLevel = 99;
+  /** 0x7e70: the hours a day the BBS allows (BBS.INI `MaxHrsPerDay`). */
+  maxHours = 0x18;
   /**
-   * 0x7d2b, 0x7d54 (BBS chat), 0x7da6 (broadcast), 0x7dcf, 0x7df8, 0x7e21
-   * (with their flags 0x7e4c–0x7e54: a message follows on the next line):
-   * the BBS's own talk lines, from the BBS set-up; not read yet.
+   * 0x7d2b, 0x7d54 (BBS.INI `LogonMsg`, `LogoffMsg`), 0x7da6
+   * (`BroadcastMsg`), 0x7dcf, 0x7df8, 0x7e21 (`Global1Msg`…`Global3Msg`,
+   * with `Global1Two`… at 0x7e4c–0x7e54: a message follows on the next
+   * line): the BBS's own talk lines, at their defaults (`0x41bcf0`).
    */
   bbsTalk: { chat: string[]; broadcast: string; notices: { text: string; more: number }[] } = {
-    chat: ['', ''],
-    broadcast: '',
+    chat: ['logs ON', 'logs OFF'],
+    broadcast: 'Broadcast',
     notices: [
-      { text: '', more: 0 },
-      { text: '', more: 0 },
-      { text: '', more: 0 }
+      { text: '--Unused--', more: 0 },
+      { text: '--Unused--', more: 0 },
+      { text: '--Unused--', more: 0 }
     ]
   };
   /** 0xdf17: the player talk is diverted to (`@divert`), 11 characters. */
@@ -642,10 +662,10 @@ export class Session extends RawFields {
   whereAskedAt = 0;
   /** 0x80fb: the destination's name, 51 characters. */
   destination = '';
-  /** 0x7cb9: the game menu's own prompt (beside `[MAJORMUD]:`), from the BBS set-up; not read yet. */
-  s_7cb9 = '';
-  /** 0x7d7d: a line that means the account is wanted elsewhere, from the BBS set-up; not read yet. */
-  s_7d7d = '';
+  /** 0x7cb9: the game menu's own prompt (BBS.INI `MenuPrompt`). */
+  s_7cb9 = '[MAJORMUD]:';
+  /** 0x7d7d: the BBS's warning that it is shutting down (BBS.INI `ShutDownMsg`). */
+  s_7d7d = 'Please finish up and log off';
   /** 0xdb94: the last command sent, 256 characters. */
   lastSent = '';
   /** 0xdb90: how many times running it has been sent. */
@@ -658,8 +678,8 @@ export class Session extends RawFields {
   lastWaitSent = '';
   /** 0x278: the last `@ok` telepath sent. */
   lastResumeSent = '';
-  /** 0x7d21: what is said before `@kill`, `@party`, `@panic!`. */
-  s_7d21 = '';
+  /** 0x7d21: what is said before `@kill`, `@party`, `@panic!` (BBS.INI `SpeechPrefix`). */
+  s_7d21 = '.';
 
   // ------------------------------------------------------------ fight
 

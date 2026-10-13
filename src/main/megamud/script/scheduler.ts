@@ -26,7 +26,7 @@ import { cureStep, selfCures } from './cures';
 import { escapeCheck } from './escape';
 import { eventsStep } from './events';
 import { exitStep } from './exit';
-import { enterGame } from './game';
+import { goOnline } from './game';
 import { autoEquip, buyItems, collectItems, sellItems } from './items';
 import { roomCheck, searchRoom } from './misc';
 import { rulesStep } from './rules';
@@ -89,7 +89,7 @@ function lookAgain(s: Session, step: number, what: string, setLooking: boolean):
 export function schedule(s: Session): boolean {
   s.f_68 = 0;
   if (s.inGame === 0) return false;
-  if (s.online === 0) enterGame(s);
+  if (s.online === 0) goOnline(s, 1);
   if ((s.lineFlags & 1) === 0) return false;
   if (s.f_e57c !== 0) return false;
   if (s.state === 0x16 && s.held !== 0) {

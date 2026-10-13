@@ -103,6 +103,7 @@ export function secondTick(s: Session): void {
       s.f_318e4 = 0;
       setTask(s, 2);
       s.f_e544 = 4;
+      s.host.dial?.();
     }
   }
   const idleSince = (s.now - s.f_322d0) >>> 0 < (s.now - s.f_322c0) >>> 0 ? s.f_322d0 : s.f_322c0;

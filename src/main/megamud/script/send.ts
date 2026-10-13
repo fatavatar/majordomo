@@ -173,10 +173,66 @@ export function pendingPump(s: Session): number {
   return 1;
 }
 
-/** `0x4acc40`: `{userid}`, `{pswd}`, `{source}`, `{target}`, `{dmg}`. Not ported yet. */
-export function expandMacros(_s: Session, text: string): string {
-  unported('4acc40');
-  return text.slice(0, 299);
+/**
+ * `0x4acc40`: one of a text's `||` alternatives at random, with `{userid}`,
+ * `{pswd}` (only while logging on, task 10 or below), `{source}`,
+ * `{target}` (else the first thing in the room), `{dmg}` and `{1}`–`{5}`
+ * put in, `~` a half-second pause (`\x01`, unless `0x327a4` is 99), and
+ * `^x` the control character (`^M` a return). Kept as the exe has them: an
+ * empty `{userid}` or `{pswd}`, or a `^` at the end, cut the text there;
+ * `{target}` with nothing to put in leaves its `{`; and `^^` and `^~` also
+ * swallow the character after them.
+ */
+export function expandMacros(s: Session, text: string): string {
+  const alts = alternatives(text);
+  if (alts.length > 1) text = alts[rand(s) % alts.length]!;
+  let out = '';
+  let i = 0;
+  while (i < text.length) {
+    const c = text[i]!;
+    let next = i;
+    if (c === '{' && text.startsWith('{userid}', i)) {
+      if (s.BBS_UserID === '') break;
+      out += s.BBS_UserID;
+      next = i + 7;
+    } else if (c === '{' && text.startsWith('{pswd}', i)) {
+      if (s.BBS_Password === '' || s.task > 10) break;
+      out += s.BBS_Password;
+      s.f_7ed4 = 1;
+      next = i + 5;
+    } else if (c === '{' && text.startsWith('{source}', i)) {
+      out += s.msgSource;
+      next = i + 7;
+    } else if (c === '{' && text.startsWith('{target}', i)) {
+      const target = s.msgTarget !== '' ? s.msgTarget : s.target;
+      if (target !== '') out += target;
+      else if (s.room.length > 0) out += s.room[0]!.name;
+      else out += c;
+      next = i + 7;
+    } else if (c === '{' && text.startsWith('{dmg}', i)) {
+      out += String(s.msgDamage);
+      next = i + 4;
+    } else if (c === '{' && /^\{[1-5]\}/.test(text.slice(i, i + 3))) {
+      out += s.msgArgs[Number(text[i + 1]) - 1] ?? '';
+      next = i + 2;
+    } else if (c === '~') {
+      out += s.f_327a4 !== 99 ? '\x01' : c;
+    } else if (c === '^') {
+      const d = text[i + 1];
+      if (d === undefined) break;
+      if (d === '^' || d === '~') {
+        out += d;
+        next = i + 2;
+      } else {
+        out += String.fromCharCode((d.charCodeAt(0) - 0x40) & 0xff);
+        next = i + 1;
+      }
+    } else {
+      out += c;
+    }
+    i = next + 1;
+  }
+  return out;
 }
 
 /** C's `rand()`, 0 to 32767: the host's, else `Math.random`. */

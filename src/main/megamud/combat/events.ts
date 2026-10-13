@@ -409,8 +409,8 @@ function attackEveryone(s: Session, line: string, at: number): number {
   if (p && p.level > 1) {
     const other = (p.flags & 2) !== 0 ? (p.level === 2 ? 4 : p.level + 4) : p.level;
     if (
-      Math.abs(s.Player_Level - p.level) > s.f_7e6c &&
-      Math.abs(s.Player_Level - other) > s.f_7e6c
+      Math.abs(s.Player_Level - p.level) > s.pvpLevel &&
+      Math.abs(s.Player_Level - other) > s.pvpLevel
     ) {
       s.host.show('[Pvp out of range - assumed to be safe]');
       return 1;

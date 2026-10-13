@@ -128,7 +128,7 @@ export function partyIndex(s: Session, name: string): number {
 export function playerInRange(s: Session, p: PlayerRec | null): number {
   if (!p) return 0;
   const mine = s.Player_Level;
-  const range = s.f_7e6c;
+  const range = s.pvpLevel;
   if (mine === 0 || p.level === 0 || range === 0 || p.level === 1) return 0;
   let other = p.level;
   if ((p.flags & 2) !== 0) other = p.level === 2 ? 4 : p.level + 4;

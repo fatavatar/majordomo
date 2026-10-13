@@ -125,14 +125,9 @@ export class RawFields extends SettingsFields {
   f_75fc = 0;
   f_7600 = 0;
   f_7651 = 0;
-  f_7ce2 = 0;
   f_7ce3 = 0;
-  f_7d0c = 0;
   f_7d0d = 0;
   f_7e50 = 0;
-  f_7e68 = 0;
-  f_7e6c = 0;
-  f_7e70 = 0;
   f_7eb3 = 0;
   f_7eb4 = 0;
   f_7ed4 = 0;
