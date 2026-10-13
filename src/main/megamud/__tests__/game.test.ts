@@ -70,6 +70,17 @@ describe('the character’s settings (0x449aa0)', () => {
     expect(s.monitors).toHaveLength(1);
   });
 
+  /*
+   * MegaMUD reads a cast limit of 0 as none; ours is no limit, ruled
+   * 13 October 2026 after Skinny's cleared limit turned his attack spell off.
+   */
+  it('takes a combat spell’s cast limit of 0 as no limit', () => {
+    const { s } = session();
+    loadCharacter(s, settingsFromIni('[Combat]\nMaxCastCnt=0\nMaxCastCnt2=3\n'));
+    expect(s.Combat_MaxCastCnt).toBeGreaterThan(999);
+    expect(s.Combat_MaxCastCnt2).toBe(3);
+  });
+
   it('turns the app’s per-player grants into remote bits', () => {
     expect(remoteBits(['health', 'where', 'do'], [])).toBe(0x214);
     expect(remoteBits(['health', 'status'], ['status'])).toBe(0);

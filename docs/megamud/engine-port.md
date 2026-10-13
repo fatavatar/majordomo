@@ -141,7 +141,9 @@ the swap. For such a character:
 - **Settings** are the ini's (`megamud/character.ts`, `0x449aa0`), with
   `[AbilMon]`, `[Schedule]` and `[Rules]` read by their own loaders. The
   app's per-player remote grants are turned into MegaMUD's remote bits until
-  Players.md is read. The BBS set-up is at the loader's defaults
+  Players.md is read. A combat spell's cast limit of 0 is no limit (MegaMUD's
+  is none): the port is of MegaMUD's decisions, not of its values. The BBS
+  set-up is at the loader's defaults
   (`megamud/bbs.ts`, `0x41bcf0`); the realm's `BBS.INI` is not read yet.
 - **Data** is MegaMUD's own `.md` files from the character's data folder:
   `MegaMud.DataDir` when that is a folder here, else the ini's own folder,

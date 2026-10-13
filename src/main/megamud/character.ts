@@ -27,8 +27,26 @@ function reader(mega: MegaSettings, name: string): (key: string) => string {
   };
 }
 
+/**
+ * A combat spell's cast limit of 0 is no limit here. MegaMUD reads it as none
+ * (`0x40f510` casts while `cap != 0 && done < cap`; its help: "0 means zero,
+ * not unlimited"), which turned Skinny's main attack off when his limit was
+ * cleared (13 October 2026). Ours is the value's meaning, not a decision: the
+ * decisions are MegaMUD's, counted against a limit nothing reaches. As large
+ * as MegaMUD's own "no limit" for damage.
+ */
+const NO_CAST_LIMIT = 99999;
+const CAST_LIMITS = [
+  'Combat_PreMultCastCnt',
+  'Combat_MultCastCnt',
+  'Combat_PreCastCnt',
+  'Combat_MaxCastCnt',
+  'Combat_MaxCastCnt2'
+] as const;
+
 export function loadCharacter(s: Session, mega: MegaSettings): void {
   applySettings(s, mega, SETTINGS);
+  for (const field of CAST_LIMITS) if (s[field] === 0) s[field] = NO_CAST_LIMIT;
   loadMonitors(s, reader(mega, 'AbilMon'));
   loadEvents(s, reader(mega, 'Schedule'));
   loadRules(s, reader(mega, 'Rules'));
