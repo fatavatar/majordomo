@@ -34,7 +34,7 @@ export type ItemKind =
   | 'scroll'
   | 'misc';
 
-const ITEM_KINDS: readonly ItemKind[] = [
+export const ITEM_KINDS: readonly ItemKind[] = [
   'armour', // 0 — padded vest, chainmail hauberk, and also every ring and amulet
   'weapon', // 1 — broadsword, quarterstaff, fist
   'trap', // 2 — net, bola, poisoned shuriken: thrown, and six rows in the whole realm

@@ -63,7 +63,16 @@ import { DENOMINATIONS } from '../../shared/character';
 import { MEGAMUD_FILE, SERVER_FILE, type Home } from '../app/home';
 import { settingsFromIni, settingsToStored } from '../../shared/megamud/settings';
 import { directoryNames } from './dirs';
-import { MONSTER_TABLE } from './RealmTableStore';
+import {
+  ITEM_TABLE,
+  MESSAGE_TABLE,
+  MONSTER_TABLE,
+  RealmTableStore,
+  type RealmTable,
+  type TableKind
+} from './RealmTableStore';
+import { itemTableRows, monsterTableRows } from '../../shared/megamudDb';
+import { parseMegaMudMessages } from '../../shared/messageTriggers';
 import { discoveryKey, type Discovery } from '../../shared/memory';
 import { realmKey } from '../world/RealmLore';
 import type { ShippedWorld } from '../../shared/worlds';
@@ -280,6 +289,7 @@ function migrateAll(options: MigrationOptions): void {
   statedTheSurvivalFloor(home, note, options.template);
   statedTheLosingHpWait(home, note, options.template);
   theMegaMudSettingsMovedIn(home, note);
+  theMegaMudDataMovedIn(home, note);
 }
 
 /**
@@ -7572,5 +7582,95 @@ function theMegaMudSettingsMovedIn(home: Home, note: (message: string) => void):
     moved.length === 1
       ? t('notices.migration.megamudSettingsMovedIn.one', params)
       : t('notices.migration.megamudSettingsMovedIn.many', params)
+  );
+}
+
+/** Where a character's own MegaMUD databases were kept: MegaMUD's `Default` layout. */
+const MEGAMUD_DATA_FOLDER = 'Default';
+
+/**
+ * A character's own MegaMUD databases taken into its realm's tables
+ * (2026-10-13), so the ported engine reads no MegaMUD file in play: its
+ * facts come from the realm's own data, and the choices these files held
+ * from `items.yaml`, `monsters.yaml` and `messages.yaml` beside the realm
+ * (`megamud/fromWorld.ts`). Each of `Items.md`, `Monsters.md` and
+ * `Messages.md` fills its table only where the realm has none, so a table
+ * imported or edited on the realm's page is never replaced; the folder is
+ * then renamed `Default.imported`, nothing in it lost. A `MegaMud.DataDir`
+ * outside the client's home is MegaMUD's own install, and is left alone.
+ */
+function theMegaMudDataMovedIn(home: Home, note: (message: string) => void): void {
+  const realms = new Map<string, string>();
+  for (const id of directories(home.serversDir)) {
+    try {
+      const name = parseDocument(fs.readFileSync(home.server(id).file, 'utf8')).get('name');
+      if (typeof name === 'string') realms.set(name.trim().toLowerCase(), id);
+    } catch {
+      // Not a realm this can read; its own store says so.
+    }
+  }
+  const moved: string[] = [];
+  for (const id of directories(home.profilesDir)) {
+    const folder = path.join(home.profilesDir, id, MEGAMUD_DATA_FOLDER);
+    if (!fs.existsSync(folder) || !fs.statSync(folder).isDirectory()) continue;
+    let realm: unknown;
+    try {
+      realm = parseDocument(fs.readFileSync(home.profile(id).file, 'utf8')).get('server');
+    } catch {
+      continue;
+    }
+    const serverId = typeof realm === 'string' ? realms.get(realm.trim().toLowerCase()) : undefined;
+    if (serverId === undefined) continue;
+    const read = (name: string): Buffer | null => {
+      try {
+        return fs.readFileSync(path.join(folder, name));
+      } catch {
+        return null;
+      }
+    };
+    const source = (name: string): RealmTable['source'] => ({
+      file: path.join(folder, name),
+      importedAt: new Date().toISOString()
+    });
+    const fill = <Table extends RealmTable>(kind: TableKind<Table>, table: Table): boolean => {
+      const store = new RealmTableStore(home, kind);
+      try {
+        if (fs.existsSync(store.file(serverId))) return true;
+        return store.write(serverId, table).ok;
+      } finally {
+        store.dispose();
+      }
+    };
+    let ok = true;
+    const items = read('Items.md');
+    if (items) {
+      const rows = itemTableRows(items).rows;
+      if (rows.length > 0) ok &&= fill(ITEM_TABLE, { source: source('Items.md'), items: rows });
+    }
+    const monsters = read('Monsters.md');
+    if (monsters) {
+      const rows = monsterTableRows(monsters).rows;
+      if (rows.length > 0) {
+        ok &&= fill(MONSTER_TABLE, { source: source('Monsters.md'), monsters: rows });
+      }
+    }
+    const messages = read('Messages.md');
+    if (messages) {
+      const triggers = parseMegaMudMessages(messages.toString('latin1')).triggers;
+      if (triggers.length > 0) {
+        ok &&= fill(MESSAGE_TABLE, { source: source('Messages.md'), triggers });
+      }
+    }
+    // Renamed only once every table it fed is seen written.
+    if (!ok) continue;
+    fs.renameSync(folder, `${folder}.imported`);
+    moved.push(folder);
+  }
+  if (moved.length === 0) return;
+  const params = { count: moved.length, fileList: moved.join(', ') };
+  note(
+    moved.length === 1
+      ? t('notices.migration.megamudDataMovedIn.one', params)
+      : t('notices.migration.megamudDataMovedIn.many', params)
   );
 }

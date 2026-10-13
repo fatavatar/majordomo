@@ -1084,6 +1084,8 @@ export class SessionManager {
   private statedCombat: CombatConfig;
   /** The realm's monster table. See `configureMonsters`. */
   private realmMonsters: readonly MonsterRule[] = [];
+  /** The realm's item table (`servers/<id>/items.yaml`), for the MegaMUD engine. */
+  private realmItems: readonly ItemRule[] = [];
   private readonly login: LoginAutomator;
   private readonly recovery: Recovery;
   /** The one heal, blessing or cure a round allows, shared. See `CastRound`. */
@@ -4357,6 +4359,8 @@ export class SessionManager {
     this.messages.load(realm.messages);
     this.useCoins(realm.coins);
     this.useMonsters(realm.monsters);
+    this.realmItems = realm.items;
+    this.mega?.useItems(realm.items);
   }
 
   /**
@@ -4766,6 +4770,7 @@ export class SessionManager {
         { ...setup, learned: setup.learned ?? learned }
       );
       this.mega.useMonsters(this.automationConfig.combat.monsters);
+      this.mega.useItems(this.realmItems);
       if (this.client.connected) this.mega.connected();
     }
     if (this.configured !== null) this.configure(...this.configured);

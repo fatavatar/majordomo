@@ -139,7 +139,8 @@ import { settingsFromDraft } from '../shared/megamud/settings';
 import { megamudFromConfig } from '../shared/megamud/fromConfig';
 import { asMegaToggle } from '../shared/megamud/toggles';
 import type { MegaData } from './megamud/data';
-import { readMegaData, type EngineMemory, type MegaEngineSetup } from './session/MegaEngine';
+import { megaDataFrom } from './megamud/fromWorld';
+import type { EngineMemory, MegaEngineSetup } from './session/MegaEngine';
 import type { MegaMudSettingsView, SessionSummary } from '../shared/ipc';
 import { EMPTY_CHARACTER } from '../shared/character';
 import { IDLE_WALK } from '../shared/walk';
@@ -872,30 +873,33 @@ function loopCatalogue(): LoopCatalogue {
   return catalogue;
 }
 
-/** MegaMUD's databases, by the folders they were read from: read once each. */
-const megaDataRead = new Map<string, MegaData>();
+/** MegaMUD's databases as last built, by character: rebuilt when what they are built from changes. */
+const megaDataBuilt = new Map<SessionId, { from: readonly unknown[]; data: MegaData }>();
 
 /**
  * The ported MegaMUD engine's set-up, for a character with MegaMUD settings:
- * its settings, its data folder's databases (`MegaMud.DataDir` when that is
- * a folder here, and the ini's own) and its per-player remote grants.
+ * its settings, its databases built from the realm's data and tables
+ * (`megamud/fromWorld.ts`) and its per-player remote grants.
  */
 function megamudFor(id: SessionId): { key: string; setup: MegaEngineSetup } | null {
   const profile = profileFor(id);
   if (profile === undefined || !profile.megamudOn) return null;
   const grants = profile.config.automation.remotes.players;
-  const dataDir = String(profile.megamud.live['MegaMud']?.['DataDir'] ?? '');
-  const dirs = [dataDir, path.join(home.profilesDir, id)].filter(
-    (dir) => dir !== '' && existsSync(dir)
-  );
   // The realm's name for its runic coin (BBS.INI's `RunicName`, ours per realm).
   const runic = profile.config.connection.coins.runic;
-  const dataKey = `${dirs.join('|')}|${runic ?? ''}`;
-  let data = megaDataRead.get(dataKey);
-  if (data === undefined) {
-    data = readMegaData(dirs, runic);
-    megaDataRead.set(dataKey, data);
+  const world = worldFor(id);
+  const tables = realmTablesFor(id);
+  const from = [world, tables.items, tables.messages, runic] as const;
+  let built = megaDataBuilt.get(id);
+  if (built === undefined || built.from.some((part, i) => part !== from[i])) {
+    built = {
+      from,
+      data: megaDataFrom(world, { items: tables.items, messages: tables.messages }, runic)
+    };
+    megaDataBuilt.set(id, built);
   }
+  const data = built.data;
+  const dataKey = `${world?.info.source ?? ''}|${runic ?? ''}`;
   // What it knows from before on this realm, out of our stores, and where
   // what it learns goes: stances to the lore, the rest to `MegaLearned`.
   // Players our tracker keeps in `PlayerBook` already.

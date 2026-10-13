@@ -15,11 +15,10 @@
  * prints is given MegaMUD's own "relearn" mark (step flag `0x80`), which
  * the walk fills in the first time through ("[Path step updated]").
  */
-import fs from 'node:fs';
-import path from 'node:path';
 
 import { stricmp } from '../megamud/cstr';
-import { coinItems, messagesFrom, readData, type MegaData } from '../megamud/data';
+import type { MegaData } from '../megamud/data';
+import { applyItemRule } from '../megamud/fromWorld';
 import { bbsSetup } from '../megamud/bbs';
 import { grantPlayers, loadCharacter } from '../megamud/character';
 import { newTerminal, parseData, type TerminalState } from '../megamud/input/ParseData';
@@ -56,6 +55,7 @@ import {
   savedItems,
   savedStances
 } from '../megamud/saved';
+import { itemKey, type ItemRule } from '../../shared/itemRules';
 import type { MonsterRule, Relationship } from '../../shared/monsterRules';
 import type { PlayerFacts } from '../../shared/players';
 import type { LearnedItem } from '../world/MegaLearned';
@@ -172,39 +172,6 @@ export interface EngineLessons {
   stances: [string, Relationship][];
   items: LearnedItem[];
   signatures: [RoomId, number][];
-}
-
-/**
- * MegaMUD's databases from a character's data folder: `Monsters.md`,
- * `Items.md`, `Spells.md`, `Classes.md`, `Races.md` and `Messages.md`, each
- * looked for in the folder and its `Default` (MegaMUD's own layout). A file
- * not found is empty: MegaMUD learns monsters and items as it meets them.
- */
-export function readMegaData(dirs: readonly string[], runic = 'runic coin'): MegaData {
-  const find = (name: string): Buffer | undefined => {
-    for (const dir of dirs) {
-      for (const at of [path.join(dir, name), path.join(dir, 'Default', name)]) {
-        try {
-          if (fs.statSync(at).isFile()) return fs.readFileSync(at);
-        } catch {
-          // Not here.
-        }
-      }
-    }
-    return undefined;
-  };
-  const data = readData({
-    monsters: find('Monsters.md'),
-    items: find('Items.md'),
-    spells: find('Spells.md'),
-    classes: find('Classes.md'),
-    races: find('Races.md'),
-    runic
-  });
-  const messages = find('Messages.md');
-  if (messages) data.messages = messagesFrom(messages.toString('latin1'));
-  if (data.items.length === 0) data.items = coinItems(runic);
-  return data;
 }
 
 /** `0x498a60`'s hash of a room's name, the signature's top twelve bits. */
@@ -430,6 +397,22 @@ export class MegaEngine {
   useMonsters(rules: readonly MonsterRule[]): void {
     for (const rule of rules) rememberRule(this.s, rule);
     findLongestFirst(this.s);
+  }
+
+  /**
+   * Our item table put on MegaMUD's item records as its item details would
+   * have edited them, an item the records do not name added: a table edited
+   * while the character plays reaches it, as the monster table does.
+   */
+  useItems(rules: readonly ItemRule[]): void {
+    for (const rule of rules) {
+      let rec = this.s.data.items.find((item) => itemKey(item.name) === rule.item);
+      if (!rec) {
+        rememberItem(this.s, { name: rule.item, weight: null, slot: null, weapon: false });
+        rec = this.s.data.items.find((item) => itemKey(item.name) === rule.item)!;
+      }
+      applyItemRule(rec, rule, this.host.world());
+    }
   }
 
   /**
@@ -935,16 +918,20 @@ export class MegaEngine {
   /**
    * A room put in MegaMUD's room list (its Rooms.md), which is what it
    * heads for destinations from (`0x43cb90`): every room whose signature is
-   * learned, and every path's start and end. A shop is marked one (flag 2).
+   * learned, and every path's start and end. A shop is marked one (flag 2)
+   * and named as the realm names the shop, which is what an item's
+   * *Bought/sold* holds (`megamud/fromWorld.ts`).
    */
   private know(room: RoomId, sig: number): void {
     const rooms = (this.s.data.rooms ??= []);
     if (rooms.some((r) => r.signature === sig)) return;
     const [map, number] = room.split('/').map(Number);
-    const rec = this.host.world()?.get(map!, number!);
+    const world = this.host.world();
+    const rec = world?.get(map!, number!);
+    const shop = rec?.shop === undefined ? undefined : world?.shop(rec.shop);
     rooms.push({
       signature: sig,
-      name: rec?.name ?? room,
+      name: shop?.name.trim() ?? rec?.name ?? room,
       flags: rec?.shop !== undefined ? 2 : 0
     });
   }

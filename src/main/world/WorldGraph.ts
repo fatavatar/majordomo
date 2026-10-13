@@ -2292,6 +2292,14 @@ export class WorldGraph {
     return this.shops.get(id);
   }
 
+  /** The first shop of this name, ignoring case: an item's `shops` names them. */
+  shopNamed(name: string): WorldShop | undefined {
+    const wanted = name.trim().toLowerCase();
+    for (const shop of this.shops.values())
+      if (shop.name.trim().toLowerCase() === wanted) return shop;
+    return undefined;
+  }
+
   /**
    * Every room the realm says holds a shop, for walking to the nearest one.
    *
@@ -3426,6 +3434,27 @@ export class WorldGraph {
   }
 
   /**
+   * Every monster name, item, class and race the realm has: what the ported
+   * MegaMUD engine builds its databases from (`megamud/fromWorld.ts`), in
+   * place of MegaMUD's own `.md` files.
+   */
+  allMobs(): Iterable<WorldMob> {
+    return this.mobs.values();
+  }
+
+  allItems(): Iterable<WorldItem> {
+    return this.items.values();
+  }
+
+  allClasses(): readonly WorldClass[] {
+    return this.classes;
+  }
+
+  allRaces(): readonly WorldRace[] {
+    return this.races;
+  }
+
+  /**
    * Every spell a player could cast, named for a settings picker.
    *
    * The `isCastable` discriminator `names()` already uses, for the same
@@ -4498,6 +4527,7 @@ export class WorldGraph {
       // Format 36. Written only where every row of the name agrees, so where
       // it is here it answers for the fold as exactly as a row would.
       mob.regenHours = positive('rt');
+      mob.expMulti = positive('xm');
       mob.follows = positive('fol');
       if (record['und'] === 1) mob.undead = true;
       const drops = Array.isArray(record['drops'])
@@ -4571,6 +4601,7 @@ export class WorldGraph {
         kept.experience = stated('xp');
         kept.regen = stated('rgn');
         kept.regenHours = stated('rt');
+        kept.expMulti = stated('xm');
         kept.follows = stated('fol');
         kept.averageDamage = stated('dmg');
         kept.charmLevel = stated('chl');
@@ -4652,7 +4683,10 @@ export class WorldGraph {
         // say", which keeps every picker open rather than emptying it.
         ['tg', 'targets'],
         // Whether resistance can refuse it — format 20, the same rule.
-        ['res', 'resist']
+        ['res', 'resist'],
+        // Which magic, and its level — format 49.
+        ['mg', 'magery'],
+        ['ml', 'mageryLevel']
       ] as const) {
         const value = Number(record[key]);
         if (Number.isFinite(value) && value > 0) spell[field] = value;
@@ -6345,9 +6379,15 @@ export class WorldGraph {
       const name = String(record['n'] ?? '').trim();
       if (!Number.isInteger(id) || name.length === 0) continue;
       const entryOut: WorldClass = { id, name };
-      for (const key of ['magery', 'combat'] as const) {
+      for (const [key, field] of [
+        ['magery', 'magery'],
+        ['combat', 'combat'],
+        // Format 49.
+        ['mt', 'mageryType'],
+        ['wt', 'weaponType']
+      ] as const) {
         const value = Number(record[key]);
-        if (Number.isFinite(value) && value > 0) entryOut[key] = value;
+        if (Number.isFinite(value) && value > 0) entryOut[field] = value;
       }
       // Negative is a real price here; see `loadRaces`.
       const exp = Number(record['expTable']);

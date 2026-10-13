@@ -1442,6 +1442,9 @@ export interface WorldSpell {
   /** The abbreviation the realm accepts in place of the name. */
   short?: string;
   level?: number;
+  /** `Spells.Magery` and `MageryLVL` (format 49), as stated: which magic it is, and its level. */
+  magery?: number;
+  mageryLevel?: number;
   mana?: number;
   energy?: number;
   duration?: number;
@@ -1597,8 +1600,8 @@ export interface WorldRace {
  * A class the realm offers.
  *
  * Deliberately narrower than the table behind it: see `BuiltClass`. A hit-dice
- * pair whose order nothing has settled and a magery *type* whose numbering only
- * speaks for zero are both left out rather than published as facts.
+ * pair whose order nothing has settled is left out rather than published as a
+ * fact.
  */
 export interface WorldClass {
   id: number;
@@ -1607,6 +1610,10 @@ export interface WorldClass {
   expTable?: number;
   /** Magery level, 1-3. Absent for a class that casts nothing. */
   magery?: number;
+  /** `MageryType` (format 49): 1 mage, 2 priest, 3 druid, 4 bard, 5 kai. */
+  mageryType?: number;
+  /** `WeaponType` (format 49), as stated: 9 is a kai class's martial arts. */
+  weaponType?: number;
   /** How well it fights, on the realm's own 1-7 scale. */
   combat?: number;
   /**
@@ -1946,6 +1953,8 @@ export interface WorldMobRow {
    * a uniquely named boss, having no `rw`, carried no clock at all.
    */
   regenHours?: number;
+  /** `Monsters.ExpMulti` (format 49): what `experience` is multiplied by. */
+  expMulti?: number;
   follows?: number;
   averageDamage?: number;
   charmLevel?: number;
@@ -2078,6 +2087,8 @@ export interface WorldMob {
   regen?: number;
   /** Hours a placed one stays dead — `Monsters.RegenTime` (format 33). */
   regenHours?: number;
+  /** What `experience` is multiplied by for what it gives — `Monsters.ExpMulti` (format 49). */
+  expMulti?: number;
   /**
    * The chance it follows when this character leaves the room, as a percentage.
    *

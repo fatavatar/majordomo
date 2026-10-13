@@ -20,8 +20,8 @@
  * at pages, and a file whose tree is damaged still has every record on a leaf.
  */
 import type { MobPriorityBand } from './config';
-import { ITEM_FLAG_BITS, ITEM_FLAGS, itemKey, type ItemRule } from './itemRules';
-import type { MonsterRule, Relationship } from './monsterRules';
+import { ITEM_FLAG_BITS, ITEM_FLAGS, itemKey, itemSaysAnything, type ItemRule } from './itemRules';
+import { saysAnything, type MonsterRule, type Relationship } from './monsterRules';
 import { mobKey } from './world';
 
 const PAGE = 1024;
@@ -241,4 +241,53 @@ export function readMegaMudItems(bytes: Uint8Array): MegaMudItem[] {
     out.push({ id: view.getUint16(ITEM.id, true), name, rule });
   }
   return out;
+}
+
+/* ------------------------------------------------------------ table rows */
+
+/** What a MegaMUD database yields for a realm's table: its rows, and how many records it named. */
+export interface DatabaseRows<Row> {
+  rows: Row[];
+  read: number;
+}
+
+/**
+ * The rows a decoded database gives a realm's table: one per name, the first
+ * kept, and only those that say something. MegaMUD's own database holds
+ * several records of one name (`dark priest` twice, `Nahr` five times) and a
+ * row is keyed by the name.
+ */
+function distinctRows<Row>(
+  records: readonly { rule: Row }[],
+  key: (row: Row) => string,
+  says: (row: Row) => boolean
+): DatabaseRows<Row> {
+  const seen = new Set<string>();
+  const rows: Row[] = [];
+  for (const { rule } of records) {
+    if (!says(rule) || seen.has(key(rule))) continue;
+    seen.add(key(rule));
+    rows.push(rule);
+  }
+  return { rows, read: records.length };
+}
+
+/** A `Monsters.md`'s rows for a realm's monster table. */
+export function monsterTableRows(bytes: Uint8Array): DatabaseRows<MonsterRule> {
+  return distinctRows(readMegaMudMonsters(bytes), (row) => row.mob, saysAnything);
+}
+
+/**
+ * An `Items.md`'s rows for a realm's item table, without *Bought/sold*: what
+ * MegaMUD holds there is a room of its own room list (`General Store
+ * (Giovanni)`), which names one of the realm's shops for 203 of the 1,493
+ * items Skinny's file filled (2026-10-13). An item is sold at the realm's
+ * own shop for it unless the player names another.
+ */
+export function itemTableRows(bytes: Uint8Array): DatabaseRows<ItemRule> {
+  const records = readMegaMudItems(bytes).map((record) => {
+    const { shop: _shop, ...rule } = record.rule;
+    return { rule };
+  });
+  return distinctRows(records, (row) => row.item, itemSaysAnything);
 }

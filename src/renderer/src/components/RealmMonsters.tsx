@@ -16,13 +16,8 @@ import { useCallback, useEffect, useState } from 'react';
 import { MonsterRuleList } from './MonsterRules';
 import RealmTableBar, { importedOn, type TableStatus } from './RealmTableBar';
 import { t } from '../lib/i18n';
-import { readMegaMudMonsters } from '@shared/megamudDb';
-import {
-  saysAnything,
-  type MonsterImport,
-  type MonsterRule,
-  type MonsterTable
-} from '@shared/monsterRules';
+import { monsterTableRows } from '@shared/megamudDb';
+import { type MonsterImport, type MonsterRule, type MonsterTable } from '@shared/monsterRules';
 
 export interface RealmMonstersProps {
   /** The saved realm's name, or null for a realm not saved yet. */
@@ -87,31 +82,20 @@ export default function RealmMonsters({
       setStatus({ tone: 'bad', text: t('settings.monsters.unreadable') });
       return;
     }
-    const monsters = readMegaMudMonsters(bytes);
-    if (monsters.length === 0) {
+    // One row per monster name, the first kept (`monsterTableRows`).
+    const { rows: kept, read } = monsterTableRows(bytes);
+    if (read === 0) {
       setStatus({ tone: 'bad', text: t('settings.monsters.notMonsters', { file: file.name }) });
       return;
-    }
-    /*
-     * One row per monster name, the first kept. MegaMUD's own database holds
-     * several monsters of one name (`dark priest` twice, `Nahr` five times),
-     * and a row is keyed by the name the room prints.
-     */
-    const seen = new Set<string>();
-    const kept: MonsterRule[] = [];
-    for (const monster of monsters) {
-      if (!saysAnything(monster.rule) || seen.has(monster.rule.mob)) continue;
-      seen.add(monster.rule.mob);
-      kept.push(monster.rule);
     }
     if (kept.length === 0) {
       setStatus({
         tone: 'bad',
-        text: t('settings.monsters.nothingSaid', { count: monsters.length, file: file.name })
+        text: t('settings.monsters.nothingSaid', { count: read, file: file.name })
       });
       return;
     }
-    const chosen = { name: file.name, rows: kept, read: monsters.length };
+    const chosen = { name: file.name, rows: kept, read };
     // Replacing a table is not undoable from here, so it is asked about --
     // but only when there is a table to lose.
     if (rows.length > 0) setPending(chosen);

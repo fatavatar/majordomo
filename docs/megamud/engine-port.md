@@ -145,10 +145,28 @@ the swap. For such a character:
   is none): the port is of MegaMUD's decisions, not of its values. The BBS
   set-up is at the loader's defaults
   (`megamud/bbs.ts`, `0x41bcf0`); the realm's `BBS.INI` is not read yet.
-- **Data** is MegaMUD's own `.md` files from the character's data folder:
-  `MegaMud.DataDir` when that is a folder here, else the ini's own folder,
-  each with its `Default` beneath. Without them MegaMUD learns monsters and
-  items as it meets them and knows no spells.
+- **Data** is built from our own stores, never read from MegaMUD's `.md`
+  files (`megamud/fromWorld.ts`, 2026-10-13). The realm's facts come from its
+  converted data (realm format 49 added the class's and spell's magery type,
+  the class's weapon type and a monster's `ExpMulti`). Checked against
+  Skinny's own files on the same realm, class by class and spell by spell:
+  - a class's chart is `100 + ExpTable` and its magic `MageryType << 8 |
+    MageryLVL`; a race's experience is its `ExpTable`;
+  - a spell's magic is a fixed table of the realm's `Magery` and `MageryLVL`,
+    its target bits one of `Targets`, `2` its `Dur`, and `4` the abilities
+    Damage, DrainLife, Damage(-MR) and EvilInCombat;
+  - a monster's experience is `EXP × ExpMulti`;
+  - an item's type is `ItemType`, its location `Worn` (13 filed as 4), its
+    weight `Encum`, Cannot be taken `!Gettable`, loyal the `LoyalItem`
+    ability, its shop the first the realm stocks it in, and its price that
+    shop's list price.
+
+  The player's choices come from the realm's tables: `monsters.yaml`,
+  `items.yaml` (MegaMUD's item details) and `messages.yaml`, the last two
+  also put on a running engine when edited. A character's own MegaMUD
+  folder (`profiles/<id>/Default`) is taken into those tables once, where
+  the realm has none, and renamed `Default.imported`. Without realm data
+  MegaMUD learns monsters and items as it meets them and knows no spells.
 - **Learned data** follows MegaMUD's rule and lands in our own stores.
   MegaMUD marks the databases it changed in play (`0xe24c` players, `0xe254`
   monsters, `0xe258` items) and writes the marked ones on the way out
@@ -157,9 +175,9 @@ the swap. For such a character:
   realm lore (`RealmLore.learnStance`), what it learned of an item and the
   room signatures to `megamud-learned.json` (`MegaLearned`), and nothing of
   players, which our tracker already keeps in `PlayerBook`. Each engine
-  starts from its own copy of the realm's `.md` data with all of these laid
-  over it, players unseen in `Other.DelPlayers` days left out as MegaMUD
-  drops them. MegaMUD's own `.md` files are only read.
+  starts from its own copy of the realm's data with all of these laid over
+  it, players unseen in `Other.DelPlayers` days left out as MegaMUD drops
+  them.
 - **Text in**: every chunk the socket gives, after our own reading, so the
   engine can learn the room our tracker placed. **Commands out**: straight
   to the socket, observed as automation's are, a macro's `~` a half-second

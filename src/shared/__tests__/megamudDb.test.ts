@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
-import { isMdb2, readMdb2, readMegaMudItems, readMegaMudMonsters } from '../megamudDb';
+import {
+  isMdb2,
+  itemTableRows,
+  readMdb2,
+  readMegaMudItems,
+  readMegaMudMonsters
+} from '../megamudDb';
 
 /*
  * A MegaMUD database built the way `megamud.exe` lays one out (see the
@@ -212,5 +218,24 @@ describe("an Items.md's choices", () => {
       { item: 'rusty dagger', backstab: true, discard: true },
       { item: 'rock' }
     ]);
+  });
+});
+
+describe("an Items.md's rows for a realm's table", () => {
+  it("leave out MegaMUD's own room name for the shop, and items that say nothing", () => {
+    const { rows, read } = itemTableRows(
+      file(
+        page(0, [
+          record(
+            '1',
+            itemBody({ id: 1, name: 'rope', flags: 0x4, shop: 'General Store (Giovanni)' })
+          ),
+          record('2', itemBody({ id: 2, name: 'rock', shop: 'Junkyard Shop 2' })),
+          record('3', itemBody({ id: 3, name: 'Rope', flags: 0x2 }))
+        ])
+      )
+    );
+    expect(read).toBe(3);
+    expect(rows).toEqual([{ item: 'rope', buy: true }]);
   });
 });

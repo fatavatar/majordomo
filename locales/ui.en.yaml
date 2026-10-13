@@ -310,6 +310,15 @@ notices:
       you edit. {file}'
     tuningNothingAdded: nothing
     tuningNothingRemoved: nothing
+    megamudDataMovedIn:
+      many:
+        'The MegaMUD databases of {count} characters (Items.md, Monsters.md, Messages.md) were taken
+        into their realms'' item, monster and message tables wherever a realm had none, and each
+        folder was renamed Default.imported. {fileList}'
+      one:
+        'A character''s MegaMUD databases (Items.md, Monsters.md, Messages.md) were taken into its
+        realm''s item, monster and message tables wherever the realm had none, and the folder was
+        renamed Default.imported. {fileList}'
     megamudSettingsMovedIn:
       many:
         'The MegaMUD settings of {count} characters were moved from their megamud.ini into their

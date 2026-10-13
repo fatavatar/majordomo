@@ -8,13 +8,8 @@ import { useCallback, useEffect, useState } from 'react';
 import { ItemRuleList } from './ItemRules';
 import RealmTableBar, { importedOn, type TableStatus } from './RealmTableBar';
 import { t } from '../lib/i18n';
-import { readMegaMudItems } from '@shared/megamudDb';
-import {
-  itemSaysAnything,
-  type ItemImport,
-  type ItemRule,
-  type ItemTable
-} from '@shared/itemRules';
+import { itemTableRows } from '@shared/megamudDb';
+import { type ItemImport, type ItemRule, type ItemTable } from '@shared/itemRules';
 
 export interface RealmItemsProps {
   /** The saved realm's name, or null for a realm not saved yet. */
@@ -79,27 +74,20 @@ export default function RealmItems({
       setStatus({ tone: 'bad', text: t('settings.items.unreadable') });
       return;
     }
-    const items = readMegaMudItems(bytes);
-    if (items.length === 0) {
+    // One row per item name, the first kept (`itemTableRows`).
+    const { rows: kept, read } = itemTableRows(bytes);
+    if (read === 0) {
       setStatus({ tone: 'bad', text: t('settings.items.notItems', { file: file.name }) });
       return;
-    }
-    // One row per item name, the first kept: a row is keyed by the name.
-    const seen = new Set<string>();
-    const kept: ItemRule[] = [];
-    for (const item of items) {
-      if (!itemSaysAnything(item.rule) || seen.has(item.rule.item)) continue;
-      seen.add(item.rule.item);
-      kept.push(item.rule);
     }
     if (kept.length === 0) {
       setStatus({
         tone: 'bad',
-        text: t('settings.items.nothingSaid', { count: items.length, file: file.name })
+        text: t('settings.items.nothingSaid', { count: read, file: file.name })
       });
       return;
     }
-    const chosen = { name: file.name, rows: kept, read: items.length };
+    const chosen = { name: file.name, rows: kept, read };
     // Replacing a table is not undoable from here, so it is asked about --
     // but only when there is a table to lose.
     if (rows.length > 0) setPending(chosen);

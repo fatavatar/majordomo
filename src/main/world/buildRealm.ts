@@ -96,9 +96,10 @@ import {
  * | 45 | **`checkspell` is what the waterskin does to the desert, on the data that spells it that way.** Format 43 followed a `checkspell <spell> <block>` gate and deliberately declined to read it as *this spell stops the room*, on the ground that the two GreaterMUD builds answer the verb opposite ways. `TextBlockPart.cs:479` returns `Failed` unconditionally and runs the block only for a character the spell is **not** on, and `ExecuteOnMatch` breaks the line on `Failed`, so the block is the whole of what the room does and it is `failspell`'s shape exactly. Live, Festus took *You suffer in the desert heat…* 24 times, typed `drink water` — spell 711 — and crossed 26 more desert rooms without it printing once. The two shipped worlds spell the desert's own gate differently: Paradigm and GreaterMUD write `failspell 711 2654` and already named the ward, MajorMUD's v1.11p data writes `checkspell 711 2654` and named none — so stock goes from **0 warded room spells to 3** (946 rooms, 945 of them desert) and Paradigm from 2 to 4 (+57 rooms). No hazard loses a figure, since the block was already followed. Bumped for the **cache**, like 19, 26 and 27 — todo 02 |
  * | 46 | **A gate on level says *which* character, and the router is planning for one.** Format 43 follows `minlevel` / `maxlevel` at full weight — what stands behind a gate happens to *somebody* — and then flattened it, so the desert's sandstorm (`86:maxlevel 19:cast 713`, a one-in-a-hundred teleport) was priced as *it moves you somewhere else* on all 979 of Paradigm's desert rooms, for a level 21 character it cannot touch. Reported as *it is set to maxlevel 19 so in this case festus is level 21 so it wont execute and can be ignored*. `BuiltSpellHazard.lv` carries the band each of `d`, `tp` and `sm` was recorded under — a gate governs the rest of its own line, so the band is taken back at the end of each — and `hazardFor` (`src/shared/world.ts`) narrows a hazard to the character's level at `WorldGraph.hazardOf`, the one join. **An unstated level keeps the whole hazard**, and an effect recorded both inside a gate and outside one is ungated: the reassuring answer here is *it cannot happen to you* — todo 01 |
  * | 48 | **What a spell's script casts.** A spell whose whole effect is a `TextBlock` read as one that does nothing: mudrev's `cure disease` is `TextBlock 8290`, and `TBInfo 8290` is `cast 2132:cast 2133` — `cure disease 1` and `cure disease 2`, whose `RemovesSpell` rows end plague, leprosy and rotting flesh. The cure pickers read only a spell's own rows, so the Disease field never offered the spell that cures disease (skinny, 2026-10-11). `BuiltSpell.cs` carries the spells a spell's block casts (`TBInfo`, which does not ship, read at the build as format 40 reads an item's), and `WorldGraph.servingAbilities` folds their rows in for the readings that ask what a spell ends; the hazard and damage readers keep the spell's own |
+ * | 49 | **What MegaMUD's engine reads of a class, a spell and a monster** (2026-10-13). The ported engine keeps its databases in our realm data rather than in MegaMUD's `.md` files, and three facts it needs were columns the build had left out: `Classes.MageryType` and `WeaponType` (`BuiltClass.mt`, `wt` — the magic a class casts, 1 mage … 5 kai, the numbering MegaMUD's own `Classes.md` settles, and 9 its martial arts), `Spells.Magery` and `MageryLVL` (`BuiltSpell.mg`, `ml`) and `Monsters.ExpMulti` (`BuiltMob.xm`, written where every row of the name agrees and it is not 1, and each row's own `BuiltMobRow.xm`), which MegaMUD multiplies `EXP` by. Checked against Skinny's own MegaMUD files: every class's magic and every spell's magic number follow from these |
  * | 47 | **The coin a price is counted in.** `Items.Currency` was never read, so the realm's `Price` was a number in no unit and a counter's charge could not be known before `list` was spent on it: a quest run walked to the General Store for two waterskins, was quoted 50 silver nobles each against an empty purse, and stood there with 8.6 million copper in the Bank of Godfrey. `BuiltItem.cur` carries the code (0 copper … 4 runic, `BuyCommand.GetCopperValue`) where it is not copper, and `WorldGraph.priceAt` multiplies it through the shop's markup exactly as the server does, so the supplies errand knows what to withdraw before it walks — todo 00 |
  */
-export const REALM_FORMAT = 48;
+export const REALM_FORMAT = 49;
 
 /**
  * What `build-world.mjs` says about a world it is bundling: which of the two
@@ -410,6 +411,9 @@ export interface BuiltSpell {
   dif?: number;
   /** `Spells.AttType`, as stated — the element (format 34). */
   at?: number;
+  /** `Spells.Magery` and `MageryLVL` — which magic it is and at what level (format 49). */
+  mg?: number;
+  ml?: number;
   /**
    * `Abil-n` / `AbilVal-n` — format 14, and the same pairs an item carries.
    *
@@ -556,9 +560,9 @@ export interface BuiltRace {
  * meaning is settled are carried: `MinHits`/`MaxHits` are **not**, because the
  * first is larger than the second in all fifteen rows (`7-4`, `5-3`) and
  * nothing read so far says which way round they are — a hit-dice range printed
- * backwards is a claim the realm data does not make. `MageryType` is likewise
- * left out: it is 0 through 5 and only 0 (no magery at all) is certain, so the
- * *level* is carried and the numbering is not invented.
+ * backwards is a claim the realm data does not make. `MageryType` was left out
+ * the same way until MegaMUD's own `Classes.md` settled its numbering (format
+ * 49, `mt`).
  */
 export interface BuiltClass {
   id: number;
@@ -567,6 +571,14 @@ export interface BuiltClass {
   expTable?: number;
   /** Magery level, 1–3. Absent for a class that casts nothing. */
   magery?: number;
+  /**
+   * `MageryType` — format 49: 1 mage, 2 priest, 3 druid, 4 bard, 5 kai, the
+   * numbering MegaMUD's `Classes.md` holds against the same rows. Absent with
+   * no magery.
+   */
+  mt?: number;
+  /** `WeaponType` — format 49, as stated: 9 is a kai class's martial arts. */
+  wt?: number;
   /** How well it fights, on the realm's own 1–7 scale. */
   combat?: number;
   /**
@@ -681,6 +693,12 @@ export interface BuiltMob {
    * a resident still resolves its own row outright.
    */
   rt?: number;
+  /**
+   * `Monsters.ExpMulti` — format 49: what `EXP` is multiplied by for the
+   * experience it gives, as MegaMUD's monster record holds it. Written only
+   * where every row of the name agrees and it is not 1, `rt`'s rule.
+   */
+  xm?: number;
   /**
    * What it drops, by item name, capped — format 12.
    *
@@ -797,6 +815,8 @@ export interface BuiltMobRow {
   rgn?: number;
   /** `Monsters.RegenTime`, hours: a placed monster's clock (format 33). */
   rt?: number;
+  /** `Monsters.ExpMulti` where it is not 1 (format 49). */
+  xm?: number;
   fol?: number;
   dmg?: number;
   chl?: number;
@@ -1854,6 +1874,11 @@ export function indexSpells(source: RealmSource): BuiltSpell[] {
     // The element — format 34. Zero is cold, so only a blank is omitted.
     const attackType = number(row['AttType']);
     if (attackType !== null && attackType !== BLANK_AS_NUMBER) entry.at = attackType;
+    // Format 49, for MegaMUD's engine; a zero is the realm's *none*.
+    const magic = number(row['Magery']);
+    if (magic !== null && magic > 0) entry.mg = magic;
+    const magicLevel = number(row['MageryLVL']);
+    if (magicLevel !== null && magicLevel > 0) entry.ml = magicLevel;
     for (const [levels, amount, field] of [
       ['MinIncLVLs', 'MinInc', 'mig'],
       ['MaxIncLVLs', 'MaxInc', 'mag'],
@@ -1994,9 +2019,8 @@ export function indexRaces(source: RealmSource): BuiltRace[] {
 /**
  * Every class the realm offers.
  *
- * Fifteen rows. See `BuiltClass` for the two columns deliberately not carried:
- * a hit-dice pair whose order nothing has settled, and a magery *type* whose
- * numbering only says something for zero.
+ * Fifteen rows. See `BuiltClass` for the columns deliberately not carried:
+ * a hit-dice pair whose order nothing has settled.
  */
 export function indexClasses(source: RealmSource): BuiltClass[] {
   const classes = source.table('Classes');
@@ -2016,6 +2040,11 @@ export function indexClasses(source: RealmSource): BuiltClass[] {
     // level: a Warrior drawn as "magery 0" reads as a caster with none left.
     const magery = number(row['MageryLVL']);
     if (magery !== null && magery > 0) entry.magery = magery;
+    // Format 49, for MegaMUD's engine; a zero is the realm's *none*.
+    const mageryType = number(row['MageryType']);
+    if (mageryType !== null && mageryType > 0) entry.mt = mageryType;
+    const weaponType = number(row['WeaponType']);
+    if (weaponType !== null && weaponType > 0) entry.wt = weaponType;
     const combat = number(row['CombatLVL']);
     if (combat !== null && combat > 0) entry.combat = combat;
     const ab = abilityPairs(row);
@@ -2089,6 +2118,8 @@ export function indexMobs(source: RealmSource, itemNames?: Map<number, string>):
        * reason `BuiltMob.rt` gives — one value means the name agrees.
        */
       rts: Set<number>;
+      /** Format 49: every row's `ExpMulti`, gathered for `rts`' reason. */
+      xms: Set<number>;
       /** Format 18: gathered rather than reduced, for the reason `ty` states. */
       types: Set<number>;
       dmg?: number;
@@ -2161,6 +2192,7 @@ export function indexMobs(source: RealmSource, itemNames?: Map<number, string>):
       costs,
       ids: id === null ? [] : [id],
       rts: new Set<number>(),
+      xms: new Set<number>(),
       types: new Set<number>(),
       casts: new Set<number>(),
       profiles: new Map<string, MobProfile>(),
@@ -2193,6 +2225,7 @@ export function indexMobs(source: RealmSource, itemNames?: Map<number, string>):
      * the question — so it votes `0` and a disagreeing name states nothing.
      */
     entry.rts.add(ownClock(row) ?? 0);
+    entry.xms.add(number(row['ExpMulti']) ?? 1);
     /*
      * Format 18. `ty` is gathered because nothing reduces it — see the field.
      * `dmg` takes the worst, like `ac` and `dr`; `chl` takes the worst too,
@@ -2244,6 +2277,8 @@ export function indexMobs(source: RealmSource, itemNames?: Map<number, string>):
       own.rgn = stated('HPRegen');
       // Only where `GameLimit` makes it one — see `ownClock`.
       own.rt = ownClock(row) ?? undefined;
+      const multi = stated('ExpMulti');
+      if (multi !== undefined && multi > 1) own.xm = multi;
       own.fol = stated('Follow%');
       own.dmg = stated('AvgDmg');
       own.chl = stated('CharmLVL');
@@ -2307,6 +2342,11 @@ export function indexMobs(source: RealmSource, itemNames?: Map<number, string>):
       if (span.rts.size === 1) {
         const only = [...span.rts][0]!;
         if (only > 0) mob.rt = only;
+      }
+      // Format 49, on the same rule.
+      if (span.xms.size === 1) {
+        const only = [...span.xms][0]!;
+        if (only > 1) mob.xm = only;
       }
       // Format 18. Sorted so a file written twice from one database matches.
       if (span.types.size > 0) mob.ty = [...span.types].sort((a, b) => a - b);

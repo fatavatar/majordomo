@@ -6753,3 +6753,81 @@ describe('walking while losing hit points is stated', () => {
     expect(movement()['walkWhileLosingHp']).toBe(true);
   });
 });
+
+/** A one-record `Items.md`, laid out as `megamud.exe` lays one (see `megamudDb.test.ts`). */
+function itemsMd(name: string, flags: number): Buffer {
+  const body = Buffer.alloc(0xa4);
+  body.write(name, 0x02, 'latin1');
+  body.writeUInt32LE(flags, 0x63);
+  const inner = Buffer.concat([
+    Buffer.from([1]),
+    Buffer.from('1\0', 'latin1'),
+    Buffer.from([0, 0, 0, 0, 0x80]),
+    body
+  ]);
+  const page = Buffer.alloc(1024);
+  page.writeUInt16LE(0, 0);
+  page.writeUInt16LE(1, 2);
+  Buffer.concat([Buffer.from([inner.length]), inner]).copy(page, 12);
+  const header = Buffer.alloc(1024);
+  header.write('MDB2', 0, 'latin1');
+  return Buffer.concat([header, page]);
+}
+
+describe("a character's MegaMUD databases", () => {
+  beforeEach(() => {
+    const realm = home.server('skinny-inc');
+    fs.mkdirSync(realm.dir, { recursive: true });
+    fs.writeFileSync(realm.file, 'name: Skinny Inc\nhost: bbs.example\nport: 2424\n', 'utf8');
+    fs.writeFileSync(
+      path.join(realm.dir, 'monsters.yaml'),
+      'source: null\nmonsters:\n  - { mob: forgotten dragon slayer, relationship: escape }\n',
+      'utf8'
+    );
+    const profile = home.profile('skinny');
+    fs.mkdirSync(path.join(path.dirname(profile.file), 'Default'), { recursive: true });
+    fs.writeFileSync(profile.file, 'name: Skinny\nserver: Skinny Inc\n', 'utf8');
+    const folder = path.join(path.dirname(profile.file), 'Default');
+    fs.writeFileSync(path.join(folder, 'Items.md'), itemsMd('healing potion', 0x4 | 0x2));
+    fs.writeFileSync(path.join(folder, 'Monsters.md'), Buffer.alloc(0));
+    fs.writeFileSync(
+      path.join(folder, 'Messages.md'),
+      'poison:0004:0:\r\nYou feel sick\r\nYou feel better\r\n',
+      'latin1'
+    );
+  });
+
+  /*
+   * 2026-10-13: the engine reads no MegaMUD file in play, so what a
+   * character's own folder chose goes to the realm's tables, once, and only
+   * where the realm has none: a table made on the realm's page is the player's.
+   */
+  it("are taken into the realm's tables where it has none, and the folder set aside", () => {
+    migrate();
+    const realm = home.server('skinny-inc').dir;
+    const items = parse(fs.readFileSync(path.join(realm, 'items.yaml'), 'utf8'));
+    expect(items['items']).toEqual([{ item: 'healing potion', collect: true, buy: true }]);
+    expect(items['source']['file']).toMatch(/Items\.md$/);
+    const messages = parse(fs.readFileSync(path.join(realm, 'messages.yaml'), 'utf8'));
+    expect(messages['messages'][0]).toMatchObject({ name: 'poison', match: 'You feel sick' });
+    // The realm's own monster table stands.
+    expect(fs.readFileSync(path.join(realm, 'monsters.yaml'), 'utf8')).toContain(
+      'forgotten dragon slayer'
+    );
+    const profileDir = path.dirname(home.profile('skinny').file);
+    expect(fs.existsSync(path.join(profileDir, 'Default'))).toBe(false);
+    expect(fs.existsSync(path.join(profileDir, 'Default.imported', 'Items.md'))).toBe(true);
+    expect(said.join('\n')).toContain('Default.imported');
+    said.length = 0;
+    migrate();
+    expect(said.join('\n')).not.toContain('Default.imported');
+  });
+
+  it('are left where they are for a character whose realm is not known', () => {
+    fs.writeFileSync(home.profile('skinny').file, 'name: Skinny\nserver: Elsewhere\n', 'utf8');
+    migrate();
+    expect(fs.existsSync(path.join(path.dirname(home.profile('skinny').file), 'Default'))).toBe(
+      true
+    );
+  });
+});
