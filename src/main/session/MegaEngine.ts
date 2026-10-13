@@ -66,6 +66,12 @@ export interface MegaEngineHost {
   dial(): void;
   /** Where our tracker places the character, when it is sure. */
   here(): RoomId | null;
+  /**
+   * Asks the realm where the character is (its locate command, `rm` or
+   * `sys status`), for our tracker to place the room from the reply. False
+   * when the realm has none, or has refused it.
+   */
+  locate(): boolean;
   world(): WorldGraph | undefined;
   /** The shortest walkable way between two rooms. */
   plan(from: RoomId, to: RoomId): Route | string;
@@ -169,6 +175,9 @@ const SECOND_MS = 1000;
  */
 const QUIET_POLL_MS = 250;
 
+/** How long a walk waits on the realm saying where the character is. */
+const LOCATE_WAIT_MS = 5000;
+
 /** A short, steady name for a path MegaMUD can hold (13 characters). */
 function shortName(prefix: string, text: string): string {
   let h = 0x811c9dc5;
@@ -194,6 +203,23 @@ export class MegaEngine {
   private outbound: string[] = [];
   private pausing = false;
   private disposed = false;
+  /**
+   * A walk put aside while the realm is asked where the character is: the
+   * destinations and the walking state as they were when the way was asked
+   * for, taken up again when our tracker places the room.
+   */
+  private parked: {
+    detours: Session['detours'];
+    walking: number;
+    looping: number;
+    roaming: number;
+    lost: number;
+    until: number;
+  } | null = null;
+  /** The next way asked for is answered without asking where first (the ask came to nothing). */
+  private locateGaveUp = false;
+  /** In the game at the last chunk: entering it is when a room is first wanted. */
+  private wasInGame = false;
 
   constructor(
     private readonly host: MegaEngineHost,
@@ -225,7 +251,8 @@ export class MegaEngine {
     this.quiet = newQuietClock(Date.now());
     this.timers.push(
       setInterval(() => this.safely(() => secondTick(this.s)), SECOND_MS),
-      setInterval(() => this.safely(() => quietTick(this.s, this.t, this.quiet)), QUIET_POLL_MS)
+      setInterval(() => this.safely(() => quietTick(this.s, this.t, this.quiet)), QUIET_POLL_MS),
+      setInterval(() => this.safely(() => this.parkedTimeout()), QUIET_POLL_MS)
     );
   }
 
@@ -261,6 +288,10 @@ export class MegaEngine {
       parseData(this.s, this.t, text);
     });
     this.noteRoom();
+    // Into the game with nowhere known: ask once, before anything wants a way.
+    if (this.s.inGame !== 0 && !this.wasInGame && this.host.here() === null) this.host.locate();
+    this.wasInGame = this.s.inGame !== 0;
+    if (this.parked !== null && this.host.here() !== null) this.safely(() => this.unpark());
   }
 
   /** A command the player typed. */
@@ -270,11 +301,14 @@ export class MegaEngine {
 
   connected(): void {
     this.outbound = [];
+    this.parked = null;
+    this.wasInGame = false;
     connected(this.s);
   }
 
   closed(): void {
     this.outbound = [];
+    this.parked = null;
     this.safely(() => connectionClosed(this.s));
   }
 
@@ -462,7 +496,24 @@ export class MegaEngine {
   private route(from: number, to: number): RouteFound {
     const none: RouteFound = { flags: 1, path: null, steps: -1 };
     const here = this.host.here();
-    if (here === null) return none;
+    if (here === null) {
+      // Not placed: ask the realm and put the walk aside rather than answer
+      // "no way", which sends MegaMUD wandering to find a room it knows.
+      // Cancelled (0x20) for now; the destinations come back with the answer.
+      const gaveUp = this.locateGaveUp;
+      this.locateGaveUp = false;
+      if (gaveUp || this.parked !== null || !this.host.locate()) return none;
+      const s = this.s;
+      this.parked = {
+        detours: structuredClone(s.detours),
+        walking: s.walking,
+        looping: s.looping,
+        roaming: s.roaming,
+        lost: s.lost,
+        until: Date.now() + LOCATE_WAIT_MS
+      };
+      return { flags: 0x20, path: null, steps: -1 };
+    }
     let best: Route | null = null;
     for (const room of this.roomsWith(to).slice(0, 8)) {
       if (room === here)
@@ -507,6 +558,29 @@ export class MegaEngine {
     const p = this.makePath(shortName('L', name), name, legs, start, start);
     if (!this.s.paths.includes(p)) this.s.paths.push(p);
     return p;
+  }
+
+  /**
+   * The walk put aside taken up again (`0x43d2a0` from the walk), now the
+   * room is known or the realm has not said; in the second case the way is
+   * answered as MegaMUD would without one.
+   */
+  private unpark(): void {
+    const parked = this.parked;
+    if (parked === null) return;
+    this.parked = null;
+    const s = this.s;
+    if (this.host.here() === null) this.locateGaveUp = true;
+    s.detours = parked.detours;
+    s.walking = parked.walking;
+    s.looping = parked.looping;
+    s.roaming = parked.roaming;
+    s.lost = parked.lost;
+    headFor(s, 0);
+  }
+
+  private parkedTimeout(): void {
+    if (this.parked !== null && Date.now() >= this.parked.until) this.unpark();
   }
 
   /** `0x482fc0`'s file: a path made here, by name. */

@@ -48,13 +48,17 @@ function engine(here: string | null = '1/1') {
     get: (map: number, n: number) => ROOMS.find((r) => r.map === map && r.room === n),
     everyRoom: () => ROOMS.values()
   };
-  const at = { here };
+  const at = { here, locates: 0, canLocate: true };
   const host: MegaEngineHost = {
     write: (text) => sent.push(text),
     show: (text) => shown.push(text),
     hangUp: () => {},
     dial: () => {},
     here: () => at.here,
+    locate: () => {
+      at.locates += 1;
+      return at.canLocate;
+    },
     world: () => world as never,
     plan,
     loopRooms: (name) =>
@@ -133,6 +137,67 @@ describe('the engine in a session', () => {
     expect(sent).toEqual(['say a\r']);
     vi.advanceTimersByTime(500);
     expect(sent).toEqual(['say a\r', 'say b\r', 'look\r']);
+    e.dispose();
+  });
+
+  it('asks where it is on entering the game when our tracker cannot place it', () => {
+    vi.useFakeTimers();
+    const { e, at } = engine(null);
+    expect(e.s.inGame).toBe(0);
+    // The first prompt enters the game (`0x47b070`).
+    e.received('[HP=100]:');
+    expect(e.s.inGame).toBe(1);
+    expect(at.locates).toBe(1);
+    e.received('[HP=100]:');
+    expect(at.locates).toBe(1);
+    e.dispose();
+  });
+
+  it('puts a walk aside while the realm says where it is, and takes it up when placed', () => {
+    vi.useFakeTimers();
+    const { e, at } = engine(null);
+    e.s.inGame = 1;
+    e.s.online = 1;
+    e.received('\x1b[1;36mTown Square\r\n\x1b[0;32mObvious exits: north, closed door east\r\n');
+    // Known to MegaMUD's room list, so it heads for its destinations from here.
+    (e.s.data.rooms ??= []).push({ signature: e.s.f_8130, name: 'Town Square' });
+    expect(e.startLoop('Ring')).toBeNull();
+    expect(at.locates).toBeGreaterThan(0);
+    expect(e.s.walking).toBe(0);
+    expect(e.s.lost).toBe(0);
+    // The reply places the room.
+    at.here = '1/1';
+    e.received('\r\n');
+    expect(e.s.walking).toBe(1);
+    expect(e.s.path.steps!.map((st) => st.command)).toEqual(['n']);
+    e.dispose();
+  });
+
+  it('answers as MegaMUD would when the realm never says', () => {
+    vi.useFakeTimers();
+    const { e, at } = engine(null);
+    e.s.inGame = 1;
+    e.s.online = 1;
+    e.received('\x1b[1;36mTown Square\r\n\x1b[0;32mObvious exits: north, closed door east\r\n');
+    (e.s.data.rooms ??= []).push({ signature: e.s.f_8130, name: 'Town Square' });
+    e.startLoop('Ring');
+    expect(e.s.lost).toBe(0);
+    vi.advanceTimersByTime(5500);
+    expect(e.s.lost).toBe(1);
+    expect(at.locates).toBeGreaterThan(0);
+    e.dispose();
+  });
+
+  it('does not wait on a realm with no locate command', () => {
+    vi.useFakeTimers();
+    const { e, at } = engine(null);
+    at.canLocate = false;
+    e.s.inGame = 1;
+    e.s.online = 1;
+    e.received('\x1b[1;36mTown Square\r\n\x1b[0;32mObvious exits: north, closed door east\r\n');
+    (e.s.data.rooms ??= []).push({ signature: e.s.f_8130, name: 'Town Square' });
+    e.startLoop('Ring');
+    expect(e.s.lost).toBe(1);
     e.dispose();
   });
 });

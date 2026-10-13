@@ -172,6 +172,16 @@ the swap. For such a character:
   tab fills from elsewhere (the special rooms, the sound files, the statline
   items, the toolbar, the colours, BBS accounts, and the events and ability
   monitors).
+- **Where it is**: the engine's ways are planned from the room our tracker
+  places the character in. When it cannot place it, the engine asks the
+  realm (its locate command, `rm` or `sys status`, straight to the socket:
+  the command queue stands down with the old automation) on entering the
+  game, and whenever the engine wants a way. That walk is put aside while
+  the realm answers, and taken up again once the reply places the room.
+  After five seconds with no answer, or on a realm with no locate command,
+  the engine is answered "no way" and does what MegaMUD does: it picks up
+  its place on the path or loop, or reports itself lost. The window's own
+  locate (before a route or loop it starts) goes the same way.
 - **The connection**: `connected` and `connectionClosed` (`0x42c910`'s end)
   from the socket; the engine's hang-up closes it, and its redial (task 2)
   dials the realm again.

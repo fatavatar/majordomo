@@ -1219,6 +1219,7 @@ export class SessionManager {
    */
   askWhereIAm(): boolean {
     if (this.locateWord === null) return false;
+    if (this.mega !== null) return this.megaLocate();
     return this.queue.enqueue({
       command: this.locateWord,
       priority: 'probe',
@@ -4601,6 +4602,7 @@ export class SessionManager {
             if (target !== null && !this.client.connected) void this.connect(target);
           },
           here: () => roomAddress(this.tracker.current.room),
+          locate: () => this.megaLocate(),
           world: () => this.world,
           plan: (from, to) =>
             this.world?.route(from, to, this.lapTraveller(this.tracker.current)) ??
@@ -4627,6 +4629,18 @@ export class SessionManager {
   /** Whether the MegaMUD engine runs this character. */
   get megaMud(): boolean {
     return this.mega !== null;
+  }
+
+  /**
+   * The realm's locate command for the MegaMUD engine's character, straight
+   * to the socket: the queue it would otherwise go through stands down with
+   * the automation the engine replaces.
+   */
+  private megaLocate(): boolean {
+    const word = this.locateWord;
+    if (word === null || !this.client.connected) return false;
+    this.megaWrite(`${word}\r`);
+    return true;
   }
 
   /** The engine's writes, observed as automation's commands are. */
