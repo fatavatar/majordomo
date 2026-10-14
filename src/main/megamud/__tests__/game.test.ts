@@ -280,4 +280,13 @@ describe('the toolbar’s toggles', () => {
     menuCommand(s, 0x821);
     expect(s.f_a32c).toBe(0);
   });
+
+  it('flip No Hangup, and nothing else', () => {
+    const { s } = session();
+    s.state = 0xd;
+    menuCommand(s, 0x82f);
+    expect([s.MegaMud_NoHangup, s.state]).toEqual([1, 0xd]);
+    menuCommand(s, 0x82f);
+    expect(s.MegaMud_NoHangup).toBe(0);
+  });
 });

@@ -163,6 +163,7 @@ export function menuCommand(s: Session, command: number): void {
   else if (command === 0x7d3) autoCombat(s);
   else if (command === 0x7dc) autoHeal(s);
   else if (command === 0x821) allOff(s);
+  else if (command === 0x82f) s.MegaMud_NoHangup = s.MegaMud_NoHangup === 0 ? 1 : 0;
   else {
     const plain = PLAIN[command];
     if (!plain) return;

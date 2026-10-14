@@ -10,6 +10,8 @@ import type { Movement } from '../movement';
  * In the order MegaMUD's own `[Toolbar]` section lists them.
  */
 export const MEGA_TOGGLES = [
+  /** Lit when hanging up is off (`0x460d50` checks `0x82f` while `NoHangup` is set). */
+  { name: 'noHangup', command: 0x82f, toolbar: 'NoHangup' },
   { name: 'allOff', command: 0x821, toolbar: 'AllOff' },
   { name: 'combat', command: 0x7d3, toolbar: 'AutoCombat' },
   { name: 'preAttack', command: 0x829, toolbar: 'AutoPreAttack' },

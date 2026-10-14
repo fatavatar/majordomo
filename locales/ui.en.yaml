@@ -1064,6 +1064,7 @@ toolbar:
   # MegaMUD's own toolbar toggles, for a character the MegaMUD engine runs,
   # in MegaMUD's words.
   mega:
+    noHangup: Don't Hang Up
     allOff: All Off
     combat: Auto-Combat
     preAttack: Auto-Pre-Attack

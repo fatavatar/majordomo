@@ -260,6 +260,7 @@ describe('the loop builder on the toolbar', () => {
 describe('the MegaMUD engine’s toggles', () => {
   const mega = {
     on: {
+      noHangup: false,
       allOff: false,
       combat: true,
       preAttack: true,
@@ -275,7 +276,7 @@ describe('the MegaMUD engine’s toggles', () => {
       search: false,
       afk: false
     },
-    shown: ['combat' as const, 'nuke' as const, 'allOff' as const],
+    shown: ['noHangup' as const, 'combat' as const, 'nuke' as const, 'allOff' as const],
     walking: false,
     looping: false,
     canGo: true
@@ -285,6 +286,7 @@ describe('the MegaMUD engine’s toggles', () => {
     const buttons = toolbarButtons(subject({ mega }));
     const toggles = buttons.filter((b) => b.id.startsWith('mega:'));
     expect(toggles.map((b) => [b.id, b.on, b.fixed])).toEqual([
+      ['mega:noHangup', false, true],
       ['mega:combat', true, true],
       ['mega:nuke', false, true],
       ['mega:allOff', false, true]
@@ -292,7 +294,7 @@ describe('the MegaMUD engine’s toggles', () => {
     expect(buttons.some((b) => b.id === 'combat')).toBe(false);
   });
 
-  /* `0x460d50`: All Off greys every toggle but itself, and Go/Stop. */
+  /* `0x460d50`: All Off greys every toggle but itself, and Go/Stop; No Hangup is Connect's. */
   it('are greyed under All Off, all but All Off itself, and the transport with them', () => {
     const off = { ...mega, on: { ...mega.on, allOff: true, combat: false } };
     const buttons = toolbarButtons(subject({ mega: off, movement: megaMovement(off) }));
@@ -303,6 +305,7 @@ describe('the MegaMUD engine’s toggles', () => {
       false
     ]);
     expect(greyed('move:toggle')).toBe(true);
+    expect(greyed('mega:noHangup')).toBe(false);
   });
 
   /* Looping, the transport showed a greyed play, not a stop (2026-10-13). */

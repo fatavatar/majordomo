@@ -198,6 +198,8 @@ function switchLabel(name: AutomationSwitch): string {
  * reason `SWITCH_ICONS` is.
  */
 const MEGA_ICONS: Record<MegaToggle, IconName> = {
+  // The hang-up switch's own glyph.
+  noHangup: 'unplug',
   allOff: 'bolt',
   combat: 'sword',
   preAttack: 'crosshair',
@@ -217,6 +219,8 @@ const MEGA_ICONS: Record<MegaToggle, IconName> = {
 /** The label for each MegaMUD toggle, one literal key per line for `switchLabel`'s reason. */
 function megaLabel(name: MegaToggle): string {
   switch (name) {
+    case 'noHangup':
+      return t('toolbar.mega.noHangup');
     case 'allOff':
       return t('toolbar.mega.allOff');
     case 'combat':
@@ -412,8 +416,9 @@ export function toolbarButtons(subject: ToolbarSubject): ToolbarButton[] {
           label: megaLabel(name),
           icon: MEGA_ICONS[name],
           on: mega.on[name],
-          // MegaMUD greys every toggle but All Off itself while it is on (`0x460d50`).
-          disabled: name !== 'allOff' && mega.on.allOff,
+          // MegaMUD greys every toggle but All Off itself while it is on (`0x460d50`);
+          // No Hangup is drawn with Connect, not with them.
+          disabled: name !== 'allOff' && name !== 'noHangup' && mega.on.allOff,
           fixed: true,
           run: () => setMegaToggle(name)
         }))

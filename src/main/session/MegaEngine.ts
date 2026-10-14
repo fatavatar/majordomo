@@ -237,6 +237,7 @@ export type MegaAlert = keyof typeof MEGA_ALERTS;
 
 /** The session fields the toolbar's toggles flip, kept across a settings reload. */
 const TOGGLE_FIELDS = [
+  'MegaMud_NoHangup',
   'f_a32c',
   'MegaMud_AutoCombat',
   'MegaMud_AutoPreAttack',
@@ -653,6 +654,8 @@ export class MegaEngine {
     const allOff = s.f_a32c !== 0;
     const lit = (value: number): boolean => !allOff && value !== 0;
     const on: Record<MegaToggle, boolean> = {
+      // Not one of All Off's: it is drawn with Connect (`0x460d50`).
+      noHangup: s.MegaMud_NoHangup !== 0,
       allOff,
       combat: lit(s.MegaMud_AutoCombat),
       preAttack: lit(s.MegaMud_AutoPreAttack),
