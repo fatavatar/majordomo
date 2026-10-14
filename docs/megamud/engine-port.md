@@ -288,6 +288,13 @@ auto-hunt, the quest runner, item errands, wards and auto-keys. `Walker` and
 `LoopRunner` become the route and loop planners behind `route` and
 `readPath`. The login automator also stays.
 
+**The flee** (`automation.safety.fleeGoto`, 2026-10-14) is ours inside the
+loop, as MegaMUD has no toggle for it: on the toolbar beside MegaMUD's own,
+and in the engine (`MegaEngine.useFlee`) below its health it starts
+MegaMUD's run (`startRun`, `Combat.RunRooms`) to leave the fight, then sends
+`sys goto <destination>` once combat is off, once until health is back above
+the line. Only on a realm that answers `sys status`.
+
 ## Deleted at the swap
 
 The modules being deleted, with what replaces each:

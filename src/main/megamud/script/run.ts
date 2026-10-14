@@ -29,7 +29,7 @@ function moving(s: Session): boolean {
 }
 
 /** A reason to run: counted, `Combat.RunRooms` (or one) rooms, the alert, and the message. */
-function startRun(s: Session, rooms: number, what: string, shown: string): void {
+export function startRun(s: Session, rooms: number, what: string, shown: string): void {
   s.f_32534 += 1;
   s.runCount = rooms;
   s.host.activity(what);

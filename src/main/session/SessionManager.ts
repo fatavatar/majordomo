@@ -300,7 +300,7 @@ import {
 import { deathRisk, hangUpCost, runDue } from '../../shared/danger';
 import { withFled } from '../../shared/fled';
 import type { MegaToggle } from '../../shared/megamud/toggles';
-import { MegaEngine, type MegaAlert, type MegaEngineSetup } from './MegaEngine';
+import { MegaEngine, type FleeGoto, type MegaAlert, type MegaEngineSetup } from './MegaEngine';
 
 /**
  * The part of a chunk of keystrokes the server's line editor would keep.
@@ -4724,6 +4724,16 @@ export class SessionManager {
     this.mega?.wantStat();
   }
 
+  /**
+   * The flee toggle for the engine: on, and on a realm that answers
+   * `sys status`, so `sys goto` is a command it knows (`considerEscape`'s gate).
+   */
+  private megaFlee(): FleeGoto | null {
+    const flee = this.automationConfig.safety.fleeGoto;
+    if (!flee.enabled || this.locateMethod !== 'sys-status') return null;
+    return { belowHealth: flee.belowHealth, destination: flee.destination };
+  }
+
   /** Runs the MegaMUD engine for this character, or stops it (null). */
   useMegaMud(setup: MegaEngineSetup | null): void {
     if (this.mega !== null && setup !== null) {
@@ -4791,6 +4801,7 @@ export class SessionManager {
       );
       this.mega.useMonsters(this.automationConfig.combat.monsters);
       this.mega.useItems(this.megaItems());
+      this.mega.useFlee(this.megaFlee());
       if (this.client.connected) this.mega.connected();
     }
     if (this.configured !== null) this.configure(...this.configured);
@@ -4902,6 +4913,7 @@ export class SessionManager {
     this.mega?.useMonsters(automation.combat.monsters);
     this.mega?.useItems(this.megaItems());
     this.locateMethod = locate;
+    this.mega?.useFlee(this.megaFlee());
     this.rewriter.configure(rewrites);
     // A new design gets to be refused once, out loud, if it is too wide. By
     // value: every reload resolves a fresh object for an unchanged file.

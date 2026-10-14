@@ -430,6 +430,25 @@ export function toolbarButtons(subject: ToolbarSubject): ToolbarButton[] {
           run: () => setSwitch(name, !switches[name])
         }));
 
+  /*
+   * Our flee, beside MegaMUD's toggles: the engine keeps it as ours (its
+   * `sys goto` after MegaMUD's own run, `MegaEngine.useFlee`), and MegaMUD has
+   * no toggle of its own to stand for it (2026-10-14).
+   */
+  const flee: ToolbarButton[] =
+    mega === null
+      ? []
+      : [
+          {
+            id: 'fleeGoto',
+            label: switchLabel('fleeGoto'),
+            icon: SWITCH_ICONS.fleeGoto,
+            on: switches.fleeGoto,
+            fixed: true,
+            run: () => setSwitch('fleeGoto', !switches.fleeGoto)
+          }
+        ];
+
   const shelf: ToolbarButton[] =
     openLoops === null
       ? []
@@ -510,5 +529,5 @@ export function toolbarButtons(subject: ToolbarSubject): ToolbarButton[] {
     }
   ];
 
-  return [dial, gear, ...switches_, ...transport];
+  return [dial, gear, ...switches_, ...flee, ...transport];
 }

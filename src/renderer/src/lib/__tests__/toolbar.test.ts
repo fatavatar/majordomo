@@ -317,6 +317,15 @@ describe('the MegaMUD engine’s toggles', () => {
     expect([move!.icon, move!.disabled]).toEqual(['stop', false]);
   });
 
+  /* MegaMUD has no flee toggle; ours stands beside its own (2026-10-14). */
+  it('keep our flee switch beside them, writing the switch', () => {
+    const setSwitch = vi.fn();
+    const flee = toolbarButtons(subject({ mega, setSwitch })).find((b) => b.id === 'fleeGoto');
+    expect([flee?.fixed, flee?.on]).toEqual([true, false]);
+    flee!.run();
+    expect(setSwitch).toHaveBeenCalledWith('fleeGoto', true);
+  });
+
   it('press the engine’s toggle', () => {
     const setMegaToggle = vi.fn();
     const nuke = toolbarButtons(subject({ mega, setMegaToggle })).find((b) => b.id === 'mega:nuke');

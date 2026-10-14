@@ -176,6 +176,40 @@ describe('the engine in a session', () => {
     e.dispose();
   });
 
+  /* MegaMUD has no flee; ours is MegaMUD's run, then `sys goto` (2026-10-14). */
+  it('flees below the line: runs out of the fight, then sys goto, once until health is back', () => {
+    vi.useFakeTimers();
+    const { e, sent } = engine('1/1');
+    const s = e.s;
+    s.inGame = 1;
+    s.Player_MaxHP = 100;
+    s.hp = 15;
+    s.inCombat = 1;
+    e.useFlee({ belowHealth: 0.2, destination: 'sil' });
+    vi.advanceTimersByTime(1000);
+    expect(s.runCount).toBeGreaterThan(0);
+    expect(sent.join('')).not.toContain('sys goto');
+    s.inCombat = 0;
+    s.runCount = 0;
+    vi.advanceTimersByTime(1000);
+    expect(sent.filter((text) => text === 'sys goto sil\r')).toHaveLength(1);
+    vi.advanceTimersByTime(3000);
+    expect(sent.filter((text) => text === 'sys goto sil\r')).toHaveLength(1);
+    e.dispose();
+  });
+
+  it('does not flee with the switch off', () => {
+    vi.useFakeTimers();
+    const { e, sent } = engine('1/1');
+    e.s.inGame = 1;
+    e.s.Player_MaxHP = 100;
+    e.s.hp = 5;
+    e.useFlee(null);
+    vi.advanceTimersByTime(2000);
+    expect(sent.join('')).not.toContain('sys goto');
+    e.dispose();
+  });
+
   it('refuses a loop it cannot make', () => {
     vi.useFakeTimers();
     const { e } = engine();

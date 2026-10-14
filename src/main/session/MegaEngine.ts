@@ -29,7 +29,9 @@ import { clearDetours, goTo, headFor, startWalking } from '../megamud/move/desti
 import { copyPath, freeSteps } from '../megamud/move/path';
 import { connected, connectFailed, connectionClosed } from '../megamud/script/game';
 import { reEngage } from '../megamud/script/modes';
-import { wake } from '../megamud/script/send';
+import { send, wake } from '../megamud/script/send';
+import { startRun } from '../megamud/script/run';
+import { tuning } from '../app/tuning';
 import { forgetAwaited, setState } from '../megamud/script/state';
 import {
   dataArrived,
@@ -279,6 +281,12 @@ type CuredAffliction = (typeof CURED_AFFLICTIONS)[number];
 
 /** How long a walk waits on the realm saying where the character is. */
 const LOCATE_WAIT_MS = 5000;
+
+/** Ours, not MegaMUD's: `automation.safety.fleeGoto`, the `sys goto` escape. See `useFlee`. */
+export interface FleeGoto {
+  belowHealth: number;
+  destination: string;
+}
 /** How long a way planned is used again before it is planned afresh. */
 const PLAN_KEPT_MS = 60_000;
 
@@ -363,6 +371,11 @@ export class MegaEngine {
   private readonly blessUp: (number | null)[] = [];
   /** Whether our tracker had the HP and mana regeneration spells up, at the last look. */
   private regenUp: [boolean, boolean] = [false, false];
+  /** The `sys goto` escape when on (`useFlee`), and one armed and waiting for the fight to end. */
+  private flee: FleeGoto | null = null;
+  private fleeArmed: { destination: string; at: number } | null = null;
+  /** Sent, and not to be again until health is back above the line. */
+  private fleeSpent = false;
   /** The marks list as last kept (`keepLearned`). */
   private marksKept = '[]';
   /** The afflictions our tracker had on, at the last look (`afflictions`). */
@@ -419,6 +432,7 @@ export class MegaEngine {
         () =>
           this.safely(() => {
             secondTick(this.s);
+            this.fleeTick();
             this.keepLearned();
             this.noteToggles();
           }),
@@ -934,6 +948,57 @@ export class MegaEngine {
     this.parked = null;
     this.safely(() => connectionClosed(this.s));
     this.safely(() => this.keepLearned());
+  }
+
+  /**
+   * The flee toggle (`automation.safety.fleeGoto`), ours and kept beside
+   * MegaMUD's own run: below its health, MegaMUD's run is started to get out
+   * of the fight, and once the fight is over `sys goto <destination>` is
+   * sent, as the old automation's escape did. Null when off, or on a realm
+   * with no `sys goto` (`SessionManager`).
+   */
+  useFlee(flee: FleeGoto | null): void {
+    this.flee = flee !== null && flee.destination.trim() !== '' ? flee : null;
+    if (this.flee === null) this.fleeArmed = null;
+  }
+
+  private fleeTick(): void {
+    const s = this.s;
+    const flee = this.flee;
+    if (flee === null || s.inGame === 0 || s.Player_MaxHP <= 0) {
+      this.fleeArmed = null;
+      return;
+    }
+    const low = s.hp > 0 && s.hp / s.Player_MaxHP <= flee.belowHealth;
+    if (!low) this.fleeSpent = false;
+    if (this.fleeArmed === null) {
+      if (!low || this.fleeSpent) return;
+      this.fleeArmed = { destination: flee.destination.trim(), at: Date.now() };
+      const pct = Math.floor((s.hp * 100) / s.Player_MaxHP);
+      if (s.inCombat !== 0 && s.runCount === 0) {
+        startRun(
+          s,
+          Math.max(1, s.Combat_RunRooms),
+          'Running: fleeing',
+          `[Run: fleeing at ${pct}% for sys goto ${this.fleeArmed.destination}]`
+        );
+        wake(s);
+      }
+      return;
+    }
+    const armed = this.fleeArmed;
+    if (s.inCombat !== 0 || s.runCount !== 0) {
+      if (Date.now() - armed.at > tuning().session.retreatPatienceMs) {
+        this.fleeArmed = null;
+        this.fleeSpent = true;
+        s.host.show(`[Flee: still fighting, sys goto ${armed.destination} given up]`);
+      }
+      return;
+    }
+    this.fleeArmed = null;
+    this.fleeSpent = true;
+    s.host.show(`[Flee: sys goto ${armed.destination}]`);
+    send(s, `sys goto ${armed.destination}\r`);
   }
 
   /** The player's Disconnect (`0x7d4`): hung up on purpose, and not redialled. */
