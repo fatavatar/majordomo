@@ -8,7 +8,7 @@ import { enemiesHere } from '../room/entities';
 import { expandMacros, noteCommands, send } from '../script/send';
 import { setState } from '../script/state';
 import type { Session } from '../Session';
-import { unported } from '../unported';
+import { sneakStep } from '../script/stealth';
 
 function issue(s: Session, command: string, what: string): number {
   s.waitLines = 2;
@@ -139,7 +139,7 @@ export function preBackstab(s: Session, force: number): number {
         force !== 0)
     ) {
       issue(s, s.Combat_PreBsCmd, 'Issuing pre-bs');
-      if (force !== 0) unported('40b520');
+      if (force !== 0) sneakStep(s);
       return 1;
     }
   }

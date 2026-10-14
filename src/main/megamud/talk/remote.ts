@@ -42,13 +42,13 @@ import { removeMember } from '../party/members';
 import { joinLeader } from '../party/ranks';
 import { findPlayer, partyIndex } from '../room/checkNames';
 import { whereAgo, whereText, roomKnown } from '../room/where';
-import { hangUp } from '../script/game';
+import { hangUp, resetAll } from '../script/game';
 import { expandMacros, plainText, queue, send } from '../script/send';
 import { goStop } from '../move/buttons';
 import { clearDetours, goTo, headFor, startWalking } from '../move/destinations';
 import { clearPath, copyPath, freeSteps, stepsShown } from '../move/path';
 import type { PathRec, Session } from '../Session';
-import { unported } from '../unported';
+import { activateProfile, useProfile } from '../character';
 
 /** The reply prefix for each kind (the table at `0x4b2fb4`). */
 function replyPrefix(s: Session, p: PlayerRec, kind: number, sender: string): string {
@@ -548,11 +548,10 @@ function alterSettings(c: Ctx): number | null {
   }
   if (is('@profile')) {
     const n = atoi(cmd.slice(8));
-    // `0x446560`/`0x446910`: switching profiles is the settings' (not ported yet).
-    if (c.kind === 0) return unported('446560');
+    if (c.kind === 0) return useProfile(s, n);
     let text: string;
     if (s.f_d81c !== 0) text = 'profile: settings window is open';
-    else if (unported('446910') !== 0) text = `profile now ${n}`;
+    else if (activateProfile(s, n) !== 0) text = `profile now ${n}`;
     else if ((n - 1) >>> 0 < 4)
       text = `profile ${n} is not enabled - still ${s.Profiles_ActiveProfile}`;
     else text = `profile is ${s.Profiles_ActiveProfile} - use 1-4`;
@@ -580,8 +579,7 @@ function alterSettings(c: Ctx): number | null {
   }
   if (stricmp(cmd, '@settings') === 0) return settings(c);
   if (stricmp(cmd, '@reset') === 0) {
-    // `0x4b3f70`: every flag and statistic reset (not ported yet).
-    unported('4b3f70');
+    resetAll(s);
     return settingReply(c, `${c.to} {ok}\r`);
   }
   return null;

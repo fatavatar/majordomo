@@ -65,16 +65,15 @@ import { queue, send, wake } from './send';
 import { setState } from './state';
 import { sneakStep } from './stealth';
 import { setTask } from './task';
-import { unported } from '../unported';
 
 /**
  * `0x4451e0`: the next command of an imported path (`0x7f28`, in one of
  * five clients' formats). The text comes from MegaMUD's Import Path dialog,
- * which the app does not have, so there is never one.
+ * which the app does not have — our paths are its planner's — so there is
+ * never one, and the import ends.
  */
 function importNext(s: Session): string {
   s.importFrom = s.importAt;
-  unported('4451e0');
   s.importing = 0;
   s.importText = '';
   return '';

@@ -18,7 +18,6 @@ import { healthStep } from '../health/rest';
 import { hangupAllowed } from '../room/checkNames';
 import { allAttackable, currentTarget, enemiesHere, stopToKill } from '../room/entities';
 import type { RoomEntity, Session } from '../Session';
-import { unported } from '../unported';
 import { hangUp } from './game';
 import { send } from './send';
 import { refreshWho } from './setup';
@@ -250,7 +249,7 @@ function autoAutoCombat(s: Session, stop: number): void {
   if (!((s.active !== 0 || moving(s)) && s.f_a32c === 0)) return;
   if (moving(s)) s.f_a328 = 1;
   s.MegaMud_AutoCombat = 1;
-  unported('460d50');
+  // `0x460d50` redraws MegaMUD's toolbar; ours follows the toggles each second.
 }
 
 export function runCheck(s: Session): number {

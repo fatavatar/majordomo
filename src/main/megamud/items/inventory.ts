@@ -16,7 +16,6 @@ import { hangUp } from '../script/game';
 import { queueCommand } from '../script/send';
 import { forgetAwaited, setState } from '../script/state';
 import type { Carried, Session } from '../Session';
-import { unported } from '../unported';
 
 const COIN = 0x8000000;
 const LEARNED = 0x40000000;
@@ -401,7 +400,7 @@ export function inventoryLine(s: Session, line: string, last: number): number {
       if (indexOf(rest, '- Heavy') !== -1) s.f_846c = 3;
       s.s_8493 = '';
       listingDone(s);
-      if (s.f_e2d0 !== 0) unported('4562d0');
+      if (s.f_e2d0 !== 0) weightsReport(s);
       nakedCheck(s);
       return 1;
     }
@@ -484,4 +483,64 @@ export function coinsFromWealth(s: Session): void {
   add(silver, 'silver noble');
   add(copper, 'copper farthing');
   s.f_8464 += coinWeight(s) - before;
+}
+
+/** What a carried line weighs, as `0x456480` sorts by: -1 unknown, coins a third each. */
+function lineWeight(c: Carried): number {
+  if (!c.item || c.item.weight < 0) return -1;
+  return (c.item.flags & COIN) !== 0 ? Math.trunc(c.count / 3) : c.count * c.item.weight;
+}
+
+/**
+ * `0x4562d0`: the inventory's weights, asked for from MegaMUD's menu
+ * (`0xe2d0`) and shown once the next listing is read: the equipped and the
+ * carried, each heaviest first (`0x456480`), a line each (`0x456220`), the
+ * pooled coins on GreaterMUD (`0x4534b0`, `0x453500`), and the total.
+ */
+function weightsReport(s: Session): void {
+  s.f_e2d0 = 0;
+  const heaviest = (list: Carried[]): Carried[] =>
+    [...list].sort((a, b) => lineWeight(b) - lineWeight(a));
+  const equipped = heaviest(s.inventory.filter((c) => (c.flags & 1) !== 0));
+  const carried = heaviest(s.inventory.filter((c) => (c.flags & 1) === 0));
+  let total = 0;
+  const line = (c: Carried): void => {
+    const item = c.item;
+    if (!item) return;
+    if ((item.flags & COIN) !== 0) {
+      if (s.BBS_GreaterMUD !== 0) {
+        s.host.show(`  ${item.name} (x${c.count}): *`);
+        return;
+      }
+      s.host.show(`  ${item.name} (x${c.count}): ${Math.trunc(c.count / 3)}`);
+      total += Math.trunc(c.count / 3);
+      return;
+    }
+    if (item.weight < 0) {
+      s.host.show(`  ${item.name} (x${c.count}): unknown weight`);
+      return;
+    }
+    s.host.show(`  ${item.name} (x${c.count}): ${item.weight * c.count}`);
+    total += item.weight * c.count;
+  };
+  s.host.show('');
+  s.host.show('Inventory Item Weights');
+  s.host.show('--- Equipped ---------');
+  for (const c of equipped) line(c);
+  s.host.show('--- Carried ----------');
+  for (const c of carried) line(c);
+  if (s.BBS_GreaterMUD !== 0) {
+    const coins = s.inventory.reduce(
+      (n, c) => (c.item && (c.item.flags & COIN) !== 0 ? n + c.count : n),
+      0
+    );
+    if (coins > 0) {
+      const weight = Math.trunc(coins / 3);
+      total += weight;
+      s.host.show(`  * pooled coin weight: ${weight}`);
+    }
+  }
+  s.host.show('----------------------');
+  s.host.show(`Total: ${total}   (Encum: ${s.f_8464}/${s.f_8468})`);
+  s.host.show('');
 }

@@ -328,6 +328,18 @@ The modules being deleted, with what replaces each:
 The settings that belonged to the deleted modules go with them. A character's
 current settings are converted to `megamud.ini` once, wherever a key maps.
 
+## What is MegaMUD's window and not the engine
+
+Every function the engine calls is ported (2026-10-14), but for these,
+whose work is MegaMUD's own window or tooling and is done by ours: the
+dialling thread and the BBS logon (`0x45a6b0`, `0x45ad00`: the host and the
+realm's login script), the talk window's log of a page (`0x460bb0`: our talk
+panel), the toolbar's redraw (`0x460d50`: the toggles are published each
+second), the path recorder (`0x488700`) and the Import Path dialog
+(`0x4451e0`: our paths are the planner's), the party window's drawing
+(`0x481d40`; its decisions, `0x4816b0`, are ported as `partyRefresh`), and
+the terminal's reset (`0x418280`).
+
 ## Known issues kept from MegaMUD
 
 - **A double step after a heal** (seen 2026-10-13 in Skinny's logs, kept as

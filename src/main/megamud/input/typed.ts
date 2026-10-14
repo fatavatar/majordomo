@@ -20,7 +20,6 @@ import { forgetAwaited, setState } from '../script/state';
 import { setTask } from '../script/task';
 import type { Session } from '../Session';
 import { findSpell } from '../spells/lookup';
-import { unported } from '../unported';
 import { castStamp } from '../combat/timer';
 import { move } from '../move/go';
 
@@ -43,8 +42,10 @@ export function typedCommand(s: Session, from: number, text: string): void {
   if (s.inGame !== 0) {
     inGame(s, from, command, word1, word2, rest);
   }
-  if (abbrev(word1, '/page', 2) !== 0) unported('460bb0');
-  if (s.f_e174 !== 0) unported('488700');
+  // `0x460bb0` logs a page to MegaMUD's talk window, which is our talk
+  // panel's; `0x488700` records the step for MegaMUD's path recorder
+  // (`0xe174`), which the app does not have.
+  void s.f_e174;
   void rest2;
 }
 
@@ -154,11 +155,9 @@ function inGame(
   } else if (!attackVerb && (word1.length === 3 || word1.length === 4)) {
     typedSpell(s, word1, word2);
   }
-  if (word1[0] === '/') {
-    if (command.length > 1 && abbrev(word1, '/page', 2) === 0) unported('460bb0');
-  } else if (word1[0] === '>' && command.length > 1) {
-    unported('460bb0');
-  }
+  // A telepath or a gangpath typed is logged to MegaMUD's talk window
+  // (`0x460bb0`): our talk panel's.
+
   if (abbrev(word1, 'sysop', 2) !== 0) setState(s, 0x20);
   void rest;
 }

@@ -16,7 +16,7 @@ import { dropUnkeptCreatures, dropUnkeptItems, unkeepAll } from '../room/entitie
 import { forgetLastTarget } from '../room/roomName';
 import { setState } from '../script/state';
 import type { Session } from '../Session';
-import { unported } from '../unported';
+import { heldRows } from '../messages/messages';
 import { stepBack } from './moves';
 
 /** `0x4c01e0`: the direction a word starts with (0 north … 9 down), else -1. */
@@ -66,7 +66,7 @@ export function exitsLine(s: Session, text: string): number {
     return 1;
   }
   if (indexOf(text, "You can't seem to move anywhere") !== -1 && s.held === 0) {
-    unported('46c0f0');
+    heldRows(s, 1);
     s.held = 1;
     s.f_e29c = 1;
   }

@@ -12,6 +12,7 @@
  * the stamp, never a live clock. `tick()` is `GetTickCount64`.
  */
 import type { ItemRec, MegaData, MonsterRec, PlayerRec, RoomRec } from './data';
+import type { MegaSettings } from '../../shared/megamud/settings';
 import { RawFields } from './RawFields';
 import type { Pending } from './script/send';
 
@@ -676,6 +677,8 @@ export class Session extends RawFields {
   lastSent = '';
   /** 0xdb90: how many times running it has been sent. */
   sameSent = 0;
+  /** The settings the character was loaded with, its config profiles among them (`@profile`). */
+  settings: MegaSettings | null = null;
   /** The pending list (`0x5c6d40`…, count `0x2374`). */
   pending: Pending[] = [];
   /** 0x59cb80: the pending command just sent should not set the Pending Cmd state. */

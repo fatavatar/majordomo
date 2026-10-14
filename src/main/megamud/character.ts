@@ -9,11 +9,13 @@
  * (`automation.remotes.players`) are converted to it (`remoteBits`).
  */
 import { SETTINGS } from '../../shared/megamud/schema';
-import type { MegaSettings } from '../../shared/megamud/settings';
+import type { MegaSettings, ProfiledSection } from '../../shared/megamud/settings';
+import { clearCastMode } from './combat/engaged';
+import { forgetRoomMonsters, forgetRoomPlayers } from './script/game';
 import type { RemoteName } from '../../shared/remotes';
 import { loadMonitors } from './abilities/monitors';
 import { newPlayer } from './data';
-import { applySettings } from './fieldNames';
+import { applySettings, fieldName } from './fieldNames';
 import { loadEvents } from './script/events';
 import { loadRules } from './script/rules';
 import type { Session } from './Session';
@@ -44,9 +46,89 @@ const CAST_LIMITS = [
   'Combat_MaxCastCnt2'
 ] as const;
 
-export function loadCharacter(s: Session, mega: MegaSettings): void {
-  applySettings(s, mega, SETTINGS);
+function noCastLimits(s: Session): void {
   for (const field of CAST_LIMITS) if (s[field] === 0) s[field] = NO_CAST_LIMIT;
+}
+
+/** The tabs a config profile can be kept for, as `0x447c90` names them. */
+const PROFILE_TABS: readonly [ProfiledSection, string][] = [
+  ['Combat', 'combat'],
+  ['Health', 'health'],
+  ['Spells', 'spells']
+];
+
+/** Profile `n` of a tab is there and enabled (`0xbe44`, `0xcf94`, `0xd804` + `n`·4). */
+function profileOn(s: Session, section: ProfiledSection, n: number): boolean {
+  const slot = n >= 1 && n <= 4 ? s.settings?.profiles[section]?.[n - 1] : null;
+  return slot !== null && slot !== undefined && slot.enabled;
+}
+
+/**
+ * `0x446910`: config profile `n` put on, where any tab has it enabled — each
+ * tab its copy `n`, else its first (`0x447290`) — and what the old one was
+ * doing let go: the rest-to-full marks, the cast mode, the room's marks.
+ * 1 when it was.
+ */
+export function activateProfile(s: Session, n: number): number {
+  if (n < 1 || n > 4 || !PROFILE_TABS.some(([section]) => profileOn(s, section, n))) return 0;
+  const fields = s as unknown as Record<string, number | string>;
+  for (const [section] of PROFILE_TABS) {
+    const slot = s.settings?.profiles[section]?.[(profileOn(s, section, n) ? n : 1) - 1];
+    if (!slot) continue;
+    for (const def of SETTINGS) {
+      if (def.section !== section || !def.profiled) continue;
+      const name = fieldName(def);
+      const value = slot.values[def.key];
+      if (name !== null && value !== undefined) fields[name] = value;
+    }
+  }
+  noCastLimits(s);
+  s.Profiles_ActiveProfile = n;
+  s.f_e240 = 1;
+  s.f_327b0 = 0;
+  s.f_327b4 = 0;
+  s.f_327b8 = 0;
+  s.restHpToFull = 0;
+  s.restManaToFull = 0;
+  s.hpFullAt = 0;
+  s.manaFullAt = 0;
+  clearCastMode(s);
+  forgetRoomMonsters(s);
+  forgetRoomPlayers(s);
+  return 1;
+}
+
+/**
+ * `0x446560`: the player's `@profile <n>`, said as MegaMUD says it. 1 when
+ * the profile was put on.
+ */
+export function useProfile(s: Session, n: number): number {
+  if (s.f_d81c !== 0) {
+    s.host.show('[Config Profile Not Activated (settings window is open)]');
+    return 0;
+  }
+  if (n < 1 || n > 4) {
+    s.host.show(`[Config Profile ${s.Profiles_ActiveProfile} Is Active (use 1-4)]`);
+    return 0;
+  }
+  if (activateProfile(s, n) === 0) {
+    s.host.show(`[Config Profile ${n} Not Activated (not enabled on any tab)]`);
+    return 0;
+  }
+  if (n === 1) {
+    s.host.show('[Config Profile 1 Activated (default)]');
+    return 1;
+  }
+  // `0x447c90`: the tabs it is kept for, joined by `+`.
+  const tabs = PROFILE_TABS.filter(([section]) => profileOn(s, section, n)).map(([, w]) => w);
+  s.host.show(`[Config Profile ${n} Activated (${tabs.join('+')})]`);
+  return 1;
+}
+
+export function loadCharacter(s: Session, mega: MegaSettings): void {
+  s.settings = mega;
+  applySettings(s, mega, SETTINGS);
+  noCastLimits(s);
   loadMonitors(s, reader(mega, 'AbilMon'));
   loadEvents(s, reader(mega, 'Schedule'));
   loadRules(s, reader(mega, 'Rules'));
