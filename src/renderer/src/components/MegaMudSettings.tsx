@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useState, type ReactNode } from 'react';
+import { Fragment, useEffect, useState, type ReactNode } from 'react';
 import { customControl, drawnHere } from './MegaMudEditors';
 import { CheckField, NumberField, TextField } from './FormField';
 import { useAutoSave, type AutoSave } from '../hooks/useAutoSave';
@@ -53,14 +53,10 @@ export interface MegaMudDraft {
   draft: MegaSettings | null;
   save: AutoSave;
   can: { undo: boolean; redo: boolean };
-  /** Why the first write (`create`) was refused, if it was. */
-  problem: string | null;
   set(section: string, key: string, value: SettingValue): void;
   update(change: (current: MegaSettings) => MegaSettings): void;
   undo(): void;
   redo(): void;
-  /** Writes settings for a character that has none yet: creating still takes a press. */
-  create(): Promise<void>;
 }
 
 /** Dialog units to pixels: MS Sans Serif 8's base units (6×13), scaled up. */
@@ -97,14 +93,12 @@ export function useMegaMudDraft(id: string | null, store: MegaMudStore): MegaMud
   /** Whose settings `history` holds, so a switch never saves one under the other's id. */
   const [loadedFor, setLoadedFor] = useState<string | null>(null);
   const [history, setHistory] = useState<History<MegaSettings> | null>(null);
-  const [problem, setProblem] = useState<string | null>(null);
 
   useEffect(() => {
     let live = true;
     setView(null);
     setLoadedFor(null);
     setHistory(null);
-    setProblem(null);
     if (id === null) return;
     void load(id).then((found) => {
       if (!live) return;
@@ -119,14 +113,14 @@ export function useMegaMudDraft(id: string | null, store: MegaMudStore): MegaMud
 
   const draft = history?.present ?? null;
   /*
-   * Saved as changed, like the rest of the Character page (2026-10-14), but
-   * only once the character has a `megamud.ini`: the first write switches it
-   * to the MegaMUD engine, and that is a press (`create`), not a keystroke.
+   * Saved as changed, like the rest of the Character page (2026-10-14). A
+   * character with none on file yet runs on settings started from its old
+   * automation, and the first change writes them.
    */
   const autoSave = useAutoSave<MegaSettings>({
     value: loadedFor === id ? draft : null,
     identity: id,
-    enabled: id !== null && loadedFor === id && view?.engine === true,
+    enabled: id !== null && loadedFor === id,
     same: (a, b) => JSON.stringify(a) === JSON.stringify(b),
     save: (settings) => (id === null ? Promise.resolve(null) : save(id, settings))
   });
@@ -138,19 +132,6 @@ export function useMegaMudDraft(id: string | null, store: MegaMudStore): MegaMud
         : record(current, next(current.present), (a, b) => JSON.stringify(a) === JSON.stringify(b))
     );
 
-  const create = useCallback(async () => {
-    if (id === null || draft === null) return;
-    setProblem(null);
-    const refused = await save(id, draft);
-    if (refused !== null) {
-      setProblem(refused);
-      return;
-    }
-    const found = await load(id);
-    setView(found);
-    setHistory(found ? begin(structuredClone(found.settings)) : null);
-  }, [id, draft, load, save]);
-
   return {
     id,
     view,
@@ -160,12 +141,10 @@ export function useMegaMudDraft(id: string | null, store: MegaMudStore): MegaMud
       undo: history !== null && canUndo(history),
       redo: history !== null && canRedo(history)
     },
-    problem,
     set: (section, key, value) => change((current) => withValue(current, section, key, value)),
     update: change,
     undo: () => setHistory((current) => (current ? undo(current) : current)),
-    redo: () => setHistory((current) => (current ? redo(current) : current)),
-    create
+    redo: () => setHistory((current) => (current ? redo(current) : current))
   };
 }
 
@@ -219,7 +198,6 @@ export function MegaMudPanel({
     return <div className="settings-form empty">{t('settings.megamud.loading')}</div>;
   return (
     <div className="megamud-settings">
-      {!view.engine && <p className="settings-warn">{t('settings.megamud.noFile')}</p>}
       <TabPage
         choices={view.choices}
         controls={page.controls}
@@ -240,16 +218,6 @@ export function MegaMudPanel({
         set={mega.set}
         width={page.w}
       />
-      {/* Saved as changed, under the page's own Undo and Redo; a character
-          with no MegaMUD settings yet is switched over by a press. */}
-      {!view.engine && (
-        <div className="megamud-actions">
-          {mega.problem !== null && <span className="settings-problem">{mega.problem}</span>}
-          <button onClick={() => void mega.create()} onMouseDown={keepFocus} type="button">
-            {t('settings.megamud.create')}
-          </button>
-        </div>
-      )}
     </div>
   );
 }
@@ -297,7 +265,7 @@ const MEGA_ACCOUNT: readonly (readonly AccountField[])[] = [
 /** `MEGA_ACCOUNT`, for a character the engine runs. */
 export function MegaMudAccount({ mega }: { mega: MegaMudDraft }) {
   const { view, draft } = mega;
-  if (view === null || draft === null || !view.engine) return null;
+  if (view === null || draft === null) return null;
   const field = ({ section, key, label, as }: AccountField) => {
     const value = valueOf(draft, section, key);
     const name = `megamud-${section}-${key}`;

@@ -136,7 +136,7 @@ import {
   type ItemTable
 } from '../shared/itemRules';
 import { asMegaMudPaths, type LoopImport } from '../shared/megamudPaths';
-import { settingsFromDraft } from '../shared/megamud/settings';
+import { settingsFromDraft, type MegaSettings } from '../shared/megamud/settings';
 import { megamudFromConfig } from '../shared/megamud/fromConfig';
 import { asMegaToggle } from '../shared/megamud/toggles';
 import type { MegaData } from './megamud/data';
@@ -879,13 +879,28 @@ function loopCatalogue(): LoopCatalogue {
 const megaDataBuilt = new Map<SessionId, { from: readonly unknown[]; data: MegaData }>();
 
 /**
- * The ported MegaMUD engine's set-up, for a character with MegaMUD settings:
- * its settings, its databases built from the realm's data and tables
- * (`megamud/fromWorld.ts`) and its per-player remote grants.
+ * A character's MegaMUD settings: its file's, or, where it has none yet,
+ * started from what it did under the old automation (`megamudFromConfig`),
+ * written to the file at its first edit. Every character runs on the engine
+ * (2026-10-14).
+ */
+function megamudSettingsOf(id: SessionId, profile: Profile): MegaSettings {
+  if (profile.megamudOn) return profile.megamud;
+  const world = worldFor(id);
+  return megamudFromConfig(
+    profile.config.automation,
+    (spell) => world?.spellNamed(spell)?.short ?? spell
+  );
+}
+
+/**
+ * The ported MegaMUD engine's set-up: the character's settings, its
+ * databases built from the realm's data and tables (`megamud/fromWorld.ts`)
+ * and its per-player remote grants.
  */
 function megamudFor(id: SessionId): { key: string; setup: MegaEngineSetup } | null {
   const profile = profileFor(id);
-  if (profile === undefined || !profile.megamudOn) return null;
+  if (profile === undefined) return null;
   const grants = profile.config.automation.remotes.players;
   // The realm's name for its runic coin (BBS.INI's `RunicName`, ours per realm).
   const runic = profile.config.connection.coins.runic;
@@ -960,7 +975,7 @@ function megamudFor(id: SessionId): { key: string; setup: MegaEngineSetup } | nu
   // The account MegaMUD's BBS tab keeps (its `{userid}` and `{pswd}`) is the
   // character's own login, which the Character page edits (2026-10-14).
   const { username, password } = profile.config.connection.login;
-  const settings = structuredClone(profile.megamud);
+  const settings = structuredClone(megamudSettingsOf(id, profile));
   if (username !== '') settings.live['BBS']!['UserID'] = username;
   if (password !== '') settings.live['BBS']!['Password'] = password;
   return {
@@ -3058,18 +3073,10 @@ function registerIpc(): void {
     const id = asProfileId(rawId);
     const profile = id === null ? undefined : profileFor(id);
     if (profile === undefined || id === null) return null;
-    // A character with none yet starts from what it does now (`megamudFromConfig`).
-    const world = worldFor(id);
-    const settings = profile.megamudOn
-      ? structuredClone(profile.megamud)
-      : megamudFromConfig(
-          profile.config.automation,
-          (spell) => world?.spellNamed(spell)?.short ?? spell
-        );
+    const settings = structuredClone(megamudSettingsOf(id, profile));
     const password = String(settings.live['BBS']?.['Password'] ?? '');
     settings.live['BBS']!['Password'] = '';
     return {
-      engine: profile.megamudOn,
       settings,
       hasPassword: password !== '',
       choices: host?.get(id)?.manager.megaChoices() ?? null

@@ -3408,10 +3408,7 @@ settings:
   megamud:
     # The BBS tab's settings kept with the character: MudOp access, sys goto and the redials.
     accountLegend: MegaMUD connection
-    create: Switch to the MegaMUD engine
     loading: Loading MegaMUD settings…
-    # Shown while the character has no MegaMUD settings yet.
-    noFile: This character is not run by the MegaMUD engine yet. These settings were filled in from what it does now, where MegaMUD has the same setting; the rest are MegaMUD's defaults. Switching keeps them with the character and runs it on the MegaMUD engine; after that, changes save as you make them.
     passwordKept: (unchanged)
     # A MegaMUD tab for a character not yet made.
     saveFirst: Create the character first; its MegaMUD settings are made with it.
@@ -4154,10 +4151,6 @@ settings:
   profile:
     accentLabel: Colour
     autoConnectLabel: Connect on Start
-    autoReconnectHint:
-      Only for a connection that was lost. Pressing Disconnect, hanging up on low health or
-      leaving the realm yourself all stop it. Waits 0s, 5s, 10s, then 15s.
-    autoReconnectLabel: Reconnect if the Connection Drops
     copyFromHint: Everything but the name and password — a starting point, not a link to later changes.
     copyFromLabel: Copy From
     copyFromNone: Nothing — start empty

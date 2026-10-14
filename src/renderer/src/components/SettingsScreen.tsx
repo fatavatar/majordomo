@@ -2772,17 +2772,8 @@ export default function SettingsScreen({
                         onChange={(value) => patch({ autoConnect: value })}
                       />
 
-                      {/* Under the MegaMUD engine its own redials reconnect
-                          (MegaMUD connection, below), and ours stands down. */}
-                      {mega.view?.engine !== true && (
-                        <CheckField
-                          checked={form.autoReconnect}
-                          hint={t('settings.profile.autoReconnectHint')}
-                          label={t('settings.profile.autoReconnectLabel')}
-                          name="auto-reconnect"
-                          onChange={(value) => patch({ autoReconnect: value })}
-                        />
-                      )}
+                      {/* The MegaMUD engine's own redials reconnect (MegaMUD
+                          connection, below): there is no reconnect of ours. */}
 
                       <FormField label={t('settings.profile.accentLabel')} name="accent">
                         {() => (

@@ -76,8 +76,6 @@ import type { MegaToggle } from './megamud/toggles';
 
 /** A character's MegaMUD settings as the window edits them. */
 export interface MegaMudSettingsView {
-  /** It has MegaMUD settings, so the MegaMUD engine runs it. */
-  engine: boolean;
   /** `BBS.Password` always empty here. */
   settings: MegaSettings;
   hasPassword: boolean;
