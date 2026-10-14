@@ -3405,13 +3405,10 @@ settings:
     create: Switch to the MegaMUD engine
     loading: Loading MegaMUD settings…
     # Shown while the character has no MegaMUD settings yet.
-    noFile: This character is not run by the MegaMUD engine yet. These settings were filled in from what it does now, where MegaMUD has the same setting; the rest are MegaMUD's defaults. Saving them keeps them with the character and switches it to the MegaMUD engine.
+    noFile: This character is not run by the MegaMUD engine yet. These settings were filled in from what it does now, where MegaMUD has the same setting; the rest are MegaMUD's defaults. Switching keeps them with the character and runs it on the MegaMUD engine; after that, changes save as you make them.
     passwordKept: (unchanged)
-    revert: Revert
-    save: Save
     # A MegaMUD tab for a character not yet made.
     saveFirst: Create the character first; its MegaMUD settings are made with it.
-    saved: Saved to megamud.ini.
   dialog:
     closeAria: Close settings
     # The corner of the panel. Drag to resize, double-click to put it back.

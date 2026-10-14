@@ -1,4 +1,7 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
+import FormActions from './FormActions';
+import { useAutoSave, type AutoSave } from '../hooks/useAutoSave';
+import { begin, canRedo, canUndo, record, redo, undo, type History } from '../lib/history';
 import type { MegaMudSettingsView } from '@shared/ipc';
 import {
   SETTINGS_TABS,
@@ -19,8 +22,8 @@ import { t } from '../lib/i18n';
  * A character's MegaMUD settings, as MegaMUD's own settings dialog lays them
  * out: its sixteen tabs, each control where the dialog template puts it and
  * showing the setting MegaMUD's tab shows (`settingsTabs.ts`, read from
- * `megamud.exe` and `MegaRes.dll`). Saving writes the character's
- * `megamud.ini`, which is what runs it on the ported MegaMUD engine.
+ * `megamud.exe` and `MegaRes.dll`). A change is written, as it is made, to
+ * the character's `megamud.ini`, which is what runs it on the ported MegaMUD engine.
  *
  * The page is drawn in dialog units, scaled: a MegaMUD player finds every
  * box where it always was. A control the tab fills from somewhere else (the
@@ -37,20 +40,25 @@ export interface MegaMudStore {
   save(id: string, settings: MegaSettings): Promise<string | null>;
 }
 
-/** One character's MegaMUD settings as the page holds them: on file, being edited, and saving. */
+/**
+ * One character's MegaMUD settings as the page holds them: on file and being
+ * edited, saved as they are changed (`useAutoSave`), with undo and redo.
+ */
 export interface MegaMudDraft {
   /** The character, or null for one not yet made (nothing to load). */
   id: string | null;
   view: MegaMudSettingsView | null;
   draft: MegaSettings | null;
-  changed: boolean;
-  saving: boolean;
+  save: AutoSave;
+  can: { undo: boolean; redo: boolean };
+  /** Why the first write (`create`) was refused, if it was. */
   problem: string | null;
-  saved: string | null;
   set(section: string, key: string, value: SettingValue): void;
   update(change: (current: MegaSettings) => MegaSettings): void;
-  revert(): void;
-  submit(): Promise<void>;
+  undo(): void;
+  redo(): void;
+  /** Writes settings for a character that has none yet: creating still takes a press. */
+  create(): Promise<void>;
 }
 
 /** Dialog units to pixels: MS Sans Serif 8's base units (6×13), scaled up. */
@@ -84,68 +92,78 @@ function withValue(
 export function useMegaMudDraft(id: string | null, store: MegaMudStore): MegaMudDraft {
   const { load, save } = store;
   const [view, setView] = useState<MegaMudSettingsView | null>(null);
-  const [draft, setDraft] = useState<MegaSettings | null>(null);
+  /** Whose settings `history` holds, so a switch never saves one under the other's id. */
+  const [loadedFor, setLoadedFor] = useState<string | null>(null);
+  const [history, setHistory] = useState<History<MegaSettings> | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
-  const [saved, setSaved] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     let live = true;
     setView(null);
-    setDraft(null);
+    setLoadedFor(null);
+    setHistory(null);
     setProblem(null);
-    setSaved(null);
     if (id === null) return;
     void load(id).then((found) => {
       if (!live) return;
       setView(found);
-      setDraft(found ? structuredClone(found.settings) : null);
+      setHistory(found ? begin(structuredClone(found.settings)) : null);
+      setLoadedFor(id);
     });
     return () => {
       live = false;
     };
   }, [id, load]);
 
-  const changed = useMemo(
-    () =>
-      view !== null && draft !== null && JSON.stringify(view.settings) !== JSON.stringify(draft),
-    [view, draft]
-  );
+  const draft = history?.present ?? null;
+  /*
+   * Saved as changed, like the rest of the Character page (2026-10-14), but
+   * only once the character has a `megamud.ini`: the first write switches it
+   * to the MegaMUD engine, and that is a press (`create`), not a keystroke.
+   */
+  const autoSave = useAutoSave<MegaSettings>({
+    value: loadedFor === id ? draft : null,
+    identity: id,
+    enabled: id !== null && loadedFor === id && view?.engine === true,
+    same: (a, b) => JSON.stringify(a) === JSON.stringify(b),
+    save: (settings) => (id === null ? Promise.resolve(null) : save(id, settings))
+  });
 
-  const submit = useCallback(async () => {
+  const change = (next: (current: MegaSettings) => MegaSettings): void =>
+    setHistory((current) =>
+      current === null
+        ? current
+        : record(current, next(current.present), (a, b) => JSON.stringify(a) === JSON.stringify(b))
+    );
+
+  const create = useCallback(async () => {
     if (id === null || draft === null) return;
-    setSaving(true);
     setProblem(null);
     const refused = await save(id, draft);
-    setSaving(false);
     if (refused !== null) {
       setProblem(refused);
       return;
     }
-    setSaved(t('settings.megamud.saved'));
     const found = await load(id);
     setView(found);
-    setDraft(found ? structuredClone(found.settings) : null);
+    setHistory(found ? begin(structuredClone(found.settings)) : null);
   }, [id, draft, load, save]);
 
   return {
     id,
     view,
     draft,
-    changed,
-    saving,
+    save: autoSave,
+    can: {
+      undo: history !== null && canUndo(history),
+      redo: history !== null && canRedo(history)
+    },
     problem,
-    saved,
-    set: (section, key, value) => {
-      setSaved(null);
-      setDraft((current) => (current ? withValue(current, section, key, value) : current));
-    },
-    update: (change) => {
-      setSaved(null);
-      setDraft((current) => (current ? change(current) : current));
-    },
-    revert: () => setDraft(view ? structuredClone(view.settings) : null),
-    submit
+    set: (section, key, value) => change((current) => withValue(current, section, key, value)),
+    update: change,
+    undo: () => setHistory((current) => (current ? undo(current) : current)),
+    redo: () => setHistory((current) => (current ? redo(current) : current)),
+    create
   };
 }
 
@@ -159,8 +177,9 @@ export function isMegaTab(section: string): boolean {
 
 /**
  * One of MegaMUD's tabs for the chosen character, as its dialog lays it out,
- * with its own Save and Revert: MegaMUD's settings are written when saved,
- * where the rest of the Character page saves as it is typed.
+ * saved as it is changed like the rest of the Character page, with its own
+ * undo and redo. A character with no MegaMUD settings yet is switched over by
+ * a press.
  */
 export function MegaMudPanel({ tab, mega }: { tab: string; mega: MegaMudDraft }) {
   const page = SETTINGS_TABS.find((p) => p.title === tab);
@@ -188,25 +207,22 @@ export function MegaMudPanel({ tab, mega }: { tab: string; mega: MegaMudDraft })
         width={page.w}
       />
       <div className="megamud-actions">
-        {mega.problem !== null && <span className="settings-problem">{mega.problem}</span>}
-        {mega.saved !== null && <span className="settings-saved">{mega.saved}</span>}
-        <button
-          className="quiet"
-          disabled={!mega.changed || mega.saving}
-          onClick={mega.revert}
-          onMouseDown={keepFocus}
-          type="button"
-        >
-          {t('settings.megamud.revert')}
-        </button>
-        <button
-          disabled={(!mega.changed && view.engine) || mega.saving}
-          onClick={() => void mega.submit()}
-          onMouseDown={keepFocus}
-          type="button"
-        >
-          {view.engine ? t('settings.megamud.save') : t('settings.megamud.create')}
-        </button>
+        {view.engine ? (
+          <FormActions
+            can={mega.can}
+            error={mega.save.error}
+            onRedo={mega.redo}
+            onUndo={mega.undo}
+            state={mega.save.state}
+          />
+        ) : (
+          <>
+            {mega.problem !== null && <span className="settings-problem">{mega.problem}</span>}
+            <button onClick={() => void mega.create()} onMouseDown={keepFocus} type="button">
+              {t('settings.megamud.create')}
+            </button>
+          </>
+        )}
       </div>
     </div>
   );

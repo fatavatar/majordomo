@@ -1648,8 +1648,8 @@ export default function SettingsScreen({
   const [section, setSection] = useState<Section>('profile');
   /*
    * The chosen character's MegaMUD settings, for its MegaMUD tabs: loaded with
-   * the character, edited beside the rest of the page, saved by their own
-   * press (`MegaMudPanel`). None for a character not yet made.
+   * the character, edited beside the rest of the page and saved as they are
+   * changed, as it is (`useMegaMudDraft`). None for a character not yet made.
    */
   const megaStore = useMemo(
     () => ({ load: megamudSettings, save: saveMegamud }),
@@ -1954,6 +1954,7 @@ export default function SettingsScreen({
        * `setSelected`, so the save still knows whose file it is.
        */
       characterSave.flush();
+      mega.save.flush();
       setSelected(id);
       setProblem(null);
       setSaved(null);
@@ -1973,7 +1974,7 @@ export default function SettingsScreen({
       const found = characters.find((entry) => entry.id === id);
       loadForm(found ? formOf(found) : null);
     },
-    [characters, servers, snapshot, characterSave.flush]
+    [characters, servers, snapshot, characterSave.flush, mega.save.flush]
   );
 
   /**
