@@ -2562,8 +2562,10 @@ export default function SettingsScreen({
               ) : (
                 <form
                   className="settings-form"
-                  // Under a MegaMUD tab, ours is drawn as MegaMUD's page is.
-                  data-megamud={isMegaTab(section) ? 'true' : undefined}
+                  // Drawn as MegaMUD's pages are, on every row: Character and
+                  // Login, which have no MegaMUD tab, kept the old look beside
+                  // rows that had one (2026-10-14).
+                  data-megamud="true"
                   data-section={section}
                   onSubmit={(event) => void submitCharacter(event)}
                 >
