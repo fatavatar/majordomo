@@ -40,9 +40,18 @@ export interface LearnedItem {
 }
 
 /** What one realm's engine learned that is kept here. */
+/** A monster's marks as MegaMUD keeps them (`0x471060`): its name and its immunity flags. */
+export type LearnedMark = [string, number];
+
 export interface MegaLearnedData {
   items: LearnedItem[];
   signatures: [RoomId, number][];
+  /**
+   * The monsters each character has marked, by the character's name: what
+   * they are immune to names that character's own spells and weapon, so one
+   * character's marks are not another's.
+   */
+  marks: Record<string, LearnedMark[]>;
 }
 
 export interface MegaLearnedOptions {
@@ -64,6 +73,7 @@ interface LearnedFile {
 interface RealmTables {
   items: Map<string, LearnedItem>;
   signatures: Map<RoomId, number>;
+  marks: Map<string, LearnedMark[]>;
 }
 
 /** MegaMUD's relationship numbers, as the first version kept them. */
@@ -117,22 +127,33 @@ export class MegaLearned {
   forRealm(realm: string): MegaLearnedData {
     this.load();
     const tables = this.realms.get(realmKey(realm));
-    if (!tables) return { items: [], signatures: [] };
+    if (!tables) return { items: [], signatures: [], marks: {} };
     return structuredClone({
       items: [...tables.items.values()],
-      signatures: [...tables.signatures]
+      signatures: [...tables.signatures],
+      marks: Object.fromEntries(tables.marks)
     });
   }
 
   /** Items and signatures the engine learned, kept over what is on file. */
-  keep(realm: string, learned: MegaLearnedData): void {
+  keep(realm: string, learned: Partial<MegaLearnedData>): void {
     this.load();
     if (this.suspended) return;
     const key = realmKey(realm);
     let tables = this.realms.get(key);
-    if (!tables) this.realms.set(key, (tables = { items: new Map(), signatures: new Map() }));
-    for (const item of learned.items) tables.items.set(nameKey(item.name), { ...item });
-    for (const [room, sig] of learned.signatures) tables.signatures.set(room, sig);
+    if (!tables) {
+      tables = { items: new Map(), signatures: new Map(), marks: new Map() };
+      this.realms.set(key, tables);
+    }
+    for (const item of learned.items ?? []) tables.items.set(nameKey(item.name), { ...item });
+    for (const [room, sig] of learned.signatures ?? []) tables.signatures.set(room, sig);
+    // A character's marks are its whole list, as MegaMUD holds it.
+    for (const [who, marks] of Object.entries(learned.marks ?? {})) {
+      tables.marks.set(
+        nameKey(who),
+        marks.map(([name, flags]) => [name, flags])
+      );
+    }
     this.schedule();
   }
 
@@ -187,7 +208,7 @@ export class MegaLearned {
     const version = typeof file['v'] === 'number' ? file['v'] : VERSION;
     for (const [realm, data] of Object.entries(isRecord(file['realms']) ? file['realms'] : {})) {
       if (!isRecord(data)) continue;
-      const tables: RealmTables = { items: new Map(), signatures: new Map() };
+      const tables: RealmTables = { items: new Map(), signatures: new Map(), marks: new Map() };
       for (const raw of Array.isArray(data['items']) ? data['items'] : []) {
         const item = asItem(raw, version);
         if (item) tables.items.set(nameKey(item.name), item);
@@ -195,6 +216,16 @@ export class MegaLearned {
       for (const pair of Array.isArray(data['signatures']) ? data['signatures'] : []) {
         if (Array.isArray(pair) && typeof pair[0] === 'string' && typeof pair[1] === 'number') {
           tables.signatures.set(pair[0] as RoomId, pair[1]);
+        }
+      }
+      if (isRecord(data['marks'])) {
+        for (const [who, list] of Object.entries(data['marks'])) {
+          if (!Array.isArray(list)) continue;
+          const marks = list.filter(
+            (pair): pair is LearnedMark =>
+              Array.isArray(pair) && typeof pair[0] === 'string' && typeof pair[1] === 'number'
+          );
+          tables.marks.set(nameKey(who), marks);
         }
       }
       if (version < 2) {
@@ -232,7 +263,8 @@ export class MegaLearned {
         items: [...tables.items.values()].sort((a, b) =>
           a.name < b.name ? -1 : a.name > b.name ? 1 : 0
         ),
-        signatures: [...tables.signatures].sort(([a], [b]) => (a < b ? -1 : 1))
+        signatures: [...tables.signatures].sort(([a], [b]) => (a < b ? -1 : 1)),
+        marks: Object.fromEntries([...tables.marks].sort(([a], [b]) => (a < b ? -1 : 1)))
       };
     }
     const temporary = `${this.options.file}.tmp`;

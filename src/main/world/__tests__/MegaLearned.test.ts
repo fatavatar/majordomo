@@ -28,9 +28,32 @@ describe('what the MegaMUD engine learned of items and rooms, kept between sessi
     const again = new MegaLearned({ file });
     expect(again.forRealm('mudrev.mdb')).toEqual({
       items: [PATTIE],
-      signatures: [['1/9650', 0x36804010]]
+      signatures: [['1/9650', 0x36804010]],
+      marks: {}
     });
-    expect(again.forRealm('paradigm')).toEqual({ items: [], signatures: [] });
+    expect(again.forRealm('paradigm')).toEqual({ items: [], signatures: [], marks: {} });
+  });
+
+  it("keeps each character's marked monsters, its list whole", () => {
+    const store = new MegaLearned({ file, saveDelayMs: 0 });
+    store.keep('r', { marks: { Skinny: [['sinister dragon', 0x80]] } });
+    store.keep('r', { marks: { Fatty: [['kobold', 0x200]] } });
+    store.keep('r', {
+      marks: {
+        Skinny: [
+          ['sinister dragon', 0x80],
+          ['slayer', 0x1000]
+        ]
+      }
+    });
+    store.flush();
+    expect(new MegaLearned({ file }).forRealm('r').marks).toEqual({
+      fatty: [['kobold', 0x200]],
+      skinny: [
+        ['sinister dragon', 0x80],
+        ['slayer', 0x1000]
+      ]
+    });
   });
 
   it('keeps an item by name, the newer over the older', () => {
@@ -59,7 +82,8 @@ describe('what the MegaMUD engine learned of items and rooms, kept between sessi
     const store = new MegaLearned({ file, saveDelayMs: 0 });
     expect(store.forRealm('mudrev.mdb')).toEqual({
       items: [{ name: 'Staff of the Undead', weight: 300, slot: null, weapon: true }],
-      signatures: [['1/2', 7]]
+      signatures: [['1/2', 7]],
+      marks: {}
     });
     expect(store.takeStances()).toEqual([
       { realm: 'mudrev.mdb', mob: 'mutated dragon hatchling', relationship: 'enemy' }
@@ -68,7 +92,7 @@ describe('what the MegaMUD engine learned of items and rooms, kept between sessi
     store.flush();
     const written = JSON.parse(fs.readFileSync(file, 'utf8'));
     expect(written.v).toBe(2);
-    expect(Object.keys(written.realms['mudrev.mdb'])).toEqual(['items', 'signatures']);
+    expect(Object.keys(written.realms['mudrev.mdb'])).toEqual(['items', 'signatures', 'marks']);
   });
 
   it('writes nothing over a file that will not parse, and says so', () => {

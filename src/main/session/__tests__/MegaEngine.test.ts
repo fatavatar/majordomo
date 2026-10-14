@@ -461,6 +461,31 @@ describe('what the engine learns, kept between sessions', () => {
     e.dispose();
   });
 
+  /*
+   * The immunities learned (`0x471060`'s marks) were let go at every settings
+   * save and every restart, and learned again fight after fight (2026-10-14).
+   */
+  it('keeps the monsters it marked through a reload, hands them over, and starts from them', () => {
+    const { e, handed } = remembering({ marks: [['sinister dragon', 0x80]] });
+    expect(e.s.monsterMarks).toEqual([{ name: 'sinister dragon', flags: 0x80 }]);
+    e.s.monsterMarks.push({ name: 'forgotten dragon slayer', flags: 0x1000 });
+    e.reload({ settings: defaultSettings(), data: e.s.data, grants: {} });
+    expect(e.s.monsterMarks.map((m) => m.name)).toEqual([
+      'sinister dragon',
+      'forgotten dragon slayer'
+    ]);
+    vi.advanceTimersByTime(1000);
+    expect(handed.at(-1)?.marks).toEqual([
+      ['sinister dragon', 0x80],
+      ['forgotten dragon slayer', 0x1000]
+    ]);
+    // Said once: unchanged, nothing more is handed over for them.
+    const said = handed.length;
+    vi.advanceTimersByTime(1000);
+    expect(handed.length).toBe(said);
+    e.dispose();
+  });
+
   it('hands over what it marks changed at the next second, and the rest on the way out', () => {
     const { e, handed } = remembering();
     const mon = newMonster(e.s.data);

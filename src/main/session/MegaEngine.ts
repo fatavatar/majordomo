@@ -60,7 +60,7 @@ import {
 import { itemKey, type ItemRule } from '../../shared/itemRules';
 import type { MonsterRule, Relationship } from '../../shared/monsterRules';
 import type { PlayerFacts } from '../../shared/players';
-import type { LearnedItem } from '../world/MegaLearned';
+import type { LearnedItem, LearnedMark } from '../world/MegaLearned';
 import type { ActiveBuff, Affliction } from '../../shared/character';
 import type { MegaSettings } from '../../shared/megamud/settings';
 import {
@@ -169,6 +169,8 @@ export interface EngineMemory {
   items: readonly LearnedItem[];
   /** Room signatures learned before (`MegaLearned`). */
   signatures: readonly [RoomId, number][];
+  /** The monsters this character marked before (`0x471060`'s list, `MegaLearned`). */
+  marks?: readonly LearnedMark[];
   keep(lessons: EngineLessons): void;
 }
 
@@ -177,6 +179,8 @@ export interface EngineLessons {
   stances: [string, Relationship][];
   items: LearnedItem[];
   signatures: [RoomId, number][];
+  /** The marks list whole, when it changed; null when not. */
+  marks: LearnedMark[] | null;
 }
 
 /** `0x498a60`'s hash of a room's name, the signature's top twelve bits. */
@@ -359,6 +363,8 @@ export class MegaEngine {
   private readonly blessUp: (number | null)[] = [];
   /** Whether our tracker had the HP and mana regeneration spells up, at the last look. */
   private regenUp: [boolean, boolean] = [false, false];
+  /** The marks list as last kept (`keepLearned`). */
+  private marksKept = '[]';
   /** The afflictions our tracker had on, at the last look (`afflictions`). */
   private afflicted: Partial<Record<CuredAffliction, boolean>> = {};
 
@@ -398,7 +404,10 @@ export class MegaEngine {
       for (const [name, relationship] of memory.stances) rememberStance(this.s, name, relationship);
       for (const item of memory.items) rememberItem(this.s, item);
       rememberPlayers(this.s, memory.players);
+      // MegaMUD's marks list lives as long as its window does; ours outlives a restart.
+      this.s.monsterMarks = (memory.marks ?? []).map(([name, flags]) => ({ name, flags }));
     }
+    this.marksKept = JSON.stringify(this.s.monsterMarks);
     grantPlayers(this.s, setup.grants);
     findLongestFirst(this.s);
     for (const [room, sig] of memory?.signatures ?? []) this.learn(room, sig);
@@ -463,7 +472,12 @@ export class MegaEngine {
     // The toggles as they stand: MegaMUD's dialog edits them in place, and
     // they are the toolbar's, not the file's.
     const toggles = TOGGLE_FIELDS.map((field) => s[field]);
+    // And what the monsters and players here were marked with: a settings
+    // change is not a character opened afresh, which is when MegaMUD lets
+    // them go (`0x4721d0`). Every save wiped what was learned (2026-10-14).
+    const marks = [s.monsterMarks, s.playerMarks] as const;
     loadCharacter(s, setup.settings);
+    [s.monsterMarks, s.playerMarks] = marks;
     bbsSetup(s, (key) => setup.bbs?.[key]);
     [s.MegaMud_CurPath, s.MegaMud_SelPath, s.MegaMud_CurPathStep] = kept;
     TOGGLE_FIELDS.forEach((field, i) => (s[field] = toggles[i]!));
@@ -516,12 +530,17 @@ export class MegaEngine {
   private keepLearned(): void {
     const s = this.s;
     if (this.memory === null) return;
-    if (s.f_e24c === 0 && s.f_e254 === 0 && s.f_e258 === 0 && this.unkept.size === 0) return;
+    const marks = JSON.stringify(s.monsterMarks);
+    const marked = marks !== this.marksKept;
+    if (s.f_e24c === 0 && s.f_e254 === 0 && s.f_e258 === 0 && this.unkept.size === 0 && !marked)
+      return;
     const lessons: EngineLessons = {
       stances: s.f_e254 !== 0 ? savedStances(s) : [],
       items: s.f_e258 !== 0 ? savedItems(s) : [],
-      signatures: [...this.unkept]
+      signatures: [...this.unkept],
+      marks: marked ? s.monsterMarks.map((m): LearnedMark => [m.name, m.flags]) : null
     };
+    this.marksKept = marks;
     // Players are our tracker's to keep (`PlayerBook`): the mark is only cleared.
     s.f_e24c = 0;
     s.f_e254 = 0;

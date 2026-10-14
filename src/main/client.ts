@@ -932,13 +932,18 @@ function megamudFor(id: SessionId): { key: string; setup: MegaEngineSetup } | nu
       players: playersAt(profile.target).recall(),
       items: kept.items,
       signatures: kept.signatures,
+      marks: kept.marks[profile.name.toLowerCase()] ?? [],
       keep: (lessons) => {
         const at = Date.now();
         for (const [mob, relationship] of lessons.stances) {
           realmLore.learnStance(realm, mob, relationship, at);
         }
-        if (lessons.items.length > 0 || lessons.signatures.length > 0) {
-          store.keep(realm, { items: lessons.items, signatures: lessons.signatures });
+        if (lessons.items.length > 0 || lessons.signatures.length > 0 || lessons.marks !== null) {
+          store.keep(realm, {
+            items: lessons.items,
+            signatures: lessons.signatures,
+            ...(lessons.marks !== null ? { marks: { [profile.name]: lessons.marks } } : {})
+          });
         }
       }
     };
