@@ -15,8 +15,9 @@ import {
   type SessionSink
 } from '../SessionManager';
 import type { MegaEngine, MegaEngineHost } from '../MegaEngine';
+import type { ResumableMovement } from '../MovementBook';
 import { pendingPump } from '../../megamud/script/send';
-import { NO_LOOP, type LoopProgress } from '../../../shared/loops';
+import { NO_LOOP, type Loop, type LoopProgress } from '../../../shared/loops';
 import { IDLE_WALK, type WalkProgress } from '../../../shared/walk';
 import { DEFAULT_CONFIG, type AutomationConfig, type RetreatConfig } from '../../../shared/config';
 import { blankTrigger } from '../../../shared/messageTriggers';
@@ -3248,6 +3249,82 @@ describe('the MegaMUD engine’s progress', () => {
 
     manager.useMegaMud(null);
     expect(loops.at(-1)!.status).toBe('idle');
+  });
+});
+
+describe('what the MegaMUD engine was walking, taken up again', () => {
+  /*
+   * A server restarted, a Disconnect and a Connect: the loop or the route that
+   * was going is taken up again in the game (2026-10-14).
+   */
+  const ring: Loop = { name: 'Ring', stops: [{ room: 'Shore' }, { room: 'Pool Edge' }] };
+  const running = { ...NO_LOOP, status: 'running' as const, name: 'Ring', startedAt: 1000 };
+  const stopped = { ...running, status: 'stopped' as const };
+
+  function engine(kept: ResumableMovement | null = null) {
+    const collected = collect();
+    manager = new SessionManager(collected.sink);
+    manager.useMegaMud({
+      settings: defaultSettings(),
+      data: { monsters: [], items: [], spells: [] },
+      grants: {}
+    });
+    const written: (ResumableMovement | null)[] = [];
+    manager.useMovementBook(kept, (m) => written.push(m));
+    const inside = manager as unknown as { mega: MegaEngine; megaLoops: Map<string, Loop> };
+    const host = (inside.mega as unknown as { host: MegaEngineHost }).host;
+    return { inside, host, written, notices: collected.notices };
+  }
+
+  it('keeps a running loop, and lets it go when it stops in the game', () => {
+    const { inside, host, written } = engine();
+    inside.mega.s.inGame = 1;
+    host.progressed!(IDLE_WALK, running);
+    expect(written).toEqual([{ loop: 'Ring' }]);
+    host.progressed!(IDLE_WALK, stopped);
+    expect(written).toEqual([{ loop: 'Ring' }, null]);
+  });
+
+  it('keeps it when it stops out of the game: a Disconnect, a hang-up, a dropped line', () => {
+    const { inside, host, written } = engine();
+    inside.mega.s.inGame = 1;
+    host.progressed!(IDLE_WALK, running);
+    inside.mega.s.inGame = 0;
+    host.progressed!(IDLE_WALK, stopped);
+    expect(written).toEqual([{ loop: 'Ring' }]);
+  });
+
+  it('takes the loop up again once in the game', async () => {
+    const { inside, host, notices } = engine({ loop: 'Ring' });
+    inside.megaLoops.set('Ring', ring);
+    const start = vi.spyOn(manager!, 'startLoop').mockReturnValue({ started: true });
+    host.enteredGame!();
+    await Promise.resolve();
+    expect(start).toHaveBeenCalledWith(ring);
+    expect(notices).toContain(t('session.move.resumingLoop', { loopName: 'Ring' }));
+  });
+
+  it('walks on to where a route was going', async () => {
+    const { inside, host } = engine({ to: '1/2', run: true });
+    const walk = vi.spyOn(inside.mega, 'walkTo').mockReturnValue(null);
+    host.enteredGame!();
+    await Promise.resolve();
+    expect(walk).toHaveBeenCalledWith('1/2', true);
+  });
+
+  it('leaves be what MegaMUD’s own On entry started, and lets a loop filed nowhere go', async () => {
+    const walking = engine({ loop: 'Ring' });
+    walking.inside.mega.s.walking = 1;
+    const start = vi.spyOn(manager!, 'startLoop');
+    walking.host.enteredGame!();
+    await Promise.resolve();
+    expect(start).not.toHaveBeenCalled();
+
+    const gone = engine({ loop: 'Hunt 3' });
+    gone.host.enteredGame!();
+    await Promise.resolve();
+    expect(gone.written).toEqual([null]);
+    expect(gone.notices).toContain(t('session.move.resumeGone', { loopName: 'Hunt 3' }));
   });
 });
 

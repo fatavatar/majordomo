@@ -324,6 +324,14 @@ one's way of moving the character is the engine's for a character it runs:
   for the room ahead is asked for before each step of the engine's path, by
   a hook of ours in `walkPath` (`SessionHost.beforeStep`): what it queues
   holds the step until it is sent. The wards switch is on the Health row.
+- **What was being walked** (2026-10-14): a loop that was running, or a
+  route the player started, is kept per character (`MovementBook`,
+  `movement.json`) and taken up again at the next first prompt in the game
+  (`MegaEngineHost.enteredGame`), unless MegaMUD's own `On entry`
+  (`StartTask`, `0x47b070`) started something or All Off is on. A stop in
+  the game (a Stop, an arrival, a death) lets it go; one out of it (a
+  Disconnect, a hang-up, a dropped line, all of which leave the game first,
+  `0x42de00`) keeps it.
 - **Item errands and the quest runner** (2026-10-14): their legs are the
   engine's Go To walked alone, their loops filed nowhere the engine's, and
   what they say or list goes on the pending list, told sent when MegaMUD's

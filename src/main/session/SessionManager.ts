@@ -241,6 +241,7 @@ import {
 } from '../../shared/survival';
 import type { MegaToggle } from '../../shared/megamud/toggles';
 import { MegaEngine, type FleeGoto, type MegaAlert, type MegaEngineSetup } from './MegaEngine';
+import type { ResumableMovement } from './MovementBook';
 
 /**
  * The part of a chunk of keystrokes the server's line editor would keep.
@@ -2654,6 +2655,17 @@ export class SessionManager {
   } | null = null;
   /** The engine's walk as last published, to tell a walk ending (`megaWalkEnded`). */
   private megaWalkWas: WalkProgress['status'] = 'idle';
+  /** Whether a loop or a walk was going as last published, to tell one stopping in the game. */
+  private megaMovingWas = false;
+  /**
+   * What this character is walking, kept where it outlives the session
+   * (`MovementBook`) and taken up again when it is next in the game
+   * (2026-10-14). Nothing kept in a test.
+   */
+  private resumable: {
+    kept: ResumableMovement | null;
+    keep(movement: ResumableMovement | null): void;
+  } = { kept: null, keep: () => undefined };
 
   /**
    * The engine's own walk (its Go To, not a lap's leg) came to an end: told
@@ -2802,6 +2814,66 @@ export class SessionManager {
     if (was === 'walking' && walk.status !== 'walking' && loop.status !== 'running') {
       this.megaWalkEnded(walk);
     }
+    const moving = walk.status === 'walking' || loop.status === 'running';
+    const movingWas = this.megaMovingWas;
+    this.megaMovingWas = moving;
+    if (loop.status === 'running' && loop.name !== null) this.keepMovement({ loop: loop.name });
+    /*
+     * Stopped in the game: a Stop, an arrival, a death; it is over. Stopped
+     * out of it is a Disconnect, a hang-up or a dropped line (MegaMUD leaves
+     * the game first, `0x42de00`), and is taken up again on the way back in.
+     */
+    else if (movingWas && !moving && this.mega?.inGame === true) this.keepMovement(null);
+  }
+
+  /** What this character is walking, kept for when it is next in the game. */
+  private keepMovement(movement: ResumableMovement | null): void {
+    if (JSON.stringify(this.resumable.kept) === JSON.stringify(movement)) return;
+    this.resumable.kept = movement;
+    this.resumable.keep(movement);
+  }
+
+  /** Where what this character is walking is kept: what it was walking, and where to write. */
+  useMovementBook(
+    kept: ResumableMovement | null,
+    keep: (m: ResumableMovement | null) => void
+  ): void {
+    this.resumable = { kept, keep };
+  }
+
+  /**
+   * In the game again: the loop or the route that was going when the session
+   * went away taken up again, unless MegaMUD's own `On entry` started
+   * something or All Off is on. A loop no longer filed anywhere (a hunt's,
+   * whose hunt surveys afresh) is let go.
+   */
+  private megaEnteredGame(): void {
+    const kept = this.resumable.kept;
+    const mega = this.mega;
+    if (kept === null || mega === null || mega.walking || mega.toggles.on.allOff) return;
+    if ('loop' in kept) {
+      const loop = this.loopNamed(kept.loop) ?? this.megaLoops.get(kept.loop);
+      if (loop === undefined) {
+        this.sink.notice(t('session.move.resumeGone', { loopName: kept.loop }));
+        this.keepMovement(null);
+        return;
+      }
+      const answer = this.startLoop(loop);
+      this.sink.notice(
+        'refused' in answer
+          ? t('session.move.resumeRefused', { reason: answer.refused })
+          : t('session.move.resumingLoop', { loopName: kept.loop })
+      );
+      return;
+    }
+    const refused = this.megaAct(() => mega.walkTo(kept.to, kept.run));
+    this.sink.notice(
+      refused === null
+        ? t('session.move.resumingWalk', {
+            destination: this.world?.byId(kept.to)?.name ?? kept.to
+          })
+        : t('session.move.resumeRefused', { reason: refused })
+    );
   }
 
   /**
@@ -2884,6 +2956,8 @@ export class SessionManager {
           locate: () => this.megaLocate(),
           toggled: () => this.publishAutomation(),
           progressed: (walk, loop) => this.megaProgressed(walk, loop),
+          // After the engine's own handling of the prompt, not inside it.
+          enteredGame: () => queueMicrotask(() => this.megaEnteredGame()),
           ask: (text) => this.megaAsk(text),
           // Where MegaMUD would play the sound its `[Alerts]` names.
           alert: (which) => this.sink.notice(megaAlertText(which)),
@@ -5628,7 +5702,9 @@ export class SessionManager {
     if (mega === null) return t('session.megamud.noEngine');
     // The counters, if this way turns on one nobody has read yet.
     this.askCountersFor(route);
-    return this.megaAct(() => mega.walkTo(end, run));
+    const refused = this.megaAct(() => mega.walkTo(end, run));
+    if (refused === null) this.keepMovement({ to: end, run });
+    return refused;
   }
 
   /** One room back the way the character came, per press: MegaMUD's Step Back. */

@@ -761,6 +761,12 @@ notices:
         'Could not write {fileName}: {message}. The console keeps working; nothing more is kept
         for the next launch.'
     closeRefused: '{refusalReason} Disconnect it before closing the tab.'
+    # What each character was walking, taken up again when it is next in the game.
+    movement:
+      readError:
+        'Could not read {file} ({message}). Nothing walked before is taken up again, and nothing
+        is written over the file; fix or remove it before the next launch.'
+      writeError: 'Could not write {file}: {message}. What is being walked is not kept for the next launch.'
   world:
     megamudData: 'MegaMUD data for {name} from {realm}: {monsters} monsters, {items} items, {spells} spells, {messages} messages.'
     converted: 'Realm {file}: {rooms} rooms in {seconds}s.'
@@ -4176,6 +4182,11 @@ session:
   move:
     noSuchLoop: There is no loop called {name}.
     nothingToResume: There is nothing to pick back up.
+    # Back in the game: what was being walked when the session went away, taken up again.
+    resumingLoop: 'Taking up the loop {loopName} again, as it was going when this session ended.'
+    resumingWalk: 'Walking on to {destination}, as this session was when it ended.'
+    resumeGone: 'Not taking up the loop {loopName} again: it is not filed anywhere any more.'
+    resumeRefused: 'Could not take up what was being walked when this session ended: {reason}'
   finds:
     coins: coins
     forgot: 'Forgot the {what} found in {room}.'

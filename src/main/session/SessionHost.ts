@@ -26,6 +26,7 @@ import { SessionCapture } from './SessionCapture';
 import { SessionLog } from './SessionLog';
 import { Reconnect } from './Reconnect';
 import type { MegaEngineSetup } from './MegaEngine';
+import type { ResumableMovement } from './MovementBook';
 import {
   BUSY_PHASES,
   NO_REALM_TABLES,
@@ -120,6 +121,15 @@ export interface SessionHostOptions {
    * has none. See `MegaEngine`.
    */
   megamudFor?(id: SessionId): { key: string; setup: MegaEngineSetup } | null;
+  /**
+   * Where what each character is walking is kept, so a server restarted or a
+   * session ended takes it up again in the game (`MovementBook`). Optional:
+   * a test and the anonymous case keep nothing.
+   */
+  movement?: {
+    get(id: SessionId): ResumableMovement | null;
+    set(id: SessionId, movement: ResumableMovement | null): void;
+  };
   /** Write one automation switch into a character's file; whether it was written. See `CombatLease`. */
   flipSwitch?(id: SessionId, name: AutomationSwitch, on: boolean): boolean;
   /**
@@ -517,6 +527,8 @@ export class SessionHost {
     manager.configureRealm(this.realmFor(id, config));
     const mega = this.options.megamudFor?.(id) ?? null;
     manager.useMegaMud(mega?.setup ?? null);
+    const movement = this.options.movement;
+    if (movement) manager.useMovementBook(movement.get(id), (m) => movement.set(id, m));
     const slot: SessionSlot = {
       id,
       manager,

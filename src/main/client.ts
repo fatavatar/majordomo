@@ -49,6 +49,7 @@ import { RealmLore, realmKey } from './world/RealmLore';
 import { PlayerBook, realmAddress } from './world/PlayerBook';
 import { cureGates, spellServes, spellTargeting } from '../shared/spellcraft';
 import { DestinationBook, type RealmDestinations } from './world/DestinationBook';
+import { MovementBook } from './session/MovementBook';
 import { bareName } from '../shared/items';
 import { nameAnswersTo } from '../shared/world';
 import {
@@ -291,6 +292,7 @@ let megaLearned: MegaLearned | null = null;
  * swapped underneath it does not. See `DestinationBook`.
  */
 let destinations: DestinationBook | null = null;
+let movements: MovementBook | null = null;
 /** Which window shows which characters. See `Workspace`. */
 let workspace: Workspace | null = null;
 
@@ -328,6 +330,14 @@ function createDestinations(): DestinationBook {
   return new DestinationBook({
     file: home.state('destinations.json'),
     notify: (message) => announce('world', message)
+  });
+}
+
+/** Beside the lore, for the same reasons `createLore` gives. */
+function createMovements(): MovementBook {
+  return new MovementBook({
+    file: home.state('movement.json'),
+    notify: (message) => announce('movement', message)
   });
 }
 
@@ -1525,6 +1535,10 @@ function createHost(): SessionHost {
     configFor,
     realmTablesFor,
     megamudFor,
+    movement: {
+      get: (id) => movements?.get(id) ?? null,
+      set: (id, movement) => movements?.set(id, movement)
+    },
     /*
      * Whether a lost connection is dialled back, per character, read through
      * for the reason `configFor` is: profiles are watched, so switching it off
@@ -3440,6 +3454,7 @@ function build(): void {
     lore.learnStance(realm, mob, relationship, Date.now());
   }
   destinations = createDestinations();
+  movements = createMovements();
   worldBook = createWorldBook();
   realms = createRealms();
   /*

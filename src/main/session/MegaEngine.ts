@@ -128,6 +128,8 @@ export interface MegaEngineHost {
    * holds the step until it is sent. See `SessionHost.beforeStep`.
    */
   beforeStep?(to: RoomId): void;
+  /** The character is in the game (`0x47b070`'s first prompt), after its own `On entry` start. */
+  enteredGame?(): void;
 }
 
 /** One of our loops made a MegaMUD loop: its stops, and the step each leg to the next begins at. */
@@ -810,11 +812,18 @@ export class MegaEngine {
     });
     this.noteRoom();
     // Into the game with nowhere known: ask once, before anything wants a way.
-    if (this.s.inGame !== 0 && !this.wasInGame && this.host.here() === null) this.host.locate();
+    const entered = this.s.inGame !== 0 && !this.wasInGame;
+    if (entered && this.host.here() === null) this.host.locate();
     this.wasInGame = this.s.inGame !== 0;
     if (this.parked !== null && this.parked.planning !== true && this.host.here() !== null)
       this.safely(() => this.unpark());
     this.noteToggles();
+    if (entered) this.host.enteredGame?.();
+  }
+
+  /** Whether the character is in the game (`0x47b070`'s first prompt seen, not since left). */
+  get inGame(): boolean {
+    return this.s.inGame !== 0;
   }
 
   /**
