@@ -135,7 +135,7 @@ export class AutoKeys {
   constructor(
     private config: MovementConfig,
     private enabled: boolean,
-    private readonly queue: CommandQueue,
+    private readonly queue: Pick<CommandQueue, 'enqueue'>,
     private readonly sources: KeySources,
     private readonly events: KeyEvents = {}
   ) {}

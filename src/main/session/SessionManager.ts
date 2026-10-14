@@ -2062,7 +2062,7 @@ export class SessionManager {
     this.wards = new Wards(
       automation.health,
       automation.enabled,
-      this.queue,
+      this.keptQueue,
       {
         hazardAt: (room) => {
           const world = this.world;
@@ -2120,7 +2120,7 @@ export class SessionManager {
     this.keys = new AutoKeys(
       automation.movement,
       automation.enabled,
-      this.queue,
+      this.keptQueue,
       {
         ways: (state) => this.keyedWaysHere(state),
         carried: (state) => this.packContents(state),
@@ -2137,7 +2137,11 @@ export class SessionManager {
          * which outranks the `probe` this proposes in, so a `get` behind it is
          * spent in the room after this one.
          */
-        busy: () => this.tracker.pendingMoves > 0 || this.walker.walking
+        busy: () =>
+          this.tracker.pendingMoves > 0 ||
+          this.walker.walking ||
+          // MegaMUD's All Off, for a character the engine runs.
+          this.mega?.toggles.on.allOff === true
       }
     );
     /*
@@ -4691,6 +4695,20 @@ export class SessionManager {
    * the lair it chose (`huntLoop`) — by name, for its `loopRooms` to find.
    */
   private readonly megaLoops = new Map<string, Loop>();
+  /**
+   * Where the actions kept beside the engine propose their commands (a ward,
+   * a key off the floor): the engine's pending list for a character it runs,
+   * which its scheduler sends when it may and which holds its walk, and our
+   * queue otherwise. Sent is taken as said when it is put on the list.
+   */
+  private readonly keptQueue: Pick<CommandQueue, 'enqueue'> = {
+    enqueue: (intent) => {
+      if (this.mega === null) return this.queue.enqueue(intent);
+      this.mega.queue(intent.command);
+      intent.onSent?.();
+      return true;
+    }
+  };
   /** The engine's walk as last published, to tell a walk ending (`megaWalkEnded`). */
   private megaWalkWas: WalkProgress['status'] = 'idle';
 
@@ -4835,6 +4853,8 @@ export class SessionManager {
             this.sink.retrying?.();
           },
           here: () => roomAddress(this.tracker.current.room),
+          // The ward the room ahead wants, before the engine's step into it.
+          beforeStep: (to) => this.wards.beforeStep(to, this.tracker.current),
           locate: () => this.megaLocate(),
           toggled: () => this.publishAutomation(),
           progressed: (walk, loop) => this.megaProgressed(walk, loop),
@@ -5021,7 +5041,7 @@ export class SessionManager {
     this.search.configure(automation.search, automation.enabled);
     this.deposit.configure(automation.banking, automation.enabled);
     this.light.configure(automation.movement, automation.enabled);
-    this.wards.configure(automation.health, automation.enabled);
+    this.wards.configure(automation.health, this.mega !== null ? kept : automation.enabled);
     this.gear.configure(automation.gear, automation.enabled);
     this.stealth.configure(automation.combat, automation.enabled);
     this.recoverGear.configure(automation.movement, automation.enabled);
@@ -5035,7 +5055,7 @@ export class SessionManager {
     );
     this.restAway.configure(automation.health, automation.enabled, automation.combat.monsters);
     this.statScreen.configure(automation.train, automation.enabled);
-    this.keys.configure(automation.movement, automation.enabled);
+    this.keys.configure(automation.movement, this.mega !== null ? kept : automation.enabled);
     this.supplies.configure(automation.supplies, automation.enabled);
     this.remotes.configure(automation);
     this.afk.configure(automation.afk, automation.enabled);

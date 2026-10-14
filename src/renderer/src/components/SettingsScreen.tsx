@@ -33,6 +33,7 @@ import FormActions from './FormActions';
 import GlobalSettings from './GlobalSettings';
 import LoopSection from './LoopSection';
 import MegaMudLoopImport from './MegaMudLoopImport';
+import { WardRules } from './PotionList';
 import {
   MEGA_TABS,
   MegaMudAccount,
@@ -501,7 +502,10 @@ const SECTION_FIELDSETS: Readonly<Record<Section, readonly NavFieldset[]>> = {
   Talk: [{ id: 'remotes', label: t('settings.remotes.legend') }],
   Sounds: [{ id: 'alerts-rules', label: t('settings.alerts.ruleLegend') }],
   Other: [{ id: 'movement-doors', label: t('settings.movement.doorsLegend') }],
-  Health: [{ id: 'health-flee', label: t('settings.health.fleeLegend') }],
+  Health: [
+    { id: 'health-flee', label: t('settings.health.fleeLegend') },
+    { id: 'health-wards', label: t('settings.health.wardsLegend') }
+  ],
   Combat: [{ id: 'combat-monster-rows', label: t('settings.combat.monsterRowsLegend') }],
   Loot: [
     { id: 'item-details', label: t('settings.movement.itemRowsLegend') },
@@ -2168,6 +2172,25 @@ export default function SettingsScreen({
    * offer. Asked by the realm the form names, so a changed realm re-asks.
    */
   const [tabled, setTabled] = useState<string[]>([]);
+  /*
+   * The realm's ward rules (an item whose use casts the spell that stops a
+   * room's effect), drawn under the switch that obeys them. Empty where no
+   * realm is loaded, which draws no rows; the switch still says what it does.
+   */
+  const [wards, setWards] = useState<WardRule[]>([]);
+  useEffect(() => {
+    if (!open || tab !== 'characters' || section !== 'Health') return;
+    if (selected === null || selected === NEW_CHARACTER) return;
+    let stale = false;
+    void loadWards(selected).then(
+      (found) => void (stale || setWards(found)),
+      // A realm that could not be read is not a reason to refuse the save.
+      () => void (stale || setWards([]))
+    );
+    return () => {
+      stale = true;
+    };
+  }, [open, tab, section, selected, loadWards]);
   const realmName = form?.serverName ?? null;
   useEffect(() => {
     if (!open || tab !== 'characters' || section !== 'Combat' || realmName === null) {
@@ -3201,6 +3224,22 @@ export default function SettingsScreen({
                             wide
                           />
                         )}
+                      </fieldset>
+                      {/*
+                        Kept beside the MegaMUD engine: the use goes on its
+                        pending list before the step into such a room
+                        (2026-10-14).
+                      */}
+                      <fieldset className="settings-menus" data-fieldset="health-wards">
+                        <legend>{t('settings.health.wardsLegend')}</legend>
+                        <CheckField
+                          checked={form.useWards}
+                          hint={t('settings.health.useWardsHint')}
+                          label={t('settings.health.useWards')}
+                          name="use-wards"
+                          onChange={(value) => patch({ useWards: value })}
+                        />
+                        <WardRules rules={wards} />
                       </fieldset>
                     </>
                   )}

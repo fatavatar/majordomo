@@ -67,6 +67,24 @@ describe('walking a path (D48)', () => {
     expect(s.task).toBe(0xe);
   });
 
+  /* Ours: a ward the room ahead wants goes before the step (2026-10-14). */
+  it('asks the host before a step, and holds the step for what it queued', () => {
+    const r = walker();
+    const { s, out } = r;
+    walking(r, LOOP());
+    let asked = 0;
+    s.host.beforeStep = () => {
+      asked += 1;
+      if (asked === 1) s.pending.push({ text: 'use amulet\r', expand: 0, checked: 0, tag: 0 });
+    };
+    expect(walkPath(s)).toBe(0);
+    expect(out.sent).toEqual([]);
+    s.pending = [];
+    expect(walkPath(s)).toBe(1);
+    expect(out.sent).toEqual(['n\r']);
+    expect(asked).toBe(2);
+  });
+
   it('re-reads the room once when it is not the step’s, then steps back when the move did not happen', () => {
     const r = walker();
     const { s, out } = r;

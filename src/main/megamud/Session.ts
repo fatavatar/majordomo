@@ -389,6 +389,12 @@ export interface SessionHost {
   /** `0x45fa60`: a move arrived (its direction), for the map to follow (ours). */
   arrived?(step: number): void;
   /**
+   * Ours: a path's step is about to go out. What is kept beside the engine
+   * (a ward the room ahead wants) queues its command here, and a command
+   * queued holds the step as any pending command does (2026-10-14).
+   */
+  beforeStep?(): void;
+  /**
    * The `stat` display took every blessing as gone (`0x494e70`); MegaMUD
    * sees the ones still up again on the display's own lines, by their
    * Messages.md rows. Ours: the blessings our tracker has up, put back.

@@ -3519,6 +3519,8 @@ settings:
       than Auto-Retreat's own threshold, or it never gets the chance to fire first.
     fleeLabel: Auto-Flee
     fleeLegend: Auto-Flee
+    # The realm's ward rules, kept beside the MegaMUD engine (2026-10-14).
+    wardsLegend: Room Wards
     fleeDestinationHint: The keyword sys goto is sent with, e.g. sil. Empty means never send it.
     fleeDestinationLabel: Sys Goto Destination
     fleeDestinationPlaceholder: sil
@@ -3554,7 +3556,7 @@ settings:
     # realm's own data, so a rule for poison offers the antidotes and not the
     # healing potions.
     potionRuleLegend: When to use an item
-    useWards: Follow the realm's own rules too
+    useWards: Keep a Room’s Ward Up
     useWardsHint:
       The realm writes rules of this shape itself, and this is whether they are obeyed. Where it
       says a spell stops a room's effect and a carried item's use casts that spell, the item is

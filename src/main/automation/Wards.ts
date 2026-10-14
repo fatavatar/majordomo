@@ -74,7 +74,7 @@ export class Wards {
   constructor(
     private config: HealthConfig,
     private enabled: boolean,
-    private readonly queue: CommandQueue,
+    private readonly queue: Pick<CommandQueue, 'enqueue'>,
     private readonly sources: WardSources,
     private readonly events: WardEvents = {},
     private readonly now: () => number = () => Date.now()

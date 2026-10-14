@@ -318,6 +318,12 @@ one's way of moving the character is the engine's for a character it runs:
   arrive), and its loop, filed nowhere, the engine's loop by name
   (`SessionManager.megaLoops`). The engine's walk ending is told to it as the
   walker's is (`megaWalkEnded`); the lap it measures is the engine's.
+- **Wards and auto-keys** (2026-10-14): their commands go on MegaMUD's
+  pending list (`MegaEngine.queue`, `0x48ab60`), which its scheduler sends
+  when it may and which holds its walk (`0x409170`'s pending check). A ward
+  for the room ahead is asked for before each step of the engine's path, by
+  a hook of ours in `walkPath` (`SessionHost.beforeStep`): what it queues
+  holds the step until it is sent. The wards switch is on the Health row.
 
 **The flee** (`automation.safety.fleeGoto`, 2026-10-14) is ours inside the
 loop, as MegaMUD has no toggle for it: on the toolbar beside MegaMUD's own,

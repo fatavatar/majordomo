@@ -29,7 +29,7 @@ import { clearDetours, goTo, headFor, startWalking } from '../megamud/move/desti
 import { clearPath, copyPath, freeSteps } from '../megamud/move/path';
 import { connected, connectFailed, connectionClosed } from '../megamud/script/game';
 import { reEngage } from '../megamud/script/modes';
-import { send, wake } from '../megamud/script/send';
+import { queue, send, wake } from '../megamud/script/send';
 import { startRun } from '../megamud/script/run';
 import { tuning } from '../app/tuning';
 import { forgetAwaited, setState } from '../megamud/script/state';
@@ -118,6 +118,12 @@ export interface MegaEngineHost {
   progressed?(walk: WalkProgress, loop: LoopProgress): void;
   /** It began or stopped waiting to dial back: see `MegaEngine.redialing`. */
   redialChanged?(): void;
+  /**
+   * A step of its path is about to go into `to`: what is kept beside the
+   * engine queues a command for that room first (`MegaEngine.queue`), which
+   * holds the step until it is sent. See `SessionHost.beforeStep`.
+   */
+  beforeStep?(to: RoomId): void;
 }
 
 /** One of our loops made a MegaMUD loop: its stops, and the step each leg to the next begins at. */
@@ -395,7 +401,8 @@ export class MegaEngine {
       route: (from, to) => this.route(from, to),
       readPath: (name) => this.readPath(name),
       saveSteps: (p) => this.saveSteps(p),
-      blessingsCleared: () => this.blessingsCleared()
+      blessingsCleared: () => this.blessingsCleared(),
+      beforeStep: () => this.beforeStep()
     };
     this.memory = setup.memory ?? null;
     this.dataFrom = setup.data;
@@ -1032,6 +1039,27 @@ export class MegaEngine {
     this.loopRun = { name, startedAt: Date.now(), lapBegunAt: null };
     this.noteToggles();
     return null;
+  }
+
+  /**
+   * A command of an action kept beside the engine (a ward, a key off the
+   * floor), put on MegaMUD's pending list (`0x48ab60`): its scheduler sends
+   * it when it next may, and a walk holds for it.
+   */
+  queue(command: string): void {
+    this.safely(() => {
+      queue(this.s, `${command}\r`);
+      wake(this.s);
+    });
+  }
+
+  /** The room the path's next step goes into, for the host to queue what it wants first. */
+  private beforeStep(): void {
+    if (this.host.beforeStep === undefined) return;
+    const made = this.made.get(this.s.path.name.toLowerCase());
+    if (made === undefined) return;
+    const to = made.rooms[this.s.path.at + 1] ?? made.end;
+    if (to !== null) this.host.beforeStep(to);
   }
 
   /**

@@ -8183,6 +8183,25 @@ describe('the actions kept beside the MegaMUD engine', () => {
     return (manager as unknown as { mega: { host: MegaEngineHost } }).mega.host;
   };
 
+  /* A ward or a key off the floor: MegaMUD's pending list, which holds its walk (2026-10-14). */
+  it('put their commands on the engine’s pending list', () => {
+    engine();
+    const inside = manager as unknown as {
+      keptQueue: {
+        enqueue(intent: { command: string; priority: 'probe'; onSent?: () => void }): boolean;
+      };
+      mega: MegaEngine;
+    };
+    // In the game: out of it, MegaMUD sends a queued command at once.
+    inside.mega.s.inGame = 1;
+    const sent = vi.fn();
+    expect(
+      inside.keptQueue.enqueue({ command: 'use amulet', priority: 'probe', onSent: sent })
+    ).toBe(true);
+    expect(inside.mega.s.pending.map((p) => p.text)).toEqual(['use amulet\r']);
+    expect(sent).toHaveBeenCalled();
+  });
+
   it('hand the engine a loop filed nowhere, which it then finds by name', () => {
     const host = engine();
     const loop = { name: 'Hunt: Orc Den', stops: [{ room: 'Orc Den' }, { room: 'Orc Pit' }] };
