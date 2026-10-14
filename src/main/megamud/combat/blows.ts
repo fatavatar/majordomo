@@ -15,7 +15,8 @@ import { addEntity, findEntity, newMonsterEntity } from '../room/entities';
 import { escapeCheck } from '../script/escape';
 import { setState } from '../script/state';
 import type { RoomEntity, Session } from '../Session';
-import { unported } from '../unported';
+import { partyRefresh } from '../party/members';
+import { pvpAttack } from './events';
 import { areaDamage } from './hits';
 import { roundEvent, RoundEvent } from './timer';
 
@@ -203,7 +204,7 @@ export function blowLine(s: Session, line: string): number {
           m.hp -= damage;
           m.flags28 |= 2;
         }
-        unported('4816b0');
+        partyRefresh(s, 1);
         findVerb = true;
         attacker = '';
       }
@@ -270,7 +271,7 @@ function matchRoomName(s: Session, name: string): string {
 function struck(s: Session, line: string, name: string, damage: number): number {
   if (damage !== 0) {
     s.hp -= damage;
-    if (s.partySize !== 0) unported('4816b0');
+    if (s.partySize !== 0) partyRefresh(s, 1);
   }
   s.sneaking = 0;
   s.hidden = 0;
@@ -370,7 +371,7 @@ function struck(s: Session, line: string, name: string, damage: number): number 
   prioritize(s);
   if (name !== '') {
     const x = findEntity(s, name, 0);
-    if (x?.player) unported('42b8f0');
+    if (x?.player) pvpAttack(s, name, 1);
   }
   escapeCheck(s, 'incoming attack');
   return 1;

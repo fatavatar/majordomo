@@ -25,6 +25,7 @@ import {
   findMonster,
   findPlayer,
   hangupAllowed,
+  looksLikeName,
   markMonsters,
   partyIndex
 } from '../room/checkNames';
@@ -43,11 +44,11 @@ import { forgetAwaited, setState } from '../script/state';
 import { setTask } from '../script/task';
 import type { RoomEntity, Session } from '../Session';
 import { isCastState } from '../states';
-import { unported } from '../unported';
 import { immunityText } from '../player/cast';
-import { newMonster } from '../data';
+import { newMonster, newPlayer } from '../data';
 import { castForgotten, roundEvent, RoundEvent } from './timer';
-import { goTo, headFor } from '../move/destinations';
+import { goTo, headFor, roomByName } from '../move/destinations';
+import { stamp } from '../script/events';
 
 /** The weapons (`0x53eb48`): bit, letter. */
 const WEAPONS: [number, string][] = [
@@ -365,13 +366,183 @@ function blameTarget(s: Session): [number, RoomEntity | null] {
   return [why, e];
 }
 
-/** `0x42b8f0`: a player moving against this character. Not ported yet. */
+/** A player moving against this character: no longer hidden or sneaking (`0x427120`), then `0x42b8f0`. */
 export function pvp(s: Session, name: string): number {
   s.hidden = 0;
   s.sneaking = 0;
-  void name;
-  unported('42b8f0');
+  pvpAttack(s, name, 1);
   return 1;
+}
+
+/** The arena, where nobody is attacked for real (`0x67110001`, as `breaks off combat` reads it). */
+const ARENA = 0x67110001;
+
+/**
+ * `0x472d10`: a name that is a player's — in the room and not a monster,
+ * on the `who` list, or known — rather than a monster's.
+ */
+export function knownPlayer(s: Session, name: string): number {
+  if (looksLikeName(name) === 0) return 0;
+  for (const e of s.room) {
+    if (e.name !== name || e.type === 3) continue;
+    if (e.type === 2) return 0;
+    return e.mon === null ? 1 : 0;
+  }
+  if (s.whoList.some((w) => w.name === name)) return 1;
+  return s.data.players?.some((p) => p.name === name) ? 1 : 0;
+}
+
+/**
+ * `0x42b8f0`: a player attacked this character. `PvP.PvpAction` decides
+ * what follows — 0 hang up, 1 run (hanging up when held or not walking),
+ * 2 run, 3 fight, 4 fight and chase, 5 ignore it. A party member's blow is
+ * forgiven (`@OI!` and `forgive`) unless they have left the listing; the
+ * gang is told (`PvP.NotifyGang`), and the party asked to `@kill` them
+ * (`tell`). They are marked an enemy (or one to flee), their remote
+ * control taken away, and kept in the known players. Not in the arena.
+ */
+export function pvpAttack(s: Session, name: string, tell: number): void {
+  if (s.PvP_PvpAction === 5) return;
+  if (looksLikeName(name) === 0) {
+    if (s.f_a32c === 0) s.host.show('[Ignoring malformed PvP attacker name]');
+    s.f_e2a4 = 1;
+    s.f_e290 = 1;
+    return;
+  }
+  if (s.data.monsters.some((m) => stricmp(m.name, name) === 0)) {
+    s.f_e290 = 1;
+    return;
+  }
+  if (knownPlayer(s, name) === 0) {
+    if (s.f_a32c === 0) s.host.show('[Ignoring unknown PvP attacker name]');
+    s.f_e2a4 = 1;
+    s.f_e290 = 1;
+    return;
+  }
+  if (s.target === name) return;
+  s.target = '';
+  s.f_e2b8 = 1;
+  s.inCombat = 0;
+  let arena = false;
+  if (s.f_8130 === ARENA) {
+    arena = true;
+  } else {
+    if (s.f_a32c === 0) s.host.trace(`[PVP detected! (${stamp(s)})]`);
+    s.f_3252c += 1;
+    s.f_322f8 = s.now;
+    if (s.f_a32c === 0) {
+      const member = partyIndex(s, name);
+      if (member !== -1) {
+        const p = findPlayer(s, name);
+        let listed = (s.party[member]!.flags28 & 8) === 0;
+        if (p && stricmp(name, s.leaderName) === 0) listed = ((p.flags >> 5) & 1) !== 0;
+        if (!p || p.kind > 2 || listed) {
+          send(s, '@OI!\r');
+          send(s, s.s_7d21 !== '' ? s.s_7d21 : '.');
+          send(s, 'forgive ');
+          send(s, name);
+          send(s, '\r');
+          return;
+        }
+        removeMember(s, member);
+      }
+      if (s.PvP_NotifyGang !== 0 && s.Player_Gang !== '') {
+        send(s, 'gb {Being attacked by ');
+        send(s, name);
+        send(s, '}\r');
+      }
+      if (tell !== 0 && s.partySize > 0) {
+        send(s, s.s_7d21);
+        send(s, '@kill ');
+        send(s, name);
+        send(s, '\r');
+      }
+    }
+    if (s.f_a32c === 0 || s.Other_HangupAllOff !== 0) {
+      const action = s.PvP_PvpAction;
+      const hang =
+        action === 0 || (action === 1 && (s.held !== 0 || (s.walking === 0 && s.roaming === 0)));
+      if (s.MegaMud_NoHangup === 0 && hang) {
+        s.f_30de4 = 1;
+        s.f_30de8 = 1;
+        s.f_30dec = 1;
+        hangUp(s, 1);
+      }
+      s.host.alert?.('hangup');
+    } else {
+      s.host.alert?.('playerEntered');
+    }
+    if (s.f_a32c === 0) {
+      if (s.PvP_PvpAction === 2 || s.PvP_PvpAction === 1) {
+        s.f_e1a0 = 1;
+        s.runCount = s.PvP_FleeRooms;
+        const room = s.PvP_PvpFleeRoom !== '' ? roomByName(s, s.PvP_PvpFleeRoom) : null;
+        if (room) {
+          s.f_9104 = room.signature;
+          if (goTo(s, room.signature, null) !== 0) {
+            s.detours[0]!.why = 'fleeing';
+            headFor(s, 0);
+          }
+        }
+      }
+      if (s.PvP_PvpAction === 4) s.chaseTarget = name.slice(0, 10);
+    }
+  }
+
+  let e = findEntity(s, name, 0);
+  if (!e) {
+    e = addEntity(s);
+    e.name = name.slice(0, 30);
+    e.type = 1;
+    e.kind = 4;
+  }
+  if (e.player === null) {
+    const p = findPlayer(s, name);
+    if (p === null) {
+      const made = newPlayer(s.data, s.now);
+      made.name = name.slice(0, 10);
+      made.flags = 1;
+      made.kind = 4;
+      e.player = made;
+      s.f_e24c = 1;
+      s.host.show(`[Adding ${name} to known players]`);
+    } else {
+      e.player = p;
+      e.kind = p.kind;
+    }
+  }
+  e.flags &= ~0x60;
+  const p = e.player;
+  if (!arena) p.flags |= 0x4000;
+  p.greetedAt = s.now;
+  if ((p.flags & 0x8000) === 0) {
+    if (p.seen === 0) s.f_32528 += 1;
+    p.seen += 1;
+    p.flags |= 0x8000;
+  }
+  if (e.kind === 4 || e.kind === 5 || e.kind === 6 || s.f_a32c !== 0) {
+    if (arena) e.flags |= 1;
+  } else {
+    e.kind = 4;
+    if (!arena) {
+      if (s.PvP_PvpAction === 2 || s.PvP_PvpAction === 1) {
+        e.kind = 5;
+        s.host.trace(`[Player ${name} marked as flee!]`);
+      } else {
+        s.host.trace(`[Player ${name} marked as enemy!]`);
+      }
+      p.kind = e.kind;
+      if (p.remote !== 0) {
+        p.remote = 0;
+        s.host.trace(`[Player ${name} remote control _access removed!]`);
+      }
+      s.f_e24c = 1;
+    } else {
+      e.flags |= 1;
+    }
+  }
+  checkNames(s);
+  prioritize(s);
 }
 
 /** `X moves to attack everyone in the room`: a party member (or a player) attacking the room. */
@@ -396,10 +567,10 @@ function attackEveryone(s: Session, line: string, at: number): number {
       }
     }
     if (s.Party_AttackLate === 0 || s.partySize < 3) return 1;
-    unported('423f80');
+    attackLate(s, member, name, '*room*', 0);
     return 1;
   }
-  if (unported('472d10') === 0) {
+  if (knownPlayer(s, name) === 0) {
     if (s.f_a32c === 0) s.host.show('[Ignoring unknown PvP attacker name]');
     s.f_e2a4 = 1;
     s.f_e290 = 1;
@@ -460,9 +631,53 @@ function memberEngages(
     }
   }
   if (s.Party_AttackLate === 0 || s.partySize < 3) return 1;
-  void melee;
-  unported('423f80');
+  attackLate(s, member, who, victim.name, melee);
   return 1;
+}
+
+/**
+ * `0x423f80` (`Party.AttackLate`): member `i` is attacking `target` —
+ * `*room*` for everyone in it. Two or more members newly on something, or
+ * one still on the same target in melee a lag-wait (plus two seconds) on,
+ * and this character joins in (`0xe2b8`), at most every two seconds; not
+ * while backstabbing or sneaking. Its own attack only notes the target.
+ */
+function attackLate(s: Session, i: number, who: string, target: string, melee: number): void {
+  const t = s.host.tickMs();
+  if (i > 5 || partyIndex(s, target) !== -1) return;
+  const member = s.party[i]!;
+  if (stricmp(who, s.Player_Name) === 0) {
+    s.f_324a8 = 0;
+    member.target = target.slice(0, 30);
+    s.f_324b0 = t;
+    return;
+  }
+  const same = stricmp(member.target, target) === 0;
+  let still = false;
+  if (
+    same &&
+    melee !== 0 &&
+    s.f_8be4 !== 0 &&
+    s.f_324b0 !== 0 &&
+    t - s.f_324b0 >= (s.Comms_LagWait + 2) * 1000
+  ) {
+    still = true;
+  } else if (!same) {
+    s.f_324a8 |= 1 << i;
+    if (s.debug !== 0) s.host.trace(`{al+${i}}`);
+  }
+  member.target = target.slice(0, 30);
+  s.f_324b0 = t;
+  let count = 0;
+  for (let bit = 0; bit < 6; bit += 1) if ((s.f_324a8 & (1 << bit)) !== 0) count += 1;
+  if (s.state === 0x12 || s.sneaking !== 0) {
+    if (s.debug !== 0 && (count > 1 || still)) s.host.trace('{al-bs}');
+  } else if ((count > 1 || still) && t - s.f_324b8 >= 2000) {
+    s.f_e2b8 = 1;
+    s.f_324b8 = t;
+    s.f_324a8 = 0;
+    if (s.debug !== 0) s.host.trace(still && count <= 1 ? '{al!s}' : '{al!}');
+  }
 }
 
 /** `0x474790`: pin an entry first (999) or last (-999), unpinning the rest. */

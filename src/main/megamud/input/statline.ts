@@ -23,6 +23,7 @@ import { queue, send } from '../script/send';
 import { forgetAwaited, setState } from '../script/state';
 import type { LineBuf, Session } from '../Session';
 import { refreshStatus } from '../status';
+import { partyRefresh } from '../party/members';
 
 /** `0x47b070`: a prompt at the front of the line, if there is one. */
 export function statusLine(s: Session, buf: LineBuf, complete: number): number {
@@ -70,6 +71,9 @@ export function statusLine(s: Session, buf: LineBuf, complete: number): number {
       end = indexFrom(line, from, ']:') + 2;
       while (line[end] === ' ') end += 1;
       s.mana = Math.min(s.mana, s.Player_MaxMana);
+      // `0x47b070`: the party window refreshed when the HP or mana moved.
+      const moved = s.hp !== s.hpPrev || ((ma !== -1 || kai !== -1) && s.mana !== s.manaPrev);
+      if (moved && (s.partySize > 0 || s.Display_AlwaysShowPartyWindow !== 0)) partyRefresh(s, 1);
       // MegaMUD refreshes its window while minimised here; nothing to do.
       if (s.restHpToFull === 0 || s.Player_MaxHP < 1) {
         if (s.hpFullAt > 0 && s.hp < s.hpFullAt) {

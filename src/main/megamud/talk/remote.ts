@@ -22,7 +22,7 @@
  * The way to a room or a loop's start is the host's route (`0x43fd90`).
  */
 import { expMeter } from '../stats/expMeter';
-import { pvp } from '../combat/events';
+import { pvpAttack } from '../combat/events';
 import { clearAlignment } from '../combat/engaged';
 import {
   atoi,
@@ -295,7 +295,8 @@ function kill(c: Ctx): number {
   if (partyIndex(s, who) !== -1) return reply0(c, `${c.to} {no - they are in our party}\r`);
   const q = findPlayer(s, who);
   if (q && q.kind === 2) return reply0(c, `${c.to} {no - player is a friend}\r`);
-  pvp(s, who);
+  // `0x4ae4a0` calls `0x42b8f0` itself, without asking the party to `@kill`.
+  pvpAttack(s, who, 0);
   return 0;
 }
 

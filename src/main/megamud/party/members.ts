@@ -4,6 +4,7 @@ import { newPlayer } from '../data';
 import { findPlayer, looksLikeName } from '../room/checkNames';
 import { queueCommand } from '../script/send';
 import { newMember } from '../Session';
+import { stamp } from '../script/events';
 
 /** `0x47dbf0`: member `i` leaves; a party of one is no party. */
 export function removeMember(s: Session, i: number): number {
@@ -111,4 +112,71 @@ export function addMember(s: Session, name: string, leader: number): number {
   s.partySize += 1;
   s.f_324a8 = 0;
   return 1;
+}
+
+/**
+ * `0x4816b0`, run by the party window's refresh (`0x481d40`) wherever the
+ * party or this character's health changes: this character's own line kept
+ * in step; with `recompute`, every member's health and mana percent worked
+ * out again, and a member in step below `Party.PartyWait%` noted. Leading,
+ * a member hurt (`0xac`) makes the party wait (`partyWait`); with nobody
+ * below the mark that wait gives up after `Party.PartyWaitMax` minutes, the
+ * members out of step dropped. With `Party.ShareDamage`, a member able to
+ * take less than this character has left has this character join the fight
+ * (`0xe2b8`), at most every three seconds. The window itself is drawn by our
+ * party card.
+ */
+export function partyRefresh(s: Session, recompute: number): void {
+  let below = false;
+  let hurt = 0;
+  for (let i = 0; i < s.partySize; i += 1) {
+    const m = s.party[i]!;
+    const self = m.name === s.Player_Name;
+    if (self) {
+      m.hp = s.hp;
+      m.maxHp = s.Player_MaxHP;
+      m.mana = s.mana;
+      m.maxMana = s.Player_MaxMana;
+    }
+    if (recompute !== 0) {
+      if (m.maxHp > 0) {
+        const pct = Math.trunc((m.hp * 100) / m.maxHp);
+        m.hpPct = pct;
+        if (!self && pct > 0x62) m.flags28 &= ~0x20000;
+        if ((m.flags28 & 0x8c) === 0 && pct < s.Party_PartyWaitPct) below = true;
+      }
+      if (m.maxMana > 0) m.manaPct = Math.trunc((m.mana * 100) / m.maxMana);
+    }
+    if ((m.flags28 & 0xac) !== 0) hurt = 1;
+  }
+  const wait = s.leaderName === s.Player_Name ? hurt : 0;
+  let timing = true;
+  if (s.partyWait === 0 && wait !== 0) {
+    s.f_32330 = s.now;
+    s.partyWait = wait;
+  } else {
+    s.partyWait = wait;
+    if (wait === 0) timing = false;
+  }
+  if (timing && !below && s.now - s.f_32330 >= s.Party_PartyWaitMax * 60) {
+    s.host.show(`[Waiting timed out (${stamp(s)})]`);
+    s.partyWait = 0;
+    s.f_32330 = s.now;
+    for (let i = s.partySize - 1; i >= 0; i -= 1) {
+      const m = s.party[i]!;
+      if ((m.flags28 & 0x8c) === 0) m.flags28 &= ~0x20;
+      else removeMember(s, i);
+    }
+  }
+  if (s.Party_ShareDamage !== 0 && s.partySize > 0) {
+    let most = 0;
+    for (let i = 0; i < s.partySize; i += 1) {
+      const m = s.party[i]!;
+      if (m.name !== s.Player_Name && m.maxHp > 0 && most <= m.maxHp) most = m.maxHp;
+    }
+    if (most !== 0 && most < s.hp && s.now - s.f_322e0 > 3) {
+      s.f_e2b8 = 1;
+      s.f_322e0 = s.now;
+    }
+  }
 }

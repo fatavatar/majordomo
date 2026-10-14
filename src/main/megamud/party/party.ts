@@ -17,7 +17,7 @@ import { findPlayer, partyIndex } from '../room/checkNames';
 import { findEntity } from '../room/entities';
 import { queue } from '../script/send';
 import type { PartyMember, Session } from '../Session';
-import { addMember, removeMember } from './members';
+import { addMember, partyRefresh, removeMember } from './members';
 
 function moving(s: Session): boolean {
   return s.walking !== 0 || s.roaming !== 0 || s.importing !== 0;
@@ -76,6 +76,8 @@ function listingEnd(s: Session): number {
   }
   s.lineFlags &= ~0x2000;
   s.f_e298 = 0;
+  // `0x47ec60`: the window refreshed from the listing, its percents as listed.
+  partyRefresh(s, 0);
   if (s.f_e2ec === 0 || s.leaderName === '') return 0;
   if (s.Player_Name === s.leaderName) {
     s.holdingLeader = 0;
