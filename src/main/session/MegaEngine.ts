@@ -61,7 +61,7 @@ import { itemKey, type ItemRule } from '../../shared/itemRules';
 import type { MonsterRule, Relationship } from '../../shared/monsterRules';
 import type { PlayerFacts } from '../../shared/players';
 import type { LearnedItem } from '../world/MegaLearned';
-import type { ActiveBuff } from '../../shared/character';
+import type { ActiveBuff, Affliction } from '../../shared/character';
 import type { MegaSettings } from '../../shared/megamud/settings';
 import {
   MEGA_TOGGLES,
@@ -269,6 +269,10 @@ const SECOND_MS = 1000;
  */
 const QUIET_POLL_MS = 250;
 
+/** The afflictions MegaMUD has a cure command for, by its session's flag. */
+const CURED_AFFLICTIONS = ['blind', 'poisoned', 'diseased', 'held'] as const;
+type CuredAffliction = (typeof CURED_AFFLICTIONS)[number];
+
 /** How long a walk waits on the realm saying where the character is. */
 const LOCATE_WAIT_MS = 5000;
 /** How long a way planned is used again before it is planned afresh. */
@@ -355,6 +359,8 @@ export class MegaEngine {
   private readonly blessUp: (number | null)[] = [];
   /** Whether our tracker had the HP and mana regeneration spells up, at the last look. */
   private regenUp: [boolean, boolean] = [false, false];
+  /** The afflictions our tracker had on, at the last look (`afflictions`). */
+  private afflicted: Partial<Record<CuredAffliction, boolean>> = {};
 
   constructor(
     private readonly host: MegaEngineHost,
@@ -598,6 +604,24 @@ export class MegaEngine {
   }
 
   /**
+   * Our tracker's afflictions, beside its buffs and for their reason: MegaMUD
+   * knows it is blind, poisoned, diseased or held only by a Messages.md row
+   * with that effect, and a realm's rows can say otherwise. Skinny's names
+   * `You are diseased` as losing HP, so `DiseaseCmd` was never cast for it
+   * (2026-10-14). The tracker reads the realm's own sentences for each, so an
+   * affliction it has on is on, and one it has seen end is ended.
+   */
+  afflictions(now: Readonly<Record<CuredAffliction, Affliction>>): void {
+    const s = this.s;
+    for (const name of CURED_AFFLICTIONS) {
+      const on = now[name] === 'yes';
+      if (on) s[name] = 1;
+      else if (this.afflicted[name] === true) s[name] = 0;
+      this.afflicted[name] = on;
+    }
+  }
+
+  /**
    * Spells.md's lasting bit (`2`, which a blessing needs) set on every spell
    * the realm's own spell table says lasts, once that table is loaded. A
    * MegaMUD database can miss it: the shipped one has necropotence, which
@@ -624,6 +648,7 @@ export class MegaEngine {
   private blessingsCleared(): void {
     const s = this.s;
     if (this.regenUp[0]) s.hpRegen = 1;
+    for (const name of CURED_AFFLICTIONS) if (this.afflicted[name] === true) s[name] = 1;
     for (let i = 0; i < 10; i += 1) {
       if (this.blessUp[i] !== null && this.blessUp[i] !== undefined) s.blessCastAt[i] = s.now;
     }

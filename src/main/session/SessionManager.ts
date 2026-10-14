@@ -3143,6 +3143,7 @@ export class SessionManager {
       // After our own reading, so the engine learns rooms our tracker has
       // placed and the buffs it has seen go up and down.
       this.mega?.buffs(this.tracker.current.buffs);
+      this.mega?.afflictions(this.tracker.current.afflictions);
       this.mega?.received(text);
       /*
        * Deliberately *not* `routines.noteSent()`: the keep-alive counts this

@@ -363,6 +363,28 @@ describe('blessings told by our tracker’s buffs', () => {
    * Skinny's Messages.md has no row for divine restoration, so every stat
    * sheet took his regen as ended and he cast `rsto` again (2026-10-14).
    */
+  /* Skinny's Messages.md files `You are diseased` as losing HP: never cured (2026-10-14). */
+  it('takes an affliction our tracker has on as on, through the stat display, and off when it ends', () => {
+    const e = blessed();
+    e.s.inGame = 1;
+    const none = {
+      blind: 'unknown',
+      poisoned: 'unknown',
+      diseased: 'unknown',
+      held: 'no'
+    } as const;
+    e.afflictions({ ...none, diseased: 'yes' });
+    expect(e.s.diseased).toBe(1);
+    e.received('Name: Skinny Fatterson                 Lives/CP:      9/7    \r\n');
+    expect(e.s.diseased).toBe(1);
+    e.afflictions({ ...none, diseased: 'no' });
+    expect(e.s.diseased).toBe(0);
+    // One the tracker never had is MegaMUD's own to say.
+    e.s.poisoned = 1;
+    e.afflictions(none);
+    expect(e.s.poisoned).toBe(1);
+  });
+
   it('keeps the regen spell working while it is up, through the stat display', () => {
     const e = blessed();
     const settings = defaultSettings();
