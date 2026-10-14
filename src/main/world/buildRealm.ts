@@ -97,9 +97,10 @@ import {
  * | 46 | **A gate on level says *which* character, and the router is planning for one.** Format 43 follows `minlevel` / `maxlevel` at full weight — what stands behind a gate happens to *somebody* — and then flattened it, so the desert's sandstorm (`86:maxlevel 19:cast 713`, a one-in-a-hundred teleport) was priced as *it moves you somewhere else* on all 979 of Paradigm's desert rooms, for a level 21 character it cannot touch. Reported as *it is set to maxlevel 19 so in this case festus is level 21 so it wont execute and can be ignored*. `BuiltSpellHazard.lv` carries the band each of `d`, `tp` and `sm` was recorded under — a gate governs the rest of its own line, so the band is taken back at the end of each — and `hazardFor` (`src/shared/world.ts`) narrows a hazard to the character's level at `WorldGraph.hazardOf`, the one join. **An unstated level keeps the whole hazard**, and an effect recorded both inside a gate and outside one is ungated: the reassuring answer here is *it cannot happen to you* — todo 01 |
  * | 48 | **What a spell's script casts.** A spell whose whole effect is a `TextBlock` read as one that does nothing: mudrev's `cure disease` is `TextBlock 8290`, and `TBInfo 8290` is `cast 2132:cast 2133` — `cure disease 1` and `cure disease 2`, whose `RemovesSpell` rows end plague, leprosy and rotting flesh. The cure pickers read only a spell's own rows, so the Disease field never offered the spell that cures disease (skinny, 2026-10-11). `BuiltSpell.cs` carries the spells a spell's block casts (`TBInfo`, which does not ship, read at the build as format 40 reads an item's), and `WorldGraph.servingAbilities` folds their rows in for the readings that ask what a spell ends; the hazard and damage readers keep the spell's own |
  * | 49 | **What MegaMUD's engine reads of a class, a spell and a monster** (2026-10-13). The ported engine keeps its databases in our realm data rather than in MegaMUD's `.md` files, and three facts it needs were columns the build had left out: `Classes.MageryType` and `WeaponType` (`BuiltClass.mt`, `wt` — the magic a class casts, 1 mage … 5 kai, the numbering MegaMUD's own `Classes.md` settles, and 9 its martial arts), `Spells.Magery` and `MageryLVL` (`BuiltSpell.mg`, `ml`) and `Monsters.ExpMulti` (`BuiltMob.xm`, written where every row of the name agrees and it is not 1, and each row's own `BuiltMobRow.xm`), which MegaMUD multiplies `EXP` by. Checked against Skinny's own MegaMUD files: every class's magic and every spell's magic number follow from these |
+ * | 50 | **Every item the realm names has a detail row** (2026-10-14). The detail index was kept to the items something refers to — an exit, a shop, a drop list, a script — which was right for the Reference card and wrong for the MegaMUD engine, whose item table is the realm's whole one as MegaMUD's `Items.md` was: an item nothing refers to (216 of mudrev's 2,833, `silver bracelet` lying in Town Square among them) was "added to known items" afresh each time it was seen, with no weight, price or kind. |
  * | 47 | **The coin a price is counted in.** `Items.Currency` was never read, so the realm's `Price` was a number in no unit and a counter's charge could not be known before `list` was spent on it: a quest run walked to the General Store for two waterskins, was quoted 50 silver nobles each against an empty purse, and stood there with 8.6 million copper in the Bank of Godfrey. `BuiltItem.cur` carries the code (0 copper … 4 runic, `BuyCommand.GetCopperValue`) where it is not copper, and `WorldGraph.priceAt` multiplies it through the shop's markup exactly as the server does, so the supplies errand knows what to withdraw before it walks — todo 00 |
  */
-export const REALM_FORMAT = 49;
+export const REALM_FORMAT = 50;
 
 /**
  * What `build-world.mjs` says about a world it is bundling: which of the two
@@ -1494,6 +1495,16 @@ export function buildRealm(source: RealmSource, today: string, shipped?: Shipped
    */
   const itemLandings = landingsOfItems(source, spells, blocks);
   for (const id of fromScripts.named) neededItems.add(id);
+  /*
+   * And every other item the realm names — format 50. The MegaMUD engine's
+   * item table is the realm's whole one, as MegaMUD's `Items.md` was, so an
+   * item nothing above refers to was "added to known items" as new each time
+   * it was seen: `silver bracelet`, lying in Town Square (2026-10-14).
+   */
+  for (const row of source.table('Items')?.rows ?? []) {
+    const id = number(row['Number']);
+    if (id !== null && id > 0 && text(row['Name']).trim().length > 0) neededItems.add(id);
+  }
 
   /*
    * What each room spell does to whoever stands in the room — format 30.
