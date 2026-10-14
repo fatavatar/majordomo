@@ -8167,6 +8167,53 @@ describe('the MegaMUD engine’s progress', () => {
   });
 });
 
+describe('the actions kept beside the MegaMUD engine', () => {
+  /*
+   * Auto-hunt walks to its lair and runs a loop it sized and filed nowhere:
+   * the engine's Go To and loop for a character it runs (2026-10-14).
+   */
+  const engine = () => {
+    const { sink } = collect();
+    manager = new SessionManager(sink);
+    manager.useMegaMud({
+      settings: defaultSettings(),
+      data: { monsters: [], items: [], spells: [] },
+      grants: {}
+    });
+    return (manager as unknown as { mega: { host: MegaEngineHost } }).mega.host;
+  };
+
+  it('hand the engine a loop filed nowhere, which it then finds by name', () => {
+    const host = engine();
+    const loop = { name: 'Hunt: Orc Den', stops: [{ room: 'Orc Den' }, { room: 'Orc Pit' }] };
+    expect(host.loopRooms('Hunt: Orc Den')).toBe(
+      t('session.move.noSuchLoop', { name: 'Hunt: Orc Den' })
+    );
+    manager!.startLoop(loop);
+    expect(host.loopRooms('Hunt: Orc Den')).not.toBe(
+      t('session.move.noSuchLoop', { name: 'Hunt: Orc Den' })
+    );
+  });
+
+  it('are told when the engine’s own walk ends, and not when a lap’s leg does', () => {
+    const host = engine();
+    const ended = vi.fn();
+    (manager as unknown as { hunt: { onWalkEnded: typeof ended } }).hunt.onWalkEnded = ended;
+    const walking = { ...IDLE_WALK, status: 'walking' as const };
+    const running = { ...NO_LOOP, status: 'running' as const, name: 'Ring', startedAt: 1000 };
+    host.progressed!(walking, running);
+    host.progressed!({ ...IDLE_WALK, status: 'arrived' }, running);
+    expect(ended).not.toHaveBeenCalled();
+
+    host.progressed!(walking, NO_LOOP);
+    host.progressed!({ ...IDLE_WALK, status: 'arrived' }, NO_LOOP);
+    expect(ended).toHaveBeenCalledWith(true, null, expect.anything());
+    host.progressed!(walking, NO_LOOP);
+    host.progressed!({ ...IDLE_WALK, status: 'stopped', reason: 'Stopped.' }, NO_LOOP);
+    expect(ended).toHaveBeenLastCalledWith(false, 'Stopped.', expect.anything());
+  });
+});
+
 describe('the MegaMUD engine’s questions', () => {
   /*
    * MegaMUD waits on its message boxes; this client answers no where it asks,

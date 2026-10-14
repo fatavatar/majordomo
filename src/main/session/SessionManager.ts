@@ -2301,29 +2301,32 @@ export class SessionManager {
         here: () => roomAddress(this.tracker.current.room),
         survey: (radius) => this.huntingGrounds(radius),
         routeTo: (room) => this.planFromHere(room),
-        walk: (route) => this.walker.start(route, this.tracker.current),
+        // The engine's Go To for a character it runs, the walker otherwise.
+        walk: (route) =>
+          this.mega !== null
+            ? this.megaWalk(route)
+            : this.walker.start(route, this.tracker.current),
         runLoop: (loop) => {
           const answer = this.startLoop(loop);
           return 'refused' in answer ? answer.refused : null;
         },
         // The lap's **name**, so the hunt can tell its own from one the player
         // started while it was running. See `HuntPlanner.runningLoop`.
-        runningLoop: () =>
-          this.loops.progress.status === 'running' ? (this.loops.progress.name ?? null) : null,
-        stopLoop: (reason) => {
-          this.loops.stop(reason);
-          this.walker.stop(reason);
-        },
+        runningLoop: () => this.runningLoopName(),
+        stopLoop: (reason) => this.stopLapAndWalk(reason),
         moveInFlight: () => this.tracker.pendingMoves > 0,
-        walking: () => this.walker.walking,
+        walking: () => this.walkingNow(),
         /*
          * Nothing else in the middle of something. The escapes, and **the
          * errands** — each of which has phases where nothing is walking and
          * nothing is looping (a shop errand waiting for its listing, a trainer
          * errand waiting for the level to move), during which a hunt would
          * otherwise survey and walk the character away from what it came for.
+         * And MegaMUD's All Off: nothing of the engine's moves, so nothing here
+         * starts.
          */
         busy: () =>
+          this.mega?.toggles.on.allOff === true ||
           this.isRetreating() ||
           this.retreat !== null ||
           this.sysGoto !== null ||
@@ -4683,6 +4686,58 @@ export class SessionManager {
     startedAt: null,
     exp: null
   };
+  /**
+   * Loops handed to the engine that are filed nowhere — a hunt's, sized to
+   * the lair it chose (`huntLoop`) — by name, for its `loopRooms` to find.
+   */
+  private readonly megaLoops = new Map<string, Loop>();
+  /** The engine's walk as last published, to tell a walk ending (`megaWalkEnded`). */
+  private megaWalkWas: WalkProgress['status'] = 'idle';
+
+  /**
+   * The engine's own walk (its Go To, not a lap's leg) came to an end: told
+   * to what walked for itself, as the walker's `ended` tells them, so a hunt
+   * that walked to its lair starts the lap there (2026-10-14).
+   */
+  private megaWalkEnded(walk: WalkProgress): void {
+    const arrived = walk.status === 'arrived';
+    const reason = arrived ? null : walk.reason;
+    this.hunt.onWalkEnded(arrived, reason, this.tracker.current);
+  }
+
+  /** The lap running, the engine's or the loop runner's, by name; null with none. */
+  private runningLoopName(): string | null {
+    const loop = this.mega?.progress.loop ?? this.loops.progress;
+    return loop.status === 'running' ? (loop.name ?? null) : null;
+  }
+
+  /**
+   * A walk that is not the lap's has the character. The engine walks a lap
+   * without a break between its legs, so its Go To alone is a walk here; the
+   * walker walks a lap's legs too, and between them stands still.
+   */
+  private walkingNow(): boolean {
+    if (this.mega === null) return this.walker.walking;
+    const { walk, loop } = this.mega.progress;
+    return walk.status === 'walking' && loop.status !== 'running';
+  }
+
+  /** Stops the lap and the walk, the engine's (its Go/Stop) or ours. */
+  private stopLapAndWalk(reason: string): void {
+    if (this.mega !== null) {
+      if (this.mega.walking) this.mega.button(0x803);
+      return;
+    }
+    this.loops.stop(reason);
+    this.walker.stop(reason);
+  }
+
+  /** A route walked by the engine, as its Go To to the room it ends in, and only that. */
+  private megaWalk(route: Route): string | null {
+    const end = route.steps.at(-1)?.to;
+    if (this.mega === null || end === undefined) return null;
+    return this.mega.walkTo(end, false, true);
+  }
 
   /**
    * The engine's walk and loop to the cards, the map and the palette, in
@@ -4698,6 +4753,11 @@ export class SessionManager {
     }
     this.sink.walk?.(walk);
     this.sink.loop?.({ ...loop, expAtStart: this.megaLoopRun.exp });
+    const was = this.megaWalkWas;
+    this.megaWalkWas = walk.status;
+    if (was === 'walking' && walk.status !== 'walking' && loop.status !== 'running') {
+      this.megaWalkEnded(walk);
+    }
   }
 
   /**
@@ -4787,7 +4847,7 @@ export class SessionManager {
               ? planRoute(this.world, from, to, this.lapTraveller(this.tracker.current))
               : t('session.loop.noRealmData'),
           loopRooms: (name) => {
-            const loop = this.loopNamed(name);
+            const loop = this.loopNamed(name) ?? this.megaLoops.get(name);
             if (loop === undefined) return t('session.move.noSuchLoop', { name });
             const rooms: RoomId[] = [];
             for (const stop of loop.stops) {
@@ -4892,6 +4952,13 @@ export class SessionManager {
     locate: LocateMethod = DEFAULT_CONFIG.connection.locate
   ): void {
     this.configured = [stated, login, rewrites, locate];
+    /*
+     * The actions kept beside the engine (`docs/megamud/engine-port.md`,
+     * *Kept, outside the loop*) answer to the file's own switch rather than
+     * to the standing down below: a hunt hands the engine a loop as a player
+     * does (2026-10-14).
+     */
+    const kept = stated.enabled;
     // The MegaMUD engine decides for itself: nothing here acts beside it.
     if (this.mega !== null) {
       stated = {
@@ -4960,7 +5027,12 @@ export class SessionManager {
     this.recoverGear.configure(automation.movement, automation.enabled);
     this.trainLevel.configure(automation.train, automation.enabled);
     this.questRunner.configure(automation.quests, automation.enabled);
-    this.hunt.configure(automation.hunting, automation.walk, automation.health, automation.enabled);
+    this.hunt.configure(
+      automation.hunting,
+      automation.walk,
+      automation.health,
+      this.mega !== null ? kept : automation.enabled
+    );
     this.restAway.configure(automation.health, automation.enabled, automation.combat.monsters);
     this.statScreen.configure(automation.train, automation.enabled);
     this.keys.configure(automation.movement, automation.enabled);
@@ -9567,6 +9639,7 @@ export class SessionManager {
     // MegaMUD's Stop: its Go/Stop button, when it is going.
     if (this.mega !== null) {
       if (this.mega.walking) this.mega.button(0x803);
+      this.hunt.noteStopped();
       return;
     }
     // A walk home the player stops is not carried past the fight it stops in.
@@ -9650,6 +9723,7 @@ export class SessionManager {
    */
   startLoop(loop: Loop): MovementStart {
     if (this.mega !== null) {
+      if (this.loopNamed(loop.name) === undefined) this.megaLoops.set(loop.name, loop);
       const mega = this.mega;
       const refused = this.megaAct(() => mega.startLoop(loop.name));
       return refused === null ? { started: true } : { refused };

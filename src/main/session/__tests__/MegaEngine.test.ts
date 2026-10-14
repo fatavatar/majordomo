@@ -242,6 +242,38 @@ describe('the engine in a session', () => {
     e.dispose();
   });
 
+  /*
+   * A hunt walking to its lair: the Go To dialog's walk would take a loop
+   * stopped earlier up again at its end, and the hunt wait for an arrival
+   * that never came (2026-10-14).
+   */
+  it('walks a route alone, a stopped loop let go, and says it arrived', async () => {
+    vi.useFakeTimers();
+    const { e } = engine('1/1');
+    e.s.inGame = 1;
+    e.s.online = 1;
+    e.received('\x1b[1;36mTown Square\r\n\x1b[0;32mObvious exits: north, closed door east\r\n');
+    expect(e.startLoop('Ring')).toBeNull();
+    await planned();
+    e.button(0x803);
+    expect(e.s.loopPath.start).not.toBe(0);
+
+    expect(e.walkTo('1/2', false, true)).toBeNull();
+    await planned();
+    expect([e.s.loopPath.start, e.s.looping]).toEqual([0, 0]);
+    expect(e.progress.walk).toMatchObject({
+      status: 'walking',
+      asked: true,
+      destination: 'Dark Alley'
+    });
+
+    // At its end, walking done.
+    e.s.path.at = e.s.path.count;
+    e.s.walking = 0;
+    expect(e.progress.walk.status).toBe('arrived');
+    e.dispose();
+  });
+
   it('pauses half a second at a macro’s ~', () => {
     vi.useFakeTimers();
     const { e, sent } = engine();

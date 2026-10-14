@@ -26,7 +26,7 @@ import { typedCommand } from '../megamud/input/typed';
 import { disconnect, menuCommand } from '../megamud/move/buttons';
 import { blessCommand } from '../megamud/player/cast';
 import { clearDetours, goTo, headFor, startWalking } from '../megamud/move/destinations';
-import { copyPath, freeSteps } from '../megamud/move/path';
+import { clearPath, copyPath, freeSteps } from '../megamud/move/path';
 import { connected, connectFailed, connectionClosed } from '../megamud/script/game';
 import { reEngage } from '../megamud/script/modes';
 import { send, wake } from '../megamud/script/send';
@@ -1034,11 +1034,23 @@ export class MegaEngine {
     return null;
   }
 
-  /** A room chosen to walk to (the Go To dialog: `0x43fc60`, `0x43d2a0` with 1). */
-  walkTo(room: RoomId, run = false): string | null {
+  /**
+   * A room chosen to walk to (the Go To dialog: `0x43fc60`, `0x43d2a0` with 1).
+   *
+   * `alone`: the walk is the whole of it, for an action kept beside the
+   * engine (a hunt walking to its lair). The Go To dialog's walk takes a loop
+   * stopped earlier up again at its end (`0x43d2a0` with no destination left
+   * resumes a loop path), so its end would never come; the loop is let go
+   * first (2026-10-14).
+   */
+  walkTo(room: RoomId, run = false, alone = false): string | null {
     const sig = this.signatureOf(room);
     if (sig === null) return 'That room has no signature yet.';
     const s = this.s;
+    if (alone) {
+      clearPath(s.loopPath);
+      s.looping = 0;
+    }
     clearDetours(s);
     goTo(s, sig, null);
     headFor(s, 1);

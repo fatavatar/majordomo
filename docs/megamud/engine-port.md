@@ -308,6 +308,17 @@ auto-hunt, the quest runner, item errands, wards and auto-keys. `Walker` and
 `LoopRunner` become the route and loop planners behind `route` and
 `readPath`. The login automator also stays.
 
+They answer to the file's own `automation.enabled` rather than standing down
+with the rest (`SessionManager.configure`), and to MegaMUD's All Off. Each
+one's way of moving the character is the engine's for a character it runs:
+
+- **Auto-hunt** (2026-10-14): its walk to the lair is the engine's Go To,
+  walked alone (`MegaEngine.walkTo` with `alone`: a loop stopped earlier is
+  let go, where the dialog's walk would take it up again at its end and never
+  arrive), and its loop, filed nowhere, the engine's loop by name
+  (`SessionManager.megaLoops`). The engine's walk ending is told to it as the
+  walker's is (`megaWalkEnded`); the lap it measures is the engine's.
+
 **The flee** (`automation.safety.fleeGoto`, 2026-10-14) is ours inside the
 loop, as MegaMUD has no toggle for it: on the toolbar beside MegaMUD's own,
 and in the engine (`MegaEngine.useFlee`) below its health it starts
