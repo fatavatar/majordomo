@@ -291,6 +291,7 @@ function migrateAll(options: MigrationOptions): void {
   theMegaMudSettingsMovedIn(home, note);
   theMegaMudDataMovedIn(home, note);
   statedTheItemDetails(home, note, options.template);
+  pinTheMegaToggles(home, note, options.internalTemplate);
 }
 
 /**
@@ -7389,6 +7390,57 @@ function theToolbarGainedBack(
     return touched;
   });
   if (changed) note(t('notices.migration.toolbarGainedBack', { file: home.internal }));
+}
+
+/**
+ * MegaMUD's toggles onto the toolbar's pins (2026-10-14).
+ *
+ * They were drawn on the row whatever the pins said, as many as the
+ * character's `[Toolbar]` showed, and set on the Character page's Toolbar
+ * row: a second place deciding the one row, which the player found did not
+ * match what the toolbar drew. The row is the pins' alone now, so a
+ * `toolbar.pinned` from before would draw none of them. They go on as the
+ * shipped row has them, after `search` (else before the loop shelf, else at
+ * the end), with our flee beside them, which was drawn the same way.
+ *
+ * `pinTheGearButton`'s caveat: a list entry cannot say it was removed on
+ * purpose, so this runs only while no `mega:` id is listed at all. The
+ * paragraph above `toolbar:` names every button, so it is refreshed from the
+ * shipped template while it lacks them.
+ */
+function pinTheMegaToggles(
+  home: Home,
+  note: (message: string) => void,
+  template: string | undefined
+): void {
+  let pinned = false;
+  edit(home.internal, (document) => {
+    const list = document.getIn(['toolbar', 'pinned'], true);
+    if (!isSeq(list)) return false;
+    const ids = list.items.map((item) => (isScalar(item) ? String(item.value) : null));
+    if (ids.some((id) => id?.startsWith('mega:') === true)) return false;
+    const shipped = DEFAULT_INTERNAL.toolbar.pinned.filter(
+      (id) => (id.startsWith('mega:') || id === 'fleeGoto') && !ids.includes(id)
+    );
+    const search = ids.indexOf('search');
+    const shelf = ids.indexOf('loop:open');
+    const at = search >= 0 ? search + 1 : shelf >= 0 ? shelf : list.items.length;
+    list.items.splice(at, 0, ...shipped.map((id) => new Scalar(id)));
+
+    const lead = document.contents;
+    if (isMap(lead)) {
+      const pair = lead.items.find((item) => keyText(item) === 'toolbar');
+      const key = pair === undefined ? null : (pair.key as Scalar);
+      const current = key === null ? undefined : key.commentBefore;
+      if (typeof current === 'string' && !current.includes('mega:')) {
+        const fresh = templateLead(template, 'toolbar');
+        if (fresh !== undefined) key!.commentBefore = fresh;
+      }
+    }
+    pinned = true;
+    return true;
+  });
+  if (pinned) note(t('notices.migration.megaTogglesPinned', { file: home.internal }));
 }
 
 const BACK_BUTTON_COMMENT = ` One room back the way you came, per press. A walk into a room nobody meant

@@ -44,7 +44,6 @@ import {
   type SettingValue
 } from '@shared/megamud/settings';
 import type { TabControl } from '@shared/megamud/settingsTabs';
-import { MEGA_TOGGLES } from '@shared/megamud/toggles';
 import { keepFocus } from '../lib/focus';
 
 /**
@@ -62,8 +61,6 @@ import { keepFocus } from '../lib/focus';
  * - **Loot:** the runic coin's name, which is the realm's (`coins: runic`).
  * - **Sounds:** the sound file and its buttons: an alert is said here, so it
  *   is on or off (the list).
- * - **Toolbar:** showing it, standing it on end, and the custom commands: the
- *   Toolbar card's.
  */
 const NOT_HERE: Readonly<Record<string, { ids: readonly number[]; texts: readonly string[] }>> = {
   General: { ids: [1115, 1524, 1977, 1667], texts: ['Directories', 'Data Files'] },
@@ -83,11 +80,7 @@ const NOT_HERE: Readonly<Record<string, { ids: readonly number[]; texts: readonl
     texts: ['Back-scroll buffer ', 'bytes', 'Command splitter character']
   },
   Loot: { ids: [1650], texts: ['Name of runic currency'] },
-  Sounds: { ids: [1146, 1524, 1525, 1452], texts: ['Sound file'] },
-  Toolbar: {
-    ids: [1768, 1769, 1767, 1111],
-    texts: ['Toolbar Options', 'Custom command']
-  }
+  Sounds: { ids: [1146, 1524, 1525, 1452], texts: ['Sound file'] }
 };
 
 /** Whether a tab's control is drawn here. */
@@ -176,9 +169,6 @@ const CUSTOM: Readonly<Record<string, Make>> = {
   'Statline:1733': (ctx, c) => (
     <Press ctx={ctx} label={c.text} run={() => ctx.set('MegaMud', 'StatLine', STATLINE_DEFAULT)} />
   ),
-  'Toolbar:1763': (ctx) => <ToolbarItems ctx={ctx} />,
-  'Toolbar:1765': (ctx, c) => <ToolbarFlag ctx={ctx} label={c.text} separator={false} />,
-  'Toolbar:1766': (ctx, c) => <ToolbarFlag ctx={ctx} label={c.text} separator />,
   'Events:1137': (ctx) => <EventList ctx={ctx} />,
   'Events:1307': (ctx, c) => <Press ctx={ctx} label={c.text} run={() => editEvent(ctx, null)} />,
   'Events:1288': (ctx, c) => (
@@ -404,80 +394,6 @@ function sampleOf(choices: MegaChoices | null): MegaChoices['statline'] {
       need: 0,
       kai: false
     }
-  );
-}
-
-/* ------------------------------------------------------------ Toolbar */
-
-/** The Toolbar tab's names for the items our toolbar draws (`0x4ba7b0`). */
-const TOOLBAR_NAMES: Readonly<Record<string, string>> = {
-  NoHangup: 'Disable Hangup',
-  AllOff: 'All-Off',
-  AutoCombat: 'Auto-Combat',
-  AutoPreAttack: 'Auto-PreAttack',
-  AutoMelee: 'Prefer Spell/Melee',
-  AutoNuke: 'Auto-Nuke (Area effect)',
-  AutoHeal: 'Auto-Heal',
-  AutoBless: 'Auto-Bless',
-  AutoLight: 'Auto-Light',
-  AutoGet: 'Auto-Get Items',
-  AutoCash: 'Auto-Get Cash',
-  AutoSneak: 'Auto-Sneak',
-  AutoHide: 'Auto-Hide',
-  AutoSearch: 'Auto-Search',
-  AFK: 'Toggle AFK'
-};
-
-function ToolbarItems({ ctx }: { ctx: EditorContext }) {
-  return (
-    <Rows
-      ctx={ctx}
-      name="toolbarItem"
-      rows={MEGA_TOGGLES.map((toggle) => {
-        const n = Number(value(ctx.draft, 'Toolbar', toggle.toolbar) ?? 0);
-        return (
-          <span data-off={n > 0 ? undefined : 'true'}>
-            {n > 1 ? '| ' : ''}
-            {TOOLBAR_NAMES[toggle.toolbar] ?? toggle.toolbar}
-          </span>
-        );
-      })}
-    />
-  );
-}
-
-/**
- * Visible and Separator for the item picked (`0x4bb2e0`): not visible is 0;
- * visible is 1, and 2 more with a separator before it.
- */
-function ToolbarFlag({
-  ctx,
-  label,
-  separator
-}: {
-  ctx: EditorContext;
-  label: string;
-  separator: boolean;
-}) {
-  const toggle = MEGA_TOGGLES[picked(ctx, 'toolbarItem') ?? -1];
-  const n = toggle ? Number(value(ctx.draft, 'Toolbar', toggle.toolbar) ?? 0) : 0;
-  const visible = n > 0;
-  const on = separator ? (n & 2) !== 0 : visible;
-  return (
-    <label className="megamud-control megamud-check" style={ctx.style}>
-      <input
-        checked={on}
-        disabled={toggle === undefined || (separator && !visible)}
-        onChange={(event) => {
-          if (!toggle) return;
-          const checked = event.target.checked;
-          const next = separator ? (checked ? 2 : 0) | 1 : checked ? 1 : 0;
-          ctx.set('Toolbar', toggle.toolbar, next);
-        }}
-        type="checkbox"
-      />
-      <span>{plain(label)}</span>
-    </label>
   );
 }
 

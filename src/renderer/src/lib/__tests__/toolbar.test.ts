@@ -4,10 +4,10 @@ import { AUTOMATION_SWITCH_NAMES, automationSwitches, DEFAULT_CONFIG } from '@sh
 import { DEFAULT_INTERNAL } from '@shared/internal';
 
 import { NOT_MOVING, type Movement } from '@shared/movement';
-import { megaMovement } from '@shared/megamud/toggles';
+import { MEGA_TOGGLES, megaMovement } from '@shared/megamud/toggles';
 
 import { shippedToolbar } from '../../hooks/useToolbarPins';
-import { TOOLBAR_ACTIONS, toolbarButtons, type ToolbarSubject } from '../toolbar';
+import { TOOLBAR_ACTIONS, TOOLBAR_IDS, toolbarButtons, type ToolbarSubject } from '../toolbar';
 
 const subject = (over: Partial<ToolbarSubject> = {}): ToolbarSubject => ({
   switches: automationSwitches(DEFAULT_CONFIG.automation),
@@ -204,7 +204,7 @@ describe('a toolbar drawn out of the realm', () => {
 });
 
 describe('the shipped toolbar row', () => {
-  const ids = [...AUTOMATION_SWITCH_NAMES, ...TOOLBAR_ACTIONS];
+  const ids = TOOLBAR_IDS;
 
   it('names only buttons this build actually has', () => {
     const shipped = shippedToolbar(
@@ -254,8 +254,8 @@ describe('the loop builder on the toolbar', () => {
 
 /*
  * A character the MegaMUD engine runs has the old automation standing down,
- * so its switches would turn nothing on or off; the toolbar draws MegaMUD's
- * own toggles in their place, those its `[Toolbar]` shows (2026-10-13).
+ * so its switches would turn nothing on or off; the toolbar offers MegaMUD's
+ * own toggles in their place, every one, pinned as the rest are (2026-10-14).
  */
 describe('the MegaMUD engine’s toggles', () => {
   const mega = {
@@ -276,22 +276,16 @@ describe('the MegaMUD engine’s toggles', () => {
       search: false,
       afk: false
     },
-    shown: ['noHangup' as const, 'combat' as const, 'nuke' as const, 'allOff' as const],
-    separated: ['nuke' as const],
     walking: false,
     looping: false,
     canGo: true
   };
 
-  it('stand where the switches would, those the character shows, fixed on the row', () => {
+  it('stand where the switches would, every one of them, for the pins to choose from', () => {
     const buttons = toolbarButtons(subject({ mega }));
     const toggles = buttons.filter((b) => b.id.startsWith('mega:'));
-    expect(toggles.map((b) => [b.id, b.on, b.fixed, b.separated])).toEqual([
-      ['mega:noHangup', false, true, false],
-      ['mega:combat', true, true, false],
-      ['mega:nuke', false, true, true],
-      ['mega:allOff', false, true, false]
-    ]);
+    expect(toggles.map((b) => b.id)).toEqual(MEGA_TOGGLES.map((t) => `mega:${t.name}`));
+    expect(toggles.find((b) => b.id === 'mega:combat')?.on).toBe(true);
     expect(buttons.some((b) => b.id === 'combat')).toBe(false);
   });
 
@@ -322,7 +316,7 @@ describe('the MegaMUD engine’s toggles', () => {
   it('keep our flee switch beside them, writing the switch', () => {
     const setSwitch = vi.fn();
     const flee = toolbarButtons(subject({ mega, setSwitch })).find((b) => b.id === 'fleeGoto');
-    expect([flee?.fixed, flee?.on]).toEqual([true, false]);
+    expect(flee?.on).toBe(false);
     flee!.run();
     expect(setSwitch).toHaveBeenCalledWith('fleeGoto', true);
   });

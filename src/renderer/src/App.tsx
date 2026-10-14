@@ -72,7 +72,7 @@ import LoopBuilderCard, {
   type BuilderSeed
 } from './components/LoopBuilderCard';
 import ToolbarCard from './components/ToolbarCard';
-import { TOOLBAR_ACTIONS, type ToolbarSubject } from './lib/toolbar';
+import { TOOLBAR_IDS, type ToolbarSubject } from './lib/toolbar';
 import { useToolbarPins } from './hooks/useToolbarPins';
 import { recallStatsBase, rememberStatsBase } from './hooks/useRemembered';
 import NavigationCard from './components/NavigationCard';
@@ -127,7 +127,6 @@ import type { PopoverAnchor } from './lib/popover';
 import { playerKey } from '@shared/players';
 import {
   automationSwitches,
-  AUTOMATION_SWITCH_NAMES,
   DEFAULT_CONFIG,
   resolveTerminalFonts,
   resolveUiFonts,
@@ -4847,17 +4846,7 @@ export default function App() {
    * person at the keyboard, not about a character.
    */
   const pins = usePinnedCommands(internalConfig.palette.pinned, commands);
-  /*
-   * Every button the toolbar has, in the order the kebab lists them. Fixed for
-   * as long as the build is, so it is built once rather than per character —
-   * `toolbarButtons` needs a character to say what each one *says*, and
-   * nothing but the ids is needed to decide which are on the row.
-   */
-  const toolbarIds = useMemo(
-    () => [...AUTOMATION_SWITCH_NAMES, ...TOOLBAR_ACTIONS] as string[],
-    []
-  );
-  const toolbarPins = useToolbarPins(internalConfig.toolbar.pinned, toolbarIds);
+  const toolbarPins = useToolbarPins(internalConfig.toolbar.pinned, TOOLBAR_IDS);
 
   useHotkeys([
     { key: 'k', mod: true, run: togglePalette },

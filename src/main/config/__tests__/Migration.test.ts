@@ -1883,6 +1883,62 @@ stops:
   });
 });
 
+/**
+ * A toolbar row as the file has it, less MegaMUD's toggles and the flee
+ * beside them, which `pinTheMegaToggles` adds to every row and asserts in
+ * its own describe.
+ */
+function pinnedBesideMega(): string[] {
+  const row = (parse(fs.readFileSync(home.internal, 'utf8')) as { toolbar: { pinned: string[] } })
+    .toolbar.pinned;
+  return row.filter((id) => !id.startsWith('mega:') && id !== 'fleeGoto');
+}
+
+describe("MegaMUD's toggles on an existing toolbar", () => {
+  const ROW = `# The user's own note about their row.
+toolbar:
+  pinned:
+    - connect
+    - combat
+    - search
+    - 'loop:open'
+`;
+  const MEGA = DEFAULT_INTERNAL.toolbar.pinned.filter(
+    (id) => id.startsWith('mega:') || id === 'fleeGoto'
+  );
+  const pinned = (): string[] =>
+    (parse(fs.readFileSync(home.internal, 'utf8')) as { toolbar: { pinned: string[] } }).toolbar
+      .pinned;
+
+  beforeEach(() => {
+    fs.mkdirSync(path.dirname(home.internal), { recursive: true });
+    fs.writeFileSync(home.internal, ROW, 'utf8');
+  });
+
+  /* Drawn whatever the pins said until 2026-10-14; a row from before would
+     otherwise draw none of them. */
+  it('pins those MegaMUD ships showing, after search, and says so', () => {
+    migrate();
+    const row = pinned();
+    expect(MEGA).toContain('mega:allOff');
+    expect(MEGA).not.toContain('mega:melee');
+    expect(row.slice(row.indexOf('search') + 1, row.indexOf('search') + 1 + MEGA.length)).toEqual(
+      MEGA
+    );
+    expect(said.join(' ')).toContain('Toolbar row is gone');
+    expect(fs.readFileSync(home.internal, 'utf8')).toContain("The user's own note");
+  });
+
+  /* An unpin is the player's, in `localStorage`; the file's list is not
+     filled again once it names any of them. */
+  it('leaves a row that already names one alone', () => {
+    fs.writeFileSync(home.internal, "toolbar:\n  pinned:\n    - 'mega:afk'\n", 'utf8');
+    migrate();
+    expect(pinned().filter((id) => id.startsWith('mega:'))).toEqual(['mega:afk']);
+    migrate();
+  });
+});
+
 describe('the loop shelf on an existing toolbar', () => {
   const INTERNAL = `# The user's own note about their row.
 toolbar:
@@ -1897,9 +1953,7 @@ toolbar:
     - 'walk:stop'
 `;
 
-  const pinned = (): unknown =>
-    (parse(fs.readFileSync(home.internal, 'utf8')) as { toolbar: { pinned: string[] } }).toolbar
-      .pinned;
+  const pinned = pinnedBesideMega;
 
   beforeEach(() => {
     fs.mkdirSync(path.dirname(home.internal), { recursive: true });
@@ -2238,9 +2292,7 @@ tuning:
     recentSteps: 5
 `;
 
-  const pinned = (): unknown =>
-    (parse(fs.readFileSync(home.internal, 'utf8')) as { toolbar: { pinned: string[] } }).toolbar
-      .pinned;
+  const pinned = pinnedBesideMega;
 
   beforeEach(() => {
     fs.mkdirSync(path.dirname(home.internal), { recursive: true });
@@ -2299,9 +2351,7 @@ describe('the gear button on an existing toolbar', () => {
     - 'loop:open'
 `;
 
-  const pinned = (): unknown =>
-    (parse(fs.readFileSync(home.internal, 'utf8')) as { toolbar: { pinned: string[] } }).toolbar
-      .pinned;
+  const pinned = pinnedBesideMega;
 
   beforeEach(() => {
     fs.mkdirSync(path.dirname(home.internal), { recursive: true });
@@ -2365,9 +2415,7 @@ describe('the bless switch on an existing toolbar', () => {
     - 'move:back'
 `;
 
-  const pinned = (): unknown =>
-    (parse(fs.readFileSync(home.internal, 'utf8')) as { toolbar: { pinned: string[] } }).toolbar
-      .pinned;
+  const pinned = pinnedBesideMega;
 
   beforeEach(() => {
     fs.mkdirSync(path.dirname(home.internal), { recursive: true });

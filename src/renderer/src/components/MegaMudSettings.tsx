@@ -172,9 +172,11 @@ export function useMegaMudDraft(id: string | null, store: MegaMudStore): MegaMud
 /**
  * The tabs not drawn as rows: BBS, whose BBS list and account are the
  * realm's page and the Character row's login, and whose own settings (MudOp
- * access, `sys goto`, the redials) the Character row holds (`MEGA_ACCOUNT`).
+ * access, `sys goto`, the redials) the Character row holds (`MEGA_ACCOUNT`);
+ * and Toolbar, whose items the toolbar's own `...` pins, as every other
+ * button on it is (2026-10-14).
  */
-const NOT_ROWS: readonly string[] = ['BBS'];
+const NOT_ROWS: readonly string[] = ['BBS', 'Toolbar'];
 
 /**
  * The rows whose MegaMUD page is not drawn, only ours under it: Auto-roam,

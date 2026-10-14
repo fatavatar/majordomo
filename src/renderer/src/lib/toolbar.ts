@@ -4,7 +4,7 @@ import {
   type AutomationSwitches
 } from '@shared/config';
 
-import type { MegaToggle, MegaToggles } from '@shared/megamud/toggles';
+import { MEGA_TOGGLES, type MegaToggle, type MegaToggles } from '@shared/megamud/toggles';
 import type { Movement } from '@shared/movement';
 
 import type { IconName } from '../components/Icon';
@@ -59,6 +59,17 @@ export const TOOLBAR_ACTIONS = [
   'move:back'
 ] as const;
 export type ToolbarActionId = (typeof TOOLBAR_ACTIONS)[number];
+
+/**
+ * Every button the toolbar has for any character, the ids its pins choose
+ * from: the switches, MegaMUD's toggles (a character its engine runs draws
+ * them in the switches' place) and the actions.
+ */
+export const TOOLBAR_IDS: readonly ToolbarItemId[] = [
+  ...AUTOMATION_SWITCH_NAMES,
+  ...MEGA_TOGGLES.map((toggle) => `mega:${toggle.name}` as const),
+  ...TOOLBAR_ACTIONS
+];
 
 /**
  * Which glyph names each switch.
@@ -273,14 +284,6 @@ export interface ToolbarButton {
    * button that moves as the game moves is one nobody can reach for.
    */
   disabled?: boolean;
-  /**
-   * On the row whatever the pins say, and not in the kebab: a MegaMUD toggle,
-   * which the character's own `[Toolbar]` puts on its toolbar (Settings →
-   * MegaMUD → Toolbar), as MegaMUD's own toolbar does.
-   */
-  fixed?: boolean;
-  /** Drawn after a separator: the `[Toolbar]` item's Separator (Settings → Character → Toolbar). */
-  separated?: boolean;
   run(): void;
 }
 
@@ -413,7 +416,7 @@ export function toolbarButtons(subject: ToolbarSubject): ToolbarButton[] {
 
   const switches_: ToolbarButton[] =
     mega !== null
-      ? mega.shown.map((name) => ({
+      ? MEGA_TOGGLES.map(({ name }) => ({
           id: `mega:${name}` as const,
           label: megaLabel(name),
           icon: MEGA_ICONS[name],
@@ -421,8 +424,6 @@ export function toolbarButtons(subject: ToolbarSubject): ToolbarButton[] {
           // MegaMUD greys every toggle but All Off itself while it is on (`0x460d50`);
           // No Hangup is drawn with Connect, not with them.
           disabled: name !== 'allOff' && name !== 'noHangup' && mega.on.allOff,
-          fixed: true,
-          separated: mega.separated.includes(name),
           run: () => setMegaToggle(name)
         }))
       : AUTOMATION_SWITCH_NAMES.map((name) => ({
@@ -447,7 +448,6 @@ export function toolbarButtons(subject: ToolbarSubject): ToolbarButton[] {
             label: switchLabel('fleeGoto'),
             icon: SWITCH_ICONS.fleeGoto,
             on: switches.fleeGoto,
-            fixed: true,
             run: () => setSwitch('fleeGoto', !switches.fleeGoto)
           }
         ];

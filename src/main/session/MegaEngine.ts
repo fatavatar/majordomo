@@ -65,13 +65,7 @@ import type { PlayerFacts } from '../../shared/players';
 import type { LearnedItem, LearnedMark } from '../world/MegaLearned';
 import type { ActiveBuff, Affliction } from '../../shared/character';
 import type { MegaSettings } from '../../shared/megamud/settings';
-import {
-  MEGA_TOGGLES,
-  separatedToggles,
-  shownToggles,
-  type MegaToggle,
-  type MegaToggles
-} from '../../shared/megamud/toggles';
+import { MEGA_TOGGLES, type MegaToggle, type MegaToggles } from '../../shared/megamud/toggles';
 import type { MegaChoices } from '../../shared/ipc';
 import type { RemoteName } from '../../shared/remotes';
 import { IDLE_WALK, type WalkProgress } from '../../shared/walk';
@@ -356,9 +350,6 @@ export class MegaEngine {
    * loop itself rather than on the way out to it. Null with no loop taken up.
    */
   private loopRun: { name: string; startedAt: number; lapBegunAt: number | null } | null = null;
-  /** The toggles this character's `[Toolbar]` shows. */
-  private shown: MegaToggle[];
-  private separated: MegaToggle[];
   /** The character's `[Alerts]`: the sound each alert plays. */
   private alerts: Readonly<Record<string, unknown>>;
   /** Where what is learned is kept; null when nowhere. */
@@ -408,8 +399,6 @@ export class MegaEngine {
     };
     this.memory = setup.memory ?? null;
     this.dataFrom = setup.data;
-    this.shown = shownToggles(setup.settings.live['Toolbar']);
-    this.separated = separatedToggles(setup.settings.live['Toolbar']);
     this.alerts = setup.settings.live['Alerts'] ?? {};
     // A copy: the data read is shared between sessions, and the engine changes it as it learns.
     this.s = new Session(engineHost, structuredClone(setup.data));
@@ -481,8 +470,6 @@ export class MegaEngine {
    * walked and the loop kept.
    */
   reload(setup: MegaEngineSetup): void {
-    this.shown = shownToggles(setup.settings.live['Toolbar']);
-    this.separated = separatedToggles(setup.settings.live['Toolbar']);
     this.alerts = setup.settings.live['Alerts'] ?? {};
     this.toggled = '';
     const s = this.s;
@@ -774,8 +761,6 @@ export class MegaEngine {
     const somewhere = s.detours[0]!.room !== 0 || s.detours[0]!.path !== '' || s.roaming !== 0;
     return {
       on,
-      shown: this.shown,
-      separated: this.separated,
       walking: s.walking !== 0,
       looping: s.looping !== 0,
       canGo: s.inGame !== 0 && !allOff && somewhere

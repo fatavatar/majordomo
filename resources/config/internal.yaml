@@ -101,7 +101,11 @@ palette:
 # `loop:open` (the shelf of every loop), `loop:build` (the card a loop is drawn
 # on, by clicking rooms on the map), `move:toggle` -- one key for the whole
 # transport, which goes or stops whichever of a route and a loop is on -- and
-# `move:back`, one room back the way the character came, per press.
+# `move:back`, one room back the way the character came, per press. A character
+# the MegaMUD engine runs draws MegaMUD's own toggles in place of the switches:
+# `mega:noHangup`, `mega:allOff`, `mega:combat`, `mega:preAttack`, `mega:melee`,
+# `mega:nuke`, `mega:heal`, `mega:bless`, `mega:light`, `mega:get`, `mega:cash`,
+# `mega:sneak`, `mega:hide`, `mega:search` and `mega:afk`, beside `fleeGoto`.
 toolbar:
   pinned:
     - connect
@@ -122,6 +126,26 @@ toolbar:
     # corridor and off again -- and one you toggle that often behind a menu is
     # one you stop toggling.
     - search
+    # MegaMUD's toggles, for a character its engine runs: the ones MegaMUD's own
+    # toolbar ships showing, which is all of them but Auto-Melee. Its own
+    # `[Toolbar]` section no longer decides; the `...` pins them as it pins the
+    # rest (2026-10-14).
+    - 'mega:noHangup'
+    - 'mega:allOff'
+    - 'mega:combat'
+    - 'mega:preAttack'
+    - 'mega:nuke'
+    - 'mega:heal'
+    - 'mega:bless'
+    - 'mega:light'
+    - 'mega:get'
+    - 'mega:cash'
+    - 'mega:sneak'
+    - 'mega:hide'
+    - 'mega:search'
+    - 'mega:afk'
+    # Going somewhere safe when the fight turns, beside MegaMUD's own run.
+    - fleeGoto
     - 'loop:open'
     - 'move:toggle'
     # One room back the way you came, per press. A walk into a room nobody

@@ -226,8 +226,11 @@ the swap. For such a character:
   -Cash, -Sneak, -Hide, -Search, Prefer Melee and AFK, each pressing its
   window command (`0x462d20`, `megamud/move/buttons.ts`) with the side
   effects MegaMUD's has. They stand where the old automation's switches
-  would on the Toolbar card, those the character's `[Toolbar]` shows (Settings
-  → MegaMUD → Toolbar), and are drawn from the automation snapshot, pushed
+  would on the Toolbar card, every one of them pinned or unpinned by the
+  card's `...` as its other buttons are (`toolbar.pinned` ships those
+  MegaMUD's own toolbar shows, all but Prefer Melee; the character's
+  `[Toolbar]` no longer decides, 2026-10-14), and are drawn from the
+  automation snapshot, pushed
   whenever they change — a press, a mode's defaults, a remote. They are the
   session's: a settings save keeps them as they stand. They are drawn as
   MegaMUD's window draws them (`0x460d50`): with All Off on, every other one
@@ -270,20 +273,19 @@ the swap. For such a character:
   (`0x49fd10`). For a character with none, a press switches it to this
   engine. What a tab fills and answers itself is drawn by
   `MegaMudEditors.tsx`: the events and ability monitors (`0x435f80`, template
-  406), the toolbar's items and separators (`0x4bb2e0`),
-  the statline builder (`0x4a5f00`, `0x4a6920`), the alerts (each on or off,
+  406), the statline builder (`0x4a5f00`, `0x4a6920`), the alerts (each on or off,
   as it is said rather than played), the Spells and Combat resets, and the
   Combat tab's weapon and shield pickers (`0x42afc0`), these last and the
   rooms from the running engine (`MegaEngine.choices`). Auto-roam's page
   (its directions, doors and special rooms) is not drawn, as not wanted; its
   row holds only ours. Not drawn, so that a
-  setting has one place: the BBS tab (its list and account are the realm's
+  setting has one place: the Toolbar tab (the toolbar's `...` pins its
+  items), the BBS tab (its list and account are the realm's
   page and the Character row's login; MudOp access, `sys goto` and the
   redials are on the Character row, where our own reconnect stands down for
   the engine), and the controls of MegaMUD's own window the engine never
   reads (the data directory, the screen and its colours, the confirmations,
-  the talk log, the back-scroll, the command splitter, the sound files, the
-  toolbar's placement and custom commands) or that are kept elsewhere (the
+  the talk log, the back-scroll, the command splitter, the sound files) or that are kept elsewhere (the
   runic coin's name, the realm's; Auto-connect, the Character row's).
 - **Where it is**: the engine's ways are planned from the room our tracker
   places the character in. When it cannot place it, the engine asks the

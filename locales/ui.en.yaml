@@ -149,6 +149,10 @@ notices:
     hunting:
       'Going hunting on its own is a setting now, off, and {file} was given the block with the
       paragraph that explains it.'
+    megaTogglesPinned:
+      "MegaMUD's toggles are pinned on the toolbar like its other buttons, and the Character page's
+      Toolbar row is gone. {file} was migrated to pin the ones MegaMUD's own toolbar shows; the
+      toolbar's ... menu pins or unpins any of them."
     toolbarGainedBack:
       'The toolbar has a back button — one room back the way the character came, per press — and
       {file} was migrated to put it on the row, with the length of trail it walks.'

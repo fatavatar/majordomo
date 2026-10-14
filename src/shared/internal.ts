@@ -2655,6 +2655,25 @@ export const DEFAULT_INTERNAL: InternalConfig = {
        * row for the same reason.
        */
       'search',
+      // MegaMUD's toggles, for a character its engine runs: those its own
+      // toolbar ships showing, all but Auto-Melee, and our flee beside them.
+      // The pins decide them as they do the rest, not the `[Toolbar]`
+      // (2026-10-14).
+      'mega:noHangup',
+      'mega:allOff',
+      'mega:combat',
+      'mega:preAttack',
+      'mega:nuke',
+      'mega:heal',
+      'mega:bless',
+      'mega:light',
+      'mega:get',
+      'mega:cash',
+      'mega:sneak',
+      'mega:hide',
+      'mega:search',
+      'mega:afk',
+      'fleeGoto',
       // Where a loop is found, beside the controls that drive the one running.
       // Pinned rather than left to the kebab: this is the way in to four
       // hundred and twenty loops, and a shelf reachable only from a menu at

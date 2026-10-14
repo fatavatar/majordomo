@@ -12417,13 +12417,6 @@ tr:hover .row-action.worn,
  * with the accent as the glyph is the recipe everything reporting a condition
  * uses, written as `color-mix` so one rule works in both themes.
  */
-.toolbar-sep {
-  align-self: stretch;
-  border-left: 1px solid var(--ink-line);
-  flex: 0 0 auto;
-  margin: 4px 2px;
-}
-
 .toolbar-key {
   align-items: center;
   background: transparent;
@@ -12944,9 +12937,6 @@ tr:hover .row-action.worn,
 .megamud-rows button[aria-selected='true'] {
   background: var(--accent);
   color: var(--on-accent);
-}
-.megamud-rows [data-off='true'] {
-  opacity: 0.55;
 }
 .megamud-picker {
   padding: 0;
