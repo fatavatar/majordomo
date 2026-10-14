@@ -49,8 +49,12 @@ export function megamudFromConfig(
   if (health.meditateTo > 0) set('Health', 'ManaFull%', percent(health.meditateTo));
   set('Health', 'HpHeal%', percent(spells.healBelow));
   set('Health', 'HpHealAtt%', percent(spells.healBelowInCombat));
+  /*
+   * The old retreat is MegaMUD's run. The flee is not: it is kept as ours
+   * beside the engine (`MegaEngine.useFlee`) and starts MegaMUD's run itself
+   * below its own line, so carrying it here too ran twice (2026-10-14).
+   */
   if (safety.retreat.enabled) set('Health', 'HpRun%', percent(safety.retreat.belowHealth));
-  else if (safety.fleeGoto.enabled) set('Health', 'HpRun%', percent(safety.fleeGoto.belowHealth));
   if (safety.hangUp.enabled) set('Health', 'HpLogoff%', percent(safety.hangUp.belowHealth));
 
   // Spells: healing, cures, regeneration, blessings.

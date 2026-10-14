@@ -48,6 +48,12 @@ describe('MegaMUD settings started from the old automation', () => {
       BlessPri1: 1
     });
     expect(settings.live['Party']).toMatchObject({ PartyBless1: 'hshd' });
+    // The flee is ours beside the engine, so not MegaMUD's run too.
+    const fleeing = structuredClone(automation);
+    fleeing.safety.fleeGoto = { enabled: true, belowHealth: 0.5, destination: 'sil' };
+    expect(megamudFromConfig(fleeing, (spell) => spell).live['Health']!['HpRun%']).toBe(
+      defaultSettings().live['Health']!['HpRun%']
+    );
     expect(settings.live['Other']).toMatchObject({ BlessCombat: 1 });
     expect(settings.live['Cash']).toMatchObject({
       WantRunic: 1,
