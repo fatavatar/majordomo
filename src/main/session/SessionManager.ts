@@ -9406,7 +9406,7 @@ export class SessionManager {
     const end = route.steps.at(-1)?.to;
     if (this.mega !== null && end !== undefined) {
       const mega = this.mega;
-      return this.megaAct(() => mega.walkTo(end));
+      return this.megaAct(() => mega.walkTo(end, run));
     }
     // The counters, if this way turns on one nobody has read yet.
     this.askCountersFor(route);

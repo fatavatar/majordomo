@@ -185,6 +185,21 @@ describe('the engine in a session', () => {
     e.dispose();
   });
 
+  /* The route panel's Run it walked with auto-combat on (2026-10-14): `0x43e680`'s Go and Run. */
+  it('walks a route with auto-combat on for Go and off for Run, the setting before kept', () => {
+    vi.useFakeTimers();
+    const { e } = engine('1/2');
+    e.s.inGame = 1;
+    e.received('\x1b[1;36mDark Alley\r\n\x1b[0;32mObvious exits: south, west\r\n');
+    e.s.MegaMud_AutoCombat = 1;
+    expect(e.walkTo('1/2', true)).toBeNull();
+    expect([e.s.MegaMud_AutoCombat, e.s.detourCombat, e.s.idleCombat]).toEqual([0, 0, 1]);
+    e.s.MegaMud_AutoCombat = 0;
+    expect(e.walkTo('1/2')).toBeNull();
+    expect([e.s.MegaMud_AutoCombat, e.s.detourCombat]).toEqual([1, 1]);
+    e.dispose();
+  });
+
   it('pauses half a second at a macro’s ~', () => {
     vi.useFakeTimers();
     const { e, sent } = engine();

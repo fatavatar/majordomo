@@ -28,6 +28,7 @@ import { blessCommand } from '../megamud/player/cast';
 import { clearDetours, goTo, headFor, startWalking } from '../megamud/move/destinations';
 import { copyPath, freeSteps } from '../megamud/move/path';
 import { connected, connectFailed, connectionClosed } from '../megamud/script/game';
+import { reEngage } from '../megamud/script/modes';
 import { forgetAwaited, setState } from '../megamud/script/state';
 import {
   dataArrived,
@@ -894,12 +895,20 @@ export class MegaEngine {
   }
 
   /** A room chosen to walk to (the Go To dialog: `0x43fc60`, `0x43d2a0` with 1). */
-  walkTo(room: RoomId): string | null {
+  walkTo(room: RoomId, run = false): string | null {
     const sig = this.signatureOf(room);
     if (sig === null) return 'That room has no signature yet.';
-    clearDetours(this.s);
-    goTo(this.s, sig, null);
-    headFor(this.s, 1);
+    const s = this.s;
+    clearDetours(s);
+    goTo(s, sig, null);
+    headFor(s, 1);
+    // The Go-To dialog's Go and Run (`0x43e680`): walked with auto-combat on
+    // or off, and the setting before put back on arrival.
+    if (s.detourCombat !== -1) reEngage(s);
+    const fight = run ? 0 : 1;
+    s.detourCombat = fight;
+    s.idleCombat = s.MegaMud_AutoCombat;
+    s.MegaMud_AutoCombat = fight;
     // A route taken in place of the loop: MegaMUD walks it and then the loop
     // again, but the run the card counted is over.
     this.loopRun = null;
