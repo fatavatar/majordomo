@@ -84,7 +84,8 @@ describe('the character’s settings (0x449aa0)', () => {
   });
 
   it('turns the app’s per-player grants into remote bits', () => {
-    expect(remoteBits(['health', 'where', 'do'], [])).toBe(0x214);
+    // `do` carries `sys` commands (0x2000) as well: Fatty's `@do sys goto` (2026-10-14).
+    expect(remoteBits(['health', 'where', 'do'], [])).toBe(0x2214);
     expect(remoteBits(['health', 'status'], ['status'])).toBe(0);
     const { s } = session();
     grantPlayers(s, { soul: { allow: ['stop'], deny: [] } });

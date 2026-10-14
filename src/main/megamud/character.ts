@@ -138,7 +138,7 @@ export function loadCharacter(s: Session, mega: MegaSettings): void {
  * Which of MegaMUD's remote bits (`0x4ae4a0`) each of the app's remote names
  * falls under: 1 version and `@home`, 2 experience, 4 health and status,
  * 0x10 location, 0x20 inventory (and `@join`), 0x40 invite, 0x100 move,
- * 0x200 commands, 0x400 hang up, 0x800 settings, 0x1000 divert.
+ * 0x200 commands, 0x400 hang up, 0x800 settings, 0x1000 divert, 0x2000 `sys` commands.
  */
 const BITS: Partial<Record<RemoteName, number>> = {
   version: 1,
@@ -167,7 +167,9 @@ const BITS: Partial<Record<RemoteName, number>> = {
   rego: 0x100,
   comeback: 0x100,
   'comeback-room': 0x100,
-  do: 0x200,
+  // And `sys` commands with it (0x2000, a MUD op's): our `do` has always run
+  // whatever it was given, and Fatty's `@do sys goto` went undone (2026-10-14).
+  do: 0x200 | 0x2000,
   'get-all': 0x200,
   'drop-all': 0x200,
   'equip-all': 0x200,
