@@ -1229,8 +1229,32 @@ export class MegaEngine {
 
   /** `0x42e1c0`: written in order, a `\x01` a half-second pause. */
   private write(text: string): void {
-    this.outbound.push(text);
+    this.outbound.push(this.afterSysGoto(text));
     this.pump();
+  }
+
+  /** The line being written so far, for `afterSysGoto`: MegaMUD sends a line in pieces. */
+  private lineSoFar = '';
+
+  /**
+   * A blank Enter after every `sys goto` line, whoever sent it (the MUD op's
+   * escape, its critical HP, a path's town, a remote's `@do`, our flee):
+   * the realm moves the character without showing where to, and only a
+   * blank line shows the room (2026-10-14). Without it the engine never saw
+   * the move, and Fatty's escape went round 94 times at 47 HP.
+   */
+  private afterSysGoto(text: string): string {
+    let out = '';
+    for (const ch of text) {
+      out += ch;
+      if (ch !== '\r') {
+        if (ch !== '\x01') this.lineSoFar += ch;
+        continue;
+      }
+      if (/^sys\s+goto\s+\S/i.test(this.lineSoFar.trim())) out += '\r';
+      this.lineSoFar = '';
+    }
+    return out;
   }
 
   private pump(): void {

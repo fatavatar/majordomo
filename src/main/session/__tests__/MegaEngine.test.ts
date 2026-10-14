@@ -225,9 +225,9 @@ describe('the engine in a session', () => {
     s.inCombat = 0;
     s.runCount = 0;
     vi.advanceTimersByTime(1000);
-    expect(sent.filter((text) => text === 'sys goto sil\r')).toHaveLength(1);
+    expect(sent.filter((text) => text === 'sys goto sil\r\r')).toHaveLength(1);
     vi.advanceTimersByTime(3000);
-    expect(sent.filter((text) => text === 'sys goto sil\r')).toHaveLength(1);
+    expect(sent.filter((text) => text === 'sys goto sil\r\r')).toHaveLength(1);
     e.dispose();
   });
 
@@ -328,6 +328,19 @@ describe('the engine in a session', () => {
     expect(sent).toEqual(['say a\r']);
     vi.advanceTimersByTime(500);
     expect(sent).toEqual(['say a\r', 'say b\r', 'look\r']);
+    e.dispose();
+  });
+
+  /* The realm moves a sys goto without showing the room; a blank line shows it (2026-10-14). */
+  it('follows every sys goto with a blank Enter, however it was sent', () => {
+    const { e, sent } = engine();
+    e.s.host.write('break\r');
+    e.s.host.write('sys goto ');
+    e.s.host.write('sil');
+    e.s.host.write('\r');
+    e.s.host.write('rest\r');
+    e.s.host.write('SYS GOTO town\rsay sys goto x\r');
+    expect(sent.join('')).toBe('break\rsys goto sil\r\rrest\rSYS GOTO town\r\rsay sys goto x\r');
     e.dispose();
   });
 
