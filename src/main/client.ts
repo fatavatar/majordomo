@@ -3049,6 +3049,12 @@ function registerIpc(): void {
 
   handle(Invoke.saveMegamud, (_caller, rawId: unknown, raw: unknown) => {
     const id = asProfileId(rawId);
+    /*
+     * A character created a moment ago, its settings read from a MegaMUD
+     * file (2026-10-14), may not have reached the store, which polls: read
+     * the folder now rather than refuse it.
+     */
+    if (id !== null && profileFor(id) === undefined) profiles?.refresh();
     const profile = id === null ? undefined : profileFor(id);
     if (profile === undefined || id === null) return t('app.profiles.noSuchCharacter');
     const settings = settingsFromDraft(raw, profile.megamud);

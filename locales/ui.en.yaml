@@ -3319,6 +3319,13 @@ settings:
   megamud:
     # The BBS tab's settings kept with the character: MudOp access, sys goto and the redials.
     accountLegend: MegaMUD connection
+    # A character's MegaMUD settings file read in: for a new character, its name and login too.
+    importNew: Start from a MegaMUD character file (.ini)…
+    importOver: Replace MegaMUD settings from a character file (.ini)…
+    importedNew: Read {fileName}. Check the name and realm, then create the character; its MegaMUD settings are written with it.
+    importedOver: MegaMUD settings replaced from {fileName}. The login and password are left as they were; Undo puts the old settings back.
+    importNotMegamud: "{fileName} is not a MegaMUD settings file: it has none of MegaMUD's sections."
+    importUnreadable: "{fileName} could not be read."
     loading: Loading MegaMUD settings…
     passwordKept: (unchanged)
     # A MegaMUD tab for a character not yet made.

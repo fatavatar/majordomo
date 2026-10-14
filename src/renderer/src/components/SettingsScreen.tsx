@@ -37,7 +37,9 @@ import { WardRules } from './PotionList';
 import {
   MEGA_TABS,
   MegaMudAccount,
+  MegaMudIniImport,
   MegaMudPanel,
+  characterOfIni,
   isMegaTab,
   useMegaMudDraft
 } from './MegaMudSettings';
@@ -1685,6 +1687,9 @@ export default function SettingsScreen({
    * used would read as one that had not worked.
    */
   const [copyFrom, setCopyFrom] = useState('');
+  /** A new character's MegaMUD settings read from a MegaMUD file, written when it is created. */
+  const [iniMega, setIniMega] = useState<MegaSettings | null>(null);
+  useEffect(() => setIniMega(null), [selected]);
   const [picking, setPicking] = useState(false);
   const [catalogue, setCatalogue] = useState<Loop[] | null>(null);
   const [serverPick, setServerPick] = useState<string | null>(null);
@@ -2288,6 +2293,11 @@ export default function SettingsScreen({
 
     const error = await saveProfile(id, draft);
     if (error !== null) return setProblem(error);
+    if (selected === NEW_CHARACTER && iniMega !== null) {
+      const megaError = await saveMegamud(id, iniMega);
+      if (megaError !== null) setProblem(megaError);
+      setIniMega(null);
+    }
     const next = await refresh();
     setSaved(t('settings.characters.saved', { characterName: form.name || id }));
     // A character just created is the one you want open.
@@ -2613,6 +2623,7 @@ export default function SettingsScreen({
                           name="copy-from"
                           onChange={(value) => {
                             setCopyFrom(value);
+                            setIniMega(null);
                             setProblem(null);
                             setSaved(null);
                             const found = characters.find((entry) => entry.id === value);
@@ -2631,6 +2642,53 @@ export default function SettingsScreen({
                           ]}
                           value={copyFrom}
                         />
+                      )}
+
+                      {/*
+                        A MegaMUD character's settings file: for a new
+                        character its name and login as well, for one made
+                        already its MegaMUD settings alone, undoable.
+                      */}
+                      {selected === NEW_CHARACTER ? (
+                        <MegaMudIniImport
+                          label={t('settings.megamud.importNew')}
+                          onRead={(settings, fileName) => {
+                            const who = characterOfIni(settings);
+                            const base =
+                              characters.find((entry) => entry.id === copyFrom) === undefined
+                                ? emptyForm(servers, snapshot?.global ?? null)
+                                : form;
+                            const realm = servers.find(
+                              (server) => server.name.toLowerCase() === who.bbs.toLowerCase()
+                            );
+                            loadForm({
+                              ...base,
+                              id: who.id,
+                              name: who.name,
+                              username: who.username,
+                              password: who.password,
+                              changePassword: true,
+                              ...(realm === undefined ? {} : { serverName: realm.name })
+                            });
+                            setIniMega(settings);
+                            setProblem(null);
+                            setSaved(t('settings.megamud.importedNew', { fileName }));
+                          }}
+                        />
+                      ) : (
+                        mega.draft !== null && (
+                          <MegaMudIniImport
+                            label={t('settings.megamud.importOver')}
+                            onRead={(settings, fileName) => {
+                              // The login stays the character's: an empty password is "leave it".
+                              const next = structuredClone(settings);
+                              next.live['BBS']!['Password'] = '';
+                              mega.update(() => next);
+                              setProblem(null);
+                              setSaved(t('settings.megamud.importedOver', { fileName }));
+                            }}
+                          />
+                        )
                       )}
 
                       {selected === NEW_CHARACTER && (

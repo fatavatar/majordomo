@@ -1,6 +1,7 @@
-import { Fragment, useEffect, useState, type ReactNode } from 'react';
+import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react';
 import { customControl, drawnHere } from './MegaMudEditors';
 import { CheckField, NumberField, TextField } from './FormField';
+import Icon from './Icon';
 import { useAutoSave, type AutoSave } from '../hooks/useAutoSave';
 import { begin, canRedo, canUndo, record, redo, undo, type History } from '../lib/history';
 import type { MegaChoices, MegaMudSettingsView } from '@shared/ipc';
@@ -11,7 +12,10 @@ import {
   type TabControl
 } from '@shared/megamud/settingsTabs';
 import {
+  parseIni,
+  sections,
   setSetting,
+  settingsFromIni,
   switchProfile,
   type MegaSettings,
   type ProfiledSection,
@@ -312,6 +316,88 @@ export function MegaMudAccount({ mega }: { mega: MegaMudDraft }) {
       ))}
     </fieldset>
   );
+}
+
+/**
+ * A character's MegaMUD settings file (`<name>.ini`) read in, for a new
+ * character or over an existing one's (2026-10-14): what the startup
+ * migration does for a `megamud.ini` left in a character's folder, from the
+ * page. Read as MegaMUD's loader reads it (`settingsFromIni`), in the Windows
+ * code page MegaMUD writes; a file with none of MegaMUD's sections is refused.
+ */
+export function MegaMudIniImport({
+  label,
+  onRead
+}: {
+  label: string;
+  onRead(settings: MegaSettings, fileName: string): void;
+}) {
+  const input = useRef<HTMLInputElement>(null);
+  const [problem, setProblem] = useState<string | null>(null);
+  const picked = async (file: File | undefined): Promise<void> => {
+    if (file === undefined) return;
+    setProblem(null);
+    try {
+      const text = new TextDecoder('windows-1252').decode(await file.arrayBuffer());
+      const known = new Set(sections());
+      if (!parseIni(text).some((section) => known.has(section.name))) {
+        setProblem(t('settings.megamud.importNotMegamud', { fileName: file.name }));
+        return;
+      }
+      onRead(settingsFromIni(text), file.name);
+    } catch (reason: unknown) {
+      console.error('MegaMUD settings import failed', reason);
+      setProblem(t('settings.megamud.importUnreadable', { fileName: file.name }));
+    }
+  };
+  return (
+    <div className="megamud-ini-import">
+      <input
+        accept=".ini"
+        hidden
+        onChange={(event) => {
+          // Cleared first, so the same file can be picked again.
+          const file = event.target.files?.[0];
+          event.target.value = '';
+          void picked(file);
+        }}
+        ref={input}
+        tabIndex={-1}
+        type="file"
+      />
+      <button className="quiet" onClick={() => input.current?.click()} type="button">
+        <Icon name="plus" />
+        <span>{label}</span>
+      </button>
+      {problem !== null && (
+        <p className="messages-status bad" role="status">
+          {problem}
+        </p>
+      )}
+    </div>
+  );
+}
+
+/** Who a MegaMUD settings file is for: its character's name and login. */
+export function characterOfIni(settings: MegaSettings): {
+  id: string;
+  name: string;
+  username: string;
+  password: string;
+  bbs: string;
+} {
+  const said = (section: string, key: string): string =>
+    String(settings.live[section]?.[key] ?? '').trim();
+  const name = said('Player', 'Name');
+  const known = name !== '' && name !== '*Not Known*';
+  const username = said('BBS', 'UserID');
+  return {
+    id: (known ? name : username).toLowerCase().replace(/[^a-z0-9_-]/g, ''),
+    name: known ? name : '',
+    username,
+    password: said('BBS', 'Password'),
+    bbs: said('BBS', 'BbsName')
+  };
 }
 
 /** A tab's profile copy (2–4) switched on or off; switched on, made from the live values when missing. */
