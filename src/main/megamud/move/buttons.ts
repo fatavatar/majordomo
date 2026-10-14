@@ -6,6 +6,7 @@
  * waking the scheduler (`0x42e0e0`); the window's redraw (`0x460d50`) is
  * ours, when the engine reports its toggles changed.
  */
+import { goOnline, hangUp } from '../script/game';
 import { modeDefaults, reEngage } from '../script/modes';
 import { send, wake } from '../script/send';
 import { setState } from '../script/state';
@@ -44,6 +45,22 @@ export function goStop(s: Session): void {
     s.hidden = 0;
     wake(s);
   }
+}
+
+/**
+ * `0x7d4` online: the player's Disconnect (its "Are you sure" is the app's).
+ * Hung up on purpose (`0x30de4`), so the close that follows is not redialled
+ * as a lost carrier; walking and following stopped, out of the game.
+ */
+export function disconnect(s: Session): void {
+  s.f_30de8 = 0;
+  s.f_30de4 = 1;
+  s.walking = 0;
+  s.following = 0;
+  hangUp(s, 0);
+  s.inGame = 0;
+  goOnline(s, 0);
+  setTask(s, 0xb);
 }
 
 /** `0x808`: roaming (and so walking) on or off; the loop let go. */

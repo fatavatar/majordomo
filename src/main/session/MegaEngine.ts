@@ -23,7 +23,7 @@ import { bbsSetup } from '../megamud/bbs';
 import { grantPlayers, loadCharacter } from '../megamud/character';
 import { newTerminal, parseData, type TerminalState } from '../megamud/input/ParseData';
 import { typedCommand } from '../megamud/input/typed';
-import { menuCommand } from '../megamud/move/buttons';
+import { disconnect, menuCommand } from '../megamud/move/buttons';
 import { blessCommand } from '../megamud/player/cast';
 import { clearDetours, goTo, headFor, startWalking } from '../megamud/move/destinations';
 import { copyPath, freeSteps } from '../megamud/move/path';
@@ -854,6 +854,12 @@ export class MegaEngine {
     this.parked = null;
     this.safely(() => connectionClosed(this.s));
     this.safely(() => this.keepLearned());
+  }
+
+  /** The player's Disconnect (`0x7d4`): hung up on purpose, and not redialled. */
+  disconnect(): void {
+    this.safely(() => disconnect(this.s));
+    this.noteToggles();
   }
 
   /** Go/Stop (`0x803`), Roam (`0x808`), AFK (`0x809`), Step Back (`0x869`). */

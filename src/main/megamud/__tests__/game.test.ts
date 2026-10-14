@@ -14,7 +14,7 @@ import {
   sessionEnded
 } from '../script/game';
 import { expandMacros } from '../script/send';
-import { menuCommand } from '../move/buttons';
+import { disconnect, menuCommand } from '../move/buttons';
 import { session } from './fixture';
 
 /* `0x42de00`, `0x47b070`'s tail, `0x42d510`, `0x4b6fe0`, `0x42c910`'s end, `0x4acc40` and `0x41bcf0`, read 2026-10-13. */
@@ -214,6 +214,24 @@ describe('the socket gone (0x42c910)', () => {
     connectionClosed(s);
     expect(out.shown).toEqual([]);
     expect(s.f_e158).toBe(0);
+  });
+});
+
+/* The sidebar's Stop redialled: the engine was not told it was the player (2026-10-14). */
+describe('the player’s Disconnect (0x7d4)', () => {
+  it('logs off, stops walking, and the close that follows is not redialled', () => {
+    const { s, out } = session();
+    connected(s);
+    goOnline(s, 1);
+    s.inGame = 1;
+    s.walking = 1;
+    s.Comms_RedialCarrier = 1;
+    disconnect(s);
+    expect([s.walking, s.inGame, s.task]).toEqual([0, 0, 0xb]);
+    connectionClosed(s);
+    expect(out.shown).not.toContain('Unexpected disconnection.');
+    expect(s.f_e544).not.toBe(3);
+    expect(s.task).not.toBe(9);
   });
 });
 

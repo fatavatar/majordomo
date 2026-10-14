@@ -1017,6 +1017,8 @@ export class SessionManager {
    * low-health hang-up cannot be read as the reason for tomorrow's loss.
    */
   private endedBy: ConnectionEnd | null = null;
+  /** The engine is hanging up for the player's Disconnect: see `disconnect`. */
+  private megaHangingUp = false;
 
   private current: ConnectionState = {
     phase: 'idle',
@@ -3766,6 +3768,21 @@ export class SessionManager {
    */
   disconnect(by: ConnectionEnd = 'player'): ConnectionState {
     if (!this.client.connected) return this.current;
+    if (this.megaHangingUp) by = 'player';
+    else if (by === 'player' && this.mega) {
+      /*
+       * The engine told first, as MegaMUD's own Disconnect is (`0x7d4`): it
+       * logs off and hangs up through `hangUp` back into here, and marks the
+       * close as the player's so it does not redial it as a lost carrier.
+       */
+      this.megaHangingUp = true;
+      try {
+        this.mega.disconnect();
+      } finally {
+        this.megaHangingUp = false;
+      }
+      if (this.current.phase === 'closing' || !this.client.connected) return this.current;
+    }
     this.endedBy = by;
     this.patch({ phase: 'closing' });
     this.client.disconnect();
