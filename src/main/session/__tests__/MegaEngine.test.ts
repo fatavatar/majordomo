@@ -696,6 +696,25 @@ describe('blessings the realm says last', () => {
     e.dispose();
   });
 
+  /* MudRev's songs cast the spell that lasts; Fatty's agility was never kept up (2026-10-14). */
+  it('are marked lasting when the spell they cast lasts', () => {
+    const { e } = engine();
+    const host = (e as unknown as { host: MegaEngineHost }).host;
+    const agil = { short: 'agil', name: 'song of agility', flags: 0x30 } as never as SpellRec;
+    e.s.data.spells.push(agil);
+    const world = host.world();
+    host.world = () =>
+      ({
+        ...world,
+        spellNamed: () => ({ id: 48, name: 'song of agility', casts: [2169, 2156] }),
+        spellById: (id: number) =>
+          id === 2156 ? { id, name: 'song of agility', duration: 40 } : { id, name: 'remove agil' }
+      }) as never;
+    e.buffs([]);
+    expect(agil.flags & 2).toBe(2);
+    e.dispose();
+  });
+
   /* Our tracker asks for a sheet through the engine's own wish for one (`0xe29c`). */
   it('want a stat sheet when our tracker asks, without undoing a forced one', () => {
     const { e } = engine();

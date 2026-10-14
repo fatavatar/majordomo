@@ -1556,11 +1556,25 @@ export interface WorldSpell {
  * Whether a spell lasts: a `Dur`, or a duration that grows with level from
  * none (`scaledDuration`). MudRev's necropotence is `Dur` 0 with `DurInc` 1
  * per 5 levels, and was read as instant (2026-10-13).
+ *
+ * Or, given the realm's spells by id, a spell it casts that lasts: MudRev's
+ * songs are a spell with no `Dur` that casts the one that lasts, under the
+ * same name (song of agility, 48, casts 2156 at `Dur` 40), and Fatty's
+ * might, agility, great power and wisdom were never kept up (2026-10-14).
+ * One step only: what those cast in turn is not the song.
  */
-export function spellLasts(spell: WorldSpell): boolean {
-  if (spell.duration !== undefined) return true;
-  const growth = spell.durationGrowth;
-  return growth !== undefined && growth[0] !== 0 && growth[1] !== 0;
+export function spellLasts(spell: WorldSpell, byId?: (id: number) => WorldSpell | null): boolean {
+  const own = (one: WorldSpell): boolean => {
+    if (one.duration !== undefined) return true;
+    const growth = one.durationGrowth;
+    return growth !== undefined && growth[0] !== 0 && growth[1] !== 0;
+  };
+  if (own(spell)) return true;
+  if (byId === undefined) return false;
+  return (spell.casts ?? []).some((id) => {
+    const cast = byId(id);
+    return cast !== null && own(cast);
+  });
 }
 
 /**

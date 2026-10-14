@@ -749,7 +749,7 @@ export class MegaEngine {
     for (const spell of this.s.data.spells) {
       if ((spell.flags & 2) !== 0) continue;
       const known = world.spellNamed(spell.name);
-      if (known !== null && spellLasts(known)) spell.flags |= 2;
+      if (known !== null && spellLasts(known, (id) => world.spellById(id))) spell.flags |= 2;
     }
   }
 

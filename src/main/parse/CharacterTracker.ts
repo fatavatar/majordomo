@@ -1045,7 +1045,7 @@ export class CharacterTracker {
     const spell = this.spellCalled(word);
     if (spell === null) return;
     const known = this.world?.spellNamed(spell) ?? null;
-    if (known !== null && !spellLasts(known)) return;
+    if (known !== null && !spellLasts(known, (id) => this.world?.spellById(id) ?? null)) return;
     this.settleOnset();
     this.lastSelfCast = { spell, at, confirmed: false };
   }
@@ -6166,8 +6166,22 @@ export class CharacterTracker {
             ? caster === 'You'
             : target === 'yourself' || target === 'you' || (own !== null && target === own);
         if (!isSelf) return null;
-        // Remember it, so the onset that follows can be learned against it.
-        this.lastSelfCast = { spell, at: block.at, confirmed: true };
+        /*
+         * Remember it, so the onset that follows can be learned against it —
+         * and what the command's own record already heard, where the realm
+         * prints the effect before the cast: `You feel the great power!`, then
+         * `You sing the song of great power to Fatty!`. Starting afresh lost
+         * the effect, and the next line heard (harmony's tick) was learned as
+         * great power's start (2026-10-14).
+         */
+        const sent = this.lastSelfCast;
+        const same = sent !== null && !sent.confirmed && spellKey(sent.spell) === spellKey(spell);
+        this.lastSelfCast = {
+          spell,
+          at: block.at,
+          confirmed: true,
+          ...(same && sent.heard !== undefined ? { heard: sent.heard, heardAt: sent.heardAt } : {})
+        };
         /*
          * Only what the realm calls a duration spell, where the realm can
          * say: an instant cure tracked as a buff would sit on the list for
@@ -6176,7 +6190,8 @@ export class CharacterTracker {
          * and its life is bounded by the configured fallback clock.
          */
         const known = this.world?.spellNamed(spell) ?? null;
-        if (known !== null && !spellLasts(known)) return null;
+        if (known !== null && !spellLasts(known, (id) => this.world?.spellById(id) ?? null))
+          return null;
         /*
          * Replacing whatever answers to the name, candidates included: the
          * sheet may have listed this effect under another spell that shares
