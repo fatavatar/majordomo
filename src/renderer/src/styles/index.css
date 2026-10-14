@@ -12761,13 +12761,62 @@ tr:hover .row-action.worn,
 .megamud-page {
   position: relative;
   flex: none;
-  /*
-   * Proportional, as MegaMUD's MS Sans Serif 8 is: its labels are sized to
-   * that face, and the console's monospace runs them off their boxes.
-   */
+}
+/*
+ * Proportional, as MegaMUD's MS Sans Serif 8 is: its labels are sized to
+ * that face, and the console's monospace runs them off their boxes. And the
+ * rest of a MegaMUD tab's row, ours under its page, in the same face
+ * (2026-10-14).
+ */
+.megamud-page,
+.settings-form[data-megamud='true'] {
   font-family: Tahoma, Verdana, 'Segoe UI', system-ui, sans-serif;
   font-size: 11px;
   color: var(--text);
+}
+/*
+ * Ours under a MegaMUD tab, drawn as the tab is: a group a plain title with
+ * no box or wash, labels in the dialog's case, and small boxed controls.
+ */
+.settings-form[data-megamud='true'] {
+  --control-h: 20px;
+  --font-ui: 11px;
+  --font-micro: 11px;
+}
+.settings-form[data-megamud='true'] .settings-menus {
+  background: none;
+  border: 0;
+  border-top: 1px solid var(--ink-edge);
+  border-radius: 0;
+  padding: 6px 0 0;
+}
+.settings-form[data-megamud='true'] .settings-menus legend {
+  padding: 0 4px 0 0;
+  color: var(--text-hi);
+  letter-spacing: normal;
+  text-transform: none;
+}
+.settings-form[data-megamud='true'] .settings-field > span {
+  letter-spacing: normal;
+  text-transform: none;
+}
+.settings-form[data-megamud='true']
+  :is(input:not([type='checkbox'], [type='radio']), select, textarea) {
+  padding: 1px 4px;
+  font: inherit;
+  color: var(--text-hi);
+  background: var(--ink-raised);
+  border: 1px solid var(--ink-edge);
+  border-radius: var(--r-control);
+}
+.settings-form[data-megamud='true'] .chip {
+  font-family: inherit;
+  letter-spacing: normal;
+  text-transform: none;
+}
+.settings-form[data-megamud='true'] button {
+  font-size: 11px;
+  padding: 0 6px;
 }
 .megamud-control {
   position: absolute;

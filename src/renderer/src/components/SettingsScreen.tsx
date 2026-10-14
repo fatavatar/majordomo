@@ -2547,6 +2547,8 @@ export default function SettingsScreen({
               ) : (
                 <form
                   className="settings-form"
+                  // Under a MegaMUD tab, ours is drawn as MegaMUD's page is.
+                  data-megamud={isMegaTab(section) ? 'true' : undefined}
                   data-section={section}
                   onSubmit={(event) => void submitCharacter(event)}
                 >
