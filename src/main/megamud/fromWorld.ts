@@ -157,7 +157,8 @@ function monsterRecs(world: WorldGraph, mob: WorldMob): MonsterRec[] {
     const row = ids.length > 1 ? world.mobRow(id) : undefined;
     return {
       layer: 0,
-      name: mob.name.slice(0, 30),
+      // As the realm prints it: MegaMUD finds a monster case and all (`0x46f9f0`).
+      name: (mob.spelled ?? mob.name).slice(0, 30),
       id,
       flags: 0,
       // Enemy: what MegaMUD's own database said of every monster nothing set

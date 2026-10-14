@@ -98,9 +98,10 @@ import {
  * | 48 | **What a spell's script casts.** A spell whose whole effect is a `TextBlock` read as one that does nothing: mudrev's `cure disease` is `TextBlock 8290`, and `TBInfo 8290` is `cast 2132:cast 2133` — `cure disease 1` and `cure disease 2`, whose `RemovesSpell` rows end plague, leprosy and rotting flesh. The cure pickers read only a spell's own rows, so the Disease field never offered the spell that cures disease (skinny, 2026-10-11). `BuiltSpell.cs` carries the spells a spell's block casts (`TBInfo`, which does not ship, read at the build as format 40 reads an item's), and `WorldGraph.servingAbilities` folds their rows in for the readings that ask what a spell ends; the hazard and damage readers keep the spell's own |
  * | 49 | **What MegaMUD's engine reads of a class, a spell and a monster** (2026-10-13). The ported engine keeps its databases in our realm data rather than in MegaMUD's `.md` files, and three facts it needs were columns the build had left out: `Classes.MageryType` and `WeaponType` (`BuiltClass.mt`, `wt` — the magic a class casts, 1 mage … 5 kai, the numbering MegaMUD's own `Classes.md` settles, and 9 its martial arts), `Spells.Magery` and `MageryLVL` (`BuiltSpell.mg`, `ml`) and `Monsters.ExpMulti` (`BuiltMob.xm`, written where every row of the name agrees and it is not 1, and each row's own `BuiltMobRow.xm`), which MegaMUD multiplies `EXP` by. Checked against Skinny's own MegaMUD files: every class's magic and every spell's magic number follow from these |
  * | 50 | **Every item the realm names has a detail row** (2026-10-14). The detail index was kept to the items something refers to — an exit, a shop, a drop list, a script — which was right for the Reference card and wrong for the MegaMUD engine, whose item table is the realm's whole one as MegaMUD's `Items.md` was: an item nothing refers to (216 of mudrev's 2,833, `silver bracelet` lying in Town Square among them) was "added to known items" afresh each time it was seen, with no weight, price or kind. |
+ * | 51 | **A monster's name as the realm spells it** (2026-10-14). Names were lowercased for the router's key, which is the form the wire gives after an article; but the realm prints a few with capitals and no article — `Demon Trolloc`, in Stanky Cave — and MegaMUD finds a monster by its name as printed, case and all (`0x46f9f0`, `strstr`). The MegaMUD engine took the trolloc for a player and never fought it. `BuiltMob.nc` carries the realm's spelling wherever it is not the lowercase. |
  * | 47 | **The coin a price is counted in.** `Items.Currency` was never read, so the realm's `Price` was a number in no unit and a counter's charge could not be known before `list` was spent on it: a quest run walked to the General Store for two waterskins, was quoted 50 silver nobles each against an empty purse, and stood there with 8.6 million copper in the Bank of Godfrey. `BuiltItem.cur` carries the code (0 copper … 4 runic, `BuyCommand.GetCopperValue`) where it is not copper, and `WorldGraph.priceAt` multiplies it through the shop's markup exactly as the server does, so the supplies errand knows what to withdraw before it walks — todo 00 |
  */
-export const REALM_FORMAT = 50;
+export const REALM_FORMAT = 51;
 
 /**
  * What `build-world.mjs` says about a world it is bundling: which of the two
@@ -610,6 +611,12 @@ export interface BuiltClass {
 export interface BuiltMob {
   /** Lowercased and trimmed — the form the wire produces after the article. */
   n: string;
+  /**
+   * The name as the realm spells it, where that is not `n` — format 51. The
+   * realm prints `Demon Trolloc` so, and MegaMUD finds a monster by its name
+   * as printed, case and all.
+   */
+  nc?: string;
   /**
    * The realm's own numbers for every row sharing this name. Format 9: a
    * lair names its monsters by number (`(Max 2): 781,190,`) and the number
@@ -2131,6 +2138,8 @@ export function indexMobs(source: RealmSource, itemNames?: Map<number, string>):
       rts: Set<number>;
       /** Format 49: every row's `ExpMulti`, gathered for `rts`' reason. */
       xms: Set<number>;
+      /** Format 51: the first row's name as the realm spells it. */
+      spelled: string;
       /** Format 18: gathered rather than reduced, for the reason `ty` states. */
       types: Set<number>;
       dmg?: number;
@@ -2204,6 +2213,7 @@ export function indexMobs(source: RealmSource, itemNames?: Map<number, string>):
       ids: id === null ? [] : [id],
       rts: new Set<number>(),
       xms: new Set<number>(),
+      spelled: text(row['Name']).trim(),
       types: new Set<number>(),
       casts: new Set<number>(),
       profiles: new Map<string, MobProfile>(),
@@ -2359,6 +2369,8 @@ export function indexMobs(source: RealmSource, itemNames?: Map<number, string>):
         const only = [...span.xms][0]!;
         if (only > 1) mob.xm = only;
       }
+      // Format 51: only where it is not the lowercase the name is keyed by.
+      if (span.spelled !== n) mob.nc = span.spelled;
       // Format 18. Sorted so a file written twice from one database matches.
       if (span.types.size > 0) mob.ty = [...span.types].sort((a, b) => a - b);
       if (span.dmg !== undefined) mob.dmg = span.dmg;

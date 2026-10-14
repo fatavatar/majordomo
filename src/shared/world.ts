@@ -2011,6 +2011,11 @@ export interface MobRowChoice {
  */
 export interface WorldMob {
   name: string;
+  /**
+   * The name as the realm spells it, where that is not `name`'s lowercase
+   * (format 51): `Demon Trolloc`. What MegaMUD's monster records are named.
+   */
+  spelled?: string;
   /** Maximum health to work from: the high end when the realm data disagrees. */
   hp: number;
   /** Present only when several rows share the name and disagree. */

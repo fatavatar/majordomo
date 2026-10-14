@@ -4534,6 +4534,7 @@ export class WorldGraph {
       // it is here it answers for the fold as exactly as a row would.
       mob.regenHours = positive('rt');
       mob.expMulti = positive('xm');
+      if (typeof record['nc'] === 'string' && record['nc'].length > 0) mob.spelled = record['nc'];
       mob.follows = positive('fol');
       if (record['und'] === 1) mob.undead = true;
       const drops = Array.isArray(record['drops'])

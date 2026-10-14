@@ -112,6 +112,17 @@ describe("MegaMUD's databases from the realm's own data", () => {
     );
   });
 
+  /* MegaMUD finds a monster case and all; the trolloc went unfought (2026-10-14). */
+  it('names a monster as the realm spells it', () => {
+    const data = megaDataFrom(
+      world({
+        mobs: [{ name: 'demon trolloc', spelled: 'Demon Trolloc', hp: 6650, ids: [7] } as WorldMob]
+      }),
+      NONE
+    );
+    expect(data.monsters.map((m) => m.name)).toEqual(['Demon Trolloc']);
+  });
+
   it('gives a monster its experience multiplied and its health', () => {
     const data = megaDataFrom(
       world({
