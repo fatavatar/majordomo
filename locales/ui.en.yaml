@@ -3331,13 +3331,10 @@ settings:
       records: Records
   combat:
     attackForMe: Auto-Attack
-    attackLegend: Attack
-    attacksLegend: Attacks
     attackVerbHint:
       The realm’s own word. A verb this class cannot use is dropped the first time the realm
       says so.
     attackVerbLabel: Attack Command
-    attackVerbPlaceholder: a
     attackWithPlaceholder: a
     monsterRowsLegend: Monster Details
     monsterRowsNone: No monster rows of this character's own. The realm's table applies as it is.
@@ -3393,7 +3390,6 @@ settings:
       Sends hide when this character is seen in an empty room, and sneak instead while a lap or
       route has it, so the opening backstab lands again. Only for an opener of bs.
     openingFightsWarning: Opening fights unasked can cost a character; the default only retaliates.
-    openWarning: With this on, the client opens fights by itself — never on a player.
     refreshHint: Rounds between looks, so a monster that died or walked in is noticed. 0 never looks.
     refreshLabel: Room Look Interval (Rounds)
     rulesPointerNote:
@@ -3401,9 +3397,8 @@ settings:
       file — guard expressions with comments explaining why, which is what YAML is good at and this
       screen is not.
   crumbs:
-    characters: Characters
+    characters: Character
     global: Global
-    megamud: MegaMUD
     mudEngine: MudEngine
     realms: Realms
   megamud:
@@ -3414,6 +3409,8 @@ settings:
     passwordKept: (unchanged)
     revert: Revert
     save: Save
+    # A MegaMUD tab for a character not yet made.
+    saveFirst: Create the character first; its MegaMUD settings are made with it.
     saved: Saved to megamud.ini.
   dialog:
     closeAria: Close settings
@@ -3525,7 +3522,6 @@ settings:
     hangPenaltiesHint: Whether this realm charges for a hang-up; Paradigm's realm menu says so itself, and that outranks this.
     hangPenaltiesLabel: Hang Penalties
     hangPenaltiesGlobal: As Global says
-    hangPenaltiesRealm: As the realm says
     hangPenaltiesYes: Charged
     hangPenaltiesNo: Not charged
     hangUpLabel: Auto-Hangup / Emergency Disconnect
@@ -3682,26 +3678,6 @@ settings:
       anything else is typed into it. The client types only figures, only into the six stat
       fields, and saves.
     stats: Auto Train Stats
-    # Going to collect the level. Experience past the threshold does nothing
-    # at all until a trainer is paid, so a client left overnight without this
-    # comes back with a night's experience and the same character.
-    levels: Go and train levels
-    levelsHint:
-      'When the experience is there, walk to a trainer and level. Off by default: a character
-      banking levels for a reroll should not be levelled behind your back.'
-    trainerLabel: Trainer
-    trainerHint:
-      Only the trainers the realm says will take this character at this level. The class training
-      rooms stop at level 10 and every trainer has a band, so this list shrinks as the character
-      grows.
-    trainerCheapest: The cheapest that will take me
-    trainerOption: '{name} — {room} ({cost} copper)'
-    trainerNowhere:
-      The realm names no trainer that will take this character at its level. Nothing will be
-      walked to until one does.
-    trainerStale:
-      The trainer chosen here no longer takes this character. Pick another, or leave it on the
-      cheapest; nothing will be walked to meanwhile.
     statsHint:
       At a trainer with character points unspent, opens the stat screen, buys the wanted figures
       below as far as the points go — cheapest point first — and saves. Off, the client stands
@@ -4075,6 +4051,8 @@ settings:
       A channel by which another player’s typing moves the character — it answers nobody
       until something below is granted, and @kill and @hangup are always refused.
     enabledLabel: Enable Remote Control
+    engineNote: Who may send this character remote commands, and which. Whether it answers them at
+      all is MegaMUD's own setting, on the Talk tab above.
     gangLegend: Gang Permissions
     gangWarning: Membership is read from the who listing — this character's row and the asker's must
       both name the same gang. Until a listing has shown both, the gang grants nobody anything.
@@ -4368,9 +4346,6 @@ settings:
     curePoisonLabel: Cure Poison Spell
     cureHint: The spell to cast when this lands on you. Blank does nothing.
     cureClosedHint: Your spellbook has no spell that cures this, so there is nothing to cast.
-    bookUnreadNote:
-      This character's spellbook hasn't been read yet. The client reads it automatically the
-      next time the character logs in; until then these fields can't suggest anything.
     pickerPlaceholder: search spells
     removeBlessingAria: Remove blessing {number}
     removeBlessingTitle: Remove
@@ -4463,10 +4438,8 @@ settings:
     regenHpFullHint: Cast once each time health reaches Keep Resting To HP %.
     regenManaFullLabel: When Mana Full
     regenManaFullHint: Cast once each time mana reaches Keep Meditating To Mana %.
-    legend: Attack Spell
     minManaHint: Falls through to the round attacks below this. 0 always casts.
     minManaLabel: Not Below Mana %
-    note: Buffs, heals and everything conditional are automation.rules in the options file.
     rulesPointerNote:
       One cast, chosen by a number, on the mid-round tick — which is the one thing about
       a spell a rule cannot express. Everything else a caster wants is automation.rules.
@@ -4576,7 +4549,6 @@ settings:
     remotes: Remotes
     spells: Spells
     rewrites: Rewrites
-    talk: Talk
     train: Training
     gear: Gear
     quests: Quests
@@ -4591,14 +4563,6 @@ settings:
     enabledHint:
       Lets the Quest card's Run it carry a plan step by step, through the walker, the shopping
       errand and auto-combat. Off, the press refuses and names this switch.
-  talk:
-    legend: Other Players
-    lookHint:
-      Once per person, on an idle moment rather than the instant they arrive, and never during a
-      fight. What they wear shows on their Worn tab with the time it was read.
-    lookLabel: Auto-Inspect Players
-    lookWarning: A look is a command from the same budget walking and fighting spend from, and
-      the server tells the person they were looked at.
   worldDatabaseHint:
     Blank follows what the realm calls itself at its menu, MajorMUD or Paradigm; type majormud
     or paradigm to pin one, or point at your own .mdb, SQLite copy or .zip for a realm whose

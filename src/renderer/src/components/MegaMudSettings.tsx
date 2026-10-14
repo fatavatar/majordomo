@@ -12,7 +12,6 @@ import {
   type ProfiledSection,
   type SettingValue
 } from '@shared/megamud/settings';
-import SettingsNav, { type NavChoice } from './SettingsNav';
 import { keepFocus } from '../lib/focus';
 import { t } from '../lib/i18n';
 
@@ -27,11 +26,31 @@ import { t } from '../lib/i18n';
  * box where it always was. A control the tab fills from somewhere else (the
  * paths, the sound files, the toolbar, the events list) is drawn but not
  * editable yet.
+ *
+ * Drawn as rows of the Character page (`SettingsScreen`), each tab with what
+ * this client keeps for the character under it (2026-10-14).
  */
-export interface MegaMudSettingsProps {
-  characters: readonly NavChoice[];
+
+/** The page's reach into the client: a character's MegaMUD settings, read and written. */
+export interface MegaMudStore {
   load(id: string): Promise<MegaMudSettingsView | null>;
   save(id: string, settings: MegaSettings): Promise<string | null>;
+}
+
+/** One character's MegaMUD settings as the page holds them: on file, being edited, and saving. */
+export interface MegaMudDraft {
+  /** The character, or null for one not yet made (nothing to load). */
+  id: string | null;
+  view: MegaMudSettingsView | null;
+  draft: MegaSettings | null;
+  changed: boolean;
+  saving: boolean;
+  problem: string | null;
+  saved: string | null;
+  set(section: string, key: string, value: SettingValue): void;
+  update(change: (current: MegaSettings) => MegaSettings): void;
+  revert(): void;
+  submit(): Promise<void>;
 }
 
 /** Dialog units to pixels: MS Sans Serif 8's base units (6×13), scaled up. */
@@ -62,9 +81,8 @@ function withValue(
   return next;
 }
 
-export default function MegaMudSettings({ characters, load, save }: MegaMudSettingsProps) {
-  const [chosen, setChosen] = useState<string | null>(characters[0]?.id ?? null);
-  const [tab, setTab] = useState(SETTINGS_TABS[0]!.title);
+export function useMegaMudDraft(id: string | null, store: MegaMudStore): MegaMudDraft {
+  const { load, save } = store;
   const [view, setView] = useState<MegaMudSettingsView | null>(null);
   const [draft, setDraft] = useState<MegaSettings | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
@@ -72,17 +90,13 @@ export default function MegaMudSettings({ characters, load, save }: MegaMudSetti
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    if (chosen === null && characters[0]) setChosen(characters[0].id);
-  }, [characters, chosen]);
-
-  useEffect(() => {
     let live = true;
     setView(null);
     setDraft(null);
     setProblem(null);
     setSaved(null);
-    if (chosen === null) return;
-    void load(chosen).then((found) => {
+    if (id === null) return;
+    void load(id).then((found) => {
       if (!live) return;
       setView(found);
       setDraft(found ? structuredClone(found.settings) : null);
@@ -90,9 +104,8 @@ export default function MegaMudSettings({ characters, load, save }: MegaMudSetti
     return () => {
       live = false;
     };
-  }, [chosen, load]);
+  }, [id, load]);
 
-  const page = useMemo(() => SETTINGS_TABS.find((p) => p.title === tab)!, [tab]);
   const changed = useMemo(
     () =>
       view !== null && draft !== null && JSON.stringify(view.settings) !== JSON.stringify(draft),
@@ -100,92 +113,102 @@ export default function MegaMudSettings({ characters, load, save }: MegaMudSetti
   );
 
   const submit = useCallback(async () => {
-    if (chosen === null || draft === null) return;
+    if (id === null || draft === null) return;
     setSaving(true);
     setProblem(null);
-    const refused = await save(chosen, draft);
+    const refused = await save(id, draft);
     setSaving(false);
     if (refused !== null) {
       setProblem(refused);
       return;
     }
     setSaved(t('settings.megamud.saved'));
-    const found = await load(chosen);
+    const found = await load(id);
     setView(found);
     setDraft(found ? structuredClone(found.settings) : null);
-  }, [chosen, draft, load, save]);
+  }, [id, draft, load, save]);
 
-  const set = (section: string, key: string, value: SettingValue): void => {
-    setSaved(null);
-    setDraft((current) => (current ? withValue(current, section, key, value) : current));
+  return {
+    id,
+    view,
+    draft,
+    changed,
+    saving,
+    problem,
+    saved,
+    set: (section, key, value) => {
+      setSaved(null);
+      setDraft((current) => (current ? withValue(current, section, key, value) : current));
+    },
+    update: (change) => {
+      setSaved(null);
+      setDraft((current) => (current ? change(current) : current));
+    },
+    revert: () => setDraft(view ? structuredClone(view.settings) : null),
+    submit
   };
+}
 
+/** The titles of MegaMUD's settings tabs, in its dialog's order: the Character page's rows. */
+export const MEGA_TABS: readonly string[] = SETTINGS_TABS.map((p) => p.title);
+
+/** Whether a Character page row is one of MegaMUD's tabs. */
+export function isMegaTab(section: string): boolean {
+  return MEGA_TABS.includes(section);
+}
+
+/**
+ * One of MegaMUD's tabs for the chosen character, as its dialog lays it out,
+ * with its own Save and Revert: MegaMUD's settings are written when saved,
+ * where the rest of the Character page saves as it is typed.
+ */
+export function MegaMudPanel({ tab, mega }: { tab: string; mega: MegaMudDraft }) {
+  const page = SETTINGS_TABS.find((p) => p.title === tab);
+  if (page === undefined) return null;
+  const { view, draft } = mega;
+  if (mega.id === null) return <p className="settings-note">{t('settings.megamud.saveFirst')}</p>;
+  if (view === null || draft === null)
+    return <div className="settings-form empty">{t('settings.megamud.loading')}</div>;
   return (
-    <>
-      <SettingsNav
-        onSection={(id: string) => setTab(id)}
-        picker={{
-          addId: '',
-          addLabel: '',
-          choices: characters,
-          chosen,
-          label: t('settings.nav.character'),
-          onChoose: (id: string) => id !== '' && setChosen(id)
-        }}
-        section={tab}
-        sections={SETTINGS_TABS.map((p) => ({ id: p.title, label: p.title, fieldsets: [] }))}
+    <div className="megamud-settings">
+      {!view.engine && <p className="settings-warn">{t('settings.megamud.noFile')}</p>}
+      <TabPage
+        controls={page.controls}
+        draft={draft}
+        hasPassword={view.hasPassword}
+        height={page.h}
+        onProfile={(n) => mega.update((current) => switchProfile(current, n))}
+        onProfileEnabled={(n, on) =>
+          mega.update((current) =>
+            page.profiled ? withSlotEnabled(current, page.profiled, n, on) : current
+          )
+        }
+        profiled={page.profiled}
+        set={mega.set}
+        width={page.w}
       />
-      <form
-        className="settings-form megamud-settings"
-        onSubmit={(event) => {
-          event.preventDefault();
-          void submit();
-        }}
-      >
-        {chosen === null || view === null || draft === null ? (
-          <div className="settings-form empty">{t('settings.megamud.loading')}</div>
-        ) : (
-          <>
-            {!view.engine && <p className="settings-warn">{t('settings.megamud.noFile')}</p>}
-            <TabPage
-              controls={page.controls}
-              draft={draft}
-              hasPassword={view.hasPassword}
-              height={page.h}
-              onProfile={(n) =>
-                setDraft((current) => (current ? switchProfile(current, n) : current))
-              }
-              onProfileEnabled={(n, on) =>
-                setDraft((current) =>
-                  current && page.profiled
-                    ? withSlotEnabled(current, page.profiled, n, on)
-                    : current
-                )
-              }
-              profiled={page.profiled}
-              set={set}
-              width={page.w}
-            />
-            <div className="megamud-actions">
-              {problem !== null && <span className="settings-problem">{problem}</span>}
-              {saved !== null && <span className="settings-saved">{saved}</span>}
-              <button
-                className="quiet"
-                disabled={!changed || saving}
-                onClick={() => setDraft(structuredClone(view.settings))}
-                onMouseDown={keepFocus}
-                type="button"
-              >
-                {t('settings.megamud.revert')}
-              </button>
-              <button disabled={(!changed && view.engine) || saving} type="submit">
-                {view.engine ? t('settings.megamud.save') : t('settings.megamud.create')}
-              </button>
-            </div>
-          </>
-        )}
-      </form>
-    </>
+      <div className="megamud-actions">
+        {mega.problem !== null && <span className="settings-problem">{mega.problem}</span>}
+        {mega.saved !== null && <span className="settings-saved">{mega.saved}</span>}
+        <button
+          className="quiet"
+          disabled={!mega.changed || mega.saving}
+          onClick={mega.revert}
+          onMouseDown={keepFocus}
+          type="button"
+        >
+          {t('settings.megamud.revert')}
+        </button>
+        <button
+          disabled={(!mega.changed && view.engine) || mega.saving}
+          onClick={() => void mega.submit()}
+          onMouseDown={keepFocus}
+          type="button"
+        >
+          {view.engine ? t('settings.megamud.save') : t('settings.megamud.create')}
+        </button>
+      </div>
+    </div>
   );
 }
 

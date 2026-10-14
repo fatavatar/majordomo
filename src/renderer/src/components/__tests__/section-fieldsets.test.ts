@@ -41,11 +41,17 @@ describe.each([
       'realm-hang-penalties',
       'realm-coins',
       'realm-bbs'
-    ]
+    ],
+    // The Character page's Item Details, drawn by the fieldset it shares with Global (2026-10-14).
+    ['CarrySections.tsx']
   ],
-  ['GlobalSettings.tsx', [] as string[]]
-])('%s', (file, notNavigable) => {
+  ['GlobalSettings.tsx', [] as string[], [] as string[]]
+])('%s', (file, notNavigable, alsoDrawnIn) => {
   const source = read(file);
+  const drawnHere = (): string[] => [
+    ...drawn(source),
+    ...alsoDrawnIn.flatMap((other) => drawn(read(other)))
+  ];
 
   /* The positive control: a regex that matched nothing would pass everything. */
   it('finds both halves at all', () => {
@@ -54,7 +60,7 @@ describe.each([
   });
 
   it('draws a fieldset for every jump target the rail offers', () => {
-    const missing = offered(source).filter((id) => !drawn(source).includes(id));
+    const missing = offered(source).filter((id) => !drawnHere().includes(id));
     expect(missing).toEqual([]);
   });
 

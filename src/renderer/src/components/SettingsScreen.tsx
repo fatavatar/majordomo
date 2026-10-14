@@ -19,8 +19,6 @@ import RealmMonsters from './RealmMonsters';
 import RealmItems from './RealmItems';
 import { MonsterRuleList } from './MonsterRules';
 import SettingsNav, { type NavFieldset } from './SettingsNav';
-import GearSetList from './GearSetList';
-import PotionList, { WardRules } from './PotionList';
 import Icon from './Icon';
 import FormField, {
   CheckField,
@@ -30,17 +28,12 @@ import FormField, {
   TextField
 } from './FormField';
 import Advanced from './Advanced';
-import CarrySections from './CarrySections';
-import BlessingList from './BlessingList';
-import CureFields from './CureFields';
-import RegenFields from './RegenFields';
-import SpellField, { castableOn, drainsIn, refusesTarget } from './SpellPicker';
-import { castsOnOthers, castsOnSelf } from '@shared/spellcraft';
+import { ItemDetailsFieldset } from './CarrySections';
 import FormActions from './FormActions';
 import GlobalSettings from './GlobalSettings';
 import LoopSection from './LoopSection';
 import MegaMudLoopImport from './MegaMudLoopImport';
-import MegaMudSettings from './MegaMudSettings';
+import { MEGA_TABS, MegaMudPanel, isMegaTab, useMegaMudDraft } from './MegaMudSettings';
 import type { MegaSettings } from '@shared/megamud/settings';
 import RemoteList from './RemoteList';
 import RewritesDesigner from './RewriteDesigner';
@@ -48,15 +41,7 @@ import RewritesDesigner from './RewriteDesigner';
 import { keepFocus } from '../lib/focus';
 import { t } from '../lib/i18n';
 import { COIN_NAME } from '../lib/coins';
-import {
-  barOf,
-  figureOf,
-  fractionOf,
-  joinNames,
-  percentOf,
-  RANK_OPTIONS,
-  splitNames
-} from '../lib/form';
+import { barOf, figureOf, fractionOf, joinNames, percentOf, splitNames } from '../lib/form';
 import {
   begin,
   canRedo,
@@ -93,7 +78,6 @@ import type { StreamEncoding } from '@shared/types';
 import {
   DEFAULT_CONFIG,
   DEFAULT_REALM_NAME,
-  PVP_ACTIONS,
   RETREAT_STRATEGIES,
   type BankingConfig,
   type DropConfig,
@@ -468,119 +452,55 @@ function showsGlobal(tab: string): tab is GlobalTab {
 }
 
 /**
- * Every section a character's own form is broken into, in the order shown.
+ * The rows of the Character page, in the order shown (2026-10-14).
  *
- * **MegaMUD's own tabs**, which is the point: `Options → Settings` there is
- * Combat, Health, Spells and Movement, and somebody configuring a MajorMUD
- * client has been reading those five words for twenty years. See
- * docs/terminology.md §2.2 — the realm's own vocabulary wins, then MegaMUD's,
- * then ours, and this is the middle rung.
+ * **MegaMUD's own settings tabs**, which is the point: the character is run
+ * by the ported MegaMUD engine, and somebody configuring a MajorMUD client
+ * has been reading those words for twenty years. What this client keeps for
+ * a character (its monster and item rows, the flee, the remote grants, the
+ * keep-out words, its loops, the alerts and the status line) sits under the
+ * MegaMUD tab it belongs with. See docs/terminology.md §2.2.
  *
  * `Character` and `Login` are ours because MegaMUD had nothing to name: it ran
  * behind a terminal somebody else had already logged in with.
+ *
+ * The old automation's own sections (its combat, health, spells, party,
+ * training, gear, talk and stealth settings) are gone from here: the engine
+ * stands it down, and MegaMUD's tabs are what decide. Their keys stay in the
+ * file, untouched.
  */
-const SECTIONS = [
-  'profile',
-  'login',
-  'combat',
-  'health',
-  'spells',
-  'party',
-  'movement',
-  'gear',
-  'train',
-  'quests',
-  'remotes',
-  'talk',
-  'alerts',
-  'rewrites'
-] as const;
-type Section = (typeof SECTIONS)[number];
-const SECTION_LABEL: Record<Section, string> = {
-  profile: t('settings.sections.character'),
-  login: t('settings.sections.login'),
-  combat: t('settings.tabs.combat'),
-  health: t('settings.tabs.health'),
-  spells: t('settings.tabs.spells'),
-  party: t('settings.tabs.party'),
-  movement: t('settings.tabs.movement'),
-  gear: t('settings.tabs.gear'),
-  train: t('settings.tabs.train'),
-  quests: t('settings.tabs.quests'),
-  remotes: t('settings.tabs.remotes'),
-  talk: t('settings.tabs.talk'),
-  alerts: t('settings.tabs.alerts'),
-  rewrites: t('settings.tabs.rewrites')
-};
+type Section = string;
+const SECTIONS: readonly Section[] = ['profile', 'login', ...MEGA_TABS];
+function sectionLabel(section: Section): string {
+  if (section === 'profile') return t('settings.sections.character');
+  if (section === 'login') return t('settings.sections.login');
+  return section;
+}
 
 /**
- * The fieldsets inside each section, as the rail's jump targets (todo 02).
+ * Ours, under each MegaMUD tab, as the rail's jump targets (todo 02).
  *
- * Written down rather than read off the DOM: a fieldset drawn only when a
- * switch is on — Combat's three — would come and go from a list built by
- * counting, and the rail would then scroll to whichever fieldset happened to
- * be third today. Each `id` matches the `data-fieldset` on the fieldset
- * itself, which is the whole of the contract between the two.
- *
- * A section with one fieldset lists none: the section's own row already goes
- * there, and a single child under it would be the same press written twice.
- * `profile` has no fieldsets at all — its fields sit directly in the section.
+ * Written down rather than read off the DOM, for the reason the rail gives:
+ * each `id` matches the `data-fieldset` on the fieldset itself. A tab with
+ * nothing of ours lists none; its own row goes to MegaMUD's page.
  */
-const SECTION_FIELDSETS: Record<Section, readonly NavFieldset[]> = {
-  profile: [],
+const SECTION_FIELDSETS: Readonly<Record<Section, readonly NavFieldset[]>> = {
   login: [{ id: 'login', label: t('settings.login.legend') }],
-  combat: [
-    { id: 'combat-attack', label: t('settings.combat.attackLegend') },
-    { id: 'combat-attacks', label: t('settings.combat.attacksLegend') },
-    { id: 'combat-monsters', label: t('settings.combat.monstersLegend') },
-    { id: 'combat-monster-rows', label: t('settings.combat.monsterRowsLegend') }
-  ],
-  health: [
-    { id: 'health-recover', label: t('settings.health.recoverLegend') },
-    { id: 'health-retreat', label: t('settings.health.retreatLegend') },
-    { id: 'health-flee', label: t('settings.health.fleeLegend') },
-    { id: 'health-hangup', label: t('settings.health.hangUpLegend') },
-    { id: 'health-potions', label: t('settings.health.potionRuleLegend') }
-  ],
-  spells: [
-    { id: 'spells-round', label: t('settings.spells.legend') },
-    { id: 'spells-drain', label: t('settings.spells.drainLegend') },
-    { id: 'spells-heal', label: t('settings.spells.healLegend') },
-    { id: 'spells-regen', label: t('settings.spells.regenLegend') },
-    { id: 'spells-cures', label: t('settings.spells.cureLegend') },
-    { id: 'spells-blessings', label: t('settings.spells.blessingsLegend') }
-  ],
-  party: [
-    { id: 'party-follow', label: t('settings.party.legend') },
-    { id: 'party-leading', label: t('settings.party.leadLegend') },
-    { id: 'party-healing', label: t('settings.party.healLegend') },
-    { id: 'party-remotes', label: t('settings.party.remotesLegend') }
-  ],
-  movement: [
-    { id: 'movement-doors', label: t('settings.movement.doorsLegend') },
-    { id: 'movement-stealth', label: t('settings.movement.stealthLegend') },
-    { id: 'movement-light', label: t('settings.movement.lightLegend') },
-    { id: 'movement-afflictions', label: t('settings.movement.afflictionsLegend') },
+  'Auto-roam': [
     { id: 'movement-keep-out', label: t('settings.movement.keepOutLegend') },
-    { id: 'movement-carry', label: t('settings.movement.carryLegend') },
-    { id: 'hunting', label: t('settings.hunting.legend') }
+    { id: 'hunting', label: t('settings.hunting.legend') },
+    { id: 'quests', label: t('settings.quests.legend') }
   ],
-  gear: [
-    { id: 'gear', label: t('settings.gear.legend') },
-    { id: 'gear-offround', label: t('settings.gear.offRoundLegend') }
-  ],
-  train: [{ id: 'train', label: t('settings.train.legend') }],
-  quests: [{ id: 'quests', label: t('settings.quests.legend') }],
-  remotes: [{ id: 'remotes', label: t('settings.remotes.legend') }],
-  talk: [
-    { id: 'talk', label: t('settings.talk.legend') },
-    { id: 'talk-pvp', label: t('settings.health.pvpLegend') }
-  ],
-  alerts: [
-    { id: 'alerts-rules', label: t('settings.alerts.ruleLegend') },
-    { id: 'alerts-afk', label: t('settings.afk.legend') }
-  ],
-  rewrites: [{ id: 'rewrites-statline', label: t('settings.statline.legend') }]
+  Talk: [{ id: 'remotes', label: t('settings.remotes.legend') }],
+  Statline: [{ id: 'rewrites-statline', label: t('settings.statline.legend') }],
+  Sounds: [{ id: 'alerts-rules', label: t('settings.alerts.ruleLegend') }],
+  Other: [{ id: 'movement-doors', label: t('settings.movement.doorsLegend') }],
+  Health: [{ id: 'health-flee', label: t('settings.health.fleeLegend') }],
+  Combat: [{ id: 'combat-monster-rows', label: t('settings.combat.monsterRowsLegend') }],
+  Loot: [
+    { id: 'item-details', label: t('settings.movement.itemRowsLegend') },
+    { id: 'movement-carry', label: t('settings.movement.carryLegend') }
+  ]
 };
 
 interface CharacterForm {
@@ -1701,7 +1621,7 @@ export default function SettingsScreen({
    * `client` is MudEngine and `defaults` is Global: two views of one file, so
    * they share a draft, a form and a save. See `GlobalSettings`.
    */
-  const [tab, setTab] = useState<GlobalTab | 'characters' | 'servers' | 'megamud'>('characters');
+  const [tab, setTab] = useState<GlobalTab | 'characters' | 'servers'>('characters');
   const [selected, setSelected] = useState<string | null>(null);
   /**
    * The character form, and every step back from it.
@@ -1726,6 +1646,19 @@ export default function SettingsScreen({
    * comment above for the test a section has to pass.
    */
   const [section, setSection] = useState<Section>('profile');
+  /*
+   * The chosen character's MegaMUD settings, for its MegaMUD tabs: loaded with
+   * the character, edited beside the rest of the page, saved by their own
+   * press (`MegaMudPanel`). None for a character not yet made.
+   */
+  const megaStore = useMemo(
+    () => ({ load: megamudSettings, save: saveMegamud }),
+    [megamudSettings, saveMegamud]
+  );
+  const mega = useMegaMudDraft(
+    selected === null || selected === NEW_CHARACTER ? null : selected,
+    megaStore
+  );
   /**
    * Whether the shelf of shipped loops is open, and what is on it.
    *
@@ -1918,31 +1851,6 @@ export default function SettingsScreen({
   }, [open, tab, globalForm, snapshot, loadGlobalForm]);
 
   const characters = snapshot?.characters ?? [];
-  /**
-   * What the character form's spell pickers offer: the shown character's own
-   * book, read by `sp`/`pow` and persisted with its belongings. Null is
-   * *never read* — the form says so and gates nothing on it.
-   */
-  const shownBook = useMemo(() => {
-    const entry = characters.find((candidate) => candidate.id === selected);
-    const spells = entry?.spellbook ?? [];
-    return {
-      spells,
-      unread: (entry?.spellbook ?? null) === null,
-      gates: entry?.cureGates ?? null,
-      /*
-       * The two heal fields offer different halves of the book, because the
-       * realm marks who each spell may be cast on: `way of the swan` reaches
-       * the caster alone, so offering it for the party heal would arm
-       * `c swan <name>` once a round for a refusal printed in the room. Both
-       * predicates say yes to a spell whose targeting this build cannot read,
-       * so a derivative realm loses no options.
-       */
-      selfHeals: castableOn(spells, castsOnSelf),
-      partyHeals: castableOn(spells, castsOnOthers),
-      drains: drainsIn(spells)
-    };
-  }, [characters, selected]);
   const servers = useMemo(() => snapshot?.servers ?? [], [snapshot]);
   /** The loops each server lends its characters, keyed by the name they use. */
   const serverLoops = useMemo(() => snapshot?.loops.servers ?? {}, [snapshot]);
@@ -2227,33 +2135,6 @@ export default function SettingsScreen({
   };
 
   /*
-   * Where this character may go and level (todo 18).
-   *
-   * Asked when the Train tab is opened for an existing character, and cleared
-   * when the chosen character changes so the list can never belong to
-   * somebody else — the bands are per level and per class, and a picker
-   * showing another character's rooms would offer walks the server refuses.
-   *
-   * `null` is *not asked yet* and `[]` is *nowhere*, which the picker draws
-   * differently: the first is a list still loading, the second is a statement
-   * about this character. The same distinction `spellbook` keeps.
-   */
-  const [trainers, setTrainers] = useState<TrainerChoice[] | null>(null);
-  /*
-   * What the realm says would serve each condition, for the potion rule
-   * list's suggestions. A property of the realm and not the character, so it
-   * is asked once per open rather than per row or per selection — and left as
-   * an empty map where nothing answers, which the field draws as no
-   * suggestions and stays typable.
-   */
-  const [serving, setServing] = useState<Partial<Record<PotionWhen, string[]>>>({});
-  /*
-   * And the realm's own rules of that same kind. Empty where no realm is
-   * loaded, which draws no rows — the switch still says what it does, and
-   * a realm this client holds no data for has nothing to list.
-   */
-  const [wards, setWards] = useState<WardRule[]>([]);
-  /*
    * The monsters this character's realm names, for the priority list's picker.
    * Empty where no realm is loaded, which draws no suggestions and leaves the
    * field typable — the same rule the potion picker follows.
@@ -2268,7 +2149,7 @@ export default function SettingsScreen({
   const [tabled, setTabled] = useState<string[]>([]);
   const realmName = form?.serverName ?? null;
   useEffect(() => {
-    if (!open || tab !== 'characters' || section !== 'combat' || realmName === null) {
+    if (!open || tab !== 'characters' || section !== 'Combat' || realmName === null) {
       setTabled([]);
       return;
     }
@@ -2293,70 +2174,8 @@ export default function SettingsScreen({
     }
     return out;
   }, [mobs, tabled]);
-  /*
-   * The counters this character's realm places. `null` is *not asked yet*,
-   * which draws no picker at all — a control offering only *any counter*
-   * while the realm's answer is still coming is a control that lies about
-   * what the realm holds. Asked on the Movement tab, where banking is drawn.
-   */
-  const [banks, setBanks] = useState<BankChoice[] | null>(null);
   useEffect(() => {
-    if (!open || tab !== 'characters' || section !== 'train') return;
-    if (selected === null || selected === NEW_CHARACTER) {
-      setTrainers([]);
-      return;
-    }
-    let stale = false;
-    setTrainers(null);
-    void loadTrainers(selected).then(
-      (rows) => void (stale || setTrainers(rows)),
-      // A list that could not be read is not a reason to refuse the save
-      // somebody came here to make — the picker says nowhere, as `loadLoops`
-      // says an empty shelf.
-      () => void (stale || setTrainers([]))
-    );
-    return () => {
-      stale = true;
-    };
-  }, [open, tab, section, selected, loadTrainers]);
-  useEffect(() => {
-    if (!open || tab !== 'characters' || section !== 'movement') return;
-    if (selected === null || selected === NEW_CHARACTER) {
-      setBanks([]);
-      return;
-    }
-    let stale = false;
-    setBanks(null);
-    void loadBanks(selected).then(
-      (rows) => void (stale || setBanks(rows)),
-      // A list that could not be read is not a reason to refuse the save:
-      // the picker simply is not drawn, and `bank: 0` keeps working.
-      () => void (stale || setBanks([]))
-    );
-    return () => {
-      stale = true;
-    };
-  }, [open, tab, section, selected, loadBanks]);
-  useEffect(() => {
-    if (!open || tab !== 'characters' || section !== 'health') return;
-    if (selected === null || selected === NEW_CHARACTER) return;
-    let stale = false;
-    void loadServing(selected).then(
-      (found) => void (stale || setServing(found)),
-      () => void (stale || setServing({}))
-    );
-    void loadWards(selected).then(
-      (found) => void (stale || setWards(found)),
-      // A realm that could not be read is not a reason to refuse the save:
-      // no rows are drawn, exactly as no suggestions are.
-      () => void (stale || setWards([]))
-    );
-    return () => {
-      stale = true;
-    };
-  }, [open, tab, section, selected, loadServing, loadWards]);
-  useEffect(() => {
-    if (!open || tab !== 'characters' || section !== 'combat') return;
+    if (!open || tab !== 'characters' || section !== 'Combat') return;
     if (selected === null || selected === NEW_CHARACTER) return;
     let stale = false;
     void loadMobNames(selected).then(
@@ -2394,8 +2213,6 @@ export default function SettingsScreen({
    */
   const ofHealth = (typed: string): string | null =>
     figureOf(Number.parseInt(typed, 10) || 0, maxima.hpMax);
-  const ofMana = (typed: string): string | null =>
-    figureOf(Number.parseInt(typed, 10) || 0, maxima.manaMax);
   /*
    * And the bar under it, on the **inherited** vitals bands.
    *
@@ -2408,8 +2225,6 @@ export default function SettingsScreen({
   const bands = snapshot?.global.ui.vitals ?? DEFAULT_CONFIG.ui.vitals;
   const barOfHealth = (typed: string): ReturnType<typeof barOf> =>
     barOf(Number.parseInt(typed, 10) || 0, bands.hp);
-  const barOfMana = (typed: string): ReturnType<typeof barOf> =>
-    barOf(Number.parseInt(typed, 10) || 0, bands.mana);
 
   const patch = (change: Partial<CharacterForm>): void => {
     setHistory((current) =>
@@ -2625,16 +2440,6 @@ export default function SettingsScreen({
             >
               {t('settings.crumbs.characters')}
             </button>
-            <button
-              className="crumb"
-              data-active={tab === 'megamud' ? 'true' : 'false'}
-              onClick={() => setTab('megamud')}
-              onMouseDown={keepFocus}
-              onPointerDown={stopDrag}
-              type="button"
-            >
-              {t('settings.crumbs.megamud')}
-            </button>
           </h2>
           {/*
             Absent rather than disabled while there is no character: a greyed
@@ -2694,19 +2499,6 @@ export default function SettingsScreen({
                 picking={picking}
               />
             )
-          ) : tab === 'megamud' ? (
-            <MegaMudSettings
-              characters={characters
-                .filter((entry) => entry.error === undefined)
-                .map((entry) => ({
-                  id: entry.id,
-                  name: entry.name,
-                  detail: entry.serverName ?? entry.target.host,
-                  accent: entry.accent
-                }))}
-              load={megamudSettings}
-              save={saveMegamud}
-            />
           ) : tab === 'characters' ? (
             <>
               {/*
@@ -2715,7 +2507,7 @@ export default function SettingsScreen({
                 the form keeps the whole of the other column (todo 02).
               */}
               <SettingsNav
-                onSection={(id: string) => setSection(id as Section)}
+                onSection={(id: string) => setSection(id)}
                 picker={{
                   addId: NEW_CHARACTER,
                   addLabel: t('settings.characters.new'),
@@ -2735,8 +2527,8 @@ export default function SettingsScreen({
                 section={section}
                 sections={SECTIONS.map((id) => ({
                   id,
-                  label: SECTION_LABEL[id],
-                  fieldsets: SECTION_FIELDSETS[id]
+                  label: sectionLabel(id),
+                  fieldsets: SECTION_FIELDSETS[id] ?? []
                 }))}
               />
 
@@ -3117,1181 +2909,126 @@ export default function SettingsScreen({
                     </fieldset>
                   )}
 
-                  {section === 'combat' && (
+                  {/*
+  MegaMUD's own tab, as its settings dialog draws it, and under it what
+  this client keeps for the character that belongs with it (2026-10-14).
+*/}
+                  {isMegaTab(section) && <MegaMudPanel mega={mega} tab={section} />}
+
+                  {section === 'Auto-roam' && (
                     <>
+                      <fieldset className="settings-menus" data-fieldset="movement-keep-out">
+                        <legend>{t('settings.movement.keepOutLegend')}</legend>
+                        <TextField
+                          hint={t('settings.movement.keepOutOfHint')}
+                          label={t('settings.movement.keepOutOf')}
+                          name="keep-out-of"
+                          onChange={(value) => patch({ keepOutOf: splitNames(value) })}
+                          placeholder={t('settings.movement.keepOutOfPlaceholder')}
+                          value={joinNames(form.keepOutOf)}
+                          wide
+                        />
+                      </fieldset>
+
                       {/*
-                        The one warning left in the open on this screen, and the
-                        rule for why: a sentence stays out of a tooltip when the
-                        thing it warns about can cost a character. One sentence.
-                        docs/terminology.md §1.
+                        The loops this character owns, and the ones it merely
+                        walks. A separate fieldset from the two switches above
+                        rather than three more rows in one, because they answer
+                        different questions: those are what a route may do on
+                        the way, and this is where the character goes at all.
                       */}
-                      <fieldset className="settings-menus" data-fieldset="combat-attack">
-                        <legend>{t('settings.combat.attackLegend')}</legend>
-                        <p className="settings-warn">{t('settings.combat.openWarning')}</p>
-                        <CheckField
-                          checked={form.combat}
-                          label={t('settings.combat.attackForMe')}
-                          name="combat"
-                          onChange={(value) => patch({ combat: value })}
-                        />
-                        {/* Drawn whether the switch is on or off: it is the
-                            one combat setting that acts while it is off. */}
-                        <div className="settings-inline">
-                          <NumberField
-                            hint={t('settings.combat.defendAfterRoundsHint')}
-                            label={t('settings.combat.defendAfterRounds')}
-                            name="defend-after-rounds"
-                            onChange={(value) => patch({ combatDefendAfterRounds: value })}
-                            value={form.combatDefendAfterRounds}
-                          />
-                        </div>
-                        {form.combat && (
-                          <>
-                            <CheckField
-                              checked={form.combatRetaliate}
-                              hint={t('settings.combat.hitBackHint')}
-                              label={t('settings.combat.hitBack')}
-                              name="retaliate"
-                              onChange={(value) => patch({ combatRetaliate: value })}
-                            />
-                            <CheckField
-                              checked={form.combatPoliteAttacks}
-                              hint={t('settings.combat.politeAttacksHint')}
-                              label={t('settings.combat.politeAttacks')}
-                              name="polite-attacks"
-                              onChange={(value) => patch({ combatPoliteAttacks: value })}
-                            />
-                            {/* What it opens fights with, and the three limits
-                                that qualify it, on one row: each of the
-                                numbers is meaningless without the policy
-                                beside it. */}
-                            <div className="settings-inline">
-                              <SelectField
-                                hint={t('settings.combat.engageHint')}
-                                label={t('settings.combat.engageLabel')}
-                                name="engage"
-                                onChange={(value) => patch({ combatEngage: value as EngagePolicy })}
-                                options={[
-                                  { value: 'none', label: t('settings.combat.engageNone') },
-                                  { value: 'hostile', label: t('settings.combat.engageHostile') },
-                                  { value: 'likely', label: t('settings.combat.engageLikely') },
-                                  { value: 'all', label: t('settings.combat.engageAll') }
-                                ]}
-                                value={form.combatEngage}
-                              />
-                              <NumberField
-                                hint={t('settings.combat.maxMobsHint')}
-                                label={t('settings.combat.maxMobsLabel')}
-                                name="max-mobs"
-                                onChange={(value) => patch({ combatMaxMobs: value })}
-                                value={form.combatMaxMobs}
-                              />
-                              <NumberField
-                                hint={t('settings.combat.minMobsHint')}
-                                label={t('settings.combat.minMobsLabel')}
-                                name="min-mobs"
-                                onChange={(value) => patch({ combatMinMobs: value })}
-                                value={form.combatMinMobs}
-                              />
-                            </div>
-                          </>
-                        )}
-                      </fieldset>
+                      <LoopSection
+                        catalogue={catalogue}
+                        inherited={inheritedLoops}
+                        loops={form.loops}
+                        note={t('settings.movement.loopsNote')}
+                        onDonePicking={() => setPicking(false)}
+                        onOpenPicker={openPicker}
+                        onToggle={toggleLoop}
+                        picking={picking}
+                        /*
+                          The one thing about this that can be wrong without
+                          looking wrong. The shipped loops name rooms by
+                          `map/room` in Paradigm's world, the one they were
+                          recorded in; a realm pinned to the other bundled
+                          world or to its own database has different rooms
+                          behind the same numbers, and a route planned from
+                          one goes somewhere nobody chose.
+                        */
+                        warning={
+                          walksAnotherWorld(
+                            servers.find((entry) => entry.name === form.serverName)?.database ?? ''
+                          ) && form.loops.length > 0
+                            ? t('settings.movement.loopsWarning')
+                            : undefined
+                        }
+                      />
 
-                      {form.combat && (
-                        <>
-                          <fieldset className="settings-menus" data-fieldset="combat-attacks">
-                            <legend>{t('settings.combat.attacksLegend')}</legend>
-                            <div className="settings-inline">
-                              <TextField
-                                hint={t('settings.combat.attackVerbHint')}
-                                label={t('settings.combat.attackVerbLabel')}
-                                name="attack"
-                                onChange={(value) => patch({ combatAttack: value })}
-                                placeholder={t('settings.combat.attackVerbPlaceholder')}
-                                spellCheck={false}
-                                value={form.combatAttack}
-                              />
-                              <TextField
-                                hint={t('settings.combat.openerHint')}
-                                label={t('settings.combat.openerLabel')}
-                                name="opener"
-                                onChange={(value) => patch({ combatOpener: value })}
-                                placeholder={t('settings.combat.openerPlaceholder')}
-                                spellCheck={false}
-                                value={form.combatOpener}
-                              />
-                            </div>
-                            <CheckField
-                              checked={form.combatHideForOpener}
-                              hint={t('settings.combat.hideForOpenerHint')}
-                              label={t('settings.combat.hideForOpener')}
-                              name="hide-for-opener"
-                              onChange={(value) => patch({ combatHideForOpener: value })}
-                            />
-                            <NumberField
-                              hint={t('settings.combat.refreshHint')}
-                              label={t('settings.combat.refreshLabel')}
-                              name="refresh"
-                              onChange={(value) => patch({ combatRefresh: value })}
-                              value={form.combatRefresh}
-                            />
-                          </fieldset>
-
-                          <fieldset className="settings-menus" data-fieldset="combat-monsters">
-                            <legend>{t('settings.combat.monstersLegend')}</legend>
-                            <NumberField
-                              hint={t('settings.combat.maxTargetHealthHint')}
-                              label={t('settings.combat.maxTargetHealthLabel')}
-                              name="max-target-health"
-                              onChange={(value) => patch({ combatMaxTargetHealth: value })}
-                              value={form.combatMaxTargetHealth}
-                            />
-                            <NumberField
-                              hint={t('settings.combat.maxMonsterExpHint')}
-                              label={t('settings.combat.maxMonsterExpLabel')}
-                              name="max-monster-exp"
-                              onChange={(value) => patch({ combatMaxMonsterExp: value })}
-                              value={form.combatMaxMonsterExp}
-                            />
-                            <NumberField
-                              hint={t('settings.combat.minSurvivalHint')}
-                              label={t('settings.combat.minSurvivalLabel')}
-                              name="min-survival"
-                              onChange={(value) => patch({ combatMinSurvival: value })}
-                              value={form.combatMinSurvival}
-                            />
-                          </fieldset>
-
-                          {/*
-                            This character's own monster rows, laid over the
-                            realm's table field by field -- a shaman's spell
-                            for a monster the realm marks Flee keeps the Flee.
-                            The one list about named monsters: what to leave
-                            alone is a Friend, and the attack order is the
-                            priority. Part of the form's draft, so it saves
-                            with it.
-                          */}
-                          <fieldset className="settings-menus" data-fieldset="combat-monster-rows">
-                            <legend>{t('settings.combat.monsterRowsLegend')}</legend>
-                            <p className="settings-note">{t('settings.combat.monsterRowsNote')}</p>
-                            <div className="realm-messages">
-                              <MonsterRuleList
-                                addLabel={t('settings.monsters.add')}
-                                emptyText={t('settings.combat.monsterRowsNone')}
-                                known={monsterNames}
-                                namePrefix="character-monster"
-                                onChange={(rows) => {
-                                  patch({ combatMonsters: rows });
-                                  return Promise.resolve(null);
-                                }}
-                                rows={form.combatMonsters}
-                              />
-                            </div>
-                          </fieldset>
-                        </>
-                      )}
-                    </>
-                  )}
-
-                  {section === 'health' && (
-                    <>
-                      <fieldset className="settings-menus" data-fieldset="health-recover">
-                        <legend>{t('settings.health.recoverLegend')}</legend>
-                        <p className="settings-note">{t('settings.health.restingNote')}</p>
-                        <div className="settings-inline">
-                          <NumberField
-                            hint={t('settings.health.restBelowHint')}
-                            label={t('settings.health.restBelowLabel')}
-                            name="rest-below"
-                            bar={barOfHealth(form.restBelow)}
-                            figure={ofHealth(form.restBelow)}
-                            onChange={(value) => patch({ restBelow: value })}
-                            value={form.restBelow}
-                          />
-                          <NumberField
-                            hint={t('settings.health.restToHint')}
-                            label={t('settings.health.restToLabel')}
-                            name="rest-to"
-                            bar={barOfHealth(form.restTo)}
-                            figure={ofHealth(form.restTo)}
-                            onChange={(value) => patch({ restTo: value })}
-                            value={form.restTo}
-                          />
-                          <NumberField
-                            hint={t('settings.health.restBeforeTrapsHint')}
-                            label={t('settings.health.restBeforeTrapsLabel')}
-                            name="rest-before-traps"
-                            bar={barOfHealth(form.restBeforeTraps)}
-                            figure={ofHealth(form.restBeforeTraps)}
-                            onChange={(value) => patch({ restBeforeTraps: value })}
-                            value={form.restBeforeTraps}
-                          />
-                          <NumberField
-                            hint={t('settings.health.meditateBelowHint')}
-                            label={t('settings.health.meditateBelowLabel')}
-                            name="med-below"
-                            bar={barOfMana(form.meditateBelow)}
-                            figure={ofMana(form.meditateBelow)}
-                            onChange={(value) => patch({ meditateBelow: value })}
-                            value={form.meditateBelow}
-                          />
-                          <NumberField
-                            hint={t('settings.health.meditateToHint')}
-                            label={t('settings.health.meditateToLabel')}
-                            name="med-to"
-                            bar={barOfMana(form.meditateTo)}
-                            figure={ofMana(form.meditateTo)}
-                            onChange={(value) => patch({ meditateTo: value })}
-                            value={form.meditateTo}
-                          />
-                        </div>
-                        <CheckField
-                          checked={form.restNextDoor}
-                          hint={t('settings.health.restNextDoorHint')}
-                          label={t('settings.health.restNextDoor')}
-                          name="rest-next-door"
-                          onChange={(value) => patch({ restNextDoor: value })}
-                        />
-                      </fieldset>
-
-                      <fieldset className="settings-menus" data-fieldset="health-retreat">
-                        <legend>{t('settings.health.retreatLegend')}</legend>
-                        {/*
-                          The switch and the two figures it runs on are one
-                          row. A switch is two columns and a threshold is one,
-                          so the three fit a band with room to spare -- and a
-                          check alone above them spent a whole band saying
-                          nothing the legend had not already said.
-                        */}
+                      {/*
+                        Where the character should be at all (todo 05), beside
+                        the loops rather than under Training: what it decides
+                        is a place, and the loop it runs when it gets there is
+                        built from the survey rather than taken off the shelf
+                        above.
+                      */}
+                      <fieldset className="settings-menus" data-fieldset="hunting">
+                        <legend>{t('settings.hunting.legend')}</legend>
+                        <p className="settings-note">{t('settings.hunting.note')}</p>
                         <div className="settings-inline">
                           <CheckField
-                            checked={form.retreat}
-                            hint={t('settings.health.retreatHint')}
-                            label={t('settings.health.retreatLabel')}
-                            name="retreat"
-                            onChange={(value) => patch({ retreat: value })}
+                            checked={form.huntAuto}
+                            hint={t('settings.hunting.autoHint')}
+                            label={t('settings.hunting.auto')}
+                            name="hunt-auto"
+                            onChange={(value) => patch({ huntAuto: value })}
                           />
-                          {form.retreat && (
-                            <>
-                              <NumberField
-                                label={t('settings.health.belowHealthLabel')}
-                                name="retreat-health"
-                                bar={barOfHealth(form.retreatBelow)}
-                                figure={ofHealth(form.retreatBelow)}
-                                onChange={(value) => patch({ retreatBelow: value })}
-                                value={form.retreatBelow}
-                              />
-                              <NumberField
-                                hint={t('settings.health.belowManaHint')}
-                                label={t('settings.health.belowManaLabel')}
-                                name="retreat-mana"
-                                bar={barOfMana(form.retreatBelowMana)}
-                                figure={ofMana(form.retreatBelowMana)}
-                                onChange={(value) => patch({ retreatBelowMana: value })}
-                                value={form.retreatBelowMana}
-                              />
-                              <NumberField
-                                hint={t('settings.health.outnumberedHint')}
-                                label={t('settings.health.outnumberedLabel')}
-                                name="outnumbered"
-                                onChange={(value) => patch({ retreatOutnumbered: value })}
-                                value={form.retreatOutnumbered}
-                              />
-                            </>
-                          )}
-                        </div>
-                        {form.retreat && (
-                          <>
-                            <SelectField
-                              hint={t('settings.health.retreatStrategyHint')}
-                              label={t('settings.health.retreatStrategyLabel')}
-                              name="retreat-strategy"
-                              onChange={(value) => patch({ retreatStrategy: value })}
-                              options={RETREAT_STRATEGIES.map((s) => ({ value: s, label: s }))}
-                              value={form.retreatStrategy}
-                            />
-                            {form.retreatStrategy === 'safe-haven' && (
-                              <TextField
-                                hint={t('settings.health.safeHavenHint')}
-                                label={t('settings.health.safeHavenLabel')}
-                                name="retreat-haven"
-                                onChange={(value) => patch({ retreatHaven: value })}
-                                placeholder={t('settings.health.safeHavenPlaceholder')}
-                                spellCheck={false}
-                                value={form.retreatHaven}
-                                wide
-                              />
-                            )}
-                          </>
-                        )}
-                      </fieldset>
-
-                      <fieldset className="settings-menus" data-fieldset="health-flee">
-                        <legend>{t('settings.health.fleeLegend')}</legend>
-                        <p className="settings-note">{t('settings.health.fleeHint')}</p>
-                        <div className="settings-inline">
-                          <CheckField
-                            checked={form.fleeGoto}
-                            label={t('settings.health.fleeLabel')}
-                            name="flee-goto"
-                            onChange={(value) => patch({ fleeGoto: value })}
-                          />
-                          {form.fleeGoto && (
+                          {form.huntAuto && (
                             <NumberField
-                              label={t('settings.health.belowHealthLabel')}
-                              name="flee-health"
-                              bar={barOfHealth(form.fleeGotoBelow)}
-                              figure={ofHealth(form.fleeGotoBelow)}
-                              onChange={(value) => patch({ fleeGotoBelow: value })}
-                              value={form.fleeGotoBelow}
+                              hint={t('settings.hunting.radiusHint')}
+                              label={t('settings.hunting.radius')}
+                              name="hunt-radius"
+                              onChange={(value) => patch({ huntRadius: value })}
+                              value={form.huntRadius}
                             />
                           )}
                         </div>
-                        {form.fleeGoto && (
-                          <TextField
-                            hint={t('settings.health.fleeDestinationHint')}
-                            label={t('settings.health.fleeDestinationLabel')}
-                            name="flee-destination"
-                            onChange={(value) => patch({ fleeGotoDestination: value })}
-                            placeholder={t('settings.health.fleeDestinationPlaceholder')}
-                            spellCheck={false}
-                            value={form.fleeGotoDestination}
-                            wide
-                          />
-                        )}
                       </fieldset>
 
-                      <fieldset className="settings-menus" data-fieldset="health-hangup">
-                        <legend>{t('settings.health.hangUpLegend')}</legend>
-                        {/*
-                          The second and last warning left in the open. Every
-                          MegaMUD-era client offers this; on this server family
-                          it is one of the more reliable ways to die.
-                        */}
-                        <p className="settings-warn">{t('settings.health.hangUpWarning')}</p>
-                        <div className="settings-inline">
-                          <CheckField
-                            checked={form.hangUp}
-                            label={t('settings.health.hangUpLabel')}
-                            name="hangup"
-                            onChange={(value) => patch({ hangUp: value })}
-                          />
-                          {form.hangUp && (
-                            <NumberField
-                              label={t('settings.health.belowHealthLabel')}
-                              name="hangup-health"
-                              bar={barOfHealth(form.hangUpBelow)}
-                              figure={ofHealth(form.hangUpBelow)}
-                              onChange={(value) => patch({ hangUpBelow: value })}
-                              value={form.hangUpBelow}
-                            />
-                          )}
-                        </div>
-                        {form.hangUp && (
-                          <>
-                            <SelectField
-                              hint={t('settings.health.hangPenaltiesHint')}
-                              label={t('settings.health.hangPenaltiesLabel')}
-                              name="hang-penalties"
-                              onChange={(value) => patch({ hangUpPenalties: penaltiesOf(value) })}
-                              options={[
-                                { value: '', label: t('settings.health.hangPenaltiesRealm') },
-                                { value: 'yes', label: t('settings.health.hangPenaltiesYes') },
-                                { value: 'no', label: t('settings.health.hangPenaltiesNo') }
-                              ]}
-                              value={penaltiesChoice(form.hangUpPenalties)}
-                            />
-                            <CheckField
-                              checked={form.hangUpOnPlayer}
-                              label={t('settings.health.hangUpOnPlayer')}
-                              name="hangup-player"
-                              onChange={(value) => patch({ hangUpOnPlayer: value })}
-                            />
-                          </>
-                        )}
-                      </fieldset>
-
-                      {/*
-                        *Use this item when that is true* (todo 19), and since
-                        todo 00 the only potion setting there is: two named
-                        slots stood above this with a name, a threshold and a
-                        shared verb each, and this says all of it plus the
-                        things they could not. The name field's suggestions are
-                        filtered by each row's own condition, from the realm.
-                      */}
-                      <fieldset className="settings-menus" data-fieldset="health-potions">
-                        <legend>{t('settings.health.potionRuleLegend')}</legend>
-                        <p className="settings-note">{t('settings.health.potionRuleNote')}</p>
-                        <PotionList
-                          namePrefix="potion-rule"
-                          onChange={(potionRules) => patch({ potionRules })}
-                          potions={form.potionRules}
-                          serving={serving}
-                        />
-                        {/*
-                          And the realm's own rows of the same list (todo 02).
-                          A player writes *drink the antidote when poisoned*;
-                          the realm has already written *use the waterskin
-                          where the desert spell is cast*, and the switch is
-                          whether that half is obeyed. The rows are drawn
-                          because a switch over a rule nobody can read is the
-                          invisible setting this project refuses everywhere
-                          else — they say which realm's rules these are.
-                        */}
+                      <fieldset className="settings-menus" data-fieldset="quests">
+                        <legend>{t('settings.quests.legend')}</legend>
+                        <p className="settings-warn">{t('settings.quests.warning')}</p>
                         <CheckField
-                          checked={form.useWards}
-                          hint={t('settings.health.useWardsHint')}
-                          label={t('settings.health.useWards')}
-                          name="use-wards"
-                          onChange={(value) => patch({ useWards: value })}
+                          checked={form.questsEnabled}
+                          hint={t('settings.quests.enabledHint')}
+                          label={t('settings.quests.enabled')}
+                          name="quests-enabled"
+                          onChange={(value) => patch({ questsEnabled: value })}
                         />
-                        <WardRules rules={wards} />
                       </fieldset>
                     </>
                   )}
 
-                  {section === 'spells' && (
+                  {section === 'Talk' && (
                     <>
-                      {shownBook.unread && (
-                        <p className="settings-note">{t('settings.spells.bookUnreadNote')}</p>
-                      )}
-                      <fieldset className="settings-menus" data-fieldset="spells-round">
-                        <legend>{t('settings.spells.legend')}</legend>
-                        <CheckField
-                          checked={form.spellAutoChoose}
-                          hint={t('settings.spells.autoChooseHint')}
-                          label={t('settings.spells.autoChoose')}
-                          name="spell-auto-choose"
-                          onChange={(value) => patch({ spellAutoChoose: value })}
-                        />
-                        <SpellField
-                          hint={t('settings.spells.castHint')}
-                          label={t('settings.spells.castLabel')}
-                          name="spell"
-                          onChange={(value) => patch({ spellAttack: value })}
-                          spells={shownBook.spells}
-                          value={form.spellAttack}
-                        />
-                        <SpellField
-                          hint={t('settings.spells.fallbackCastHint')}
-                          label={t('settings.spells.fallbackCastLabel')}
-                          name="spell-fallback"
-                          onChange={(value) => patch({ spellAttackFallback: value })}
-                          spells={shownBook.spells}
-                          value={form.spellAttackFallback}
-                        />
-                        <NumberField
-                          hint={t('settings.spells.attackCastsHint')}
-                          label={t('settings.spells.attackCastsLabel')}
-                          name="attack-casts"
-                          onChange={(value) => patch({ spellAttackCasts: value })}
-                          value={form.spellAttackCasts}
-                        />
-                        <NumberField
-                          hint={t('settings.spells.minManaHint')}
-                          label={t('settings.spells.minManaLabel')}
-                          name="min-mana"
-                          onChange={(value) => patch({ spellMinMana: value })}
-                          bar={barOfMana(form.spellMinMana)}
-                          figure={ofMana(form.spellMinMana)}
-                          value={form.spellMinMana}
-                        />
-                        <SpellField
-                          hint={t('settings.spells.areaCastHint')}
-                          label={t('settings.spells.areaCastLabel')}
-                          name="area-spell"
-                          onChange={(value) => patch({ spellAreaAttack: value })}
-                          spells={shownBook.spells}
-                          value={form.spellAreaAttack}
-                        />
-                        <NumberField
-                          hint={t('settings.spells.areaMinMobsHint')}
-                          label={t('settings.spells.areaMinMobsLabel')}
-                          name="area-min-mobs"
-                          onChange={(value) => patch({ spellAreaMinMobs: value })}
-                          value={form.spellAreaMinMobs}
-                        />
-                        <NumberField
-                          hint={t('settings.spells.areaMinManaHint')}
-                          label={t('settings.spells.areaMinManaLabel')}
-                          name="area-min-mana"
-                          onChange={(value) => patch({ spellAreaMinMana: value })}
-                          bar={barOfMana(form.spellAreaMinMana)}
-                          figure={ofMana(form.spellAreaMinMana)}
-                          value={form.spellAreaMinMana}
-                        />
-                        <NumberField
-                          hint={t('settings.spells.areaCastsHint')}
-                          label={t('settings.spells.areaCastsLabel')}
-                          name="area-casts"
-                          onChange={(value) => patch({ spellAreaCasts: value })}
-                          value={form.spellAreaCasts}
-                        />
-                        <p className="settings-note">{t('settings.spells.note')}</p>
-                      </fieldset>
-
-                      <fieldset className="settings-menus" data-fieldset="spells-drain">
-                        <legend>{t('settings.spells.drainLegend')}</legend>
-                        <p className="settings-note">{t('settings.spells.drainNote')}</p>
-                        <div className="settings-inline">
-                          <SpellField
-                            hint={t('settings.spells.drainHint')}
-                            label={t('settings.spells.drainLabel')}
-                            name="drain"
-                            onChange={(value) => patch({ spellDrain: value })}
-                            spells={shownBook.drains}
-                            value={form.spellDrain}
-                          />
-                          <SpellField
-                            hint={t('settings.spells.areaDrainHint')}
-                            label={t('settings.spells.areaDrainLabel')}
-                            name="area-drain"
-                            onChange={(value) => patch({ spellAreaDrain: value })}
-                            spells={shownBook.drains}
-                            value={form.spellAreaDrain}
-                          />
-                          <NumberField
-                            hint={t('settings.spells.drainBelowHint')}
-                            label={t('settings.spells.drainBelowLabel')}
-                            name="drain-below"
-                            onChange={(value) => patch({ spellDrainBelow: value })}
-                            bar={barOfHealth(form.spellDrainBelow)}
-                            figure={ofHealth(form.spellDrainBelow)}
-                            value={form.spellDrainBelow}
-                          />
-                          <NumberField
-                            hint={t('settings.spells.drainToHint')}
-                            label={t('settings.spells.drainToLabel')}
-                            name="drain-to"
-                            onChange={(value) => patch({ spellDrainTo: value })}
-                            bar={barOfHealth(form.spellDrainTo)}
-                            figure={ofHealth(form.spellDrainTo)}
-                            value={form.spellDrainTo}
-                          />
-                        </div>
-                      </fieldset>
-
-                      <fieldset className="settings-menus" data-fieldset="spells-heal">
-                        <legend>{t('settings.spells.healLegend')}</legend>
-                        <CheckField
-                          checked={form.spellAutoChooseHeal}
-                          hint={t('settings.spells.autoChooseHealHint')}
-                          label={t('settings.spells.autoChooseHeal')}
-                          name="spell-auto-choose-heal"
-                          onChange={(value) => patch({ spellAutoChooseHeal: value })}
-                        />
-                        <div className="settings-inline">
-                          <SpellField
-                            hint={t('settings.spells.healHint')}
-                            label={t('settings.spells.healLabel')}
-                            name="heal"
-                            onChange={(value) => patch({ spellHeal: value })}
-                            spells={shownBook.selfHeals}
-                            value={form.spellHeal}
-                            warning={
-                              refusesTarget(shownBook.spells, castsOnSelf, form.spellHeal)
-                                ? t('settings.spells.healNoSelfCast')
-                                : undefined
-                            }
-                          />
-                          <NumberField
-                            label={t('settings.spells.healBelowLabel')}
-                            name="heal-below"
-                            onChange={(value) => patch({ spellHealBelow: value })}
-                            bar={barOfHealth(form.spellHealBelow)}
-                            figure={ofHealth(form.spellHealBelow)}
-                            value={form.spellHealBelow}
-                          />
-                          <NumberField
-                            hint={t('settings.spells.healBelowInCombatHint')}
-                            label={t('settings.spells.healBelowInCombatLabel')}
-                            name="heal-below-combat"
-                            onChange={(value) => patch({ spellHealBelowInCombat: value })}
-                            bar={barOfHealth(form.spellHealBelowInCombat)}
-                            figure={ofHealth(form.spellHealBelowInCombat)}
-                            value={form.spellHealBelowInCombat}
-                          />
-                          <NumberField
-                            hint={t('settings.spells.healToHint')}
-                            label={t('settings.spells.healToLabel')}
-                            name="heal-to"
-                            onChange={(value) => patch({ spellHealTo: value })}
-                            bar={barOfHealth(form.spellHealTo)}
-                            figure={ofHealth(form.spellHealTo)}
-                            value={form.spellHealTo}
-                          />
-                        </div>
-                        <CheckField
-                          checked={form.spellHealParty}
-                          hint={t('settings.spells.healPartyHint')}
-                          label={t('settings.spells.healParty')}
-                          name="heal-party"
-                          onChange={(value) => patch({ spellHealParty: value })}
-                        />
-                        <SpellField
-                          hint={t('settings.spells.healPartyWithHint')}
-                          label={t('settings.spells.healPartyWithLabel')}
-                          name="heal-party-with"
-                          onChange={(value) => patch({ spellHealPartyWith: value })}
-                          spells={shownBook.partyHeals}
-                          value={form.spellHealPartyWith}
-                          warning={
-                            refusesTarget(shownBook.spells, castsOnOthers, form.spellHealPartyWith)
-                              ? t('settings.spells.healNoPartyCast')
-                              : undefined
-                          }
-                        />
-                      </fieldset>
-
-                      <fieldset className="settings-menus" data-fieldset="spells-regen">
-                        <legend>{t('settings.spells.regenLegend')}</legend>
-                        <p className="settings-note">{t('settings.spells.regenNote')}</p>
-                        <RegenFields
-                          namePrefix="character"
-                          onChange={(spellRegen) => patch({ spellRegen })}
-                          regen={form.spellRegen}
-                          spells={shownBook.selfHeals}
-                        />
-                      </fieldset>
-
-                      <fieldset className="settings-menus" data-fieldset="spells-cures">
-                        <legend>{t('settings.spells.cureLegend')}</legend>
-                        <p className="settings-note">{t('settings.spells.cureNote')}</p>
-                        <CureFields
-                          cures={form.spellCures}
-                          gates={shownBook.gates}
-                          namePrefix="character"
-                          onChange={(spellCures) => patch({ spellCures })}
-                          spells={shownBook.spells}
-                        />
-                      </fieldset>
-
-                      <fieldset className="settings-menus" data-fieldset="spells-blessings">
-                        <legend>{t('settings.spells.blessingsLegend')}</legend>
-                        <p className="settings-note">{t('settings.spells.blessingsNote')}</p>
-                        <CheckField
-                          checked={form.spellAutoBless}
-                          hint={t('settings.spells.autoBlessHint')}
-                          label={t('settings.spells.autoBlessLabel')}
-                          name="auto-bless"
-                          onChange={(value) => patch({ spellAutoBless: value })}
-                        />
-                        <BlessingList
-                          blessings={form.spellBlessings}
-                          namePrefix="blessing"
-                          onChange={(spellBlessings) => patch({ spellBlessings })}
-                          spells={shownBook.spells}
-                        />
-                        <CheckField
-                          checked={form.spellNotifyWearOff}
-                          hint={t('settings.spells.notifyWearOffHint')}
-                          label={t('settings.spells.notifyWearOffLabel')}
-                          name="notify-wear-off"
-                          onChange={(value) => patch({ spellNotifyWearOff: value })}
-                        />
+                      <fieldset className="settings-menus" data-fieldset="remotes">
+                        <legend>{t('settings.remotes.legend')}</legend>
                         {/*
-                          Beside the blessings this character *casts*, because
-                          it answers the same question from the other side: a
-                          weapon that blesses is a blessing nobody had to
-                          configure, and the list above is where somebody looks
-                          for one.
-                        */}
-                        <CheckField
-                          checked={form.spellInvokeItems}
-                          hint={t('settings.spells.invokeItemsHint')}
-                          label={t('settings.spells.invokeItemsLabel')}
-                          name="invoke-items"
-                          onChange={(value) => patch({ spellInvokeItems: value })}
+    Who may drive this character, and how far: the per-player grants the
+    MegaMUD engine reads as each player's remote bits (`grantPlayers`).
+    Whether remotes are answered at all is MegaMUD's own, on the Talk tab
+    above; the gang and party lists were the old automation's (2026-10-14).
+  */}
+                        <p className="settings-warn">{t('settings.remotes.channelWarning')}</p>
+                        <p className="settings-note">{t('settings.remotes.engineNote')}</p>
+                        <PlayerGrants
+                          grants={form.remotePlayers}
+                          onChange={(players) => patch({ remotePlayers: players })}
                         />
                       </fieldset>
                     </>
                   )}
 
-                  {section === 'party' && (
-                    <>
-                      <fieldset className="settings-menus" data-fieldset="party-follow">
-                        <legend>{t('settings.party.legend')}</legend>
-                        <p className="settings-warn">{t('settings.party.warning')}</p>
-                        <CheckField
-                          checked={form.partyAssist}
-                          hint={t('settings.party.assistHint')}
-                          label={t('settings.party.assistLabel')}
-                          name="party-assist"
-                          onChange={(value) => patch({ partyAssist: value })}
-                        />
-                        <CheckField
-                          checked={form.partyDefend}
-                          hint={t('settings.party.defendHint')}
-                          label={t('settings.party.defendLabel')}
-                          name="party-defend"
-                          onChange={(value) => patch({ partyDefend: value })}
-                        />
-                        <CheckField
-                          checked={form.partyRest}
-                          hint={t('settings.party.restHint')}
-                          label={t('settings.party.restLabel')}
-                          name="party-rest"
-                          onChange={(value) => patch({ partyRest: value })}
-                        />
-                        <CheckField
-                          checked={form.partyAutoRank}
-                          hint={t('settings.party.autoRankHint')}
-                          label={t('settings.party.autoRankLabel')}
-                          name="party-auto-rank"
-                          onChange={(value) => patch({ partyAutoRank: value })}
-                        />
-                        <SelectField
-                          hint={t('settings.party.preferredRankHint')}
-                          label={t('settings.party.preferredRankLabel')}
-                          name="party-preferred-rank"
-                          onChange={(value) => patch({ partyPreferredRank: value as PartyRank })}
-                          options={RANK_OPTIONS()}
-                          value={form.partyPreferredRank}
-                        />
-                        <CheckField
-                          checked={form.partyIgnoreParty}
-                          hint={t('settings.party.ignorePartyHint')}
-                          label={t('settings.party.ignorePartyLabel')}
-                          name="party-ignore-party"
-                          onChange={(value) => patch({ partyIgnoreParty: value })}
-                        />
-                      </fieldset>
-                      <fieldset className="settings-menus" data-fieldset="party-leading">
-                        <legend>{t('settings.party.leadLegend')}</legend>
-                        <p className="settings-note">{t('settings.party.leadNote')}</p>
-                        <div className="settings-inline">
-                          <NumberField
-                            hint={t('settings.party.waitBelowHint')}
-                            label={t('settings.party.waitBelowLabel')}
-                            name="party-wait-below"
-                            onChange={(value) => patch({ partyWaitBelow: value })}
-                            bar={barOfHealth(form.partyWaitBelow)}
-                            figure={ofHealth(form.partyWaitBelow)}
-                            value={form.partyWaitBelow}
-                          />
-                          <NumberField
-                            hint={t('settings.party.waitMinutesHint')}
-                            label={t('settings.party.waitMinutesLabel')}
-                            name="party-wait-minutes"
-                            onChange={(value) => patch({ partyWaitMinutes: value })}
-                            value={form.partyWaitMinutes}
-                          />
-                          <NumberField
-                            hint={t('settings.party.parEveryHint')}
-                            label={t('settings.party.parEveryLabel')}
-                            name="party-par-every"
-                            onChange={(value) => patch({ partyParEvery: value })}
-                            value={form.partyParEvery}
-                          />
-                        </div>
-                        <CheckField
-                          checked={form.partyIgnoreWait}
-                          hint={t('settings.party.ignoreWaitHint')}
-                          label={t('settings.party.ignoreWaitLabel')}
-                          name="party-ignore-wait"
-                          onChange={(value) => patch({ partyIgnoreWait: value })}
-                        />
-                        <CheckField
-                          checked={form.partyParAfterRound}
-                          hint={t('settings.party.parAfterRoundHint')}
-                          label={t('settings.party.parAfterRoundLabel')}
-                          name="party-par-after-round"
-                          onChange={(value) => patch({ partyParAfterRound: value })}
-                        />
-                        <CheckField
-                          checked={form.partyRequestHealth}
-                          hint={t('settings.party.requestHealthHint')}
-                          label={t('settings.party.requestHealthLabel')}
-                          name="party-request-health"
-                          onChange={(value) => patch({ partyRequestHealth: value })}
-                        />
-                      </fieldset>
-                      <fieldset className="settings-menus" data-fieldset="party-healing">
-                        <legend>{t('settings.party.healLegend')}</legend>
-                        <p className="settings-note">{t('settings.party.healNote')}</p>
-                        <div className="settings-inline">
-                          <NumberField
-                            hint={t('settings.party.askHealHint')}
-                            label={t('settings.party.askHealLabel')}
-                            name="party-ask-heal"
-                            onChange={(value) => patch({ partyAskHeal: value })}
-                            bar={barOfHealth(form.partyAskHeal)}
-                            figure={ofHealth(form.partyAskHeal)}
-                            value={form.partyAskHeal}
-                          />
-                        </div>
-                      </fieldset>
-                      {/*
-                        The party's `@` commands, here rather than beside the
-                        gang's on the Remotes page, because this is where
-                        somebody is thinking about what a party does together —
-                        and the Remotes page says the list is here.
-
-                        Drawn whether or not this character answers remotes at
-                        all: that switch is on another page, and a grid that
-                        vanished when it was off would be a control somebody
-                        has to already know about to find. The warning says so
-                        instead, the way the Gang card's does.
-                      */}
-                      <fieldset className="settings-menus" data-fieldset="party-remotes">
-                        <legend>{t('settings.party.remotesLegend')}</legend>
-                        <p className="settings-note">{t('settings.party.remotesNote')}</p>
-                        {form.answerRemotes ? null : (
-                          <p className="settings-warn">{t('settings.party.remotesOffWarning')}</p>
-                        )}
-                        <RemoteList
-                          allow={form.remoteParty}
-                          mode="party"
-                          onSet={(remote, stance) =>
-                            patch({
-                              remoteParty:
-                                stance === 'allow'
-                                  ? [...form.remoteParty, remote]
-                                  : form.remoteParty.filter((entry) => entry !== remote)
-                            })
-                          }
-                          onSetAll={(stance) =>
-                            patch({
-                              remoteParty: stance === 'allow' ? [...ACTIONABLE_REMOTES] : []
-                            })
-                          }
-                          subject={t('settings.party.remotesLegend')}
-                        />
-                      </fieldset>
-                      <p className="settings-note">{t('settings.party.blessingsMoved')}</p>
-                    </>
-                  )}
-
-                  {section === 'train' && (
-                    <fieldset className="settings-menus" data-fieldset="train">
-                      <legend>{t('settings.train.legend')}</legend>
-                      <p className="settings-warn">{t('settings.train.warning')}</p>
-                      {/*
-                        Going to collect the level, and where (todo 18).
-                        Above the stat screen's own switch because it comes
-                        first in time: the points this spends are awarded by
-                        the level this collects.
-                      */}
-                      <CheckField
-                        checked={form.trainLevels}
-                        hint={t('settings.train.levelsHint')}
-                        label={t('settings.train.levels')}
-                        name="train-levels"
-                        onChange={(value) => patch({ trainLevels: value })}
-                      />
-                      {form.trainLevels && (
-                        <>
-                          {/*
-                            Only the rooms the realm says will take this
-                            character at this level — a trainer that refuses
-                            is a walk across two maps to be told so. The class
-                            room stops at level 10 and every band has a
-                            ceiling, so the list shrinks as the character
-                            grows and a stated room can stop being offered.
-                          */}
-                          <SelectField
-                            hint={t('settings.train.trainerHint')}
-                            label={t('settings.train.trainerLabel')}
-                            name="train-trainer"
-                            onChange={(value) => patch({ trainTrainer: value })}
-                            options={[
-                              { value: '', label: t('settings.train.trainerCheapest') },
-                              ...(trainers ?? []).map((entry) => ({
-                                value: String(entry.shop),
-                                label: t('settings.train.trainerOption', {
-                                  name: entry.name,
-                                  room: entry.roomName,
-                                  cost: entry.cost.toLocaleString()
-                                })
-                              }))
-                            ]}
-                            value={form.trainTrainer}
-                          />
-                          {/*
-                            Said out loud, because an empty picker and a
-                            picker still loading look the same and mean
-                            opposite things. And a stated room no longer in
-                            the list is the case the reviewer asked about:
-                            the errand refuses rather than quietly walking
-                            somewhere else.
-                          */}
-                          {trainers !== null && trainers.length === 0 && (
-                            <p className="settings-warn">{t('settings.train.trainerNowhere')}</p>
-                          )}
-                          {trainers !== null &&
-                            form.trainTrainer !== '' &&
-                            !trainers.some((entry) => String(entry.shop) === form.trainTrainer) && (
-                              <p className="settings-warn">{t('settings.train.trainerStale')}</p>
-                            )}
-                        </>
-                      )}
-                      <CheckField
-                        checked={form.trainStats}
-                        hint={t('settings.train.statsHint')}
-                        label={t('settings.train.stats')}
-                        name="train-stats"
-                        onChange={(value) => patch({ trainStats: value })}
-                      />
-                      <p className="settings-note">{t('settings.train.wantedNote')}</p>
-                      <div className="settings-inline">
-                        <NumberField
-                          label={t('settings.train.strength')}
-                          name="train-strength"
-                          onChange={(value) =>
-                            patch({ trainWanted: { ...form.trainWanted, strength: value } })
-                          }
-                          value={form.trainWanted.strength}
-                        />
-                        <NumberField
-                          label={t('settings.train.intellect')}
-                          name="train-intellect"
-                          onChange={(value) =>
-                            patch({ trainWanted: { ...form.trainWanted, intellect: value } })
-                          }
-                          value={form.trainWanted.intellect}
-                        />
-                        <NumberField
-                          label={t('settings.train.willpower')}
-                          name="train-willpower"
-                          onChange={(value) =>
-                            patch({ trainWanted: { ...form.trainWanted, willpower: value } })
-                          }
-                          value={form.trainWanted.willpower}
-                        />
-                        <NumberField
-                          label={t('settings.train.agility')}
-                          name="train-agility"
-                          onChange={(value) =>
-                            patch({ trainWanted: { ...form.trainWanted, agility: value } })
-                          }
-                          value={form.trainWanted.agility}
-                        />
-                        <NumberField
-                          label={t('settings.train.health')}
-                          name="train-health"
-                          onChange={(value) =>
-                            patch({ trainWanted: { ...form.trainWanted, health: value } })
-                          }
-                          value={form.trainWanted.health}
-                        />
-                        <NumberField
-                          label={t('settings.train.charm')}
-                          name="train-charm"
-                          onChange={(value) =>
-                            patch({ trainWanted: { ...form.trainWanted, charm: value } })
-                          }
-                          value={form.trainWanted.charm}
-                        />
-                      </div>
-                    </fieldset>
-                  )}
-
-                  {section === 'gear' && (
-                    <>
-                      {/*
-                        The kit, and when to be in it (todo 00). The sets are
-                        the section; the off-round invocation is its own
-                        fieldset because it is a different verb — `use` rather
-                        than `wear` — and the only control here that spends a
-                        round of a fight.
-                      */}
-                      <fieldset className="settings-menus" data-fieldset="gear">
-                        <legend>{t('settings.gear.legend')}</legend>
-                        <p className="settings-note">{t('settings.gear.note')}</p>
-                        <CheckField
-                          checked={form.gearEnabled}
-                          hint={t('settings.gear.enabledHint')}
-                          label={t('settings.gear.enabled')}
-                          name="gear-enabled"
-                          onChange={(value) => patch({ gearEnabled: value })}
-                        />
-                        <GearSetList
-                          mobs={mobs}
-                          namePrefix="gear-set"
-                          onChange={(gearSets) => patch({ gearSets })}
-                          sets={form.gearSets}
-                        />
-                      </fieldset>
-
-                      <fieldset className="settings-menus" data-fieldset="gear-offround">
-                        <legend>{t('settings.gear.offRoundLegend')}</legend>
-                        <p className="settings-note">{t('settings.gear.offRoundNote')}</p>
-                        <div className="settings-inline">
-                          <TextField
-                            hint={t('settings.gear.offRoundItemHint')}
-                            label={t('settings.gear.offRoundItem')}
-                            name="gear-offround-item"
-                            onChange={(value) => patch({ gearOffRoundItem: value })}
-                            value={form.gearOffRoundItem}
-                          />
-                          <NumberField
-                            hint={t('settings.gear.offRoundEveryHint')}
-                            label={t('settings.gear.offRoundEvery')}
-                            name="gear-offround-every"
-                            onChange={(value) => patch({ gearOffRoundEvery: value })}
-                            value={form.gearOffRoundEvery}
-                          />
-                        </div>
-                      </fieldset>
-                    </>
-                  )}
-
-                  {section === 'quests' && (
-                    <fieldset className="settings-menus" data-fieldset="quests">
-                      <legend>{t('settings.quests.legend')}</legend>
-                      <p className="settings-warn">{t('settings.quests.warning')}</p>
-                      <CheckField
-                        checked={form.questsEnabled}
-                        hint={t('settings.quests.enabledHint')}
-                        label={t('settings.quests.enabled')}
-                        name="quests-enabled"
-                        onChange={(value) => patch({ questsEnabled: value })}
-                      />
-                    </fieldset>
-                  )}
-
-                  {section === 'remotes' && (
-                    <fieldset className="settings-menus" data-fieldset="remotes">
-                      <legend>{t('settings.remotes.legend')}</legend>
-                      {/*
-                        The third warning in the open, and it earns the place
-                        the other two do: what this switch turns on is a channel
-                        by which somebody else's typing moves this character.
-                        Above the control, because a warning behind a hover is
-                        one nobody reads until afterwards.
-                      */}
-                      <p className="settings-warn">{t('settings.remotes.channelWarning')}</p>
-                      <CheckField
-                        checked={form.answerRemotes}
-                        hint={t('settings.remotes.answerHint')}
-                        label={t('settings.remotes.enabledLabel')}
-                        name="remotes-enabled"
-                        onChange={(value) => patch({ answerRemotes: value })}
-                      />
-                      {/*
-                        The gate. Only drawn with the switch on: grants for a
-                        channel nobody is listening on are a form asking a
-                        question that cannot matter yet.
-                      */}
-                      {form.answerRemotes && (
-                        <>
-                          <CheckField
-                            checked={form.remoteGangpath}
-                            hint={t('settings.remotes.gangpathHint')}
-                            label={t('settings.remotes.gangpathLabel')}
-                            name="remotes-gangpath"
-                            onChange={(value) => patch({ remoteGangpath: value })}
-                          />
-                          <CheckField
-                            checked={form.remoteAutoJoin}
-                            hint={t('settings.remotes.autoJoinHint')}
-                            label={t('settings.remotes.autoJoinLabel')}
-                            name="remotes-auto-join"
-                            onChange={(value) => patch({ remoteAutoJoin: value })}
-                          />
-                          {/*
-                            Nothing on the wire establishes who shares a gang
-                            on its own: a gangpath does not prove it, and this
-                            character's own outgoing one comes back naming
-                            itself. Said where the grant is made, not only when
-                            it silently fails to allow somebody.
-                          */}
-                          <p className="settings-warn">{t('settings.remotes.gangWarning')}</p>
-                          <h4 className="settings-subhead">{t('settings.remotes.gangLegend')}</h4>
-                          <RemoteList
-                            allow={form.remoteGang}
-                            mode="gang"
-                            onSet={(remote, stance) =>
-                              patch({
-                                remoteGang:
-                                  stance === 'allow'
-                                    ? [...form.remoteGang, remote]
-                                    : form.remoteGang.filter((entry) => entry !== remote)
-                              })
-                            }
-                            onSetAll={(stance) =>
-                              patch({
-                                remoteGang: stance === 'allow' ? [...ACTIONABLE_REMOTES] : []
-                              })
-                            }
-                            subject={t('settings.remotes.gangLegend')}
-                          />
-
-                          {/*
-                            The per-player half, which the Player flyout also
-                            writes — and it is here because the flyout can only
-                            be opened on somebody the client has *seen*. A pair
-                            of characters set up before either has logged in is
-                            the ordinary case, and a permission reachable only
-                            once the person is standing in front of you is one
-                            you cannot prepare.
-                          */}
-                          <PlayerGrants
-                            grants={form.remotePlayers}
-                            onChange={(players) => patch({ remotePlayers: players })}
-                          />
-                        </>
-                      )}
-                      {/*
-                        Where the third list is. A permission page showing two
-                        of the three grants would have somebody auditing who
-                        can drive this character conclude they had seen it all.
-                      */}
-                      <p className="settings-note">{t('settings.remotes.partyListNote')}</p>
-                      <p className="settings-note">{t('settings.remotes.remoteControlNote')}</p>
-                      <p className="settings-note">{t('settings.remotes.replyRoutingNote')}</p>
-                    </fieldset>
-                  )}
-
-                  {section === 'talk' && (
-                    <>
-                      <fieldset className="settings-menus" data-fieldset="talk">
-                        <legend>{t('settings.talk.legend')}</legend>
-                        {/*
-                        The cost is stated above the switch rather than behind a
-                        hover, the way the remotes warning is: this one spends a
-                        command per stranger *and* tells them they were looked
-                        at, which on a PvP realm is the half somebody would want
-                        to know before turning it on rather than after.
-                      */}
-                        <p className="settings-warn">{t('settings.talk.lookWarning')}</p>
-                        <CheckField
-                          checked={form.lookAtPlayers}
-                          hint={t('settings.talk.lookHint')}
-                          label={t('settings.talk.lookLabel')}
-                          name="talk-look"
-                          onChange={(value) => patch({ lookAtPlayers: value })}
-                        />
-                      </fieldset>
-
-                      <fieldset className="settings-menus" data-fieldset="talk-pvp">
-                        <legend>{t('settings.health.pvpLegend')}</legend>
-                        <CheckField
-                          checked={form.pvpNotifyGang}
-                          hint={t('settings.health.pvpNotifyHint')}
-                          label={t('settings.health.pvpNotifyLabel')}
-                          name="pvp-notify"
-                          onChange={(value) => patch({ pvpNotifyGang: value })}
-                        />
-                        <SelectField
-                          hint={t('settings.health.pvpActionHint')}
-                          label={t('settings.health.pvpActionLabel')}
-                          name="pvp-action"
-                          onChange={(value) =>
-                            patch({ pvpAction: value === 'retreat' ? 'retreat' : 'none' })
-                          }
-                          options={PVP_ACTIONS.map((action) => ({
-                            value: action,
-                            label: action
-                          }))}
-                          value={form.pvpAction}
-                        />
-                      </fieldset>
-                    </>
-                  )}
-
-                  {section === 'rewrites' && (
+                  {section === 'Statline' && (
                     <>
                       <fieldset className="settings-menus" data-fieldset="rewrites-statline">
                         <legend>{t('settings.statline.legend')}</legend>
@@ -4304,6 +3041,7 @@ export default function SettingsScreen({
                         />
                         <p className="settings-note">{t('settings.statline.templateNote')}</p>
                       </fieldset>
+
                       <RewritesDesigner
                         figures={figures}
                         idPrefix="rewrites"
@@ -4314,69 +3052,28 @@ export default function SettingsScreen({
                     </>
                   )}
 
-                  {section === 'alerts' && (
-                    <fieldset className="settings-menus" data-fieldset="alerts-rules">
-                      {/*
+                  {section === 'Sounds' && (
+                    <>
+                      <fieldset className="settings-menus" data-fieldset="alerts-rules">
+                        {/*
                         The player's own rows first, because they decide before
                         the floor and the mute list below do — reading the
                         screen top to bottom should be reading the order the
                         client asks in (todo 29).
                       */}
-                      <legend>{t('settings.alerts.ruleLegend')}</legend>
-                      <p className="settings-note">{t('settings.alerts.ruleNote')}</p>
-                      <AlertList
-                        namePrefix="alert-rule"
-                        onChange={(alertRules) => patch({ alertRules })}
-                        rules={form.alertRules}
-                      />
-                    </fieldset>
+                        <legend>{t('settings.alerts.ruleLegend')}</legend>
+                        <p className="settings-note">{t('settings.alerts.ruleNote')}</p>
+                        <AlertList
+                          namePrefix="alert-rule"
+                          onChange={(alertRules) => patch({ alertRules })}
+                          rules={form.alertRules}
+                        />
+                      </fieldset>
+                    </>
                   )}
 
-                  {/*
-                    Beside the alerts, because both are about a player who is
-                    not looking: alerts are what they hear about the character,
-                    and this is what the character says for them.
-                  */}
-                  {section === 'alerts' && (
-                    <fieldset className="settings-menus" data-fieldset="alerts-afk">
-                      <legend>{t('settings.afk.legend')}</legend>
-                      <div className="settings-inline">
-                        <CheckField
-                          checked={form.afkEnabled}
-                          hint={t('settings.afk.enabledHint')}
-                          label={t('settings.afk.enabled')}
-                          name="afk-enabled"
-                          onChange={(value) => patch({ afkEnabled: value })}
-                        />
-                        <NumberField
-                          hint={t('settings.afk.afterHint')}
-                          label={t('settings.afk.afterLabel')}
-                          name="afk-after"
-                          onChange={(value) => patch({ afkAfterMinutes: value })}
-                          value={form.afkAfterMinutes}
-                        />
-                        <TextField
-                          hint={t('settings.afk.replyHint')}
-                          label={t('settings.afk.replyLabel')}
-                          name="afk-reply"
-                          onChange={(value) => patch({ afkReply: value })}
-                          value={form.afkReply}
-                        />
-                      </div>
-                    </fieldset>
-                  )}
-
-                  {section === 'movement' && (
+                  {section === 'Other' && (
                     <>
-                      {/*
-                        Four questions, four fieldsets (todo 00). This was one
-                        fieldset of fourteen controls under a single *Walking a
-                        Route* legend, which is a list rather than a form: doors,
-                        the shadows, light, the kit and what a condition stops
-                        are four separate decisions, and a reader looking for one
-                        of them had to read all of it. The groups are the
-                        questions, in the order a step asks them.
-                      */}
                       <fieldset className="settings-menus" data-fieldset="movement-doors">
                         <legend>{t('settings.movement.doorsLegend')}</legend>
                         <div className="settings-inline">
@@ -4437,98 +3134,86 @@ export default function SettingsScreen({
                           )}
                         </div>
                       </fieldset>
+                    </>
+                  )}
 
-                      <fieldset className="settings-menus" data-fieldset="movement-stealth">
-                        <legend>{t('settings.movement.stealthLegend')}</legend>
-                        <CheckField
-                          checked={form.sneak}
-                          hint={t('settings.movement.sneakHint')}
-                          label={t('settings.movement.sneak')}
-                          name="sneak"
-                          onChange={(value) => patch({ sneak: value })}
-                        />
-                      </fieldset>
-
-                      <fieldset className="settings-menus" data-fieldset="movement-light">
-                        <legend>{t('settings.movement.lightLegend')}</legend>
-                        <CheckField
-                          checked={form.provideLight}
-                          hint={t('settings.movement.provideLightHint')}
-                          label={t('settings.movement.provideLight')}
-                          name="provide-light"
-                          onChange={(value) => patch({ provideLight: value })}
-                        />
-                        {form.provideLight && (
-                          <>
-                            <CheckField
-                              checked={form.lightDimRooms}
-                              hint={t('settings.movement.lightDimRoomsHint')}
-                              label={t('settings.movement.lightDimRooms')}
-                              name="light-dim-rooms"
-                              onChange={(value) => patch({ lightDimRooms: value })}
+                  {section === 'Health' && (
+                    <>
+                      <fieldset className="settings-menus" data-fieldset="health-flee">
+                        <legend>{t('settings.health.fleeLegend')}</legend>
+                        <p className="settings-note">{t('settings.health.fleeHint')}</p>
+                        <div className="settings-inline">
+                          <CheckField
+                            checked={form.fleeGoto}
+                            label={t('settings.health.fleeLabel')}
+                            name="flee-goto"
+                            onChange={(value) => patch({ fleeGoto: value })}
+                          />
+                          {form.fleeGoto && (
+                            <NumberField
+                              label={t('settings.health.belowHealthLabel')}
+                              name="flee-health"
+                              bar={barOfHealth(form.fleeGotoBelow)}
+                              figure={ofHealth(form.fleeGotoBelow)}
+                              onChange={(value) => patch({ fleeGotoBelow: value })}
+                              value={form.fleeGotoBelow}
                             />
-                            <CheckField
-                              checked={form.extinguishInLight}
-                              hint={t('settings.movement.extinguishInLightHint')}
-                              label={t('settings.movement.extinguishInLight')}
-                              name="extinguish-in-light"
-                              onChange={(value) => patch({ extinguishInLight: value })}
-                            />
-                          </>
+                          )}
+                        </div>
+                        {form.fleeGoto && (
+                          <TextField
+                            hint={t('settings.health.fleeDestinationHint')}
+                            label={t('settings.health.fleeDestinationLabel')}
+                            name="flee-destination"
+                            onChange={(value) => patch({ fleeGotoDestination: value })}
+                            placeholder={t('settings.health.fleeDestinationPlaceholder')}
+                            spellCheck={false}
+                            value={form.fleeGotoDestination}
+                            wide
+                          />
                         )}
                       </fieldset>
+                    </>
+                  )}
 
-                      <fieldset className="settings-menus" data-fieldset="movement-afflictions">
-                        <legend>{t('settings.movement.afflictionsLegend')}</legend>
-                        <CheckField
-                          checked={form.walkWhileBlind}
-                          hint={t('settings.movement.walkWhileBlindHint')}
-                          label={t('settings.movement.walkWhileBlind')}
-                          name="walk-while-blind"
-                          onChange={(value) => patch({ walkWhileBlind: value })}
-                        />
-                        <CheckField
-                          checked={form.walkWhilePoisoned}
-                          hint={t('settings.movement.walkWhilePoisonedHint')}
-                          label={t('settings.movement.walkWhilePoisoned')}
-                          name="walk-while-poisoned"
-                          onChange={(value) => patch({ walkWhilePoisoned: value })}
-                        />
-                        <CheckField
-                          checked={form.walkWhileConfused}
-                          hint={t('settings.movement.walkWhileConfusedHint')}
-                          label={t('settings.movement.walkWhileConfused')}
-                          name="walk-while-confused"
-                          onChange={(value) => patch({ walkWhileConfused: value })}
-                        />
-                        <CheckField
-                          checked={form.walkWhileLosingHp}
-                          hint={t('settings.movement.walkWhileLosingHpHint')}
-                          label={t('settings.movement.walkWhileLosingHp')}
-                          name="walk-while-losing-hp"
-                          onChange={(value) => patch({ walkWhileLosingHp: value })}
-                        />
-                        <CheckField
-                          checked={form.fightOnArrival}
-                          hint={t('settings.movement.fightOnArrivalHint')}
-                          label={t('settings.movement.fightOnArrival')}
-                          name="fight-on-arrival"
-                          onChange={(value) => patch({ fightOnArrival: value })}
-                        />
+                  {section === 'Combat' && (
+                    <>
+                      {/*
+                            This character's own monster rows, laid over the
+                            realm's table field by field -- a shaman's spell
+                            for a monster the realm marks Flee keeps the Flee.
+                            The one list about named monsters: what to leave
+                            alone is a Friend, and the attack order is the
+                            priority. Part of the form's draft, so it saves
+                            with it.
+                          */}
+                      <fieldset className="settings-menus" data-fieldset="combat-monster-rows">
+                        <legend>{t('settings.combat.monsterRowsLegend')}</legend>
+                        <p className="settings-note">{t('settings.combat.monsterRowsNote')}</p>
+                        <div className="realm-messages">
+                          <MonsterRuleList
+                            addLabel={t('settings.monsters.add')}
+                            emptyText={t('settings.combat.monsterRowsNone')}
+                            known={monsterNames}
+                            namePrefix="character-monster"
+                            onChange={(rows) => {
+                              patch({ combatMonsters: rows });
+                              return Promise.resolve(null);
+                            }}
+                            rows={form.combatMonsters}
+                          />
+                        </div>
                       </fieldset>
+                    </>
+                  )}
 
-                      <fieldset className="settings-menus" data-fieldset="movement-keep-out">
-                        <legend>{t('settings.movement.keepOutLegend')}</legend>
-                        <TextField
-                          hint={t('settings.movement.keepOutOfHint')}
-                          label={t('settings.movement.keepOutOf')}
-                          name="keep-out-of"
-                          onChange={(value) => patch({ keepOutOf: splitNames(value) })}
-                          placeholder={t('settings.movement.keepOutOfPlaceholder')}
-                          value={joinNames(form.keepOutOf)}
-                          wide
-                        />
-                      </fieldset>
+                  {section === 'Loot' && (
+                    <>
+                      <ItemDetailsFieldset
+                        idPrefix=""
+                        onChange={(itemDetails) => patch({ loot: { ...form.loot, itemDetails } })}
+                        rows={form.loot.itemDetails}
+                      />
 
                       <fieldset className="settings-menus" data-fieldset="movement-carry">
                         <legend>{t('settings.movement.carryLegend')}</legend>
@@ -4570,88 +3255,6 @@ export default function SettingsScreen({
                           onChange={(value) => patch({ collectKeys: value })}
                         />
                       </fieldset>
-
-                      {/*
-                        What this character picks up, puts down, searches for
-                        and banks — the same four fieldsets the Global page has
-                        always had, which this page had none of (todo 03).
-                        `resolveProfile` overlays whatever `automation:` a
-                        profile states, so a character could hold its own
-                        answers all along and no screen could write one.
-                      */}
-                      <CarrySections
-                        banking={form.banking}
-                        banks={banks}
-                        drop={form.drop}
-                        idPrefix=""
-                        loot={form.loot}
-                        onChange={patch}
-                        search={form.search}
-                      />
-
-                      {/*
-                        Where the character should be at all (todo 05), beside
-                        the loops rather than under Training: what it decides
-                        is a place, and the loop it runs when it gets there is
-                        built from the survey rather than taken off the shelf
-                        above.
-                      */}
-                      <fieldset className="settings-menus" data-fieldset="hunting">
-                        <legend>{t('settings.hunting.legend')}</legend>
-                        <p className="settings-note">{t('settings.hunting.note')}</p>
-                        <div className="settings-inline">
-                          <CheckField
-                            checked={form.huntAuto}
-                            hint={t('settings.hunting.autoHint')}
-                            label={t('settings.hunting.auto')}
-                            name="hunt-auto"
-                            onChange={(value) => patch({ huntAuto: value })}
-                          />
-                          {form.huntAuto && (
-                            <NumberField
-                              hint={t('settings.hunting.radiusHint')}
-                              label={t('settings.hunting.radius')}
-                              name="hunt-radius"
-                              onChange={(value) => patch({ huntRadius: value })}
-                              value={form.huntRadius}
-                            />
-                          )}
-                        </div>
-                      </fieldset>
-
-                      {/*
-                        The loops this character owns, and the ones it merely
-                        walks. A separate fieldset from the two switches above
-                        rather than three more rows in one, because they answer
-                        different questions: those are what a route may do on
-                        the way, and this is where the character goes at all.
-                      */}
-                      <LoopSection
-                        catalogue={catalogue}
-                        inherited={inheritedLoops}
-                        loops={form.loops}
-                        note={t('settings.movement.loopsNote')}
-                        onDonePicking={() => setPicking(false)}
-                        onOpenPicker={openPicker}
-                        onToggle={toggleLoop}
-                        picking={picking}
-                        /*
-                          The one thing about this that can be wrong without
-                          looking wrong. The shipped loops name rooms by
-                          `map/room` in Paradigm's world, the one they were
-                          recorded in; a realm pinned to the other bundled
-                          world or to its own database has different rooms
-                          behind the same numbers, and a route planned from
-                          one goes somewhere nobody chose.
-                        */
-                        warning={
-                          walksAnotherWorld(
-                            servers.find((entry) => entry.name === form.serverName)?.database ?? ''
-                          ) && form.loops.length > 0
-                            ? t('settings.movement.loopsWarning')
-                            : undefined
-                        }
-                      />
                     </>
                   )}
 

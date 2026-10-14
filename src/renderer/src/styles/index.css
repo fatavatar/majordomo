@@ -12740,7 +12740,16 @@ tr:hover .row-action.worn,
  * form rather than reflowing, because the positions are the point.
  */
 .megamud-settings {
-  overflow: auto;
+  /*
+   * A block of the Character page's form now, not the form: across the whole
+   * of its grid, as every fieldset is (alone in its first column, it sat in a
+   * track of no height and the fieldsets under it were drawn over the dialog),
+   * and scrolled with the form rather than by itself (2026-10-14).
+   */
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
 }
 .megamud-page {
   position: relative;
@@ -12838,9 +12847,4 @@ tr:hover .row-action.worn,
 }
 .megamud-list label[data-choice='true'] {
   padding-left: 12px;
-}
-.settings-form.megamud-settings {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
 }
