@@ -7568,6 +7568,11 @@ button.quest-plan-back {
   list-style: none;
 }
 
+/* The loops a character walks but does not own, closed until asked for. */
+.settings-inherited > summary {
+  cursor: pointer;
+}
+
 .settings-loops li {
   align-items: center;
   background: var(--ink-raised);
@@ -11921,6 +11926,11 @@ tr:hover .row-action.worn,
 
 /* A band is a floor, a colour and a remove beside them: a control row, in
    which the two fields still stack label over control and share the width. */
+/* A band is a percent and a colour: a short row, not the page's width. */
+.statline-band {
+  max-width: 520px;
+}
+
 .statline-band > .settings-field {
   display: grid;
   flex: 1 1 0;
@@ -12827,8 +12837,16 @@ tr:hover .row-action.worn,
   display: flex;
   align-items: flex-start;
   color: var(--text-lo);
-  white-space: nowrap;
-  overflow: hidden;
+  /*
+   * As written, its line breaks kept (`^min^` over `exp`), and let run past
+   * its box rather than cut: this face is wider than MS Sans Serif 8, and a
+   * label cut to `^ Max ^ O` reads as nothing (2026-10-14).
+   */
+  white-space: pre;
+  overflow: visible;
+  /* A point under the page's, nearer MS Sans Serif 8's width, so a caption
+     under a box ends before the column beside it. */
+  font-size: 10px;
 }
 .megamud-group {
   border: 1px solid var(--rule);
@@ -12847,8 +12865,12 @@ tr:hover .row-action.worn,
   align-items: center;
   gap: 4px;
   white-space: nowrap;
-  overflow: hidden;
+  overflow: visible;
   cursor: pointer;
+}
+.megamud-check[data-wraps='true'] {
+  align-items: flex-start;
+  white-space: normal;
 }
 .megamud-check input {
   margin: 0;
@@ -12889,6 +12911,22 @@ tr:hover .row-action.worn,
   gap: 4px;
   white-space: nowrap;
 }
+/* The MegaMUD connection on the Character row, in its three rows. */
+.megamud-account-row {
+  display: grid;
+  gap: var(--field-gap, 10px) 16px;
+  align-items: end;
+}
+.megamud-account-row[data-row='0'] {
+  grid-template-columns: max-content minmax(0, 220px);
+}
+.megamud-account-row[data-row='1'] {
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+}
+.megamud-account-row[data-row='2'] {
+  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+}
+
 .megamud-actions {
   display: flex;
   gap: 8px;

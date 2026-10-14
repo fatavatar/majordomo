@@ -108,14 +108,18 @@ export default function LoopSection({
 
       {warning !== undefined && <p className="settings-warn">{warning}</p>}
 
+      {/*
+        Closed until asked for: a realm's loops can run to hundreds, and listed
+        open they pushed every section after this one off the page (2026-10-14).
+      */}
       {inherited.length > 0 && (
-        <>
-          <p className="settings-note">
+        <details className="settings-inherited">
+          <summary className="settings-note">
             {t('settings.loopSection.inheritedNote', {
               count: inherited.length,
               itLivesOrTheyLive: inherited.length === 1 ? 'it lives' : 'they live'
             })}
-          </p>
+          </summary>
           <ul className="settings-loops inherited">
             {inherited.map(({ loop, scope, owner }) => (
               <li key={`${scope}:${loop.name}`}>
@@ -129,7 +133,7 @@ export default function LoopSection({
               </li>
             ))}
           </ul>
-        </>
+        </details>
       )}
 
       <p className="settings-note">{note}</p>

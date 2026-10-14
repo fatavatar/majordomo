@@ -1,6 +1,5 @@
 import { Fragment, useCallback, useEffect, useState, type ReactNode } from 'react';
 import { customControl, drawnHere } from './MegaMudEditors';
-import FormActions from './FormActions';
 import { CheckField, NumberField, TextField } from './FormField';
 import { useAutoSave, type AutoSave } from '../hooks/useAutoSave';
 import { begin, canRedo, canUndo, record, redo, undo, type History } from '../lib/history';
@@ -196,9 +195,9 @@ export function isMegaTab(section: string): boolean {
 
 /**
  * One of MegaMUD's tabs for the chosen character, as its dialog lays it out,
- * saved as it is changed like the rest of the Character page, with its own
- * undo and redo. A character with no MegaMUD settings yet is switched over by
- * a press.
+ * saved as it is changed like the rest of the Character page and undone by
+ * its Undo (`useMergedHistory`). A character with no MegaMUD settings yet is
+ * switched over by a press.
  */
 export function MegaMudPanel({
   tab,
@@ -239,24 +238,16 @@ export function MegaMudPanel({
         set={mega.set}
         width={page.w}
       />
-      <div className="megamud-actions">
-        {view.engine ? (
-          <FormActions
-            can={mega.can}
-            error={mega.save.error}
-            onRedo={mega.redo}
-            onUndo={mega.undo}
-            state={mega.save.state}
-          />
-        ) : (
-          <>
-            {mega.problem !== null && <span className="settings-problem">{mega.problem}</span>}
-            <button onClick={() => void mega.create()} onMouseDown={keepFocus} type="button">
-              {t('settings.megamud.create')}
-            </button>
-          </>
-        )}
-      </div>
+      {/* Saved as changed, under the page's own Undo and Redo; a character
+          with no MegaMUD settings yet is switched over by a press. */}
+      {!view.engine && (
+        <div className="megamud-actions">
+          {mega.problem !== null && <span className="settings-problem">{mega.problem}</span>}
+          <button onClick={() => void mega.create()} onMouseDown={keepFocus} type="button">
+            {t('settings.megamud.create')}
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -267,72 +258,88 @@ export function MegaMudPanel({
  * which stand in for our own reconnecting under the engine. In MegaMUD's
  * words, on the Character row (2026-10-14).
  */
-const MEGA_ACCOUNT: readonly {
+interface AccountField {
   section: string;
   key: string;
   label: string;
   as: 'check' | 'int' | 'text';
-}[] = [
-  { section: 'BBS', key: 'IsMudop', label: 'Has MudOp access', as: 'check' },
-  { section: 'BBS', key: 'SysGoto', label: 'sys goto', as: 'text' },
-  { section: 'Comms', key: 'RedialConnect', label: 'Reconnect if dial fails', as: 'check' },
-  { section: 'Comms', key: 'RedialCarrier', label: 'Reconnect if carrier lost', as: 'check' },
-  { section: 'Comms', key: 'RedialNoResponse', label: 'Reconnect if no BBS response', as: 'check' },
-  { section: 'Comms', key: 'RedialCleanup', label: 'Reconnect after cleanup', as: 'check' },
-  { section: 'Comms', key: 'LogoffLowExp', label: 'Disconnect if low exp. rate', as: 'check' },
-  { section: 'Comms', key: 'RedialMax', label: 'Max. re-dials', as: 'int' },
-  { section: 'Comms', key: 'RedialPause', label: 'Re-dial pause (seconds)', as: 'int' },
-  { section: 'Comms', key: 'CleanupPeriod', label: 'Cleanup period (minutes)', as: 'int' },
-  { section: 'Comms', key: 'MinExpRate', label: 'Min. exp. rate (per hour)', as: 'int' },
-  { section: 'Comms', key: 'LagWait', label: 'Lag pause (seconds)', as: 'int' }
+}
+
+/** In three rows: the account, the switches, and the timings. */
+const MEGA_ACCOUNT: readonly (readonly AccountField[])[] = [
+  [
+    { section: 'BBS', key: 'IsMudop', label: 'Has MudOp access', as: 'check' },
+    { section: 'BBS', key: 'SysGoto', label: 'sys goto', as: 'text' }
+  ],
+  [
+    { section: 'Comms', key: 'RedialConnect', label: 'Reconnect if dial fails', as: 'check' },
+    { section: 'Comms', key: 'RedialCarrier', label: 'Reconnect if carrier lost', as: 'check' },
+    {
+      section: 'Comms',
+      key: 'RedialNoResponse',
+      label: 'Reconnect if no BBS response',
+      as: 'check'
+    },
+    { section: 'Comms', key: 'RedialCleanup', label: 'Reconnect after cleanup', as: 'check' },
+    { section: 'Comms', key: 'LogoffLowExp', label: 'Disconnect if low exp. rate', as: 'check' }
+  ],
+  [
+    { section: 'Comms', key: 'RedialMax', label: 'Max. re-dials', as: 'int' },
+    { section: 'Comms', key: 'RedialPause', label: 'Re-dial pause (s)', as: 'int' },
+    { section: 'Comms', key: 'CleanupPeriod', label: 'Cleanup period (min)', as: 'int' },
+    { section: 'Comms', key: 'MinExpRate', label: 'Min. exp. rate (/hour)', as: 'int' },
+    { section: 'Comms', key: 'LagWait', label: 'Lag pause (s)', as: 'int' }
+  ]
 ];
 
 /** `MEGA_ACCOUNT`, for a character the engine runs. */
 export function MegaMudAccount({ mega }: { mega: MegaMudDraft }) {
   const { view, draft } = mega;
   if (view === null || draft === null || !view.engine) return null;
+  const field = ({ section, key, label, as }: AccountField) => {
+    const value = valueOf(draft, section, key);
+    const name = `megamud-${section}-${key}`;
+    if (as === 'check') {
+      return (
+        <CheckField
+          checked={typeof value === 'number' && value !== 0}
+          key={name}
+          label={label}
+          name={name}
+          onChange={(on) => mega.set(section, key, on ? 1 : 0)}
+        />
+      );
+    }
+    if (as === 'int') {
+      return (
+        <NumberField
+          key={name}
+          label={label}
+          name={name}
+          onChange={(text) => mega.set(section, key, Number.parseInt(text, 10) || 0)}
+          value={String(value ?? 0)}
+        />
+      );
+    }
+    return (
+      <TextField
+        key={name}
+        label={label}
+        name={name}
+        onChange={(text) => mega.set(section, key, text)}
+        spellCheck={false}
+        value={String(value ?? '')}
+      />
+    );
+  };
   return (
-    <fieldset className="settings-menus" data-fieldset="megamud-account">
+    <fieldset className="settings-menus megamud-account" data-fieldset="megamud-account">
       <legend>{t('settings.megamud.accountLegend')}</legend>
-      {MEGA_ACCOUNT.map(({ section, key, label, as }) => {
-        const value = valueOf(draft, section, key);
-        const name = `megamud-${section}-${key}`;
-        if (as === 'check') {
-          return (
-            <CheckField
-              checked={typeof value === 'number' && value !== 0}
-              key={name}
-              label={label}
-              name={name}
-              onChange={(on) => mega.set(section, key, on ? 1 : 0)}
-            />
-          );
-        }
-        if (as === 'int') {
-          return (
-            <NumberField
-              key={name}
-              label={label}
-              name={name}
-              onChange={(text) => mega.set(section, key, Number.parseInt(text, 10) || 0)}
-              value={String(value ?? 0)}
-            />
-          );
-        }
-        return (
-          <TextField
-            key={name}
-            label={label}
-            name={name}
-            onChange={(text) => mega.set(section, key, text)}
-            spellCheck={false}
-            value={String(value ?? '')}
-          />
-        );
-      })}
-      {mega.save.state === 'refused' && (
-        <p className="settings-problem">{mega.save.error ?? t('settings.formActions.notSaved')}</p>
-      )}
+      {MEGA_ACCOUNT.map((row, i) => (
+        <div className="megamud-account-row" data-row={i} key={i}>
+          {row.map(field)}
+        </div>
+      ))}
     </fieldset>
   );
 }
@@ -368,6 +375,41 @@ interface TabPageProps {
   onProfileEnabled(n: number, on: boolean): void;
 }
 
+/** The most blank a page keeps between rows, and at its top and foot, in dialog units. */
+const BLANK_KEPT = 8;
+
+/**
+ * Where what is drawn of a page goes once the rows left blank are closed up:
+ * a control not drawn here (`drawnHere`) leaves the band it stood in, and a
+ * band no drawn control reaches is shrunk to `BLANK_KEPT`, the page's foot
+ * with it (2026-10-14). A frame counts only its title, as its box is not
+ * drawn; its edges move with what is around them.
+ */
+function closedUp(shown: readonly TabControl[]): { y(at: number): number; height: number } {
+  const bands = shown
+    .map((c): [number, number] =>
+      c.kind === 'group' ? [c.y, c.y + 10] : [c.y, c.y + (c.kind === 'combo' ? 12 : c.h)]
+    )
+    .sort((a, b) => a[0] - b[0]);
+  const merged: [number, number][] = [];
+  for (const [top, bottom] of bands) {
+    const last = merged.at(-1);
+    if (last && top <= last[1]) last[1] = Math.max(last[1], bottom);
+    else merged.push([top, bottom]);
+  }
+  // Each blank, from the page's top down, and how much of it goes.
+  const cuts: [number, number][] = [];
+  let edge = 0;
+  for (const [top, bottom] of merged) {
+    const blank = top - edge;
+    if (blank > BLANK_KEPT) cuts.push([top, blank - BLANK_KEPT]);
+    edge = bottom;
+  }
+  const y = (at: number): number =>
+    at - cuts.reduce((gone, [from, by]) => (at >= from ? gone + by : gone), 0);
+  return { y, height: y(edge) + BLANK_KEPT };
+}
+
 function TabPage({
   tab,
   choices,
@@ -387,15 +429,20 @@ function TabPage({
   // The page's own picks (a list's selected row), and a dialog over it.
   const [local, setLocal] = useState<Record<string, number>>({});
   const [dialog, setDialog] = useState<ReactNode>(null);
+  const shown = controls.filter((c) => !c.hidden && drawnHere(tab, c));
+  const rows = closedUp(shown);
   return (
-    <div className="megamud-page" style={{ width: width * DLU_X, height: height * DLU_Y }}>
-      {controls.map((c) => {
-        if (c.hidden || !drawnHere(tab, c)) return null;
+    <div
+      className="megamud-page"
+      style={{ width: width * DLU_X, height: Math.min(height, rows.height) * DLU_Y }}
+    >
+      {shown.map((c) => {
+        const top = rows.y(c.y);
         const style = {
           left: c.x * DLU_X,
-          top: c.y * DLU_Y,
+          top: top * DLU_Y,
           width: c.w * DLU_X,
-          height: c.kind === 'combo' ? 12 * DLU_Y : c.h * DLU_Y
+          height: c.kind === 'combo' ? 12 * DLU_Y : (rows.y(c.y + c.h) - top) * DLU_Y
         };
         const key = `${c.id}-${c.x}-${c.y}`;
         const custom = customControl(tab, c, {
@@ -492,7 +539,12 @@ function Control({ control: c, draft, hasPassword, style, set }: ControlProps) {
               ? (n & (b.bit ?? 0)) !== 0
               : n !== 0;
       return (
-        <label className="megamud-control megamud-check" style={style}>
+        <label
+          className="megamud-control megamud-check"
+          // Two lines tall in the template: the dialog wraps its text.
+          data-wraps={c.h >= 16 ? 'true' : undefined}
+          style={style}
+        >
           <input
             checked={on}
             disabled={b === undefined}

@@ -61,6 +61,7 @@ import {
   type History
 } from '../lib/history';
 import { useAutoSave } from '../hooks/useAutoSave';
+import { mergedSave, useMergedHistory } from '../hooks/useMergedHistory';
 import { useSettingsPanel } from '../hooks/useSettingsPanel';
 import { PROFILE_ACCENTS, type ProfileAccent } from '@shared/profiles';
 import { isThemePreference, THEME_IDS, THEMES, type ThemePreference } from '@shared/themes';
@@ -2090,6 +2091,28 @@ export default function SettingsScreen({
   );
 
   /** Whichever form is on screen: its way back, and how its saving is going. */
+  /*
+   * The Character page edits two files, the character's and its MegaMUD
+   * settings, and has one Undo, one Redo and one save state for both: the
+   * last change is undone wherever it was made (2026-10-14).
+   */
+  const characterUndo = useMergedHistory({
+    character: {
+      present: history?.present,
+      can: {
+        undo: history !== null && canUndo(history),
+        redo: history !== null && canRedo(history)
+      },
+      undo: () => setHistory((current) => (current ? undo(current) : current)),
+      redo: () => setHistory((current) => (current ? redo(current) : current))
+    },
+    megamud: { present: mega.draft, can: mega.can, undo: mega.undo, redo: mega.redo }
+  });
+  const characterPageSave = useMemo(
+    () => mergedSave(characterSave, mega.save),
+    [characterSave, mega.save]
+  );
+
   const active = useMemo(() => {
     if (showsGlobal(tab)) {
       return {
@@ -2113,16 +2136,8 @@ export default function SettingsScreen({
         redo: () => setServerHistory((current) => (current ? redo(current) : current))
       };
     }
-    return {
-      save: characterSave,
-      can: {
-        undo: history !== null && canUndo(history),
-        redo: history !== null && canRedo(history)
-      },
-      undo: () => setHistory((current) => (current ? undo(current) : current)),
-      redo: () => setHistory((current) => (current ? redo(current) : current))
-    };
-  }, [tab, globalSave, serverSave, characterSave, globalHistory, serverHistory, history]);
+    return { save: characterPageSave, ...characterUndo };
+  }, [tab, globalSave, serverSave, characterPageSave, characterUndo, globalHistory, serverHistory]);
 
   /**
    * Closing does not lose the last second of typing.
