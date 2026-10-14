@@ -267,11 +267,6 @@ const QUIET_POLL_MS = 250;
 
 /** How long a walk waits on the realm saying where the character is. */
 const LOCATE_WAIT_MS = 5000;
-/**
- * How many steps out the nearest of the rooms bearing a signature is looked
- * for, breadth-first, before any of them is planned to (`route`).
- */
-const NEAREST_STEPS = 400;
 
 /** A short, steady name for a path MegaMUD can hold (13 characters). */
 function shortName(prefix: string, text: string): string {
@@ -291,16 +286,6 @@ export class MegaEngine {
   /** Every room's worked-out signature, built once when first needed. */
   private computed: Map<number, RoomId[]> | null = null;
   private computedFor: WorldGraph | undefined;
-  /**
-   * The ways planned from where the character stands, by the signature they
-   * go to: MegaMUD asks for the same one again and again (the steps to go,
-   * the trainers), and each is an A* search on this thread. Let go on moving.
-   */
-  private planned = new Map<number, Route | null>();
-  private plannedFrom: RoomId | null = null;
-  private plannedIn: WorldGraph | undefined;
-  /** The room a walk was asked to (`walkTo`), planned to over others that share its signature. */
-  private wanted: { sig: number; room: RoomId } | null = null;
   /** The paths made for the engine, by name, with the room each step is taken from. */
   private readonly made = new Map<string, MadePath>();
   private routes = 0;
@@ -933,7 +918,6 @@ export class MegaEngine {
     const sig = this.signatureOf(room);
     if (sig === null) return 'That room has no signature yet.';
     const s = this.s;
-    this.wanted = { sig, room };
     clearDetours(s);
     goTo(s, sig, null);
     headFor(s, 1);
@@ -1120,48 +1104,18 @@ export class MegaEngine {
       };
       return { flags: 0x20, path: null, steps: -1 };
     }
-    const rooms = this.roomsWith(to);
-    if (rooms.includes(here))
-      return { flags: 0, path: this.makePath(this.routeName(), 'route', [], from, to), steps: 0 };
-    const world = this.host.world();
-    if (this.plannedFrom !== here || this.plannedIn !== world) {
-      this.planned.clear();
-      this.plannedFrom = here;
-      this.plannedIn = world;
-    }
-    let best = this.planned.get(to);
-    if (best === undefined) {
-      best = this.planTo(here, to, rooms);
-      this.planned.set(to, best);
+    let best: Route | null = null;
+    for (const room of this.roomsWith(to).slice(0, 8)) {
+      if (room === here)
+        return { flags: 0, path: this.makePath(this.routeName(), 'route', [], from, to), steps: 0 };
+      const plan = this.host.plan(here, room);
+      if (typeof plan === 'string' || plan.blocked) continue;
+      if (best === null || plan.steps.length < best.steps.length) best = plan;
     }
     if (best === null) return none;
     const p = this.makePath(this.routeName(), 'route', [best], from, to);
     if (p.steps!.length > 0) p.steps![0]!.room = from;
     return { flags: 0, path: p, steps: p.count };
-  }
-
-  /**
-   * The way to the nearest room of those bearing a signature: the one a walk
-   * was asked to, else the first a breadth-first look finds, and then the
-   * rest in turn until one can be walked. One A* search where there were one
-   * for each of eight, which held the console still for seconds (2026-10-14).
-   */
-  private planTo(here: RoomId, sig: number, rooms: readonly RoomId[]): Route | null {
-    let order = rooms.slice(0, 8);
-    if (this.wanted?.sig === sig && rooms.includes(this.wanted.room)) order = [this.wanted.room];
-    else if (order.length > 1) {
-      const among = new Set(rooms);
-      const near = this.host
-        .world()
-        ?.nearest(here, (room) => among.has(roomId(room.map, room.room)), NEAREST_STEPS);
-      const first = near?.steps.at(-1)?.to;
-      if (first !== undefined) order = [first, ...order.filter((room) => room !== first)];
-    }
-    for (const room of order) {
-      const plan = this.host.plan(here, room);
-      if (typeof plan !== 'string' && !plan.blocked) return plan;
-    }
-    return null;
   }
 
   private routeName(): string {
