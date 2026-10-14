@@ -1,7 +1,7 @@
 /**
  * The controls of MegaMUD's settings tabs that are not one box per setting:
  * the lists and buttons its window fills and answers itself (the events and
- * ability monitors, the special rooms, the toolbar's items, the statline
+ * ability monitors, the toolbar's items, the statline
  * builder, the alert sounds, Copy From..., the resets and the weapon
  * pickers), each read from `megamud.exe` (2026-10-14) and drawn where the
  * dialog puts it, in place of the control (`customControl`).
@@ -179,9 +179,6 @@ const CUSTOM: Readonly<Record<string, Make>> = {
   'Toolbar:1763': (ctx) => <ToolbarItems ctx={ctx} />,
   'Toolbar:1765': (ctx, c) => <ToolbarFlag ctx={ctx} label={c.text} separator={false} />,
   'Toolbar:1766': (ctx, c) => <ToolbarFlag ctx={ctx} label={c.text} separator />,
-  'Auto-roam:1444': (ctx) => <SpecialRooms ctx={ctx} />,
-  'Auto-roam:1416': (ctx) => <SpecialRoom ctx={ctx} />,
-  'Auto-roam:1091': (ctx) => <SpecialCommand ctx={ctx} />,
   'Events:1137': (ctx) => <EventList ctx={ctx} />,
   'Events:1307': (ctx, c) => <Press ctx={ctx} label={c.text} run={() => editEvent(ctx, null)} />,
   'Events:1288': (ctx, c) => (
@@ -481,69 +478,6 @@ function ToolbarFlag({
       />
       <span>{plain(label)}</span>
     </label>
-  );
-}
-
-/* ------------------------------------------------------------ Auto-roam's special rooms */
-
-/** A slot not in use (`Auto-roam.AutoRoomN`'s default). */
-const UNUSED = '--Unused--';
-
-function SpecialRooms({ ctx }: { ctx: EditorContext }) {
-  return (
-    <Rows
-      ctx={ctx}
-      name="specialRoom"
-      rows={Array.from({ length: 10 }, (_, i) => {
-        const room = textOf(ctx.draft, 'Auto-roam', `AutoRoom${i}`);
-        const cmd = textOf(ctx.draft, 'Auto-roam', `AutoCmd${i}`);
-        return room === '' || room === UNUSED ? UNUSED : `${room} — ${cmd}`;
-      })}
-    />
-  );
-}
-
-function SpecialRoom({ ctx }: { ctx: EditorContext }) {
-  const slot = picked(ctx, 'specialRoom');
-  const room = slot === undefined ? '' : textOf(ctx.draft, 'Auto-roam', `AutoRoom${slot}`);
-  return (
-    <>
-      <input
-        className="megamud-control megamud-edit"
-        disabled={slot === undefined}
-        list="megamud-rooms"
-        onChange={(event) =>
-          slot !== undefined &&
-          ctx.set(
-            'Auto-roam',
-            `AutoRoom${slot}`,
-            event.target.value === '' ? UNUSED : event.target.value
-          )
-        }
-        style={ctx.style}
-        value={room === UNUSED ? '' : room}
-      />
-      <datalist id="megamud-rooms">
-        {(ctx.choices?.rooms ?? []).map((name) => (
-          <option key={name} value={name} />
-        ))}
-      </datalist>
-    </>
-  );
-}
-
-function SpecialCommand({ ctx }: { ctx: EditorContext }) {
-  const slot = picked(ctx, 'specialRoom');
-  return (
-    <input
-      className="megamud-control megamud-edit"
-      disabled={slot === undefined}
-      onChange={(event) =>
-        slot !== undefined && ctx.set('Auto-roam', `AutoCmd${slot}`, event.target.value)
-      }
-      style={ctx.style}
-      value={slot === undefined ? '' : textOf(ctx.draft, 'Auto-roam', `AutoCmd${slot}`)}
-    />
   );
 }
 

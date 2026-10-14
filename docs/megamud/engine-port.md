@@ -270,11 +270,13 @@ the swap. For such a character:
   (`0x49fd10`). For a character with none, a press switches it to this
   engine. What a tab fills and answers itself is drawn by
   `MegaMudEditors.tsx`: the events and ability monitors (`0x435f80`, template
-  406), the special rooms, the toolbar's items and separators (`0x4bb2e0`),
+  406), the toolbar's items and separators (`0x4bb2e0`),
   the statline builder (`0x4a5f00`, `0x4a6920`), the alerts (each on or off,
   as it is said rather than played), the Spells and Combat resets, and the
   Combat tab's weapon and shield pickers (`0x42afc0`), these last and the
-  rooms from the running engine (`MegaEngine.choices`). Not drawn, so that a
+  rooms from the running engine (`MegaEngine.choices`). Auto-roam's page
+  (its directions, doors and special rooms) is not drawn, as not wanted; its
+  row holds only ours. Not drawn, so that a
   setting has one place: the BBS tab (its list and account are the realm's
   page and the Character row's login; MudOp access, `sys goto` and the
   redials are on the Character row, where our own reconnect stands down for

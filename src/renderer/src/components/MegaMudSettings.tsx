@@ -177,6 +177,13 @@ export function useMegaMudDraft(id: string | null, store: MegaMudStore): MegaMud
  */
 const NOT_ROWS: readonly string[] = ['BBS'];
 
+/**
+ * The rows whose MegaMUD page is not drawn, only ours under it: Auto-roam,
+ * whose directions, doors and special rooms are not wanted (2026-10-14); the
+ * engine keeps MegaMUD's defaults for them.
+ */
+const NO_PAGE: readonly string[] = ['Auto-roam'];
+
 /** The titles of MegaMUD's settings tabs, in its dialog's order: the Character page's rows. */
 export const MEGA_TABS: readonly string[] = SETTINGS_TABS.map((p) => p.title).filter(
   (title) => !NOT_ROWS.includes(title)
@@ -204,7 +211,7 @@ export function MegaMudPanel({
   loops?: readonly string[];
 }) {
   const page = SETTINGS_TABS.find((p) => p.title === tab);
-  if (page === undefined) return null;
+  if (page === undefined || NO_PAGE.includes(tab)) return null;
   const { view, draft } = mega;
   if (mega.id === null) return <p className="settings-note">{t('settings.megamud.saveFirst')}</p>;
   if (view === null || draft === null)
