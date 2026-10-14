@@ -680,6 +680,12 @@ export class Session extends RawFields {
   pending: Pending[] = [];
   /** 0x59cb80: the pending command just sent should not set the Pending Cmd state. */
   pendingQuiet = 0;
+  /** 0x59cb84: a spell from the pending list waiting for its round (`0x48b370`), 7 characters. */
+  waitingSpell = '';
+  /** 0x59cb90: what it was to be cast at, 199 characters. */
+  waitingSpellTarget = '';
+  /** 0x59cb78: when it first had to wait. */
+  waitingSpellAt = 0;
   /** 0x14c: the last `@wait`/`@comeback` telepath sent. */
   lastWaitSent = '';
   /** 0x278: the last `@ok` telepath sent. */

@@ -7,9 +7,14 @@
  * while in the game, resets its waits ("[reset]"), and 40 times resets harder
  * ("[reset+]"). A bare Enter or `par` neither counts nor breaks the run.
  */
-import { findNoCase, strcmp } from '../cstr';
+import { abbrev, findNoCase, splitWord, strcmp, stricmp, typedDirection } from '../cstr';
+import { resetNoMessage, spellTakesTarget } from '../combat/casts';
+import { rememberTarget, setTarget } from '../combat/engaged';
+import type { SpellRec } from '../data';
+import { castSpell } from '../health/cast';
+import { findEntity } from '../room/entities';
+import { findSpell } from '../spells/lookup';
 import type { Session } from '../Session';
-import { unported } from '../unported';
 import { setState } from './state';
 import { clearPending, sixtySeconds, tenSeconds, thirtySeconds } from './waits';
 
@@ -124,11 +129,11 @@ export function queueCommand(
 /** `0x48ad60`: send the first pending command. 1 when something was done. */
 export function pendingPump(s: Session): number {
   s.pendingQuiet = 0;
-  const first = s.pending[0];
-  if (!first) return 0;
-  const checked = unported('48b370');
+  if (s.pending.length === 0) return 0;
+  const checked = msgSpells(s);
   if (checked === 1) return 1;
-  if (checked !== -1 && s.pending.length > 0) {
+  const first = s.pending[0];
+  if (checked !== -1 && first) {
     const text = first.text;
     const killsSelf = findNoCase(text, 0, 'suicide') !== -1 || findNoCase(text, 0, 'reroll') !== -1;
     if ((!text.startsWith('drop ') || s.f_e1e0 === 0) && !killsSelf) {
@@ -143,8 +148,8 @@ export function pendingPump(s: Session): number {
       }
       const out = first.expand === 0 ? text.slice(0, 299) : expandMacros(s, text);
       if (first.checked !== 0) {
-        unported('47a540');
-        unported('48bce0');
+        noteCommands(s, text);
+        attackCommand(s, text);
       }
       if (s.pendingQuiet === 0) setState(s, 0x2d);
       s.waitLines = 2;
@@ -168,8 +173,237 @@ export function pendingPump(s: Session): number {
       }
       if (first.checked === 0) s.host.echo?.(out.split('\r')[0] ?? out);
     }
+    s.pending.shift();
+    return 1;
   }
-  s.pending.shift();
+  // A spell waiting for its round holds the list (-1), as `0x48ad60` does.
+  return 0;
+}
+
+/** `0x48b270`: `n` characters of the first pending command sent; the whole of it, and it goes. */
+function consumePending(s: Session, n: number): void {
+  const first = s.pending[0];
+  if (!first) return;
+  if (first.text.length <= n) s.pending.shift();
+  else first.text = first.text.slice(n);
+}
+
+/** `0x48b370`'s waiting spell given up. */
+function noWaitingSpell(s: Session): void {
+  s.waitingSpell = '';
+  s.waitingSpellTarget = '';
+  s.waitingSpellAt = 0;
+  s.f_32608 = 0;
+}
+
+/** A blank, as `0x48b370` skips them. */
+function blank(c: string | undefined): boolean {
+  return c === ' ' || c === '\t';
+}
+
+/**
+ * `0x48b370`: the first pending command, when it came from the player or a
+ * message (checked) and message spell processing is on, sent a part at a
+ * time — each up to `\r` or `^M`. A part that is a spell's short name (one
+ * cast by itself, not from an item) and a target is cast through the round
+ * timer (`castSpell`), into the cast state MegaMUD's own casts use: one too
+ * soon waits in the list (-1) until its round, or five seconds; a target
+ * gone or changed meanwhile, or never here, drops the command. Other parts
+ * are sent as they are. 1 when something was sent, 0 when the list is left
+ * to the pump, -1 to hold it.
+ */
+export function msgSpells(s: Session): number {
+  let sent = false;
+  let lastText: string | null = null;
+  for (;;) {
+    const first = s.pending[0];
+    if (!first || first.text === '') return sent ? 1 : 0;
+    if (first.checked === 0 || (s.Other_DisableMsgSpellProcessing !== 0 && first.tag === 0))
+      return sent ? 1 : 0;
+    const text = first.text;
+    if (text === lastText) {
+      if (s.debug !== 0) s.host.trace('{pending-no-progress}');
+      return sent ? 1 : 0;
+    }
+    lastText = text;
+    let end = 0;
+    while (end < text.length && text[end] !== '\r' && !(text[end] === '^' && text[end + 1] === 'M'))
+      end += 1;
+    const piece = end + (end < text.length ? (text[end] === '\r' ? 1 : 2) : 0);
+    if (piece <= 0) return sent ? 1 : 0;
+    if (piece >= 300) {
+      if (s.debug !== 0) s.host.trace(`{pending-oversize:${piece}}`);
+      consumePending(s, piece);
+      if (sent) return 1;
+      continue;
+    }
+
+    // A spell's short name, six characters down to three, then its target.
+    let start = 0;
+    while (start < end && blank(text[start])) start += 1;
+    let spell: SpellRec | null = null;
+    let target = '';
+    for (let len = 6; len >= 3; len -= 1) {
+      const at = start + len;
+      if (at > end || (at < end && !blank(text[at]))) continue;
+      const found = findSpell(s, text.slice(start, at));
+      if (!found || found.item !== '') continue;
+      let from = at;
+      while (from < end && blank(text[from])) from += 1;
+      let to = end;
+      while (to > from && blank(text[to - 1])) to -= 1;
+      if (to - from >= 200) continue;
+      spell = found;
+      target = text.slice(from, to);
+      break;
+    }
+    if (!sent && spell === null && text.length <= piece) return 0;
+
+    let waitedOut = false;
+    if (spell !== null) {
+      const short = spell.short;
+      const area = (spell.flags >> 7) & 1;
+      const takes = spellTakesTarget(spell);
+      const waiting = s.waitingSpell !== '' && stricmp(s.waitingSpell, short) === 0;
+      if (waiting && s.waitingSpellTarget !== '') {
+        const e = findEntity(s, s.waitingSpellTarget, 0);
+        const changed = takes !== 0 && area === 0 && s.f_32608 === 0;
+        if (!e || changed) {
+          s.host.show(e ? `[${short}: target changed]` : `[${short}: target gone]`);
+          consumePending(s, text.length);
+          noWaitingSpell(s);
+          return 1;
+        }
+      }
+      if ((spell.flags & 0x90) === 0 && (target === '' || !findEntity(s, target, 0))) {
+        s.host.show(
+          target === '' ? `[${short}: target not found]` : `[${short}: ${target} not found]`
+        );
+        consumePending(s, text.length);
+        noWaitingSpell(s);
+        return 1;
+      }
+      if (waiting && s.waitingSpellAt !== 0 && s.now - s.waitingSpellAt > 5) {
+        noWaitingSpell(s);
+        if (s.debug !== 0) s.host.trace(`{${short}:X}`);
+        if (!sent) return 0;
+        waitedOut = true;
+      } else {
+        if (castSpell(s, short, target === '' ? null : target) === 0) {
+          if (!waiting) {
+            s.waitingSpell = short.slice(0, 7);
+            s.waitingSpellAt = s.now;
+            s.waitingSpellTarget = '';
+            s.f_32608 = 0;
+            if (target !== '' && findEntity(s, target, 0)) {
+              s.waitingSpellTarget = target.slice(0, 199);
+              s.f_32608 = 1;
+            }
+          }
+          if (s.debug !== 0 && s.now - s.waitingSpellAt > 0)
+            s.host.trace(`{${short}:${s.now - s.waitingSpellAt}s}`);
+          return sent ? 1 : -1;
+        }
+        if (takes === 0) {
+          if (s.pendingQuiet === 0) setState(s, 0x2d);
+        } else {
+          s.engagedMode = 0;
+          s.lastCast = short.slice(0, 0x50);
+          const mode = castMode(s, short);
+          if (s.debug !== 0) s.host.trace('{I14+}');
+          s.f_e1d8 = 1;
+          resetNoMessage(s, mode);
+          if (target === '' || area !== 0) {
+            s.target = '';
+            s.f_a580 = 1;
+          } else {
+            setTarget(s, target);
+          }
+          setState(s, mode);
+          s.pendingQuiet = mode;
+        }
+        noWaitingSpell(s);
+        consumePending(s, piece);
+        sent = true;
+        continue;
+      }
+    }
+
+    // A part that is not a spell, or one whose wait ran out: sent as it is.
+    const part = text.slice(0, piece);
+    const out = first.expand === 0 ? part : expandMacros(s, part);
+    noteCommands(s, part);
+    s.waitLines = 2;
+    attackCommand(s, part);
+    if (s.pendingQuiet === 0) setState(s, 0x2d);
+    send(s, out);
+    consumePending(s, piece);
+    if (waitedOut || !sent) return 1;
+  }
+}
+
+/** Which of the combat tab's spells this is, as the cast state names it: else the player's own (0xf). */
+function castMode(s: Session, short: string): number {
+  if (stricmp(short, s.Combat_MultAttack) === 0) {
+    s.f_a3ec = 0;
+    s.engagedMode = 10;
+    return 10;
+  }
+  if (stricmp(short, s.Combat_PreMultAttack) === 0) {
+    s.f_a3e8 = 0;
+    s.engagedMode = 9;
+    return 9;
+  }
+  if (stricmp(short, s.Combat_PreAttack) === 0) {
+    s.f_a3f0 = 0;
+    s.engagedMode = 0xb;
+    return 0xb;
+  }
+  if (stricmp(short, s.Combat_AttackSpl2) === 0) {
+    s.f_a3f8 = 0;
+    s.engagedMode = 0xc;
+    return 0xc;
+  }
+  if (stricmp(short, s.Combat_AttackSpl) === 0) {
+    s.f_a3f4 = 0;
+    s.engagedMode = 0xd;
+    return 0xd;
+  }
+  s.f_a400 = 0;
+  s.userSpell = short.slice(0, 10);
+  return 0xf;
+}
+
+/**
+ * `0x48bce0`: a command sent from the list that attacks — `attack` (or any
+ * abbreviation), `aa`, `smash`, `bash` (not at a door), `punch`, `jumpkick`,
+ * `kick` — at something in the room starts a fight on it (state `0x11`).
+ * Not with `Other.DisableMsgEquipProcessing`. 1 when it did.
+ */
+export function attackCommand(s: Session, text: string): number {
+  if (text === '' || s.Other_DisableMsgEquipProcessing !== 0 || text.length >= 300) return 0;
+  const line = text.replace(/[\r\n \t]+$/, '');
+  if (line === '') return 0;
+  const [first, rest] = splitWord(line, ' ', 0x1f);
+  const [second] = splitWord(rest, ' ', 0x1f);
+  const verb = first.toLowerCase();
+  const what = second.toLowerCase();
+  const attacks =
+    abbrev('attack', verb, 1) !== 0 ||
+    verb === 'aa' ||
+    verb === 'smash' ||
+    (verb === 'bash' && typedDirection(what) === -1) ||
+    abbrev('punch', verb, 2) !== 0 ||
+    abbrev('jumpkick', verb, 2) !== 0 ||
+    abbrev('kick', verb, 3) !== 0;
+  if (!attacks || what === '' || !findEntity(s, what, 0)) return 0;
+  s.engagedMode = 0x11;
+  s.f_e1d8 = 1;
+  if (s.debug !== 0) s.host.trace('{I15+}');
+  setTarget(s, what);
+  rememberTarget(s);
+  setState(s, 0x11);
+  s.pendingQuiet = 0x11;
   return 1;
 }
 
