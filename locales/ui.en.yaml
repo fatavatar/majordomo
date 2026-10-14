@@ -3124,16 +3124,6 @@ settings:
     toggle: 'Advanced: {label}'
     togglePlain: Advanced
   advancedWire: the wire
-  afk:
-    legend: Away From Keyboard
-    enabled: Auto-Reply to Telepaths When Away
-    enabledHint:
-      Once nothing has been typed into this character for the minutes below, an incoming telepath is
-      answered with the reply — once per sender every ten minutes, never for an @ command.
-    afterLabel: Away After, min
-    afterHint: Minutes without a keystroke into this character before it counts as unattended.
-    replyLabel: Away Reply
-    replyHint: "MegaMUD's own {AFK} is what other MegaMUD clients recognise; say anything you like."
   alerts:
     channel:
       combat: combat
@@ -3313,12 +3303,6 @@ settings:
       appearance: Appearance
       records: Records
   combat:
-    attackForMe: Auto-Attack
-    attackVerbHint:
-      The realm’s own word. A verb this class cannot use is dropped the first time the realm
-      says so.
-    attackVerbLabel: Attack Command
-    attackWithPlaceholder: a
     monsterRowsLegend: Monster Details
     monsterRowsNone: No monster rows of this character's own. The realm's table applies as it is.
     monsterRowsNote:
@@ -3327,58 +3311,6 @@ settings:
       Friend is never attacked, even when it swings first; where a monster with a band is in the
       room the band decides outright and the usual weighing is skipped. A field left blank keeps
       what the realm says.
-    maxMonsterExpHint: Will not attack anything worth more experience than this. 0 is off,
-      unknown monsters will be attacked.
-    maxMonsterExpLabel: Max Monster Experience
-    minSurvivalHint: Before attacking, the room's fight is simulated from your health now. Under
-      this share of fights survived, or where you would have to run at once, the fight is turned
-      down and you rest first. 0 is off and attacks whatever the odds.
-    minSurvivalLabel: Only Open Fights Survived %
-    minMobsLabel: Min Monsters in Room
-    minMobsHint:
-      Will not open a fight in a room holding fewer than this — for a character whose value is an
-      area spell. 0 is off.
-    maxTargetHealthHint:
-      Will not attack anything the realm gives more health than this. 0 is off, and a monster the
-      realm cannot place is not refused by it.
-    maxTargetHealthLabel: Max Target Health
-    engageAll: Attack All Monsters
-    engageHint:
-      What the world data says about a monster, never its name — one it calls good is attacked only
-      if named below.
-    engageHostile: Hostile / Aggressive Only
-    engageLabel: Attack Target Selection
-    engageLikely: Suspected Hostiles Only
-    engageNone: Retaliate Only
-    hitBack: Retaliate When Attacked
-    hitBackHint: Swings at whatever is already swinging at this character. Cannot open a fight.
-    defendAfterRounds: Defend After Rounds
-    defendAfterRoundsHint:
-      With auto-combat off, rounds of being hit without moving before it is turned on until you
-      next arrive in another room. 0 never does.
-    politeAttacks: Polite Attacks
-    politeAttacksHint:
-      MegaMUD's Polite Attacks. On, a monster somebody outside your party is already fighting is
-      left to them, and the trace says whose it was. Retaliation is unaffected.
-    masterSwitch: Enable Auto-Combat
-    masterSwitchHint: The master switch. With this off nothing below sends anything, whatever it says.
-    maxMobsHint: Will not open a fight in a room holding more than this. 0 never refuses.
-    maxMobsLabel: Max Monsters in Room
-    monstersLegend: Monsters
-    openerHint: Sent for the first blow of a fight only. Blank for none.
-    openerLabel: Opening Attack
-    openerPlaceholder: bs
-    hideForOpener: Hide Between Fights
-    hideForOpenerHint:
-      Sends hide when this character is seen in an empty room, and sneak instead while a lap or
-      route has it, so the opening backstab lands again. Only for an opener of bs.
-    openingFightsWarning: Opening fights unasked can cost a character; the default only retaliates.
-    refreshHint: Rounds between looks, so a monster that died or walked in is noticed. 0 never looks.
-    refreshLabel: Room Look Interval (Rounds)
-    rulesPointerNote:
-      When to cast, when to buff and when to loot are automation.rules in the options
-      file — guard expressions with comments explaining why, which is what YAML is good at and this
-      screen is not.
   crumbs:
     characters: Character
     global: Global
@@ -3424,29 +3356,9 @@ settings:
       pacingWindowLabel: In Flight
     loading: Reading the options file…
     movement:
-      advancedWalking: walking, and staying connected
-      clearRouteLabel: Route Timeout (sec)
-      idleAfterLabel: Anti-Idle Interval (sec)
-      idleCommandLabel: Anti-Idle Command
-      idleCommandPlaceholder: l
-      idleEnabled: Enable Anti-Idle (Prevent Disconnect)
       loopsNote:
         Every character can walk these, whatever realm it plays on. A realm’s own loops go on its
         page, and a character’s on its own.
-      onEnterHint:
-        What the client asks the realm once, on the way in. Every one of these is a command
-        spent, so the list is short on purpose. On GreaterMUD, `abil` is what fills the quest
-        book in with the realm's own count of each quest — no other realm has that command,
-        and one that does not will say the word out loud in the room.
-      onEnterLabel: Post-Login / Entry Commands
-      onEnterPlaceholder: rm, st, i, exp, sc, l
-      onPartyChangeLabel: Party Change Commands
-      onPartyChangePlaceholder: party
-      stepTimeoutHint:
-        Spent twice per step — once waiting for the command to reach the wire, once waiting for
-        the realm to answer it — with one forced prompt between them. The wait before a step is
-        given up on is about twice this.
-      stepTimeoutLabel: Wait Per Step, ms
       minExpRateHint:
         Stops a running loop whose experience per hour has fallen under this, once it has run a
         quarter of an hour — a lap that has stopped working looks like one that is working until
@@ -3469,26 +3381,6 @@ settings:
       realm: Realm
   health:
     belowHealthLabel: Below Health %
-    belowManaLabel: Below Mana %
-    belowManaHint:
-      Also run under this share of mana — MegaMUD's ManaRun%. A caster with an empty pool is losing
-      whatever the health bar says. 0 never runs for mana.
-    retreatHint:
-      Walking out of the fight breaks combat and carries none of the penalty a disconnect does.
-      There is no flee command on this server family, so the way out is always a direction — the
-      one you came in by where that is known, and an exit of this room otherwise. Only while
-      something is taking the character somewhere (a route, a loop, an errand, a quest run);
-      once a route has arrived, it stays where it is.
-    retreatLabel: Auto-Retreat
-    retreatLegend: Auto-Retreat
-    retreatStrategyHint:
-      How far to go. step-back is the one move out. safe-haven takes the same move and then walks
-      to the room below once the fight is over. Which exit is chosen is not a setting — the way you
-      came is always preferred over one you have never used.
-    retreatStrategyLabel: Retreat Strategy
-    safeHavenHint: Named as a loop stop is, with the map/room so a shared name is not guessed at.
-    safeHavenLabel: Safe Room / Retreat Room
-    safeHavenPlaceholder: Newhaven, Town Gates 1/2150
     fleeHint: A second, more desperate escape for realms that answer sys status — sys goto is a real
       command there, not a direction. Breaks off combat the same way Auto-Retreat does, then once
       the fight is over sends sys goto to the destination below instead of walking. Set this lower
@@ -3505,33 +3397,7 @@ settings:
     hangPenaltiesGlobal: As Global says
     hangPenaltiesYes: Charged
     hangPenaltiesNo: Not charged
-    hangUpLabel: Auto-Hangup / Emergency Disconnect
     hangUpLegend: Auto-Hangup
-    hangUpOnPlayer: Hangup on Player Sighting
-    hangUpWarning:
-      On a realm with hang penalties, an unclean disconnect costs a share of maximum health, and
-      at low health it kills — use Auto-Retreat.
-    meditateBelowHint: Sends med below this. Ignored for a class with no mana.
-    meditateBelowLabel: Meditate If Below Mana %
-    meditateToHint:
-      Meditates again after something breaks it, and keeps a walk or loop standing still, until mana
-      reaches this. 0 walks on 10% above Meditate If Below. Lifted to Meditate If Below if set under it.
-    meditateToLabel: Keep Meditating To Mana %
-    outnumberedHint: A health threshold notices being swarmed too late. 0 never.
-    outnumberedLabel: Retreat If Attackers Exceed
-    pvpActionHint:
-      What to do about the fight itself. Retreat runs the moment the attack is seen, whatever
-      Auto-Retreat says — a player opening on you is not a health threshold.
-    pvpActionLabel: PvP Reaction
-    pvpLegend: Attacked by a Player
-    pvpNotifyHint: Says so on the gangpath (bg), once per attacker per five-minute window, with the
-      room and your health riding along. It speaks to your whole gang.
-    pvpNotifyLabel: Broadcast PvP Alert to Gang (bg)
-    # The player's own *use this when that* list (todo 19), and since todo 00
-    # the only one. The name field is filtered by the condition from the
-    # realm's own data, so a rule for poison offers the antidotes and not the
-    # healing potions.
-    potionRuleLegend: When to use an item
     useWards: Keep a Room’s Ward Up
     useWardsHint:
       The realm writes rules of this shape itself, and this is whether they are obeyed. Where it
@@ -3541,10 +3407,6 @@ settings:
     wardRow:
       one: against {hazard}, cast in {rooms} room
       many: against {hazard}, cast in {rooms} rooms
-    potionRuleNote:
-      Name an item and say what makes it worth using. The list is what this realm says would
-      serve the condition; anything else can still be typed, and only an item the pack lists is
-      ever asked for.
     potionRuleAdd: Add a rule
     potionRuleNamePlaceholder: item, as the pack lists it
     potionRuleNameAria: 'Item for rule {number}'
@@ -3561,32 +3423,6 @@ settings:
     potionWhenBlind: blinded
     potionWhenDiseased: diseased
     potionWhenHeld: held
-    recoverLegend: Recover
-    restBelowHint: Sends rest out of combat below this, and holds a running loop still at the same
-      figure. 0 never rests and never pauses a loop.
-    restBelowLabel: Rest If Below HP %
-    restToHint:
-      Sits back down after something breaks the rest, and walks a held loop on again, once health
-      reaches this. Casting breaks a rest and standing regenerates six times slower, so this is
-      what gives you rest, heal, rest, heal. 0 rests once and resumes at the floor. Lifted to Rest
-      If Below if it is under it.
-    restToLabel: Keep Resting To HP %
-    restBeforeTrapsHint:
-      Before stepping through a trap, waits until health covers the trap's damage and still
-      leaves this share of maximum after it — or what the lair beyond is expected to take, if
-      more. Its own switch, so it rests before a trap even with Rest If Below at 0. 0 walks into
-      any trap at any health.
-    restBeforeTrapsLabel: Keep After a Trap HP %
-    restNextDoor: Rest Next Door to a Lair
-    restNextDoorHint:
-      A room that makes monsters on a short clock is not a resting place. Looks into a neighbour the
-      realm holds no lair in, steps there only if it is empty, rests, and steps back. Never while
-      following, since a follower rests where the party is.
-    restingNote: One pair for both, because nothing rests while a loop is marching — a separate
-      pause figure under the resting floor left the character walking while it was too hurt to sit
-      down. Resting is a state the character is in, and only moving, attacking and casting break
-      it, so nothing is sent while the status line already says (Resting), and nothing is ever
-      spent standing up, because the next command you wanted does that for free.
   hint:
     ariaLabel: What this does
   login:
@@ -3653,26 +3489,6 @@ settings:
       is the same answer, walked to without a click.
     radius: Look Within (Steps)
     radiusHint: How far to look for a lair, in steps. Blank is everywhere the exits reach.
-  train:
-    legend: Training
-    warning: A point bought here is permanent, and the form it is bought on renames the character if
-      anything else is typed into it. The client types only figures, only into the six stat
-      fields, and saves.
-    stats: Auto Train Stats
-    statsHint:
-      At a trainer with character points unspent, opens the stat screen, buys the wanted figures
-      below as far as the points go — cheapest point first — and saves. Off, the client stands
-      down from that screen and touches nothing.
-    wantedNote:
-      Where each stat should end up. 0, or a figure at or under the current one, leaves that stat
-      alone; the race's ceiling caps a figure above it. The first ten points above the race's base
-      cost 1 CP each, the next ten 2 each, and so on.
-    strength: Strength
-    intellect: Intellect
-    willpower: Willpower
-    agility: Agility
-    health: Health
-    charm: Charm
   # A realm's message table (`RealmMessages`): MegaMUD's Messages.md, imported
   # onto the realm and edited there.
   messages:
@@ -3855,39 +3671,6 @@ settings:
     unreadable: That file could not be read.
     unset: '—'
   movement:
-    provideLight: Auto-Light (Light Dark Rooms)
-    provideLightHint:
-      Readies a carried light — a torch, a lantern, a glowing pearl, anything the realm files as
-      one — before a step into a room the character could not read, and on arriving in one, worked
-      out from the room's level, the race's night vision and what is worn. On by default.
-    lightDimRooms: Light Dim Rooms Too
-    lightDimRoomsHint:
-      Also in rooms the server describes anyway (dimly lit, barely visible). Spends the torch on a
-      preference rather than a need.
-    walkWhileBlind: Walk While Blind
-    walkWhileBlindHint:
-      Off, a route or a loop stands still until sight returns — MegaMUD's IgnoreBlind default. A blind
-      character cannot read the room it walks into.
-    walkWhileConfused: Walk While Confused
-    walkWhileConfusedHint:
-      Off, a route or a loop stands still while this realm's messages say the character is
-      confused — MegaMUD's Ignore Confusion default. A confused character's commands misfire.
-    walkWhilePoisoned: Walk While Poisoned
-    walkWhilePoisonedHint:
-      Off, a route or a loop stands still until the poison runs its course — MegaMUD's IgnorePoison
-      default. Paralysis always holds; a step while held is refused.
-    walkWhileLosingHp: Walk While Losing HP
-    walkWhileLosingHpHint:
-      Off, a route or a loop stands still while this realm's messages say the character is losing
-      hit points — burning, bleeding, acid, plague — until the row's ending, as MegaMUD rests it out.
-    fightOnArrival: Auto-Combat On at Arrival
-    fightOnArrivalHint:
-      Turns auto-combat back on when a route you asked for arrives, since walking with it off is how
-      you get somewhere without fighting on the way. Loops and errands are left alone.
-    extinguishInLight: Put the Light Out in Lit Rooms
-    extinguishInLightHint:
-      Removes the lit torch in a room that does not need it, while nothing is walking the character,
-      so a torch lasts the sewer rather than the walk there.
     recoverGear: Recover Your Gear After Death
     recoverGearFloorLabel: Keep at least (lives)
     recoverGearFloorHint:
@@ -3906,9 +3689,6 @@ settings:
       and it is lying on this floor. A keyed door with no key is a wall the router plans around, so
       this is the one moment bending down is worth anything. On by default.
     doorsLegend: Doors
-    stealthLegend: Stealth
-    lightLegend: Light
-    afflictionsLegend: Afflictions
     keepOutLegend: Keeping Out
     keepOutOf: Keep Out Of
     keepOutOfHint:
@@ -4015,15 +3795,11 @@ settings:
     pickLocksHint: Tried before bashing, because it costs no health. Needs picklocks near what the
       realm records for the lock; the door is opened for you afterwards.
     pickTries: Picks Per Door
-    sneak: Auto-Sneak on Move
-    sneakHint: Decides whether the next room notices you arrive. Sneaking can fail.
   remotes:
     addPlayerLabel: Grant Player Permissions
     addPlayerPlaceholder: Ardren
     addPlayerHint: As the realm spells it. Clicking a name on the Realm or Players card opens the
       same permissions beside the listing.
-    answerHint: Off, an @ command is read and ignored — answering needs the other character to run
-      mudengine too.
     autoInviteHint: Invites them the moment they're seen in the room, whichever of you walks in —
       nobody has to ask. Not the same as granting @invite below, which only answers their own
       @invite request. Works even with Enable Remote Control off above.
@@ -4031,102 +3807,16 @@ settings:
     channelWarning:
       A channel by which another player’s typing moves the character — it answers nobody
       until something below is granted, and @kill and @hangup are always refused.
-    enabledLabel: Enable Remote Control
     engineNote: Who may send this character remote commands, and which. Whether it answers them at
       all is MegaMUD's own setting, on the Talk tab above.
-    gangLegend: Gang Permissions
-    gangWarning: Membership is read from the who listing — this character's row and the asker's must
-      both name the same gang. Until a listing has shown both, the gang grants nobody anything.
-    gangpathHint: 'A gangpath answer is spoken to the whole gang — “gb @exp” is answered “gb
-      {Made…}” where every member sees both halves.'
-    gangpathLabel: Allow Remotes on Gangpath
-    autoJoinHint: Joins a party as soon as its leader invites this character, without waiting for
-      @join. Only a leader allowed @join is joined, and never while already in a party.
-    autoJoinLabel: Join When Invited
     legend: Answering Other Players
     playerLegend: Permissions for {name}
-    partyListNote:
-      There is a third list on the Party page — what anybody who has joined this character's
-      party may ask for. It ships with @health, @bless-expired and @heal on it, and nothing else.
     removePlayer: Remove
     removePlayerTitle: Take every permission back off {name}
-    remoteControlNote:
-      Answers or acts on the @ commands that can be ticked below, for whoever they are granted to;
-      every other @ command is read and reported, never answered.
-    replyRoutingNote: The answer goes back the way the question came — ask by telepath to be answered.
   party:
-    askHealHint:
-      Say @heal in the room below this while in a party; a member running MegaMUD or this client
-      answers with a heal. 0 never asks.
-    askHealLabel: Ask for Healing Below %
-    assistHint:
-      Swing at what the leader — whoever this character follows — was last seen hitting, while it
-      is still in the room. Never a player; still under the combat health floor.
-    assistLabel: Auto-Assist Leader
-    autoRankHint:
-      Keep this character at Preferred Rank below, sending frontrank/midrank/backrank once
-      whenever the party listing says it is standing somewhere else. No retry, and no error if the
-      realm refuses it — exactly like typing the command by hand.
-    autoRankLabel: Auto-Rank (Keep Preferred Rank)
-    preferredRankHint:
-      Where Auto-Rank tries to keep this character standing. Mid until set, the same rank MegaMUD
-      leaves a character at that nobody has moved.
-    preferredRankLabel: Preferred Rank
     preferredRankFront: Front
     preferredRankMid: Mid
     preferredRankBack: Back
-    blessingsMoved:
-      Blessing the party lives on the Spells tab now — one list for self and party, in priority
-      order, recast on wear-off events with a clock behind them.
-    defendHint:
-      Swing at a monster seen attacking any party member, while it is still in the room. The fight came to the
-      party, so it fires whatever Attack Target Selection says. Never a player.
-    defendLabel: Auto-Defend Party
-    healLegend: Healing
-    healNote:
-      A member's own @heal is answered by Auto-Heal Party Members on the Spells page, when @heal is
-      ticked under Party @ commands below.
-    legend: Following
-    ignorePartyHint:
-      Refuse the leader's @party <command> — for a leader trusted to help, not to type for you.
-    ignorePartyLabel: Ignore @party If Following
-    ignoreWaitHint:
-      Walk on through a follower's @wait. Wait For Party Members still stops for a member's health.
-    ignoreWaitLabel: Ignore @wait If Leading
-    leadLegend: Leading
-    leadNote:
-      What this character does when others follow it. Every figure here comes from the party
-      listing, so how fresh it is depends on how often the listing is asked for.
-    parAfterRoundHint: Ask for the party listing after every combat round as well.
-    parAfterRoundLabel: Send par After Each Combat Round
-    parEveryHint:
-      While in a party, ask for the listing this often in combat and twice as long out of it. 0 asks
-      only when the party changes. MegaMUD uses 15.
-    parEveryLabel: Par Every (seconds)
-    remotesLegend: Party @ commands
-    remotesNote:
-      What anybody who has **joined** this party may ask this character for. An invitation
-      nobody accepted is not membership, and a Deny on somebody by name still beats this.
-    remotesOffWarning:
-      Answering @ commands is off for this character, so nothing here is answered yet. The
-      switch is on the Remotes page.
-    requestHealthHint:
-      Telepath @health to whoever joins, for their real health and mana rather than the
-      listing's percentage.
-    requestHealthLabel: Request Party Health
-    restHint: Out of combat only, like every rest. Meditates only for a class with mana.
-    restLabel: Rest With Leader
-    waitBelowHint:
-      Leading, pause the loop while any member's health is under this, as a @wait would. 0 never
-      waits.
-    waitBelowLabel: Wait For Party Members Below %
-    waitMinutesHint:
-      Leading, the longest to wait — for a @wait whose @ok never came, or a member whose health
-      never rose — before walking on. 0 waits as long as it takes.
-    waitMinutesLabel: Wait No Longer Than (minutes)
-    warning:
-      Whether the realm's command window is per connection or per host is unmeasured. These make
-      a second automated character useful; turning them on is choosing to run that experiment.
   profile:
     accentLabel: Colour
     autoConnectLabel: Connect on Start
@@ -4225,17 +3915,6 @@ settings:
     stepWhenPlaceholder: Please select a realm
     submit: Add realm
   gear:
-    legend: Equipment Sets
-    note:
-      A set names only the slots it cares about. What the character has on is the "always" set with
-      whichever other set applies laid over it — so "Moving" is one line about boots rather than a
-      second copy of the whole kit.
-    enabled: Swap kit to suit
-    enabledHint:
-      With this on, the sets below are put on and taken off as the situation changes — walking,
-      resting, meditating, fighting, or fighting one named monster. The off-hand comes off before
-      a two-handed weapon goes on, and the weapon hand is sent first, so coming back the other way
-      frees the hand before the shield is asked for.
     setAdd: Add a set
     setNamePlaceholder: What to call it
     setNameAria: Set {number} name
@@ -4255,19 +3934,6 @@ settings:
     whenResting: while resting
     whenMeditating: while meditating
     whenFighting: while fighting
-    offRoundLegend: Between rounds
-    offRoundNote:
-      Using an item on what is being fought, between swings. The server will not use a weapon that
-      is not in hand, so a two-handed one costs six commands a round — off-hand off, weapon on,
-      use, weapon back, off-hand back — against a window of three. 0 rounds never uses it.
-    offRoundItem: Item to use
-    offRoundItemHint:
-      The item, as the pack lists it. It is put in hand, used on whatever is being fought, and the
-      kit put back afterwards.
-    offRoundEvery: Every (rounds)
-    offRoundEveryHint:
-      At most one use this many rounds. 0 never uses it. Every use is a round this character is not
-      swinging in, so a low figure on a long fight is a fight fought with fewer blows.
   sections:
     character: Character
     login: Login
@@ -4294,113 +3960,15 @@ settings:
     blessingTargetSelf: Self
     blessingUpAria: Move blessing {number} up
     blessingUpTitle: Higher priority
-    blessingsLegend: Auto-Buff / Blessings
-    blessingsNote:
-      Spells the client keeps active for you. When the game says one has worn off, it is cast
-      again straight away. The top of the list is cast first, and blessings on yourself always
-      come before ones on the party. A blessing on a party member recasts on its own timer,
-      because its wear-off shows on their screen, not yours.
-    notifyWearOffLabel: Notify Caster on Buff Wear-Off
-    autoBlessLabel: Auto-Bless
-    autoBlessHint:
-      Cast the blessings below unasked. Off keeps the mana for healing through a fight without
-      emptying the list; the toolbar has the same switch.
-    invokeItemsLabel: Bless from an item
-    invokeItemsHint:
-      Ask a carried item for the blessing it casts, when that blessing is not up. Only items the
-      realm says can be used without limit — nine weapons in the shipped realm bless this way,
-      for no mana and no charge. An item with a fixed number of charges is left alone.
-    notifyWearOffHint:
-      When a party member's blessing on this character wears off, telepath them @bless-expired so
-      their client recasts at once instead of on its clock. Both ends must run mudengine.
     cureBlindnessLabel: Cure Blindness Spell
     cureDiseaseLabel: Cure Disease Spell
     cureFreedomLabel: Freedom Spell
-    cureLegend: Cures
-    cureNote: Cast the moment the game says you are blinded, poisoned or diseased, and again after
-      thirty seconds if it still shows. A blank field does nothing. A field is greyed out when
-      your spellbook has nothing that cures it.
     curePoisonLabel: Cure Poison Spell
     cureHint: The spell to cast when this lands on you. Blank does nothing.
     cureClosedHint: Your spellbook has no spell that cures this, so there is nothing to cast.
     pickerPlaceholder: search spells
     removeBlessingAria: Remove blessing {number}
     removeBlessingTitle: Remove
-    areaCastHint:
-      Cast bare — c <spell>, no target — when the fight is crowded enough. Refused while a monster the realm
-      calls good stands in the room, because an AE spell hits everything there.
-    areaCastLabel: Area Effect (AE) / Room Spell
-    areaMinManaHint:
-      The AE spell is the expensive one, so its floor is the higher of this and the ordinary mana floor. 0
-      defers to that floor alone.
-    areaMinManaLabel: AE Spell Min Mana %
-    areaMinMobsHint:
-      Targets at or above which the AE spell is chosen — what is in this fight or would join
-      it, never a shopkeeper.
-    areaMinMobsLabel: AE Min Targets
-    castHint:
-      Sent as c <spell> <target> on the mid-round tick. The whole name — the realm matches on a
-      prefix.
-    castLabel: Combat Spell (Round Spell)
-    autoChoose: Auto Choose Best Spell
-    autoChooseHint:
-      Picks the round spell each round from your spellbook and the realm's figures — never one the
-      monster resists, the cheapest that would finish it, else the hardest hitter. The cures are
-      picked where their boxes are blank. The spells below are cast with this off, and with it on
-      wherever the spellbook cannot answer.
-    autoChooseHeal: Auto Choose Best Heal
-    autoChooseHealHint:
-      Picks each heal from your spellbook and the realm's figures against the hit points actually
-      missing, so a scratch is not mended with a major heal, and casts a party heal like healing
-      rain when it does more than one heal on the worst hurt. The healing spells below are cast
-      with this off, or wherever it cannot choose.
-    fallbackCastHint:
-      Cast instead for the rest of the fight once the game says the combat spell has no effect on
-      the target. Blank leaves the fight to the round attacks.
-    fallbackCastLabel: Fallback Spell
-    attackCastsHint:
-      Casts of the combat spell per target, then the round attacks carry it. 0 is no limit;
-      MegaMUD's own default is 1.
-    attackCastsLabel: Casts Per Target
-    areaCastsHint: Casts of the AE spell per fight. 0 is no limit.
-    areaCastsLabel: AE Casts Per Fight
-    drainLegend: Drain When Hurt
-    drainNote:
-      A drain hurts the target and heals you by it. Below the threshold the drain spells stand in
-      for the combat and AE spells, under their own caps, crowd and mana tests, until health is
-      back up. Only spells the realm says drain are offered.
-    drainHint: Stands in for the combat spell while hurt. Blank keeps it, or picks from the spellbook with Auto Choose on.
-    drainLabel: Drain Spell
-    areaDrainHint: Stands in for the AE spell while hurt, when the room earns one. Blank keeps the AE spell.
-    areaDrainLabel: AE Drain Spell
-    drainBelowHint: Switch to the drain spells below this share of health. 0 never drains.
-    drainBelowLabel: Drain If Below HP %
-    drainToHint:
-      Keep draining until health is back to this. 0 switches back as soon as it is over the
-      threshold — and every switch restarts your combat round.
-    drainToLabel: Drain Up To HP %
-    healBelowInCombatHint:
-      A separate floor while fighting. 0 uses the one beside it for both; set it lower so a scratch
-      does not cost a round.
-    healBelowInCombatLabel: Heal In Combat Below %
-    healBelowLabel: Heal If Below HP %
-    healHint: Cast on this character, bare. Only spells the realm lets you cast on yourself are offered.
-    healLabel: Self Healing Spell
-    healLegend: Healing
-    healNoSelfCast: The realm says this spell cannot be cast on yourself.
-    healNoPartyCast: The realm says this spell cannot be cast on another character.
-    healParty: Auto-Heal Party Members
-    healPartyHint: A member the roster has not listed has no health to read, and is never healed on a guess.
-    healPartyWithHint:
-      Cast on the member who is hurt. Only spells the realm lets you cast on another character
-      are offered.
-    healPartyWithLabel: Party Healing Spell
-    healToHint: Keep healing that target until it is back to this. 0 casts once at the threshold.
-    healToLabel: Heal Up To HP %
-    regenLegend: Regeneration
-    regenNote:
-      MegaMUD's regen and when-full spells, timed as it times them. Each is skipped while a message
-      from the realm's table says it is already working.
     regenHpLabel: HP Regen
     regenHpHint:
       Cast before resting while health is short, above the heal's mana floor. The rest follows on
@@ -4415,22 +3983,6 @@ settings:
     regenHpFullHint: Cast once each time health reaches Keep Resting To HP %.
     regenManaFullLabel: When Mana Full
     regenManaFullHint: Cast once each time mana reaches Keep Meditating To Mana %.
-    minManaHint: Falls through to the round attacks below this. 0 always casts.
-    minManaLabel: Not Below Mana %
-    rulesPointerNote:
-      One cast, chosen by a number, on the mid-round tick — which is the one thing about
-      a spell a rule cannot express. Everything else a caster wants is automation.rules.
-  statline:
-    legend: The Prompt
-    controlLabel: Own the Status Line
-    controlHint:
-      Sends the client's own template on the way in, so every prompt carries maximum health and
-      mana, experience, what the next level still costs and the purse; then asks pro once for
-      what the realm holds, which is what the prompt is read by.
-    templateNote:
-      'The template sent is set statline full custom [HP=%h/%H,MA=%m/%M,Exp=%x,Need=%X,Wealth=%c%r]:
-      — the realm keeps it on the character, so it stays set after the client is closed. Off or
-      on, the client reads whatever the line turns out to be and says which pattern it reads it by.'
   rewrites:
     listLegend: Your Designs
     note: Each design draws in place of what the realm printed, with what the client knows laid
@@ -4518,17 +4070,7 @@ settings:
         kindList: a list
         kindRecord: figures
   tabs:
-    alerts: Alerts
-    combat: Combat
-    health: Health
-    movement: Movement
-    party: Party
-    remotes: Remotes
-    spells: Spells
     rewrites: Rewrites
-    train: Training
-    gear: Gear
-    quests: Quests
   # Running a quest's plan -- `automation.quests` (todo 102). One switch,
   # and the warning in the open: a run walks, buys, hunts and fights unattended.
   quests:

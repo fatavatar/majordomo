@@ -1,31 +1,14 @@
 import { useCallback, useMemo, useState } from 'react';
 import Advanced from './Advanced';
 import AlertList from './AlertList';
-import BlessingList from './BlessingList';
-import CureFields from './CureFields';
-import RegenFields from './RegenFields';
 import { MonsterRuleList } from './MonsterRules';
-import GearSetList from './GearSetList';
-import PotionList from './PotionList';
 import SettingsNav, { type NavFieldset } from './SettingsNav';
-import SpellField, { castableOn, drainsIn, refusesTarget } from './SpellPicker';
-import { castsOnOthers, castsOnSelf } from '@shared/spellcraft';
-import CarrySections from './CarrySections';
 import Icon from './Icon';
 import { CheckField, NumberField, SelectField, TextField } from './FormField';
-import RemoteList from './RemoteList';
-import { ACTIONABLE_REMOTES } from '@shared/remotes';
 import LoopSection from './LoopSection';
 import RewritesDesigner from './RewriteDesigner';
 
 import { t } from '../lib/i18n';
-import {
-  RETREAT_STRATEGIES,
-  PVP_ACTIONS,
-  type EngagePolicy,
-  type PartyRank,
-  type RetreatStrategy
-} from '@shared/config';
 import type { GlobalDraft } from '@shared/drafts';
 import type { SpellOption } from '@shared/ipc';
 import type { Loop } from '@shared/loops';
@@ -110,120 +93,63 @@ export type GlobalScope = 'client' | 'defaults';
 /**
  * The sections each half offers, in order.
  *
- * The defaults half keeps MegaMUD's own tab names — Combat, Health, Spells,
- * Movement — because somebody configuring a MajorMUD client has been reading
- * those words for twenty years (docs/terminology.md §2.2). Realm and Character
- * are ours: MegaMUD ran behind a terminal somebody else had already dialled.
+ * The defaults half is what a character starts from, under the MegaMUD tab
+ * each belongs to on the Character page (2026-10-14): what this client keeps
+ * beside the MegaMUD engine and nothing of the old automation's. Realm and the
+ * console's rewrites are ours, with no MegaMUD tab to stand under.
  */
 const SECTIONS: Record<GlobalScope, readonly Section[]> = {
   client: ['appearance', 'records'],
-  defaults: [
-    'realm',
-    'combat',
-    'health',
-    'spells',
-    'party',
-    'movement',
-    'gear',
-    'train',
-    'quests',
-    'remotes',
-    'alerts',
-    'rewrites'
-  ]
+  defaults: ['realm', 'Auto-roam', 'Combat', 'Health', 'Other', 'Loot', 'Sounds', 'rewrites']
 };
 
 type Section =
   | 'appearance'
   | 'records'
   | 'realm'
-  | 'combat'
-  | 'health'
-  | 'spells'
-  | 'party'
-  | 'movement'
-  | 'gear'
-  | 'train'
-  | 'quests'
-  | 'remotes'
-  | 'alerts'
+  | 'Auto-roam'
+  | 'Combat'
+  | 'Health'
+  | 'Other'
+  | 'Loot'
+  | 'Sounds'
   | 'rewrites';
 
 /**
- * The fieldsets inside each section, as the rail's jump targets (todo 02).
- *
- * Its own table rather than the character screen's, because the two pages
- * genuinely differ: Global has no wrapper fieldset around the round spell, its
- * Combat fieldsets are not gated on the switch, and its three Alerts fieldsets
- * are in a different order. A shared table would have to be wrong for one of
- * them. See `SECTION_FIELDSETS` in `SettingsScreen`.
+ * The fieldsets inside each section, as the rail's jump targets (todo 02),
+ * with the same ids the Character page's `SECTION_FIELDSETS` uses.
  */
 const SECTION_FIELDSETS: Record<Section, readonly NavFieldset[]> = {
   appearance: [{ id: 'appearance-vitals', label: t('settings.client.appearance.vitalsLegend') }],
   records: [],
   realm: [{ id: 'realm-login', label: t('settings.realms.loginLegend') }],
-  combat: [
-    { id: 'combat-monsters', label: t('settings.combat.monstersLegend') },
-    { id: 'combat-monster-rows', label: t('settings.combat.monsterRowsLegend') }
-  ],
-  health: [
-    { id: 'health-recover', label: t('settings.health.recoverLegend') },
-    { id: 'health-potions', label: t('settings.health.potionRuleLegend') },
-    { id: 'health-retreat', label: t('settings.health.retreatLegend') },
-    { id: 'health-flee', label: t('settings.health.fleeLegend') },
-    { id: 'health-hangup', label: t('settings.health.hangUpLegend') },
-    { id: 'health-pvp', label: t('settings.health.pvpLegend') }
-  ],
-  spells: [
-    { id: 'spells-drain', label: t('settings.spells.drainLegend') },
-    { id: 'spells-heal', label: t('settings.spells.healLegend') },
-    { id: 'spells-regen', label: t('settings.spells.regenLegend') },
-    { id: 'spells-cures', label: t('settings.spells.cureLegend') },
-    { id: 'spells-blessings', label: t('settings.spells.blessingsLegend') }
-  ],
-  party: [
-    { id: 'party-follow', label: t('settings.party.legend') },
-    { id: 'party-leading', label: t('settings.party.leadLegend') },
-    { id: 'party-healing', label: t('settings.party.healLegend') },
-    { id: 'party-remotes', label: t('settings.party.remotesLegend') }
-  ],
-  movement: [
-    { id: 'movement-doors', label: t('settings.movement.doorsLegend') },
-    { id: 'movement-stealth', label: t('settings.movement.stealthLegend') },
-    { id: 'movement-light', label: t('settings.movement.lightLegend') },
-    { id: 'movement-afflictions', label: t('settings.movement.afflictionsLegend') },
+  'Auto-roam': [
     { id: 'movement-keep-out', label: t('settings.movement.keepOutLegend') },
-    { id: 'movement-carry', label: t('settings.movement.carryLegend') },
-    { id: 'hunting', label: t('settings.hunting.legend') }
+    { id: 'hunting', label: t('settings.hunting.legend') },
+    { id: 'quests', label: t('settings.quests.legend') }
   ],
-  train: [{ id: 'train', label: t('settings.train.legend') }],
-  gear: [
-    { id: 'gear', label: t('settings.gear.legend') },
-    { id: 'gear-offround', label: t('settings.gear.offRoundLegend') }
+  Combat: [{ id: 'combat-monster-rows', label: t('settings.combat.monsterRowsLegend') }],
+  Health: [
+    { id: 'health-flee', label: t('settings.health.fleeLegend') },
+    { id: 'health-wards', label: t('settings.health.wardsLegend') }
   ],
-  quests: [{ id: 'quests', label: t('settings.quests.legend') }],
-  remotes: [{ id: 'remotes', label: t('settings.remotes.legend') }],
-  alerts: [
-    { id: 'alerts-rules', label: t('settings.alerts.ruleLegend') },
-    { id: 'alerts-afk', label: t('settings.afk.legend') }
-  ],
-  rewrites: [{ id: 'rewrites-statline', label: t('settings.statline.legend') }]
+  Other: [{ id: 'movement-doors', label: t('settings.movement.doorsLegend') }],
+  Loot: [{ id: 'movement-carry', label: t('settings.movement.carryLegend') }],
+  Sounds: [{ id: 'alerts-rules', label: t('settings.alerts.ruleLegend') }],
+  rewrites: []
 };
 
+/** MegaMUD's tabs by their own names, as the Character page's rows are. */
 const SECTION_LABEL: Record<Section, string> = {
   appearance: t('settings.client.tabs.appearance'),
   records: t('settings.client.tabs.records'),
   realm: t('settings.global.tabs.realm'),
-  combat: t('settings.tabs.combat'),
-  health: t('settings.tabs.health'),
-  spells: t('settings.tabs.spells'),
-  party: t('settings.tabs.party'),
-  movement: t('settings.tabs.movement'),
-  gear: t('settings.tabs.gear'),
-  train: t('settings.tabs.train'),
-  quests: t('settings.tabs.quests'),
-  remotes: t('settings.tabs.remotes'),
-  alerts: t('settings.tabs.alerts'),
+  'Auto-roam': 'Auto-roam',
+  Combat: 'Combat',
+  Health: 'Health',
+  Other: 'Other',
+  Loot: 'Loot',
+  Sounds: 'Sounds',
   rewrites: t('settings.tabs.rewrites')
 };
 
@@ -232,7 +158,6 @@ import {
   fractionOf as fraction,
   joinNames,
   percentOf as percent,
-  RANK_OPTIONS,
   splitNames
 } from '../lib/form';
 
@@ -273,18 +198,6 @@ export default function GlobalSettings({
   const [section, setSection] = useState<Section>(() => SECTIONS[scope][0]!);
   const shown = SECTIONS[scope].includes(section) ? section : SECTIONS[scope][0]!;
 
-  /*
-   * The two heal fields offer different halves of the realm's spells: the
-   * realm marks `way of the swan` castable on the caster alone, so offering it
-   * for the party heal would arm `c swan <name>` once a round for a refusal
-   * the server prints in the room. `castsOnSelf` / `castsOnOthers` both say
-   * yes to a spell whose targeting this build cannot read, so a derivative
-   * realm loses no options.
-   */
-  const selfHeals = useMemo(() => castableOn(realmSpells, castsOnSelf), [realmSpells]);
-  const partyHeals = useMemo(() => castableOn(realmSpells, castsOnOthers), [realmSpells]);
-  const drains = useMemo(() => drainsIn(realmSpells), [realmSpells]);
-
   /**
    * One block at a time, merged onto the draft.
    *
@@ -319,8 +232,6 @@ export default function GlobalSettings({
    */
   const barOfHealth = (fraction: number): ReturnType<typeof barOf> =>
     barOf(percent(fraction), draft.ui.vitals.hp);
-  const barOfMana = (fraction: number): ReturnType<typeof barOf> =>
-    barOf(percent(fraction), draft.ui.vitals.mana);
   /*
    * Only the dark ones, because that is the whole of what this setting means.
    * A select that offered a light theme here would be offering to keep the
@@ -737,192 +648,8 @@ export default function GlobalSettings({
           </>
         )}
 
-        {shown === 'combat' && (
+        {shown === 'Combat' && (
           <>
-            <CheckField
-              checked={draft.automation.enabled}
-              hint={t('settings.combat.masterSwitchHint')}
-              label={t('settings.combat.masterSwitch')}
-              name="global-automation"
-              onChange={(value) => automation({ enabled: value })}
-            />
-
-            <p className="settings-warn">{t('settings.combat.openingFightsWarning')}</p>
-
-            <CheckField
-              checked={draft.automation.combat.enabled}
-              label={t('settings.combat.attackForMe')}
-              name="global-combat"
-              onChange={(value) =>
-                automation({ combat: { ...draft.automation.combat, enabled: value } })
-              }
-            />
-            <div className="settings-inline">
-              <NumberField
-                hint={t('settings.combat.defendAfterRoundsHint')}
-                label={t('settings.combat.defendAfterRounds')}
-                name="global-defend-after-rounds"
-                onChange={(value) =>
-                  automation({
-                    combat: {
-                      ...draft.automation.combat,
-                      defendAfterRounds: Number.parseInt(value, 10) || 0
-                    }
-                  })
-                }
-                value={String(draft.automation.combat.defendAfterRounds)}
-              />
-            </div>
-            <CheckField
-              checked={draft.automation.combat.retaliate}
-              hint={t('settings.combat.hitBackHint')}
-              label={t('settings.combat.hitBack')}
-              name="global-retaliate"
-              onChange={(value) =>
-                automation({ combat: { ...draft.automation.combat, retaliate: value } })
-              }
-            />
-            <CheckField
-              checked={draft.automation.combat.politeAttacks}
-              hint={t('settings.combat.politeAttacksHint')}
-              label={t('settings.combat.politeAttacks')}
-              name="global-polite-attacks"
-              onChange={(value) =>
-                automation({ combat: { ...draft.automation.combat, politeAttacks: value } })
-              }
-            />
-
-            <div className="settings-inline">
-              <TextField
-                hint={t('settings.combat.attackVerbHint')}
-                label={t('settings.combat.attackVerbLabel')}
-                name="global-attack"
-                onChange={(value) =>
-                  automation({ combat: { ...draft.automation.combat, attack: value } })
-                }
-                placeholder={t('settings.combat.attackWithPlaceholder')}
-                spellCheck={false}
-                value={draft.automation.combat.attack}
-              />
-              <TextField
-                hint={t('settings.combat.openerHint')}
-                label={t('settings.combat.openerLabel')}
-                name="global-opener"
-                onChange={(value) =>
-                  automation({ combat: { ...draft.automation.combat, opener: value } })
-                }
-                placeholder={t('settings.combat.openerPlaceholder')}
-                spellCheck={false}
-                value={draft.automation.combat.opener}
-              />
-              {/*
-              The same four words the character form shows, rather than the
-              policy names out of the schema. `hostile` and `likely` are the
-              config's vocabulary and mean nothing to somebody reading a
-              form -- and two screens naming one setting two ways is how a
-              player comes to believe they are two settings.
-            */}
-              <SelectField
-                hint={t('settings.combat.engageHint')}
-                label={t('settings.combat.engageLabel')}
-                name="global-engage"
-                onChange={(value) =>
-                  automation({
-                    combat: { ...draft.automation.combat, engage: value as EngagePolicy }
-                  })
-                }
-                options={[
-                  { value: 'none', label: t('settings.combat.engageNone') },
-                  { value: 'hostile', label: t('settings.combat.engageHostile') },
-                  { value: 'likely', label: t('settings.combat.engageLikely') },
-                  { value: 'all', label: t('settings.combat.engageAll') }
-                ]}
-                value={draft.automation.combat.engage}
-              />
-            </div>
-            <CheckField
-              checked={draft.automation.combat.hideForOpener}
-              hint={t('settings.combat.hideForOpenerHint')}
-              label={t('settings.combat.hideForOpener')}
-              name="global-hide-for-opener"
-              onChange={(value) =>
-                automation({ combat: { ...draft.automation.combat, hideForOpener: value } })
-              }
-            />
-
-            <div className="settings-inline">
-              <NumberField
-                hint={t('settings.combat.maxMobsHint')}
-                label={t('settings.combat.maxMobsLabel')}
-                name="global-max-mobs"
-                onChange={(value) =>
-                  automation({
-                    combat: {
-                      ...draft.automation.combat,
-                      maxMobs: Number.parseInt(value, 10) || 0
-                    }
-                  })
-                }
-                value={String(draft.automation.combat.maxMobs)}
-              />
-              <NumberField
-                hint={t('settings.combat.minMobsHint')}
-                label={t('settings.combat.minMobsLabel')}
-                name="global-min-mobs"
-                onChange={(value) =>
-                  automation({
-                    combat: {
-                      ...draft.automation.combat,
-                      minMobs: Math.max(0, Number.parseInt(value, 10) || 0)
-                    }
-                  })
-                }
-                value={String(draft.automation.combat.minMobs)}
-              />
-            </div>
-
-            <fieldset className="settings-menus" data-fieldset="combat-monsters">
-              <legend>{t('settings.combat.monstersLegend')}</legend>
-              <NumberField
-                hint={t('settings.combat.maxTargetHealthHint')}
-                label={t('settings.combat.maxTargetHealthLabel')}
-                name="global-max-target-health"
-                onChange={(value) =>
-                  automation({
-                    combat: {
-                      ...draft.automation.combat,
-                      maxTargetHealth: Math.max(0, Number.parseInt(value, 10) || 0)
-                    }
-                  })
-                }
-                value={String(draft.automation.combat.maxTargetHealth)}
-              />
-              <NumberField
-                hint={t('settings.combat.maxMonsterExpHint')}
-                label={t('settings.combat.maxMonsterExpLabel')}
-                name="global-max-monster-exp"
-                onChange={(value) =>
-                  automation({
-                    combat: {
-                      ...draft.automation.combat,
-                      maxMonsterExperience: Math.max(0, Number.parseInt(value, 10) || 0)
-                    }
-                  })
-                }
-                value={String(draft.automation.combat.maxMonsterExperience)}
-              />
-              <NumberField
-                hint={t('settings.combat.minSurvivalHint')}
-                label={t('settings.combat.minSurvivalLabel')}
-                name="global-min-survival"
-                onChange={(value) =>
-                  automation({
-                    combat: { ...draft.automation.combat, minSurvival: fraction(value) }
-                  })
-                }
-                value={percent(draft.automation.combat.minSurvival)}
-              />
-            </fieldset>
             <fieldset className="settings-menus" data-fieldset="combat-monster-rows">
               <legend>{t('settings.combat.monsterRowsLegend')}</legend>
               <p className="settings-note">{t('settings.global.combat.monsterRowsNote')}</p>
@@ -946,22 +673,6 @@ export default function GlobalSettings({
               </div>
             </fieldset>
             <Advanced label={t('settings.global.combat.advancedPacing')}>
-              <div className="settings-inline">
-                <NumberField
-                  hint={t('settings.combat.refreshHint')}
-                  label={t('settings.combat.refreshLabel')}
-                  name="global-refresh"
-                  onChange={(value) =>
-                    automation({
-                      combat: {
-                        ...draft.automation.combat,
-                        refreshRounds: Number.parseInt(value, 10) || 0
-                      }
-                    })
-                  }
-                  value={draft.automation.combat.refreshRounds}
-                />
-              </div>
               <p className="settings-note">{t('settings.global.combat.pacingNote')}</p>
               <div className="settings-inline">
                 <NumberField
@@ -1005,209 +716,11 @@ export default function GlobalSettings({
                 />
               </div>
             </Advanced>
-
-            <p className="settings-note">{t('settings.combat.rulesPointerNote')}</p>
           </>
         )}
 
-        {shown === 'health' && (
+        {shown === 'Health' && (
           <>
-            <fieldset className="settings-menus" data-fieldset="health-recover">
-              <legend>{t('settings.health.recoverLegend')}</legend>
-              <p className="settings-note">{t('settings.health.restingNote')}</p>
-              <div className="settings-inline">
-                <NumberField
-                  hint={t('settings.health.restBelowHint')}
-                  label={t('settings.health.restBelowLabel')}
-                  name="global-rest-below"
-                  onChange={(value) =>
-                    automation({
-                      health: { ...draft.automation.health, restBelow: fraction(value) }
-                    })
-                  }
-                  bar={barOfHealth(draft.automation.health.restBelow)}
-                  value={percent(draft.automation.health.restBelow)}
-                />
-                <NumberField
-                  hint={t('settings.health.restToHint')}
-                  label={t('settings.health.restToLabel')}
-                  name="global-rest-to"
-                  onChange={(value) =>
-                    automation({
-                      health: { ...draft.automation.health, restTo: fraction(value) }
-                    })
-                  }
-                  bar={barOfHealth(draft.automation.health.restTo)}
-                  value={percent(draft.automation.health.restTo)}
-                />
-                <NumberField
-                  hint={t('settings.health.restBeforeTrapsHint')}
-                  label={t('settings.health.restBeforeTrapsLabel')}
-                  name="global-rest-before-traps"
-                  onChange={(value) =>
-                    automation({
-                      health: { ...draft.automation.health, restBeforeTraps: fraction(value) }
-                    })
-                  }
-                  bar={barOfHealth(draft.automation.health.restBeforeTraps)}
-                  value={percent(draft.automation.health.restBeforeTraps)}
-                />
-                <NumberField
-                  hint={t('settings.health.meditateBelowHint')}
-                  label={t('settings.health.meditateBelowLabel')}
-                  name="global-med-below"
-                  onChange={(value) =>
-                    automation({
-                      health: { ...draft.automation.health, meditateBelow: fraction(value) }
-                    })
-                  }
-                  bar={barOfMana(draft.automation.health.meditateBelow)}
-                  value={percent(draft.automation.health.meditateBelow)}
-                />
-                <NumberField
-                  hint={t('settings.health.meditateToHint')}
-                  label={t('settings.health.meditateToLabel')}
-                  name="global-med-to"
-                  onChange={(value) =>
-                    automation({
-                      health: { ...draft.automation.health, meditateTo: fraction(value) }
-                    })
-                  }
-                  bar={barOfMana(draft.automation.health.meditateTo)}
-                  value={percent(draft.automation.health.meditateTo)}
-                />
-              </div>
-              <CheckField
-                checked={draft.automation.health.restNextDoor}
-                hint={t('settings.health.restNextDoorHint')}
-                label={t('settings.health.restNextDoor')}
-                name="global-rest-next-door"
-                onChange={(value) =>
-                  automation({ health: { ...draft.automation.health, restNextDoor: value } })
-                }
-              />
-            </fieldset>
-
-            {/*
-            The player's own *use this when that* list, on this page too
-            (todo 00). It was the character page's alone, which made it the one
-            overlay-able list a new character could never be given a starting
-            point for — the two named slots that used to stand here are gone,
-            and this says everything they said.
-
-            No `serving` suggestions: the realm's item list is a session's
-            answer about a character's realm, and this page is every realm.
-          */}
-            <fieldset className="settings-menus" data-fieldset="health-potions">
-              <legend>{t('settings.health.potionRuleLegend')}</legend>
-              <p className="settings-note">{t('settings.health.potionRuleNote')}</p>
-              <PotionList
-                namePrefix="global-potion"
-                onChange={(potions) =>
-                  automation({ health: { ...draft.automation.health, potions } })
-                }
-                potions={draft.automation.health.potions}
-                serving={{}}
-              />
-              {/* The realm's own half of the same list. No rows drawn beside
-                  it here: which wards exist is a property of a realm, and this
-                  page is every realm. */}
-              <CheckField
-                checked={draft.automation.health.useWards}
-                hint={t('settings.health.useWardsHint')}
-                label={t('settings.health.useWards')}
-                name="global-use-wards"
-                onChange={(value) =>
-                  automation({ health: { ...draft.automation.health, useWards: value } })
-                }
-              />
-            </fieldset>
-
-            <fieldset className="settings-menus" data-fieldset="health-retreat">
-              <legend>{t('settings.health.retreatLegend')}</legend>
-              <p className="settings-note">{t('settings.health.retreatHint')}</p>
-              {/* The switch and the two figures it runs on are one row, the same
-                shape a character's own Health tab draws them in. */}
-              <div className="settings-inline">
-                <CheckField
-                  checked={draft.automation.retreat.enabled}
-                  label={t('settings.health.retreatLabel')}
-                  name="global-retreat"
-                  onChange={(value) =>
-                    automation({ retreat: { ...draft.automation.retreat, enabled: value } })
-                  }
-                />
-                <NumberField
-                  label={t('settings.health.belowHealthLabel')}
-                  name="global-retreat-health"
-                  onChange={(value) =>
-                    automation({
-                      retreat: { ...draft.automation.retreat, belowHealth: fraction(value) }
-                    })
-                  }
-                  bar={barOfHealth(draft.automation.retreat.belowHealth)}
-                  value={percent(draft.automation.retreat.belowHealth)}
-                />
-                <NumberField
-                  hint={t('settings.health.belowManaHint')}
-                  label={t('settings.health.belowManaLabel')}
-                  name="global-retreat-mana"
-                  onChange={(value) =>
-                    automation({
-                      retreat: { ...draft.automation.retreat, belowMana: fraction(value) }
-                    })
-                  }
-                  bar={barOfMana(draft.automation.retreat.belowMana)}
-                  value={percent(draft.automation.retreat.belowMana)}
-                />
-                <NumberField
-                  hint={t('settings.health.outnumberedHint')}
-                  label={t('settings.health.outnumberedLabel')}
-                  name="global-outnumbered"
-                  onChange={(value) =>
-                    automation({
-                      retreat: {
-                        ...draft.automation.retreat,
-                        whenOutnumbered: Number.parseInt(value, 10) || 0
-                      }
-                    })
-                  }
-                  value={draft.automation.retreat.whenOutnumbered}
-                />
-              </div>
-              <SelectField
-                hint={t('settings.health.retreatStrategyHint')}
-                label={t('settings.health.retreatStrategyLabel')}
-                name="global-retreat-strategy"
-                onChange={(value) =>
-                  automation({
-                    retreat: {
-                      ...draft.automation.retreat,
-                      strategy: RETREAT_STRATEGIES.includes(value as RetreatStrategy)
-                        ? (value as RetreatStrategy)
-                        : 'step-back'
-                    }
-                  })
-                }
-                options={RETREAT_STRATEGIES.map((s) => ({ value: s, label: s }))}
-                value={draft.automation.retreat.strategy}
-              />
-              {draft.automation.retreat.strategy === 'safe-haven' && (
-                <TextField
-                  hint={t('settings.health.safeHavenHint')}
-                  label={t('settings.health.safeHavenLabel')}
-                  name="global-retreat-haven"
-                  onChange={(value) =>
-                    automation({ retreat: { ...draft.automation.retreat, safeHavenRoom: value } })
-                  }
-                  placeholder={t('settings.health.safeHavenPlaceholder')}
-                  spellCheck={false}
-                  value={draft.automation.retreat.safeHavenRoom}
-                  wide
-                />
-              )}
-            </fieldset>
-
             <fieldset className="settings-menus" data-fieldset="health-flee">
               <legend>{t('settings.health.fleeLegend')}</legend>
               <p className="settings-note">{t('settings.health.fleeHint')}</p>
@@ -1245,791 +758,23 @@ export default function GlobalSettings({
                 wide
               />
             </fieldset>
-
-            <fieldset className="settings-menus" data-fieldset="health-hangup">
-              <legend>{t('settings.health.hangUpLegend')}</legend>
-              <p className="settings-warn">{t('settings.health.hangUpWarning')}</p>
-              <div className="settings-inline">
-                <CheckField
-                  checked={draft.automation.hangUp.enabled}
-                  label={t('settings.health.hangUpLabel')}
-                  name="global-hangup"
-                  onChange={(value) =>
-                    automation({ hangUp: { ...draft.automation.hangUp, enabled: value } })
-                  }
-                />
-                <NumberField
-                  label={t('settings.health.belowHealthLabel')}
-                  name="global-hangup-health"
-                  onChange={(value) =>
-                    automation({
-                      hangUp: { ...draft.automation.hangUp, belowHealth: fraction(value) }
-                    })
-                  }
-                  bar={barOfHealth(draft.automation.hangUp.belowHealth)}
-                  value={percent(draft.automation.hangUp.belowHealth)}
-                />
-              </div>
+            <fieldset className="settings-menus" data-fieldset="health-wards">
+              <legend>{t('settings.health.wardsLegend')}</legend>
               <CheckField
-                checked={draft.automation.hangUp.penalties}
-                hint={t('settings.health.hangPenaltiesHint')}
-                label={t('settings.health.hangPenaltiesLabel')}
-                name="global-hang-penalties"
+                checked={draft.automation.health.useWards}
+                hint={t('settings.health.useWardsHint')}
+                label={t('settings.health.useWards')}
+                name="global-use-wards"
                 onChange={(value) =>
-                  automation({ hangUp: { ...draft.automation.hangUp, penalties: value } })
-                }
-              />
-              <CheckField
-                checked={draft.automation.hangUp.onPlayerInRoom}
-                label={t('settings.health.hangUpOnPlayer')}
-                name="global-hangup-player"
-                onChange={(value) =>
-                  automation({ hangUp: { ...draft.automation.hangUp, onPlayerInRoom: value } })
-                }
-              />
-            </fieldset>
-
-            <fieldset className="settings-menus" data-fieldset="health-pvp">
-              <legend>{t('settings.health.pvpLegend')}</legend>
-              <CheckField
-                checked={draft.automation.pvp.notifyGang}
-                hint={t('settings.health.pvpNotifyHint')}
-                label={t('settings.health.pvpNotifyLabel')}
-                name="global-pvp-notify"
-                onChange={(value) =>
-                  automation({ pvp: { ...draft.automation.pvp, notifyGang: value } })
-                }
-              />
-              <SelectField
-                hint={t('settings.health.pvpActionHint')}
-                label={t('settings.health.pvpActionLabel')}
-                name="global-pvp-action"
-                onChange={(value) =>
-                  automation({
-                    pvp: {
-                      ...draft.automation.pvp,
-                      action: value === 'retreat' ? 'retreat' : 'none'
-                    }
-                  })
-                }
-                options={PVP_ACTIONS.map((action) => ({ value: action, label: action }))}
-                value={draft.automation.pvp.action}
-              />
-            </fieldset>
-          </>
-        )}
-
-        {shown === 'spells' && (
-          <>
-            <p className="settings-note">{t('settings.spells.rulesPointerNote')}</p>
-            <CheckField
-              checked={draft.automation.spells.autoChoose}
-              hint={t('settings.spells.autoChooseHint')}
-              label={t('settings.spells.autoChoose')}
-              name="global-spell-auto-choose"
-              onChange={(value) =>
-                automation({ spells: { ...draft.automation.spells, autoChoose: value } })
-              }
-            />
-            <div className="settings-inline">
-              <SpellField
-                hint={t('settings.spells.castHint')}
-                label={t('settings.spells.castLabel')}
-                name="global-spell"
-                onChange={(value) =>
-                  automation({ spells: { ...draft.automation.spells, attack: value } })
-                }
-                spells={realmSpells}
-                value={draft.automation.spells.attack}
-              />
-              <SpellField
-                hint={t('settings.spells.fallbackCastHint')}
-                label={t('settings.spells.fallbackCastLabel')}
-                name="global-spell-fallback"
-                onChange={(value) =>
-                  automation({ spells: { ...draft.automation.spells, attackFallback: value } })
-                }
-                spells={realmSpells}
-                value={draft.automation.spells.attackFallback}
-              />
-              <NumberField
-                hint={t('settings.spells.attackCastsHint')}
-                label={t('settings.spells.attackCastsLabel')}
-                name="global-attack-casts"
-                onChange={(value) =>
-                  automation({
-                    spells: {
-                      ...draft.automation.spells,
-                      attackCasts: Math.max(0, Number.parseInt(value, 10) || 0)
-                    }
-                  })
-                }
-                value={String(draft.automation.spells.attackCasts)}
-              />
-              <NumberField
-                hint={t('settings.spells.minManaHint')}
-                label={t('settings.spells.minManaLabel')}
-                name="global-min-mana"
-                onChange={(value) =>
-                  automation({ spells: { ...draft.automation.spells, minMana: fraction(value) } })
-                }
-                bar={barOfMana(draft.automation.spells.minMana)}
-                value={percent(draft.automation.spells.minMana)}
-              />
-            </div>
-            <div className="settings-inline">
-              <SpellField
-                hint={t('settings.spells.areaCastHint')}
-                label={t('settings.spells.areaCastLabel')}
-                name="global-area-spell"
-                onChange={(value) =>
-                  automation({ spells: { ...draft.automation.spells, areaAttack: value } })
-                }
-                spells={realmSpells}
-                value={draft.automation.spells.areaAttack}
-              />
-              <NumberField
-                hint={t('settings.spells.areaMinMobsHint')}
-                label={t('settings.spells.areaMinMobsLabel')}
-                name="global-area-min-mobs"
-                onChange={(value) =>
-                  automation({
-                    spells: {
-                      ...draft.automation.spells,
-                      areaMinMobs: Math.max(1, Number.parseInt(value, 10) || 1)
-                    }
-                  })
-                }
-                value={String(draft.automation.spells.areaMinMobs)}
-              />
-              <NumberField
-                hint={t('settings.spells.areaMinManaHint')}
-                label={t('settings.spells.areaMinManaLabel')}
-                name="global-area-min-mana"
-                onChange={(value) =>
-                  automation({
-                    spells: { ...draft.automation.spells, areaMinMana: fraction(value) }
-                  })
-                }
-                bar={barOfMana(draft.automation.spells.areaMinMana)}
-                value={percent(draft.automation.spells.areaMinMana)}
-              />
-              <NumberField
-                hint={t('settings.spells.areaCastsHint')}
-                label={t('settings.spells.areaCastsLabel')}
-                name="global-area-casts"
-                onChange={(value) =>
-                  automation({
-                    spells: {
-                      ...draft.automation.spells,
-                      areaCasts: Math.max(0, Number.parseInt(value, 10) || 0)
-                    }
-                  })
-                }
-                value={String(draft.automation.spells.areaCasts)}
-              />
-            </div>
-            <fieldset className="settings-menus" data-fieldset="spells-drain">
-              <legend>{t('settings.spells.drainLegend')}</legend>
-              <p className="settings-note">{t('settings.spells.drainNote')}</p>
-              <div className="settings-inline">
-                <SpellField
-                  hint={t('settings.spells.drainHint')}
-                  label={t('settings.spells.drainLabel')}
-                  name="global-drain"
-                  onChange={(value) =>
-                    automation({ spells: { ...draft.automation.spells, drain: value } })
-                  }
-                  spells={drains}
-                  value={draft.automation.spells.drain}
-                />
-                <SpellField
-                  hint={t('settings.spells.areaDrainHint')}
-                  label={t('settings.spells.areaDrainLabel')}
-                  name="global-area-drain"
-                  onChange={(value) =>
-                    automation({ spells: { ...draft.automation.spells, areaDrain: value } })
-                  }
-                  spells={drains}
-                  value={draft.automation.spells.areaDrain}
-                />
-                <NumberField
-                  hint={t('settings.spells.drainBelowHint')}
-                  label={t('settings.spells.drainBelowLabel')}
-                  name="global-drain-below"
-                  onChange={(value) =>
-                    automation({
-                      spells: { ...draft.automation.spells, drainBelow: fraction(value) }
-                    })
-                  }
-                  bar={barOfHealth(draft.automation.spells.drainBelow)}
-                  value={percent(draft.automation.spells.drainBelow)}
-                />
-                <NumberField
-                  hint={t('settings.spells.drainToHint')}
-                  label={t('settings.spells.drainToLabel')}
-                  name="global-drain-to"
-                  onChange={(value) =>
-                    automation({ spells: { ...draft.automation.spells, drainTo: fraction(value) } })
-                  }
-                  bar={barOfHealth(draft.automation.spells.drainTo)}
-                  value={percent(draft.automation.spells.drainTo)}
-                />
-              </div>
-            </fieldset>
-            <fieldset className="settings-menus" data-fieldset="spells-heal">
-              <legend>{t('settings.spells.healLegend')}</legend>
-              <CheckField
-                checked={draft.automation.spells.autoChooseHeal}
-                hint={t('settings.spells.autoChooseHealHint')}
-                label={t('settings.spells.autoChooseHeal')}
-                name="global-spell-auto-choose-heal"
-                onChange={(value) =>
-                  automation({ spells: { ...draft.automation.spells, autoChooseHeal: value } })
-                }
-              />
-              <div className="settings-inline">
-                <SpellField
-                  hint={t('settings.spells.healHint')}
-                  label={t('settings.spells.healLabel')}
-                  name="global-heal"
-                  onChange={(value) =>
-                    automation({ spells: { ...draft.automation.spells, heal: value } })
-                  }
-                  spells={selfHeals}
-                  value={draft.automation.spells.heal}
-                  warning={
-                    refusesTarget(realmSpells, castsOnSelf, draft.automation.spells.heal)
-                      ? t('settings.spells.healNoSelfCast')
-                      : undefined
-                  }
-                />
-                <NumberField
-                  label={t('settings.spells.healBelowLabel')}
-                  name="global-heal-below"
-                  onChange={(value) =>
-                    automation({
-                      spells: { ...draft.automation.spells, healBelow: fraction(value) }
-                    })
-                  }
-                  bar={barOfHealth(draft.automation.spells.healBelow)}
-                  value={percent(draft.automation.spells.healBelow)}
-                />
-                <NumberField
-                  hint={t('settings.spells.healBelowInCombatHint')}
-                  label={t('settings.spells.healBelowInCombatLabel')}
-                  name="global-heal-below-combat"
-                  onChange={(value) =>
-                    automation({
-                      spells: { ...draft.automation.spells, healBelowInCombat: fraction(value) }
-                    })
-                  }
-                  bar={barOfHealth(draft.automation.spells.healBelowInCombat)}
-                  value={percent(draft.automation.spells.healBelowInCombat)}
-                />
-                <NumberField
-                  hint={t('settings.spells.healToHint')}
-                  label={t('settings.spells.healToLabel')}
-                  name="global-heal-to"
-                  onChange={(value) =>
-                    automation({ spells: { ...draft.automation.spells, healTo: fraction(value) } })
-                  }
-                  bar={barOfHealth(draft.automation.spells.healTo)}
-                  value={percent(draft.automation.spells.healTo)}
-                />
-              </div>
-              <CheckField
-                checked={draft.automation.spells.healParty}
-                hint={t('settings.spells.healPartyHint')}
-                label={t('settings.spells.healParty')}
-                name="global-healparty"
-                onChange={(value) =>
-                  automation({ spells: { ...draft.automation.spells, healParty: value } })
-                }
-              />
-              <CheckField
-                checked={draft.automation.spells.invokeItems}
-                hint={t('settings.spells.invokeItemsHint')}
-                label={t('settings.spells.invokeItemsLabel')}
-                name="global-invoke-items"
-                onChange={(value) =>
-                  automation({ spells: { ...draft.automation.spells, invokeItems: value } })
-                }
-              />
-              <SpellField
-                hint={t('settings.spells.healPartyWithHint')}
-                label={t('settings.spells.healPartyWithLabel')}
-                name="global-heal-party-with"
-                onChange={(value) =>
-                  automation({ spells: { ...draft.automation.spells, healPartyWith: value } })
-                }
-                spells={partyHeals}
-                value={draft.automation.spells.healPartyWith}
-                warning={
-                  refusesTarget(realmSpells, castsOnOthers, draft.automation.spells.healPartyWith)
-                    ? t('settings.spells.healNoPartyCast')
-                    : undefined
-                }
-              />
-            </fieldset>
-
-            <fieldset className="settings-menus" data-fieldset="spells-regen">
-              <legend>{t('settings.spells.regenLegend')}</legend>
-              <p className="settings-note">{t('settings.spells.regenNote')}</p>
-              <RegenFields
-                namePrefix="global"
-                onChange={(regen) => automation({ spells: { ...draft.automation.spells, regen } })}
-                regen={draft.automation.spells.regen}
-                spells={selfHeals}
-              />
-            </fieldset>
-
-            <fieldset className="settings-menus" data-fieldset="spells-cures">
-              <legend>{t('settings.spells.cureLegend')}</legend>
-              <p className="settings-note">{t('settings.spells.cureNote')}</p>
-              <CureFields
-                cures={draft.automation.spells.cures}
-                // No character here to read a book from, so nothing to gate on.
-                gates={null}
-                namePrefix="global"
-                onChange={(cures) => automation({ spells: { ...draft.automation.spells, cures } })}
-                spells={realmSpells}
-              />
-            </fieldset>
-
-            <fieldset className="settings-menus" data-fieldset="spells-blessings">
-              <legend>{t('settings.spells.blessingsLegend')}</legend>
-              <p className="settings-note">{t('settings.spells.blessingsNote')}</p>
-              <CheckField
-                checked={draft.automation.spells.autoBless}
-                hint={t('settings.spells.autoBlessHint')}
-                label={t('settings.spells.autoBlessLabel')}
-                name="global-auto-bless"
-                onChange={(value) =>
-                  automation({ spells: { ...draft.automation.spells, autoBless: value } })
-                }
-              />
-              <BlessingList
-                blessings={draft.automation.spells.blessings}
-                namePrefix="global-blessing"
-                onChange={(blessings) =>
-                  automation({ spells: { ...draft.automation.spells, blessings } })
-                }
-                spells={realmSpells}
-              />
-              <CheckField
-                checked={draft.automation.spells.notifyPartyOnWearOff}
-                hint={t('settings.spells.notifyWearOffHint')}
-                label={t('settings.spells.notifyWearOffLabel')}
-                name="global-notify-wear-off"
-                onChange={(value) =>
-                  automation({
-                    spells: { ...draft.automation.spells, notifyPartyOnWearOff: value }
-                  })
+                  automation({ health: { ...draft.automation.health, useWards: value } })
                 }
               />
             </fieldset>
           </>
         )}
 
-        {shown === 'party' && (
+        {shown === 'Auto-roam' && (
           <>
-            <fieldset className="settings-menus" data-fieldset="party-follow">
-              <legend>{t('settings.party.legend')}</legend>
-              <p className="settings-warn">{t('settings.party.warning')}</p>
-              <CheckField
-                checked={draft.automation.party.assistLeader}
-                hint={t('settings.party.assistHint')}
-                label={t('settings.party.assistLabel')}
-                name="global-party-assist"
-                onChange={(value) =>
-                  automation({ party: { ...draft.automation.party, assistLeader: value } })
-                }
-              />
-              <CheckField
-                checked={draft.automation.party.defendParty}
-                hint={t('settings.party.defendHint')}
-                label={t('settings.party.defendLabel')}
-                name="global-party-defend"
-                onChange={(value) =>
-                  automation({ party: { ...draft.automation.party, defendParty: value } })
-                }
-              />
-              <CheckField
-                checked={draft.automation.party.restWithLeader}
-                hint={t('settings.party.restHint')}
-                label={t('settings.party.restLabel')}
-                name="global-party-rest"
-                onChange={(value) =>
-                  automation({ party: { ...draft.automation.party, restWithLeader: value } })
-                }
-              />
-              <CheckField
-                checked={draft.automation.party.autoRank}
-                hint={t('settings.party.autoRankHint')}
-                label={t('settings.party.autoRankLabel')}
-                name="global-party-auto-rank"
-                onChange={(value) =>
-                  automation({ party: { ...draft.automation.party, autoRank: value } })
-                }
-              />
-              <SelectField
-                hint={t('settings.party.preferredRankHint')}
-                label={t('settings.party.preferredRankLabel')}
-                name="global-party-preferred-rank"
-                onChange={(value) =>
-                  automation({
-                    party: { ...draft.automation.party, preferredRank: value as PartyRank }
-                  })
-                }
-                options={RANK_OPTIONS()}
-                value={draft.automation.party.preferredRank}
-              />
-              <CheckField
-                checked={draft.automation.party.ignorePartyWhenFollowing}
-                hint={t('settings.party.ignorePartyHint')}
-                label={t('settings.party.ignorePartyLabel')}
-                name="global-party-ignore-party"
-                onChange={(value) =>
-                  automation({
-                    party: { ...draft.automation.party, ignorePartyWhenFollowing: value }
-                  })
-                }
-              />
-            </fieldset>
-            <fieldset className="settings-menus" data-fieldset="party-leading">
-              <legend>{t('settings.party.leadLegend')}</legend>
-              <p className="settings-note">{t('settings.party.leadNote')}</p>
-              <div className="settings-inline">
-                <NumberField
-                  hint={t('settings.party.waitBelowHint')}
-                  label={t('settings.party.waitBelowLabel')}
-                  name="global-party-wait-below"
-                  onChange={(value) =>
-                    automation({
-                      party: { ...draft.automation.party, waitForMembersBelow: fraction(value) }
-                    })
-                  }
-                  bar={barOfHealth(draft.automation.party.waitForMembersBelow)}
-                  value={percent(draft.automation.party.waitForMembersBelow)}
-                />
-                <NumberField
-                  hint={t('settings.party.waitMinutesHint')}
-                  label={t('settings.party.waitMinutesLabel')}
-                  name="global-party-wait-minutes"
-                  onChange={(value) =>
-                    automation({
-                      party: {
-                        ...draft.automation.party,
-                        waitNoLongerMinutes: Number.parseInt(value, 10) || 0
-                      }
-                    })
-                  }
-                  value={String(draft.automation.party.waitNoLongerMinutes)}
-                />
-                <NumberField
-                  hint={t('settings.party.parEveryHint')}
-                  label={t('settings.party.parEveryLabel')}
-                  name="global-party-par-every"
-                  onChange={(value) =>
-                    automation({
-                      party: {
-                        ...draft.automation.party,
-                        parEverySeconds: Number.parseInt(value, 10) || 0
-                      }
-                    })
-                  }
-                  value={String(draft.automation.party.parEverySeconds)}
-                />
-              </div>
-              <CheckField
-                checked={draft.automation.party.ignoreWaitWhenLeading}
-                hint={t('settings.party.ignoreWaitHint')}
-                label={t('settings.party.ignoreWaitLabel')}
-                name="global-party-ignore-wait"
-                onChange={(value) =>
-                  automation({ party: { ...draft.automation.party, ignoreWaitWhenLeading: value } })
-                }
-              />
-              <CheckField
-                checked={draft.automation.party.parAfterRound}
-                hint={t('settings.party.parAfterRoundHint')}
-                label={t('settings.party.parAfterRoundLabel')}
-                name="global-party-par-after-round"
-                onChange={(value) =>
-                  automation({ party: { ...draft.automation.party, parAfterRound: value } })
-                }
-              />
-              <CheckField
-                checked={draft.automation.party.requestPartyHealth}
-                hint={t('settings.party.requestHealthHint')}
-                label={t('settings.party.requestHealthLabel')}
-                name="global-party-request-health"
-                onChange={(value) =>
-                  automation({ party: { ...draft.automation.party, requestPartyHealth: value } })
-                }
-              />
-            </fieldset>
-            <fieldset className="settings-menus" data-fieldset="party-healing">
-              <legend>{t('settings.party.healLegend')}</legend>
-              <p className="settings-note">{t('settings.party.healNote')}</p>
-              <div className="settings-inline">
-                <NumberField
-                  hint={t('settings.party.askHealHint')}
-                  label={t('settings.party.askHealLabel')}
-                  name="global-party-ask-heal"
-                  onChange={(value) =>
-                    automation({
-                      party: { ...draft.automation.party, askForHealBelow: fraction(value) }
-                    })
-                  }
-                  bar={barOfHealth(draft.automation.party.askForHealBelow)}
-                  value={percent(draft.automation.party.askForHealBelow)}
-                />
-              </div>
-            </fieldset>
-            {/*
-            The party's `@` commands, on the Party page rather than beside the
-            gang's on Remotes, because this is where somebody is thinking about
-            what a party does together. The Remotes page says the list is here.
-
-            Drawn whether or not `remotes.enabled` is on, with the warning the
-            Gang card uses: the switch lives on another page, and a grid that
-            vanished when it was off would be a control somebody has to already
-            know about to find. These are also the values a new character
-            **copies at creation**, which is the copied-once failure this
-            project has written down once already.
-          */}
-            <fieldset className="settings-menus" data-fieldset="party-remotes">
-              <legend>{t('settings.party.remotesLegend')}</legend>
-              <p className="settings-note">{t('settings.party.remotesNote')}</p>
-              {draft.automation.remotes.enabled ? null : (
-                <p className="settings-warn">{t('settings.party.remotesOffWarning')}</p>
-              )}
-              <RemoteList
-                allow={draft.automation.remotes.party}
-                mode="party"
-                onSet={(remote, stance) =>
-                  automation({
-                    remotes: {
-                      ...draft.automation.remotes,
-                      party:
-                        stance === 'allow'
-                          ? [...draft.automation.remotes.party, remote]
-                          : draft.automation.remotes.party.filter((entry) => entry !== remote)
-                    }
-                  })
-                }
-                onSetAll={(stance) =>
-                  automation({
-                    remotes: {
-                      ...draft.automation.remotes,
-                      party: stance === 'allow' ? [...ACTIONABLE_REMOTES] : []
-                    }
-                  })
-                }
-                subject={t('settings.party.remotesLegend')}
-              />
-            </fieldset>
-            <p className="settings-note">{t('settings.party.blessingsMoved')}</p>
-          </>
-        )}
-
-        {shown === 'movement' && (
-          <>
-            {/* Four questions, four fieldsets (todo 00) -- the character page
-              groups them the same way, because one setting keeps one shape on
-              every page that shows it. */}
-            <fieldset className="settings-menus" data-fieldset="movement-doors">
-              <legend>{t('settings.movement.doorsLegend')}</legend>
-              <div className="settings-inline">
-                <CheckField
-                  checked={draft.automation.movement.openDoors}
-                  hint={t('settings.movement.openDoorsHint')}
-                  label={t('settings.movement.openDoors')}
-                  name="global-open-doors"
-                  onChange={(value) =>
-                    automation({ movement: { ...draft.automation.movement, openDoors: value } })
-                  }
-                />
-                <NumberField
-                  label={t('settings.movement.openTries')}
-                  name="global-open-tries"
-                  onChange={(value) =>
-                    automation({
-                      movement: {
-                        ...draft.automation.movement,
-                        openTries: Number.parseInt(value, 10) || 0
-                      }
-                    })
-                  }
-                  value={draft.automation.movement.openTries}
-                />
-              </div>
-              {/*
-              Picking above bashing, in the order the walker tries them: one
-              costs a command and the other costs a command and some health.
-            */}
-              <div className="settings-inline">
-                <CheckField
-                  checked={draft.automation.movement.pickLocks}
-                  hint={t('settings.movement.pickLocksHint')}
-                  label={t('settings.movement.pickLocks')}
-                  name="global-pick-locks"
-                  onChange={(value) =>
-                    automation({ movement: { ...draft.automation.movement, pickLocks: value } })
-                  }
-                />
-                <NumberField
-                  label={t('settings.movement.pickTries')}
-                  name="global-pick-tries"
-                  onChange={(value) =>
-                    automation({
-                      movement: {
-                        ...draft.automation.movement,
-                        pickTries: Number.parseInt(value, 10) || 0
-                      }
-                    })
-                  }
-                  value={draft.automation.movement.pickTries}
-                />
-              </div>
-              <div className="settings-inline">
-                <CheckField
-                  checked={draft.automation.movement.bashDoors}
-                  hint={t('settings.movement.bashDoorsHint')}
-                  label={t('settings.movement.bashDoors')}
-                  name="global-bash-doors"
-                  onChange={(value) =>
-                    automation({ movement: { ...draft.automation.movement, bashDoors: value } })
-                  }
-                />
-                <NumberField
-                  label={t('settings.movement.bashTries')}
-                  name="global-bash-tries"
-                  onChange={(value) =>
-                    automation({
-                      movement: {
-                        ...draft.automation.movement,
-                        bashTries: Number.parseInt(value, 10) || 0
-                      }
-                    })
-                  }
-                  value={draft.automation.movement.bashTries}
-                />
-              </div>
-            </fieldset>
-
-            <fieldset className="settings-menus" data-fieldset="movement-stealth">
-              <legend>{t('settings.movement.stealthLegend')}</legend>
-              <CheckField
-                checked={draft.automation.movement.sneak}
-                hint={t('settings.movement.sneakHint')}
-                label={t('settings.movement.sneak')}
-                name="global-sneak"
-                onChange={(value) =>
-                  automation({ movement: { ...draft.automation.movement, sneak: value } })
-                }
-              />
-            </fieldset>
-
-            <fieldset className="settings-menus" data-fieldset="movement-light">
-              <legend>{t('settings.movement.lightLegend')}</legend>
-              <CheckField
-                checked={draft.automation.movement.provideLight}
-                hint={t('settings.movement.provideLightHint')}
-                label={t('settings.movement.provideLight')}
-                name="global-provide-light"
-                onChange={(value) =>
-                  automation({ movement: { ...draft.automation.movement, provideLight: value } })
-                }
-              />
-              {/* Both depend on the switch above, and are disclosed behind it on
-                this page exactly as on a character's — one setting, one shape,
-                on every page that shows it. */}
-              {draft.automation.movement.provideLight && (
-                <>
-                  <CheckField
-                    checked={draft.automation.movement.lightDimRooms}
-                    hint={t('settings.movement.lightDimRoomsHint')}
-                    label={t('settings.movement.lightDimRooms')}
-                    name="global-light-dim-rooms"
-                    onChange={(value) =>
-                      automation({
-                        movement: { ...draft.automation.movement, lightDimRooms: value }
-                      })
-                    }
-                  />
-                  <CheckField
-                    checked={draft.automation.movement.extinguishInLight}
-                    hint={t('settings.movement.extinguishInLightHint')}
-                    label={t('settings.movement.extinguishInLight')}
-                    name="global-extinguish-in-light"
-                    onChange={(value) =>
-                      automation({
-                        movement: { ...draft.automation.movement, extinguishInLight: value }
-                      })
-                    }
-                  />
-                </>
-              )}
-            </fieldset>
-
-            <fieldset className="settings-menus" data-fieldset="movement-afflictions">
-              <legend>{t('settings.movement.afflictionsLegend')}</legend>
-              <CheckField
-                checked={draft.automation.movement.walkWhileBlind}
-                hint={t('settings.movement.walkWhileBlindHint')}
-                label={t('settings.movement.walkWhileBlind')}
-                name="global-walk-while-blind"
-                onChange={(value) =>
-                  automation({ movement: { ...draft.automation.movement, walkWhileBlind: value } })
-                }
-              />
-              <CheckField
-                checked={draft.automation.movement.walkWhilePoisoned}
-                hint={t('settings.movement.walkWhilePoisonedHint')}
-                label={t('settings.movement.walkWhilePoisoned')}
-                name="global-walk-while-poisoned"
-                onChange={(value) =>
-                  automation({
-                    movement: { ...draft.automation.movement, walkWhilePoisoned: value }
-                  })
-                }
-              />
-              <CheckField
-                checked={draft.automation.movement.walkWhileConfused}
-                hint={t('settings.movement.walkWhileConfusedHint')}
-                label={t('settings.movement.walkWhileConfused')}
-                name="global-walk-while-confused"
-                onChange={(value) =>
-                  automation({
-                    movement: { ...draft.automation.movement, walkWhileConfused: value }
-                  })
-                }
-              />
-              <CheckField
-                checked={draft.automation.movement.walkWhileLosingHp}
-                hint={t('settings.movement.walkWhileLosingHpHint')}
-                label={t('settings.movement.walkWhileLosingHp')}
-                name="global-walk-while-losing-hp"
-                onChange={(value) =>
-                  automation({
-                    movement: { ...draft.automation.movement, walkWhileLosingHp: value }
-                  })
-                }
-              />
-              <CheckField
-                checked={draft.automation.movement.fightOnArrival}
-                hint={t('settings.movement.fightOnArrivalHint')}
-                label={t('settings.movement.fightOnArrival')}
-                name="global-fight-on-arrival"
-                onChange={(value) =>
-                  automation({ movement: { ...draft.automation.movement, fightOnArrival: value } })
-                }
-              />
-            </fieldset>
-
             <fieldset className="settings-menus" data-fieldset="movement-keep-out">
               <legend>{t('settings.movement.keepOutLegend')}</legend>
               <TextField
@@ -2046,37 +791,6 @@ export default function GlobalSettings({
                 wide
               />
             </fieldset>
-
-            <fieldset className="settings-menus" data-fieldset="movement-carry">
-              <legend>{t('settings.movement.carryLegend')}</legend>
-              <CheckField
-                checked={draft.automation.movement.recoverGear}
-                hint={t('settings.movement.recoverGearHint')}
-                label={t('settings.movement.recoverGear')}
-                name="global-recover-gear"
-                onChange={(value) =>
-                  automation({ movement: { ...draft.automation.movement, recoverGear: value } })
-                }
-              />
-              <CheckField
-                checked={draft.automation.movement.collectKeys}
-                hint={t('settings.movement.collectKeysHint')}
-                label={t('settings.movement.collectKeys')}
-                name="global-collect-keys"
-                onChange={(value) =>
-                  automation({ movement: { ...draft.automation.movement, collectKeys: value } })
-                }
-              />
-            </fieldset>
-
-            <CarrySections
-              banking={draft.automation.banking}
-              drop={draft.automation.drop}
-              idPrefix="global-"
-              loot={draft.automation.loot}
-              onChange={automation}
-              search={draft.automation.search}
-            />
 
             <LoopSection
               catalogue={catalogue}
@@ -2150,400 +864,86 @@ export default function GlobalSettings({
                 value={String(draft.automation.walk.minExpPerHour)}
               />
             </div>
-            <Advanced label={t('settings.global.movement.advancedWalking')}>
-              <div className="settings-inline">
-                <NumberField
-                  hint={t('settings.global.movement.stepTimeoutHint')}
-                  label={t('settings.global.movement.stepTimeoutLabel')}
-                  name="global-step-timeout"
-                  onChange={(value) =>
-                    automation({
-                      walk: {
-                        ...draft.automation.walk,
-                        stepTimeoutMs: Number.parseInt(value, 10) || 0
-                      }
-                    })
-                  }
-                  value={draft.automation.walk.stepTimeoutMs}
-                />
-                <NumberField
-                  label={t('settings.global.movement.clearRouteLabel')}
-                  name="global-route-clear"
-                  onChange={(value) =>
-                    automation({
-                      walk: {
-                        ...draft.automation.walk,
-                        clearAfterSeconds: Number.parseInt(value, 10) || 0
-                      }
-                    })
-                  }
-                  value={draft.automation.walk.clearAfterSeconds}
-                />
-              </div>
-              {/* The switch, when it fires and what it sends: one row, because
-                the two figures mean nothing without the switch above them. */}
-              <div className="settings-inline">
-                <CheckField
-                  checked={draft.automation.idle.enabled}
-                  label={t('settings.global.movement.idleEnabled')}
-                  name="global-idle"
-                  onChange={(value) =>
-                    automation({ idle: { ...draft.automation.idle, enabled: value } })
-                  }
-                />
-                <NumberField
-                  label={t('settings.global.movement.idleAfterLabel')}
-                  name="global-idle-after"
-                  onChange={(value) =>
-                    automation({
-                      idle: {
-                        ...draft.automation.idle,
-                        afterSeconds: Number.parseInt(value, 10) || 0
-                      }
-                    })
-                  }
-                  value={draft.automation.idle.afterSeconds}
-                />
-                <TextField
-                  label={t('settings.global.movement.idleCommandLabel')}
-                  name="global-idle-command"
-                  onChange={(value) =>
-                    automation({ idle: { ...draft.automation.idle, command: value } })
-                  }
-                  placeholder={t('settings.global.movement.idleCommandPlaceholder')}
-                  spellCheck={false}
-                  value={draft.automation.idle.command}
-                />
-              </div>
-              <TextField
-                hint={t('settings.global.movement.onEnterHint')}
-                label={t('settings.global.movement.onEnterLabel')}
-                name="global-enter"
-                onChange={(value) => automation({ onEnterRealm: splitNames(value) })}
-                placeholder={t('settings.global.movement.onEnterPlaceholder')}
-                spellCheck={false}
-                value={joinNames(draft.automation.onEnterRealm)}
-                wide
-              />
-              <TextField
-                label={t('settings.global.movement.onPartyChangeLabel')}
-                name="global-party-change"
-                onChange={(value) => automation({ onPartyChange: value })}
-                placeholder={t('settings.global.movement.onPartyChangePlaceholder')}
-                spellCheck={false}
-                value={draft.automation.onPartyChange}
-                wide
-              />
-            </Advanced>
-          </>
-        )}
 
-        {shown === 'train' && (
-          <fieldset className="settings-menus" data-fieldset="train">
-            <legend>{t('settings.train.legend')}</legend>
-            <p className="settings-warn">{t('settings.train.warning')}</p>
-            <CheckField
-              checked={draft.automation.train.stats}
-              hint={t('settings.train.statsHint')}
-              label={t('settings.train.stats')}
-              name="global-train-stats"
-              onChange={(value) =>
-                automation({ train: { ...draft.automation.train, stats: value } })
-              }
-            />
-            <p className="settings-note">{t('settings.train.wantedNote')}</p>
-            <div className="settings-inline">
-              <NumberField
-                label={t('settings.train.strength')}
-                name="global-train-strength"
-                onChange={(value) =>
-                  automation({
-                    train: {
-                      ...draft.automation.train,
-                      wanted: {
-                        ...draft.automation.train.wanted,
-                        strength: Number.parseInt(value, 10) || 0
-                      }
-                    }
-                  })
-                }
-                value={draft.automation.train.wanted.strength}
-              />
-              <NumberField
-                label={t('settings.train.intellect')}
-                name="global-train-intellect"
-                onChange={(value) =>
-                  automation({
-                    train: {
-                      ...draft.automation.train,
-                      wanted: {
-                        ...draft.automation.train.wanted,
-                        intellect: Number.parseInt(value, 10) || 0
-                      }
-                    }
-                  })
-                }
-                value={draft.automation.train.wanted.intellect}
-              />
-              <NumberField
-                label={t('settings.train.willpower')}
-                name="global-train-willpower"
-                onChange={(value) =>
-                  automation({
-                    train: {
-                      ...draft.automation.train,
-                      wanted: {
-                        ...draft.automation.train.wanted,
-                        willpower: Number.parseInt(value, 10) || 0
-                      }
-                    }
-                  })
-                }
-                value={draft.automation.train.wanted.willpower}
-              />
-              <NumberField
-                label={t('settings.train.agility')}
-                name="global-train-agility"
-                onChange={(value) =>
-                  automation({
-                    train: {
-                      ...draft.automation.train,
-                      wanted: {
-                        ...draft.automation.train.wanted,
-                        agility: Number.parseInt(value, 10) || 0
-                      }
-                    }
-                  })
-                }
-                value={draft.automation.train.wanted.agility}
-              />
-              <NumberField
-                label={t('settings.train.health')}
-                name="global-train-health"
-                onChange={(value) =>
-                  automation({
-                    train: {
-                      ...draft.automation.train,
-                      wanted: {
-                        ...draft.automation.train.wanted,
-                        health: Number.parseInt(value, 10) || 0
-                      }
-                    }
-                  })
-                }
-                value={draft.automation.train.wanted.health}
-              />
-              <NumberField
-                label={t('settings.train.charm')}
-                name="global-train-charm"
-                onChange={(value) =>
-                  automation({
-                    train: {
-                      ...draft.automation.train,
-                      wanted: {
-                        ...draft.automation.train.wanted,
-                        charm: Number.parseInt(value, 10) || 0
-                      }
-                    }
-                  })
-                }
-                value={draft.automation.train.wanted.charm}
-              />
-            </div>
-          </fieldset>
-        )}
-
-        {shown === 'gear' && (
-          <>
-            {/*
-              The kit, and when to be in it (todo 00). No monster suggestions
-              here: which monsters exist is a property of a realm, and this
-              page is every realm — the field stays typable, as the potion
-              rules' does.
-            */}
-            <fieldset className="settings-menus" data-fieldset="gear">
-              <legend>{t('settings.gear.legend')}</legend>
-              <p className="settings-note">{t('settings.gear.note')}</p>
-              <CheckField
-                checked={draft.automation.gear.enabled}
-                hint={t('settings.gear.enabledHint')}
-                label={t('settings.gear.enabled')}
-                name="global-gear-enabled"
-                onChange={(value) =>
-                  automation({ gear: { ...draft.automation.gear, enabled: value } })
-                }
-              />
-              <GearSetList
-                mobs={[]}
-                namePrefix="global-gear-set"
-                onChange={(sets) => automation({ gear: { ...draft.automation.gear, sets } })}
-                sets={draft.automation.gear.sets}
-              />
-            </fieldset>
-
-            <fieldset className="settings-menus" data-fieldset="gear-offround">
-              <legend>{t('settings.gear.offRoundLegend')}</legend>
-              <p className="settings-note">{t('settings.gear.offRoundNote')}</p>
-              <div className="settings-inline">
-                <TextField
-                  hint={t('settings.gear.offRoundItemHint')}
-                  label={t('settings.gear.offRoundItem')}
-                  name="global-gear-offround-item"
-                  onChange={(value) =>
-                    automation({
-                      gear: {
-                        ...draft.automation.gear,
-                        offRound: { ...draft.automation.gear.offRound, item: value }
-                      }
-                    })
-                  }
-                  value={draft.automation.gear.offRound.item}
-                />
-                <NumberField
-                  hint={t('settings.gear.offRoundEveryHint')}
-                  label={t('settings.gear.offRoundEvery')}
-                  name="global-gear-offround-every"
-                  onChange={(value) =>
-                    automation({
-                      gear: {
-                        ...draft.automation.gear,
-                        offRound: {
-                          ...draft.automation.gear.offRound,
-                          everyRounds: Number.parseInt(value, 10) || 0
-                        }
-                      }
-                    })
-                  }
-                  value={String(draft.automation.gear.offRound.everyRounds)}
-                />
-              </div>
-            </fieldset>
-          </>
-        )}
-
-        {shown === 'quests' && (
-          <fieldset className="settings-menus" data-fieldset="quests">
-            <legend>{t('settings.quests.legend')}</legend>
-            {/*
-              In the open, like opening fights unasked: a run has the character
-              for as long as a chain takes, and the sentence that says so is
-              not a tooltip.
-            */}
-            <p className="settings-warn">{t('settings.quests.warning')}</p>
-            <CheckField
-              checked={draft.automation.quests.enabled}
-              hint={t('settings.quests.enabledHint')}
-              label={t('settings.quests.enabled')}
-              name="global-quests-enabled"
-              onChange={(value) => automation({ quests: { enabled: value } })}
-            />
-          </fieldset>
-        )}
-
-        {shown === 'remotes' && (
-          <fieldset className="settings-menus" data-fieldset="remotes">
-            <legend>{t('settings.remotes.legend')}</legend>
-            {/*
-            In the open, like Hang up and opening fights unasked, and for the
-            same reason: what this turns on is a channel by which somebody
-            else's typing moves a character.
-          */}
-            <p className="settings-warn">{t('settings.remotes.channelWarning')}</p>
-            <CheckField
-              checked={draft.automation.remotes.enabled}
-              hint={t('settings.remotes.answerHint')}
-              label={t('settings.remotes.enabledLabel')}
-              name="global-remotes-enabled"
-              onChange={(value) =>
-                automation({ remotes: { ...draft.automation.remotes, enabled: value } })
-              }
-            />
-            {/*
-            The gate, here as well as on the character page.
-
-            These are the values a character **copies at creation**, so a Global
-            page that could set the switch and not the grants would hand every
-            new character a feature switched on and answering nobody — with the
-            only surface able to fix it being somewhere else. That is the
-            copied-once template failure this project already wrote down.
-          */}
-            {draft.automation.remotes.enabled && (
-              <>
-                <CheckField
-                  checked={draft.automation.remotes.gangpath}
-                  hint={t('settings.remotes.gangpathHint')}
-                  label={t('settings.remotes.gangpathLabel')}
-                  name="global-remotes-gangpath"
-                  onChange={(value) =>
-                    automation({ remotes: { ...draft.automation.remotes, gangpath: value } })
-                  }
-                />
-                <CheckField
-                  checked={draft.automation.remotes.autoJoin}
-                  hint={t('settings.remotes.autoJoinHint')}
-                  label={t('settings.remotes.autoJoinLabel')}
-                  name="global-remotes-auto-join"
-                  onChange={(value) =>
-                    automation({ remotes: { ...draft.automation.remotes, autoJoin: value } })
-                  }
-                />
-                <p className="settings-warn">{t('settings.remotes.gangWarning')}</p>
-                <h4 className="settings-subhead">{t('settings.remotes.gangLegend')}</h4>
-                {/*
-                The same grid the Gang card draws, through the same component:
-                a permission that read one way on a card and another in Settings
-                is one somebody sets in whichever place happens to be wrong.
+            <fieldset className="settings-menus" data-fieldset="quests">
+              <legend>{t('settings.quests.legend')}</legend>
+              {/*
+                In the open, like opening fights unasked: a run has the character
+                for as long as a chain takes, and the sentence that says so is
+                not a tooltip.
               */}
-                <RemoteList
-                  allow={draft.automation.remotes.gang}
-                  mode="gang"
-                  onSet={(remote, stance) =>
-                    automation({
-                      remotes: {
-                        ...draft.automation.remotes,
-                        gang:
-                          stance === 'allow'
-                            ? [...draft.automation.remotes.gang, remote]
-                            : draft.automation.remotes.gang.filter((entry) => entry !== remote)
-                      }
-                    })
+              <p className="settings-warn">{t('settings.quests.warning')}</p>
+              <CheckField
+                checked={draft.automation.quests.enabled}
+                hint={t('settings.quests.enabledHint')}
+                label={t('settings.quests.enabled')}
+                name="global-quests-enabled"
+                onChange={(value) => automation({ quests: { enabled: value } })}
+              />
+            </fieldset>
+          </>
+        )}
+
+        {shown === 'Other' && (
+          <>
+            <fieldset className="settings-menus" data-fieldset="movement-doors">
+              <legend>{t('settings.movement.doorsLegend')}</legend>
+              <div className="settings-inline">
+                <CheckField
+                  checked={draft.automation.movement.openDoors}
+                  hint={t('settings.movement.openDoorsHint')}
+                  label={t('settings.movement.openDoors')}
+                  name="global-open-doors"
+                  onChange={(value) =>
+                    automation({ movement: { ...draft.automation.movement, openDoors: value } })
                   }
-                  onSetAll={(stance) =>
-                    automation({
-                      remotes: {
-                        ...draft.automation.remotes,
-                        gang: stance === 'allow' ? [...ACTIONABLE_REMOTES] : []
-                      }
-                    })
-                  }
-                  subject={t('settings.remotes.gangLegend')}
                 />
-              </>
-            )}
-            {/*
-            Where the third list is. A permission page that showed two of the
-            three grants would have somebody auditing who can drive this
-            character conclude they had seen all of it.
-          */}
-            <p className="settings-note">{t('settings.remotes.partyListNote')}</p>
-            <p className="settings-note">{t('settings.remotes.remoteControlNote')}</p>
-            <p className="settings-note">{t('settings.remotes.replyRoutingNote')}</p>
-          </fieldset>
+              </div>
+              <div className="settings-inline">
+                <CheckField
+                  checked={draft.automation.movement.pickLocks}
+                  hint={t('settings.movement.pickLocksHint')}
+                  label={t('settings.movement.pickLocks')}
+                  name="global-pick-locks"
+                  onChange={(value) =>
+                    automation({ movement: { ...draft.automation.movement, pickLocks: value } })
+                  }
+                />
+              </div>
+              <div className="settings-inline">
+                <CheckField
+                  checked={draft.automation.movement.bashDoors}
+                  hint={t('settings.movement.bashDoorsHint')}
+                  label={t('settings.movement.bashDoors')}
+                  name="global-bash-doors"
+                  onChange={(value) =>
+                    automation({ movement: { ...draft.automation.movement, bashDoors: value } })
+                  }
+                />
+              </div>
+            </fieldset>
+          </>
+        )}
+
+        {shown === 'Loot' && (
+          <>
+            <fieldset className="settings-menus" data-fieldset="movement-carry">
+              <legend>{t('settings.movement.carryLegend')}</legend>
+              <CheckField
+                checked={draft.automation.movement.collectKeys}
+                hint={t('settings.movement.collectKeysHint')}
+                label={t('settings.movement.collectKeys')}
+                name="global-collect-keys"
+                onChange={(value) =>
+                  automation({ movement: { ...draft.automation.movement, collectKeys: value } })
+                }
+              />
+            </fieldset>
+          </>
         )}
 
         {shown === 'rewrites' && (
           <>
-            <fieldset className="settings-menus" data-fieldset="rewrites-statline">
-              <legend>{t('settings.statline.legend')}</legend>
-              <CheckField
-                checked={draft.automation.statline.control}
-                hint={t('settings.statline.controlHint')}
-                label={t('settings.statline.controlLabel')}
-                name="global-statline-control"
-                onChange={(value) => automation({ statline: { control: value } })}
-              />
-              <p className="settings-note">{t('settings.statline.templateNote')}</p>
-            </fieldset>
             <RewritesDesigner
               figures={null}
               idPrefix="global-rewrites"
@@ -2554,7 +954,7 @@ export default function GlobalSettings({
           </>
         )}
 
-        {shown === 'alerts' && (
+        {shown === 'Sounds' && (
           <>
             {/*
             The player's own rows, and the only thing that decides what is
@@ -2571,48 +971,6 @@ export default function GlobalSettings({
                 onChange={(rules) => patch('ui', { alerts: { ...draft.ui.alerts, rules } })}
                 rules={draft.ui.alerts.rules}
               />
-            </fieldset>
-            {/*
-            Beside the alerts, because both are about a player who is not
-            looking: alerts are what they hear about the character, and this
-            is what the character says for them.
-          */}
-            <fieldset className="settings-menus" data-fieldset="alerts-afk">
-              <legend>{t('settings.afk.legend')}</legend>
-              <div className="settings-inline">
-                <CheckField
-                  checked={draft.automation.afk.enabled}
-                  hint={t('settings.afk.enabledHint')}
-                  label={t('settings.afk.enabled')}
-                  name="global-afk-enabled"
-                  onChange={(value) =>
-                    automation({ afk: { ...draft.automation.afk, enabled: value } })
-                  }
-                />
-                <NumberField
-                  hint={t('settings.afk.afterHint')}
-                  label={t('settings.afk.afterLabel')}
-                  name="global-afk-after"
-                  onChange={(value) =>
-                    automation({
-                      afk: {
-                        ...draft.automation.afk,
-                        afterMinutes: Math.max(1, Number.parseInt(value, 10) || 5)
-                      }
-                    })
-                  }
-                  value={String(draft.automation.afk.afterMinutes)}
-                />
-                <TextField
-                  hint={t('settings.afk.replyHint')}
-                  label={t('settings.afk.replyLabel')}
-                  name="global-afk-reply"
-                  onChange={(value) =>
-                    automation({ afk: { ...draft.automation.afk, reply: value } })
-                  }
-                  value={draft.automation.afk.reply}
-                />
-              </div>
             </fieldset>
           </>
         )}
