@@ -5166,32 +5166,14 @@ button.quest-plan-back {
 }
 
 /*
- * On top, a tab is one line: name, attention, and a short health bar.
- *
- * The bar sits beside the name rather than under it because the bottom edge
- * belongs to the active-tab marker. Stacked, the two are both thin horizontal
- * lines a few pixels apart and read as one muddled rule -- which is worse than
- * either alone, and exactly the kind of emphasis §9 says to spend rather than
- * spray.
- */
-/*
- * Wide enough for a name and a realm in the chrome's monospace face, which is
- * wider than it looks: "Vaelor" and "GreaterMUD (local)" together need most of
- * this. It still shrinks -- four characters on a narrow window fall back to
- * `min-width` and truncate the realm first.
+ * On top, the tab a side rail draws, at the side rail's width: its name and
+ * realm, its health in figures as well as a bar, and where it is or what it is
+ * doing. A one-line tab across the top read as squashed, and dropped the
+ * figures and the room a player looks across for (2026-10-14). The row
+ * scrolls when the characters outrun the window.
  */
 .tab-rail[data-side='top'] .tab {
-  flex: 0 1 300px;
-  min-width: 150px;
-  grid-auto-flow: column;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 8px;
-}
-
-.tab-rail[data-side='top'] .hp {
-  flex: 0 0 auto;
-  width: 34px;
+  flex: 0 0 var(--tab-rail-w);
 }
 
 .tab:hover {

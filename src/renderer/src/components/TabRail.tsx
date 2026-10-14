@@ -376,8 +376,10 @@ function activity(view: RailView | undefined): string | null {
  * its walk stopped. So the rail carries that, and the two orientations are not
  * one control at two angles: `left` costs horizontal space, which is the
  * expensive axis, and buys room for vitals in numbers, the room name and the
- * current action. `top` costs rows, which are cheap, and collapses to a name, a
- * state dot and a vitals bar. See docs/ui-design.md §3.8.
+ * current action. `top` costs rows, which are cheap, and draws the same tab —
+ * a one-line tab across the top read as squashed, its health a bar with no
+ * figures and nothing of where the character was or what it was doing
+ * (2026-10-14). See docs/ui-design.md §3.8.
  */
 function TabRail({
   sessions,
@@ -399,8 +401,9 @@ function TabRail({
    * Stacked down an edge, rather than which edge.
    *
    * Everything below that used to ask for `left` was asking *is there room for
-   * words* — the health in figures, the room name, and the label on the
-   * `+` button. `right` is the same rail mirrored and has exactly as much room,
+   * words* — now only the label on the `+` button, the tabs themselves being
+   * the same tab whichever way the rail runs (2026-10-14). `right` is the same
+   * rail mirrored and has exactly as much room,
    * so testing for one side would have silently stripped a mirrored rail back
    * to the across-the-top shape it never asked for.
    */
@@ -713,14 +716,12 @@ function TabRail({
                     <span className="track">
                       <span className="fill" style={{ width: hp === null ? 0 : `${hp * 100}%` }} />
                     </span>
-                    {stacked && (
-                      <span className="figures">
-                        {vitals?.hp ?? '—'}
-                        {vitals?.hpMax === null || vitals?.hpMax === undefined
-                          ? ''
-                          : `/${vitals.hpMax}`}
-                      </span>
-                    )}
+                    <span className="figures">
+                      {vitals?.hp ?? '—'}
+                      {vitals?.hpMax === null || vitals?.hpMax === undefined
+                        ? ''
+                        : `/${vitals.hpMax}`}
+                    </span>
                   </span>
 
                   {/*
@@ -772,7 +773,7 @@ function TabRail({
                   </button>
                 </span>
 
-                {stacked && (room || doing) && <span className="where">{doing ?? room}</span>}
+                {(room || doing) && <span className="where">{doing ?? room}</span>}
               </div>
             </Fragment>
           );
