@@ -5,12 +5,15 @@ import {
   defaultSettings,
   num,
   parseIni,
+  setSetting,
+  settingsFromDraft,
   settingsFromIni,
   settingsToIni,
   settingsToStored,
   settingsFromStored,
   switchProfile,
-  text
+  text,
+  twinsOf
 } from '../settings';
 
 /*
@@ -161,5 +164,42 @@ describe('writing an INI file', () => {
     expect(written).toContain('\r\n');
     expect(written).not.toMatch(/\[Combat\][^[]*ActiveProfile=/);
     expect(written).toMatch(/\[Profiles\]\r\nActiveProfile=1/);
+  });
+});
+
+describe('one setting under two names (TWINS)', () => {
+  it('holds the AFK reply a file states under [Talk] under [MegaMud] too', () => {
+    const settings = settingsFromIni('[Talk]\r\nAfkReply=back soon\r\nAfkTimeout=9\r\n');
+    expect(settings.live['MegaMud']!['AfkReply']).toBe('back soon');
+    expect(settings.live['MegaMud']!['AfkTimeout']).toBe(9);
+    expect(settings.live['Talk']!['AfkReply']).toBe('back soon');
+  });
+
+  it('takes the later name when a file states both', () => {
+    const settings = settingsFromIni('[Party]\r\nPartyRank=0\r\n[Other]\r\nPartyRank=2\r\n');
+    expect(settings.live['Party']!['PartyRank']).toBe(2);
+    expect(settings.live['Other']!['PartyRank']).toBe(2);
+  });
+
+  it('keeps a name stated alone in our own storage', () => {
+    const settings = settingsFromStored({ MegaMud: { AfkReply: 'brb' } });
+    expect(settings.live['Talk']!['AfkReply']).toBe('brb');
+  });
+
+  it('sets every name of a setting at once', () => {
+    const settings = defaultSettings();
+    setSetting(settings, 'MegaMud', 'AutoAfk', 0);
+    expect(settings.live['Talk']!['AutoAfk']).toBe(0);
+    expect(twinsOf('Party', 'PartyRank').map((d) => `${d.section}.${d.key}`)).toEqual([
+      'Other.PartyRank'
+    ]);
+  });
+
+  it('carries a draft that changed one name to the other', () => {
+    const base = defaultSettings();
+    const draft = structuredClone(base);
+    draft.live['MegaMud']!['AfkReply'] = 'away';
+    const next = settingsFromDraft(draft, base)!;
+    expect(next.live['Talk']!['AfkReply']).toBe('away');
   });
 });

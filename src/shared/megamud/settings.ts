@@ -22,6 +22,11 @@
  *   live values become it. The active copy is `Profiles.ActiveProfile` when
  *   that is 1 to 4 and present, else 1 (`0x447290`).
  * - A few keys are clamped or fall back to an older name: see `LOADER_RULES`.
+ * - **Twins.** A few settings are read from two names into one place in the
+ *   struct (`TWINS`: the AFK keys of `[MegaMud]` and `[Talk]` at `0x8c48`–
+ *   `0x8c58`, `PartyRank` of `[Party]` and `[Other]` at `0x883c`), so they are
+ *   one setting under two names: the name a file states wins (the later, if
+ *   both), and both always hold it (2026-10-14).
  *
  * Sections and keys the schema does not know are kept as they were read, so
  * a file written back loses nothing MegaMUD put in it.
@@ -47,6 +52,38 @@ export interface MegaSettings {
   profiles: Record<ProfiledSection, (ProfileSlot | null)[]>;
   /** Raw sections and keys outside the schema, in file order. */
   extra: IniSection[];
+}
+
+/**
+ * The settings MegaMUD reads from more than one name into the same place
+ * (`SettingDef.offset`), each group in the loader's order.
+ */
+export const TWINS: readonly (readonly SettingDef[])[] = (() => {
+  const at = new Map<number, SettingDef[]>();
+  for (const def of SETTINGS) {
+    if (def.offset === undefined) continue;
+    const group = at.get(def.offset) ?? [];
+    group.push(def);
+    at.set(def.offset, group);
+  }
+  return [...at.values()].filter((group) => group.length > 1);
+})();
+
+/** The other names of one setting, or none. */
+export function twinsOf(section: string, key: string): readonly SettingDef[] {
+  const group = TWINS.find((g) => g.some((d) => d.section === section && d.key === key));
+  return group ? group.filter((d) => d.section !== section || d.key !== key) : [];
+}
+
+/** One setting set under every name it has (`TWINS`). */
+export function setSetting(
+  settings: MegaSettings,
+  section: string,
+  key: string,
+  value: SettingValue
+): void {
+  (settings.live[section] ??= {})[key] = value;
+  for (const twin of twinsOf(section, key)) (settings.live[twin.section] ??= {})[twin.key] = value;
 }
 
 /** One section of an INI file, its entries in file order. */
@@ -227,6 +264,13 @@ function settingsFromSections(ini: IniSection[]): MegaSettings {
       const rule = LOADER_RULES[`${section}.${def.key}`];
       if (rule) values[def.key] = rule(values[def.key]!, ini);
     }
+  }
+  // A twin takes the value of the last of its names the file states.
+  for (const group of TWINS) {
+    const stated = group.filter((def) => lookup(find(ini, def.section), def.key) !== undefined);
+    const from = stated[stated.length - 1] ?? group[group.length - 1]!;
+    const value = settings.live[from.section]![from.key]!;
+    for (const def of group) settings.live[def.section]![def.key] = value;
   }
   // `HangupWhenAfk`, when set, clears `HangupNotAfk` (an older pair of names).
   if (atol(lookup(find(ini, 'Other'), 'HangupWhenAfk') ?? '0') !== 0) {
@@ -440,6 +484,14 @@ export function settingsFromDraft(raw: unknown, base: MegaSettings): MegaSetting
     for (const def of defs) {
       if (def.key in from) next.live[section]![def.key] = draftValue(def, from[def.key]);
     }
+  }
+  // A twin the draft changed under one name only is changed under all of them.
+  for (const group of TWINS) {
+    const changed = group.find(
+      (def) => next.live[def.section]![def.key] !== base.live[def.section]?.[def.key]
+    );
+    if (changed)
+      setSetting(next, changed.section, changed.key, next.live[changed.section]![changed.key]!);
   }
   const profiles = (draft.profiles ?? {}) as Record<string, unknown>;
   for (const section of PROFILED_SECTIONS) {

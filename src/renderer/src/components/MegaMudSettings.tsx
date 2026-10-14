@@ -10,6 +10,7 @@ import {
   type TabControl
 } from '@shared/megamud/settingsTabs';
 import {
+  setSetting,
   switchProfile,
   type MegaSettings,
   type ProfiledSection,
@@ -85,7 +86,7 @@ function withValue(
   value: SettingValue
 ): MegaSettings {
   const next = structuredClone(settings);
-  (next.live[section] ??= {})[key] = value;
+  setSetting(next, section, key, value);
   return next;
 }
 
