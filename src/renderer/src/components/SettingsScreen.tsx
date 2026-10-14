@@ -2513,7 +2513,6 @@ export default function SettingsScreen({
                 the form keeps the whole of the other column (todo 02).
               */}
               <SettingsNav
-                across
                 onSection={(id: string) => setSection(id)}
                 picker={{
                   addId: NEW_CHARACTER,
