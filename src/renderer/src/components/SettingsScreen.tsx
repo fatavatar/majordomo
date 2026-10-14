@@ -17,6 +17,7 @@ import AlertList from './AlertList';
 import RealmMessages from './RealmMessages';
 import RealmMonsters from './RealmMonsters';
 import RealmItems from './RealmItems';
+import RealmSpellLore from './RealmSpellLore';
 import { MonsterRuleList } from './MonsterRules';
 import SettingsNav, { type NavFieldset } from './SettingsNav';
 import Icon from './Icon';
@@ -79,6 +80,8 @@ import type {
 } from '@shared/drafts';
 import type { Loop, ScopedLoop } from '@shared/loops';
 import type {
+  LearnedSpellRow,
+  LearnedSpellTable,
   MegaMudSettingsView,
   ProfileEditable,
   SessionId,
@@ -353,6 +356,9 @@ export interface SettingsScreenProps {
   loadItems(realm: string): Promise<ItemTable>;
   importItems(realm: string, fileName: string, items: ItemRule[]): Promise<ItemImport>;
   saveItems(realm: string, items: ItemRule[]): Promise<string | null>;
+  /** A realm's learned spell sentences, by name. See `RealmSpellLore`. */
+  loadSpellLore(realm: string): Promise<LearnedSpellTable>;
+  saveSpellLore(realm: string, rows: LearnedSpellRow[]): Promise<string | null>;
   /** A MegaMUD folder's loops onto a realm. See `MegaMudLoopImport`. */
   importLoops(realm: string, paths: MegaMudPath[]): Promise<LoopImport>;
   /**
@@ -1618,6 +1624,8 @@ export default function SettingsScreen({
   loadItems,
   importItems,
   saveItems,
+  loadSpellLore,
+  saveSpellLore,
   importLoops,
   loadLoops,
   loadTrainers,
@@ -3787,6 +3795,21 @@ export default function SettingsScreen({
                       load={loadItems}
                       realm={serverPick === NEW_SERVER ? null : serverPick}
                       save={saveItems}
+                    />
+                  </fieldset>
+
+                  {/*
+                    And what the place's spells say when they land and end,
+                    as the wire taught them: put right here when a sentence
+                    was paired with the wrong spell (2026-10-14).
+                  */}
+                  <fieldset className="settings-menus" data-fieldset="realm-spell-lore">
+                    <legend>{t('settings.spellLore.legend')}</legend>
+                    <p className="settings-note">{t('settings.spellLore.note')}</p>
+                    <RealmSpellLore
+                      load={loadSpellLore}
+                      realm={serverPick === NEW_SERVER ? null : serverPick}
+                      save={saveSpellLore}
                     />
                   </fieldset>
 

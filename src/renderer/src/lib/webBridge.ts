@@ -272,6 +272,8 @@ export function createWebBridge(): IpcApi {
     loadItems: (realm) => invoke(Invoke.loadItems, realm),
     importItems: (realm, fileName, items) => invoke(Invoke.importItems, realm, fileName, items),
     saveItems: (realm, items) => invoke(Invoke.saveItems, realm, items),
+    loadSpellLore: (realm) => invoke(Invoke.loadSpellLore, realm),
+    saveSpellLore: (realm, rows) => invoke(Invoke.saveSpellLore, realm, rows),
     importLoops: (realm, paths) => invoke(Invoke.importLoops, realm, paths),
     searchRooms: (session, query) => invoke(Invoke.searchRooms, session, query),
     mobNames: (session) => invoke(Invoke.mobNames, session),

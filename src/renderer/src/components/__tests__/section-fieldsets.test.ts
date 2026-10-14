@@ -38,6 +38,7 @@ describe.each([
       'realm-messages',
       'realm-monsters',
       'realm-items',
+      'realm-spell-lore',
       'realm-hang-penalties',
       'realm-coins',
       'realm-bbs'

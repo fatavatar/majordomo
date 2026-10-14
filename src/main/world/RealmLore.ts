@@ -319,6 +319,61 @@ export class RealmLore {
     });
   }
 
+  /** One realm's learned spell sentences, by spell, for its settings page. */
+  learnedSpells(realm: string): { spell: string; start: string; stop: string }[] {
+    this.load();
+    return [...(this.spells.get(realmKey(realm)) ?? [])]
+      .map(([spell, entry]) => ({
+        spell,
+        start: entry.start?.text ?? '',
+        stop: entry.stop?.text ?? ''
+      }))
+      .sort((a, b) => (a.spell < b.spell ? -1 : 1));
+  }
+
+  /**
+   * One realm's learned spell sentences replaced from its settings page
+   * (2026-10-14): a sentence paired with the wrong spell is put right or
+   * forgotten there. The book the realm's sessions read by is changed in
+   * place, so they read by the correction at once; a sentence kept as it
+   * was keeps when it was learned.
+   */
+  setLearnedSpells(
+    realm: string,
+    rows: readonly { spell: string; start: string; stop: string }[]
+  ): void {
+    this.load();
+    const key = realmKey(realm);
+    const was = this.spells.get(key) ?? new Map<string, LearnedSpellMessages>();
+    const next = new Map<string, LearnedSpellMessages>();
+    const now = Date.now();
+    for (const row of rows) {
+      const name = spellKey(row.spell);
+      if (name.length === 0) continue;
+      const held = was.get(name);
+      const entry: LearnedSpellMessages = { ...next.get(name) };
+      for (const kind of ['start', 'stop'] as const) {
+        const text = row[kind].trim();
+        if (text === '') continue;
+        entry[kind] = held?.[kind]?.text === text ? held[kind] : { text, at: now };
+      }
+      if (entry.start || entry.stop) next.set(name, entry);
+    }
+    this.spells.set(key, next);
+    const book = this.spellBooks.get(key);
+    if (book) {
+      for (const [spell] of was) {
+        book.remove(spell, 'start');
+        book.remove(spell, 'stop');
+      }
+      for (const [spell, entry] of next) {
+        if (entry.start) book.add(spell, 'start', entry.start.text);
+        if (entry.stop) book.add(spell, 'stop', entry.stop.text);
+      }
+    }
+    this.schedule();
+  }
+
   /* ------------------------------------------------------------- effects */
 
   /**

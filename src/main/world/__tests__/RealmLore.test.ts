@@ -457,6 +457,43 @@ describe('the spell sentences a realm taught', () => {
       start: { text: 'You shimmer with a strange light.', at: 5 }
     });
   });
+
+  /* Fatty's great power, learned as ending with a monster's death (2026-10-14). */
+  it('is put right from the realm’s page, and the sessions read by it at once', () => {
+    const realm = store();
+    const lore = realm.spellsFor('gmud.sqlite', shipped);
+    lore.learn('song of great power', 'start', 'You feel the great power!', 5);
+    lore.learn('song of great power', 'stop', 'The oceanid falls dead.', 65);
+    lore.learn('strange glow', 'start', 'You shimmer with a strange light.', 5);
+    expect(realm.learnedSpells('gmud.sqlite')).toEqual([
+      {
+        spell: 'song of great power',
+        start: 'You feel the great power!',
+        stop: 'The oceanid falls dead.'
+      },
+      { spell: 'strange glow', start: 'You shimmer with a strange light.', stop: '' }
+    ]);
+
+    realm.setLearnedSpells('gmud.sqlite', [
+      {
+        spell: 'song of great power',
+        start: 'You feel the great power!',
+        stop: 'The feeling of great power wears off.'
+      }
+    ]);
+    expect(lore.match('The oceanid falls dead.')).toBeNull();
+    expect(lore.match('The feeling of great power wears off.')?.stops).toEqual([
+      'song of great power'
+    ]);
+    expect(lore.startOf('strange glow')).toBeNull();
+
+    realm.flush();
+    const file = JSON.parse(fs.readFileSync(path.join(dir, 'mob-lore.json'), 'utf8'));
+    const kept = file.spells[realmKey('gmud.sqlite')]['song of great power'];
+    // What was kept as it was keeps when it was learned.
+    expect(kept.start).toEqual({ text: 'You feel the great power!', at: 5 });
+    expect(kept.stop.text).toBe('The feeling of great power wears off.');
+  });
 });
 
 /*

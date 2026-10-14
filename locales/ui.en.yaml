@@ -3623,6 +3623,40 @@ settings:
     shopLabel: Bought/Sold
     source: 'from {file}, {date}'
     unreadable: That file could not be read.
+  # A realm's learned spell sentences: what a spell prints when it lands and ends, as the wire taught it.
+  spellLore:
+    legend: Learned Spell Sentences
+    note:
+      What this client worked out each spell prints when it lands and when it wears off, where the
+      shipped table has nothing for it. A blessing is cast again when its ending is seen, so a
+      sentence paired with the wrong spell keeps one up that has worn off. Put it right or forget it
+      here; a sentence forgotten is learned again the next time the spell is cast.
+    add: Add a spell
+    cancel: Cancel
+    count:
+      many: '{count} spells learned'
+      one: 1 spell learned
+    endsChip: 'ends: {stop}'
+    forget: Forget
+    forgot: Forgot what was learned for {spell}.
+    loading: Loading what was learned…
+    more: Showing {shown} of {count}; search to find the rest.
+    nameNeeded: Name the spell, as the realm's spell table spells it.
+    noData: This realm has no realm data, so nothing about its spells is learned.
+    noMatch: No learned spell matches that.
+    none: Nothing learned yet.
+    notLearned: (not learned)
+    saveFirst: Save the realm first; what its spells say is learned once a character plays on it.
+    saveRow: Save
+    saved: Saved what {spell} prints.
+    searchLabel: Search the learned spells
+    searchPlaceholder: Search by spell or sentence
+    spellLabel: Spell
+    spellPlaceholder: song of great power
+    startHint: What the realm prints when it lands on you, as one line.
+    startLabel: When It Lands
+    stopHint: What the realm prints when it wears off.
+    stopLabel: When It Ends
   monsters:
     add: Add a monster
     attackChip: 'attack: {spell}'

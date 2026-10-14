@@ -75,6 +75,23 @@ import type { MegaSettings } from './megamud/settings';
 import type { MegaToggle } from './megamud/toggles';
 
 /** A character's MegaMUD settings as the window edits them. */
+/**
+ * One spell's sentences as a realm's wire taught them (`RealmLore`): what it
+ * prints when it lands and when it ends, empty for one not learned. The
+ * shipped table's sentences come first and are not listed.
+ */
+export interface LearnedSpellRow {
+  spell: string;
+  start: string;
+  stop: string;
+}
+
+/** A realm's learned spell sentences; `known` false when the realm has no data to key them by. */
+export interface LearnedSpellTable {
+  known: boolean;
+  rows: LearnedSpellRow[];
+}
+
 export interface MegaMudSettingsView {
   /** `BBS.Password` always empty here. */
   settings: MegaSettings;
@@ -941,6 +958,14 @@ export const Invoke = {
   /** Writes one realm's whole item table, after an edit on its page. */
   saveItems: 'settings:save-items',
   /**
+   * The spell sentences one realm's wire taught (`RealmLore`), for its page:
+   * read, corrected and forgotten there (2026-10-14), since a sentence paired
+   * with the wrong spell keeps a blessing up that has worn off.
+   */
+  loadSpellLore: 'settings:spell-lore',
+  /** Replaces one realm's learned spell sentences, after an edit on its page. */
+  saveSpellLore: 'settings:save-spell-lore',
+  /**
    * Adds the loops in a MegaMUD folder to one realm's own
    * (`servers/<id>/loops/`), converted against that realm's data. The window
    * reads the folder and its loops cross as `MegaMudPath`s, not the files,
@@ -1380,6 +1405,10 @@ export interface IpcApi {
   importItems(realm: string, fileName: string, items: ItemRule[]): Promise<ItemImport>;
   /** Resolves to why it refused, or null. */
   saveItems(realm: string, items: ItemRule[]): Promise<string | null>;
+  /** One realm's learned spell sentences, by the realm's name. */
+  loadSpellLore(realm: string): Promise<LearnedSpellTable>;
+  /** Resolves to why it refused, or null. */
+  saveSpellLore(realm: string, rows: LearnedSpellRow[]): Promise<string | null>;
   /** Adds a MegaMUD folder's loops to a realm's, and says how many came across. */
   importLoops(realm: string, paths: MegaMudPath[]): Promise<LoopImport>;
   /*

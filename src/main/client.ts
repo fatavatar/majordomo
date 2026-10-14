@@ -144,7 +144,7 @@ import type { MegaData } from './megamud/data';
 import { megaDataFrom } from './megamud/fromWorld';
 import { planRoute } from './world/RoutePlanner';
 import type { EngineMemory, MegaEngineSetup } from './session/MegaEngine';
-import type { MegaMudSettingsView, SessionSummary } from '../shared/ipc';
+import type { LearnedSpellTable, MegaMudSettingsView, SessionSummary } from '../shared/ipc';
 import { EMPTY_CHARACTER } from '../shared/character';
 import { IDLE_WALK } from '../shared/walk';
 import { isLoopScope, mergeLoops, NO_LOOP } from '../shared/loops';
@@ -323,6 +323,15 @@ function createLore(): RealmLore {
     file: home.state('mob-lore.json'),
     notify: (message) => announce('lore', message)
   });
+}
+
+/** The realm data a saved realm's lore is kept under, as `loreFor` keys it; null for no such realm. */
+function loreSourceOf(realm: unknown): string | null {
+  const stored =
+    typeof realm === 'string' ? servers?.all.find((entry) => entry.server.name === realm) : null;
+  if (!stored) return null;
+  const learned = worldBook?.at(realmAddress(stored.server)) ?? null;
+  return realms?.load(stored.server.database, learned).graph?.info.source ?? 'none';
 }
 
 /** Beside the lore, for the same reasons `createLore` gives. */
@@ -2997,6 +3006,33 @@ function registerIpc(): void {
       items: asItemRules(rows)
     });
     return result.ok ? null : result.error;
+  });
+
+  /*
+   * A realm's learned spell sentences, by the realm's name: kept under the
+   * realm's data, as `spellLoreFor` keys them, so a realm with none has
+   * nothing to list.
+   */
+  handle(Invoke.loadSpellLore, (_caller, realm: unknown) => {
+    const source = loreSourceOf(realm);
+    if (source === null || lore === null)
+      return { known: false, rows: [] } satisfies LearnedSpellTable;
+    return { known: true, rows: lore.learnedSpells(source) } satisfies LearnedSpellTable;
+  });
+
+  handle(Invoke.saveSpellLore, (_caller, realm: unknown, rows: unknown) => {
+    const source = loreSourceOf(realm);
+    if (source === null || lore === null) return t('session.loop.noRealmData');
+    // Parsed, not trusted: the rows crossed the wire like any other payload.
+    const parsed = (Array.isArray(rows) ? rows : []).flatMap((row: unknown) => {
+      if (typeof row !== 'object' || row === null) return [];
+      const { spell, start, stop } = row as Record<string, unknown>;
+      if (typeof spell !== 'string' || typeof start !== 'string' || typeof stop !== 'string')
+        return [];
+      return [{ spell: spell.slice(0, 80), start: start.slice(0, 200), stop: stop.slice(0, 200) }];
+    });
+    lore.setLearnedSpells(source, parsed);
+    return null;
   });
 
   /*
