@@ -15,6 +15,7 @@ import {
   type SessionSink
 } from '../SessionManager';
 import type { MegaEngine, MegaEngineHost } from '../MegaEngine';
+import { pendingPump } from '../../megamud/script/send';
 import { NO_LOOP, type LoopProgress } from '../../../shared/loops';
 import { IDLE_WALK, type WalkProgress } from '../../../shared/walk';
 import { DEFAULT_CONFIG, type AutomationConfig, type RetreatConfig } from '../../../shared/config';
@@ -8172,9 +8173,11 @@ describe('the actions kept beside the MegaMUD engine', () => {
    * Auto-hunt walks to its lair and runs a loop it sized and filed nowhere:
    * the engine's Go To and loop for a character it runs (2026-10-14).
    */
+  let notices: string[] = [];
   const engine = () => {
-    const { sink } = collect();
-    manager = new SessionManager(sink);
+    const collected = collect();
+    notices = collected.notices;
+    manager = new SessionManager(collected.sink);
     manager.useMegaMud({
       settings: defaultSettings(),
       data: { monsters: [], items: [], spells: [] },
@@ -8184,22 +8187,98 @@ describe('the actions kept beside the MegaMUD engine', () => {
   };
 
   /* A ward or a key off the floor: MegaMUD's pending list, which holds its walk (2026-10-14). */
-  it('put their commands on the engine’s pending list', () => {
+  it('put their commands on the engine’s pending list, said sent when it sends them', () => {
     engine();
+    type Probe = { command: string; priority: 'probe'; coalesceKey?: string; onSent?: () => void };
     const inside = manager as unknown as {
       keptQueue: {
-        enqueue(intent: { command: string; priority: 'probe'; onSent?: () => void }): boolean;
+        enqueue(intent: Probe): boolean;
+        cancel(match: (intent: Probe) => boolean): number;
+        queued(match: (intent: Probe) => boolean): boolean;
       };
       mega: MegaEngine;
     };
     // In the game: out of it, MegaMUD sends a queued command at once.
     inside.mega.s.inGame = 1;
     const sent = vi.fn();
-    expect(
-      inside.keptQueue.enqueue({ command: 'use amulet', priority: 'probe', onSent: sent })
-    ).toBe(true);
+    const ours = (intent: Probe) => intent.coalesceKey === 'ward';
+    inside.keptQueue.enqueue({
+      command: 'use amulet',
+      priority: 'probe',
+      coalesceKey: 'ward',
+      onSent: sent
+    });
     expect(inside.mega.s.pending.map((p) => p.text)).toEqual(['use amulet\r']);
-    expect(sent).toHaveBeenCalled();
+    expect([sent.mock.calls.length, inside.keptQueue.queued(ours)]).toEqual([0, true]);
+
+    pendingPump(inside.mega.s);
+    expect([sent.mock.calls.length, inside.keptQueue.queued(ours)]).toEqual([1, false]);
+
+    inside.keptQueue.enqueue({ command: 'say hi', priority: 'probe', coalesceKey: 'ward' });
+    expect(inside.keptQueue.cancel(ours)).toBe(1);
+    expect(inside.mega.s.pending).toEqual([]);
+  });
+
+  /* MegaMUD buys only on its loop's start detour: an errand's purchase is ours (2026-10-14). */
+  it('buy at the counter a buy at a time, done when the pack holds it, given up when nothing came', () => {
+    vi.useFakeTimers();
+    engine();
+    const inside = manager as unknown as {
+      mega: MegaEngine;
+      megaBuying: unknown;
+      megaBuyTick(state: CharacterState): void;
+    };
+    inside.mega.s.inGame = 1;
+    const row = { name: 'torch', min: 1, max: 1, shop: 'General Store', at: null };
+    const holding = (names: string[]) =>
+      ({
+        ...manager!.character,
+        inventory: { ...manager!.character.inventory, items: names.map((name) => ({ name })) }
+      }) as unknown as CharacterState;
+    const counter = () => ({ row, room: '1/1', shop: 'General Store', at: true, asked: null });
+
+    inside.megaBuying = counter();
+    inside.megaBuyTick(holding([]));
+    expect(inside.mega.s.pending.map((p) => p.text)).toEqual(['buy torch\r']);
+    inside.megaBuyTick(holding([]));
+    expect(inside.mega.s.pending).toHaveLength(1);
+    pendingPump(inside.mega.s);
+    inside.megaBuyTick(holding(['torch']));
+    expect(inside.megaBuying).toBeNull();
+
+    inside.megaBuying = counter();
+    inside.megaBuyTick(holding([]));
+    pendingPump(inside.mega.s);
+    vi.advanceTimersByTime(tuning().supplies.buyTimeoutMs + 1);
+    inside.megaBuyTick(holding([]));
+    expect(inside.megaBuying).toBeNull();
+    expect(notices.at(-1)).toBe(
+      t('automation.collect.megaNotBought', {
+        item: 'torch',
+        shop: 'General Store',
+        why: t('automation.collect.whyNotSold', { shop: 'General Store' })
+      })
+    );
+  });
+
+  /* A quest's legs let the stopped loop go: it is taken up again by name (2026-10-14). */
+  it('hold the engine’s lap for a quest run and take it up again by name', () => {
+    engine();
+    const inside = manager as unknown as {
+      mega: MegaEngine;
+      runningLoopName(): string | null;
+      megaHold(): void;
+      megaRelease(): void;
+    };
+    inside.runningLoopName = () => 'Ring';
+    const button = vi.spyOn(inside.mega, 'button').mockImplementation(() => {});
+    const start = vi.spyOn(inside.mega, 'startLoop').mockReturnValue(null);
+    inside.megaHold();
+    expect(button).toHaveBeenCalledWith(0x803);
+    inside.megaRelease();
+    expect(start).toHaveBeenCalledWith('Ring');
+    inside.megaRelease();
+    expect(start).toHaveBeenCalledTimes(1);
   });
 
   it('hand the engine a loop filed nowhere, which it then finds by name', () => {

@@ -3,7 +3,7 @@
  * bounded diagnostic log. Everything it publishes goes through a sink supplied
  * by the caller, so it has no direct dependency on Electron's IPC.
  */
-import { CommandQueue } from '../automation/CommandQueue';
+import { CommandQueue, type Intent } from '../automation/CommandQueue';
 import { Routines } from '../automation/Routines';
 import { fightIsRunning, Walker } from '../automation/Walker';
 import type { FledRoom, WalkProgress } from '../../shared/walk';
@@ -2354,27 +2354,29 @@ export class SessionManager {
       {
         here: () => roomAddress(this.tracker.current.room),
         sourcesOf: (item, to) => this.itemSources(item, to),
-        buy: (row) => this.supplies.fetch(row, this.tracker.current),
-        buying: () => this.supplies.current !== null,
+        // The engine's purchase for a character it runs (`megaBuy`), the
+        // shopping errand otherwise; and so for the rest of what moves.
+        buy: (row) =>
+          this.mega !== null ? this.megaBuy(row) : this.supplies.fetch(row, this.tracker.current),
+        buying: () =>
+          this.mega !== null ? this.megaBuying !== null : this.supplies.current !== null,
         runLoop: (loop) => {
           // `startLoop` replaces whatever lap was running, which is right — one
           // movement at a time — and worth saying, because the lap it replaces
           // is the player's and it is not coming back on its own.
-          if (this.loops.progress.status === 'running') {
-            this.sink.notice(
-              t('automation.collect.replacingLap', { loopName: this.loops.progress.name ?? '' })
-            );
+          const running = this.runningLoopName();
+          if (running !== null) {
+            this.sink.notice(t('automation.collect.replacingLap', { loopName: running }));
           }
           const answer = this.startLoop(loop);
           return 'refused' in answer ? answer.refused : null;
         },
-        looping: () => this.loops.progress.status === 'running',
-        stopLoop: (reason) => {
-          this.loops.stop(reason);
-          this.walker.stop(reason);
-        },
-        alsoTake: (name) => this.loot.alsoTake(name),
-        stopTaking: (name) => this.loot.stopTaking(name),
+        looping: () => this.runningLoopName() !== null,
+        stopLoop: (reason) => this.stopLapAndWalk(reason),
+        alsoTake: (name) =>
+          this.mega !== null ? this.mega.alsoTake(name, true) : this.loot.alsoTake(name),
+        stopTaking: (name) =>
+          this.mega !== null ? this.mega.alsoTake(name, false) : this.loot.stopTaking(name),
         /*
          * The route the player asked for, through the one door that keeps
          * *one movement at a time*: a lap running is stopped out loud and its
@@ -2384,6 +2386,8 @@ export class SessionManager {
          * it has just been filling it.
          */
         walk: (route, run) => {
+          // The engine plans its own way from wherever the errand ended.
+          if (this.mega !== null) return this.walkRoute(route, run);
           if (this.loops.progress.status === 'running') {
             this.loops.stop(t('session.loop.stoppedForRoute'));
             this.walker.stop(t('session.loop.stoppedForRoute'));
@@ -2436,6 +2440,7 @@ export class SessionManager {
          */
         walkTo: (room) => {
           if (roomAddress(this.tracker.current.room) === room) return null;
+          if (this.mega !== null) return this.mega.walkTo(room, false, true);
           if (this.loops.progress.status === 'running') {
             this.loops.stop(t('session.loop.stoppedForRoute'));
             this.walker.stop(t('session.loop.stoppedForRoute'));
@@ -2453,11 +2458,11 @@ export class SessionManager {
             resumeAfterLoss: false
           });
         },
-        walking: () => this.walker.walking,
+        walking: () => this.walkingNow(),
         // The phrase in the `probe` band, as the quest run's act, and seen by
         // the quest book like any act this client sends for the player.
         say: (command, onSent) =>
-          this.queue.enqueue({
+          this.keptQueue.enqueue({
             command,
             priority: 'probe',
             coalesceKey: COLLECT_SAY_KEY,
@@ -2471,7 +2476,7 @@ export class SessionManager {
             }
           }),
         listPack: (onSent) =>
-          this.queue.enqueue({
+          this.keptQueue.enqueue({
             command: AFTER_WORD,
             priority: 'probe',
             coalesceKey: COLLECT_AFTER_KEY,
@@ -2479,9 +2484,9 @@ export class SessionManager {
             reason: t('automation.collect.reasonPackAfter'),
             onSent
           }),
-        saying: () => this.queue.queued((intent) => intent.coalesceKey === COLLECT_SAY_KEY),
+        saying: () => this.keptQueue.queued((intent) => intent.coalesceKey === COLLECT_SAY_KEY),
         takeBack: () =>
-          this.queue.cancel(
+          this.keptQueue.cancel(
             (intent) =>
               intent.coalesceKey === COLLECT_SAY_KEY || intent.coalesceKey === COLLECT_AFTER_KEY
           )
@@ -2500,7 +2505,7 @@ export class SessionManager {
     this.questRunner = new QuestRunner(
       automation.quests,
       automation.enabled,
-      this.queue,
+      this.keptQueue,
       {
         here: () => roomAddress(this.tracker.current.room),
         /*
@@ -2512,34 +2517,50 @@ export class SessionManager {
           this.serverFamily === 'greatermud' || this.tracker.current.abilities !== null,
         routeTo: (room) => this.planFromHere(room),
         walk: (route) =>
-          this.walker.start(route, this.tracker.current, {
-            quiet: false,
-            asked: false,
-            holdWhenHurt: true,
-            resumeAfterFight: true,
-            whileFighting: false,
-            resumeAfterLoss: false
-          }),
+          this.mega !== null
+            ? this.megaWalk(route)
+            : this.walker.start(route, this.tracker.current, {
+                quiet: false,
+                asked: false,
+                holdWhenHurt: true,
+                resumeAfterFight: true,
+                whileFighting: false,
+                resumeAfterLoss: false
+              }),
         stopWalking: (reason) => {
+          if (this.mega !== null) {
+            if (this.walkingNow()) this.mega.button(0x803);
+            return;
+          }
           if (this.walker.walking && !this.walkAsked) this.walker.stop(reason);
         },
         moveInFlight: () => this.tracker.pendingMoves > 0,
-        walking: () => this.walker.walking,
-        busy: () => this.isRetreating() || this.retreat !== null || this.escapeAwaiting !== null,
-        looping: () => this.loops.progress.status === 'running',
-        hold: () => this.loops.noteErrand(),
-        release: () => this.loops.noteErrandOver(),
-        buy: (row) => this.supplies.fetch(row, this.tracker.current),
-        buying: () => this.supplies.current !== null,
-        restock: (to, later) => this.questRestock(to, later),
+        walking: () => this.walkingNow(),
+        busy: () =>
+          this.mega?.toggles.on.allOff === true ||
+          this.isRetreating() ||
+          this.retreat !== null ||
+          this.escapeAwaiting !== null,
+        looping: () => this.runningLoopName() !== null,
+        hold: () => (this.mega !== null ? this.megaHold() : this.loops.noteErrand()),
+        release: () => (this.mega !== null ? this.megaRelease() : this.loops.noteErrandOver()),
+        buy: (row) =>
+          this.mega !== null ? this.megaBuy(row) : this.supplies.fetch(row, this.tracker.current),
+        buying: () =>
+          this.mega !== null ? this.megaBuying !== null : this.supplies.current !== null,
+        // MegaMUD restocks itself, on its loop's start detour (`0x406f20`).
+        restock: (to, later) => (this.mega !== null ? null : this.questRestock(to, later)),
         hunt: (item) => this.itemErrand.collect([item], null, this.tracker.current),
         hunting: () => this.itemErrand.running,
         abandonErrands: (reason) => {
+          if (this.megaBuying !== null) this.megaBuyGiveUp(reason);
           this.supplies.abandon(reason);
           this.itemErrand.abandon(reason);
         },
-        fightFor: (mob) => this.combat.alsoFight(mob),
-        stopFighting: (mob) => this.combat.stopFighting(mob),
+        fightFor: (mob) =>
+          this.mega !== null ? this.mega.alsoFight(mob, true) : this.combat.alsoFight(mob),
+        stopFighting: (mob) =>
+          this.mega !== null ? this.mega.alsoFight(mob, false) : this.combat.stopFighting(mob),
         questing: (on) => this.combat.noteQuesting(on),
         warding: (on) => this.wards.lend(on),
         said: (command) => this.noteQuestSaid(command),
@@ -4701,14 +4722,48 @@ export class SessionManager {
    * which its scheduler sends when it may and which holds its walk, and our
    * queue otherwise. Sent is taken as said when it is put on the list.
    */
-  private readonly keptQueue: Pick<CommandQueue, 'enqueue'> = {
+  private readonly keptQueue: Pick<CommandQueue, 'enqueue' | 'cancel' | 'queued'> = {
     enqueue: (intent) => {
       if (this.mega === null) return this.queue.enqueue(intent);
-      this.mega.queue(intent.command);
-      intent.onSent?.();
+      this.megaQueued.push(intent);
+      this.mega.queue(intent.command, () => {
+        this.megaQueued = this.megaQueued.filter((each) => each !== intent);
+        intent.onSent?.();
+      });
       return true;
+    },
+    cancel: (match) => {
+      if (this.mega === null) return this.queue.cancel(match);
+      const gone = this.megaQueued.filter(match);
+      for (const intent of gone) this.mega.unqueue(intent.command);
+      this.megaQueued = this.megaQueued.filter((intent) => !gone.includes(intent));
+      return gone.length;
+    },
+    queued: (match) => {
+      if (this.mega === null) return this.queue.queued(match);
+      const mega = this.mega;
+      this.megaQueued = this.megaQueued.filter((intent) => mega.pendingHas(intent.command));
+      return this.megaQueued.some(match);
     }
   };
+  /** What the actions kept beside the engine have on its pending list, unsent. */
+  private megaQueued: Intent[] = [];
+  /**
+   * An errand's purchase on the engine (an item errand's counter, a quest
+   * plan's): the walk to the counter, then a `buy` at a time until the pack
+   * holds the row's minimum. MegaMUD buys only on a loop's start detour
+   * (`0x406f20`), so this is ours, and its replies are MegaMUD's to read
+   * (`0x453a70`). Null with none.
+   */
+  private megaBuying: {
+    row: SupplyItem;
+    room: RoomId;
+    shop: string;
+    /** Walking there, or at the counter. */
+    at: boolean;
+    /** When the last `buy` went out, and what was carried then; null before one. */
+    asked: { at: number; had: number } | null;
+  } | null = null;
   /** The engine's walk as last published, to tell a walk ending (`megaWalkEnded`). */
   private megaWalkWas: WalkProgress['status'] = 'idle';
 
@@ -4720,7 +4775,93 @@ export class SessionManager {
   private megaWalkEnded(walk: WalkProgress): void {
     const arrived = walk.status === 'arrived';
     const reason = arrived ? null : walk.reason;
+    const buying = this.megaBuying;
+    if (buying !== null && !buying.at) {
+      if (arrived && roomAddress(this.tracker.current.room) === buying.room) buying.at = true;
+      else this.megaBuyGiveUp(reason ?? t('automation.hunt.whyStopped'));
+    }
     this.hunt.onWalkEnded(arrived, reason, this.tracker.current);
+    this.questRunner.onWalkEnded(arrived, reason, this.tracker.current);
+  }
+
+  /** An errand's purchase handed to the engine: walked to the counter, then bought. */
+  private megaBuy(row: SupplyItem): string | null {
+    if (this.mega === null) return t('session.megamud.noEngine');
+    if (this.megaBuying !== null) return t('automation.collect.refusalBusy');
+    const place = this.shopRoom(row);
+    if (typeof place === 'string') return place;
+    const here = roomAddress(this.tracker.current.room) === place.room;
+    if (!here) {
+      const refused = this.mega.walkTo(place.room, false, true);
+      if (refused !== null) return refused;
+    }
+    this.megaBuying = { row, room: place.room, shop: place.name, at: here, asked: null };
+    this.megaBuyTick(this.tracker.current);
+    return null;
+  }
+
+  /**
+   * At the counter, a `buy` at a time until the pack holds the minimum; one
+   * that `tuning.supplies.buyTimeoutMs` after it went out added nothing to the
+   * pack is taken as refused, and the purchase given up.
+   */
+  private megaBuyTick(state: CharacterState): void {
+    const buying = this.megaBuying;
+    if (buying === null || !buying.at || this.mega === null) return;
+    const have = carriedCount(state, buying.row.name);
+    if (have >= Math.max(1, buying.row.min)) {
+      this.megaBuying = null;
+      return;
+    }
+    const command = `buy ${buying.row.name}`;
+    if (this.mega.pendingHas(command)) return;
+    const asked = buying.asked;
+    if (asked !== null) {
+      if (have > asked.had) buying.asked = null;
+      else if (Date.now() - asked.at < tuning().supplies.buyTimeoutMs) return;
+      else {
+        this.megaBuyGiveUp(t('automation.collect.whyNotSold', { shop: buying.shop }));
+        return;
+      }
+    }
+    if (buying.asked === null) {
+      buying.asked = { at: Number.POSITIVE_INFINITY, had: have };
+      this.mega.queue(command, () => {
+        if (this.megaBuying === buying && buying.asked !== null) buying.asked.at = Date.now();
+      });
+    }
+  }
+
+  private megaBuyGiveUp(why: string): void {
+    const buying = this.megaBuying;
+    if (buying === null) return;
+    this.megaBuying = null;
+    this.sink.notice(
+      t('automation.collect.megaNotBought', { item: buying.row.name, shop: buying.shop, why })
+    );
+  }
+
+  /** The lap a quest run stood down, by name, to take up again when it lets go. See `megaHold`. */
+  private megaHeldLap: string | null = null;
+
+  /**
+   * A quest run holds the lap: the engine's stopped, and taken up again by
+   * name at the release. By name, because the run's own legs are walked
+   * alone and let the stopped loop go (`MegaEngine.walkTo`).
+   */
+  private megaHold(): void {
+    const running = this.runningLoopName();
+    if (this.mega === null || running === null) return;
+    this.mega.button(0x803);
+    this.megaHeldLap = running;
+  }
+
+  private megaRelease(): void {
+    const held = this.megaHeldLap;
+    this.megaHeldLap = null;
+    if (this.mega === null || held === null || this.mega.walking) return;
+    const refused = this.mega.startLoop(held);
+    if (refused !== null) this.sink.notice(refused);
   }
 
   /** The lap running, the engine's or the loop runner's, by name; null with none. */
@@ -5046,7 +5187,7 @@ export class SessionManager {
     this.stealth.configure(automation.combat, automation.enabled);
     this.recoverGear.configure(automation.movement, automation.enabled);
     this.trainLevel.configure(automation.train, automation.enabled);
-    this.questRunner.configure(automation.quests, automation.enabled);
+    this.questRunner.configure(automation.quests, this.mega !== null ? kept : automation.enabled);
     this.hunt.configure(
       automation.hunting,
       automation.walk,
@@ -6061,6 +6202,7 @@ export class SessionManager {
        */
       this.hunt.onCharacter(state);
       // And whether the thing a door wants is in the pack yet (todo 07).
+      this.megaBuyTick(state);
       this.itemErrand.onCharacter(state);
     }
     // And the quest run, which drives the errands above one step at a time

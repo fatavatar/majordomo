@@ -4891,6 +4891,9 @@ automation:
     huntingHere: 'Looking for {item}: {mob} drops it, starting here in {room}.'
     huntingNextDoor: 'Looking for {item}: {mob} drops it, starting next door in {room}.'
     loopName: 'Collect: {item}'
+    # The MegaMUD engine's purchase for an errand, which is ours (2026-10-14).
+    megaNotBought: 'Did not buy {item} at {shop}: {why}'
+    whyNotSold: '{shop} sold nothing for the last buy'
     refusalBusy: Something is already being collected.
     replacingLap: 'Stopping {loopName} to go and collect it; it will not start again on its own.'
     refusalLapStopped: 'The hunt for {item} stopped before the pack held one.'

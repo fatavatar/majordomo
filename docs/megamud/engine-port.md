@@ -324,6 +324,20 @@ one's way of moving the character is the engine's for a character it runs:
   for the room ahead is asked for before each step of the engine's path, by
   a hook of ours in `walkPath` (`SessionHost.beforeStep`): what it queues
   holds the step until it is sent. The wards switch is on the Health row.
+- **Item errands and the quest runner** (2026-10-14): their legs are the
+  engine's Go To walked alone, their loops filed nowhere the engine's, and
+  what they say or list goes on the pending list, told sent when MegaMUD's
+  pending pump echoes it (`0x48ad60`) and taken back off it unsent. What
+  they make the character pick up or fight is lent to the engine's own
+  records and given back after (`MegaEngine.alsoTake`, `alsoFight`), kept
+  through a table edited meanwhile. A purchase is ours
+  (`SessionManager.megaBuy`), as MegaMUD buys only on a loop's start detour
+  (`0x406f20`): walked to the counter, then a `buy` at a time until the pack
+  holds the row's minimum, given up when one added nothing within
+  `tuning.supplies.buyTimeoutMs`; MegaMUD reads the replies (`0x453a70`). A
+  quest run holds the engine's lap by its Go/Stop and takes it up again by
+  name at the release (its legs let the stopped loop go), and leaves
+  restocking to MegaMUD's own detour.
 
 **The flee** (`automation.safety.fleeGoto`, 2026-10-14) is ours inside the
 loop, as MegaMUD has no toggle for it: on the toolbar beside MegaMUD's own,

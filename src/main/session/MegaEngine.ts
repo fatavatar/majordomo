@@ -17,7 +17,7 @@
  */
 
 import { stricmp } from '../megamud/cstr';
-import { findClass, type ItemRec, type MegaData } from '../megamud/data';
+import { findClass, type ItemRec, type MegaData, type MonsterRec } from '../megamud/data';
 import { applyItemRule } from '../megamud/fromWorld';
 import { bbsSetup } from '../megamud/bbs';
 import { grantPlayers, loadCharacter } from '../megamud/character';
@@ -52,14 +52,16 @@ import { findSpell } from '../megamud/spells/lookup';
 import { findLongestFirst } from '../megamud/room/checkNames';
 import { setTask } from '../megamud/script/task';
 import {
+  monsterRecords,
   rememberItem,
   rememberPlayers,
   rememberRule,
+  ruleOnto,
   rememberStance,
   savedItems,
   savedStances
 } from '../megamud/saved';
-import { itemKey, type ItemRule } from '../../shared/itemRules';
+import { ITEM_FLAG_BITS, itemKey, type ItemRule } from '../../shared/itemRules';
 import type { MonsterRule, Relationship } from '../../shared/monsterRules';
 import type { PlayerFacts } from '../../shared/players';
 import type { LearnedItem, LearnedMark } from '../world/MegaLearned';
@@ -73,6 +75,7 @@ import { NO_LOOP, type LoopProgress } from '../../shared/loops';
 import {
   asRoomReference,
   DIRECTIONS,
+  mobKey,
   roomId,
   spellLasts,
   type RequirementKind,
@@ -365,6 +368,15 @@ export class MegaEngine {
   /** Our monster and item tables as last put on, to put on a new copy too. */
   private monsterRules: readonly MonsterRule[] = [];
   private itemRules: readonly ItemRule[] = [];
+  /** What was queued for an action kept beside the engine, told when it is sent. See `queue`. */
+  private sentHooks: { command: string; onSent: () => void }[] = [];
+  /** Items an errand has lent Auto-Get, by key, with the bit as it was. See `alsoTake`. */
+  private readonly lentItems = new Map<string, number>();
+  /** Monsters a quest has lent as enemies, by key, with each record as it was. See `alsoFight`. */
+  private readonly lentMonsters = new Map<
+    string,
+    { rec: MonsterRec; relationship: number; flags: number }[]
+  >();
   /** Signatures learned since they were last kept. */
   private readonly unkept = new Map<RoomId, number>();
   /** When our tracker had each of the ten blessing slots put up, at the last look; null when down. */
@@ -402,7 +414,8 @@ export class MegaEngine {
       readPath: (name) => this.readPath(name),
       saveSteps: (p) => this.saveSteps(p),
       blessingsCleared: () => this.blessingsCleared(),
-      beforeStep: () => this.beforeStep()
+      beforeStep: () => this.beforeStep(),
+      echo: (text) => this.sent(text)
     };
     this.memory = setup.memory ?? null;
     this.dataFrom = setup.data;
@@ -451,6 +464,8 @@ export class MegaEngine {
   useMonsters(rules: readonly MonsterRule[]): void {
     this.monsterRules = rules;
     for (const rule of rules) rememberRule(this.s, rule);
+    // What an errand has lent stays lent through the table changing under it.
+    for (const mob of this.lentMonsters.keys()) this.fightOnto(mob);
     findLongestFirst(this.s);
   }
 
@@ -468,6 +483,70 @@ export class MegaEngine {
         rec = this.s.data.items.find((item) => itemKey(item.name) === rule.item)!;
       }
       applyItemRule(rec, rule, this.host.world());
+    }
+    for (const name of this.lentItems.keys()) this.takeOnto(name);
+  }
+
+  /**
+   * An item picked up while an action kept beside the engine wants it (an
+   * item errand's drop, `ItemErrand.alsoTake`): its record's Auto-Get set,
+   * and put back as it was when the errand lets it go. Never the file.
+   */
+  alsoTake(name: string, on: boolean): void {
+    const key = itemKey(name);
+    if (on) {
+      if (this.lentItems.has(key)) return;
+      let rec = this.s.data.items.find((item) => itemKey(item.name) === key);
+      if (!rec) {
+        rememberItem(this.s, { name, weight: null, slot: null, weapon: false });
+        rec = this.s.data.items.find((item) => itemKey(item.name) === key)!;
+      }
+      this.lentItems.set(key, rec.flags & ITEM_FLAG_BITS.collect);
+      this.takeOnto(key);
+      return;
+    }
+    const was = this.lentItems.get(key);
+    if (was === undefined) return;
+    this.lentItems.delete(key);
+    const rec = this.s.data.items.find((item) => itemKey(item.name) === key);
+    if (rec) rec.flags = (rec.flags & ~ITEM_FLAG_BITS.collect) | was;
+  }
+
+  private takeOnto(key: string): void {
+    const rec = this.s.data.items.find((item) => itemKey(item.name) === key);
+    if (rec) rec.flags |= ITEM_FLAG_BITS.collect;
+  }
+
+  /**
+   * A monster fought while a quest wants it dead (`QuestRunner`'s
+   * `fightFor`): an enemy, and put back as it was when the quest lets it go.
+   * Never the file.
+   */
+  alsoFight(mob: string, on: boolean): void {
+    const key = mobKey(mob);
+    if (on) {
+      if (this.lentMonsters.has(key)) return;
+      const records = monsterRecords(this.s, mob);
+      this.lentMonsters.set(
+        key,
+        records.map((rec) => ({ rec, relationship: rec.relationship, flags: rec.flags }))
+      );
+      this.fightOnto(key);
+      findLongestFirst(this.s);
+      return;
+    }
+    const was = this.lentMonsters.get(key);
+    if (was === undefined) return;
+    this.lentMonsters.delete(key);
+    for (const { rec, relationship, flags } of was) {
+      rec.relationship = relationship;
+      rec.flags = flags;
+    }
+  }
+
+  private fightOnto(key: string): void {
+    for (const { rec } of this.lentMonsters.get(key) ?? []) {
+      ruleOnto(rec, { mob: key, relationship: 'enemy', notHostile: false });
     }
   }
 
@@ -944,6 +1023,7 @@ export class MegaEngine {
   closed(): void {
     this.outbound = [];
     this.parked = null;
+    this.sentHooks = [];
     this.safely(() => connectionClosed(this.s));
     this.safely(() => this.keepLearned());
   }
@@ -1046,11 +1126,35 @@ export class MegaEngine {
    * floor), put on MegaMUD's pending list (`0x48ab60`): its scheduler sends
    * it when it next may, and a walk holds for it.
    */
-  queue(command: string): void {
+  queue(command: string, onSent?: () => void): void {
     this.safely(() => {
       queue(this.s, `${command}\r`);
+      // Out of the game MegaMUD sends it at once (`0x48ab80`).
+      if (onSent !== undefined) {
+        if (this.pendingHas(command)) this.sentHooks.push({ command, onSent });
+        else onSent();
+      }
       wake(this.s);
     });
+  }
+
+  /** Whether a command queued here is still on the pending list. */
+  pendingHas(command: string): boolean {
+    return this.s.pending.some((p) => p.text === `${command}\r`);
+  }
+
+  /** A command queued here taken back off the pending list, unsent. */
+  unqueue(command: string): void {
+    this.s.pending = this.s.pending.filter((p) => p.text !== `${command}\r`);
+    this.sentHooks = this.sentHooks.filter((hook) => hook.command !== command);
+  }
+
+  /** A pending command went out (`0x48ad60` echoes it): its sender told. */
+  private sent(text: string): void {
+    const at = this.sentHooks.findIndex((hook) => hook.command === text);
+    if (at === -1) return;
+    const [hook] = this.sentHooks.splice(at, 1);
+    hook!.onSent();
   }
 
   /** The room the path's next step goes into, for the host to queue what it wants first. */

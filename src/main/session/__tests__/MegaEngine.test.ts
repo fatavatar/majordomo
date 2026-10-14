@@ -112,6 +112,37 @@ describe('room signatures from the realm data', () => {
   });
 });
 
+/* An item errand's drop, a quest's monster: lent to the engine and given back (2026-10-14). */
+describe('what an errand lends the engine', () => {
+  it('picks an item up while lent, as it was after, through the table changing', () => {
+    const { e } = engine();
+    e.useItems([{ item: 'gate key', collect: false }]);
+    const rec = () => e.s.data.items.find((item) => item.name === 'gate key')!;
+    expect(rec().flags & 2).toBe(0);
+    e.alsoTake('Gate Key', true);
+    expect(rec().flags & 2).toBe(2);
+    e.useItems([{ item: 'gate key', collect: false }]);
+    expect(rec().flags & 2).toBe(2);
+    e.alsoTake('gate key', false);
+    expect(rec().flags & 2).toBe(0);
+    e.dispose();
+  });
+
+  it('fights a monster while lent, as it was after', () => {
+    const { e } = engine();
+    e.useMonsters([{ mob: 'stone statue', relationship: 'friend', notHostile: true }]);
+    const rec = () => e.s.data.monsters.find((m) => m.name === 'stone statue')!;
+    const before = { relationship: rec().relationship, flags: rec().flags };
+    e.alsoFight('stone statue', true);
+    expect(rec().relationship).toBe(4);
+    e.useMonsters([{ mob: 'stone statue', relationship: 'friend', notHostile: true }]);
+    expect(rec().relationship).toBe(4);
+    e.alsoFight('stone statue', false);
+    expect({ relationship: rec().relationship, flags: rec().flags }).toEqual(before);
+    e.dispose();
+  });
+});
+
 describe('the engine in a session', () => {
   it('walks a loop of ours as MegaMUD’s loop, from the room it is in', async () => {
     vi.useFakeTimers();

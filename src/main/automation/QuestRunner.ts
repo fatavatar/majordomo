@@ -199,7 +199,7 @@ export class QuestRunner {
   constructor(
     private config: QuestsConfig,
     private enabled: boolean,
-    private readonly queue: CommandQueue,
+    private readonly queue: Pick<CommandQueue, 'enqueue' | 'cancel' | 'queued'>,
     private readonly planner: QuestRunPlanner,
     private readonly events: QuestRunEvents = {},
     private readonly now: () => number = () => Date.now()

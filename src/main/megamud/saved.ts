@@ -85,7 +85,7 @@ export function savedItems(s: Session): LearnedItem[] {
  * rows of the name (`megamud/fromWorld.ts`) — or one made as the loader would
  * have read it when there are none.
  */
-function monsterRecords(s: Session, name: string): MonsterRec[] {
+export function monsterRecords(s: Session, name: string): MonsterRec[] {
   const key = mobKey(name);
   const found = s.data.monsters.filter((m) => mobKey(m.name) === key);
   if (found.length > 0) return found;
@@ -137,7 +137,7 @@ export function rememberRule(s: Session, rule: MonsterRule): void {
   for (const rec of monsterRecords(s, rule.mob)) ruleOnto(rec, rule);
 }
 
-function ruleOnto(rec: MonsterRec, rule: MonsterRule): void {
+export function ruleOnto(rec: MonsterRec, rule: MonsterRule): void {
   if (rule.relationship !== undefined) {
     rec.relationship = RELATIONSHIP_NUMBER[rule.relationship];
     if (rule.relationship === 'avoid') rec.flags |= 2;
