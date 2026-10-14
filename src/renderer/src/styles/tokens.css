@@ -146,10 +146,14 @@
   --focus-ring: 2px;
 
   /* ------------------------------------------------------------ shape */
-  --r-card: 14px;
-  --r-control: 10px;
-  --r-chip: 6px;
-  --r-pill: 999px;
+  /* Near-square, as MegaMUD's own dialogs are: a field or a panel rounded
+   * like a phone's reads as another program beside the MegaMUD pages
+   * (2026-10-14). The toolbar's keys alone keep their softer corner. */
+  --r-card: 4px;
+  --r-control: 3px;
+  --r-chip: 2px;
+  --r-pill: 3px;
+  --r-key: 6px;
 
   /* ----------------------------------------------------------- motion */
   /* The one gold in the chrome: the glyph beside a bank's name in the console. */

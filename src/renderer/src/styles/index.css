@@ -1629,7 +1629,7 @@ button.quiet:hover:not(:disabled) {
 kbd {
   background: var(--ink-raised);
   border: var(--rule) solid var(--ink-line);
-  border-radius: 4px;
+  border-radius: var(--r-control);
   color: var(--text);
   font-family: var(--font-mono);
   font-size: var(--font-micro);
@@ -2428,7 +2428,7 @@ kbd {
 .loop-card-picker {
   background: color-mix(in srgb, var(--ink-line) 40%, transparent);
   border: var(--rule) solid transparent;
-  border-radius: calc(var(--r-card) - 6px);
+  border-radius: var(--r-chip);
   color: var(--text-hi);
   cursor: pointer;
   font: inherit;
@@ -4428,7 +4428,7 @@ button.quest-plan-back {
  */
 .dot {
   background: var(--text-lo);
-  border-radius: var(--r-pill);
+  border-radius: 50%;
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--text-lo) var(--tone-weak), transparent);
   display: inline-block;
   height: 8px;
@@ -7576,7 +7576,7 @@ button.quest-plan-back {
 .settings-loops li {
   align-items: center;
   background: var(--ink-raised);
-  border-radius: calc(var(--r-card) - 8px);
+  border-radius: var(--r-chip);
   display: flex;
   gap: 8px;
   padding: 5px 6px 5px 9px;
@@ -7614,7 +7614,7 @@ button.quest-plan-back {
  */
 .loop-picker {
   border: 1px solid var(--ink-line);
-  border-radius: calc(var(--r-card) - 6px);
+  border-radius: var(--r-chip);
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -7661,7 +7661,7 @@ button.quest-plan-back {
   align-items: center;
   background: transparent;
   border: 0;
-  border-radius: calc(var(--r-card) - 8px);
+  border-radius: var(--r-chip);
   color: var(--text-hi);
   cursor: pointer;
   display: flex;
@@ -9492,7 +9492,7 @@ tr:hover .row-action.worn,
 .conversation-say select {
   background: color-mix(in srgb, var(--accent) var(--tone-weak), transparent);
   border: 1px solid transparent;
-  border-radius: calc(var(--r-card) - 6px);
+  border-radius: var(--r-chip);
   color: color-mix(in srgb, var(--accent) 80%, var(--text-hi));
   cursor: pointer;
   flex: 0 0 auto;
@@ -9516,7 +9516,7 @@ tr:hover .row-action.worn,
 .conversation-say input {
   background: color-mix(in srgb, var(--ink-line) 40%, transparent);
   border: 1px solid transparent;
-  border-radius: calc(var(--r-card) - 6px);
+  border-radius: var(--r-chip);
   color: var(--text-hi);
   font-family: var(--font-mono);
   font-size: var(--font-micro);
@@ -9546,7 +9546,7 @@ tr:hover .row-action.worn,
 .conversation-queued {
   background: color-mix(in srgb, var(--accent) var(--tone-weak), transparent);
   border: 1px solid transparent;
-  border-radius: calc(var(--r-card) - 6px);
+  border-radius: var(--r-chip);
   color: color-mix(in srgb, var(--accent) 80%, var(--text-hi));
   cursor: pointer;
   flex: 0 0 auto;
@@ -10113,7 +10113,7 @@ tr:hover .row-action.worn,
 .settings-nav-section {
   background: transparent;
   border: 0;
-  border-radius: calc(var(--r-card) - 6px);
+  border-radius: var(--r-chip);
   color: var(--text-lo);
   cursor: pointer;
   font: inherit;
@@ -10166,7 +10166,7 @@ tr:hover .row-action.worn,
 .settings-nav-fieldset {
   background: transparent;
   border: 0;
-  border-radius: calc(var(--r-card) - 8px);
+  border-radius: var(--r-chip);
   color: var(--text-lo-quiet);
   cursor: pointer;
   font: inherit;
@@ -10197,7 +10197,7 @@ tr:hover .row-action.worn,
   align-items: center;
   background: color-mix(in srgb, var(--text-hi) 5%, transparent);
   border: 1px solid var(--ink-line);
-  border-radius: calc(var(--r-card) - 6px);
+  border-radius: var(--r-chip);
   color: var(--text-hi);
   cursor: pointer;
   display: flex;
@@ -10250,7 +10250,7 @@ tr:hover .row-action.worn,
   align-items: center;
   background: transparent;
   border: 0;
-  border-radius: calc(var(--r-card) - 6px);
+  border-radius: var(--r-chip);
   color: var(--text-hi);
   cursor: pointer;
   display: flex;
@@ -10416,7 +10416,7 @@ tr:hover .row-action.worn,
 .settings-form select {
   background: color-mix(in srgb, var(--ink-line) 40%, transparent);
   border: 1px solid transparent;
-  border-radius: calc(var(--r-card) - 6px);
+  border-radius: var(--r-chip);
   color: var(--text-hi);
   font: inherit;
   min-width: 0;
@@ -10654,7 +10654,7 @@ tr:hover .row-action.worn,
    variable was declared to guarantee. */
 .settings-menus {
   border: 1px solid var(--ink-line);
-  border-radius: calc(var(--r-card) - 4px);
+  border-radius: var(--r-control);
   margin: 0;
   padding: 10px;
 }
@@ -10920,7 +10920,7 @@ tr:hover .row-action.worn,
 .reset-actions .danger {
   background: color-mix(in srgb, var(--danger) var(--tone-strong), transparent);
   border: 0;
-  border-radius: calc(var(--r-card) - 6px);
+  border-radius: var(--r-chip);
   color: var(--danger);
   cursor: pointer;
   font: inherit;
@@ -11299,7 +11299,7 @@ tr:hover .row-action.worn,
 /* The row the flyout is about, in the listings' own recipe (`tr[data-selected]`). */
 .party-list li[data-selected] {
   background: color-mix(in srgb, var(--accent) var(--tone-weak), transparent);
-  border-radius: 4px;
+  border-radius: var(--r-control);
 }
 
 .party-name[data-leader='true']::after {
@@ -11516,7 +11516,7 @@ tr:hover .row-action.worn,
   background: var(--glass-fill-strong);
   backdrop-filter: var(--glass-blur);
   border: var(--rule) solid var(--ink-line);
-  border-radius: calc(var(--r-card) - 4px);
+  border-radius: var(--r-control);
   box-shadow: var(--elev-2);
   color: var(--text-hi);
   font-size: 0.86em;
@@ -11578,7 +11578,7 @@ tr:hover .row-action.worn,
 .settings-form .settings-warn,
 .popover .settings-warn {
   background: color-mix(in srgb, var(--danger) var(--tone-weak), transparent);
-  border-radius: calc(var(--r-card) - 6px);
+  border-radius: var(--r-chip);
   color: color-mix(in srgb, var(--danger) 85%, var(--text-hi));
   font-size: 0.88em;
   line-height: 1.45;
@@ -11605,7 +11605,7 @@ tr:hover .row-action.worn,
  * them — the same pictures the console lays over those cells.
  */
 .rewrite-preview {
-  border-radius: 4px;
+  border-radius: var(--r-control);
   display: block;
   font-family: var(--font-terminal, var(--font-dos));
   line-height: 1.4;
@@ -11825,7 +11825,7 @@ tr:hover .row-action.worn,
 
 .rewrite-swatch {
   border: 1px solid var(--ink-line);
-  border-radius: 4px;
+  border-radius: var(--r-control);
   cursor: pointer;
   height: 18px;
   padding: 0;
@@ -11850,7 +11850,7 @@ tr:hover .row-action.worn,
 .rewrite-pick input[type='color'] {
   block-size: 18px;
   border: 1px solid var(--ink-line);
-  border-radius: 4px;
+  border-radius: var(--r-control);
   cursor: pointer;
   inline-size: 28px;
   padding: 0;
@@ -12313,7 +12313,7 @@ tr:hover .row-action.worn,
 
 .crash-panel {
   background: var(--glass-fill-strong);
-  border-radius: 12px;
+  border-radius: var(--r-card);
   box-shadow: var(--glass-shadow), var(--glass-rim);
   max-width: 34rem;
   padding: 24px 28px;
@@ -12446,7 +12446,7 @@ tr:hover .row-action.worn,
   align-items: center;
   background: transparent;
   border: 0;
-  border-radius: var(--r-chip);
+  border-radius: var(--r-key);
   color: var(--text-lo-quiet);
   cursor: pointer;
   display: flex;
@@ -12596,7 +12596,7 @@ tr:hover .row-action.worn,
   text-align: right;
   padding: 0 0.3em;
   border: 1px solid color-mix(in oklab, currentColor 18%, transparent);
-  border-radius: 6px;
+  border-radius: var(--r-control);
   background: color-mix(in oklab, currentColor 6%, transparent);
   color: inherit;
 }
@@ -12686,7 +12686,7 @@ tr:hover .row-action.worn,
   align-items: center;
   background: transparent;
   border: 0;
-  border-radius: 8px;
+  border-radius: var(--r-control);
   color: var(--text-hi);
   display: flex;
   font: inherit;
@@ -12789,7 +12789,7 @@ tr:hover .row-action.worn,
  * no box or wash, labels in the dialog's case, and small boxed controls.
  */
 .settings-form[data-megamud='true'] {
-  --control-h: 20px;
+  --control-h: 22px;
   --font-ui: 11px;
   --font-micro: 11px;
 }
@@ -12812,12 +12812,18 @@ tr:hover .row-action.worn,
 }
 .settings-form[data-megamud='true']
   :is(input:not([type='checkbox'], [type='radio']), select, textarea) {
-  padding: 1px 4px;
+  padding: 2px 6px;
   font: inherit;
   color: var(--text-hi);
   background: var(--ink-raised);
   border: 1px solid var(--ink-edge);
   border-radius: var(--r-control);
+}
+/* A search box is already the box; its field inside is not boxed again. */
+.settings-form[data-megamud='true'] .table-find input {
+  padding: 0;
+  background: none;
+  border: 0;
 }
 .settings-form[data-megamud='true'] .chip {
   font-family: inherit;
@@ -12878,7 +12884,9 @@ tr:hover .row-action.worn,
 }
 .megamud-edit,
 .megamud-combo {
-  padding: 0 4px;
+  /* Room off the frame for the text, short of cutting a five-figure
+     number in MegaMUD's narrowest boxes (2026-10-14). */
+  padding: 1px 4px 1px 5px;
   font: inherit;
   min-height: 0;
   color: var(--text-hi);
