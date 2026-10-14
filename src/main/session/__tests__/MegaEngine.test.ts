@@ -168,6 +168,24 @@ describe('the engine in a session', () => {
     e.dispose();
   });
 
+  /* Each ask was an A* search on main's thread, which held the console still (2026-10-14). */
+  it('plans a way once while the character stands still', () => {
+    vi.useFakeTimers();
+    const { e, at } = engine('1/2');
+    e.s.inGame = 1;
+    e.received('\x1b[1;36mDark Alley\r\n\x1b[0;32mObvious exits: south, west\r\n');
+    const shop = e.signatureOf('1/3')!;
+    const counted = vi.fn(plan);
+    (e as unknown as { host: { plan: typeof plan } }).host.plan = counted;
+    const first = e.s.host.route!(e.s.f_8130, shop);
+    e.s.host.route!(e.s.f_8130, shop);
+    expect([first.steps, counted.mock.calls.length]).toEqual([2, 1]);
+    at.here = '1/1';
+    e.s.host.route!(e.s.f_8130, shop);
+    expect(counted.mock.calls.length).toBe(2);
+    e.dispose();
+  });
+
   it('refuses a loop it cannot make', () => {
     vi.useFakeTimers();
     const { e } = engine();
