@@ -1429,6 +1429,11 @@ function metaOf(parsed: Record<string, unknown>): WorldMeta {
 }
 
 export class WorldGraph {
+  /**
+   * The file this graph was read from (`load`), so the route worker can read
+   * its own copy; undefined for one built in memory.
+   */
+  file: string | undefined;
   private readonly rooms = new Map<RoomId, WorldRoom>();
   /**
    * The room-script teleports the router may walk, keyed by the room whose
@@ -3792,6 +3797,7 @@ export class WorldGraph {
   static load(file: string): WorldGraph {
     const graph = new WorldGraph();
     if (!fs.existsSync(file)) return graph;
+    graph.file = file;
 
     const text = zlib.gunzipSync(fs.readFileSync(file)).toString('utf8');
     const lines = text.split('\n');

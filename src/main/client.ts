@@ -141,6 +141,7 @@ import { megamudFromConfig } from '../shared/megamud/fromConfig';
 import { asMegaToggle } from '../shared/megamud/toggles';
 import type { MegaData } from './megamud/data';
 import { megaDataFrom } from './megamud/fromWorld';
+import { planRoute } from './world/RoutePlanner';
 import type { EngineMemory, MegaEngineSetup } from './session/MegaEngine';
 import type { MegaMudSettingsView, SessionSummary } from '../shared/ipc';
 import { EMPTY_CHARACTER } from '../shared/character';
@@ -1805,7 +1806,8 @@ function registerIpc(): void {
     }
     // With the alternatives a reader chooses between: this is the one route
     // planned to be read rather than walked.
-    return world.route(
+    return planRoute(
+      world,
       roomId(here.map, here.number),
       roomId(map, room),
       travellerOf(session, 'route'),

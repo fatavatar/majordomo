@@ -73,7 +73,8 @@ function engine(here: string | null = '1/1') {
       return at.canLocate;
     },
     world: () => world as never,
-    plan,
+    // Planned off main's thread in the client (`RoutePlanner`): answered later.
+    plan: (from, to) => Promise.resolve(plan(from, to)),
     loopRooms: (name) =>
       name === 'Ring' ? { rooms: ['1/2', '1/3'], bounce: false } : 'no such loop'
   };
@@ -86,6 +87,11 @@ function engine(here: string | null = '1/1') {
 }
 
 afterEach(() => vi.useRealTimers());
+
+/** The planner's answers let in: `RoutePlanner` answers on another thread. */
+async function planned(): Promise<void> {
+  for (let i = 0; i < 20; i += 1) await Promise.resolve();
+}
 
 describe('room signatures from the realm data', () => {
   it('match what the engine reads off the screen', () => {
@@ -107,7 +113,7 @@ describe('room signatures from the realm data', () => {
 });
 
 describe('the engine in a session', () => {
-  it('walks a loop of ours as MegaMUD’s loop, from the room it is in', () => {
+  it('walks a loop of ours as MegaMUD’s loop, from the room it is in', async () => {
     vi.useFakeTimers();
     const { e, sent } = engine('1/1');
     e.s.inGame = 1;
@@ -115,6 +121,7 @@ describe('the engine in a session', () => {
     e.received('\x1b[1;36mTown Square\r\n\x1b[0;32mObvious exits: north, closed door east\r\n');
     expect(e.s.f_8130).toBe(worldSignature(SQUARE));
     expect(e.startLoop('Ring')).toBeNull();
+    await planned();
     expect(e.s.loopPath.start).toBe(worldSignature(ALLEY));
     // Loaded when it is walked (`0x482600` without loading); the path made:
     expect(e.s.paths[0]!.steps!.map((st) => st.command)).toEqual(['s', 'e', 'w', 'n']);
@@ -126,7 +133,7 @@ describe('the engine in a session', () => {
   });
 
   /* The cards drew the old loop runner's idle progress while the engine looped (2026-10-13). */
-  it('says its walk and loop as the cards draw them', () => {
+  it('says its walk and loop as the cards draw them', async () => {
     vi.useFakeTimers();
     const { e } = engine('1/1');
     const host = (e as unknown as { host: MegaEngineHost }).host;
@@ -136,6 +143,7 @@ describe('the engine in a session', () => {
     e.s.online = 1;
     e.received('\x1b[1;36mTown Square\r\n\x1b[0;32mObvious exits: north, closed door east\r\n');
     expect(e.startLoop('Ring')).toBeNull();
+    await planned();
     // On the way out to the loop: the lap's footwork, not a route asked for.
     const [walk, loop] = said.at(-1)!;
     expect(loop).toMatchObject({
@@ -224,7 +232,7 @@ describe('the engine in a session', () => {
     e.dispose();
   });
 
-  it('puts a walk aside while the realm says where it is, and takes it up when placed', () => {
+  it('puts a walk aside while the realm says where it is, and takes it up when placed', async () => {
     vi.useFakeTimers();
     const { e, at } = engine(null);
     e.s.inGame = 1;
@@ -233,18 +241,20 @@ describe('the engine in a session', () => {
     // Known to MegaMUD's room list, so it heads for its destinations from here.
     (e.s.data.rooms ??= []).push({ signature: e.s.f_8130, name: 'Town Square' });
     expect(e.startLoop('Ring')).toBeNull();
+    await planned();
     expect(at.locates).toBeGreaterThan(0);
     expect(e.s.walking).toBe(0);
     expect(e.s.lost).toBe(0);
     // The reply places the room.
     at.here = '1/1';
     e.received('\r\n');
+    await planned();
     expect(e.s.walking).toBe(1);
     expect(e.s.path.steps!.map((st) => st.command)).toEqual(['n']);
     e.dispose();
   });
 
-  it('answers as MegaMUD would when the realm never says', () => {
+  it('answers as MegaMUD would when the realm never says', async () => {
     vi.useFakeTimers();
     const { e, at } = engine(null);
     e.s.inGame = 1;
@@ -252,6 +262,7 @@ describe('the engine in a session', () => {
     e.received('\x1b[1;36mTown Square\r\n\x1b[0;32mObvious exits: north, closed door east\r\n');
     (e.s.data.rooms ??= []).push({ signature: e.s.f_8130, name: 'Town Square' });
     e.startLoop('Ring');
+    await planned();
     expect(e.s.lost).toBe(0);
     vi.advanceTimersByTime(5500);
     expect(e.s.lost).toBe(1);
@@ -259,7 +270,7 @@ describe('the engine in a session', () => {
     e.dispose();
   });
 
-  it('does not wait on a realm with no locate command', () => {
+  it('does not wait on a realm with no locate command', async () => {
     vi.useFakeTimers();
     const { e, at } = engine(null);
     at.canLocate = false;
@@ -268,6 +279,7 @@ describe('the engine in a session', () => {
     e.received('\x1b[1;36mTown Square\r\n\x1b[0;32mObvious exits: north, closed door east\r\n');
     (e.s.data.rooms ??= []).push({ signature: e.s.f_8130, name: 'Town Square' });
     e.startLoop('Ring');
+    await planned();
     expect(e.s.lost).toBe(1);
     e.dispose();
   });

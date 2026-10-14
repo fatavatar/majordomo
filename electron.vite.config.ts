@@ -110,7 +110,13 @@ export default defineConfig({
     build: {
       minify: 'esbuild',
       chunkSizeWarningLimit: CHUNK_LIMIT_KB.main,
-      rollupOptions: { input: { index: resolve('src/main/index.ts') } }
+      rollupOptions: {
+        input: {
+          index: resolve('src/main/index.ts'),
+          // Its own thread: see `src/main/world/RoutePlanner.ts`.
+          routeWorker: resolve('src/main/world/routeWorker.ts')
+        }
+      }
     }
   },
   preload: {

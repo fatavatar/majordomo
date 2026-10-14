@@ -130,6 +130,7 @@ import {
 } from '../../shared/character';
 import { wireItem } from '../../shared/entities';
 import type { RouteOptions, Traveller, WorldGraph } from '../world/WorldGraph';
+import { planRoute } from '../world/RoutePlanner';
 import type { Wearer } from '../../shared/gear';
 import { preferredEdges } from '../world/loopDraft';
 
@@ -4770,8 +4771,9 @@ export class SessionManager {
           alert: (which) => this.sink.notice(megaAlertText(which)),
           world: () => this.world,
           plan: (from, to) =>
-            this.world?.route(from, to, this.lapTraveller(this.tracker.current)) ??
-            t('session.loop.noRealmData'),
+            this.world
+              ? planRoute(this.world, from, to, this.lapTraveller(this.tracker.current))
+              : t('session.loop.noRealmData'),
           loopRooms: (name) => {
             const loop = this.loopNamed(name);
             if (loop === undefined) return t('session.move.noSuchLoop', { name });

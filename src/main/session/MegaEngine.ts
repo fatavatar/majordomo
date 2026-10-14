@@ -29,6 +29,7 @@ import { clearDetours, goTo, headFor, startWalking } from '../megamud/move/desti
 import { copyPath, freeSteps } from '../megamud/move/path';
 import { connected, connectFailed, connectionClosed } from '../megamud/script/game';
 import { reEngage } from '../megamud/script/modes';
+import { wake } from '../megamud/script/send';
 import { forgetAwaited, setState } from '../megamud/script/state';
 import {
   dataArrived,
@@ -102,8 +103,11 @@ export interface MegaEngineHost {
    */
   locate(): boolean;
   world(): WorldGraph | undefined;
-  /** The shortest walkable way between two rooms. */
-  plan(from: RoomId, to: RoomId): Route | string;
+  /**
+   * The shortest walkable way between two rooms, planned off main's thread
+   * (`RoutePlanner`); a string when there is nothing to plan on.
+   */
+  plan(from: RoomId, to: RoomId): Promise<Route> | string;
   /** A loop's stops as rooms, or why not. */
   loopRooms(name: string): { rooms: RoomId[]; bounce: boolean } | string;
   /** MegaMUD's yes-or-no questions; no when absent. */
@@ -267,6 +271,8 @@ const QUIET_POLL_MS = 250;
 
 /** How long a walk waits on the realm saying where the character is. */
 const LOCATE_WAIT_MS = 5000;
+/** How long a way planned is used again before it is planned afresh. */
+const PLAN_KEPT_MS = 60_000;
 
 /** A short, steady name for a path MegaMUD can hold (13 characters). */
 function shortName(prefix: string, text: string): string {
@@ -305,7 +311,16 @@ export class MegaEngine {
     roaming: number;
     lost: number;
     until: number;
+    /** Put aside for a way being planned (`route`), not for the room being located. */
+    planning?: boolean;
   } | null = null;
+  /**
+   * Ways planned (`plan`), by `from>to`: the route answered, or `pending`
+   * while the planner's thread works on it.
+   */
+  private readonly plans = new Map<string, { route: Route; at: number } | 'pending'>();
+  /** A loop asked for while its legs were being planned: started once they are. */
+  private loopWaiting: string | null = null;
   /** The next way asked for is answered without asking where first (the ask came to nothing). */
   private locateGaveUp = false;
   /** In the game at the last chunk: entering it is when a room is first wanted. */
@@ -660,7 +675,8 @@ export class MegaEngine {
     // Into the game with nowhere known: ask once, before anything wants a way.
     if (this.s.inGame !== 0 && !this.wasInGame && this.host.here() === null) this.host.locate();
     this.wasInGame = this.s.inGame !== 0;
-    if (this.parked !== null && this.host.here() !== null) this.safely(() => this.unpark());
+    if (this.parked !== null && this.parked.planning !== true && this.host.here() !== null)
+      this.safely(() => this.unpark());
     this.noteToggles();
   }
 
@@ -899,6 +915,11 @@ export class MegaEngine {
    */
   startLoop(name: string): string | null {
     const p = this.loopPath(name);
+    if (p === 'pending') {
+      // Started when its legs are planned (`planArrived`).
+      this.loopWaiting = name;
+      return null;
+    }
     if (typeof p === 'string') return p;
     const s = this.s;
     clearDetours(s);
@@ -1105,17 +1126,77 @@ export class MegaEngine {
       return { flags: 0x20, path: null, steps: -1 };
     }
     let best: Route | null = null;
+    let pending = false;
     for (const room of this.roomsWith(to).slice(0, 8)) {
       if (room === here)
         return { flags: 0, path: this.makePath(this.routeName(), 'route', [], from, to), steps: 0 };
-      const plan = this.host.plan(here, room);
+      const plan = this.plan(here, room);
+      if (plan === 'pending') pending = true;
       if (typeof plan === 'string' || plan.blocked) continue;
       if (best === null || plan.steps.length < best.steps.length) best = plan;
+    }
+    if (pending) {
+      // Still being planned. A walk heading off (`0x43d2a0` asks under task
+      // 0xd) is put aside as it is while the room is located, and taken up
+      // again with the answer; anything else asking is woken to ask again.
+      const s = this.s;
+      if (s.task === 0xd && this.parked === null) {
+        this.parked = {
+          detours: structuredClone(s.detours),
+          walking: s.walking,
+          looping: s.looping,
+          roaming: s.roaming,
+          lost: s.lost,
+          until: Date.now() + LOCATE_WAIT_MS,
+          planning: true
+        };
+      }
+      return { flags: 0x20, path: null, steps: -1 };
     }
     if (best === null) return none;
     const p = this.makePath(this.routeName(), 'route', [best], from, to);
     if (p.steps!.length > 0) p.steps![0]!.room = from;
     return { flags: 0, path: p, steps: p.count };
+  }
+
+  /**
+   * The way between two rooms: kept from an earlier ask, or asked of the
+   * planner's thread and `pending` until it answers (`planArrived`).
+   */
+  private plan(from: RoomId, to: RoomId): Route | string | 'pending' {
+    const key = `${from}>${to}`;
+    const kept = this.plans.get(key);
+    if (kept === 'pending') return kept;
+    if (kept !== undefined && Date.now() - kept.at < PLAN_KEPT_MS) return kept.route;
+    const asked = this.host.plan(from, to);
+    if (typeof asked === 'string') return asked;
+    this.plans.set(key, 'pending');
+    asked
+      .catch((error: unknown): Route => ({
+        steps: [],
+        cost: 0,
+        blocked: true,
+        reason: error instanceof Error ? error.message : String(error)
+      }))
+      .then((route) => {
+        this.plans.set(key, { route, at: Date.now() });
+        this.safely(() => this.planArrived());
+      });
+    return 'pending';
+  }
+
+  /** The planner's answers are in: what waited on them asks again. */
+  private planArrived(): void {
+    if ([...this.plans.values()].includes('pending')) return;
+    if (this.parked !== null && this.host.here() !== null) this.unpark();
+    const loop = this.loopWaiting;
+    this.loopWaiting = null;
+    if (loop !== null) {
+      const refused = this.startLoop(loop);
+      if (refused !== null) this.host.show(`[${refused}]`);
+    }
+    wake(this.s);
+    this.noteToggles();
   }
 
   private routeName(): string {
@@ -1124,7 +1205,7 @@ export class MegaEngine {
   }
 
   /** One of our loops as a MegaMUD loop: start and end its first stop. */
-  private loopPath(name: string): PathRec | string {
+  private loopPath(name: string): PathRec | string | 'pending' {
     const known = this.made.get(shortName('L', name).toLowerCase());
     if (known) return known.path;
     const stops = this.host.loopRooms(name);
@@ -1138,12 +1219,18 @@ export class MegaEngine {
     const legs: Route[] = [];
     const begins: number[] = [];
     let steps = 0;
+    // Every leg asked for at once, so the planner's thread works on them together.
+    const planned = rooms.map((from, i) => {
+      const to = rooms[(i + 1) % rooms.length]!;
+      return from === to ? null : this.plan(from, to);
+    });
+    if (planned.includes('pending')) return 'pending';
     for (let i = 0; i < rooms.length; i += 1) {
       begins.push(steps);
       const from = rooms[i]!;
       const to = rooms[(i + 1) % rooms.length]!;
-      if (from === to) continue;
-      const plan = this.host.plan(from, to);
+      const plan = planned[i];
+      if (plan === null || plan === undefined || plan === 'pending') continue;
       if (typeof plan === 'string') return plan;
       if (plan.blocked) return plan.reason ?? `No way from ${from} to ${to}.`;
       legs.push(plan);
