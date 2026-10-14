@@ -17,7 +17,7 @@
  */
 
 import { stricmp } from '../megamud/cstr';
-import type { ItemRec, MegaData } from '../megamud/data';
+import { findClass, type ItemRec, type MegaData } from '../megamud/data';
 import { applyItemRule } from '../megamud/fromWorld';
 import { bbsSetup } from '../megamud/bbs';
 import { grantPlayers, loadCharacter } from '../megamud/character';
@@ -67,10 +67,12 @@ import type { ActiveBuff, Affliction } from '../../shared/character';
 import type { MegaSettings } from '../../shared/megamud/settings';
 import {
   MEGA_TOGGLES,
+  separatedToggles,
   shownToggles,
   type MegaToggle,
   type MegaToggles
 } from '../../shared/megamud/toggles';
+import type { MegaChoices } from '../../shared/ipc';
 import type { RemoteName } from '../../shared/remotes';
 import { IDLE_WALK, type WalkProgress } from '../../shared/walk';
 import { NO_LOOP, type LoopProgress } from '../../shared/loops';
@@ -356,6 +358,7 @@ export class MegaEngine {
   private loopRun: { name: string; startedAt: number; lapBegunAt: number | null } | null = null;
   /** The toggles this character's `[Toolbar]` shows. */
   private shown: MegaToggle[];
+  private separated: MegaToggle[];
   /** The character's `[Alerts]`: the sound each alert plays. */
   private alerts: Readonly<Record<string, unknown>>;
   /** Where what is learned is kept; null when nowhere. */
@@ -406,6 +409,7 @@ export class MegaEngine {
     this.memory = setup.memory ?? null;
     this.dataFrom = setup.data;
     this.shown = shownToggles(setup.settings.live['Toolbar']);
+    this.separated = separatedToggles(setup.settings.live['Toolbar']);
     this.alerts = setup.settings.live['Alerts'] ?? {};
     // A copy: the data read is shared between sessions, and the engine changes it as it learns.
     this.s = new Session(engineHost, structuredClone(setup.data));
@@ -478,6 +482,7 @@ export class MegaEngine {
    */
   reload(setup: MegaEngineSetup): void {
     this.shown = shownToggles(setup.settings.live['Toolbar']);
+    this.separated = separatedToggles(setup.settings.live['Toolbar']);
     this.alerts = setup.settings.live['Alerts'] ?? {};
     this.toggled = '';
     const s = this.s;
@@ -770,6 +775,7 @@ export class MegaEngine {
     return {
       on,
       shown: this.shown,
+      separated: this.separated,
       walking: s.walking !== 0,
       looping: s.looping !== 0,
       canGo: s.inGame !== 0 && !allOff && somewhere
@@ -1142,6 +1148,38 @@ export class MegaEngine {
       name: shop?.name.trim() ?? rec?.name ?? room,
       flags: rec?.shop !== undefined ? 2 : 0
     });
+  }
+
+  /**
+   * What the settings page picks from: the names in the room list, and what
+   * is carried as `0x42afc0` offers it (the first nine of a kind: a weapon,
+   * one that can backstab, a shield), none while the inventory is not known.
+   */
+  choices(): MegaChoices {
+    const s = this.s;
+    const carried = (fits: (item: ItemRec) => boolean): string[] | null =>
+      s.f_8468 === 0
+        ? null
+        : s.inventory
+            .flatMap((c) => (c.item !== null && fits(c.item) ? [c.item.name] : []))
+            .slice(0, 9);
+    return {
+      rooms: [...new Set((s.data.rooms ?? []).map((r) => r.name))],
+      weapons: carried((item) => item.type === 1),
+      backstab: carried((item) => item.type === 1 && (item.flags & 0x200) !== 0),
+      shields: carried((item) => item.location === 12),
+      statline: {
+        hp: s.hp,
+        maxHp: s.Player_MaxHP,
+        mana: s.mana,
+        maxMana: s.Player_MaxMana,
+        // 0x8428: the coin carried, as the tab shows it.
+        wealth: s.f_8428 >>> 0,
+        exp: s.Player_Exp,
+        need: s.Player_Need,
+        kai: ((findClass(s.data, s.Player_Class)?.magic ?? 0) & 0xff00) === 0x500
+      }
+    };
   }
 
   signatureOf(room: RoomId): number | null {

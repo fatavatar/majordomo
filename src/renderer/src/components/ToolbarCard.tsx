@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { Fragment, useRef, useState } from 'react';
 
 import BentoCard, { type CardChrome } from './BentoCard';
 import Icon from './Icon';
@@ -75,7 +75,12 @@ export default function ToolbarCard({
            */
           <span className="empty">{t('cards.toolbar.emptyRow')}</span>
         ) : (
-          shown.map((button) => <ToolbarKey button={button} key={button.id} />)
+          shown.map((button) => (
+            <Fragment key={button.id}>
+              {button.separated === true && <span aria-hidden="true" className="toolbar-sep" />}
+              <ToolbarKey button={button} />
+            </Fragment>
+          ))
         )}
         <button
           aria-expanded={menu}

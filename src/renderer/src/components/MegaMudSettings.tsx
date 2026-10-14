@@ -1,8 +1,10 @@
-import { useCallback, useEffect, useState } from 'react';
+import { Fragment, useCallback, useEffect, useState, type ReactNode } from 'react';
+import { customControl, drawnHere } from './MegaMudEditors';
 import FormActions from './FormActions';
+import { CheckField, NumberField, TextField } from './FormField';
 import { useAutoSave, type AutoSave } from '../hooks/useAutoSave';
 import { begin, canRedo, canUndo, record, redo, undo, type History } from '../lib/history';
-import type { MegaMudSettingsView } from '@shared/ipc';
+import type { MegaChoices, MegaMudSettingsView } from '@shared/ipc';
 import {
   SETTINGS_TABS,
   type ChecklistRow,
@@ -168,8 +170,17 @@ export function useMegaMudDraft(id: string | null, store: MegaMudStore): MegaMud
   };
 }
 
+/**
+ * The tabs not drawn as rows: BBS, whose BBS list and account are the
+ * realm's page and the Character row's login, and whose own settings (MudOp
+ * access, `sys goto`, the redials) the Character row holds (`MEGA_ACCOUNT`).
+ */
+const NOT_ROWS: readonly string[] = ['BBS'];
+
 /** The titles of MegaMUD's settings tabs, in its dialog's order: the Character page's rows. */
-export const MEGA_TABS: readonly string[] = SETTINGS_TABS.map((p) => p.title);
+export const MEGA_TABS: readonly string[] = SETTINGS_TABS.map((p) => p.title).filter(
+  (title) => !NOT_ROWS.includes(title)
+);
 
 /** Whether a Character page row is one of MegaMUD's tabs. */
 export function isMegaTab(section: string): boolean {
@@ -182,7 +193,16 @@ export function isMegaTab(section: string): boolean {
  * undo and redo. A character with no MegaMUD settings yet is switched over by
  * a press.
  */
-export function MegaMudPanel({ tab, mega }: { tab: string; mega: MegaMudDraft }) {
+export function MegaMudPanel({
+  tab,
+  mega,
+  loops = []
+}: {
+  tab: string;
+  mega: MegaMudDraft;
+  /** The loops the character can walk, for a timed event's loop. */
+  loops?: readonly string[];
+}) {
   const page = SETTINGS_TABS.find((p) => p.title === tab);
   if (page === undefined) return null;
   const { view, draft } = mega;
@@ -193,8 +213,13 @@ export function MegaMudPanel({ tab, mega }: { tab: string; mega: MegaMudDraft })
     <div className="megamud-settings">
       {!view.engine && <p className="settings-warn">{t('settings.megamud.noFile')}</p>}
       <TabPage
+        choices={view.choices}
         controls={page.controls}
         draft={draft}
+        key={`${mega.id}-${tab}`}
+        loops={loops}
+        tab={tab}
+        update={mega.update}
         hasPassword={view.hasPassword}
         height={page.h}
         onProfile={(n) => mega.update((current) => switchProfile(current, n))}
@@ -229,6 +254,82 @@ export function MegaMudPanel({ tab, mega }: { tab: string; mega: MegaMudDraft })
   );
 }
 
+/**
+ * The BBS tab's settings that are the character's and not the realm's or the
+ * login's (`0x419e80`): MudOp access and its `sys goto`, and the redials,
+ * which stand in for our own reconnecting under the engine. In MegaMUD's
+ * words, on the Character row (2026-10-14).
+ */
+const MEGA_ACCOUNT: readonly {
+  section: string;
+  key: string;
+  label: string;
+  as: 'check' | 'int' | 'text';
+}[] = [
+  { section: 'BBS', key: 'IsMudop', label: 'Has MudOp access', as: 'check' },
+  { section: 'BBS', key: 'SysGoto', label: 'sys goto', as: 'text' },
+  { section: 'Comms', key: 'RedialConnect', label: 'Reconnect if dial fails', as: 'check' },
+  { section: 'Comms', key: 'RedialCarrier', label: 'Reconnect if carrier lost', as: 'check' },
+  { section: 'Comms', key: 'RedialNoResponse', label: 'Reconnect if no BBS response', as: 'check' },
+  { section: 'Comms', key: 'RedialCleanup', label: 'Reconnect after cleanup', as: 'check' },
+  { section: 'Comms', key: 'LogoffLowExp', label: 'Disconnect if low exp. rate', as: 'check' },
+  { section: 'Comms', key: 'RedialMax', label: 'Max. re-dials', as: 'int' },
+  { section: 'Comms', key: 'RedialPause', label: 'Re-dial pause (seconds)', as: 'int' },
+  { section: 'Comms', key: 'CleanupPeriod', label: 'Cleanup period (minutes)', as: 'int' },
+  { section: 'Comms', key: 'MinExpRate', label: 'Min. exp. rate (per hour)', as: 'int' },
+  { section: 'Comms', key: 'LagWait', label: 'Lag pause (seconds)', as: 'int' }
+];
+
+/** `MEGA_ACCOUNT`, for a character the engine runs. */
+export function MegaMudAccount({ mega }: { mega: MegaMudDraft }) {
+  const { view, draft } = mega;
+  if (view === null || draft === null || !view.engine) return null;
+  return (
+    <fieldset className="settings-menus" data-fieldset="megamud-account">
+      <legend>{t('settings.megamud.accountLegend')}</legend>
+      {MEGA_ACCOUNT.map(({ section, key, label, as }) => {
+        const value = valueOf(draft, section, key);
+        const name = `megamud-${section}-${key}`;
+        if (as === 'check') {
+          return (
+            <CheckField
+              checked={typeof value === 'number' && value !== 0}
+              key={name}
+              label={label}
+              name={name}
+              onChange={(on) => mega.set(section, key, on ? 1 : 0)}
+            />
+          );
+        }
+        if (as === 'int') {
+          return (
+            <NumberField
+              key={name}
+              label={label}
+              name={name}
+              onChange={(text) => mega.set(section, key, Number.parseInt(text, 10) || 0)}
+              value={String(value ?? 0)}
+            />
+          );
+        }
+        return (
+          <TextField
+            key={name}
+            label={label}
+            name={name}
+            onChange={(text) => mega.set(section, key, text)}
+            spellCheck={false}
+            value={String(value ?? '')}
+          />
+        );
+      })}
+      {mega.save.state === 'refused' && (
+        <p className="settings-problem">{mega.save.error ?? t('settings.formActions.notSaved')}</p>
+      )}
+    </fieldset>
+  );
+}
+
 /** A tab's profile copy (2–4) switched on or off; switched on, made from the live values when missing. */
 function withSlotEnabled(
   settings: MegaSettings,
@@ -245,6 +346,10 @@ function withSlotEnabled(
 }
 
 interface TabPageProps {
+  tab: string;
+  choices: MegaChoices | null;
+  loops: readonly string[];
+  update(change: (current: MegaSettings) => MegaSettings): void;
   controls: readonly TabControl[];
   draft: MegaSettings;
   hasPassword: boolean;
@@ -257,6 +362,10 @@ interface TabPageProps {
 }
 
 function TabPage({
+  tab,
+  choices,
+  loops,
+  update,
   controls,
   draft,
   hasPassword,
@@ -268,10 +377,13 @@ function TabPage({
   onProfileEnabled
 }: TabPageProps) {
   const active = Number(valueOf(draft, 'Profiles', 'ActiveProfile') ?? 1);
+  // The page's own picks (a list's selected row), and a dialog over it.
+  const [local, setLocal] = useState<Record<string, number>>({});
+  const [dialog, setDialog] = useState<ReactNode>(null);
   return (
     <div className="megamud-page" style={{ width: width * DLU_X, height: height * DLU_Y }}>
       {controls.map((c) => {
-        if (c.hidden || c.kind === 'other') return null;
+        if (c.hidden || !drawnHere(tab, c)) return null;
         const style = {
           left: c.x * DLU_X,
           top: c.y * DLU_Y,
@@ -279,6 +391,19 @@ function TabPage({
           height: c.kind === 'combo' ? 12 * DLU_Y : c.h * DLU_Y
         };
         const key = `${c.id}-${c.x}-${c.y}`;
+        const custom = customControl(tab, c, {
+          draft,
+          choices,
+          loops,
+          style,
+          set,
+          update,
+          local,
+          setLocal: (name, at) => setLocal((was) => ({ ...was, [name]: at })),
+          open: setDialog
+        });
+        if (custom !== undefined) return <Fragment key={key}>{custom}</Fragment>;
+        if (c.kind === 'other') return null;
         if (c.profile !== undefined && profiled) {
           return (
             <button
@@ -318,6 +443,7 @@ function TabPage({
           />
         );
       })}
+      {dialog}
     </div>
   );
 }

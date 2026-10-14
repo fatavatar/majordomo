@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   atol,
+  copyProfileFrom,
   defaultSettings,
   num,
   parseIni,
@@ -201,5 +202,16 @@ describe('one setting under two names (TWINS)', () => {
     draft.live['MegaMud']!['AfkReply'] = 'away';
     const next = settingsFromDraft(draft, base)!;
     expect(next.live['Talk']!['AfkReply']).toBe('away');
+  });
+});
+
+describe('Copy From... (0x49fd10)', () => {
+  it("puts another enabled copy's values in the one being edited", () => {
+    const settings = settingsFromIni(
+      '[Profiles]\r\nActiveProfile=1\r\n[Health]\r\nHpRest%=50\r\n[Health.P2]\r\nEnabled=1\r\nHpRest%=70\r\n[Health.P3]\r\nEnabled=0\r\nHpRest%=90\r\n'
+    );
+    expect(copyProfileFrom(settings, 'Health', 2).live['Health']!['HpRest%']).toBe(70);
+    expect(copyProfileFrom(settings, 'Health', 3)).toBe(settings);
+    expect(copyProfileFrom(settings, 'Health', 1)).toBe(settings);
   });
 });

@@ -3402,6 +3402,8 @@ settings:
     mudEngine: MudEngine
     realms: Realms
   megamud:
+    # The BBS tab's settings kept with the character: MudOp access, sys goto and the redials.
+    accountLegend: MegaMUD connection
     create: Switch to the MegaMUD engine
     loading: Loading MegaMUD settings…
     # Shown while the character has no MegaMUD settings yet.

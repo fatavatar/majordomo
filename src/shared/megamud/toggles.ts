@@ -39,6 +39,8 @@ export interface MegaToggles {
   on: Record<MegaToggle, boolean>;
   /** Those its `[Toolbar]` marks visible, in the table's order. */
   shown: MegaToggle[];
+  /** Those of them drawn with a separator before them (above 1). */
+  separated: MegaToggle[];
   /** Walking a path (`0xe184`), its Go/Stop lit. */
   walking: boolean;
   /** The path walked is the loop (`0xe188`). */
@@ -65,6 +67,15 @@ export function asMegaToggle(value: unknown): MegaToggle | null {
 /** The toggles a character's `[Toolbar]` section shows (any value above 0). */
 export function shownToggles(toolbar: Readonly<Record<string, unknown>> | undefined): MegaToggle[] {
   return MEGA_TOGGLES.filter((toggle) => Number(toolbar?.[toggle.toolbar] ?? 0) > 0).map(
+    (toggle) => toggle.name
+  );
+}
+
+/** The toggles a character's `[Toolbar]` draws with a separator before them (above 1). */
+export function separatedToggles(
+  toolbar: Readonly<Record<string, unknown>> | undefined
+): MegaToggle[] {
+  return MEGA_TOGGLES.filter((toggle) => Number(toolbar?.[toggle.toolbar] ?? 0) > 1).map(
     (toggle) => toggle.name
   );
 }

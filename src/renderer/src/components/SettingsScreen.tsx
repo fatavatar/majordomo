@@ -33,7 +33,13 @@ import FormActions from './FormActions';
 import GlobalSettings from './GlobalSettings';
 import LoopSection from './LoopSection';
 import MegaMudLoopImport from './MegaMudLoopImport';
-import { MEGA_TABS, MegaMudPanel, isMegaTab, useMegaMudDraft } from './MegaMudSettings';
+import {
+  MEGA_TABS,
+  MegaMudAccount,
+  MegaMudPanel,
+  isMegaTab,
+  useMegaMudDraft
+} from './MegaMudSettings';
 import type { MegaSettings } from '@shared/megamud/settings';
 import RemoteList from './RemoteList';
 import RewritesDesigner from './RewriteDesigner';
@@ -492,7 +498,6 @@ const SECTION_FIELDSETS: Readonly<Record<Section, readonly NavFieldset[]>> = {
     { id: 'quests', label: t('settings.quests.legend') }
   ],
   Talk: [{ id: 'remotes', label: t('settings.remotes.legend') }],
-  Statline: [{ id: 'rewrites-statline', label: t('settings.statline.legend') }],
   Sounds: [{ id: 'alerts-rules', label: t('settings.alerts.ruleLegend') }],
   Other: [{ id: 'movement-doors', label: t('settings.movement.doorsLegend') }],
   Health: [{ id: 'health-flee', label: t('settings.health.fleeLegend') }],
@@ -2725,13 +2730,17 @@ export default function SettingsScreen({
                         onChange={(value) => patch({ autoConnect: value })}
                       />
 
-                      <CheckField
-                        checked={form.autoReconnect}
-                        hint={t('settings.profile.autoReconnectHint')}
-                        label={t('settings.profile.autoReconnectLabel')}
-                        name="auto-reconnect"
-                        onChange={(value) => patch({ autoReconnect: value })}
-                      />
+                      {/* Under the MegaMUD engine its own redials reconnect
+                          (MegaMUD connection, below), and ours stands down. */}
+                      {mega.view?.engine !== true && (
+                        <CheckField
+                          checked={form.autoReconnect}
+                          hint={t('settings.profile.autoReconnectHint')}
+                          label={t('settings.profile.autoReconnectLabel')}
+                          name="auto-reconnect"
+                          onChange={(value) => patch({ autoReconnect: value })}
+                        />
+                      )}
 
                       <FormField label={t('settings.profile.accentLabel')} name="accent">
                         {() => (
@@ -2769,6 +2778,7 @@ export default function SettingsScreen({
                         ]}
                         value={form.theme}
                       />
+                      <MegaMudAccount mega={mega} />
                     </>
                   )}
 
@@ -2914,7 +2924,16 @@ export default function SettingsScreen({
   MegaMUD's own tab, as its settings dialog draws it, and under it what
   this client keeps for the character that belongs with it (2026-10-14).
 */}
-                  {isMegaTab(section) && <MegaMudPanel mega={mega} tab={section} />}
+                  {isMegaTab(section) && (
+                    <MegaMudPanel
+                      loops={[
+                        ...(form?.loops ?? []),
+                        ...inheritedLoops.map((entry) => entry.loop)
+                      ].map((loop) => loop.name)}
+                      mega={mega}
+                      tab={section}
+                    />
+                  )}
 
                   {section === 'Auto-roam' && (
                     <>
@@ -3031,18 +3050,8 @@ export default function SettingsScreen({
 
                   {section === 'Statline' && (
                     <>
-                      <fieldset className="settings-menus" data-fieldset="rewrites-statline">
-                        <legend>{t('settings.statline.legend')}</legend>
-                        <CheckField
-                          checked={form.statlineControl}
-                          hint={t('settings.statline.controlHint')}
-                          label={t('settings.statline.controlLabel')}
-                          name="statline-control"
-                          onChange={(value) => patch({ statlineControl: value })}
-                        />
-                        <p className="settings-note">{t('settings.statline.templateNote')}</p>
-                      </fieldset>
-
+                      {/* The status line is MegaMUD's own StatLine command
+                          above; how the client draws it is the designer's. */}
                       <RewritesDesigner
                         figures={figures}
                         idPrefix="rewrites"

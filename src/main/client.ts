@@ -892,7 +892,10 @@ function megamudFor(id: SessionId): { key: string; setup: MegaEngineSetup } | nu
   const world = worldFor(id);
   const tables = realmTablesFor(id);
   const own = profile.config.automation.loot.itemDetails;
-  const from = [world, tables.items, own, tables.messages, runic] as const;
+  // The character's rows by what they say: its file is read again on every
+  // save (its MegaMUD settings save as they are changed), and a fresh array
+  // saying the same thing is no reason to build the databases again.
+  const from = [world, tables.items, JSON.stringify(own), tables.messages, runic] as const;
   let built = megaDataBuilt.get(id);
   if (built === undefined || built.from.some((part, i) => part !== from[i])) {
     // The realm's item table with the character's own rows laid over it.
@@ -954,10 +957,16 @@ function megamudFor(id: SessionId): { key: string; setup: MegaEngineSetup } | nu
     ...profile.config.connection.bbs,
     ...(runic !== undefined ? { RunicName: runic } : {})
   };
+  // The account MegaMUD's BBS tab keeps (its `{userid}` and `{pswd}`) is the
+  // character's own login, which the Character page edits (2026-10-14).
+  const { username, password } = profile.config.connection.login;
+  const settings = structuredClone(profile.megamud);
+  if (username !== '') settings.live['BBS']!['UserID'] = username;
+  if (password !== '') settings.live['BBS']!['Password'] = password;
   return {
-    key: `${dataKey}\n${JSON.stringify([profile.megamud, grants, bbs])}`,
+    key: `${dataKey}\n${JSON.stringify([settings, grants, bbs])}`,
     setup: {
-      settings: profile.megamud,
+      settings,
       data,
       grants,
       ...(memory ? { memory } : {}),
@@ -3062,7 +3071,8 @@ function registerIpc(): void {
     return {
       engine: profile.megamudOn,
       settings,
-      hasPassword: password !== ''
+      hasPassword: password !== '',
+      choices: host?.get(id)?.manager.megaChoices() ?? null
     } satisfies MegaMudSettingsView;
   });
 

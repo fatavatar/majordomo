@@ -279,6 +279,8 @@ export interface ToolbarButton {
    * MegaMUD → Toolbar), as MegaMUD's own toolbar does.
    */
   fixed?: boolean;
+  /** Drawn after a separator: the `[Toolbar]` item's Separator (Settings → Character → Toolbar). */
+  separated?: boolean;
   run(): void;
 }
 
@@ -420,6 +422,7 @@ export function toolbarButtons(subject: ToolbarSubject): ToolbarButton[] {
           // No Hangup is drawn with Connect, not with them.
           disabled: name !== 'allOff' && name !== 'noHangup' && mega.on.allOff,
           fixed: true,
+          separated: mega.separated.includes(name),
           run: () => setMegaToggle(name)
         }))
       : AUTOMATION_SWITCH_NAMES.map((name) => ({

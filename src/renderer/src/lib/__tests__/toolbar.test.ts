@@ -277,6 +277,7 @@ describe('the MegaMUD engine’s toggles', () => {
       afk: false
     },
     shown: ['noHangup' as const, 'combat' as const, 'nuke' as const, 'allOff' as const],
+    separated: ['nuke' as const],
     walking: false,
     looping: false,
     canGo: true
@@ -285,11 +286,11 @@ describe('the MegaMUD engine’s toggles', () => {
   it('stand where the switches would, those the character shows, fixed on the row', () => {
     const buttons = toolbarButtons(subject({ mega }));
     const toggles = buttons.filter((b) => b.id.startsWith('mega:'));
-    expect(toggles.map((b) => [b.id, b.on, b.fixed])).toEqual([
-      ['mega:noHangup', false, true],
-      ['mega:combat', true, true],
-      ['mega:nuke', false, true],
-      ['mega:allOff', false, true]
+    expect(toggles.map((b) => [b.id, b.on, b.fixed, b.separated])).toEqual([
+      ['mega:noHangup', false, true, false],
+      ['mega:combat', true, true, false],
+      ['mega:nuke', false, true, true],
+      ['mega:allOff', false, true, false]
     ]);
     expect(buttons.some((b) => b.id === 'combat')).toBe(false);
   });

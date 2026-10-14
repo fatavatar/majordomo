@@ -316,6 +316,16 @@ function settingsFromSections(ini: IniSection[]): MegaSettings {
   return settings;
 }
 
+/**
+ * Sections outside the schema the settings window edits whole, with the keys
+ * each may hold: the timed events (`[Schedule]`, `0x437870`) and the ability
+ * monitors (`[AbilMon]`, `0x404140`).
+ */
+const EDITED_LISTS: Readonly<Record<string, RegExp>> = {
+  Schedule: /^Event\d+$/,
+  AbilMon: /^Monitor\d+(Msg)?$/
+};
+
 /** Older names the loader still reads but MegaMUD no longer writes. */
 const LEGACY_KEYS = new Set(['Combat.ActiveProfile', 'Party.PartyHeal']);
 
@@ -456,6 +466,24 @@ export function switchProfile(settings: MegaSettings, to: number): MegaSettings 
   return next;
 }
 
+/**
+ * A tab's Copy From... (`0x49fd10`): another enabled copy's values put in
+ * the one being edited (the live values). The copy being edited, and one not
+ * there or not enabled, offer nothing to copy.
+ */
+export function copyProfileFrom(
+  settings: MegaSettings,
+  section: ProfiledSection,
+  from: number
+): MegaSettings {
+  const active = num(settings, 'Profiles', 'ActiveProfile');
+  const slot = settings.profiles[section][from - 1];
+  if (from === active || !slot || !slot.enabled) return settings;
+  const next: MegaSettings = structuredClone(settings);
+  Object.assign(next.live[section]!, slot.values);
+  return next;
+}
+
 /** A value for one key from an untrusted draft: its own type, text cut to the loader's buffer and kept to one line. */
 function draftValue(def: SettingDef, raw: unknown): SettingValue {
   if (def.kind === 'str') {
@@ -492,6 +520,29 @@ export function settingsFromDraft(raw: unknown, base: MegaSettings): MegaSetting
     );
     if (changed)
       setSetting(next, changed.section, changed.key, next.live[changed.section]![changed.key]!);
+  }
+  // The lists the window edits whole (events, ability monitors), from the draft.
+  const extra = Array.isArray((raw as { extra?: unknown }).extra)
+    ? ((raw as { extra: unknown[] }).extra as unknown[])
+    : [];
+  for (const [name, keyed] of Object.entries(EDITED_LISTS)) {
+    const given = extra.find(
+      (section): section is { name: string; entries: unknown } =>
+        typeof section === 'object' &&
+        section !== null &&
+        (section as { name?: unknown }).name === name
+    );
+    if (given === undefined || !Array.isArray(given.entries)) continue;
+    const entries = given.entries.flatMap((entry): [string, string][] =>
+      Array.isArray(entry) &&
+      typeof entry[0] === 'string' &&
+      typeof entry[1] === 'string' &&
+      keyed.test(entry[0])
+        ? [[entry[0], entry[1].replace(/[\r\n\0]/g, '').slice(0, 0xff)]]
+        : []
+    );
+    next.extra = next.extra.filter((section) => section.name.toLowerCase() !== name.toLowerCase());
+    if (entries.length > 0) next.extra.push({ name, entries });
   }
   const profiles = (draft.profiles ?? {}) as Record<string, unknown>;
   for (const section of PROFILED_SECTIONS) {

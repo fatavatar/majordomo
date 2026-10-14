@@ -60,6 +60,7 @@ import { AutoKeys, type KeyedWay } from '../automation/AutoKeys';
 import { Supplies } from '../automation/Supplies';
 import { Remotes } from '../automation/Remotes';
 import { Afk } from '../automation/Afk';
+import type { MegaChoices } from '../../shared/ipc';
 import type { RemoteName } from '../../shared/remotes';
 import { AutoHeal } from '../automation/AutoHeal';
 import { AutoInvoke } from '../automation/AutoInvoke';
@@ -10177,6 +10178,11 @@ export class SessionManager {
   }
 
   /** The player's answer to the question MegaMUD asked. */
+  /** What the settings page picks from, out of the engine running this character. */
+  megaChoices(): MegaChoices | null {
+    return this.mega?.choices() ?? null;
+  }
+
   megaAnswer(question: string, yes: boolean): void {
     if (this.megaQuestion !== question) return;
     this.megaQuestion = null;

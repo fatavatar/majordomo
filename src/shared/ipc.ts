@@ -81,7 +81,25 @@ export interface MegaMudSettingsView {
   /** `BBS.Password` always empty here. */
   settings: MegaSettings;
   hasPassword: boolean;
+  /** What its running engine offers to choose from, or null with none running. */
+  choices: MegaChoices | null;
 }
+
+/**
+ * What MegaMUD's settings dialogs pick from, out of a running engine: the
+ * rooms its room list names (Special Rooms, `roomByName`), and the weapons,
+ * backstab weapons and shields carried (the Combat tab's pickers,
+ * `0x42afc0`), each null while the inventory is not known.
+ */
+export interface MegaChoices {
+  rooms: string[];
+  weapons: string[] | null;
+  backstab: string[] | null;
+  shields: string[] | null;
+  /** The figures the Statline tab shows its line with (`0x4a6920`). */
+  statline: StatlineSample;
+}
+import type { StatlineSample } from './megamud/lists';
 import type { InternalConfig } from './internal';
 import type { Loop, LoopProgress, LoopScope, ScopedLoop } from './loops';
 import type { WalkProgress } from './walk';
