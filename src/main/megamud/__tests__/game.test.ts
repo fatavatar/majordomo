@@ -13,6 +13,7 @@ import {
   hangUp,
   sessionEnded
 } from '../script/game';
+import { newTerminal, parseData } from '../input/ParseData';
 import { expandMacros } from '../script/send';
 import { disconnect, menuCommand } from '../move/buttons';
 import { session } from './fixture';
@@ -215,6 +216,31 @@ describe('the socket gone (0x42c910)', () => {
     connectionClosed(s);
     expect(out.shown).toEqual([]);
     expect(s.f_e158).toBe(0);
+  });
+});
+
+/*
+ * Skinny, redialled after a drop on 2026-10-14, logged on and stood five
+ * hours without a command: the redial left the task at 2, and in tasks 1 to
+ * 10 every line is the connection's, never the game's.
+ */
+describe('the socket up after a redial (0x4b7300)', () => {
+  it('hands the dialling back, so the first prompt enters the game', () => {
+    const { s } = session();
+    s.task = 2;
+    connected(s);
+    expect(s.task).toBe(0);
+    parseData(s, newTerminal(), '[HP=10/MA=5]:');
+    expect(s.online).toBe(1);
+    expect(s.inGame).toBe(1);
+    expect(s.task).toBe(0xb);
+  });
+
+  it('leaves a task in the game alone', () => {
+    const { s } = session();
+    s.task = 0xb;
+    connected(s);
+    expect(s.task).toBe(0xb);
   });
 });
 

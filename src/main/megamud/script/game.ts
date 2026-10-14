@@ -27,7 +27,7 @@ import { nextEvent, stamp } from './events';
 import { modeDefaults } from './modes';
 import { expandMacros, queue, send } from './send';
 import { setState } from './state';
-import { setTask } from './task';
+import { setTask, Task } from './task';
 
 /** `0x4b66f0`: the room's map numbers and the `@where` replies waiting on them forgotten. */
 export function forgetWhere(s: Session): void {
@@ -244,10 +244,22 @@ export function sessionEnded(s: Session): number {
   return 1;
 }
 
-/** The host's socket is up (`0x4b7300`): a hang-up can close it again. */
+/**
+ * The host's socket is up (`0x4b7300`): a hang-up can close it again.
+ *
+ * And the dialling and the logon handed back. MegaMUD's own thread
+ * (`0x45a6b0`) and logon (`0x45ad00`) take the task from dialling into the
+ * game; here the host dials and the realm's login script logs on
+ * (`input/connect.ts`), so a dial the engine asked for (its redial, task 2)
+ * is left where a first connect starts, waiting for instructions before the
+ * game (2026-10-14). Left in task 2, every line went to the connection and
+ * none to the game: Skinny, redialled after a drop, logged on and stood for
+ * five hours without a command.
+ */
 export function connected(s: Session): void {
   s.f_e540 = -1;
   s.f_31914 = 1;
+  if (s.task >= Task.Connecting && s.task <= Task.LoggingOn) setTask(s, Task.Idle);
 }
 
 /**
