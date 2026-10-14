@@ -167,7 +167,6 @@ let restock: PlanItem | null;
 let fighting: string[];
 let said: string[];
 let watched: QuestWatched;
-let questing: boolean[];
 let warding: boolean[];
 let clock: number;
 
@@ -198,7 +197,6 @@ const planner = (over: Partial<QuestRunPlanner> = {}): QuestRunPlanner => ({
   abandonErrands: () => {},
   fightFor: (mob) => void fighting.push(mob),
   stopFighting: () => {},
-  questing: (on) => void questing.push(on),
   warding: (on) => void warding.push(on),
   said: (command) => void said.push(command),
   watched: () => watched,
@@ -218,7 +216,6 @@ beforeEach(() => {
   fighting = [];
   said = [];
   watched = {};
-  questing = [];
   warding = [];
   here = '1/1';
   // The runner's clock and the queue's `Date.now()` have to agree, or every
@@ -262,7 +259,6 @@ describe('running a quest plan', () => {
     expect(runner.start(plan(STEP_ONE), QUEST, inRealm())).toBeNull();
     // Not at the sage yet: a leg is walked first, and combat is on for it.
     expect(walked).toHaveLength(1);
-    expect(questing).toEqual([true]);
     expect(runner.progress.phase).toBe('walking');
 
     here = '1/2';
@@ -285,7 +281,6 @@ describe('running a quest plan', () => {
     runner.onCharacter(listed(atSage, 1, clock));
     expect(runner.running).toBe(false);
     expect(runner.progress.status).toBe('done');
-    expect(questing).toEqual([true, false]);
     expect(published.at(-1)?.steps).toEqual([
       { block: 10, state: 'done', words: 'ask Sage hello' }
     ]);

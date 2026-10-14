@@ -35,8 +35,6 @@ export interface NavigationCardProps extends CardChrome {
   onStart(loop: string | null): void;
   /** Stop, whichever of the two is running. The place is kept. */
   onStop(): void;
-  onSkipLoop(): void;
-  onReverseLoop(): void;
 }
 
 /**
@@ -55,9 +53,9 @@ export interface NavigationCardProps extends CardChrome {
  * are routes, but that is the mechanism rather than the thing happening, and a
  * card that reported the mechanism was reporting the client's own footwork.
  *
- * The transport is the movement's, not the lap's: **play and stop**, with skip
- * and reverse beside them where there is a lap for them to mean anything.
- * There is no pause — a stop keeps its place, and pressing play picks it back
+ * The transport is the movement's, not the lap's: **play and stop**, MegaMUD's
+ * Go/Stop. Skip and reverse went with the old loop runner: MegaMUD's loop has
+ * neither (2026-10-14). There is no pause — a stop keeps its place, and pressing play picks it back
  * up from wherever the character has got to.
  *
  * The picker is **what play will move** — whatever is stopped, then the laps —
@@ -72,8 +70,6 @@ function NavigationCard({
   onChoose,
   onStart,
   onStop,
-  onSkipLoop,
-  onReverseLoop,
   ...chrome
 }: NavigationCardProps) {
   const movement = movementOf(walk, loop);
@@ -183,10 +179,6 @@ function NavigationCard({
    * and the route's destination, so play is the resume, and a third word for
    * the same state was a distinction the player had to hold and the client
    * could not keep.
-   *
-   * Skip and reverse are the lap's own and are drawn only where there is a lap
-   * for them to mean anything — reverse only on a bounce loop, since a plain
-   * one runs its list one way and `nextStop` ignores the direction.
    */
   const controls: Array<{ id: string; label: string; icon: IconName; run(): void }> = [];
   if (movement.moving) {
@@ -207,23 +199,6 @@ function NavigationCard({
       run: () => onStart(choice === '' ? null : choice)
     });
   }
-  if (live) {
-    controls.push({
-      id: 'skip',
-      label: t('cards.navigation.loop.actions.skip'),
-      icon: 'skip',
-      run: onSkipLoop
-    });
-    if (loop.bounce) {
-      controls.push({
-        id: 'reverse',
-        label: t('cards.navigation.loop.actions.reverse'),
-        icon: 'reverse',
-        run: onReverseLoop
-      });
-    }
-  }
-
   /*
    * One transport row, drawn at the head of whichever face is on screen — the
    * controls belong to the card rather than to a face, and a row that moved or

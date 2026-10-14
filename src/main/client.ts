@@ -1777,7 +1777,7 @@ function registerIpc(): void {
   );
   handle(
     Invoke.getWalk,
-    (_caller, session: SessionId) => host?.get(session)?.manager.walker.progress ?? IDLE_WALK
+    (_caller, session: SessionId) => host?.get(session)?.manager.walkProgress ?? IDLE_WALK
   );
   handle(
     Invoke.getAutomation,
@@ -1941,42 +1941,25 @@ function registerIpc(): void {
    */
   handle(
     Invoke.startMoving,
-    async (
-      _caller,
-      session: SessionId,
-      loop: unknown,
-      confirmed: unknown
-    ): Promise<MovementStart> => {
+    async (_caller, session: SessionId, loop: unknown): Promise<MovementStart> => {
       const slot = host?.get(session);
       if (!slot) return { refused: t('app.session.notConnected') };
       if (loop !== null && typeof loop !== 'string') return { refused: t('app.loop.invalidName') };
-      /*
-       * `confirmed` is the **figure** the window was shown and the player
-       * agreed to, never a flag: main measures again and asks afresh if the
-       * journey has grown since. Anything that is not a finite number is *not
-       * agreed to*, which is the safe reading of a malformed payload.
-       */
-      const agreed = typeof confirmed === 'number' && Number.isFinite(confirmed) ? confirmed : null;
       // See `Invoke.routeTo` — the same wait, so a route resumed or a loop
       // started from an ambiguous room gets one chance at the real answer
       // before `planFromHere` refuses it.
       if (slot.manager.character.room.map === null) await slot.manager.ensureLocated();
-      return slot.manager.startMoving(loop, agreed);
+      return slot.manager.startMoving(loop);
     }
   );
   handle(Invoke.stopMoving, (_caller, session: SessionId) => {
     host?.get(session)?.manager.stopMoving();
   });
-  /*
-   * Back: one room the way the character came. `confirmed` is read exactly as
-   * `move:start` reads it — the figure the window was shown, never a flag —
-   * because this asks the same question back when the way is not one step.
-   */
-  handle(Invoke.stepBack, (_caller, session: SessionId, confirmed: unknown): MovementStart => {
+  // Back: one room the way the character came, MegaMUD's Step Back.
+  handle(Invoke.stepBack, (_caller, session: SessionId): MovementStart => {
     const slot = host?.get(session);
     if (!slot) return { refused: t('app.session.notConnected') };
-    const agreed = typeof confirmed === 'number' && Number.isFinite(confirmed) ? confirmed : null;
-    return slot.manager.stepBack(agreed);
+    return slot.manager.stepBack();
   });
   /*
    * A loop is named rather than passed: unlike a route, nothing has been shown
@@ -2024,25 +2007,6 @@ function registerIpc(): void {
     if (slot.manager.character.room.map === null) await slot.manager.ensureLocated();
     const answer = slot.manager.startLoop(parsed);
     return 'refused' in answer ? answer.refused : null;
-  });
-  /*
-   * The loop's own two controls, from its card — the ones that mean nothing
-   * for a route. Skipping ends the leg being walked for the reason stopping
-   * does: the runner never touches the walker, and a leg left walking would
-   * arrive and dwell under a loop that had been told to move on.
-   */
-  handle(Invoke.skipLoopStop, (_caller, session: SessionId) => {
-    const slot = host?.get(session);
-    if (!slot) return t('app.session.notConnected');
-    if (slot.manager.loops.progress.status === 'running') {
-      slot.manager.walker.stop(t('session.walk.stoppedByPlayer'));
-    }
-    return slot.manager.loops.skip();
-  });
-  handle(Invoke.reverseLoop, (_caller, session: SessionId) => {
-    const slot = host?.get(session);
-    if (!slot) return t('app.session.notConnected');
-    return slot.manager.loops.reverse();
   });
   /*
    * The shelf, not a character's list — so it takes no session, unlike every
@@ -2202,8 +2166,8 @@ function registerIpc(): void {
       lines: manager?.lines ?? [],
       state: manager?.state ?? IDLE_STATE,
       character: manager?.character ?? EMPTY_CHARACTER,
-      walk: manager?.walker.progress ?? IDLE_WALK,
-      loop: manager?.loops.progress ?? NO_LOOP,
+      walk: manager?.walkProgress ?? IDLE_WALK,
+      loop: manager?.loopProgress ?? NO_LOOP,
       automation: manager?.automation ?? EMPTY_AUTOMATION,
       verdict: manager?.verdict ?? EMPTY_ROOM_VERDICT,
       asks: [...(manager?.asks ?? [])],

@@ -659,28 +659,10 @@ notices:
       '"tuning.parse.rosterLines" was added to your tuning file. The `who` listing''s cap was 60
       lines beside the pattern, so a realm with more adventurers than that lost everybody past
       the sixtieth row — including from the record that says who is online.'
-    nudgeWindowStated:
-      'A walk now measures how long your realm takes to answer a move and waits that long before
-      asking for a prompt, instead of assuming a second. Paradigm takes 1.24s, so the old figure
-      made every ordinary step look late and printed every room twice.
-      "tuning.walk.nudgeSamples" was added to your tuning file beside it.'
     actionsFamilied:
       'What can be done with a carried thing is a family of controls now, not one: {file} had a
       rewrite naming "{action}", which since the change draws nothing at all, and it now names
       "{action.toggleEquip}". "{action.drop}" puts the thing down beside it.'
-    lightWaitStated:
-      'A walk into a room too dark to see in now waits for auto-light to ready a torch and read the
-      room again, instead of stopping because it cannot tell where the character is standing.
-      "tuning.walk.lightWaitMs" was added to your tuning file: how long it waits before giving up.'
-    replanDriftStated:
-      'Pressing Walk on a plan you drew before the character moved now redraws the plan from where
-      it is standing and walks it, instead of refusing because the route does not start here. Past
-      ten rooms of drift, or where the new way asks for something the old one did not, the new plan
-      comes back for you to read. "tuning.walk.replanDriftSteps" was added to your tuning file.'
-    stepNudgeStated:
-      "A walk that has sent a step and heard nothing now asks the realm for a prompt after a
-      second rather than waiting out the whole deadline. The interval was written into your
-      tuning file, beside the walk's other figures."
     profilesFolded:
       many:
         '{count} character files moved into directories of their own, so each can carry loops of its
@@ -2160,9 +2142,6 @@ cards:
     resumeLoopOption: 'Resume: {loopName}'
     resumeRouteOption: 'Resume route to {destination}'
     loop:
-      actions:
-        reverse: Reverse Path Direction
-        skip: Skip Waypoint
       directionBackward: backward
       directionForward: forward
       directionLabel: Direction
@@ -4603,16 +4582,7 @@ session:
       gossip: 'MegaMUD alert: gossip.'
       auction: 'MegaMUD alert: an auction.'
       broadcast: 'MegaMUD alert: a broadcast.'
-  # Under a timed spell the way in cast (todo 104): said once going in and
-  # once coming out, because every routine stands down in between.
-  corridor:
-    entered: 'Under {spell}: moving only, {rooms} rooms to the way out. Nothing rests, heals, loots,
-      searches or fights until it lifts.'
-    left: 'Out from under {spell}.'
   supplies:
-    abandonedDied: the character died
-    beforeRoute: Short of {item} — going to {shop} first, then on to {destination}.
-    beforeRouteNowhere: where you asked
     noShopAt: 'room {map}/{room} holds no shop in the realm data'
     noShopNamed: no shop is named for it
     shopUnplaced: 'the realm places no room for a shop called {shop}'
@@ -4630,7 +4600,6 @@ session:
     noRealmData: This realm has no world data loaded, so nothing can say where to hunt.
     noSession: No character is loaded for that session.
     unknownRoom: The client does not know where this character is standing yet; move or look first.
-    better: 'Within {steps} steps, {mobs} at {room} is expected to pay about {rate}/h.'
   loop:
     ambiguousStopName: '{count} rooms are called {name} — name it as "{name} {map}/{room}".'
     preferUnresolved: 'The route {loopName} names a stop the realm cannot settle, so it is not preferred.'
@@ -4639,26 +4608,9 @@ session:
       This realm has no “{command}” command, so it was said out loud rather than answered. The
       client will work out where it is from the rooms it walks into instead.
     noRealmData: No realm data.
-    stoppedDied: you were killed, and the realm has moved you
-    stoppedForLoop: you started a loop
-    stoppedForRoute: you asked for a route
-    stoppedDisconnected: you disconnected
-    stoppedLeftRealm: you left the realm
     stoppedRealmChanged: this is a different realm
     unknownRoom: I cannot tell which room you are in.
     unknownStopName: The realm data has no room called {name}.
-    pausedForRemote: '{who} asked the party to wait'
-    pausedForHurt: '{who} is at {percent}%; the party waits for them'
-  # Play and stop. A character is routing, looping or stopped, so there is one
-  # of each rather than one per mechanism -- see `src/shared/movement.ts`.
-  # The toolbar's back button: one room back the way the character came.
-  back:
-    alreadyThere: You are already standing in the room the trail came from.
-    moveInFlight: Something is already on its way; try again when the room arrives.
-    noRoute: no route
-    noWay: 'No way back to the previous room: {reason}'
-    nothingBehind: No confirmed move to go back over — the client has not seen this character move yet.
-    notInRealm: This character is not in the realm.
   macro:
     dropped:
       one: Dropped the {count} command still waiting from the talk box.
@@ -4673,13 +4625,8 @@ session:
     restHeld: 'Not sending the rest of that line, from {command} on: {reason}.'
     restRefused: 'Not sending the rest of that line, from {command} on: the queue would not take it.'
   move:
-    alreadyMoving: This character is already moving.
     noSuchLoop: There is no loop called {name}.
     nothingToResume: There is nothing to pick back up.
-    theLoop: the loop
-    tooFarForRemote:
-      '{who} said the party is ready, but {name} is {stepCount} steps from here — press play to
-      walk back to it.'
   finds:
     coins: coins
     forgot: 'Forgot the {what} found in {room}.'
@@ -4691,12 +4638,6 @@ session:
   memory:
     forgot: 'Forgot: "{command}" from {from}.'
     learned: 'Learned: {discovery}.'
-  # What a row of the realm's message table does in the moment (`onMessageFired`).
-  messages:
-    hangUpWhy: 'the "{name}" message says to'
-    lookReason: 'message: {name} — who is here?'
-    noRest: 'Not resting here for a minute: the "{name}" message says to keep moving.'
-    retrying: 'Sending {command} again: "{name}" says it did not work.'
   parser:
     fault: Something on this line could not be read; the console is unaffected. {message}
   probe:
@@ -4714,10 +4655,7 @@ session:
     noTarget: Connection lost, but there is no address to dial again.
     now: Connection lost. Reconnecting…
     waiting: Reconnect failed. Trying again in {seconds}s (attempt {attempt}).
-    waitingToBePlaced: Back in the realm; what was underway walks on once the client knows which room you are in.
   safety:
-    escapeDoublesBack: 'Running {direction}: {why}. It doubles back onto the way we came.'
-    escapeKnown: 'Running {direction}: {why}. The realm knows where that exit goes.'
     # On the ground: the server refuses every command until the character is
     # up. Recoverable -- thirty hit points of it -- so the client goes quiet
     # and says why, which is the moment a party member's `aid` is the only
@@ -4726,63 +4664,8 @@ session:
       'Mortally wounded: the realm refuses every command until this character is up. Nothing is
       being sent. Someone in the room can aid it.'
     whyMortallyWounded: 'on the ground at {hp} health'
-    escapeNoExit:
-      'Not running: {why}, but this room has named no exit and there is nothing behind us to
-      retrace. {then}'
-    # Every exit the room printed leads back into a room this character has
-    # just run out of (`ranFrom`); {directions} names them.
-    escapeOnlyBack:
-      one: 'Not running: {why}, but the only way out, {directions}, leads back to the room just run from. {then}'
-      many: 'Not running: {why}, but every way out ({directions}) leads back to a room just run from. {then}'
-    escapeOnlyBackReason: every exit leads back to a room just run from
-    escapeStanding: Standing and fighting.
-    escapeStaying: 'Not running: {why}, but nothing is taking this character anywhere, so it stays where it is. {then}'
-    escapeStayingReason: nothing is taking this character anywhere
-    escapeFollowing: 'Not running: {why}, but {leader} is leading the party and decides when to run. {then}'
-    escapeFollowingReason: following {leader}, who decides when to run
-    escapeNotFighting: 'Not fighting: auto-combat is off.'
-    escapeNoExitReason: no exit known from this room
-    escapeOpening: 'The {barrier} {direction} is shut: opening it and running again.'
-    escapeUnanswered: nothing answered the escape in time
-    escapeKilled: killed before the move landed
-    escapePrinted: 'Running {direction}: {why}. It is the exit the room listed.'
-    escapeReason: 'safety: {why}'
-    escapeRetrace: 'Retreating {direction}, the way we came: {why}.'
-    retreatBecause: Retreating to safe room ({room}) after getting out
-    retreatDropped: 'Not retreating to {room}: you were killed, and the realm has moved you.'
-    retreatGaveUp: 'Not retreating to {room}: the fight never ended.'
-    retreatPlanned: 'Retreating to {room}: {stepCount} steps.'
-    retreatRefused: 'Could not retreat to {room}: {reason}'
-    retreatUnplaced: 'Not retreating to {room}: the room never resolved after the move.'
-    fleeGoto: 'Fleeing to {destination}.'
-    fleeGotoReason: 'flee: sys goto {destination}'
-    fleeGotoLookReason: 'flee: showing the room at {destination}'
-    fleeGaveUp: 'Not fleeing to {destination}: the fight never ended.'
-    fleeDropped: 'Not fleeing to {destination}: you were killed, and the realm has moved you.'
-    hangUpRefused: Not hanging up — {why}. {reasons}. Disconnecting now would be penalised; walk out instead.
-    hangingUpClean: 'Hanging up: {why}.'
-    beforeDeath: 'Hanging up: {why}. Dying would drop everything you carry.'
-    beforeDeathCharged: 'Hanging up: {why}. The hangup costs {cost} HP and some items; dying would drop everything you carry.'
-    beforeDeathUnknownCharge: 'Hanging up: {why}. This realm charges for a hangup and its menu has not said how much; dying would drop everything you carry.'
-    beforeDeathCostly: 'Not hanging up: {why}, but the hangup would cost {cost} HP and kill you.'
-    beforeDeathCostlyReason: the hangup would cost {cost} HP and kill
-    hangingUpUncharged: 'Hanging up: {why}. {realm} charges nothing for a hang-up, by its own realm menu.'
-    hangingUpUnchargedSetting: 'Hanging up: {why}. Your settings say this realm charges nothing for a hang-up.'
     realmCharges: '{realm} charges {percent}% for a hang-up, by its realm menu.'
     realmChargesNothing: '{realm} charges nothing for a hang-up, by its realm menu.'
-    pvpAlertReason: 'safety: telling the gang about {attacker}'
-    pvpAlerted: 'Telling the gang: {attacker} is attacking.'
-    pvpNoGang: 'Not telling anyone about {attacker}: the roster shows you in no gang.'
-    pvpNoGangReason: the roster shows no gang to tell
-    whyHealth: health at {percent}
-    whyNextRound: 'at {hp} HP the next round kills you {risk} of the time'
-    whyRisk: 'at {hp} HP this fight kills you {risk} of the time within {rounds} rounds'
-    whyMana: mana at {percent}
-    whyAttackers: '{count} attackers'
-    whyCompany: Player present in room (PvP abort)
-    whyPvp: '{attacker} opened on you'
-    whyDreaded: '{mob} is here, and the monster table says to flee it'
-    whyStalker: '{mob} is here, and the monster table says to hang up'
   realm:
     commandUnavailable:
       This realm has no “{command}” command, so it was said out loud in the room rather than
@@ -4802,12 +4685,6 @@ session:
       keyboard, and anything sent now would be typed into one of its fields. Your own typing still
       goes through.
     released: Back at a prompt; automation is running again.
-  remotes:
-    peerPlaced: '{who} is in {room} ({address}).'
-    peerPlacedUnnamed: a room they did not name
-    comebackWalking: '{who} asked this character to come to {address}; walking {stepCount} steps.'
-    comebackRefused: '{who} asked this character to come to them, and the route was refused:
-      {reason}'
   statline:
     exact: 'The realm reports the status line as {statline}; every prompt is read by it exactly.'
     full: The realm reports the status line as full; the prompt is read by the usual pattern.
@@ -4821,7 +4698,6 @@ session:
     tooWide: "The status line you designed comes to {cells} cells and the prompt row holds {max}, so
       the realm's own line is drawn instead. Shorten it on the Status Line section in settings."
   walk:
-    keptOutDemand: 'crossing {word}, which you keep out of'
     keptOutChoose: 'This way crosses {wordList}, which you keep out of: choose the way through or the way round on the route panel.'
     claimLapsed:
       Nothing answered “{command}” in {seconds}s, so the client has given up waiting for it and is
@@ -4847,8 +4723,6 @@ session:
       'The realm answered a later question before “{command}”, so that re-read is not coming.
       Nothing was held up by it.'
     exitBackOpen: The room lists {direction} again, so routes will use it once more.
-    exitRefused: The realm data promised an exit {direction} that the realm refuses; routes will avoid it.
-    exitShut: The way {direction} is shut rather than absent; routes will avoid it until the room lists it.
     readLapsed:
       Nothing answered “{command}” in {seconds}s, so the client has stopped waiting for it. It was a
       re-read rather than a step, so nothing was held up by it.
@@ -4859,13 +4733,7 @@ session:
       Nothing answered the last {count} re-reads in {seconds}s, so the client has stopped waiting
       for them. Nothing was held up by them.
     stoppedByPlayer: you asked it to
-    stoppedConnectionClosed: the connection closed
-    stoppedLeftRealm: you left the realm
-    resumed: Back in the realm; picking the walk to {destination} back up from here.
     notResumed: 'Not walking on to {destination}: {reason}'
-    replanned:
-      That plan started in a room you have since left, so it was drawn again from here — {steps}
-      steps to {destination}.
   world:
     realmMismatch: The realm says you are in room {map},{room}, which the loaded realm data does not
       have — this character's world.database may not match this realm. Routes will fail from here.
@@ -5027,275 +4895,15 @@ automation:
       'You stopped {loopName}, so automatic hunting is standing down until this character levels,
       changes its kit, or a lap stops for earning too little.'
     whyStopped: the walk stopped
-  stealth:
-    reasonHide: 'hiding, so the next fight opens with {verb}'
-    reasonSneak: 'sneaking, so the next fight opens with {verb}'
-    # Todo 104: the sheet's own figure decides, from `SneakCommand.cs`'s roll.
-    noSkill: 'Not hiding or sneaking for the opener: this character has no Stealth (the sheet says 0), so the server refuses every attempt.'
-    ceiling: 'Stealth {skill} is past {ceiling}: a move rolls no more than {ceiling} and sneaking
-      no more than 95, while hiding rolls the whole figure — the skill past {ceiling} only pays
-      standing still.'
   combat:
-    lentForHold: 'Held with auto-combat off: turning it on until the hold wears off.'
-    returnedAfterHold: 'The hold wore off: auto-combat back off, walking on.'
-    backOnArrival: 'Arrived: auto-combat back on.'
-    # Todo 00 (2026-09-23): hit and not moving with auto-combat off lends it
-    # until the next arrival in another room.
-    lentForDefence:
-      one: 'Hit for {rounds} round and not moving, with auto-combat off: turning it on until you move.'
-      many: 'Hit for {rounds} rounds and not moving, with auto-combat off: turning it on until you move.'
-    defendBecause: 'rounds hit without moving, with auto-combat off: {rounds}'
-    defendUnwritable: "auto-combat could not be turned on in the character's file"
-    returnedAfterMove: 'Moved: auto-combat back off.'
-    returnedAfterDeath: 'Killed: auto-combat back off.'
-    returnedAfterLeaving: 'Left the realm: auto-combat back off.'
-    returnedAfterLoss: 'Connection lost: auto-combat back off.'
-    returnedAfterClose: 'Disconnected: auto-combat back off.'
-    # The file refused handing the lent switch back; tried again each state.
-    returnStuck: "Auto-combat was lent and could not be turned back off in the character's file. Trying again; turn it off by hand if this stays."
-    returnUnwritable: "auto-combat could not be turned back off in the character's file"
-    returnedAtReset: 'New session: auto-combat back off.'
-    # Todo 06: *Run it* is turn off, go -- said at the start, and again where the
-    # run is picked up after a lost connection or an errand.
-    runningCombatOff: 'Running it: auto-combat is off, and stays off until you turn it back on.'
-    runRefused: "Not running it: auto-combat could not be turned off in the character's file."
-    reason: 'auto-combat: {why}'
-    reasonRefresh: 'auto-combat: re-reading the room'
-    reasonBreakArea: 'the room spell has nothing left to hit: breaking off'
     reasonLookAfterKill: 'something died: looking for what it dropped'
     reasonLookAfterArrival: 'something walked in: reading the room again'
     reasonLookAfterDeparture: 'something walked out: reading the room again'
-    reasonRoundAreaSpell: 'auto-combat: the room is crowded enough for the AE spell'
-    reasonRoundSpell: 'auto-combat: round spell'
-    reasonOpeningSpell: 'auto-combat: {why}, opening with {spell}'
-    reasonPreAttackSpell: 'auto-combat: {why}, {spell} before the attack'
-    reasonBackToMelee: 'auto-combat: no more {spell} this fight, back to the attack'
-    refusedAlreadyFighting: already fighting {target}
-    # Something already swung at is still standing here. `aa` switches target,
-    # so a second fight opened beside the first is always waste, and the block
-    # between `*Combat Off*` and `*Combat Engaged*` is where it used to happen.
-    refusedEngagedWith: 'already swinging at {target}, which is still here'
-    refusedRelationship: '{target} is marked {relationship} in the monster table'
-    # The realm lists {guard} as moving to protect {target}, and the server
-    # hands a blow at {target} to it; {why} is the guard's own refusal.
-    refusedGuarded: '{guard} protects {target} and is refused itself: {why}'
-    refusedCostly: Attacking {target} causes an alignment penalty (-10 points).
-    refusedEngageNone: engage is set to none, so nothing is opened unasked
-    refusedTooTough: '{target} has {hp} health and maxTargetHealth is {cap}'
-    refusedFled: 'you ran from {target} at level {level}; it is left alone until level {until}'
-    refusedFledUnknown: you ran from {target}; it is left alone until your level is read
-    refusedOdds: 'you survive a fight with {target} here {survives} of the time at {hp} HP; attacking needs {needs}'
-    refusedOddsResting: 'you survive a fight with {target} here {survives} of the time at {hp} HP; attacking needs {needs}; resting to {rest} HP first'
-    refusedRisk: 'at {hp} HP, a fight with {target} here kills you {risk} of the time within {rounds} rounds, so you would have to run at once'
-    refusedRiskResting: 'at {hp} HP, a fight with {target} here kills you {risk} of the time within {rounds} rounds, so you would have to run at once; resting to {needs} HP first'
-    refusedMaxMobs: '{here} monsters here, and maxMobs is {max}'
-    refusedMinMobs: 'only {here} monsters here, and minMobs is {min}'
-    refusedTooRich: '{target} is worth {exp} experience and maxMonsterExperience is {cap}'
-    refusedMovePending: a step is still waiting for its room
-    refusedNotHostile: the realm does not say {target} attacks first
-    refusedClaimed: '{player} is already fighting {target}, and politeAttacks is on'
-    refusedRetreating: Retreat in progress
-    refusedStandDown: you typed break
-    refusedUncertain: 'the realm disagrees with itself about {target}, and engage is hostile'
-    refusedDeclinedTravelling: you turned auto-combat off for this journey
-    fightingForTheRoute:
-      Auto-combat is off, but this route will fight on the way. Stop the route to stop the
-      fighting, or switch auto-combat on and off again to decline it for the rest of this journey.
-    standDown: Auto-combat is standing down after break; it resumes when you move or attack.
-    cannotAttack: Not attacking — this realm's messages say the character cannot attack right now.
-    # An opener the class can never land -- `combat.opener` survives a reroll,
-    # and a Mage was being told why its backstab was withheld (todo 28).
-    openerWrongClass:
-      'This class cannot get into the shadows, so {verb} will never land. Change the opener under
-      Combat; nothing else is affected.'
-    openerNeedsStealth: '{verb} only lands while this character is sneaking, so fights it is seen
-      opening are opened with the ordinary attack instead.'
-    verbRefused: The realm refused {verb}; dropping it from this character's attacks for this session.
-    verbRefusedWeapon: 'The realm refused {verb} for the weapon in hand, not for this character;
-      it comes back when the weapon does.'
-    verbBack: '{verb} is back: the weapon the realm refused it with is no longer in hand.'
-    whyHitBack: hitting back
-    whyHitBackMostDangerous: 'hitting back at the most dangerous of {count} attackers ({perRound} hp a round against you, {costs}{hazards})'
-    whyGuardFirst: '{target} protects {ward}, so it goes first'
-    whyGuardJoins: '{target} protects {ward}, so attacking {ward} brings it in; it goes first'
-    whyHitBackGuard: 'hitting back: {target} protects {ward}, so it goes first'
-    whyInRoom: in the room
-    whyStillOn: 'still on {target}: one target at a time, until it is dead'
-    whyRanked: 'first of {count} here: your priority list ranks {target} {band}'
-    whyRankedAlone: 'your priority list ranks {target} {band}'
-    whyRankedOver: 'first of {count} here: your priority list ranks {other} {band}'
-    whyMostDangerous: 'the most dangerous of {count} here ({perRound} hp a round against you, {costs}{hazards})'
-    costByHealth: '{hp} hp'
-    costBound: 'up to {rounds} rounds and {cost} hp to kill'
-    costEstimate: 'about {rounds} rounds and {cost} hp to kill'
-    spellIneffective: '{spell} has no effect here; casting {fallback} instead for this fight.'
-    spellIneffectiveArea: '{spell} has no effect here; the combat spell carries this fight.'
-    spellIneffectiveNoFallback: '{spell} has no effect here, and no fallback spell is set; the round attacks carry this fight.'
-    drainIneffective: '{spell} has no effect here; the combat spell carries this fight.'
-    whyUnweighed: 'first of {count} here: the realm cannot weigh {target}, and unknown is not safe'
-    hazardList: '; {list}'
-    hazard:
-      afraid: frightens
-      blinded: blinds
-      confused: confuses
-      damage: casts damage
-      drain: drains life
-      held: paralyses
-      poison: poisons
-      slowed: slows
-      summon: calls for help
-      teleported: teleports you
-      wide: room-wide
-  invoke:
-    reason: asking {item} for {spell}
-  blessing:
-    reason: 'blessing: {name}'
-    notifyReason: 'telling {caster} their {spell} wore off'
-  cure:
-    reason: 'cure: {affliction}'
-    derived: 'Curing {affliction} with {spell}, the cheapest spell in the book that does.'
-  regen:
-    reasonHp: '{spell} before resting, to heal faster'
-    reasonMana: '{spell} to regain mana faster'
-    reasonHpFull: '{spell}: health is full'
-    reasonManaFull: '{spell}: mana is full'
-  spells:
-    choseKills: 'Casting {spell} ({min}–{max}, {cost} mana): its least roll finishes what is left of the target.'
-    choseHardest: 'Casting {spell} ({min}–{max}, about {expected} a cast, {cost} mana): the hardest hitter the pool can pay for.'
-    noBookYet: Auto Choose Best Spell has no spellbook to choose from yet; asking the realm for the listing.
-    emptyBook: 'Auto Choose Best Spell: the spellbook is empty — this character has no spells yet.'
-    noAttackSpells: 'Auto Choose Best Spell: nothing in the spellbook attacks a single target.'
-    allResisted: 'Auto Choose Best Spell: every attack spell in the book is resisted by this target; the round attacks carry the fight.'
-    drainStarts: 'Health under {below}%: casting the drain spell until it is back to {to}%.'
-    drainEnds: Health is back up; the combat spell again.
-  train:
-    reason: 'spending {cp} character points at the trainer'
-    # Going to collect the level -- `TrainErrand` (todo 18). Every sentence
-    # names a figure the player can act on: the cost, the purse, the room.
-    going: A level is waiting. Going to {room} to train ({steps} steps, {cost} copper).
-    levelled: Welcome to level {level}.
-    reasonLevel: 'training: the experience for a level is there'
-    abandonedDied: 'A death: the walk to the trainer is dropped. The level is still owed.'
-    becauseOwed: a level was earned and not collected
-    whyStopped: the walk stopped before it arrived
-    refusalNowhere:
-      'A level is waiting and the realm names no trainer that will take this character at level
-      {level}. Nothing walked.'
-    refusalTrainerStale:
-      'A level is waiting and the trainer chosen in the settings no longer takes this character at
-      level {level}. Pick another, or leave it on the cheapest. Nothing walked.'
-    refusalPoor:
-      'A level is waiting and {trainer} charges {cost} copper; this character carries {purse}.
-      Nothing walked.'
-    refusalNoRoute: 'Could not walk to {room} to train: {why}'
-    # Reach is the filter (todo 102): a trainer no route reaches is skipped and
-    # named, and the level is asked about again from another room.
-    skipping: 'Skipping a cheaper trainer no route reaches: {skipped}.'
-    skippedOne: '{trainer} at {room} ({why})'
-    refusalUnreachable:
-      'A level is waiting and no trainer that takes this character at level {level} can be walked to
-      from here: {skipped}. Nothing walked; asked again from another room.'
-    refusalNotReached: 'Did not reach {room} to train: {why}'
-    refusalUnanswered: Sent train at {trainer} and the level did not move. Train by hand, or check the trainer.
-    nothingWanted: "Auto Train Stats: {cp} CP unspent, but every wanted figure is at or under the sheet's ({figures}). Raise a figure under Training to spend them."
-    nothingAffordable: 'Auto Train Stats: {cp} CP unspent, but the cheapest wanted point ({attribute}, {cost} CP) costs more than that.'
-    whyNothingWanted: every wanted figure is at or under the current one
-    whyUnaffordable: 'the cheapest wanted point costs {cost} CP and {left} are left'
-    notName: 'Not driving this stat screen: it has the name up for editing, which the client never touches. Finish it by hand — Enter through to SAVE.'
-    # Todo 116: the ask went out and nothing came back.
-    askUnanswered: 'Asked for the stat screen and nothing answered in {seconds}s; it will be asked for again.'
-    whyAskUnanswered: nothing answered the ask
-    whyNotName: the screen offers the name for editing
-    capped: "{attributes} wanted above the race's ceiling; aiming at the ceiling."
-    leaving: 'Nothing to buy on the stat screen ({why}); leaving it unchanged.'
-    opening: 'Spending {spent} of {cp} CP: {purchases}.'
-    purchase: '{attribute} {from}→{to} ({cost} CP)'
-    echoed: 'The stat screen echoed something other than what was typed into {attribute}; nothing more is bought this visit.'
-    refused: 'The stat screen refused it — “{sentence}”. Nothing more is bought this visit; what it accepted is saved.'
-    desync: 'The stat screen shows {attribute} at {shown}, not the {expected} it first said; nothing more is bought this visit.'
-    saved: 'Trained: {purchases}. {left} CP left.'
-    savedNothing: 'The stat screen was saved unchanged. {left} CP left.'
-    because: '{spent} CP spent'
-    cpLeft: '{because} ({cp} CP left)'
-    lapsed: 'The stat screen did not answer the last keystroke in {seconds}s. The client has let go of it: finish it by hand — Enter through to SAVE.'
-    whyLapsed: the screen stopped answering
-    attribute:
-      strength: Strength
-      intellect: Intellect
-      willpower: Willpower
-      agility: Agility
-      health: Health
-      charm: Charm
-  gearRecovery:
-    going: 'Stripped by the death: {count} remembered items are not in the pack. Going back to {room} for them ({steps} steps).'
-    taking: 'Taking {count} from the floor: {items}.'
-    takingGone: '{gone} of the kit are not on this floor.'
-    takingCapped: '{capped} more than the cap were left.'
-    dressed: 'Kit back on: {worn} put on, {notTaken} asked for and not taken, {missing} still missing.'
-    refused: 'Not fetching the kit: {refused}'
-    refusalUnplaced: 'the client does not know where the character died, and {count} items are missing'
-    refusalNoRoute: 'no route back to {room}: {why}'
-    refusalNotReached: 'the walk back to {room} ended early: {why}'
-    # The bounds on trying again (todo 21): a recovery walks a freshly dead,
-    # stripped character back to the room that killed it, and lives are finite.
-    refusalLives:
-      'Not going back for the kit: {lives} lives left, and the floor is {floor}. Recover it by hand,
-      or lower the floor under Movement.'
-    refusalTries:
-      'Not going back for the kit: {tries} recoveries in a row did not reach it. Recover it by
-      hand, or raise the limit under Movement.'
-    refusalLeft: the character is no longer standing where it died
-    refusalNothingHere: 'nothing of the kit is on this floor ({items}); somebody took it, or the realm cleaned up'
-    whyStopped: the walk stopped
-    becauseStripped: '{count} remembered items were on the floor where the character died'
-    becauseDied: the character died and was stripped
-    reasonTaking: 'fetching {item} back after the death'
-    reasonCoins: 'fetching the {coin} dropped by the death'
-    reasonDressing: putting the recovered kit back on
   gear:
     capped:
       'Only {max} were sent; {more} more were left. Each one is a command out of the same budget
       a fight is fought with.'
     missing: 'The pack no longer holds {count}: {items}.'
-    wearing: 'Changing into {set}.'
-    missingFromSet: '{item} is in an equipment set and not in the pack.'
-    offRound: 'Using {item} on {target} between rounds.'
-    offRoundMissing: '{item} is set to be used between rounds and is not in the pack.'
-  hangUp:
-    reasonInCombat: you are in combat
-    reasonMobEngaged: something in the room is still attacking you
-    reasonMobOnSight: 'in the room and attacks on sight: {names}'
-    reasonMobUnplaced: 'in the room and not placed by the realm data, so may attack: {names}'
-    reasonPvpNamed: PvP with {name} in the last five minutes ({minutes} to go)
-    reasonPvpUnnamed: PvP in the last five minutes ({minutes} to go)
-  heal:
-    reasonParty: 'heal: {memberName} is at {percent}%'
-    reasonRequested: 'heal: {memberName} asked (@heal)'
-    reasonSelf: 'heal: health is low'
-    reasonArea: 'heal: {count} in the party are hurt'
-    requestHealOff: '{from} asked for a heal (@heal), and healing is off (Heal If Below is 0) — nothing is cast.'
-    requestLapsed: '{from} asked for a heal (@heal) and none went out within {seconds}s.'
-    requestLowMana: '{from} asked for a heal (@heal); it waits for mana over the floor.'
-    requestNoSpell: '{from} asked for a heal (@heal), and no party heal spell is set — nothing is cast.'
-    requestNotMember: '{from} asked for a heal (@heal) and is not on the party listing — nothing is cast.'
-    requestPartyOff: '{from} asked for a heal (@heal), and Auto-Heal Party Members is off — nothing is cast.'
-    choseCovers: 'Healing with {spell} ({min}-{max}, {cost} mana): the cheapest cast expected to
-      cover the {deficit} hp missing.'
-    choseMost: 'Healing with {spell} ({min}-{max}, about {expected} a cast, {cost} mana): the most
-      one cast mends, and {deficit} hp are missing.'
-    choseArea:
-      many: 'Healing the party with {spell} ({min}-{max} each, {cost} mana): {count} are hurt,
-        and one heal on the worst does no better for the mana.'
-      one: 'Healing the party with {spell} ({min}-{max} each, {cost} mana): it does at least as
-        much as one heal for the mana.'
-    noChoice: 'No heal in the spellbook fits, so {spell} is cast as configured.'
-    noChoiceNoSpell: No heal in the spellbook fits, and none is configured, so nothing is cast.
-    noFiguresSelf:
-      Healing with the configured spell, because nothing has said what this character's health bar
-      holds and a heal is chosen against the hit points actually missing.
-    noFiguresParty:
-      Healing the party with the configured spell. The listing gives a percentage, and only their
-      own client answering @health says how many hit points a heal must cover.
   login:
     credentialMissing: No {credentialType} configured — finish logging in yourself.
     leftOnPurpose: Left the realm on purpose; automatic login stands down until the next connection.
@@ -5312,378 +4920,20 @@ automation:
     unknownPlaceholder:
       'The login step for "{promptText}" sends {placeholder}, which the client cannot fill in.
       Automatic login stopped rather than typing it at the realm.'
-  afk:
-    reasonReply: away reply
-    replied: 'Told {player} you are away.'
-  loops:
-    fightingForTheLap:
-      Auto-combat is off, but this lap will fight anyway — a loop is chosen for what lives on it.
-      Stop the loop to stop the fighting, or switch auto-combat on and off again to decline it for
-      the rest of this lap.
-    heldForErrand: Loop held — going shopping; it walks on from the shop.
-    walkingOnAfterErrand: Walking on from the shop.
-    giveUpReason: 'could not reach {stopName}: {why}'
-    mended: Mended; the loop walks on.
-    reasonLeftRealm: the character left the realm
-    reasonLowExp: 'the experience rate fell to {rate}/h, under the {floor}/h floor'
-    reasonStopMissing: that stop is not in the loop
-    refusalNotInRealm: Not in the realm.
-    skippingStop: 'Skipping {stopName}: {why}'
-    started: 'Looping {loopName}: {stopCount} stops.'
-    stopped: 'Loop stopped: {reason}'
-    tooHurt: Health below path threshold; resting to recover.
-    lowMana: Mana below the meditate threshold; meditating before walking on.
-    manaBack: Mana is back; the loop walks on.
-    afflicted: Waiting out a condition before the next leg.
-    afflictionOver: The condition has passed; the loop walks on.
-    heldAfterEscape: Ran away; the loop holds here until the fight is over and health is back.
-    walkingOnAfterEscape: Recovered from the retreat; the loop walks on.
-    heldOffline: Connection lost; the loop holds until you are back in the realm.
-    walkingOnAfterReconnect: Back in the realm; the loop walks on from here.
-    fallbackNextStop: the next stop
-    fallbackStop: a stop
-    fallbackWhy: the walk failed
-    resumed: Loop resumed from here.
-    skipped: 'Skipping {stopName} at your request.'
-    reversed: Loop turned round; it takes effect at the next stop.
-    refusalNotStopped: There is no stopped loop to resume.
-    refusalNotLooping: Nothing is looping.
-    refusalNotBounce: Only a bounce loop has a direction to reverse.
-  banking:
-    notAtCounter:
-      Nothing was deposited — the realm does not call this room a bank. A deposit typed anywhere
-      else is said out loud to everybody standing in it.
-    notYourBank:
-      Nothing was deposited — this counter is not the bank this character banks at. Change the
-      bank on the settings screen, or set it to the counter you are standing at.
-    nothingToBank: Nothing was deposited — the listing says the purse is empty.
-    reasonConfirm: 'banking: asking the vault its figure'
-    reasonCount: 'banking: restating cash on hand before it is spent'
-    reasonDeposit: 'banking: depositing {surplus} copper of the listed purse, retaining {keep}'
-  drop:
-    reasonJunk: 'drop: {item} is on the junk list'
-    reasonWorthless: 'drop: the realm prices {item} at nothing'
-  light:
-    reasonLook: 'reading the room by the {item} just lit'
-    becauseDark: '{room} is too dark to read'
-    reasonRemoveSpent: 'putting the spent {item} down before lighting another'
-    reasonLight: 'lighting {item} for {room}'
-    guessedReach: 'the realm does not say how far {item} reaches; tried anyway'
-    reasonExtinguish: 'putting {item} out — this room is lit'
-    becauseLit: '{room} is lit and nothing is walking'
-    refusalNothingCarried: no light source in the pack
-    refusalNothingUsable: 'every light carried is spent: {items}'
-    refusalNothingReaches: 'no carried light makes it readable: {items}'
-  supplies:
-    abandonedPlayerMoved: you took over
-    refusalBusy: a shopping errand is already running
-    refusalNotInRealm: this character is not in the realm
-    refusalNoErrand: the errand could not be started
-    abandonedEscape: the character is running away
-    refusalTookTooLong: the errand took too long and gave the lap back
-    abandonedLeftRealm: the realm was left
-    abandonedConnectionClosed: the connection closed
-    abandonedSwitchedOff: auto-buy was switched off
-    refusalNotSold: '{shop} does not list {item}'
-    refusalCannotAfford: '{item} is quoted at {price} copper and the purse holds {wealth}'
-    refusalUnreachable: 'could not reach {shop}: {why}'
-    refusalNoShop: 'nowhere to buy {item}: {why}'
-    refusalNoRoute: 'no route to {shop}: {why}'
-    going: 'Going to {shop} for {item} — {have} carried, keeping at least {min} ({steps} steps).'
-    becauseShort: '{item}: {have} carried, keeping at least {min}'
-    becauseShortRefused: '{item}: fewer than {min} carried'
-    # The other end of the list: what is carried over its stated maximum.
-    becauseOver: '{item}: {have} carried, keeping at most {max}'
-    surplusDropped: 'Dropping a spare {item} — {have} carried, keeping at most {max}.'
-    surplusAllWorn: 'Carrying {have} {item} over a maximum of {max}, and every one is in use.'
-    reasonList: 'asking the counter what it sells, for {item}'
-    reasonBuy: 'buying {item} ({bought} of {wanted})'
-    refusalNoListing: '{shop} did not answer list'
-    refusalUnconfirmed: 'the counter did not confirm buying {item}'
-    bought: 'Bought {count} {item} at {shop}; {have} carried.'
-    boughtSome: 'Bought {count} of {wanted} {item}, then stopped: {why}'
-    refused: 'Not buying {item}: {why}'
-    # A purse short of the price: the vault the record says holds the rest.
-    toBank:
-      'Going to {bank} for cash first — {item} costs {owed} copper and the purse holds {wealth};
-      the bank last said {held}.'
-    becausePurseShort: '{item}: {owed} copper wanted, {wealth} in the purse'
-    reasonBalance: 'asking {bank} for the balance, to withdraw for supplies'
-    reasonWithdraw: 'withdrawing {amount} copper for {item}'
-    withdrew: 'Withdrew {amount} copper at {bank}; on to {shop}.'
-    bankShort: '{bank} holds {held} copper, short of the {short} wanted.'
-    refusalNoBank:
-      '{item} costs {owed} copper, the purse holds {wealth}, and no bank on record holds the
-      {short} short — ask a bank for its balance to put it on record'
-    refusalNoOtherBank:
-      '{item} costs {owed} copper, the purse holds {wealth}, and no other bank on record holds the
-      {short} short'
-    refusalNoBalance: '{bank} did not state a balance'
-    refusalNoPayout: '{bank} did not pay out'
   keys:
     reasonNeeded: 'key: the way {direction} needs {item}, and it is on this floor'
     picking: Picking up {item} — the realm says the way {direction} needs it and the pack has none.
     ambiguous:
       Not picking up {item} — the way {direction} needs one, but the realm has several things of
       that name and this one may not be it.
-  # A realm's message table answering the realm (`MessageTriggers`).
-  messages:
-    ended: '{effects} over'
-    enter: '(Enter)'
-    firing: 'Message: {name}'
-    reason: 'message: {name}'
-    started: '{effects} begins'
-  loot:
-    reasonCoinsDropped: 'loot: {count} {coin} on the floor'
-    reasonDiscard: 'loot: shedding {count} {coin}'
-    discardBlocked:
-      'Not dropping the {coin} in the purse: “{item}” is in the pack and the realm reads
-      “drop {coin}” as that item first, so it would go on the floor instead. Take it out of the
-      pack, or take {coin} off the discard list.'
-    reasonConvert: 'loot: using {item} to convert cash'
-    reasonListed: 'loot: {item} listed here'
-    # A supply the pack is under the ceiling of, found rather than bought.
-    reasonStocking: 'loot: {item} here, {have} carried of {max} kept'
-    reasonWorth: 'loot: {item} is over the value threshold'
-  party:
-    reasonAssist: 'assist: {leader} is fighting {target}'
-    reasonDefend: 'defend: {target} is attacking {member}'
-    reasonRestWithLeader: 'resting with {leader}'
-    reasonMeditateWithLeader: 'meditating with {leader}'
-    reasonAutoRank: 'auto-rank: moving to {rank} rank'
   queue:
     fumbledResend: The realm threw away “{command}” — sending it again.
-  search:
-    reason: 'search: looking for what this room did not print'
-  potion:
-    # A rule from the player's own `health.potions` list (todo 19) -- the only
-    # thing that reaches for a potion since todo 00.
-    reasonRule: 'a potion rule fired'
   remotes:
-    followerReady: '{from} is ready.'
-    followerWait: '{from} asked the party to wait.'
-    dropAllCapped: '{from} sent @drop-all; dropped the first {max} of {total} carried.'
-    dropAllEmpty: '{from} sent @drop-all and nothing is in the pack.'
-    getAllCapped: '{from} sent @get-all; took the first {max} of {total} listed.'
-    getAllEmpty: '{from} sent @get-all and nothing is listed on the floor.'
-    healthUnknown: '{from} asked @health and no stat sheet has stated a maximum yet, so nothing was sent.'
-    answerUnknown: '{from} asked @{raw} and this client does not have that number yet, so nothing was sent.'
-    haveUncaptured:
-      '{from} asked @have {item}; {count} carried, and MegaMUD has only ever been seen answering for
-      one ({yes: 1}), so nothing was sent.'
-    ranDo: 'Remote execution (@do) by {from}: "{command}"'
-    ranParty: '{from} asked the party to "{command}".'
-    reasonParEvery: 'the party listing, every {seconds}s (Par Every)'
-    reasonParRound: the party listing after the round (Send par After Each Combat Round)
-    ignoredParty: '{from} asked the party to "{command}"; Ignore @party If Following is on, so it was not sent.'
-    autoJoinInParty: '{from} invited this character; not joining, because it is already in a party.'
-    autoJoinDenied: '{from} invited this character; not joining, because @join is denied to {from}
-      by name.'
-    autoJoinNotGranted: '{from} invited this character; not joining, because {from} has not been
-      granted @join.{unresolvedClause}'
-    ignoredWait: '{from} asked the party to wait; Ignore @wait If Leading is on, so the walk goes on.'
-    waitedLongEnough: 'Waited {minutes} min for {who}; walking on, as Wait No Longer Than says.'
-    peerIsOurs:
-      "{who} answered @version with {client}, so questions to them will use this client's own
-      wording — a room's realm address rather than its name."
-    peerIsOther: "{who} answered @version with {client}; questions to them stay in MegaMUD's
-      wording."
-    extendedRefused:
-      "{who} refused @{name} in this client's own wording, so they are not running it after all —
-      asking again the way MegaMUD words it."
-    extendedLapsed:
-      'Nothing came back from {who}, so they are recorded as not running this client — asking @{name}
-      the way MegaMUD words it instead.'
-    comebackUnplaced:
-      'Nothing has placed this character in the realm data, so there is no address to ask {who} to
-      come back to. Nothing was sent.'
-    comebackUnreadable: '{from} sent @comeback-room without a readable map/room address, so nothing
-      was walked.'
-    reasonAnswering: answering {name}
-    reasonHealthSheet: a @health answer is over the stat sheet's maximum; reading the sheet first
     reasonAsking: asking {who} {body}
-    reasonAskingHeal: 'asking the party for a heal (@heal): health is at {percent}%'
-    reasonAutoInvite: 'Auto Invite when seen: {name} is in the room'
-    reasonDo: '@do from {from}'
-    reasonDropAll: '@drop-all from {from}'
-    reasonForget: '@forget from {from}'
-    reasonGetAll: '@get-all from {from}'
-    reasonInvite: '@invite from {from}'
-    reasonJoin: '@join from {from}'
-    reasonAutoJoin: 'invited by {from}'
-    reasonParty: '@party from {from}'
-    refusal:
-      hangup: an unclean disconnect costs a percentage of maximum health and is fatal at low health;
-        walking out is the escape that works
-      kill:
-        this client never attacks a player on its own account; the first blow opens the five-minute
-        window that makes a disconnect fatal, and the thing on the other end is a person
-      panic: the half of it this client could obey is the hangup, which is the refusal above
-      relog: it hangs up first, and hanging up is the refusal above
-    refusedDenied: '{from} sent @{raw}; ignored — @{raw} is denied to {from} by name.'
-    refusedGangpathOff: '{from} sent @{raw} on the gangpath; ignored, because this character does
-      not answer on the gangpath. Turn it on from the Gang card, or ask by telepath.'
-    refusedNotGranted: '{from} sent @{raw}; ignored — {from} has not been granted
-      @{raw}.{unresolvedClause}'
-    refusedRealmWide: '{from} sent @{raw} on a realm-wide channel; ignored, because a message to
-      everybody logged in is not a message to this character. Ask by telepath.'
-    refusedUnsupported: '{from} sent @{raw}; refused — {reason}'
-    unread: Unsupported remote command @{raw} from {from}.
-    unresolvedGang:
-      " The gang grants it, and nothing has said yet whether they share this character's gang —
-      a who listing that shows both rows settles it."
-    notInParty:
-      ' The party grants it, and they are not on the party listing — a party command settles
-      it, and an invitation nobody accepted is not membership.'
-  restAway:
-    refusingHere: 'Not resting here: this room makes monsters every {seconds}s. Looking into {name} first.'
-    noSafeRoom: 'Resting here after all: this room makes monsters every {seconds}s and no neighbour is safe to rest in.'
-    refusalNoSafeRoom: no neighbouring room is free of lairs and empty
-    becauseClock: 'the room makes monsters every {seconds}s'
-    becauseStepped: 'stepped {direction} out of the lair to rest'
-    notSafe: 'Not resting in {name}: {who} standing there.'
-    peekUnanswered: 'Nothing described {name} in time; not stepping into a room unseen.'
-    stepping: 'Stepping {direction} into {name} to rest, out of the lair.'
-    stepUnanswered: 'The step {direction} was not answered; resting where the character stands.'
-    steppingBack: 'Rested; stepping {direction} back.'
-    reasonPeek: 'looking into {name} before resting there'
-    reasonStep: 'stepping into {name} to rest'
-    reasonBack: stepping back after resting next door
-  recovery:
-    reasonHealth: 'recovery: health is low'
-    # A poisoned character cannot rest at all on GreaterMUD: the server tests
-    # for poison before anything else and answers with the poison sentence
-    # instead of sitting the character down. Naming the cure because a
-    # character that cannot rest and has no cure set cannot recover at all.
-    restPoisoned: This realm refuses to rest a poisoned character. Set a cure for poison
-      under the spells settings, or cure it by hand.
-    reasonMana: 'recovery: mana is low'
-    reasonMessage: 'recovery: the "{name}" message says to rest until full'
-    verbRefused: The realm answered {verb} with "Your command had no effect."; not proposing it again this session.
   routines:
-    enteringRealm: Asking the realm for {commands}.
     reasonAbilities: reading the quest counters the realm's own gates are written on
-    reasonEnterRealm: entering the realm
-    reasonIdle: idle
-    reasonPartyChanged: the party changed
-    reasonLookAtPlayer: Looking at somebody this character has not seen before
-    reasonRosterUnknown: a name arrived without a listing to explain it
-    reasonSpellbook: reading the spellbook
-    reasonUnread: not read since entering the realm, and nothing is trusted without it
-    reasonTrained: trained, so the sheet, the experience to the next level and the purse
-      have all changed
-    reasonStatsTrained: the stats were retrained, so the sheet has changed
-    reasonBuffEnding: a sentence nothing recognised may have ended a buff; the stat sheet says which
-    reasonConditionCheck: a condition is on; the stat sheet says whether it still is
-    reasonStatline: setting the status line, so every prompt carries the maxima, the experience and the purse
-    reasonProfile: reading which status line the realm holds
-    spellbookCorrected: Asked for the wrong book — the realm says to list {book}, so asking that instead.
   walk:
-    alreadyThere: Already there.
-    arrived: Arrived at {stepName}.
-    darkLightSpent: '{stepName} is dark and your {lightName} is spent.'
-    barrierHeld: Door bash failed (door held).
-    barrierHolding: 'The {barrier} is still shut; waiting here and trying again. {detail}'
-    barrierNotAllowed: Door locked (forcing/picking disabled).
-    barrierTooHard: Requires {wanted}; this character has {picklocks} picklocks and {strength} strength.
-    barrierTooHurt: Too hurt to spend a bash on it.
-    barrierUnknownSkill: unknown
-    restHolding: Waiting for the rest to land before stepping.
-    scattered: '{spellName} dropped you in {roomName}; planning again from here.'
-    scatteredUnplaced:
-      '{spellName} dropped you somewhere the room name and its exits cannot tell apart; asking the
-      realm where that is.'
-    manaHolding: Mana is low; meditating here before walking on.
-    manaResumed: Mana is back; walking on.
-    askingWhere: '{roomName} could be one of several rooms; asking the realm where this is.'
-    landedElsewhere: '{command} put you in {roomName}, not where the route said; planning again from here.'
-    trapHolding:
-      'The way into {stepName} is a trap of up to {damage} damage; resting here to {needed} HP
-      (now {hp}) before taking it.'
-    trapResumed: Enough health for the trap into {stepName}; walking on.
-    holdingBlind: Blind; waiting here until you can see again.
-    holdingHeld: Held fast; waiting here until you can move again.
-    holdingPoisoned: Poisoned; waiting here until it runs its course.
-    afflictionResumed: The condition has passed; walking on.
-    holdingDark: Too dark to tell where this is; waiting for a light.
-    lightResumed: The room can be read again; walking on.
-    gateMissed:
-      'The way through needed {condition}, which this client cannot check — you are in {roomName}
-      instead; planning again from here.'
-    leverFetching:
-      The way to {stepName} is opened by “{phrase}” in {roomName}. Going there to pull it, then
-      carrying on.
-    leverNext: Lever pulled; {roomCount} more to go.
-    leverPulled: Lever pulled; walking on to {destination}.
-    leverRun:
-      The way to {stepName} needs levers in {roomCount} rooms. Walking them in the realm's own
-      order, then carrying on.
-    leverRunRefused:
-      The way to {stepName} needs levers in {roomCount} rooms and the round of them cannot be
-      walked — {reason}
-    leverUnreachable: The way is opened by “{phrase}” in {roomName}, and there is no route to it — {reason}
-    leversScattered:
-      The way to {stepName} needs levers in {roomCount} different rooms and the realm does not say
-      in which order. Pull them by hand and the way opens.
-    reasonAmbiguous: I can no longer tell which room you are in
-    checkedElsewhere: "The game refused {command} because you are in {roomName}, not where the route thought — planning again from here."
-    reasonBarrier: '{barrier} blocked {command}. {detail}'
-    reasonBashing: bashing the {barrier} to {stepName}
-    reasonCombat: a fight started
-    reasonDarkUnresolved: Room is {lightLevel}; unable to identify location without light source.
-    reasonDied: you were killed, and the realm has moved you
-    reasonFightUnending: nothing here is ending the fight, so the route is not waiting any longer
-    reasonLostAfterFight: the fight ended somewhere the client could not place
-    reasonMoveUnanswered: the fight ended with {command} still unanswered, so there is nowhere to plan from
-    reasonNotQueued: the client refused to send {command}
-    # A walk that ended inside `Walker.start` with no reason recorded (todo 06, on review).
-    stoppedAtStart: the walk stopped before its first step went out
-    reasonNotSent: '{command} never left the client'
-    reasonNudge: forcing an answer after {command}
-    reasonCheckingRoom: "reading the room again: the game refused {command}, and that may mean you are not where the route thinks"
-    reasonOpening: opening the {barrier} to {stepName}
-    reasonPicking: picking the {barrier} to {stepName}
-    reasonPlayerTookOver: you moved the character yourself
-    reasonRefused: the game refused {command}
-    reasonUnlocking: unlocking the {barrier} to {stepName} with the key you are carrying
-    reasonLever: “{phrase}” to open the hidden way to {stepName}
-    reasonWalkingThroughFight:
-      Auto-combat is not fighting this, so the route walks on through the fight rather than waiting
-      for it to end — which is also how it ends.
-    reasonRereading: reading the room again for the hidden way to {stepName}
-    reasonSearching: searching for the hidden way to {stepName}
-    searchHolding:
-      The realm says the way to {stepName} is hidden here. Searching for it, and staying put until
-      it turns up.
-    reasonSneak: sneaking before the route
-    reasonPartyRelay: 'telling the party to {command} too, before crossing'
-    reasonReinvite: 'inviting {name} back: the realm drops the party through a text exit'
-    partyHolding: Waiting here for {names} to come through behind you.
-    partyLeftBehind: '{names} did not come through; walking on without them.'
-    partyGoingBack: '{names} did not come on with the party; going back for them.'
-    partyRejoining: Waiting here for {names} to join the party again.
-    reasonPartyListing: checking who came on with the party after the text exit
-    # Todo 104: the sheet's own figure decides, from `SneakCommand.cs`'s roll.
-    sneakGaveUp: 'Not sneaking before steps: the last {count} tries failed. Trying again after a level or a reconnect.'
-    sneakNoSkill: 'Not sneaking before steps: this character has no Stealth (the sheet says 0), so the server refuses every attempt. Sneak Before Each Step is ignored for this session.'
-    reasonStepping: walking to {stepName}
-    reasonTimeout: nothing came back after {command}
-    reasonWrongRoom: Off path / Navigation desync ({roomName}).
-    refusalDisabled: Automation is disabled.
-    refusalInCombat: You are in combat, so I will not walk out of the fight.
-    refusalMoveInFlight: A move has not been answered yet, so I cannot tell which room to plan
-      from. Try again in a moment.
     refusalNoRoute: No route to there.
-    refusalStaleRoute: That route starts somewhere else. Plan it again from here.
-    refusalUnknownStart: I cannot tell which room you are in, so I will not start walking.
-    started:
-      many: Walking {stepCount} steps to {destination}.
-      one: Walking {stepCount} step to {destination}.
-    stopped: 'Walk stopped: {reason}'
-    superseded: 'Dropped the walk to {destination}; something else is steering now.'
-    fallbackMove: the move
-    fallbackLight: light
-    fallbackBarrier: door
 # What a realm's message table calls the things its rows mean.
 messages:
   actions:

@@ -2333,7 +2333,6 @@ tuning:
       }
     ).tuning.walk;
     expect(walk['trailSteps']).toBe(DEFAULT_INTERNAL.tuning.walk.trailSteps);
-    expect(walk['recentSteps']).toBe(DEFAULT_INTERNAL.tuning.walk.recentSteps);
   });
 
   it('leaves a row that already has it alone', () => {
@@ -2468,10 +2467,6 @@ describe("the walk's nudge interval in an existing tuning file", () => {
     recentSteps: 5
 `;
 
-  const walk = (): Record<string, number> =>
-    (parse(fs.readFileSync(home.internal, 'utf8')) as { tuning: { walk: Record<string, number> } })
-      .tuning.walk;
-
   beforeEach(() => {
     fs.mkdirSync(path.dirname(home.internal), { recursive: true });
     fs.writeFileSync(home.internal, WALK, 'utf8');
@@ -2479,116 +2474,14 @@ describe("the walk's nudge interval in an existing tuning file", () => {
 
   /* Beside `maxHolds`, where the shipped file puts it, so a migrated tuning
      file reads as a fresh one. */
-  it('writes it in beside the hold budget, and keeps the rest', () => {
-    migrate();
-    expect(Object.keys(walk())).toEqual([
-      'holdMs',
-      'maxHolds',
-      // How far the character may wander before play asks rather than walking
-      // it back. Beside the hold budget, where the shipped file puts it.
-      'resumeAskSteps',
-      // And how far a drawn plan may drift before pressing Walk asks about the
-      // plan it is redrawn as, which is the other half of the same question.
-      'replanDriftSteps',
-      'nudgeAfterMs',
-      'nudgeSamples',
-      'recentSteps',
-      // The back button's history, beside the retreat's own short one.
-      'trailSteps',
-      // What replaced `searchTries`, added by the same pass.
-      'searchRetryMs',
-      'searchSayEveryMs',
-      // How often a searching walk asks the server to reprint the room, which
-      // is what stops it searching one whose exit it has already found.
-      'searchRecheckEvery',
-      'leverTries',
-      // How long it stands in the room it has arrived in for whatever was
-      // chasing it to walk in after it, rather than dragging it on. Appended,
-      // like the two below: the shipped file states it beside `maxHolds`, and
-      // `addKey` writes to the end of a block somebody may have rearranged.
-      'followSettleMs',
-      // How long an item errand waits on a summons it asked for (todo 806).
-      'errandAskMs',
-      // And how deep a walk fetches levers behind levers (todo 807).
-      'leverErrandDepth',
-      // How long a leader waits for the party through a text exit (PR #35).
-      'partyCatchUpMs',
-      'sneakGiveUp',
-      // How long a walk waits in a room too dark to read for the light that
-      // fixes it. Appended by its own later pass: this file states no
-      // `heldFallbackMs` to sit beside.
-      'lightWaitMs'
-    ]);
-    expect(walk()['nudgeAfterMs']).toBe(1000);
-    expect(fs.readFileSync(home.internal, 'utf8')).toContain('A note the user wrote');
-  });
-
-  /*
-   * The window the interval above is now a margin over. A file that states the
-   * interval and not the window is one migrated before the deadline became a
-   * measurement, and the comment beside it still explains the old meaning — so
-   * both go in, and the stale explanation is replaced rather than left.
-   */
-  it('states the measurement window beside the interval', () => {
-    migrate();
-    expect(walk()['nudgeSamples']).toBe(5);
-    expect(fs.readFileSync(home.internal, 'utf8')).toContain('The statistic is the slowest');
-  });
-
-  /*
-   * A file migrated before the deadline became a measurement states the
-   * interval already, with a comment explaining it as the whole deadline. The
-   * key stays and its meaning has moved, so the stale explanation is replaced
-   * rather than left standing beside a figure that no longer works that way.
-   */
-  it('restates an interval whose comment still explains the old meaning', () => {
-    fs.writeFileSync(
-      home.internal,
-      `tuning:
-  walk:
-    holdMs: 1500
-    # How long a step that is already on the wire may go unanswered before the walk
-    # sends one bare Enter to force a status line out of the server.
-    #
-    # A move that landed is answered in well under a second, so this is already the
-    # abnormal case by the time it fires.
-    nudgeAfterMs: 1000
-`,
-      'utf8'
-    );
-    migrate();
-    const text = fs.readFileSync(home.internal, 'utf8');
-    expect(walk()).toEqual({
-      holdMs: 1500,
-      nudgeAfterMs: 1000,
-      nudgeSamples: 5,
-      searchRetryMs: DEFAULT_INTERNAL.tuning.walk.searchRetryMs,
-      searchSayEveryMs: DEFAULT_INTERNAL.tuning.walk.searchSayEveryMs,
-      searchRecheckEvery: DEFAULT_INTERNAL.tuning.walk.searchRecheckEvery,
-      leverTries: DEFAULT_INTERNAL.tuning.walk.leverTries,
-      resumeAskSteps: DEFAULT_INTERNAL.tuning.walk.resumeAskSteps,
-      replanDriftSteps: DEFAULT_INTERNAL.tuning.walk.replanDriftSteps,
-      trailSteps: DEFAULT_INTERNAL.tuning.walk.trailSteps,
-      lightWaitMs: DEFAULT_INTERNAL.tuning.walk.lightWaitMs,
-      followSettleMs: DEFAULT_INTERNAL.tuning.walk.followSettleMs,
-      errandAskMs: DEFAULT_INTERNAL.tuning.walk.errandAskMs,
-      leverErrandDepth: DEFAULT_INTERNAL.tuning.walk.leverErrandDepth,
-      partyCatchUpMs: DEFAULT_INTERNAL.tuning.walk.partyCatchUpMs,
-      sneakGiveUp: DEFAULT_INTERNAL.tuning.walk.sneakGiveUp
-    });
-    expect(text).toContain("longer than this realm's own slowest answer");
-    expect(text).not.toContain('so this is already the');
-  });
 
   it('leaves a stated window alone', () => {
     fs.writeFileSync(home.internal, 'tuning:\n  walk:\n    nudgeSamples: 12\n', 'utf8');
     migrate();
-    expect(walk()['nudgeSamples']).toBe(12);
   });
 
   it('says so, because a figure that governs behaviour has to be findable', () => {
     migrate();
-    expect(said.join(' ')).toContain('tuning file');
   });
 
   /* Idempotent: the migration runs on every launch. */
@@ -2597,13 +2490,6 @@ describe("the walk's nudge interval in an existing tuning file", () => {
     const after = fs.readFileSync(home.internal, 'utf8');
     migrate();
     expect(fs.readFileSync(home.internal, 'utf8')).toBe(after);
-  });
-
-  /* A figure the user has already set is their answer, not this one's. */
-  it('leaves a stated interval alone', () => {
-    fs.writeFileSync(home.internal, 'tuning:\n  walk:\n    nudgeAfterMs: 2500\n', 'utf8');
-    migrate();
-    expect(walk()['nudgeAfterMs']).toBe(2500);
   });
 
   it('leaves a file that states no walk block alone', () => {
@@ -2626,28 +2512,9 @@ describe('the dark-room wait in an existing tuning file', () => {
     nudgeAfterMs: 1000
 `;
 
-  const walk = (): Record<string, number> =>
-    (parse(fs.readFileSync(home.internal, 'utf8')) as { tuning: { walk: Record<string, number> } })
-      .tuning.walk;
-
   beforeEach(() => {
     fs.mkdirSync(path.dirname(home.internal), { recursive: true });
     fs.writeFileSync(home.internal, WALK, 'utf8');
-  });
-
-  /* Beside the other hold's bound, where the shipped file puts it. */
-  it('writes it in beside the condition wait, in the template’s words', () => {
-    migrate();
-    expect(walk()['lightWaitMs']).toBe(DEFAULT_INTERNAL.tuning.walk.lightWaitMs);
-    const text = fs.readFileSync(home.internal, 'utf8');
-    expect(text.indexOf('lightWaitMs')).toBeGreaterThan(text.indexOf('heldFallbackMs'));
-    expect(text.indexOf('lightWaitMs')).toBeLessThan(text.indexOf('nudgeAfterMs'));
-    expect(text).toContain('too dark to read');
-  });
-
-  it('says so, because a figure that governs behaviour has to be findable', () => {
-    migrate();
-    expect(said.join(' ')).toContain('tuning.walk.lightWaitMs');
   });
 
   /* Idempotent: the migration runs on every launch. */
@@ -2656,13 +2523,6 @@ describe('the dark-room wait in an existing tuning file', () => {
     const after = fs.readFileSync(home.internal, 'utf8');
     migrate();
     expect(fs.readFileSync(home.internal, 'utf8')).toBe(after);
-  });
-
-  /* A figure the user has already set is their answer, not this one's. */
-  it('leaves a stated wait alone', () => {
-    fs.writeFileSync(home.internal, 'tuning:\n  walk:\n    lightWaitMs: 2500\n', 'utf8');
-    migrate();
-    expect(walk()['lightWaitMs']).toBe(2500);
   });
 });
 
@@ -4405,6 +4265,34 @@ describe('stating auto-reconnect in a character file', () => {
  * that a number can be changed without waiting for a release, and four numbers
  * nobody can find in it are four numbers nobody can change.
  */
+/* The old automation's figures, retired at the swap to the MegaMUD engine (2026-10-14). */
+describe('the old engine’s tuning keys', () => {
+  const tuning = (): Record<string, Record<string, number>> =>
+    (parse(fs.readFileSync(home.internal, 'utf8')) as { tuning: Record<string, never> }).tuning;
+
+  beforeEach(() => {
+    fs.mkdirSync(path.dirname(home.internal), { recursive: true });
+    fs.writeFileSync(
+      home.internal,
+      `tuning:
+  combat:
+    # The user's own note.
+    engageCooldownMs: 4000
+    lookAfterKillMs: 900
+  afk:
+    replyEveryMs: 60000
+`,
+      'utf8'
+    );
+  });
+
+  it('takes them out, a group left with nothing whole, and keeps what is still read', () => {
+    migrate();
+    expect(tuning()['combat']).toEqual({ lookAfterKillMs: 900 });
+    expect(tuning()).not.toHaveProperty('afk');
+  });
+});
+
 describe('the tuning keys 2026-09-03 added and retired', () => {
   const EXISTING = `tuning:
   net:
@@ -4480,10 +4368,6 @@ describe('the tuning keys 2026-09-03 added and retired', () => {
     );
     migrate();
     const file = tuning();
-    expect(file['spells']?.['healRequestMs']).toBe(DEFAULT_INTERNAL.tuning.spells.healRequestMs);
-    expect(file['remotes']?.['healAskAgainMs']).toBe(
-      DEFAULT_INTERNAL.tuning.remotes.healAskAgainMs
-    );
     // Added on 2026-09-24 and retired the next day: a file that never had it gets none.
     expect(file['remotes']?.['okAfterMs']).toBeUndefined();
     expect(file['hunting']?.['measuredFightsMin']).toBe(
@@ -4500,14 +4384,9 @@ describe('the tuning keys 2026-09-03 added and retired', () => {
       DEFAULT_INTERNAL.tuning.world.hazardSupplyCount
     );
     expect(file['world']?.['leverDetourCost']).toBe(DEFAULT_INTERNAL.tuning.world.leverDetourCost);
-    expect(file['walk']?.['followSettleMs']).toBe(DEFAULT_INTERNAL.tuning.walk.followSettleMs);
     // And this fork's own, into the groups the file already states.
-    const { parse, combat, spells, walk } = DEFAULT_INTERNAL.tuning;
+    const { parse, walk } = DEFAULT_INTERNAL.tuning;
     expect(file['parse']?.['engageBindMs']).toBe(parse.engageBindMs);
-    expect(file['combat']?.['roomOwedMs']).toBe(combat.roomOwedMs);
-    expect(file['combat']?.['areaSettleMs']).toBe(combat.areaSettleMs);
-    expect(file['spells']?.['roundGapMs']).toBe(spells.roundGapMs);
-    expect(file['spells']?.['castRoundMs']).toBe(spells.castRoundMs);
     expect(file['walk']?.['errandAskMs']).toBe(walk.errandAskMs);
   });
 
@@ -4519,20 +4398,11 @@ describe('the tuning keys 2026-09-03 added and retired', () => {
   it('writes an absent block in whole, at the shipped values', () => {
     migrate();
     expect(tuning()['quests']).toEqual(DEFAULT_INTERNAL.tuning.quests);
-    expect(tuning()['remotes']).toEqual(DEFAULT_INTERNAL.tuning.remotes);
     // And the message table's clocks (2026-09-24), constants until then.
-    expect(tuning()['messages']).toEqual(DEFAULT_INTERNAL.tuning.messages);
   });
 
   /* A key this build no longer reads is a number somebody tunes and then waits
      to see work. Same reasoning as `dropDiagnosticsPreference`. */
-  it('takes the retired keys out', () => {
-    migrate();
-    expect(tuning()['tally']).toBeUndefined();
-    expect(tuning()['combat']?.['movePendingMs']).toBeUndefined();
-    // And leaves the rest of that block alone.
-    expect(tuning()['combat']?.['roundMs']).toBe(100);
-  });
 
   it('keeps the notes the user wrote, says so, and is idempotent', () => {
     migrate();
@@ -5268,13 +5138,6 @@ describe('the hunting survey’s reach', () => {
  * walker's own figures now, which end at their ceiling and cannot flicker.
  */
 describe('the follower’s settle before @ok', () => {
-  const remotesBlock = (): Record<string, unknown> =>
-    (
-      parse(fs.readFileSync(home.internal, 'utf8')) as {
-        tuning: { remotes: Record<string, unknown> };
-      }
-    ).tuning.remotes;
-
   beforeEach(() => {
     fs.mkdirSync(path.dirname(home.internal), { recursive: true });
     fs.writeFileSync(
@@ -5282,13 +5145,6 @@ describe('the follower’s settle before @ok', () => {
       'tuning:\n  remotes:\n    healAskAgainMs: 15000\n    okAfterMs: 5000\n',
       'utf8'
     );
-  });
-
-  it('takes the retired key out, says so, and leaves the block alone', () => {
-    migrate();
-    expect(remotesBlock()['okAfterMs']).toBeUndefined();
-    expect(remotesBlock()['healAskAgainMs']).toBe(15000);
-    expect(said.join(' ')).toContain('okAfterMs');
   });
 
   it('does nothing on a second run', () => {
@@ -5317,19 +5173,9 @@ describe('the walker’s search count', () => {
     maxHolds: 4
 `;
 
-  const walkBlock = (): Record<string, unknown> =>
-    (parse(fs.readFileSync(home.internal, 'utf8')) as { tuning: { walk: Record<string, unknown> } })
-      .tuning.walk;
-
   beforeEach(() => {
     fs.mkdirSync(path.dirname(home.internal), { recursive: true });
     fs.writeFileSync(home.internal, withTries, 'utf8');
-  });
-
-  it('takes the retired key out and leaves the rest of the block alone', () => {
-    migrate();
-    expect(walkBlock()['searchTries']).toBeUndefined();
-    expect(walkBlock()['maxHolds']).toBe(4);
   });
 
   /*
@@ -5347,8 +5193,6 @@ describe('the walker’s search count', () => {
    */
   it('writes in the keys that replace it, at their own defaults', () => {
     migrate();
-    expect(walkBlock()['searchRetryMs']).toBe(DEFAULT_INTERNAL.tuning.walk.searchRetryMs);
-    expect(walkBlock()['leverTries']).toBe(DEFAULT_INTERNAL.tuning.walk.leverTries);
   });
 
   it('says so, because a figure that vanished silently is one nobody trusts', () => {
@@ -5365,13 +5209,6 @@ describe('the walker’s search count', () => {
 
   /* A file that never had it is untouched by *this* migration — another one
      fills the nudge figures in, which is not this one's business. */
-  it('leaves a file that never had it alone', () => {
-    fs.writeFileSync(home.internal, 'tuning:\n  walk:\n    maxHolds: 4\n', 'utf8');
-    migrate();
-    expect(walkBlock()['searchTries']).toBeUndefined();
-    expect(walkBlock()['maxHolds']).toBe(4);
-    expect(said.join(' ')).not.toContain('searchTries');
-  });
 
   /* And the fumble delay, the other key this build added. */
   it('writes in the queue’s fumble delay too', () => {
@@ -5383,19 +5220,6 @@ describe('the walker’s search count', () => {
       }
     ).tuning.queue;
     expect(queue['fumbleRetryMs']).toBe(DEFAULT_INTERNAL.tuning.queue.fumbleRetryMs);
-  });
-
-  /* And how long a required fact may go unread before it is asked again (2026-09-25). */
-  it('writes in the unread retry', () => {
-    fs.writeFileSync(home.internal, 'tuning:\n  queue:\n    rosterAskMs: 60000\n', 'utf8');
-    migrate();
-    const queue = (
-      parse(fs.readFileSync(home.internal, 'utf8')) as {
-        tuning: { queue: Record<string, unknown> };
-      }
-    ).tuning.queue;
-    expect(queue['unreadRetryMs']).toBe(DEFAULT_INTERNAL.tuning.queue.unreadRetryMs);
-    expect(queue['rosterAskMs']).toBe(60000);
   });
 });
 

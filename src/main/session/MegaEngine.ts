@@ -27,6 +27,7 @@ import { disconnect, menuCommand } from '../megamud/move/buttons';
 import { blessCommand } from '../megamud/player/cast';
 import { clearDetours, goTo, headFor, startWalking } from '../megamud/move/destinations';
 import { clearPath, copyPath, freeSteps } from '../megamud/move/path';
+import { depositAll } from '../megamud/items/all';
 import { connected, connectFailed, connectionClosed } from '../megamud/script/game';
 import { reEngage } from '../megamud/script/modes';
 import { queue, send, wake } from '../megamud/script/send';
@@ -1155,6 +1156,12 @@ export class MegaEngine {
     if (at === -1) return;
     const [hook] = this.sentHooks.splice(at, 1);
     hook!.onSent();
+  }
+
+  /** The console's Deposit All (`0x4bc190`): the wealth over what is kept deposited. */
+  depositAll(): void {
+    this.safely(() => depositAll(this.s));
+    this.noteToggles();
   }
 
   /** The room the path's next step goes into, for the host to queue what it wants first. */

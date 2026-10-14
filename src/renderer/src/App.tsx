@@ -564,8 +564,6 @@ interface CardContext {
   startMoving(loop: string | null): void;
   stopMoving(): void;
   startLoop(name: string): void;
-  skipLoop(): void;
-  reverseLoop(): void;
   /** Whose Player flyout is open from one of this character's listings, lower-cased, or null. */
   subject: string | null;
   /** The console's name index for this character, or null before the realm's names arrive. */
@@ -635,8 +633,6 @@ interface AddressedActions {
   /** Re-base the Combat Stats card to this character's totals as they stand. */
   resetStats(): void;
   startLoop(name: string): void;
-  skipLoop(): void;
-  reverseLoop(): void;
   selectPlayer(name: string, anchor: PopoverAnchor): void;
   setGangRemotes(remotes: RemoteName[]): void;
   setGangpath(on: boolean): void;
@@ -780,8 +776,6 @@ function cardElement(id: CardId, ctx: CardContext): ReactNode {
           loop={view.loop}
           loops={ctx.loops}
           onChoose={ctx.chooseOnMap}
-          onReverseLoop={ctx.reverseLoop}
-          onSkipLoop={ctx.skipLoop}
           onStart={ctx.startMoving}
           onStop={ctx.stopMoving}
           walk={view.walk}
@@ -3945,14 +3939,6 @@ export default function App() {
     },
     [api, sayRefusal]
   );
-  const skipLoop = useCallback(() => {
-    void api.skipLoopStop(session).then(sayRefusal(session));
-    returnFocus();
-  }, [api, returnFocus, sayRefusal, session]);
-  const reverseLoop = useCallback(() => {
-    void api.reverseLoop(session).then(sayRefusal(session));
-    returnFocus();
-  }, [api, returnFocus, sayRefusal, session]);
   const routeTo = useCallback(
     (room: { map: number; room: number }) => api.routeTo(session, room.map, room.room),
     [api, session]
@@ -5019,10 +5005,6 @@ export default function App() {
         resetStats: () => resetStatsRef.current(sid),
         startLoop: (name) =>
           void api.startLoop(sid, name).then((refused) => sayRefusalRef.current(sid)(refused)),
-        skipLoop: () =>
-          void api.skipLoopStop(sid).then((refused) => sayRefusalRef.current(sid)(refused)),
-        reverseLoop: () =>
-          void api.reverseLoop(sid).then((refused) => sayRefusalRef.current(sid)(refused)),
         selectPlayer: (name, anchor) => selectPlayerRef.current(sid, name, anchor),
         setGangRemotes: (remotes) => void api.setGangRemotes(sid, remotes),
         setGangpath: (on) => void api.setRemoteGangpath(sid, on),
@@ -5146,8 +5128,6 @@ export default function App() {
         // float's own loops are not asked for, so it offers no picker.
         loops: shown ? loops : null,
         startLoop: shown ? startLoop : bound.startLoop,
-        skipLoop: shown ? skipLoop : bound.skipLoop,
-        reverseLoop: shown ? reverseLoop : bound.reverseLoop,
         subject: flyout !== null && flyout.session === sid ? playerKey(flyout.name) : null,
         selectPlayer: bound.selectPlayer,
         /*
@@ -5256,8 +5236,6 @@ export default function App() {
       navigationVisible,
       loops,
       startLoop,
-      skipLoop,
-      reverseLoop,
       sayRefusal
     ]
   );

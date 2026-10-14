@@ -189,8 +189,6 @@ function migrateAll(options: MigrationOptions): void {
   askedTheBankOnEntry(home, note);
   stoppedAnnouncingTheLook(home, note);
   pinTheGearButton(home, note);
-  statedTheStepNudge(home, note);
-  statedTheNudgeWindow(home, note);
   statedTheRosterCap(home, note);
   mapDensityHasTwoEnds(home, note);
   realmOwnsTheDatabase(home, note);
@@ -251,9 +249,7 @@ function migrateAll(options: MigrationOptions): void {
   theToolbarGainedBack(home, note, options.internalTemplate);
   statedTheHunting(home, note);
   theTalkHoldGrew(home, note);
-  statedTheReplanDrift(home, note);
   theActionsBecameAFamily(home, note);
-  statedTheLightWait(home, note);
   pinTheBlessSwitch(home, note);
   /*
    * **Before `theAccountJoinedTheScript`**, which reads `{{username}}` as a
@@ -3736,38 +3732,6 @@ function pinTheBlessSwitch(home: Home, note: (message: string) => void): void {
   if (pinned) note(t('notices.migration.blessSwitchPinned'));
 }
 
-function statedTheStepNudge(home: Home, note: (message: string) => void): void {
-  let stated = false;
-  edit(home.internal, (document) => {
-    const block = document.getIn(['tuning', 'walk'], true);
-    if (!isMap(block) || block.has('nudgeAfterMs')) return false;
-
-    /*
-     * The default itself, never a copy of it. `internal.test.ts` binds the
-     * shipped template to `TUNING_DEFAULTS`; a literal here would be a third
-     * copy that nothing binds, and a stated key outranks the default — so a
-     * later change to the figure would write the *stale* one into every
-     * existing file and silently keep the old behaviour. Read through
-     * `DEFAULT_INTERNAL`, which is that constant, rather than exporting a
-     * second door onto it.
-     */
-    const pair = document.createPair(
-      'nudgeAfterMs',
-      DEFAULT_INTERNAL.tuning.walk.nudgeAfterMs
-    ) as Pair;
-    const at = block.items.findIndex(
-      (item) => isScalar(item.key) && String(item.key.value) === 'maxHolds'
-    );
-    if (at === -1) block.items.push(pair);
-    else block.items.splice(at + 1, 0, pair);
-    if (isScalar(pair.key)) pair.key.commentBefore = NUDGE_AFTER_COMMENT;
-    stated = true;
-    return true;
-  });
-
-  if (stated) note(t('notices.migration.stepNudgeStated'));
-}
-
 /**
  * `{action}` becomes `{action.toggleEquip}` in a design the player keeps.
  *
@@ -3808,156 +3772,9 @@ function theActionsBecameAFamily(home: Home, note: (message: string) => void): v
 }
 
 /**
- * How far a drawn plan may drift before the press asks about the redrawn one.
- *
- * `statedTheStepNudge`'s gap one key along again: a key added inside an
- * existing `walk:` block reaches nobody who has already run the client, and
- * this one decides whether pressing Walk on a plan the character has wandered
- * off the start of walks quietly or puts the new plan back on screen. Without
- * it the file has no figure and the behaviour is invisible in the one place
- * the client tells the player to look for it.
- *
- * Beside `resumeAskSteps`, where the shipped file puts it and where the
- * distance it is not is already explained.
- */
-function statedTheReplanDrift(home: Home, note: (message: string) => void): void {
-  let stated = false;
-  edit(home.internal, (document) => {
-    const block = document.getIn(['tuning', 'walk'], true);
-    if (!isMap(block) || block.has('replanDriftSteps')) return false;
-
-    // The default itself, never a copy: `statedTheStepNudge` has the argument.
-    const pair = document.createPair(
-      'replanDriftSteps',
-      DEFAULT_INTERNAL.tuning.walk.replanDriftSteps
-    ) as Pair;
-    const at = block.items.findIndex(
-      (item) => isScalar(item.key) && String(item.key.value) === 'resumeAskSteps'
-    );
-    if (at === -1) block.items.push(pair);
-    else block.items.splice(at + 1, 0, pair);
-    if (isScalar(pair.key)) pair.key.commentBefore = REPLAN_DRIFT_COMMENT;
-    stated = true;
-    return true;
-  });
-
-  if (stated) note(t('notices.migration.replanDriftStated'));
-}
-
-/**
- * How long a walk waits in the dark for the light that fixes it.
- *
- * `statedTheReplanDrift`'s gap, one key along: `reconcileWithTemplate` adds an
- * absent top-level block and never reaches inside one, so a key added under
- * `walk:` reaches nobody who has already run the client.
- *
- * Worth stating rather than leaving to the default, because what it bounds is
- * a walk that used to *stop*: a blinding room prints no room block, the client
- * could not say where the character was standing, and the journey ended one
- * statement before auto-light proposed the torch that fixed it. The figure is
- * the only thing standing between waiting for a light and waiting for ever.
- *
- * Beside `heldFallbackMs`, where the shipped file puts it.
- */
-function statedTheLightWait(home: Home, note: (message: string) => void): void {
-  let stated = false;
-  edit(home.internal, (document) => {
-    const block = document.getIn(['tuning', 'walk'], true);
-    if (!isMap(block) || block.has('lightWaitMs')) return false;
-
-    // The default itself, never a copy: `statedTheStepNudge` has the argument.
-    const pair = document.createPair(
-      'lightWaitMs',
-      DEFAULT_INTERNAL.tuning.walk.lightWaitMs
-    ) as Pair;
-    const at = block.items.findIndex(
-      (item) => isScalar(item.key) && String(item.key.value) === 'heldFallbackMs'
-    );
-    if (at === -1) block.items.push(pair);
-    else block.items.splice(at + 1, 0, pair);
-    if (isScalar(pair.key)) pair.key.commentBefore = LIGHT_WAIT_COMMENT;
-    stated = true;
-    return true;
-  });
-
-  if (stated) note(t('notices.migration.lightWaitStated'));
-}
-
-/** The template's own words for the key, so the two files read alike. */
-const LIGHT_WAIT_COMMENT = ` How long a walk stands still in a room too dark to read, waiting for the
- light auto-light is readying.
-
- A blinding room prints no room block at all, so the client cannot say where
- the character is standing and the walk used to stop there -- one statement
- before the torch it needed was even proposed. What it waits for is three
- commands and two answers ("light torch", "You lit the torch.", "l", the room),
- measured at 145ms end to end; what makes this seconds rather than a fifth of
- one is the queue, which paces the light behind whatever else is in flight.
-
- A deadline and not a retry: there is nothing further to ask. Past it the room
- is dark for a reason no light in the pack fixes, and the walk stops with the
- sentence it always had.`;
-
-/**
- * The window the walk's nudge deadline is measured over.
- *
- * `statedTheStepNudge`'s gap, one key along, and the same argument: a key
- * added inside an existing `walk:` block reaches nobody who has already run
- * the client, and this one changes what `nudgeAfterMs` beside it *means* —
- * from the whole deadline to the margin on top of a measurement. A figure
- * whose meaning moved while the file still explains the old one is worse than
- * one that is merely absent, so the comment goes in with it.
- *
- * Beside `nudgeAfterMs`, where the shipped file puts it.
- */
-function statedTheNudgeWindow(home: Home, note: (message: string) => void): void {
-  let stated = false;
-  edit(home.internal, (document) => {
-    const block = document.getIn(['tuning', 'walk'], true);
-    if (!isMap(block) || block.has('nudgeSamples')) return false;
-
-    // The default itself, never a copy: `statedTheStepNudge` has the argument.
-    const pair = document.createPair(
-      'nudgeSamples',
-      DEFAULT_INTERNAL.tuning.walk.nudgeSamples
-    ) as Pair;
-    const at = block.items.findIndex(
-      (item) => isScalar(item.key) && String(item.key.value) === 'nudgeAfterMs'
-    );
-    if (at === -1) block.items.push(pair);
-    else block.items.splice(at + 1, 0, pair);
-    if (isScalar(pair.key)) pair.key.commentBefore = NUDGE_SAMPLES_COMMENT;
-    /*
-     * `nudgeAfterMs` is still there and still read, but it no longer means
-     * what the comment written beside it says. Restated rather than left, for
-     * the same reason the key is added at all: the file is where this client
-     * says every deciding figure is explained.
-     *
-     * Only when the comment is attached to the key. A comment before a map's
-     * *first* key is parsed onto the map instead — it reads as a note about
-     * the whole block, and every shipped and migrated file states `holdMs`
-     * ahead of this one, so the case only arises in a file somebody has
-     * rearranged by hand. Rewriting a note about `walk:` because it happens
-     * to sit above this key would replace something the player wrote.
-     */
-    const existing = block.items.find(
-      (item) => isScalar(item.key) && String(item.key.value) === 'nudgeAfterMs'
-    );
-    if (existing && isScalar(existing.key) && existing.key.commentBefore !== undefined) {
-      existing.key.commentBefore = NUDGE_AFTER_COMMENT;
-    }
-    stated = true;
-    return true;
-  });
-
-  if (stated) note(t('notices.migration.nudgeWindowStated'));
-}
-
-/**
  * The `who` listing's line cap, in the tuning file the player owns.
  *
- * `statedTheStepNudge`' gap exactly, one block along: `reconcileWithTemplate`
- * adds an absent *top-level* block and never reaches inside one, and every
+ * `reconcileWithTemplate` adds an absent *top-level* block and never reaches inside one, and every
  * `internal.yaml` copied since `tuning:` existed states `parse:` — so a key
  * added under it reaches nobody who has already run the client.
  *
@@ -3979,7 +3796,7 @@ function statedTheRosterCap(home: Home, note: (message: string) => void): void {
     const block = document.getIn(['tuning', 'parse'], true);
     if (!isMap(block) || block.has('rosterLines')) return false;
 
-    // The default itself, never a copy: `statedTheStepNudge` has the argument.
+    // The default itself, never a copy: `internal.test.ts` binds the template to it.
     const pair = document.createPair(
       'rosterLines',
       DEFAULT_INTERNAL.tuning.parse.rosterLines
@@ -4754,42 +4571,6 @@ const BANK_WHICH_COMMENT = ` Which counter this character's vault is at, as a \`
 const COMBAT_KIND_COMMENT = ` A refusal from the realm's own column rather than a name: more health than
  you want to open on. 0 never refuses. Silent where the realm says nothing,
  and it does not touch retaliation.`;
-
-const NUDGE_AFTER_COMMENT = ` How much longer than this realm's own slowest answer a step may go unanswered
- before the walk sends one bare Enter to force a status line out of the server.
-
- A margin over a measurement, never a claim about the server. This used to be
- the whole deadline and meant "a move is answered in well under a second" --
- true of one realm, stated about all of them. Paradigm's movement round is a
- measured 1,239ms, so the fallback fired on every step of every walk, and the
- bare Enter it sends is answered with a full reprint of the room: every room
- appeared twice, all the way round the lap.
-
- The walk now measures what a move actually costs on your realm and this is the
- headroom on top. It is also the whole deadline until a move has been answered
- once, which is the only moment there is nothing to measure against. One per
- step; the full stepTimeoutMs runs behind it before the walk gives up.`;
-
-const NUDGE_SAMPLES_COMMENT = ` How many recent move answers that deadline is measured over.
-
- The statistic is the slowest of them: the deadline exists to be later than a
- normal answer, and one fast answer says nothing about the slow case -- a step
- whose room dead reckoning had already placed answers in a millisecond and is
- not evidence the realm is quick. A window rather than an all-time maximum, so
- one lagged answer ages out instead of standing the fallback down for the
- evening.`;
-
-const REPLAN_DRIFT_COMMENT = ` How far the character may have strayed from the room a drawn plan
- starts in before pressing Walk asks about the plan it is redrawn as.
-
- A plan is drawn from where the character stood when it was drawn, and a lap or
- a party leader moves it while the panel is open -- so the press used to earn
- "that route does not start here", with nothing to do about it but draw the
- same plan again. It is redrawn from here instead, and the only question left
- is whether the reader is still looking at the journey they agreed to.
-
- Counted in the router's own steps, not in map squares. Past this, the new plan
- is put back on screen to be read. 0 asks every time.`;
 
 const SHOW_LOGO_COMMENT = ` The client's own mark, at the left of the status rail.
 
@@ -6778,6 +6559,126 @@ function statedAutoReconnect(home: Home, note: (message: string) => void): void 
   );
 }
 
+/** The tuning keys the old automation read, retired at the swap (2026-10-14). */
+const OLD_ENGINE_TUNING: readonly string[] = [
+  'queue.midRoundMs',
+  'queue.minIdleTickMs',
+  'queue.rosterAskMs',
+  'queue.unreadRetryMs',
+  'queue.lookAskMs',
+  'queue.lookExpiresMs',
+  'queue.traceLimit',
+  'combat.roundMs',
+  'combat.engageCooldownMs',
+  'combat.roomOwedMs',
+  'combat.areaSettleMs',
+  'combat.breakStandoffMs',
+  'combat.assistFreshMs',
+  'combat.runRounds',
+  'combat.runRisk',
+  'combat.hangUpRisk',
+  'combat.fledLevels',
+  'combat.fledForgetMs',
+  'spells.healExpiresMs',
+  'spells.manaRegenShortfall',
+  'spells.manaTickWaitMs',
+  'spells.healCooldownMs',
+  'spells.healRequestMs',
+  'spells.healUrgency',
+  'spells.healNearEnough',
+  'spells.cureExpiresMs',
+  'spells.buffTickMs',
+  'spells.blessCooldownMs',
+  'spells.blessWatchdogMs',
+  'spells.blessSlack',
+  'spells.roundGapMs',
+  'spells.castRoundMs',
+  'spells.refusedWindowMs',
+  'spells.conditionSheetMs',
+  'potions.expiresMs',
+  'potions.cooldownMs',
+  'loot.expiresMs',
+  'train.echoMs',
+  'train.reaskMs',
+  'train.expiresMs',
+  'train.confirmMs',
+  'gearRecovery.collectMs',
+  'gearRecovery.expiresMs',
+  'stealth.askEveryMs',
+  'stealth.expiresMs',
+  'light.expiresMs',
+  'supplies.expiresMs',
+  'supplies.retryMs',
+  'supplies.maxLegs',
+  'supplies.errandTimeoutMs',
+  'supplies.cashBuffer',
+  'drop.expiresMs',
+  'banking.cooldownMs',
+  'banking.expiresMs',
+  'rest.expiresMs',
+  'rest.lairClockMaxSeconds',
+  'rest.peekMs',
+  'rest.askedMs',
+  'events.tickMs',
+  'events.expiresMs',
+  'messages.responseGapMs',
+  'messages.effectCeilingMs',
+  'messages.retries',
+  'messages.noRestMs',
+  'walk.sneakGiveUp',
+  'walk.holdMs',
+  'walk.maxHolds',
+  'walk.followSettleMs',
+  'walk.partyCatchUpMs',
+  'walk.replanDriftSteps',
+  'walk.fightHoldMs',
+  'walk.heldFallbackMs',
+  'walk.lightWaitMs',
+  'walk.nudgeAfterMs',
+  'walk.nudgeSamples',
+  'walk.recentSteps',
+  'walk.ranFromForgetMs',
+  'walk.bashMargin',
+  'walk.pickMargin',
+  'walk.searchRetryMs',
+  'walk.searchSayEveryMs',
+  'walk.searchRecheckEvery',
+  'walk.leverTries',
+  'walk.leverErrandDepth',
+  'walk.barrierRetryMs',
+  'walk.barrierRetries',
+  'loop.maxFailures',
+  'loop.maxLocates',
+  'loop.locateWaitMs',
+  'loop.dwellMs',
+  'loop.escapeSettleMs',
+  'loop.resumeMarginWhenUncapped',
+  'afk.replyEveryMs',
+  'remotes.replyMs',
+  'remotes.healAskAgainMs',
+  'spending.maxGets',
+  'session.retreatSettleMs',
+  'session.playerMoveWindowMs',
+  'session.reconsiderMs'
+];
+
+/** Its groups that hold nothing else, removed when emptied. */
+const OLD_ENGINE_TUNING_GROUPS: readonly string[] = [
+  'afk',
+  'banking',
+  'drop',
+  'events',
+  'gearRecovery',
+  'light',
+  'loot',
+  'messages',
+  'potions',
+  'remotes',
+  'rest',
+  'stealth',
+  'train'
+];
+
 /**
  * The `tuning:` keys added and retired on 2026-09-03, in the user's own
  * `internal.yaml`.
@@ -6857,20 +6758,11 @@ function theTuningBlockGainedKeys(
     // nothing to read it in a file copied before it existed would be the
     // setting somebody edits and then waits to see work.
     addGroup('menace', { ...DEFAULT_INTERNAL.tuning.menace });
-    // The shadows between fights (todo 01) and where to hunt (todo 05),
-    // 2026-09-12: two groups a file copied before them would otherwise lack.
-    addGroup('stealth', { ...DEFAULT_INTERNAL.tuning.stealth });
     addGroup('hunting', { ...DEFAULT_INTERNAL.tuning.hunting });
-    addGroup('gearRecovery', { ...DEFAULT_INTERNAL.tuning.gearRecovery });
-    // The stat screen driver (todo 10, 2026-09-12).
-    addGroup('train', { ...DEFAULT_INTERNAL.tuning.train });
     // The quest runner's own clocks (2026-09-21, todos 102-103): every wait it
     // makes is bounded by one of these, so a run that looks stuck is diagnosed
     // from this block or not at all.
     addGroup('quests', { ...DEFAULT_INTERNAL.tuning.quests });
-    // A realm's message table acted on (2026-09-24): four clocks that were
-    // constants in the code, where nobody could reach them.
-    addGroup('messages', { ...DEFAULT_INTERNAL.tuning.messages });
 
     /** One key into a sub-block the file already states, with its paragraph. */
     const addKey = (group: string, key: string, value: number): void => {
@@ -6922,9 +6814,6 @@ function theTuningBlockGainedKeys(
     addKey('hunting', 'clusterRadius', DEFAULT_INTERNAL.tuning.hunting.clusterRadius);
     addKey('hunting', 'fillerRadius', DEFAULT_INTERNAL.tuning.hunting.fillerRadius);
     addKey('hunting', 'sizeTolerance', DEFAULT_INTERNAL.tuning.hunting.sizeTolerance);
-    /* A lair's clock and the look next door (2026-09-12, todo 08). */
-    addKey('rest', 'lairClockMaxSeconds', DEFAULT_INTERNAL.tuning.rest.lairClockMaxSeconds);
-    addKey('rest', 'peekMs', DEFAULT_INTERNAL.tuning.rest.peekMs);
     /* How sure a kill must be before the cheapest spell wins (2026-09-12, todo 09). */
     addKey('spells', 'killConfidence', DEFAULT_INTERNAL.tuning.spells.killConfidence);
     /*
@@ -6932,25 +6821,6 @@ function theTuningBlockGainedKeys(
      * (2026-09-06, todo 02) — the server's own 1,000ms fumble delay.
      */
     addKey('queue', 'fumbleRetryMs', DEFAULT_INTERNAL.tuning.queue.fumbleRetryMs);
-    /*
-     * And the two that replace `walk.searchTries` below (todo 04): the beat
-     * between two searches for a hidden exit, which is now unbounded, and the
-     * count a lever exit still keeps. Added beside the drop rather than in a
-     * migration of their own, so somebody who opens the file looking for the
-     * retired number finds what took its place in the same paragraph.
-     */
-    addKey('walk', 'searchRetryMs', DEFAULT_INTERNAL.tuning.walk.searchRetryMs);
-    addKey('walk', 'searchSayEveryMs', DEFAULT_INTERNAL.tuning.walk.searchSayEveryMs);
-    /*
-     * How often a walk that is searching asks the server to reprint the room
-     * (2026-09-06, todo 03). `You found an exit to the south!` does not reprint
-     * it, so the walk went on searching a room whose exit it had already found;
-     * a success always asks now, and a failure every this many. In the
-     * template's own order — a file somebody opens should read the way the
-     * documentation they are comparing it against does.
-     */
-    addKey('walk', 'searchRecheckEvery', DEFAULT_INTERNAL.tuning.walk.searchRecheckEvery);
-    addKey('walk', 'leverTries', DEFAULT_INTERNAL.tuning.walk.leverTries);
     /*
      * How long a command may go unanswered before the link is called dead
      * (2026-09-07, todo 00). It is the only number that decides whether a
@@ -6970,11 +6840,6 @@ function theTuningBlockGainedKeys(
     addKey('session', 'sentenceHoldMs', DEFAULT_INTERNAL.tuning.session.sentenceHoldMs);
     /* How long a listing the client redraws waits for its prompt (2026-09-10, todo 99). */
     addKey('session', 'rewriteHoldMs', DEFAULT_INTERNAL.tuning.session.rewriteHoldMs);
-    /* The look queue's floor and its shelf life (2026-09-07, todo 10). */
-    addKey('queue', 'lookAskMs', DEFAULT_INTERNAL.tuning.queue.lookAskMs);
-    addKey('queue', 'lookExpiresMs', DEFAULT_INTERNAL.tuning.queue.lookExpiresMs);
-    // The required facts asked for again until read (2026-09-25).
-    addKey('queue', 'unreadRetryMs', DEFAULT_INTERNAL.tuning.queue.unreadRetryMs);
     /* What a room's own spell costs, and when the router looks for another way
        (2026-09-09, todo 01), and how much shorter the way with the right items
        has to be to be offered (2026-09-10, todo 01). */
@@ -7012,18 +6877,8 @@ function theTuningBlockGainedKeys(
     addKey('world', 'errandItems', DEFAULT_INTERNAL.tuning.world.errandItems);
     addKey('world', 'errandPlaces', DEFAULT_INTERNAL.tuning.world.errandPlaces);
     addKey('world', 'errandSweepRooms', DEFAULT_INTERNAL.tuning.world.errandSweepRooms);
-    /*
-     * The follow window (2026-09-23): how long a walk stands in the room it
-     * has arrived in before stepping out again, where the room behind held a
-     * monster. It is the one number that decides whether a lap drags whatever
-     * was chasing it through the next four rooms, and the sort of number
-     * somebody who plays a realm with different pacing would want to raise.
-     */
-    addKey('walk', 'followSettleMs', DEFAULT_INTERNAL.tuning.walk.followSettleMs);
     // How long an item errand waits on a summons it asked for (todo 806).
     addKey('walk', 'errandAskMs', DEFAULT_INTERNAL.tuning.walk.errandAskMs);
-    // And how many levers-behind-levers one walk will fetch (todo 807).
-    addKey('walk', 'leverErrandDepth', DEFAULT_INTERNAL.tuning.walk.leverErrandDepth);
     /*
      * And the eight this file had fallen behind by (2026-09-23, on review).
      *
@@ -7049,13 +6904,9 @@ function theTuningBlockGainedKeys(
      * is *write the block whole, or fill the one key into the block that
      * exists*, and a file that has neither ends up with both.
      */
-    for (const group of ['spells', 'remotes', 'view', 'world', 'walk'] as const) {
+    for (const group of ['spells', 'view', 'world', 'walk'] as const) {
       addGroup(group, { ...DEFAULT_INTERNAL.tuning[group] });
     }
-    addKey('spells', 'healRequestMs', DEFAULT_INTERNAL.tuning.spells.healRequestMs);
-    addKey('spells', 'healUrgency', DEFAULT_INTERNAL.tuning.spells.healUrgency);
-    addKey('spells', 'healNearEnough', DEFAULT_INTERNAL.tuning.spells.healNearEnough);
-    addKey('remotes', 'healAskAgainMs', DEFAULT_INTERNAL.tuning.remotes.healAskAgainMs);
     addKey('hunting', 'measuredFightsMin', DEFAULT_INTERNAL.tuning.hunting.measuredFightsMin);
     addKey('view', 'questRunLingerMs', DEFAULT_INTERNAL.tuning.view.questRunLingerMs);
     addKey('world', 'anotherWayPenalty', DEFAULT_INTERNAL.tuning.world.anotherWayPenalty);
@@ -7073,12 +6924,7 @@ function theTuningBlockGainedKeys(
      */
     addKey('parse', 'engageBindMs', DEFAULT_INTERNAL.tuning.parse.engageBindMs);
     addKey('combat', 'lookAfterKillMs', DEFAULT_INTERNAL.tuning.combat.lookAfterKillMs);
-    addKey('combat', 'roomOwedMs', DEFAULT_INTERNAL.tuning.combat.roomOwedMs);
-    addKey('combat', 'areaSettleMs', DEFAULT_INTERNAL.tuning.combat.areaSettleMs);
     addKey('spells', 'onsetSettleMs', DEFAULT_INTERNAL.tuning.spells.onsetSettleMs);
-    addKey('spells', 'roundGapMs', DEFAULT_INTERNAL.tuning.spells.roundGapMs);
-    addKey('spells', 'castRoundMs', DEFAULT_INTERNAL.tuning.spells.castRoundMs);
-    addKey('spells', 'refusedWindowMs', DEFAULT_INTERNAL.tuning.spells.refusedWindowMs);
     addKey('walk', 'errandAskMs', DEFAULT_INTERNAL.tuning.walk.errandAskMs);
     addKey('session', 'locateResolveMs', DEFAULT_INTERNAL.tuning.session.locateResolveMs);
     /*
@@ -7087,37 +6933,6 @@ function theTuningBlockGainedKeys(
      * as an errand or left to the long way.
      */
     addKey('world', 'keyFetchTrips', DEFAULT_INTERNAL.tuning.world.keyFetchTrips);
-    /*
-     * How long a leader waits for the party through a text exit (2026-09-29,
-     * PR #35), in place of the `party.catchUpWaitSeconds` option it shipped as:
-     * a bound on a hold, which is what this block is for.
-     */
-    addKey('walk', 'partyCatchUpMs', DEFAULT_INTERNAL.tuning.walk.partyCatchUpMs);
-    /*
-     * MegaMUD's two fixed figures for mana regen (2026-09-29): how far short
-     * mana must be, and how long a tick of nothing takes. Read from megamud.exe.
-     */
-    addKey('spells', 'manaRegenShortfall', DEFAULT_INTERNAL.tuning.spells.manaRegenShortfall);
-    addKey('spells', 'manaTickWaitMs', DEFAULT_INTERNAL.tuning.spells.manaTickWaitMs);
-    /*
-     * Avoiding death (upstream 5ffdf91, ported 2026-10-01): when the room's
-     * simulated fight is too dangerous to stay in or to stay connected
-     * through, how long a monster run from is left alone, and how many refused
-     * sneaks stop the walk asking. Whether to open one is the player's
-     * `combat.minSurvival`.
-     */
-    const danger = DEFAULT_INTERNAL.tuning.combat;
-    addKey('combat', 'runRounds', danger.runRounds);
-    addKey('combat', 'runRisk', danger.runRisk);
-    addKey('combat', 'hangUpRisk', danger.hangUpRisk);
-    addKey('combat', 'fledLevels', danger.fledLevels);
-    addKey('combat', 'fledForgetMs', danger.fledForgetMs);
-    addKey('walk', 'sneakGiveUp', DEFAULT_INTERNAL.tuning.walk.sneakGiveUp);
-    /*
-     * The `st` a condition is checked with (2026-10-01): the sheet lists what
-     * is still on, so a condition whose ending was never said is let go.
-     */
-    addKey('spells', 'conditionSheetMs', DEFAULT_INTERNAL.tuning.spells.conditionSheetMs);
 
     /** A key this build no longer reads, taken out rather than left to mean nothing. */
     const dropKey = (group: string, key: string): void => {
@@ -7178,6 +6993,23 @@ function theTuningBlockGainedKeys(
      * kept a leader standing.
      */
     dropKey('remotes', 'okAfterMs');
+    /*
+     * The old automation's clocks and figures, retired with it at the swap to
+     * the MegaMUD engine (2026-10-14): each was read by a module that no
+     * longer exists, and a group with nothing left in it goes whole.
+     */
+    for (const key of OLD_ENGINE_TUNING) {
+      const [group, name] = key.split('.');
+      dropKey(group!, name!);
+    }
+    for (const group of OLD_ENGINE_TUNING_GROUPS) {
+      const at = tuning.items.findIndex((item) => keyText(item) === group);
+      const block = at === -1 ? undefined : tuning.items[at]!.value;
+      if (at === -1 || (isMap(block) && block.items.length > 0)) continue;
+      tuning.items.splice(at, 1);
+      removed.push(`tuning.${group}`);
+      changed = true;
+    }
     const tallyAt = tuning.items.findIndex((item) => keyText(item) === 'tally');
     if (tallyAt !== -1) {
       tuning.items.splice(tallyAt, 1);
@@ -7326,7 +7158,7 @@ function directories(dir: string): string[] {
  * - **`tuning.walk.trailSteps` beside `recentSteps`.** The button walks the
  *   trail, and the trail was five steps long because a retreat was all that
  *   read it. A key added inside an existing block reaches nobody who has
- *   already run the client — `statedTheStepNudge`'s reason — and without it
+ *   already run the client — `reconcileWithTemplate` never reaches inside one — and without it
  *   back would work five presses and then stop.
  *
  * The paragraph above `toolbar:` lists every button there is by name, so it is
@@ -7477,7 +7309,7 @@ const TRAIL_STEPS_COMMENT = ` How many confirmed moves the trail keeps -- the ba
  * The paragraph above `toolbar:` lists every button there is by name, so it is
  * refreshed from the shipped template when it still recommends the old three.
  * And `tuning.walk.resumeAskSteps` is written in beside `maxHolds`, for
- * `statedTheStepNudge`'s reason: a key added inside an existing block reaches
+ * the reason `reconcileWithTemplate` gives: a key added inside an existing block reaches
  * nobody who has already run the client, and this one decides whether pressing
  * play walks a character across the realm or asks first.
  */
@@ -7495,7 +7327,7 @@ function theTransportBecameOneButton(
     if (isMap(walk) && !walk.has('resumeAskSteps')) {
       // The default itself, never a copy: `internal.test.ts` binds the shipped
       // template to `TUNING_DEFAULTS`, and a literal here would be a third copy
-      // nothing binds. `statedTheStepNudge` states the whole argument.
+      // nothing binds.
       const pair = document.createPair(
         'resumeAskSteps',
         DEFAULT_INTERNAL.tuning.walk.resumeAskSteps

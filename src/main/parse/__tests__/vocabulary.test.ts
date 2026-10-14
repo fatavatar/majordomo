@@ -209,6 +209,9 @@ describe('every fact the parser produces reaches something', () => {
     // A setting the player toggled. Nothing here decides anything evil, so
     // nothing reads it; it is parsed so the line is not unread.
     'user-warnings': 'a toggle the player made; the client acts on nothing evil',
+    // Read by the old routines' spellbook ask, deleted with the old engine (2026-10-14).
+    'spellbook-refused':
+      'the spellbook is the MegaMUD engine’s to ask for, and its reply its own to read',
     'user-takes-damage': 'no attacker to record; the status line carries the number',
     // The death's own second line (`Player.cs:1467`), printed with `You have
     // been killed!` on every death but a suicide or a reroll: the life is

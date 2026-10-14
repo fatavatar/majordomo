@@ -182,8 +182,6 @@ export function createWebBridge(): IpcApi {
     stepBack: (session, confirmed) => invoke(Invoke.stepBack, session, confirmed),
     listLoops: (session) => invoke(Invoke.listLoops, session),
     startLoop: (session, name) => invoke(Invoke.startLoop, session, name),
-    skipLoopStop: (session) => invoke(Invoke.skipLoopStop, session),
-    reverseLoop: (session) => invoke(Invoke.reverseLoop, session),
     loopCatalogue: () => invoke(Invoke.loopCatalogue),
     saveGlobal: (draft) => invoke(Invoke.saveGlobal, draft),
     setRemoteGrant: (session, name, grant) => invoke(Invoke.setRemoteGrant, session, name, grant),

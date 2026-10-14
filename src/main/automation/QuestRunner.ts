@@ -23,7 +23,6 @@ import {
   packCheck,
   type PackCheck
 } from './PackAfter';
-import { fightIsRunning } from './Walker';
 import { t } from '../app/i18n';
 import { tuning } from '../app/tuning';
 import type { SafetyDecision } from '../../shared/automation';
@@ -92,8 +91,6 @@ export interface QuestRunPlanner {
   /** Fight this monster by name whatever the combat policy says, and stop. */
   fightFor(mob: string): void;
   stopFighting(mob: string): void;
-  /** Auto-combat on for the run, as it is for a route. */
-  questing(on: boolean): void;
   /** Wards on for the run: the plan's supplies are bought to be used. */
   warding(on: boolean): void;
   /** A line this run sent at an asker or a room, so the book watches it. */
@@ -261,7 +258,6 @@ export class QuestRunner {
     };
     this.heldLap = this.planner.looping();
     if (this.heldLap) this.planner.hold();
-    this.planner.questing(true);
     // Only a plan that bought a ward has one to use; the release below is
     // unconditional, so a run never leaves the lend standing.
     if (plan.steps.some((step) => step.items.some((item) => item.stops !== undefined))) {
@@ -1287,7 +1283,6 @@ export class QuestRunner {
     const step = run.plan.steps[run.at];
     if (step?.act?.verb === 'kill') this.planner.stopFighting(step.act.mob);
     if (run.phase.kind === 'fetching') this.planner.abandonErrands(reason);
-    this.planner.questing(false);
     this.planner.warding(false);
     if (this.heldLap) this.planner.release();
     this.heldLap = false;
@@ -1401,4 +1396,15 @@ export class QuestRunner {
         return t('automation.quests.detailConfirming');
     }
   }
+}
+
+/**
+ * A fight is under way in the room: the flag, an attacker, or a target. The
+ * flag outlives an escape by a median 3,493ms and `attackers`/`target` are
+ * cleared by a confirmed move, so a character that got away reads as fighting
+ * for about three seconds and then walks on. (Kept from the walker, deleted
+ * at the swap, 2026-10-14.)
+ */
+function fightIsRunning(state: CharacterState): boolean {
+  return state.inCombat || state.combat.attackers.length > 0 || state.combat.target !== null;
 }
