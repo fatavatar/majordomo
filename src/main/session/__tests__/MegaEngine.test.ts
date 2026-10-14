@@ -346,6 +346,24 @@ describe('blessings told by our tracker’s buffs', () => {
     e.buffs([{ spell: 'necropotence', by: 'Fatty', appliedAt: 1 }]);
     expect(e.s.blessCastAt[0]).toBe(0);
   });
+
+  /*
+   * Skinny's Messages.md has no row for divine restoration, so every stat
+   * sheet took his regen as ended and he cast `rsto` again (2026-10-14).
+   */
+  it('keeps the regen spell working while it is up, through the stat display', () => {
+    const e = blessed();
+    const settings = defaultSettings();
+    settings.live['Spells']!['RegenCmd'] = 'npot';
+    e.reload({ settings, data: e.s.data, grants: {} });
+    e.s.inGame = 1;
+    e.buffs(up(1));
+    expect(e.s.hpRegen).toBe(1);
+    e.received('Name: Skinny Fatterson                 Lives/CP:      9/7    \r\n');
+    expect(e.s.hpRegen).toBe(1);
+    e.buffs([]);
+    expect(e.s.hpRegen).toBe(0);
+  });
 });
 
 describe('the player sending a line', () => {

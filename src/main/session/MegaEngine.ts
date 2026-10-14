@@ -338,6 +338,8 @@ export class MegaEngine {
   private readonly unkept = new Map<RoomId, number>();
   /** When our tracker had each of the ten blessing slots put up, at the last look; null when down. */
   private readonly blessUp: (number | null)[] = [];
+  /** Whether our tracker had the HP and mana regeneration spells up, at the last look. */
+  private regenUp: [boolean, boolean] = [false, false];
 
   constructor(
     private readonly host: MegaEngineHost,
@@ -532,18 +534,21 @@ export class MegaEngine {
     const s = this.s;
     s.now = Math.floor(Date.now() / 1000);
     this.markLasting();
+    const upFor = (command: string): ActiveBuff | undefined => {
+      const spell = command === '' ? null : findSpell(s, command);
+      return spell === null || (spell.flags & 2) === 0
+        ? undefined
+        : up.find(
+            (b) =>
+              b.by === null &&
+              (stricmp(b.spell, spell.name) === 0 ||
+                (b.candidates ?? []).some((name) => stricmp(name, spell.name) === 0))
+          );
+    };
     for (let i = 0; i < 10; i += 1) {
       const command = blessCommand(s, i);
       const spell = command === '' ? null : findSpell(s, command);
-      const buff =
-        spell === null || (spell.flags & 2) === 0
-          ? undefined
-          : up.find(
-              (b) =>
-                b.by === null &&
-                (stricmp(b.spell, spell.name) === 0 ||
-                  (b.candidates ?? []).some((name) => stricmp(name, spell.name) === 0))
-            );
+      const buff = upFor(command);
       const at = buff?.appliedAt ?? null;
       const was = this.blessUp[i] ?? null;
       this.blessUp[i] = at;
@@ -562,6 +567,19 @@ export class MegaEngine {
         if (s.debug !== 0 && spell) s.host.trace(`{bless-down:${spell.name}}`);
       }
     }
+    /*
+     * The regeneration spells the same way, for the same reason: MegaMUD
+     * knows `RegenCmd` and `FluxCmd` are working only while a row marked
+     * hp- or mana-regen is up, and a realm's Messages.md may have none for
+     * them. Skinny's has none for divine restoration, so every stat sheet,
+     * which takes the regen as ended, had him cast `rsto` again (2026-10-14).
+     */
+    const regenWas = this.regenUp;
+    this.regenUp = [upFor(s.Spells_RegenCmd) !== undefined, upFor(s.Spells_FluxCmd) !== undefined];
+    if (this.regenUp[0]) s.hpRegen = 1;
+    else if (regenWas[0]) s.hpRegen = 0;
+    if (this.regenUp[1]) s.manaRegen = 1;
+    else if (regenWas[1]) s.manaRegen = 0;
   }
 
   /**
@@ -590,6 +608,7 @@ export class MegaEngine {
    */
   private blessingsCleared(): void {
     const s = this.s;
+    if (this.regenUp[0]) s.hpRegen = 1;
     for (let i = 0; i < 10; i += 1) {
       if (this.blessUp[i] !== null && this.blessUp[i] !== undefined) s.blessCastAt[i] = s.now;
     }
