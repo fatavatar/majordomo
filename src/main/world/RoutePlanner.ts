@@ -66,7 +66,10 @@ export function planRoute(
   traveller: Traveller = {},
   options: RouteOptions = {}
 ): Promise<Route> {
-  const thread = world.file === undefined ? null : theWorker();
+  // A traveller's callbacks (`danger`, `lairDamage`, `hazard`) read this
+  // thread's state and cannot be sent: such a plan is made here, as before.
+  const sendable = !Object.values(traveller).some((value) => typeof value === 'function');
+  const thread = world.file === undefined || !sendable ? null : theWorker();
   if (thread === null) {
     return new Promise((resolve, reject) =>
       setImmediate(() => {

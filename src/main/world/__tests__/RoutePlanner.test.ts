@@ -23,4 +23,12 @@ describe('planning a route', () => {
     } as unknown as WorldGraph;
     await expect(planRoute(world, '1/1', '1/2')).rejects.toThrow('no such room');
   });
+
+  /* `lairCost` could not be cloned to the worker (2026-10-14). */
+  it('plans here a traveller with callbacks, which cannot be sent to the worker', async () => {
+    const route = { steps: [], cost: 1, blocked: false };
+    const world = { file: '/nowhere.jsonl.gz', route: vi.fn(() => route) } as unknown as WorldGraph;
+    const danger = (): number | null => null;
+    await expect(planRoute(world, '1/1', '1/2', { danger })).resolves.toBe(route);
+  });
 });
