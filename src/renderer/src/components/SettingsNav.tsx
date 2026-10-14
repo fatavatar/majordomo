@@ -55,6 +55,12 @@ export interface SettingsNavProps {
     addId: string;
     addLabel: string;
   };
+  /**
+   * Drawn across the top of the page rather than down its side: the Character
+   * page, whose rows are MegaMUD's settings tabs and read as its dialog's tab
+   * strip (2026-10-14). The open section's jump targets are a row under it.
+   */
+  across?: boolean;
 }
 
 /**
@@ -82,7 +88,8 @@ export default function SettingsNav({
   sections,
   section,
   onSection,
-  picker
+  picker,
+  across = false
 }: SettingsNavProps): React.JSX.Element {
   /*
    * Where the next press wants the form left, held until the form is drawn.
@@ -103,7 +110,11 @@ export default function SettingsNav({
   }, [wanted]);
 
   return (
-    <nav aria-label={t('settings.nav.label')} className="settings-nav">
+    <nav
+      aria-label={t('settings.nav.label')}
+      className="settings-nav"
+      data-across={across ? 'true' : undefined}
+    >
       {picker && <NavPicker {...picker} />}
       <ul className="settings-nav-sections">
         {sections.map((entry) => {
@@ -141,31 +152,52 @@ export default function SettingsNav({
                 can make from any section, because the handler states the
                 section as well as the fieldset.
               */}
-              {active && entry.fieldsets.length > 1 && (
-                <ul className="settings-nav-fieldsets">
-                  {entry.fieldsets.map((fieldset) => (
-                    <li key={fieldset.id}>
-                      <button
-                        className="settings-nav-fieldset"
-                        data-fieldset={fieldset.id}
-                        onClick={() => {
-                          onSection(entry.id);
-                          setWanted({ kind: 'fieldset', id: fieldset.id });
-                        }}
-                        onMouseDown={keepFocus}
-                        type="button"
-                      >
-                        {fieldset.label}
-                      </button>
-                    </li>
-                  ))}
-                </ul>
+              {!across && active && entry.fieldsets.length > 1 && (
+                <Fieldsets entry={entry} onSection={onSection} setWanted={setWanted} />
               )}
             </li>
           );
         })}
       </ul>
+      {across &&
+        sections
+          .filter((entry) => entry.id === section && entry.fieldsets.length > 1)
+          .map((entry) => (
+            <Fieldsets entry={entry} key={entry.id} onSection={onSection} setWanted={setWanted} />
+          ))}
     </nav>
+  );
+}
+
+/** The jump targets inside a section: under it on the rail, a row under the strip across. */
+function Fieldsets({
+  entry,
+  onSection,
+  setWanted
+}: {
+  entry: NavSection;
+  onSection(id: string): void;
+  setWanted(destination: Destination): void;
+}): React.JSX.Element {
+  return (
+    <ul className="settings-nav-fieldsets">
+      {entry.fieldsets.map((fieldset) => (
+        <li key={fieldset.id}>
+          <button
+            className="settings-nav-fieldset"
+            data-fieldset={fieldset.id}
+            onClick={() => {
+              onSection(entry.id);
+              setWanted({ kind: 'fieldset', id: fieldset.id });
+            }}
+            onMouseDown={keepFocus}
+            type="button"
+          >
+            {fieldset.label}
+          </button>
+        </li>
+      ))}
+    </ul>
   );
 }
 
