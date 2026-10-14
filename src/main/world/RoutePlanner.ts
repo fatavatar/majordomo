@@ -11,7 +11,7 @@ import { Worker } from 'node:worker_threads';
 
 import { tuning } from '../app/tuning';
 import type { TuningConfig } from '../../shared/internal';
-import type { RoomId, Route } from '../../shared/world';
+import type { RoomId, Route, WorldRoom } from '../../shared/world';
 import type { RouteOptions, Traveller, WorldGraph } from './WorldGraph';
 
 export interface RouteAsk {
@@ -19,17 +19,40 @@ export interface RouteAsk {
   file: string;
   from: RoomId;
   to: RoomId;
+  /** The traveller with its callbacks taken off: they are asked of main instead (`RouteCall`). */
   traveller: Traveller;
+  /** The names of the callbacks it had. */
+  callbacks: string[];
   options: RouteOptions;
   tuning: TuningConfig;
 }
 
 export type RouteAnswer = { id: number; route: Route } | { id: number; error: string };
 
+/**
+ * The worker asking a plan's callbacks about rooms, waiting on the shared
+ * buffer: a number per room and callback, in that order (`NaN` for null).
+ */
+export interface RouteCall {
+  call: number;
+  names: string[];
+  rooms: [number, number][];
+}
+
 let workerFile: string | null = null;
 let worker: Worker | null = null;
 let nextId = 0;
-const waiting = new Map<number, { resolve(route: Route): void; reject(error: Error): void }>();
+interface Waiting {
+  resolve(route: Route): void;
+  reject(error: Error): void;
+  world: WorldGraph;
+  callbacks: Record<string, (room: WorldRoom) => number | null>;
+}
+const waiting = new Map<number, Waiting>();
+/** Where main writes the callbacks' answers for the worker: a flag, then the numbers. */
+let answer: { flag: Int32Array; values: Float64Array } | null = null;
+/** How many answers one ask of the worker's can carry back. */
+const ANSWERS_AT_ONCE = 8192;
 
 /** Where the built worker is (`index.ts`); unset, routes are planned on main's thread. */
 export function setRouteWorkerFile(file: string | null): void {
@@ -38,14 +61,20 @@ export function setRouteWorkerFile(file: string | null): void {
 
 function theWorker(): Worker | null {
   if (worker !== null || workerFile === null) return worker;
-  const started = new Worker(workerFile);
+  const buffer = new SharedArrayBuffer(8 + 8 * ANSWERS_AT_ONCE);
+  answer = { flag: new Int32Array(buffer, 0, 1), values: new Float64Array(buffer, 8) };
+  const started = new Worker(workerFile, { workerData: { answer: buffer } });
   started.unref();
-  started.on('message', (answer: RouteAnswer) => {
-    const asked = waiting.get(answer.id);
+  started.on('message', (message: RouteAnswer | RouteCall) => {
+    if ('call' in message) {
+      answerCall(message);
+      return;
+    }
+    const asked = waiting.get(message.id);
     if (!asked) return;
-    waiting.delete(answer.id);
-    if ('route' in answer) asked.resolve(answer.route);
-    else asked.reject(new Error(answer.error));
+    waiting.delete(message.id);
+    if ('route' in message) asked.resolve(message.route);
+    else asked.reject(new Error(message.error));
   });
   const fail = (error: Error): void => {
     worker = null;
@@ -58,6 +87,28 @@ function theWorker(): Worker | null {
   return worker;
 }
 
+/** A callback asked by the worker, answered from main's own state and room. */
+function answerCall(call: RouteCall): void {
+  if (answer === null) return;
+  const asked = waiting.get(call.call);
+  call.rooms.forEach(([map, number], i) => {
+    const room = asked?.world.get(map, number);
+    call.names.forEach((name, j) => {
+      let result: number | null = null;
+      try {
+        const callback = asked?.callbacks[name];
+        if (room !== undefined && callback !== undefined) result = callback(room);
+      } catch {
+        // A callback that throws answers nothing, as a room it cannot price.
+        result = null;
+      }
+      answer!.values[i * call.names.length + j] = result ?? Number.NaN;
+    });
+  });
+  Atomics.store(answer.flag, 0, 1);
+  Atomics.notify(answer.flag, 0);
+}
+
 /** `world.route(from, to, traveller, options)`, planned on the worker's thread. */
 export function planRoute(
   world: WorldGraph,
@@ -66,10 +117,7 @@ export function planRoute(
   traveller: Traveller = {},
   options: RouteOptions = {}
 ): Promise<Route> {
-  // A traveller's callbacks (`danger`, `lairDamage`, `hazard`) read this
-  // thread's state and cannot be sent: such a plan is made here, as before.
-  const sendable = !Object.values(traveller).some((value) => typeof value === 'function');
-  const thread = world.file === undefined || !sendable ? null : theWorker();
+  const thread = world.file === undefined ? null : theWorker();
   if (thread === null) {
     return new Promise((resolve, reject) =>
       setImmediate(() => {
@@ -82,14 +130,22 @@ export function planRoute(
     );
   }
   const id = (nextId += 1);
+  // The traveller's callbacks stay here, to be asked by the worker (`RouteCall`).
+  const plain: Record<string, unknown> = {};
+  const callbacks: Waiting['callbacks'] = {};
+  for (const [key, value] of Object.entries(traveller)) {
+    if (typeof value === 'function') callbacks[key] = value as Waiting['callbacks'][string];
+    else plain[key] = value;
+  }
   return new Promise((resolve, reject) => {
-    waiting.set(id, { resolve, reject });
+    waiting.set(id, { resolve, reject, world, callbacks });
     const ask: RouteAsk = {
       id,
       file: world.file!,
       from,
       to,
-      traveller,
+      traveller: plain as Traveller,
+      callbacks: Object.keys(callbacks),
       options,
       tuning: tuning()
     };

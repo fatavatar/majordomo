@@ -329,13 +329,16 @@ export interface Traveller {
    * expands; the session memoises the damage until the character's own
    * figures move (`LairCosts`) and divides by current health at the call.
    * `dangerPenalty` turns the share into route cost.
+   *
+   * Null for a room with no `lair`, always: the route planner's thread asks
+   * it only of those (`routeWorker.ts`, `ASKED_FOR`).
    */
   danger?: (room: WorldRoom) => number | null;
   /**
    * The same pass in hit points — `danger` before the division. Carried onto
    * the step (`RouteStep.lairDamage`) for the walker's rest before a trap,
    * which needs a reserve in points rather than a share of a bar that was
-   * read when the route was planned.
+   * read when the route was planned. Null for a room with no `lair`, as `danger`.
    */
   lairDamage?: (room: WorldRoom) => number | null;
   /**
@@ -351,7 +354,9 @@ export interface Traveller {
    *
    * Null where nothing can be weighed: no spell, a spell that harms nobody,
    * an unread sheet, or an item in the pack that stops it — the last of which
-   * is not *unknown* but *free*, and both price at nothing.
+   * is not *unknown* but *free*, and both price at nothing. A room with no
+   * `spell` is always the first, which the planner's thread relies on as it
+   * does `danger`'s lair.
    */
   hazard?: (room: WorldRoom) => number | null;
   /**
