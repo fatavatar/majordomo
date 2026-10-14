@@ -607,6 +607,12 @@ export class Session extends RawFields {
   waitLines = 0;
   /** 0xd90c: prompts still awaited before acting. */
   waitPrompt = 0;
+  /**
+   * Ours: the commands sent whose echo has not come back, oldest first, with
+   * when each went (`tickMs`). Lines before a command's echo are not its
+   * answer (`echoAwaited`).
+   */
+  echoes: { text: string; at: number }[] = [];
 
   /** 0x30e0c: MegaMUD's debug trace (`{D%d}`, `{P%d}`, …) is on. */
   debug = 0;

@@ -30,6 +30,45 @@ export interface Pending {
 }
 
 /** `0x42d9f0`: send `text` now. Returns 1. */
+/**
+ * How long a command's echo is waited for before lines count toward its
+ * answer anyway, for a realm (or a moment) that does not echo.
+ */
+const ECHO_WAIT_MS = 3000;
+
+/**
+ * Ours, not MegaMUD's: each command sent in the game remembered until the
+ * realm echoes it back. MegaMUD takes any two lines after a command, and any
+ * prompt in a fight, as its answer (`0x47b070`); a room redraw already on the
+ * way then answered a heal before it had been read, so the next step was
+ * taken (the double step) or the attack sent again and again (2026-10-14).
+ */
+function noteEchoes(s: Session, text: string): void {
+  if (s.inGame === 0) return;
+  const at = s.host.tickMs();
+  for (const part of text.split('\r')) {
+    const command = part.replace(/\x01/g, '').trim().toLowerCase();
+    if (command !== '') s.echoes.push({ text: command, at });
+  }
+}
+
+/**
+ * A line heard: if it is (after any prompt) a command's echo, that command
+ * and any sent before it are no longer waited on. Then whether a command's
+ * echo is still awaited, those waited on too long let go.
+ */
+export function echoAwaited(s: Session, rest: string | null): boolean {
+  if (s.echoes.length === 0) return false;
+  if (rest !== null) {
+    const heard = rest.trim().toLowerCase();
+    const at = heard === '' ? -1 : s.echoes.findIndex((echo) => echo.text === heard);
+    if (at !== -1) s.echoes.splice(0, at + 1);
+  }
+  const now = s.host.tickMs();
+  while (s.echoes.length > 0 && now - s.echoes[0]!.at > ECHO_WAIT_MS) s.echoes.shift();
+  return s.echoes.length > 0;
+}
+
 export function send(s: Session, text: string): number {
   s.lastAbil.valid = 0;
   if (text !== '\r' && text !== 'par\r') {
@@ -62,6 +101,7 @@ export function send(s: Session, text: string): number {
     s.abilSending = 0;
   }
   s.f_322a0 = s.now;
+  noteEchoes(s, text);
   s.host.write(text);
   if (s.f_30e14 < 1) {
     if (s.Display_ShowSend !== 0 && s.task > 10) s.host.echo?.(text);

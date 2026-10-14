@@ -347,30 +347,22 @@ second), the path recorder (`0x488700`) and the Import Path dialog
 (`0x481d40`; its decisions, `0x4816b0`, are ported as `partyRefresh`), and
 the terminal's reset (`0x418280`).
 
-## Known issues kept from MegaMUD
+## Where we answer differently from MegaMUD
 
-- **A double step after a heal** (seen 2026-10-13 in Skinny's logs, kept as
-  MegaMUD has it for now). A heal sent as a fight ends, then the server's
-  redraw of the room arriving before the heal's answer: the prompt handler
-  (`0x47b070`) takes any two whole lines after a command as its answer, so
-  the cast (state `0x15`) is done and the next path step is sent (state
-  `0x16`). The heal's own "You cast …" line then sets the state to 0 on the
-  uncounted branch of `0x47c280`, which, unlike its other branches, does not
-  spare `0x16`. So the step after is taken before the room the last one led
-  to is seen: two steps, the first room's monsters walked past. The fix
-  offered: `walkPath` (`0x409170`) holding the next step until the last
-  one's room is seen, refused, or given up on (`0x40aae0`).
-- **An attack again and again after a heal in a fight** (seen 2026-10-14
-  against the forgotten dragon slayer, and replayed from Skinny's capture
-  through the engine). The same crossing in a fight: `pghe` is sent
-  (`0x40c8a0` sets `waitLines` 2 and state `0x15`), a room redraw already on
-  the way supplies the two lines, the cast is taken as done and the attack
-  goes out (`a`/`lite forgotten dragon slayer`); the heal's own answer then
-  ends combat (`*Combat Off*`, the server's for any spell cast), which puts
-  the state to 0 with the monster still here, and the attack goes out again,
-  each answered `*Combat Off*` / `*Combat Engaged*`, two or three times in a
-  tenth of a second. Kept with the double step; the same fix would serve:
-  a command's answer taken from lines that came after its echo.
+- **A command's answer is read only after its echo** (2026-10-14). MegaMUD's
+  prompt handler (`0x47b070`) takes any two whole lines after a command, and
+  in a fight any prompt, as its answer. A room redraw already on its way
+  then answered a heal before the realm had read it: walking, the next step
+  went out before the room the last one led to was seen (the double step,
+  seen 2026-10-13: the cast's state `0x15` done, the step sent in `0x16`,
+  and the heal's own "You cast …" line setting the state to 0 on the
+  uncounted branch of `0x47c280`); fighting, the attack went out early and
+  then again on each `*Combat Off*` the heal caused, two or three times in a
+  tenth of a second (the forgotten dragon slayer, replayed from Skinny's
+  capture). Each command sent in the game is now remembered until the realm
+  echoes it (`send.ts`, `echoAwaited`); lines before the echo neither count
+  toward `waitLines` nor make the prompt ready. A command not echoed within
+  three seconds is let go, and the count runs as MegaMUD's.
 
 ## Order of work
 

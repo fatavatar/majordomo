@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { combatEngaged } from '../combat/engaged';
 import { newTerminal, parseData } from '../input/ParseData';
 import { statusLine } from '../input/statline';
+import { send } from '../script/send';
 import { setState } from '../script/state';
 import type { LineBuf } from '../Session';
 import { session } from './fixture';
@@ -138,5 +139,48 @@ describe('the activity state (0x4aa770)', () => {
     expect(s.stateAwaited).toBe(0xd);
     setState(s, 0x1c);
     expect(s.stateAwaited).toBe(0xd);
+  });
+});
+
+/*
+ * Ours (2026-10-14): MegaMUD took any two lines after a command, or any prompt
+ * in a fight, as its answer, so a room redraw on its way answered a heal
+ * before the realm had read it: the double step, and the attack again and
+ * again. Lines before a command's echo are not its answer.
+ */
+describe('a command answered only after its echo', () => {
+  const ready = (s: { lineFlags: number }): boolean => (s.lineFlags & 1) !== 0;
+
+  it('waits through a redraw that was on its way, and goes on after the echo', () => {
+    const { s } = inGame();
+    s.waitLines = 2;
+    send(s, 'pghe\r');
+    parseData(
+      s,
+      newTerminal(),
+      'Dark Cavern\r\nAlso here: forgotten dragon slayer.\r\n[HP=57/MA=6]:'
+    );
+    expect(ready(s)).toBe(false);
+    parseData(s, newTerminal(), 'pghe\r\nYou cast pagan healing on Skinny!\r\n[HP=80/MA=6]:');
+    expect(ready(s)).toBe(true);
+  });
+
+  it('waits in a fight too, where any prompt answered', () => {
+    const { s } = inGame();
+    s.inCombat = 1;
+    send(s, 'pghe\r');
+    parseData(s, newTerminal(), '[HP=57/MA=6]:');
+    expect(ready(s)).toBe(false);
+    parseData(s, newTerminal(), '[HP=57/MA=6]:pghe\r\n[HP=80/MA=6]:');
+    expect(ready(s)).toBe(true);
+  });
+
+  it('gives up on an echo that never comes', () => {
+    const { s, clock } = inGame();
+    s.waitLines = 2;
+    send(s, 'pghe\r');
+    clock.ms += 3001;
+    parseData(s, newTerminal(), 'one\r\ntwo\r\n[HP=57/MA=6]:');
+    expect(ready(s)).toBe(true);
   });
 });

@@ -19,7 +19,7 @@ import { atoi, dropFirst, indexFrom, idiv } from '../cstr';
 import { belowLogoff, fluxMonitor } from '../health/flux';
 import { unkeepAll } from '../room/entities';
 import { enterGame, hangUp } from '../script/game';
-import { queue, send } from '../script/send';
+import { echoAwaited, queue, send } from '../script/send';
 import { forgetAwaited, setState } from '../script/state';
 import type { LineBuf, Session } from '../Session';
 import { refreshStatus } from '../status';
@@ -124,8 +124,10 @@ export function statusLine(s: Session, buf: LineBuf, complete: number): number {
     if (s.state === 3 || s.state === 5) setState(s, 0);
   }
   if (restMark) sawPrompt = true;
+  // Ours: nothing after a command answers it before its echo (`echoAwaited`).
+  const awaiting = echoAwaited(s, sawPrompt ? line.slice(end) : line);
   // Every whole line counts one off the lines waited for, prompt or not.
-  if (complete !== 0 && s.waitLines > 0) {
+  if (complete !== 0 && s.waitLines > 0 && !awaiting) {
     s.waitLines = Math.max(0, s.waitLines - 1);
     if (s.debug !== 0) s.lastPromptTrace = '';
   }
@@ -145,18 +147,18 @@ export function statusLine(s: Session, buf: LineBuf, complete: number): number {
   }
   s.lineFlags = flags & ~1;
   if (complete === 0) {
-    if (buf.text.length === 0 && s.waitLines === 0 && s.waitPrompt === 0) {
+    if (buf.text.length === 0 && s.waitLines === 0 && s.waitPrompt === 0 && !awaiting) {
       s.f_e2a0 = 0;
       s.lineFlags = (flags & ~3) | 1;
     }
     if ((s.lineFlags & 3) !== 0) {
       if (s.inCombat === 0 && f_426ab0(s, 0) === 0) {
-        if (s.waitLines < 2 && s.waitPrompt === 0) {
+        if (s.waitLines < 2 && s.waitPrompt === 0 && !awaiting) {
           s.f_e2a0 = 0;
           s.lineFlags = (s.lineFlags & ~2) | 1;
         }
       } else if (buf.text.length === 0) {
-        if (s.waitPrompt === 0) {
+        if (s.waitPrompt === 0 && !awaiting) {
           s.f_e2a0 = 0;
           s.lineFlags = (s.lineFlags & ~2) | 1;
         }
