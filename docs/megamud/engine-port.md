@@ -353,6 +353,17 @@ the terminal's reset (`0x418280`).
   to is seen: two steps, the first room's monsters walked past. The fix
   offered: `walkPath` (`0x409170`) holding the next step until the last
   one's room is seen, refused, or given up on (`0x40aae0`).
+- **An attack again and again after a heal in a fight** (seen 2026-10-14
+  against the forgotten dragon slayer, and replayed from Skinny's capture
+  through the engine). The same crossing in a fight: `pghe` is sent
+  (`0x40c8a0` sets `waitLines` 2 and state `0x15`), a room redraw already on
+  the way supplies the two lines, the cast is taken as done and the attack
+  goes out (`a`/`lite forgotten dragon slayer`); the heal's own answer then
+  ends combat (`*Combat Off*`, the server's for any spell cast), which puts
+  the state to 0 with the monster still here, and the attack goes out again,
+  each answered `*Combat Off*` / `*Combat Engaged*`, two or three times in a
+  tenth of a second. Kept with the double step; the same fix would serve:
+  a command's answer taken from lines that came after its echo.
 
 ## Order of work
 
