@@ -35,15 +35,17 @@ function exit(direction: 'n' | 's' | 'e' | 'w', to: number, kind: string | null 
 const SQUARE = room(1, 1, 'Town Square', [exit('n', 2), exit('e', 3, 'door')]);
 const ALLEY = room(1, 2, 'Dark Alley', [exit('s', 1)]);
 const SHOP = room(1, 3, 'Shop', [exit('w', 1, 'door')]);
-const ROOMS = [SQUARE, ALLEY, SHOP];
+const BACK = room(1, 4, 'Back Room', []);
+const ROOMS = [SQUARE, ALLEY, SHOP, BACK];
 
 function step(from: number, to: number, command: string): RouteStep {
   return { from: `1/${from}`, to: `1/${to}`, direction: command, command } as RouteStep;
 }
 
-/** The ways between the three rooms. */
+/** The ways between the three rooms; the shop's back room through its portal. */
 function plan(from: string, to: string): Route {
   const ways: Record<string, RouteStep[]> = {
+    '1/1>1/4': [step(1, 3, 'e'), { ...step(3, 4, 'go portal'), direction: 'portal' }],
     '1/1>1/2': [step(1, 2, 'n')],
     '1/2>1/1': [step(2, 1, 's')],
     '1/1>1/3': [step(1, 3, 'e')],
@@ -302,6 +304,19 @@ describe('the engine in a session', () => {
     e.s.path.at = e.s.path.count;
     e.s.walking = 0;
     expect(e.progress.walk.status).toBe('arrived');
+    e.dispose();
+  });
+
+  /* Fatty went through the portal without telling Skinny (2026-10-14). */
+  it('writes a portal step as MegaMUD’s @party step: said to a party, sent alone', async () => {
+    vi.useFakeTimers();
+    const { e } = engine('1/1');
+    e.s.inGame = 1;
+    e.s.online = 1;
+    e.received('\x1b[1;36mTown Square\r\n\x1b[0;32mObvious exits: north, closed door east\r\n');
+    expect(e.walkTo('1/4')).toBeNull();
+    await planned();
+    expect(e.s.path.steps!.map((st) => st.command)).toEqual(['e', '@party go portal']);
     e.dispose();
   });
 

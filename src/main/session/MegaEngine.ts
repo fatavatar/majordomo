@@ -1378,7 +1378,20 @@ export class MegaEngine {
     for (const leg of legs) {
       for (const st of leg.steps) {
         rooms.push(st.from);
-        steps.push(this.stepFrom(st.from, st.command));
+        /*
+         * A room's own command that moves only whoever types it (`go portal`,
+         * a script's teleport) written as a MegaMUD path writes it,
+         * `@party <command>`: leading a party, MegaMUD says it to the party,
+         * sends it and holds the walk for the party (`typeCommand`); alone,
+         * it sends the command. Fatty went through Skinny's portal without
+         * him (2026-10-14). A text exit in a compass slot is not one: the
+         * server moves the party through it.
+         */
+        const command =
+          st.direction === 'portal' && !st.command.startsWith('@')
+            ? `@party ${st.command}`
+            : st.command;
+        steps.push(this.stepFrom(st.from, command));
       }
     }
     p.steps = steps;
