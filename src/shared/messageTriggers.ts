@@ -31,7 +31,7 @@ import { isRecord } from './values';
  * MegaMUD's eleven effect boxes, bit for bit — the layout is its own, read out
  * of the save routine in `megamud.exe` (`0x468f29`) rather than guessed from
  * the dialog, because the dialog lists them in a different order from the
- * bits. `0x0100` is unused; the three option bits are separate fields below.
+ * bits. The three option bits are separate fields below.
  */
 export const MESSAGE_EFFECTS = [
   'blind',
@@ -65,7 +65,13 @@ export const MEGAMUD_EFFECT_BITS: Readonly<Record<MessageEffect, number>> = {
 
 /** The option bits, which are about matching rather than meaning. */
 export const MEGAMUD_ANYWHERE = 0x0400;
-export const MEGAMUD_CONVERSATIONS = 0x0800;
+/**
+ * "Find in conversations": `0x0100`, the bit `0x46a920` matches early with,
+ * ahead of the talk handler that would take the line, and the one the
+ * load-time warning names (`0x468730`, 2026-10-15). It was read as `0x0800`,
+ * which nothing tests, so a row ticked for conversations never saw one.
+ */
+export const MEGAMUD_CONVERSATIONS = 0x0100;
 export const MEGAMUD_CHASE = 0x4000;
 export const MEGAMUD_DISABLED = 0x8000;
 

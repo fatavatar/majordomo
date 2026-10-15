@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest';
 
 import { beginCast } from '../combat/casts';
 import { messagesFrom, type SpellRec } from '../data';
+import { messageRec } from '../fromWorld';
 import { messageLine, templateMatch } from '../messages/messages';
+import { blankTrigger } from '../../../shared/messageTriggers';
 import { session } from './fixture';
 
 /* `0x46a920`, `0x467ec0`, `0x46bb70` and `0x467b60`, read 2026-10-12. */
@@ -90,5 +92,24 @@ describe('running the rows (0x46a920)', () => {
     beginCast(s, 0xd, rip);
     messageLine(s, 'You rips at the soul of the giant rat!', 0);
     expect(s.f_a3f4).toBe(1);
+  });
+});
+
+/* "Find in conversations" is 0x100 (0x468730), read as 0x800 until 2026-10-15. */
+describe('a row found in conversations', () => {
+  it('answers a telepath before the talk handler takes it, with the sender’s name', () => {
+    const { s } = session();
+    s.inGame = 1;
+    s.data.messages = [
+      messageRec({
+        ...blankTrigger(),
+        name: 'heal on ask',
+        match: '{source} telepaths: @heal',
+        response: 'mend {source}',
+        conversations: true
+      })
+    ];
+    expect(messageLine(s, 'Fatty telepaths: @heal', 1)).toBe(1);
+    expect(s.pending.map((p) => p.text)).toEqual(['mend Fatty\r']);
   });
 });

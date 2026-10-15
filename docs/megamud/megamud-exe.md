@@ -281,7 +281,9 @@ A row's effect bits (row `+0x114`) set these flags on onset (`0x46aada`–`0x46a
 | `0x80` | hp-regen | `e208` |
 | `0x200` | mana-regen | `e20c` |
 
-`0x400` (anywhere), `0x800` (conversations), `0x4000` (chase) and `0x8000`
+`0x100` (find in conversations: matched early, ahead of the talk handler,
+`0x46a920`; the load-time warning at `0x468730` names it), `0x400`
+(anywhere), `0x4000` (chase) and `0x8000`
 (disabled) are matching options, not effects. See `src/shared/messageTriggers.ts`.
 
 ## Party movement
