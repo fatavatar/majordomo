@@ -3928,6 +3928,15 @@ settings:
       What MegaMUD's BBS.INI would say about this realm, for a character the MegaMUD engine runs.
       A key left blank is MegaMUD's own default, shown in the field. The runic coin's name is the
       Coin Names above.
+    # The realm page's sections, down its left side.
+    sections:
+      realm: Realm
+      loops: Loops
+      messages: Messages
+      monsters: Monsters
+      items: Items
+      spells: Spell Sentences
+      megamud: MegaMUD
     bbs:
       MenuPrompt: Game menu prompt
       LogoffCmd: Log-off command

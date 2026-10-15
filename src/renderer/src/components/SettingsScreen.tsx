@@ -19,7 +19,7 @@ import RealmMonsters from './RealmMonsters';
 import RealmItems from './RealmItems';
 import RealmSpellLore from './RealmSpellLore';
 import { MonsterRuleList } from './MonsterRules';
-import SettingsNav, { type NavFieldset } from './SettingsNav';
+import SettingsNav, { type NavFieldset, type NavSection } from './SettingsNav';
 import Icon from './Icon';
 import FormField, {
   CheckField,
@@ -506,6 +506,29 @@ function sectionLabel(section: Section): string {
  * each `id` matches the `data-fieldset` on the fieldset itself. A tab with
  * nothing of ours lists none; its own row goes to MegaMUD's page.
  */
+/** The realm page's sections (2026-10-15), each a part of its one form. */
+type RealmSection = 'realm' | 'loops' | 'messages' | 'monsters' | 'items' | 'spells' | 'megamud';
+
+function realmSections(): NavSection[] {
+  return [
+    { id: 'realm', label: t('settings.realms.sections.realm'), fieldsets: [] },
+    { id: 'loops', label: t('settings.realms.sections.loops'), fieldsets: [] },
+    { id: 'messages', label: t('settings.realms.sections.messages'), fieldsets: [] },
+    { id: 'monsters', label: t('settings.realms.sections.monsters'), fieldsets: [] },
+    { id: 'items', label: t('settings.realms.sections.items'), fieldsets: [] },
+    { id: 'spells', label: t('settings.realms.sections.spells'), fieldsets: [] },
+    {
+      id: 'megamud',
+      label: t('settings.realms.sections.megamud'),
+      fieldsets: [
+        { id: 'realm-hang-penalties', label: t('settings.health.hangUpLegend') },
+        { id: 'realm-coins', label: t('settings.realms.coinsLegend') },
+        { id: 'realm-bbs', label: t('settings.realms.bbsLegend') }
+      ]
+    }
+  ];
+}
+
 const SECTION_FIELDSETS: Readonly<Record<Section, readonly NavFieldset[]>> = {
   login: [{ id: 'login', label: t('settings.login.legend') }],
   'Auto-roam': [
@@ -1716,6 +1739,8 @@ export default function SettingsScreen({
   const [picking, setPicking] = useState(false);
   const [catalogue, setCatalogue] = useState<Loop[] | null>(null);
   const [serverPick, setServerPick] = useState<string | null>(null);
+  /** Which part of a realm's form is showing. See `realmSections`. */
+  const [realmSection, setRealmSection] = useState<RealmSection>('realm');
   /** The server form, with the same way back the character form has. */
   const [serverHistory, setServerHistory] = useState<History<ServerDraft> | null>(null);
   const serverForm = serverHistory?.present ?? null;
@@ -2071,6 +2096,8 @@ export default function SettingsScreen({
       // was typed into, not into the bin.
       serverSave.flush();
       setServerPick(name);
+      // A new realm starts where it is named and addressed.
+      if (name === NEW_SERVER) setRealmSection('realm');
       setProblem(null);
       setSaved(null);
       setConfirming(null);
@@ -3466,13 +3493,12 @@ export default function SettingsScreen({
           ) : (
             <>
               {/*
-                A realm has no sections -- its form is short enough to read
-                whole -- so the rail here is the picker alone. It is still the
-                rail rather than the old list, because navigation that changed
-                shape from page to page would be two screens.
+                The realm's sections, one shown at a time, as the Character
+                page's are (2026-10-15): the form outgrew one scroll once its
+                imported tables and the MegaMUD set-up joined it.
               */}
               <SettingsNav
-                onSection={() => undefined}
+                onSection={(id: string) => setRealmSection(id as RealmSection)}
                 picker={{
                   addId: NEW_SERVER,
                   addLabel: t('settings.realms.new'),
@@ -3485,8 +3511,8 @@ export default function SettingsScreen({
                   label: t('settings.nav.realm'),
                   onChoose: (name: string) => chooseServer(name)
                 }}
-                section=""
-                sections={[]}
+                section={realmSection}
+                sections={realmSections()}
               />
 
               {serverForm === null ? (
@@ -3497,45 +3523,47 @@ export default function SettingsScreen({
                   data-section="realm"
                   onSubmit={(event) => void submitServer(event)}
                 >
-                  {/*
+                  {realmSection === 'realm' && (
+                    <>
+                      {/*
                     A realm form has no sections, so it states its subject
                     instead: it is the same thing the Global page's Realm
                     section edits, and it reads in the same hue.
                   */}
-                  {/* What the realm is called and where it is: one row, since
+                      {/* What the realm is called and where it is: one row, since
                       neither half identifies it on its own. */}
-                  <div className="settings-inline">
-                    <TextField
-                      hint={t('settings.realms.nameHint')}
-                      inputRef={firstFieldRef}
-                      label={t('settings.realms.nameLabel')}
-                      name="server-name"
-                      onChange={(value) => setServerForm({ ...serverForm, name: value })}
-                      placeholder={t('settings.realms.namePlaceholder')}
-                      value={serverForm.name}
-                    />
-                    <TextField
-                      label={t('settings.profile.hostLabel')}
-                      name="server-host"
-                      onChange={(value) => setServerForm({ ...serverForm, host: value })}
-                      placeholder={t('settings.profile.hostPlaceholder')}
-                      spellCheck={false}
-                      value={serverForm.host}
-                    />
-                    <NumberField
-                      label={t('settings.profile.portLabel')}
-                      name="server-port"
-                      onChange={(value) =>
-                        setServerForm({
-                          ...serverForm,
-                          port: Number.parseInt(value, 10) || 0
-                        })
-                      }
-                      value={serverForm.port || ''}
-                    />
-                  </div>
+                      <div className="settings-inline">
+                        <TextField
+                          hint={t('settings.realms.nameHint')}
+                          inputRef={firstFieldRef}
+                          label={t('settings.realms.nameLabel')}
+                          name="server-name"
+                          onChange={(value) => setServerForm({ ...serverForm, name: value })}
+                          placeholder={t('settings.realms.namePlaceholder')}
+                          value={serverForm.name}
+                        />
+                        <TextField
+                          label={t('settings.profile.hostLabel')}
+                          name="server-host"
+                          onChange={(value) => setServerForm({ ...serverForm, host: value })}
+                          placeholder={t('settings.profile.hostPlaceholder')}
+                          spellCheck={false}
+                          value={serverForm.host}
+                        />
+                        <NumberField
+                          label={t('settings.profile.portLabel')}
+                          name="server-port"
+                          onChange={(value) =>
+                            setServerForm({
+                              ...serverForm,
+                              port: Number.parseInt(value, 10) || 0
+                            })
+                          }
+                          value={serverForm.port || ''}
+                        />
+                      </div>
 
-                  {/*
+                      {/*
                     The map every character here walks.
 
                     On the realm rather than on the character, for the same
@@ -3545,70 +3573,74 @@ export default function SettingsScreen({
                     as many places to drift -- a third character added later
                     silently got the shipped world instead.
                   */}
-                  <FormField
-                    hint={t('settings.worldDatabaseHint')}
-                    label={t('settings.worldDatabaseLabel')}
-                    name="server-database"
-                    wide
-                  >
-                    {({ describedBy }) => (
-                      <div className="settings-file">
-                        <input
-                          aria-describedby={describedBy}
-                          onChange={(event) =>
-                            setServerForm({ ...serverForm, database: event.target.value })
-                          }
-                          placeholder={t('settings.worldDatabasePlaceholder')}
-                          spellCheck={false}
-                          value={serverForm.database}
-                        />
-                        <button
-                          className="quiet"
-                          onClick={() => {
-                            void chooseRealm().then((file) => {
-                              if (file !== null) setServerForm({ ...serverForm, database: file });
-                            });
-                          }}
-                          onMouseDown={keepFocus}
-                          type="button"
-                        >
-                          {t('settings.realms.databaseBrowse')}
-                        </button>
-                        {serverForm.database.length > 0 && (
-                          <button
-                            className="quiet"
-                            onClick={() => setServerForm({ ...serverForm, database: '' })}
-                            onMouseDown={keepFocus}
-                            type="button"
-                          >
-                            {t('settings.realms.databaseClear')}
-                          </button>
+                      <FormField
+                        hint={t('settings.worldDatabaseHint')}
+                        label={t('settings.worldDatabaseLabel')}
+                        name="server-database"
+                        wide
+                      >
+                        {({ describedBy }) => (
+                          <div className="settings-file">
+                            <input
+                              aria-describedby={describedBy}
+                              onChange={(event) =>
+                                setServerForm({ ...serverForm, database: event.target.value })
+                              }
+                              placeholder={t('settings.worldDatabasePlaceholder')}
+                              spellCheck={false}
+                              value={serverForm.database}
+                            />
+                            <button
+                              className="quiet"
+                              onClick={() => {
+                                void chooseRealm().then((file) => {
+                                  if (file !== null)
+                                    setServerForm({ ...serverForm, database: file });
+                                });
+                              }}
+                              onMouseDown={keepFocus}
+                              type="button"
+                            >
+                              {t('settings.realms.databaseBrowse')}
+                            </button>
+                            {serverForm.database.length > 0 && (
+                              <button
+                                className="quiet"
+                                onClick={() => setServerForm({ ...serverForm, database: '' })}
+                                onMouseDown={keepFocus}
+                                type="button"
+                              >
+                                {t('settings.realms.databaseClear')}
+                              </button>
+                            )}
+                          </div>
                         )}
-                      </div>
-                    )}
-                  </FormField>
+                      </FormField>
 
-                  {/*
+                      {/*
                     Behind a press, because it has a right answer already and
                     is not one anybody can choose well without knowing what
                     CP437 is. Not taste: the game lays out maps and stat
                     columns in character cells, and both reference realms open
                     with block glyphs that are invalid UTF-8.
                   */}
-                  <Advanced label={t('settings.advancedWire')}>
-                    <SelectField
-                      hint={t('settings.profile.encodingHint')}
-                      label={t('settings.profile.encodingLabel')}
-                      name="encoding"
-                      onChange={(value) =>
-                        setServerForm({ ...serverForm, encoding: value as StreamEncoding })
-                      }
-                      options={ENCODINGS.map((encoding) => ({ value: encoding, label: encoding }))}
-                      value={serverForm.encoding}
-                    />
-                  </Advanced>
+                      <Advanced label={t('settings.advancedWire')}>
+                        <SelectField
+                          hint={t('settings.profile.encodingHint')}
+                          label={t('settings.profile.encodingLabel')}
+                          name="encoding"
+                          onChange={(value) =>
+                            setServerForm({ ...serverForm, encoding: value as StreamEncoding })
+                          }
+                          options={ENCODINGS.map((encoding) => ({
+                            value: encoding,
+                            label: encoding
+                          }))}
+                          value={serverForm.encoding}
+                        />
+                      </Advanced>
 
-                  {/*
+                      {/*
                     How to get through this realm's menus.
 
                     On the realm rather than on the character, because that is
@@ -3624,107 +3656,111 @@ export default function SettingsScreen({
                     WorldGroup front end all differ, and a client with four
                     slots cannot describe them at all.
                   */}
-                  <fieldset className="settings-menus">
-                    <legend>{t('settings.realms.loginLegend')}</legend>
-                    <p className="settings-note">{t('settings.realms.loginNote')}</p>
+                      <fieldset className="settings-menus">
+                        <legend>{t('settings.realms.loginLegend')}</legend>
+                        <p className="settings-note">{t('settings.realms.loginNote')}</p>
 
-                    {serverForm.login.length > 0 && (
-                      <ul className="settings-steps">
-                        {serverForm.login.map((step, index) => (
-                          // Keyed by position, deliberately: rows are edited in
-                          // place and identified by nothing else — two blank
-                          // rows are genuinely the same until somebody types.
-                          <li key={index}>
-                            <input
-                              aria-label={t('settings.login.stepWhenAria', {
-                                stepNumber: index + 1
-                              })}
-                              onChange={(event) =>
-                                setServerForm({
-                                  ...serverForm,
-                                  login: serverForm.login.map((entry, at) =>
-                                    at === index ? { ...entry, when: event.target.value } : entry
-                                  )
-                                })
-                              }
-                              placeholder={t('settings.realms.stepWhenPlaceholder')}
-                              value={step.when}
-                            />
-                            <span aria-hidden="true" className="arrow">
-                              →
-                            </span>
-                            <input
-                              aria-label={t('settings.login.stepSendAria', {
-                                stepNumber: index + 1
-                              })}
-                              className="answer"
-                              onChange={(event) =>
-                                setServerForm({
-                                  ...serverForm,
-                                  login: serverForm.login.map((entry, at) =>
-                                    at === index ? { ...entry, send: event.target.value } : entry
-                                  )
-                                })
-                              }
-                              placeholder={t('settings.realms.stepSendPlaceholder')}
-                              value={step.send}
-                            />
-                            <input
-                              aria-label={t('settings.login.stepRepeatAria', {
-                                stepNumber: index + 1
-                              })}
-                              checked={step.repeat ?? false}
-                              className="repeat"
-                              onChange={(event) =>
-                                setServerForm({
-                                  ...serverForm,
-                                  login: serverForm.login.map((entry, at) =>
-                                    at === index
-                                      ? { ...entry, repeat: event.target.checked }
-                                      : entry
-                                  )
-                                })
-                              }
-                              title={t('settings.login.stepRepeatTitle')}
-                              type="checkbox"
-                            />
-                            <button
-                              aria-label={t('settings.login.removeStepAria', {
-                                stepNumber: index + 1
-                              })}
-                              className="quiet"
-                              onClick={() =>
-                                setServerForm({
-                                  ...serverForm,
-                                  login: serverForm.login.filter((_, at) => at !== index)
-                                })
-                              }
-                              title={t('settings.login.removeStepTitle')}
-                              type="button"
-                            >
-                              <Icon name="close" />
-                            </button>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
+                        {serverForm.login.length > 0 && (
+                          <ul className="settings-steps">
+                            {serverForm.login.map((step, index) => (
+                              // Keyed by position, deliberately: rows are edited in
+                              // place and identified by nothing else — two blank
+                              // rows are genuinely the same until somebody types.
+                              <li key={index}>
+                                <input
+                                  aria-label={t('settings.login.stepWhenAria', {
+                                    stepNumber: index + 1
+                                  })}
+                                  onChange={(event) =>
+                                    setServerForm({
+                                      ...serverForm,
+                                      login: serverForm.login.map((entry, at) =>
+                                        at === index
+                                          ? { ...entry, when: event.target.value }
+                                          : entry
+                                      )
+                                    })
+                                  }
+                                  placeholder={t('settings.realms.stepWhenPlaceholder')}
+                                  value={step.when}
+                                />
+                                <span aria-hidden="true" className="arrow">
+                                  →
+                                </span>
+                                <input
+                                  aria-label={t('settings.login.stepSendAria', {
+                                    stepNumber: index + 1
+                                  })}
+                                  className="answer"
+                                  onChange={(event) =>
+                                    setServerForm({
+                                      ...serverForm,
+                                      login: serverForm.login.map((entry, at) =>
+                                        at === index
+                                          ? { ...entry, send: event.target.value }
+                                          : entry
+                                      )
+                                    })
+                                  }
+                                  placeholder={t('settings.realms.stepSendPlaceholder')}
+                                  value={step.send}
+                                />
+                                <input
+                                  aria-label={t('settings.login.stepRepeatAria', {
+                                    stepNumber: index + 1
+                                  })}
+                                  checked={step.repeat ?? false}
+                                  className="repeat"
+                                  onChange={(event) =>
+                                    setServerForm({
+                                      ...serverForm,
+                                      login: serverForm.login.map((entry, at) =>
+                                        at === index
+                                          ? { ...entry, repeat: event.target.checked }
+                                          : entry
+                                      )
+                                    })
+                                  }
+                                  title={t('settings.login.stepRepeatTitle')}
+                                  type="checkbox"
+                                />
+                                <button
+                                  aria-label={t('settings.login.removeStepAria', {
+                                    stepNumber: index + 1
+                                  })}
+                                  className="quiet"
+                                  onClick={() =>
+                                    setServerForm({
+                                      ...serverForm,
+                                      login: serverForm.login.filter((_, at) => at !== index)
+                                    })
+                                  }
+                                  title={t('settings.login.removeStepTitle')}
+                                  type="button"
+                                >
+                                  <Icon name="close" />
+                                </button>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
 
-                    <button
-                      className="quiet add-step"
-                      onClick={() =>
-                        setServerForm({
-                          ...serverForm,
-                          login: [...serverForm.login, { when: '', send: '' }]
-                        })
-                      }
-                      type="button"
-                    >
-                      <Icon name="plus" />
-                      <span>{t('settings.login.addStep')}</span>
-                    </button>
-                  </fieldset>
+                        <button
+                          className="quiet add-step"
+                          onClick={() =>
+                            setServerForm({
+                              ...serverForm,
+                              login: [...serverForm.login, { when: '', send: '' }]
+                            })
+                          }
+                          type="button"
+                        >
+                          <Icon name="plus" />
+                          <span>{t('settings.login.addStep')}</span>
+                        </button>
+                      </fieldset>
 
-                  {/*
+                      {/*
                     Which word this realm answers exact coordinates with.
 
                     On the realm, for the same reason the menu script above is:
@@ -3735,22 +3771,29 @@ export default function SettingsScreen({
                     first is exactly the broadcast a player who already knows
                     that should never have to spend.
                   */}
-                  <SelectField
-                    hint={t('settings.realms.locateHint')}
-                    label={t('settings.realms.locateLabel')}
-                    name="locate"
-                    onChange={(value) =>
-                      setServerForm({ ...serverForm, locate: value as LocateMethod })
-                    }
-                    options={[
-                      { value: 'rm', label: t('settings.realms.locateOptions.rm') },
-                      { value: 'sys-status', label: t('settings.realms.locateOptions.sysStatus') },
-                      { value: 'none', label: t('settings.realms.locateOptions.none') }
-                    ]}
-                    value={serverForm.locate}
-                  />
+                      <SelectField
+                        hint={t('settings.realms.locateHint')}
+                        label={t('settings.realms.locateLabel')}
+                        name="locate"
+                        onChange={(value) =>
+                          setServerForm({ ...serverForm, locate: value as LocateMethod })
+                        }
+                        options={[
+                          { value: 'rm', label: t('settings.realms.locateOptions.rm') },
+                          {
+                            value: 'sys-status',
+                            label: t('settings.realms.locateOptions.sysStatus')
+                          },
+                          { value: 'none', label: t('settings.realms.locateOptions.none') }
+                        ]}
+                        value={serverForm.locate}
+                      />
+                    </>
+                  )}
 
-                  {/*
+                  {realmSection === 'loops' && (
+                    <>
+                      {/*
                     The loops that belong to the *place*.
 
                     A loop names rooms in a realm, so it is a fact about where
@@ -3759,163 +3802,185 @@ export default function SettingsScreen({
                     plays here, rather than pasted into each of their files and
                     then kept in step by hand.
                   */}
-                  <LoopSection
-                    catalogue={catalogue}
-                    loops={serverForm.loops}
-                    note={t('settings.realms.loopsNote')}
-                    onDonePicking={() => setPicking(false)}
-                    onOpenPicker={openPicker}
-                    onToggle={toggleServerLoop}
-                    picking={picking}
-                  >
-                    <MegaMudLoopImport
-                      beforeImport={serverSave.flush}
-                      importLoops={importLoops}
-                      onImported={() => void importedServerLoops()}
-                      realm={serverPick === NEW_SERVER ? null : serverPick}
-                    />
-                  </LoopSection>
+                      <LoopSection
+                        catalogue={catalogue}
+                        loops={serverForm.loops}
+                        note={t('settings.realms.loopsNote')}
+                        onDonePicking={() => setPicking(false)}
+                        onOpenPicker={openPicker}
+                        onToggle={toggleServerLoop}
+                        picking={picking}
+                      >
+                        <MegaMudLoopImport
+                          beforeImport={serverSave.flush}
+                          importLoops={importLoops}
+                          onImported={() => void importedServerLoops()}
+                          realm={serverPick === NEW_SERVER ? null : serverPick}
+                        />
+                      </LoopSection>
+                    </>
+                  )}
 
-                  {/*
+                  {realmSection === 'messages' && (
+                    <>
+                      {/*
                     And what the place's sentences mean: a realm's message
                     table, imported from MegaMUD. On the realm for the reason
                     the ranking above is -- every character here hears the
                     same sentences -- and saved on its own rather than with
                     this form, which saves as somebody types.
                   */}
-                  <fieldset className="settings-menus" data-fieldset="realm-messages">
-                    <legend>{t('settings.messages.legend')}</legend>
-                    <p className="settings-note">{t('settings.messages.note')}</p>
-                    <RealmMessages
-                      importFile={importMessages}
-                      load={loadMessages}
-                      realm={serverPick === NEW_SERVER ? null : serverPick}
-                      save={saveMessages}
-                    />
-                  </fieldset>
+                      <fieldset className="settings-menus" data-fieldset="realm-messages">
+                        <legend>{t('settings.messages.legend')}</legend>
+                        <p className="settings-note">{t('settings.messages.note')}</p>
+                        <RealmMessages
+                          importFile={importMessages}
+                          load={loadMessages}
+                          realm={serverPick === NEW_SERVER ? null : serverPick}
+                          save={saveMessages}
+                        />
+                      </fieldset>
+                    </>
+                  )}
 
-                  {/*
+                  {realmSection === 'monsters' && (
+                    <>
+                      {/*
                     And what to do about particular monsters: the realm's
                     table from MegaMUD's Monsters.md. Each character's own
                     rows are laid over it, field by field.
                   */}
-                  <fieldset className="settings-menus" data-fieldset="realm-monsters">
-                    <legend>{t('settings.monsters.legend')}</legend>
-                    <p className="settings-note">{t('settings.monsters.note')}</p>
-                    <RealmMonsters
-                      importRows={importMonsters}
-                      load={loadMonsters}
-                      realm={serverPick === NEW_SERVER ? null : serverPick}
-                      save={saveMonsters}
-                    />
-                  </fieldset>
+                      <fieldset className="settings-menus" data-fieldset="realm-monsters">
+                        <legend>{t('settings.monsters.legend')}</legend>
+                        <p className="settings-note">{t('settings.monsters.note')}</p>
+                        <RealmMonsters
+                          importRows={importMonsters}
+                          load={loadMonsters}
+                          realm={serverPick === NEW_SERVER ? null : serverPick}
+                          save={saveMonsters}
+                        />
+                      </fieldset>
+                    </>
+                  )}
 
-                  {/*
+                  {realmSection === 'items' && (
+                    <>
+                      {/*
                     And what to do about particular items: the realm's table
                     from MegaMUD's Items.md, the choices half of its item
                     details. The facts are the realm data's.
                   */}
-                  <fieldset className="settings-menus" data-fieldset="realm-items">
-                    <legend>{t('settings.items.legend')}</legend>
-                    <p className="settings-note">{t('settings.items.note')}</p>
-                    <RealmItems
-                      importRows={importItems}
-                      load={loadItems}
-                      realm={serverPick === NEW_SERVER ? null : serverPick}
-                      save={saveItems}
-                    />
-                  </fieldset>
+                      <fieldset className="settings-menus" data-fieldset="realm-items">
+                        <legend>{t('settings.items.legend')}</legend>
+                        <p className="settings-note">{t('settings.items.note')}</p>
+                        <RealmItems
+                          importRows={importItems}
+                          load={loadItems}
+                          realm={serverPick === NEW_SERVER ? null : serverPick}
+                          save={saveItems}
+                        />
+                      </fieldset>
+                    </>
+                  )}
 
-                  {/*
+                  {realmSection === 'spells' && (
+                    <>
+                      {/*
                     And what the place's spells say when they land and end,
                     as the wire taught them: put right here when a sentence
                     was paired with the wrong spell (2026-10-14).
                   */}
-                  <fieldset className="settings-menus" data-fieldset="realm-spell-lore">
-                    <legend>{t('settings.spellLore.legend')}</legend>
-                    <p className="settings-note">{t('settings.spellLore.note')}</p>
-                    <RealmSpellLore
-                      load={loadSpellLore}
-                      realm={serverPick === NEW_SERVER ? null : serverPick}
-                      save={saveSpellLore}
-                    />
-                  </fieldset>
+                      <fieldset className="settings-menus" data-fieldset="realm-spell-lore">
+                        <legend>{t('settings.spellLore.legend')}</legend>
+                        <p className="settings-note">{t('settings.spellLore.note')}</p>
+                        <RealmSpellLore
+                          load={loadSpellLore}
+                          realm={serverPick === NEW_SERVER ? null : serverPick}
+                          save={saveSpellLore}
+                        />
+                      </fieldset>
+                    </>
+                  )}
 
-                  {/* Whether a hang-up here is charged: a fact about the place (todo 01). */}
-                  <fieldset data-fieldset="realm-hang-penalties">
-                    <legend>{t('settings.health.hangUpLegend')}</legend>
-                    <div className="settings-inline">
-                      <SelectField
-                        hint={t('settings.health.hangPenaltiesHint')}
-                        label={t('settings.health.hangPenaltiesLabel')}
-                        name="realm-hang-penalties"
-                        onChange={(value) =>
-                          setServerForm({ ...serverForm, hangPenalties: penaltiesOf(value) })
-                        }
-                        options={[
-                          { value: '', label: t('settings.health.hangPenaltiesGlobal') },
-                          { value: 'yes', label: t('settings.health.hangPenaltiesYes') },
-                          { value: 'no', label: t('settings.health.hangPenaltiesNo') }
-                        ]}
-                        value={penaltiesChoice(serverForm.hangPenalties)}
-                      />
-                    </div>
-                  </fieldset>
+                  {realmSection === 'megamud' && (
+                    <>
+                      {/* Whether a hang-up here is charged: a fact about the place (todo 01). */}
+                      <fieldset data-fieldset="realm-hang-penalties">
+                        <legend>{t('settings.health.hangUpLegend')}</legend>
+                        <div className="settings-inline">
+                          <SelectField
+                            hint={t('settings.health.hangPenaltiesHint')}
+                            label={t('settings.health.hangPenaltiesLabel')}
+                            name="realm-hang-penalties"
+                            onChange={(value) =>
+                              setServerForm({ ...serverForm, hangPenalties: penaltiesOf(value) })
+                            }
+                            options={[
+                              { value: '', label: t('settings.health.hangPenaltiesGlobal') },
+                              { value: 'yes', label: t('settings.health.hangPenaltiesYes') },
+                              { value: 'no', label: t('settings.health.hangPenaltiesNo') }
+                            ]}
+                            value={penaltiesChoice(serverForm.hangPenalties)}
+                          />
+                        </div>
+                      </fieldset>
 
-                  {/*
+                      {/*
                     What this realm calls its coins: a fact about the place, like
                     the ranking above (`Server.coins`). Blank is the stock name.
                   */}
-                  <fieldset data-fieldset="realm-coins">
-                    <legend>{t('settings.realms.coinsLegend')}</legend>
-                    <p className="settings-note">{t('settings.realms.coinsNote')}</p>
-                    <div className="settings-inline">
-                      {DENOMINATIONS.map((which) => (
-                        <TextField
-                          key={which}
-                          label={COIN_NAME[which][0]}
-                          name={`realm-coin-${which}`}
-                          onChange={(value) =>
-                            setServerForm({
-                              ...serverForm,
-                              coins: { ...serverForm.coins, [which]: value }
-                            })
-                          }
-                          placeholder={STOCK_COINS[which]}
-                          spellCheck={false}
-                          value={serverForm.coins[which] ?? ''}
-                        />
-                      ))}
-                    </div>
-                  </fieldset>
+                      <fieldset data-fieldset="realm-coins">
+                        <legend>{t('settings.realms.coinsLegend')}</legend>
+                        <p className="settings-note">{t('settings.realms.coinsNote')}</p>
+                        <div className="settings-inline">
+                          {DENOMINATIONS.map((which) => (
+                            <TextField
+                              key={which}
+                              label={COIN_NAME[which][0]}
+                              name={`realm-coin-${which}`}
+                              onChange={(value) =>
+                                setServerForm({
+                                  ...serverForm,
+                                  coins: { ...serverForm.coins, [which]: value }
+                                })
+                              }
+                              placeholder={STOCK_COINS[which]}
+                              spellCheck={false}
+                              value={serverForm.coins[which] ?? ''}
+                            />
+                          ))}
+                        </div>
+                      </fieldset>
 
-                  {/*
+                      {/*
                     MegaMUD's BBS.INI for this realm (`Server.bbs`), for the
                     MegaMUD engine. Blank is MegaMUD's default, which the
                     placeholder shows.
                   */}
-                  <fieldset data-fieldset="realm-bbs">
-                    <legend>{t('settings.realms.bbsLegend')}</legend>
-                    <p className="settings-note">{t('settings.realms.bbsNote')}</p>
-                    <div className="settings-inline">
-                      {BBS_KEYS.map(({ key, fallback }) => (
-                        <TextField
-                          key={key}
-                          label={bbsLabel(key)}
-                          name={`realm-bbs-${key}`}
-                          onChange={(value) =>
-                            setServerForm({
-                              ...serverForm,
-                              bbs: { ...serverForm.bbs, [key]: value }
-                            })
-                          }
-                          placeholder={fallback}
-                          spellCheck={false}
-                          value={serverForm.bbs[key] ?? ''}
-                        />
-                      ))}
-                    </div>
-                  </fieldset>
+                      <fieldset data-fieldset="realm-bbs">
+                        <legend>{t('settings.realms.bbsLegend')}</legend>
+                        <p className="settings-note">{t('settings.realms.bbsNote')}</p>
+                        <div className="settings-inline">
+                          {BBS_KEYS.map(({ key, fallback }) => (
+                            <TextField
+                              key={key}
+                              label={bbsLabel(key)}
+                              name={`realm-bbs-${key}`}
+                              onChange={(value) =>
+                                setServerForm({
+                                  ...serverForm,
+                                  bbs: { ...serverForm.bbs, [key]: value }
+                                })
+                              }
+                              placeholder={fallback}
+                              spellCheck={false}
+                              value={serverForm.bbs[key] ?? ''}
+                            />
+                          ))}
+                        </div>
+                      </fieldset>
+                    </>
+                  )}
 
                   <div className="settings-actions">
                     {serverPick === NEW_SERVER ? (
