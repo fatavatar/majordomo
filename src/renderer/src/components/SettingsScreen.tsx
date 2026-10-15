@@ -302,6 +302,11 @@ export interface SettingsScreenProps {
    * value every render — which is the trap that made a refused save flash and
    * vanish before anybody could read it.
    */
+  /**
+   * The character whose tab is on screen, or null: settings opens on it and
+   * on its realm unless asked for another (2026-10-15).
+   */
+  current?: string | null;
   openAt?: string | null;
   /**
    * What a character's percentage thresholds are percentages *of*.
@@ -1637,6 +1642,7 @@ function bbsLabel(key: BbsKey): string {
 export default function SettingsScreen({
   open,
   openAt = null,
+  current = null,
   maximaFor,
   figuresFor,
   palette,
@@ -1829,6 +1835,19 @@ export default function SettingsScreen({
       // character it was viewed on, not to whichever one opens next.
       setSection('profile');
 
+      // The character on screen, and its realm: where settings opens unless
+      // it is asked for something else, and where Realms opens.
+      const here = current === null ? undefined : next.characters.find((e) => e.id === current);
+      const hereRealm = next.servers.find((server) => server.name === here?.serverName);
+      if (here && openAt !== NEW_CHARACTER && openAt !== here.id) {
+        setSelected(here.id);
+        loadForm(formOf(here));
+      }
+      if (hereRealm) {
+        setServerPick(hereRealm.name);
+        loadServerForm({ ...hereRealm, loops: next.loops.servers[hereRealm.name] ?? [] });
+      }
+
       /*
        * The client's own settings, which are neither a character nor a server.
        * Loaded here rather than left to an effect, for the reason above: what
@@ -1845,6 +1864,7 @@ export default function SettingsScreen({
       // character lookup below.
       if (openAt === SETTINGS_MANAGE_SERVERS) {
         setTab('servers');
+        if (hereRealm) return;
         setServerPick(next.servers[0]?.name ?? NEW_SERVER);
         loadServerForm(
           next.servers[0]
@@ -1882,7 +1902,7 @@ export default function SettingsScreen({
        * the click and the open lands: opening normally beats opening a blank
        * form wearing a name that no longer exists.
        */
-      setSelected((current) => current ?? next.characters[0]?.id ?? NEW_CHARACTER);
+      setSelected((was) => here?.id ?? was ?? next.characters[0]?.id ?? NEW_CHARACTER);
     });
     // A failed load lands in the slot every other refusal uses, rather than
     // leaving the dialog on its loading state with nothing to read.
@@ -2126,8 +2146,11 @@ export default function SettingsScreen({
    */
   const goToServers = useCallback(() => {
     setTab('servers');
-    chooseServer(servers[0]?.name ?? NEW_SERVER);
-  }, [servers, chooseServer]);
+    // The realm of the character being edited, else the first.
+    const realm = snapshot?.characters.find((e) => e.id === selected)?.serverName;
+    const known = servers.find((server) => server.name === realm)?.name;
+    chooseServer(known ?? servers[0]?.name ?? NEW_SERVER);
+  }, [servers, chooseServer, snapshot, selected]);
 
   /**
    * Open MudEngine or Global, both of which draw the options file.

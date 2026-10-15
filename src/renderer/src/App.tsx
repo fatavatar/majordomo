@@ -6080,6 +6080,7 @@ export default function App() {
         onClose={closeSettings}
         open={settingsOpen}
         openAt={settingsAt}
+        current={session === NO_SESSION ? null : session}
         required={mustMakeCharacter}
         revealConfig={settingsApi.revealConfig}
         chooseRealm={settingsApi.chooseRealm}
