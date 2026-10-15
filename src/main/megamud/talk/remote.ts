@@ -622,6 +622,7 @@ function home(c: Ctx): number {
 /** Not a command: the AFK reply; a command not allowed: `Talk.CmdReply`. */
 function notCommand(c: Ctx, line: string): number {
   const s = c.s;
+  if (botCommand(s, c.kind, c.sender, c.p, c.to, c.cmd)) return 0;
   if (c.kind === 8 || c.p.kind === 4 || c.p.kind === 5 || c.p.kind === 6) return 0;
   s.msgSource = c.p.name.slice(0, 80);
   s.msgTarget = s.Player_Name.slice(0, 80);
@@ -636,6 +637,70 @@ function notCommand(c: Ctx, line: string): number {
   }
   if (s.Talk_WarnRemote === 0 || s.Talk_CmdReply === '') return 0;
   return reply0(c, `${c.to} ${s.Talk_CmdReply}\r`);
+}
+
+/**
+ * Ours: one of the player's own commands (`BotCommand`, 2026-10-15), asked
+ * by somebody it names, sent with `{source}` the asker and answered with its
+ * reply. Reached only where none of MegaMUD's own matched (`notCommand`), so
+ * a word of MegaMUD's keeps its meaning: a party member's `@heal` is still
+ * the party heal. Not from this character itself, and not with remote
+ * commands refused (`Talk.NoRemoteCmds`). Whether one was answered.
+ */
+function botCommand(
+  s: Session,
+  kind: number,
+  sender: string,
+  p: PlayerRec | null,
+  to: string,
+  cmd: string
+): boolean {
+  if (kind === 0 || s.Talk_NoRemoteCmds === 1) return false;
+  const word = cmd.trim().split(/\s+/)[0] ?? '';
+  const bot = s.botCommands.find((b) => stricmp(b.word, word) === 0);
+  if (!bot) return false;
+  const who = sender.toLowerCase();
+  const gang = p !== null && p.gang !== '' && stricmp(p.gang, s.Player_Gang) === 0;
+  const allowed =
+    bot.anyone ||
+    bot.players.includes(who) ||
+    (bot.party && partyIndex(s, sender) !== -1) ||
+    (bot.gang && gang);
+  if (!allowed) return false;
+  s.msgSource = sender.slice(0, 80);
+  s.msgTarget = s.Player_Name.slice(0, 80);
+  const out = expandMacros(s, bot.send);
+  if (out !== '') queue(s, out.endsWith('\r') ? out : `${out}\r`);
+  if (bot.reply !== '') {
+    const said = expandMacros(s, bot.reply);
+    if (said !== '') queue(s, `${to} ${said}\r`);
+  }
+  s.host.show(`[${sender} asked ${bot.word}]`);
+  return true;
+}
+
+/**
+ * A line from somebody MegaMUD has no record of, which it lets go
+ * (`0x4ae4a0`): one of the player's own commands open to anyone is still
+ * answered, by the way it came.
+ */
+function strangerCommand(
+  s: Session,
+  line: string,
+  kind: number,
+  start: number,
+  sender: string
+): number {
+  if (!s.botCommands.some((b) => b.anyone) || s.f_a32c !== 0) return 0;
+  if (kind !== 1 && kind !== 0x10 && kind !== 0x20) return 0;
+  let raw = line.slice(start).replace(/^ +/, '').slice(0, 99);
+  if (kind === 1) {
+    const quote = raw.indexOf('"');
+    if (quote !== -1) raw = raw.slice(0, quote);
+  }
+  const to = kind === 1 ? `>${sender}` : kind === 0x10 ? `/${sender}` : `/p ${sender}`;
+  botCommand(s, kind, sender, null, to, raw);
+  return 0;
 }
 
 /** Where the command starts in the line, and the sender's name's length; null for none. */
@@ -682,7 +747,7 @@ export function remoteCommand(s: Session, line: string, kind: number): number {
     if (sender === s.Player_Name) return 0;
     p = kind === 0x20 ? findUserId(s, sender) : findPlayer(s, sender);
   }
-  if (!p) return 0;
+  if (!p) return strangerCommand(s, line, kind, start, sender);
   let perms = kind === 0 ? 0xffff : p.remote & 0xffff;
   const to = replyPrefix(s, p, kind, sender);
 

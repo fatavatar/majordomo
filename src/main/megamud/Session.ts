@@ -11,6 +11,7 @@
  * by the once-a-second timer and a few other places; every timing test reads
  * the stamp, never a live clock. `tick()` is `GetTickCount64`.
  */
+import type { BotCommand } from '../../shared/remotes';
 import type { ItemRec, MegaData, MonsterRec, PlayerRec, RoomRec } from './data';
 import type { MegaSettings } from '../../shared/megamud/settings';
 import { RawFields } from './RawFields';
@@ -672,6 +673,8 @@ export class Session extends RawFields {
   debugTo = '';
   /** 0x8e5a: the AFK reply sent last, 500 characters. */
   afkReplied = '';
+  /** Ours: the player's own commands others may ask for (`BotCommand`, `talk/remote.ts`). */
+  botCommands: readonly BotCommand[] = [];
   /**
    * 0xdfa0/0xe130: the `@where` replies waiting on the `rm` (`Talk.WhereUseRm`),
    * up to four, each its reply prefix (100 characters).

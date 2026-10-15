@@ -70,7 +70,7 @@ import type { ActiveBuff, Affliction } from '../../shared/character';
 import type { MegaSettings } from '../../shared/megamud/settings';
 import { MEGA_TOGGLES, type MegaToggle, type MegaToggles } from '../../shared/megamud/toggles';
 import type { MegaChoices } from '../../shared/ipc';
-import type { PlayerGrant } from '../../shared/remotes';
+import type { BotCommand, PlayerGrant } from '../../shared/remotes';
 import { IDLE_WALK, type WalkProgress } from '../../shared/walk';
 import { NO_LOOP, type LoopProgress } from '../../shared/loops';
 import {
@@ -160,6 +160,8 @@ export interface MegaEngineSetup {
   grants: Readonly<Record<string, PlayerGrant>>;
   /** Join When Invited (`automation.remotes.autoJoin`): joining a player granted `join` who invites. */
   joinWhenInvited?: boolean;
+  /** The player's own commands others may ask for (`automation.remotes.commands`). */
+  botCommands?: readonly BotCommand[];
   /** Signatures learned before, by room. */
   learned?: ReadonlyMap<RoomId, number>;
   /** What it knows from before, from our stores, and where what it learns goes. */
@@ -440,6 +442,7 @@ export class MegaEngine {
     }
     this.marksKept = JSON.stringify(this.s.monsterMarks);
     grantPlayers(this.s, setup.grants, setup.joinWhenInvited);
+    this.s.botCommands = setup.botCommands ?? [];
     findLongestFirst(this.s);
     for (const [room, sig] of memory?.signatures ?? []) this.learn(room, sig);
     for (const [room, sig] of setup.learned ?? []) this.learn(room, sig);
@@ -582,6 +585,7 @@ export class MegaEngine {
     if (s.eventsChanged !== 0) [s.events, s.eventNext] = [events, eventNext];
     if (s.monitorsChanged !== 0) s.monitors = monitors;
     grantPlayers(s, setup.grants, setup.joinWhenInvited);
+    s.botCommands = setup.botCommands ?? [];
     if (setup.data !== this.dataFrom) this.newData(setup.data);
     this.noteToggles();
   }

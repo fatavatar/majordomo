@@ -1074,6 +1074,69 @@ export interface PlayerGrant extends RemoteGrant {
 }
 
 /**
+ * A command of the player's own that other players may ask this character
+ * for (2026-10-15): `@heal` answered with `mend {source}`, say, for a
+ * healer that is not in the asker's party. MegaMUD has none; its Messages
+ * rows can answer a telepath, but they are the realm's, every character on
+ * it answers, and anybody may ask.
+ *
+ * Answered after MegaMUD's own remote commands, so a word of theirs keeps its
+ * meaning, and only to who is named here: the party, the gang, named players,
+ * or anyone, each chosen.
+ */
+export interface BotCommand {
+  /** What is asked, as said: `@heal`. Matched whole, case aside. */
+  word: string;
+  /** What to send, in MegaMUD's macros: `{source}` is the asker, `^M` Enter, `~` a pause. */
+  send: string;
+  /** What to answer the asker with, the same way; empty for nothing. */
+  reply: string;
+  /** Anybody who has joined this character's party. */
+  party: boolean;
+  /** Anybody in this character's gang. */
+  gang: boolean;
+  /** Anybody at all, chosen in so many words. */
+  anyone: boolean;
+  /** These players, by name. */
+  players: string[];
+}
+
+/** One bot command off a file or the wire, or null; nothing coerced but the case of names. */
+export function asBotCommand(value: unknown): BotCommand | null {
+  if (typeof value !== 'object' || value === null) return null;
+  const raw = value as Record<string, unknown>;
+  const text = (v: unknown): string => (typeof v === 'string' ? v.trim() : '');
+  const word = text(raw['word']).split(/\s+/)[0] ?? '';
+  const send = text(raw['send']);
+  if (word === '' || send === '') return null;
+  const players = Array.isArray(raw['players'])
+    ? [
+        ...new Set(
+          raw['players']
+            .filter((p): p is string => typeof p === 'string')
+            .map((p) => p.trim().toLowerCase())
+            .filter((p) => p !== '')
+        )
+      ]
+    : [];
+  return {
+    word: word.startsWith('@') ? word : `@${word}`,
+    send,
+    reply: text(raw['reply']),
+    party: raw['party'] === true,
+    gang: raw['gang'] === true,
+    anyone: raw['anyone'] === true,
+    players
+  };
+}
+
+/** A list of bot commands, the unreadable rows dropped. */
+export function asBotCommands(value: unknown): BotCommand[] {
+  if (!Array.isArray(value)) return [];
+  return value.map(asBotCommand).filter((c): c is BotCommand => c !== null);
+}
+
+/**
  * How access is configured, mirrored from `RemotesConfig` so this module stays
  * dependency-free and the decision can be tested against a literal.
  */

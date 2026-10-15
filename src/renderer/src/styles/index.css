@@ -9741,6 +9741,33 @@ tr:hover .row-action.worn,
   gap: 4px;
 }
 
+/* The player's own commands (BotCommandList): one card a command, who may ask in one row. */
+.bot-commands {
+  display: flex;
+  flex-direction: column;
+  gap: var(--field-gap);
+}
+
+.bot-command {
+  border: 1px solid var(--ink-line);
+  border-radius: var(--r-card);
+  display: flex;
+  flex-direction: column;
+  gap: var(--field-gap);
+  padding: 8px 10px;
+}
+
+.bot-command-who {
+  align-items: end;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+}
+
+.bot-command-who > :nth-last-child(2) {
+  flex: 1 1 200px;
+}
+
 .remote-players {
   display: flex;
   flex-direction: column;

@@ -78,7 +78,13 @@ import {
 import type { TrainedAttribute } from './training';
 import type { StreamEncoding } from './types';
 import { isRecord } from './values';
-import { isRemoteName, type PlayerGrant, type RemoteName } from './remotes';
+import {
+  asBotCommands,
+  isRemoteName,
+  type BotCommand,
+  type PlayerGrant,
+  type RemoteName
+} from './remotes';
 import { asItemRules, type ItemRule } from './itemRules';
 import { asMonsterRules, type MonsterRule } from './monsterRules';
 
@@ -685,6 +691,8 @@ export interface RemotesDraft {
   party: RemoteName[];
   /** Per-player grants, carried through untouched. See above. */
   players: Record<string, PlayerGrant>;
+  /** The player's own commands others may ask for. See `BotCommand`. */
+  commands: BotCommand[];
 }
 
 function text(value: unknown): string {
@@ -1184,7 +1192,8 @@ export function asProfileDraft(value: unknown): ProfileDraft | null {
       autoJoin: remotes['autoJoin'] === true,
       gang: remoteNames(remotes['gang']),
       party: remoteNames(remotes['party']),
-      players: playerGrants(remotes['players'])
+      players: playerGrants(remotes['players']),
+      commands: asBotCommands(remotes['commands'])
     },
     talk: { lookAtPlayers: isRecord(value['talk']) && value['talk']['lookAtPlayers'] === true },
     statline: { control: isRecord(value['statline']) && value['statline']['control'] === true },
@@ -1355,7 +1364,8 @@ export function asGlobalDraft(value: unknown): GlobalDraft | null {
         autoJoin: remotes['autoJoin'] === true,
         gang: remoteNames(remotes['gang']),
         party: remoteNames(remotes['party']),
-        players: playerGrants(remotes['players'])
+        players: playerGrants(remotes['players']),
+        commands: asBotCommands(remotes['commands'])
       },
       talk: {
         lookAtPlayers: isRecord(automation['talk']) && automation['talk']['lookAtPlayers'] === true

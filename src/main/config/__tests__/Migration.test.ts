@@ -2823,7 +2823,8 @@ describe('peers became remotes', () => {
     expect(remotes()).toEqual({
       enabled: false,
       party: [...DEFAULT_CONFIG.automation.remotes.party],
-      autoJoin: false
+      autoJoin: false,
+      commands: []
     });
   });
 
@@ -2876,7 +2877,8 @@ describe('peers became remotes', () => {
     expect(automation.remotes).toEqual({
       enabled: false,
       party: [...DEFAULT_CONFIG.automation.remotes.party],
-      autoJoin: false
+      autoJoin: false,
+      commands: []
     });
   });
 });

@@ -922,6 +922,7 @@ function megamudFor(id: SessionId): { key: string; setup: MegaEngineSetup } | nu
   if (profile === undefined) return null;
   const grants = profile.config.automation.remotes.players;
   const joinWhenInvited = profile.config.automation.remotes.autoJoin;
+  const botCommands = profile.config.automation.remotes.commands;
   // The realm's name for its runic coin (BBS.INI's `RunicName`, ours per realm).
   const runic = profile.config.connection.coins.runic;
   const world = worldFor(id);
@@ -999,12 +1000,13 @@ function megamudFor(id: SessionId): { key: string; setup: MegaEngineSetup } | nu
   if (username !== '') settings.live['BBS']!['UserID'] = username;
   if (password !== '') settings.live['BBS']!['Password'] = password;
   return {
-    key: `${dataKey}\n${JSON.stringify([settings, grants, joinWhenInvited, bbs])}`,
+    key: `${dataKey}\n${JSON.stringify([settings, grants, joinWhenInvited, botCommands, bbs])}`,
     setup: {
       settings,
       data,
       grants,
       joinWhenInvited,
+      botCommands,
       ...(memory ? { memory } : {}),
       bbs
     }

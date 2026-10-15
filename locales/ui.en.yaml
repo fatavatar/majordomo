@@ -218,6 +218,9 @@ notices:
     autoJoinStated:
       many: 'Join When Invited was added, off, to {count} files: {fileList}'
       one: 'Join When Invited was added, off, to {fileList}'
+    botCommandsStated:
+      many: 'Bot Commands (your own commands other players may ask for) was added, empty, to {count} files: {fileList}'
+      one: 'Bot Commands (your own commands other players may ask for) was added, empty, to {fileList}'
     survivalFloorStated:
       many: 'Only Open Fights Survived % was added, off, to {count} files: {fileList}'
       one: 'Only Open Fights Survived % was added, off, to {fileList}'
@@ -3842,6 +3845,28 @@ settings:
     pickLocksHint: Tried before bashing, because it costs no health. Needs picklocks near what the
       realm records for the lock; the door is opened for you afterwards.
     pickTries: Picks Per Door
+  # The player's own commands other players may ask this character for (BotCommand).
+  botCommands:
+    legend: Bot Commands
+    note:
+      Your own commands other players may ask this character for, like a healer's @heal. Each is
+      answered after MegaMUD's own commands, so a party member's @heal is still MegaMUD's party
+      heal, and only for who you name below. Not at all while MegaMUD's Talk tab refuses remote
+      commands.
+    none: No bot commands yet.
+    add: Add a command
+    remove: Remove
+    wordLabel: Asked With
+    sendLabel: Sends
+    sendHint: In MegaMUD's macros; {source} is whoever asked, ^M is Enter, ~ a pause.
+    replyLabel: Answers With
+    replyHint: Told back to whoever asked, the way they asked; empty for nothing.
+    party: Party
+    gang: Gang
+    anyone: Anyone
+    anyoneHint: Anybody at all who asks, strangers included.
+    playersLabel: Players
+    playersHint: Names, separated by commas.
   remotes:
     addPlayerLabel: Grant Player Permissions
     addPlayerPlaceholder: Ardren

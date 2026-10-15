@@ -55,7 +55,13 @@ import {
   type AlertRule,
   type Severity
 } from './notifications';
-import { isRemoteName, type PlayerGrant, type RemoteName } from './remotes';
+import {
+  asBotCommands,
+  isRemoteName,
+  type BotCommand,
+  type PlayerGrant,
+  type RemoteName
+} from './remotes';
 import type { ConnectionTarget, StreamEncoding } from './types';
 import { mobKey } from './world';
 import { asMonsterRules, type MonsterRule } from './monsterRules';
@@ -1165,6 +1171,8 @@ export interface RemotesConfig {
    * Absent is `NO_GRANT`: nothing granted, nothing automatic.
    */
   players: Record<string, PlayerGrant>;
+  /** The player's own commands others may ask for. See `BotCommand`. */
+  commands: BotCommand[];
 }
 
 /**
@@ -2966,7 +2974,8 @@ export const DEFAULT_CONFIG: AppConfig = {
        * and are not.
        */
       party: ['health', 'bless-expired', 'heal'],
-      players: {}
+      players: {},
+      commands: []
     },
     loops: [],
     events: [],
@@ -4062,7 +4071,8 @@ function normalizeRemotes(value: unknown, d: RemotesConfig): RemotesConfig {
     autoJoin: bool(raw['autoJoin'], d.autoJoin),
     gang: remoteNames(raw['gang'], d.gang),
     party: remoteNames(raw['party'], d.party),
-    players: playerGrants(raw['players'], d.players)
+    players: playerGrants(raw['players'], d.players),
+    commands: raw['commands'] === undefined ? d.commands : asBotCommands(raw['commands'])
   };
 }
 

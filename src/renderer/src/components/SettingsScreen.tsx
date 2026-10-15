@@ -104,7 +104,13 @@ import {
   type SearchConfig
 } from '@shared/config';
 import { TRAINED_ATTRIBUTES, type TrainedAttribute } from '@shared/training';
-import { ACTIONABLE_REMOTES, type PlayerGrant, type RemoteName } from '@shared/remotes';
+import {
+  ACTIONABLE_REMOTES,
+  type BotCommand,
+  type PlayerGrant,
+  type RemoteName
+} from '@shared/remotes';
+import BotCommandList from './BotCommandList';
 import { errorMessage } from '@shared/values';
 
 /**
@@ -507,7 +513,10 @@ const SECTION_FIELDSETS: Readonly<Record<Section, readonly NavFieldset[]>> = {
     { id: 'hunting', label: t('settings.hunting.legend') },
     { id: 'quests', label: t('settings.quests.legend') }
   ],
-  Talk: [{ id: 'remotes', label: t('settings.remotes.legend') }],
+  Talk: [
+    { id: 'remotes', label: t('settings.remotes.legend') },
+    { id: 'bot-commands', label: t('settings.botCommands.legend') }
+  ],
   Sounds: [{ id: 'alerts-rules', label: t('settings.alerts.ruleLegend') }],
   Other: [{ id: 'movement-doors', label: t('settings.movement.doorsLegend') }],
   Health: [
@@ -762,6 +771,8 @@ interface CharacterForm {
    * somebody pressed Save on an unrelated field.
    */
   remotePlayers: Record<string, PlayerGrant>;
+  /** The player's own commands others may ask for (`BotCommandList`). */
+  remoteCommands: BotCommand[];
 }
 
 function formOf(entry: ProfileEditable): CharacterForm {
@@ -914,6 +925,7 @@ function formOf(entry: ProfileEditable): CharacterForm {
     remoteGang: [...entry.remotes.gang],
     remoteParty: [...entry.remotes.party],
     remotePlayers: entry.remotes.players,
+    remoteCommands: entry.remotes.commands,
     lookAtPlayers: entry.talk.lookAtPlayers,
     statlineControl: entry.statline.control,
     rewrites: entry.rewrites
@@ -1176,7 +1188,9 @@ function draftOf(form: CharacterForm): ProfileDraft {
       autoJoin: form.remoteAutoJoin,
       gang: form.remoteGang,
       party: form.remoteParty,
-      players: form.remotePlayers
+      players: form.remotePlayers,
+      // Rows not yet saying what is asked or sent are not written.
+      commands: form.remoteCommands.filter((c) => c.word.trim() !== '' && c.send.trim() !== '')
     },
     talk: { lookAtPlayers: form.lookAtPlayers },
     statline: { control: form.statlineControl },
@@ -1492,6 +1506,7 @@ function emptyForm(
     remoteGang: [...remotes.gang],
     remoteParty: [...remotes.party],
     remotePlayers: remotes.players,
+    remoteCommands: remotes.commands,
     lookAtPlayers: talk.lookAtPlayers,
     statlineControl: statline.control,
     rewrites
@@ -3142,6 +3157,19 @@ export default function SettingsScreen({
                         <PlayerGrants
                           grants={form.remotePlayers}
                           onChange={(players) => patch({ remotePlayers: players })}
+                        />
+                      </fieldset>
+                      {/*
+                        The player's own commands others may ask this
+                        character for, answered after MegaMUD's own
+                        (2026-10-15): a healer's @heal for whoever is named.
+                      */}
+                      <fieldset className="settings-menus" data-fieldset="bot-commands">
+                        <legend>{t('settings.botCommands.legend')}</legend>
+                        <p className="settings-note">{t('settings.botCommands.note')}</p>
+                        <BotCommandList
+                          commands={form.remoteCommands}
+                          onChange={(remoteCommands) => patch({ remoteCommands })}
                         />
                       </fieldset>
                     </>

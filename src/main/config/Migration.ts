@@ -288,6 +288,7 @@ function migrateAll(options: MigrationOptions): void {
   theMegaMudDataMovedIn(home, note);
   statedTheItemDetails(home, note, options.template);
   pinTheMegaToggles(home, note, options.internalTemplate);
+  statedTheBotCommands(home, note, options.template);
 }
 
 /**
@@ -6372,6 +6373,45 @@ function statedTheSurvivalFloor(
     stated.length === 1
       ? t('notices.migration.survivalFloorStated.one', params)
       : t('notices.migration.survivalFloorStated.many', params)
+  );
+}
+
+/**
+ * `automation.remotes.commands` into every file that states `remotes:`
+ * without it, empty, after `players` with the template's paragraph
+ * (2026-10-15): the player's own commands others may ask for. None is what
+ * the client already did. Idempotent; nothing stated is overwritten.
+ */
+function statedTheBotCommands(
+  home: Home,
+  note: (message: string) => void,
+  template: string | undefined
+): void {
+  const comment = templateComments(template, 'automation').get('automation.remotes.commands');
+  const files = [home.options, ...directories(home.profilesDir).map((id) => home.profile(id).file)];
+  const stated: string[] = [];
+
+  for (const file of files) {
+    edit(file, (document) => {
+      const remotes = document.getIn(['automation', 'remotes'], true);
+      if (!isMap(remotes) || remotes.has('commands')) return false;
+      const pair = document.createPair('commands', document.createNode([])) as Pair;
+      if (typeof comment === 'string' && isScalar(pair.key)) pair.key.commentBefore = comment;
+      const after = remotes.items.findIndex(
+        (item) => isScalar(item.key) && item.key.value === 'players'
+      );
+      remotes.items.splice(after === -1 ? remotes.items.length : after + 1, 0, pair);
+      stated.push(file);
+      return true;
+    });
+  }
+
+  if (stated.length === 0) return;
+  const params = { count: stated.length, fileList: stated.join(', ') };
+  note(
+    stated.length === 1
+      ? t('notices.migration.botCommandsStated.one', params)
+      : t('notices.migration.botCommandsStated.many', params)
   );
 }
 

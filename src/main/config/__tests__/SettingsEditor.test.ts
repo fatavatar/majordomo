@@ -614,7 +614,8 @@ describe('what a character plays against, and what keeps it alive', () => {
           autoJoin: false,
           gang: [],
           party: [],
-          players: {}
+          players: {},
+          commands: []
         }
       })
     );
@@ -625,7 +626,8 @@ describe('what a character plays against, and what keeps it alive', () => {
       autoJoin: false,
       gang: [],
       party: [],
-      players: {}
+      players: {},
+      commands: []
     });
   });
 
@@ -686,7 +688,8 @@ describe('what a character plays against, and what keeps it alive', () => {
       // switch is off, so it grants nobody anything until somebody turns
       // answering on -- which is the point of stating it either way.
       party: [...DEFAULT_CONFIG.automation.remotes.party],
-      players: {}
+      players: {},
+      commands: []
     });
   });
 
@@ -706,7 +709,8 @@ describe('what a character plays against, and what keeps it alive', () => {
           autoJoin: false,
           gang: [],
           party: [],
-          players: {}
+          players: {},
+          commands: []
         }
       })
     );
@@ -719,7 +723,8 @@ describe('what a character plays against, and what keeps it alive', () => {
           autoJoin: false,
           gang: [],
           party: [],
-          players: {}
+          players: {},
+          commands: []
         }
       })
     );
@@ -730,7 +735,8 @@ describe('what a character plays against, and what keeps it alive', () => {
       autoJoin: false,
       gang: [],
       party: [],
-      players: {}
+      players: {},
+      commands: []
     });
   });
 
@@ -1402,7 +1408,8 @@ describe('one player’s @ command permissions', () => {
           autoJoin: false,
           gang: [],
           party: [],
-          players: {}
+          players: {},
+          commands: []
         }
       })
     );
@@ -1558,7 +1565,8 @@ describe('the gang list and the gangpath switch', () => {
           autoJoin: false,
           gang: [],
           party: [],
-          players: {}
+          players: {},
+          commands: []
         }
       })
     );

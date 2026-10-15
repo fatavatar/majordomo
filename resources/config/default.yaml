@@ -1165,6 +1165,27 @@ automation:
     party: [health, bless-expired, heal]
     players: {}
 
+    # Commands of your own that other players may ask this character for -- a
+    # healer's @heal for whoever asks, say. MegaMUD has none: its Messages rows
+    # can answer a telepath, but they are the realm's, every character on it
+    # answers, and anybody may ask. Each row is the word asked, what to send
+    # and what to answer, in MegaMUD's macros ({source} is whoever asked), and
+    # who may ask: the party, the gang, named players, or anyone, which you say
+    # in so many words. They are answered after MegaMUD's own commands, so a
+    # party member's @heal is still MegaMUD's party heal, and not at all while
+    # MegaMUD's Talk tab refuses remote commands. On the Character page under
+    # Talk. For example:
+    #
+    #   commands:
+    #     - word: '@heal'
+    #       send: 'mend {source}'
+    #       reply: '{healing}'
+    #       party: false
+    #       gang: true
+    #       anyone: false
+    #       players: [ardren]
+    commands: []
+
   # Commands on a clock -- MegaMUD's Events tab.
   #
   # `routines` above reacts to what happens; this reacts to *when*. Each event

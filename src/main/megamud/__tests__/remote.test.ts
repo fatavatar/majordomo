@@ -189,3 +189,42 @@ describe('the remote commands (0x4ae4a0)', () => {
     expect(pending(s)).toEqual([]);
   });
 });
+
+/* The player's own commands others may ask for (2026-10-15). */
+describe('bot commands', () => {
+  const heal = {
+    word: '@heal',
+    send: 'mend {source}',
+    reply: '{healing}',
+    party: false,
+    gang: false,
+    anyone: false,
+    players: ['stranger']
+  };
+
+  it('answers a named player with what it sends and its reply, the asker as {source}', () => {
+    const { s } = remote();
+    s.botCommands = [heal];
+    remoteCommand(s, 'Stranger telepaths: @heal', 0x10);
+    expect(pending(s)).toEqual(['mend Stranger\r', '/Stranger {healing}\r']);
+  });
+
+  it('answers nobody it does not name, and leaves a party member’s @heal to MegaMUD', () => {
+    const { s } = remote();
+    s.botCommands = [{ ...heal, players: [] }];
+    addMember(s, 'Skinny', 0);
+    addMember(s, 'Fatty', 1);
+    remoteCommand(s, 'Stranger telepaths: @heal', 0x10);
+    remoteCommand(s, tele('@heal'), 0x10);
+    // MegaMUD's own refusal, as for any command the stranger may not use.
+    expect(pending(s)).toEqual(['/Stranger {command invalid or not allowed}\r']);
+    expect(s.party.find((m) => m.name === 'Fatty')!.flags28 & 0x20000).toBe(0x20000);
+  });
+
+  it('answers anyone, a player it has no record of included, when it says so', () => {
+    const { s } = remote();
+    s.botCommands = [{ ...heal, players: [], anyone: true, reply: '' }];
+    remoteCommand(s, 'Nobody telepaths: @heal', 0x10);
+    expect(pending(s)).toEqual(['mend Nobody\r']);
+  });
+});
