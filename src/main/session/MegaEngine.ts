@@ -16,7 +16,7 @@
  * the walk fills in the first time through ("[Path step updated]").
  */
 
-import { stricmp } from '../megamud/cstr';
+import { stricmp, typedDirection } from '../megamud/cstr';
 import { findClass, type ItemRec, type MegaData, type MonsterRec } from '../megamud/data';
 import { applyItemRule } from '../megamud/fromWorld';
 import { bbsSetup } from '../megamud/bbs';
@@ -70,7 +70,7 @@ import type { ActiveBuff, Affliction } from '../../shared/character';
 import type { MegaSettings } from '../../shared/megamud/settings';
 import { MEGA_TOGGLES, type MegaToggle, type MegaToggles } from '../../shared/megamud/toggles';
 import type { MegaChoices } from '../../shared/ipc';
-import type { RemoteName } from '../../shared/remotes';
+import type { PlayerGrant } from '../../shared/remotes';
 import { IDLE_WALK, type WalkProgress } from '../../shared/walk';
 import { NO_LOOP, type LoopProgress } from '../../shared/loops';
 import {
@@ -157,7 +157,9 @@ export interface MegaEngineSetup {
   settings: MegaSettings;
   data: MegaData;
   /** The app's per-player remote grants (`automation.remotes.players`). */
-  grants: Readonly<Record<string, { allow: readonly RemoteName[]; deny: readonly RemoteName[] }>>;
+  grants: Readonly<Record<string, PlayerGrant>>;
+  /** Join When Invited (`automation.remotes.autoJoin`): joining a player granted `join` who invites. */
+  joinWhenInvited?: boolean;
   /** Signatures learned before, by room. */
   learned?: ReadonlyMap<RoomId, number>;
   /** What it knows from before, from our stores, and where what it learns goes. */
@@ -437,7 +439,7 @@ export class MegaEngine {
       this.s.monsterMarks = (memory.marks ?? []).map(([name, flags]) => ({ name, flags }));
     }
     this.marksKept = JSON.stringify(this.s.monsterMarks);
-    grantPlayers(this.s, setup.grants);
+    grantPlayers(this.s, setup.grants, setup.joinWhenInvited);
     findLongestFirst(this.s);
     for (const [room, sig] of memory?.signatures ?? []) this.learn(room, sig);
     for (const [room, sig] of setup.learned ?? []) this.learn(room, sig);
@@ -579,7 +581,7 @@ export class MegaEngine {
     if (s.rulesChanged !== 0) [s.rules, s.ruleAt] = [rules, ruleAt];
     if (s.eventsChanged !== 0) [s.events, s.eventNext] = [events, eventNext];
     if (s.monitorsChanged !== 0) s.monitors = monitors;
-    grantPlayers(s, setup.grants);
+    grantPlayers(s, setup.grants, setup.joinWhenInvited);
     if (setup.data !== this.dataFrom) this.newData(setup.data);
     this.noteToggles();
   }
@@ -1403,16 +1405,19 @@ export class MegaEngine {
       for (const st of leg.steps) {
         rooms.push(st.from);
         /*
-         * A room's own command that moves only whoever types it (`go portal`,
-         * a script's teleport) written as a MegaMUD path writes it,
-         * `@party <command>`: leading a party, MegaMUD says it to the party,
-         * sends it and holds the walk for the party (`typeCommand`); alone,
-         * it sends the command. Fatty went through Skinny's portal without
-         * him (2026-10-14). A text exit in a compass slot is not one: the
-         * server moves the party through it.
+         * A step that is not a plain direction written as a MegaMUD path
+         * writes it, `@party <command>`: leading a party, MegaMUD says it to
+         * the party, sends it and holds the walk for the party
+         * (`typeCommand`); alone, it sends the command. A room's own command
+         * (`go portal`, a script's teleport) moves only whoever types it:
+         * Fatty went through a portal without Skinny (2026-10-14). And a
+         * text exit (`Text:` in a compass slot, `go gate`) drops the party's
+         * follow on this realm, followers landed or not, measured twice
+         * (2026-09-29); MegaMUD's invite scan asks back a member left out
+         * (`0x407ee0`, `0x188`).
          */
         const command =
-          st.direction === 'portal' && !st.command.startsWith('@')
+          typedDirection(st.command) === -1 && !st.command.startsWith('@')
             ? `@party ${st.command}`
             : st.command;
         steps.push(this.stepFrom(st.from, command));

@@ -46,6 +46,7 @@ function step(from: number, to: number, command: string): RouteStep {
 function plan(from: string, to: string): Route {
   const ways: Record<string, RouteStep[]> = {
     '1/1>1/4': [step(1, 3, 'e'), { ...step(3, 4, 'go portal'), direction: 'portal' }],
+    '1/2>1/4': [{ ...step(2, 4, 'go gate'), direction: 'n' }],
     '1/1>1/2': [step(1, 2, 'n')],
     '1/2>1/1': [step(2, 1, 's')],
     '1/1>1/3': [step(1, 3, 'e')],
@@ -317,6 +318,19 @@ describe('the engine in a session', () => {
     expect(e.walkTo('1/4')).toBeNull();
     await planned();
     expect(e.s.path.steps!.map((st) => st.command)).toEqual(['e', '@party go portal']);
+    e.dispose();
+  });
+
+  /* A text exit drops the party's follow on this realm (2026-09-29). */
+  it('writes a text exit as an @party step too', async () => {
+    vi.useFakeTimers();
+    const { e } = engine('1/2');
+    e.s.inGame = 1;
+    e.s.online = 1;
+    e.received('\x1b[1;36mDark Alley\r\n\x1b[0;32mObvious exits: south\r\n');
+    expect(e.walkTo('1/4')).toBeNull();
+    await planned();
+    expect(e.s.path.steps!.map((st) => st.command)).toEqual(['@party go gate']);
     e.dispose();
   });
 

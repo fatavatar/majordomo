@@ -162,13 +162,19 @@ function toggleOff(
   return `${c.to} {${label} ${NOW(wasOn, on)} ${ON(on)}}\r`;
 }
 
-/** `@health`: `{HP=x/y,MA=x/y, Resting, …}`. */
+/**
+ * `@health`: `{HP=x/y,MA=x/y, Resting, …}`. Ours: a figure over its maximum
+ * sent with the figure as its maximum. The maximum is the last stat sheet's,
+ * a buff since can carry the figure past it, and the asking MegaMUD cannot
+ * read a figure over its maximum (`healthReport`) and asks again: Skinny
+ * answered Fatty `{HP=936/916,…}` fifty-two times on 2026-10-04.
+ */
 function health(c: Ctx): number {
   const s = c.s;
-  let text = `${c.to} {HP=${s.hp}/${s.Player_MaxHP}`;
+  let text = `${c.to} {HP=${s.hp}/${Math.max(s.Player_MaxHP, s.hp)}`;
   if (s.Player_MaxMana > 0) {
     text += classMagic(s.data, s.Player_Class) === 5 ? ',KAI=' : ',MA=';
-    text += `${s.mana}/${s.Player_MaxMana}`;
+    text += `${s.mana}/${Math.max(s.Player_MaxMana, s.mana)}`;
   }
   if (s.resting !== 0) text += ', Resting';
   if (s.lost !== 0) text += ', Lost';

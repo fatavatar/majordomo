@@ -12,7 +12,7 @@ import { SETTINGS } from '../../shared/megamud/schema';
 import type { MegaSettings, ProfiledSection } from '../../shared/megamud/settings';
 import { clearCastMode } from './combat/engaged';
 import { forgetRoomMonsters, forgetRoomPlayers } from './script/game';
-import type { RemoteName } from '../../shared/remotes';
+import type { PlayerGrant, RemoteName } from '../../shared/remotes';
 import { loadMonitors } from './abilities/monitors';
 import { newPlayer } from './data';
 import { applySettings, fieldName } from './fieldNames';
@@ -199,10 +199,22 @@ export function remoteBits(allow: readonly RemoteName[], deny: readonly RemoteNa
   return bits;
 }
 
-/** Each granted player made known with its remote bits (a record learned in play keeps its others). */
+/** A player's flag: invite to the party when seen (`0x407ee0`'s scan). */
+const INVITE_IF_SEEN = 0x10;
+/** A player's flag: join their party when they invite (`0x47e1ac`). */
+const JOIN_IF_INVITED = 0x20;
+
+/**
+ * Each granted player made known with its remote bits (a record learned in
+ * play keeps its others), and the two party flags our grants state:
+ * Auto Invite when seen, and, with Join When Invited on, joining a player
+ * granted `join` when they invite. Neither reached the engine before
+ * (2026-10-15).
+ */
 export function grantPlayers(
   s: Session,
-  grants: Readonly<Record<string, { allow: readonly RemoteName[]; deny: readonly RemoteName[] }>>
+  grants: Readonly<Record<string, PlayerGrant>>,
+  joinWhenInvited = false
 ): void {
   for (const [key, grant] of Object.entries(grants)) {
     const name = key.charAt(0).toUpperCase() + key.slice(1);
@@ -212,5 +224,10 @@ export function grantPlayers(
       p.name = name.slice(0, 19);
     }
     p.remote = remoteBits(grant.allow, grant.deny);
+    const join = joinWhenInvited && grant.allow.includes('join') && !grant.deny.includes('join');
+    p.flags =
+      (p.flags & ~(INVITE_IF_SEEN | JOIN_IF_INVITED)) |
+      (grant.autoInviteWhenSeen === true ? INVITE_IF_SEEN : 0) |
+      (join ? JOIN_IF_INVITED : 0);
   }
 }

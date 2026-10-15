@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
+import { grantPlayers } from '../character';
 import { newPlayer } from '../data';
 import { addMember } from '../party/members';
 import { locationLine } from '../room/where';
@@ -33,6 +34,34 @@ describe('the remote commands (0x4ae4a0)', () => {
     s.poisoned = 1;
     expect(remoteCommand(s, tele('@health'), 0x10)).toBe(1);
     expect(pending(s)).toEqual(['/Fatty {HP=70/1182, Resting, Poisoned}\r']);
+  });
+
+  /* Skinny answered Fatty {HP=936/916} fifty-two times, unreadable to him (2026-10-04). */
+  it('never answers @health with a figure over its maximum', () => {
+    const { s } = remote();
+    addMember(s, 'Skinny', 0);
+    addMember(s, 'Fatty', 1);
+    s.hp = 1470;
+    s.Player_MaxHP = 1420;
+    expect(remoteCommand(s, tele('@health'), 0x10)).toBe(1);
+    expect(pending(s)).toEqual(['/Fatty {HP=1470/1470}\r']);
+  });
+
+  /* Our grants' Auto Invite when seen and Join When Invited, as MegaMUD's player flags (2026-10-15). */
+  it('takes our grants’ party flags as MegaMUD’s', () => {
+    const { s } = remote();
+    grantPlayers(
+      s,
+      {
+        fatty: { allow: ['join'], deny: [] },
+        stranger: { allow: [], deny: [], autoInviteWhenSeen: true }
+      },
+      true
+    );
+    const flags = (name: string) => s.data.players!.find((p) => p.name === name)!.flags & 0x30;
+    expect([flags('Fatty'), flags('Stranger')]).toEqual([0x20, 0x10]);
+    grantPlayers(s, { fatty: { allow: ['join'], deny: [] } }, false);
+    expect(flags('Fatty')).toBe(0);
   });
 
   it('gives a stranger nothing it is not allowed, with the command reply', () => {
