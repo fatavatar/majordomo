@@ -126,6 +126,32 @@ describe('walking a path (D48)', () => {
     expect(out.sent).toEqual(['sw\r']);
   });
 
+  /* A maze of one name and the same exits: every step matched (2026-10-16). */
+  it('resyncs by the room a step is known to be taken from, not a look-alike', () => {
+    const r = walker();
+    const { s, out } = r;
+    const M = 0x66600006;
+    const maze = path('MAZE.MP', [step(M, 'n'), step(M, 'e'), step(M, 'w'), step(M, 's')], A, A);
+    walking(r, maze, 0);
+    (s.host as SessionHost).isStepRoom = (_p, i) => i === 2;
+    s.roomExits = Array.from({ length: 10 }, () => 0);
+    s.stepTries = 2;
+    walkPath(s);
+    expect(out.shown).toEqual(['[Resynced from path step 0 to 2 (MAZE.MP)]']);
+    expect(out.sent).toEqual(['w\r']);
+  });
+
+  it('walks on by signature where no step’s room is known', () => {
+    const r = walker();
+    const { s, out } = r;
+    const M = 0x66600006;
+    const maze = path('MAZE.MP', [step(M, 'n'), step(M, 'e'), step(M, 'w'), step(M, 's')], A, A);
+    walking(r, maze, 0);
+    s.stepTries = 2;
+    walkPath(s);
+    expect(out.sent).toEqual(['n\r']);
+  });
+
   it('takes the loop up again at its end', () => {
     const r = walker();
     const { s } = r;

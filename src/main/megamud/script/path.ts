@@ -33,6 +33,7 @@ import {
 } from '../move/destinations';
 import { doors, holdForHp, leaving, move, roamExit, runBack, spendRun } from '../move/go';
 import {
+  atStep,
   clearPath,
   copyPath,
   findPath,
@@ -513,14 +514,14 @@ function walkStep(s: Session, first: PathStep): number {
   const any = room === ANY_ROOM;
   if (
     dark < 2 &&
-    s.roomSignature !== room &&
+    !atStep(s, path, path.step) &&
     !any &&
     s.stepTries > 0 &&
     s.MegaMud_CurPathStep < path.count - 1
   ) {
     // The move went a step further than the path thought: on a step.
     const next = steps[path.step + 1];
-    if (next && next.room === s.roomSignature) {
+    if (next && atStep(s, path, path.step + 1)) {
       s.MegaMud_CurPathStep += 1;
       st = next;
       path.step += 1;
@@ -529,11 +530,11 @@ function walkStep(s: Session, first: PathStep): number {
   }
   if (s.darkness < Darkness.Dark) {
     if (
-      s.roomSignature !== st.room &&
+      !atStep(s, path, path.step) &&
       !any &&
       s.stepTries > 0 &&
       s.MegaMud_CurPathStep > 0 &&
-      steps[path.prev]?.room === s.roomSignature
+      atStep(s, path, path.prev)
     ) {
       // The move did not happen: back a step.
       s.MegaMud_CurPathStep -= 1;
@@ -541,7 +542,7 @@ function walkStep(s: Session, first: PathStep): number {
       st = steps[path.prev]!;
       if (s.task === Task.Walking) s.stepsToGo += 1;
     }
-    if (s.darkness < Darkness.Dark && s.roomSignature !== st.room && !any) {
+    if (s.darkness < Darkness.Dark && !atStep(s, path, path.step) && !any) {
       s.stepTries += 1;
       if (s.stepTries === 1) return tryAgain(s);
       let tries = s.stepTries;
@@ -603,7 +604,7 @@ function walkStep(s: Session, first: PathStep): number {
   }
   if (
     s.darkness < Darkness.Dark &&
-    s.roomSignature === st.room &&
+    atStep(s, path, path.step) &&
     (st.flags & StepFlag.RoomUncertain) !== 0
   )
     st.flags &= ~StepFlag.RoomUncertain;

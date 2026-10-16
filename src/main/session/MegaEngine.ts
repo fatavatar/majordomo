@@ -446,6 +446,7 @@ export class MegaEngine {
       dial: () => this.host.dial(),
       route: (from, to) => this.route(from, to),
       isRoom: (sig) => this.isRoom(sig),
+      isStepRoom: (p, i) => this.isStepRoom(p, i),
       readPath: (name) => this.readPath(name),
       saveSteps: (p) => this.saveSteps(p),
       blessingsCleared: () => this.blessingsCleared(),
@@ -1415,10 +1416,32 @@ export class MegaEngine {
   private isRoom(sig: number): boolean {
     const going = this.goingTo;
     if (going === null || going.sig !== sig) return true;
-    const here = this.host.here();
+    const here = this.placedHere();
     if (here !== null && here !== going.room) return false;
     this.goingTo = null;
     return true;
+  }
+
+  /**
+   * `SessionHost.isStepRoom`: here is the room a path of ours takes step `i`
+   * from (`p.count`: the room it ends in), where that room is known.
+   */
+  private isStepRoom(p: PathRec, i: number): boolean {
+    const made = this.madeFor(p);
+    if (!made) return true;
+    const room = i >= p.count ? made.end : made.rooms[i];
+    const here = this.placedHere();
+    return room === null || room === undefined || here === null || here === room;
+  }
+
+  /**
+   * Where our tracker puts the character, when it agrees with the engine's
+   * room: a tracker a room behind or ahead says nothing about which
+   * look-alike this is.
+   */
+  private placedHere(): RoomId | null {
+    const here = this.host.here();
+    return here !== null && this.signatureOf(here) === this.s.roomSignature ? here : null;
   }
 
   /** The rooms with a signature: those learned, else those worked out. */

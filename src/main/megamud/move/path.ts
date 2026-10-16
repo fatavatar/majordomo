@@ -119,13 +119,28 @@ export function nextRoom(p: PathRec, st: PathStep, any: number): number {
 }
 
 /**
+ * Standing in step `i`'s room (`p.count`: the path's end). Ours past
+ * MegaMUD's signature match: in a maze of rooms with one name and the same
+ * exits every step matched, and a walk knocked off its path was put back at
+ * the wrong one (2026-10-16).
+ */
+export function atStep(s: Session, p: PathRec, i: number): boolean {
+  const sig = i >= p.count ? p.end : p.steps?.[i]?.room;
+  return sig !== undefined && s.roomSignature === sig && (s.host.isStepRoom?.(p, i) ?? true);
+}
+
+/**
  * `0x43e510`: the path resynced to this room: the first step taken from here
  * on from the one before the step reached, round past the end (a step
  * resynced to already, `0x8000`, is passed over once), else the first
  * anywhere. 0 when this room is the path's start or end, or not on it.
  */
 export function resync(s: Session, p: PathRec): number {
-  if (s.roomSignature === p.start || s.roomSignature === p.end) return 0;
+  if (
+    (s.roomSignature === p.start && (s.host.isStepRoom?.(p, 0) ?? true)) ||
+    (s.roomSignature === p.end && (s.host.isStepRoom?.(p, p.count) ?? true))
+  )
+    return 0;
   if (p.steps === null && loadPath(s, p) === 0) return 0;
   const steps = p.steps!;
   let from = p.at - 1;
@@ -138,7 +153,7 @@ export function resync(s: Session, p: PathRec): number {
     if (at === first) {
       if (wrapped) {
         for (let j = 0; j < p.count; j += 1) {
-          if (steps[j]?.room === s.roomSignature) {
+          if (atStep(s, p, j)) {
             p.at = j;
             p.step = j;
             return 1;
@@ -149,7 +164,7 @@ export function resync(s: Session, p: PathRec): number {
       wrapped = true;
     }
     const st = steps[at];
-    if (st && st.room === s.roomSignature) {
+    if (st && atStep(s, p, at)) {
       if ((st.flags & StepFlag.Resynced) === 0) {
         p.at = at;
         p.step = at;

@@ -402,6 +402,12 @@ export interface SessionHost {
    */
   isRoom?(sig: number): boolean;
   /**
+   * Ours: whether the room here is step `i`'s of path `p` (`p.count`: the
+   * room it ends in), for a path whose steps' rooms are known by their map
+   * and number; true when nothing says otherwise.
+   */
+  isStepRoom?(p: PathRec, i: number): boolean;
+  /**
    * `0x482fc0`'s file: a path by its name (a `route`'s among them); the
    * paths known (`Session.paths`) are looked in when this is absent or null.
    */

@@ -326,10 +326,18 @@ describe('the engine in a session', () => {
     expect(e.s.path.steps!.map((st) => st.command)).toEqual(['e', 'n']);
 
     const sig = e.signatureOf('1/5')!;
+    e.s.roomSignature = sig;
     at.here = '1/2';
     expect(e.s.host.isRoom!(sig)).toBe(false);
+    // And a step of the path known by its room: its end, here, not the look-alike.
+    const p = e.s.path;
+    expect(e.s.host.isStepRoom!(p, p.count)).toBe(false);
     at.here = '1/5';
+    expect(e.s.host.isStepRoom!(p, p.count)).toBe(true);
     expect(e.s.host.isRoom!(sig)).toBe(true);
+    // A tracker that has not caught up (another signature) says nothing.
+    at.here = '1/3';
+    expect(e.s.host.isStepRoom!(p, 0)).toBe(true);
     e.dispose();
   });
 
