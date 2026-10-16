@@ -386,6 +386,12 @@ export class MegaEngine {
    * The run of a loop: when it was started, and when it first stood on the
    * loop itself rather than on the way out to it. Null with no loop taken up.
    */
+  /**
+   * The room a walk was asked for by its map and number, with its signature:
+   * other rooms share a signature (a name and its exits), and the walk heads
+   * for this one rather than the nearest of them (2026-10-16).
+   */
+  private goingTo: { sig: number; room: RoomId } | null = null;
   private loopRun: { name: string; startedAt: number; lapBegunAt: number | null } | null = null;
   /** The character's `[Alerts]`: the sound each alert plays. */
   private alerts: Readonly<Record<string, unknown>>;
@@ -439,6 +445,7 @@ export class MegaEngine {
       hangUp: () => this.host.hangUp(),
       dial: () => this.host.dial(),
       route: (from, to) => this.route(from, to),
+      isRoom: (sig) => this.isRoom(sig),
       readPath: (name) => this.readPath(name),
       saveSteps: (p) => this.saveSteps(p),
       blessingsCleared: () => this.blessingsCleared(),
@@ -1037,6 +1044,11 @@ export class MegaEngine {
     if (toggle) this.press(toggle.command);
   }
 
+  /** The player at the keyboard: a keystroke or a line, ending an idle AFK (`playerKey`). */
+  key(): void {
+    this.act(() => playerKey(this.s));
+  }
+
   /** A command the player typed. */
   typed(command: string): void {
     this.playerSent();
@@ -1044,11 +1056,6 @@ export class MegaEngine {
   }
 
   /**
-  /** The player at the keyboard: a keystroke or a line, ending an idle AFK (`playerKey`). */
-  key(): void {
-    this.act(() => playerKey(this.s));
-  }
-
    * The player sent a line, a bare Enter among them. MegaMUD sends the
    * player's line itself (`0x48e7f0` → `0x42d9f0`), which stamps the clock
    * its re-prompt counts from: a bare Enter after `LagWait` + 15 seconds
@@ -1162,6 +1169,8 @@ export class MegaEngine {
     freeSteps(s.loopPath);
     copyPath(s, s.loopPath, p, 0);
     if (goTo(s, 0, p) === 0) return `Could not head for the loop "${name}".`;
+    const first = this.madeFor(p)?.loop?.stops[0];
+    this.goingTo = first === undefined ? null : { sig: p.start, room: first };
     startWalking(s);
     headFor(s, 0);
     s.laps = 0;
@@ -1238,6 +1247,7 @@ export class MegaEngine {
       s.looping = 0;
     }
     clearDetours(s);
+    this.goingTo = { sig, room };
     goTo(s, sig, null);
     headFor(s, 1);
     // The Go-To dialog's Go and Run (`0x43e680`): walked with auto-combat on
@@ -1401,6 +1411,16 @@ export class MegaEngine {
     return rec ? worldSignature(rec) : null;
   }
 
+  /** `SessionHost.isRoom`: here is the room walked to, when one was chosen with this signature. */
+  private isRoom(sig: number): boolean {
+    const going = this.goingTo;
+    if (going === null || going.sig !== sig) return true;
+    const here = this.host.here();
+    if (here !== null && here !== going.room) return false;
+    this.goingTo = null;
+    return true;
+  }
+
   /** The rooms with a signature: those learned, else those worked out. */
   private roomsWith(sig: number): RoomId[] {
     const learned = this.learnedRooms.get(sig);
@@ -1495,7 +1515,9 @@ export class MegaEngine {
     }
     let best: Route | null = null;
     let pending = false;
-    for (const room of this.roomsWith(to).slice(0, 8)) {
+    const going = this.goingTo;
+    const rooms = going?.sig === to ? [going.room] : this.roomsWith(to).slice(0, 8);
+    for (const room of rooms) {
       if (room === here)
         return { flags: 0, path: this.makePath(this.routeName(), 'route', [], from, to), steps: 0 };
       const plan = this.plan(here, room);

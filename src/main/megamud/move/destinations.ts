@@ -197,6 +197,15 @@ function backName(cur: string): string {
  * fresh start ends at a destination that is here. 0 on the way, 0x20
  * cancelled, else why not (`0x43fd90`'s flags).
  */
+/**
+ * Standing at the destination `sig`. Ours past MegaMUD's signature match: a
+ * room chosen by its map and number, where a look-alike stood for it and the
+ * walk to it stopped in the wrong room (2026-10-16).
+ */
+function reached(s: Session, sig: number): boolean {
+  return s.roomSignature === sig && (s.host.isRoom?.(sig) ?? true);
+}
+
 export function headFor(s: Session, how: number): number {
   const wasWalking = s.walking;
   if (how !== 0) {
@@ -208,11 +217,7 @@ export function headFor(s: Session, how: number): number {
     s.stepsToGo = 0;
     s.laps = 0;
     how = -1;
-    if (
-      s.detours[0]!.room === s.roomSignature &&
-      s.detours[1]!.room === 0 &&
-      s.detours[0]!.path === ''
-    ) {
+    if (reached(s, s.detours[0]!.room) && s.detours[1]!.room === 0 && s.detours[0]!.path === '') {
       detourDone(s, 0);
       clearPath(s.path);
       clearPath(s.loopPath);
@@ -268,14 +273,14 @@ export function headFor(s: Session, how: number): number {
     s.fleeRoom = 0;
   }
   let dest = s.detours[0]!.room;
-  if (s.roomSignature === dest) {
+  if (reached(s, dest)) {
     for (;;) {
       if (s.detours[0]!.path !== '' && s.MegaMud_SelPath !== s.MegaMud_CurPath) {
         // At a detour's path's start: on to its end.
         s.detours[0]!.room = s.path.end;
         s.detours[0]!.path = '';
         dest = s.detours[0]!.room;
-        if (s.roomSignature === dest) {
+        if (reached(s, dest)) {
           s.MegaMud_CurPathStep = 0;
           s.path.prev = 0;
           s.path.step = 0;
@@ -295,7 +300,7 @@ export function headFor(s: Session, how: number): number {
         s.detourCombat = -1;
         break;
       }
-      if (s.roomSignature !== dest) break;
+      if (!reached(s, dest)) break;
     }
   }
   if (dest === 0) {

@@ -396,6 +396,12 @@ export interface SessionHost {
    */
   route?(from: number, to: number): RouteFound;
   /**
+   * Ours: whether the room here is the one `sig` stands for. A room the
+   * player chose by its map and number is that room, not another with its
+   * name and exits (and so its signature); true when nothing says otherwise.
+   */
+  isRoom?(sig: number): boolean;
+  /**
    * `0x482fc0`'s file: a path by its name (a `route`'s among them); the
    * paths known (`Session.paths`) are looked in when this is absent or null.
    */

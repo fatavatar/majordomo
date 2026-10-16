@@ -38,7 +38,9 @@ const SQUARE = room(1, 1, 'Town Square', [exit('n', 2), exit('e', 3, 'door')]);
 const ALLEY = room(1, 2, 'Dark Alley', [exit('s', 1)]);
 const SHOP = room(1, 3, 'Shop', [exit('w', 1, 'door')]);
 const BACK = room(1, 4, 'Back Room', []);
-const ROOMS = [SQUARE, ALLEY, SHOP, BACK];
+/** The alley's look-alike: its name and exits, so its signature. */
+const OTHER_ALLEY = room(1, 5, 'Dark Alley', [exit('s', 3)]);
+const ROOMS = [SQUARE, ALLEY, SHOP, BACK, OTHER_ALLEY];
 
 function step(from: number, to: number, command: string): RouteStep {
   return { from: `1/${from}`, to: `1/${to}`, direction: command, command } as RouteStep;
@@ -54,7 +56,8 @@ function plan(from: string, to: string): Route {
     '1/1>1/3': [step(1, 3, 'e')],
     '1/3>1/1': [step(3, 1, 'w')],
     '1/2>1/3': [step(2, 1, 's'), step(1, 3, 'e')],
-    '1/3>1/2': [step(3, 1, 'w'), step(1, 2, 'n')]
+    '1/3>1/2': [step(3, 1, 'w'), step(1, 2, 'n')],
+    '1/1>1/5': [step(1, 3, 'e'), step(3, 5, 'n')]
   };
   return { steps: ways[`${from}>${to}`] ?? [], cost: 1, blocked: false };
 }
@@ -307,6 +310,26 @@ describe('the engine in a session', () => {
     e.s.path.at = e.s.path.count;
     e.s.walking = 0;
     expect(e.progress.walk.status).toBe('arrived');
+    e.dispose();
+  });
+
+  /* A walk to a room by number stopped in the nearest with its name and exits (2026-10-16). */
+  it('walks to the room chosen, not a nearer one that looks the same, and arrives only there', async () => {
+    vi.useFakeTimers();
+    const { e, at } = engine('1/1');
+    e.s.inGame = 1;
+    e.s.online = 1;
+    e.received('\x1b[1;36mTown Square\r\n\x1b[0;32mObvious exits: north, closed door east\r\n');
+    expect(e.signatureOf('1/5')).toBe(e.signatureOf('1/2'));
+    expect(e.walkTo('1/5')).toBeNull();
+    await planned();
+    expect(e.s.path.steps!.map((st) => st.command)).toEqual(['e', 'n']);
+
+    const sig = e.signatureOf('1/5')!;
+    at.here = '1/2';
+    expect(e.s.host.isRoom!(sig)).toBe(false);
+    at.here = '1/5';
+    expect(e.s.host.isRoom!(sig)).toBe(true);
     e.dispose();
   });
 
