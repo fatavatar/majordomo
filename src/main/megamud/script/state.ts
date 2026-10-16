@@ -4,14 +4,15 @@
  */
 import { enemiesHere } from '../room/entities';
 import type { Session } from '../Session';
-import { isCastState } from '../states';
+import { isCastState, State } from '../states';
 import { refreshStatus } from '../status';
 import { idiv } from '../cstr';
+import { LineFlag } from '../flags';
 
 /** `0x4a9c00`: if the state before, or the one awaited, is `state`, forget it. */
 export function forgetAwaited(s: Session, state: number): void {
-  if (s.stateBefore === state) s.stateBefore = 0;
-  if (s.stateAwaited === state) s.stateAwaited = 0;
+  if (s.stateBefore === state) s.stateBefore = State.Nothing;
+  if (s.stateAwaited === state) s.stateAwaited = State.Nothing;
 }
 
 /**
@@ -32,20 +33,26 @@ export function setState(s: Session, next: number): void {
   let quiet = false;
   if (s.debug !== 0) {
     if (old === 0) {
-      quiet = (s.stateBefore === 3 && next === 3) || (s.stateBefore === 5 && next === 5);
-    } else if ((old === 3 || old === 5) && s.stateBefore === 0 && next === 0) {
+      quiet =
+        (s.stateBefore === State.Resting && next === State.Resting) ||
+        (s.stateBefore === State.Meditating && next === State.Meditating);
+    } else if (
+      (old === 3 || old === 5) &&
+      s.stateBefore === State.Nothing &&
+      next === State.Nothing
+    ) {
       quiet = true;
     }
   }
   if (
-    next === 0 &&
+    next === State.Nothing &&
     (s.inCombat !== 0 || enemiesHere(s, 0) > 0) &&
     s.inGame !== 0 &&
     s.online !== 0
   ) {
     const before = s.stateBefore;
     if (before === 0x11 || before === 0x12 || isCastState(before)) resumed = true;
-    else s.stateBefore = 0;
+    else s.stateBefore = State.Nothing;
     next = s.stateBefore;
     s.state = next;
   }
@@ -54,42 +61,42 @@ export function setState(s: Session, next: number): void {
     s.stateSince = s.now;
   }
   let awaited = false;
-  if (next === 0) {
+  if (next === State.Nothing) {
     const manaFull = idiv(s.Player_MaxMana * s.Health_ManaFullPct, 100);
     let meditate = false;
     if (s.resting === 0 || s.inGame === 0) {
       meditate = true;
     } else if (s.hp < idiv(s.Player_MaxHP * s.Health_HpFullPct, 100)) {
-      next = 3;
-      s.state = 3;
+      next = State.Resting;
+      s.state = State.Resting;
     } else if (s.restManaToFull === 0 || manaFull <= s.mana) {
       meditate = true;
     } else {
-      next = 3;
-      s.state = 3;
+      next = State.Resting;
+      s.state = State.Resting;
     }
     if (meditate) {
       if (s.meditating === 0 || s.inGame === 0 || manaFull <= s.mana) {
         s.state = next;
       } else {
-        next = 5;
-        s.state = 5;
+        next = State.Meditating;
+        s.state = State.Meditating;
       }
     }
     awaited = isCastState(next);
   } else {
     s.state = next;
-    if (next === 0x25) s.f_32350 = s.host.tickMs();
-    else if (next === 0x23) s.f_32360 = s.host.tickMs();
-    else if (next === 0x24) s.f_32368 = s.host.tickMs();
-    awaited = next === 0x11 || next === 0x12 || isCastState(next);
+    if (next === State.Inventory) s.inventoryQuietAt = s.host.tickMs();
+    else if (next === State.Who) s.whoQuietAt = s.host.tickMs();
+    else if (next === State.Top) s.topQuietAt = s.host.tickMs();
+    awaited = next === State.Attacking || next === State.Backstabbing || isCastState(next);
   }
   if (awaited) s.stateAwaited = next;
   if (s.debug !== 0 && s.online !== 0) {
     const prompt =
       s.waitLines === 0 && s.waitPrompt === 0
-        ? `{P${s.lineFlags & 1}}`
-        : `{P${s.waitLines}${s.waitPrompt}${s.lineFlags & 1}}`;
+        ? `{P${s.lineFlags & LineFlag.Prompted}}`
+        : `{P${s.waitLines}${s.waitPrompt}${s.lineFlags & LineFlag.Prompted}}`;
     if (prompt !== s.lastPromptTrace) s.host.trace(prompt);
     s.lastPromptTrace = prompt;
     if (!quiet && (resumed || old !== next) && old + next > 0) {

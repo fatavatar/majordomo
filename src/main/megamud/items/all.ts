@@ -6,20 +6,19 @@
  */
 import { queue, wake } from '../script/send';
 import type { Session } from '../Session';
-
-const COIN = 0x8000000;
+import { ItemFlag, CarriedFlag } from '../flags';
 
 /**
  * `0x4bc390`: everything here not marked never to take (`0x40`) marked to
  * take (`0x1000000`), coins left out when there is anything else.
  */
 export function getAll(s: Session): void {
-  const things = s.room.some((e) => e.item && (e.item.flags & COIN) === 0);
+  const things = s.room.some((e) => e.item && (e.item.flags & ItemFlag.Coin) === 0);
   for (const e of s.room) {
     const item = e.item;
-    if (!item || (item.flags & 0x40) !== 0) continue;
-    if (things && (item.flags & COIN) !== 0) continue;
-    item.flags |= 0x1000000;
+    if (!item || (item.flags & ItemFlag.CannotTake) !== 0) continue;
+    if (things && (item.flags & ItemFlag.Coin) !== 0) continue;
+    item.flags |= ItemFlag.NeededForPath;
   }
   wake(s);
 }
@@ -35,8 +34,8 @@ export function dropAll(s: Session): void {
     let dropped = 0;
     for (const c of s.inventory) {
       const item = c.item;
-      if (!item || (pass === 1 && (c.flags & 0x200) !== 0)) continue;
-      if ((item.flags & COIN) === 0) {
+      if (!item || (pass === 1 && (c.flags & CarriedFlag.EquipAsked) !== 0)) continue;
+      if ((item.flags & ItemFlag.Coin) === 0) {
         for (let i = 0; i < c.count; i += 1) {
           queue(s, `drop ${item.name}\r`);
           dropped += 1;
@@ -53,17 +52,16 @@ export function dropAll(s: Session): void {
 
 /** `0x4bc340`: everything carried marked to be equipped (`0x200`). */
 export function equipAll(s: Session): void {
-  for (const c of s.inventory) c.flags |= 0x200;
+  for (const c of s.inventory) c.flags |= CarriedFlag.EquipAsked;
   wake(s);
 }
 
 /** `0x4bc190`: the wealth over what is kept (`Cash.MinWealth`) deposited. */
 export function depositAll(s: Session): void {
-  const over = s.f_8428 - s.Cash_MinWealth;
+  const over = s.wealth - s.Cash_MinWealth;
   if (over <= 0) return;
   queue(s, `dep ${over}\r`);
   wake(s);
-  s.f_842c = 0;
-  s.f_8440 += over;
-  s.f_8428 -= over;
+  s.depositAsked = 0;
+  s.wealth -= over;
 }

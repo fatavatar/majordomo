@@ -7,6 +7,7 @@ import { blessStep } from '../script/bless';
 import { cureStep, selfCures } from '../script/cures';
 import { hideStep, sneakStep } from '../script/stealth';
 import { session } from './fixture';
+import { PartyFlag, CarriedFlag, EntityType } from '../flags';
 
 /* `0x410130`, `0x410440`, `0x4066f0`, `0x407ac0`, `0x40b520` and `0x40cc80`, read 2026-10-12. */
 
@@ -62,7 +63,7 @@ describe('hiding (0x407ac0)', () => {
     const { s, out } = character();
     s.Player_Stealth = 1;
     s.MegaMud_AutoHide = 1;
-    addEntity(s).type = 2;
+    addEntity(s).type = EntityType.Monster;
     expect(hideStep(s)).toBe(0);
     expect(out.sent).toEqual([]);
   });
@@ -118,10 +119,10 @@ describe('curing (0x410440, 0x410130)', () => {
     s.partySize = 2;
     s.party[0]!.name = 'Skinny';
     s.party[1]!.name = 'Fatty';
-    s.party[1]!.flags28 = 0x1000;
+    s.party[1]!.flags28 = PartyFlag.Poisoned;
     expect(cureStep(s, 0)).toBe(1);
     expect(out.sent).toEqual(['slow Fatty\r']);
-    expect(s.party[1]!.flags28 & 0x1000).toBe(0);
+    expect(s.party[1]!.flags28 & PartyFlag.Poisoned).toBe(0);
   });
 });
 
@@ -166,7 +167,7 @@ describe("equipping a spell's item (0x40cc80)", () => {
     s.inventory.push({ count: 1, flags: 0, item: item('wand of zapping', 1) });
     expect(equipForSpell(s, 'zap')).toBe(1);
     expect(out.sent).toEqual(['equip wand of zapping\r']);
-    s.inventory[0]!.flags = 1;
+    s.inventory[0]!.flags = CarriedFlag.Equipped;
     expect(equipForSpell(s, 'zap')).toBe(-1);
   });
 });

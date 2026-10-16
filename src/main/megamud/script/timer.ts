@@ -30,7 +30,7 @@ import { eventsStep, nextEvent, stamp } from './events';
 import { dropConnection } from './game';
 import { modeDefaults } from './modes';
 import { send, wake } from './send';
-import { setTask } from './task';
+import { setTask, Task } from './task';
 import { listingTimedOut, sixtySeconds, tenSeconds, thirtySeconds, twoSeconds } from './waits';
 
 /**
@@ -42,16 +42,18 @@ export function setActive(s: Session, active: number): void {
   if (s.active === active) return;
   s.active = active;
   if (active !== 0) {
-    s.f_dc98 = 0;
+    s.afkMessages = 0;
     if (s.MegaMud_NoHangup !== 0) {
       s.MegaMud_NoHangup = 0;
       s.host.show('[Assuming hangup should be re-allowed]');
     }
     return;
   }
-  if (s.f_dc98 > 0 && s.Display_PopupAfkMsgs !== 0) {
+  if (s.afkMessages > 0 && s.Display_PopupAfkMsgs !== 0) {
     // The Talk window shown (`0x4b45e0`, the app's).
-    s.host.message?.(`While AFK, you received ${s.f_dc98} message${s.f_dc98 > 1 ? 's' : ''}.`);
+    s.host.message?.(
+      `While AFK, you received ${s.afkMessages} message${s.afkMessages > 1 ? 's' : ''}.`
+    );
   }
 }
 
@@ -66,25 +68,25 @@ export function silence(s: Session, secs: number): void {
 
 /** `0x4ab5b0`'s part that is not the status bar: the experience baseline, and the time online. */
 export function expBaseline(s: Session): void {
-  if (s.f_e180 === 0 && (s.online === 0 || s.inGame === 0)) return;
-  if (s.f_324c8 === 0 || s.exp < s.f_324c8) {
-    s.f_324c8 = s.exp;
-    s.f_322b0 = s.now;
-    s.f_322b8 = s.now;
+  if (s.capturing === 0 && (s.online === 0 || s.inGame === 0)) return;
+  if (s.expBaseline === 0 || s.exp < s.expBaseline) {
+    s.expBaseline = s.exp;
+    s.expMeterStart = s.now;
+    s.expMeterEnd = s.now;
   }
-  if (s.online !== 0 && s.inGame !== 0) s.f_322b8 = s.now;
+  if (s.online !== 0 && s.inGame !== 0) s.expMeterEnd = s.now;
   // `0x4a7250`, the experience meter, does the same, and keeps the end from going before the start.
-  if (s.f_322b8 < s.f_322b0) s.f_322b8 = s.f_322b0;
+  if (s.expMeterEnd < s.expMeterStart) s.expMeterEnd = s.expMeterStart;
 }
 
 /** `0x4653d0`: the once-a-second timer (100). */
 export function secondTick(s: Session): void {
   s.now = s.host.clock();
-  if (s.f_322b0 === 0) s.f_322b0 = s.now;
-  if (s.f_322b8 === 0) s.f_322b8 = s.now;
-  if (s.f_322e8 === 0) s.f_322e8 = s.now;
-  if (s.f_322d0 === 0) s.f_322d0 = s.now;
-  if (s.f_322c0 === 0) s.f_322c0 = s.now;
+  if (s.expMeterStart === 0) s.expMeterStart = s.now;
+  if (s.expMeterEnd === 0) s.expMeterEnd = s.now;
+  if (s.lastHitAt === 0) s.lastHitAt = s.now;
+  if (s.probablyLastTypedAt === 0) s.probablyLastTypedAt = s.now;
+  if (s.unknown_322c0 === 0) s.unknown_322c0 = s.now;
   expBaseline(s);
   if (s.eventNext === -1) {
     s.eventNext = nextEvent(s);
@@ -95,18 +97,20 @@ export function secondTick(s: Session): void {
   }
   monitorTimer(s);
   whereTimeout(s);
-  if (s.f_e544 === 3 && s.task === 9) {
+  if (s.dialState === 3 && s.task === Task.Redial) {
     // Waiting out `Comms.RedialPause` before dialling again.
-    if (s.now < s.f_32298) {
-      setTask(s, 9);
+    if (s.now < s.redialAt) {
+      setTask(s, Task.Redial);
     } else {
-      s.f_318e4 = 0;
-      setTask(s, 2);
-      s.f_e544 = 4;
+      setTask(s, Task.Connecting2);
+      s.dialState = 4;
       s.host.dial?.();
     }
   }
-  const idleSince = (s.now - s.f_322d0) >>> 0 < (s.now - s.f_322c0) >>> 0 ? s.f_322d0 : s.f_322c0;
+  const idleSince =
+    (s.now - s.probablyLastTypedAt) >>> 0 < (s.now - s.unknown_322c0) >>> 0
+      ? s.probablyLastTypedAt
+      : s.unknown_322c0;
   if (
     (s.MegaMud_AfkTimeout * 0x3c) >>> 0 < (s.now - idleSince) >>> 0 &&
     s.online !== 0 &&
@@ -117,13 +121,13 @@ export function secondTick(s: Session): void {
     modeDefaults(s);
     s.host.show('[AFK now ON]');
   }
-  if (s.task === 0x12 && s.now - s.f_323a0 >= s.Comms_LagWait + 10) {
+  if (s.task === Task.Entering && s.now - s.unknown_323a0 >= s.Comms_LagWait + 10) {
     send(s, `set statline ${s.MegaMud_StatLine}\r`);
-    setTask(s, 0xb);
+    setTask(s, Task.InGame);
   }
-  if (s.eventNext !== -1 && s.f_a32c === 0 && s.events[s.eventNext]?.type === 1) eventsStep(s);
-  if (s.online !== 0 && s.inGame !== 0 && s.f_a32c === 0) {
-    if (s.f_322a0 !== 0 && s.now - s.f_322a0 >= s.Comms_LagWait + 0xf) send(s, '\r');
+  if (s.eventNext !== -1 && s.allOff === 0 && s.events[s.eventNext]?.type === 1) eventsStep(s);
+  if (s.online !== 0 && s.inGame !== 0 && s.allOff === 0) {
+    if (s.lastSentAt !== 0 && s.now - s.lastSentAt >= s.Comms_LagWait + 0xf) send(s, '\r');
     if (s.stateSince !== 0 && s.now - s.stateSince >= s.Comms_LagWait + 0x1e) {
       // Posted (`0x49c`, 30): run once this message is done.
       silence(s, 0x1e);
@@ -180,37 +184,41 @@ export function quietTick(s: Session, t: TerminalState, q: QuietClock): void {
     q.six = ms;
     silence(s, 5);
   }
-  if (s.task > 9 && s.task !== 0xb && ms - q.ten >= (s.Comms_LagWait + 10) * 1000) {
+  if (
+    s.task > Task.Redial &&
+    s.task !== Task.InGame &&
+    ms - q.ten >= (s.Comms_LagWait + 10) * 1000
+  ) {
     silence(s, 10);
-    s.f_db88 += 1;
-    if (s.f_db88 === 3) {
-      s.f_db8c += 1;
+    s.loginQuietTens += 1;
+    if (s.loginQuietTens === 3) {
+      s.loginQuietStrikes += 1;
       silence(s, 0x1e);
     }
     q.ten = ms;
-    if (s.f_db8c === 2) silence(s, 0x3c);
+    if (s.loginQuietStrikes === 2) silence(s, 0x3c);
   }
-  if (s.task < 10) {
-    s.f_db8c = 0;
-  } else if (s.f_db8c === 3) {
-    s.f_db88 = 0;
-    s.f_db8c = 0;
-    if (s.f_a32c === 0) {
+  if (s.task < Task.LoggingOn) {
+    s.loginQuietStrikes = 0;
+  } else if (s.loginQuietStrikes === 3) {
+    s.loginQuietTens = 0;
+    s.loginQuietStrikes = 0;
+    if (s.allOff === 0) {
       s.host.trace(`[No BBS response (${stamp(s)})]`);
       dropConnection(s);
     }
   }
   if (
     s.inGame === 0 &&
-    s.f_a32c === 0 &&
-    s.f_e158 === 0 &&
-    s.task > 9 &&
-    s.task !== 0xb &&
+    s.allOff === 0 &&
+    s.hangingUp === 0 &&
+    s.task > Task.Redial &&
+    s.task !== Task.InGame &&
     ms - q.login > 119999
   ) {
     s.host.trace(`[No login progress - forcing reconnect (${stamp(s)})]`);
-    s.f_db88 = 0;
-    s.f_db8c = 0;
+    s.loginQuietTens = 0;
+    s.loginQuietStrikes = 0;
     dropConnection(s);
     q.login = ms;
   }

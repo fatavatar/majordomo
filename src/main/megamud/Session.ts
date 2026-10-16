@@ -2,10 +2,9 @@
  * The state megamud.exe keeps per connection: one struct its code reaches
  * through a register and tests field by field. Each field here is one of the
  * struct's, named for what it was read to mean, its offset in the comment.
- * A field whose meaning has not been read yet keeps the decompile's name,
- * `f_<offset>`, so a line of the decompile ports without a guess
- * (docs/megamud/engine-port.md). Settings are inherited from
- * `SettingsFields`, named as the decompiled struct names them.
+ * A field only partly understood is named `probably…`, and one not
+ * understood `unknown_<offset>` (docs/megamud/engine-port.md). Settings are
+ * inherited from `SettingsFields`, named as the decompiled struct names them.
  *
  * Times: `now` is the struct's clock (`0x32290`), `_time64` seconds, stamped
  * by the once-a-second timer and a few other places; every timing test reads
@@ -14,8 +13,9 @@
 import type { BotCommand } from '../../shared/remotes';
 import type { ItemRec, MegaData, MonsterRec, PlayerRec, RoomRec } from './data';
 import type { MegaSettings } from '../../shared/megamud/settings';
-import { RawFields } from './RawFields';
+import { StateFields } from './StateFields';
 import type { Pending } from './script/send';
+import { EntityType, Stance } from './flags';
 
 /** One entry in the room's contents (`0x471190`, 0x48 bytes). */
 export interface RoomEntity {
@@ -35,7 +35,7 @@ export interface RoomEntity {
   mon: MonsterRec | null;
   /** +0x38: its item record, when it is an item. */
   item: ItemRec | null;
-  /** +0x3c: 1 kept, 4 not yet seen in this listing, 8 charmed, 0x10. */
+  /** +0x3c: `EntityFlag` bits. */
   flags: number;
   /** +0x40. */
   f40: number;
@@ -68,12 +68,7 @@ export interface AbilityMonitor {
   command: string;
   /** +0x70, 81 characters (`MonitorNMsg`): a line starting with it triggers a check. */
   message: string;
-  /**
-   * +0xc4: when to check: 1 every `interval` seconds, 2 before resting, 4
-   * after, 8 after a combat round, 0x10 at the start of a path or loop, 0x20
-   * before meditating, 0x40 after, 0x80 after its spell is cast, 0x100 on
-   * `message`.
-   */
+  /** +0xc4: when to check: `MonitorWhen` bits (`Every` is each `interval` seconds). */
   when: number;
   /** +0xc8: seconds between checks (5 at least). */
   interval: number;
@@ -83,7 +78,7 @@ export interface AbilityMonitor {
   chained: number;
   /** +0xd4: its command jumps the pending list. */
   urgent: number;
-  /** +0xd8: 0 idle, 1 being checked, 2 suspended. */
+  /** +0xd8: `MonitorState`. */
   state: number;
   /** +0xdc: a check is due. */
   due: number;
@@ -174,10 +169,8 @@ export interface WhoEntry {
   trackedAt?: number;
 }
 
-/** One inventory line (`0x452ba0`, 12 bytes). */
 /**
- * `0x43fd90`'s answer: `flags` 0 found, 1 no way, 2 and 4 too low or too
- * high a level, 8 short of gold, 0x10 an item needed, 0x20 cancelled; the
+ * `0x43fd90`'s answer: `flags` 0 found, else `RouteFlag` bits; the
  * path to take first (`special` -3 to -8 for a MUD op's `sys goto`), and the
  * steps to go.
  */
@@ -202,21 +195,16 @@ export const ANY_ROOM = 0x99999999 | 0;
 
 /** One step of a path (a `.mp` file's `room:flags:command` line, `0x482fc0`). */
 export interface PathStep {
-  /** +0x00: the signature (`0x8130`) of the room it is taken from; -1 not learned yet. */
+  /** +0x00: the signature (`roomSignature`) of the room it is taken from; -1 not learned yet. */
   room: number;
-  /**
-   * +0x04: 1 the room's light is known, 2 rest to full before it, 4 sets
-   * `f_e2b4`, 8 dark, 0x10 stash there, 0x20 and 0x40 don't attack there,
-   * 0x80 relearn its room, 0x100 its room uncertain, 0x200 trapped, 0x8000
-   * resynced to.
-   */
+  /** +0x04: `StepFlag` bits, the Path Steps dialog's and MegaMUD's own. */
   flags: number;
   /** +0x06: what is typed: a direction, or a command (`[key]` text for a door). */
   command: string;
 }
 
 /**
- * A path, `0x84` bytes: the one walked (`0xe39c`), the loop (`0xe4a4`), and
+ * A path, `0x84` bytes: the one walked (`0xe39c`), the loop (`loopPath`), and
  * the paths known (`0x7f20`). The walked path's name is `MegaMud.CurPath`
  * and its step `MegaMud.CurPathStep`; the loop's name `MegaMud.SelPath`.
  */
@@ -286,10 +274,11 @@ function settingsPath<K extends 'MegaMud_CurPath' | 'MegaMud_SelPath'>(
   return p;
 }
 
+/** One inventory line (`0x452ba0`, 12 bytes). */
 export interface Carried {
   /** +0x00: how many. */
   count: number;
-  /** +0x04: 1 equipped. */
+  /** +0x04: `CarriedFlag` bits. */
   flags: number;
   /** +0x08: its item record. */
   item: ItemRec | null;
@@ -313,7 +302,7 @@ export interface PartyMember {
   maxMana: number;
   /** +0x24: its class. */
   cls: number;
-  /** +0x28: 2 hit since its last report, 4 invited, 8 not in the last listing, 0x80 not online, 0x1000 poisoned. */
+  /** +0x28: `PartyFlag` bits. */
   flags28: number;
   /** +0x4a: when it left the realm. */
   leftAt?: number;
@@ -338,8 +327,8 @@ export function newMember(): PartyMember {
 
 export function newEntity(): RoomEntity {
   return {
-    type: 0,
-    kind: 0,
+    type: EntityType.NotKnown,
+    kind: Stance.Unknown,
     priority: 0,
     count: 0,
     name: '',
@@ -435,7 +424,10 @@ export function automated(s: Session): boolean {
   return s.active !== 0 || moving(s);
 }
 
-export class Session extends RawFields {
+/** The arena's room signature, where nobody is attacked for real (as `breaks off combat` reads it). */
+export const ARENA = 0x67110001;
+
+export class Session extends StateFields {
   constructor(
     readonly host: SessionHost,
     public data: MegaData
@@ -630,7 +622,7 @@ export class Session extends RawFields {
   active = 0;
   /** 0xe15c: the connection has reached the game (`0x42de00` with 1); cleared on leaving it. */
   online = 0;
-  /** 0xd904: line flags; bit 0, a prompt has been seen since the last command. */
+  /** 0xd904: what the reader has seen of the realm's output (`LineFlag`). */
   lineFlags = 0;
   /** 0xd908: lines still awaited before acting. */
   waitLines = 0;
@@ -661,7 +653,7 @@ export class Session extends RawFields {
   /** 0xdef8: when it was typed (`GetTickCount64`). */
   typedAt = 0;
   /** 0x7cf7: the command that relogs (BBS.INI `RelogCmd`). */
-  s_7cf7 = ';relog';
+  relogCmd = ';relog';
   /** 0x7ce2: the command that logs off the BBS after leaving the game (BBS.INI `LogoffCmd`). */
   logoffCmd = '';
   /** 0x7d0c: the command that turns ANSI on (BBS.INI `AnsiCmd`). */
@@ -707,9 +699,9 @@ export class Session extends RawFields {
   /** 0x80fb: the destination's name, 51 characters. */
   destination = '';
   /** 0x7cb9: the game menu's own prompt (BBS.INI `MenuPrompt`). */
-  s_7cb9 = '[MAJORMUD]:';
+  menuPrompt = '[MAJORMUD]:';
   /** 0x7d7d: the BBS's warning that it is shutting down (BBS.INI `ShutDownMsg`). */
-  s_7d7d = 'Please finish up and log off';
+  shutdownMsg = 'Please finish up and log off';
   /** 0xdb94: the last command sent, 256 characters. */
   lastSent = '';
   /** 0xdb90: how many times running it has been sent. */
@@ -731,7 +723,7 @@ export class Session extends RawFields {
   /** 0x278: the last `@ok` telepath sent. */
   lastResumeSent = '';
   /** 0x7d21: what is said before `@kill`, `@party`, `@panic!` (BBS.INI `SpeechPrefix`). */
-  s_7d21 = '.';
+  speechPrefix = '.';
 
   // ------------------------------------------------------------ fight
 
@@ -751,8 +743,8 @@ export class Session extends RawFields {
   manaFullCast = 0;
   /** 0xa444: the attack the fight is engaged in (0x11 attack, 0x12 backstab, 9–15 the casts). */
   engagedMode = 0;
-  /** 0xdd14 */
-  s_dd14 = '';
+  /** 0xdd14: the target a weapon's no-effect was counted against. */
+  noEffectTarget = '';
   /** 0xdca8: the monster being fought, 100 characters. */
   target = '';
   /** 0xdd88: the monster fought last, 100 characters. */
@@ -765,8 +757,8 @@ export class Session extends RawFields {
   altSpell = '';
   /** 0xafa8: the user-attack spell, 11 characters. */
   userSpell = '';
-  /** 0xa528 */
-  s_a528 = '';
+  /** 0xa528: the target the fight's cast counts belong to; a new one starts them again. */
+  countedTarget = '';
   /** 0x71d0: the Messages.md row that matched last (its name), 31 characters. */
   msgSpell = '';
   /** 0x71ef: its `{source}`, 81 characters. */
@@ -779,10 +771,10 @@ export class Session extends RawFields {
   msgArgs: string[] = ['', '', '', '', ''];
   /** 0xdb84: how many active rows are being rested off (number 2). */
   restUntilOff = 0;
-  /** 0x742d: the last row rested off, 31 characters. */
-  s_742d = '';
+  /** 0x742d: the last message row rested off, 31 characters. */
+  lastRestRow = '';
   /** 0xb060: the weapon wielded, 31 characters. */
-  s_b060 = '';
+  weaponWielded = '';
   /** 0x59c2ec: the stash run-away warning was shown. */
   warnedStashRun = false;
   /** 0xe2fc: why it is resting, 100 characters. */
@@ -822,9 +814,9 @@ export class Session extends RawFields {
     why: ''
   }));
   /** 0x8474: an item being picked up, until the inventory lists it, 31 characters. */
-  s_8474 = '';
+  itemPickingUp = '';
   /** 0x8460: the cash limit's no-bank warning has been shown (`0x406f20`). */
-  f_8460 = 0;
+  noBankWarned = 0;
 
   // ------------------------------------------------------------ paths
 
@@ -863,8 +855,6 @@ export class Session extends RawFields {
   stepsToGo = 0;
   /** 0xdb70: tries at the step reached while its room is not the one here. */
   stepTries = 0;
-  /** 0x8493: 31 characters, cleared by each inventory. */
-  s_8493 = '';
   /** 0xa5d9: the item being equipped, 31 characters. */
   equipping = '';
 
@@ -887,16 +877,16 @@ export class Session extends RawFields {
   roomNameSeen = '';
   /** 0x8134: that name's hash, in the top twelve bits. */
   roomNameHash = 0;
-  /** 0x8130: the room's signature: the name's hash and two bits an exit (`0x4386d0`). */
-  f_8130 = 0;
+  /** 0x8130: the room's signature: the name's hash and two bits an exit (`0x4386d0`); `ARENA` the arena. */
+  roomSignature = 0;
   /** 0x8164: the room's record in Rooms.md, when it has one. */
   roomRecord: RoomRec | null = null;
   /** 0xd910: what is left of a listing that runs onto the next line, 0x200 characters. */
-  s_d910 = '';
+  listingRest = '';
   /** 0x813c: the room's exits, ten words in `0x4c03b0`'s order (north … down). */
   roomExits: number[] = Array.from({ length: 10 }, () => 0);
-  /** 0x2500: an unknown player-shaped name already asked about, 31 characters. */
-  s_2500 = '';
+  /** 0x2500: a player-shaped name already looked at again, 31 characters. */
+  unknownNameAsked = '';
   /** 0x2524: marks remembered for monsters by name (up to 500). */
   monsterMarks: { name: string; flags: number }[] = [];
   /** 0x6b78: marks remembered for players by name (up to 100). */
@@ -914,8 +904,8 @@ export class Session extends RawFields {
   confused = 0;
   /** 0xe1f4 */
   poisoned = 0;
-  /** 0xe1f8 */
-  f_e1f8 = 0;
+  /** 0xe1f8: `You are too sick to rest`: poisoned, so resting waits for the cure. */
+  tooSickToRest = 0;
   /** 0xe200 */
   diseased = 0;
   /** 0xe204 */

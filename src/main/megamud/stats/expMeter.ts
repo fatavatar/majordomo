@@ -87,8 +87,8 @@ function wait(minutes: number, hoursADay: number): string {
 
 export function expMeter(s: Session): ExpMeter {
   expBaseline(s);
-  const baseline = s.f_324c8;
-  const made = commas(s.f_324d0 - baseline + s.exp);
+  const baseline = s.expBaseline;
+  const made = commas(s.expBefore - baseline + s.exp);
 
   const unknown = s.expToLevel === -1;
   const chart = !unknown && s.expToLevel === 0 ? charted(s) : null;
@@ -102,7 +102,7 @@ export function expMeter(s: Session): ExpMeter {
   // Scaled up before dividing, finer for a small gain.
   const gained = s.exp - baseline;
   const scale = gained < 100000 ? 10000 : 100;
-  const elapsed = s.f_322b8 - s.f_322b0;
+  const elapsed = s.expMeterEnd - s.expMeterStart;
   const scaledHours = elapsed >= 0 ? Math.floor((elapsed * scale) / HOUR) : 0;
   const seconds = scaledHours === 0 ? 0 : elapsed;
   if (seconds < MINUTE) return { made, needed, rate: '? k/hr', levelIn: '?' };

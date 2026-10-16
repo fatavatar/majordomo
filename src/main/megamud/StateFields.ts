@@ -1,710 +1,472 @@
 /**
- * The session struct's fields the decompile touches that the port has not
- * named yet, as numbers at 0: `f_<offset>`, the decompile's `field_0x<offset>`.
- * A 64-bit time is one field, at its low half. Generated from the decompile
- * by `~/tools/port/gen_raw.py`; a field named or typed in `Session.ts` is left
- * out. See docs/megamud/engine-port.md.
+ * The session struct's working state that `Session.ts` does not declare with
+ * its neighbours: flags, counters and clocks, each named for what its uses in
+ * `megamud.exe` show it to be, its offset in the comment (read 2026-10-16).
+ * One whose purpose is only inferred is named `probably…` and says what is
+ * unconfirmed; one not understood is `unknown_<offset>`. A field nothing in
+ * the port reads is not declared at all.
  */
 import { SettingsFields } from './SettingsFields';
 
-export class RawFields extends SettingsFields {
-  f_0 = 0;
-  f_1 = 0;
-  f_4 = 0;
-  f_8 = 0;
-  f_c = 0;
-  f_18 = 0;
-  f_1c = 0;
-  f_24 = 0;
-  f_28 = 0;
-  f_2c = 0;
-  f_30 = 0;
-  f_34 = 0;
-  f_38 = 0;
-  f_3c = 0;
-  f_40 = 0;
-  f_48 = 0;
-  f_4c = 0;
-  f_50 = 0;
-  f_54 = 0;
-  f_68 = 0;
-  f_130 = 0;
-  f_3d4 = 0;
-  f_3fc = 0;
-  f_404 = 0;
-  f_408 = 0;
-  f_634 = 0;
-  f_638 = 0;
-  f_63c = 0;
-  f_650 = 0;
-  f_658 = 0;
-  f_660 = 0;
-  f_963 = 0;
-  f_b65 = 0;
-  f_c66 = 0;
-  f_c67 = 0;
-  f_d67 = 0;
-  f_d68 = 0;
-  f_146e = 0;
-  f_146f = 0;
-  f_156f = 0;
-  f_1570 = 0;
-  f_1771 = 0;
-  f_1872 = 0;
-  f_1873 = 0;
-  f_1973 = 0;
-  f_1b75 = 0;
-  f_1c78 = 0;
-  f_1c7c = 0;
-  f_1cb4 = 0;
-  f_1cb8 = 0;
-  f_2240 = 0;
-  f_2244 = 0;
-  f_2248 = 0;
-  f_224c = 0;
-  f_2258 = 0;
-  f_225c = 0;
-  f_229c = 0;
-  f_22dc = 0;
-  f_22e0 = 0;
-  f_22e4 = 0;
-  f_2378 = 0;
-  f_23a0 = 0;
-  f_23a4 = 0;
-  f_23a8 = 0;
-  f_23ac = 0;
-  f_23c4 = 0;
-  f_23cc = 0;
-  f_23ec = 0;
-  f_2404 = 0;
-  f_2414 = 0;
-  f_2418 = 0;
-  f_241c = 0;
-  f_2420 = 0;
-  f_2424 = 0;
-  f_2428 = 0;
-  f_242c = 0;
-  f_2430 = 0;
-  f_2434 = 0;
-  f_2438 = 0;
-  f_2440 = 0;
-  f_2444 = 0;
-  f_2448 = 0;
-  f_245c = 0;
-  f_2460 = 0;
-  f_2464 = 0;
-  f_248c = 0;
-  f_2490 = 0;
-  f_2494 = 0;
-  f_24bc = 0;
-  f_24c0 = 0;
-  f_24c4 = 0;
-  f_24f0 = 0;
-  f_2520 = 0;
-  f_6b74 = 0;
-  f_6b84 = 0;
-  f_71bc = 0;
-  f_71c4 = 0;
-  f_71c8 = 0;
-  f_71cc = 0;
-  f_72e9 = 0;
-  f_72ea = 0;
-  f_733a = 0;
-  f_733b = 0;
-  f_738b = 0;
-  f_738c = 0;
-  f_73dc = 0;
-  f_73dd = 0;
-  f_7470 = 0;
-  f_7474 = 0;
-  f_7478 = 0;
-  f_74a0 = 0;
-  f_74a4 = 0;
-  f_74a8 = 0;
-  f_74d0 = 0;
-  f_75fc = 0;
-  f_7600 = 0;
-  f_7651 = 0;
-  f_7ce3 = 0;
-  f_7d0d = 0;
-  f_7e50 = 0;
-  f_7eb3 = 0;
-  f_7eb4 = 0;
-  f_7ed4 = 0;
-  f_7ed8 = 0;
-  f_7edc = 0;
-  f_7ee0 = 0;
-  f_7ee4 = 0;
-  f_7f08 = 0;
-  f_7f1c = 0;
-  f_8048 = 0;
-  f_8050 = 0;
-  f_8054 = 0;
-  f_8058 = 0;
-  f_80fc = 0;
-  f_8138 = 0;
-  f_8140 = 0;
-  f_8144 = 0;
-  f_8148 = 0;
-  f_814c = 0;
-  f_8150 = 0;
-  f_8154 = 0;
-  f_8158 = 0;
-  f_815c = 0;
-  f_8160 = 0;
-  f_8168 = 0;
-  f_816c = 0;
-  f_8170 = 0;
-  f_8178 = 0;
-  f_8198 = 0;
-  f_819d = 0;
-  f_821a = 0;
-  f_8229 = 0;
-  f_83ea = 0;
-  f_841c = 0;
-  f_8428 = 0;
-  f_842c = 0;
-  f_8430 = 0;
-  f_8438 = 0;
-  f_843c = 0;
-  f_8440 = 0;
-  f_8444 = 0;
-  f_8448 = 0;
-  f_844c = 0;
-  f_8450 = 0;
-  f_8454 = 0;
-  f_8458 = 0;
-  f_845c = 0;
-  f_8464 = 0;
-  f_8468 = 0;
-  f_846c = 0;
-  f_8470 = 0;
-  f_8558 = 0;
-  f_8560 = 0;
-  f_8564 = 0;
-  f_8568 = 0;
-  f_856a = 0;
-  f_856c = 0;
-  f_8706 = 0;
-  f_8860 = 0;
-  f_8870 = 0;
-  f_8874 = 0;
-  f_8890 = 0;
-  f_8898 = 0;
-  f_88a0 = 0;
-  f_88d4 = 0;
-  f_88d5 = 0;
-  f_8924 = 0;
-  f_8928 = 0;
-  f_892c = 0;
-  f_8940 = 0;
-  f_8950 = 0;
-  f_89a8 = 0;
-  f_8a00 = 0;
-  f_8a58 = 0;
-  f_8ab0 = 0;
-  f_8b08 = 0;
-  f_8b32 = 0;
-  f_8b64 = 0;
-  f_8b70 = 0;
-  f_8be4 = 0;
-  f_8be8 = 0;
-  f_8bec = 0;
-  f_8c58 = 0;
-  f_8c59 = 0;
-  f_8d59 = 0;
-  f_8d5a = 0;
-  f_8e5b = 0;
-  f_907c = 0;
-  f_90c8 = 0;
-  f_9104 = 0;
-  f_9108 = 0;
-  f_930a = 0;
-  f_940b = 0;
-  f_950c = 0;
-  f_960d = 0;
-  f_970e = 0;
-  f_980f = 0;
-  f_9910 = 0;
-  f_9a11 = 0;
-  f_9b12 = 0;
-  f_9c13 = 0;
-  f_a328 = 0;
-  f_a32c = 0;
-  f_a3d8 = 0;
-  f_a3e0 = 0;
-  f_a3e4 = 0;
-  f_a3e8 = 0;
-  f_a3ec = 0;
-  f_a3f0 = 0;
-  f_a3f4 = 0;
-  f_a3f8 = 0;
-  f_a3fc = 0;
-  f_a400 = 0;
-  f_a410 = 0;
-  f_a448 = 0;
-  f_a44c = 0;
-  f_a450 = 0;
-  f_a454 = 0;
-  f_a458 = 0;
-  f_a45c = 0;
-  f_a460 = 0;
-  f_a464 = 0;
-  f_a50c = 0;
-  f_a510 = 0;
-  f_a514 = 0;
-  f_a518 = 0;
-  f_a51c = 0;
-  f_a520 = 0;
-  f_a524 = 0;
-  f_a57c = 0;
-  f_a580 = 0;
-  f_a5f8 = 0;
-  f_a62c = 0;
-  f_b0fc = 0;
-  f_b100 = 0;
-  f_b104 = 0;
-  f_b108 = 0;
-  f_ba0c = 0;
-  f_be44 = 0;
-  f_be48 = 0;
-  f_cd94 = 0;
-  f_cf94 = 0;
-  f_cf98 = 0;
-  f_d0a4 = 0;
-  f_d0a8 = 0;
-  f_d0ac = 0;
-  f_d0b0 = 0;
-  f_d808 = 0;
-  f_d81c = 0;
-  f_d820 = 0;
-  f_d824 = 0;
-  f_d82c = 0;
-  f_d874 = 0;
-  f_d87c = 0;
-  f_d8f0 = 0;
-  f_d8f4 = 0;
-  f_d8f8 = 0;
-  f_d8fc = 0;
-  f_d900 = 0;
-  f_db10 = 0;
-  f_db18 = 0;
-  f_db20 = 0;
-  f_db34 = 0;
-  f_db44 = 0;
-  f_db48 = 0;
-  f_db50 = 0;
-  f_db58 = 0;
-  f_db60 = 0;
-  f_db68 = 0;
-  f_db6c = 0;
-  f_db74 = 0;
-  f_db78 = 0;
-  f_db88 = 0;
-  f_db8c = 0;
-  f_dc94 = 0;
-  f_dc98 = 0;
-  f_dd0c = 0;
-  f_dd10 = 0;
-  f_dd78 = 0;
-  f_dd7c = 0;
-  f_dd80 = 0;
-  f_dd84 = 0;
-  f_ddec = 0;
-  f_ddf0 = 0;
-  f_def4 = 0;
-  f_defc = 0;
-  f_df00 = 0;
-  f_df04 = 0;
-  f_df08 = 0;
-  f_df23 = 0;
-  f_df9c = 0;
-  f_e004 = 0;
-  f_e068 = 0;
-  f_e0cc = 0;
-  f_e144 = 0;
-  f_e14c = 0;
-  f_e154 = 0;
-  f_e158 = 0;
-  f_e160 = 0;
-  f_e170 = 0;
-  f_e174 = 0;
-  f_e180 = 0;
-  f_e194 = 0;
-  f_e198 = 0;
-  f_e19c = 0;
-  f_e1a0 = 0;
-  f_e1b8 = 0;
-  f_e1bc = 0;
-  f_e1c0 = 0;
-  f_e1c8 = 0;
-  f_e1d0 = 0;
-  f_e1d8 = 0;
-  f_e1dc = 0;
-  f_e1e0 = 0;
-  f_e1e4 = 0;
-  f_e1e8 = 0;
-  f_e1fc = 0;
-  f_e218 = 0;
-  f_e21c = 0;
-  f_e220 = 0;
-  f_e23c = 0;
-  f_e240 = 0;
-  f_e24c = 0;
-  f_e254 = 0;
-  f_e258 = 0;
-  f_e25c = 0;
-  f_e260 = 0;
-  f_e264 = 0;
-  f_e268 = 0;
-  f_e26c = 0;
-  f_e270 = 0;
-  f_e27c = 0;
-  f_e280 = 0;
-  f_e284 = 0;
-  f_e288 = 0;
-  f_e28c = 0;
-  f_e290 = 0;
-  f_e294 = 0;
-  f_e298 = 0;
-  f_e29c = 0;
-  f_e2a0 = 0;
-  f_e2a4 = 0;
-  f_e2a8 = 0;
-  f_e2ac = 0;
-  f_e2b4 = 0;
-  f_e2b8 = 0;
-  f_e2bc = 0;
-  f_e2c0 = 0;
-  f_e2c4 = 0;
-  f_e2c8 = 0;
-  f_e2cc = 0;
-  f_e2d0 = 0;
-  f_e2d4 = 0;
-  f_e2d8 = 0;
-  f_e2dc = 0;
-  f_e2e0 = 0;
-  f_e2e4 = 0;
-  f_e2ec = 0;
-  f_e2f4 = 0;
-  f_e360 = 0;
-  f_e364 = 0;
-  f_e368 = 0;
-  f_e36c = 0;
-  f_e398 = 0;
-  f_e3a7 = 0;
-  f_e3d6 = 0;
-  f_e3e4 = 0;
-  f_e404 = 0;
-  f_e420 = 0;
-  f_e490 = 0;
-  f_e510 = 0;
-  f_e514 = 0;
-  f_e524 = 0;
-  f_e528 = 0;
-  f_e52c = 0;
-  f_e530 = 0;
-  f_e540 = 0;
-  f_e544 = 0;
-  f_e570 = 0;
-  f_e574 = 0;
-  f_e57c = 0;
-  f_e588 = 0;
-  f_e58c = 0;
-  f_e590 = 0;
-  f_e594 = 0;
-  f_e598 = 0;
-  f_e59c = 0;
-  f_e5a0 = 0;
-  f_e5a4 = 0;
-  f_e5a8 = 0;
-  f_e5a9 = 0;
-  f_e5aa = 0;
-  f_e5ab = 0;
-  f_e5ac = 0;
-  f_e5ad = 0;
-  f_f5a9 = 0;
-  f_105a9 = 0;
-  f_105ab = 0;
-  f_205aa = 0;
-  f_205ac = 0;
-  f_305ac = 0;
-  f_309ad = 0;
-  f_30db0 = 0;
-  f_30db4 = 0;
-  f_30db8 = 0;
-  f_30dbc = 0;
-  f_30dc0 = 0;
-  f_30dc8 = 0;
-  f_30de4 = 0;
-  f_30de8 = 0;
-  f_30dec = 0;
-  f_30df0 = 0;
-  f_30e14 = 0;
-  f_30e18 = 0;
-  f_31020 = 0;
-  f_31024 = 0;
-  f_31424 = 0;
-  f_31838 = 0;
-  f_318c0 = 0;
-  f_318e4 = 0;
-  f_318ec = 0;
-  f_31914 = 0;
-  f_32270 = 0;
-  f_32278 = 0;
-  f_3227c = 0;
-  f_32280 = 0;
-  f_32284 = 0;
-  f_32288 = 0;
-  f_32294 = 0;
-  f_32295 = 0;
-  f_32296 = 0;
-  f_32297 = 0;
-  f_32298 = 0;
-  f_3229c = 0;
-  f_322a0 = 0;
-  f_322a4 = 0;
-  f_322a8 = 0;
-  f_322ac = 0;
-  f_322b0 = 0;
-  f_322b4 = 0;
-  f_322b8 = 0;
-  f_322bc = 0;
-  f_322c0 = 0;
-  f_322c4 = 0;
-  f_322d0 = 0;
-  f_322d4 = 0;
-  f_322d8 = 0;
-  f_322dc = 0;
-  f_322e0 = 0;
-  f_322e4 = 0;
-  f_322e8 = 0;
-  f_322ec = 0;
-  f_322f0 = 0;
-  f_322f4 = 0;
-  f_322f8 = 0;
-  f_322fc = 0;
-  f_32300 = 0;
-  f_32304 = 0;
-  f_3230c = 0;
-  f_32310 = 0;
-  f_32314 = 0;
-  f_32318 = 0;
-  f_3231c = 0;
-  f_32320 = 0;
-  f_32324 = 0;
-  f_32328 = 0;
-  f_3232c = 0;
-  f_32330 = 0;
-  f_32334 = 0;
-  f_32338 = 0;
-  f_3233c = 0;
-  f_32340 = 0;
-  f_32344 = 0;
-  f_32348 = 0;
-  f_3234c = 0;
-  f_32350 = 0;
-  f_32354 = 0;
-  f_32358 = 0;
-  f_3235c = 0;
-  f_32360 = 0;
-  f_32364 = 0;
-  f_32368 = 0;
-  f_3236c = 0;
-  f_32370 = 0;
-  f_32374 = 0;
-  f_32378 = 0;
-  f_3237c = 0;
-  f_32380 = 0;
-  f_32384 = 0;
-  f_32388 = 0;
-  f_3238c = 0;
-  f_32390 = 0;
-  f_32394 = 0;
-  f_32398 = 0;
-  f_3239c = 0;
-  f_323a0 = 0;
-  f_323a4 = 0;
-  f_323ac = 0;
-  f_323b0 = 0;
-  f_323b4 = 0;
-  f_323b8 = 0;
-  f_323bc = 0;
-  f_323c0 = 0;
-  f_323c4 = 0;
-  f_323c8 = 0;
-  f_323cc = 0;
-  f_323d0 = 0;
-  f_323d4 = 0;
-  f_323d8 = 0;
-  f_323dc = 0;
-  f_323e0 = 0;
-  f_323e4 = 0;
-  f_323e8 = 0;
-  f_323ec = 0;
-  f_323f0 = 0;
-  f_323f4 = 0;
-  f_3241c = 0;
-  f_3248c = 0;
-  f_32490 = 0;
-  f_32494 = 0;
-  f_32498 = 0;
-  f_3249c = 0;
-  f_324a0 = 0;
-  f_324a4 = 0;
-  f_324a8 = 0;
-  f_324b0 = 0;
-  f_324b4 = 0;
-  f_324b8 = 0;
-  f_324bc = 0;
-  f_324c0 = 0;
-  f_324c4 = 0;
-  f_324c8 = 0;
-  f_324cc = 0;
-  f_324d0 = 0;
-  f_324d4 = 0;
-  f_324d8 = 0;
-  f_324dc = 0;
-  f_324e0 = 0;
-  f_324e4 = 0;
-  f_324e8 = 0;
-  f_324ec = 0;
-  f_324f8 = 0;
-  f_324fc = 0;
-  f_32500 = 0;
-  f_32504 = 0;
-  f_32508 = 0;
-  f_3250c = 0;
-  f_32510 = 0;
-  f_32514 = 0;
-  f_32518 = 0;
-  f_3251c = 0;
-  f_32520 = 0;
-  f_32524 = 0;
-  f_32528 = 0;
-  f_3252c = 0;
-  f_32530 = 0;
-  f_32534 = 0;
-  f_32538 = 0;
-  f_3253c = 0;
-  f_32540 = 0;
-  f_32544 = 0;
-  f_32548 = 0;
-  f_3254c = 0;
-  f_32550 = 0;
-  f_32554 = 0;
-  f_32558 = 0;
-  f_3255c = 0;
-  f_32560 = 0;
-  f_32564 = 0;
-  f_32568 = 0;
-  f_3256c = 0;
-  f_32570 = 0;
-  f_32574 = 0;
-  f_32578 = 0;
-  f_3257c = 0;
-  f_32580 = 0;
-  f_32584 = 0;
-  f_32588 = 0;
-  f_3258c = 0;
-  f_32590 = 0;
-  f_32594 = 0;
-  f_32598 = 0;
-  f_3259c = 0;
-  f_325a0 = 0;
-  f_325a4 = 0;
-  f_325a8 = 0;
-  f_325ac = 0;
-  f_325b0 = 0;
-  f_325b4 = 0;
-  f_325b8 = 0;
-  f_325bc = 0;
-  f_325c0 = 0;
-  f_325c4 = 0;
-  f_325c8 = 0;
-  f_325cc = 0;
-  f_325d0 = 0;
-  f_325d4 = 0;
-  f_325d8 = 0;
-  f_325dc = 0;
-  f_325e0 = 0;
-  f_325e4 = 0;
-  f_325e8 = 0;
-  f_325ec = 0;
-  f_325f0 = 0;
-  f_325f4 = 0;
-  f_325f8 = 0;
-  f_325fc = 0;
-  f_32600 = 0;
-  f_32604 = 0;
-  f_32608 = 0;
-  f_3260c = 0;
-  f_32610 = 0;
-  f_32614 = 0;
-  f_32618 = 0;
-  f_3261c = 0;
-  f_32620 = 0;
-  f_32624 = 0;
-  f_3265c = 0;
-  f_3266c = 0;
-  f_3267c = 0;
-  f_3268c = 0;
-  f_32690 = 0;
-  f_32694 = 0;
-  f_32698 = 0;
-  f_3269c = 0;
-  f_326a0 = 0;
-  f_326a4 = 0;
-  f_326a8 = 0;
-  f_326ac = 0;
-  f_326b0 = 0;
-  f_326b4 = 0;
-  f_326b8 = 0;
-  f_326bc = 0;
-  f_326c0 = 0;
-  f_326c4 = 0;
-  f_326c8 = 0;
-  f_326cc = 0;
-  f_326d0 = 0;
-  f_326d4 = 0;
-  f_326d8 = 0;
-  f_326dc = 0;
-  f_326e0 = 0;
-  f_326e4 = 0;
-  f_326e8 = 0;
-  f_326ec = 0;
-  f_326f0 = 0;
-  f_326f4 = 0;
-  f_326f8 = 0;
-  f_326fc = 0;
-  f_32700 = 0;
-  f_32704 = 0;
-  f_32708 = 0;
-  f_3270c = 0;
-  f_32710 = 0;
-  f_32714 = 0;
-  f_32718 = 0;
-  f_3271c = 0;
-  f_32720 = 0;
-  f_32724 = 0;
-  f_32728 = 0;
-  f_3272c = 0;
-  f_32730 = 0;
-  f_32734 = 0;
-  f_32738 = 0;
-  f_3273c = 0;
-  f_32740 = 0;
-  f_32744 = 0;
-  f_32748 = 0;
-  f_3274c = 0;
-  f_32750 = 0;
-  f_32754 = 0;
-  f_32758 = 0;
-  f_3275c = 0;
-  f_32760 = 0;
-  f_32764 = 0;
-  f_327ac = 0;
-  f_327b0 = 0;
-  f_327b4 = 0;
-  f_327b8 = 0;
+export class StateFields extends SettingsFields {
+  /** 0x50: never set by the port; MegaMUD's `@home` answers busy while it is. */
+  unknown_50 = 0;
+  /** 0x68: the line handler ran its run check since the scheduler last ran. */
+  lineRunChecked = 0;
+  /** 0x2258: a BBS notice runs onto the next line, which is passed over too. */
+  noticeContinues = 0;
+  /**
+   * 0x2378: scheduler passes in a row that sent from the pending list; at 5 the list waits a pass.
+   */
+  pendingStreak = 0;
+  /** 0x8138: the signature of the room the step being taken leads to; 0 none. */
+  expectedRoom = 0;
+  /** 0x8168: the map number of the last `Location:` line. */
+  locationMap = 0;
+  /** 0x816c: the room number of the last `Location:` line. */
+  locationRoom = 0;
+  /** 0x8170: the room signature `locationMap`/`locationRoom` were read in. */
+  locationSignature = 0;
+  /** 0x8428: the coin carried, in copper. */
+  wealth = 0;
+  /** 0x842c: the amount to deposit (-1: all over `Cash.MinWealth`). */
+  depositAsked = 0;
+  /** 0x8430: the cash a purchase or path needs; withdrawn at the bank. */
+  cashNeeded = 0;
+  /** 0x845c: deposited or withdrew in this bank visit; cleared on leaving the room. */
+  bankedHere = 0;
+  /**
+   * 0x8464: the weight carried (the inventory's `Encumbrance:` figure, tracked between listings).
+   */
+  weightCarried = 0;
+  /**
+   * 0x8468: the maximum encumbrance from the last inventory listing; 0 when the inventory is to be
+   * listed again.
+   */
+  weightMax = 0;
+  /** 0x846c: the encumbrance level: 0 none, 1 light, 2 medium, 3 heavy. */
+  encumbranceLevel = 0;
+  /** 0x8470: the one item of unknown weight is weighed on the next listing. */
+  weighPending = 0;
+  /** 0x8558: a corpse recovery is under way. */
+  recoveringCorpse = 0;
+  /** 0x8870: the party's cash is to be shared (`@share`, `Party.ShareCash`). */
+  shareCashDue = 0;
+  /** 0x8874: `@share` has been sent this lap. */
+  shareAsked = 0;
+  /** 0x8890: a party member asked for `@panic`; answered at the next prompt. */
+  panicAsked = 0;
+  /**
+   * 0x8b64: training for this level is dealt with: alerted, trained, or the trainer cannot be
+   * reached.
+   */
+  trainDealtWith = 0;
+  /** 0x8be4: a fight was engaged in this room (typed, or begun by the engine). */
+  engagedHere = 0;
+  /** 0x8be8: prefer melee (`MegaMud.DefMelee1`/`2`, the toolbar's fighting button, `@melee`). */
+  preferMelee = 0;
+  /** 0x8bec: every configured weapon has failed against the target. */
+  weaponsExhausted = 0;
+  /** 0x907c: running by choice (polite attacks, too few monsters), not from danger. */
+  runByChoice = 0;
+  /** 0x90c8: `track` was sent: following the trail. */
+  tracking = 0;
+  /** 0x9104: the signature of the room fled to; 0 none. */
+  fleeRoom = 0;
+  /**
+   * 0xa328: auto-combat was turned on for a stop (`Other.AutoAutoCombat`); turned off when moving
+   * again.
+   */
+  autoCombatForWait = 0;
+  /** 0xa32c: all Off: automation suspended (the toolbar's All Off). */
+  allOff = 0;
+  /** 0xa3e0: the last cast was answered (it took, failed or was refused). */
+  castAnswered = 0;
+  /** 0xa3e4: the last cast took (the plain cast's count, `0x15`). */
+  castTook = 0;
+  /** 0xa3e8: casts of the pre-multi-attack spell this fight. */
+  castsPreMulti = 0;
+  /** 0xa3ec: casts of the multi-attack spell this fight. */
+  castsMulti = 0;
+  /** 0xa3f0: casts of the pre-attack spell this fight. */
+  castsPre = 0;
+  /** 0xa3f4: casts of the main attack spell this fight. */
+  castsMain = 0;
+  /** 0xa3f8: casts of the second attack spell this fight. */
+  castsAux = 0;
+  /** 0xa3fc: casts of the alternate spell (the drain or heal) this fight. */
+  castsAlt = 0;
+  /** 0xa400: casts of the spell typed by the player this fight. */
+  castsUser = 0;
+  /** 0xa410: how many alternate casts are allowed. */
+  altCastCap = 0;
+  /** 0xa448: the attack mode being cast (`State.Cast…`); 0 none. */
+  castMode = 0;
+  /** 0xa44c: a message of the cast was seen this round. */
+  castMessageSeen = 0;
+  /** 0xa450: the cast began this round: its first round without a message is not counted. */
+  castJustBegun = 0;
+  /** 0xa454: the mode's cast count when the round began. */
+  castCountBefore = 0;
+  /** 0xa458: when the cast watchdog last reported (ms). */
+  castWatchdogAt = 0;
+  /** 0xa460: the spell being cast takes no target. */
+  castUntargeted = 0;
+  /** 0xa464: the spell being cast is an area spell. */
+  castArea = 0;
+  /** 0xa50c: rounds the pre-multi-attack spell went without a message. */
+  silentPreMulti = 0;
+  /** 0xa510: rounds the multi-attack spell went without a message. */
+  silentMulti = 0;
+  /** 0xa514: rounds the pre-attack spell went without a message. */
+  silentPre = 0;
+  /** 0xa518: rounds the main attack spell went without a message. */
+  silentMain = 0;
+  /** 0xa51c: rounds the second attack spell went without a message. */
+  silentAux = 0;
+  /** 0xa520: rounds the alternate spell went without a message. */
+  silentAlt = 0;
+  /** 0xa524: rounds the typed spell went without a message. */
+  silentUser = 0;
+  /** 0xa57c: damage the multi-attack spells have done this fight. */
+  multiDamage = 0;
+  /** 0xa580: a multi-attack is under way (its spell is an area spell that needs no target). */
+  multiAttacking = 0;
+  /** 0xa5f8: equips and removes sent and not yet answered. */
+  equipsPending = 0;
+  /** 0xa62c: drain casts (the alternate spell, while draining) this fight. */
+  drainCasts = 0;
+  /** 0xb0fc: the weapon had no effect on the target this fight. */
+  weaponNoEffect = 0;
+  /** 0xb100: the normal weapon has been seen to work on the target. */
+  normalWeaponWorked = 0;
+  /** 0xb104: the alternate weapon has been seen to work on the target. */
+  altWeaponWorked = 0;
+  /** 0xb108: the backstab weapon has been seen to work on the target. */
+  backstabWeaponWorked = 0;
+  /**
+   * 0xd81c: MegaMUD's settings window is open (no profile change then). Never set here: our
+   * settings page is not modal.
+   */
+  settingsWindowOpen = 0;
+  /** 0xd8f0: a MUD op's `@home` lookup is under way (`sys stat room` replies are read). */
+  homeLookup = 0;
+  /** 0xd8f4: the looked-up monster's room may be asked (`sys stat room`). */
+  homeAskDue = 0;
+  /** 0xd8f8: the index of the monster `@home` asked about; -1 none. */
+  homeMonster = 0;
+  /**
+   * 0xdb18: PROBABLY whether a line went through the dispatch handled; the port never sets it, so
+   * the dispatch answers 0.
+   */
+  probablyLineHandled = 0;
+  /** 0xdb20: `MegaMud.StartTask` waiting to be taken up on entering the game; -1 done. */
+  startTask = 0;
+  /** 0xdb34: the direction of the last move; -1 once a room's exits are read. */
+  lastMoveDir = 0;
+  /** 0xdb44: laps of the loop completed (-1 before the first). */
+  laps = 0;
+  /** 0xdb48: bashes tried at this door. */
+  bashTries = 0;
+  /** 0xdb50: picks tried at this lock. */
+  pickTries = 0;
+  /** 0xdb58: disarms tried at this trap. */
+  disarmTries = 0;
+  /** 0xdb60: searches left in this room (`Other.SearchMax`). */
+  searchesLeft = 0;
+  /** 0xdb68: times sneaking or hiding was refused (`You may not …`) here. */
+  stealthRefused = 0;
+  /** 0xdb6c: sneak or hide failures in a row. */
+  stealthFails = 0;
+  /** 0xdb74: moves in the dark that went nowhere, before counting as lost. */
+  darkMisses = 0;
+  /** 0xdb78: tries to find the way back in the dark. */
+  darkTries = 0;
+  /** 0xdb88: ten-second silences while logging on. */
+  loginQuietTens = 0;
+  /** 0xdb8c: each third ten-second silence while logging on; at three the connection is dropped. */
+  loginQuietStrikes = 0;
+  /** 0xdc98: messages received while away; never counted by the port. */
+  afkMessages = 0;
+  /** 0xdd0c: attacks refused in a row (the creatures here are forgotten after 2). */
+  attacksRefused = 0;
+  /** 0xdd10: hits with no effect on the target. */
+  noEffectCount = 0;
+  /** 0xdd78: targets fought (counted as each is remembered). */
+  targetCount = 0;
+  /** 0xdd7c: PROBABLY a count of room changes; the port never advances it. */
+  probablyRoomChanges = 0;
+  /** 0xdd80: `targetCount` when the target was blamed for a no-effect. */
+  noEffectTargetCount = 0;
+  /** 0xdd84: `probablyRoomChanges` when the target was blamed for a no-effect. */
+  noEffectRoomChanges = 0;
+  /** 0xddec: the signature of the room the last target was fought in. */
+  lastTargetRoom = 0;
+  /** 0xddf0: someone protects the target. */
+  targetProtected = 0;
+  /** 0xdf00: the configured weapons in hand (`WeaponKind` bits). */
+  weaponsInHand = 0;
+  /** 0xdf04: the configured weapons being tried to test an immunity (`WeaponKind` bits). */
+  weaponsProbing = 0;
+  /** 0xdf08: the configured weapons suspected of not working on the target (`WeaponKind` bits). */
+  weaponsSuspect = 0;
+  /** 0xe144: a prompt's HP under `HpLogoff%` was held over once, in case it was misread. */
+  lowHpHeld = 0;
+  /** 0xe158: hanging up on purpose: the disconnection is expected. */
+  hangingUp = 0;
+  /** 0xe160: online since the last connect: a disconnection now is unexpected. */
+  connectionLive = 0;
+  /** 0xe170: the critical-HP response is armed (rearmed on each move). */
+  lowHpArmed = 0;
+  /** 0xe174: MegaMUD's path recorder is recording. Never set here: the app has no recorder. */
+  recording = 0;
+  /** 0xe180: capture is on (`@capture`). */
+  capturing = 0;
+  /** 0xe194: the "no paths defined" message has been shown. */
+  noPathShown = 0;
+  /**
+   * 0xe198: lost with the room unknown (no path, or the dark): found again only in a known room,
+   * not by resyncing the path.
+   */
+  lostNeedsKnownRoom = 0;
+  /** 0xe19c: "Trying every direction to escape" has been shown. */
+  darkEscapeShown = 0;
+  /** 0xe1a0: running from a player (`PvP.PvpAction` flee or delayed hang-up). */
+  fleeingPlayer = 0;
+  /** 0xe1b8: the backstab's outcome is known (it surprised, or failed). */
+  backstabResolved = 0;
+  /** 0xe1bc: the backstab surprised the target. */
+  backstabSurprised = 0;
+  /**
+   * 0xe1c0: PROBABLY that the leader is resting: a follower rests to full with it; cleared when the
+   * leader attacks.
+   */
+  probablyLeaderResting = 0;
+  /** 0xe1c8: was sneaking before moving with the party; sneaking again after. */
+  wasSneaking = 0;
+  /** 0xe1d0: hiding was lost (searched out, or failed): hide again. */
+  hideAgain = 0;
+  /**
+   * 0xe1d8: an action that drops the realm's combat was sent (a cast, an equip, an attack typed):
+   * the next `*Combat Off*` with enemies here is its echo.
+   */
+  combatOffExpected = 0;
+  /** 0xe1dc: a `You deliver a … to …` line with its damage on the next line. */
+  blowContinues = 0;
+  /** 0xe1e0: `There is no room to` drop here; cleared on leaving. */
+  cannotDropHere = 0;
+  /** 0xe1e4: the corpse here was recovered or could not be; not tried again here. */
+  corpseTried = 0;
+  /** 0xe1e8: the light was removed to see whether the room is dark. */
+  lightRemovedToTest = 0;
+  /** 0xe1fc: passes the heal step waited for the poison cure (3 at most). */
+  poisonCureWaits = 0;
+  /** 0xe218: a message with `Attack prevented` is in effect. */
+  attackPrevented = 0;
+  /** 0xe21c: the path step says not to attack in this room (`StepFlag.DontAttackNext`). */
+  dontAttackHere = 0;
+  /** 0xe220: the "friends in room, area spells not used" warning has been shown. */
+  areaWarned = 0;
+  /** 0xe23c: HP is to be rested to full before anything else (critical HP, a teleport). */
+  healthFirst = 0;
+  /** 0xe24c: the player records changed: kept on the next save. */
+  playersChanged = 0;
+  /** 0xe254: the monster records changed: kept on the next save. */
+  monstersChanged = 0;
+  /** 0xe258: the item records changed: kept on the next save. */
+  itemsChanged = 0;
+  /** 0xe284: the BBS is shutting down: leave the game once HP is full. */
+  exitForShutdown = 0;
+  /** 0xe288: a timed logoff event: leave the game. */
+  exitForLogoff = 0;
+  /** 0xe28c: a re-log event: leave the game and log on again. */
+  exitForRelog = 0;
+  /** 0xe290: the room is to be looked at again (a bare Enter). */
+  lookDue = 0;
+  /** 0xe294: a re-display of the room was asked for; the next is not sent until it is seen. */
+  redisplayDue = 0;
+  /** 0xe298: a path's party command was sent; moving waits for the party's listing. */
+  partyStepPending = 0;
+  /** 0xe29c: `stat` is wanted (-1: even in a fight). */
+  statDue = 0;
+  /** 0xe2a0: GreaterMUD's `Typing STAT` pager is up: its lines are not read as the stat display. */
+  statPagerUp = 0;
+  /** 0xe2a4: `who` is wanted (-1: an unknown player was seen, or the last listing timed out). */
+  whoDue = 0;
+  /** 0xe2a8: `exp` is wanted (-1: even in a fight). */
+  expDue = 0;
+  /** 0xe2ac: `par` is wanted. */
+  parDue = 0;
+  /** 0xe2b4: the path step says not to rest in this room (`StepFlag.DontRestHere`). */
+  dontRestHere = 0;
+  /**
+   * 0xe2b8: an attack is due: enemies arrived or a blow landed, so the fight step runs on the next
+   * line rather than the next round.
+   */
+  attackDue = 0;
+  /** 0xe2bc: sneaking was asked for, whatever `MegaMud.AutoSneak` says. */
+  sneakAsked = 0;
+  /** 0xe2c0: stashing at a stash point. */
+  stashing = 0;
+  /** 0xe2c4: the detour to sell has been taken this lap. */
+  sellDetourTaken = 0;
+  /** 0xe2c8: the game set-up (`set statline`, `brief`, …) is to be sent. */
+  setupDue = 0;
+  /** 0xe2cc: `spells` (or `powers`) is wanted. */
+  spellsDue = 0;
+  /** 0xe2d0: the item weights are reported after the next inventory listing. */
+  weightsReportAsked = 0;
+  /** 0xe2d4: the game set-up has been sent. */
+  setupDone = 0;
+  /** 0xe2d8: a creature arrived while walking without fighting it: no sneaking until moving on. */
+  arrivedWhileWalking = 0;
+  /** 0xe2dc: the door's lock answered while busy: open it on the next move. */
+  openDoorNext = 0;
+  /** 0xe2e0: `You found a trap` at this exit. */
+  trapFound = 0;
+  /** 0xe2e4: the trap at this exit was disarmed. */
+  trapDisarmed = 0;
+  /**
+   * 0xe2ec: the party was lost (left behind, `@comeback` asked); cleared when the leader is with it
+   * again.
+   */
+  partyLost = 0;
+  /** 0xe2f4: the party's need to rest has been traced (debug only). */
+  partyWaitTraced = 0;
+  /**
+   * 0xe360: a party member was asked for help (`@heal`, `@blind`, …); not asked again until it
+   * answers.
+   */
+  partyAskPending = 0;
+  /** 0xe364: the alternate spell being cast is a heal (a drain). */
+  altHeal = 0;
+  /** 0xe36c: a Go To warning (an item needed, the level) was answered Continue Anyway. */
+  goAnywayAccepted = 0;
+  /**
+   * 0xe398: movement stopped after a fight's end outside the arena; moves refused until Go or Stop.
+   */
+  movementHalted = 0;
+  /** 0xe524: never set by the port; when set, a dropped path keeps the loop loaded. */
+  unknown_e524 = 0;
+  /** 0xe540: the socket is up (-1), or down (0). */
+  socketUp = 0;
+  /** 0xe544: the dialler's state: 3 waiting out the redial pause, 4 dialling. */
+  dialState = 0;
+  /** 0xe57c: never set by the port; when set, the scheduler and the pending list stand still. */
+  unknown_e57c = 0;
+  /** 0x30dc8: redials since the last good connection. */
+  redials = 0;
+  /** 0x30de4: the next carrier loss is not redialled (a hang-up on purpose). */
+  skipRedialOnce = 0;
+  /** 0x30de8: no reconnecting at all (a hang-up for low HP or a player). */
+  noRedial = 0;
+  /** 0x30e14: sends not to be echoed; the port never sets it. */
+  silentSends = 0;
+  /** 0x30e18: never set by the port; when set, stashing waits. */
+  unknown_30e18 = 0;
+  /** 0x31914: the session is open (1), or ended by this side (-1). */
+  sessionOpen = 0;
+  /** 0x32298: when to redial. */
+  redialAt = 0;
+  /** 0x322a0: when a command was last sent. */
+  lastSentAt = 0;
+  /** 0x322b0: when the experience meter's span began. */
+  expMeterStart = 0;
+  /** 0x322b8: when the experience meter's span last advanced. */
+  expMeterEnd = 0;
+  /** 0x322c0: an idle clock the AFK check reads; the port sets it only on the first tick. */
+  unknown_322c0 = 0;
+  /**
+   * 0x322d0: PROBABLY when the player last typed (the AFK clock); the port sets it only on the
+   * first tick.
+   */
+  probablyLastTypedAt = 0;
+  /** 0x322d8: when the last attack was sent. */
+  attackSentAt = 0;
+  /**
+   * 0x322e0: when this character's HP was last seen over every member's maximum (an attack is then
+   * due).
+   */
+  outHpCheckedAt = 0;
+  /** 0x322e8: when this character's last blow or spell landed. */
+  lastHitAt = 0;
+  /** 0x322f0: when a blow by anyone was last seen (no sneaking within 3 seconds). */
+  blowSeenAt = 0;
+  /** 0x322f8: when a player attacked: the delayed hang-up counts from it. */
+  pvpFleeAt = 0;
+  /** 0x32300: when this character hid. */
+  hiddenAt = 0;
+  /** 0x32310: when `rest` was last sent. */
+  restAskedAt = 0;
+  /** 0x32318: when a heal was last cast. */
+  healCastAt = 0;
+  /** 0x32320: when this character last moved. */
+  movedAt = 0;
+  /** 0x32328: when `par` was last listed (0: due now). */
+  parAt = 0;
+  /** 0x32330: when the party began waiting (`Party.PartyWaitMax`). */
+  partyWaitAt = 0;
+  /** 0x32338: when the leader was last asked to wait. */
+  waitSentAt = 0;
+  /** 0x32340: when the leader was last told `@ok`. */
+  okSentAt = 0;
+  /** 0x32348: when `i` was last sent. */
+  inventoryAskedAt = 0;
+  /** 0x32350: when the inventory listing last had a line (ms). */
+  inventoryQuietAt = 0;
+  /** 0x32358: when the inventory listing began (ms). */
+  inventoryStartedAt = 0;
+  /** 0x32360: when the `who` listing last had a line (ms). */
+  whoQuietAt = 0;
+  /** 0x32368: when the `top` listing last had a line (ms). */
+  topQuietAt = 0;
+  /** 0x32370: when a `who` listing last timed out (ms). */
+  whoTimedOutAt = 0;
+  /** 0x32378: when `stat` was last sent. */
+  statAskedAt = 0;
+  /** 0x32380: when the last `Location:` line was read. */
+  locationAt = 0;
+  /** 0x32388: when a player was last looked at. */
+  lookedAtPlayerAt = 0;
+  /** 0x32390: when the room was last looked at again. */
+  roomLookedAt = 0;
+  /** 0x32398: when a party member was last asked for help. */
+  partyAskedAt = 0;
+  /** 0x323a0: never set by the port: entering the game, the set-up is resent this long after it. */
+  unknown_323a0 = 0;
+  /** 0x32490: when `*Combat Engaged*` was last seen. */
+  combatOnAt = 0;
+  /** 0x32498: when `*Combat Off*` was last seen. */
+  combatOffAt = 0;
+  /** 0x324a0: when this character last joined a member's attack (`Party.AttackLast`). */
+  partyAttackJoinedAt = 0;
+  /**
+   * 0x324a8: members seen on a new target since this character's last attack (bits by member
+   * index).
+   */
+  membersOnNewTargets = 0;
+  /** 0x324b0: when a member's attack was last seen (ms). */
+  memberAttackAt = 0;
+  /** 0x324b8: when this character last joined in late (`Party.AttackLate`, ms). */
+  attackLateAt = 0;
+  /** 0x324c0: `*Combat Engaged*` and `*Combat Off*` lines seen. */
+  combatChanges = 0;
+  /** 0x324c4: `combatChanges` when the last attack was sent. */
+  combatChangesAtAttack = 0;
+  /** 0x324c8: the experience the meter counts from. */
+  expBaseline = 0;
+  /** 0x324d0: the experience made before the meter's baseline was last reset. */
+  expBefore = 0;
+  /** 0x32600: PROBABLY that a round of this fight has been fought (-1 at the fight's start). */
+  probablyRoundFought = 0;
+  /** 0x32604: a blow was struck this round. */
+  roundBlowSeen = 0;
+  /** 0x32608: the spell waiting to be cast was given a target. */
+  waitingSpellTargeted = 0;
+  /** 0x3260c: PROBABLY that this round's action has been counted (a blow or a cast). */
+  probablyRoundCounted = 0;
+  /** 0x32614: damage this character did this round. */
+  roundDamage = 0;
+  /** 0x32618: damage this character did this fight. */
+  fightDamage = 0;
 }

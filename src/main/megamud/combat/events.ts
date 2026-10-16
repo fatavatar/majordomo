@@ -5,7 +5,7 @@
  * protecting the target. Read 2026-10-12.
  */
 import { abbrev, indexFrom, indexOf, indexOfNoCase, stricmp, trimSpaces } from '../cstr';
-import { countCast, f_426ab0, multiStillWanted, spellTakesTarget } from './casts';
+import { countCast, inAttackCast, multiStillWanted, spellTakesTarget } from './casts';
 import { findSpell } from '../spells/lookup';
 import {
   clearAlignment,
@@ -16,7 +16,7 @@ import {
   endAltHeal,
   sawWeapons
 } from './engaged';
-import { weaponKinds } from './hits';
+import { immunityOf, maybeImmunityOf, weaponKinds } from './hits';
 import { combatRoundEnd } from './rounds';
 import { removeMember } from '../party/members';
 import { prioritize } from '../room/alsoHere';
@@ -41,24 +41,27 @@ import {
 import { hangUp } from '../script/game';
 import { queue, send } from '../script/send';
 import { forgetAwaited, setState } from '../script/state';
-import { setTask } from '../script/task';
-import { automated, type RoomEntity, type Session } from '../Session';
-import { isCastState } from '../states';
+import { setTask, Task } from '../script/task';
+import { ARENA, automated, type RoomEntity, type Session } from '../Session';
+import { isCastState, State } from '../states';
 import { immunityText } from '../player/cast';
 import { newMonster, newPlayer } from '../data';
 import { castForgotten, roundEvent, RoundEvent } from './timer';
 import { goTo, headFor, roomByName } from '../move/destinations';
 import { stamp } from '../script/events';
+import {
+  MonsterFlag,
+  PartyFlag,
+  PlayerFlag,
+  EntityFlag,
+  WEAPON_KINDS,
+  EntityType,
+  Stance
+} from '../flags';
 
 /** The weapons (`0x53eb48`): bit, letter. */
-const WEAPONS: [number, string][] = [
-  [1, 'N'],
-  [2, 'A'],
-  [4, 'B']
-];
-
 export function combatEventLine(s: Session, line: string): number {
-  if (s.state === 0x20) return 0;
+  if (s.state === State.Looking) return 0;
   if (
     indexOf(line, 'You have been killed!') !== -1 ||
     indexOf(line, 'But, due to a miracle, you have been saved') !== -1
@@ -66,7 +69,7 @@ export function combatEventLine(s: Session, line: string): number {
     return killed(s);
   }
   let echo: string;
-  if (f_426ab0(s, 0) !== 0 && f_426ab0(s, 1) !== 0) {
+  if (inAttackCast(s, 0) !== 0 && inAttackCast(s, 1) !== 0) {
     echo = `You say "${s.castShort}${s.target === '' ? '' : ' '}${s.target}`;
   } else if (s.target === '') {
     echo = '\x01\x01';
@@ -88,10 +91,10 @@ export function combatEventLine(s: Session, line: string): number {
   ) {
     notAnEnemy(s);
     s.inCombat = 0;
-    s.f_e2b8 = 0;
+    s.attackDue = 0;
     clearTargetCasts(s);
     clearCastMode(s);
-    setState(s, 0);
+    setState(s, State.Nothing);
     return 1;
   }
   if (
@@ -105,17 +108,17 @@ export function combatEventLine(s: Session, line: string): number {
       s.runCount = s.Combat_RunRooms;
     s.sneaking = 0;
     s.hidden = 0;
-    s.f_e1b8 = 1;
+    s.backstabResolved = 1;
     return 1;
   }
   const breaks = indexOf(line, ' breaks off combat');
   if (breaks !== -1) {
-    s.f_e2b8 = 0;
+    s.attackDue = 0;
     const who = line.slice(0, Math.min(breaks, 0x13));
-    if (s.f_8130 !== 0x67110001 || s.f_a32c !== 0 || stricmp(s.target, who) !== 0) return 1;
+    if (s.roomSignature !== ARENA || s.allOff !== 0 || stricmp(s.target, who) !== 0) return 1;
     send(s, 'break\r');
     unkeepAll(s);
-    s.f_e290 = 1;
+    s.lookDue = 1;
     return 1;
   }
   const attackYou = indexOf(line, ' moves to attack you!');
@@ -157,8 +160,8 @@ export function combatEventLine(s: Session, line: string): number {
   if (drops !== -1) return dropped(s, trimSpaces(line.slice(0, Math.min(drops, 0x13))));
   if (indexOf(line, ' is dead.') !== -1) {
     unkeepAll(s);
-    s.f_e290 = 1;
-    setState(s, 0);
+    s.lookDue = 1;
+    setState(s, State.Nothing);
     return 1;
   }
   const protect = indexOf(line, ' moves to protect ');
@@ -174,9 +177,9 @@ export function combatEventLine(s: Session, line: string): number {
     if (s.debug !== 0) s.host.trace('{W-prot-x}');
     return 1;
   }
-  s.s_dd14 = '';
-  s.f_ddf0 = 1;
-  s.f_dd10 = 0;
+  s.noEffectTarget = '';
+  s.targetProtected = 1;
+  s.noEffectCount = 0;
   if (s.debug !== 0) s.host.trace('{W-prot}');
   return 1;
 }
@@ -186,25 +189,24 @@ function killed(s: Session): number {
   s.partySize = 0;
   s.following = 0;
   clearAlignment(s);
-  s.f_8558 = 0;
-  s.f_e1e4 = 0;
-  if (s.f_8130 !== 0x67110001) {
-    s.f_e398 = 1;
+  s.recoveringCorpse = 0;
+  s.corpseTried = 0;
+  if (s.roomSignature !== ARENA) {
+    s.movementHalted = 1;
     s.walking = 0;
     s.rescueCount = 0;
-    setTask(s, 0xb);
+    setTask(s, Task.InGame);
     if (hangupAllowed(s) !== 0) {
-      s.f_30de4 = 1;
-      s.f_30de8 = 1;
-      s.f_30dec = 1;
+      s.skipRedialOnce = 1;
+      s.noRedial = 1;
       hangUp(s, 0);
       s.host.alert?.('hangup');
     }
-    s.f_8468 = 0;
+    s.weightMax = 0;
     return 1;
   }
-  if (automated(s) && s.f_a32c === 0) return 1;
-  goTo(s, 0x67110001, null);
+  if (automated(s) && s.allOff === 0) return 1;
+  goTo(s, ARENA, null);
   headFor(s, 0);
   return 1;
 }
@@ -212,7 +214,7 @@ function killed(s: Session): number {
 /** `0x426940`: the monster that cannot be fought becomes a non-enemy, or MegaMUD runs a room. */
 function notAnEnemy(s: Session): number {
   const e = s.room[0];
-  if (!e || e.type === 3) return 0;
+  if (!e || e.type === EntityType.Item) return 0;
   if (e.player) return 1;
   let mon = e.mon;
   if (!mon) {
@@ -225,12 +227,12 @@ function notAnEnemy(s: Session): number {
       s.host.show(`[${e.name} added to known monsters]`);
     }
   }
-  if ((mon.flags & 2) !== 0 || stopToKill(s) !== 0) {
-    mon.flags |= 2;
-    mon.relationship = 3;
-    s.f_e254 = 1;
+  if ((mon.flags & MonsterFlag.AutoLearned) !== 0 || stopToKill(s) !== 0) {
+    mon.flags |= MonsterFlag.AutoLearned;
+    mon.relationship = Stance.Avoid;
+    s.monstersChanged = 1;
     s.host.show(`[${mon.name} marked as non-enemy]`);
-    e.kind = 3;
+    e.kind = Stance.Avoid;
     prioritize(s);
     return 1;
   }
@@ -255,43 +257,43 @@ function noEffect(s: Session, line: string): number {
     return 1;
   }
   const bareHands =
-    s.f_b0fc === 0 &&
+    s.weaponNoEffect === 0 &&
     (abbrev(s.Combat_AttackCmd, 'punch', 2) !== 0 ||
       abbrev(s.Combat_AttackCmd, 'jumpkick', 2) !== 0 ||
       abbrev(s.Combat_AttackCmd, 'kick', 3) !== 0);
-  const weapons = s.s_b060 === '' || bareHands ? 0 : weaponKinds(s, s.s_b060);
+  const weapons = s.weaponWielded === '' || bareHands ? 0 : weaponKinds(s, s.weaponWielded);
   const [why, target] = blameTarget(s);
   if (why === 0) {
-    s.f_dd80 = s.f_dd78;
-    s.f_dd84 = s.f_dd7c;
+    s.noEffectTargetCount = s.targetCount;
+    s.noEffectRoomChanges = s.probablyRoomChanges;
   }
   let newlyImmune = false;
   if (weapons === 0) {
     if (why === 0) {
-      if (s.s_dd14 !== s.target) {
-        s.s_dd14 = s.target.slice(0, 99);
-        s.f_dd10 = 0;
+      if (s.noEffectTarget !== s.target) {
+        s.noEffectTarget = s.target.slice(0, 99);
+        s.noEffectCount = 0;
       }
-      s.f_dd10 += 1;
-      if (s.debug !== 0) s.host.trace(`{W-noeff:${s.f_dd10}}`);
+      s.noEffectCount += 1;
+      if (s.debug !== 0) s.host.trace(`{W-noeff:${s.noEffectCount}}`);
     }
-    if (s.target !== '' && s.f_8bec === 0 && s.f_dd10 > 1) {
+    if (s.target !== '' && s.weaponsExhausted === 0 && s.noEffectCount > 1) {
       if (s.debug !== 0) s.host.trace('{W-esc}');
       s.host.show(`[melee ineffective vs ${s.target}]`);
-      s.f_8bec = 1;
+      s.weaponsExhausted = 1;
       s.sneaking = 0;
       s.hidden = 0;
       s.inCombat = 0;
-      s.f_e2b8 = enemiesHere(s, 0) > 0 ? 1 : 0;
-      setState(s, 0);
+      s.attackDue = enemiesHere(s, 0) > 0 ? 1 : 0;
+      setState(s, State.Nothing);
       return 1;
     }
   } else {
-    for (const [bit, letter] of WEAPONS) {
+    for (const [bit, letter] of WEAPON_KINDS) {
       if ((weapons & bit) === 0 || why === 3 || why === 6) continue;
       if (why === 0 && target?.mon && target.mon.name !== '') {
-        const sure = bit === 1 ? 0x200 : bit === 2 ? 0x400 : 0x4000;
-        const maybe = bit === 1 ? 0x20000 : bit === 2 ? 0x40000 : 0x80000;
+        const sure = immunityOf(bit);
+        const maybe = maybeImmunityOf(bit);
         if ((target.flags & sure) !== 0) {
           sawWeapons(s, bit);
           continue;
@@ -301,17 +303,17 @@ function noEffect(s: Session, line: string): number {
             sawWeapons(s, bit);
             continue;
           }
-          s.f_df08 |= bit;
+          s.weaponsSuspect |= bit;
           if (s.debug !== 0) s.host.trace(`{W-pend:${letter}}`);
-        } else if ((bit & s.f_df08) === 0) {
-          s.f_df08 |= bit;
+        } else if ((bit & s.weaponsSuspect) === 0) {
+          s.weaponsSuspect |= bit;
           if (s.debug !== 0) s.host.trace(`{W-hold:${letter}}`);
-        } else if ((s.f_df00 & bit) !== 0) {
+        } else if ((s.weaponsInHand & bit) !== 0) {
           markMonsters(s, target.mon.name, sure);
           if (s.debug !== 0) s.host.trace(`{W-${letter}}`);
           sawWeapons(s, bit);
           newlyImmune = true;
-        } else if ((s.f_df04 & bit) !== 0) {
+        } else if ((s.weaponsProbing & bit) !== 0) {
           if (s.debug !== 0) s.host.trace(`{W-noconf:${letter}}`);
           sawWeapons(s, bit);
         }
@@ -322,13 +324,13 @@ function noEffect(s: Session, line: string): number {
     if (newlyImmune && target)
       s.host.show(`[${target.name} now immune to: ${immunityText(target.flags)}]`);
   }
-  if (s.target !== '' && s.f_8bec === 0) {
+  if (s.target !== '' && s.weaponsExhausted === 0) {
     s.sneaking = 0;
     s.hidden = 0;
     s.inCombat = 0;
-    s.f_b0fc = 1;
-    s.f_e2b8 = enemiesHere(s, 0) > 0 ? 1 : 0;
-    setState(s, 0);
+    s.weaponNoEffect = 1;
+    s.attackDue = enemiesHere(s, 0) > 0 ? 1 : 0;
+    setState(s, State.Nothing);
     return 1;
   }
   s.sneaking = 0;
@@ -336,9 +338,9 @@ function noEffect(s: Session, line: string): number {
   const e = s.target === '' ? null : findEntity(s, s.target, 0);
   clearTargetCasts(s);
   clearCastMode(s);
-  if (e) e.kind = 5;
+  if (e) e.kind = Stance.Flee;
   s.inCombat = 0;
-  setState(s, 0);
+  setState(s, State.Nothing);
   return 1;
 }
 
@@ -352,12 +354,20 @@ function blameTarget(s: Session): [number, RoomEntity | null] {
   const e = s.target === '' ? null : findEntity(s, s.target, 0);
   let why: number;
   if (s.target === '' || !e) why = 1;
-  else if (s.f_e218 !== 0) why = 5;
-  else if (s.f_ddf0 !== 0) why = 4;
-  else if (s.f_a5f8 >= 1) why = 3;
-  else if (s.lastTarget === '' || stricmp(s.lastTarget, s.target) !== 0 || s.f_ddec !== s.f_8130)
+  else if (s.attackPrevented !== 0) why = 5;
+  else if (s.targetProtected !== 0) why = 4;
+  else if (s.equipsPending >= 1) why = 3;
+  else if (
+    s.lastTarget === '' ||
+    stricmp(s.lastTarget, s.target) !== 0 ||
+    s.lastTargetRoom !== s.roomSignature
+  )
     why = 2;
-  else if ((s.f_dd80 === 0 && s.f_dd84 === 0) || s.f_dd80 !== s.f_dd78 || s.f_dd84 !== s.f_dd7c)
+  else if (
+    (s.noEffectTargetCount === 0 && s.noEffectRoomChanges === 0) ||
+    s.noEffectTargetCount !== s.targetCount ||
+    s.noEffectRoomChanges !== s.probablyRoomChanges
+  )
     return [0, e];
   else why = 6;
   if (s.debug !== 0 && !(why === 1 && s.target === '' && s.inCombat === 0))
@@ -373,9 +383,6 @@ export function pvp(s: Session, name: string): number {
   return 1;
 }
 
-/** The arena, where nobody is attacked for real (`0x67110001`, as `breaks off combat` reads it). */
-const ARENA = 0x67110001;
-
 /**
  * `0x472d10`: a name that is a player's — in the room and not a monster,
  * on the `who` list, or known — rather than a monster's.
@@ -383,8 +390,8 @@ const ARENA = 0x67110001;
 export function knownPlayer(s: Session, name: string): number {
   if (looksLikeName(name) === 0) return 0;
   for (const e of s.room) {
-    if (e.name !== name || e.type === 3) continue;
-    if (e.type === 2) return 0;
+    if (e.name !== name || e.type === EntityType.Item) continue;
+    if (e.type === EntityType.Monster) return 0;
     return e.mon === null ? 1 : 0;
   }
   if (s.whoList.some((w) => w.name === name)) return 1;
@@ -403,41 +410,40 @@ export function knownPlayer(s: Session, name: string): number {
 export function pvpAttack(s: Session, name: string, tell: number): void {
   if (s.PvP_PvpAction === 5) return;
   if (looksLikeName(name) === 0) {
-    if (s.f_a32c === 0) s.host.show('[Ignoring malformed PvP attacker name]');
-    s.f_e2a4 = 1;
-    s.f_e290 = 1;
+    if (s.allOff === 0) s.host.show('[Ignoring malformed PvP attacker name]');
+    s.whoDue = 1;
+    s.lookDue = 1;
     return;
   }
   if (s.data.monsters.some((m) => stricmp(m.name, name) === 0)) {
-    s.f_e290 = 1;
+    s.lookDue = 1;
     return;
   }
   if (knownPlayer(s, name) === 0) {
-    if (s.f_a32c === 0) s.host.show('[Ignoring unknown PvP attacker name]');
-    s.f_e2a4 = 1;
-    s.f_e290 = 1;
+    if (s.allOff === 0) s.host.show('[Ignoring unknown PvP attacker name]');
+    s.whoDue = 1;
+    s.lookDue = 1;
     return;
   }
   if (s.target === name) return;
   s.target = '';
-  s.f_e2b8 = 1;
+  s.attackDue = 1;
   s.inCombat = 0;
   let arena = false;
-  if (s.f_8130 === ARENA) {
+  if (s.roomSignature === ARENA) {
     arena = true;
   } else {
-    if (s.f_a32c === 0) s.host.trace(`[PVP detected! (${stamp(s)})]`);
-    s.f_3252c += 1;
-    s.f_322f8 = s.now;
-    if (s.f_a32c === 0) {
+    if (s.allOff === 0) s.host.trace(`[PVP detected! (${stamp(s)})]`);
+    s.pvpFleeAt = s.now;
+    if (s.allOff === 0) {
       const member = partyIndex(s, name);
       if (member !== -1) {
         const p = findPlayer(s, name);
-        let listed = (s.party[member]!.flags28 & 8) === 0;
+        let listed = (s.party[member]!.flags28 & PartyFlag.Unlisted) === 0;
         if (p && stricmp(name, s.leaderName) === 0) listed = ((p.flags >> 5) & 1) !== 0;
-        if (!p || p.kind > 2 || listed) {
+        if (!p || p.kind > Stance.Friend || listed) {
           send(s, '@OI!\r');
-          send(s, s.s_7d21 !== '' ? s.s_7d21 : '.');
+          send(s, s.speechPrefix !== '' ? s.speechPrefix : '.');
           send(s, 'forgive ');
           send(s, name);
           send(s, '\r');
@@ -451,33 +457,32 @@ export function pvpAttack(s: Session, name: string, tell: number): void {
         send(s, '}\r');
       }
       if (tell !== 0 && s.partySize > 0) {
-        send(s, s.s_7d21);
+        send(s, s.speechPrefix);
         send(s, '@kill ');
         send(s, name);
         send(s, '\r');
       }
     }
-    if (s.f_a32c === 0 || s.Other_HangupAllOff !== 0) {
+    if (s.allOff === 0 || s.Other_HangupAllOff !== 0) {
       const action = s.PvP_PvpAction;
       const hang =
         action === 0 || (action === 1 && (s.held !== 0 || (s.walking === 0 && s.roaming === 0)));
       if (s.MegaMud_NoHangup === 0 && hang) {
-        s.f_30de4 = 1;
-        s.f_30de8 = 1;
-        s.f_30dec = 1;
+        s.skipRedialOnce = 1;
+        s.noRedial = 1;
         hangUp(s, 1);
       }
       s.host.alert?.('hangup');
     } else {
       s.host.alert?.('playerEntered');
     }
-    if (s.f_a32c === 0) {
+    if (s.allOff === 0) {
       if (s.PvP_PvpAction === 2 || s.PvP_PvpAction === 1) {
-        s.f_e1a0 = 1;
+        s.fleeingPlayer = 1;
         s.runCount = s.PvP_FleeRooms;
         const room = s.PvP_PvpFleeRoom !== '' ? roomByName(s, s.PvP_PvpFleeRoom) : null;
         if (room) {
-          s.f_9104 = room.signature;
+          s.fleeRoom = room.signature;
           if (goTo(s, room.signature, null) !== 0) {
             s.detours[0]!.why = 'fleeing';
             headFor(s, 0);
@@ -492,40 +497,44 @@ export function pvpAttack(s: Session, name: string, tell: number): void {
   if (!e) {
     e = addEntity(s);
     e.name = name.slice(0, 30);
-    e.type = 1;
-    e.kind = 4;
+    e.type = EntityType.Player;
+    e.kind = Stance.Enemy;
   }
   if (e.player === null) {
     const p = findPlayer(s, name);
     if (p === null) {
       const made = newPlayer(s.data, s.now);
       made.name = name.slice(0, 10);
-      made.flags = 1;
-      made.kind = 4;
+      made.flags = PlayerFlag.DetailsUnknown;
+      made.kind = Stance.Enemy;
       e.player = made;
-      s.f_e24c = 1;
+      s.playersChanged = 1;
       s.host.show(`[Adding ${name} to known players]`);
     } else {
       e.player = p;
       e.kind = p.kind;
     }
   }
-  e.flags &= ~0x60;
+  e.flags &= ~(EntityFlag.PvpSpell1Cast | EntityFlag.PvpSpell2Cast);
   const p = e.player;
-  if (!arena) p.flags |= 0x4000;
+  if (!arena) p.flags |= PlayerFlag.AttackedUs;
   p.greetedAt = s.now;
-  if ((p.flags & 0x8000) === 0) {
-    if (p.seen === 0) s.f_32528 += 1;
+  if ((p.flags & PlayerFlag.SeenThisSession) === 0) {
     p.seen += 1;
-    p.flags |= 0x8000;
+    p.flags |= PlayerFlag.SeenThisSession;
   }
-  if (e.kind === 4 || e.kind === 5 || e.kind === 6 || s.f_a32c !== 0) {
-    if (arena) e.flags |= 1;
+  if (
+    e.kind === Stance.Enemy ||
+    e.kind === Stance.Flee ||
+    e.kind === Stance.Hangup ||
+    s.allOff !== 0
+  ) {
+    if (arena) e.flags |= EntityFlag.Kept;
   } else {
-    e.kind = 4;
+    e.kind = Stance.Enemy;
     if (!arena) {
       if (s.PvP_PvpAction === 2 || s.PvP_PvpAction === 1) {
-        e.kind = 5;
+        e.kind = Stance.Flee;
         s.host.trace(`[Player ${name} marked as flee!]`);
       } else {
         s.host.trace(`[Player ${name} marked as enemy!]`);
@@ -535,9 +544,9 @@ export function pvpAttack(s: Session, name: string, tell: number): void {
         p.remote = 0;
         s.host.trace(`[Player ${name} remote control _access removed!]`);
       }
-      s.f_e24c = 1;
+      s.playersChanged = 1;
     } else {
-      e.flags |= 1;
+      e.flags |= EntityFlag.Kept;
     }
   }
   checkNames(s);
@@ -557,11 +566,11 @@ function attackEveryone(s: Session, line: string, at: number): number {
   const member = partyIndex(s, name);
   if (member !== -1) {
     if (s.MegaMud_AutoCombat !== 0) {
-      if (name === s.leaderName) s.f_e1c0 = 0;
+      if (name === s.leaderName) s.probablyLeaderResting = 0;
       if (name !== s.Player_Name && s.Party_AttackLast !== 0) {
-        if (s.now - s.f_324a0 > 1 || s.f_324a0 < s.f_32490) {
-          s.f_e2b8 = 1;
-          s.f_324a0 = s.now;
+        if (s.now - s.partyAttackJoinedAt > 1 || s.partyAttackJoinedAt < s.combatOnAt) {
+          s.attackDue = 1;
+          s.partyAttackJoinedAt = s.now;
         }
       }
     }
@@ -570,14 +579,15 @@ function attackEveryone(s: Session, line: string, at: number): number {
     return 1;
   }
   if (knownPlayer(s, name) === 0) {
-    if (s.f_a32c === 0) s.host.show('[Ignoring unknown PvP attacker name]');
-    s.f_e2a4 = 1;
-    s.f_e290 = 1;
+    if (s.allOff === 0) s.host.show('[Ignoring unknown PvP attacker name]');
+    s.whoDue = 1;
+    s.lookDue = 1;
     return 1;
   }
   const p = findPlayer(s, name);
   if (p && p.level > 1) {
-    const other = (p.flags & 2) !== 0 ? (p.level === 2 ? 4 : p.level + 4) : p.level;
+    const other =
+      (p.flags & PlayerFlag.LevelGuessed) !== 0 ? (p.level === 2 ? 4 : p.level + 4) : p.level;
     if (
       Math.abs(s.Player_Level - p.level) > s.pvpLevel &&
       Math.abs(s.Player_Level - other) > s.pvpLevel
@@ -609,13 +619,13 @@ function memberEngages(
   if (!victim) {
     victim = addEntity(s);
     victim.name = victimText.slice(0, 30).split('.')[0]!;
-    victim.kind = 4;
+    victim.kind = Stance.Enemy;
     checkNames(s);
     prioritize(s);
   }
   let leaderOnOther = false;
   if (s.MegaMud_AutoCombat !== 0 && who === s.leaderName) {
-    s.f_e1c0 = 0;
+    s.probablyLeaderResting = 0;
     if (who !== s.Player_Name && victim !== s.room[0]) leaderOnOther = s.Party_AttLeaderMstr !== 0;
   }
   if (s.Party_AttackLast !== 0 || leaderOnOther) {
@@ -623,10 +633,10 @@ function memberEngages(
       pin(s, victim, 1);
       s.target = victim.name.slice(0, 99);
     }
-    const recent = s.now - s.f_324a0 < 2 && s.f_324a0 >= s.f_32490;
+    const recent = s.now - s.partyAttackJoinedAt < 2 && s.partyAttackJoinedAt >= s.combatOnAt;
     if (leaderOnOther || !recent) {
-      s.f_e2b8 = 1;
-      s.f_324a0 = s.now;
+      s.attackDue = 1;
+      s.partyAttackJoinedAt = s.now;
     }
   }
   if (s.Party_AttackLate === 0 || s.partySize < 3) return 1;
@@ -638,7 +648,7 @@ function memberEngages(
  * `0x423f80` (`Party.AttackLate`): member `i` is attacking `target` —
  * `*room*` for everyone in it. Two or more members newly on something, or
  * one still on the same target in melee a lag-wait (plus two seconds) on,
- * and this character joins in (`0xe2b8`), at most every two seconds; not
+ * and this character joins in (`attackDue`), at most every two seconds; not
  * while backstabbing or sneaking. Its own attack only notes the target.
  */
 function attackLate(s: Session, i: number, who: string, target: string, melee: number): void {
@@ -646,9 +656,9 @@ function attackLate(s: Session, i: number, who: string, target: string, melee: n
   if (i > 5 || partyIndex(s, target) !== -1) return;
   const member = s.party[i]!;
   if (stricmp(who, s.Player_Name) === 0) {
-    s.f_324a8 = 0;
+    s.membersOnNewTargets = 0;
     member.target = target.slice(0, 30);
-    s.f_324b0 = t;
+    s.memberAttackAt = t;
     return;
   }
   const same = stricmp(member.target, target) === 0;
@@ -656,25 +666,25 @@ function attackLate(s: Session, i: number, who: string, target: string, melee: n
   if (
     same &&
     melee !== 0 &&
-    s.f_8be4 !== 0 &&
-    s.f_324b0 !== 0 &&
-    t - s.f_324b0 >= (s.Comms_LagWait + 2) * 1000
+    s.engagedHere !== 0 &&
+    s.memberAttackAt !== 0 &&
+    t - s.memberAttackAt >= (s.Comms_LagWait + 2) * 1000
   ) {
     still = true;
   } else if (!same) {
-    s.f_324a8 |= 1 << i;
+    s.membersOnNewTargets |= 1 << i;
     if (s.debug !== 0) s.host.trace(`{al+${i}}`);
   }
   member.target = target.slice(0, 30);
-  s.f_324b0 = t;
+  s.memberAttackAt = t;
   let count = 0;
-  for (let bit = 0; bit < 6; bit += 1) if ((s.f_324a8 & (1 << bit)) !== 0) count += 1;
-  if (s.state === 0x12 || s.sneaking !== 0) {
+  for (let bit = 0; bit < 6; bit += 1) if ((s.membersOnNewTargets & (1 << bit)) !== 0) count += 1;
+  if (s.state === State.Backstabbing || s.sneaking !== 0) {
     if (s.debug !== 0 && (count > 1 || still)) s.host.trace('{al-bs}');
-  } else if ((count > 1 || still) && t - s.f_324b8 >= 2000) {
-    s.f_e2b8 = 1;
-    s.f_324b8 = t;
-    s.f_324a8 = 0;
+  } else if ((count > 1 || still) && t - s.attackLateAt >= 2000) {
+    s.attackDue = 1;
+    s.attackLateAt = t;
+    s.membersOnNewTargets = 0;
     if (s.debug !== 0) s.host.trace(still && count <= 1 ? '{al!s}' : '{al!}');
   }
 }
@@ -693,50 +703,52 @@ export function pin(s: Session, e: RoomEntity, first: number): void {
  */
 function killedSomething(s: Session): number {
   roundEvent(s, RoundEvent.Experience);
-  if (s.Party_ParAfterRound !== 0) s.f_32328 = 0;
-  s.f_32530 += 1;
+  if (s.Party_ParAfterRound !== 0) s.parAt = 0;
   combatRoundEnd(s);
   endAltHeal(s);
-  if (s.state === 0xa) s.f_a580 = 1;
-  else if (s.state === 9 && s.Combat_PreMultAttack !== '') {
-    if (spellTakesTarget(findSpell(s, s.Combat_PreMultAttack)) !== 0) s.f_a580 = 1;
+  if (s.state === State.CastMulti) s.multiAttacking = 1;
+  else if (s.state === State.CastPreMulti && s.Combat_PreMultAttack !== '') {
+    if (spellTakesTarget(findSpell(s, s.Combat_PreMultAttack)) !== 0) s.multiAttacking = 1;
   }
   let index = -1;
   if (s.target !== '') {
-    index = s.room.findIndex((e) => e.type !== 3 && stricmp(e.name, s.target) === 0);
-    if (index === -1 && s.state === 0xf) {
-      const loose = s.room.findIndex((e) => e.type !== 3 && indexOfNoCase(e.name, s.target) !== -1);
+    index = s.room.findIndex((e) => e.type !== EntityType.Item && stricmp(e.name, s.target) === 0);
+    if (index === -1 && s.state === State.CastUser) {
+      const loose = s.room.findIndex(
+        (e) => e.type !== EntityType.Item && indexOfNoCase(e.name, s.target) !== -1
+      );
       if (loose !== -1) index = loose;
     }
   }
   removeEntity(s, Math.max(index, 0));
   castForgotten(s);
   if (multiStillWanted(s)) {
-    if (s.debug !== 0 && s.f_e1d8 !== 0) s.host.trace('{I3-}');
-    s.f_e1d8 = 0;
-    s.f_e2b8 = 0;
+    if (s.debug !== 0 && s.combatOffExpected !== 0) s.host.trace('{I3-}');
+    s.combatOffExpected = 0;
+    s.attackDue = 0;
     clearMainCounts(s);
     s.target = '';
-    s.f_32390 = 0;
-    s.f_e290 = 1;
+    s.roomLookedAt = 0;
+    s.lookDue = 1;
     return 1;
   }
   if (s.debug !== 0 && s.inCombat !== 0) s.host.trace('{C8}');
   s.inCombat = 0;
-  if (s.debug !== 0 && s.f_e1d8 !== 0) s.host.trace('{I4-}');
-  s.f_e1d8 = 0;
-  s.f_e2b8 = 0;
-  if (s.state === 0xf || s.stateAwaited === 0xf) forgetAwaited(s, 0xf);
-  if (s.engagedMode !== 0) forgetAwaited(s, s.engagedMode);
+  if (s.debug !== 0 && s.combatOffExpected !== 0) s.host.trace('{I4-}');
+  s.combatOffExpected = 0;
+  s.attackDue = 0;
+  if (s.state === State.CastUser || s.stateAwaited === State.CastUser)
+    forgetAwaited(s, State.CastUser);
+  if (s.engagedMode !== State.Nothing) forgetAwaited(s, s.engagedMode);
   clearTargetCasts(s);
   clearCastMode(s);
-  setState(s, 0);
+  setState(s, State.Nothing);
   if (enemiesHere(s, s.Combat_AttackNeutral) === 0) {
     combatOff(s);
-    s.f_e290 = 1;
+    s.lookDue = 1;
     return 1;
   }
-  s.f_e290 = 1;
+  s.lookDue = 1;
   return 1;
 }
 
@@ -749,12 +761,11 @@ function dropped(s: Session, name: string): number {
   unkeepAll(s);
   if (name === s.Player_Name) {
     forgetAwaited(s, s.state);
-    setState(s, 0);
+    setState(s, State.Nothing);
     s.inCombat = 0;
-    if (s.f_8130 === 0x67110001 || hangupAllowed(s) === 0) return 1;
-    s.f_30de4 = 1;
-    s.f_30de8 = 1;
-    s.f_30dec = 1;
+    if (s.roomSignature === ARENA || hangupAllowed(s) === 0) return 1;
+    s.skipRedialOnce = 1;
+    s.noRedial = 1;
     hangUp(s, 1);
     s.host.alert?.('hangup');
     return 1;
@@ -763,11 +774,13 @@ function dropped(s: Session, name: string): number {
     const p = findPlayer(s, name);
     if (!p) return 0;
     const member = partyIndex(s, name);
-    if (member !== -1 || p.kind === 2) {
-      if (s.f_a32c === 0) queue(s, `aid ${name}\r`);
-      if (member !== -1) s.party[member]!.flags28 |= 0x2000a;
+    if (member !== -1 || p.kind === Stance.Friend) {
+      if (s.allOff === 0) queue(s, `aid ${name}\r`);
+      if (member !== -1)
+        s.party[member]!.flags28 |=
+          PartyFlag.ChangedSinceListing | PartyFlag.Unlisted | PartyFlag.AskedForHeal;
       s.inCombat = 0;
-      setState(s, 0);
+      setState(s, State.Nothing);
     }
   }
   const member = partyIndex(s, name);
@@ -783,24 +796,25 @@ function dropped(s: Session, name: string): number {
  * dropped so the scheduler chooses again.
  */
 function attackRefused(s: Session): number {
-  if (f_426ab0(s, 0) !== 0 && f_426ab0(s, 1) !== 0) countCast(s, s.state, 0);
-  if (s.target !== '' || s.state === 0x11 || isCastState(s.state)) {
-    s.f_dd0c += 1;
-    if (s.f_dd0c > 2) unkeepAll(s);
-    if (s.f_dd0c > 1) dropUnkeptCreatures(s);
-    if (s.f_dd0c > 2) s.f_dd0c = 0;
+  if (inAttackCast(s, 0) !== 0 && inAttackCast(s, 1) !== 0) countCast(s, s.state, 0);
+  if (s.target !== '' || s.state === State.Attacking || isCastState(s.state)) {
+    s.attacksRefused += 1;
+    if (s.attacksRefused > 2) unkeepAll(s);
+    if (s.attacksRefused > 1) dropUnkeptCreatures(s);
+    if (s.attacksRefused > 2) s.attacksRefused = 0;
   }
-  if (s.f_a5f8 !== 0) s.f_a5f8 = Math.max(0, s.f_a5f8 - 1);
-  if (s.s_b060 !== '' && stricmp(s.lastSent, `remove ${s.s_b060}\r`) === 0) s.s_b060 = '';
+  if (s.equipsPending !== 0) s.equipsPending = Math.max(0, s.equipsPending - 1);
+  if (s.weaponWielded !== '' && stricmp(s.lastSent, `remove ${s.weaponWielded}\r`) === 0)
+    s.weaponWielded = '';
   const st = s.state;
   s.inCombat = 0;
-  s.f_e2b8 = 0;
-  if (st === 0x10 || st === 0x15 || isCastState(st)) castForgotten(s);
+  s.attackDue = 0;
+  if (st === State.Blessing || st === State.Casting || isCastState(st)) castForgotten(s);
   clearTargetCasts(s);
   clearCastMode(s);
   forgetAwaited(s, s.state);
-  setState(s, 0);
-  if (s.blind === 0) s.f_32390 = 0;
-  s.f_e290 = 1;
+  setState(s, State.Nothing);
+  if (s.blind === 0) s.roomLookedAt = 0;
+  s.lookDue = 1;
   return 1;
 }

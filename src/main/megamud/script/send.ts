@@ -17,6 +17,9 @@ import { findSpell } from '../spells/lookup';
 import type { Session } from '../Session';
 import { setState } from './state';
 import { clearPending, sixtySeconds, tenSeconds, thirtySeconds } from './waits';
+import { State } from '../states';
+import { LineFlag, SpellFlag } from '../flags';
+import { Task } from './task';
 
 /** One pending command (`0x5c6d40`, `0x5c76a0`, `0x5c7380`, `0x5c7060`). */
 export interface Pending {
@@ -25,7 +28,7 @@ export interface Pending {
   expand: number;
   /** It came from the player or a remote, and is checked against its target (`0x48b370`). */
   checked: number;
-  /** `0x240c` when it was queued. */
+  /** `monitorQueuing` when it was queued. */
   tag: number;
 }
 
@@ -72,11 +75,11 @@ export function echoAwaited(s: Session, rest: string | null): boolean {
 export function send(s: Session, text: string): number {
   s.lastAbil.valid = 0;
   if (text !== '\r' && text !== 'par\r') {
-    s.f_db8c = 0;
-    s.f_db88 = 0;
+    s.loginQuietStrikes = 0;
+    s.loginQuietTens = 0;
   }
   if (s.abilSending === 0) {
-    if (s.f_e57c === 0 && s.inGame !== 0) {
+    if (s.unknown_e57c === 0 && s.inGame !== 0) {
       const last = s.lastSent;
       if (last.length > 1 && strcmp(text, last) === 0) {
         s.sameSent += 1;
@@ -100,13 +103,13 @@ export function send(s: Session, text: string): number {
   } else {
     s.abilSending = 0;
   }
-  s.f_322a0 = s.now;
+  s.lastSentAt = s.now;
   noteEchoes(s, text);
   s.host.write(text);
-  if (s.f_30e14 < 1) {
-    if (s.Display_ShowSend !== 0 && s.task > 10) s.host.echo?.(text);
+  if (s.silentSends < 1) {
+    if (s.Display_ShowSend !== 0 && s.task > Task.LoggingOn) s.host.echo?.(text);
   } else {
-    s.f_30e14 -= 1;
+    s.silentSends -= 1;
   }
   return 1;
 }
@@ -116,19 +119,19 @@ function resetWaits(s: Session, harder: boolean): void {
   tenSeconds(s);
   if (harder) sixtySeconds(s);
   else thirtySeconds(s);
-  s.f_e29c = 1;
-  s.f_e2ac = 1;
-  s.f_8468 = 0;
-  s.f_32348 = 0;
-  s.f_32390 = 0;
-  s.f_e290 = 1;
-  s.lineFlags |= 1;
+  s.statDue = 1;
+  s.parDue = 1;
+  s.weightMax = 0;
+  s.inventoryAskedAt = 0;
+  s.roomLookedAt = 0;
+  s.lookDue = 1;
+  s.lineFlags |= LineFlag.Prompted;
 }
 
 /** `0x42e0e0`: wake the scheduler. */
 export function wake(s: Session): number {
-  s.lineFlags |= 1;
-  s.f_e544 = 4;
+  s.lineFlags |= LineFlag.Prompted;
+  s.dialState = 4;
   return 1;
 }
 
@@ -158,11 +161,11 @@ export function queueCommand(
     return 0;
   }
   if (again === 0 && s.pending.some((p) => p.text === text)) {
-    s.lineFlags |= 1;
+    s.lineFlags |= LineFlag.Prompted;
     return 1;
   }
   s.pending.push({ text, expand, checked, tag: s.monitorQueuing });
-  s.lineFlags |= 1;
+  s.lineFlags |= LineFlag.Prompted;
   return 1;
 }
 
@@ -176,25 +179,28 @@ export function pendingPump(s: Session): number {
   if (checked !== -1 && first) {
     const text = first.text;
     const killsSelf = findNoCase(text, 0, 'suicide') !== -1 || findNoCase(text, 0, 'reroll') !== -1;
-    if ((!text.startsWith('drop ') || s.f_e1e0 === 0) && !killsSelf) {
+    if ((!text.startsWith('drop ') || s.cannotDropHere === 0) && !killsSelf) {
       if (
         first.checked === 0 &&
         text !== '\r' &&
         !text.startsWith('set ') &&
         !text.startsWith('drop ')
       ) {
-        s.f_32390 = 0;
-        s.f_e290 = 1;
+        s.roomLookedAt = 0;
+        s.lookDue = 1;
       }
       const out = first.expand === 0 ? text.slice(0, 299) : expandMacros(s, text);
       if (first.checked !== 0) {
         noteCommands(s, text);
         attackCommand(s, text);
       }
-      if (s.pendingQuiet === 0) setState(s, 0x2d);
+      if (s.pendingQuiet === 0) setState(s, State.PendingCmd);
       s.waitLines = 2;
       send(s, out);
-      if (text.startsWith('/') && (s.following !== 0 || s.f_e2ec !== 0 || s.holdingLeader !== 0)) {
+      if (
+        text.startsWith('/') &&
+        (s.following !== 0 || s.partyLost !== 0 || s.holdingLeader !== 0)
+      ) {
         const waitCmd = s.Party_PartyWaitCmd !== '' ? s.Party_PartyWaitCmd : '@wait';
         const isWait = findNoCase(text, 0, waitCmd) !== -1;
         const isComeback = findNoCase(text, 0, '@comeback') !== -1;
@@ -202,12 +208,12 @@ export function pendingPump(s: Session): number {
           const okCmd = s.Party_PartyResumeCmd !== '' ? s.Party_PartyResumeCmd : '@ok';
           if (findNoCase(text, 0, okCmd) !== -1) {
             s.lastResumeSent = out.slice(0, 299);
-            s.f_32340 = s.now;
+            s.okSentAt = s.now;
             s.holdingLeader = 0;
           }
         } else {
           s.lastWaitSent = out.slice(0, 299);
-          s.f_32338 = s.now;
+          s.waitSentAt = s.now;
           if (isWait) s.holdingLeader = 1;
         }
       }
@@ -233,7 +239,7 @@ function noWaitingSpell(s: Session): void {
   s.waitingSpell = '';
   s.waitingSpellTarget = '';
   s.waitingSpellAt = 0;
-  s.f_32608 = 0;
+  s.waitingSpellTargeted = 0;
 }
 
 /** A blank, as `0x48b370` skips them. */
@@ -302,12 +308,12 @@ function msgSpells(s: Session): number {
     let waitedOut = false;
     if (spell !== null) {
       const short = spell.short;
-      const area = (spell.flags >> 7) & 1;
+      const area = (spell.flags & SpellFlag.Area) !== 0 ? 1 : 0;
       const takes = spellTakesTarget(spell);
       const waiting = s.waitingSpell !== '' && stricmp(s.waitingSpell, short) === 0;
       if (waiting && s.waitingSpellTarget !== '') {
         const e = findEntity(s, s.waitingSpellTarget, 0);
-        const changed = takes !== 0 && area === 0 && s.f_32608 === 0;
+        const changed = takes !== 0 && area === 0 && s.waitingSpellTargeted === 0;
         if (!e || changed) {
           s.host.show(e ? `[${short}: target changed]` : `[${short}: target gone]`);
           consumePending(s, text.length);
@@ -315,7 +321,10 @@ function msgSpells(s: Session): number {
           return 1;
         }
       }
-      if ((spell.flags & 0x90) === 0 && (target === '' || !findEntity(s, target, 0))) {
+      if (
+        (spell.flags & (SpellFlag.Self | SpellFlag.Area)) === 0 &&
+        (target === '' || !findEntity(s, target, 0))
+      ) {
         s.host.show(
           target === '' ? `[${short}: target not found]` : `[${short}: ${target} not found]`
         );
@@ -334,10 +343,10 @@ function msgSpells(s: Session): number {
             s.waitingSpell = short.slice(0, 7);
             s.waitingSpellAt = s.now;
             s.waitingSpellTarget = '';
-            s.f_32608 = 0;
+            s.waitingSpellTargeted = 0;
             if (target !== '' && findEntity(s, target, 0)) {
               s.waitingSpellTarget = target.slice(0, 199);
-              s.f_32608 = 1;
+              s.waitingSpellTargeted = 1;
             }
           }
           if (s.debug !== 0 && s.now - s.waitingSpellAt > 0)
@@ -345,17 +354,17 @@ function msgSpells(s: Session): number {
           return sent ? 1 : -1;
         }
         if (takes === 0) {
-          if (s.pendingQuiet === 0) setState(s, 0x2d);
+          if (s.pendingQuiet === 0) setState(s, State.PendingCmd);
         } else {
-          s.engagedMode = 0;
+          s.engagedMode = State.Nothing;
           s.lastCast = short.slice(0, 0x50);
           const mode = castMode(s, short);
           if (s.debug !== 0) s.host.trace('{I14+}');
-          s.f_e1d8 = 1;
+          s.combatOffExpected = 1;
           resetNoMessage(s, mode);
           if (target === '' || area !== 0) {
             s.target = '';
-            s.f_a580 = 1;
+            s.multiAttacking = 1;
           } else {
             setTarget(s, target);
           }
@@ -375,43 +384,43 @@ function msgSpells(s: Session): number {
     noteCommands(s, part);
     s.waitLines = 2;
     attackCommand(s, part);
-    if (s.pendingQuiet === 0) setState(s, 0x2d);
+    if (s.pendingQuiet === 0) setState(s, State.PendingCmd);
     send(s, out);
     consumePending(s, piece);
     if (waitedOut || !sent) return 1;
   }
 }
 
-/** Which of the combat tab's spells this is, as the cast state names it: else the player's own (0xf). */
+/** Which of the combat tab's spells this is, as the cast state names it: else the player's own (`State.CastUser`). */
 function castMode(s: Session, short: string): number {
   if (stricmp(short, s.Combat_MultAttack) === 0) {
-    s.f_a3ec = 0;
-    s.engagedMode = 10;
-    return 10;
+    s.castsMulti = 0;
+    s.engagedMode = State.CastMulti;
+    return State.CastMulti;
   }
   if (stricmp(short, s.Combat_PreMultAttack) === 0) {
-    s.f_a3e8 = 0;
-    s.engagedMode = 9;
-    return 9;
+    s.castsPreMulti = 0;
+    s.engagedMode = State.CastPreMulti;
+    return State.CastPreMulti;
   }
   if (stricmp(short, s.Combat_PreAttack) === 0) {
-    s.f_a3f0 = 0;
-    s.engagedMode = 0xb;
-    return 0xb;
+    s.castsPre = 0;
+    s.engagedMode = State.CastPre;
+    return State.CastPre;
   }
   if (stricmp(short, s.Combat_AttackSpl2) === 0) {
-    s.f_a3f8 = 0;
-    s.engagedMode = 0xc;
-    return 0xc;
+    s.castsAux = 0;
+    s.engagedMode = State.CastAux;
+    return State.CastAux;
   }
   if (stricmp(short, s.Combat_AttackSpl) === 0) {
-    s.f_a3f4 = 0;
-    s.engagedMode = 0xd;
-    return 0xd;
+    s.castsMain = 0;
+    s.engagedMode = State.CastMain;
+    return State.CastMain;
   }
-  s.f_a400 = 0;
+  s.castsUser = 0;
   s.userSpell = short.slice(0, 10);
-  return 0xf;
+  return State.CastUser;
 }
 
 /**
@@ -437,13 +446,13 @@ export function attackCommand(s: Session, text: string): number {
     abbrev('jumpkick', verb, 2) !== 0 ||
     abbrev('kick', verb, 3) !== 0;
   if (!attacks || what === '' || !findEntity(s, what, 0)) return 0;
-  s.engagedMode = 0x11;
-  s.f_e1d8 = 1;
+  s.engagedMode = State.Attacking;
+  s.combatOffExpected = 1;
   if (s.debug !== 0) s.host.trace('{I15+}');
   setTarget(s, what);
   rememberTarget(s);
-  setState(s, 0x11);
-  s.pendingQuiet = 0x11;
+  setState(s, State.Attacking);
+  s.pendingQuiet = State.Attacking;
   return 1;
 }
 
@@ -470,9 +479,8 @@ export function expandMacros(s: Session, text: string): string {
       out += s.BBS_UserID;
       next = i + 7;
     } else if (c === '{' && text.startsWith('{pswd}', i)) {
-      if (s.BBS_Password === '' || s.task > 10) break;
+      if (s.BBS_Password === '' || s.task > Task.LoggingOn) break;
       out += s.BBS_Password;
-      s.f_7ed4 = 1;
       next = i + 5;
     } else if (c === '{' && text.startsWith('{source}', i)) {
       out += s.msgSource;
@@ -616,7 +624,7 @@ export function noteCommands(s: Session, text: string): number {
   if (commands >= 2) s.waitPrompt += commands;
   if (equips === 0) return 0;
   if (commands < 2) s.waitPrompt += commands;
-  s.f_a5f8 += equips;
-  s.lineFlags &= ~1;
+  s.equipsPending += equips;
+  s.lineFlags &= ~LineFlag.Prompted;
   return 1;
 }

@@ -11,6 +11,7 @@
  * MegaMUD data folder, read as layer 0.
  */
 import { readMdb2 } from '../../shared/megamudDb';
+import { MonsterFlag, ItemFlag, PlayerFlag, Stance } from './flags';
 
 /** `0x46c690`: one monster, 0x48 bytes. */
 export interface MonsterRec {
@@ -20,7 +21,7 @@ export interface MonsterRec {
   name: string;
   /** +0x20 (B+0x00). */
   id: number;
-  /** +0x24 (B+0x21, `& 0x3fffffff`). */
+  /** +0x24 (B+0x21, `& 0x3fffffff`): `MonsterFlag` bits. */
   flags: number;
   /** +0x28 (B+0x25): 0 unknown, 2 friend, 3 avoid, 4 enemy, 5 flee, 6 hang up. */
   relationship: number;
@@ -52,7 +53,7 @@ export interface ItemRec {
   shop: string;
   /** +0x4b, 14 bytes (B+0x49): the "if needed" path. */
   ifNeeded: string;
-  /** +0x5c (B+0x63, `& 0x38ffffff`); `0x20000` (loyal) also when any of B+0x79's ten words is 100. */
+  /** +0x5c (B+0x63, `& 0x38ffffff`): `ItemFlag` bits; `Loyal` also when any of B+0x79's ten words is 100. */
   flags: number;
   /** +0x60 (B+0x5b). */
   type: number;
@@ -84,7 +85,7 @@ export interface SpellRec {
    * target added (`0x40c8a0`).
    */
   item: string;
-  /** +0x54 (B+0x27, `& 0x3fffefff`). */
+  /** +0x54 (B+0x27, `& 0x3fffefff`): `SpellFlag` bits. */
   flags: number;
   /** +0x58 (B+0x63): which magic it is (1–3 mage, 4–6 priest, 7–9 druid, 0xb kai, 10/12/13 the rest). */
   magic: number;
@@ -286,7 +287,7 @@ export interface PlayerRec {
   userId: string;
   /** +0x3e, 21 bytes: the gang. */
   gang: string;
-  /** +0x54: 1 learned, 2 its level is a guess, 0x40 chase if seen, 0x8000 seen this session, 0x20000 greeted. */
+  /** +0x54: `PlayerFlag` bits. */
   flags: number;
   /** +0x58: the race. */
   race: number;
@@ -298,12 +299,7 @@ export interface PlayerRec {
   kind: number;
   /** +0x68: its level (1 until known). */
   level: number;
-  /**
-   * +0x6c: the remote control it is allowed (`0x4ae4a0`): 1 version (and
-   * `@home`), 2 experience, 4 health and status, 0x10 location, 0x20
-   * inventory, 0x40 invite, 0x100 move, 0x200 commands, 0x400 hang up, 0x800
-   * settings, 0x1000 divert, 0x2000 MUD-op `sys` commands.
-   */
+  /** +0x6c: the remote control it is allowed (`0x4ae4a0`): `RemoteFlag` bits (`QueryVersion` also `@home`). */
   remote: number;
   /** +0x70: its experience. */
   exp: number;
@@ -344,9 +340,9 @@ export interface MessageRec {
   endMsg: string;
   /** +0xc2, 82 bytes: the command it sends. */
   action: string;
-  /** +0x114: the effect bits (1 blind … 0x200 mana regen; 0x100 early, 0x400 anywhere, 0x4000 chase, 0x8000 off). */
+  /** +0x114: `MessageEffect` bits. */
   effects: number;
-  /** +0x116: 1 active, 2 rested on, 4 its start has fields, 8 its end has fields. */
+  /** +0x116: `MessageFlag` bits. */
   flags: number;
   /** +0x118: what it makes MegaMUD do (1 look, 2 rest it off, 3 rest HP full, 4 mana full, 5 run, 6 hang up). */
   number: number;
@@ -423,11 +419,11 @@ export function messagesFrom(text: string, layer = 0): MessageRec[] {
 export interface RoomRec {
   /** +0x01, 4 characters: the room's code. */
   code?: string;
-  /** +0x44: the room's signature (`0x8130`). */
+  /** +0x44: the room's signature (`roomSignature`). */
   signature: number;
   /** +0x06 */
   name: string;
-  /** +0x48: 2 a shop, 8 a trainer (not with 0x20), 0x10 stop before entering, 0x80 a Go To favourite. */
+  /** +0x48: `RoomFlag` bits. */
   flags?: number;
   /** +0x4c, +0x50: a trainer's levels. */
   minLevel?: number;
@@ -454,8 +450,8 @@ export function newMonster(data: MegaData): MonsterRec {
     layer: 0,
     name: '',
     id: 0,
-    flags: 0x40000002,
-    relationship: 0,
+    flags: MonsterFlag.AutoLearned | MonsterFlag.Changed,
+    relationship: Stance.Unknown,
     exp: 0,
     maxHp: 0,
     preSpell: '',
@@ -475,7 +471,7 @@ export function newItem(data: MegaData): ItemRec {
     name: '',
     shop: '',
     ifNeeded: '',
-    flags: 0x40000001,
+    flags: ItemFlag.AutoLearned | ItemFlag.Changed,
     type: 0,
     location: 0,
     min: 0,
@@ -495,11 +491,11 @@ export function newPlayer(data: MegaData, now: number): PlayerRec {
     surname: '',
     userId: '',
     gang: '',
-    flags: 1,
+    flags: PlayerFlag.DetailsUnknown,
     race: 0,
     cls: 0,
     alignment: 0,
-    kind: 3,
+    kind: Stance.Avoid,
     level: 1,
     remote: 0,
     exp: 0,

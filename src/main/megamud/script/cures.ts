@@ -12,6 +12,8 @@ import { findPlayer } from '../room/checkNames';
 import { enemiesHere } from '../room/entities';
 import type { Session } from '../Session';
 import { findSpell } from '../spells/lookup';
+import { State } from '../states';
+import { PartyFlag, PlayerFlag } from '../flags';
 
 /** Cast a cure (equipping its item first). 1 when sent. */
 function cure(s: Session, short: string, at: string | null): number {
@@ -26,9 +28,10 @@ export function diseaseToCure(s: Session): boolean {
 
 /** `0x410440`: cure this character. */
 export function selfCures(s: Session, fighting: number): number {
-  if (s.f_a32c !== 0 || s.MegaMud_AutoHeal === 0 || s.hp < 1) return 0;
-  if (s.Player_MaxHP === 0 || s.Player_MaxMana === 0 || s.state === 0x12) return 0;
-  if (s.state === 0 && s.sneaking !== 0 && s.walking !== 0 && enemiesHere(s, 0) > 0) return 0;
+  if (s.allOff !== 0 || s.MegaMud_AutoHeal === 0 || s.hp < 1) return 0;
+  if (s.Player_MaxHP === 0 || s.Player_MaxMana === 0 || s.state === State.Backstabbing) return 0;
+  if (s.state === State.Nothing && s.sneaking !== 0 && s.walking !== 0 && enemiesHere(s, 0) > 0)
+    return 0;
   if (!castAllowed(s, s.Comms_LagWait)) return 0;
   if (fighting !== 0) {
     if (s.blind !== 0 && s.Other_IgnoreBlind === 0 && s.Spells_BlindCmd !== '') {
@@ -46,13 +49,13 @@ export function selfCures(s: Session, fighting: number): number {
     }
     if (s.runCount < 1) return 0;
   } else {
-    if (s.state === 2 || s.state === 4) return 1;
+    if (s.state === State.RestAsked || s.state === State.MeditateAsked) return 1;
     if (busyRunning(s)) return 0;
     if (
       s.hidden !== 0 &&
-      (s.mustRest === 0 || s.f_e1a0 !== 0 || s.partyWait !== 0) &&
+      (s.mustRest === 0 || s.fleeingPlayer !== 0 || s.partyWait !== 0) &&
       s.holdingLeader === 0 &&
-      s.now - s.f_32300 < s.PvP_HideDelay
+      s.now - s.hiddenAt < s.PvP_HideDelay
     ) {
       s.host.activity('Remaining hidden');
       return 1;
@@ -73,7 +76,7 @@ export function selfCures(s: Session, fighting: number): number {
   ) {
     if (cure(s, s.Spells_PoisonCmd, null) !== 0) {
       s.poisoned = 0;
-      s.f_e1f8 = 0;
+      s.tooSickToRest = 0;
       return 1;
     }
   }
@@ -87,15 +90,26 @@ export function selfCures(s: Session, fighting: number): number {
  * casting.
  */
 export function cureStep(s: Session, fighting: number): number {
-  if (s.f_a32c !== 0 || s.MegaMud_AutoHeal === 0 || s.partySize < 1) return 0;
-  if (s.hp < 1 || s.Player_MaxHP === 0 || s.state === 0x12) return 0;
-  if (s.state === 0 && s.sneaking !== 0 && s.walking !== 0 && enemiesHere(s, 0) >= 1) return 0;
+  if (s.allOff !== 0 || s.MegaMud_AutoHeal === 0 || s.partySize < 1) return 0;
+  if (s.hp < 1 || s.Player_MaxHP === 0 || s.state === State.Backstabbing) return 0;
+  if (s.state === State.Nothing && s.sneaking !== 0 && s.walking !== 0 && enemiesHere(s, 0) >= 1)
+    return 0;
   if (!castAllowed(s, s.Comms_LagWait)) return 0;
   for (let i = 0; i < s.partySize; i += 1) {
     const m = s.party[i]!;
-    if ((m.flags28 & 0x8f) !== 0 || m.name === s.Player_Name) continue;
+    if (
+      (m.flags28 &
+        (PartyFlag.HealthUnknown |
+          PartyFlag.ChangedSinceListing |
+          PartyFlag.Invited |
+          PartyFlag.Unlisted |
+          PartyFlag.Offline)) !==
+        0 ||
+      m.name === s.Player_Name
+    )
+      continue;
     const known = findPlayer(s, m.name);
-    if (known && (known.flags & 0x2000) !== 0) continue;
+    if (known && (known.flags & PlayerFlag.DontCure) !== 0) continue;
     const tries: [number, string, boolean][] =
       fighting === 0
         ? [
@@ -127,7 +141,7 @@ function cureCastable(s: Session, short: string): boolean {
 
 /** The health step's own holds (`0x414300`'s start), shared by `0x415d40`. */
 function busyRunning(s: Session): boolean {
-  if (s.inCombat === 0 && s.f_32604 === 0) {
+  if (s.inCombat === 0 && s.roundBlowSeen === 0) {
     if (s.runCount > 0 && s.held === 0 && s.following === 0) return true;
   } else if (s.runCount > 0 && s.held === 0) {
     return true;
@@ -141,9 +155,11 @@ function busyRunning(s: Session): boolean {
  * or poisoned, unless resting, running or staying hidden.
  */
 function selfCureWanted(s: Session, fighting: number): boolean {
-  if (s.f_a32c !== 0 || s.MegaMud_AutoHeal === 0 || s.hp < 1) return false;
-  if (s.Player_MaxHP === 0 || s.Player_MaxMana === 0 || s.state === 0x12) return false;
-  if (s.state === 0 && s.sneaking !== 0 && s.walking !== 0 && enemiesHere(s, 0) > 0) return false;
+  if (s.allOff !== 0 || s.MegaMud_AutoHeal === 0 || s.hp < 1) return false;
+  if (s.Player_MaxHP === 0 || s.Player_MaxMana === 0 || s.state === State.Backstabbing)
+    return false;
+  if (s.state === State.Nothing && s.sneaking !== 0 && s.walking !== 0 && enemiesHere(s, 0) > 0)
+    return false;
   if (!castAllowed(s, s.Comms_LagWait)) return false;
   if (fighting !== 0) {
     if (s.blind !== 0 && s.Other_IgnoreBlind === 0 && cureCastable(s, s.Spells_BlindCmd))
@@ -151,13 +167,13 @@ function selfCureWanted(s: Session, fighting: number): boolean {
     if (diseaseToCure(s) && cureCastable(s, s.Spells_DiseaseCmd)) return true;
     if (s.runCount < 1) return false;
   } else {
-    if (s.state === 2 || s.state === 4) return false;
+    if (s.state === State.RestAsked || s.state === State.MeditateAsked) return false;
     if (busyRunning(s)) return false;
     if (
       s.hidden !== 0 &&
-      (s.mustRest === 0 || s.f_e1a0 !== 0 || s.partyWait !== 0) &&
+      (s.mustRest === 0 || s.fleeingPlayer !== 0 || s.partyWait !== 0) &&
       s.holdingLeader === 0 &&
-      s.now - s.f_32300 < s.PvP_HideDelay
+      s.now - s.hiddenAt < s.PvP_HideDelay
     ) {
       return false;
     }
@@ -177,22 +193,37 @@ function selfCureWanted(s: Session, fighting: number): boolean {
  * held (`0x8000`, with no monsters here) or poison (`0x1000`, out of combat).
  */
 function partyCureWanted(s: Session, fighting: number): boolean {
-  if (s.f_a32c !== 0 || s.MegaMud_AutoHeal === 0 || s.partySize < 1) return false;
-  if (s.hp < 1 || s.Player_MaxHP === 0 || s.state === 0x12) return false;
-  if (s.state === 0 && s.sneaking !== 0 && s.walking !== 0 && enemiesHere(s, 0) >= 1) return false;
+  if (s.allOff !== 0 || s.MegaMud_AutoHeal === 0 || s.partySize < 1) return false;
+  if (s.hp < 1 || s.Player_MaxHP === 0 || s.state === State.Backstabbing) return false;
+  if (s.state === State.Nothing && s.sneaking !== 0 && s.walking !== 0 && enemiesHere(s, 0) >= 1)
+    return false;
   if (!castAllowed(s, s.Comms_LagWait)) return false;
   for (let i = 0; i < s.partySize; i += 1) {
     const m = s.party[i]!;
     const f = m.flags28;
-    if ((f & 0x8f) !== 0 || m.name === s.Player_Name) continue;
+    if (
+      (f &
+        (PartyFlag.HealthUnknown |
+          PartyFlag.ChangedSinceListing |
+          PartyFlag.Invited |
+          PartyFlag.Unlisted |
+          PartyFlag.Offline)) !==
+        0 ||
+      m.name === s.Player_Name
+    )
+      continue;
     const known = findPlayer(s, m.name);
-    if (known && (known.flags & 0x2000) !== 0) continue;
+    if (known && (known.flags & PlayerFlag.DontCure) !== 0) continue;
     if (fighting === 0) {
-      if ((f & 0x8000) !== 0 && cureCastable(s, s.Spells_FreedomCmd) && enemiesHere(s, 0) === 0) {
+      if (
+        (f & PartyFlag.Held) !== 0 &&
+        cureCastable(s, s.Spells_FreedomCmd) &&
+        enemiesHere(s, 0) === 0
+      ) {
         return true;
       }
       if (
-        (f & 0x1000) !== 0 &&
+        (f & PartyFlag.Poisoned) !== 0 &&
         cureCastable(s, s.Spells_PoisonCmd) &&
         s.inCombat === 0 &&
         enemiesHere(s, 0) === 0
@@ -200,8 +231,8 @@ function partyCureWanted(s: Session, fighting: number): boolean {
         return true;
       }
     } else if (
-      ((f & 0x4000) !== 0 && cureCastable(s, s.Spells_BlindCmd)) ||
-      ((f & 0x2000) !== 0 && cureCastable(s, s.Spells_DiseaseCmd))
+      ((f & PartyFlag.Blind) !== 0 && cureCastable(s, s.Spells_BlindCmd)) ||
+      ((f & PartyFlag.Diseased) !== 0 && cureCastable(s, s.Spells_DiseaseCmd))
     ) {
       return true;
     }

@@ -1,6 +1,6 @@
 /**
  * `0x470060`: the MUD op's `room` reply, read 2026-10-12 (while one is asked
- * for, `0xd8f0`): `Room N … Map: M` (the room's numbers), `Specific Monster
+ * for, `homeLookup`): `Room N … Map: M` (the room's numbers), `Specific Monster
  * is Alive`, `Specific Monster: N-name [killed: dd-Mon-yy hh:mm:ss: regen
  * hours]` (when it respawns), and `Hidden items:` (the end: the answer goes
  * out as the reply asked for, `roomReply`).
@@ -70,30 +70,22 @@ function spawnLine(s: Session, line: string): number {
 }
 
 export function roomLine(s: Session, line: string): number {
-  if (s.f_d8f0 === 0) return 0;
+  if (s.homeLookup === 0) return 0;
   if (line.startsWith('Room error')) {
-    s.f_d8f0 = 0;
-    s.f_d8f4 = 0;
+    s.homeLookup = 0;
+    s.homeAskDue = 0;
     s.roomReply = '';
     return 1;
   }
-  if (line.startsWith('Room ')) {
-    const room = leadingNumber(line.slice(5))[0];
-    const map = line.indexOf('Map: ');
-    if (map !== -1) {
-      s.f_d900 = room;
-      s.f_d8fc = leadingNumber(line.slice(map + 5))[0];
-      return 1;
-    }
-  }
+  if (line.startsWith('Room ') && line.includes('Map: ')) return 1;
   if (line.startsWith('Hidden items: ')) {
-    s.f_d8f4 = 1;
-    s.f_d8f8 = -1;
+    s.homeAskDue = 1;
+    s.homeMonster = -1;
     if (s.spawnAlive !== 0) s.spawnText = 'Alive now!';
     if (s.roomReply === '') return 1;
     queue(s, `${s.roomReply} {${s.spawnText}}\r`);
     s.roomReply = '';
-    s.f_d8f0 = 0;
+    s.homeLookup = 0;
     return 1;
   }
   if (line.startsWith('Specific Monster is Alive')) {

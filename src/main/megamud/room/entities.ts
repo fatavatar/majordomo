@@ -5,9 +5,10 @@
 import { indexOfNoCase, stricmp, strnicmp } from '../cstr';
 import { findMonster as findMonsterNamed, stripAdjective as stripAdjectiveOf } from './checkNames';
 import { newEntity, type RoomEntity, type Session } from '../Session';
+import { EntityFlag, MonsterFlag, PartyFlag, EntityType, Stance } from '../flags';
+import { Task } from '../script/task';
 
 /** The record's `+0x24` bit for "not hostile" (Monsters.md). */
-const MON_NOT_HOSTILE = 0x200;
 
 /**
  * `0x472830`: how many hostile monsters are here. An entry counts when it is
@@ -18,12 +19,16 @@ const MON_NOT_HOSTILE = 0x200;
 export function enemiesHere(s: Session, alsoNeutral: number): number {
   let count = 0;
   for (const e of s.room) {
-    if (e.type === 3 || (e.kind !== 4 && e.kind !== 5 && e.kind !== 6)) continue;
+    if (
+      e.type === EntityType.Item ||
+      (e.kind !== Stance.Enemy && e.kind !== Stance.Flee && e.kind !== Stance.Hangup)
+    )
+      continue;
     if (
       alsoNeutral === 0 &&
       e.mon &&
-      (e.mon.flags & MON_NOT_HOSTILE) !== 0 &&
-      (e.flags & 0x10) === 0
+      (e.mon.flags & MonsterFlag.NotHostile) !== 0 &&
+      (e.flags & EntityFlag.Fought) === 0
     ) {
       continue;
     }
@@ -54,7 +59,7 @@ export function removeEntity(s: Session, i: number): number {
 export function dropUnkeptCreatures(s: Session): void {
   for (let i = s.room.length - 1; i >= 0; i -= 1) {
     const e = s.room[i]!;
-    if ((e.flags & 1) === 0 && e.type !== 3) removeEntity(s, i);
+    if ((e.flags & EntityFlag.Kept) === 0 && e.type !== EntityType.Item) removeEntity(s, i);
   }
   s.roomSelected = -1;
 }
@@ -63,14 +68,14 @@ export function dropUnkeptCreatures(s: Session): void {
 export function dropUnkeptItems(s: Session): void {
   for (let i = s.room.length - 1; i >= 0; i -= 1) {
     const e = s.room[i]!;
-    if ((e.flags & 1) === 0 && e.type === 3) removeEntity(s, i);
+    if ((e.flags & EntityFlag.Kept) === 0 && e.type === EntityType.Item) removeEntity(s, i);
   }
   s.roomSelected = -1;
 }
 
 /** `0x4748e0`: nothing is kept any more. */
 export function unkeepAll(s: Session): void {
-  for (const e of s.room) e.flags &= ~1;
+  for (const e of s.room) e.flags &= ~EntityFlag.Kept;
 }
 
 /** `0x472620`: the room is empty. */
@@ -82,8 +87,8 @@ export function clearRoom(s: Session): void {
 /** `0x474970`: the first known monster flagged "stop to kill" becomes hostile (kind 4). */
 export function stopToKill(s: Session): number {
   for (const e of s.room) {
-    if (e.type === 2 && e.mon && (e.mon.flags & 0x800) !== 0) {
-      e.kind = 4;
+    if (e.type === EntityType.Monster && e.mon && (e.mon.flags & MonsterFlag.StopToKill) !== 0) {
+      e.kind = Stance.Enemy;
       return 1;
     }
   }
@@ -100,8 +105,8 @@ export function stopToKill(s: Session): number {
 export function findEntity(s: Session, name: string, loose: number): RoomEntity | null {
   let n = name;
   for (const e of s.room) {
-    if (e.type === 3) continue;
-    if (s.task === 0x13) n = n.replace(/^\.+/, '');
+    if (e.type === EntityType.Item) continue;
+    if (s.task === Task.Exiting) n = n.replace(/^\.+/, '');
     const len = e.name.length;
     if (strnicmp(e.name, n, len) === 0) {
       const after = n[len];
@@ -110,8 +115,8 @@ export function findEntity(s: Session, name: string, loose: number): RoomEntity 
   }
   if (loose !== 0) {
     for (const e of s.room) {
-      if (e.type === 3) continue;
-      if (s.task === 0x13) n = n.replace(/^\.+/, '');
+      if (e.type === EntityType.Item) continue;
+      if (s.task === Task.Exiting) n = n.replace(/^\.+/, '');
       if (n !== '' && indexOfNoCase(e.name, n) !== -1) return e;
     }
   }
@@ -128,9 +133,13 @@ export function findEntity(s: Session, name: string, loose: number): RoomEntity 
 export function currentTarget(s: Session): RoomEntity | null {
   let found: RoomEntity | null = null;
   const hostile = (e: RoomEntity): boolean =>
-    e.kind === 4 || e.kind === 5 || e.kind === 6 || e.kind === 3 || (e.flags & 0x10) !== 0;
+    e.kind === Stance.Enemy ||
+    e.kind === Stance.Flee ||
+    e.kind === Stance.Hangup ||
+    e.kind === Stance.Avoid ||
+    (e.flags & EntityFlag.Fought) !== 0;
   if (s.target !== '') found = findEntity(s, s.target, 0);
-  if (!found && s.s_a528 !== '') found = findEntity(s, s.s_a528, 0);
+  if (!found && s.countedTarget !== '') found = findEntity(s, s.countedTarget, 0);
   if (!found) {
     let picked: RoomEntity | null = null;
     if (s.inCombat !== 0 && s.target !== '') {
@@ -139,14 +148,14 @@ export function currentTarget(s: Session): RoomEntity | null {
     }
     if (!picked) {
       const first = s.room[0];
-      if (first && first.type !== 3 && hostile(first)) picked = first;
+      if (first && first.type !== EntityType.Item && hostile(first)) picked = first;
     }
     found = picked;
   }
-  if (found && found.kind !== 5) return found;
+  if (found && found.kind !== Stance.Flee) return found;
   for (const e of s.room) {
-    if (e.type === 2 && e.mon && (e.mon.flags & 0x800) !== 0) {
-      e.kind = 4;
+    if (e.type === EntityType.Monster && e.mon && (e.mon.flags & MonsterFlag.StopToKill) !== 0) {
+      e.kind = Stance.Enemy;
       return e;
     }
   }
@@ -161,16 +170,21 @@ export function currentTarget(s: Session): RoomEntity | null {
  */
 export function allAttackable(s: Session): number {
   for (const e of s.room) {
-    if (e.type === 3 || e.kind === 4 || (e.flags & 0x10) !== 0) continue;
-    if (e.type === 1) {
+    if (
+      e.type === EntityType.Item ||
+      e.kind === Stance.Enemy ||
+      (e.flags & EntityFlag.Fought) !== 0
+    )
+      continue;
+    if (e.type === EntityType.Player) {
       if (s.PvP_PvpAction !== 5) {
         if (s.partySize < 1) return 0;
         const i = s.party
           .slice(0, s.partySize)
-          .findIndex((m) => (m.flags28 & 4) === 0 && stricmp(e.name, m.name) === 0);
+          .findIndex((m) => (m.flags28 & PartyFlag.Invited) === 0 && stricmp(e.name, m.name) === 0);
         if (i === -1) return 0;
       }
-    } else if (e.type !== 2 || e.kind === 2) {
+    } else if (e.type !== EntityType.Monster || e.kind === Stance.Friend) {
       return 0;
     }
   }
@@ -194,12 +208,14 @@ export function newMonsterEntity(s: Session, text: string): RoomEntity | null {
   }
   const e = addEntity(s);
   e.name = name.slice(0, 0x1e);
-  e.type = 2;
+  e.type = EntityType.Monster;
   e.kind =
-    mon.relationship === 4 || mon.relationship === 5 || mon.relationship === 6
+    mon.relationship === Stance.Enemy ||
+    mon.relationship === Stance.Flee ||
+    mon.relationship === Stance.Hangup
       ? mon.relationship
-      : 4;
-  e.flags |= 0x11;
+      : Stance.Enemy;
+  e.flags |= EntityFlag.Kept | EntityFlag.Fought;
   e.mon = mon;
   return e;
 }

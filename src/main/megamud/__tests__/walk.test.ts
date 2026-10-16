@@ -9,6 +9,8 @@ import { newPlayer } from '../data';
 import { newPath, type PathRec, type PathStep, type SessionHost } from '../Session';
 import { remoteCommand } from '../talk/remote';
 import { session } from './fixture';
+import { State } from '../states';
+import { RoomFlag, RemoteFlag, Exit } from '../flags';
 
 /* `0x409170`, `0x408870`, `0x408540`, `0x40ae00`, `0x408270`, `0x43d2a0` and the rest, read 2026-10-13. */
 
@@ -23,7 +25,7 @@ function walker() {
     rooms: [
       { signature: A, name: 'Town Square', code: 'TOWN' },
       { signature: C, name: 'Bank of Godfrey', code: 'BANK' },
-      { signature: D, name: 'Trap Room', flags: 0x10 }
+      { signature: D, name: 'Trap Room', flags: RoomFlag.StopBeforeEntering }
     ]
   });
   const { s } = r;
@@ -50,7 +52,7 @@ function walking(r: ReturnType<typeof walker>, p: PathRec, at = 0) {
   s.MegaMud_CurPathStep = at;
   s.path.step = at;
   s.walking = 1;
-  s.f_8130 = p.steps![at]?.room ?? p.end;
+  s.roomSignature = p.steps![at]?.room ?? p.end;
   s.roomExits = [1, 1, 1, 1, 1, 1, 1, 1, 1, 1];
 }
 
@@ -90,11 +92,11 @@ describe('walking a path (D48)', () => {
     const { s, out } = r;
     walking(r, LOOP(), 1);
     s.path.prev = 0;
-    s.f_8130 = A;
-    s.state = 0;
+    s.roomSignature = A;
+    s.state = State.Nothing;
     expect(walkPath(s)).toBe(1);
     expect(out.sent).toEqual([]);
-    expect(s.f_e290).toBe(1);
+    expect(s.lookDue).toBe(1);
     expect(walkPath(s)).toBe(1);
     // Still in A: the path is back a step, and `n` is sent again.
     expect(s.MegaMud_CurPathStep).toBe(1);
@@ -105,7 +107,7 @@ describe('walking a path (D48)', () => {
     const r = walker();
     const { s, out } = r;
     walking(r, LOOP(), 0);
-    s.f_8130 = B;
+    s.roomSignature = B;
     s.stepTries = 1;
     expect(walkPath(s)).toBe(1);
     expect(out.sent).toEqual(['e\r']);
@@ -116,7 +118,7 @@ describe('walking a path (D48)', () => {
     const r = walker();
     const { s, out } = r;
     walking(r, LOOP(), 0);
-    s.f_8130 = C;
+    s.roomSignature = C;
     s.roomExits = Array.from({ length: 10 }, () => 0);
     s.stepTries = 2;
     walkPath(s);
@@ -131,7 +133,7 @@ describe('walking a path (D48)', () => {
     s.looping = 1;
     s.paths = [LOOP()];
     Object.assign(s.loopPath, LOOP());
-    s.f_8130 = A;
+    s.roomSignature = A;
     expect(walkPath(s)).toBe(2);
     expect(s.task).toBe(0xf);
     expect([s.MegaMud_CurPathStep, s.walking, s.looping]).toEqual([0, 1, 1]);
@@ -154,7 +156,7 @@ describe('walking a path (D48)', () => {
     const r = walker();
     const { s, out } = r;
     walking(r, path('TOBANK.MP', [step(A, 'n'), step(B, 'e')], A, C), 2);
-    s.f_8130 = C;
+    s.roomSignature = C;
     expect(walkPath(s)).toBe(2);
     expect(s.walking).toBe(0);
     expect(s.task).toBe(0xb);
@@ -176,11 +178,11 @@ describe('walking a path (D48)', () => {
     const { s, out } = r;
     walking(r, path('X.MP', [step(A, '@party climb rope'), step(B, 'n')], A, C));
     s.partySize = 2;
-    s.s_7d21 = 'gb ';
+    s.speechPrefix = 'gb ';
     walkPath(s);
     expect(s.pending.map((p) => p.text)).toEqual(['climb rope\r', 'par\r']);
     expect(out.sent).toEqual(['gb @party climb rope\r']);
-    expect(s.f_e298).toBe(1);
+    expect(s.partyStepPending).toBe(1);
   });
 
   it('stops before a room marked so (Rooms.md 0x10)', () => {
@@ -199,13 +201,13 @@ describe('doors and traps (0x408870)', () => {
   it('opens, picks and bashes', () => {
     const r = walker();
     const { s, out } = r;
-    s.roomExits[0] = 5;
+    s.roomExits[0] = Exit.Unlocked;
     expect(doors(s, 0, 0, null)).toBe(1);
-    s.roomExits[0] = 2;
+    s.roomExits[0] = Exit.ClosedDoor;
     s.Other_CanPickLocks = 1;
     s.Other_PickMax = 1;
     expect(doors(s, 0, 0, null)).toBe(1);
-    s.f_db50 = 2;
+    s.pickTries = 2;
     expect(doors(s, 0, 0, null)).toBe(1);
     expect(out.sent).toEqual(['open n\r', 'pi n\r', 'bash north\r']);
   });
@@ -213,7 +215,7 @@ describe('doors and traps (0x408870)', () => {
   it('uses the key a step names, the rest queued', () => {
     const r = walker();
     const { s, out } = r;
-    s.roomExits[2] = 2;
+    s.roomExits[2] = Exit.ClosedDoor;
     expect(doors(s, 2, 0, 'e[use silver key,e]')).toBe(1);
     expect(out.sent).toEqual(['use silver key', '\r']);
     expect(s.pending.map((p) => p.text)).toEqual(['e\r']);
@@ -225,7 +227,7 @@ describe('doors and traps (0x408870)', () => {
     s.Other_CanDisarmTraps = 1;
     s.Other_DisarmMax = 2;
     doors(s, 1, 0x200, 's');
-    s.f_e2e0 = 1;
+    s.trapFound = 1;
     doors(s, 1, 0x200, 's');
     expect(out.sent).toEqual(['search s\r', 'disarm trap s\r']);
   });
@@ -234,7 +236,7 @@ describe('doors and traps (0x408870)', () => {
     const r = walker();
     const { s } = r;
     s.walking = 1;
-    s.roomExits[0] = 2;
+    s.roomExits[0] = Exit.ClosedDoor;
     expect(doors(s, 0, 0, 'n[fail]')).toBe(0);
     expect(s.walking).toBe(0);
   });
@@ -244,7 +246,7 @@ describe('heading for a destination (0x43d2a0)', () => {
   it('takes the way the route gives, from a known room', () => {
     const r = walker();
     const { s } = r;
-    s.f_8130 = A;
+    s.roomSignature = A;
     const way = path('TOBANK.MP', [step(A, 'n'), step(B, 'e')], A, C);
     s.paths = [way];
     (s.host as SessionHost).route = () => ({ flags: 0, path: way, steps: 2 });
@@ -258,7 +260,7 @@ describe('heading for a destination (0x43d2a0)', () => {
   it('says so when there is no way', () => {
     const r = walker();
     const { s, out } = r;
-    s.f_8130 = A;
+    s.roomSignature = A;
     goTo(s, C, null);
     headFor(s, 0);
     expect(out.shown[0]).toMatch(
@@ -270,13 +272,13 @@ describe('heading for a destination (0x43d2a0)', () => {
   it('detours to the bank for cash', () => {
     const r = walker();
     const { s } = r;
-    s.f_8130 = A;
+    s.roomSignature = A;
     s.Cash_Bank = 'Bank of Godfrey';
     const way = path('TOBANK.MP', [step(A, 'n'), step(B, 'e')], A, C);
     s.paths = [way];
     (s.host as SessionHost).route = () => ({ flags: 0, path: way, steps: 2 });
     expect(fetchCash(s, 0, 500)).toBe(0);
-    expect(s.f_8430).toBe(500);
+    expect(s.cashNeeded).toBe(500);
     expect(s.detours[0]).toEqual({ room: C, path: '', why: 'for cash' });
   });
 });
@@ -307,7 +309,7 @@ describe('roaming (D47) and running back (0x40ae00)', () => {
     const r = walker();
     const { s, out } = r;
     walking(r, LOOP(), 2);
-    s.f_8130 = C;
+    s.roomSignature = C;
     s.rescueCount = 3;
     expect(runBack(s, 0)).toBe(1);
     expect(out.sent).toEqual(['w\r']);
@@ -333,9 +335,9 @@ describe('the walking buttons and remote commands', () => {
     const r = walker();
     const { s } = r;
     for (const name of ['Fatty', 'Skinny']) newPlayer(s.data, 0).name = name;
-    s.data.players![0]!.remote = 0x100;
+    s.data.players![0]!.remote = RemoteFlag.MovePlayer;
     s.Player_Name = 'Skinny';
-    s.f_8130 = A;
+    s.roomSignature = A;
     const way = path('TOBANK.MP', [step(A, 'n'), step(B, 'e')], A, C);
     s.paths = [way];
     (s.host as SessionHost).route = () => ({ flags: 0, path: way, steps: 2 });
@@ -348,9 +350,9 @@ describe('the walking buttons and remote commands', () => {
     const r = walker();
     const { s } = r;
     for (const name of ['Fatty', 'Skinny']) newPlayer(s.data, 0).name = name;
-    s.data.players![0]!.remote = 0x100;
+    s.data.players![0]!.remote = RemoteFlag.MovePlayer;
     s.Player_Name = 'Skinny';
-    s.f_8130 = B;
+    s.roomSignature = B;
     s.paths = [{ ...LOOP(), title: 'Town loop' }];
     remoteCommand(s, 'Fatty telepaths: @loop town loop', 0x10);
     expect(s.pending.map((x) => x.text)).toEqual(['/Fatty {ok}\r']);
@@ -366,10 +368,10 @@ describe('the walking buttons and remote commands', () => {
     const r = walker();
     const { s } = r;
     for (const name of ['Fatty', 'Skinny']) newPlayer(s.data, 0).name = name;
-    s.data.players![0]!.remote = 0x100;
+    s.data.players![0]!.remote = RemoteFlag.MovePlayer;
     s.Player_Name = 'Skinny';
     s.data.rooms!.push({ signature: E, name: 'Gate' });
-    s.f_8130 = E;
+    s.roomSignature = E;
     const way = path('TOTOWN.MP', [step(E, 's')], E, A);
     s.paths = [{ ...LOOP(), title: 'Town loop' }, way];
     (s.host as SessionHost).route = () => ({ flags: 0, path: way, steps: 1 });

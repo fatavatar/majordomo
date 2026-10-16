@@ -5,6 +5,7 @@
 import { indexOf } from '../cstr';
 import { setState } from '../script/state';
 import type { Session } from '../Session';
+import { State } from '../states';
 
 export function stealthLine(s: Session, line: string): number {
   if (indexOf(line, 'You are no longer sneaking') !== -1) {
@@ -17,15 +18,13 @@ export function stealthLine(s: Session, line: string): number {
   if (!hiding && !sneaking) {
     if (indexOf(line, 'Sneaking...') !== -1) {
       s.sneaking = 1;
-      s.f_e1c8 = 1;
-      s.f_db6c = 0;
-      if (s.f_a32c === 0) s.f_32690 += 1;
+      s.wasSneaking = 1;
+      s.stealthFails = 0;
       return 1;
     }
     if (indexOf(line, 'You make a sound as you enter') !== -1) {
       s.sneaking = 0;
       s.hidden = 0;
-      if (s.f_a32c === 0) s.f_32690 -= 1;
       return 1;
     }
     if (
@@ -33,33 +32,34 @@ export function stealthLine(s: Session, line: string): number {
       indexOf(line, 'You may not hide while') === -1
     )
       return 0;
-    s.f_db68 += 1;
-    s.f_db6c += 1;
+    s.stealthRefused += 1;
+    s.stealthFails += 1;
     s.sneaking = 0;
     s.hidden = 0;
-    s.f_32390 = 0;
-    s.f_e290 = 1;
-    setState(s, 0);
+    s.roomLookedAt = 0;
+    s.lookDue = 1;
+    setState(s, State.Nothing);
     return 1;
   }
   const failed = indexOf(line, "You don't think") !== -1;
   if (hiding) {
     if (!failed) {
-      s.f_db6c = 0;
+      s.stealthFails = 0;
       s.hidden = 1;
     } else {
-      s.f_db6c += 1;
-      s.f_e1d0 = 1;
+      s.stealthFails += 1;
+      s.hideAgain = 1;
       s.hidden = 0;
     }
   } else {
-    if (!failed) s.f_db6c = 0;
+    if (!failed) s.stealthFails = 0;
     else {
-      s.f_db6c += 1;
-      s.f_e1c8 = 0;
+      s.stealthFails += 1;
+      s.wasSneaking = 0;
     }
     s.sneaking = failed ? 0 : 1;
   }
-  if (s.state !== 0x16 && s.state !== 0x20 && s.state !== 0x10) setState(s, 0);
+  if (s.state !== State.Moving && s.state !== State.Looking && s.state !== State.Blessing)
+    setState(s, State.Nothing);
   return 1;
 }

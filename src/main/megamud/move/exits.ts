@@ -3,9 +3,9 @@
  * `You found an exit to the east!`, and `You can't seem to move anywhere`.
  * Read 2026-10-12.
  *
- * The exits are kept per direction (`0x813c`): 1 an exit, 2 a closed door,
+ * The exits are kept per direction (`roomExits`): 1 an exit, 2 a closed door,
  * 3 an open one, 4 one found by searching or of another kind. With the room's
- * name they make MegaMUD's signature for the room (`0x8130`): the name's hash
+ * name they make MegaMUD's signature for the room (`roomSignature`): the name's hash
  * in the top twelve bits, two bits an exit below (a found exit counts as
  * none, an open door as a closed one). A different signature is a different
  * room: the creatures kept from the last one are let go and the path step
@@ -18,6 +18,8 @@ import { setState } from '../script/state';
 import type { Session } from '../Session';
 import { heldRows } from '../messages/messages';
 import { stepBack } from './moves';
+import { State } from '../states';
+import { LineFlag, Exit, Darkness } from '../flags';
 
 /** `0x4c01e0`: the direction a word starts with (0 north … 9 down), else -1. */
 export function directionOf(text: string): number {
@@ -52,69 +54,69 @@ function exitDirection(word: string): number {
 
 /** `0x4386d0`. */
 export function exitsLine(s: Session, text: string): number {
-  const before = s.f_8130;
+  const before = s.roomSignature;
   const found = indexOf(text, 'You found an exit ');
   if (found !== -1) {
     const dir = directionOf(text.slice(found + 0x12));
     if (dir === -1) {
-      s.f_32390 = 0;
-      s.f_e290 = 1;
+      s.roomLookedAt = 0;
+      s.lookDue = 1;
     } else {
-      s.roomExits[dir] = 4;
+      s.roomExits[dir] = Exit.ProbablyHidden;
     }
-    setState(s, 0);
+    setState(s, State.Nothing);
     return 1;
   }
   if (indexOf(text, "You can't seem to move anywhere") !== -1 && s.held === 0) {
     heldRows(s, 1);
     s.held = 1;
-    s.f_e29c = 1;
+    s.statDue = 1;
   }
-  if (s.state === 0x16 && s.held !== 0) {
-    if (s.f_e174 !== 0) stepBack(s);
-    s.f_e290 = 1;
-    setState(s, 0);
+  if (s.state === State.Moving && s.held !== 0) {
+    if (s.recording !== 0) stepBack(s);
+    s.lookDue = 1;
+    setState(s, State.Nothing);
     return 1;
   }
   let line = text;
   let at = indexOf(line, 'Obvious exits: ');
   if (at === -1) {
-    if ((s.lineFlags & 0x10000) === 0) return 0;
+    if ((s.lineFlags & LineFlag.ExitsContinue) === 0) return 0;
   } else {
     const colour = s.line.attr[at];
     if (colour !== 2 && colour !== 3) {
       if (at === 0) {
-        s.f_e2c8 = 1;
-        setState(s, 0);
+        s.setupDue = 1;
+        setState(s, State.Nothing);
       }
       return 1;
     }
     if (s.inGame === 0) {
       s.inGame = 1;
-      s.f_e2c8 = 1;
+      s.setupDue = 1;
     }
   }
-  if (s.state === 0x20) return 1;
-  if ((s.lineFlags & 0x10000) === 0) {
+  if (s.state === State.Looking) return 1;
+  if ((s.lineFlags & LineFlag.ExitsContinue) === 0) {
     if (s.inCombat === 0 && s.roomNameSeen !== s.roomName) unkeepAll(s);
-    if ((s.lineFlags & 8) === 0) dropUnkeptCreatures(s);
-    else s.lineFlags &= ~8;
-    if ((s.lineFlags & 0x10) === 0) dropUnkeptItems(s);
-    else s.lineFlags &= ~0x10;
+    if ((s.lineFlags & LineFlag.CreaturesListed) === 0) dropUnkeptCreatures(s);
+    else s.lineFlags &= ~LineFlag.CreaturesListed;
+    if ((s.lineFlags & LineFlag.ItemsListed) === 0) dropUnkeptItems(s);
+    else s.lineFlags &= ~LineFlag.ItemsListed;
   }
-  if ((s.lineFlags & 0x10000) === 0) {
+  if ((s.lineFlags & LineFlag.ExitsContinue) === 0) {
     at += 0xf;
     s.roomExits = Array.from({ length: 10 }, () => 0);
   } else {
-    if ((s.lineFlags & 1) !== 0) {
-      s.lineFlags &= ~0x10000;
+    if ((s.lineFlags & LineFlag.Prompted) !== 0) {
+      s.lineFlags &= ~LineFlag.ExitsContinue;
       return 0;
     }
-    if (s.s_d910 !== '') {
-      line = insertAt(insertAt(line, 0, ' '), 0, s.s_d910);
-      s.s_d910 = '';
+    if (s.listingRest !== '') {
+      line = insertAt(insertAt(line, 0, ' '), 0, s.listingRest);
+      s.listingRest = '';
     }
-    s.lineFlags &= ~0x10000;
+    s.lineFlags &= ~LineFlag.ExitsContinue;
     at = 0;
   }
   for (;;) {
@@ -148,25 +150,25 @@ export function exitsLine(s: Session, text: string): number {
     const dir = exitDirection(rest);
     if (dir === -1) {
       if (line.slice(at).length > 0x1ff) {
-        s.lineFlags &= ~0x10000;
+        s.lineFlags &= ~LineFlag.ExitsContinue;
         return 0;
       }
       continued(s, line.slice(at));
       return finish(s, before);
     }
-    if (isOpen) s.roomExits[dir] = 3;
-    else if (isClosed) s.roomExits[dir] = 2;
-    else s.roomExits[dir] = wordAt === word ? 1 : 4;
+    if (isOpen) s.roomExits[dir] = Exit.OpenDoor;
+    else if (isClosed) s.roomExits[dir] = Exit.ClosedDoor;
+    else s.roomExits[dir] = wordAt === word ? Exit.Open : Exit.ProbablyHidden;
     if (line[end] !== ',') return finish(s, before);
     at = end + 1;
     while (line[at] === ' ') at += 1;
   }
 }
 
-/** The exits line went on to the next line: keep what is left (`0xd910`). */
+/** The exits line went on to the next line: keep what is left (`listingRest`). */
 function continued(s: Session, rest: string): void {
-  s.s_d910 = rest.slice(0, 0x1ff);
-  s.lineFlags |= 0x10000;
+  s.listingRest = rest.slice(0, 0x1ff);
+  s.lineFlags |= LineFlag.ExitsContinue;
 }
 
 /** The room is read: its signature, and what a new room means. */
@@ -174,32 +176,32 @@ function finish(s: Session, before: number): number {
   s.roomName = s.roomNameSeen.slice(0, 0x34);
   let code = 0;
   for (let dir = 0; dir < 10; dir += 1) {
-    let v = s.roomExits[dir] === 4 ? 0 : (s.roomExits[dir] ?? 0);
-    if (v === 3) v = 2;
+    let v = s.roomExits[dir] === Exit.ProbablyHidden ? 0 : (s.roomExits[dir] ?? 0);
+    if (v === Exit.OpenDoor) v = Exit.ClosedDoor;
     code |= v << (dir * 2);
   }
   let sig = ((s.roomNameHash & 0xfff00000) | code) >>> 0;
   if (sig === 0xb7200050) sig = 0xb7200055;
-  s.f_8130 = sig | 0;
-  if (s.inCombat === 0 && s.f_8130 !== before) unkeepAll(s);
-  if (s.f_8130 !== before) {
-    s.f_e198 = 0;
+  s.roomSignature = sig | 0;
+  if (s.inCombat === 0 && s.roomSignature !== before) unkeepAll(s);
+  if (s.roomSignature !== before) {
+    s.lostNeedsKnownRoom = 0;
     forgetLastTarget(s);
   }
-  s.roomRecord = s.data.rooms?.find((r) => r.signature === s.f_8130) ?? null;
-  s.lineFlags = (s.lineFlags | 4) & ~1;
-  if (s.state === 0x16) {
-    s.f_db34 = -1;
+  s.roomRecord = s.data.rooms?.find((r) => r.signature === s.roomSignature) ?? null;
+  s.lineFlags = (s.lineFlags | LineFlag.DoorAnswered) & ~LineFlag.Prompted;
+  if (s.state === State.Moving) {
+    s.lastMoveDir = -1;
     if (s.moveDir !== -1) s.host.arrived?.(s.moveDir);
   }
-  if (s.state === 0x16 || s.state === 0x2b) setState(s, 0);
-  s.darkness = 0;
+  if (s.state === State.Moving || s.state === State.GetExits) setState(s, State.Nothing);
+  s.darkness = Darkness.Lit;
   s.blind = 0;
-  s.f_e290 = 0;
-  s.f_e294 = 0;
-  s.f_8138 = 0;
-  s.f_db74 = 0;
-  s.f_db78 = 0;
-  s.f_e19c = 0;
+  s.lookDue = 0;
+  s.redisplayDue = 0;
+  s.expectedRoom = 0;
+  s.darkMisses = 0;
+  s.darkTries = 0;
+  s.darkEscapeShown = 0;
   return 1;
 }

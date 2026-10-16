@@ -14,9 +14,10 @@ import { findItem } from '../room/checkNames';
 import { findEntity, stopToKill } from '../room/entities';
 import type { Session } from '../Session';
 import { stateSpell } from '../spells/lookup';
-import { isCastState } from '../states';
-import { castSpellFor, countCast, f_426ab0, resetNoMessage, spellTakesTarget } from './casts';
+import { CAST_STATES, isCastState, State } from '../states';
+import { castSpellFor, countCast, inAttackCast, resetNoMessage, spellTakesTarget } from './casts';
 import { blowStruck, castForgotten } from './timer';
+import { EntityFlag, LineFlag, WEAPON_KINDS, WeaponKind, EntityType } from '../flags';
 
 const FOES = [
   ' your foe',
@@ -58,21 +59,27 @@ function ownDamage(line: string): number {
   return start > 4 && line.slice(start - 5, start) === ' for ' ? 1 : 0;
 }
 
-/** `0x4263c0` and `0x4263f0`: a weapon's immunity mark, and its "maybe" mark. */
-function immunityOf(weapon: number): number {
-  return weapon === 1 ? 0x200 : weapon === 2 ? 0x400 : weapon === 4 ? 0x4000 : 0;
-}
-function maybeImmunityOf(weapon: number): number {
-  return weapon === 1 ? 0x20000 : weapon === 2 ? 0x40000 : weapon === 4 ? 0x80000 : 0;
+/** `0x4263c0`: a weapon kind's immunity mark. */
+export function immunityOf(weapon: number): number {
+  if (weapon === WeaponKind.Normal) return EntityFlag.ImmuneNormalWeapon;
+  if (weapon === WeaponKind.Alt) return EntityFlag.ImmuneAltWeapon;
+  return weapon === WeaponKind.Backstab ? EntityFlag.ImmuneBackstabWeapon : 0;
 }
 
-/** `0x4262a0`: which of the configured weapons this is (1 normal, 2 alt, 4 backstab). */
+/** `0x4263f0`: a weapon kind's "maybe immune" mark. */
+export function maybeImmunityOf(weapon: number): number {
+  if (weapon === WeaponKind.Normal) return EntityFlag.MaybeImmuneNormalWeapon;
+  if (weapon === WeaponKind.Alt) return EntityFlag.MaybeImmuneAltWeapon;
+  return weapon === WeaponKind.Backstab ? EntityFlag.MaybeImmuneBackstabWeapon : 0;
+}
+
+/** `0x4262a0`: which of the configured weapons this is (`WeaponKind` bits). */
 export function weaponKinds(s: Session, name: string): number {
   if (name === '') return 0;
   let kinds = 0;
-  if (s.Combat_NrmWeapon !== '' && s.Combat_NrmWeapon === name) kinds |= 1;
-  if (s.Combat_AltWeapon !== '' && s.Combat_AltWeapon === name) kinds |= 2;
-  if (s.Combat_BsWeapon !== '' && s.Combat_BsWeapon === name) kinds |= 4;
+  if (s.Combat_NrmWeapon !== '' && s.Combat_NrmWeapon === name) kinds |= WeaponKind.Normal;
+  if (s.Combat_AltWeapon !== '' && s.Combat_AltWeapon === name) kinds |= WeaponKind.Alt;
+  if (s.Combat_BsWeapon !== '' && s.Combat_BsWeapon === name) kinds |= WeaponKind.Backstab;
   return kinds;
 }
 
@@ -80,7 +87,7 @@ export function weaponKinds(s: Session, name: string): number {
 function unmarkMonsters(s: Session, name: string, flags: number): number {
   let n = 0;
   for (const e of s.room) {
-    if (e.type !== 2) continue;
+    if (e.type !== EntityType.Monster) continue;
     if (stricmp(e.name, name) === 0 || (e.mon && stricmp(e.mon.name, name) === 0)) {
       e.flags &= ~flags;
       n += 1;
@@ -98,12 +105,11 @@ function attacksPlainly(s: Session): boolean {
 
 /** A backstab that did not surprise: run when told to, else go on attacking. */
 function backstabFailed(s: Session, stopsToKill: number): void {
-  s.f_32574 += 1;
-  s.f_e1b8 = 1;
+  s.backstabResolved = 1;
   if (stopsToKill === 0 && s.Combat_RunIfBsFails !== 0 && s.held === 0) {
     s.runCount = s.Combat_RunRooms;
   } else if (!attacksPlainly(s) || (s.owedPostBackstab !== 0 && s.Combat_PostBsCmd === '')) {
-    s.f_e2b8 = 1;
+    s.attackDue = 1;
   }
 }
 
@@ -111,7 +117,7 @@ function backstabFailed(s: Session, stopsToKill: number): void {
 export function hitLine(s: Session, line: string): number {
   const colour = s.line.attr[0];
   if (
-    (s.inCombat === 0 && f_426ab0(s, 1) === 0) ||
+    (s.inCombat === 0 && inAttackCast(s, 1) === 0) ||
     (colour !== 9 && colour !== 0xc && colour !== 6 && colour !== 0xb)
   ) {
     return 0;
@@ -120,21 +126,21 @@ export function hitLine(s: Session, line: string): number {
   let weaponHit = false;
   let surprised = false;
   let own = ownDamage(line);
-  if (areaDamage(line) !== 0 && f_426ab0(s, 1) === 0 && f_426ab0(s, 0) === 0) own = 0;
+  if (areaDamage(line) !== 0 && inAttackCast(s, 1) === 0 && inAttackCast(s, 0) === 0) own = 0;
   let mode = s.state;
 
   if (s.msgSpell !== '') {
-    if (f_426ab0(s, 1) !== 0 && s.castName !== '' && stricmp(s.castName, s.msgSpell) === 0) {
+    if (inAttackCast(s, 1) !== 0 && s.castName !== '' && stricmp(s.castName, s.msgSpell) === 0) {
       if (
         s.msgSource === '' ||
         stricmp(s.msgSource, 'you') === 0 ||
         stricmp(s.msgSource, 'your') === 0
       ) {
         s.msgSource = 'you';
-        mode = s.f_a448;
+        mode = s.castMode;
       }
     }
-    for (const st of [9, 0xa, 0xb, 0xc, 0xd, 0xe, 0xf]) {
+    for (const st of CAST_STATES) {
       if (s.msgSource === '' && s.state === st) {
         spell = stateSpell(s, st);
         if (spell && spell.name === s.msgSpell) s.msgSource = 'you';
@@ -142,17 +148,17 @@ export function hitLine(s: Session, line: string): number {
     }
     if (s.msgSource === '') {
       const weapon = findItem(s, s.msgSpell);
-      if (weapon && weapon.name === s.s_b060) {
+      if (weapon && weapon.name === s.weaponWielded) {
         s.msgSource = 'you';
         weaponHit = true;
       }
     }
   }
   if (s.msgSpell === '') {
-    if (f_426ab0(s, 1) === 0 || own === 0) {
-      if (f_426ab0(s, 0) === 0) mode = 0x11;
+    if (inAttackCast(s, 1) === 0 || own === 0) {
+      if (inAttackCast(s, 0) === 0) mode = State.Attacking;
     } else {
-      mode = s.f_a448;
+      mode = s.castMode;
     }
   }
 
@@ -161,7 +167,7 @@ export function hitLine(s: Session, line: string): number {
     indexOf(line, ' to ') !== -1 &&
     indexOf(line, 'damage') === -1
   ) {
-    s.f_e1dc = 1;
+    s.blowContinues = 1;
     return 1;
   }
   if (
@@ -169,14 +175,17 @@ export function hitLine(s: Session, line: string): number {
     indexOf(line, 'glances off') !== -1 &&
     indexOf(line, ' damage!') === -1
   ) {
-    s.f_32540 += 1;
     castForgotten(s);
     landed(s);
     return 1;
   }
   if (indexOf(line, 'You are ') !== -1 || indexOf(line, 'You take ') !== -1) return 0;
   if (indexOf(line, 'You ') === -1 && indexOf(line, 'Your inaccurate') === -1 && own === 0) {
-    if (stricmp(s.msgSource, 'you') !== 0 && stricmp(s.msgSource, 'your') !== 0 && s.f_e1dc === 0)
+    if (
+      stricmp(s.msgSource, 'you') !== 0 &&
+      stricmp(s.msgSource, 'your') !== 0 &&
+      s.blowContinues === 0
+    )
       return 0;
   }
   const stopsToKill = stopToKill(s);
@@ -186,20 +195,19 @@ export function hitLine(s: Session, line: string): number {
     if (s.msgDamage === 0) {
       if (indexOf(line, ' healing ') !== -1) return 0;
       if (!MISSES.some((phrase) => indexOf(line, phrase) !== -1)) return 0;
-      if (s.state === 0x12) {
-        if (s.f_e1b8 === 0) backstabFailed(s, stopsToKill);
+      if (s.state === State.Backstabbing) {
+        if (s.backstabResolved === 0) backstabFailed(s, stopsToKill);
       } else {
-        s.f_32540 += 1;
       }
       castForgotten(s);
       landed(s);
       return 1;
     }
-    s.f_e1dc = 0;
+    s.blowContinues = 0;
     numberAt = -1;
   } else {
     numberAt = damageAt - 1;
-    s.f_e1dc = 0;
+    s.blowContinues = 0;
     while (numberAt > 0 && line[numberAt - 1] !== ' ') numberAt -= 1;
   }
   let dealt = s.msgDamage !== 0 ? s.msgDamage : atoi(numberAt < 0 ? '' : line.slice(numberAt));
@@ -212,23 +220,23 @@ export function hitLine(s: Session, line: string): number {
       s.skipTick = 1;
     }
   }
-  if (!(mode >= 9 && mode <= 0xd)) {
+  if (!(mode >= State.CastPreMulti && mode <= State.CastMain)) {
     const surprise = SURPRISES.some((phrase) => indexOf(line, phrase) !== -1);
     if (!surprise) {
       const critical = indexOf(line, ' critically ') !== -1;
-      if ((critical || !weaponHit) && s.state === 0x12 && s.f_e1b8 === 0)
+      if ((critical || !weaponHit) && s.state === State.Backstabbing && s.backstabResolved === 0)
         backstabFailed(s, stopsToKill);
     } else {
-      s.f_e1b8 = 1;
-      s.f_e1bc = 1;
+      s.backstabResolved = 1;
+      s.backstabSurprised = 1;
       surprised = true;
       castForgotten(s);
       if (!attacksPlainly(s) || (s.owedPostBackstab !== 0 && s.Combat_PostBsCmd === ''))
-        s.f_e2b8 = 1;
+        s.attackDue = 1;
     }
   }
   if (
-    s.state === 0x12 &&
+    s.state === State.Backstabbing &&
     !surprised &&
     stopsToKill === 0 &&
     s.Combat_RunIfBsFails !== 0 &&
@@ -237,25 +245,25 @@ export function hitLine(s: Session, line: string): number {
     s.runCount = s.Combat_RunRooms;
   }
   blowStruck(s);
-  s.f_32614 += dealt;
-  s.f_32618 += dealt;
+  s.roundDamage += dealt;
+  s.fightDamage += dealt;
   if (dealt >= 1 && !weaponHit && !casting && sameTargetHere(s)) clearWeaponImmunity(s);
-  if (mode === 0xa || mode === 9) s.f_a57c += dealt;
+  if (mode === State.CastMulti || mode === State.CastPreMulti) s.multiDamage += dealt;
   if (casting) {
     countCast(s, mode, 1);
     resetNoMessage(s, mode);
-    if (mode === s.f_a448 || (s.f_a448 === 0 && mode === s.state)) {
-      if (s.debug !== 0 && s.f_a44c === 0) s.host.trace('{#}');
-      s.f_a44c = 1;
+    if (mode === s.castMode || (s.castMode === State.Nothing && mode === s.state)) {
+      if (s.debug !== 0 && s.castMessageSeen === 0) s.host.trace('{#}');
+      s.castMessageSeen = 1;
     }
   }
-  s.lineFlags |= 0x20;
-  s.f_322e8 = s.now;
+  s.lineFlags |= LineFlag.FightLineSeen;
+  s.lastHitAt = s.now;
   s.sneaking = 0;
   s.hidden = 0;
-  if (s.debug !== 0 && s.f_e1d8 !== 0) s.host.trace('{I7-}');
-  s.f_e1d8 = 0;
-  if (dealt > 0 && s.f_a32c === 0 && s.MegaMud_AutoCombat !== 0) staleCombat(s);
+  if (s.debug !== 0 && s.combatOffExpected !== 0) s.host.trace('{I7-}');
+  s.combatOffExpected = 0;
+  if (dealt > 0 && s.allOff === 0 && s.MegaMud_AutoCombat !== 0) staleCombat(s);
   return 1;
 }
 
@@ -263,48 +271,48 @@ export function hitLine(s: Session, line: string): number {
 function sameTargetHere(s: Session): boolean {
   return (
     s.target !== '' &&
-    s.f_ddf0 === 0 &&
-    s.f_a5f8 === 0 &&
+    s.targetProtected === 0 &&
+    s.equipsPending === 0 &&
     s.lastTarget !== '' &&
     stricmp(s.lastTarget, s.target) === 0 &&
-    s.f_ddec === s.f_8130
+    s.lastTargetRoom === s.roomSignature
   );
 }
 
 /** A weapon hit on a monster marked immune to it: the mark was wrong. */
 function clearWeaponImmunity(s: Session): void {
-  if (s.f_dd10 >= 1 || s.s_dd14 !== '') {
-    s.s_dd14 = '';
-    s.f_dd10 = 0;
+  if (s.noEffectCount >= 1 || s.noEffectTarget !== '') {
+    s.noEffectTarget = '';
+    s.noEffectCount = 0;
     if (s.debug !== 0) s.host.trace('{W-hit}');
   }
   const e = findEntity(s, s.target, 0);
   if (!e?.mon || e.mon.name === '') return;
-  const kinds = weaponKinds(s, s.s_b060);
-  for (const weapon of [1, 2, 4]) {
+  const kinds = weaponKinds(s, s.weaponWielded);
+  for (const [weapon, letter] of WEAPON_KINDS) {
     if ((kinds & weapon) === 0) continue;
     const maybe = maybeImmunityOf(weapon);
     if ((e.flags & maybe) !== 0) {
       unmarkMonsters(s, e.mon.name, maybe);
-      s.f_df08 &= ~weapon;
-      if (s.debug !== 0) s.host.trace(`{W-clr:${weapon === 1 ? 'N' : weapon === 2 ? 'A' : 'B'}}`);
+      s.weaponsSuspect &= ~weapon;
+      if (s.debug !== 0) s.host.trace(`{W-clr:${letter}}`);
     }
     const sure = immunityOf(weapon);
     if ((e.flags & sure) !== 0) {
       unmarkMonsters(s, e.mon.name, sure);
-      s.host.show(`[${s.s_b060} works vs ${e.mon.name} after all - clearing immunity]`);
+      s.host.show(`[${s.weaponWielded} works vs ${e.mon.name} after all - clearing immunity]`);
     }
   }
 }
 
 /** The bookkeeping every blow ends with (`0x426eb0` and around it). */
 function landed(s: Session): void {
-  s.lineFlags |= 0x20;
-  s.f_322e8 = s.now;
+  s.lineFlags |= LineFlag.FightLineSeen;
+  s.lastHitAt = s.now;
   s.sneaking = 0;
   s.hidden = 0;
-  if (s.debug !== 0 && s.f_e1d8 !== 0) s.host.trace('{I6-}');
-  s.f_e1d8 = 0;
+  if (s.debug !== 0 && s.combatOffExpected !== 0) s.host.trace('{I6-}');
+  s.combatOffExpected = 0;
   blowStruck(s);
 }
 
@@ -315,12 +323,22 @@ function landed(s: Session): void {
  */
 function staleCombat(s: Session): void {
   const quiet = (t: number): boolean => s.now - t > 0x1e;
-  if ([s.f_322e8, s.f_322d8, s.f_32490, s.f_32498, s.f_32320, s.f_322d0, s.castAt].every(quiet)) {
+  if (
+    [
+      s.lastHitAt,
+      s.attackSentAt,
+      s.combatOnAt,
+      s.combatOffAt,
+      s.movedAt,
+      s.probablyLastTypedAt,
+      s.castAt
+    ].every(quiet)
+  ) {
     if (s.debug !== 0) s.host.trace('{combat??}');
     s.inCombat = 0;
-    s.f_e2b8 = 1;
-    s.f_32390 = 0;
-    s.f_e290 = 1;
+    s.attackDue = 1;
+    s.roomLookedAt = 0;
+    s.lookDue = 1;
   }
 }
 

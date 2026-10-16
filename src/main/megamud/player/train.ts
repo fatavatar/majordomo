@@ -9,6 +9,7 @@ import { fetchCash } from '../script/cash';
 import { setState } from '../script/state';
 import type { Session } from '../Session';
 import { recheckStats } from '../stats/exp';
+import { State } from '../states';
 
 /** The gold `train` costs at a level (`0x40d540`), in copper. */
 export function trainingCost(level: number): number {
@@ -36,24 +37,24 @@ const NOT_HERE = [
 
 export function trainLine(s: Session, line: string): number {
   if (line.includes('money required for your training')) {
-    if (s.state === 0x2c) {
-      s.f_e2a8 = 1;
-      setState(s, 0);
-      fetchCash(s, 0, s.f_8428 + trainingCost(s.Player_Level));
+    if (s.state === State.Training) {
+      s.expDue = 1;
+      setState(s, State.Nothing);
+      fetchCash(s, 0, s.wealth + trainingCost(s.Player_Level));
     }
     return 1;
   }
   if (NOT_YET.some((p) => line.includes(p))) {
-    s.f_e2a8 = 1;
-    s.f_8468 = 0;
+    s.expDue = 1;
+    s.weightMax = 0;
     recheckStats(s);
-    setState(s, 0);
+    setState(s, State.Nothing);
     return 1;
   }
   if (!NOT_HERE.some((p) => line.includes(p))) return 0;
-  s.f_e2a8 = 1;
-  if (s.state === 0x2c) s.f_8b64 = 1;
-  setState(s, 0);
+  s.expDue = 1;
+  if (s.state === State.Training) s.trainDealtWith = 1;
+  setState(s, State.Nothing);
   s.host.show("[Can't train!]");
   return 1;
 }

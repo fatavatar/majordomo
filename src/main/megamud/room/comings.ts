@@ -4,7 +4,7 @@
  * north.`) and arrivals (`X walks into the room from the south.`). Read
  * 2026-10-12.
  *
- * An arrival asks for the room again (`0xe290`) unless it is a party member;
+ * An arrival asks for the room again (`lookDue`) unless it is a party member;
  * walking a path with auto-combat off, it starts running instead. A
  * departure takes the creature off the room's list, and a player being
  * chased is followed (`0x4730d0`).
@@ -17,6 +17,7 @@ import { prioritize } from './alsoHere';
 import { checkNames, findPlayer, partyIndex } from './checkNames';
 import { findEntity, removeEntity, stopToKill } from './entities';
 import { move } from '../move/go';
+import { PlayerFlag, PartyFlag, Exit } from '../flags';
 
 const ARRIVALS = [
   ' in the room ',
@@ -45,7 +46,7 @@ export function comingsLine(s: Session, line: string): number {
   if (at === -1) at = indexOf(line, ' stops to rest');
   if (at !== -1) {
     const who = trimSpaces(line.slice(0, Math.min(at, 10)));
-    if (!findEntity(s, who, 0)) s.f_e290 = 1;
+    if (!findEntity(s, who, 0)) s.lookDue = 1;
     return 0;
   }
   const notice = indexOf(line, 'You notice ');
@@ -57,13 +58,13 @@ export function comingsLine(s: Session, line: string): number {
   if (sneak !== -1) {
     const who = line.slice(notice + 0xb, notice + 0xb + Math.min(sneak - notice - 0xb, 10));
     if (partyIndex(s, who) !== -1) return 1;
-    if (!findEntity(s, who, 0)) s.f_e290 = 1;
+    if (!findEntity(s, who, 0)) s.lookDue = 1;
     if (indexOf(line, ' sneaking out') !== -1) departed(s, line, who);
     return 1;
   }
   if (indexOf(line, 'You hear movement ') !== -1) {
-    if (s.runCount !== 1 || s.f_907c !== 0) return 1;
-    if (s.Combat_ClearOnceEngaged !== 0 && s.f_8be4 !== 0) return 1;
+    if (s.runCount !== 1 || s.runByChoice !== 0) return 1;
+    if (s.Combat_ClearOnceEngaged !== 0 && s.engagedHere !== 0) return 1;
     s.runCount = 2;
     return 1;
   }
@@ -86,7 +87,7 @@ export function comingsLine(s: Session, line: string): number {
   departed(s, line, who);
   const e = findEntity(s, who, 0);
   if (!e) {
-    s.f_e290 = 1;
+    s.lookDue = 1;
     return 1;
   }
   const name = e.name;
@@ -94,7 +95,7 @@ export function comingsLine(s: Session, line: string): number {
   if (i !== -1) removeEntity(s, i);
   // MegaMUD compares the index it stopped at with the shortened count, so
   // taking the last entry off asks for the room again too.
-  if (i === -1 || i === s.room.length) s.f_e290 = 1;
+  if (i === -1 || i === s.room.length) s.lookDue = 1;
   const wasTarget = s.target !== '' && stricmp(s.target, name) === 0;
   checkNames(s);
   prioritize(s);
@@ -112,21 +113,21 @@ function arrival(s: Session, line: string): number {
   if (s.walking !== 0 && s.held === 0 && s.roaming === 0 && s.following === 0) {
     if (s.MegaMud_AutoCombat === 0) {
       if (s.runCount === 0 && stopToKill(s) === 0) s.runCount = s.Combat_RunRooms;
-      s.f_e2d8 = 1;
+      s.arrivedWhileWalking = 1;
       return 1;
     }
     if (s.runCount !== 0) {
-      s.f_e2d8 = 1;
+      s.arrivedWhileWalking = 1;
       return 1;
     }
   }
   if (s.Combat_ResetMultiOnMobEntry !== 0) clearMultiCounts(s);
-  if (s.f_e21c !== 0) {
+  if (s.dontAttackHere !== 0) {
     if (s.whoList.length < 1) return 1;
     if (!s.whoList.some((w) => line.startsWith(w.name))) return 1;
   }
-  s.f_32390 = 0;
-  s.f_e290 = 1;
+  s.roomLookedAt = 0;
+  s.lookDue = 1;
   return 1;
 }
 
@@ -140,9 +141,13 @@ function departed(s: Session, line: string, who: string): number {
   if (name === '') return 0;
   const p = findPlayer(s, name);
   if (!p) return 0;
-  if (s.chaseTarget !== name && (p.flags & 0x40) === 0) return 0;
+  if (s.chaseTarget !== name && (p.flags & PlayerFlag.ChaseIfSeen) === 0) return 0;
   const member = partyIndex(s, name);
-  if (member !== -1 && (s.party[member]!.flags28 & 0x8c) === 0) return 0;
+  if (
+    member !== -1 &&
+    (s.party[member]!.flags28 & (PartyFlag.Invited | PartyFlag.Unlisted | PartyFlag.Offline)) === 0
+  )
+    return 0;
   let dir = indexOf(line, 'upwards') !== -1 ? 8 : -1;
   if (indexOf(line, 'downwards') !== -1) dir = 9;
   if (indexOf(line, 'to the north') !== -1) dir = 0;
@@ -153,8 +158,9 @@ function departed(s: Session, line: string, who: string): number {
   if (indexOf(line, 'to the northwest') !== -1) dir = 5;
   if (indexOf(line, 'to the southeast') !== -1) dir = 6;
   if (indexOf(line, 'to the southwest') !== -1) dir = 7;
-  if (indexOf(line, 'and rows out into the river') !== -1) dir = s.roomExits[0] === 0 ? 1 : 0;
-  if (indexOf(line, 'scales the ') !== -1) dir = s.roomExits[8] !== 0 ? 8 : 9;
+  if (indexOf(line, 'and rows out into the river') !== -1)
+    dir = s.roomExits[0] === Exit.None ? 1 : 0;
+  if (indexOf(line, 'scales the ') !== -1) dir = s.roomExits[8] !== Exit.None ? 8 : 9;
   else if (dir === -1) return 0;
   s.runDirection = dir;
   s.chaseTarget = name.slice(0, 10);

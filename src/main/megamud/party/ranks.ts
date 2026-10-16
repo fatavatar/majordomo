@@ -32,6 +32,9 @@ import { setState } from '../script/state';
 import type { Session } from '../Session';
 import { addMember, askParty, removeMember } from './members';
 import { freeSteps } from '../move/path';
+import { State } from '../states';
+import { PlayerFlag, PartyFlag } from '../flags';
+import { Task } from '../script/task';
 
 /** The name before `at` (up to 10 characters). */
 function nameBefore(line: string, at: number): string {
@@ -44,19 +47,19 @@ function stopHolding(s: Session): void {
   s.holdingLeader = 0;
   s.restReason = '';
   s.lastWaitSent = '';
-  s.f_32338 = 0;
+  s.waitSentAt = 0;
 }
 
 /** Ask the leader to wait, for a reason. */
 function holdLeader(s: Session, reason: string): void {
-  s.f_32338 = s.now;
+  s.waitSentAt = s.now;
   s.holdingLeader = 1;
   if (s.restReason === '') s.restReason = reason;
 }
 
 function invited(s: Session, line: string, at: number): number {
   const p = findPlayer(s, nameBefore(line, at));
-  if (!p || (p.flags & 0x20) === 0 || s.f_a32c !== 0) return 1;
+  if (!p || (p.flags & PlayerFlag.JoinIfInvited) === 0 || s.allOff !== 0) return 1;
   if (s.following !== 0 && partyIndex(s, p.name) === -1) {
     s.host.show('[Already following]');
     return 1;
@@ -71,7 +74,7 @@ function invited(s: Session, line: string, at: number): number {
  * asked to wait.
  */
 export function joinLeader(s: Session, name: string): void {
-  if (s.task === 0xe || s.task === 0xf) {
+  if (s.task === Task.Walking || s.task === Task.Looping) {
     if (s.MegaMud_AutoCombat === 0 && s.active !== 0 && s.Other_AutoAutoCombat !== 0) {
       s.host.show('[Auto-combat re-engaged]');
       s.MegaMud_AutoCombat = 1;
@@ -89,12 +92,12 @@ export function joinLeader(s: Session, name: string): void {
   } else {
     holdLeader(s, "can't move");
     queue(s, `/${s.leaderName} ${s.Party_PartyWaitCmd || '@wait'} (can't move)\r`);
-    s.f_e360 = 0;
+    s.partyAskPending = 0;
     askParty(s, 'held');
   }
   if (s.Party_PartyRank === 0) queue(s, 'frontrank\r');
   else if (s.Party_PartyRank === 2) queue(s, 'backrank\r');
-  s.f_e2ac = 1;
+  s.parDue = 1;
 }
 
 function noLongerFollowing(s: Session): number {
@@ -102,14 +105,14 @@ function noLongerFollowing(s: Session): number {
     if (s.holdingLeader !== 0 && s.restReason === '') {
       s.holdingLeader = 0;
       s.lastWaitSent = '';
-      s.f_32338 = 0;
+      s.waitSentAt = 0;
     }
   } else {
     queue(s, `/${s.leaderName} @comeback\r`);
     holdLeader(s, "can't move");
   }
   s.following = 0;
-  s.f_e2ec = 1;
+  s.partyLost = 1;
   s.partySize = 0;
   if (s.active !== 0 && s.looping === 0 && s.roaming === 0) s.host.alert?.('idle');
   return 1;
@@ -122,100 +125,99 @@ function leaderRests(s: Session, name: string): number {
     s.Player_Name !== s.leaderName &&
     s.resting === 0 &&
     s.meditating === 0 &&
-    s.f_a32c === 0 &&
+    s.allOff === 0 &&
     s.MegaMud_AutoHeal !== 0 &&
     enemiesHere(s, 0) === 0
   ) {
-    s.f_e1c0 = 1;
+    s.probablyLeaderResting = 1;
     healthStep(s);
   }
-  if (!findEntity(s, name, 0)) s.f_e290 = 1;
+  if (!findEntity(s, name, 0)) s.lookDue = 1;
   return 1;
 }
 
 /** Moved with the party: a new room. */
 function movedWithParty(s: Session, line: string, at: number): number {
   if (s.following === 0) {
-    s.f_e2ac = 1;
+    s.parDue = 1;
     addMember(s, s.Player_Name, 0);
   }
-  s.sneaking = s.f_e1c8 !== 0 ? 1 : 0;
+  s.sneaking = s.wasSneaking !== 0 ? 1 : 0;
   heldRows(s, 0);
   s.held = 0;
   stopHolding(s);
-  if (s.holdingLeader !== 0 && s.f_a32c === 0) {
-    if (s.restReason !== "can't move" && s.now - s.f_32338 > s.Comms_LagWait + 3) {
+  if (s.holdingLeader !== 0 && s.allOff === 0) {
+    if (s.restReason !== "can't move" && s.now - s.waitSentAt > s.Comms_LagWait + 3) {
       const msg = `/${s.leaderName} ${s.Party_PartyWaitCmd || '@wait'} (${s.restReason})\r`;
       s.lastWaitSent = msg.slice(0, 299);
       send(s, msg);
-      s.f_32338 = s.now;
+      s.waitSentAt = s.now;
     }
     healthStep(s);
   }
   s.moveDir = directionOf(line.slice(at + 0x1f));
-  s.f_32320 = s.now;
-  s.f_32378 = s.now;
-  s.f_32310 = 0;
+  s.movedAt = s.now;
+  s.statAskedAt = s.now;
+  s.restAskedAt = 0;
   s.runDirection = -1;
-  s.f_e1c8 = 0;
+  s.wasSneaking = 0;
   s.hidden = 0;
-  s.f_e2d8 = 0;
-  s.f_e170 = 1;
+  s.arrivedWhileWalking = 0;
+  s.lowHpArmed = 1;
   s.following = 1;
-  s.f_e21c = 0;
-  s.f_8be4 = 0;
+  s.dontAttackHere = 0;
+  s.engagedHere = 0;
   clearAlignment(s);
-  s.f_907c = 0;
-  s.f_e2ec = 0;
-  s.f_e1c0 = 0;
-  s.f_845c = 0;
-  s.f_e2dc = 0;
-  s.f_e1e8 = 0;
-  s.f_e2b4 = 0;
-  s.f_e2e0 = 0;
-  s.f_e2e4 = 0;
-  s.f_e220 = 0;
-  s.f_e1e4 = 0;
-  s.f_8558 = 0;
-  s.f_db60 = s.Other_SearchMax;
-  s.f_db68 = 0;
-  s.f_db6c = 0;
+  s.runByChoice = 0;
+  s.partyLost = 0;
+  s.probablyLeaderResting = 0;
+  s.bankedHere = 0;
+  s.openDoorNext = 0;
+  s.lightRemovedToTest = 0;
+  s.dontRestHere = 0;
+  s.trapFound = 0;
+  s.trapDisarmed = 0;
+  s.areaWarned = 0;
+  s.corpseTried = 0;
+  s.recoveringCorpse = 0;
+  s.searchesLeft = s.Other_SearchMax;
+  s.stealthRefused = 0;
+  s.stealthFails = 0;
   s.stepTries = 0;
-  s.f_db48 = 0;
-  s.f_db50 = 0;
-  s.f_db58 = 0;
+  s.bashTries = 0;
+  s.pickTries = 0;
+  s.disarmTries = 0;
   s.manaFullAt = 0;
   s.hpFullAt = 0;
-  s.f_dd0c = 0;
+  s.attacksRefused = 0;
   clearTargetCasts(s);
   clearMultiCounts(s);
-  if (s.f_a580 === 0) clearCastMode(s);
-  s.f_3268c += 1;
+  if (s.multiAttacking === 0) clearCastMode(s);
   unkeepAll(s);
   // `0x474910`: the players seen in the last room are not "seen this room" any more.
-  for (const p of s.data.players ?? []) p.flags &= ~0x8000;
-  if (s.f_e1e0 !== 0) {
-    s.f_8468 = 0;
-    s.f_e1e0 = 0;
+  for (const p of s.data.players ?? []) p.flags &= ~PlayerFlag.SeenThisSession;
+  if (s.cannotDropHere !== 0) {
+    s.weightMax = 0;
+    s.cannotDropHere = 0;
   }
-  setState(s, 0x16);
+  setState(s, State.Moving);
   return 1;
 }
 
 export function rankLine(s: Session, line: string): number {
   if (line.indexOf('You are in the front rank of your group') !== -1 && s.partySize === 0) {
-    if (s.state === 0x20) return 1;
+    if (s.state === State.Looking) return 1;
     addMember(s, s.Player_Name, 1);
-    s.f_e2ac = 1;
+    s.parDue = 1;
     return 1;
   }
   if (
     line.indexOf('You are in the back rank of your group') !== -1 &&
     (s.partySize === 0 || s.following === 0)
   ) {
-    if (s.state === 0x20) return 1;
+    if (s.state === State.Looking) return 1;
     s.following = 1;
-    s.f_e2ac = 1;
+    s.parDue = 1;
     return 1;
   }
   let at = line.indexOf(' has invited you to follow');
@@ -228,8 +230,8 @@ export function rankLine(s: Session, line: string): number {
       addMember(s, name, 0);
       addMember(s, s.Player_Name, 1);
       const i = partyIndex(s, name);
-      if (i !== -1) s.party[i]!.flags28 |= 4;
-      s.f_32330 = s.now;
+      if (i !== -1) s.party[i]!.flags28 |= PartyFlag.Invited;
+      s.partyWaitAt = s.now;
       return 1;
     }
   }
@@ -241,7 +243,7 @@ export function rankLine(s: Session, line: string): number {
     addMember(s, name, 1);
     addMember(s, s.Player_Name, 0);
     s.following = 1;
-    s.f_e2ec = 0;
+    s.partyLost = 0;
     stopHolding(s);
     freeSteps(s.loopPath);
     freeSteps(s.path);
@@ -256,8 +258,16 @@ export function rankLine(s: Session, line: string): number {
     const name = nameBefore(line, at);
     addMember(s, name, 0);
     const i = partyIndex(s, name);
-    if (i !== -1) s.party[i]!.flags28 &= ~0x2bc;
-    s.f_e2ac = 1;
+    if (i !== -1)
+      s.party[i]!.flags28 &= ~(
+        PartyFlag.Invited |
+        PartyFlag.Unlisted |
+        PartyFlag.MissedListing |
+        PartyFlag.AskedToWait |
+        PartyFlag.Offline |
+        PartyFlag.JoinAsked
+      );
+    s.parDue = 1;
     return 1;
   }
   at = line.indexOf(' has been removed from your followers');
@@ -271,7 +281,14 @@ export function rankLine(s: Session, line: string): number {
     const name = nameBefore(line, at);
     addMember(s, name, 0);
     const i = partyIndex(s, name);
-    if (i !== -1) s.party[i]!.flags28 &= ~0x29c;
+    if (i !== -1)
+      s.party[i]!.flags28 &= ~(
+        PartyFlag.Invited |
+        PartyFlag.Unlisted |
+        PartyFlag.MissedListing |
+        PartyFlag.Offline |
+        PartyFlag.JoinAsked
+      );
     return 1;
   }
   at = line.indexOf(' stops to rest.');

@@ -4,6 +4,7 @@ import { findPlayer } from '../room/checkNames';
 import { newPlayer } from '../data';
 import { whoLine } from '../players/who';
 import { session } from './fixture';
+import { LineFlag, WHO_LISTING, PlayerFlag } from '../flags';
 
 /* `0x4c14b0`, `0x4c1d00` and `0x4c12b0`, read 2026-10-12; the listing is Skinny's, 2026-10-12. */
 
@@ -25,7 +26,7 @@ function listed() {
   r.s.Player_Level = 80;
   newPlayer(r.s.data, 0).name = 'Skinny';
   for (const line of WHO) whoLine(r.s, line);
-  r.s.lineFlags |= 1;
+  r.s.lineFlags |= LineFlag.Prompted;
   whoLine(r.s, '');
   return r;
 }
@@ -34,7 +35,7 @@ describe('who (0x4c14b0)', () => {
   it('lists everyone online', () => {
     const { s } = listed();
     expect(s.whoList.map((w) => w.name)).toEqual(['Damyr', 'David', 'Fatty', 'Healbot', 'Skinny']);
-    expect(s.lineFlags & 0x380).toBe(0);
+    expect(s.lineFlags & WHO_LISTING).toBe(0);
   });
 
   it('learns new players with their surname and alignment', () => {
@@ -49,7 +50,7 @@ describe('who (0x4c14b0)', () => {
     const { s } = listed();
     const fatty = findPlayer(s, 'Fatty')!;
     expect(fatty.level).toBeGreaterThan(1);
-    expect(fatty.flags & 2).toBe(2);
+    expect(fatty.flags & PlayerFlag.LevelGuessed).toBe(2);
   });
 
   it('keeps the list current as players come and go', () => {

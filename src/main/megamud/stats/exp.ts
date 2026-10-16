@@ -5,6 +5,7 @@
  */
 import { indexOf } from '../cstr';
 import type { Session } from '../Session';
+import { SpellFlag } from '../flags';
 
 /** `0x4ad460`: a 64-bit number at the front (after spaces, with `-`), and where it ends. */
 function bigNumber(text: string, at: number): [number, number] {
@@ -22,8 +23,8 @@ function bigNumber(text: string, at: number): [number, number] {
 
 /** `0x495590`: exp, stats and spells to be asked for again (the spells' learned marks cleared). */
 export function recheckStats(s: Session): void {
-  s.f_e29c = 1;
-  for (const spell of s.data.spells) spell.flags &= ~0x1000;
+  s.statDue = 1;
+  for (const spell of s.data.spells) spell.flags &= ~SpellFlag.Known;
 }
 
 export function expLine(s: Session, line: string): number {

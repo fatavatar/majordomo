@@ -15,6 +15,7 @@ import { queue } from '../script/send';
 import { forgetAwaited, setState } from '../script/state';
 import type { Session } from '../Session';
 import { remoteCommand } from './remote';
+import { State } from '../states';
 
 /** The social verbs that mark an emote (the table at `0x564610`). */
 const EMOTES = [
@@ -119,7 +120,7 @@ function emote(s: Session, line: string): number {
 
 /** The lines this character's own pre/post commands are made of. */
 function ownCommand(s: Session, said: string): boolean {
-  const prefix = s.s_7d21 !== '' ? s.s_7d21 : '.';
+  const prefix = s.speechPrefix !== '' ? s.speechPrefix : '.';
   for (const set of [
     s.Combat_PreBsCmd,
     s.Combat_PostBsCmd,
@@ -140,9 +141,9 @@ function ownCommand(s: Session, said: string): boolean {
 
 /** The fight's own speech: the room looked at again. */
 function attackSaid(s: Session): number {
-  s.f_e290 = 1;
+  s.lookDue = 1;
   forgetAwaited(s, s.state);
-  setState(s, 0);
+  setState(s, State.Nothing);
   return 0;
 }
 
@@ -172,20 +173,25 @@ function ownSpeech(s: Session, line: string): number {
       return attackSaid(s);
   }
   if (line.includes('You say "bs ')) return attackSaid(s);
-  if (line.includes('You say "bash ') && s.roaming !== 0 && s.state === 0x17 && s.moveDir !== -1) {
-    s.f_db34 = s.moveDir;
-    s.f_e2dc = 0;
-    forgetAwaited(s, 0x17);
-    setState(s, 0);
+  if (
+    line.includes('You say "bash ') &&
+    s.roaming !== 0 &&
+    s.state === State.Bashing &&
+    s.moveDir !== -1
+  ) {
+    s.lastMoveDir = s.moveDir;
+    s.openDoorNext = 0;
+    forgetAwaited(s, State.Bashing);
+    setState(s, State.Nothing);
     return 1;
   }
   if (line.includes('You say "bas ')) {
-    s.f_e2dc = 1;
+    s.openDoorNext = 1;
     forgetAwaited(s, s.state);
-    setState(s, 0);
+    setState(s, State.Nothing);
     return 1;
   }
-  if (s.state === 0x2e) {
+  if (s.state === State.Other) {
     const open = line.indexOf('You say "');
     if (open !== -1) {
       const said = line
@@ -213,7 +219,7 @@ function ownSpeech(s: Session, line: string): number {
     return 1;
   if (line.includes('You say "@party ')) return 1;
   if (!line.includes('@divert')) {
-    if (s.f_e174 !== 0) stepBack(s);
+    if (s.recording !== 0) stepBack(s);
     setState(s, s.state);
     return 1;
   }
@@ -246,11 +252,11 @@ export function talkLine(s: Session, line: string): number {
   }
   const notice = bbs.notices.find((n) => n.text !== '' && line.includes(n.text));
   if (notice) {
-    if (notice.more !== 0) s.f_2258 = 1;
+    if (notice.more !== 0) s.noticeContinues = 1;
     return 1;
   }
-  if (s.f_2258 !== 0) {
-    s.f_2258 = 0;
+  if (s.noticeContinues !== 0) {
+    s.noticeContinues = 0;
     return 1;
   }
   if (line.includes('An Internet E-mail message from')) return 1;

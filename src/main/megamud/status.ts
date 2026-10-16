@@ -3,52 +3,53 @@
  * "Cast-Main (2)", "Party Wait", rebuilt whenever a line or a pass changes
  * something. Display only: it changes no state. Read 2026-10-12.
  */
-import { f_426ab0, castCount } from './combat/casts';
+import { inAttackCast, castCount } from './combat/casts';
 import { classMagic } from './data';
 import type { Session } from './Session';
 import { idiv } from './cstr';
+import { State } from './states';
 
 const NAMES: Record<number, string> = {
-  6: 'Poisoned',
-  7: 'Hanging',
-  8: 'Relogging',
-  9: 'Cast-PreM',
-  0xa: 'Cast-Mult',
-  0xb: 'Cast-Pre',
-  0xc: 'Cast-Aux',
-  0xd: 'Cast-Main',
-  0xe: 'Cast-ALT',
-  0xf: 'Cast-User',
-  0x10: 'Blessing',
-  0x11: 'Attacking',
-  0x12: "BS'ing",
-  0x13: 'Hiding',
-  0x15: 'Casting',
-  0x17: 'Bashing',
-  0x18: 'Picking',
-  0x19: 'Disarming',
-  0x1a: 'Opening',
-  0x1b: 'Sneaking',
-  0x1c: 'Getting',
-  0x1d: 'Dropping',
-  0x1e: 'Stashing',
-  0x1f: 'Equipping',
-  0x20: 'Looking',
-  0x21: 'Searching',
-  0x22: 'Tracking',
-  0x23: 'Who',
-  0x24: 'Top',
-  0x25: 'Inventory',
-  0x26: 'Depositing',
-  0x27: 'Withdrawing',
-  0x28: 'Buying',
-  0x29: 'Selling',
-  0x2a: 'Teleported',
-  0x2b: 'Get Exits',
-  0x2c: 'Training',
-  0x2d: 'Pending Cmd',
-  0x2e: 'Other',
-  0x2f: 'Recovering'
+  [State.Poisoned]: 'Poisoned',
+  [State.Hanging]: 'Hanging',
+  [State.Relogging]: 'Relogging',
+  [State.CastPreMulti]: 'Cast-PreM',
+  [State.CastMulti]: 'Cast-Mult',
+  [State.CastPre]: 'Cast-Pre',
+  [State.CastAux]: 'Cast-Aux',
+  [State.CastMain]: 'Cast-Main',
+  [State.CastAlt]: 'Cast-ALT',
+  [State.CastUser]: 'Cast-User',
+  [State.Blessing]: 'Blessing',
+  [State.Attacking]: 'Attacking',
+  [State.Backstabbing]: "BS'ing",
+  [State.Hiding]: 'Hiding',
+  [State.Casting]: 'Casting',
+  [State.Bashing]: 'Bashing',
+  [State.Picking]: 'Picking',
+  [State.Disarming]: 'Disarming',
+  [State.Opening]: 'Opening',
+  [State.Sneaking]: 'Sneaking',
+  [State.Getting]: 'Getting',
+  [State.Dropping]: 'Dropping',
+  [State.Stashing]: 'Stashing',
+  [State.Equipping]: 'Equipping',
+  [State.Looking]: 'Looking',
+  [State.Searching]: 'Searching',
+  [State.Tracking]: 'Tracking',
+  [State.Who]: 'Who',
+  [State.Top]: 'Top',
+  [State.Inventory]: 'Inventory',
+  [State.Depositing]: 'Depositing',
+  [State.Withdrawing]: 'Withdrawing',
+  [State.Buying]: 'Buying',
+  [State.Selling]: 'Selling',
+  [State.Teleported]: 'Teleported',
+  [State.GetExits]: 'Get Exits',
+  [State.Training]: 'Training',
+  [State.PendingCmd]: 'Pending Cmd',
+  [State.Other]: 'Other',
+  [State.Recovering]: 'Recovering'
 };
 
 /** The idle state's name: the last condition that holds wins. */
@@ -56,7 +57,7 @@ function idleName(s: Session): string {
   if (s.inGame === 0) return 'Nothing';
   let name = s.hidden !== 0 ? 'Hidden' : 'Nothing';
   if (s.following !== 0) name = 'Following';
-  if (s.f_a5f8 >= 1) name = 'Mass Equip';
+  if (s.equipsPending >= 1) name = 'Mass Equip';
   if (s.waitLines >= 1) name = 'Wait-Lines';
   if (s.waitPrompt >= 1) name = 'Wait-Prompt';
   if (s.partyWait !== 0) name = 'Party Wait';
@@ -73,16 +74,16 @@ function idleName(s: Session): string {
 function statusText(s: Session): string {
   let name: string;
   switch (s.state) {
-    case 0:
+    case State.Nothing:
       name = idleName(s);
       break;
-    case 1:
+    case State.Waiting:
       name = '';
       break;
-    case 2:
+    case State.RestAsked:
       name = 'resting';
       break;
-    case 3:
+    case State.Resting:
       name = s.restHpToFull !== 0 || s.restManaToFull !== 0 ? 'Resting (to full)' : 'Resting';
       if (
         idiv(s.Player_MaxHP * s.Health_HpFullPct, 100) <= s.hp &&
@@ -92,26 +93,26 @@ function statusText(s: Session): string {
       }
       if (s.partyWait !== 0) name = 'Party Wait';
       break;
-    case 4:
+    case State.MeditateAsked:
       name = 'meditating';
       break;
-    case 5:
+    case State.Meditating:
       name = s.restManaToFull !== 0 ? 'Medi. to Full' : 'Meditating';
       break;
-    case 0x16:
+    case State.Moving:
       name = s.rescueCount >= 1 ? 'Rescuing' : s.runCount >= 1 ? 'Running' : 'Moving';
       break;
     default:
       name = NAMES[s.state] ?? 'Unknown';
   }
   let count: number | null = null;
-  if (s.state === 0x16) {
+  if (s.state === State.Moving) {
     if (s.rescueCount >= 1) count = s.rescueCount;
     else if (s.runCount >= 1) count = s.runCount;
-  } else if (f_426ab0(s, 0) !== 0 || s.state === 0x15) {
+  } else if (inAttackCast(s, 0) !== 0 || s.state === State.Casting) {
     count = castCount(s, s.state);
-  } else if (s.state === 0) {
-    if (s.f_a5f8 >= 1) count = s.f_a5f8;
+  } else if (s.state === State.Nothing) {
+    if (s.equipsPending >= 1) count = s.equipsPending;
     else if (s.waitLines >= 1) count = s.waitLines;
     else if (s.waitPrompt >= 1) count = s.waitPrompt;
   }

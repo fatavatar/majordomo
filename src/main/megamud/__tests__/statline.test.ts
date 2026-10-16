@@ -1,12 +1,15 @@
 import { describe, expect, it } from 'vitest';
 
 import { combatEngaged } from '../combat/engaged';
+import { messagesFrom } from '../data';
 import { newTerminal, parseData } from '../input/ParseData';
 import { statusLine } from '../input/statline';
 import { send } from '../script/send';
 import { setState } from '../script/state';
 import type { LineBuf } from '../Session';
 import { session } from './fixture';
+import { State } from '../states';
+import { LineFlag } from '../flags';
 
 /* `0x47b070`, `0x428ab0` and `0x4aa770`, read 2026-10-12. */
 
@@ -43,14 +46,14 @@ describe('the prompt (0x47b070)', () => {
   it('lets the scheduler run when a bare prompt ends the chunk', () => {
     const { s } = inGame();
     expect(statusLine(s, line('[HP=57/MA=10]:'), 0)).toBe(1);
-    expect(s.lineFlags & 1).toBe(1);
+    expect(s.lineFlags & LineFlag.Prompted).toBe(1);
   });
 
   it('holds the scheduler while lines are still awaited', () => {
     const { s } = inGame();
     s.waitLines = 2;
     statusLine(s, line('[HP=57/MA=10]:'), 0);
-    expect(s.lineFlags & 1).toBe(0);
+    expect(s.lineFlags & LineFlag.Prompted).toBe(0);
   });
 
   it('counts a whole line off the lines awaited', () => {
@@ -89,7 +92,7 @@ describe('combat frames (0x428ab0)', () => {
 
   it('turns a pending attack command into the attacking state', () => {
     const { s } = inGame();
-    s.state = 0x2d;
+    s.state = State.PendingCmd;
     combatEngaged(s, '*Combat Engaged*');
     expect(s.state).toBe(0x11);
     expect(s.engagedMode).toBe(0x11);
@@ -118,10 +121,10 @@ describe('the activity state (0x4aa770)', () => {
   it('picks the attack back up when going idle in a fight', () => {
     const { s } = inGame();
     s.inCombat = 1;
-    setState(s, 0x11);
-    setState(s, 0x15);
-    s.stateBefore = 0x11;
-    setState(s, 0);
+    setState(s, State.Attacking);
+    setState(s, State.Casting);
+    s.stateBefore = State.Attacking;
+    setState(s, State.Nothing);
     expect(s.state).toBe(0x11);
   });
 
@@ -129,15 +132,15 @@ describe('the activity state (0x4aa770)', () => {
     const { s } = inGame();
     s.meditating = 1;
     s.mana = 10;
-    setState(s, 0);
+    setState(s, State.Nothing);
     expect(s.state).toBe(5);
   });
 
   it('awaits the attacks and casts', () => {
     const { s } = inGame();
-    setState(s, 0xd);
+    setState(s, State.CastMain);
     expect(s.stateAwaited).toBe(0xd);
-    setState(s, 0x1c);
+    setState(s, State.Getting);
     expect(s.stateAwaited).toBe(0xd);
   });
 });
@@ -149,7 +152,7 @@ describe('the activity state (0x4aa770)', () => {
  * again. Lines before a command's echo are not its answer.
  */
 describe('a command answered only after its echo', () => {
-  const ready = (s: { lineFlags: number }): boolean => (s.lineFlags & 1) !== 0;
+  const ready = (s: { lineFlags: number }): boolean => (s.lineFlags & LineFlag.Prompted) !== 0;
 
   it('waits through a redraw that was on its way, and goes on after the echo', () => {
     const { s } = inGame();
@@ -182,5 +185,40 @@ describe('a command answered only after its echo', () => {
     clock.ms += 3001;
     parseData(s, newTerminal(), 'one\r\ntwo\r\n[HP=57/MA=6]:');
     expect(ready(s)).toBe(true);
+  });
+});
+
+/* Fatty's log, 2026-10-16: prompts the realm bunched while resting, each with its rest mark. */
+describe('stacked prompts with rest marks', () => {
+  const SANDSTORM = [
+    'sandstorm:0001:2:',
+    'A sandstorm surrounds you!',
+    'The sandstorm subsides, allowing your scathed flesh to heal.',
+    ''
+  ].join('\n');
+
+  it('cuts every prompt, so the line behind them is read', () => {
+    const { s } = session({ messages: messagesFrom(SANDSTORM) });
+    s.inGame = 1;
+    s.online = 1;
+    const t = newTerminal();
+    parseData(s, t, '[HP=1100/MA=180]:A sandstorm surrounds you!\r\n');
+    expect(s.blind).toBe(1);
+    parseData(
+      s,
+      t,
+      '[HP=1467/MA=274]: (Resting) [HP=1461/MA=274]: (Resting) The sandstorm subsides, allowing your scathed flesh to heal.\r\n'
+    );
+    expect(s.blind).toBe(0);
+    expect(s.hp).toBe(1461);
+  });
+
+  it('still reads the last rest mark as resting', () => {
+    const { s } = session();
+    s.inGame = 1;
+    s.online = 1;
+    parseData(s, newTerminal(), '[HP=10/MA=5]: (Resting) [HP=12/MA=5]: (Resting) ');
+    expect(s.resting).toBe(1);
+    expect(s.hp).toBe(12);
   });
 });

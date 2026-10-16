@@ -17,6 +17,8 @@ import { newTerminal, parseData } from '../input/ParseData';
 import { expandMacros } from '../script/send';
 import { disconnect, menuCommand, playerCommand } from '../move/buttons';
 import { session } from './fixture';
+import { State } from '../states';
+import { Task } from '../script/task';
 
 /* `0x42de00`, `0x47b070`'s tail, `0x42d510`, `0x4b6fe0`, `0x42c910`'s end, `0x4acc40` and `0x41bcf0`, read 2026-10-13. */
 
@@ -42,9 +44,9 @@ describe('macros (0x4acc40)', () => {
   it('gives the password only while logging on', () => {
     const { s } = session();
     s.BBS_Password = 'pw';
-    s.task = 10;
+    s.task = Task.LoggingOn;
     expect(expandMacros(s, '{pswd}^M')).toBe('pw\r');
-    s.task = 0xb;
+    s.task = Task.InGame;
     expect(expandMacros(s, '{pswd}^M')).toBe('');
   });
 });
@@ -52,12 +54,12 @@ describe('macros (0x4acc40)', () => {
 describe('the BBS set-up (0x41bcf0)', () => {
   it('starts at the loader’s defaults and reads a file over them', () => {
     const { s } = session();
-    expect(s.s_7d21).toBe('.');
+    expect(s.speechPrefix).toBe('.');
     expect(s.pvpLevel).toBe(99);
     bbsSetup(s, (k) => ({ RelogCmd: '=x', PvpLevel: '5' })[k]);
-    expect(s.s_7cf7).toBe('=x');
+    expect(s.relogCmd).toBe('=x');
     expect(s.pvpLevel).toBe(5);
-    expect(s.s_7cb9).toBe('[MAJORMUD]:');
+    expect(s.menuPrompt).toBe('[MAJORMUD]:');
   });
 });
 
@@ -130,7 +132,7 @@ describe('online and in the game (0x42de00, 0x47b070)', () => {
     goOnline(s, 1);
     expect(s.loopPath.start).toBe(0x1234);
     // In the loop's room: taken up at once.
-    s.f_8130 = 0x1234;
+    s.roomSignature = 0x1234;
     enterGame(s);
     expect(s.looping).toBe(1);
     expect(s.task).toBe(0xf);
@@ -147,13 +149,11 @@ describe('online and in the game (0x42de00, 0x47b070)', () => {
     expect(out.sent).toEqual(['\r']);
   });
 
-  it('adds the time online when it goes offline', () => {
-    const { s, clock } = session();
+  it('goes offline', () => {
+    const { s } = session();
     goOnline(s, 1);
-    s.now = clock.now + 60;
     goOnline(s, 0);
     expect(s.online).toBe(0);
-    expect(s.f_32510).toBe(60);
   });
 });
 
@@ -205,7 +205,7 @@ describe('the socket gone (0x42c910)', () => {
     connectionClosed(s);
     expect(out.shown).toEqual(['Unexpected disconnection.']);
     expect(s.task).toBe(9);
-    expect(s.f_32298).toBe(clock.now + 30);
+    expect(s.redialAt).toBe(clock.now + 30);
     expect(s.inGame).toBe(0);
   });
 
@@ -216,7 +216,7 @@ describe('the socket gone (0x42c910)', () => {
     hangUp(s, 0);
     connectionClosed(s);
     expect(out.shown).toEqual([]);
-    expect(s.f_e158).toBe(0);
+    expect(s.hangingUp).toBe(0);
   });
 });
 
@@ -228,7 +228,7 @@ describe('the socket gone (0x42c910)', () => {
 describe('the socket up after a redial (0x4b7300)', () => {
   it('hands the dialling back, so the first prompt enters the game', () => {
     const { s } = session();
-    s.task = 2;
+    s.task = Task.Connecting2;
     connected(s);
     expect(s.task).toBe(0);
     parseData(s, newTerminal(), '[HP=10/MA=5]:');
@@ -239,7 +239,7 @@ describe('the socket up after a redial (0x4b7300)', () => {
 
   it('leaves a task in the game alone', () => {
     const { s } = session();
-    s.task = 0xb;
+    s.task = Task.InGame;
     connected(s);
     expect(s.task).toBe(0xb);
   });
@@ -258,7 +258,7 @@ describe('the player’s Disconnect (0x7d4)', () => {
     expect([s.walking, s.inGame, s.task]).toEqual([0, 0, 0xb]);
     connectionClosed(s);
     expect(out.shown).not.toContain('Unexpected disconnection.');
-    expect(s.f_e544).not.toBe(3);
+    expect(s.dialState).not.toBe(3);
     expect(s.task).not.toBe(9);
   });
 });
@@ -271,7 +271,7 @@ describe('a dial that failed (0x4b71d0)', () => {
     s.Comms_RedialPause = 7;
     s.Comms_RedialMax = 2;
     expect(connectFailed(s)).toBe(1);
-    expect([s.task, s.f_e544, s.f_32298]).toEqual([9, 3, clock.now + 7]);
+    expect([s.task, s.dialState, s.redialAt]).toEqual([9, 3, clock.now + 7]);
     expect(connectFailed(s)).toBe(1);
     expect(out.shown).toEqual(['[Re-dial maximum exceeded (2)]']);
     expect(s.task).toBe(0xb);
@@ -283,7 +283,7 @@ describe('a dial that failed (0x4b71d0)', () => {
     const { s } = session();
     s.Comms_RedialConnect = 0;
     expect(connectFailed(s)).toBe(0);
-    expect(s.f_e544).not.toBe(3);
+    expect(s.dialState).not.toBe(3);
   });
 });
 
@@ -311,7 +311,7 @@ describe('the toolbar’s toggles', () => {
   it('flip Auto-Nuke, and back to idle only in a fight', () => {
     const { s } = session();
     s.MegaMud_AutoNuke = 0;
-    s.state = 0xd;
+    s.state = State.CastMain;
     menuCommand(s, 0x86a);
     expect(s.MegaMud_AutoNuke).toBe(1);
     expect(s.state).toBe(0xd);
@@ -341,14 +341,14 @@ describe('the toolbar’s toggles', () => {
   it('flip All Off', () => {
     const { s } = session();
     menuCommand(s, 0x821);
-    expect(s.f_a32c).toBe(1);
+    expect(s.allOff).toBe(1);
     menuCommand(s, 0x821);
-    expect(s.f_a32c).toBe(0);
+    expect(s.allOff).toBe(0);
   });
 
   it('flip No Hangup, and nothing else', () => {
     const { s } = session();
-    s.state = 0xd;
+    s.state = State.CastMain;
     menuCommand(s, 0x82f);
     expect([s.MegaMud_NoHangup, s.state]).toEqual([1, 0xd]);
     menuCommand(s, 0x82f);

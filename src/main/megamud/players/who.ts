@@ -5,8 +5,8 @@
  * gang, alignment, and the class and level their title implies); a player
  * in this character's gang is taken as a friend. Arrivals and departures
  * (`just entered the Realm`, `just left the Realm`, `just hung up!!!`) keep
- * the list current between listings. `lineFlags` `0x80` (the first form),
- * `0x100` (the second), `0x200` (a row seen); state `0x23`.
+ * the list current between listings. `LineFlag.WhoTitled` (the first form),
+ * `WhoPlain` (the second), `WhoRowSeen` (a row seen); state `State.Who`.
  */
 import { indexFrom, indexOf, splitWord, trimSpaces } from '../cstr';
 import { newPlayer, type PlayerRec } from '../data';
@@ -15,6 +15,8 @@ import { removeEntity } from '../room/entities';
 import { forgetAwaited, setState } from '../script/state';
 import type { Session } from '../Session';
 import { GREATERMUD_TITLES, TITLES } from './titles';
+import { State } from '../states';
+import { LineFlag, WHO_LISTING, PlayerFlag, PartyFlag, Stance, EntityType } from '../flags';
 
 /** One row of the listing, as read. */
 interface Row {
@@ -107,9 +109,9 @@ function sameTitle(a: string, b: string): boolean {
 function titleLevel(s: Session, p: PlayerRec, title: string): void {
   if (title === 'Apprentice') {
     if (p.level !== 1) {
-      p.flags &= ~2;
+      p.flags &= ~PlayerFlag.LevelGuessed;
       p.level = 1;
-      s.f_e24c = 1;
+      s.playersChanged = 1;
     }
     return;
   }
@@ -121,32 +123,32 @@ function titleLevel(s: Session, p: PlayerRec, title: string): void {
     if (level >= top) upper = 9999;
     if (p.cls !== cls) {
       p.cls = cls;
-      s.f_e24c = 1;
+      s.playersChanged = 1;
     }
     if (p.level < level || upper < p.level) {
       if (p.name !== s.Player_Name) p.level = level;
-      p.flags |= 2;
-      s.f_e24c = 1;
+      p.flags |= PlayerFlag.LevelGuessed;
+      s.playersChanged = 1;
     }
-    if ((p.flags & 2) !== 0 && p.level !== level) {
+    if ((p.flags & PlayerFlag.LevelGuessed) !== 0 && p.level !== level) {
       p.level = level;
-      s.f_e24c = 1;
+      s.playersChanged = 1;
     }
   }
 }
 
 /** The listing is over. */
 function listingDone(s: Session): number {
-  s.lineFlags &= ~0x380;
-  forgetAwaited(s, 0x23);
-  setState(s, 0);
+  s.lineFlags &= ~WHO_LISTING;
+  forgetAwaited(s, State.Who);
+  setState(s, State.Nothing);
   return 0;
 }
 
 /** One row: the player learned or brought up to date, and listed as online. */
 function listed(s: Session, row: Row, titleForm: boolean): void {
-  s.lineFlags |= 0x200;
-  s.f_32360 = s.host.tickMs();
+  s.lineFlags |= LineFlag.WhoRowSeen;
+  s.whoQuietAt = s.host.tickMs();
   let p = findPlayer(s, row.name);
   if (!p) {
     p = newPlayer(s.data, s.now);
@@ -160,12 +162,12 @@ function listed(s: Session, row: Row, titleForm: boolean): void {
       flags: 5,
       seenAt: s.now
     });
-    s.f_e24c = 1;
+    s.playersChanged = 1;
     s.host.show(`[${row.name} added to known players]`);
   } else {
-    p.flags |= 0x10000000;
+    p.flags |= PlayerFlag.OnWhoList;
     p.seenAt = s.now;
-    s.f_e24c = 1;
+    s.playersChanged = 1;
     if (p.alignment !== row.alignment) p.alignment = row.alignment;
     if (p.surname !== row.surname) {
       // The title form cuts surnames short: a known one that starts the same is kept.
@@ -186,13 +188,15 @@ function listed(s: Session, row: Row, titleForm: boolean): void {
     p.cls = s.Player_Class;
     p.race = s.Player_Race;
     p.level = s.Player_Level;
-    p.kind = 2;
-    p.flags = (p.flags & ~3) | 4;
-    s.f_e24c = 1;
+    p.kind = Stance.Friend;
+    p.flags =
+      (p.flags & ~(PlayerFlag.DetailsUnknown | PlayerFlag.LevelGuessed)) |
+      PlayerFlag.ConfirmedPlayer;
+    s.playersChanged = 1;
   }
-  if (s.Player_Gang !== '' && p.gang === s.Player_Gang && p.kind === 0) {
-    p.kind = 2;
-    s.f_e24c = 1;
+  if (s.Player_Gang !== '' && p.gang === s.Player_Gang && p.kind === Stance.Unknown) {
+    p.kind = Stance.Friend;
+    s.playersChanged = 1;
     s.host.show(`[${row.name} assumed to be friend]`);
   }
   if (p.name !== s.Player_Name) {
@@ -200,8 +204,8 @@ function listed(s: Session, row: Row, titleForm: boolean): void {
     titleLevel(s, p, row.title);
     if (p.level !== was) {
       if (was > 1) s.host.show(`[${row.name}'s level updated]`);
-      s.f_e24c = 1;
-      p.flags &= ~0x20000;
+      s.playersChanged = 1;
+      p.flags &= ~PlayerFlag.LookedAt;
     }
   }
   s.whoList.push({ kind: 0, name: row.name.slice(0, 30), player: p });
@@ -218,15 +222,15 @@ export function whoLine(s: Session, line: string): number {
     const p = findPlayer(s, name);
     const entry = { kind: 3, name, player: p };
     if (!p) {
-      s.f_e2a4 = 1;
+      s.whoDue = 1;
     } else {
       entry.kind = p.kind;
       p.seenAt = s.now;
-      p.flags |= 0x10000000;
-      s.f_e24c = 1;
+      p.flags |= PlayerFlag.OnWhoList;
+      s.playersChanged = 1;
     }
     s.whoList.push(entry);
-    if (p && (p.flags & 0x80) !== 0) s.host.alert?.('playerEntered');
+    if (p && (p.flags & PlayerFlag.AlertOnEnter) !== 0) s.host.alert?.('playerEntered');
     return 1;
   }
   if (indexOf(line, ' just left the Realm') !== -1 || indexOf(line, ' just hung up!!!') !== -1) {
@@ -234,7 +238,7 @@ export function whoLine(s: Session, line: string): number {
     const gone = s.whoList.findIndex((w) => w.name === name);
     if (gone !== -1) s.whoList.splice(gone, 1);
     for (let i = s.room.length - 1; i >= 0; i -= 1) {
-      if (s.room[i]!.type === 1 && s.room[i]!.name === name) {
+      if (s.room[i]!.type === EntityType.Player && s.room[i]!.name === name) {
         removeEntity(s, i);
         break;
       }
@@ -243,14 +247,14 @@ export function whoLine(s: Session, line: string): number {
     const i = partyIndex(s, name);
     if (i !== -1) {
       const m = s.party[i]!;
-      s.f_32330 = s.now;
-      m.flags28 = (m.flags28 & ~4) | 0x80;
+      s.partyWaitAt = s.now;
+      m.flags28 = (m.flags28 & ~PartyFlag.Invited) | PartyFlag.Offline;
       m.leftAt = s.now;
     }
     return 1;
   }
-  if ((s.lineFlags & 0x180) === 0) {
-    s.lineFlags &= ~0x200;
+  if ((s.lineFlags & (LineFlag.WhoTitled | LineFlag.WhoPlain)) === 0) {
+    s.lineFlags &= ~LineFlag.WhoRowSeen;
     let form: number;
     if (indexOf(line, '  Current Adventurers') !== -1 || line.startsWith('Current Adventurers')) {
       form = 0x80;
@@ -259,15 +263,15 @@ export function whoLine(s: Session, line: string): number {
     } else {
       return 0;
     }
-    setState(s, 0x23);
-    s.lineFlags = (s.lineFlags & ~1) | form;
+    setState(s, State.Who);
+    s.lineFlags = (s.lineFlags & ~LineFlag.Prompted) | form;
     s.whoList = [];
     return 1;
   }
-  if ((s.lineFlags & 1) !== 0) return listingDone(s);
-  const titleForm = (s.lineFlags & 0x80) === 0;
+  if ((s.lineFlags & LineFlag.Prompted) !== 0) return listingDone(s);
+  const titleForm = (s.lineFlags & LineFlag.WhoTitled) === 0;
   const row = titleForm ? titleRow(line) : adventurerRow(s, line);
-  if (!row) return (s.lineFlags & 0x200) === 0 ? 0 : listingDone(s);
+  if (!row) return (s.lineFlags & LineFlag.WhoRowSeen) === 0 ? 0 : listingDone(s);
   listed(s, row, titleForm);
   return 1;
 }

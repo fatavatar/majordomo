@@ -11,11 +11,13 @@ import { modeDefaults } from '../script/modes';
 import { forgetAwaited, setState } from '../script/state';
 import type { Session } from '../Session';
 import { carryLess, carryMore, coinsFromWealth, wealthCarried } from './inventory';
+import { State } from '../states';
+import { LineFlag, ItemFlag } from '../flags';
 
 /**
  * The coins listed after `for`, from `at` to the line's end (`0x453cc3`,
  * `0x455ef0`): each passed to `each`. A list running onto the next line is
- * kept (`s_d910`) and `pending` set in `lineFlags`.
+ * kept (`listingRest`) and `pending` set in `lineFlags`.
  */
 export function coinList(
   s: Session,
@@ -28,8 +30,8 @@ export function coinList(
     let end = indexFrom(line, at, ',');
     if (end === -1) end = indexFrom(line, at, '.');
     if (end === -1) {
-      s.s_d910 = trimSpaces(line.slice(at, at + 0x1ff));
-      if (s.s_d910 !== '') {
+      s.listingRest = trimSpaces(line.slice(at, at + 0x1ff));
+      if (s.listingRest !== '') {
         s.lineFlags |= pending;
         return 1;
       }
@@ -37,9 +39,9 @@ export function coinList(
     }
     let piece = trimSpaces(line.slice(at, at + Math.min(end - at, 0x30)));
     if (piece === '') break;
-    if (s.s_d910 !== '') {
-      piece = trimSpaces(insertAt(insertAt(piece, 0, ' '), 0, s.s_d910));
-      s.s_d910 = '';
+    if (s.listingRest !== '') {
+      piece = trimSpaces(insertAt(insertAt(piece, 0, ' '), 0, s.listingRest));
+      s.listingRest = '';
     }
     if (piece === '') break;
     const [count, numEnd] = leadingNumber(piece);
@@ -48,16 +50,16 @@ export function coinList(
     if (line[at] === ' ') at += 1;
   }
   forgetAwaited(s, s.state);
-  setState(s, 0);
+  setState(s, State.Nothing);
   wealthCarried(s);
   coinsFromWealth(s);
-  s.f_8468 = 0;
+  s.weightMax = 0;
   return 1;
 }
 
 /** A coin paid: carried no more. */
 function paid(s: Session): (name: string, count: number) => void {
-  return (name, count) => carryLess(s, name, count, 0x28);
+  return (name, count) => carryLess(s, name, count);
 }
 
 export function buyLine(s: Session, line: string): number {
@@ -70,17 +72,17 @@ export function buyLine(s: Session, line: string): number {
     );
     const item = findItem(s, name);
     if (item) {
-      item.flags |= 0x4000000;
+      item.flags |= ItemFlag.OutOfStock;
       s.host.show(`[${name} temporarily out of stock]`);
     }
-    setState(s, 0);
+    setState(s, State.Nothing);
     return 1;
   }
   if (indexOf(line, 'You cannot afford ') !== -1 || indexOf(line, ' is not a known item!') !== -1) {
-    s.f_8468 = 0;
-    s.s_8474 = '';
+    s.weightMax = 0;
+    s.itemPickingUp = '';
     forgetAwaited(s, s.state);
-    setState(s, 0);
+    setState(s, State.Nothing);
     if (s.walking !== 0) {
       s.walking = 0;
       modeDefaults(s);
@@ -88,9 +90,9 @@ export function buyLine(s: Session, line: string): number {
     }
     return 1;
   }
-  if ((s.lineFlags & 0x100000) !== 0) {
-    s.lineFlags &= ~0x100000;
-    return coinList(s, line, 0, 0x100000, paid(s));
+  if ((s.lineFlags & LineFlag.BuyCoinsContinue) !== 0) {
+    s.lineFlags &= ~LineFlag.BuyCoinsContinue;
+    return coinList(s, line, 0, LineFlag.BuyCoinsContinue, paid(s));
   }
   const bought = indexOf(line, 'You just bought ');
   const forAt = bought === -1 ? -1 : indexFrom(line, bought + 0x10, ' for ');
@@ -109,5 +111,5 @@ export function buyLine(s: Session, line: string): number {
     }
   }
   if (count > 0 && carryMore(s, name, count) === 0) return 0;
-  return coinList(s, line, forAt + 5, 0x100000, paid(s));
+  return coinList(s, line, forAt + 5, LineFlag.BuyCoinsContinue, paid(s));
 }

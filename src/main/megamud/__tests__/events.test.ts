@@ -3,6 +3,8 @@ import { describe, expect, it } from 'vitest';
 import { combatEventLine } from '../combat/events';
 import { addEntity } from '../room/entities';
 import { session } from './fixture';
+import { State } from '../states';
+import { EntityType, Stance } from '../flags';
 
 /* `0x427120`, read 2026-10-12. */
 
@@ -12,12 +14,12 @@ function fightingRat() {
   s.inGame = 1;
   s.online = 1;
   s.inCombat = 1;
-  s.state = 0x11;
+  s.state = State.Attacking;
   s.Combat_AttackCmd = 'attack';
   const rat = addEntity(s);
   rat.name = 'giant rat';
-  rat.type = 2;
-  rat.kind = 4;
+  rat.type = EntityType.Monster;
+  rat.kind = Stance.Enemy;
   s.target = 'giant rat';
   return fixture;
 }
@@ -40,7 +42,7 @@ describe('an attack the server would not take', () => {
     expect(combatEventLine(s, 'You say "attack giant rat"')).toBe(1);
     expect(s.inCombat).toBe(0);
     expect(s.target).toBe('');
-    expect(s.f_e290).toBe(1);
+    expect(s.lookDue).toBe(1);
   });
 });
 

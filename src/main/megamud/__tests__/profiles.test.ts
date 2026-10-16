@@ -45,13 +45,9 @@ describe('config profiles (0x446910)', () => {
 describe('@reset (0x4b3f70)', () => {
   it('clears the conditions and waits, and starts the statistics again', () => {
     const { s } = session();
-    Object.assign(s, { blind: 1, poisoned: 1, held: 1, partyWait: 1, waitLines: 2, f_3252c: 4 });
-    s.f_32548 = 0;
+    Object.assign(s, { blind: 1, poisoned: 1, held: 1, partyWait: 1, waitLines: 2 });
     resetAll(s);
-    expect([s.blind, s.poisoned, s.held, s.partyWait, s.waitLines, s.f_3252c]).toEqual([
-      0, 0, 0, 0, 0, 0
-    ]);
-    expect(s.f_32548).toBe(-1);
-    expect(s.f_e290).toBe(1);
+    expect([s.blind, s.poisoned, s.held, s.partyWait, s.waitLines]).toEqual([0, 0, 0, 0, 0]);
+    expect(s.lookDue).toBe(1);
   });
 });

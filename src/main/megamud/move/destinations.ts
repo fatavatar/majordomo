@@ -13,7 +13,7 @@ import { stamp } from '../script/events';
 import { wake } from '../script/send';
 import { setState } from '../script/state';
 import { hideStep } from '../script/stealth';
-import { setTask } from '../script/task';
+import { setTask, Task } from '../script/task';
 import { findItem } from '../room/checkNames';
 import type { RoomRec } from '../data';
 import type { PathRec, Session } from '../Session';
@@ -27,6 +27,8 @@ import {
   showPath,
   stepsLeft
 } from './path';
+import { State } from '../states';
+import { ItemFlag, RouteFlag, MonitorWhen } from '../flags';
 
 /** `0x4983d0`: the room Rooms.md has with this signature. */
 export function roomBySignature(s: Session, sig: number): RoomRec | null {
@@ -40,10 +42,10 @@ export function roomByName(s: Session, name: string): RoomRec | null {
 
 /** `0x43cb90`: this room is one Rooms.md has. */
 export function roomKnownHere(s: Session): number {
-  return (s.data.rooms ?? []).some((r) => r.signature === s.f_8130) ? 1 : 0;
+  return (s.data.rooms ?? []).some((r) => r.signature === s.roomSignature) ? 1 : 0;
 }
 
-/** `0x43cec0`: the destination's name: the loop's, else the room's (`0x80fb`). */
+/** `0x43cec0`: the destination's name: the loop's, else the room's (`destination`). */
 function showDestination(s: Session): void {
   if (s.looping !== 0) {
     s.destination = s.MegaMud_CurPath.slice(0, 0x34);
@@ -88,21 +90,12 @@ export function goTo(s: Session, room: number, path: PathRec | null): number {
 
 /** `0x4b4590`: walking (the path-start monitors due when it was not). */
 export function startWalking(s: Session): void {
-  if (s.walking === 0) dueOn(s, 0x10);
+  if (s.walking === 0) dueOn(s, MonitorWhen.PathStart);
   s.walking = 1;
   s.roaming = 0;
   s.lost = 0;
   s.hidden = 0;
-  s.f_e398 = 0;
-}
-
-/** The activity timers (`0x326a0`, `0x32700`: twelve start stamps and totals) cleared. */
-function clearTimers(s: Session): void {
-  const raw = s as unknown as Record<string, number>;
-  for (let k = 0; k < 12; k += 1) {
-    raw[`f_${(0x326a0 + k * 8).toString(16)}`] = 0;
-    raw[`f_${(0x32700 + k * 8).toString(16)}`] = 0;
-  }
+  s.movementHalted = 0;
 }
 
 /** Auto-combat and auto-heal back on for a loop (`AutoAutoCombat`, `AutoAutoHeal`). */
@@ -119,7 +112,7 @@ function loopEngage(s: Session): void {
 
 /** The loop taken up again from its start (`0x43d2a0` with no destination). */
 function resumeLoop(s: Session): number {
-  if (s.looping !== 0) s.f_db44 += 1;
+  if (s.looping !== 0) s.laps += 1;
   freeSteps(s.path);
   copyPath(s, s.path, s.loopPath, 1);
   s.MegaMud_CurPathStep = 0;
@@ -129,11 +122,11 @@ function resumeLoop(s: Session): number {
   s.looping = 1;
   s.stepsToGo = s.path.count;
   goTo(s, 0, s.path);
-  setTask(s, 0xf);
-  setState(s, 0);
+  setTask(s, Task.Looping);
+  setState(s, State.Nothing);
   showPath(s);
   loopEngage(s);
-  dueOn(s, 0x10);
+  dueOn(s, MonitorWhen.PathStart);
   wake(s);
   return 0;
 }
@@ -141,9 +134,9 @@ function resumeLoop(s: Session): number {
 /** `0x43d030`: the item a way needs fetched by its "if needed" path. */
 function itemByPath(s: Session, how: number, item: string): number {
   let result = 0x10;
-  s.s_8474 = item.slice(0, 0x1e);
-  const rec = findItem(s, s.s_8474);
-  if (rec && (rec.flags & 0x20) !== 0 && rec.ifNeeded !== '') {
+  s.itemPickingUp = item.slice(0, 0x1e);
+  const rec = findItem(s, s.itemPickingUp);
+  if (rec && (rec.flags & ItemFlag.Find) !== 0 && rec.ifNeeded !== '') {
     const p = findPath(s, rec.ifNeeded);
     if (p && goTo(s, 0, p) !== 0) {
       s.detours[0]!.why = `for ${item}`.slice(0, 0x31);
@@ -153,10 +146,10 @@ function itemByPath(s: Session, how: number, item: string): number {
       if (how === 0) return 0;
     }
   }
-  if (s.f_e36c === 1) return 0;
+  if (s.goAnywayAccepted === 1) return 0;
   if (how !== 0) {
-    s.f_e36c = 1;
-    if (!s.host.ask?.(`You need a ${s.s_8474} to go here.\nDo you wish to continue?`))
+    s.goAnywayAccepted = 1;
+    if (!s.host.ask?.(`You need a ${s.itemPickingUp} to go here.\nDo you wish to continue?`))
       result = 0x20;
   }
   return result;
@@ -165,15 +158,15 @@ function itemByPath(s: Session, how: number, item: string): number {
 /** `0x43d130`: the item a way needs bought at its shop (the bank first, when short). */
 function itemByShop(s: Session, how: number, item: string): number {
   let result = 0x10;
-  s.s_8474 = item.slice(0, 0x1e);
-  const rec = findItem(s, s.s_8474);
-  if (rec && (rec.flags & 4) !== 0 && rec.shop !== '') {
+  s.itemPickingUp = item.slice(0, 0x1e);
+  const rec = findItem(s, s.itemPickingUp);
+  if (rec && (rec.flags & ItemFlag.Buy) !== 0 && rec.shop !== '') {
     const shop = roomByName(s, rec.shop);
     if (shop) {
       let price = rec.price;
       if (s.Player_Charm < 0x32) price += Math.trunc(((0x32 - s.Player_Charm) * price * 2) / 100);
-      if (s.f_8428 >>> 0 < price >>> 0) return fetchCash(s, 0, price);
-      if (s.f_8130 !== shop.signature && goTo(s, shop.signature, null) !== 0) {
+      if (s.wealth >>> 0 < price >>> 0) return fetchCash(s, 0, price);
+      if (s.roomSignature !== shop.signature && goTo(s, shop.signature, null) !== 0) {
         s.detours[0]!.why = `for ${item}`.slice(0, 0x31);
         result = headFor(s, how);
         if (result === 0) return 0;
@@ -182,10 +175,12 @@ function itemByShop(s: Session, how: number, item: string): number {
       }
     }
   }
-  if (s.f_e36c === 1) return 0;
+  if (s.goAnywayAccepted === 1) return 0;
   if (how === 0) return result;
-  s.f_e36c = 1;
-  return s.host.ask?.(`You need a ${s.s_8474} to go here.\nDo you wish to continue?`) ? 0 : 0x20;
+  s.goAnywayAccepted = 1;
+  return s.host.ask?.(`You need a ${s.itemPickingUp} to go here.\nDo you wish to continue?`)
+    ? 0
+    : 0x20;
 }
 
 /** `ABCDWXYZ.MP` → `WXYZABCD.MP`: the path back, its file's two room codes swapped (C strings: a short name stops short). */
@@ -207,13 +202,17 @@ export function headFor(s: Session, how: number): number {
   if (how !== 0) {
     if (how === 1) {
       // `0x4bf670`: the Go To dialog (the app's).
-      s.f_e36c = 0;
-      s.f_a32c = 0;
+      s.goAnywayAccepted = 0;
+      s.allOff = 0;
     }
     s.stepsToGo = 0;
-    s.f_db44 = 0;
+    s.laps = 0;
     how = -1;
-    if (s.detours[0]!.room === s.f_8130 && s.detours[1]!.room === 0 && s.detours[0]!.path === '') {
+    if (
+      s.detours[0]!.room === s.roomSignature &&
+      s.detours[1]!.room === 0 &&
+      s.detours[0]!.path === ''
+    ) {
       detourDone(s, 0);
       clearPath(s.path);
       clearPath(s.loopPath);
@@ -222,13 +221,13 @@ export function headFor(s: Session, how: number): number {
       s.lost = 0;
       s.roaming = 0;
       if (s.detourCombat !== -1) s.MegaMud_AutoCombat = s.idleCombat;
-      if (s.f_e21c !== 0) {
-        s.f_e21c = 0;
+      if (s.dontAttackHere !== 0) {
+        s.dontAttackHere = 0;
         s.host.show("[Don't attack flag cleared from room.]");
       }
       modeDefaults(s);
       reEngage(s);
-      setTask(s, 0xb);
+      setTask(s, Task.InGame);
       showPath(s);
       return 0x20;
     }
@@ -237,20 +236,19 @@ export function headFor(s: Session, how: number): number {
     s.looping = 0;
     s.roaming = 0;
     s.lost = 0;
-    s.f_e194 = 0;
-    s.f_e198 = 0;
-    s.f_e2dc = 0;
-    s.f_8b64 = 0;
+    s.noPathShown = 0;
+    s.lostNeedsKnownRoom = 0;
+    s.openDoorNext = 0;
+    s.trainDealtWith = 0;
     s.held = 0;
     s.partyWait = 0;
-    s.f_8430 = 0;
-    s.s_8474 = '';
-    s.f_324d0 = s.exp - s.f_324c8;
-    s.f_322b0 = s.now;
-    s.f_322b8 = s.now;
+    s.cashNeeded = 0;
+    s.itemPickingUp = '';
+    s.expBefore = s.exp - s.expBaseline;
+    s.expMeterStart = s.now;
+    s.expMeterEnd = s.now;
     s.stepsToGo = 0;
-    s.f_324c8 = s.exp;
-    clearTimers(s);
+    s.expBaseline = s.exp;
     s.hidden = 0;
   }
   if (s.detours[0]!.room !== 0 && resync(s, s.path) === 0) {
@@ -265,26 +263,26 @@ export function headFor(s: Session, how: number): number {
       }
     }
   }
-  if (s.f_9104 !== 0 && s.f_8130 === s.f_9104) {
-    s.f_e1a0 = 0;
-    s.f_9104 = 0;
+  if (s.fleeRoom !== 0 && s.roomSignature === s.fleeRoom) {
+    s.fleeingPlayer = 0;
+    s.fleeRoom = 0;
   }
   let dest = s.detours[0]!.room;
-  if (s.f_8130 === dest) {
+  if (s.roomSignature === dest) {
     for (;;) {
       if (s.detours[0]!.path !== '' && s.MegaMud_SelPath !== s.MegaMud_CurPath) {
         // At a detour's path's start: on to its end.
         s.detours[0]!.room = s.path.end;
         s.detours[0]!.path = '';
         dest = s.detours[0]!.room;
-        if (s.f_8130 === dest) {
+        if (s.roomSignature === dest) {
           s.MegaMud_CurPathStep = 0;
           s.path.prev = 0;
           s.path.step = 0;
           s.walking = 1;
-          dueOn(s, 0x10);
+          dueOn(s, MonitorWhen.PathStart);
           showDestination(s);
-          setTask(s, 0xe);
+          setTask(s, Task.Walking);
           showPath(s);
           modeDefaults(s);
           return 0;
@@ -297,7 +295,7 @@ export function headFor(s: Session, how: number): number {
         s.detourCombat = -1;
         break;
       }
-      if (s.f_8130 !== dest) break;
+      if (s.roomSignature !== dest) break;
     }
   }
   if (dest === 0) {
@@ -305,7 +303,7 @@ export function headFor(s: Session, how: number): number {
     s.walking = 0;
     modeDefaults(s);
     reEngage(s);
-    setTask(s, 0xb);
+    setTask(s, Task.InGame);
     hideStep(s);
     s.host.alert?.('idle');
     return 0;
@@ -327,10 +325,10 @@ export function headFor(s: Session, how: number): number {
     const back = backName(s.MegaMud_CurPath);
     if (!findPath(s, back)) {
       if (s.path.start === s.path.end && s.path.start === s.loopPath.end) {
-        s.f_db44 = -1;
+        s.laps = -1;
         s.looping = 1;
-        setTask(s, 0xf);
-        setState(s, 0);
+        setTask(s, Task.Looping);
+        setState(s, State.Nothing);
         showPath(s);
         loopEngage(s);
         wake(s);
@@ -344,21 +342,21 @@ export function headFor(s: Session, how: number): number {
     return arrive(s, 0, 0);
   }
   const task = s.task;
-  setTask(s, 0xd);
-  const way = s.host.route?.(s.f_8130, dest) ?? { flags: 1, path: null, steps: -1 };
+  setTask(s, Task.Thinking);
+  const way = s.host.route?.(s.roomSignature, dest) ?? { flags: 1, path: null, steps: -1 };
   setTask(s, task);
   s.lost = 0;
   s.walking = 0;
   s.looping = 0;
   s.stepsToGo = way.steps;
   let flags = way.flags;
-  if (flags !== 0 && flags !== 0x20) {
-    if (flags === 1) {
-      if (s.detours[0]!.room === s.f_8130) {
+  if (flags !== 0 && flags !== RouteFlag.Cancelled) {
+    if (flags === RouteFlag.NoWay) {
+      if (s.detours[0]!.room === s.roomSignature) {
         detourDone(s, 0);
         return headFor(s, 0);
       }
-      if (s.f_e194 === 0) {
+      if (s.noPathShown === 0) {
         if (how === 0) s.host.alert?.('idle');
         const room = roomBySignature(s, s.detours[0]!.room);
         const text = room
@@ -366,45 +364,46 @@ export function headFor(s: Session, how: number): number {
           : `There are no paths defined to get from the current room to room ${hex8(s.detours[0]!.room)}.`;
         s.host.show(`[${text} (${stamp(s)})]`);
         s.host.message?.(text);
-        s.f_e194 = 1;
+        s.noPathShown = 1;
       }
       if (how === 0) {
         s.lost = 1;
-        s.f_e198 = 1;
+        s.lostNeedsKnownRoom = 1;
         s.walking = 1;
         s.looping = 0;
       }
       return arrive(s, 0, flags);
     }
-    if ((flags & 8) !== 0) {
+    if ((flags & RouteFlag.ShortOfGold) !== 0) {
       const got = fetchCash(s, how, (way.gold ?? 0) * 100);
       if (got === 0x20) {
         clearDetours(s);
         return arrive(s, 0, 0x20);
       }
-      if (got === 0) flags &= ~8;
-      else if ((got & 0x10) !== 0) flags |= 0x10;
+      if (got === 0) flags &= ~RouteFlag.ShortOfGold;
+      else if ((got & 0x10) !== 0) flags |= RouteFlag.ItemNeeded;
     }
-    if ((flags & 0x10) !== 0) {
+    if ((flags & RouteFlag.ItemNeeded) !== 0) {
       let got = itemByPath(s, how, way.item ?? '');
       if (got === 0x10) got = itemByShop(s, 0, way.item ?? '');
       if (got === 0x20) {
         clearDetours(s);
         return arrive(s, 0, 0x20);
       }
-      if (got === 0) flags &= ~0x10;
+      if (got === 0) flags &= ~RouteFlag.ItemNeeded;
     }
-    if ((flags & 6) !== 0) {
-      if (how === 0 && s.f_e36c !== 0) {
-        flags &= ~6;
+    if ((flags & (RouteFlag.LevelTooLow | RouteFlag.LevelTooHigh)) !== 0) {
+      if (how === 0 && s.goAnywayAccepted !== 0) {
+        flags &= ~(RouteFlag.LevelTooLow | RouteFlag.LevelTooHigh);
       } else {
         if (how === 0) s.host.alert?.('idle');
         const min = way.minLevel ?? 0;
         const max = way.maxLevel ?? 999;
         let text =
-          (flags & 6) === 6
+          (flags & (RouteFlag.LevelTooLow | RouteFlag.LevelTooHigh)) ===
+          (RouteFlag.LevelTooLow | RouteFlag.LevelTooHigh)
             ? `You must be between levels ${min} and ${max} to go here`
-            : (flags & 2) !== 0
+            : (flags & RouteFlag.LevelTooLow) !== 0
               ? `You must be at least level ${min} to go here`
               : `You cannot go here now that you are past level ${max}`;
         if (way.via !== undefined && way.via !== s.detours[0]!.room) {
@@ -416,20 +415,25 @@ export function headFor(s: Session, how: number): number {
           s.host.message?.(text);
         } else {
           const yes = s.host.ask?.(`${text}\n\nContinue Anyway?`) ?? false;
-          s.f_e36c = yes ? 1 : 0;
-          if (yes) flags &= ~6;
+          s.goAnywayAccepted = yes ? 1 : 0;
+          if (yes) flags &= ~(RouteFlag.LevelTooLow | RouteFlag.LevelTooHigh);
         }
       }
     }
   }
-  if ((flags === 8 || flags === 0x10 || flags === 0x18) && how === 0) {
+  if (
+    (flags === RouteFlag.ShortOfGold ||
+      flags === RouteFlag.ItemNeeded ||
+      flags === (RouteFlag.ShortOfGold | RouteFlag.ItemNeeded)) &&
+    how === 0
+  ) {
     flags = 0;
   } else if (flags !== 0) {
-    if (flags === 0x20) clearDetours(s);
+    if (flags === RouteFlag.Cancelled) clearDetours(s);
     return arrive(s, 0, flags);
   }
-  s.f_e194 = 0;
-  s.f_e198 = 0;
+  s.noPathShown = 0;
+  s.lostNeedsKnownRoom = 0;
   freeSteps(s.path);
   if (way.special !== undefined && way.special < 0) {
     const end = SYS_GOTO[way.special];
@@ -441,8 +445,8 @@ export function headFor(s: Session, how: number): number {
   s.path.prev = 0;
   s.path.step = 0;
   s.walking = 1;
-  if (how !== 0 || wasWalking === 0) dueOn(s, 0x10);
-  s.f_32300 = 0;
+  if (how !== 0 || wasWalking === 0) dueOn(s, MonitorWhen.PathStart);
+  s.hiddenAt = 0;
   s.resting = 0;
   s.meditating = 0;
   s.restHpToFull = 0;

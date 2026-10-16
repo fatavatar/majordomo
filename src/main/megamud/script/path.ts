@@ -4,7 +4,7 @@
  * `0x408270`), and walking the path (D48, `0x409170`).
  *
  * A step is taken from the room the path has for it (its signature,
- * `0x8130`): walking checks that is the room here, moves the step on or back
+ * `roomSignature`): walking checks that is the room here, moves the step on or back
  * a step when a move went further or not at all, tries a step twice when
  * the room is uncertain, and resyncs to the path (or the loop) after that.
  * In the dark (`darkness` 2 and over) rooms are not checked. Before the
@@ -31,16 +31,7 @@ import {
   roomBySignature,
   roomKnownHere
 } from '../move/destinations';
-import {
-  doors,
-  holdForHp,
-  leaving,
-  move,
-  movingClock,
-  roamExit,
-  runBack,
-  spendRun
-} from '../move/go';
+import { doors, holdForHp, leaving, move, roamExit, runBack, spendRun } from '../move/go';
 import {
   clearPath,
   copyPath,
@@ -65,10 +56,21 @@ import { modeDefaults, reEngage } from './modes';
 import { queue, send, wake } from './send';
 import { setState } from './state';
 import { sneakStep } from './stealth';
-import { setTask } from './task';
+import { setTask, Task } from './task';
+import { State } from '../states';
+import {
+  LineFlag,
+  CarriedFlag,
+  ItemFlag,
+  StepFlag,
+  RouteFlag,
+  MonitorWhen,
+  Darkness,
+  Exit
+} from '../flags';
 
 /**
- * `0x4451e0`: the next command of an imported path (`0x7f28`, in one of
+ * `0x4451e0`: the next command of an imported path (`importText`, in one of
  * five clients' formats). The text comes from MegaMUD's Import Path dialog,
  * which the app does not have — our paths are its planner's — so there is
  * never one, and the import ends.
@@ -85,7 +87,8 @@ function importNext(s: Session): string {
  * first), or typed. The first pass only re-reads the room.
  */
 export function pathCommands(s: Session): number {
-  if (s.state !== 0 || s.hp < 1 || s.held !== 0 || s.blind !== 0 || s.confused !== 0) return 0;
+  if (s.state !== State.Nothing || s.hp < 1 || s.held !== 0 || s.blind !== 0 || s.confused !== 0)
+    return 0;
   if (s.importing === 0) return 0;
   s.stepTries += 1;
   if (s.stepTries === 1) return tryAgain(s);
@@ -97,7 +100,7 @@ export function pathCommands(s: Session): number {
     // The command shown in the window (`0x4a9`).
     if (move(s, dir, 1) !== 0) return 1;
     s.waitLines = 2;
-    setState(s, 0x2e);
+    setState(s, State.Other);
     s.host.activity(`Importing path command "${cmd}"`);
     send(s, cmd);
     send(s, '\r');
@@ -116,13 +119,14 @@ export function pathCommands(s: Session): number {
 export function noAllowedExits(s: Session): number {
   if (s.chaseTarget !== '' && findEntity(s, s.chaseTarget, 0) !== null) return 1;
   if (s.walking === 0 || (s.lost === 0 && s.roaming === 0)) return 0;
-  if (s.importing !== 0 || s.following !== 0 || s.f_a32c !== 0 || s.state !== 0) return 0;
+  if (s.importing !== 0 || s.following !== 0 || s.allOff !== 0 || s.state !== State.Nothing)
+    return 0;
   if (s.hp < 1 || s.held !== 0 || s.blind !== 0) return 0;
   if (s.partyWait !== 0 && s.runCount === 0 && s.rescueCount === 0) return 0;
   if (s.roaming !== 0) {
     for (let i = 0; i < 10; i += 1) {
       const room = roomByName(s, s[`Auto_roam_AutoRoom${i}` as 'Auto_roam_AutoRoom0']);
-      if (room && room.signature === s.f_8130) {
+      if (room && room.signature === s.roomSignature) {
         s.moveDir = -1;
         queue(s, `${s[`Auto_roam_AutoCmd${i}` as 'Auto_roam_AutoCmd0']}\r`);
         wake(s);
@@ -132,13 +136,13 @@ export function noAllowedExits(s: Session): number {
   }
   if (
     s.lost !== 0 &&
-    (s.f_e198 === 0 || roomKnownHere(s) === 0) &&
+    (s.lostNeedsKnownRoom === 0 || roomKnownHere(s) === 0) &&
     (roomKnownHere(s) !== 0 || resync(s, s.path) !== 0)
   ) {
     s.lost = 0;
     headFor(s, 0);
-    s.lineFlags |= 1;
-    s.f_e2a0 = 0;
+    s.lineFlags |= LineFlag.Prompted;
+    s.statPagerUp = 0;
     refreshStatus(s);
     return 2;
   }
@@ -147,13 +151,14 @@ export function noAllowedExits(s: Session): number {
     s.host.show('[No allowed exits]');
     s.walking = 0;
     s.roaming = 0;
-    setTask(s, 0xb);
+    setTask(s, Task.InGame);
     s.host.alert?.('idle');
     return 0;
   }
-  if (s.task === 0 || s.task === 0xb) setTask(s, s.lost !== 0 ? 0x11 : 0x10);
+  if (s.task === Task.Idle || s.task === Task.InGame)
+    setTask(s, s.lost !== 0 ? Task.Lost : Task.Roaming);
   if (doors(s, dir, 0, null) !== 0 || sneakStep(s) !== 0) return 1;
-  if (s.f_e298 !== 0) return 0;
+  if (s.partyStepPending !== 0) return 0;
   move(s, dir, 1);
   return 1;
 }
@@ -165,16 +170,18 @@ function pendingHeld(s: Session): number {
 
 /** `0x453710`: a light source (item type 6) is equipped. */
 function wearingLight(s: Session): number {
-  return s.inventory.some((c) => c.item?.type === 6 && (c.flags & 1) !== 0) ? 1 : 0;
+  return s.inventory.some((c) => c.item?.type === 6 && (c.flags & CarriedFlag.Equipped) !== 0)
+    ? 1
+    : 0;
 }
 
 /** `0x456120`: the light source equipped taken off. */
 function removeLight(s: Session): number {
   for (const c of s.inventory) {
-    if (c.item?.type !== 6 || (c.flags & 1) === 0) continue;
-    c.flags &= ~1;
+    if (c.item?.type !== 6 || (c.flags & CarriedFlag.Equipped) === 0) continue;
+    c.flags &= ~CarriedFlag.Equipped;
     s.waitLines = 2;
-    setState(s, 0x2e);
+    setState(s, State.Other);
     send(s, `remove ${c.item.name}\r`);
     return 1;
   }
@@ -188,14 +195,14 @@ function removeLight(s: Session): number {
  * bank with cash over the limit.
  */
 function pathDetours(s: Session, atStart: number): number {
-  if (s.f_a32c !== 0) return 0;
+  if (s.allOff !== 0) return 0;
   const loopStart = s.path.end !== 0 && s.path.start === s.path.end ? atStart : 0;
-  if (s.f_8468 !== 0 && s.f_e2c4 === 0) {
+  if (s.weightMax !== 0 && s.sellDetourTaken === 0) {
     for (const c of s.inventory) {
       const item = c.item;
-      if (!item || (item.flags & 8) === 0) continue;
+      if (!item || (item.flags & ItemFlag.Sell) === 0) continue;
       let heavy = false;
-      if (Math.trunc((s.f_8464 * 100) / s.f_8468) < 0x43 || c.count <= item.min) {
+      if (Math.trunc((s.weightCarried * 100) / s.weightMax) < 0x43 || c.count <= item.min) {
         if (c.count <= item.min) continue;
       } else {
         heavy = true;
@@ -206,7 +213,7 @@ function pathDetours(s: Session, atStart: number): number {
         s.detours[0]!.why = 'to sell items';
         s.host.show('[Detouring to Shop]');
         headFor(s, 0);
-        s.f_e2c4 = 1;
+        s.sellDetourTaken = 1;
         return 1;
       }
     }
@@ -214,7 +221,11 @@ function pathDetours(s: Session, atStart: number): number {
   if (s.following === 0) {
     for (const item of s.data.items) {
       if (s.following !== 0) break;
-      if ((item.flags & 0x4000404) !== 0x404) continue;
+      if (
+        (item.flags & (ItemFlag.Buy | ItemFlag.MustHaveMin | ItemFlag.OutOfStock)) !==
+        (ItemFlag.Buy | ItemFlag.MustHaveMin)
+      )
+        continue;
       const have = findCarried(s, item.name)?.count ?? 0;
       if (have >= item.min || loopStart === 0) continue;
       const shop = roomByName(s, item.shop);
@@ -222,26 +233,26 @@ function pathDetours(s: Session, atStart: number): number {
       s.detours[0]!.why = 'to buy items';
       let price = item.price >>> 0;
       if (s.Player_Charm < 0x32) price += Math.trunc(((0x32 - s.Player_Charm) * price * 2) / 100);
-      if (price >>> 0 <= s.f_8428 >>> 0) {
+      if (price >>> 0 <= s.wealth >>> 0) {
         s.host.show('[Detouring to Shop]');
         headFor(s, 0);
         return 1;
       }
       s.host.show('[Detouring to Bank, then Shop]');
-      fetchCash(s, 0, s.f_8430 + price);
+      fetchCash(s, 0, s.cashNeeded + price);
       return 1;
     }
   }
   if (overCash(s) === 0) return 0;
   if (s.following !== 0) {
-    s.f_842c = -1;
+    s.depositAsked = -1;
     return 0;
   }
   if (loopStart === 0) return 0;
   const bank = s.Cash_Bank !== '' ? roomByName(s, s.Cash_Bank) : null;
   if (!bank) {
-    if (s.f_8460 === 0) {
-      s.f_8460 = 1;
+    if (s.noBankWarned === 0) {
+      s.noBankWarned = 1;
       if (s.Cash_Bank === '') {
         s.host.show('[Cash limit exceeded but no bank is set (see Loot settings)]');
         return 0;
@@ -250,13 +261,13 @@ function pathDetours(s: Session, atStart: number): number {
     }
     return 0;
   }
-  s.f_842c = -1;
-  if (s.f_8130 !== bank.signature && goTo(s, bank.signature, null) !== 0) {
+  s.depositAsked = -1;
+  if (s.roomSignature !== bank.signature && goTo(s, bank.signature, null) !== 0) {
     s.detours[0]!.why = 'to deposit cash';
     s.host.show('[Detouring to Bank]');
     headFor(s, 0);
-    s.lineFlags |= 1;
-    s.f_e2a0 = 0;
+    s.lineFlags |= LineFlag.Prompted;
+    s.statPagerUp = 0;
     refreshStatus(s);
     wake(s);
     return 1;
@@ -272,20 +283,20 @@ function pathDetours(s: Session, atStart: number): number {
  */
 function trainDetour(s: Session): number {
   if (
-    s.f_a32c !== 0 ||
+    s.allOff !== 0 ||
     s.loopPath.start === 0 ||
     s.loopPath.start !== s.loopPath.end ||
     s.expToLevel !== 0
   )
     return 0;
   if (s.Other_AutoTrain === 0) {
-    if (s.f_8b64 === 0) {
+    if (s.trainDealtWith === 0) {
       s.host.alert?.('train');
-      s.f_8b64 = 1;
+      s.trainDealtWith = 1;
     }
     return 0;
   }
-  if (s.f_8b64 === 1) return 0;
+  if (s.trainDealtWith === 1) return 0;
   const rooms = s.data.rooms ?? [];
   let best = -1;
   let bestSteps = 0x7fffffff;
@@ -294,14 +305,16 @@ function trainDetour(s: Session): number {
     if (((r.flags ?? 0) & 0x28) !== 8) continue;
     if (!((r.minLevel ?? 0) <= s.Player_Level && s.Player_Level <= (r.maxLevel ?? 0))) continue;
     if ((r.cls ?? 0) !== 0 && s.Player_Class !== r.cls) continue;
-    if (s.f_8130 === r.signature) {
+    if (s.roomSignature === r.signature) {
       best = i;
       break;
     }
-    const way = s.host.route?.(s.f_8130, r.signature);
+    const way = s.host.route?.(s.roomSignature, r.signature);
     if (
       way &&
-      (way.flags === 0 || way.flags === 8 || way.flags === 0x10) &&
+      (way.flags === 0 ||
+        way.flags === RouteFlag.ShortOfGold ||
+        way.flags === RouteFlag.ItemNeeded) &&
       way.steps < bestSteps
     ) {
       best = i;
@@ -310,12 +323,12 @@ function trainDetour(s: Session): number {
   }
   if (best === -1) return 0;
   const trainer = rooms[best]!;
-  if (s.f_8130 === trainer.signature) {
+  if (s.roomSignature === trainer.signature) {
     if (
       Math.trunc((s.Player_MaxHP * s.Health_HpFullPct) / 100) <= s.hp &&
       Math.trunc((s.Player_MaxMana * s.Health_ManaFullPct) / 100) <= s.mana
     ) {
-      setState(s, 0x2c);
+      setState(s, State.Training);
       s.host.activity('Auto-training character');
       send(s, 'train\r');
       return 1;
@@ -330,12 +343,12 @@ function trainDetour(s: Session): number {
   s.detours[0]!.why = 'to train';
   if (headFor(s, 0) === 0) {
     const cost = trainingCost(s.Player_Level);
-    if (s.f_8428 >>> 0 < cost >>> 0) fetchCash(s, 0, s.f_8430 + cost);
+    if (s.wealth >>> 0 < cost >>> 0) fetchCash(s, 0, s.cashNeeded + cost);
     s.host.alert?.('train');
     return 1;
   }
   detourDone(s, 0);
-  s.f_8b64 = 1;
+  s.trainDealtWith = 1;
   s.host.show("[Can't get to trainer!]");
   return 0;
 }
@@ -352,20 +365,20 @@ const SYS_GOTO: [number, string][] = [
 
 /** The step's flags that act on arriving in its room. */
 function stepFlags(s: Session, st: PathStep): void {
-  if ((st.flags & 2) !== 0) {
+  if ((st.flags & StepFlag.RestUpHere) !== 0) {
     s.restHpToFull = 1;
     s.restManaToFull = 1;
     s.hpFullAt = 0;
     s.manaFullAt = 0;
   }
-  if ((st.flags & 0x20) !== 0) s.f_e21c = 1;
-  if ((st.flags & 4) !== 0) s.f_e2b4 = 1;
-  if ((st.flags & 8) !== 0) s.darkness = 3;
+  if ((st.flags & StepFlag.DontAttackHere) !== 0) s.dontAttackHere = 1;
+  if ((st.flags & StepFlag.DontRestHere) !== 0) s.dontRestHere = 1;
+  if ((st.flags & StepFlag.PitchBlack) !== 0) s.darkness = Darkness.PitchBlack;
 }
 
 /** The room re-read wanted: the step tried again on the next prompt. */
 function tryAgain(s: Session): number {
-  s.f_e290 = 1;
+  s.lookDue = 1;
   return 1;
 }
 
@@ -373,7 +386,7 @@ let askingRelearn = 0;
 
 /** `0x409170` (D48): the next step of the path. */
 export function walkPath(s: Session): number {
-  if (s.f_a32c !== 0) return 0;
+  if (s.allOff !== 0) return 0;
   if (s.walking === 0 || s.following === 1 || s.roaming === 1) {
     pathDetours(s, 0);
     return 0;
@@ -391,20 +404,20 @@ export function walkPath(s: Session): number {
   if (s.partyWait !== 0 && s.runCount === 0 && s.rescueCount === 0) return 0;
   if (holdForHp(s) !== 0) return 0;
   const path = s.path;
-  if (s.BBS_IsMudop !== 0 && path.steps === null && s.f_8130 !== path.end) {
+  if (s.BBS_IsMudop !== 0 && path.steps === null && s.roomSignature !== path.end) {
     const town = SYS_GOTO.find(([sig]) => sig === path.end);
     if (town) {
       send(s, `sys goto ${town[1]}\r`);
       freeSteps(path);
       s.MegaMud_CurPath = '';
       s.roomNameHash = town[0];
-      s.f_8130 = town[0];
+      s.roomSignature = town[0];
       unkeepAll(s);
       s.stepTries = 0;
-      s.f_32390 = 0;
-      s.f_e294 = 1;
+      s.roomLookedAt = 0;
+      s.redisplayDue = 1;
       combatOff(s);
-      s.f_e290 = 1;
+      s.lookDue = 1;
       return 2;
     }
   }
@@ -412,14 +425,14 @@ export function walkPath(s: Session): number {
   if (path.steps === null && loadPath(s, path) === 0) {
     if (s.MegaMud_CurPath === '') return 0;
     s.host.show(`[Dropping path '${s.MegaMud_CurPath}' (steps could not be loaded)]`);
-    if (stricmp(s.MegaMud_SelPath, s.MegaMud_CurPath) === 0 && s.f_e524 === 0)
+    if (stricmp(s.MegaMud_SelPath, s.MegaMud_CurPath) === 0 && s.unknown_e524 === 0)
       clearPath(s.loopPath);
     clearPath(path);
     return 0;
   }
   if (s.MegaMud_CurPathStep === 0) {
-    s.f_8874 = 0;
-    if (s.f_8430 === 0 && trainDetour(s) !== 0) return 2;
+    s.shareAsked = 0;
+    if (s.cashNeeded === 0 && trainDetour(s) !== 0) return 2;
     if (pathDetours(s, 1) !== 0) return 2;
   }
   if (
@@ -431,8 +444,8 @@ export function walkPath(s: Session): number {
     s.lapExpRate < s.Comms_MinExpRate
   ) {
     s.host.trace(`[Experience rate too low! (${stamp(s)})]`);
-    s.f_30de4 = 1;
-    s.f_30de8 = 1;
+    s.skipRedialOnce = 1;
+    s.noRedial = 1;
     s.walking = 0;
     hangUp(s, 0);
     s.host.alert?.('hangup');
@@ -463,11 +476,11 @@ function pathDone(s: Session): number {
     }
   }
   if (path.start === path.end && shareCash(s, 1) !== 0) return 2;
-  if (s.f_8430 === 0 && trainDetour(s) !== 0) return 2;
+  if (s.cashNeeded === 0 && trainDetour(s) !== 0) return 2;
   if (pathDetours(s, 1) !== 0) return 2;
   headFor(s, 0);
-  s.lineFlags |= 1;
-  s.f_e2a0 = 0;
+  s.lineFlags |= LineFlag.Prompted;
+  s.statPagerUp = 0;
   refreshStatus(s);
   return 2;
 }
@@ -477,19 +490,19 @@ function walkStep(s: Session, first: PathStep): number {
   const path = s.path;
   const steps = path.steps!;
   let st = first;
-  if ((st.flags & 8) !== 0) s.darkness = 3;
-  if ((st.flags & 0x20) !== 0) s.f_e21c = 1;
-  if ((st.flags & 4) !== 0) s.f_e2b4 = 1;
+  if ((st.flags & StepFlag.PitchBlack) !== 0) s.darkness = Darkness.PitchBlack;
+  if ((st.flags & StepFlag.DontAttackHere) !== 0) s.dontAttackHere = 1;
+  if ((st.flags & StepFlag.DontRestHere) !== 0) s.dontRestHere = 1;
   let dark = s.darkness;
-  if (dark < 2 && (st.room === -1 || (st.flags & 0x80) !== 0)) {
+  if (dark < 2 && (st.room === -1 || (st.flags & StepFlag.ReLearnRoom) !== 0)) {
     s.stepTries += 1;
     if (s.stepTries === 1) {
-      s.f_32390 = 0;
+      s.roomLookedAt = 0;
       return tryAgain(s);
     }
-    if ((st.flags & 0x80) !== 0) {
-      st.flags &= ~0x80;
-      st.room = s.f_8130;
+    if ((st.flags & StepFlag.ReLearnRoom) !== 0) {
+      st.flags &= ~StepFlag.ReLearnRoom;
+      st.room = s.roomSignature;
       saveSteps(s, path);
       s.host.show('[Path step updated]');
       dark = s.darkness;
@@ -500,35 +513,35 @@ function walkStep(s: Session, first: PathStep): number {
   const any = room === ANY_ROOM;
   if (
     dark < 2 &&
-    s.f_8130 !== room &&
+    s.roomSignature !== room &&
     !any &&
     s.stepTries > 0 &&
     s.MegaMud_CurPathStep < path.count - 1
   ) {
     // The move went a step further than the path thought: on a step.
     const next = steps[path.step + 1];
-    if (next && next.room === s.f_8130) {
+    if (next && next.room === s.roomSignature) {
       s.MegaMud_CurPathStep += 1;
       st = next;
       path.step += 1;
-      if (s.task === 0xe) s.stepsToGo -= 1;
+      if (s.task === Task.Walking) s.stepsToGo -= 1;
     }
   }
-  if (s.darkness < 2) {
+  if (s.darkness < Darkness.Dark) {
     if (
-      s.f_8130 !== st.room &&
+      s.roomSignature !== st.room &&
       !any &&
       s.stepTries > 0 &&
       s.MegaMud_CurPathStep > 0 &&
-      steps[path.prev]?.room === s.f_8130
+      steps[path.prev]?.room === s.roomSignature
     ) {
       // The move did not happen: back a step.
       s.MegaMud_CurPathStep -= 1;
       path.step = path.prev;
       st = steps[path.prev]!;
-      if (s.task === 0xe) s.stepsToGo += 1;
+      if (s.task === Task.Walking) s.stepsToGo += 1;
     }
-    if (s.darkness < 2 && s.f_8130 !== st.room && !any) {
+    if (s.darkness < Darkness.Dark && s.roomSignature !== st.room && !any) {
       s.stepTries += 1;
       if (s.stepTries === 1) return tryAgain(s);
       let tries = s.stepTries;
@@ -536,7 +549,7 @@ function walkStep(s: Session, first: PathStep): number {
         if (askingRelearn !== 0) return 1;
         askingRelearn = 1;
         if (s.host.ask?.('This path step appears to require re-learning.\nUpdate it now?')) {
-          st.room = s.f_8130;
+          st.room = s.roomSignature;
           saveSteps(s, path);
           s.host.show('[Path step updated]');
           s.stepTries = 0;
@@ -548,11 +561,11 @@ function walkStep(s: Session, first: PathStep): number {
       }
       if (tries === 2) {
         const dir = typedDirection(st.command);
-        // An exit that is not there (`0x813c[-1]` is `0x8138` for a command).
-        if ((dir === -1 ? s.f_8138 : s.roomExits[dir]) === 0) {
+        // An exit that is not there (`0x813c[-1]` is `expectedRoom` for a command).
+        if ((dir === -1 ? s.expectedRoom : s.roomExits[dir]) === 0) {
           s.stepTries = 3;
         } else {
-          st.flags |= 0x100;
+          st.flags |= StepFlag.RoomUncertain;
           s.host.show(
             `[Uncertain room (Path ${s.MegaMud_CurPath}, step ${s.MegaMud_CurPathStep}): Trying step anyway]`
           );
@@ -563,7 +576,7 @@ function walkStep(s: Session, first: PathStep): number {
         if (resync(s, path) === 0) {
           if (resync(s, s.loopPath) === 0) {
             s.lost = 1;
-            setTask(s, 0x11);
+            setTask(s, Task.Lost);
             return 1;
           }
           freeSteps(path);
@@ -580,7 +593,7 @@ function walkStep(s: Session, first: PathStep): number {
               s.host.show(
                 `[Resynced from path step ${was} to ${s.MegaMud_CurPathStep} (${s.MegaMud_CurPath})]`
               );
-              st.flags |= 0x8000;
+              st.flags |= StepFlag.Resynced;
             }
             s.stepsToGo = stepsLeft(s);
           }
@@ -588,20 +601,25 @@ function walkStep(s: Session, first: PathStep): number {
       }
     }
   }
-  if (s.darkness < 2 && s.f_8130 === st.room && (st.flags & 0x100) !== 0) st.flags &= ~0x100;
-  if (s.darkness < 2 || any) {
-    if ((st.flags & 1) === 0 && !any && wearingLight(s) !== 0) {
-      if (s.f_e1e8 !== 0) {
-        st.flags |= 1;
+  if (
+    s.darkness < Darkness.Dark &&
+    s.roomSignature === st.room &&
+    (st.flags & StepFlag.RoomUncertain) !== 0
+  )
+    st.flags &= ~StepFlag.RoomUncertain;
+  if (s.darkness < Darkness.Dark || any) {
+    if ((st.flags & StepFlag.DarkRoom) === 0 && !any && wearingLight(s) !== 0) {
+      if (s.lightRemovedToTest !== 0) {
+        st.flags |= StepFlag.DarkRoom;
         if (saveSteps(s, path) !== 0) s.host.show('[Room light updated]');
       } else if (removeLight(s) !== 0) {
-        s.f_e290 = 1;
-        s.f_e1e8 = 1;
+        s.lookDue = 1;
+        s.lightRemovedToTest = 1;
         return 1;
       }
     }
-  } else if ((st.flags & 1) === 0 && s.lost === 0 && s.f_db74 === 0) {
-    st.flags |= 1;
+  } else if ((st.flags & StepFlag.DarkRoom) === 0 && s.lost === 0 && s.darkMisses === 0) {
+    st.flags |= StepFlag.DarkRoom;
     if (saveSteps(s, path) !== 0) s.host.show('[Room light updated]');
   }
   if (s.rescueCount !== 0 && !any && runBack(s, 0) !== 0) return 1;
@@ -609,7 +627,7 @@ function walkStep(s: Session, first: PathStep): number {
     s.runCount !== 0 &&
     s.looping !== 0 &&
     s.Other_RunBackwards !== 0 &&
-    s.f_907c === 0 &&
+    s.runByChoice === 0 &&
     !any &&
     runBack(s, 0) !== 0
   )
@@ -643,10 +661,10 @@ function stopBefore(s: Session, name: string): number {
   reEngage(s);
   s.host.show(`[Stopped Before Entering (${name})]`);
   wake(s);
-  s.f_32390 = 0;
-  s.f_e290 = 1;
-  setTask(s, 0xb);
-  setState(s, 0);
+  s.roomLookedAt = 0;
+  s.lookDue = 1;
+  setTask(s, Task.InGame);
+  setState(s, State.Nothing);
   return 0;
 }
 
@@ -658,24 +676,24 @@ function takeStep(s: Session, st: PathStep, any: boolean): number {
   // A command that moves (it leads somewhere), unless it is `@party` with a party.
   const moves =
     dir === -1 && leadsTo !== 0 && !(strnicmp(st.command, '@party ', 7) === 0 && s.partySize > 1);
-  if (any && dir !== -1 && s.roomExits[dir] === 0) dir = roamExit(s);
+  if (any && dir !== -1 && s.roomExits[dir] === Exit.None) dir = roamExit(s);
   if (dir !== -1 && doors(s, dir, st.flags, st.command) !== 0) return 1;
-  if (s.f_a32c !== 0 || s.f_e398 !== 0) return 0;
+  if (s.allOff !== 0 || s.movementHalted !== 0) return 0;
   const rested = postRest(s, 5, 0);
   const meditated = postMeditate(s, 0);
   if (rested !== 0 || meditated !== 0) return 1;
-  if (s.looping !== 0 && s.f_e1e0 === 0 && (st.flags & 0x10) !== 0) {
-    s.f_e2c0 = 1;
+  if (s.looping !== 0 && s.cannotDropHere === 0 && (st.flags & StepFlag.StashPoint) !== 0) {
+    s.stashing = 1;
     if (stashItems(s) !== 0) return 1;
-    s.f_e2c0 = 0;
+    s.stashing = 0;
   }
-  if (s.MegaMud_CurPathStep === 0 && (st.flags & 2) !== 0) {
+  if (s.MegaMud_CurPathStep === 0 && (st.flags & StepFlag.RestUpHere) !== 0) {
     s.restHpToFull = 1;
     s.restManaToFull = 1;
     if (healthStep(s) !== 0) return 1;
   }
   if (sneakStep(s) !== 0) return 1;
-  if (s.f_e298 !== 0) return 0;
+  if (s.partyStepPending !== 0) return 0;
   if (move(s, dir, 1) === 0) {
     const out = typeCommand(s, st, moves, leadsTo);
     if (out !== '') {
@@ -688,15 +706,16 @@ function takeStep(s: Session, st: PathStep, any: boolean): number {
       }
     }
   } else {
-    if (s.state !== 0x16) return 1;
-    s.f_8138 = leadsTo;
+    if (s.state !== State.Moving) return 1;
+    s.expectedRoom = leadsTo;
     if (leadsTo !== 0) s.roomNameHash = leadsTo;
   }
-  if (s.task === 0 || s.task === 0xb) s.task = s.looping !== 0 ? 0xf : 0xe;
-  if (s.task === 0xe && !any) s.stepsToGo -= 1;
+  if (s.task === Task.Idle || s.task === Task.InGame)
+    s.task = s.looping !== 0 ? Task.Looping : Task.Walking;
+  if (s.task === Task.Walking && !any) s.stepsToGo -= 1;
   showPath(s);
   setTask(s, s.task);
-  if ((st.flags & 0x40) !== 0) s.f_e21c = 1;
+  if ((st.flags & StepFlag.DontAttackNext) !== 0) s.dontAttackHere = 1;
   if (s.debug !== 0) s.host.trace(`{mv:${s.MegaMud_CurPathStep}/${path.count}}`);
   if (!any) {
     path.prev = path.step;
@@ -711,13 +730,13 @@ function takeStep(s: Session, st: PathStep, any: boolean): number {
     flags = next?.flags ?? 0;
   } else {
     if (path.start !== path.end || s.looping === 0) return chased(s);
-    if (s.now - s.f_32348 > 299) s.f_8468 = 0;
-    dueOn(s, 0x10);
+    if (s.now - s.inventoryAskedAt > 299) s.weightMax = 0;
+    dueOn(s, MonitorWhen.PathStart);
     const start = path.steps![0];
     if (start) stepFlags(s, start);
     flags = start?.flags ?? 0;
   }
-  if ((flags & 0x10) !== 0) s.f_e2c0 = 1;
+  if ((flags & StepFlag.StashPoint) !== 0) s.stashing = 1;
   return chased(s);
 }
 
@@ -737,11 +756,11 @@ function typeCommand(s: Session, st: PathStep, moves: boolean, leadsTo: number):
   const cmd = st.command;
   let out = `${cmd}\r`;
   if (stricmp(cmd, 'rest') === 0) {
-    setState(s, 2);
+    setState(s, State.RestAsked);
     return out;
   }
   if ((cmd.length - 3) >>> 0 < 6 && abbrev(cmd, 'meditate', cmd.length) !== 0) {
-    setState(s, 4);
+    setState(s, State.MeditateAsked);
     return out;
   }
   if (abbrev(cmd, 'look', 1) !== 0) {
@@ -752,14 +771,14 @@ function typeCommand(s: Session, st: PathStep, moves: boolean, leadsTo: number):
       if (typedDirection(word) >>> 0 < 10) {
         s.waitLines = 2;
         s.waitPrompt = 1;
-        setState(s, 0x20);
+        setState(s, State.Looking);
         return out;
       }
     }
-    s.f_32390 = 0;
-    s.f_e294 = 1;
-    s.f_e290 = 1;
-    setState(s, 0x2e);
+    s.roomLookedAt = 0;
+    s.redisplayDue = 1;
+    s.lookDue = 1;
+    setState(s, State.Other);
     return out;
   }
   if (strnicmp(cmd, '@party ', 7) === 0) {
@@ -768,21 +787,20 @@ function typeCommand(s: Session, st: PathStep, moves: boolean, leadsTo: number):
     } else {
       queue(s, `${cmd.slice(7)}\r`);
       queue(s, 'par\r');
-      out = `${s.s_7d21}${cmd}\r`;
-      s.f_e298 = 1;
-      s.f_32328 = s.now;
+      out = `${s.speechPrefix}${cmd}\r`;
+      s.partyStepPending = 1;
+      s.parAt = s.now;
     }
   }
-  s.f_32390 = 0;
-  s.f_e294 = 1;
-  s.f_e290 = 1;
+  s.roomLookedAt = 0;
+  s.redisplayDue = 1;
+  s.lookDue = 1;
   if (!moves) {
-    setState(s, 0x2e);
+    setState(s, State.Other);
     return out;
   }
-  movingClock(s);
   s.roomNameHash = leadsTo;
-  s.f_8138 = leadsTo;
+  s.expectedRoom = leadsTo;
   s.moveDir = -1;
   leaving(s);
   spendRun(s);

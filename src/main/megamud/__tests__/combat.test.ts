@@ -8,6 +8,8 @@ import type { Session } from '../Session';
 import { escapeCheck } from '../script/escape';
 import { runCheck } from '../script/run';
 import { session } from './fixture';
+import { State } from '../states';
+import { PartyFlag, EntityType, Stance } from '../flags';
 
 /* `0x4120b0`, `0x412b10`, `0x412120` and `0x40f510`, read 2026-10-12. */
 
@@ -36,8 +38,8 @@ function fighter(spells: SpellRec[]) {
 
 function monster(s: Session, name: string) {
   const e = addEntity(s);
-  e.type = 2;
-  e.kind = 4;
+  e.type = EntityType.Monster;
+  e.kind = Stance.Enemy;
   e.name = name;
   return e;
 }
@@ -73,7 +75,7 @@ describe('healing this character (0x412b10)', () => {
     s.Spells_HealCmd = 'heal';
     s.hp = 50;
     s.Health_HpHealPeriod = 10;
-    s.f_32318 = s.now - 5;
+    s.healCastAt = s.now - 5;
     expect(selfHeal(s)).toBe(0);
   });
 
@@ -86,7 +88,7 @@ describe('healing this character (0x412b10)', () => {
     expect(selfHeal(s)).toBe(1);
     expect(out.sent).toEqual(['drai giant rat\r']);
     expect(s.state).toBe(0xe);
-    expect(s.f_e364).toBe(1);
+    expect(s.altHeal).toBe(1);
     expect(out.activity).toContain('Casting drain on giant rat');
   });
 });
@@ -101,7 +103,7 @@ describe('healing the party (0x412120)', () => {
     member(s, 1, 'Fatty', 40);
     expect(partyHeal(s)).toBe(1);
     expect(out.sent).toEqual(['ph2 Fatty\r']);
-    expect(s.party[1]!.flags28 & 2).toBe(2);
+    expect(s.party[1]!.flags28 & PartyFlag.ChangedSinceListing).toBe(2);
   });
 
   it('casts the area heal when enough are low', () => {
@@ -139,7 +141,7 @@ describe('attack spells (0x40f510)', () => {
     s.Combat_MaxCastCnt = 3;
     s.Combat_AttMaxDmg = 1000;
     const rat = monster(s, 'giant rat');
-    expect(attack(s, 0xd, rat)).toBe(1);
+    expect(attack(s, State.CastMain, rat)).toBe(1);
     expect(out.sent).toEqual(['mmis giant rat\r']);
     expect(s.state).toBe(0xd);
     expect(s.target).toBe('giant rat');
@@ -150,8 +152,8 @@ describe('attack spells (0x40f510)', () => {
     s.Combat_AttackSpl = 'mmis';
     s.Combat_MaxCastCnt = 3;
     s.Combat_AttMaxDmg = 1000;
-    s.f_a3f4 = 3;
-    expect(attack(s, 0xd, monster(s, 'giant rat'))).toBe(0);
+    s.castsMain = 3;
+    expect(attack(s, State.CastMain, monster(s, 'giant rat'))).toBe(0);
     expect(out.sent).toEqual([]);
   });
 
@@ -174,7 +176,7 @@ describe('attack spells (0x40f510)', () => {
       preMax: 0,
       attackMax: 2
     };
-    expect(attack(s, 0xd, orc)).toBe(1);
+    expect(attack(s, State.CastMain, orc)).toBe(1);
     expect(out.sent).toEqual(['fbol orc\r']);
   });
 
@@ -184,9 +186,9 @@ describe('attack spells (0x40f510)', () => {
     s.Combat_PreCastCnt = 1;
     s.Combat_PreMaxDmg = 1000;
     s.MegaMud_AutoPreAttack = 0;
-    expect(attack(s, 0xb, monster(s, 'orc'))).toBe(0);
+    expect(attack(s, State.CastPre, monster(s, 'orc'))).toBe(0);
     s.MegaMud_AutoPreAttack = 1;
-    expect(attack(s, 0xb, monster(s, 'orc'))).toBe(1);
+    expect(attack(s, State.CastPre, monster(s, 'orc'))).toBe(1);
   });
 });
 

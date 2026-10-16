@@ -11,9 +11,10 @@ import { nextEvent } from '../script/events';
 import { hangUp } from '../script/game';
 import { expandMacros, send } from '../script/send';
 import { setState } from '../script/state';
-import { setTask } from '../script/task';
+import { setTask, Task } from '../script/task';
 import { automated, type Session } from '../Session';
 import { recheckStats } from '../stats/exp';
+import { State } from '../states';
 
 /** `0x4ac960`: the version in a `P A R A D I G M` banner (`v1.2.3`), or null. */
 function paradigmVersion(line: string): [number, number, number] | null {
@@ -27,12 +28,13 @@ function paradigmVersion(line: string): [number, number, number] | null {
 function leftGame(s: Session): void {
   if (s.partySize > 0) {
     s.following = 0;
-    if (s.f_e284 === 0) s.partySize = 0;
+    if (s.exitForShutdown === 0) s.partySize = 0;
   }
   s.inGame = 0;
-  setTask(s, 0xb);
-  setState(s, 0);
-  if (s.f_e28c !== 0 || s.f_e284 !== 0 || s.f_e288 !== 0) setTask(s, 0x13);
+  setTask(s, Task.InGame);
+  setState(s, State.Nothing);
+  if (s.exitForRelog !== 0 || s.exitForShutdown !== 0 || s.exitForLogoff !== 0)
+    setTask(s, Task.Exiting);
 }
 
 /** The game menu: out of the game. */
@@ -46,23 +48,23 @@ function gameMenu(s: Session, line: string): number {
     s.BBS_GreaterMUD = 1;
   }
   s.inGame = 0;
-  if ((s.f_e284 !== 0 || s.f_e288 !== 0) && s.f_a32c === 0) {
-    s.f_30de4 = 1;
-    s.f_e28c = 0;
+  if ((s.exitForShutdown !== 0 || s.exitForLogoff !== 0) && s.allOff === 0) {
+    s.skipRedialOnce = 1;
+    s.exitForRelog = 0;
     hangUp(s, 0);
     return 1;
   }
-  if (s.f_e28c !== 0 && s.f_a32c === 0) {
-    s.f_e28c = 0;
-    const relog = expandMacros(s, s.s_7cf7);
+  if (s.exitForRelog !== 0 && s.allOff === 0) {
+    s.exitForRelog = 0;
+    const relog = expandMacros(s, s.relogCmd);
     send(s, relog);
     if (!relog.includes('\r')) send(s, '\r');
-    setTask(s, 0x13);
-    setState(s, 0);
+    setTask(s, Task.Exiting);
+    setState(s, State.Nothing);
     return 1;
   }
-  if (s.task > 10 && s.task !== 0x12) {
-    setTask(s, 0xb);
+  if (s.task > Task.LoggingOn && s.task !== Task.Entering) {
+    setTask(s, Task.InGame);
     return 1;
   }
   return 0;
@@ -77,23 +79,28 @@ export function pagerPrompts(s: Session, line: string, complete: number): number
   ) {
     s.line.text = '';
     s.line.attr.length = 0;
-    if (s.f_a32c !== 0) return 1;
-    if (!automated(s) && (s.task < 1 || s.task > 10) && s.task !== 0x12 && s.inCombat === 0)
+    if (s.allOff !== 0) return 1;
+    if (
+      !automated(s) &&
+      (s.task < Task.Connecting || s.task > Task.LoggingOn) &&
+      s.task !== Task.Entering &&
+      s.inCombat === 0
+    )
       return 1;
     send(s, '\r');
     return 1;
   }
   if (line.includes('but the game is currently full')) {
     s.host.show('[Retrying]');
-    s.f_32298 = s.now + s.Comms_RedialPause;
-    s.f_e544 = 3;
-    s.f_30dc8 = 0;
-    s.f_30de4 = 0;
-    if (s.f_30de8 === 0) {
-      setTask(s, 9);
+    s.redialAt = s.now + s.Comms_RedialPause;
+    s.dialState = 3;
+    s.redials = 0;
+    s.skipRedialOnce = 0;
+    if (s.noRedial === 0) {
+      setTask(s, Task.Redial);
     } else {
       hangUp(s, 0);
-      setTask(s, 0x14);
+      setTask(s, Task.Terminated);
     }
     s.eventNext = nextEvent(s);
     return 1;
@@ -106,7 +113,7 @@ export function pagerPrompts(s: Session, line: string, complete: number): number
   }
   if (complete === 0) {
     if (
-      (s.s_7cb9 !== '' && line.includes(s.s_7cb9)) ||
+      (s.menuPrompt !== '' && line.includes(s.menuPrompt)) ||
       line.includes('[MAJORMUD]:') ||
       line.includes('[PARADIGM]:')
     ) {
@@ -114,24 +121,24 @@ export function pagerPrompts(s: Session, line: string, complete: number): number
     }
     return 0;
   }
-  if (s.s_7d7d !== '' && line.includes(s.s_7d7d)) {
-    s.f_e284 = 1;
+  if (s.shutdownMsg !== '' && line.includes(s.shutdownMsg)) {
+    s.exitForShutdown = 1;
     return 1;
   }
   if (line.includes('The gods have punished you appropriately')) {
-    if (s.f_a32c !== 0) return 1;
+    if (s.allOff !== 0) return 1;
     send(s, '\r');
     return 1;
   }
   if (line.includes('You will exit after a period')) {
-    setTask(s, 0x13);
-    setState(s, 0);
+    setTask(s, Task.Exiting);
+    setState(s, State.Nothing);
     return 1;
   }
   if (line.includes('Your meditation has been interrupted')) {
-    setTask(s, 0xb);
-    setState(s, 0);
-    s.f_e290 = 1;
+    setTask(s, Task.InGame);
+    setState(s, State.Nothing);
+    s.lookDue = 1;
     return 1;
   }
   if (line.includes('Your character has been saved')) {
@@ -142,17 +149,16 @@ export function pagerPrompts(s: Session, line: string, complete: number): number
   // A character being made: nothing of a game is going on.
   s.inGame = 0;
   s.inCombat = 0;
-  s.f_8b64 = 0;
+  s.trainDealtWith = 0;
   s.following = 0;
   s.sneaking = 0;
-  s.f_e2d8 = 0;
-  s.f_e1c8 = 0;
-  s.f_db68 = 0;
-  s.f_db6c = 0;
+  s.arrivedWhileWalking = 0;
+  s.wasSneaking = 0;
+  s.stealthRefused = 0;
+  s.stealthFails = 0;
   s.lastTickAt = 0;
-  s.f_d820 = 0;
   recheckStats(s);
-  setTask(s, 0xb);
-  setState(s, 0);
+  setTask(s, Task.InGame);
+  setState(s, State.Nothing);
   return 1;
 }

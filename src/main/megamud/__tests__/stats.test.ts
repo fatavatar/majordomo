@@ -78,6 +78,6 @@ describe('stat (0x494e70)', () => {
     expect(me.level).toBe(80);
     expect(me.cls).toBe(12);
     expect(me.surname).toBe('Fatterson');
-    expect(s.f_e24c).toBe(1);
+    expect(s.playersChanged).toBe(1);
   });
 });

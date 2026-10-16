@@ -22,9 +22,8 @@ import type { MonsterRule, Relationship } from '../../shared/monsterRules';
 import { mobKey } from '../../shared/world';
 import type { PlayerFacts } from '../../shared/players';
 import type { LearnedItem } from '../world/MegaLearned';
+import { MonsterFlag, MONSTER_PRIORITY, ItemFlag, PlayerFlag, Stance } from './flags';
 
-const CHANGED = 0x40000000;
-const DELETED = 0x80000000;
 const SECONDS_A_DAY = 0x15180;
 
 /** MegaMUD's relationship numbers (`MonsterRec.relationship`) in the monster table's words. */
@@ -53,8 +52,9 @@ const ALIGNMENT_NUMBER: Record<Alignment, number> = {
   FIEND: 9
 };
 
+/** Marked changed and not deleted (the same bits on monsters and items). */
 function changed(flags: number): boolean {
-  return (flags & DELETED) === 0 && (flags & CHANGED) !== 0;
+  return (flags & ItemFlag.Deleted) === 0 && (flags & ItemFlag.Changed) !== 0;
 }
 
 /** `0x46fa70`: the monsters to save, as the stance each was learned to have. */
@@ -94,7 +94,7 @@ export function monsterRecords(s: Session, name: string): MonsterRec[] {
     name: name.slice(0, 30),
     id: 0,
     flags: 0,
-    relationship: 0,
+    relationship: Stance.Unknown,
     exp: 0,
     maxHp: 0,
     preSpell: '',
@@ -111,21 +111,18 @@ export function rememberStance(s: Session, name: string, relationship: Relations
   for (const rec of monsterRecords(s, name)) {
     rec.relationship = RELATIONSHIP_NUMBER[relationship];
     // "Marked as non-enemy" sets 2 beside avoid (`0x426940`).
-    if (relationship === 'avoid') rec.flags |= 2;
+    if (relationship === 'avoid') rec.flags |= MonsterFlag.AutoLearned;
   }
 }
 
 /** The priority nibble's bands (`readMegaMudMonsters` reads them the other way). */
 const PRIORITY_BITS: Record<MobPriorityBand, number> = {
-  first: 0x80,
-  high: 0x40,
+  first: MonsterFlag.PriorityFirst,
+  high: MonsterFlag.PriorityHigh,
   default: 0,
-  low: 0x20,
-  last: 0x10
+  low: MonsterFlag.PriorityLow,
+  last: MonsterFlag.PriorityLast
 };
-const NO_BACKSTAB = 0x100;
-const NOT_HOSTILE = 0x200;
-const STOP_TO_KILL = 0x800;
 
 /**
  * A row of our monster table put on the engine's record for that monster, as
@@ -140,16 +137,17 @@ export function rememberRule(s: Session, rule: MonsterRule): void {
 export function ruleOnto(rec: MonsterRec, rule: MonsterRule): void {
   if (rule.relationship !== undefined) {
     rec.relationship = RELATIONSHIP_NUMBER[rule.relationship];
-    if (rule.relationship === 'avoid') rec.flags |= 2;
-    else rec.flags &= ~2;
+    if (rule.relationship === 'avoid') rec.flags |= MonsterFlag.AutoLearned;
+    else rec.flags &= ~MonsterFlag.AutoLearned;
   }
-  if (rule.priority !== undefined) rec.flags = (rec.flags & ~0xf0) | PRIORITY_BITS[rule.priority];
+  if (rule.priority !== undefined)
+    rec.flags = (rec.flags & ~MONSTER_PRIORITY) | PRIORITY_BITS[rule.priority];
   const bit = (on: boolean | undefined, mask: number): void => {
     if (on !== undefined) rec.flags = on ? rec.flags | mask : rec.flags & ~mask;
   };
-  bit(rule.noBackstab, NO_BACKSTAB);
-  bit(rule.notHostile, NOT_HOSTILE);
-  bit(rule.stopToKill, STOP_TO_KILL);
+  bit(rule.noBackstab, MonsterFlag.DontBackstab);
+  bit(rule.notHostile, MonsterFlag.NotHostile);
+  bit(rule.stopToKill, MonsterFlag.StopToKill);
   if (rule.preAttack) {
     rec.preSpell = rule.preAttack.spell.slice(0, 4);
     rec.preMax = rule.preAttack.max;
@@ -172,7 +170,7 @@ export function loadedItem(name: string): ItemRec {
     name: name.slice(0, 30),
     shop: '',
     ifNeeded: '',
-    flags: 1,
+    flags: ItemFlag.AutoLearned,
     type: 0,
     location: 0,
     min: 0,
@@ -218,6 +216,6 @@ export function rememberPlayers(s: Session, players: readonly PlayerFacts[]): vo
     if (facts.race !== null) rec.race = findRaceByName(s.data, facts.race)?.id ?? 0;
     if (facts.className !== null) rec.cls = findClassByName(s.data, facts.className)?.id ?? 0;
     // Details wanted until race and class are known (`0x494640`).
-    if (rec.race !== 0 && rec.cls !== 0) rec.flags &= ~1;
+    if (rec.race !== 0 && rec.cls !== 0) rec.flags &= ~PlayerFlag.DetailsUnknown;
   }
 }

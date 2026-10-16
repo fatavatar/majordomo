@@ -22,8 +22,10 @@ import type { Session } from '../Session';
 import { castSpell, equipForSpell } from './cast';
 import { healStep } from './heal';
 import { postBackstab, preMeditate, preRest } from './prepost';
+import { State } from '../states';
+import { PartyFlag } from '../flags';
 
-/** The first reason given is the one kept (`0xe2fc`). */
+/** The first reason given is the one kept (`restReason`). */
 function because(s: Session, reason: string): void {
   if (s.restReason === '') s.restReason = reason.slice(0, 99);
 }
@@ -34,7 +36,7 @@ function partyNeedsRest(s: Session): number {
   if (s.leaderName !== s.Player_Name || s.sneaking !== 0 || s.hidden !== 0) return 0;
   for (let i = 0; i < s.partySize; i += 1) {
     const m = s.party[i]!;
-    if (m.name === s.Player_Name || (m.flags28 & 0x20) === 0) continue;
+    if (m.name === s.Player_Name || (m.flags28 & PartyFlag.AskedToWait) === 0) continue;
     if (s.Player_MaxHP < 1 || s.Player_MaxHP <= s.hp) {
       if (s.Player_MaxMana < 1 || s.Player_MaxMana <= s.mana) return 0;
     }
@@ -53,29 +55,29 @@ export function meditate(s: Session): number {
     if (s.Health_MeditateB4Rest === 0 && s.hp < s.Player_MaxHP) return 0;
   }
   if (s.meditating !== 0) return 1;
-  s.f_32604 = 0;
-  s.f_32600 = 0;
+  s.roundBlowSeen = 0;
+  s.probablyRoundFought = 0;
   s.target = '';
-  if (s.f_e1f8 !== 0) {
-    setState(s, 3);
+  if (s.tooSickToRest !== 0) {
+    setState(s, State.Resting);
     return 0;
   }
   if (postBackstab(s, 0) !== 0 || preMeditate(s, 0) !== 0 || beforeMeditate(s) !== 0) return 1;
   s.mustRest = 0;
-  s.f_e360 = 0;
+  s.partyAskPending = 0;
   s.waitLines = 2;
   s.resting = 0;
   s.meditating = 1;
   s.sneaking = 0;
   s.hidden = 0;
-  setState(s, 4);
+  setState(s, State.MeditateAsked);
   send(s, 'meditate\r');
   return 1;
 }
 
 /** `0x414300`'s close: a party check after a telepath to the leader. */
 function partyCheck(s: Session): number {
-  if (s.f_e2ac !== 0 || s.now - s.f_32328 >= 6) queue(s, 'par\r');
+  if (s.parDue !== 0 || s.now - s.parAt >= 6) queue(s, 'par\r');
   return 1;
 }
 
@@ -83,7 +85,7 @@ function partyCheck(s: Session): number {
 function unholdLeader(s: Session, what: string): number {
   s.holdingLeader = 0;
   s.waitLines = 2;
-  s.f_32340 = s.now;
+  s.okSentAt = s.now;
   s.host.activity(what);
   const msg = `/${s.leaderName} ${s.Party_PartyResumeCmd || '@ok'}\r`;
   s.lastResumeSent = msg.slice(0, 299);
@@ -104,9 +106,9 @@ export function healthStep(s: Session): number {
   let wantRest = false;
   let hpOk = false;
   let manaOk = false;
-  if (s.state === 2 || s.state === 4) return 1;
-  if (s.f_a32c !== 0 || s.hp < 1) return 0;
-  if (s.inCombat === 0 && s.f_32604 === 0) {
+  if (s.state === State.RestAsked || s.state === State.MeditateAsked) return 1;
+  if (s.allOff !== 0 || s.hp < 1) return 0;
+  if (s.inCombat === 0 && s.roundBlowSeen === 0) {
     if (s.runCount > 0 && s.held === 0 && s.following === 0) return 0;
   } else if (s.runCount > 0 && s.held === 0) {
     return 0;
@@ -115,7 +117,7 @@ export function healthStep(s: Session): number {
   if (healStep(s) !== 0) return 1;
 
   if (s.MegaMud_AutoHeal === 0) {
-    if (s.holdingLeader === 0 || s.f_a32c !== 0 || s.f_e2ec !== 0) return 0;
+    if (s.holdingLeader === 0 || s.allOff !== 0 || s.partyLost !== 0) return 0;
     return unholdLeader(s, 'Unholding party leader');
   }
 
@@ -146,27 +148,27 @@ export function healthStep(s: Session): number {
   if (
     (s.restUntilOff > 0 ||
       s.held !== 0 ||
-      s.f_e218 !== 0 ||
+      s.attackPrevented !== 0 ||
       s.blind !== 0 ||
       s.confused !== 0 ||
       s.partyWait !== 0 ||
       s.holdingLeader !== 0) &&
-    s.f_a32c === 0 &&
-    s.now - s.f_32378 > 0x78
+    s.allOff === 0 &&
+    s.now - s.statAskedAt > 0x78
   ) {
     recheckStats(s);
     if (refreshStats(s) !== 0) return 1;
   }
   if (
     s.hidden !== 0 &&
-    (s.mustRest === 0 || s.f_e1a0 !== 0 || s.partyWait !== 0) &&
+    (s.mustRest === 0 || s.fleeingPlayer !== 0 || s.partyWait !== 0) &&
     s.holdingLeader === 0 &&
-    s.now - s.f_32300 < s.PvP_HideDelay
+    s.now - s.hiddenAt < s.PvP_HideDelay
   ) {
     s.host.activity('Remaining hidden');
     return 1;
   }
-  if (s.f_e218 !== 0 && s.mustRest === 0 && s.following === 0) return 0;
+  if (s.attackPrevented !== 0 && s.mustRest === 0 && s.following === 0) return 0;
 
   // The full spells.
   if (s.mana < percentOf(s.Player_MaxMana, s.Health_ManaFullPct)) {
@@ -248,7 +250,7 @@ export function healthStep(s: Session): number {
     because(s, 'resting Mana/Kai to full');
   }
   if (s.restUntilOff > 0) {
-    if (why === 0) s.host.activity(`Resting because of ${s.s_742d} condition`);
+    if (why === 0) s.host.activity(`Resting because of ${s.lastRestRow} condition`);
     mustRest = true;
     urgent = true;
     why |= 0x100;
@@ -258,13 +260,16 @@ export function healthStep(s: Session): number {
     for (let i = 0; i < s.partySize; i += 1) {
       const m = s.party[i]!;
       if (m.name === s.Player_Name) continue;
-      if ((m.flags28 & 4) !== 0 && findEntity(s, m.name, 0) === null) {
+      if ((m.flags28 & PartyFlag.Invited) !== 0 && findEntity(s, m.name, 0) === null) {
         removeMember(s, i);
         i -= 1;
         continue;
       }
       if (
-        ((m.flags28 & 0xac) !== 0 || (m.hpPct < s.Party_PartyWaitPct && m.maxHp > 0)) &&
+        ((m.flags28 &
+          (PartyFlag.Invited | PartyFlag.Unlisted | PartyFlag.AskedToWait | PartyFlag.Offline)) !==
+          0 ||
+          (m.hpPct < s.Party_PartyWaitPct && m.maxHp > 0)) &&
         s.rescueCount === 0
       ) {
         if (why === 0) s.host.activity(`Resting to wait for party member ${m.name}`);
@@ -278,7 +283,9 @@ export function healthStep(s: Session): number {
     mustRest ||
     urgent ||
     s.mustRest !== 0 ||
-    (s.following !== 0 && s.f_e1c0 !== 0 && (s.hp < s.Player_MaxHP || s.mana < s.Player_MaxMana)) ||
+    (s.following !== 0 &&
+      s.probablyLeaderResting !== 0 &&
+      (s.hp < s.Player_MaxHP || s.mana < s.Player_MaxMana)) ||
     (!manaOk && s.mana < percentOf(s.Player_MaxMana, s.Health_ManaFullPct)) ||
     (!hpOk && s.hp < percentOf(s.Player_MaxHP, s.Health_HpFullPct))
   ) {
@@ -337,16 +344,16 @@ export function healthStep(s: Session): number {
 
   // A follower asks the leader to wait while it rests.
   if (s.following !== 0 && s.holdingLeader === 0 && mustRest) {
-    if (s.f_a32c === 0 && s.f_e1c0 === 0) {
+    if (s.allOff === 0 && s.probablyLeaderResting === 0) {
       s.holdingLeader = 1;
       because(s, 'not sure why');
-      if (s.now - s.f_32338 <= s.Comms_LagWait + 3) return 1;
+      if (s.now - s.waitSentAt <= s.Comms_LagWait + 3) return 1;
       s.host.activity('Holding leader because we need to rest');
       s.waitLines = 2;
       const msg = `/${s.leaderName} ${s.Party_PartyWaitCmd || '@wait'} (${s.restReason})\r`;
       s.lastWaitSent = msg.slice(0, 299);
       send(s, msg);
-      s.f_32338 = s.now;
+      s.waitSentAt = s.now;
       return partyCheck(s);
     }
   }
@@ -368,21 +375,21 @@ export function healthStep(s: Session): number {
     }
   }
   if (s.runDirection !== -1 && s.holdingLeader === 0) return 0;
-  if (s.f_e2b4 !== 0) return 0;
+  if (s.dontRestHere !== 0) return 0;
 
   if (s.poisoned !== 0 && s.Other_IgnorePoison === 0) {
     if (why === 0) s.host.activity('Resting because we are poisoned');
     if (s.following === 0 && hideStep(s) === 0) sneakStep(s);
-    setState(s, 6);
+    setState(s, State.Poisoned);
     return 1;
   }
   const partyWaits = partyNeedsRest(s);
   if (partyWaits === 0) {
-    s.f_e2f4 = 0;
+    s.partyWaitTraced = 0;
   } else {
     urgent = true;
-    if (s.f_e2f4 === 0) {
-      s.f_e2f4 = 1;
+    if (s.partyWaitTraced === 0) {
+      s.partyWaitTraced = 1;
       if (s.debug !== 0) s.host.trace('{pw-r}');
     }
   }
@@ -394,19 +401,19 @@ export function healthStep(s: Session): number {
       because(s, 'party is waiting');
     }
   } else if (!mustRest && s.mustRest === 0) {
-    if (s.f_e1a0 !== 0 && s.PvP_PvpAction === 2) s.f_e1a0 = 0;
+    if (s.fleeingPlayer !== 0 && s.PvP_PvpAction === 2) s.fleeingPlayer = 0;
     const st = s.state;
-    if (st === 3 || st === 5 || st === 6) {
+    if (st === State.Resting || st === State.Meditating || st === State.Poisoned) {
       forgetAwaited(s, st);
-      setState(s, 0);
+      setState(s, State.Nothing);
     }
-    if (s.holdingLeader !== 0 && s.f_a32c === 0 && s.f_e2ec === 0) {
+    if (s.holdingLeader !== 0 && s.allOff === 0 && s.partyLost === 0) {
       return unholdLeader(s, 'Un-holding leader');
     }
     if (!wantRest) return 0;
     if (s.following === 0) {
       if (s.walking !== 0 || s.importing !== 0 || s.roaming !== 0) return 0;
-    } else if (s.f_e1c0 === 0) {
+    } else if (s.probablyLeaderResting === 0) {
       return 0;
     }
   }
@@ -414,10 +421,10 @@ export function healthStep(s: Session): number {
 
   // Already resting or meditating.
   if (s.resting !== 0 || s.meditating !== 0) {
-    setState(s, s.resting === 0 ? 5 : 3);
-    if (s.poisoned !== 0 || s.f_e1f8 !== 0) poisonRows(s, 0);
+    setState(s, s.resting === 0 ? State.Meditating : State.Resting);
+    if (s.poisoned !== 0 || s.tooSickToRest !== 0) poisonRows(s, 0);
     s.poisoned = 0;
-    s.f_e1f8 = 0;
+    s.tooSickToRest = 0;
     let meditateNow = false;
     if (s.mustRest === 0) {
       if (s.meditating !== 0) return 1;
@@ -443,7 +450,7 @@ export function healthStep(s: Session): number {
     }
     if (
       ((s.active === 0 && s.walking === 0 && s.roaming === 0 && s.importing === 0) ||
-        s.f_a32c !== 0) &&
+        s.allOff !== 0) &&
       (wantRest || mustRest) &&
       s.resting !== 0 &&
       !meditateNow
@@ -460,11 +467,11 @@ export function healthStep(s: Session): number {
     s.mustRest === 0 &&
     s.holdingLeader === 0 &&
     !urgent &&
-    (s.following === 0 || s.f_e1c0 === 0)
+    (s.following === 0 || s.probablyLeaderResting === 0)
   ) {
     const lag = s.Comms_LagWait + 5;
-    if (s.now - s.f_322d0 < lag) return 0;
-    if (s.now - s.f_32320 < lag) return 0;
+    if (s.now - s.probablyLastTypedAt < lag) return 0;
+    if (s.now - s.movedAt < lag) return 0;
   }
 
   // Meditate first?
@@ -484,7 +491,7 @@ export function healthStep(s: Session): number {
   if (
     !mustRest &&
     s.mustRest === 0 &&
-    (s.following === 0 || s.f_e1c0 === 0) &&
+    (s.following === 0 || s.probablyLeaderResting === 0) &&
     (s.Player_MaxHP <= s.hp || (s.hpFullAt > 0 && s.hpFullAt <= s.hp))
   ) {
     return 0;
@@ -492,8 +499,8 @@ export function healthStep(s: Session): number {
 
   // Rest.
   if (postBackstab(s, 0) !== 0 || preRest(s, 0) !== 0 || beforeRest(s) !== 0) return 1;
-  if (s.now - s.f_32310 < s.Comms_LagWait + 4) return 1;
-  s.f_32310 = s.now;
+  if (s.now - s.restAskedAt < s.Comms_LagWait + 4) return 1;
+  s.restAskedAt = s.now;
   s.mustRest = 0;
   if (why === 0) {
     let what: string;
@@ -517,22 +524,22 @@ export function healthStep(s: Session): number {
     s.Health_PreRestCmd === '' &&
     (s.hidden !== 0 || hideStep(s) !== 0 || s.sneaking !== 0 || sneakStep(s) !== 0)
   ) {
-    s.f_32604 = 0;
-    s.f_32600 = 0;
+    s.roundBlowSeen = 0;
+    s.probablyRoundFought = 0;
     s.target = '';
     return 1;
   }
   if (s.resting !== 0) {
-    setState(s, 3);
+    setState(s, State.Resting);
     return 1;
   }
   s.mustRest = 0;
-  s.f_e360 = 0;
-  s.f_32604 = 0;
-  s.f_32600 = 0;
+  s.partyAskPending = 0;
+  s.roundBlowSeen = 0;
+  s.probablyRoundFought = 0;
   s.target = '';
-  if (s.f_e1f8 !== 0) {
-    setState(s, 3);
+  if (s.tooSickToRest !== 0) {
+    setState(s, State.Resting);
     return 1;
   }
   s.waitLines = 2;
@@ -540,8 +547,8 @@ export function healthStep(s: Session): number {
   s.meditating = 0;
   s.sneaking = 0;
   s.hidden = 0;
-  s.f_32310 = s.now;
-  setState(s, 2);
+  s.restAskedAt = s.now;
+  setState(s, State.RestAsked);
   send(s, 'rest\r');
   return 1;
 }

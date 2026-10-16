@@ -5,6 +5,8 @@ import { castSpell } from '../health/cast';
 import { healStep } from '../health/heal';
 import { healthStep } from '../health/rest';
 import { session } from './fixture';
+import { State } from '../states';
+import { Darkness } from '../flags';
 
 /* `0x414300`, `0x413890`, `0x413760` and `0x40c8a0`, read 2026-10-12. */
 
@@ -48,7 +50,7 @@ describe('the health step (0x414300)', () => {
     s.hp = 40;
     healthStep(s);
     s.hp = 90;
-    s.state = 0;
+    s.state = State.Nothing;
     expect(healthStep(s)).toBe(1);
     expect(s.state).toBe(3);
     expect(out.sent).toEqual(['rest\r']);
@@ -105,7 +107,7 @@ describe('lighting a dark room (0x413760)', () => {
     const { s, out } = healthy([spell('ligh')]);
     s.MegaMud_AutoLight = 1;
     s.Spells_LightCmd = 'ligh';
-    s.darkness = 2;
+    s.darkness = Darkness.Dark;
     expect(healStep(s)).toBe(1);
     expect(out.sent).toEqual(['ligh\r']);
     expect(s.darkness).toBe(0);
@@ -115,7 +117,7 @@ describe('lighting a dark room (0x413760)', () => {
     const { s } = healthy([spell('ligh')]);
     s.MegaMud_AutoLight = 1;
     s.Spells_LightCmd = 'ligh';
-    s.darkness = 1;
+    s.darkness = Darkness.Dim;
     expect(healStep(s)).toBe(0);
   });
 });

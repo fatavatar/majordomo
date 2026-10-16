@@ -9,7 +9,7 @@
  */
 import { attack } from '../combat/attack';
 import { normalWeapon } from '../combat/weapons';
-import { f_426ab0, wantsRoomSpell } from '../combat/casts';
+import { inAttackCast, wantsRoomSpell } from '../combat/casts';
 import { attackLateMark, clearCastMode, rememberTarget, targetChanged } from '../combat/engaged';
 import { combatRoundEnd } from '../combat/rounds';
 import { abbrev, idiv } from '../cstr';
@@ -23,10 +23,11 @@ import { send } from './send';
 import { refreshWho } from './setup';
 import { forgetAwaited, setState } from './state';
 import { hideStep, sneakStep } from './stealth';
+import { State } from '../states';
+import { MonsterFlag, EntityFlag, PartyFlag, MONSTER_PRIORITY, EntityType, Stance } from '../flags';
 
 /** A reason to run: counted, `Combat.RunRooms` (or one) rooms, the alert, and the message. */
 export function startRun(s: Session, rooms: number, what: string, shown: string): void {
-  s.f_32534 += 1;
   s.runCount = rooms;
   s.host.activity(what);
   s.host.alert?.('lowHp');
@@ -35,14 +36,14 @@ export function startRun(s: Session, rooms: number, what: string, shown: string)
 
 /** `0x471590`: how tough a monster is, from its flags (0–4). */
 function toughness(flags: number): number {
-  switch (flags & 0xf0) {
-    case 0x10:
+  switch (flags & MONSTER_PRIORITY) {
+    case MonsterFlag.PriorityLast:
       return 0;
-    case 0x20:
+    case MonsterFlag.PriorityLow:
       return 1;
-    case 0x40:
+    case MonsterFlag.PriorityHigh:
       return 3;
-    case 0x80:
+    case MonsterFlag.PriorityFirst:
       return 4;
     default:
       return 2;
@@ -58,11 +59,11 @@ function otherBackstab(s: Session, e: RoomEntity): RoomEntity | null {
   const name = e.mon?.name ?? '';
   const tough = e.mon ? toughness(e.mon.flags) : 0;
   for (const x of s.room) {
-    if (x.type === 3 || x.kind !== 4 || !x.mon) continue;
+    if (x.type === EntityType.Item || x.kind !== Stance.Enemy || !x.mon) continue;
     if (name !== '' && x.mon.name === name) continue;
     if (
-      (x.mon.flags & 0x100) === 0 &&
-      (s.Other_IgnoreWeaponImmunity !== 0 || (x.flags & 0x4000) === 0) &&
+      (x.mon.flags & MonsterFlag.DontBackstab) === 0 &&
+      (s.Other_IgnoreWeaponImmunity !== 0 || (x.flags & EntityFlag.ImmuneBackstabWeapon) === 0) &&
       tough <= toughness(x.mon.flags)
     ) {
       return x;
@@ -75,7 +76,8 @@ function otherBackstab(s: Session, e: RoomEntity): RoomEntity | null {
 function experienceHere(s: Session): number {
   let sum = 0;
   for (const e of s.room) {
-    if (e.mon && (e.kind === 4 || e.kind === 5 || e.kind === 6)) sum += e.mon.exp;
+    if (e.mon && (e.kind === Stance.Enemy || e.kind === Stance.Flee || e.kind === Stance.Hangup))
+      sum += e.mon.exp;
   }
   return sum;
 }
@@ -84,10 +86,14 @@ function experienceHere(s: Session): number {
 function strangersHere(s: Session): number {
   let n = 0;
   for (const e of s.room) {
-    if (e.type !== 1) continue;
+    if (e.type !== EntityType.Player) continue;
     const ours = s.party
       .slice(0, s.partySize)
-      .some((m) => (m.flags28 & 0x8c) === 0 && m.name.toLowerCase() === e.name.toLowerCase());
+      .some(
+        (m) =>
+          (m.flags28 & (PartyFlag.Invited | PartyFlag.Unlisted | PartyFlag.Offline)) === 0 &&
+          m.name.toLowerCase() === e.name.toLowerCase()
+      );
     if (!ours) n += 1;
   }
   return n;
@@ -109,18 +115,18 @@ function breakOff(s: Session): number {
  * returns, or `{ stop }` to go on.
  */
 function runChecks(s: Session, stop: number): { stop: number } | number {
-  const polite = s.walking !== 0 && s.Combat_PoliteAttacks !== 0 && s.f_e2b8 === 0;
+  const polite = s.walking !== 0 && s.Combat_PoliteAttacks !== 0 && s.attackDue === 0;
   let fled = false;
   if (!polite || s.runCount === 0) {
     if (polite && s.following === 0 && s.partyWait === 0 && stop === 0 && strangersHere(s) > 0) {
       s.host.activity("Running to avoid other player's monsters");
       s.runCount = 1;
-      s.f_907c = 1;
+      s.runByChoice = 1;
       if (s.Display_ShowRunMsg !== 0 && s.held === 0 && s.partyWait === 0) {
         s.host.show('[Run 1: polite attacks]');
       }
     }
-    if (s.runCount === 0 && s.following === 0 && s.f_a32c === 0 && moving(s)) {
+    if (s.runCount === 0 && s.following === 0 && s.allOff === 0 && moving(s)) {
       const result = reasonsToRun(s, stop);
       stop = result.stop;
       fled = result.fled;
@@ -129,7 +135,7 @@ function runChecks(s: Session, stop: number): { stop: number } | number {
   if (!fled && stop !== 0) {
     if (s.runCount > 0) {
       s.runCount = 0;
-      s.f_907c = 0;
+      s.runByChoice = 0;
     }
     autoAutoCombat(s, stop);
     return { stop };
@@ -139,13 +145,13 @@ function runChecks(s: Session, stop: number): { stop: number } | number {
       if (moving(s) && s.held === 0 && s.partyWait === 0) {
         s.target = '';
         forgetAwaited(s, s.state);
-        setState(s, 0);
+        setState(s, State.Nothing);
         if (s.inCombat === 0) return 0;
         return breakOff(s);
       }
-      if ((!automated(s) || s.f_a32c !== 0) && (s.sneaking !== 0 || s.hidden !== 0)) {
+      if ((!automated(s) || s.allOff !== 0) && (s.sneaking !== 0 || s.hidden !== 0)) {
         forgetAwaited(s, s.state);
-        setState(s, 0);
+        setState(s, State.Nothing);
         s.host.activity('Unsafe attack conditions, so remaining hidden');
         return 1;
       }
@@ -186,10 +192,10 @@ function reasonsToRun(s: Session, stop: number): { stop: number; fled: boolean }
   }
   const n = enemiesHere(s, s.Combat_AttackNeutral);
   if (stop === 0 && s.runCount === 0 && s.MegaMud_AutoNuke !== 0 && s.Combat_MinMstrs > 0) {
-    const once = s.Combat_ClearOnceEngaged === 0 || s.f_8be4 === 0;
+    const once = s.Combat_ClearOnceEngaged === 0 || s.engagedHere === 0;
     if (n < s.Combat_MinMstrs && once) {
       s.runCount = 1;
-      s.f_907c = 1;
+      s.runByChoice = 1;
       s.host.activity(`Running: too few monsters to nuke (${n})`);
       if (s.warnFewMonsters !== 0 && s.held === 0 && s.partyWait === 0) {
         s.host.show('[Run: Too few monsters to nuke (once-per-session warning)]');
@@ -201,7 +207,7 @@ function reasonsToRun(s: Session, stop: number): { stop: number; fled: boolean }
       wantsRoomSpell(s, 1) !== 0 &&
       allAttackable(s) === 0
     ) {
-      s.f_907c = 1;
+      s.runByChoice = 1;
       startRun(
         s,
         1,
@@ -213,7 +219,7 @@ function reasonsToRun(s: Session, stop: number): { stop: number; fled: boolean }
   const most = s.partySize < 1 ? s.Combat_MaxMstrs : s.Party_PartyMaxMstrs;
   if (s.runCount === 0 && most > 0 && most < n) {
     stop = 0;
-    s.f_907c = 1;
+    s.runByChoice = 1;
     startRun(
       s,
       1,
@@ -225,7 +231,7 @@ function reasonsToRun(s: Session, stop: number): { stop: number; fled: boolean }
   const exp = experienceHere(s);
   if (s.runCount !== 0 || limit <= 0 || exp <= limit) return { stop, fled: false };
   stop = 0;
-  s.f_907c = 1;
+  s.runByChoice = 1;
   startRun(
     s,
     1,
@@ -238,19 +244,19 @@ function reasonsToRun(s: Session, stop: number): { stop: number; fled: boolean }
 /** `Other.AutoAutoCombat`: auto-combat turns itself on when a fight is due (`0x40e938`). */
 function autoAutoCombat(s: Session, stop: number): void {
   if (s.MegaMud_AutoCombat !== 0 || s.Other_AutoAutoCombat === 0) return;
-  if (!((stop !== 0 && s.f_a32c === 0) || (s.hidden === 0 && s.sneaking === 0))) return;
-  if (!(automated(s) && s.f_a32c === 0)) return;
-  if (moving(s)) s.f_a328 = 1;
+  if (!((stop !== 0 && s.allOff === 0) || (s.hidden === 0 && s.sneaking === 0))) return;
+  if (!(automated(s) && s.allOff === 0)) return;
+  if (moving(s)) s.autoCombatForWait = 1;
   s.MegaMud_AutoCombat = 1;
   // `0x460d50` redraws MegaMUD's toolbar; ours follows the toggles each second.
 }
 
 export function runCheck(s: Session): number {
-  if (s.f_e1a0 !== 0 && hangupAllowed(s) !== 0 && s.PvP_PvpAction === 1) {
-    if (s.now - s.f_322f8 >= s.PvP_FleeTimeout) {
+  if (s.fleeingPlayer !== 0 && hangupAllowed(s) !== 0 && s.PvP_PvpAction === 1) {
+    if (s.now - s.pvpFleeAt >= s.PvP_FleeTimeout) {
       s.host.trace('[Delayed PvP Hangup]');
-      s.f_30de4 = 1;
-      s.f_30de8 = 1;
+      s.skipRedialOnce = 1;
+      s.noRedial = 1;
       s.walking = 0;
       s.host.activity('Hanging up after PvP timeout');
       hangUp(s, 0);
@@ -258,22 +264,22 @@ export function runCheck(s: Session): number {
       return 1;
     }
   }
-  if (s.f_e1d0 !== 0 && s.f_e2b8 === 0 && s.inCombat === 0 && hideStep(s) !== 0) return 1;
-  if (s.hidden !== 0 && s.f_e2b8 === 0) {
+  if (s.hideAgain !== 0 && s.attackDue === 0 && s.inCombat === 0 && hideStep(s) !== 0) return 1;
+  if (s.hidden !== 0 && s.attackDue === 0) {
     if (s.inCombat === 0) {
-      if (s.partySize === 0 && s.now - s.f_32300 < s.PvP_HideDelay) {
-        if (automated(s) && s.f_a32c === 0) return 1;
+      if (s.partySize === 0 && s.now - s.hiddenAt < s.PvP_HideDelay) {
+        if (automated(s) && s.allOff === 0) return 1;
         if (s.MegaMud_AutoSneak === 0) return 1;
         sneakStep(s);
         return 1;
       }
       if (s.target === '' && enemiesHere(s, s.Combat_AttackNeutral) === 0) {
-        s.f_e2b8 = 0;
+        s.attackDue = 0;
         return 0;
       }
     }
   } else if (s.inCombat === 0 && s.target === '' && enemiesHere(s, s.Combat_AttackNeutral) === 0) {
-    s.f_e2b8 = 0;
+    s.attackDue = 0;
     return 0;
   }
   if (s.runDirection !== -1 && s.following === 0) return 0;
@@ -306,26 +312,26 @@ function fight(s: Session, stop: number): number {
     if (s.following !== 0) return 0;
     if (s.walking === 0 && s.importing === 0) return 0;
   }
-  if (s.f_e218 !== 0) return 0;
-  if (s.f_e21c !== 0 && s.held === 0) return 0;
+  if (s.attackPrevented !== 0) return 0;
+  if (s.dontAttackHere !== 0 && s.held === 0) return 0;
   const e = currentTarget(s);
   if (!e) return 0;
-  if (e.kind !== 4 && (e.flags & 0x10) === 0) return 0;
+  if (e.kind !== Stance.Enemy && (e.flags & EntityFlag.Fought) === 0) return 0;
   targetChanged(s, e);
-  if (/^[A-Z]/.test(e.name) && s.f_e2a4 !== 0) {
-    s.f_e2a4 = -1;
+  if (/^[A-Z]/.test(e.name) && s.whoDue !== 0) {
+    s.whoDue = -1;
     if (refreshWho(s) !== 0) return 1;
   }
-  if (s.state === 0x12) {
+  if (s.state === State.Backstabbing) {
     // The backstab was sent: the fight is on.
     if (s.sneaking !== 0) return 1;
     if (
       stop === 0 &&
       s.Combat_RunIfBsFails !== 0 &&
       s.held === 0 &&
-      s.f_a32c === 0 &&
-      s.f_32614 === 0 &&
-      s.f_e1bc === 0
+      s.allOff === 0 &&
+      s.roundDamage === 0 &&
+      s.backstabSurprised === 0
     ) {
       return bsFailed(s);
     }
@@ -336,12 +342,12 @@ function fight(s: Session, stop: number): number {
       s.Combat_BsWeapon !== s.Combat_NrmWeapon ||
       s.Combat_AttackCmd.slice(0, 2).toLowerCase() === 'ju'
     ) {
-      s.f_e2b8 = 1;
+      s.attackDue = 1;
     }
     s.inCombat = 1;
-    s.f_32600 = -1;
-    forgetAwaited(s, 0x12);
-    setState(s, 0x11);
+    s.probablyRoundFought = -1;
+    forgetAwaited(s, State.Backstabbing);
+    setState(s, State.Attacking);
     combatRoundEnd(s);
   }
   if (
@@ -354,17 +360,17 @@ function fight(s: Session, stop: number): number {
   }
   if (
     s.inCombat !== 0 &&
-    s.f_e2b8 === 0 &&
-    s.state !== 0x11 &&
-    f_426ab0(s, 0) === 0 &&
-    s.state === 0 &&
-    s.stateBefore === 0x2d &&
-    s.f_32490 - s.f_32498 < 2 &&
-    s.engagedMode === 0
+    s.attackDue === 0 &&
+    s.state !== State.Attacking &&
+    inAttackCast(s, 0) === 0 &&
+    s.state === State.Nothing &&
+    s.stateBefore === State.PendingCmd &&
+    s.combatOnAt - s.combatOffAt < 2 &&
+    s.engagedMode === State.Nothing
   ) {
     if (s.debug !== 0) s.host.trace('{pend2}');
-    s.engagedMode = 0x11;
-    setState(s, 0x11);
+    s.engagedMode = State.Attacking;
+    setState(s, State.Attacking);
   }
   const bs = postBackstab(s, 0);
   const rest = postRest(s, 2, 0);
@@ -372,66 +378,81 @@ function fight(s: Session, stop: number): number {
   if (rest !== 0 || med !== 0 || bs !== 0) return 1;
 
   let sent = 0;
-  if (s.state === 0xf || s.stateAwaited === 0xf) sent = attack(s, 0xf, e);
-  if (s.state === 0xe || s.stateAwaited === 0xe) {
+  if (s.state === State.CastUser || s.stateAwaited === State.CastUser)
+    sent = attack(s, State.CastUser, e);
+  if (s.state === State.CastAlt || s.stateAwaited === State.CastAlt) {
     if (sent !== 0) return 1;
-    sent = attack(s, 0xe, e);
+    sent = attack(s, State.CastAlt, e);
   }
   if (sent !== 0) return 1;
-  if (attack(s, 9, e) !== 0) return 1;
-  if (attack(s, 10, e) !== 0) return 1;
-  if (attack(s, 0xb, e) !== 0) return 1;
-  if (s.f_8be8 === 0 || s.f_8bec !== 0 || s.engagedMode === 0xc || s.engagedMode === 0xd) {
-    if (attack(s, 0xc, e) !== 0) return 1;
-    if (attack(s, 0xd, e) !== 0) return 1;
+  if (attack(s, State.CastPreMulti, e) !== 0) return 1;
+  if (attack(s, State.CastMulti, e) !== 0) return 1;
+  if (attack(s, State.CastPre, e) !== 0) return 1;
+  if (
+    s.preferMelee === 0 ||
+    s.weaponsExhausted !== 0 ||
+    s.engagedMode === State.CastAux ||
+    s.engagedMode === State.CastMain
+  ) {
+    if (attack(s, State.CastAux, e) !== 0) return 1;
+    if (attack(s, State.CastMain, e) !== 0) return 1;
   }
   if (normalWeapon(s) !== 0) return 1;
 
   const recent =
-    s.inCombat === 0 && s.now - s.f_322d8 < s.Comms_LagWait + 4 && s.f_324c0 === s.f_324c4;
-  const justAttacked = s.state === 0x11 && recent;
-  const awaitingSpell = s.f_a448 !== 0 && s.f_a460 !== 0 && s.stateAwaited === s.f_a448 && recent;
+    s.inCombat === 0 &&
+    s.now - s.attackSentAt < s.Comms_LagWait + 4 &&
+    s.combatChanges === s.combatChangesAtAttack;
+  const justAttacked = s.state === State.Attacking && recent;
+  const awaitingSpell =
+    s.castMode !== State.Nothing &&
+    s.castUntargeted !== 0 &&
+    s.stateAwaited === s.castMode &&
+    recent;
   if (
-    (justAttacked || awaitingSpell || (s.f_e2b8 === 0 && s.inCombat !== 0)) &&
-    f_426ab0(s, 0) === 0
+    (justAttacked || awaitingSpell || (s.attackDue === 0 && s.inCombat !== 0)) &&
+    inAttackCast(s, 0) === 0
   ) {
-    if (s.state !== 0) return 1;
+    if (s.state !== State.Nothing) return 1;
     s.inCombat = 0;
-    s.f_e290 = 1;
+    s.lookDue = 1;
     return 1;
   }
-  if (s.f_8bec !== 0) {
+  if (s.weaponsExhausted !== 0) {
     // Nothing here hurts it: give it up.
-    e.kind = 5;
+    e.kind = Stance.Flee;
     s.inCombat = 0;
-    setState(s, 0);
+    setState(s, State.Nothing);
     return 0;
   }
-  s.f_32604 = 0;
-  if (s.f_32600 !== -1 && s.f_e2b8 === 0) s.f_32600 = 0;
-  s.f_322d8 = s.now;
-  s.f_3260c = 0;
-  s.stateBefore = 0;
-  s.f_e1d8 = 1;
-  s.f_e2b8 = 0;
-  s.f_8be4 = 1;
+  s.roundBlowSeen = 0;
+  if (s.probablyRoundFought !== -1 && s.attackDue === 0) s.probablyRoundFought = 0;
+  s.attackSentAt = s.now;
+  s.probablyRoundCounted = 0;
+  s.stateBefore = State.Nothing;
+  s.combatOffExpected = 1;
+  s.attackDue = 0;
+  s.engagedHere = 1;
   s.waitLines = 2;
-  s.f_324c4 = s.f_324c0;
+  s.combatChangesAtAttack = s.combatChanges;
   attackLateMark(s, e);
-  e.flags |= 0x11;
+  e.flags |= EntityFlag.Kept | EntityFlag.Fought;
   s.target = e.name.slice(0, 99);
   rememberTarget(s);
-  setState(s, 0x11);
+  setState(s, State.Attacking);
   s.host.activity(`Attacking ${e.name}`);
   const cmd = s.Combat_AttackCmd;
   if (s.sneaking !== 0) {
-    if (abbrev(cmd, 'punch', 2) !== 0 || (abbrev(cmd, 'attack', 1) !== 0 && s.s_b060 === '')) {
+    if (
+      abbrev(cmd, 'punch', 2) !== 0 ||
+      (abbrev(cmd, 'attack', 1) !== 0 && s.weaponWielded === '')
+    ) {
       send(s, 'break\r');
       s.sneaking = 0;
     }
   }
   const bare =
-    s.f_b0fc !== 0 &&
+    s.weaponNoEffect !== 0 &&
     (abbrev(cmd, 'punch', 2) !== 0 ||
       abbrev(cmd, 'jumpkick', 2) !== 0 ||
       abbrev(cmd, 'kick', 3) !== 0);
@@ -452,12 +473,12 @@ function bsFailed(s: Session): number {
  * the attack spells.
  */
 function backstab(s: Session, e: RoomEntity, stop: number): number | null {
-  const noBackstab = e.mon !== null && (e.mon.flags & 0x100) !== 0;
+  const noBackstab = e.mon !== null && (e.mon.flags & MonsterFlag.DontBackstab) !== 0;
   const weaponImmune =
     s.Other_IgnoreWeaponImmunity === 0 &&
     s.Combat_BsWeapon !== '' &&
-    s.Combat_BsWeapon === s.s_b060 &&
-    (e.flags & 0x4000) !== 0;
+    s.Combat_BsWeapon === s.weaponWielded &&
+    (e.flags & EntityFlag.ImmuneBackstabWeapon) !== 0;
   let victim: RoomEntity | null = e;
   if (weaponImmune || noBackstab) {
     victim = otherBackstab(s, e);
@@ -469,18 +490,18 @@ function backstab(s: Session, e: RoomEntity, stop: number): number | null {
   if (victim) {
     clearCastMode(s);
     s.waitLines = 2;
-    s.f_e1d8 = 1;
-    s.stateBefore = 0;
-    s.f_e2b8 = 0;
-    s.f_32604 = 0;
-    s.f_32600 = 0;
-    s.f_3260c = 0;
-    s.f_e1b8 = 0;
-    s.f_e1bc = 0;
-    s.f_32618 = s.f_a57c;
-    setState(s, 0x12);
+    s.combatOffExpected = 1;
+    s.stateBefore = State.Nothing;
+    s.attackDue = 0;
+    s.roundBlowSeen = 0;
+    s.probablyRoundFought = 0;
+    s.probablyRoundCounted = 0;
+    s.backstabResolved = 0;
+    s.backstabSurprised = 0;
+    s.fightDamage = s.multiDamage;
+    setState(s, State.Backstabbing);
     s.host.activity(`Back-stabbing ${victim.name}`);
-    victim.flags |= 0x11;
+    victim.flags |= EntityFlag.Kept | EntityFlag.Fought;
     s.target = victim.name.slice(0, 99);
     rememberTarget(s);
     attackLateMark(s, victim);
@@ -491,17 +512,17 @@ function backstab(s: Session, e: RoomEntity, stop: number): number | null {
     s.Combat_BsWeapon !== '' &&
     s.Other_IgnoreWeaponImmunity === 0 &&
     e.mon !== null &&
-    (e.flags & 0x4000) !== 0
+    (e.flags & EntityFlag.ImmuneBackstabWeapon) !== 0
   ) {
     s.host.show(`[${e.name} immune to ${s.Combat_BsWeapon}]`);
   }
   if (s.debug !== 0) s.host.trace('{BS-skip}');
-  if (stop === 0 && s.Combat_RunIfBsFails !== 0 && s.held === 0 && s.f_a32c === 0) {
+  if (stop === 0 && s.Combat_RunIfBsFails !== 0 && s.held === 0 && s.allOff === 0) {
     if (moving(s)) {
-      s.f_e21c = 1;
+      s.dontAttackHere = 1;
       return 0;
     }
-    if (s.f_32614 === 0) return bsFailed(s);
+    if (s.roundDamage === 0) return bsFailed(s);
   }
   return null;
 }

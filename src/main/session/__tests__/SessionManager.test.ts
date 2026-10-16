@@ -38,6 +38,7 @@ import { setTuning, tuning } from '../../app/tuning';
 import type { RewriteDesign } from '../../../shared/rewrites';
 import type { RewritesUiConfig } from '../../../shared/config';
 import type { Route } from '../../../shared/world';
+import { MonsterFlag } from '../../megamud/flags';
 
 /**
  * These drive a real socket rather than a mocked client: framing sits directly
@@ -3193,7 +3194,7 @@ describe('the MegaMUD engine’s monsters', () => {
     const mega = (manager as unknown as { mega: MegaEngine }).mega;
     const slayer = () => mega.s.data.monsters.find((m) => m.name === 'forgotten dragon slayer');
     expect(slayer()).toMatchObject({ relationship: 5 });
-    expect(slayer()!.flags & 0x200).toBe(0x200);
+    expect(slayer()!.flags & MonsterFlag.NotHostile).toBe(0x200);
 
     manager.configureRealm({
       ...NO_REALM,

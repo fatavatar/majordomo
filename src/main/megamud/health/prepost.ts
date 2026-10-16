@@ -9,11 +9,12 @@ import { expandMacros, noteCommands, send } from '../script/send';
 import { setState } from '../script/state';
 import type { Session } from '../Session';
 import { sneakStep } from '../script/stealth';
+import { State } from '../states';
 
 function issue(s: Session, command: string, what: string): number {
   s.waitLines = 2;
   noteCommands(s, command);
-  setState(s, 0x2e);
+  setState(s, State.Other);
   s.host.activity(what);
   const out = expandMacros(s, command);
   send(s, out);
@@ -52,7 +53,7 @@ export function preRest(s: Session, force: number): number {
     s.owedPostRest = 1;
     if (
       s.Health_PreRestCmd !== '' &&
-      ((s.f_a32c === 0 && s.Health_PrePostRest !== 0) || force !== 0)
+      ((s.allOff === 0 && s.Health_PrePostRest !== 0) || force !== 0)
     ) {
       return issue(s, s.Health_PreRestCmd, 'Issuing pre-rest');
     }
@@ -66,7 +67,7 @@ export function postRest(s: Session, why: number, force: number): number {
     s.owedPostRest = 0;
     if (
       s.Health_PostRestCmd !== '' &&
-      ((s.f_a32c === 0 && s.Health_PrePostRest !== 0) || force !== 0)
+      ((s.allOff === 0 && s.Health_PrePostRest !== 0) || force !== 0)
     ) {
       return issue(s, s.Health_PostRestCmd, `Issuing post-rest(${why})`);
     }
@@ -105,7 +106,7 @@ export function preMeditate(s: Session, force: number): number {
     s.owedPostMeditate = 1;
     if (
       s.Health_PreMedCmd !== '' &&
-      ((s.f_a32c === 0 && s.Health_UseMeditate !== 0 && s.Health_PrePostMeditate !== 0) ||
+      ((s.allOff === 0 && s.Health_UseMeditate !== 0 && s.Health_PrePostMeditate !== 0) ||
         force !== 0)
     ) {
       return issue(s, s.Health_PreMedCmd, 'Issuing pre-meditate');
@@ -120,7 +121,7 @@ export function postMeditate(s: Session, force: number): number {
     s.owedPostMeditate = 0;
     if (
       s.Health_PostMedCmd !== '' &&
-      ((s.f_a32c === 0 && s.Health_UseMeditate !== 0 && s.Health_PrePostMeditate !== 0) ||
+      ((s.allOff === 0 && s.Health_UseMeditate !== 0 && s.Health_PrePostMeditate !== 0) ||
         force !== 0)
     ) {
       return issue(s, s.Health_PostMedCmd, 'Issuing post-meditate');
@@ -135,7 +136,7 @@ export function preBackstab(s: Session, force: number): number {
     s.owedPostBackstab = 1;
     if (
       s.Combat_PreBsCmd !== '' &&
-      ((s.f_a32c === 0 && s.Combat_PrePostBackstab !== 0 && s.Combat_CanBackStab !== 0) ||
+      ((s.allOff === 0 && s.Combat_PrePostBackstab !== 0 && s.Combat_CanBackStab !== 0) ||
         force !== 0)
     ) {
       issue(s, s.Combat_PreBsCmd, 'Issuing pre-bs');
@@ -157,7 +158,7 @@ export function postBackstab(s: Session, force: number): number {
   if (
     command === '' ||
     !(
-      (s.f_a32c === 0 && s.Combat_PrePostBackstab !== 0 && s.Combat_CanBackStab !== 0) ||
+      (s.allOff === 0 && s.Combat_PrePostBackstab !== 0 && s.Combat_CanBackStab !== 0) ||
       force !== 0
     )
   ) {
@@ -165,15 +166,15 @@ export function postBackstab(s: Session, force: number): number {
   }
   s.waitLines = 2;
   noteCommands(s, command);
-  setState(s, 0x2e);
+  setState(s, State.Other);
   s.host.activity('Issuing post-bs');
   const out = expandMacros(s, command);
-  if (s.f_a5f8 > 0 && (s.inCombat !== 0 || enemiesHere(s, 0) >= 1)) {
-    if (s.f_e1d8 === 0) {
+  if (s.equipsPending > 0 && (s.inCombat !== 0 || enemiesHere(s, 0) >= 1)) {
+    if (s.combatOffExpected === 0) {
       if (s.debug !== 0) s.host.trace('{I12+}');
-      s.f_e1d8 = 1;
+      s.combatOffExpected = 1;
     }
-    s.f_e2b8 = 1;
+    s.attackDue = 1;
   }
   send(s, out);
   if (!out.includes('\r')) send(s, '\r');

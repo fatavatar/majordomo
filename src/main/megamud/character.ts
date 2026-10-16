@@ -19,6 +19,7 @@ import { applySettings, fieldName } from './fieldNames';
 import { loadEvents } from './script/events';
 import { loadRules } from './script/rules';
 import type { Session } from './Session';
+import { PlayerFlag, RemoteFlag } from './flags';
 
 /** A section outside the schema, its keys read without regard to case ('' when missing). */
 function reader(mega: MegaSettings, name: string): (key: string) => string {
@@ -83,10 +84,6 @@ export function activateProfile(s: Session, n: number): number {
   }
   noCastLimits(s);
   s.Profiles_ActiveProfile = n;
-  s.f_e240 = 1;
-  s.f_327b0 = 0;
-  s.f_327b4 = 0;
-  s.f_327b8 = 0;
   s.restHpToFull = 0;
   s.restManaToFull = 0;
   s.hpFullAt = 0;
@@ -102,7 +99,7 @@ export function activateProfile(s: Session, n: number): number {
  * the profile was put on.
  */
 export function useProfile(s: Session, n: number): number {
-  if (s.f_d81c !== 0) {
+  if (s.settingsWindowOpen !== 0) {
     s.host.show('[Config Profile Not Activated (settings window is open)]');
     return 0;
   }
@@ -134,59 +131,58 @@ export function loadCharacter(s: Session, mega: MegaSettings): void {
 }
 
 /**
- * Which of MegaMUD's remote bits (`0x4ae4a0`) each of the app's remote names
- * falls under: 1 version and `@home`, 2 experience, 4 health and status,
- * 0x10 location, 0x20 inventory (and `@join`), 0x40 invite, 0x100 move,
- * 0x200 commands, 0x400 hang up, 0x800 settings, 0x1000 divert, 0x2000 `sys` commands.
+ * Which of MegaMUD's remote bits (`RemoteFlag`, `0x4ae4a0`) each of the app's
+ * remote names falls under (`@home` under `QueryVersion`, `@join` under
+ * `QueryInventory`, `@do` also needing `SysopCommands` for `sys`).
  */
 const BITS: Partial<Record<RemoteName, number>> = {
-  version: 1,
-  home: 1,
-  exp: 2,
-  level: 2,
-  health: 4,
-  status: 4,
-  lives: 4,
-  where: 0x10,
-  'where-room': 0x10,
-  path: 0x10,
-  who: 0x10,
-  seen: 0x10,
-  what: 0x10,
-  wealth: 0x20,
-  enc: 0x20,
-  have: 0x20,
-  join: 0x20,
-  invite: 0x40,
-  goto: 0x100,
-  loop: 0x100,
-  looponce: 0x100,
-  roam: 0x100,
-  stop: 0x100,
-  rego: 0x100,
-  comeback: 0x100,
-  'comeback-room': 0x100,
+  version: RemoteFlag.QueryVersion,
+  home: RemoteFlag.QueryVersion,
+  exp: RemoteFlag.QueryExperience,
+  level: RemoteFlag.QueryExperience,
+  health: RemoteFlag.QueryHealth,
+  status: RemoteFlag.QueryHealth,
+  lives: RemoteFlag.QueryHealth,
+  where: RemoteFlag.QueryLocation,
+  'where-room': RemoteFlag.QueryLocation,
+  path: RemoteFlag.QueryLocation,
+  who: RemoteFlag.QueryLocation,
+  seen: RemoteFlag.QueryLocation,
+  what: RemoteFlag.QueryLocation,
+  wealth: RemoteFlag.QueryInventory,
+  enc: RemoteFlag.QueryInventory,
+  have: RemoteFlag.QueryInventory,
+  join: RemoteFlag.QueryInventory,
+  invite: RemoteFlag.RequestInvite,
+  goto: RemoteFlag.MovePlayer,
+  loop: RemoteFlag.MovePlayer,
+  looponce: RemoteFlag.MovePlayer,
+  roam: RemoteFlag.MovePlayer,
+  stop: RemoteFlag.MovePlayer,
+  rego: RemoteFlag.MovePlayer,
+  comeback: RemoteFlag.MovePlayer,
+  'comeback-room': RemoteFlag.MovePlayer,
   // And `sys` commands with it (0x2000, a MUD op's): our `do` has always run
   // whatever it was given, and Fatty's `@do sys goto` went undone (2026-10-14).
-  do: 0x200 | 0x2000,
-  'get-all': 0x200,
-  'drop-all': 0x200,
-  'equip-all': 0x200,
-  'deposit-all': 0x200,
-  hangup: 0x400,
-  relog: 0x400,
-  settings: 0x800,
-  'auto-all': 0x800,
-  'auto-combat': 0x800,
-  'auto-nuke': 0x800,
-  'auto-heal': 0x800,
-  'auto-bless': 0x800,
-  'auto-light': 0x800,
-  'auto-cash': 0x800,
-  'auto-get': 0x800,
-  'auto-sneak': 0x800,
-  'auto-hide': 0x800,
-  'auto-search': 0x800,
+  do: RemoteFlag.ExecuteCommands | RemoteFlag.SysopCommands,
+  'get-all': RemoteFlag.ExecuteCommands,
+  'drop-all': RemoteFlag.ExecuteCommands,
+  'equip-all': RemoteFlag.ExecuteCommands,
+  'deposit-all': RemoteFlag.ExecuteCommands,
+  hangup: RemoteFlag.Hangup,
+  relog: RemoteFlag.Hangup,
+  settings: RemoteFlag.AlterSettings,
+  'auto-all': RemoteFlag.AlterSettings,
+  'auto-combat': RemoteFlag.AlterSettings,
+  'auto-nuke': RemoteFlag.AlterSettings,
+  'auto-heal': RemoteFlag.AlterSettings,
+  'auto-bless': RemoteFlag.AlterSettings,
+  'auto-light': RemoteFlag.AlterSettings,
+  'auto-cash': RemoteFlag.AlterSettings,
+  'auto-get': RemoteFlag.AlterSettings,
+  'auto-sneak': RemoteFlag.AlterSettings,
+  'auto-hide': RemoteFlag.AlterSettings,
+  'auto-search': RemoteFlag.AlterSettings,
   divert: 0x1000
 };
 
@@ -197,11 +193,6 @@ export function remoteBits(allow: readonly RemoteName[], deny: readonly RemoteNa
   for (const name of deny) bits &= ~(BITS[name] ?? 0);
   return bits;
 }
-
-/** A player's flag: invite to the party when seen (`0x407ee0`'s scan). */
-const INVITE_IF_SEEN = 0x10;
-/** A player's flag: join their party when they invite (`0x47e1ac`). */
-const JOIN_IF_INVITED = 0x20;
 
 /**
  * Each granted player made known with its remote bits (a record learned in
@@ -225,8 +216,8 @@ export function grantPlayers(
     p.remote = remoteBits(grant.allow, grant.deny);
     const join = joinWhenInvited && grant.allow.includes('join') && !grant.deny.includes('join');
     p.flags =
-      (p.flags & ~(INVITE_IF_SEEN | JOIN_IF_INVITED)) |
-      (grant.autoInviteWhenSeen === true ? INVITE_IF_SEEN : 0) |
-      (join ? JOIN_IF_INVITED : 0);
+      (p.flags & ~(PlayerFlag.InviteIfSeen | PlayerFlag.JoinIfInvited)) |
+      (grant.autoInviteWhenSeen === true ? PlayerFlag.InviteIfSeen : 0) |
+      (join ? PlayerFlag.JoinIfInvited : 0);
   }
 }

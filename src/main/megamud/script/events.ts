@@ -13,9 +13,12 @@ import type { Session, TimedEvent } from '../Session';
 import { leaveGame } from './exit';
 import { expandMacros, noteCommands, send } from './send';
 import { setState } from './state';
-import { setTask } from './task';
+import { setTask, Task } from './task';
 import { clearDetours, goTo, headFor, roomByName } from '../move/destinations';
 import { copyPath, findPath, freeSteps } from '../move/path';
+import { State } from '../states';
+import { LineFlag } from '../flags';
+import { WindowCommand } from '../../../shared/megamud/toggles';
 
 /** `0x4aa6c0`: the local time, `2026-10-12 14:05:00`. */
 export function stamp(s: Session): string {
@@ -33,9 +36,15 @@ function todayAt(now: number, hour: number, minute: number): number {
 
 /** The event can run now (its kind's conditions). */
 function eligible(s: Session, e: TimedEvent): boolean {
-  if (e.type === 1) return s.online === 0 && s.f_30de8 === 0 && (s.task === 0 || s.task === 0xb);
+  if (e.type === 1)
+    return s.online === 0 && s.noRedial === 0 && (s.task === Task.Idle || s.task === Task.InGame);
   if (e.type === 2 || e.type === 3) {
-    return s.online !== 0 && s.state !== 7 && s.state !== 8 && (e.type !== 3 || s.inGame !== 0);
+    return (
+      s.online !== 0 &&
+      s.state !== State.Hanging &&
+      s.state !== State.Relogging &&
+      (e.type !== 3 || s.inGame !== 0)
+    );
   }
   if (e.type === 4 || e.type === 5 || e.type === 6) return s.online !== 0 && s.inGame !== 0;
   return true;
@@ -99,24 +108,25 @@ function eventDone(s: Session): number {
 export function eventsStep(s: Session): number {
   if (s.MegaMud_DisableEvents === 1 || s.eventNext === -1) return 0;
   if (s.active === 0 && s.MegaMud_EventsAfkOnly !== 0) return 0;
-  if (s.f_a32c !== 0) return 0;
+  if (s.allOff !== 0) return 0;
   const e = s.events[s.eventNext];
   if (!e || e.dueAt > s.now) return 0;
-  if (s.MegaMud_AutoCombat !== 0 && s.f_e2b8 !== 0 && enemiesHere(s, 0) > 0) {
+  if (s.MegaMud_AutoCombat !== 0 && s.attackDue !== 0 && enemiesHere(s, 0) > 0) {
     if (s.now < s.stateSince || s.now - s.stateSince < 3) return 0;
   }
   switch (e.type) {
     case 1:
-      if (s.online !== 0 || s.f_30de8 !== 0 || (s.task !== 0 && s.task !== 0xb)) return 0;
+      if (s.online !== 0 || s.noRedial !== 0 || (s.task !== Task.Idle && s.task !== Task.InGame))
+        return 0;
       s.host.trace(`[${stamp(s)} event: Logon (${e.text})]`);
-      s.task = 0xb;
+      s.task = Task.InGame;
       // `0x460b90`: the Connect button (`0x7d4`, the app's).
-      s.host.post?.(0x7d4);
+      s.host.post?.(WindowCommand.Connect);
       return eventDone(s);
     case 2:
-      if (s.online === 0 || s.f_e288 !== 0) return 0;
+      if (s.online === 0 || s.exitForLogoff !== 0) return 0;
       s.host.trace(`[${stamp(s)} event: Logoff (${e.text})]`);
-      s.f_e288 = 1;
+      s.exitForLogoff = 1;
       eventDone(s);
       if (s.inCombat === 0) {
         s.host.activity('Exiting game due to logoff event');
@@ -124,18 +134,24 @@ export function eventsStep(s: Session): number {
       }
       return 1;
     case 3:
-      if (s.online === 0 || s.inGame === 0 || s.state === 7 || s.state === 8 || s.task === 0x13)
+      if (
+        s.online === 0 ||
+        s.inGame === 0 ||
+        s.state === State.Hanging ||
+        s.state === State.Relogging ||
+        s.task === Task.Exiting
+      )
         return 0;
-      if (s.s_7cf7 === '' || s.f_e28c === 1) return 0;
+      if (s.relogCmd === '' || s.exitForRelog === 1) return 0;
       s.host.trace(`[${stamp(s)} event: Re-log (${e.text})]`);
-      s.f_e28c = 1;
+      s.exitForRelog = 1;
       eventDone(s);
       if (s.inCombat === 0) {
         s.host.activity('Exiting game due to re-log event');
         leaveGame(s);
       }
-      s.lineFlags |= 1;
-      s.f_e544 = 4;
+      s.lineFlags |= LineFlag.Prompted;
+      s.dialState = 4;
       return 1;
     case 4:
       if (s.online === 0 || s.inGame === 0) return 0;
@@ -170,7 +186,7 @@ export function eventsStep(s: Session): number {
       s.waitLines = 2;
       noteCommands(s, e.text);
       const text = expandMacros(s, e.text);
-      setState(s, 0x2e);
+      setState(s, State.Other);
       s.host.activity(`Issuing command "${e.text}" from timed event`);
       send(s, text);
       if (!text.endsWith('\r')) send(s, '\r');

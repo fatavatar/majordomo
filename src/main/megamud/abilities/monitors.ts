@@ -22,12 +22,14 @@ import { newMonitor } from '../Session';
 import { expandMacros, queueCommand, send, wake } from '../script/send';
 import { setState } from '../script/state';
 import { findSpell } from '../spells/lookup';
+import { State } from '../states';
+import { MonitorWhen, MonitorState } from '../flags';
 
 /** The parts an `abil` reply can give, after the total (the table at `0x55f01c`). */
 const PARTS = ['', 'granted:', 'worn:', 'spells:', 'race:', 'class:'];
 
 function live(m: AbilityMonitor): boolean {
-  return m.disabled === 0 && m.state !== 2;
+  return m.disabled === 0 && m.state !== MonitorState.Suspended;
 }
 
 /** `0x4012c0`: the first monitor of `i`'s chain. */
@@ -62,7 +64,7 @@ function chainUrgent(s: Session, i: number): boolean {
 function earlierBusy(s: Session, i: number): boolean {
   for (let j = chainStart(s, i); j < i; j += 1) {
     const m = s.monitors[j]!;
-    if (live(m) && (m.due !== 0 || m.state !== 0)) return true;
+    if (live(m) && (m.due !== 0 || m.state !== MonitorState.Idle)) return true;
   }
   return false;
 }
@@ -71,7 +73,7 @@ function earlierBusy(s: Session, i: number): boolean {
 function otherBusy(s: Session, i: number): boolean {
   for (let j = chainStart(s, i); j <= chainEnd(s, i); j += 1) {
     const m = s.monitors[j]!;
-    if (j !== i && live(m) && (m.due !== 0 || m.state !== 0)) return true;
+    if (j !== i && live(m) && (m.due !== 0 || m.state !== MonitorState.Idle)) return true;
   }
   return false;
 }
@@ -111,7 +113,7 @@ function replyFresh(s: Session, i: number): boolean {
 function cannotAct(s: Session): boolean {
   return !(
     s.MegaMud_DisableAbilMon === 0 &&
-    s.f_a32c === 0 &&
+    s.allOff === 0 &&
     s.hp > 0 &&
     s.online !== 0 &&
     s.inGame !== 0
@@ -148,7 +150,7 @@ function judge(s: Session, i: number, value: number): void {
   if (s.debug !== 0) s.host.trace(`{am=${value}}`);
   const byChain = m.byChain;
   m.byChain = 0;
-  m.state = 0;
+  m.state = MonitorState.Idle;
   const fires =
     m.compare === 0 ? value < m.value : m.compare === 2 ? value > m.value : value === m.value;
   if (fires) fire(s, i);
@@ -190,7 +192,7 @@ function replyDone(s: Session): void {
   const i = s.monitorAsked;
   s.abilAsking = 0;
   s.monitorAsked = -1;
-  if (s.state === 0x2e) setState(s, 0);
+  if (s.state === State.Other) setState(s, State.Nothing);
   if (i < 0 || i >= s.monitors.length) return;
   const m = s.monitors[i]!;
   const value = valueOf(s, m, s.abilValues, s.abilParts);
@@ -220,7 +222,8 @@ function unaskedDone(s: Session): void {
       continue;
     }
     m.due = 0;
-    if ((m.when & 1) !== 0 && m.byChain === 0) m.nextAt = s.now + Math.max(5, m.interval);
+    if ((m.when & MonitorWhen.Every) !== 0 && m.byChain === 0)
+      m.nextAt = s.now + Math.max(5, m.interval);
     if (s.debug !== 0) s.host.trace(`{am-p${m.ability}}`);
     judge(s, i, valueOf(s, m, s.abilValues, s.abilParts));
   }
@@ -258,12 +261,12 @@ export function abilTimedOut(s: Session): void {
   if (s.debug !== 0) s.host.trace('{am-x}');
   if (i < 0 || i >= s.monitors.length) return;
   const m = s.monitors[i]!;
-  m.state = 0;
+  m.state = MonitorState.Idle;
   m.byChain = 0;
   m.nextAt = s.now + 0x3c;
   m.noReply += 1;
   if (m.noReply > 2) {
-    m.state = 2;
+    m.state = MonitorState.Suspended;
     s.host.show(`[Ability monitor: no reply to "abil ${m.ability}" - monitor suspended]`);
   }
 }
@@ -290,7 +293,8 @@ export function dueOn(s: Session, bit: number): number {
 function stillGoing(s: Session, bit: number): number {
   for (let i = 0; i < s.monitors.length; i += 1) {
     const m = s.monitors[i]!;
-    if (live(m) && (chainWhen(s, i) & bit) !== 0 && (m.due !== 0 || m.state !== 0)) return 1;
+    if (live(m) && (chainWhen(s, i) & bit) !== 0 && (m.due !== 0 || m.state !== MonitorState.Idle))
+      return 1;
   }
   return 0;
 }
@@ -312,30 +316,39 @@ export function monitorTimer(s: Session): void {
   }
   if (s.resting !== s.monitorSawRest) {
     s.restMonitor.on = 0;
-    if (s.resting === 0) woke = dueOn(s, 4) !== 0;
+    if (s.resting === 0) woke = dueOn(s, MonitorWhen.AfterResting) !== 0;
     s.monitorSawRest = s.resting;
   }
   if (s.meditating !== s.monitorSawMeditate) {
     s.meditateMonitor.on = 0;
-    if (s.meditating === 0 && dueOn(s, 0x40) !== 0) woke = true;
+    if (s.meditating === 0 && dueOn(s, MonitorWhen.AfterMeditating) !== 0) woke = true;
     s.monitorSawMeditate = s.meditating;
   }
   for (let i = 0; i < s.monitors.length; i += 1) {
     const m = s.monitors[i]!;
-    if (!live(m) || (m.when & 1) === 0) continue;
+    if (!live(m) || (m.when & MonitorWhen.Every) === 0) continue;
     if (m.nextAt === 0) {
       m.nextAt = s.now + Math.max(5, m.interval);
       markDue(s, i, 0);
       woke = true;
-    } else if (m.nextAt <= s.now && m.due === 0 && m.state === 0 && !otherBusy(s, i)) {
+    } else if (
+      m.nextAt <= s.now &&
+      m.due === 0 &&
+      m.state === MonitorState.Idle &&
+      !otherBusy(s, i)
+    ) {
       markDue(s, i, 0);
       woke = true;
     }
   }
-  if (!woke && !s.monitors.some((m) => m.disabled === 0 && m.state === 0 && m.due !== 0)) return;
+  if (
+    !woke &&
+    !s.monitors.some((m) => m.disabled === 0 && m.state === MonitorState.Idle && m.due !== 0)
+  )
+    return;
   if (
     s.MegaMud_DisableAbilMon === 0 &&
-    s.f_a32c === 0 &&
+    s.allOff === 0 &&
     s.online !== 0 &&
     s.inGame !== 0 &&
     s.abilAsking === 0
@@ -369,7 +382,7 @@ export function abilityMonitors(s: Session): number {
     let bm: AbilityMonitor | null = null;
     for (let j = 0; j < s.monitors.length; j += 1) {
       const m = s.monitors[j]!;
-      if (!live(m) || m.due === 0 || m.state !== 0) continue;
+      if (!live(m) || m.due === 0 || m.state !== MonitorState.Idle) continue;
       if (m.dueAt < lastAt || (m.dueAt === lastAt && j <= lastIndex)) continue;
       if (bm && m.dueAt >= bm.dueAt) continue;
       best = j;
@@ -390,10 +403,11 @@ export function abilityMonitors(s: Session): number {
         s.abilAskedAt = s.now;
         s.abilWaitSince = s.now;
         bm.due = 0;
-        bm.state = 1;
-        if ((bm.when & 1) !== 0 && bm.byChain === 0) bm.nextAt = s.now + Math.max(5, bm.interval);
+        bm.state = MonitorState.Checking;
+        if ((bm.when & MonitorWhen.Every) !== 0 && bm.byChain === 0)
+          bm.nextAt = s.now + Math.max(5, bm.interval);
         s.waitLines = 2;
-        setState(s, 0x2e);
+        setState(s, State.Other);
         s.host.activity('Checking ability');
         if (s.debug !== 0) s.host.trace(`{am-q${bm.ability}}`);
         s.abilSending = 1;
@@ -405,7 +419,8 @@ export function abilityMonitors(s: Session): number {
     } else {
       blocked(s, 0);
       bm.due = 0;
-      if ((bm.when & 1) !== 0 && bm.byChain === 0) bm.nextAt = s.now + Math.max(5, bm.interval);
+      if ((bm.when & MonitorWhen.Every) !== 0 && bm.byChain === 0)
+        bm.nextAt = s.now + Math.max(5, bm.interval);
       if (s.debug !== 0) s.host.trace(`{am-r${bm.ability}}`);
       judge(s, best, valueOf(s, bm, s.lastAbil.values, s.lastAbil.parts));
       if (s.pending.length > 0) return 1;
@@ -420,11 +435,11 @@ export function abilityMonitors(s: Session): number {
 
 /** `0x4018f0`: a monitor's urgent command is pending, or an urgent chain is due. */
 export function monitorsWaiting(s: Session): number {
-  if (s.monitors.length === 0 || s.MegaMud_DisableAbilMon !== 0 || s.f_a32c !== 0) return 0;
+  if (s.monitors.length === 0 || s.MegaMud_DisableAbilMon !== 0 || s.allOff !== 0) return 0;
   if (s.pending.some((p) => p.tag === 2)) return 1;
   for (let i = 0; i < s.monitors.length; i += 1) {
     const m = s.monitors[i]!;
-    if (live(m) && (m.due !== 0 || m.state !== 0) && chainUrgent(s, i)) return 1;
+    if (live(m) && (m.due !== 0 || m.state !== MonitorState.Idle) && chainUrgent(s, i)) return 1;
   }
   return 0;
 }
@@ -434,7 +449,8 @@ export function spellCastSeen(s: Session, name: string): void {
   if (s.monitors.length === 0 || s.MegaMud_DisableAbilMon !== 0) return;
   for (let i = 0; i < s.monitors.length; i += 1) {
     const m = s.monitors[i]!;
-    if (!live(m) || (m.when & 0x80) === 0 || m.useCommand !== 0 || m.spell === '') continue;
+    if (!live(m) || (m.when & MonitorWhen.SpellCast) === 0 || m.useCommand !== 0 || m.spell === '')
+      continue;
     const spell = findSpell(s, m.spell);
     if (!spell || stricmp(spell.name, name) !== 0) continue;
     if (s.debug !== 0) s.host.trace('{am-sp}');
@@ -464,7 +480,7 @@ export function abilityLine(s: Session, line: string): number {
   if (s.MegaMud_DisableAbilMon === 0) {
     for (let i = 0; i < s.monitors.length; i += 1) {
       const m = s.monitors[i]!;
-      if (!live(m) || (m.when & 0x100) === 0 || m.message === '') continue;
+      if (!live(m) || (m.when & MonitorWhen.GameMessage) === 0 || m.message === '') continue;
       if (!line.startsWith(m.message)) continue;
       if (s.debug !== 0) s.host.trace('{am-m}');
       markDue(s, i, 0);
@@ -482,12 +498,12 @@ export function abilityLine(s: Session, line: string): number {
     const m = s.monitors[asked]!;
     if (atoi(line.slice(8)) !== m.ability) return seen;
     s.host.show(`[Ability monitor: ability ${m.ability} not found - monitor suspended]`);
-    m.state = 2;
+    m.state = MonitorState.Suspended;
     m.byChain = 0;
     s.abilAsking = 0;
     s.monitorAsked = -1;
     forgetReply(s);
-    if (s.state === 0x2e) setState(s, 0);
+    if (s.state === State.Other) setState(s, State.Nothing);
     return 1;
   }
   let part = PARTS.findIndex((p, k) => k > 0 && line.startsWith(p));
@@ -504,7 +520,11 @@ export function abilityLine(s: Session, line: string): number {
   if (s.abilAsking === 0) {
     if (s.abilUnasked === 0) {
       if (s.MegaMud_DisableAbilMon !== 0 || s.pending.length > 0) return seen;
-      if (!s.monitors.some((m) => m.disabled === 0 && m.state !== 2 && m.ability === ability))
+      if (
+        !s.monitors.some(
+          (m) => m.disabled === 0 && m.state !== MonitorState.Suspended && m.ability === ability
+        )
+      )
         return seen;
       s.abilValues = [0, 0, 0, 0, 0, 0];
       s.abilUnaskedNo = ability;
@@ -527,7 +547,7 @@ export function abilityLine(s: Session, line: string): number {
 /** `0x403480`: every monitor idle, nothing awaited. */
 export function resetMonitors(s: Session): void {
   for (const m of s.monitors) {
-    m.state = 0;
+    m.state = MonitorState.Idle;
     m.due = 0;
     m.dueAt = 0;
     m.byChain = 0;
@@ -593,9 +613,29 @@ export function loadMonitors(s: Session, read: (key: string) => string): void {
     m.part = Math.min(Math.max(m.part, 0), 5);
     m.compare = Math.min(Math.max(m.compare, 0), 2);
     m.useCommand = Math.min(Math.max(m.useCommand, 0), 1);
-    let when = m.when & 0x1ff;
-    if ((m.when & 1) !== 0) m.interval = Math.max(m.interval, 5);
-    if (m.useCommand !== 0) when = m.when & 0x17f;
+    let when =
+      m.when &
+      (MonitorWhen.Every |
+        MonitorWhen.BeforeResting |
+        MonitorWhen.AfterResting |
+        MonitorWhen.AfterCombatRound |
+        MonitorWhen.PathStart |
+        MonitorWhen.BeforeMeditating |
+        MonitorWhen.AfterMeditating |
+        MonitorWhen.SpellCast |
+        MonitorWhen.GameMessage);
+    if ((m.when & MonitorWhen.Every) !== 0) m.interval = Math.max(m.interval, 5);
+    if (m.useCommand !== 0)
+      when =
+        m.when &
+        (MonitorWhen.Every |
+          MonitorWhen.BeforeResting |
+          MonitorWhen.AfterResting |
+          MonitorWhen.AfterCombatRound |
+          MonitorWhen.PathStart |
+          MonitorWhen.BeforeMeditating |
+          MonitorWhen.AfterMeditating |
+          MonitorWhen.GameMessage);
     if (m.message === '') when &= ~0x100;
     if (m.chained !== 0 && s.monitors.length > 0) when &= 0x180;
     m.when = when;
@@ -617,7 +657,7 @@ function monitorHold(
   gate: { on: number; since: number; checkedAt: number }
 ): number {
   const t = s.host.tickMs();
-  if (s.monitors.length === 0 || s.MegaMud_DisableAbilMon !== 0 || s.f_a32c !== 0) return 0;
+  if (s.monitors.length === 0 || s.MegaMud_DisableAbilMon !== 0 || s.allOff !== 0) return 0;
   if (gate.on !== 0 && t - gate.checkedAt > 3000 && stillGoing(s, bit) === 0) gate.on = 0;
   gate.checkedAt = t;
   if (gate.on === 0) {

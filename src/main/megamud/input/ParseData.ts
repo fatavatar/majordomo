@@ -17,13 +17,16 @@
  * - the plugin hook `0x48f690`, which has no plugins to call.
  */
 import { enemiesHere } from '../room/entities';
-import { f_426ab0 } from '../combat/casts';
+import { inAttackCast } from '../combat/casts';
 import { runCheck } from '../script/run';
 import { schedule } from '../script/scheduler';
 import type { Session } from '../Session';
 import { refreshStatus } from '../status';
 import { dispatchLine } from './dispatch';
 import { listingTimeouts } from './listings';
+import { State } from '../states';
+import { LineFlag, PROMPT_SEEN } from '../flags';
+import { Task } from '../script/task';
 
 /** The escape parser's state and parameters (`0x30db0`–`0x30dc0`) and the attribute. */
 export interface TerminalState {
@@ -143,8 +146,6 @@ export function escapeChar(t: TerminalState, s: Session, ch: number): boolean {
       break;
     case 0x6d:
       for (const p of t.params) if (p !== -1) t.attr = applySgr(t.attr, p);
-      // 0xdb10: the colour was set since the line began.
-      s.f_db10 = 1;
       break;
     default:
       t.escape = 0;
@@ -179,10 +180,10 @@ export function parseData(s: Session, t: TerminalState, chunk: string): number {
       case 10:
       case 13:
         if (ch !== 10) break;
-        s.lineFlags &= ~3;
+        s.lineFlags &= ~PROMPT_SEEN;
         dispatchLine(s, s.line, 1, 0);
         s.line = { text: '', attr: [] };
-        s.lineFlags &= ~3;
+        s.lineFlags &= ~PROMPT_SEEN;
         refreshStatus(s);
         break;
       case 0x1b:
@@ -199,27 +200,27 @@ export function parseData(s: Session, t: TerminalState, chunk: string): number {
   }
   if (dispatchLine(s, s.line, 0, 0) !== 0) s.line = { text: '', attr: [] };
   if (s.line.text.length === 0) {
-    if ((s.lineFlags & 1) !== 0) {
+    if ((s.lineFlags & LineFlag.Prompted) !== 0) {
       schedule(s);
       return 1;
     }
     if (
-      s.f_68 === 0 &&
-      s.f_e57c === 0 &&
-      s.f_a5f8 === 0 &&
+      s.lineRunChecked === 0 &&
+      s.unknown_e57c === 0 &&
+      s.equipsPending === 0 &&
       s.waitLines < 2 &&
       s.inGame !== 0 &&
       s.online !== 0 &&
-      s.f_a32c === 0 &&
-      s.f_e2b8 !== 0 &&
+      s.allOff === 0 &&
+      s.attackDue !== 0 &&
       (s.inCombat !== 0 || enemiesHere(s, 0) > 0) &&
-      (s.f_a580 === 0 || s.inCombat !== 0) &&
-      s.task !== 0x13 &&
-      (s.state === 0 || f_426ab0(s, 0) !== 0 || s.state === 0x11) &&
+      (s.multiAttacking === 0 || s.inCombat !== 0) &&
+      s.task !== Task.Exiting &&
+      (s.state === State.Nothing || inAttackCast(s, 0) !== 0 || s.state === State.Attacking) &&
       runCheck(s) !== 0
     ) {
       if (s.debug !== 0) s.host.trace(`{D${s.state}${''}${0}!!}`);
-      s.f_68 = 1;
+      s.lineRunChecked = 1;
     }
   }
   return 1;

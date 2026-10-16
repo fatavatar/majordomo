@@ -4,6 +4,7 @@ import type { ClassRec } from '../data';
 import { newPlayer } from '../data';
 import { partyLine } from '../party/party';
 import { session } from './fixture';
+import { LineFlag } from '../flags';
 
 /* `0x47ec60` and `0x47d9a0`, read 2026-10-12; the listing is Skinny's, 2026-10-12. */
 
@@ -65,11 +66,11 @@ describe('the party (0x47ec60)', () => {
   it('ends at the prompt, and a follower calls a missing leader back', () => {
     const { s } = party();
     s.leaderName = 'Fatty';
-    s.f_e2ec = 1;
+    s.partyLost = 1;
     for (const line of LISTING) partyLine(s, line);
-    s.lineFlags |= 1;
+    s.lineFlags |= LineFlag.Prompted;
     expect(partyLine(s, '')).toBe(1);
-    expect(s.lineFlags & 0x2000).toBe(0);
+    expect(s.lineFlags & LineFlag.PartyListing).toBe(0);
     expect(s.pending.map((p) => p.text)).toEqual(['/Fatty @comeback\r']);
   });
 

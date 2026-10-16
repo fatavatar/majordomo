@@ -1,6 +1,6 @@
 /**
  * `You notice a lantern, 3 silver nobles here.` (`0x473a80`): the room's
- * items, in cyan. The listing may wrap; what is left is kept (`0xd910`).
+ * items, in cyan. The listing may wrap; what is left is kept (`listingRest`).
  * Each item is added by `0x473dd0`. Read 2026-10-12.
  */
 import { indexFrom, indexOf, leadingNumber, strnicmp, trimSpaces } from '../cstr';
@@ -9,18 +9,20 @@ import type { Session } from '../Session';
 import { prioritize } from './alsoHere';
 import { checkNames } from './checkNames';
 import { addEntity, dropUnkeptItems } from './entities';
+import { State } from '../states';
+import { LineFlag, EntityFlag, EntityType, Stance } from '../flags';
 
 export function noticeLine(s: Session, line: string): number {
   let at: number;
-  if ((s.lineFlags & 0x40000) === 0) {
+  if ((s.lineFlags & LineFlag.NoticeContinue) === 0) {
     const found = indexOf(line, 'You notice ');
     if (found === -1 || s.line.attr[found] !== 6) return 0;
     if (indexFrom(line, found, 'nothing different') !== -1) {
-      s.f_e290 = 1;
-      setState(s, 0);
+      s.lookDue = 1;
+      setState(s, State.Nothing);
       return 1;
     }
-    if (s.state === 0x20) return 1;
+    if (s.state === State.Looking) return 1;
     dropUnkeptItems(s);
     at = found + 0xb;
   } else {
@@ -31,8 +33,8 @@ export function noticeLine(s: Session, line: string): number {
     let end = indexFrom(line, at, ',');
     if (end === -1) end = indexFrom(line, at, ' here.');
     if (end === -1) {
-      s.s_d910 = trimSpaces(line.slice(at, at + 0x1ff));
-      s.lineFlags |= 0x40000;
+      s.listingRest = trimSpaces(line.slice(at, at + 0x1ff));
+      s.lineFlags |= LineFlag.NoticeContinue;
       checkNames(s);
       prioritize(s);
       return 1;
@@ -42,11 +44,11 @@ export function noticeLine(s: Session, line: string): number {
       end = at + 1;
     } else {
       let name = line.slice(at, at + Math.min(Math.max(end - at, 0), 199));
-      if ((s.lineFlags & 0x40000) !== 0) {
-        s.lineFlags &= ~0x40000;
-        if (s.s_d910 !== '') {
-          name = `${s.s_d910} ${name}`.slice(0, 199);
-          s.s_d910 = '';
+      if ((s.lineFlags & LineFlag.NoticeContinue) !== 0) {
+        s.lineFlags &= ~LineFlag.NoticeContinue;
+        if (s.listingRest !== '') {
+          name = `${s.listingRest} ${name}`.slice(0, 199);
+          s.listingRest = '';
         }
       }
       addNoticed(s, name);
@@ -55,10 +57,10 @@ export function noticeLine(s: Session, line: string): number {
     }
     at = end;
   }
-  if ((s.lineFlags & 0x40000) !== 0 && s.s_d910 !== '') {
-    addNoticed(s, s.s_d910);
-    s.s_d910 = '';
-    s.lineFlags &= ~0x40000;
+  if ((s.lineFlags & LineFlag.NoticeContinue) !== 0 && s.listingRest !== '') {
+    addNoticed(s, s.listingRest);
+    s.listingRest = '';
+    s.lineFlags &= ~LineFlag.NoticeContinue;
   }
   return done(s);
 }
@@ -66,9 +68,9 @@ export function noticeLine(s: Session, line: string): number {
 function done(s: Session): number {
   checkNames(s);
   prioritize(s);
-  s.s_d910 = '';
-  s.lineFlags = (s.lineFlags & ~0x40000) | 0x10;
-  if (s.state === 0x21) setState(s, 0);
+  s.listingRest = '';
+  s.lineFlags = (s.lineFlags & ~LineFlag.NoticeContinue) | LineFlag.ItemsListed;
+  if (s.state === State.Searching) setState(s, State.Nothing);
   return 1;
 }
 
@@ -97,10 +99,10 @@ function addNoticed(s: Session, text: string): number {
   if (name === '') return 0;
   const e = addEntity(s);
   e.name = name.slice(0, 0x1e);
-  e.type = 3;
-  e.kind = 2;
+  e.type = EntityType.Item;
+  e.kind = Stance.Friend;
   e.count = 1;
-  if (s.state === 0x21) e.flags |= 1;
+  if (s.state === State.Searching) e.flags |= EntityFlag.Kept;
   if (/^[0-9]/.test(e.name)) {
     const [count, after] = leadingNumber(e.name);
     e.count = count;
@@ -109,8 +111,8 @@ function addNoticed(s: Session, text: string): number {
     e.name = e.name.slice(start);
   }
   const kind = corpseOrLootbox(e.name);
-  if (kind === 1) e.flags |= 0x8000;
-  else if (kind === 2) e.flags |= 0x10000;
+  if (kind === 1) e.flags |= EntityFlag.Corpse;
+  else if (kind === 2) e.flags |= EntityFlag.Lootbox;
   if (e.name === 'whirling vortex') s.roomNameHash += 0x100000;
   if (e.name === 'obsidian obelisk') s.roomNameHash += 0x200000;
   return 1;

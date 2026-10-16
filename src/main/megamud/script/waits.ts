@@ -7,7 +7,7 @@
  * and forty times over runs the ten- and sixty-second ones.
  */
 import { abilTimedOut } from '../abilities/monitors';
-import { f_426ab0 } from '../combat/casts';
+import { inAttackCast } from '../combat/casts';
 import { clearCastMode, clearMultiCounts, clearTargetCasts, combatOff } from '../combat/engaged';
 import { heldRows } from '../messages/messages';
 import { enemiesHere, findEntity } from '../room/entities';
@@ -15,6 +15,8 @@ import { automated, type Session } from '../Session';
 import { recheckStats } from '../stats/exp';
 import { send } from './send';
 import { forgetAwaited, setState } from './state';
+import { State } from '../states';
+import { LineFlag, WHO_LISTING, INVENTORY_LISTING } from '../flags';
 
 /** The states `0x40aae0` gives up. */
 const GIVE_UP = [
@@ -23,35 +25,50 @@ const GIVE_UP = [
 
 /** `0x40a7e0`: two seconds: a fight's target gone, a finished wait ended. */
 export function twoSeconds(s: Session): number {
-  if (s.inCombat !== 0 || f_426ab0(s, 0) !== 0 || s.state === 0x12 || s.state === 0x11) {
+  if (
+    s.inCombat !== 0 ||
+    inAttackCast(s, 0) !== 0 ||
+    s.state === State.Backstabbing ||
+    s.state === State.Attacking
+  ) {
     if (s.target !== '' && !findEntity(s, s.target, 0)) {
       if (enemiesHere(s, 0) === 0) {
         combatOff(s);
       } else {
         if (s.debug !== 0 && s.inCombat !== 0) s.host.trace('{C1}');
         s.inCombat = 0;
-        if (s.debug !== 0 && s.f_e1d8 !== 0) s.host.trace('{I1-}');
-        s.f_e1d8 = 0;
+        if (s.debug !== 0 && s.combatOffExpected !== 0) s.host.trace('{I1-}');
+        s.combatOffExpected = 0;
         clearTargetCasts(s);
         clearCastMode(s);
       }
       if (s.debug !== 0) s.host.trace('{2s1}');
-      setState(s, 0);
+      setState(s, State.Nothing);
     }
   }
-  if (s.waitLines > 1 || s.waitPrompt !== 0 || s.f_a5f8 !== 0) return 0;
+  if (s.waitLines > 1 || s.waitPrompt !== 0 || s.equipsPending !== 0) return 0;
   const st = s.state;
-  if (st === 0) {
-    if ((s.lineFlags & 1) !== 0) return 0;
+  if (st === State.Nothing) {
+    if ((s.lineFlags & LineFlag.Prompted) !== 0) return 0;
   } else {
-    if (st !== 0x10 && (st < 0x14 || st === 0x16 || st === 0x20 || st === 0x23)) return 0;
-    if (st === 0x24 || st === 0x25 || st === 0x2b || st === 0x2c) return 0;
+    if (
+      st !== State.Blessing &&
+      (st < 0x14 || st === State.Moving || st === State.Looking || st === State.Who)
+    )
+      return 0;
+    if (
+      st === State.Top ||
+      st === State.Inventory ||
+      st === State.GetExits ||
+      st === State.Training
+    )
+      return 0;
   }
   s.waitLines = 0;
-  s.f_e2a0 = 0;
+  s.statPagerUp = 0;
   abilTimedOut(s);
-  if (s.state !== 0) setState(s, 0);
-  if (s.inCombat === 0 || enemiesHere(s, 0) === 0) s.lineFlags |= 1;
+  if (s.state !== State.Nothing) setState(s, State.Nothing);
+  if (s.inCombat === 0 || enemiesHere(s, 0) === 0) s.lineFlags |= LineFlag.Prompted;
   if (s.debug !== 0) s.host.trace('{2s2}');
   return 1;
 }
@@ -60,49 +77,49 @@ export function twoSeconds(s: Session): number {
 export function listingTimedOut(s: Session): number {
   if (s.debug !== 0) s.host.trace('{6s}');
   twoSeconds(s);
-  s.f_a5f8 = 0;
+  s.equipsPending = 0;
   s.waitPrompt = 0;
-  s.f_e2a0 = 0;
+  s.statPagerUp = 0;
   abilTimedOut(s);
-  if (s.f_8558 !== 0) {
-    s.f_8558 = 0;
-    s.f_e1e4 = 1;
-    s.f_8468 = 0;
+  if (s.recoveringCorpse !== 0) {
+    s.recoveringCorpse = 0;
+    s.corpseTried = 1;
+    s.weightMax = 0;
     if (s.debug !== 0) s.host.trace('{rc-x}');
   }
   if (!GIVE_UP.includes(s.state)) return 0;
   s.waitLines = 0;
-  if (s.state === 0x25) {
+  if (s.state === State.Inventory) {
     s.host.show('[Inventory listing timed out]');
-    if ((s.lineFlags & 0x1c00) !== 0) {
-      s.f_8468 = 0;
-      s.lineFlags &= ~0x1c00;
+    if ((s.lineFlags & INVENTORY_LISTING) !== 0) {
+      s.weightMax = 0;
+      s.lineFlags &= ~INVENTORY_LISTING;
     }
-    s.f_32350 = 0;
-    s.f_32358 = 0;
+    s.inventoryQuietAt = 0;
+    s.inventoryStartedAt = 0;
   }
-  if (s.state === 0x23) {
-    if ((s.lineFlags & 0x380) !== 0) {
-      s.lineFlags &= ~0x380;
+  if (s.state === State.Who) {
+    if ((s.lineFlags & WHO_LISTING) !== 0) {
+      s.lineFlags &= ~WHO_LISTING;
       // `0x4c2600`: the who window redrawn (left out). A `who` asked again, at most once a minute.
       const t = s.host.tickMs();
-      if (s.f_32370 === 0 || t - s.f_32370 > 60000) {
-        s.f_32370 = t;
-        s.f_e2a4 = -1;
+      if (s.whoTimedOutAt === 0 || t - s.whoTimedOutAt > 60000) {
+        s.whoTimedOutAt = t;
+        s.whoDue = -1;
       }
     }
-    s.f_32360 = 0;
+    s.whoQuietAt = 0;
   }
-  if (s.state === 0x24) {
-    s.lineFlags &= ~0x40;
-    s.f_32368 = 0;
+  if (s.state === State.Top) {
+    s.lineFlags &= ~LineFlag.TopListing;
+    s.topQuietAt = 0;
   }
   if (s.debug !== 0 && s.inCombat !== 0) s.host.trace('{C2}');
   s.inCombat = 0;
   s.target = '';
   forgetAwaited(s, s.state);
-  setState(s, 0);
-  if (s.inCombat === 0 || enemiesHere(s, 0) === 0) s.lineFlags |= 1;
+  setState(s, State.Nothing);
+  if (s.inCombat === 0 || enemiesHere(s, 0) === 0) s.lineFlags |= LineFlag.Prompted;
   return 1;
 }
 
@@ -114,21 +131,21 @@ export function tenSeconds(s: Session): number {
   clearTargetCasts(s);
   clearCastMode(s);
   clearMultiCounts(s);
-  s.f_db68 = 0;
-  s.f_db6c = 0;
+  s.stealthRefused = 0;
+  s.stealthFails = 0;
   s.stepTries = 0;
   s.runDirection = -1;
-  s.f_e1d0 = 0;
+  s.hideAgain = 0;
   if (s.debug !== 0 && s.inCombat !== 0) s.host.trace('{C3}');
   s.inCombat = 0;
-  s.f_e298 = 0;
+  s.partyStepPending = 0;
   s.waitLines = 0;
   s.chaseTarget = '';
-  if (s.state !== 3 && s.state !== 5) {
+  if (s.state !== State.Resting && s.state !== State.Meditating) {
     forgetAwaited(s, s.state);
-    setState(s, 0);
+    setState(s, State.Nothing);
   }
-  if (s.f_a32c === 0) {
+  if (s.allOff === 0) {
     s.host.activity('10-second room refresh');
     send(s, '\r');
   }
@@ -141,11 +158,11 @@ export function thirtySeconds(s: Session): number {
   twoSeconds(s);
   listingTimedOut(s);
   if (s.hp < s.Player_MaxHP || (s.Player_MaxMana >= 1 && s.mana < s.Player_MaxMana)) return 0;
-  if (s.f_a32c === 0 && automated(s)) s.host.alert?.('idle');
+  if (s.allOff === 0 && automated(s)) s.host.alert?.('idle');
   s.blind = 0;
   s.confused = 0;
   s.poisoned = 0;
-  s.f_e1f8 = 0;
+  s.tooSickToRest = 0;
   s.diseased = 0;
   s.losingHp = 0;
   s.hpRegen = 0;
@@ -164,7 +181,7 @@ export function sixtySeconds(s: Session): number {
   if (s.hp < s.Player_MaxHP || (s.Player_MaxMana >= 1 && s.mana < s.Player_MaxMana)) return 0;
   s.held = 0;
   heldRows(s, 0);
-  s.f_e218 = 0;
+  s.attackPrevented = 0;
   recheckStats(s);
   return 1;
 }
@@ -172,5 +189,5 @@ export function sixtySeconds(s: Session): number {
 /** `0x48b180`: the pending list emptied. */
 export function clearPending(s: Session): void {
   s.pending = [];
-  s.f_30e14 = 0;
+  s.silentSends = 0;
 }

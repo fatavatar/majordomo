@@ -9,23 +9,25 @@ import { queue } from '../script/send';
 import { setState } from '../script/state';
 import type { Session } from '../Session';
 import { doors } from './go';
+import { State } from '../states';
+import { LineFlag, Exit } from '../flags';
 
 export function bashLine(s: Session, line: string): number {
   if (indexOf(line, 'You bashed the ') !== -1 || indexOf(line, ' is already open.') !== -1) {
-    if (s.state === 0x17 && s.moveDir !== -1) {
-      s.roomExits[s.moveDir] = 3;
-      s.lineFlags |= 4;
+    if (s.state === State.Bashing && s.moveDir !== -1) {
+      s.roomExits[s.moveDir] = Exit.OpenDoor;
+      s.lineFlags |= LineFlag.DoorAnswered;
     } else {
-      s.f_e290 = 1;
+      s.lookDue = 1;
     }
     s.sneaking = 0;
     s.hidden = 0;
-    setState(s, 0);
+    setState(s, State.Nothing);
     return 1;
   }
   if (indexOf(line, 'Your attempts to bash ') !== -1) {
-    if (s.state === 0x17 && s.moveDir !== -1) s.roomExits[s.moveDir] = 2;
-    s.f_db48 += 1;
+    if (s.state === State.Bashing && s.moveDir !== -1) s.roomExits[s.moveDir] = Exit.ClosedDoor;
+    s.bashTries += 1;
     s.sneaking = 0;
     s.hidden = 0;
     if (
@@ -33,14 +35,14 @@ export function bashLine(s: Session, line: string): number {
       s.walking === 0 &&
       s.roaming === 0 &&
       s.importing === 0 &&
-      s.f_a32c === 0 &&
-      s.state === 0x17 &&
+      s.allOff === 0 &&
+      s.state === State.Bashing &&
       s.moveDir !== -1
     ) {
-      if (s.f_db48 < s.Other_BashMax) queue(s, `bash ${directionWord(s.moveDir)}\r`);
-      else s.f_db48 = 0;
+      if (s.bashTries < s.Other_BashMax) queue(s, `bash ${directionWord(s.moveDir)}\r`);
+      else s.bashTries = 0;
     }
-    setState(s, 0);
+    setState(s, State.Nothing);
     return 1;
   }
   if (s.following === 0) return 0;

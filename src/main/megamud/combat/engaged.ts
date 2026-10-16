@@ -9,96 +9,105 @@ import { send } from '../script/send';
 import { forgetAwaited, setState } from '../script/state';
 import { enemiesHere, findEntity } from '../room/entities';
 import type { RoomEntity, Session } from '../Session';
-import { isCastState } from '../states';
-import { f_426ab0, beginCast, castSpellFor } from './casts';
+import { isCastState, State } from '../states';
+import { inAttackCast, beginCast, castSpellFor } from './casts';
+import { EntityFlag, WeaponKind, EntityType, Stance } from '../flags';
 
 /** `0x428ab0`: the two combat frames. 1 when the line was one of them. */
 export function combatEngaged(s: Session, line: string): number {
   if (line.indexOf('*Combat Engaged*') === 0) {
-    s.f_324c0 += 1;
-    if (s.debug !== 0 && s.inCombat === 0) s.host.trace(`{C+${s.f_324c0}}`);
+    s.combatChanges += 1;
+    if (s.debug !== 0 && s.inCombat === 0) s.host.trace(`{C+${s.combatChanges}}`);
     s.inCombat = 1;
-    s.f_32490 = s.now;
-    s.f_324a0 = 0;
-    s.f_324a8 = 0;
-    s.f_324b0 = s.host.tickMs();
-    s.f_dd0c = 0;
-    if (s.state === 0x2d && f_426ab0(s, 1) === 0 && s.engagedMode === 0) {
+    s.combatOnAt = s.now;
+    s.partyAttackJoinedAt = 0;
+    s.membersOnNewTargets = 0;
+    s.memberAttackAt = s.host.tickMs();
+    s.attacksRefused = 0;
+    if (
+      s.state === State.PendingCmd &&
+      inAttackCast(s, 1) === 0 &&
+      s.engagedMode === State.Nothing
+    ) {
       clearCastMode(s);
       if (s.debug !== 0) s.host.trace('{pend1}');
-      s.engagedMode = 0x11;
-      setState(s, 0x11);
-      s.f_a580 = 0;
+      s.engagedMode = State.Attacking;
+      setState(s, State.Attacking);
+      s.multiAttacking = 0;
     } else {
       resumeCastMode(s);
     }
-    s.f_a580 =
-      (f_426ab0(s, 0) === 0 && f_426ab0(s, 1) === 0) || s.f_a464 === 0 || s.f_a460 !== 0 ? 0 : 1;
+    s.multiAttacking =
+      (inAttackCast(s, 0) === 0 && inAttackCast(s, 1) === 0) ||
+      s.castArea === 0 ||
+      s.castUntargeted !== 0
+        ? 0
+        : 1;
     s.hpFullAt = 0;
     s.manaFullAt = 0;
-    s.f_32600 = -1;
-    s.f_32604 = 0;
-    s.f_e2b8 = 0;
-    s.f_e1d8 = 0;
-    s.f_322d8 = s.now;
+    s.probablyRoundFought = -1;
+    s.roundBlowSeen = 0;
+    s.attackDue = 0;
+    s.combatOffExpected = 0;
+    s.attackSentAt = s.now;
     escapeCheck(s, 'combat engaged');
     return 1;
   }
   if (line.indexOf('*Combat Off*') !== 0) return 0;
-  s.f_324c0 += 1;
-  if (s.debug !== 0 && s.inCombat !== 0) s.host.trace(`{C-${s.f_324c0}}`);
+  s.combatChanges += 1;
+  if (s.debug !== 0 && s.inCombat !== 0) s.host.trace(`{C-${s.combatChanges}}`);
   s.inCombat = 0;
-  s.f_32498 = s.now;
-  s.f_32604 = 0;
-  if (f_426ab0(s, 0) !== 0) resumeCastMode(s);
-  if (s.f_e1d8 !== 0 && enemiesHere(s, 0) > 0) {
+  s.combatOffAt = s.now;
+  s.roundBlowSeen = 0;
+  if (inAttackCast(s, 0) !== 0) resumeCastMode(s);
+  if (s.combatOffExpected !== 0 && enemiesHere(s, 0) > 0) {
     if (s.debug !== 0) s.host.trace('{I0-}');
-    s.f_e1d8 = 0;
+    s.combatOffExpected = 0;
     return 1;
   }
   if (enemiesHere(s, 0) === 0) {
     endAltHeal(s);
     clearAlignment(s);
   } else {
-    s.f_e2b8 = 1;
+    s.attackDue = 1;
   }
-  if (f_426ab0(s, 0) === 0) clearCastMode(s);
-  s.f_32600 = 0;
+  if (inAttackCast(s, 0) === 0) clearCastMode(s);
+  s.probablyRoundFought = 0;
   s.sneaking = 0;
   s.hidden = 0;
-  s.engagedMode = 0;
+  s.engagedMode = State.Nothing;
   clearNoMessageRounds(s);
-  if (s.state !== 0x16) {
+  if (s.state !== State.Moving) {
     forgetAwaited(s, s.state);
-    setState(s, 0);
+    setState(s, State.Nothing);
   }
   return 1;
 }
 
 /** `0x42c150`: leave the fight: forget everything about it, and `break` if a multi-attack was on. */
 export function combatOff(s: Session): void {
-  const multi = s.f_a580;
+  const multi = s.multiAttacking;
   if (s.debug !== 0 && s.inCombat !== 0) s.host.trace('{C6}');
   s.inCombat = 0;
-  s.f_e2b8 = 0;
-  s.f_e1d8 = 0;
-  s.f_32600 = 0;
-  s.f_32604 = 0;
-  s.f_e220 = 0;
-  s.f_a580 = 0;
+  s.attackDue = 0;
+  s.combatOffExpected = 0;
+  s.probablyRoundFought = 0;
+  s.roundBlowSeen = 0;
+  s.areaWarned = 0;
+  s.multiAttacking = 0;
   s.runCount = 0;
-  s.f_907c = 0;
-  s.f_8be4 = 0;
-  s.f_322d8 = 0;
-  s.f_324a0 = 0;
-  s.stateAwaited = 0;
+  s.runByChoice = 0;
+  s.engagedHere = 0;
+  s.attackSentAt = 0;
+  s.partyAttackJoinedAt = 0;
+  s.stateAwaited = State.Nothing;
   endAltHeal(s);
   clearAlignment(s);
   clearTargetCasts(s);
   clearCastMode(s);
   clearMultiCounts(s);
   if (multi !== 0 && s.BBS_GreaterMUD === 0) {
-    s.f_e1d8 = 0;
+    s.combatOffExpected = 0;
     s.waitLines = 2;
     send(s, 'break\r');
   }
@@ -106,16 +115,16 @@ export function combatOff(s: Session): void {
 
 /** `0x42c5b0`: pick the cast mode back up from the state (or the state awaited). */
 function resumeCastMode(s: Session): number {
-  const mode = f_426ab0(s, 0) !== 0 ? s.state : s.stateAwaited;
+  const mode = inAttackCast(s, 0) !== 0 ? s.state : s.stateAwaited;
   if (isCastState(mode)) {
     const spell = castSpellFor(s, mode, 1);
     if (spell) {
       beginCast(s, mode, spell);
-      if (s.inCombat !== 0 && s.now <= s.f_32490 + 1 && s.state === mode && s.f_a464 === 1) {
+      if (s.inCombat !== 0 && s.now <= s.combatOnAt + 1 && s.state === mode && s.castArea === 1) {
         for (const e of s.room) {
-          if (e.type === 2) {
-            if (e.kind === 2 || e.kind === 0) e.kind = 4;
-            e.flags |= 0x11;
+          if (e.type === EntityType.Monster) {
+            if (e.kind === Stance.Friend || e.kind === Stance.Unknown) e.kind = Stance.Enemy;
+            e.flags |= EntityFlag.Kept | EntityFlag.Fought;
           }
         }
       }
@@ -129,36 +138,36 @@ function resumeCastMode(s: Session): number {
 
 /** `0x42c270`: no spell is being cast in the fight. */
 export function clearCastMode(s: Session): void {
-  if (s.debug !== 0 && s.f_a448 !== 0) s.host.trace('{cc}');
+  if (s.debug !== 0 && s.castMode !== State.Nothing) s.host.trace('{cc}');
   s.castShort = '';
   s.castName = '';
-  s.f_a448 = 0;
-  s.f_a44c = 0;
-  s.f_a450 = 0;
-  s.f_a454 = 0;
-  s.f_a460 = 0;
-  s.f_a464 = 0;
-  s.f_e364 = 0;
-  if (isCastState(s.engagedMode)) s.engagedMode = 0;
+  s.castMode = State.Nothing;
+  s.castMessageSeen = 0;
+  s.castJustBegun = 0;
+  s.castCountBefore = 0;
+  s.castUntargeted = 0;
+  s.castArea = 0;
+  s.altHeal = 0;
+  if (isCastState(s.engagedMode)) s.engagedMode = State.Nothing;
 }
 
 /** `0x42c0a0`: the no-message round counters, all modes. */
 export function clearNoMessageRounds(s: Session): void {
-  s.f_a50c = 0;
-  s.f_a510 = 0;
-  s.f_a514 = 0;
-  s.f_a518 = 0;
-  s.f_a51c = 0;
-  s.f_a520 = 0;
-  s.f_a524 = 0;
-  s.f_a458 = 0;
+  s.silentPreMulti = 0;
+  s.silentMulti = 0;
+  s.silentPre = 0;
+  s.silentMain = 0;
+  s.silentAux = 0;
+  s.silentAlt = 0;
+  s.silentUser = 0;
+  s.castWatchdogAt = 0;
 }
 
 /** `0x42bef0`: the party's "attacking alone" marks and their timers. */
 export function clearAlignment(s: Session): void {
-  s.f_324a8 = 0;
-  s.f_324b0 = 0;
-  s.f_324b8 = 0;
+  s.membersOnNewTargets = 0;
+  s.memberAttackAt = 0;
+  s.attackLateAt = 0;
   for (const member of s.party) member.target = '';
 }
 
@@ -167,50 +176,50 @@ export function clearTargetCasts(s: Session): void {
   clearNoMessageRounds(s);
   clearMainCounts(s);
   s.target = '';
-  s.f_32608 = 0;
+  s.waitingSpellTargeted = 0;
 }
 
 /** `0x42c310`: the multi-attack counts. */
 export function clearMultiCounts(s: Session): void {
-  s.f_a3e8 = 0;
-  s.f_a3ec = 0;
-  s.f_a50c = 0;
-  s.f_a510 = 0;
-  s.f_a57c = 0;
-  s.f_32618 = 0;
-  s.f_e220 = 0;
+  s.castsPreMulti = 0;
+  s.castsMulti = 0;
+  s.silentPreMulti = 0;
+  s.silentMulti = 0;
+  s.multiDamage = 0;
+  s.fightDamage = 0;
+  s.areaWarned = 0;
 }
 
 /** `0x42c360`: the single-target counts and the target's marks. */
 export function clearMainCounts(s: Session): void {
-  s.f_a3f0 = 0;
-  s.f_a3f4 = 0;
-  s.f_a3f8 = 0;
-  s.f_a3fc = 0;
-  s.f_a400 = 0;
-  s.f_a62c = 0;
-  s.f_a514 = 0;
-  s.f_a518 = 0;
-  s.f_a51c = 0;
-  s.f_a520 = 0;
-  s.f_a524 = 0;
-  s.f_324a0 = 0;
-  s.f_b100 = 0;
-  s.f_b104 = 0;
-  s.f_b108 = 0;
-  s.f_8bec = 0;
-  s.f_b0fc = 0;
-  s.f_dd10 = 0;
-  s.s_dd14 = '';
-  s.f_ddf0 = 0;
+  s.castsPre = 0;
+  s.castsMain = 0;
+  s.castsAux = 0;
+  s.castsAlt = 0;
+  s.castsUser = 0;
+  s.drainCasts = 0;
+  s.silentPre = 0;
+  s.silentMain = 0;
+  s.silentAux = 0;
+  s.silentAlt = 0;
+  s.silentUser = 0;
+  s.partyAttackJoinedAt = 0;
+  s.normalWeaponWorked = 0;
+  s.altWeaponWorked = 0;
+  s.backstabWeaponWorked = 0;
+  s.weaponsExhausted = 0;
+  s.weaponNoEffect = 0;
+  s.noEffectCount = 0;
+  s.noEffectTarget = '';
+  s.targetProtected = 0;
   s.lastTarget = '';
-  s.f_ddec = 0;
-  s.f_df00 = 0;
-  s.f_df04 = 0;
-  s.f_df08 = 0;
-  s.f_32618 = s.f_a57c;
-  s.s_a528 = '';
-  s.f_32608 = 0;
+  s.lastTargetRoom = 0;
+  s.weaponsInHand = 0;
+  s.weaponsProbing = 0;
+  s.weaponsSuspect = 0;
+  s.fightDamage = s.multiDamage;
+  s.countedTarget = '';
+  s.waitingSpellTargeted = 0;
 }
 
 /**
@@ -218,8 +227,8 @@ export function clearMainCounts(s: Session): void {
  * forgotten, and if it was the spell being cast the cast mode ends too.
  */
 export function endAltHeal(s: Session): void {
-  if (s.f_e364 === 0) return;
-  s.f_e364 = 0;
+  if (s.altHeal === 0) return;
+  s.altHeal = 0;
   if (s.altSpell === '') return;
   const isHeal =
     (s.Spells_HealCmd2 !== '' && s.altSpell === s.Spells_HealCmd2) ||
@@ -227,12 +236,12 @@ export function endAltHeal(s: Session): void {
   if (!isHeal) return;
   if (s.altSpell !== '' && s.castShort !== '' && s.altSpell === s.castShort) {
     clearCastMode(s);
-    if (s.state === 0xe) {
-      forgetAwaited(s, 0xe);
-      setState(s, 0);
+    if (s.state === State.CastAlt) {
+      forgetAwaited(s, State.CastAlt);
+      setState(s, State.Nothing);
     }
   }
-  s.f_a3fc = s.f_a410;
+  s.castsAlt = s.altCastCap;
   s.altSpell = '';
 }
 
@@ -242,7 +251,7 @@ export function setTarget(s: Session, name: string): void {
   const e = findEntity(s, name, 1);
   if (!e) {
     if (
-      (s.s_a528 === '' || stricmp(s.s_a528, name) !== 0) &&
+      (s.countedTarget === '' || stricmp(s.countedTarget, name) !== 0) &&
       (s.target === '' || stricmp(s.target, name) !== 0)
     ) {
       clearMainCounts(s);
@@ -258,20 +267,20 @@ export function setTarget(s: Session, name: string): void {
 
 /** `0x427050`: a new target entity resets the counts unless it is the one already marked. */
 export function targetChanged(s: Session, e: RoomEntity | null): void {
-  if (!e || e.type === 3) {
+  if (!e || e.type === EntityType.Item) {
     clearMainCounts(s);
     return;
   }
-  if (s.s_a528 !== '' && stricmp(s.s_a528, e.name) === 0) return;
+  if (s.countedTarget !== '' && stricmp(s.countedTarget, e.name) === 0) return;
   clearMainCounts(s);
-  s.s_a528 = e.name.slice(0, 0x50);
+  s.countedTarget = e.name.slice(0, 0x50);
 }
 
 /** `0x4270b0`: with `Party.AttackLate`, note what this character is attacking for the party. */
 export function attackLateMark(s: Session, e: RoomEntity | null): void {
   if (s.Party_AttackLate === 0) return;
-  s.f_324a8 = 0;
-  s.f_324b0 = s.host.tickMs();
+  s.membersOnNewTargets = 0;
+  s.memberAttackAt = s.host.tickMs();
   if (e) {
     const me = s.party.findIndex((m) => stricmp(m.name, s.Player_Name) === 0);
     if (me !== -1) s.party[me]!.target = e.name.slice(0, 30);
@@ -281,15 +290,15 @@ export function attackLateMark(s: Session, e: RoomEntity | null): void {
 /** `0x42c6c0`: remember this target as the one last fought, in this room. */
 export function rememberTarget(s: Session): void {
   s.lastTarget = s.target.slice(0, 99);
-  s.f_dd78 += 1;
-  s.f_ddec = s.f_8130;
+  s.targetCount += 1;
+  s.lastTargetRoom = s.roomSignature;
 }
 
-/** `0x42c570`: which of the weapons the server has seen (1 normal, 2 alt, 4 backstab). */
+/** `0x42c570`: the weapons (`WeaponKind` bits) seen to work on the target. */
 export function sawWeapons(s: Session, which: number): void {
-  if ((which & 1) !== 0) s.f_b100 = 1;
-  if ((which & 2) !== 0) s.f_b104 = 1;
-  if ((which & 4) !== 0) s.f_b108 = 1;
+  if ((which & WeaponKind.Normal) !== 0) s.normalWeaponWorked = 1;
+  if ((which & WeaponKind.Alt) !== 0) s.altWeaponWorked = 1;
+  if ((which & WeaponKind.Backstab) !== 0) s.backstabWeaponWorked = 1;
 }
 
 /**
@@ -299,13 +308,13 @@ export function sawWeapons(s: Session, which: number): void {
 export function targetLeft(s: Session): void {
   if (enemiesHere(s, 0) === 0) {
     combatOff(s);
-    setState(s, 0);
+    setState(s, State.Nothing);
     return;
   }
   if (s.debug !== 0 && s.inCombat !== 0) s.host.trace('{C10}');
   s.inCombat = 0;
-  s.f_e1d8 = 0;
+  s.combatOffExpected = 0;
   clearTargetCasts(s);
   clearCastMode(s);
-  setState(s, 0);
+  setState(s, State.Nothing);
 }

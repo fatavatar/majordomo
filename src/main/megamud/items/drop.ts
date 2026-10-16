@@ -12,6 +12,8 @@ import { addEntity } from '../room/entities';
 import { forgetAwaited, setState } from '../script/state';
 import type { Session } from '../Session';
 import { carryLess, wealthCarried } from './inventory';
+import { State } from '../states';
+import { EntityType } from '../flags';
 
 export function dropLine(s: Session, line: string): number {
   if (
@@ -20,16 +22,16 @@ export function dropLine(s: Session, line: string): number {
       indexOf(line, ' to hide') !== -1 ||
       indexOf(line, ' to sell') !== -1)
   ) {
-    s.f_8468 = 0;
+    s.weightMax = 0;
     forgetAwaited(s, s.state);
-    setState(s, 0);
+    setState(s, State.Nothing);
     return 1;
   }
   if (indexOf(line, 'There is no room to ') !== -1) {
-    s.f_e2c0 = 0;
-    s.f_e1e0 = 1;
+    s.stashing = 0;
+    s.cannotDropHere = 1;
     forgetAwaited(s, s.state);
-    setState(s, 0);
+    setState(s, State.Nothing);
     return 1;
   }
   let hid = false;
@@ -60,7 +62,7 @@ export function dropLine(s: Session, line: string): number {
     gave = true;
   }
   forgetAwaited(s, s.state);
-  setState(s, 0);
+  setState(s, State.Nothing);
   const what = line.slice(at, Math.min(end, at + 0x63));
   const [n, numEnd] = leadingNumber(what);
   let count = n;
@@ -76,15 +78,15 @@ export function dropLine(s: Session, line: string): number {
     }
   }
   if (count >= 1) {
-    carryLess(s, name, count, hid ? 0x1e : 0x1d);
+    carryLess(s, name, count);
     const item = findItem(s, name);
     if (item) {
       if (!hid && !gave) {
-        let e = s.room.find((x) => x.type === 3 && sameItem(x.name, name)) ?? null;
+        let e = s.room.find((x) => x.type === EntityType.Item && sameItem(x.name, name)) ?? null;
         if (!e) {
           e = addEntity(s);
           e.name = name.slice(0, 30);
-          e.type = 3;
+          e.type = EntityType.Item;
           e.item = item;
         }
         e.count += count;

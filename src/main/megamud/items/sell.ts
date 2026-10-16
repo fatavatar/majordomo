@@ -9,6 +9,8 @@ import { forgetAwaited, setState } from '../script/state';
 import type { Session } from '../Session';
 import { coinList } from './buy';
 import { carryLess, carryMore } from './inventory';
+import { State } from '../states';
+import { LineFlag } from '../flags';
 
 function received(s: Session): (name: string, count: number) => void {
   return (name, count) => {
@@ -18,9 +20,9 @@ function received(s: Session): (name: string, count: number) => void {
 
 export function sellLine(s: Session, line: string): number {
   if (indexOf(line, ' to sell!') !== -1 || indexOf(line, 'You cannot SELL') !== -1) {
-    s.s_8474 = '';
+    s.itemPickingUp = '';
     forgetAwaited(s, s.state);
-    setState(s, 0);
+    setState(s, State.Nothing);
     if (s.walking !== 0) {
       s.walking = 0;
       modeDefaults(s);
@@ -29,7 +31,7 @@ export function sellLine(s: Session, line: string): number {
     return 1;
   }
   let at = 0;
-  if ((s.lineFlags & 0x200000) === 0) {
+  if ((s.lineFlags & LineFlag.SellCoinsContinue) === 0) {
     const sold = indexOf(line, 'You sold ');
     const forAt = sold === -1 ? -1 : indexFrom(line, sold + 9, ' for ');
     if (sold === -1 || forAt === -1) return 0;
@@ -44,12 +46,12 @@ export function sellLine(s: Session, line: string): number {
         count = n;
       }
     }
-    if (count > 0) carryLess(s, name, count, 0x29);
+    if (count > 0) carryLess(s, name, count);
     at = forAt + 5;
   } else {
-    s.lineFlags &= ~0x200000;
+    s.lineFlags &= ~LineFlag.SellCoinsContinue;
   }
   // Unlike a purchase, a sale's list does not carry over a line: what was kept is dropped.
-  s.s_d910 = '';
-  return coinList(s, line, at, 0x200000, received(s));
+  s.listingRest = '';
+  return coinList(s, line, at, LineFlag.SellCoinsContinue, received(s));
 }

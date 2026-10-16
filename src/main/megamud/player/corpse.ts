@@ -9,10 +9,12 @@ import { send } from '../script/send';
 import { forgetAwaited, setState } from '../script/state';
 import type { RoomEntity, Session } from '../Session';
 import { removeEntity } from '../room/entities';
+import { State } from '../states';
+import { EntityFlag, EntityType, Darkness } from '../flags';
 
 /** The one row of the table at `0x54d230`. */
 const CORPSE = {
-  mark: 0x8000,
+  mark: EntityFlag.Corpse,
   one: 'corpse of %s',
   many: 'corpses of %s',
   begin: 'You begin to pick through the corpse of %s...',
@@ -26,10 +28,10 @@ function fill(text: string, name: string): string {
 
 /** `0x4979f0`: the recovery is over. */
 function recoveryDone(s: Session): void {
-  s.f_8558 = 0;
-  s.f_8468 = 0;
-  forgetAwaited(s, 0x2f);
-  setState(s, 0);
+  s.recoveringCorpse = 0;
+  s.weightMax = 0;
+  forgetAwaited(s, State.Recovering);
+  setState(s, State.Nothing);
 }
 
 /** `0x497df0`: this item is the corpse (marked as one, and named for this character). */
@@ -48,24 +50,26 @@ export function corpseLine(s: Session, line: string): number {
   if (!['you begin to ', 'you have ', 'the ', 'syntax: '].some((p) => lower.startsWith(p)))
     return 0;
   const done = (tag: string): number => {
-    if (tag === 'rc-p') s.f_e1e4 = 1;
+    if (tag === 'rc-p') s.corpseTried = 1;
     recoveryDone(s);
     if (s.debug !== 0) s.host.trace(`{${tag}}`);
     return 1;
   };
-  if (s.f_8558 !== 0 && (line.includes('Syntax: RECOVER') || line.includes('Syntax: COLLECT'))) {
+  if (
+    s.recoveringCorpse !== 0 &&
+    (line.includes('Syntax: RECOVER') || line.includes('Syntax: COLLECT'))
+  ) {
     return done('rc-p');
   }
   const starts = (text: string): boolean =>
     line.toLowerCase().startsWith(fill(text, s.Player_Name).toLowerCase());
   if (starts(CORPSE.begin)) {
-    s.f_8560 = s.now;
     if (s.debug !== 0) s.host.trace('{rc-o0}');
     return 1;
   }
   if (starts(CORPSE.remains)) return done('rc-p');
   if (starts(CORPSE.recovered)) {
-    const e = s.room.find((x) => x.type === 3 && isMyCorpse(s, x));
+    const e = s.room.find((x) => x.type === EntityType.Item && isMyCorpse(s, x));
     if (e) {
       e.count -= 1;
       if (e.count < 1) removeEntity(s, s.room.indexOf(e));
@@ -81,17 +85,17 @@ export function corpseLine(s: Session, line: string): number {
  * (`recover corpse of <me>`, state `0x2f`). GreaterMUD only.
  */
 export function recoverCorpse(s: Session): number {
-  if (s.hp <= 0 || s.f_a32c !== 0 || s.MegaMud_AutoGet === 0 || s.BBS_GreaterMUD === 0) return 0;
-  if (s.f_8558 !== 0 || s.f_e1e4 !== 0 || s.darkness === 2) return 0;
+  if (s.hp <= 0 || s.allOff !== 0 || s.MegaMud_AutoGet === 0 || s.BBS_GreaterMUD === 0) return 0;
+  if (s.recoveringCorpse !== 0 || s.corpseTried !== 0 || s.darkness === Darkness.Dark) return 0;
   if (s.Player_Name === '' || s.Player_Name.startsWith('*')) return 0;
   for (const e of s.room) {
-    if (e.type !== 3 || (e.flags & 0x18000) === 0) continue;
+    if (e.type !== EntityType.Item || (e.flags & (EntityFlag.Corpse | EntityFlag.Lootbox)) === 0)
+      continue;
     // `0x497dd0`: the row's setting (row 1, `Cash.AutoRecoverCorpse`).
     if (s.Cash_AutoRecoverCorpse === 0 || !isMyCorpse(s, e)) continue;
-    s.f_8558 = 1;
-    s.f_8560 = s.now;
+    s.recoveringCorpse = 1;
     s.waitLines = 2;
-    setState(s, 0x2f);
+    setState(s, State.Recovering);
     s.host.activity(`Recovering ${e.name}`);
     send(s, `recover corpse of ${s.Player_Name}\r`);
     if (s.debug !== 0) s.host.trace('{rc-go0}');

@@ -8,6 +8,8 @@ import { directionShort, indexOf } from '../cstr';
 import { queue } from '../script/send';
 import { setState } from '../script/state';
 import { automated, type Session } from '../Session';
+import { State } from '../states';
+import { LineFlag, Exit } from '../flags';
 
 export function unlockLine(s: Session, line: string): number {
   const opened =
@@ -16,42 +18,46 @@ export function unlockLine(s: Session, line: string): number {
     indexOf(line, 'The gate was not locked') !== -1 ||
     indexOf(line, 'There is no benefit to picking') !== -1;
   if (opened) {
-    if (s.state === 0x18) {
+    if (s.state === State.Picking) {
       if (s.moveDir !== -1) {
-        s.roomExits[s.moveDir] = 5;
-        s.lineFlags |= 4;
+        s.roomExits[s.moveDir] = Exit.Unlocked;
+        s.lineFlags |= LineFlag.DoorAnswered;
       }
-    } else if (s.state === 0x2e || s.state === 0x2d || s.state === 0x1a) {
-      s.f_e2dc = 1;
+    } else if (
+      s.state === State.Other ||
+      s.state === State.PendingCmd ||
+      s.state === State.Opening
+    ) {
+      s.openDoorNext = 1;
     }
-    s.f_db50 = 0;
-    s.f_e290 = 0;
-    setState(s, 0);
+    s.pickTries = 0;
+    s.lookDue = 0;
+    setState(s, State.Nothing);
     return 1;
   }
   if (indexOf(line, 'Your skill fails you ') === -1) return 0;
-  s.f_db50 += 1;
-  const tries = s.f_db50;
+  s.pickTries += 1;
+  const tries = s.pickTries;
   const dir = s.moveDir;
-  if (s.state === 0x18 && dir !== -1) {
+  if (s.state === State.Picking && dir !== -1) {
     if (tries < s.Other_PickMax * 2) {
       if (tries === s.Other_PickMax) {
-        s.roomExits[dir] = 5;
-        s.lineFlags |= 4;
+        s.roomExits[dir] = Exit.Unlocked;
+        s.lineFlags |= LineFlag.DoorAnswered;
       } else {
-        s.f_e2dc = 0;
+        s.openDoorNext = 0;
       }
     } else {
-      s.f_db48 = 0;
-      s.roomExits[dir] = 2;
-      s.lineFlags |= 4;
+      s.bashTries = 0;
+      s.roomExits[dir] = Exit.ClosedDoor;
+      s.lineFlags |= LineFlag.DoorAnswered;
     }
   }
-  if (!automated(s) && s.f_a32c === 0 && s.state === 0x18 && s.moveDir !== -1) {
-    if (s.f_db50 < s.Other_PickMax) queue(s, `pick ${directionShort(s.moveDir)}\r`);
-    else s.f_db50 = 0;
+  if (!automated(s) && s.allOff === 0 && s.state === State.Picking && s.moveDir !== -1) {
+    if (s.pickTries < s.Other_PickMax) queue(s, `pick ${directionShort(s.moveDir)}\r`);
+    else s.pickTries = 0;
   }
-  s.f_e290 = 0;
-  setState(s, 0);
+  s.lookDue = 0;
+  setState(s, State.Nothing);
   return 1;
 }

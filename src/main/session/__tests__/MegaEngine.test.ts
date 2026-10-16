@@ -18,6 +18,8 @@ import { newEntity } from '../../megamud/Session';
 import type { PlayerFacts } from '../../../shared/players';
 import type { WalkProgress } from '../../../shared/walk';
 import type { LoopProgress } from '../../../shared/loops';
+import { State } from '../../megamud/states';
+import { ItemFlag, SpellFlag } from '../../megamud/flags';
 
 function room(map: number, number: number, name: string, exits: WorldRoom['exits']): WorldRoom {
   return { map, room: number, name, exits } as WorldRoom;
@@ -105,9 +107,9 @@ describe('room signatures from the realm data', () => {
       newTerminal(),
       '\x1b[1;36mTown Square\r\n\x1b[0;32mObvious exits: north, closed door east\r\n'
     );
-    expect(s.f_8130).not.toBe(0);
-    expect(worldSignature(SQUARE)).toBe(s.f_8130);
-    expect(nameHash('Town Square') & 0xfff00000).toBe(s.f_8130 & 0xfff00000);
+    expect(s.roomSignature).not.toBe(0);
+    expect(worldSignature(SQUARE)).toBe(s.roomSignature);
+    expect(nameHash('Town Square') & 0xfff00000).toBe(s.roomSignature & 0xfff00000);
   });
 
   it('are unsure of an exit whose listing the realm data cannot say', () => {
@@ -121,13 +123,13 @@ describe('what an errand lends the engine', () => {
     const { e } = engine();
     e.useItems([{ item: 'gate key', collect: false }]);
     const rec = () => e.s.data.items.find((item) => item.name === 'gate key')!;
-    expect(rec().flags & 2).toBe(0);
+    expect(rec().flags & ItemFlag.Collect).toBe(0);
     e.alsoTake('Gate Key', true);
-    expect(rec().flags & 2).toBe(2);
+    expect(rec().flags & ItemFlag.Collect).toBe(2);
     e.useItems([{ item: 'gate key', collect: false }]);
-    expect(rec().flags & 2).toBe(2);
+    expect(rec().flags & ItemFlag.Collect).toBe(2);
     e.alsoTake('gate key', false);
-    expect(rec().flags & 2).toBe(0);
+    expect(rec().flags & ItemFlag.Collect).toBe(0);
     e.dispose();
   });
 
@@ -153,7 +155,7 @@ describe('the engine in a session', () => {
     e.s.inGame = 1;
     e.s.online = 1;
     e.received('\x1b[1;36mTown Square\r\n\x1b[0;32mObvious exits: north, closed door east\r\n');
-    expect(e.s.f_8130).toBe(worldSignature(SQUARE));
+    expect(e.s.roomSignature).toBe(worldSignature(SQUARE));
     expect(e.startLoop('Ring')).toBeNull();
     await planned();
     expect(e.s.loopPath.start).toBe(worldSignature(ALLEY));
@@ -256,8 +258,8 @@ describe('the engine in a session', () => {
     const { e } = engine('1/2');
     e.s.inGame = 1;
     e.received('\x1b[1;36mDark Alley\r\n\x1b[0;32mObvious exits: south, west\r\n');
-    expect(e.learned.get('1/2')).toBe(e.s.f_8130);
-    expect(e.signatureOf('1/2')).toBe(e.s.f_8130);
+    expect(e.learned.get('1/2')).toBe(e.s.roomSignature);
+    expect(e.signatureOf('1/2')).toBe(e.s.roomSignature);
     e.dispose();
   });
 
@@ -378,7 +380,7 @@ describe('the engine in a session', () => {
     e.s.online = 1;
     e.received('\x1b[1;36mTown Square\r\n\x1b[0;32mObvious exits: north, closed door east\r\n');
     // Known to MegaMUD's room list, so it heads for its destinations from here.
-    (e.s.data.rooms ??= []).push({ signature: e.s.f_8130, name: 'Town Square' });
+    (e.s.data.rooms ??= []).push({ signature: e.s.roomSignature, name: 'Town Square' });
     expect(e.startLoop('Ring')).toBeNull();
     await planned();
     expect(at.locates).toBeGreaterThan(0);
@@ -399,7 +401,7 @@ describe('the engine in a session', () => {
     e.s.inGame = 1;
     e.s.online = 1;
     e.received('\x1b[1;36mTown Square\r\n\x1b[0;32mObvious exits: north, closed door east\r\n');
-    (e.s.data.rooms ??= []).push({ signature: e.s.f_8130, name: 'Town Square' });
+    (e.s.data.rooms ??= []).push({ signature: e.s.roomSignature, name: 'Town Square' });
     e.startLoop('Ring');
     await planned();
     expect(e.s.lost).toBe(0);
@@ -416,7 +418,7 @@ describe('the engine in a session', () => {
     e.s.inGame = 1;
     e.s.online = 1;
     e.received('\x1b[1;36mTown Square\r\n\x1b[0;32mObvious exits: north, closed door east\r\n');
-    (e.s.data.rooms ??= []).push({ signature: e.s.f_8130, name: 'Town Square' });
+    (e.s.data.rooms ??= []).push({ signature: e.s.roomSignature, name: 'Town Square' });
     e.startLoop('Ring');
     await planned();
     expect(e.s.lost).toBe(1);
@@ -441,7 +443,7 @@ describe('blessings told by our tracker’s buffs', () => {
         short: 'npot',
         name: 'necropotence',
         item: '',
-        flags: 26,
+        flags: SpellFlag.Timed | SpellFlag.Unknown_8 | SpellFlag.Self,
         magic: 3,
         level: 76,
         cost: 28
@@ -455,7 +457,7 @@ describe('blessings told by our tracker’s buffs', () => {
 
   it('takes one going up as cast, settling the cast awaited', () => {
     const e = blessed();
-    e.s.state = 0x10;
+    e.s.state = State.Blessing;
     e.s.blessSlot = 0;
     e.buffs(up(1));
     expect(e.s.blessCastAt[0]).not.toBe(0);
@@ -556,12 +558,12 @@ describe('the player sending a line', () => {
    */
   it('starts the re-prompt clock over', () => {
     const { e } = engine();
-    e.s.f_322a0 = 1;
+    e.s.lastSentAt = 1;
     e.typed('gossip hello');
-    expect(e.s.f_322a0).toBe(Math.floor(Date.now() / 1000));
-    e.s.f_322a0 = 1;
+    expect(e.s.lastSentAt).toBe(Math.floor(Date.now() / 1000));
+    e.s.lastSentAt = 1;
     e.playerSent();
-    expect(e.s.f_322a0).toBe(Math.floor(Date.now() / 1000));
+    expect(e.s.lastSentAt).toBe(Math.floor(Date.now() / 1000));
   });
 });
 
@@ -638,10 +640,10 @@ describe('what the engine learns, kept between sessions', () => {
     const mon = newMonster(e.s.data);
     mon.name = 'mutated dragon hatchling';
     mon.relationship = 4;
-    e.s.f_e254 = 1;
+    e.s.monstersChanged = 1;
     vi.advanceTimersByTime(1000);
     expect(handed.map((l) => l.stances)).toEqual([[['mutated dragon hatchling', 'enemy']]]);
-    expect(e.s.f_e254).toBe(0);
+    expect(e.s.monstersChanged).toBe(0);
     vi.advanceTimersByTime(1000);
     expect(handed).toHaveLength(1);
     e.dispose();
@@ -714,7 +716,7 @@ describe('blessings the realm says last', () => {
           name === 'necropotence' ? { durationGrowth: [5, 1] } : { duration: undefined }
       }) as never;
     e.buffs([]);
-    expect([npot.flags & 2, mend.flags & 2]).toEqual([2, 0]);
+    expect([npot.flags & SpellFlag.Timed, mend.flags & SpellFlag.Timed]).toEqual([2, 0]);
     e.dispose();
   });
 
@@ -733,19 +735,19 @@ describe('blessings the realm says last', () => {
           id === 2156 ? { id, name: 'song of agility', duration: 40 } : { id, name: 'remove agil' }
       }) as never;
     e.buffs([]);
-    expect(agil.flags & 2).toBe(2);
+    expect(agil.flags & SpellFlag.Timed).toBe(2);
     e.dispose();
   });
 
   /* Our tracker asks for a sheet through the engine's own wish for one (`0xe29c`). */
   it('want a stat sheet when our tracker asks, without undoing a forced one', () => {
     const { e } = engine();
-    e.s.f_e29c = 0;
+    e.s.statDue = 0;
     e.wantStat();
-    expect(e.s.f_e29c).toBe(1);
-    e.s.f_e29c = -1;
+    expect(e.s.statDue).toBe(1);
+    e.s.statDue = -1;
     e.wantStat();
-    expect(e.s.f_e29c).toBe(-1);
+    expect(e.s.statDue).toBe(-1);
     e.dispose();
   });
 });
@@ -780,7 +782,7 @@ describe('the realm’s coins', () => {
     });
     const { s } = e;
     s.hp = 100;
-    s.f_8468 = 1000;
+    s.weightMax = 1000;
     s.MegaMud_AutoCash = 1;
     s.Cash_WantRunic = 1;
     s.room = [

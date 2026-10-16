@@ -10,6 +10,7 @@ import {
   monitorTimer
 } from '../abilities/monitors';
 import { session } from './fixture';
+import { MonitorWhen } from '../flags';
 
 /* `0x404140`, `0x403c70`, `0x4045b0`, `0x403280`, `0x403720` and `0x4056d0`, read 2026-10-12. */
 
@@ -94,7 +95,7 @@ describe('the ability monitors', () => {
 
   it('makes a monitor due on its message', () => {
     const { s } = monitored({ ...LOW_DR, Monitor0Msg: 'Your shield fades' });
-    s.monitors[0]!.when |= 0x100;
+    s.monitors[0]!.when |= MonitorWhen.GameMessage;
     abilityLine(s, 'Your shield fades away.');
     expect(s.monitors[0]!.due).toBe(1);
   });

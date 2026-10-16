@@ -6,6 +6,8 @@ import { messageRec } from '../fromWorld';
 import { messageLine, templateMatch } from '../messages/messages';
 import { blankTrigger } from '../../../shared/messageTriggers';
 import { session } from './fixture';
+import { State } from '../states';
+import { MessageFlag } from '../flags';
 
 /* `0x46a920`, `0x467ec0`, `0x46bb70` and `0x467b60`, read 2026-10-12. */
 
@@ -26,7 +28,7 @@ describe('reading Messages.md (0x467b60)', () => {
     const rows = messagesFrom(TABLE);
     expect(rows.map((r) => r.name)).toEqual(['poison', 'soul rip', 'refresh']);
     expect(rows[0]!.effects).toBe(4);
-    expect(rows[1]!.flags & 4).toBe(4);
+    expect(rows[1]!.flags & MessageFlag.StartHasFields).toBe(4);
     expect(rows[2]!.number).toBe(1);
   });
 });
@@ -68,9 +70,9 @@ describe('running the rows (0x46a920)', () => {
 
   it('asks for the room again on a row numbered 1', () => {
     const { s } = session({ messages: messagesFrom(TABLE) });
-    s.f_e290 = 0;
+    s.lookDue = 0;
     messageLine(s, 'A cloud of smoke appears', 0);
-    expect(s.f_e290).toBe(1);
+    expect(s.lookDue).toBe(1);
   });
 
   it("counts a cast of the fight's spell by the spell's own message", () => {
@@ -88,10 +90,10 @@ describe('running the rows (0x46a920)', () => {
     const { s } = session({ messages: messagesFrom(TABLE), spells: [rip] });
     s.inGame = 1;
     s.online = 1;
-    s.state = 0xd;
-    beginCast(s, 0xd, rip);
+    s.state = State.CastMain;
+    beginCast(s, State.CastMain, rip);
     messageLine(s, 'You rips at the soul of the giant rat!', 0);
-    expect(s.f_a3f4).toBe(1);
+    expect(s.castsMain).toBe(1);
   });
 });
 

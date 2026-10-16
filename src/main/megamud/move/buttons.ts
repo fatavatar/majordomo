@@ -1,6 +1,6 @@
 /**
- * The window's buttons (`0x462d20`'s commands), read 2026-10-13: Go/Stop
- * (`0x803`), Roam (`0x808`), AFK (`0x809`), Step Back (`0x869`) and the
+ * The window's buttons (`0x462d20`'s commands, `WindowCommand`), read
+ * 2026-10-13: Go/Stop, Roam, AFK, Step Back and the
  * toolbar's toggles (`shared/megamud/toggles.ts`). The app's buttons and the
  * remote `@stop`/`@rego` call these. Each toggle ends as MegaMUD's do, by
  * waking the scheduler (`0x42e0e0`); the window's redraw (`0x460d50`) is
@@ -11,37 +11,48 @@ import { modeDefaults, reEngage } from '../script/modes';
 import { send, wake } from '../script/send';
 import { setState } from '../script/state';
 import { setActive } from '../script/timer';
-import { setTask } from '../script/task';
+import { setTask, Task } from '../script/task';
 import type { Session } from '../Session';
 import { runBack } from './go';
+import { State } from '../states';
+import { WindowCommand } from '../../../shared/megamud/toggles';
 
 /** `0x803`: walking on or off; on, the task is the path's (or nothing to walk to, off again). */
 export function goStop(s: Session): void {
-  if (s.walking !== 0 && s.f_e21c !== 0) {
-    s.f_e21c = 0;
+  if (s.walking !== 0 && s.dontAttackHere !== 0) {
+    s.dontAttackHere = 0;
     s.host.show("[Don't attack flag cleared from room.]");
   }
   s.rescueCount = 0;
-  s.f_e398 = 0;
+  s.movementHalted = 0;
   s.walking = s.walking === 0 ? 1 : 0;
   modeDefaults(s);
   if (s.walking === 0) {
     // `0x4c0980`: auto-combat back from a detour.
     if (s.detourCombat !== -1) reEngage(s);
-    setTask(s, 0xb);
+    setTask(s, Task.InGame);
     return;
   }
-  setTask(s, s.lost !== 0 ? 0x11 : s.looping !== 0 ? 0xf : s.roaming !== 0 ? 0x10 : 0xe);
+  setTask(
+    s,
+    s.lost !== 0
+      ? Task.Lost
+      : s.looping !== 0
+        ? Task.Looping
+        : s.roaming !== 0
+          ? Task.Roaming
+          : Task.Walking
+  );
   const task = s.task;
   if (
-    (task === 0xe || task === 0xf || task === 0x11) &&
+    (task === Task.Walking || task === Task.Looping || task === Task.Lost) &&
     s.detours[0]!.room === 0 &&
     s.detours[0]!.path === ''
   ) {
     s.walking = 0;
-    setTask(s, 0xb);
+    setTask(s, Task.InGame);
   }
-  if (s.task !== 0xb) {
+  if (s.task !== Task.InGame) {
     s.hidden = 0;
     wake(s);
   }
@@ -49,33 +60,33 @@ export function goStop(s: Session): void {
 
 /**
  * `0x7d4` online: the player's Disconnect (its "Are you sure" is the app's).
- * Hung up on purpose (`0x30de4`), so the close that follows is not redialled
+ * Hung up on purpose (`skipRedialOnce`), so the close that follows is not redialled
  * as a lost carrier; walking and following stopped, out of the game.
  */
 export function disconnect(s: Session): void {
-  s.f_30de8 = 0;
-  s.f_30de4 = 1;
+  s.noRedial = 0;
+  s.skipRedialOnce = 1;
   s.walking = 0;
   s.following = 0;
   hangUp(s, 0);
   s.inGame = 0;
   goOnline(s, 0);
-  setTask(s, 0xb);
+  setTask(s, Task.InGame);
 }
 
 /** `0x808`: roaming (and so walking) on or off; the loop let go. */
 export function roam(s: Session): void {
   const was = s.roaming;
   s.looping = 0;
-  s.f_e398 = 0;
+  s.movementHalted = 0;
   s.roaming = was === 0 ? 1 : 0;
   s.walking = s.roaming;
   if (was === 0) {
     s.hidden = 0;
-    setTask(s, 0x10);
+    setTask(s, Task.Roaming);
     wake(s);
   } else {
-    setTask(s, 0xb);
+    setTask(s, Task.InGame);
   }
   modeDefaults(s);
 }
@@ -89,13 +100,13 @@ export function afk(s: Session): void {
 
 /** `0x869`: back a step along the path. */
 export function stepBack(s: Session): void {
-  s.f_e398 = 0;
+  s.movementHalted = 0;
   runBack(s, 1);
 }
 
-/** `0x4aa740`: back to idle, unless waiting on one of the states above `0x14`. */
+/** `0x4aa740`: back to idle, unless waiting on one of the states above `State.Unknown_14`. */
 function settle(s: Session): void {
-  if (s.state <= 0x14) setState(s, 0);
+  if (s.state <= State.Unknown_14) setState(s, State.Nothing);
 }
 
 /** `0x7d3`: auto-combat. On, a run is called off. */
@@ -107,7 +118,7 @@ function autoCombat(s: Session): void {
   if (s.inCombat !== 0) settle(s);
   if (s.MegaMud_AutoCombat !== 0) {
     s.runCount = 0;
-    s.f_907c = 0;
+    s.runByChoice = 0;
   }
   wake(s);
 }
@@ -129,11 +140,10 @@ function autoHeal(s: Session): void {
 
 /** `0x821`: all off. Back on outside the game, a return is sent to wake it. */
 function allOff(s: Session): void {
-  const was = s.f_a32c;
-  s.f_e398 = 0;
-  s.f_a32c = was === 0 ? 1 : 0;
+  const was = s.allOff;
+  s.movementHalted = 0;
+  s.allOff = was === 0 ? 1 : 0;
   if (was !== 0 && s.inGame === 0) {
-    s.f_7ed4 = 0;
     send(s, '\r');
   }
   wake(s);
@@ -150,25 +160,24 @@ type Toggled =
   | 'MegaMud_AutoLight'
   | 'MegaMud_AutoPreAttack'
   | 'MegaMud_AutoNuke'
-  | 'f_8be8';
+  | 'preferMelee';
 
 /**
- * The plain toggles: flipped, and then idle again — always (`0x82a` bless,
- * `0x870` light), only in a fight (`0x829` pre-attack, `0x86a` nuke,
- * `0x8a4` melee), or not at all (the rest).
+ * The plain toggles: flipped, and then idle again — always (bless, light),
+ * only in a fight (pre-attack, nuke, melee), or not at all (the rest).
  */
 const PLAIN: Record<number, [Toggled, 'always' | 'fighting' | 'never']> = {
-  0x7d9: ['MegaMud_AutoGet', 'never'],
-  0x7f2: ['MegaMud_AutoSearch', 'never'],
-  0x801: ['MegaMud_AutoSneak', 'never'],
-  0x804: ['MegaMud_AutoTrack', 'never'],
-  0x815: ['MegaMud_AutoHide', 'never'],
-  0x823: ['MegaMud_AutoCash', 'never'],
-  0x82a: ['MegaMud_AutoBless', 'always'],
-  0x870: ['MegaMud_AutoLight', 'always'],
-  0x829: ['MegaMud_AutoPreAttack', 'fighting'],
-  0x86a: ['MegaMud_AutoNuke', 'fighting'],
-  0x8a4: ['f_8be8', 'fighting']
+  [WindowCommand.AutoGet]: ['MegaMud_AutoGet', 'never'],
+  [WindowCommand.AutoSearch]: ['MegaMud_AutoSearch', 'never'],
+  [WindowCommand.AutoSneak]: ['MegaMud_AutoSneak', 'never'],
+  [WindowCommand.AutoTrack]: ['MegaMud_AutoTrack', 'never'],
+  [WindowCommand.AutoHide]: ['MegaMud_AutoHide', 'never'],
+  [WindowCommand.AutoCash]: ['MegaMud_AutoCash', 'never'],
+  [WindowCommand.AutoBless]: ['MegaMud_AutoBless', 'always'],
+  [WindowCommand.AutoLight]: ['MegaMud_AutoLight', 'always'],
+  [WindowCommand.AutoPreAttack]: ['MegaMud_AutoPreAttack', 'fighting'],
+  [WindowCommand.AutoNuke]: ['MegaMud_AutoNuke', 'fighting'],
+  [WindowCommand.Melee]: ['preferMelee', 'fighting']
 };
 
 /**
@@ -177,20 +186,21 @@ const PLAIN: Record<number, [Toggled, 'always' | 'fighting' | 'never']> = {
  * (`MegaMud.AutoAfkOff`), any but AFK itself ends AFK first, read 2026-10-16.
  */
 export function playerCommand(s: Session, command: number): void {
-  if (command !== 0x809 && s.MegaMud_AutoAfkOff !== 0) setActive(s, 0);
+  if (command !== WindowCommand.Afk && s.MegaMud_AutoAfkOff !== 0) setActive(s, 0);
   menuCommand(s, command);
 }
 
 /** A window command posted (`0x460b90`) and run now: the ones the engine has. */
 export function menuCommand(s: Session, command: number): void {
-  if (command === 0x803) goStop(s);
-  else if (command === 0x808) roam(s);
-  else if (command === 0x809) afk(s);
-  else if (command === 0x869) stepBack(s);
-  else if (command === 0x7d3) autoCombat(s);
-  else if (command === 0x7dc) autoHeal(s);
-  else if (command === 0x821) allOff(s);
-  else if (command === 0x82f) s.MegaMud_NoHangup = s.MegaMud_NoHangup === 0 ? 1 : 0;
+  if (command === WindowCommand.GoStop) goStop(s);
+  else if (command === WindowCommand.Roam) roam(s);
+  else if (command === WindowCommand.Afk) afk(s);
+  else if (command === WindowCommand.StepBack) stepBack(s);
+  else if (command === WindowCommand.AutoCombat) autoCombat(s);
+  else if (command === WindowCommand.AutoHeal) autoHeal(s);
+  else if (command === WindowCommand.AllOff) allOff(s);
+  else if (command === WindowCommand.NoHangup)
+    s.MegaMud_NoHangup = s.MegaMud_NoHangup === 0 ? 1 : 0;
   else {
     const plain = PLAIN[command];
     if (!plain) return;

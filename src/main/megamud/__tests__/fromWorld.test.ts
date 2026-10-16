@@ -12,6 +12,7 @@ import type {
   WorldShop,
   WorldSpell
 } from '../../../shared/world';
+import { ItemFlag } from '../flags';
 
 /** As much of a realm as the builder asks of one. */
 function world(parts: {
@@ -230,7 +231,7 @@ describe("MegaMUD's databases from the realm's own data", () => {
     const data = megaDataFrom(undefined, NONE);
     expect(data.monsters).toEqual([]);
     expect(data.items.length).toBeGreaterThan(0);
-    expect(data.items.every((item) => (item.flags & 0x8000000) !== 0)).toBe(true);
+    expect(data.items.every((item) => (item.flags & ItemFlag.Coin) !== 0)).toBe(true);
   });
 });
 

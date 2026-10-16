@@ -4,6 +4,7 @@ import { normalWeapon } from '../combat/weapons';
 import { findCarried, inventoryLine, sameItemName } from '../items/inventory';
 import { addEntity } from '../room/entities';
 import { session } from './fixture';
+import { INVENTORY_LISTING, EntityFlag, EntityType, Stance } from '../flags';
 
 /* `0x455230`, `0x4530c0` and `0x45a100`, read 2026-10-12; the listing is Skinny's, 2026-10-12. */
 
@@ -57,17 +58,17 @@ describe('the inventory (0x455230)', () => {
     expect(findCarried(s, 'phoenix feather')?.flags).toBe(0);
     expect(findCarried(s, 'cloak of faith')?.item?.location).toBe(7);
     expect(findCarried(s, 'emerald main-gauche')?.item?.location).toBe(12);
-    expect(s.s_b060).toBe('metallic silver staff');
+    expect(s.weaponWielded).toBe('metallic silver staff');
     expect(s.Combat_NrmWeapon).toBe('metallic silver staff');
   });
 
   it('reads the wealth and the encumbrance, and ends the listing', () => {
     const { s } = listed();
-    expect(s.f_8428).toBe(517250080);
-    expect(s.f_8464).toBe(1517);
-    expect(s.f_8468).toBe(6786);
-    expect(s.f_846c).toBe(1);
-    expect(s.lineFlags & 0x1c00).toBe(0);
+    expect(s.wealth).toBe(517250080);
+    expect(s.weightCarried).toBe(1517);
+    expect(s.weightMax).toBe(6786);
+    expect(s.encumbranceLevel).toBe(1);
+    expect(s.lineFlags & INVENTORY_LISTING).toBe(0);
     expect(s.state).toBe(0);
   });
 
@@ -93,8 +94,8 @@ describe('the weapon for the fight (0x410f50)', () => {
     s.Combat_NrmWeapon = 'phoenix feather';
     s.Combat_AltWeapon = 'metallic silver staff';
     const e = addEntity(s);
-    e.type = 2;
-    e.kind = 4;
+    e.type = EntityType.Monster;
+    e.kind = Stance.Enemy;
     e.name = 'orc';
     return { ...r, e };
   }
@@ -103,24 +104,24 @@ describe('the weapon for the fight (0x410f50)', () => {
     const { s, out } = armed();
     expect(normalWeapon(s)).toBe(1);
     expect(out.sent).toEqual(['equip phoenix feather\r']);
-    expect(s.s_b060).toBe('phoenix feather');
+    expect(s.weaponWielded).toBe('phoenix feather');
   });
 
   it('switches to the alt weapon against a monster immune to the normal one', () => {
     const { s, out, e } = armed();
-    e.flags |= 0x200;
+    e.flags |= EntityFlag.ImmuneNormalWeapon;
     // The staff is already in hand: nothing to send.
     expect(normalWeapon(s)).toBe(0);
     expect(out.sent).toEqual([]);
-    expect(s.f_b0fc).toBe(1);
-    expect(s.s_b060).toBe('metallic silver staff');
+    expect(s.weaponNoEffect).toBe(1);
+    expect(s.weaponWielded).toBe('metallic silver staff');
   });
 
   it('gives the fight up when every weapon is exhausted', () => {
     const { s, out, e } = armed();
-    e.flags |= 0x200 | 0x400;
+    e.flags |= EntityFlag.ImmuneNormalWeapon | EntityFlag.ImmuneAltWeapon;
     expect(normalWeapon(s)).toBe(1);
-    expect(s.f_8bec).toBe(1);
+    expect(s.weaponsExhausted).toBe(1);
     expect(out.shown).toContain('[all configured weapons exhausted vs orc]');
   });
 });

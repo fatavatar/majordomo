@@ -13,6 +13,7 @@
  */
 import { dueOn } from '../abilities/monitors';
 import type { Session } from '../Session';
+import { MonitorWhen } from '../flags';
 
 const ROUND = 5000;
 /** The confidence the cast gate wants before it trusts the round. */
@@ -161,7 +162,7 @@ function roundPassed(s: Session, last: number, t: number, kind: number): void {
   if (roundOf(s, last) >= roundOf(s, t)) return;
   if (s.debug !== 0) s.host.trace(`{rnd:${kind}}`);
   // `0x402f60`: the monitors checked after a combat round.
-  if (s.inCombat !== 0) dueOn(s, 8);
+  if (s.inCombat !== 0) dueOn(s, MonitorWhen.AfterCombatRound);
   s.spellLock = 0;
   s.spellLockAt = 0;
   s.spellLockLifted = 0;
@@ -313,8 +314,8 @@ export function castAllowed(s: Session, secs: number): boolean {
 
 /** `0x426eb0`: a blow struck this round (by anyone): a combat round event. */
 export function blowStruck(s: Session): void {
-  s.f_32600 = 1;
-  s.f_32604 = 1;
-  s.f_3260c = 1;
+  s.probablyRoundFought = 1;
+  s.roundBlowSeen = 1;
+  s.probablyRoundCounted = 1;
   roundEvent(s, RoundEvent.Combat);
 }

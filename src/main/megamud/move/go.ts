@@ -20,10 +20,13 @@ import { reEngage, modeDefaults } from '../script/modes';
 import { queue, rand, send } from '../script/send';
 import { setState } from '../script/state';
 import { sneakStep } from '../script/stealth';
-import { setTask } from '../script/task';
+import { setTask, Task } from '../script/task';
 import type { Session } from '../Session';
 import { goTo, headFor } from './destinations';
 import { findPath, showPath } from './path';
+import { State } from '../states';
+import { PlayerFlag, CarriedFlag, StepFlag, Exit } from '../flags';
+import { WindowCommand } from '../../../shared/megamud/toggles';
 
 /** `0x4c0500`: the opposite direction (-1 for none). */
 export function reverse(dir: number): number {
@@ -34,7 +37,7 @@ export function reverse(dir: number): number {
 export function holdForHp(s: Session): number {
   if (belowLogoff(s, s.hp) === 0) return 0;
   s.restHpToFull = 1;
-  s.f_e23c = 1;
+  s.healthFirst = 1;
   s.mustRest = 1;
   s.runCount = 0;
   s.rescueCount = 0;
@@ -44,73 +47,61 @@ export function holdForHp(s: Session): number {
   return 1;
 }
 
-/** `0x4b7ed0`: the time spent still (`0x326a8` → `0x32708`) tallied, the time moving (`0x326a0`) started. */
-export function movingClock(s: Session): void {
-  if (s.f_326a8 !== 0) {
-    s.f_32708 += s.now - s.f_326a8;
-    s.f_326a8 = 0;
-  }
-  // `0x4b7f10`: the times shown (the window's).
-  if (s.f_326a0 === 0) s.f_326a0 = s.now;
-}
-
 /** `0x474910`: the players seen here forgotten (`0x8000`; with `all`, their counts too). */
 function forgetSeen(s: Session, all: number): void {
-  if (all !== 0) s.f_32528 = 0;
   for (const p of s.data.players ?? []) {
-    p.flags &= ~0x8000;
+    p.flags &= ~PlayerFlag.SeenThisSession;
     if (all !== 0) p.seen = 0;
   }
 }
 
 /** What leaving a room resets, `0x408540`'s and `0x409170`'s alike. */
 export function leaving(s: Session): void {
-  s.f_32320 = s.now;
-  s.f_32310 = 0;
+  s.movedAt = s.now;
+  s.restAskedAt = 0;
   s.runDirection = -1;
   s.hidden = 0;
   s.sneaking = 0;
   s.waitLines = 2;
-  s.f_e21c = 0;
-  s.f_e2d8 = 0;
-  s.f_e170 = 1;
-  s.f_e2dc = 0;
-  s.f_e2e0 = 0;
-  s.f_e2e4 = 0;
-  s.f_e360 = 0;
-  s.f_e2ec = 0;
-  s.f_e1e8 = 0;
-  s.f_e2b4 = 0;
-  s.f_845c = 0;
-  s.f_e220 = 0;
-  s.f_e1e0 = 0;
-  s.f_e1e4 = 0;
-  s.f_8558 = 0;
-  s.f_8be4 = 0;
+  s.dontAttackHere = 0;
+  s.arrivedWhileWalking = 0;
+  s.lowHpArmed = 1;
+  s.openDoorNext = 0;
+  s.trapFound = 0;
+  s.trapDisarmed = 0;
+  s.partyAskPending = 0;
+  s.partyLost = 0;
+  s.lightRemovedToTest = 0;
+  s.dontRestHere = 0;
+  s.bankedHere = 0;
+  s.areaWarned = 0;
+  s.cannotDropHere = 0;
+  s.corpseTried = 0;
+  s.recoveringCorpse = 0;
+  s.engagedHere = 0;
   clearAlignment(s);
-  s.f_db60 = s.Other_SearchMax;
-  s.f_db68 = 0;
-  s.f_db6c = 0;
+  s.searchesLeft = s.Other_SearchMax;
+  s.stealthRefused = 0;
+  s.stealthFails = 0;
   s.stepTries = 0;
-  s.f_db48 = 0;
-  s.f_db50 = 0;
-  s.f_db58 = 0;
+  s.bashTries = 0;
+  s.pickTries = 0;
+  s.disarmTries = 0;
   s.hpFullAt = 0;
   s.manaFullAt = 0;
-  s.f_dd0c = 0;
+  s.attacksRefused = 0;
   clearTargetCasts(s);
   clearMultiCounts(s);
-  if (s.f_a580 === 0) clearCastMode(s);
-  s.f_3268c += 1;
+  if (s.multiAttacking === 0) clearCastMode(s);
   unkeepAll(s);
   forgetSeen(s, 0);
-  setState(s, 0x16);
+  setState(s, State.Moving);
 }
 
 /** A run or rescue step spent. */
 export function spendRun(s: Session): void {
   if (s.runCount > 0) {
-    s.f_907c = 0;
+    s.runByChoice = 0;
     s.runCount -= 1;
   }
   if (s.rescueCount > 0) s.rescueCount -= 1;
@@ -122,29 +113,28 @@ export function spendRun(s: Session): void {
  * no move is made.
  */
 export function move(s: Session, dir: number, go: number): number {
-  if (dir >>> 0 > 9 || (s.f_a32c !== 0 && go === 1) || s.f_e398 !== 0) return 0;
+  if (dir >>> 0 > 9 || (s.allOff !== 0 && go === 1) || s.movementHalted !== 0) return 0;
   if (go === 1 && holdForHp(s) !== 0) return 0;
-  s.f_8138 = 0;
-  if (s.f_a32c === 0) {
+  s.expectedRoom = 0;
+  if (s.allOff === 0) {
     const rested = postRest(s, 6, 0);
     const meditated = postMeditate(s, 0);
     if (go !== 0 && (rested !== 0 || meditated !== 0)) return 1;
   }
-  if (s.f_a328 !== 0) {
-    s.f_a328 = 0;
+  if (s.autoCombatForWait !== 0) {
+    s.autoCombatForWait = 0;
     s.MegaMud_AutoCombat = 0;
   }
-  movingClock(s);
   s.moveDir = dir;
-  s.f_e1d0 = 0;
-  s.f_e198 = 0;
+  s.hideAgain = 0;
+  s.lostNeedsKnownRoom = 0;
   leaving(s);
   s.host.activity(`Moving: ${directionShort(dir)}`);
   spendRun(s);
   if (go !== 0) send(s, `${directionShort(dir)}\r`);
-  if (s.f_e1e0 !== 0) {
-    s.f_8468 = 0;
-    s.f_e1e0 = 0;
+  if (s.cannotDropHere !== 0) {
+    s.weightMax = 0;
+    s.cannotDropHere = 0;
   }
   return 1;
 }
@@ -163,9 +153,9 @@ function worthEquipping(s: Session, text: string): number {
   for (const c of s.inventory) {
     const item = c.item;
     if (!item || strnicmp(name, item.name, item.name.length) !== 0) continue;
-    c.flags &= ~0x200;
+    c.flags &= ~CarriedFlag.EquipAsked;
     if (item.type !== 1 && (item.type !== 0 || item.location === 0)) return 1;
-    return (c.flags & 1) === 0 ? 1 : 0;
+    return (c.flags & CarriedFlag.Equipped) === 0 ? 1 : 0;
   }
   return 1;
 }
@@ -184,7 +174,7 @@ function retryPath(s: Session): number {
       s.walking = 0;
       modeDefaults(s);
       reEngage(s);
-      setTask(s, 0xb);
+      setTask(s, Task.InGame);
       return 0;
     }
   }
@@ -205,7 +195,7 @@ function atDoor(s: Session): void {
  * the `[key]` text, the lock picked or bashed. 1 when something was sent.
  */
 export function doors(s: Session, dir: number, flags: number, command: string | null): number {
-  if (s.f_a32c !== 0 || dir >>> 0 > 9 || s.hp < 1) return 0;
+  if (s.allOff !== 0 || dir >>> 0 > 9 || s.hp < 1) return 0;
   const rested = postRest(s, 4, 0);
   const meditated = postMeditate(s, 0);
   if (rested !== 0 || meditated !== 0) return 1;
@@ -220,38 +210,38 @@ export function doors(s: Session, dir: number, flags: number, command: string | 
     }
   }
   if ((flags & 0x200) !== 0 && s.Other_CanDisarmTraps !== 0) {
-    if (s.f_e2e0 === 0) {
+    if (s.trapFound === 0) {
       atDoor(s);
-      setState(s, 0x21);
+      setState(s, State.Searching);
       s.host.activity('Searching for trap');
       send(s, `search ${directionShort(dir)}\r`);
       return 1;
     }
-    if (s.f_e2e4 === 0 && s.f_db58 < s.Other_DisarmMax) {
+    if (s.trapDisarmed === 0 && s.disarmTries < s.Other_DisarmMax) {
       atDoor(s);
-      s.f_db58 += 1;
-      setState(s, 0x19);
+      s.disarmTries += 1;
+      setState(s, State.Disarming);
       s.host.activity('Disarming trap');
       send(s, `disarm trap ${directionShort(dir)}\r`);
       return 1;
     }
   }
-  let opening = s.f_e2dc;
-  if (opening !== 0 && s.roomExits[dir] !== 2 && s.roomExits[dir] !== 5) {
-    s.f_e2dc = 0;
+  let opening = s.openDoorNext;
+  if (opening !== 0 && s.roomExits[dir] !== Exit.ClosedDoor && s.roomExits[dir] !== Exit.Unlocked) {
+    s.openDoorNext = 0;
     opening = 0;
   }
   const exit = s.roomExits[dir];
-  if (exit === 5 || opening !== 0) {
-    s.f_e2dc = 0;
+  if (exit === Exit.Unlocked || opening !== 0) {
+    s.openDoorNext = 0;
     s.moveDir = dir;
     atDoor(s);
-    setState(s, 0x1a);
+    setState(s, State.Opening);
     s.host.activity('Opening door');
     send(s, `open ${directionShort(dir)}\r`);
     return 1;
   }
-  if ((exit === 2 || exit === 0) && key !== null) {
+  if ((exit === Exit.ClosedDoor || exit === Exit.None) && key !== null) {
     // A `use <key>` the character can pick past instead, when it has no such key.
     let useKey = s.Other_CanPickLocks === 0 || strnicmp(key, 'use ', 4) !== 0;
     if (!useKey) {
@@ -263,13 +253,13 @@ export function doors(s: Session, dir: number, flags: number, command: string | 
     if (useKey) {
       if (key === '' || stricmp(key, 'fail') === 0) return retryPath(s);
       const parts = key.split(',');
-      setState(s, 0x1a);
+      setState(s, State.Opening);
       s.moveDir = dir;
       s.sneaking = 0;
       s.hidden = 0;
       if (worthEquipping(s, parts[0]!) !== 0) {
         s.host.activity('Re-showing room exits');
-        s.f_e290 = 1;
+        s.lookDue = 1;
         s.waitLines = 2;
         send(s, parts[0]!);
         send(s, '\r');
@@ -278,19 +268,19 @@ export function doors(s: Session, dir: number, flags: number, command: string | 
       return 1;
     }
   }
-  if (s.roomExits[dir] !== 2) return 0;
-  if (s.walking !== 0 && s.runCount !== 0 && s.Other_BashMax <= s.f_db48) {
-    s.f_db48 = 0;
-    s.f_db50 = 0;
+  if (s.roomExits[dir] !== Exit.ClosedDoor) return 0;
+  if (s.walking !== 0 && s.runCount !== 0 && s.Other_BashMax <= s.bashTries) {
+    s.bashTries = 0;
+    s.pickTries = 0;
     if (runBack(s, 0) !== 0) return 1;
   }
   atDoor(s);
-  if (s.Other_CanPickLocks === 0 || s.Other_PickMax * 2 <= s.f_db50) {
-    setState(s, 0x17);
+  if (s.Other_CanPickLocks === 0 || s.Other_PickMax * 2 <= s.pickTries) {
+    setState(s, State.Bashing);
     s.host.activity('Bashing door');
     send(s, `bash ${directionWord(dir)}\r`);
   } else {
-    setState(s, 0x18);
+    setState(s, State.Picking);
     s.host.activity('Picking door lock');
     send(s, `pi ${directionShort(dir)}\r`);
   }
@@ -307,7 +297,7 @@ export function runBack(s: Session, force: number): number {
     force === 0 &&
     !(
       (s.sneaking === 0 || s.rescueCount !== 0) &&
-      s.f_a32c === 0 &&
+      s.allOff === 0 &&
       (s.MegaMud_AutoCombat !== 0 || s.rescueCount !== 0)
     )
   )
@@ -327,16 +317,16 @@ export function runBack(s: Session, force: number): number {
       if (doors(s, back, st.flags, st.command) !== 0) return 1;
       if (sneakStep(s) !== 0) {
         // `0x460b90`: Step Back (`0x869`) again once the sneak is sent.
-        s.host.post?.(0x869);
+        s.host.post?.(WindowCommand.StepBack);
         return 1;
       }
-      if (s.f_e298 !== 0) return 0;
+      if (s.partyStepPending !== 0) return 0;
       if (move(s, back, 1) === 0) return 0;
-      if (s.task === 0xe) s.stepsToGo += s.MegaMud_CurPathStep - i;
+      if (s.task === Task.Walking) s.stepsToGo += s.MegaMud_CurPathStep - i;
       showPath(s);
       setTask(s, s.task);
-      if ((st.flags & 0x40) !== 0) s.f_e21c = 1;
-      if ((st.flags & 0x20) !== 0) s.f_e21c = 1;
+      if ((st.flags & StepFlag.DontAttackNext) !== 0) s.dontAttackHere = 1;
+      if ((st.flags & StepFlag.DontAttackHere) !== 0) s.dontAttackHere = 1;
       s.path.prev = s.path.step;
       s.MegaMud_CurPathStep = i;
       s.path.step = i;
@@ -363,10 +353,13 @@ export function roamExit(s: Session): number {
     const exit = s.roomExits[dir] ?? 0;
     const bit = 1 << dir;
     let allowed = false;
-    if (exit !== 0) {
+    if (exit !== Exit.None) {
       if (s.roaming === 0) allowed = true;
-      else if ((s.f_db34 === -1 || s.f_db34 !== dir) && (bit & s.Auto_roam_AutoMove) !== 0) {
-        allowed = exit === 1 || (bit & s.Auto_roam_AutoDoor) !== 0;
+      else if (
+        (s.lastMoveDir === -1 || s.lastMoveDir !== dir) &&
+        (bit & s.Auto_roam_AutoMove) !== 0
+      ) {
+        allowed = exit === Exit.Open || (bit & s.Auto_roam_AutoDoor) !== 0;
       }
     }
     ok.push(allowed);
@@ -380,7 +373,7 @@ export function roamExit(s: Session): number {
   for (;;) {
     const dir = rand(s) % 10;
     if (!ok[dir]) continue;
-    if (s.f_db34 === s.moveDir || dir !== reverse(s.moveDir)) return dir;
+    if (s.lastMoveDir === s.moveDir || dir !== reverse(s.moveDir)) return dir;
   }
 }
 
@@ -397,7 +390,7 @@ export function awayExit(s: Session): number {
       back = dir;
       continue;
     }
-    if (s.roomExits[dir] === 0) continue;
+    if (s.roomExits[dir] === Exit.None) continue;
     if (found !== -1) return -1;
     found = dir;
   }

@@ -5,6 +5,8 @@ import { hitLine } from '../combat/hits';
 import type { MonsterRec } from '../data';
 import { addEntity } from '../room/entities';
 import { session } from './fixture';
+import { State } from '../states';
+import { EntityFlag, Stance, EntityType } from '../flags';
 
 /* `0x428e60` and `0x429bb0`, read 2026-10-12. */
 
@@ -13,7 +15,7 @@ const RAT: MonsterRec = {
   name: 'giant rat',
   id: 1,
   flags: 0,
-  relationship: 4,
+  relationship: Stance.Enemy,
   exp: 42,
   maxHp: 12,
   preSpell: '',
@@ -30,8 +32,8 @@ function withRat(colour: number, text: string) {
   s.hp = 50;
   const rat = addEntity(s);
   rat.name = 'giant rat';
-  rat.type = 2;
-  rat.kind = 3;
+  rat.type = EntityType.Monster;
+  rat.kind = Stance.Avoid;
   rat.mon = RAT;
   s.line = { text, attr: text.split('').map(() => colour) };
   return { ...fixture, rat };
@@ -44,7 +46,7 @@ describe('a blow taken (0x428e60)', () => {
     expect(blowLine(s, line)).toBe(1);
     expect(s.hp).toBe(45);
     expect(rat.kind).toBe(4);
-    expect(rat.flags & 0x11).toBe(0x11);
+    expect(rat.flags & (EntityFlag.Kept | EntityFlag.Fought)).toBe(0x11);
   });
 
   it('ignores a line not drawn in a combat colour', () => {
@@ -60,16 +62,16 @@ describe('a hit landed (0x429bb0)', () => {
     const line = 'You slash the giant rat for 12 damage!';
     const { s } = withRat(0xc, line);
     s.inCombat = 1;
-    s.state = 0x11;
+    s.state = State.Attacking;
     expect(hitLine(s, line)).toBe(1);
-    expect(s.f_32614).toBe(12);
+    expect(s.roundDamage).toBe(12);
   });
 
   it('counts a miss as a blow', () => {
     const line = 'You swing at the giant rat!';
     const { s } = withRat(0xc, line);
     s.inCombat = 1;
-    s.state = 0x11;
+    s.state = State.Attacking;
     expect(hitLine(s, line)).toBe(1);
   });
 });

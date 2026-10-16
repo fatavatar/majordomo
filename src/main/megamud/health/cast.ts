@@ -15,6 +15,8 @@ import { setState } from '../script/state';
 import type { Session } from '../Session';
 import { castable, findSpell } from '../spells/lookup';
 import { postMeditate, postRest } from './prepost';
+import { State } from '../states';
+import { SpellFlag, CarriedFlag } from '../flags';
 
 /** `0x4ad9a0`: a trailing `^M` dropped. */
 function dropCaretM(text: string): string {
@@ -33,7 +35,9 @@ export function castSpell(s: Session, short: string, target: string | null): num
   let stamp = true;
   let arg: string | null = null;
   const timed =
-    spell === null || ((spell.cost !== 0 || s.BBS_GreaterMUD !== 0) && (spell.flags & 6) !== 4);
+    spell === null ||
+    ((spell.cost !== 0 || s.BBS_GreaterMUD !== 0) &&
+      (spell.flags & (SpellFlag.Timed | SpellFlag.EvilInCombat)) !== SpellFlag.EvilInCombat);
   if (timed) {
     if (!castAllowed(s, s.inCombat !== 0 ? 1 : 0)) return 0;
     arg = target;
@@ -42,15 +46,15 @@ export function castSpell(s: Session, short: string, target: string | null): num
   }
   if (spell !== null) {
     if (spell.cost !== 0 && spell.cost > s.mana) return 0;
-    if ((spell.flags & 0x80) !== 0) target = null;
-    arg = (spell.flags & 0x60) !== 0 ? target : null;
-    if ((spell.flags & 0x90) === 0 && arg === null) return 0;
+    if ((spell.flags & SpellFlag.Area) !== 0) target = null;
+    arg = (spell.flags & (SpellFlag.Player | SpellFlag.Monster)) !== 0 ? target : null;
+    if ((spell.flags & (SpellFlag.Self | SpellFlag.Area)) === 0 && arg === null) return 0;
   }
   s.sneaking = 0;
   s.hidden = 0;
-  s.f_a3e0 = 0;
-  s.f_a3e4 = 0;
-  s.f_32310 = 0;
+  s.castAnswered = 0;
+  s.castTook = 0;
+  s.restAskedAt = 0;
   let command = '';
   if (spell !== null && spell.item !== '') {
     command = expandMacros(s, dropCaretM(spell.item.slice(0, 99)));
@@ -63,12 +67,12 @@ export function castSpell(s: Session, short: string, target: string | null): num
   }
   if (spell !== null && command !== '') noteCommands(s, spell.item);
   if (s.inCombat !== 0 || enemiesHere(s, 0) > 0) {
-    s.f_e1d8 = 1;
+    s.combatOffExpected = 1;
     if (s.debug !== 0) s.host.trace('{I0+}');
-    if (spellTakesTarget(spell) === 0) s.f_e2b8 = 1;
+    if (spellTakesTarget(spell) === 0) s.attackDue = 1;
   }
   s.waitLines = 2;
-  setState(s, 0x15);
+  setState(s, State.Casting);
   s.host.activity(`Casting spell ${short}`);
   if (spell !== null && command !== '') return send(s, `${command}\r`);
   return send(s, arg === null ? `${short}\r` : `${short} ${arg}\r`);
@@ -88,17 +92,17 @@ export function equipForSpell(s: Session, short: string): number {
   const carried = findCarried(s, spell.name);
   const item = carried?.item;
   if (!carried || !item || !(item.type === 1 || (item.type === 0 && item.location !== 0))) return 0;
-  if ((carried.flags & 1) !== 0) return -1;
+  if ((carried.flags & CarriedFlag.Equipped) !== 0) return -1;
   const rested = postRest(s, 8, 0);
   const meditated = postMeditate(s, 0);
   if (rested === 0 && meditated === 0) {
-    if (item.type === 1) s.s_b060 = item.name.slice(0, 30);
-    s.f_a5f8 += 1;
+    if (item.type === 1) s.weaponWielded = item.name.slice(0, 30);
+    s.equipsPending += 1;
     s.waitLines = 2;
-    s.f_e1d8 = 0;
-    s.stateBefore = 0;
+    s.combatOffExpected = 0;
+    s.stateBefore = State.Nothing;
     s.equipping = item.name.slice(0, 30);
-    setState(s, 0x1f);
+    setState(s, State.Equipping);
     s.host.activity(`Equipping item ${item.name} for spell`);
     send(s, `equip ${item.name}\r`);
   }

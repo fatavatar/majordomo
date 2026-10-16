@@ -14,11 +14,13 @@ import { prioritize } from '../room/alsoHere';
 import { addEntity, findEntity, newMonsterEntity } from '../room/entities';
 import { escapeCheck } from '../script/escape';
 import { setState } from '../script/state';
-import type { RoomEntity, Session } from '../Session';
+import { ARENA, type RoomEntity, type Session } from '../Session';
 import { partyRefresh } from '../party/members';
 import { pvpAttack } from './events';
 import { areaDamage } from './hits';
 import { roundEvent, RoundEvent } from './timer';
+import { State } from '../states';
+import { LineFlag, PartyFlag, EntityFlag, EntityType, Darkness, Stance } from '../flags';
 
 /** The verbs a blow is struck with (the table at `0x5603e0`). */
 const VERBS = [
@@ -110,28 +112,6 @@ const ADVERBS = [
   'quickly'
 ];
 
-const DODGES = [
-  'You quickly backpedal',
-  'but you dodge',
-  'but you sidestep',
-  'but you easily dodge',
-  'but you barely dodge',
-  'but you quickly roll',
-  'but you leap out of',
-  'but you duck the attack'
-];
-
-const MISSES = [
-  ' at you',
-  ' for you',
-  'but misses',
-  'and barely misses you!',
-  'you easily misses!',
-  'scrambles to regain balance',
-  'looking for an opening!',
-  'an opportunity to strike!'
-];
-
 /** The damage number before ` damage` (the digits just before it). */
 function damageIn(line: string): number {
   let at = indexOf(line, ' damage');
@@ -156,7 +136,7 @@ export function blowLine(s: Session, line: string): number {
   let hasDamage = false;
   const parsed = damageIn(line);
   if (parsed !== -1) {
-    s.lineFlags |= 0x20;
+    s.lineFlags |= LineFlag.FightLineSeen;
     hasDamage = true;
     damage = parsed;
   }
@@ -202,7 +182,7 @@ export function blowLine(s: Session, line: string): number {
         const m = s.party[member]!;
         if (m.maxHp > 0) {
           m.hp -= damage;
-          m.flags28 |= 2;
+          m.flags28 |= PartyFlag.ChangedSinceListing;
         }
         partyRefresh(s, 1);
         findVerb = true;
@@ -260,9 +240,9 @@ export function blowLine(s: Session, line: string): number {
  * name that starts the text.
  */
 function matchRoomName(s: Session, name: string): string {
-  for (const e of s.room) if (e.type !== 3 && e.name === name) return name;
+  for (const e of s.room) if (e.type !== EntityType.Item && e.name === name) return name;
   for (const e of s.room) {
-    if (e.type !== 3 && name.startsWith(e.name)) return e.name;
+    if (e.type !== EntityType.Item && name.startsWith(e.name)) return e.name;
   }
   return name;
 }
@@ -275,14 +255,14 @@ function struck(s: Session, line: string, name: string, damage: number): number 
   }
   s.sneaking = 0;
   s.hidden = 0;
-  s.f_32604 = 1;
+  s.roundBlowSeen = 1;
   roundEvent(s, RoundEvent.Combat);
-  const blind = s.blind !== 0 || s.darkness > 1;
+  const blind = s.blind !== 0 || s.darkness > Darkness.Dim;
   let e: RoomEntity | null = findEntity(s, name, 0);
   if (!e) {
     for (const x of s.room) {
-      if (x.type === 3) continue;
-      if (x.type === 1 || x.player) {
+      if (x.type === EntityType.Item) continue;
+      if (x.type === EntityType.Player || x.player) {
         if (line.startsWith(x.name)) {
           const after = line[x.name.length];
           if (after === undefined || after === ' ' || after === '.' || after === ',') {
@@ -300,70 +280,65 @@ function struck(s: Session, line: string, name: string, damage: number): number 
   }
   if (
     e &&
-    e.type === 1 &&
-    e.kind !== 4 &&
-    e.kind !== 5 &&
-    e.kind !== 6 &&
+    e.type === EntityType.Player &&
+    e.kind !== Stance.Enemy &&
+    e.kind !== Stance.Flee &&
+    e.kind !== Stance.Hangup &&
     damage === 0 &&
-    s.f_8130 !== 0x67110001
+    s.roomSignature !== ARENA
   ) {
     return 1;
   }
-  if (s.line.attr[0] === 6) {
-    if (DODGES.some((p) => indexOf(line, p) !== -1)) s.f_3269c += 1;
-    else if (MISSES.some((p) => indexOf(line, p) !== -1)) s.f_32698 += 1;
-  } else if (damage !== 0) {
-    s.f_32694 += 1;
-  }
-  s.lineFlags |= 0x20;
-  if (s.debug !== 0 && s.f_e1d8 !== 0) s.host.trace('{I5-}');
-  s.f_e1d8 = 0;
-  s.f_322f0 = s.now;
+  s.lineFlags |= LineFlag.FightLineSeen;
+  if (s.debug !== 0 && s.combatOffExpected !== 0) s.host.trace('{I5-}');
+  s.combatOffExpected = 0;
+  s.blowSeenAt = s.now;
   if (!e) {
     let added: RoomEntity | null = null;
     if (name !== '' && blind) {
       added = newMonsterEntity(s, name);
-      if (added) s.f_e2b8 = 1;
+      if (added) s.attackDue = 1;
     }
-    if (!added && name !== '' && damage !== 0 && s.f_8130 === 0x67110001) {
+    if (!added && name !== '' && damage !== 0 && s.roomSignature === ARENA) {
       added = addEntity(s);
       added.name = name.slice(0, 30);
-      added.kind = 4;
+      added.kind = Stance.Enemy;
     }
     if (added) {
-      added.flags |= 0x11;
+      added.flags |= EntityFlag.Kept | EntityFlag.Fought;
     } else if (
       s.blind === 0 &&
-      s.darkness < 2 &&
+      s.darkness < Darkness.Dark &&
       (s.runCount === 0 || s.following === 1 || s.held === 1)
     ) {
       if (name === '' && s.msgSpell !== '') {
         // A spell from someone unnamed: just read the room again below.
       } else if (
-        s.f_e21c !== 0 &&
+        s.dontAttackHere !== 0 &&
         (name === '' || !s.whoList.some((w) => name.startsWith(w.name)))
       ) {
         return 1;
       }
       if (!(name === '' && s.msgSpell !== '')) {
-        s.f_e290 = 1;
-        if (s.inCombat === 0) setState(s, 0);
+        s.lookDue = 1;
+        if (s.inCombat === 0) setState(s, State.Nothing);
       }
     }
   } else {
-    if (e.kind !== 4 && e.kind !== 5 && e.kind !== 6) e.kind = 4;
-    if (blind && s.inCombat === 0) s.f_e2b8 = 1;
-    e.flags |= 0x11;
+    if (e.kind !== Stance.Enemy && e.kind !== Stance.Flee && e.kind !== Stance.Hangup)
+      e.kind = Stance.Enemy;
+    if (blind && s.inCombat === 0) s.attackDue = 1;
+    e.flags |= EntityFlag.Kept | EntityFlag.Fought;
   }
   checkNames(s);
   if (name !== '') {
     const x = findEntity(s, name, 0);
-    if (x && x.type === 2) {
+    if (x && x.type === EntityType.Monster) {
       x.mon ??= findMonster(s, x.name);
-      if (x.mon && x.mon.relationship === 0) {
-        x.kind = 4;
-        x.mon.relationship = 4;
-        s.f_e254 = 1;
+      if (x.mon && x.mon.relationship === Stance.Unknown) {
+        x.kind = Stance.Enemy;
+        x.mon.relationship = Stance.Enemy;
+        s.monstersChanged = 1;
         s.host.show(`[${x.name} marked as enemy]`);
       }
     }

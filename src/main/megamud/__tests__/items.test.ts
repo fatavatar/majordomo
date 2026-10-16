@@ -9,6 +9,7 @@ import { findCarried, inventoryLine } from '../items/inventory';
 import { sellLine } from '../items/sell';
 import { addEntity } from '../room/entities';
 import { session } from './fixture';
+import { EntityType } from '../flags';
 
 /* `0x454b90`, `0x453ef0`, `0x454320`, `0x453a70` and `0x455d30`, read 2026-10-12. */
 
@@ -32,7 +33,7 @@ describe('picking up (0x454b90)', () => {
   it('carries what was picked up and counts the room down', () => {
     const { s } = carrying();
     const e = addEntity(s);
-    e.type = 3;
+    e.type = EntityType.Item;
     e.name = 'lantern';
     e.count = 3;
     getLine(s, 'You picked up 2 lantern.');
@@ -43,12 +44,12 @@ describe('picking up (0x454b90)', () => {
   it('forgets an item that is not there', () => {
     const { s } = carrying();
     const e = addEntity(s);
-    e.type = 3;
+    e.type = EntityType.Item;
     e.name = 'lantern';
     e.count = 1;
     getLine(s, "You don't see lantern here.");
     expect(s.room).toHaveLength(0);
-    expect(s.f_e290).toBe(1);
+    expect(s.lookDue).toBe(1);
   });
 });
 
@@ -71,17 +72,17 @@ describe('dropping (0x453ef0)', () => {
 describe('equipping (0x454320)', () => {
   it('marks what is worn, and answers an equip', () => {
     const { s } = carrying();
-    s.f_a5f8 = 1;
+    s.equipsPending = 1;
     equipLine(s, 'You are now wearing rope and grapple.');
     expect(findCarried(s, 'rope and grapple')?.flags).toBe(1);
-    expect(s.f_a5f8).toBe(0);
+    expect(s.equipsPending).toBe(0);
   });
 
   it('forgets the weapon removed', () => {
     const { s } = carrying();
-    expect(s.s_b060).toBe('dagger');
+    expect(s.weaponWielded).toBe('dagger');
     equipLine(s, 'You have removed dagger.');
-    expect(s.s_b060).toBe('');
+    expect(s.weaponWielded).toBe('');
     expect(findCarried(s, 'dagger')?.flags).toBe(0);
   });
 });

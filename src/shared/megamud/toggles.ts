@@ -1,5 +1,31 @@
 import type { Movement } from '../movement';
 
+/** MegaMUD's window commands (its `WM_COMMAND` ids, handled by `0x462d20`). */
+export const WindowCommand = {
+  AutoCombat: 0x7d3,
+  /** Connect, or Disconnect when online. */
+  Connect: 0x7d4,
+  AutoGet: 0x7d9,
+  AutoHeal: 0x7dc,
+  AutoSearch: 0x7f2,
+  AutoSneak: 0x801,
+  /** Go, or Stop when walking. */
+  GoStop: 0x803,
+  AutoTrack: 0x804,
+  Roam: 0x808,
+  Afk: 0x809,
+  AutoHide: 0x815,
+  AllOff: 0x821,
+  AutoCash: 0x823,
+  AutoPreAttack: 0x829,
+  AutoBless: 0x82a,
+  NoHangup: 0x82f,
+  StepBack: 0x869,
+  AutoNuke: 0x86a,
+  AutoLight: 0x870,
+  Melee: 0x8a4
+} as const;
+
 /**
  * MegaMUD's automation toggles, its toolbar's switches: each the window
  * command that flips it (`0x462d20`, read 2026-10-13), in the order MegaMUD's
@@ -8,22 +34,22 @@ import type { Movement } from '../movement';
  * character's `[Toolbar]`.
  */
 export const MEGA_TOGGLES = [
-  /** Lit when hanging up is off (`0x460d50` checks `0x82f` while `NoHangup` is set). */
-  { name: 'noHangup', command: 0x82f },
-  { name: 'allOff', command: 0x821 },
-  { name: 'combat', command: 0x7d3 },
-  { name: 'preAttack', command: 0x829 },
-  { name: 'melee', command: 0x8a4 },
-  { name: 'nuke', command: 0x86a },
-  { name: 'heal', command: 0x7dc },
-  { name: 'bless', command: 0x82a },
-  { name: 'light', command: 0x870 },
-  { name: 'get', command: 0x7d9 },
-  { name: 'cash', command: 0x823 },
-  { name: 'sneak', command: 0x801 },
-  { name: 'hide', command: 0x815 },
-  { name: 'search', command: 0x7f2 },
-  { name: 'afk', command: 0x809 }
+  /** Lit when hanging up is off (`0x460d50` checks `NoHangup` while `NoHangup` is set). */
+  { name: 'noHangup', command: WindowCommand.NoHangup },
+  { name: 'allOff', command: WindowCommand.AllOff },
+  { name: 'combat', command: WindowCommand.AutoCombat },
+  { name: 'preAttack', command: WindowCommand.AutoPreAttack },
+  { name: 'melee', command: WindowCommand.Melee },
+  { name: 'nuke', command: WindowCommand.AutoNuke },
+  { name: 'heal', command: WindowCommand.AutoHeal },
+  { name: 'bless', command: WindowCommand.AutoBless },
+  { name: 'light', command: WindowCommand.AutoLight },
+  { name: 'get', command: WindowCommand.AutoGet },
+  { name: 'cash', command: WindowCommand.AutoCash },
+  { name: 'sneak', command: WindowCommand.AutoSneak },
+  { name: 'hide', command: WindowCommand.AutoHide },
+  { name: 'search', command: WindowCommand.AutoSearch },
+  { name: 'afk', command: WindowCommand.Afk }
 ] as const;
 
 export type MegaToggle = (typeof MEGA_TOGGLES)[number]['name'];

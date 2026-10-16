@@ -49,9 +49,9 @@ describe('the experience meter (0x4a7250)', () => {
   it('gives what was made, what is needed, the rate and when the level comes', () => {
     const m = meter((s) => {
       s.exp = 5_000_000;
-      s.f_324c8 = 4_000_000;
-      s.f_322b0 = s.host.clock() - 2 * 3600;
-      s.f_322b8 = s.host.clock();
+      s.expBaseline = 4_000_000;
+      s.expMeterStart = s.host.clock() - 2 * 3600;
+      s.expMeterEnd = s.host.clock();
       s.expToLevel = 3_000_000;
     });
     expect(m.made).toBe('1,000,000');
@@ -63,9 +63,9 @@ describe('the experience meter (0x4a7250)', () => {
   it('says Now! when the realm says nothing more is needed and no chart can say more', () => {
     const m = meter((s) => {
       s.exp = 5_000_000;
-      s.f_324c8 = 4_000_000;
-      s.f_322b0 = s.host.clock() - 3600;
-      s.f_322b8 = s.host.clock();
+      s.expBaseline = 4_000_000;
+      s.expMeterStart = s.host.clock() - 3600;
+      s.expMeterEnd = s.host.clock();
       s.expToLevel = 0;
     });
     expect(m.needed).toBe('0');

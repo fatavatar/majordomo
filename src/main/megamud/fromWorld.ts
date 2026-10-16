@@ -37,6 +37,7 @@ import {
   type RaceRec,
   type SpellRec
 } from './data';
+import { ItemFlag, SpellFlag } from './flags';
 
 /** What the player has chosen about this realm's items and sentences. */
 export interface RealmChoices {
@@ -46,16 +47,13 @@ export interface RealmChoices {
 
 /** The realm's `LoyalItem` ability: an item kept through death (`0x459860`'s 100). */
 const LOYAL_ABILITY = 100;
-const LOYAL = 0x20000;
 const CANNOT_TAKE = ITEM_FLAG_BITS.cannotTake;
 /** The ring code MegaMUD files under `Finger` (4): mudrev's second finger slot. */
 const SECOND_FINGER = 13;
 const FINGER = 4;
 
-/** `Damage`, `DrainLife`, `Damage(-MR)` and `EvilInCombat`: a spell MegaMUD marks `4`, an attack. */
+/** `Damage`, `DrainLife`, `Damage(-MR)` and `EvilInCombat`: a spell MegaMUD marks `SpellFlag.EvilInCombat`, an attack. */
 const ATTACK_ABILITIES = new Set([1, 8, 17, 52]);
-const TIMED = 0x2;
-const ATTACK = 0x4;
 
 /**
  * `Spells.Targets` as MegaMUD's target bits (`0x10` self, `0x20` a player,
@@ -128,8 +126,8 @@ function raceRec(r: WorldRace): RaceRec {
 
 function spellRec(spell: WorldSpell): SpellRec {
   let flags = TARGET_BITS[spell.targets ?? 0] ?? 0;
-  if ((spell.duration ?? 0) > 0) flags |= TIMED;
-  if (spell.abilities?.some(([id]) => ATTACK_ABILITIES.has(id))) flags |= ATTACK;
+  if ((spell.duration ?? 0) > 0) flags |= SpellFlag.Timed;
+  if (spell.abilities?.some(([id]) => ATTACK_ABILITIES.has(id))) flags |= SpellFlag.EvilInCombat;
   return {
     layer: 0,
     id: spell.id,
@@ -193,7 +191,7 @@ function priceAt(world: WorldGraph, item: WorldItem, shop: string): number {
 
 function itemRec(item: WorldItem): ItemRec {
   let flags = 0;
-  if (item.abilities?.some(([id]) => id === LOYAL_ABILITY)) flags |= LOYAL;
+  if (item.abilities?.some(([id]) => id === LOYAL_ABILITY)) flags |= ItemFlag.Loyal;
   if (item.gettable === false) flags |= CANNOT_TAKE;
   return {
     id: item.id,

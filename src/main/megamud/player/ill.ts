@@ -5,12 +5,14 @@ import { indexOf } from '../cstr';
 import { messageEnded } from '../messages/messages';
 import { setState } from '../script/state';
 import type { Session } from '../Session';
+import { State } from '../states';
+import { MessageEffect } from '../flags';
 
 /** `0x46bb10`: every active Messages.md row's ending tried against the line. */
 function anyMessageEnded(s: Session, line: string): number {
   let ended = 0;
   for (const rec of s.data.messages ?? []) {
-    if ((rec.effects & 0x8000) === 0 && messageEnded(s, line, rec) !== 0) ended = 1;
+    if ((rec.effects & MessageEffect.Disabled) === 0 && messageEnded(s, line, rec) !== 0) ended = 1;
   }
   return ended;
 }
@@ -24,8 +26,8 @@ export function illLine(s: Session, line: string): number {
     s.resting = 0;
     s.meditating = 0;
     s.poisoned = 1;
-    s.f_e1f8 = 1;
-    if (s.state === 2 || s.state === 4) setState(s, 0);
+    s.tooSickToRest = 1;
+    if (s.state === State.RestAsked || s.state === State.MeditateAsked) setState(s, State.Nothing);
     return 1;
   }
   if (

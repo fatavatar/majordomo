@@ -37,7 +37,7 @@ describe('a player attacking (0x42b8f0)', () => {
     s.PvP_PvpAction = 0;
     pvpAttack(s, 'Bob', 1);
     expect(out.trace.join('')).toContain('[PVP detected!');
-    expect(s.f_30de4).toBe(1);
+    expect(s.skipRedialOnce).toBe(1);
     expect(bob.kind).toBe(4);
     expect(bob.remote).toBe(0);
     expect(s.room.some((e) => e.name === 'Bob' && e.player === bob)).toBe(true);
@@ -50,7 +50,7 @@ describe('a player attacking (0x42b8f0)', () => {
     s.PvP_FleeRooms = 7;
     pvpAttack(s, 'Bob', 1);
     expect(s.runCount).toBe(7);
-    expect(s.f_30de4).toBe(0);
+    expect(s.skipRedialOnce).toBe(0);
     expect(s.room.find((e) => e.name === 'Bob')?.kind).toBe(5);
   });
 
@@ -73,7 +73,7 @@ describe('a player attacking (0x42b8f0)', () => {
     s.data.monsters.push({ name: 'Orc' } as never);
     pvpAttack(s, 'Orc', 1);
     expect(out.trace).toEqual([]);
-    expect(s.f_30de4).toBe(0);
+    expect(s.skipRedialOnce).toBe(0);
   });
 });
 

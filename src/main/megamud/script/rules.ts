@@ -11,10 +11,11 @@ import { membersInStep, weakestMember } from '../party/members';
 import { hangupAllowed } from '../room/checkNames';
 import { enemiesHere, findEntity } from '../room/entities';
 import { atoi, rowField, stricmp } from '../cstr';
-import type { Rule, Session } from '../Session';
+import { ARENA, type Rule, type Session } from '../Session';
 import { stamp } from './events';
 import { hangUp } from './game';
 import { expandMacros, send } from './send';
+import { EntityType } from '../flags';
 
 /** `0x49c3d0`: a condition holds. */
 function holds(s: Session, r: Rule): boolean {
@@ -41,7 +42,7 @@ function holds(s: Session, r: Rule): boolean {
     case 6: {
       want = 1;
       const e = findEntity(s, r.text, 0);
-      value = e && e.type !== 3 ? 1 : 0;
+      value = e && e.type !== EntityType.Item ? 1 : 0;
       break;
     }
     case 7:
@@ -85,10 +86,10 @@ function act(s: Session, r: Rule): boolean {
       s.runCount = s.Combat_RunRooms;
       return true;
     case 4:
-      if (s.f_8130 === 0x67110001 || hangupAllowed(s) === 0) return false;
+      if (s.roomSignature === ARENA || hangupAllowed(s) === 0) return false;
       s.host.trace(`[Hangup rule (${stamp(s)})]`);
-      s.f_30de4 = 1;
-      s.f_30de8 = 1;
+      s.skipRedialOnce = 1;
+      s.noRedial = 1;
       hangUp(s, 1);
       s.host.alert?.('hangup');
       return true;

@@ -11,7 +11,7 @@
 import { spellCastSeen } from '../abilities/monitors';
 import {
   countCast,
-  f_426ab0,
+  inAttackCast,
   resetNoMessage,
   spellTakesTarget,
   castSpellFor
@@ -25,10 +25,12 @@ import { findEntity } from '../room/entities';
 import { hangUp } from '../script/game';
 import { expandMacros, noteCommands, queue, queueCommand, send } from '../script/send';
 import { forgetAwaited, setState } from '../script/state';
-import type { Session } from '../Session';
+import { ARENA, type Session } from '../Session';
 import { findSpell, findSpellByName, stateSpell } from '../spells/lookup';
 import { blessCommand } from '../player/cast';
 import { blowStruck, castForgotten } from '../combat/timer';
+import { State } from '../states';
+import { LineFlag, MessageFlag, MessageEffect, EntityFlag, EntityType } from '../flags';
 
 /** What a template's fields captured (`0x59c300`…), kept on the session when it matches. */
 interface Captures {
@@ -114,8 +116,8 @@ export function templateMatch(s: Session, template: string, line: string): numbe
 
 /** Whether a row's start matches: as a template, anywhere (`0x400`), or at the line's start. */
 function starts(s: Session, rec: MessageRec, line: string): boolean {
-  if ((rec.flags & 4) !== 0) return templateMatch(s, rec.msg, line) !== 0;
-  if ((rec.effects & 0x400) !== 0) return indexOf(line, rec.msg) !== -1;
+  if ((rec.flags & MessageFlag.StartHasFields) !== 0) return templateMatch(s, rec.msg, line) !== 0;
+  if ((rec.effects & MessageEffect.Anywhere) !== 0) return indexOf(line, rec.msg) !== -1;
   return line.startsWith(rec.msg);
 }
 
@@ -132,38 +134,43 @@ export function messageLine(s: Session, line: string, anywhere: number): number 
   let configured: SpellRec | null = null;
   for (const rec of rows) {
     const eff = rec.effects;
-    if ((eff & 0x8000) !== 0) continue;
-    if (anywhere === 0 ? (eff & 0x100) !== 0 : (eff & 0x100) === 0) continue;
-    if (!chasing && (eff & 0x4000) !== 0) continue;
+    if ((eff & MessageEffect.Disabled) !== 0) continue;
+    if (
+      anywhere === 0
+        ? (eff & MessageEffect.InConversations) !== 0
+        : (eff & MessageEffect.InConversations) === 0
+    )
+      continue;
+    if (!chasing && (eff & MessageEffect.WhenChasing) !== 0) continue;
     if (!starts(s, rec, line)) {
-      if ((rec.flags & 1) !== 0 && messageEnded(s, line, rec) !== 0) result = 1;
+      if ((rec.flags & MessageFlag.Active) !== 0 && messageEnded(s, line, rec) !== 0) result = 1;
       continue;
     }
     s.msgSpell = rec.name.slice(0, 30);
-    if ((eff & 1) !== 0) s.blind = 1;
-    if ((eff & 2) !== 0) s.confused = 1;
-    if ((eff & 4) !== 0) s.poisoned = 1;
-    if ((eff & 0x40) !== 0) s.diseased = 1;
-    if ((eff & 8) !== 0) s.losingHp = 1;
-    if ((eff & 0x80) !== 0) s.hpRegen = 1;
-    if ((eff & 0x200) !== 0) s.manaRegen = 1;
-    if ((eff & 0x10) !== 0) s.held = 1;
-    if ((eff & 0x20) !== 0) {
-      s.f_e218 = 1;
+    if ((eff & MessageEffect.Blinded) !== 0) s.blind = 1;
+    if ((eff & MessageEffect.Confused) !== 0) s.confused = 1;
+    if ((eff & MessageEffect.Poisoned) !== 0) s.poisoned = 1;
+    if ((eff & MessageEffect.Diseased) !== 0) s.diseased = 1;
+    if ((eff & MessageEffect.LosingHp) !== 0) s.losingHp = 1;
+    if ((eff & MessageEffect.HpRegen) !== 0) s.hpRegen = 1;
+    if ((eff & MessageEffect.ManaRegen) !== 0) s.manaRegen = 1;
+    if ((eff & MessageEffect.MovementPrevented) !== 0) s.held = 1;
+    if ((eff & MessageEffect.AttackPrevented) !== 0) {
+      s.attackPrevented = 1;
       forgetLastTarget(s);
     }
-    if ((eff & 0x1000) !== 0) {
+    if ((eff & MessageEffect.EndsCombat) !== 0) {
       s.inCombat = 0;
       forgetLastTarget(s);
       s.target = '';
-      s.f_e290 = 1;
-      setState(s, 0);
+      s.lookDue = 1;
+      setState(s, State.Nothing);
     }
-    if ((eff & 0x2000) !== 0) {
+    if ((eff & MessageEffect.LastActionFailed) !== 0) {
       forgetLastTarget(s);
-      if (s.state === 0x19) s.f_e2e4 = 1;
-      setState(s, 0);
-      if (s.following !== 0 || s.f_e2ec !== 0 || s.holdingLeader !== 0) resendPartyHold(s);
+      if (s.state === State.Disarming) s.trapDisarmed = 1;
+      setState(s, State.Nothing);
+      if (s.following !== 0 || s.partyLost !== 0 || s.holdingLeader !== 0) resendPartyHold(s);
     }
     result = 1;
     if (rec.endMsg === '') {
@@ -172,7 +179,7 @@ export function messageLine(s: Session, line: string, anywhere: number): number 
         if (s.msgSource === '') {
           if (
             s.msgDamage !== 0 &&
-            f_426ab0(s, 1) !== 0 &&
+            inAttackCast(s, 1) !== 0 &&
             s.castName !== '' &&
             stricmp(s.castName, s.msgSpell) === 0
           ) {
@@ -186,20 +193,28 @@ export function messageLine(s: Session, line: string, anywhere: number): number 
               return 0;
             }
           }
-          if ((s.state === 0x11 || s.state === 0x12) && s.msgDamage !== 0) {
+          if (
+            (s.state === State.Attacking || s.state === State.Backstabbing) &&
+            s.msgDamage !== 0
+          ) {
             const weapon = findItem(s, s.msgSpell);
-            if (weapon && weapon.name === s.s_b060) return 0;
+            if (weapon && weapon.name === s.weaponWielded) return 0;
           }
         }
       }
     } else {
-      rec.flags |= 1;
+      rec.flags |= MessageFlag.Active;
       rec.firedAt = s.now;
     }
-    if ((eff & 4) !== 0 && (rec.flags & 1) !== 0 && s.Other_IgnorePoison !== 0) return result;
-    if (chasing && (eff & 0x4000) !== 0) {
+    if (
+      (eff & MessageEffect.Poisoned) !== 0 &&
+      (rec.flags & MessageFlag.Active) !== 0 &&
+      s.Other_IgnorePoison !== 0
+    )
+      return result;
+    if (chasing && (eff & MessageEffect.WhenChasing) !== 0) {
       if (stricmp(s.msgTarget, s.chaseTarget) === 0 || stricmp(s.msgTarget, s.leaderName) === 0) {
-        if (rec.action !== '' && s.f_a32c === 0) {
+        if (rec.action !== '' && s.allOff === 0) {
           noteCommands(s, rec.action);
           let out = expandMacros(s, rec.action);
           if (!out.endsWith('\r')) out += '\r';
@@ -215,23 +230,29 @@ export function messageLine(s: Session, line: string, anywhere: number): number 
       if (out.length === 0 || !out.endsWith('\r')) out += '\r';
       queueCommand(s, out, 1, 0, 1);
     }
-    if ((eff & 0x10) !== 0 && s.following !== 0 && s.holdingLeader === 0 && s.f_a32c === 0) {
-      s.f_32338 = s.now;
+    if (
+      (eff & MessageEffect.MovementPrevented) !== 0 &&
+      s.following !== 0 &&
+      s.holdingLeader === 0 &&
+      s.allOff === 0
+    ) {
+      s.waitSentAt = s.now;
       s.holdingLeader = 1;
       if (s.restReason === '') s.restReason = "can't move";
       const wait = s.Party_PartyWaitCmd !== '' ? s.Party_PartyWaitCmd : '@wait';
       queue(s, `/${s.leaderName} ${wait} (can't move)\r`);
     }
-    if (indexOf(line, 'You are blind') !== -1 && s.state === 0x16) setState(s, 0);
+    if (indexOf(line, 'You are blind') !== -1 && s.state === State.Moving)
+      setState(s, State.Nothing);
     if (result === 0 && s.msgTarget === '') continue;
-    if (s.msgDamage === 0 && f_426ab0(s, 1) !== 0) {
+    if (s.msgDamage === 0 && inAttackCast(s, 1) !== 0) {
       const fromMe =
         s.msgSource === '' ||
         stricmp(s.msgSource, 'you') === 0 ||
         stricmp(s.msgSource, 'your') === 0;
       if (fromMe) {
         if (s.castName !== '' && stricmp(s.castName, s.msgSpell) === 0) {
-          configured ??= castSpellFor(s, s.f_a448, 0);
+          configured ??= castSpellFor(s, s.castMode, 0);
           return countedByMessage(s, configured);
         }
         if (configured && s.castShort !== '' && stricmp(configured.short, s.castShort) === 0) {
@@ -251,31 +272,31 @@ function countedByMessage(s: Session, spell: SpellRec | null): number {
     s.skipTick = 1;
   }
   if (s.debug !== 0) s.host.trace(`{${s.msgSpell}+}`);
-  resetNoMessage(s, s.f_a448);
-  countCast(s, s.f_a448, 1);
-  s.lineFlags |= 0x20;
+  resetNoMessage(s, s.castMode);
+  countCast(s, s.castMode, 1);
+  s.lineFlags |= LineFlag.FightLineSeen;
   s.sneaking = 0;
   s.hidden = 0;
-  s.f_e1d8 = 0;
-  s.f_a44c = 1;
+  s.combatOffExpected = 0;
+  s.castMessageSeen = 1;
   if (area !== 0) {
     blowStruck(s);
   }
   if (
-    s.f_a448 === 0xb &&
+    s.castMode === State.CastPre &&
     s.castShort !== '' &&
     (s.castShort === s.PvP_PvpSpell1 || s.castShort === s.PvP_PvpSpell2)
   ) {
     let e = findEntity(s, s.target, 0);
-    if (!e && s.room.length > 0 && s.room[0]!.type === 1) e = s.room[0]!;
-    if (e && e.type === 1) {
-      if (s.castShort === s.PvP_PvpSpell1) e.flags |= 0x20;
-      if (s.castShort === s.PvP_PvpSpell2) e.flags |= 0x40;
+    if (!e && s.room.length > 0 && s.room[0]!.type === EntityType.Player) e = s.room[0]!;
+    if (e && e.type === EntityType.Player) {
+      if (s.castShort === s.PvP_PvpSpell1) e.flags |= EntityFlag.PvpSpell1Cast;
+      if (s.castShort === s.PvP_PvpSpell2) e.flags |= EntityFlag.PvpSpell2Cast;
     }
   }
   if (area === 0) {
     clearCastMode(s);
-    setState(s, 0);
+    setState(s, State.Nothing);
   }
   return 1;
 }
@@ -287,8 +308,8 @@ function countedByMessage(s: Session, spell: SpellRec | null): number {
  */
 function resendPartyHold(s: Session): void {
   const window = s.Comms_LagWait + 3;
-  const okAt = s.f_32340;
-  const waitAt = s.f_32338;
+  const okAt = s.okSentAt;
+  const waitAt = s.waitSentAt;
   if (okAt > 0 && s.now - okAt < window && !(okAt < waitAt)) {
     if (s.lastResumeSent.length > 1) queue(s, s.lastResumeSent);
     return;
@@ -300,19 +321,19 @@ function resendPartyHold(s: Session): void {
 function actOnNumber(s: Session, rec: MessageRec): void {
   switch (rec.number) {
     case 1:
-      s.f_32390 = 0;
-      s.f_e290 = 1;
+      s.roomLookedAt = 0;
+      s.lookDue = 1;
       break;
     case 2: {
-      if ((rec.flags & 2) !== 0) break;
+      if ((rec.flags & MessageFlag.RestedOn) !== 0) break;
       let eff = rec.effects;
-      if (s.Other_IgnoreBlind !== 0) eff &= ~1;
-      if (s.Other_IgnoreConfusion !== 0) eff &= ~2;
-      if (s.Other_IgnorePoison !== 0) eff &= ~4;
+      if (s.Other_IgnoreBlind !== 0) eff &= ~MessageEffect.Blinded;
+      if (s.Other_IgnoreConfusion !== 0) eff &= ~MessageEffect.Confused;
+      if (s.Other_IgnorePoison !== 0) eff &= ~MessageEffect.Poisoned;
       if (eff !== 0 || rec.effects === 0) {
-        rec.flags |= 2;
+        rec.flags |= MessageFlag.RestedOn;
         s.restUntilOff += 1;
-        s.s_742d = rec.name.slice(0, 30);
+        s.lastRestRow = rec.name.slice(0, 30);
       }
       break;
     }
@@ -325,7 +346,7 @@ function actOnNumber(s: Session, rec: MessageRec): void {
     case 5:
       s.runCount = s.Combat_RunRooms;
       if (s.debug !== 0) s.host.trace(`{run-msg:${rec.name}}`);
-      if (!s.warnedStashRun && (s.state === 0x1e || s.f_e2c0 !== 0)) {
+      if (!s.warnedStashRun && (s.state === State.Stashing || s.stashing !== 0)) {
         s.warnedStashRun = true;
         s.host.show(
           `[Warning: message '${rec.name}' triggered a run-away while stashing - if a stash room is full this can loop the path; edit that message entry if unintended]`
@@ -333,10 +354,10 @@ function actOnNumber(s: Session, rec: MessageRec): void {
       }
       break;
     case 6:
-      if (s.f_8130 !== 0x67110001 && hangupAllowed(s) !== 0) {
+      if (s.roomSignature !== ARENA && hangupAllowed(s) !== 0) {
         s.host.trace(`[Hangup message detected (${rec.name})]`);
-        s.f_30de4 = 1;
-        s.f_30de8 = 1;
+        s.skipRedialOnce = 1;
+        s.noRedial = 1;
         hangUp(s, 1);
         s.host.alert?.('hangup');
       }
@@ -358,17 +379,17 @@ function blessingsSeen(s: Session, rec: MessageRec): void {
     }
   }
   spellCastSeen(s, rec.name);
-  if (first && s.state === 0x10) {
-    s.f_a3e0 += 1;
-    s.f_a3e4 += 1;
+  if (first && s.state === State.Blessing) {
+    s.castAnswered += 1;
+    s.castTook += 1;
     const slot = s.blessSlot;
     if (slot >= 0 && slot < 10) {
       const cmd = blessCommand(s, slot);
       if (cmd !== '' && stricmp(first.short, cmd) === 0) {
         s.blessCastAt[slot] = s.now;
         s.blessSeenAt[slot] = s.now;
-        forgetAwaited(s, 0x10);
-        setState(s, 0);
+        forgetAwaited(s, State.Blessing);
+        setState(s, State.Nothing);
       }
     }
   }
@@ -384,35 +405,41 @@ export function messageEnded(s: Session, line: string | null, rec: MessageRec): 
   let ends = true;
   if (line !== null) {
     ends =
-      (rec.effects & 0x400) === 0 ? line.startsWith(rec.endMsg) : indexOf(line, rec.endMsg) !== -1;
+      (rec.effects & MessageEffect.Anywhere) === 0
+        ? line.startsWith(rec.endMsg)
+        : indexOf(line, rec.endMsg) !== -1;
   }
-  const stale = (rec.flags & 1) !== 0 && s.now - rec.firedAt > 599;
+  const stale = (rec.flags & MessageFlag.Active) !== 0 && s.now - rec.firedAt > 599;
   if (!stale && !ends) return 0;
   const eff = rec.effects;
-  if ((eff & 1) !== 0) s.blind = 0;
-  if ((eff & 2) !== 0) s.confused = 0;
-  if ((eff & 4) !== 0) {
+  if ((eff & MessageEffect.Blinded) !== 0) s.blind = 0;
+  if ((eff & MessageEffect.Confused) !== 0) s.confused = 0;
+  if ((eff & MessageEffect.Poisoned) !== 0) {
     s.poisoned = 0;
-    s.f_e1f8 = 0;
+    s.tooSickToRest = 0;
   }
-  if ((eff & 0x40) !== 0) s.diseased = 0;
-  if ((eff & 8) !== 0) s.losingHp = 0;
-  if ((eff & 0x80) !== 0) s.hpRegen = 0;
-  if ((eff & 0x200) !== 0) s.manaRegen = 0;
-  if ((eff & 0x10) !== 0) {
+  if ((eff & MessageEffect.Diseased) !== 0) s.diseased = 0;
+  if ((eff & MessageEffect.LosingHp) !== 0) s.losingHp = 0;
+  if ((eff & MessageEffect.HpRegen) !== 0) s.hpRegen = 0;
+  if ((eff & MessageEffect.ManaRegen) !== 0) s.manaRegen = 0;
+  if ((eff & MessageEffect.MovementPrevented) !== 0) {
     s.held = 0;
-    s.f_32300 = 0;
+    s.hiddenAt = 0;
   }
-  if ((eff & 0x20) !== 0) s.f_e218 = 0;
+  if ((eff & MessageEffect.AttackPrevented) !== 0) s.attackPrevented = 0;
   const flags = rec.flags;
-  rec.flags = flags & ~1;
-  if ((flags & 2) !== 0) {
-    rec.flags = flags & ~3;
+  rec.flags = flags & ~MessageFlag.Active;
+  if ((flags & MessageFlag.RestedOn) !== 0) {
+    rec.flags = flags & ~(MessageFlag.Active | MessageFlag.RestedOn);
     s.restUntilOff = Math.max(0, s.restUntilOff - 1);
   }
   if (line !== null) {
     for (const other of s.data.messages ?? []) {
-      if ((other.effects & 0x8000) !== 0 || (other.flags & 1) === 0) continue;
+      if (
+        (other.effects & MessageEffect.Disabled) !== 0 ||
+        (other.flags & MessageFlag.Active) === 0
+      )
+        continue;
       if (
         other.msg === rec.msg ||
         (other.effects !== 0 && (eff & other.effects) === other.effects)
@@ -422,7 +449,7 @@ export function messageEnded(s: Session, line: string | null, rec: MessageRec): 
     }
   }
   s.restUntilOff = Math.max(0, s.restUntilOff);
-  if ((eff & 1) !== 0) s.f_e290 = 1;
+  if ((eff & MessageEffect.Blinded) !== 0) s.lookDue = 1;
   const spell = findSpellByName(s, rec.name);
   if (spell) {
     for (let i = 0; i < 10; i += 1) {
@@ -437,14 +464,14 @@ function conditionRows(s: Session, which: (rec: MessageRec) => boolean, start: n
   for (const rec of s.data.messages ?? []) {
     if (!which(rec)) continue;
     if (start !== 0) {
-      rec.flags |= 1;
+      rec.flags |= MessageFlag.Active;
       rec.firedAt = s.now;
       continue;
     }
     const was = rec.flags;
-    rec.flags = was & ~1;
-    if ((was & 2) !== 0) {
-      rec.flags = was & ~3;
+    rec.flags = was & ~MessageFlag.Active;
+    if ((was & MessageFlag.RestedOn) !== 0) {
+      rec.flags = was & ~(MessageFlag.Active | MessageFlag.RestedOn);
       s.restUntilOff -= 1;
     }
   }
@@ -452,10 +479,10 @@ function conditionRows(s: Session, which: (rec: MessageRec) => boolean, start: n
 
 /** `0x46c180`: the rows that poison (effect 4). */
 export function poisonRows(s: Session, start: number): void {
-  conditionRows(s, (rec) => (rec.effects & 4) !== 0, start);
+  conditionRows(s, (rec) => (rec.effects & MessageEffect.Poisoned) !== 0, start);
 }
 
 /** `0x46c0f0`: the rows that hold (effect exactly 0x10). */
 export function heldRows(s: Session, start: number): void {
-  conditionRows(s, (rec) => (rec.effects & 0xffff) === 0x10, start);
+  conditionRows(s, (rec) => rec.effects === MessageEffect.MovementPrevented, start);
 }

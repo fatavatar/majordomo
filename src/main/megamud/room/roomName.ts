@@ -1,14 +1,15 @@
 /**
  * The room's name (`0x498a60`): a line drawn in bright yellow from its first
  * character, up to 52 characters, starting with a letter. MegaMUD keeps it
- * (`0x8091`) and its hash (`0x8134`), the top of the room's signature, until
+ * (`roomNameSeen`) and its hash (`roomNameHash`), the top of the room's signature, until
  * the exits line confirms the room. The line still goes on to the other
  * handlers. Read 2026-10-12.
  */
 import type { Session } from '../Session';
+import { State } from '../states';
 
 export function roomNameLine(s: Session, line: string): number {
-  if (s.state !== 0x20 && s.line.attr[0] === 0x0e) {
+  if (s.state !== State.Looking && s.line.attr[0] === 0x0e) {
     if (line.length > 0 && line.length < 0x35 && /^[A-Za-z]/.test(line)) {
       s.roomNameSeen = line.slice(0, 0x34);
       let hash = 0;
@@ -24,6 +25,6 @@ export function roomNameLine(s: Session, line: string): number {
 export function forgetLastTarget(s: Session): void {
   if (s.lastTarget !== '' && s.debug !== 0) s.host.trace('{W-inv}');
   s.lastTarget = '';
-  s.f_dd10 = 0;
-  s.s_dd14 = '';
+  s.noEffectCount = 0;
+  s.noEffectTarget = '';
 }

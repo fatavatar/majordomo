@@ -233,6 +233,7 @@ import {
 import type { MegaToggle } from '../../shared/megamud/toggles';
 import { MegaEngine, type FleeGoto, type MegaAlert, type MegaEngineSetup } from './MegaEngine';
 import type { ResumableMovement } from './MovementBook';
+import { WindowCommand } from '../../shared/megamud/toggles';
 
 /**
  * The part of a chunk of keystrokes the server's line editor would keep.
@@ -1459,7 +1460,7 @@ export class SessionManager {
         routeTo: (room) => this.planFromHere(room),
         walk: (route) => this.megaWalk(route),
         stopWalking: () => {
-          if (this.walkingNow()) this.mega?.button(0x803);
+          if (this.walkingNow()) this.mega?.button(WindowCommand.GoStop);
         },
         moveInFlight: () => this.tracker.pendingMoves > 0,
         walking: () => this.walkingNow(),
@@ -2665,7 +2666,7 @@ export class SessionManager {
   private megaHold(): void {
     const running = this.runningLoopName();
     if (this.mega === null || running === null) return;
-    this.mega.button(0x803);
+    this.mega.button(WindowCommand.GoStop);
     this.megaHeldLap = running;
   }
 
@@ -2695,7 +2696,7 @@ export class SessionManager {
 
   /** Stops the lap and the walk: the engine's Go/Stop. */
   private stopLapAndWalk(): void {
-    if (this.mega?.walking === true) this.mega.button(0x803);
+    if (this.mega?.walking === true) this.mega.button(WindowCommand.GoStop);
   }
 
   /** A route walked by the engine, as its Go To to the room it ends in, and only that. */
@@ -2790,7 +2791,7 @@ export class SessionManager {
   /**
    * The tracker wants a stat sheet to settle a buff's ending, and with the
    * routines standing down for the engine it is the engine's to send: its
-   * own wish for one (`0xe29c`), sent when its scheduler next may, out of a
+   * own wish for one (`statDue`), sent when its scheduler next may, out of a
    * fight. The bless bridge (`MegaEngine.buffs`) reads what the sheet says.
    * At most once per `tuning.spells.sheetAskMs`, as `Routines.askSheet`.
    */
@@ -5549,7 +5550,7 @@ export class SessionManager {
   /** Stop moving: MegaMUD's Go/Stop, whichever of a route and a loop it is walking. */
   stopMoving(): void {
     // MegaMUD's Stop: its Go/Stop button, when it is going.
-    if (this.mega?.walking === true) this.mega.button(0x803);
+    if (this.mega?.walking === true) this.mega.button(WindowCommand.GoStop);
     // The one door a person's stop comes through, so it is the one place that
     // can tell a hunt it was stopped *by somebody* rather than by the realm.
     this.hunt.noteStopped();
@@ -5567,7 +5568,7 @@ export class SessionManager {
       const refused = this.megaAct(() => mega.startLoop(loopName));
       return refused === null ? { started: true } : { refused };
     }
-    if (!mega.walking) this.megaAct(() => mega.button(0x803));
+    if (!mega.walking) this.megaAct(() => mega.button(WindowCommand.GoStop));
     return mega.walking ? { started: true } : { refused: t('session.move.nothingToResume') };
   }
 

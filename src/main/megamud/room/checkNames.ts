@@ -14,8 +14,10 @@ import {
 } from '../data';
 import { hangUp } from '../script/game';
 import { queue } from '../script/send';
-import type { RoomEntity, Session } from '../Session';
+import { ARENA, type RoomEntity, type Session } from '../Session';
 import { removeEntity } from './entities';
+import { State } from '../states';
+import { MonsterFlag, PlayerFlag, EntityFlag, ItemFlag, EntityType, Stance } from '../flags';
 
 /** MajorMUD's random monster adjectives (the table at `0x564300`). */
 const ADJECTIVES = [
@@ -71,18 +73,20 @@ export function findLongestFirst(s: Session): void {
   const monsters = s.data.monsters;
   for (const m of monsters) {
     if (monsters.some((o) => o.name.length < m.name.length && nameIn(m.name, o.name) !== 0))
-      m.flags |= 8;
+      m.flags |= MonsterFlag.FindFirst;
   }
   const first = monsters
-    .filter((m) => (m.flags & 8) !== 0)
+    .filter((m) => (m.flags & MonsterFlag.FindFirst) !== 0)
     .sort((a, b) => b.name.length - a.name.length);
-  s.data.monsters = [...first, ...monsters.filter((m) => (m.flags & 8) === 0)];
+  s.data.monsters = [...first, ...monsters.filter((m) => (m.flags & MonsterFlag.FindFirst) === 0)];
 }
 
 /** `0x46c3f0`: the monster whose name `text` holds; "find first" monsters (flag 8) are tried first. */
 export function findMonster(s: Session, text: string): MonsterRec | null {
-  for (const m of s.data.monsters) if ((m.flags & 8) !== 0 && nameIn(text, m.name) !== 0) return m;
-  for (const m of s.data.monsters) if ((m.flags & 8) === 0 && nameIn(text, m.name) !== 0) return m;
+  for (const m of s.data.monsters)
+    if ((m.flags & MonsterFlag.FindFirst) !== 0 && nameIn(text, m.name) !== 0) return m;
+  for (const m of s.data.monsters)
+    if ((m.flags & MonsterFlag.FindFirst) === 0 && nameIn(text, m.name) !== 0) return m;
   return null;
 }
 
@@ -152,23 +156,29 @@ function playerInRange(s: Session, p: PlayerRec | null): number {
   const range = s.pvpLevel;
   if (mine === 0 || p.level === 0 || range === 0 || p.level === 1) return 0;
   let other = p.level;
-  if ((p.flags & 2) !== 0) other = p.level === 2 ? 4 : p.level + 4;
+  if ((p.flags & PlayerFlag.LevelGuessed) !== 0) other = p.level === 2 ? 4 : p.level + 4;
   return Math.abs(mine - p.level) <= range || Math.abs(mine - other) <= range ? 1 : 0;
 }
 
 /** `0x42e070`: hanging up is allowed now. */
 export function hangupAllowed(s: Session): number {
   let ok = 1;
-  if (s.f_a32c !== 0 && s.Other_HangupAllOff === 0) ok = 0;
+  if (s.allOff !== 0 && s.Other_HangupAllOff === 0) ok = 0;
   if (s.active === 0 && s.Other_HangupNotAfk === 0) ok = 0;
-  if (s.f_8130 === 0x67110001 || s.state === 7 || s.state === 8 || s.state === 0x2a) ok = 0;
+  if (
+    s.roomSignature === ARENA ||
+    s.state === State.Hanging ||
+    s.state === State.Relogging ||
+    s.state === State.Teleported
+  )
+    ok = 0;
   return s.MegaMud_NoHangup === 0 ? ok : 0;
 }
 
-/** `0x471400`: marks remembered for monsters by name (`0x2524`, 36-byte entries) applied to those here. */
+/** `0x471400`: marks remembered for monsters by name (`monsterMarks`, 36-byte entries) applied to those here. */
 function applyMonsterMarks(s: Session): void {
   for (const e of s.room) {
-    if (e.type !== 2) continue;
+    if (e.type !== EntityType.Monster) continue;
     for (const mark of s.monsterMarks) {
       if (stricmp(e.name, mark.name) === 0 || (e.mon && stricmp(e.mon.name, mark.name) === 0)) {
         e.flags |= mark.flags;
@@ -178,10 +188,10 @@ function applyMonsterMarks(s: Session): void {
   }
 }
 
-/** `0x4714e0`: marks remembered for players by name (`0x6b78`, 16-byte entries) applied to those here. */
+/** `0x4714e0`: marks remembered for players by name (`playerMarks`, 16-byte entries) applied to those here. */
 function applyPlayerMarks(s: Session): void {
   for (const e of s.room) {
-    if (e.type !== 1) continue;
+    if (e.type !== EntityType.Player) continue;
     for (const mark of s.playerMarks) {
       if (stricmp(e.name, mark.name) === 0) {
         e.flags |= mark.flags;
@@ -195,7 +205,7 @@ function applyPlayerMarks(s: Session): void {
 export function markMonsters(s: Session, name: string, flags: number): number {
   let marked = 0;
   for (const e of s.room) {
-    if (e.type !== 2) continue;
+    if (e.type !== EntityType.Monster) continue;
     if (stricmp(e.name, name) === 0 || (e.mon && stricmp(e.mon.name, name) === 0)) {
       e.flags |= flags;
       marked += 1;
@@ -213,7 +223,7 @@ export function markMonsters(s: Session, name: string, flags: number): number {
 export function markPlayers(s: Session, name: string, flags: number): number {
   let marked = 0;
   for (const e of s.room) {
-    if (e.type === 1 && stricmp(e.name, name) === 0) {
+    if (e.type === EntityType.Player && stricmp(e.name, name) === 0) {
       e.flags |= flags;
       marked += 1;
     }
@@ -225,7 +235,7 @@ export function markPlayers(s: Session, name: string, flags: number): number {
   return marked;
 }
 
-/** The ten exit words, in `0x813c`'s order (`0x4c03b0`). */
+/** The ten exit words, in `roomExits`'s order (`0x4c03b0`). */
 const EXIT_WORDS = [
   'north',
   'south',
@@ -260,16 +270,16 @@ export function checkNames(s: Session): void {
     }
     const name = e.name;
     let asPlayer = false;
-    if (e.type === 0) {
+    if (e.type === EntityType.NotKnown) {
       let notPlayer: boolean;
       if (looksLikeName(name) === 0) notPlayer = true;
       else if (/^[a-z]/.test(name)) notPlayer = true;
       else {
         e.player = findPlayer(s, name);
         notPlayer = false;
-        if (!e.player && s.f_e2a4 !== 0) {
+        if (!e.player && s.whoDue !== 0) {
           if (s.debug !== 0) s.host.trace(`{who-${name}}`);
-          s.f_e2a4 = -1;
+          s.whoDue = -1;
         }
       }
       let mon = e.mon;
@@ -279,30 +289,30 @@ export function checkNames(s: Session): void {
       }
       if (e.player) {
         e.kind = e.player.kind;
-        e.type = 1;
+        e.type = EntityType.Player;
         asPlayer = true;
       } else if (!mon) {
         if (!notPlayer) {
-          if (s.s_2500 !== name) {
-            s.s_2500 = name.slice(0, 30);
+          if (s.unknownNameAsked !== name) {
+            s.unknownNameAsked = name.slice(0, 30);
             removeEntity(s, i);
-            s.f_32390 = 0;
-            s.f_e290 = 1;
+            s.roomLookedAt = 0;
+            s.lookDue = 1;
             return;
           }
-          s.s_2500 = '';
-          e.type = 1;
-          e.kind = 3;
+          s.unknownNameAsked = '';
+          e.type = EntityType.Player;
+          e.kind = Stance.Avoid;
           asPlayer = true;
         } else {
-          e.type = 2;
-          if (e.kind === 0) e.kind = 3;
+          e.type = EntityType.Monster;
+          if (e.kind === Stance.Unknown) e.kind = Stance.Avoid;
         }
       } else {
-        e.kind = mon.relationship === 0 ? 3 : mon.relationship;
-        e.type = 2;
+        e.kind = mon.relationship === Stance.Unknown ? Stance.Avoid : mon.relationship;
+        e.type = EntityType.Monster;
       }
-    } else if (e.type === 1) {
+    } else if (e.type === EntityType.Player) {
       asPlayer = true;
     }
     if (asPlayer && !e.player) {
@@ -311,49 +321,49 @@ export function checkNames(s: Session): void {
         const p = newPlayer(s.data, s.now);
         p.name = name.slice(0, 10);
         p.kind = e.kind;
-        p.flags |= 1;
+        p.flags |= PlayerFlag.DetailsUnknown;
         e.player = p;
         s.host.show(`[${name} added to known players]`);
-        s.f_e24c = 1;
+        s.playersChanged = 1;
       }
     }
-    if (e.type === 2 && !e.mon) {
+    if (e.type === EntityType.Monster && !e.mon) {
       e.mon = findMonster(s, name);
       if (!e.mon) {
         const m = newMonster(s.data);
         m.name = stripAdjective(name).slice(0, 30);
-        m.relationship = 0;
-        m.flags |= 2;
+        m.relationship = Stance.Unknown;
+        m.flags |= MonsterFlag.AutoLearned;
         e.mon = m;
         s.host.show(`[${m.name} added to known monsters]`);
-        s.f_e254 = 1;
+        s.monstersChanged = 1;
       }
     }
-    if (e.type === 3) {
-      if (!e.item && (e.flags & 0x18000) === 0) {
+    if (e.type === EntityType.Item) {
+      if (!e.item && (e.flags & (EntityFlag.Corpse | EntityFlag.Lootbox)) === 0) {
         const item = findItem(s, name);
         if (!item) {
           const rec = newItem(s.data);
           rec.name = name.slice(0, 30);
-          rec.flags |= 1;
+          rec.flags |= ItemFlag.AutoLearned;
           rec.weight = -1;
           e.item = rec;
           s.host.show(`[${name} added to known items]`);
-          s.f_e258 = 1;
+          s.itemsChanged = 1;
         } else {
           e.item = item;
           e.name = item.name.slice(0, 30);
-          if ((item.flags & 0x2000000) !== 0) {
-            item.flags &= ~0x2000000;
-            if ((item.flags & 1) !== 0) {
-              item.flags |= 0x40;
-              s.f_e258 = 1;
+          if ((item.flags & ItemFlag.PickedUpForPath) !== 0) {
+            item.flags &= ~ItemFlag.PickedUpForPath;
+            if ((item.flags & ItemFlag.AutoLearned) !== 0) {
+              item.flags |= ItemFlag.CannotTake;
+              s.itemsChanged = 1;
               s.host.show(`[Item ${item.name} marked as un-gettable]`);
             }
           }
         }
       }
-      if (e.type === 3) {
+      if (e.type === EntityType.Item) {
         for (let j = s.room.length - 1; j > i; j -= 1) {
           if (sameItem(e.name, s.room[j]!.name)) {
             e.count += s.room[j]!.count;
@@ -362,22 +372,29 @@ export function checkNames(s: Session): void {
         }
       }
     }
-    if (partyIndex(s, e.name) !== -1) e.kind = 2;
-    if (e.type === 1 && e.kind === 4 && playerInRange(s, e.player) === 0) e.kind = 5;
-    if (e.type !== 3 && e.kind === 6 && s.f_8130 !== 0x67110001 && hangupAllowed(s) !== 0) {
+    if (partyIndex(s, e.name) !== -1) e.kind = Stance.Friend;
+    if (e.type === EntityType.Player && e.kind === Stance.Enemy && playerInRange(s, e.player) === 0)
+      e.kind = Stance.Flee;
+    if (
+      e.type !== EntityType.Item &&
+      e.kind === Stance.Hangup &&
+      s.roomSignature !== ARENA &&
+      hangupAllowed(s) !== 0
+    ) {
       s.host.trace(`[Hangup player/monster detected (${e.name})]`);
-      s.f_30de8 = 1;
-      s.f_30de4 = 1;
+      s.noRedial = 1;
+      s.skipRedialOnce = 1;
       hangUp(s, 1);
     }
     if (e.player) sawPlayer(s, e, e.player);
-    if (e.player && (e.player.flags & 0x40) !== 0) s.chaseTarget = e.name.slice(0, 10);
+    if (e.player && (e.player.flags & PlayerFlag.ChaseIfSeen) !== 0)
+      s.chaseTarget = e.name.slice(0, 10);
     if (e.mon) s.MegaMud_LastEditMonster = e.name.slice(0, 30);
     if (e.item) s.MegaMud_LastEditItem = e.name.slice(0, 30);
   }
   applyMonsterMarks(s);
   applyPlayerMarks(s);
-  s.s_2500 = '';
+  s.unknownNameAsked = '';
 }
 
 /** `0x471a10`'s note on a player seen: where, when, and a greeting a day after the last. */
@@ -386,17 +403,17 @@ function sawPlayer(s: Session, e: RoomEntity, p: PlayerRec): void {
     (w) => w.toUpperCase().slice(0, 1) + w.slice(1)
   );
   p.where = `${s.roomName} (Exits: ${exits.length > 0 ? exits.join(', ') : 'none'})`.slice(0, 0x4f);
-  if ((p.flags & 0x8000) === 0) {
-    p.flags |= 0x8000;
-    if (p.seen === 0) s.f_32528 += 1;
+  if ((p.flags & PlayerFlag.SeenThisSession) === 0) {
+    p.flags |= PlayerFlag.SeenThisSession;
     p.seen += 1;
   }
   s.MegaMud_LastEditPlayer = e.name.slice(0, 10);
   if (s.now - p.greetedAt > 0x15180) {
-    p.flags &= ~0x20000;
-    if (s.Talk_GreetPlayers !== 0 && s.f_a32c === 0 && p.kind === 2) queue(s, `greet ${p.name}\r`);
+    p.flags &= ~PlayerFlag.LookedAt;
+    if (s.Talk_GreetPlayers !== 0 && s.allOff === 0 && p.kind === Stance.Friend)
+      queue(s, `greet ${p.name}\r`);
   }
   p.seenAt = s.now;
   p.greetedAt = s.now;
-  s.f_e24c = 1;
+  s.playersChanged = 1;
 }

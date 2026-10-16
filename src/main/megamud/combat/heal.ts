@@ -20,18 +20,23 @@ import { findSpell } from '../spells/lookup';
 import { attack } from './attack';
 import { spellTakesTarget, wantsRoomSpell } from './casts';
 import { clearCastMode } from './engaged';
-
-/** The main heal's immunity mark on a monster, and the minor heal's. */
-const MAIN = 0x80;
-const MINOR = 0x100;
+import { State } from '../states';
+import { EntityFlag, SpellFlag, PartyFlag, PlayerFlag, Stance, EntityType } from '../flags';
 
 function hostile(e: RoomEntity): boolean {
-  return e.kind === 4 || e.kind === 5 || e.kind === 6 || (e.flags & 0x10) !== 0;
+  return (
+    e.kind === Stance.Enemy ||
+    e.kind === Stance.Flee ||
+    e.kind === Stance.Hangup ||
+    (e.flags & EntityFlag.Fought) !== 0
+  );
 }
 
 /** A monster here the drain can hit: not immune to it (`which`), and hostile. */
 function drainable(s: Session, which: number): RoomEntity | null {
-  return s.room.find((e) => e.type !== 3 && (e.flags & which) === 0 && hostile(e)) ?? null;
+  return (
+    s.room.find((e) => e.type !== EntityType.Item && (e.flags & which) === 0 && hostile(e)) ?? null
+  );
 }
 
 /**
@@ -39,8 +44,8 @@ function drainable(s: Session, which: number): RoomEntity | null {
  * casts nothing, and the alt attack's casts are all spent.
  */
 function drainOver(s: Session): void {
-  if (s.f_e364 === 0) return;
-  s.f_e364 = 0;
+  if (s.altHeal === 0) return;
+  s.altHeal = 0;
   if (s.altSpell === '') return;
   const isHeal =
     (s.Spells_HealCmd2 !== '' && s.altSpell === s.Spells_HealCmd2) ||
@@ -48,12 +53,12 @@ function drainOver(s: Session): void {
   if (!isHeal) return;
   if (s.castShort !== '' && s.altSpell === s.castShort) {
     clearCastMode(s);
-    if (s.state === 0xe) {
-      forgetAwaited(s, 0xe);
-      setState(s, 0);
+    if (s.state === State.CastAlt) {
+      forgetAwaited(s, State.CastAlt);
+      setState(s, State.Nothing);
     }
   }
-  s.f_a3fc = s.f_a410;
+  s.castsAlt = s.altCastCap;
   s.altSpell = '';
 }
 
@@ -77,7 +82,7 @@ function mayDrain(s: Session): boolean {
     if (moving(s) && s.held === 0 && s.partyWait === 0) allowed = false;
     if (s.MegaMud_AutoCombat === 0 && (s.following !== 0 || !moving(s))) allowed = false;
   }
-  return s.f_e218 === 0 && allowed;
+  return s.attackPrevented === 0 && allowed;
 }
 
 /**
@@ -86,14 +91,14 @@ function mayDrain(s: Session): boolean {
  * attack (mode 14) at a monster, up to `HealCasts` times.
  */
 export function selfHeal(s: Session): number {
-  if (s.f_a32c !== 0 || s.hp < 1 || s.Player_MaxHP === 0 || s.Player_MaxMana === 0) return 0;
+  if (s.allOff !== 0 || s.hp < 1 || s.Player_MaxHP === 0 || s.Player_MaxMana === 0) return 0;
   const n = enemiesHere(s, 0);
-  if (s.state === 0x12) return 0;
-  if (s.state === 0 && s.sneaking !== 0 && s.walking !== 0 && n > 0) return 0;
+  if (s.state === State.Backstabbing) return 0;
+  if (s.state === State.Nothing && s.sneaking !== 0 && s.walking !== 0 && n > 0) return 0;
   if (fluxRecast(s) !== 0) return 1;
   if (s.MegaMud_AutoHeal === 0) return 0;
-  if (s.now - s.f_32398 < 8) s.f_e360 = 1;
-  const since = s.now - s.f_32318;
+  if (s.now - s.partyAskedAt < 8) s.partyAskPending = 1;
+  const since = s.now - s.healCastAt;
   if (since < s.Health_HpHealPeriod || since < s.Comms_LagWait + 4) return 0;
   const done = (): number => {
     drainOver(s);
@@ -128,11 +133,11 @@ export function selfHeal(s: Session): number {
     if (s.Spells_HealCmd2 === '' || percentOf(s.Player_MaxHP, minorPct) <= s.hp || !minorOk) {
       return done();
     }
-    which = MINOR;
+    which = EntityFlag.ImmuneMinorDrain;
     minor = true;
     short = s.Spells_HealCmd2;
   } else {
-    which = MAIN;
+    which = EntityFlag.ImmuneMainDrain;
     minor = false;
     short = s.Spells_HealCmd;
   }
@@ -147,42 +152,42 @@ export function selfHeal(s: Session): number {
     if (minor && curesFirst(s)) return done();
   } else if (!(
     spell.cost <= s.mana &&
-    ((spell.flags & 4) === 0 || (n !== 0 && s.f_a62c < s.Spells_HealCasts))
+    ((spell.flags & SpellFlag.EvilInCombat) === 0 || (n !== 0 && s.drainCasts < s.Spells_HealCasts))
   )) {
     // The main heal can't be cast (mana, or a drain with nothing to drain): the minor one instead.
     short = s.Spells_HealCmd2.slice(0, 20);
     spell = findSpell(s, short);
-    which = MINOR;
+    which = EntityFlag.ImmuneMinorDrain;
     if (curesFirst(s)) return done();
   }
 
   if (s.poisoned !== 0 && s.Other_IgnorePoison === 0) {
-    if (s.Spells_PoisonCmd !== '' && n === 0 && s.f_e1fc < 3) {
-      s.f_e1fc += 1;
+    if (s.Spells_PoisonCmd !== '' && n === 0 && s.poisonCureWaits < 3) {
+      s.poisonCureWaits += 1;
       return 0;
     }
   }
-  s.f_e1fc = 0;
-  if (s.f_e364 !== 0) {
+  s.poisonCureWaits = 0;
+  if (s.altHeal !== 0) {
     // A drain is under way: it goes on while it has casts left.
     let over = false;
-    if (s.state !== 0xe) {
-      over = s.stateAwaited !== 0xe;
-    } else if (s.f_a410 <= s.f_a3fc || s.Spells_HealCasts <= s.f_a62c) {
+    if (s.state !== State.CastAlt) {
+      over = s.stateAwaited !== State.CastAlt;
+    } else if (s.altCastCap <= s.castsAlt || s.Spells_HealCasts <= s.drainCasts) {
       over = true;
-    } else if (spell && (spell.flags & 4) !== 0 && short !== s.altSpell) {
+    } else if (spell && (spell.flags & SpellFlag.EvilInCombat) !== 0 && short !== s.altSpell) {
       over = true;
     }
     if (over) drainOver(s);
   }
-  if (spell && (spell.flags & 4) !== 0 && n === 0) return 0;
+  if (spell && (spell.flags & SpellFlag.EvilInCombat) !== 0 && n === 0) return 0;
   if (equipForSpell(s, short) === 1) return 1;
 
   let target = '';
   if (spell) {
-    if ((spell.flags & 4) === 0) {
+    if ((spell.flags & SpellFlag.EvilInCombat) === 0) {
       s.host.activity("Healing because HP's below threshold");
-      if ((spell.flags & 0x10) === 0) target = s.Player_Name;
+      if ((spell.flags & SpellFlag.Self) === 0) target = s.Player_Name;
       if (equipForSpell(s, short) === 1) return 1;
     } else {
       return drain(s, n, which, short, spell);
@@ -190,9 +195,9 @@ export function selfHeal(s: Session): number {
   }
   const sent = castSpell(s, short, target);
   if (sent === 0) return done();
-  s.f_32318 = s.now;
-  s.f_e2b8 = 1;
-  s.f_e1d8 = 1;
+  s.healCastAt = s.now;
+  s.attackDue = 1;
+  s.combatOffExpected = 1;
   if (s.debug !== 0) s.host.trace('{I7+}');
   return sent;
 }
@@ -209,32 +214,36 @@ function drain(
     drainOver(s);
     return 0;
   };
-  if (n === 0 || s.Spells_HealCasts <= s.f_a62c) return 0;
-  if (s.f_a580 !== 0 && s.state === 0xf) return 0;
-  if (s.state === 9 || s.state === 10) return 0;
+  if (n === 0 || s.Spells_HealCasts <= s.drainCasts) return 0;
+  if (s.multiAttacking !== 0 && s.state === State.CastUser) return 0;
+  if (s.state === State.CastPreMulti || s.state === State.CastMulti) return 0;
   if (s.inCombat === 0 && wantsRoomSpell(s, 0) !== 0) return 0;
-  if ((s.f_e21c !== 0 && s.held === 0) || !mayDrain(s)) return done();
-  if (s.f_e364 === 0 && s.inCombat !== 0 && s.now - s.f_322d8 < s.Comms_LagWait + 3) return 0;
+  if ((s.dontAttackHere !== 0 && s.held === 0) || !mayDrain(s)) return done();
+  if (s.altHeal === 0 && s.inCombat !== 0 && s.now - s.attackSentAt < s.Comms_LagWait + 3) return 0;
 
   let victim = currentTarget(s);
   const ignore = s.Other_IgnoreSpellImmunity !== 0;
   if (!ignore && victim && (victim.flags & which) !== 0) victim = drainable(s, which);
   if (!victim) {
     // Immune to the main heal: the minor one, if it is not a drain, heals this character.
-    if (which === MAIN && s.Spells_HealCmd2 !== '' && short !== s.Spells_HealCmd2) {
+    if (
+      which === EntityFlag.ImmuneMainDrain &&
+      s.Spells_HealCmd2 !== '' &&
+      short !== s.Spells_HealCmd2
+    ) {
       short = s.Spells_HealCmd2.slice(0, 20);
       const minor = findSpell(s, short);
       if (curesFirst(s)) return done();
       if (minor) {
-        if ((minor.flags & 4) === 0) {
-          const at = (minor.flags & 0x10) !== 0 ? '' : s.Player_Name;
+        if ((minor.flags & SpellFlag.EvilInCombat) === 0) {
+          const at = (minor.flags & SpellFlag.Self) !== 0 ? '' : s.Player_Name;
           drainOver(s);
           if (equipForSpell(s, short) === 1) return 1;
           const sent = castSpell(s, short, at);
           if (sent !== 0) {
-            s.f_32318 = s.now;
-            s.f_e2b8 = 1;
-            s.f_e1d8 = 1;
+            s.healCastAt = s.now;
+            s.attackDue = 1;
+            s.combatOffExpected = 1;
             if (s.debug !== 0) s.host.trace('{I6+}');
             s.host.activity("Healing (minor fallback) because HP's below threshold");
           }
@@ -244,7 +253,8 @@ function drain(
         victim = currentTarget(s);
         if (!ignore) {
           if (!victim) return 0;
-          if ((victim.flags & MINOR) !== 0) victim = drainable(s, MINOR);
+          if ((victim.flags & EntityFlag.ImmuneMinorDrain) !== 0)
+            victim = drainable(s, EntityFlag.ImmuneMinorDrain);
         }
       }
     }
@@ -252,27 +262,33 @@ function drain(
   }
   const name = victim.name.slice(0, 99);
   if (
-    s.f_e364 !== 0 &&
+    s.altHeal !== 0 &&
     spellTakesTarget(spell) !== 0 &&
-    (s.state === 0xe || s.stateAwaited === 0xe) &&
+    (s.state === State.CastAlt || s.stateAwaited === State.CastAlt) &&
     s.altSpell !== '' &&
     s.altSpell === spell.short
   ) {
-    if (s.Spells_HealCasts <= s.f_a3fc) return done();
-    if (s.inCombat !== 0 && s.state === 0xe && s.f_e2b8 === 0 && s.f_a3fc < s.f_a410) return 0;
+    if (s.Spells_HealCasts <= s.castsAlt) return done();
+    if (
+      s.inCombat !== 0 &&
+      s.state === State.CastAlt &&
+      s.attackDue === 0 &&
+      s.castsAlt < s.altCastCap
+    )
+      return 0;
   }
   if (equipForSpell(s, spell.short) === 1) return 1;
-  s.f_a3fc = s.f_a62c;
-  s.f_a410 = spellTakesTarget(spell) === 0 ? s.f_a3fc + 1 : Math.max(s.Spells_HealCasts, 1);
-  s.engagedMode = 0;
+  s.castsAlt = s.drainCasts;
+  s.altCastCap = spellTakesTarget(spell) === 0 ? s.castsAlt + 1 : Math.max(s.Spells_HealCasts, 1);
+  s.engagedMode = State.Nothing;
   s.altSpell = spell.short.slice(0, 10);
-  if (attack(s, 0xe, victim) === 0) return done();
+  if (attack(s, State.CastAlt, victim) === 0) return done();
   const each = spellTakesTarget(spell) === 0;
-  if (each) s.f_32318 = s.now;
-  s.f_e2b8 = each ? 1 : 0;
-  s.f_e364 = 1;
+  if (each) s.healCastAt = s.now;
+  s.attackDue = each ? 1 : 0;
+  s.altHeal = 1;
   s.target = name;
-  s.f_e1d8 = 1;
+  s.combatOffExpected = 1;
   if (s.debug !== 0) s.host.trace('{I11+}');
   s.host.activity(`Casting drain on ${name}`);
   return 1;
@@ -286,14 +302,15 @@ function drain(
  * main heal), 0x40 (the minor) or neither.
  */
 export function partyHeal(s: Session): number {
-  if (s.f_a32c !== 0 || s.MegaMud_AutoHeal === 0 || s.partySize < 1) return 0;
+  if (s.allOff !== 0 || s.MegaMud_AutoHeal === 0 || s.partySize < 1) return 0;
   if (s.hp < 1 || s.Player_MaxHP === 0) return 0;
   if (s.Party_PartyHeal1 === '' && s.Party_PartyHeal2 === '' && s.Party_PartyHealArea === '') {
     return s.Party_HealLowest === 0 ? 0 : selfHeal(s);
   }
-  if (s.state === 0x12) return 0;
-  if (s.state === 0 && s.sneaking !== 0 && s.walking !== 0 && enemiesHere(s, 0) > 0) return 0;
-  const since = s.now - s.f_32318;
+  if (s.state === State.Backstabbing) return 0;
+  if (s.state === State.Nothing && s.sneaking !== 0 && s.walking !== 0 && enemiesHere(s, 0) > 0)
+    return 0;
+  const since = s.now - s.healCastAt;
   if (since < s.Health_HpHealPeriod || since < s.Comms_LagWait + 4) return 0;
 
   let mainOk = true;
@@ -324,8 +341,12 @@ export function partyHeal(s: Session): number {
   for (let i = 0; i < s.partySize; i += 1) {
     const m = s.party[i]!;
     let f = m.flags28;
-    if ((f & 0x8d) !== 0) {
-      m.flags28 = f & ~0x10040;
+    if (
+      (f &
+        (PartyFlag.HealthUnknown | PartyFlag.Invited | PartyFlag.Unlisted | PartyFlag.Offline)) !==
+      0
+    ) {
+      m.flags28 = f & ~(PartyFlag.MinorHealDue | PartyFlag.MainHealDue);
       continue;
     }
     if (m.name === s.Player_Name) {
@@ -337,13 +358,13 @@ export function partyHeal(s: Session): number {
       }
       if (mainOk && s.Spells_HealCmd !== '' && s.hp < percentOf(s.Player_MaxHP, main)) {
         wantMain += 1;
-        m.flags28 = f | 0x10000;
+        m.flags28 = f | PartyFlag.MainHealDue;
       } else {
         if (minorOk && s.Spells_HealCmd2 !== '' && s.hp < percentOf(s.Player_MaxHP, minor)) {
           wantMinor += 1;
-          f |= 0x40;
+          f |= PartyFlag.MinorHealDue;
         } else {
-          f &= ~0x10040;
+          f &= ~(PartyFlag.MinorHealDue | PartyFlag.MainHealDue);
         }
         m.flags28 = f;
         if (!mainOk) continue;
@@ -358,18 +379,19 @@ export function partyHeal(s: Session): number {
       continue;
     }
     const known = findPlayer(s, m.name);
-    if (known && (known.flags & 0x900) !== 0) continue;
+    if (known && (known.flags & (PlayerFlag.ProbablyDontHealOrBless | PlayerFlag.DontHeal)) !== 0)
+      continue;
     f = m.flags28;
-    if ((f & 2) !== 0) {
-      f &= ~0x10040;
+    if ((f & PartyFlag.ChangedSinceListing) !== 0) {
+      f &= ~(PartyFlag.MinorHealDue | PartyFlag.MainHealDue);
     } else if (mainOk && s.Party_PartyHeal2 !== '' && m.hpPct < pct2) {
       wantMain += 1;
-      f |= 0x10000;
+      f |= PartyFlag.MainHealDue;
     } else if (minorOk && s.Party_PartyHeal1 !== '' && m.hpPct < pct1) {
       wantMinor += 1;
-      f |= 0x40;
+      f |= PartyFlag.MinorHealDue;
     } else {
-      f &= ~0x10040;
+      f &= ~(PartyFlag.MinorHealDue | PartyFlag.MainHealDue);
     }
     m.flags28 = f;
     if (
@@ -387,7 +409,7 @@ export function partyHeal(s: Session): number {
 
   if (
     mainOk &&
-    s.f_e2ac === 0 &&
+    s.parDue === 0 &&
     s.Party_PartyHealArea !== '' &&
     (wantMain === 0 || s.Party_AreaHealPriority !== 0) &&
     s.Party_PartyHealAreaAt > 0 &&
@@ -395,9 +417,9 @@ export function partyHeal(s: Session): number {
   ) {
     if (equipForSpell(s, s.Party_PartyHealArea) === 1) return 1;
     if (castSpell(s, s.Party_PartyHealArea, '') !== 0) {
-      s.f_32318 = s.now;
-      if (enemiesHere(s, 0) > 0) s.f_32328 = s.now;
-      s.f_e2ac = 1;
+      s.healCastAt = s.now;
+      if (enemiesHere(s, 0) > 0) s.parAt = s.now;
+      s.parDue = 1;
       s.host.activity(`Casting Area Heal (${wantArea} members)`);
       return 1;
     }
@@ -412,16 +434,17 @@ export function partyHeal(s: Session): number {
   if (i < 0 || i >= s.partySize) return 0;
   const m = s.party[i]!;
   const f = m.flags28;
-  if ((f & 0x30040) === 0) return 0;
+  if ((f & (PartyFlag.MinorHealDue | PartyFlag.MainHealDue | PartyFlag.AskedForHeal)) === 0)
+    return 0;
   let heal: string;
-  if (mainOk && s.Party_PartyHeal2 !== '' && (f & 0x10000) !== 0) {
+  if (mainOk && s.Party_PartyHeal2 !== '' && (f & PartyFlag.MainHealDue) !== 0) {
     heal = s.Party_PartyHeal2;
-  } else if (minorOk && s.Party_PartyHeal1 !== '' && (f & 0x40) !== 0) {
+  } else if (minorOk && s.Party_PartyHeal1 !== '' && (f & PartyFlag.MinorHealDue) !== 0) {
     heal = s.Party_PartyHeal1;
     if (curesFirst(s)) return 0;
-  } else if (mainOk && s.Party_PartyHeal2 !== '' && (f & 0x20000) !== 0) {
+  } else if (mainOk && s.Party_PartyHeal2 !== '' && (f & PartyFlag.AskedForHeal) !== 0) {
     heal = s.Party_PartyHeal2;
-  } else if (minorOk && s.Party_PartyHeal1 !== '' && (f & 0x20000) !== 0) {
+  } else if (minorOk && s.Party_PartyHeal1 !== '' && (f & PartyFlag.AskedForHeal) !== 0) {
     heal = s.Party_PartyHeal1;
     if (curesFirst(s)) return 0;
   } else {
@@ -429,8 +452,10 @@ export function partyHeal(s: Session): number {
   }
   if (equipForSpell(s, heal) === 1) return 1;
   if (castSpell(s, heal, m.name) === 0) return 0;
-  m.flags28 = (m.flags28 & ~0x30040) | 2;
-  s.f_32318 = s.now;
+  m.flags28 =
+    (m.flags28 & ~(PartyFlag.MinorHealDue | PartyFlag.MainHealDue | PartyFlag.AskedForHeal)) |
+    PartyFlag.ChangedSinceListing;
+  s.healCastAt = s.now;
   s.host.activity(`Healing party: ${m.name}`);
   return 1;
 }

@@ -1,13 +1,14 @@
 /**
  * MegaMUD's path records, read 2026-10-13: the path walked (`0xe39c`), the
- * loop (`0xe4a4`) and the paths known (`0x7f20`). A path is MegaMUD's `.mp`
- * file: the room each step is taken from (its signature, `0x8130`), the
+ * loop (`loopPath`) and the paths known (`0x7f20`). A path is MegaMUD's `.mp`
+ * file: the room each step is taken from (its signature, `roomSignature`), the
  * step's flags and what is typed. Loading and saving the steps, and the way
  * between two rooms (`0x43fd90`), are the host's: our world graph and loops
  * stand in for MegaMUD's path files.
  */
 import { stricmp } from '../cstr';
 import { ANY_ROOM, newPath, type PathRec, type PathStep, type Session } from '../Session';
+import { StepFlag, RouteFlag } from '../flags';
 
 /** `0x482e30` and the `memset` after it: the path let go, every field cleared. */
 export function clearPath(p: PathRec): void {
@@ -124,7 +125,7 @@ export function nextRoom(p: PathRec, st: PathStep, any: number): number {
  * anywhere. 0 when this room is the path's start or end, or not on it.
  */
 export function resync(s: Session, p: PathRec): number {
-  if (s.f_8130 === p.start || s.f_8130 === p.end) return 0;
+  if (s.roomSignature === p.start || s.roomSignature === p.end) return 0;
   if (p.steps === null && loadPath(s, p) === 0) return 0;
   const steps = p.steps!;
   let from = p.at - 1;
@@ -137,7 +138,7 @@ export function resync(s: Session, p: PathRec): number {
     if (at === first) {
       if (wrapped) {
         for (let j = 0; j < p.count; j += 1) {
-          if (steps[j]?.room === s.f_8130) {
+          if (steps[j]?.room === s.roomSignature) {
             p.at = j;
             p.step = j;
             return 1;
@@ -148,13 +149,13 @@ export function resync(s: Session, p: PathRec): number {
       wrapped = true;
     }
     const st = steps[at];
-    if (st && st.room === s.f_8130) {
-      if ((st.flags & 0x8000) === 0) {
+    if (st && st.room === s.roomSignature) {
+      if ((st.flags & StepFlag.Resynced) === 0) {
         p.at = at;
         p.step = at;
         return 1;
       }
-      st.flags &= 0x7fff;
+      st.flags &= ~StepFlag.Resynced;
     }
     i = at + 1;
   }
@@ -170,7 +171,8 @@ export function stepsLeft(s: Session): number {
   const left = Math.max(s.path.count - s.MegaMud_CurPathStep, 0);
   if (dest === s.path.end) return left;
   const way = s.host.route?.(s.path.end, dest);
-  if (way && (way.flags & 1) === 0 && way.steps >= 0 && way.steps < 2000) return way.steps + left;
+  if (way && (way.flags & RouteFlag.NoWay) === 0 && way.steps >= 0 && way.steps < 2000)
+    return way.steps + left;
   return -1;
 }
 

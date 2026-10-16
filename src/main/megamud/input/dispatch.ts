@@ -4,12 +4,12 @@
  *
  * `complete` is 1 for a whole line and 0 for what a chunk leaves without a
  * line end (a prompt). `nested` is 1 when the prompt handler calls back in
- * with an empty line. The number set in `0xdb14` before each handler is
+ * with an empty line. The number set in `parseStep` before each handler is
  * MegaMUD's own "parse step", kept as `parseStep` for the trace.
  *
  * Two handlers (`0x46a920` with its first argument 0, and `0x4045b0`) are
  * consulted without ending the chain. When no handler takes the line the
- * answer is `0xdb18`, which handlers set to say "handled" without stopping
+ * answer is `probablyLineHandled`, which handlers set to say "handled" without stopping
  * the others.
  */
 import { abilitiesListLine } from '../abilities/list';
@@ -60,6 +60,9 @@ import { talkLine } from '../talk/talk';
 import { bbsLine, connectThreadLine } from './connect';
 import { pagerPrompts } from './pager';
 import { statusLine } from './statline';
+import { State } from '../states';
+import { LineFlag, WHO_LISTING, INVENTORY_LISTING, PROMPT_SEEN } from '../flags';
+import { Task } from '../script/task';
 
 /** The handlers after the in-game checks, each with its parse step. */
 const CHAIN: [number, (s: Session, line: string) => number][] = [
@@ -111,41 +114,41 @@ function handled(s: Session): number {
 
 export function dispatchLine(s: Session, buf: LineBuf, complete: number, nested: number): number {
   let line = buf.text;
-  if (nested === 0) s.f_db18 = 0;
+  if (nested === 0) s.probablyLineHandled = 0;
   s.parseStep = 2;
-  const inGame = complete !== 0 && s.task !== 0x13 && s.inGame !== 0 && s.online !== 0;
+  const inGame = complete !== 0 && s.task !== Task.Exiting && s.inGame !== 0 && s.online !== 0;
   if (!inGame && pagerPrompts(s, line, complete) !== 0) return handled(s);
 
   s.parseStep = 3;
   const comm = s.task;
-  if ((comm > 0 && comm < 0xb) || comm === 0x12 || comm === 0x13) {
-    if (comm === 1 || comm === 2) return connectThreadLine(s);
+  if ((comm > Task.Idle && comm < Task.InGame) || comm === Task.Entering || comm === Task.Exiting) {
+    if (comm === Task.Connecting || comm === Task.Connecting2) return connectThreadLine(s);
     const answer = bbsLine(s, line, complete);
     if (answer !== -1) return answer;
   }
 
   s.parseStep = 4;
   if (indexOf(line, '<CE-2') !== -1) {
-    s.lineFlags &= ~3;
-    if (s.state === 0x25) {
-      s.lineFlags &= ~0x1c00;
-      forgetAwaited(s, 0x25);
-      setState(s, 0);
-      s.f_8468 = 0;
-      s.f_32350 = 0;
-      s.f_32358 = 0;
+    s.lineFlags &= ~PROMPT_SEEN;
+    if (s.state === State.Inventory) {
+      s.lineFlags &= ~INVENTORY_LISTING;
+      forgetAwaited(s, State.Inventory);
+      setState(s, State.Nothing);
+      s.weightMax = 0;
+      s.inventoryQuietAt = 0;
+      s.inventoryStartedAt = 0;
     }
-    if (s.state === 0x23) {
-      if ((s.lineFlags & 0x380) !== 0) s.lineFlags &= ~0x380;
-      forgetAwaited(s, 0x23);
-      setState(s, 0);
-      s.f_32360 = 0;
+    if (s.state === State.Who) {
+      if ((s.lineFlags & WHO_LISTING) !== 0) s.lineFlags &= ~WHO_LISTING;
+      forgetAwaited(s, State.Who);
+      setState(s, State.Nothing);
+      s.whoQuietAt = 0;
     }
-    if (s.state === 0x24) {
-      s.lineFlags &= ~0x40;
-      forgetAwaited(s, 0x24);
-      setState(s, 0);
-      s.f_32368 = 0;
+    if (s.state === State.Top) {
+      s.lineFlags &= ~LineFlag.TopListing;
+      forgetAwaited(s, State.Top);
+      setState(s, State.Nothing);
+      s.topQuietAt = 0;
     }
     return 1;
   }
@@ -159,7 +162,7 @@ export function dispatchLine(s: Session, buf: LineBuf, complete: number, nested:
   if (prompt !== 0) {
     dispatchLine(s, { text: '', attr: [] }, 1, 1);
     if (line.length === 0 && complete === 0) return 0;
-    s.lineFlags &= ~3;
+    s.lineFlags &= ~PROMPT_SEEN;
     refreshStatus(s);
   }
   if (complete === 0) return 0;
@@ -190,5 +193,5 @@ export function dispatchLine(s: Session, buf: LineBuf, complete: number, nested:
     if (handler(s, line) !== 0) return handled(s);
   }
   s.parseStep = 0x2f;
-  return s.f_db18 === 0 ? 0 : 1;
+  return s.probablyLineHandled === 0 ? 0 : 1;
 }

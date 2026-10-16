@@ -49,6 +49,16 @@ import { clearDetours, goTo, headFor, startWalking } from '../move/destinations'
 import { clearPath, copyPath, freeSteps, stepsShown } from '../move/path';
 import type { PathRec, Session } from '../Session';
 import { activateProfile, useProfile } from '../character';
+import {
+  PartyFlag,
+  ItemFlag,
+  PlayerFlag,
+  RemoteFlag,
+  REMOTE_ALL,
+  Stance,
+  EntityType
+} from '../flags';
+import { Task } from '../script/task';
 
 /** The reply prefix for each kind (the table at `0x4b2fb4`); with no record, the sender's name. */
 function replyPrefix(s: Session, p: PlayerRec | null, kind: number, sender: string): string {
@@ -98,9 +108,9 @@ interface Ctx {
   cmd: string;
 }
 
-/** `LAB_004b2950`: queued, unless the sender is kind 7. */
+/** `LAB_004b2950`: queued, unless the sender is `Stance.Unknown_7`. */
 function reply(c: Ctx, text: string): number {
-  if (c.p.kind !== 7) queue(c.s, text);
+  if (c.p.kind !== Stance.Unknown_7) queue(c.s, text);
   return 0;
 }
 
@@ -134,7 +144,7 @@ type Switch =
   | 'MegaMud_AutoSneak'
   | 'MegaMud_AutoHide'
   | 'MegaMud_AutoSearch'
-  | 'f_8be8';
+  | 'preferMelee';
 
 function toggle(c: Ctx, key: Switch, label: string): number {
   const s = c.s;
@@ -191,7 +201,7 @@ function health(c: Ctx): number {
   if (s.diseased !== 0) text += ', Diseased';
   if (s.losingHp !== 0) text += ', Losing HPs';
   if (s.held !== 0) text += ', Cant move';
-  if (s.f_e218 !== 0) text += ', Cant attack';
+  if (s.attackPrevented !== 0) text += ', Cant attack';
   queue(s, `${text}}\r`);
   return 1;
 }
@@ -223,14 +233,14 @@ function healthReport(c: Ctx, i: number): number {
   if (bad(m.hp, m.maxHp)) {
     m.hp = 0;
     m.maxHp = 0;
-    m.flags28 |= 1;
+    m.flags28 |= PartyFlag.HealthUnknown;
   } else {
-    m.flags28 &= ~3;
+    m.flags28 &= ~(PartyFlag.HealthUnknown | PartyFlag.ChangedSinceListing);
   }
   if (bad(m.mana, m.maxMana)) {
     m.mana = 0;
     m.maxMana = 0;
-    m.flags28 |= 1;
+    m.flags28 |= PartyFlag.HealthUnknown;
   }
   return 1;
 }
@@ -238,14 +248,15 @@ function healthReport(c: Ctx, i: number): number {
 /** `@wait` (or `!wait`, or `Party.PartyWaitCmd`) from a member: wait for them. */
 function partyWait(c: Ctx, i: number): number {
   const s = c.s;
-  s.f_e2ac = 1;
+  s.parDue = 1;
   if (s.Party_IgnoreWait !== 0) return 1;
   const m = s.party[i]!;
-  m.flags28 |= 0x20;
-  if (indexOf(c.cmd, 'Mana/Kai') === -1 && indexOf(c.cmd, 'HP') !== -1) m.flags28 |= 0x20000;
-  s.f_32330 = s.now;
+  m.flags28 |= PartyFlag.AskedToWait;
+  if (indexOf(c.cmd, 'Mana/Kai') === -1 && indexOf(c.cmd, 'HP') !== -1)
+    m.flags28 |= PartyFlag.AskedForHeal;
+  s.partyWaitAt = s.now;
   s.partyWait = 1;
-  s.f_e2b8 = 1;
+  s.attackDue = 1;
   return 1;
 }
 
@@ -255,11 +266,14 @@ function partyOk(c: Ctx, i: number): number {
   const m = s.party[i]!;
   m.hpPct = 100;
   m.hp = m.maxHp;
-  m.flags28 = (m.flags28 & 0xfffd0f5f) | 2;
+  m.flags28 =
+    (m.flags28 & ~(PartyFlag.AskedToWait | PartyFlag.Offline | PartyFlag.AskedForHeal)) |
+    PartyFlag.ChangedSinceListing;
   s.partyWait = 0;
-  for (let j = 0; j < s.partySize; j += 1) if ((s.party[j]!.flags28 & 0x20) !== 0) s.partyWait = 1;
-  if (s.partyWait === 0 && s.f_a328 !== 0) {
-    s.f_a328 = 0;
+  for (let j = 0; j < s.partySize; j += 1)
+    if ((s.party[j]!.flags28 & PartyFlag.AskedToWait) !== 0) s.partyWait = 1;
+  if (s.partyWait === 0 && s.autoCombatForWait !== 0) {
+    s.autoCombatForWait = 0;
     s.MegaMud_AutoCombat = 0;
   }
   return 1;
@@ -271,13 +285,17 @@ function comeback(c: Ctx, i: number): number {
   if (s.rescueCount !== 0) return reply0(c, `${c.to} {I am!}\r`);
   if (s.roaming !== 0) return reply0(c, `${c.to} {can't - I'm moving randomly}\r`);
   if (s.walking === 0) return reply0(c, `${c.to} {can't - I'm not moving}\r`);
-  if (s.leaderName !== s.Player_Name && i !== -1 && (s.party[i]!.flags28 & 8) !== 0)
+  if (
+    s.leaderName !== s.Player_Name &&
+    i !== -1 &&
+    (s.party[i]!.flags28 & PartyFlag.Unlisted) !== 0
+  )
     s.leaderName = s.Player_Name.slice(0, 10);
   if (s.leaderName !== s.Player_Name) return reply0(c, `${c.to} {can't - I'm not the leader}\r`);
-  s.f_e2ac = 1;
+  s.parDue = 1;
   s.rescueCount = Math.max(s.path.count, 15);
-  s.f_32330 = s.now;
-  if (i !== -1) s.party[i]!.flags28 |= 0x108;
+  s.partyWaitAt = s.now;
+  if (i !== -1) s.party[i]!.flags28 |= PartyFlag.Unlisted | PartyFlag.LeftBehind;
   queue(s, `${c.to} {ok}\r`);
   return 0;
 }
@@ -296,7 +314,7 @@ function oi(c: Ctx): number {
   send(s, 'break\r');
   s.inCombat = 0;
   s.target = '';
-  s.f_e290 = 1;
+  s.lookDue = 1;
   return 0;
 }
 
@@ -307,7 +325,7 @@ function kill(c: Ctx): number {
   const who = trimSpaces(c.cmd.slice(6, 16));
   if (partyIndex(s, who) !== -1) return reply0(c, `${c.to} {no - they are in our party}\r`);
   const q = findPlayer(s, who);
-  if (q && q.kind === 2) return reply0(c, `${c.to} {no - player is a friend}\r`);
+  if (q && q.kind === Stance.Friend) return reply0(c, `${c.to} {no - player is a friend}\r`);
   // `0x4ae4a0` calls `0x42b8f0` itself, without asking the party to `@kill`.
   pvpAttack(s, who, 0);
   return 0;
@@ -316,22 +334,22 @@ function kill(c: Ctx): number {
 /** A command to send for someone (`@do`, `!cmd`, `@party`): a MUD op's `sys` only with 0x2000. */
 function commandFor(c: Ctx, text: string, perms: number): string | null {
   const plain = trimSpaces(plainText(c.s, `${text.slice(0, 80)}\r`));
-  if (strnicmp(plain, 'sys', 3) === 0 && (perms & 0x2000) === 0) return null;
+  if (strnicmp(plain, 'sys', 3) === 0 && (perms & RemoteFlag.SysopCommands) === 0) return null;
   return plain;
 }
 
 /** `@who`: who else is here. */
 function whoHere(c: Ctx): number {
-  const names = c.s.room.filter((e) => e.type !== 3).map((e) => e.name);
+  const names = c.s.room.filter((e) => e.type !== EntityType.Item).map((e) => e.name);
   return reply0(c, `${c.to} {${names.length > 0 ? names.join(',') : 'No one'}}\r`);
 }
 
 /** `@what`: the items here. */
 function whatHere(c: Ctx): number {
   const items = c.s.room
-    .filter((e) => e.type === 3 && e.item)
+    .filter((e) => e.type === EntityType.Item && e.item)
     .map((e) =>
-      (e.item!.flags & 0x8000000) !== 0 || e.count > 1 ? `${e.count} ${e.name}` : e.name
+      (e.item!.flags & ItemFlag.Coin) !== 0 || e.count > 1 ? `${e.count} ${e.name}` : e.name
     );
   return reply0(c, `${c.to} {${items.length > 0 ? items.join(',') : 'Nothing'}}\r`);
 }
@@ -342,8 +360,8 @@ function where(c: Ctx): number {
   const desc = whereText(s);
   if (s.Talk_WhereUseRm === 0) return reply0(c, `${c.to} {${desc}}\r`);
   if (s.inGame !== 0) {
-    if (s.f_32380 !== 0 && s.f_32380 === s.now && roomKnown(s))
-      return reply0(c, `${c.to} {${desc} - ${s.f_8168}/${s.f_816c}}\r`);
+    if (s.locationAt !== 0 && s.locationAt === s.now && roomKnown(s))
+      return reply0(c, `${c.to} {${desc} - ${s.locationMap}/${s.locationRoom}}\r`);
     if (s.whereAsked.length < 4) {
       s.whereAsked.push(c.to.slice(0, 99));
       if (s.whereAsked.length !== 1) return 0;
@@ -380,7 +398,7 @@ function path(c: Ctx): number {
 function status(c: Ctx): number {
   const s = c.s;
   let text = `${c.to} {${s.host.caption?.() ?? ''} -${s.statusShown}`;
-  if (s.task === 0xe || s.task === 0xf) text += ` - ${stepsText(s)}`;
+  if (s.task === Task.Walking || s.task === Task.Looping) text += ` - ${stepsText(s)}`;
   send(s, `${text}}\r`);
   return 0;
 }
@@ -391,7 +409,7 @@ function seen(c: Ctx): number {
   const q = findPlayer(c.s, name);
   let text: string;
   if (!q) text = `${c.to} {player "${name}" unknown}`;
-  else if ((q.flags & 0x8000) === 0) text = `${c.to} {no}`;
+  else if ((q.flags & PlayerFlag.SeenThisSession) === 0) text = `${c.to} {no}`;
   else text = `${c.to} {yes, ${q.seen} times, last at ${q.where}}`;
   return reply0(c, `${text}\r`);
 }
@@ -399,8 +417,8 @@ function seen(c: Ctx): number {
 /** `@enc`: the encumbrance. */
 function enc(c: Ctx, raw: string): number {
   const s = c.s;
-  const level = ['None', 'Light', 'Medium', 'Heavy'][s.f_846c] ?? raw;
-  return reply0(c, `${c.to} {${s.f_8464}/${s.f_8468} - ${level}}\r`);
+  const level = ['None', 'Light', 'Medium', 'Heavy'][s.encumbranceLevel] ?? raw;
+  return reply0(c, `${c.to} {${s.weightCarried}/${s.weightMax} - ${level}}\r`);
 }
 
 /** `@have <item>`. */
@@ -454,7 +472,7 @@ function loop(c: Ctx): number {
   if (goTo(s, 0, p) === 0) return reply(c, `${c.to} {failed}\r`);
   startWalking(s);
   if (headFor(s, 0) !== 0) return reply(c, `${c.to} {failed}\r`);
-  s.f_db44 = 0;
+  s.laps = 0;
   return reply(c, `${c.to} {ok}\r`);
 }
 
@@ -485,7 +503,7 @@ function settings(c: Ctx): number {
     [s.MegaMud_AutoSearch, ',Search'],
     [s.MegaMud_DisableEvents === 0 ? 1 : 0, ',Events'],
     [s.MegaMud_DisableAbilMon === 0 ? 1 : 0, ',Abils'],
-    [s.f_8be8, ',Melee'],
+    [s.preferMelee, ',Melee'],
     [s.MegaMud_NoHangup === 0 ? 1 : 0, ',Hangup']
   ];
   const list = (on: boolean): string => {
@@ -495,7 +513,7 @@ function settings(c: Ctx): number {
       .join('');
     return text.startsWith(',') ? text.slice(1) : text;
   };
-  const allOff = s.f_a32c !== 0;
+  const allOff = s.allOff !== 0;
   const onText = `${c.to} {ON: ${allOff ? 'Nothing (All-Off)' : list(true)}}\r`;
   if (c.kind !== 0) {
     if (allOff) send(s, onText);
@@ -537,38 +555,38 @@ function alterSettings(c: Ctx): number | null {
     );
   }
   if (strnicmp(cmd, '@auto-all', 8) === 0) {
-    const was = s.f_a32c;
-    s.f_a32c = was === 0 ? 1 : 0;
-    if (indexOfNoCase(cmd, ' on') !== -1) s.f_a32c = 0;
-    if (indexOfNoCase(cmd, ' off') !== -1) s.f_a32c = 1;
-    const text = `${c.to} {Auto-All switch ${NOW(was, s.f_a32c)} ${ON(s.f_a32c === 0 ? 1 : 0)}}\r`;
-    if (c.kind !== 0 && c.p.kind !== 7) send(s, text);
+    const was = s.allOff;
+    s.allOff = was === 0 ? 1 : 0;
+    if (indexOfNoCase(cmd, ' on') !== -1) s.allOff = 0;
+    if (indexOfNoCase(cmd, ' off') !== -1) s.allOff = 1;
+    const text = `${c.to} {Auto-All switch ${NOW(was, s.allOff)} ${ON(s.allOff === 0 ? 1 : 0)}}\r`;
+    if (c.kind !== 0 && c.p.kind !== Stance.Unknown_7) send(s, text);
     return 0;
   }
   if (is('@auto-combat')) return toggle(c, 'MegaMud_AutoCombat', 'auto-combat');
   if (is('@auto-pre')) return toggle(c, 'MegaMud_AutoPreAttack', 'auto-pre');
-  if (is('@melee')) return toggle(c, 'f_8be8', 'prefer melee');
+  if (is('@melee')) return toggle(c, 'preferMelee', 'prefer melee');
   if (is('@spells')) {
     let v = indexOfNoCase(cmd, ' off') === -1 ? 1 : 0;
     if (indexOfNoCase(cmd, ' on') !== -1) v = 1;
     s.MegaMud_AutoNuke = v;
     s.MegaMud_AutoPreAttack = v;
-    s.f_8be8 = v ^ 1;
+    s.preferMelee = v ^ 1;
     return settingReply(
       c,
-      `${c.to} {spells now ${ON(v)}: melee=${ON(s.f_8be8)}, nuke=${ON(s.MegaMud_AutoNuke)}, pre=${ON(s.MegaMud_AutoPreAttack)}}\r`
+      `${c.to} {spells now ${ON(v)}: melee=${ON(s.preferMelee)}, nuke=${ON(s.MegaMud_AutoNuke)}, pre=${ON(s.MegaMud_AutoPreAttack)}}\r`
     );
   }
   if (is('@profile')) {
     const n = atoi(cmd.slice(8));
     if (c.kind === 0) return useProfile(s, n);
     let text: string;
-    if (s.f_d81c !== 0) text = 'profile: settings window is open';
+    if (s.settingsWindowOpen !== 0) text = 'profile: settings window is open';
     else if (activateProfile(s, n) !== 0) text = `profile now ${n}`;
     else if ((n - 1) >>> 0 < 4)
       text = `profile ${n} is not enabled - still ${s.Profiles_ActiveProfile}`;
     else text = `profile is ${s.Profiles_ActiveProfile} - use 1-4`;
-    if (c.p.kind === 7) return 0;
+    if (c.p.kind === Stance.Unknown_7) return 0;
     return reply0(c, `${c.to} {${text}}\r`);
   }
   if (is('@auto-nuke')) return toggle(c, 'MegaMud_AutoNuke', 'auto-nuke');
@@ -585,8 +603,8 @@ function alterSettings(c: Ctx): number | null {
   if (is('@auto-search')) return toggle(c, 'MegaMud_AutoSearch', 'auto-search');
   if (is('@auto-hangup')) {
     const text = toggleOff(c, 'MegaMud_NoHangup', 'auto-hangup');
-    if (c.kind === 0 || c.p.kind === 7) return 0;
-    if (s.f_a32c !== 0) send(s, text);
+    if (c.kind === 0 || c.p.kind === Stance.Unknown_7) return 0;
+    if (s.allOff !== 0) send(s, text);
     else queue(s, text);
     return 0;
   }
@@ -615,14 +633,14 @@ function claim(c: Ctx, key: 'divertTo' | 'debugTo', turnOn: boolean): number {
 /** `@home <monster>` to a MUD op: the `room` command asked about it. */
 function home(c: Ctx): number {
   const s = c.s;
-  if (s.roomReply !== '' || s.f_50 !== 0) return reply0(c, `${c.to} {busy}\r`);
+  if (s.roomReply !== '' || s.unknown_50 !== 0) return reply0(c, `${c.to} {busy}\r`);
   const name = c.cmd.slice(6);
   const i = s.data.monsters.findIndex((m) => stricmp(m.name, name) === 0);
   if (i === -1) return reply0(c, `${c.to} {unknown}\r`);
   s.roomReply = c.to.slice(0, 99);
-  s.f_d8f8 = i;
-  s.f_d8f0 = 1;
-  s.f_d8f4 = 1;
+  s.homeMonster = i;
+  s.homeLookup = 1;
+  s.homeAskDue = 1;
   return reply0(c, `${c.to} {one moment...}\r`);
 }
 
@@ -630,7 +648,13 @@ function home(c: Ctx): number {
 function notCommand(c: Ctx, line: string): number {
   const s = c.s;
   if (botCommand(s, c.kind, c.sender, c.p, c.to, c.cmd)) return 0;
-  if (c.kind === 8 || c.p.kind === 4 || c.p.kind === 5 || c.p.kind === 6) return 0;
+  if (
+    c.kind === 8 ||
+    c.p.kind === Stance.Enemy ||
+    c.p.kind === Stance.Flee ||
+    c.p.kind === Stance.Hangup
+  )
+    return 0;
   s.msgSource = c.p.name.slice(0, 80);
   s.msgTarget = s.Player_Name.slice(0, 80);
   if (!c.cmd.startsWith('@')) {
@@ -698,7 +722,7 @@ function strangerCommand(
   start: number,
   sender: string
 ): number {
-  if (!s.botCommands.some((b) => b.anyone) || s.f_a32c !== 0) return 0;
+  if (!s.botCommands.some((b) => b.anyone) || s.allOff !== 0) return 0;
   if (kind !== 1 && kind !== 0x10 && kind !== 0x20) return 0;
   botCommand(
     s,
@@ -756,13 +780,13 @@ export function remoteCommand(s: Session, line: string, kind: number): number {
     p = kind === 0x20 ? findUserId(s, sender) : findPlayer(s, sender);
   }
   if (!p) return strangerCommand(s, line, kind, start, sender);
-  let perms = kind === 0 ? 0xffff : p.remote & 0xffff;
+  let perms = kind === 0 ? REMOTE_ALL : p.remote & REMOTE_ALL;
   const to = replyPrefix(s, p, kind, sender);
 
   const raw = commandText(line, start, kind);
   const cmd = plainText(s, raw);
   if (
-    s.f_a32c !== 0 &&
+    s.allOff !== 0 &&
     strnicmp(cmd, '@auto-all', 9) !== 0 &&
     strnicmp(cmd, '@auto-hangup', 12) !== 0 &&
     stricmp(cmd, '@settings') !== 0
@@ -772,11 +796,12 @@ export function remoteCommand(s: Session, line: string, kind: number): number {
   if (kind !== 0 && s.Talk_NoRemoteCmds === 1) perms = 0;
   for (let i = 0; i < s.partySize; i += 1) {
     if (s.party[i]!.name === p.name) {
-      perms |= 0xc;
+      perms |= RemoteFlag.QueryHealth | RemoteFlag.Unknown_8;
       break;
     }
   }
-  if (s.following !== 0 && s.leaderName === p.name) perms |= 0xc;
+  if (s.following !== 0 && s.leaderName === p.name)
+    perms |= RemoteFlag.QueryHealth | RemoteFlag.Unknown_8;
   if (findNoCase(cmd, 0, 'suicide') !== -1 || findNoCase(cmd, 0, 'reroll') !== -1) perms = 0;
   const inner = cmd.slice(1);
   let at = inner.indexOf('@');
@@ -792,12 +817,13 @@ export function remoteCommand(s: Session, line: string, kind: number): number {
   const starts = (word: string): boolean => strnicmp(cmd, word, word.length) === 0;
   const mi = partyIndex(s, sender);
 
-  if ((perms & 1) !== 0 && starts('@ver')) return reply0(c, `${to} {MegaMMUD 2.1}\r`);
-  if ((perms & 4) !== 0 && is('@health')) return health(c);
+  if ((perms & RemoteFlag.QueryVersion) !== 0 && starts('@ver'))
+    return reply0(c, `${to} {MegaMMUD 2.1}\r`);
+  if ((perms & RemoteFlag.QueryHealth) !== 0 && is('@health')) return health(c);
   if (cmd.startsWith('{HP=') && mi !== -1) return healthReport(c, mi);
 
   if ((is('!help') || is('@heal')) && mi !== -1) {
-    s.party[mi]!.flags28 |= 0x20000;
+    s.party[mi]!.flags28 |= PartyFlag.AskedForHeal;
     return 1;
   }
   for (const [word, flag] of [
@@ -811,7 +837,7 @@ export function remoteCommand(s: Session, line: string, kind: number): number {
     }
   }
   if (starts('@panic!') && mi !== -1) {
-    if (s.f_a32c === 0 && s.Party_IgnorePanic === 0) s.f_8890 = 1;
+    if (s.allOff === 0 && s.Party_IgnorePanic === 0) s.panicAsked = 1;
     return 0;
   }
   if (starts('@wait') || is('!wait') || (s.Party_PartyWaitCmd !== '' && is(s.Party_PartyWaitCmd))) {
@@ -820,14 +846,15 @@ export function remoteCommand(s: Session, line: string, kind: number): number {
   if (is('@ok') || is('!ok') || (s.Party_PartyResumeCmd !== '' && is(s.Party_PartyResumeCmd))) {
     if (mi !== -1) return partyOk(c, mi);
   }
-  if (is('@comeback') && (mi !== -1 || (perms & 0x100) !== 0)) return comeback(c, mi);
+  if (is('@comeback') && (mi !== -1 || (perms & RemoteFlag.MovePlayer) !== 0))
+    return comeback(c, mi);
   if (is('@OI!') && mi !== -1) return oi(c);
-  if ((perms & 0x40) !== 0 && is('@invite')) {
+  if ((perms & RemoteFlag.RequestInvite) !== 0 && is('@invite')) {
     queue(s, `invite ${sender}\r`);
-    s.f_e2ac = 1;
+    s.parDue = 1;
     return reply(c, `${to} {ok}\r`);
   }
-  if ((perms & 0x20) !== 0 && is('@join')) {
+  if ((perms & RemoteFlag.QueryInventory) !== 0 && is('@join')) {
     if (s.following !== 0 && partyIndex(s, p.name) === -1 && p.name !== s.leaderName)
       return reply0(c, `${to} {following ${s.leaderName}}\r`);
     joinLeader(s, sender);
@@ -840,12 +867,12 @@ export function remoteCommand(s: Session, line: string, kind: number): number {
   if (starts('@kill ') && mi !== -1) return kill(c);
   if (is('@share') && mi !== -1) {
     if (s.leaderName === sender && s.leaderName !== s.Player_Name) {
-      if (s.Party_ShareCash !== 0) s.f_8870 = 1;
+      if (s.Party_ShareCash !== 0) s.shareCashDue = 1;
       else queue(s, `${to} {sharing disabled}\r`);
     }
     return 1;
   }
-  if ((perms & 2) !== 0 && (is('@exp') || is('@level'))) {
+  if ((perms & RemoteFlag.QueryExperience) !== 0 && (is('@exp') || is('@level'))) {
     // `0x4a7250`: the stats window's experience meter.
     const m = expMeter(s);
     if (is('@exp'))
@@ -858,14 +885,14 @@ export function remoteCommand(s: Session, line: string, kind: number): number {
       `${to} {Level: ${s.Player_Level}  Needed: ${m.needed}  Will level in: ${m.levelIn}}\r`
     );
   }
-  if ((perms & 0x10) !== 0) {
+  if ((perms & RemoteFlag.QueryLocation) !== 0) {
     if (is('@where')) return where(c);
     if (is('@path')) return path(c);
     if (is('@who')) return whoHere(c);
     if (starts('@seen ')) return seen(c);
     if (is('@what')) return whatHere(c);
   }
-  if ((perms & 4) !== 0) {
+  if ((perms & RemoteFlag.QueryHealth) !== 0) {
     if (is('@status')) return status(c);
     if (is('@lives'))
       return reply0(
@@ -873,12 +900,12 @@ export function remoteCommand(s: Session, line: string, kind: number): number {
         `${to} {${s.Player_Lives} ${s.Player_Lives === 1 ? 'life' : 'lives'} remaining}\r`
       );
   }
-  if ((perms & 0x20) !== 0) {
-    if (is('@wealth')) return reply0(c, `${to} {${commas(s.f_8428)} copper}\r`);
+  if ((perms & RemoteFlag.QueryInventory) !== 0) {
+    if (is('@wealth')) return reply0(c, `${to} {${commas(s.wealth)} copper}\r`);
     if (is('@enc')) return enc(c, raw);
     if (starts('@have ')) return have(c);
   }
-  if ((perms & 0x200) !== 0) {
+  if ((perms & RemoteFlag.ExecuteCommands) !== 0) {
     const errand: [string, () => void][] = [
       ['@get-all', () => getAll(s)],
       ['@drop-all', () => dropAll(s)],
@@ -886,8 +913,8 @@ export function remoteCommand(s: Session, line: string, kind: number): number {
       [
         '@deposit-all',
         () => {
-          s.f_842c = -1;
-          s.f_845c = 0;
+          s.depositAsked = -1;
+          s.bankedHere = 0;
           depositAll(s);
         }
       ]
@@ -914,7 +941,7 @@ export function remoteCommand(s: Session, line: string, kind: number): number {
       return 1;
     }
   }
-  if ((perms & 0x100) !== 0) {
+  if ((perms & RemoteFlag.MovePlayer) !== 0) {
     if (is('@stop')) {
       if (s.walking !== 0) goStop(s);
       return reply(c, `${to} {ok}\r`);
@@ -933,11 +960,11 @@ export function remoteCommand(s: Session, line: string, kind: number): number {
       return reply(c, `${to} {auto-roam: ${ON(s.roaming)}}\r`);
     }
   }
-  if ((perms & 0x800) !== 0) {
+  if ((perms & RemoteFlag.AlterSettings) !== 0) {
     const done = alterSettings(c);
     if (done !== null) return done;
   }
-  if ((perms & 0x1000) !== 0) {
+  if ((perms & RemoteFlag.DivertConversations) !== 0) {
     if (starts('@divert')) {
       const on = indexOfNoCase(cmd, ' on') !== -1;
       const off = indexOfNoCase(cmd, ' off') !== -1;
@@ -945,31 +972,32 @@ export function remoteCommand(s: Session, line: string, kind: number): number {
     }
     if (is('@debug')) return claim(c, 'debugTo', s.debugTo === '');
     if (starts('@capture')) {
-      if (indexOfNoCase(cmd, ' on') !== -1) s.f_e180 = 1;
-      if (indexOfNoCase(cmd, ' off') !== -1) s.f_e180 = 0;
-      return reply0(c, `${to} {capture: ${ON(s.f_e180)}}\r`);
+      if (indexOfNoCase(cmd, ' on') !== -1) s.capturing = 1;
+      if (indexOfNoCase(cmd, ' off') !== -1) s.capturing = 0;
+      return reply0(c, `${to} {capture: ${ON(s.capturing)}}\r`);
     }
   }
-  if ((perms & 0x400) !== 0) {
+  if ((perms & RemoteFlag.Hangup) !== 0) {
     if (is('@hangup')) {
       send(s, `${to} {ok}\r`);
-      s.f_30de4 = 1;
-      s.f_30de8 = 1;
-      s.f_e28c = 0;
+      s.skipRedialOnce = 1;
+      s.noRedial = 1;
+      s.exitForRelog = 0;
       hangUp(s, 0);
       s.host.alert?.('hangup');
       return 0;
     }
     if (is('@relog')) {
-      if (s.s_7cf7 === '') return reply0(c, `${to} {No relog command}\r`);
+      if (s.relogCmd === '') return reply0(c, `${to} {No relog command}\r`);
       send(s, `${to} {ok}\r`);
-      s.f_30de4 = 0;
-      s.f_30de8 = 0;
-      s.f_e28c = 1;
+      s.skipRedialOnce = 0;
+      s.noRedial = 0;
+      s.exitForRelog = 1;
       s.host.alert?.('hangup');
       return 0;
     }
   }
-  if ((perms & 1) !== 0 && starts('@home ') && s.BBS_IsMudop !== 0) return home(c);
+  if ((perms & RemoteFlag.QueryVersion) !== 0 && starts('@home ') && s.BBS_IsMudop !== 0)
+    return home(c);
   return notCommand(c, line);
 }

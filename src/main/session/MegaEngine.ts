@@ -8,7 +8,7 @@
  * planners stay ours.
  *
  * **Paths.** MegaMUD walks paths whose steps name the room each is taken
- * from by its signature (`0x8130`: the name's hash in the top twelve bits,
+ * from by its signature (`roomSignature`: the name's hash in the top twelve bits,
  * two bits an exit). A room's signature is learned whenever the engine and
  * our tracker stand in it together; until then it is worked out from the
  * realm data, and a room whose exits the realm data cannot say how the game
@@ -57,7 +57,7 @@ import {
 } from '../megamud/Session';
 import { findSpell } from '../megamud/spells/lookup';
 import { findLongestFirst } from '../megamud/room/checkNames';
-import { setTask } from '../megamud/script/task';
+import { setTask, Task } from '../megamud/script/task';
 import {
   monsterRecords,
   rememberItem,
@@ -91,6 +91,8 @@ import {
   type WorldRoom
 } from '../../shared/world';
 import type { WorldGraph } from '../world/WorldGraph';
+import { State } from '../megamud/states';
+import { SpellFlag, ItemFlag, StepFlag, RouteFlag } from '../megamud/flags';
 
 /** What the engine needs from the session it runs in. */
 export interface MegaEngineHost {
@@ -267,10 +269,10 @@ export type MegaAlert = keyof typeof MEGA_ALERTS;
 /** The session field each toolbar toggle shows. */
 const TOGGLE_FIELD = {
   noHangup: 'MegaMud_NoHangup',
-  allOff: 'f_a32c',
+  allOff: 'allOff',
   combat: 'MegaMud_AutoCombat',
   preAttack: 'MegaMud_AutoPreAttack',
-  melee: 'f_8be8',
+  melee: 'preferMelee',
   nuke: 'MegaMud_AutoNuke',
   heal: 'MegaMud_AutoHeal',
   bless: 'MegaMud_AutoBless',
@@ -645,8 +647,8 @@ export class MegaEngine {
   }
 
   /**
-   * The databases MegaMUD marked changed (`0xe24c` players, `0xe254`
-   * monsters, `0xe258` items) and the signatures learned since, handed to be
+   * The databases MegaMUD marked changed (`playersChanged` players, `monstersChanged`
+   * monsters, `itemsChanged` items) and the signatures learned since, handed to be
    * kept: `0x43bfa0`, which MegaMUD runs on the way out, run here as soon as
    * something is marked, and on the way out as well.
    */
@@ -655,19 +657,25 @@ export class MegaEngine {
     if (this.memory === null) return;
     const marks = JSON.stringify(s.monsterMarks);
     const marked = marks !== this.marksKept;
-    if (s.f_e24c === 0 && s.f_e254 === 0 && s.f_e258 === 0 && this.unkept.size === 0 && !marked)
+    if (
+      s.playersChanged === 0 &&
+      s.monstersChanged === 0 &&
+      s.itemsChanged === 0 &&
+      this.unkept.size === 0 &&
+      !marked
+    )
       return;
     const lessons: EngineLessons = {
-      stances: s.f_e254 !== 0 ? savedStances(s) : [],
-      items: s.f_e258 !== 0 ? savedItems(s) : [],
+      stances: s.monstersChanged !== 0 ? savedStances(s) : [],
+      items: s.itemsChanged !== 0 ? savedItems(s) : [],
       signatures: [...this.unkept],
       marks: marked ? s.monsterMarks.map((m): LearnedMark => [m.name, m.flags]) : null
     };
     this.marksKept = marks;
     // Players are our tracker's to keep (`PlayerBook`): the mark is only cleared.
-    s.f_e24c = 0;
-    s.f_e254 = 0;
-    s.f_e258 = 0;
+    s.playersChanged = 0;
+    s.monstersChanged = 0;
+    s.itemsChanged = 0;
     this.unkept.clear();
     this.memory.keep(lessons);
   }
@@ -701,7 +709,7 @@ export class MegaEngine {
       command === '' ? null : findSpell(s, command);
     // Our tracker's buff for a lasting spell of this character's own.
     const upFor = (spell: SpellRec | null): ActiveBuff | undefined =>
-      spell === null || (spell.flags & 2) === 0
+      spell === null || (spell.flags & SpellFlag.Timed) === 0
         ? undefined
         : up.find(
             (b) =>
@@ -718,11 +726,11 @@ export class MegaEngine {
         s.blessCastAt[i] = s.now;
         s.blessSeenAt[i] = s.now;
         if (s.debug !== 0) s.host.trace(`{bless-up:${spell!.name}}`);
-        if (s.state === 0x10 && s.blessSlot === i) {
-          s.f_a3e0 += 1;
-          s.f_a3e4 += 1;
+        if (s.state === State.Blessing && s.blessSlot === i) {
+          s.castAnswered += 1;
+          s.castTook += 1;
           forgetAwaited(s, 0x10);
-          setState(s, 0);
+          setState(s, State.Nothing);
         }
       } else if (at === null && was !== null) {
         s.blessCastAt[i] = 0;
@@ -778,9 +786,10 @@ export class MegaEngine {
     if (!world) return;
     this.lastingMarked = true;
     for (const spell of this.s.data.spells) {
-      if ((spell.flags & 2) !== 0) continue;
+      if ((spell.flags & SpellFlag.Timed) !== 0) continue;
       const known = world.spellNamed(spell.name);
-      if (known !== null && spellLasts(known, (id) => world.spellById(id))) spell.flags |= 2;
+      if (known !== null && spellLasts(known, (id) => world.spellById(id)))
+        spell.flags |= SpellFlag.Timed;
     }
   }
 
@@ -802,23 +811,23 @@ export class MegaEngine {
 
   /**
    * A stat sheet wanted, as MegaMUD wants one after a level or a death
-   * (`0xe29c`): sent by `0x40d0e0` when its scheduler next may, out of a fight.
+   * (`statDue`): sent by `0x40d0e0` when its scheduler next may, out of a fight.
    */
   wantStat(): void {
-    if (this.s.f_e29c === 0) this.s.f_e29c = 1;
+    if (this.s.statDue === 0) this.s.statDue = 1;
   }
 
   /**
-   * Waiting to dial back (`0xe544` 3, task 9), as `0x4653d0` counts down
+   * Waiting to dial back (`dialState` 3, task 9), as `0x4653d0` counts down
    * `Comms.RedialPause` after a drop, a full game or a stuck log-on.
    */
   get redialing(): boolean {
-    return this.s.f_e544 === 3 && this.s.task === 9;
+    return this.s.dialState === 3 && this.s.task === Task.Redial;
   }
 
   /** Seconds until that redial, 0 when none is waited on. */
   get redialIn(): number {
-    return this.redialing ? Math.max(0, this.s.f_32298 - this.s.host.clock()) : 0;
+    return this.redialing ? Math.max(0, this.s.redialAt - this.s.host.clock()) : 0;
   }
 
   /** A dial failed: redialled by MegaMUD's rule for that (`0x4b71d0`). */
@@ -829,8 +838,8 @@ export class MegaEngine {
   /** The redial waited on called off, the player's Disconnect: offline, idle (task `0x14`). */
   cancelRedial(): void {
     if (!this.redialing) return;
-    this.s.f_e544 = 0;
-    setTask(this.s, 0x14);
+    this.s.dialState = 0;
+    setTask(this.s, Task.Terminated);
     this.noteToggles();
   }
 
@@ -864,7 +873,7 @@ export class MegaEngine {
    */
   get toggles(): MegaToggles {
     const s = this.s;
-    const allOff = s.f_a32c !== 0;
+    const allOff = s.allOff !== 0;
     const on = {} as Record<MegaToggle, boolean>;
     for (const [name, field] of Object.entries(TOGGLE_FIELD) as [MegaToggle, keyof Session][]) {
       // No Hangup is not one of All Off's: it is drawn with Connect (`0x460d50`).
@@ -884,8 +893,8 @@ export class MegaEngine {
   /**
    * The engine's walk and loop as the cards draw them, in place of the
    * walker's and loop runner's, which stand idle while it walks: the path
-   * walked (`0xe39c`) and the step reached, the loop (`0xe4a4`), and its laps
-   * (`0xdb44`, counted as `0x43d2a0` takes the loop up again).
+   * walked (`0xe39c`) and the step reached, the loop (`loopPath`), and its laps
+   * (`laps`, counted as `0x43d2a0` takes the loop up again).
    */
   get progress(): { walk: WalkProgress; loop: LoopProgress } {
     const s = this.s;
@@ -912,7 +921,7 @@ export class MegaEngine {
         stopName: this.roomName(lap.stops[next] ?? null),
         remainingStops: onLoop ? lap.stops.slice(next) : [...lap.stops],
         stopNames: lap.stops.slice(0, lap.listed).map((room) => this.roomName(room) ?? room),
-        laps: Math.max(0, s.f_db44),
+        laps: Math.max(0, s.laps),
         reason: null,
         hold: walking && holding !== null ? (holding === 'fight' ? 'fight' : 'health') : null,
         startedAt: this.loopRun!.startedAt,
@@ -1042,7 +1051,7 @@ export class MegaEngine {
    */
   playerSent(): void {
     this.s.now = this.s.host.clock();
-    this.s.f_322a0 = this.s.now;
+    this.s.lastSentAt = this.s.now;
   }
 
   connected(): void {
@@ -1150,7 +1159,7 @@ export class MegaEngine {
     if (goTo(s, 0, p) === 0) return `Could not head for the loop "${name}".`;
     startWalking(s);
     headFor(s, 0);
-    s.f_db44 = 0;
+    s.laps = 0;
     this.loopRun = { name, startedAt: Date.now(), lapBegunAt: null };
     this.noteToggles();
     return null;
@@ -1310,7 +1319,7 @@ export class MegaEngine {
 
   /** The engine and our tracker both stand in a room: its signature is learned. */
   private noteRoom(): void {
-    const sig = this.s.f_8130;
+    const sig = this.s.roomSignature;
     if (sig === 0) return;
     const here = this.host.here();
     if (here === null) return;
@@ -1356,7 +1365,7 @@ export class MegaEngine {
   choices(): MegaChoices {
     const s = this.s;
     const carried = (fits: (item: ItemRec) => boolean): string[] | null =>
-      s.f_8468 === 0
+      s.weightMax === 0
         ? null
         : s.inventory
             .flatMap((c) => (c.item !== null && fits(c.item) ? [c.item.name] : []))
@@ -1364,7 +1373,7 @@ export class MegaEngine {
     return {
       rooms: [...new Set((s.data.rooms ?? []).map((r) => r.name))],
       weapons: carried((item) => item.type === 1),
-      backstab: carried((item) => item.type === 1 && (item.flags & 0x200) !== 0),
+      backstab: carried((item) => item.type === 1 && (item.flags & ItemFlag.Backstab) !== 0),
       shields: carried((item) => item.location === 12),
       statline: {
         hp: s.hp,
@@ -1372,7 +1381,7 @@ export class MegaEngine {
         mana: s.mana,
         maxMana: s.Player_MaxMana,
         // 0x8428: the coin carried, as the tab shows it.
-        wealth: s.f_8428 >>> 0,
+        wealth: s.wealth >>> 0,
         exp: s.Player_Exp,
         need: s.Player_Need,
         kai: ((findClass(s.data, s.Player_Class)?.magic ?? 0) & 0xff00) === 0x500
@@ -1411,7 +1420,9 @@ export class MegaEngine {
   /** A step taken from a room: its signature, or the relearn mark. */
   private stepFrom(room: RoomId | null, command: string): PathStep {
     const sig = room === null ? null : this.signatureOf(room);
-    return sig === null ? { room: -1, flags: 0x80, command } : { room: sig, flags: 0, command };
+    return sig === null
+      ? { room: -1, flags: StepFlag.ReLearnRoom, command }
+      : { room: sig, flags: 0, command };
   }
 
   private makePath(
@@ -1465,7 +1476,7 @@ export class MegaEngine {
 
   /** `0x43fd90`, ours: the way from here to the room with signature `to`. */
   private route(from: number, to: number): RouteFound {
-    const none: RouteFound = { flags: 1, path: null, steps: -1 };
+    const none: RouteFound = { flags: RouteFlag.NoWay, path: null, steps: -1 };
     const here = this.host.here();
     if (here === null) {
       // Not placed: ask the realm and put the walk aside rather than answer
@@ -1475,7 +1486,7 @@ export class MegaEngine {
       this.locateGaveUp = false;
       if (gaveUp || this.parked !== null || !this.host.locate()) return none;
       this.park(false);
-      return { flags: 0x20, path: null, steps: -1 };
+      return { flags: RouteFlag.Cancelled, path: null, steps: -1 };
     }
     let best: Route | null = null;
     let pending = false;
@@ -1491,8 +1502,8 @@ export class MegaEngine {
       // Still being planned. A walk heading off (`0x43d2a0` asks under task
       // 0xd) is put aside as it is while the room is located, and taken up
       // again with the answer; anything else asking is woken to ask again.
-      if (this.s.task === 0xd && this.parked === null) this.park(true);
-      return { flags: 0x20, path: null, steps: -1 };
+      if (this.s.task === Task.Thinking && this.parked === null) this.park(true);
+      return { flags: RouteFlag.Cancelled, path: null, steps: -1 };
     }
     if (best === null) return none;
     const p = this.makePath(this.routeName(), 'route', [best], from, to);
@@ -1642,7 +1653,8 @@ export class MegaEngine {
     if (!made || !p.steps) return 0;
     p.steps.forEach((st, i) => {
       const room = made.rooms[i];
-      if (room && st.room !== -1 && (st.flags & 0x80) === 0) this.learn(room, st.room);
+      if (room && st.room !== -1 && (st.flags & StepFlag.ReLearnRoom) === 0)
+        this.learn(room, st.room);
     });
     made.path.steps = p.steps.map((st) => ({ ...st }));
     return 1;

@@ -97,8 +97,13 @@ by `0x447f40`.
 functions, each naming its address. Each is ported from the decompile with its
 branches in the same order, and tested with cases read off that decompile.
 
-- `Session.ts`: the state the steps read and write, with named fields. Each
-  field's comment gives its struct offset.
+- `Session.ts` and `StateFields.ts`: the state the steps read and write, with
+  named fields. Each field's comment gives its struct offset. Nothing is named
+  by its offset: a field only partly understood is `probably…` (its comment
+  says what is unconfirmed), one not understood is `unknown_<offset>`, and one
+  the port never reads is not declared. Flag words have their bits named in
+  `flags.ts`, the activity states in `states.ts` and the tasks in
+  `script/task.ts` (2026-10-16).
 - `settings/`: MegaMUD's INI schema (every section and key, its type and its
   default from `0x447f40`), reading and writing MegaMUD's own `.ini` format. A
   character's settings are its `megamud.ini`.

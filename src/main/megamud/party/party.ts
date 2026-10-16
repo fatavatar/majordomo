@@ -9,7 +9,7 @@
  * joined (the leader asks them to `@join`). Members not listed again are
  * dropped (a follower's list), and a follower whose leader is not here asks
  * them to `@comeback`. Also `You are following …` and `You are not in a
- * party`. The listing is `lineFlags` `0x2000`.
+ * party`. The listing is `LineFlag.PartyListing`.
  */
 import { atoi, splitWord } from '../cstr';
 import { findClassByName } from '../data';
@@ -18,6 +18,7 @@ import { findEntity } from '../room/entities';
 import { queue } from '../script/send';
 import { automated, type PartyMember, type Session } from '../Session';
 import { addMember, partyRefresh, removeMember } from './members';
+import { LineFlag, PartyFlag } from '../flags';
 
 /** `0x4c1150`: the player is on the last `who`. */
 function online(s: Session, name: string): boolean {
@@ -36,21 +37,27 @@ function fromPercent(pct: number, max: number): number {
 /** Not in a party (any more). */
 function noParty(s: Session, line: string): number {
   if (s.following === 0) {
-    if (!automated(s) || s.f_a32c !== 0) s.partySize = 0;
+    if (!automated(s) || s.allOff !== 0) s.partySize = 0;
     for (let i = s.partySize - 1; i >= 0; i -= 1) {
       const m = s.party[i]!;
-      m.flags28 &= ~0x29c;
+      m.flags28 &= ~(
+        PartyFlag.Invited |
+        PartyFlag.Unlisted |
+        PartyFlag.MissedListing |
+        PartyFlag.Offline |
+        PartyFlag.JoinAsked
+      );
       if (m.name !== s.Player_Name) m.flags28 |= online(s, m.name) ? 8 : 0x80;
     }
   } else {
     s.partySize = 0;
     if (s.active !== 0 && s.looping === 0 && s.roaming === 0) s.host.alert?.('idle');
   }
-  for (let i = 0; i < s.partySize; i += 1) s.party[i]!.flags28 &= ~2;
+  for (let i = 0; i < s.partySize; i += 1) s.party[i]!.flags28 &= ~PartyFlag.ChangedSinceListing;
   if (line.indexOf('Your party has been disbanded') === -1) {
-    s.lineFlags &= ~0x2000;
-    s.f_32328 = s.now;
-    s.f_e298 = 0;
+    s.lineFlags &= ~LineFlag.PartyListing;
+    s.parAt = s.now;
+    s.partyStepPending = 0;
   }
   s.following = 0;
   return 1;
@@ -60,24 +67,28 @@ function noParty(s: Session, line: string): number {
 function listingEnd(s: Session): number {
   for (let i = s.partySize - 1; i >= 0; i -= 1) {
     const m = s.party[i]!;
-    if ((m.flags28 & 0x188) !== 8) continue;
-    if (s.f_e2ec !== 0 && m.name === s.leaderName) continue;
+    if (
+      (m.flags28 & (PartyFlag.Unlisted | PartyFlag.Offline | PartyFlag.LeftBehind)) !==
+      PartyFlag.Unlisted
+    )
+      continue;
+    if (s.partyLost !== 0 && m.name === s.leaderName) continue;
     if (s.Player_Name === s.leaderName) continue;
-    if ((m.flags28 & 0x10) === 0) m.flags28 |= 0x10;
+    if ((m.flags28 & PartyFlag.MissedListing) === 0) m.flags28 |= PartyFlag.MissedListing;
     else removeMember(s, i);
   }
-  for (let i = 0; i < s.partySize; i += 1) s.party[i]!.flags28 &= ~2;
+  for (let i = 0; i < s.partySize; i += 1) s.party[i]!.flags28 &= ~PartyFlag.ChangedSinceListing;
   for (let i = 0; i < s.partySize; i += 1) {
-    if (s.party[i]!.maxHp < 1) s.party[i]!.flags28 |= 1;
+    if (s.party[i]!.maxHp < 1) s.party[i]!.flags28 |= PartyFlag.HealthUnknown;
   }
-  s.lineFlags &= ~0x2000;
-  s.f_e298 = 0;
+  s.lineFlags &= ~LineFlag.PartyListing;
+  s.partyStepPending = 0;
   // `0x47ec60`: the window refreshed from the listing, its percents as listed.
   partyRefresh(s, 0);
-  if (s.f_e2ec === 0 || s.leaderName === '') return 0;
+  if (s.partyLost === 0 || s.leaderName === '') return 0;
   if (s.Player_Name === s.leaderName) {
     s.holdingLeader = 0;
-    s.f_e2ec = 0;
+    s.partyLost = 0;
     return 0;
   }
   if (findEntity(s, s.leaderName, 0)) return 0;
@@ -102,8 +113,8 @@ function memberLine(s: Session, line: string): number {
   rest = rest.replace(/^ +/, '');
   let manaTag = '';
   if (rest === '') {
-    s.lineFlags &= ~0x2000;
-    s.f_e2ac = 1;
+    s.lineFlags &= ~LineFlag.PartyListing;
+    s.parDue = 1;
     return 1;
   }
   if (rest.startsWith('[M:') || rest.startsWith('[K:')) {
@@ -111,8 +122,8 @@ function memberLine(s: Session, line: string): number {
     if (close !== -1) manaTag = rest.slice(0, 9);
     rest = rest.slice(close + 1).replace(/^ +/, '');
     if (rest === '') {
-      s.lineFlags &= ~0x2000;
-      s.f_e2ac = 1;
+      s.lineFlags &= ~LineFlag.PartyListing;
+      s.parDue = 1;
       return 1;
     }
   }
@@ -123,19 +134,19 @@ function memberLine(s: Session, line: string): number {
   if (!classRec || hpTag[0] !== '[') return 0;
   const known = findPlayer(s, name);
   if (!known) {
-    s.f_32328 = 0;
-    s.f_e2ac = 1;
-    s.f_e2a4 = 1;
+    s.parAt = 0;
+    s.parDue = 1;
+    s.whoDue = 1;
     return 1;
   }
   if (known.surname !== surname) {
     known.surname = surname.slice(0, 18);
-    s.f_e24c = 1;
+    s.playersChanged = 1;
     s.host.show(`[${name}'s surname updated]`);
   }
   if (known.cls !== classRec.id) {
     known.cls = classRec.id;
-    s.f_e24c = 1;
+    s.playersChanged = 1;
     s.host.show(`[${name}'s class updated]`);
   }
   addMember(s, name, 0);
@@ -147,10 +158,10 @@ function memberLine(s: Session, line: string): number {
   if (hpTag === '[Invited]') {
     m.hpPct = -1;
     m.maxHp = -1;
-    m.flags28 |= 8;
+    m.flags28 |= PartyFlag.Unlisted;
     if (s.leaderName === s.Player_Name && findEntity(s, name, 0)) {
       s.rescueCount = 0;
-      m.flags28 |= 0x200;
+      m.flags28 |= PartyFlag.JoinAsked;
       queue(s, `/${name} @join\r`);
     }
   } else {
@@ -164,8 +175,8 @@ function memberLine(s: Session, line: string): number {
   const close = hpTag.indexOf(']');
   if (close !== -1) {
     const after = hpTag.slice(close + 1).replace(/^ +/, '');
-    if (after.startsWith('P')) m.flags28 |= 0x1000;
-    else if (hpTag.startsWith('[H:')) m.flags28 &= ~0x1000;
+    if (after.startsWith('P')) m.flags28 |= PartyFlag.Poisoned;
+    else if (hpTag.startsWith('[H:')) m.flags28 &= ~PartyFlag.Poisoned;
   }
   return 1;
 }
@@ -178,7 +189,7 @@ function ownNumbers(s: Session, m: PartyMember): void {
     m.mana = s.mana;
     m.maxMana = s.Player_MaxMana;
   } else if (m.hpPct > 0x62) {
-    m.flags28 &= ~0x20000;
+    m.flags28 &= ~PartyFlag.AskedForHeal;
   }
 }
 
@@ -190,10 +201,10 @@ export function partyLine(s: Session, line: string): number {
     return noParty(s, line);
   }
   if (line.indexOf('The following people are in your') !== -1) {
-    s.lineFlags |= 0x2000;
-    s.f_32328 = s.now;
-    s.f_e2ac = 0;
-    for (let i = 0; i < s.partySize; i += 1) s.party[i]!.flags28 |= 8;
+    s.lineFlags |= LineFlag.PartyListing;
+    s.parAt = s.now;
+    s.parDue = 0;
+    for (let i = 0; i < s.partySize; i += 1) s.party[i]!.flags28 |= PartyFlag.Unlisted;
     return 1;
   }
   const following = line.indexOf('You are following ');
@@ -205,7 +216,7 @@ export function partyLine(s: Session, line: string): number {
       return 1;
     }
   }
-  if ((s.lineFlags & 0x2000) === 0) return 0;
-  if ((s.lineFlags & 1) !== 0) return listingEnd(s);
+  if ((s.lineFlags & LineFlag.PartyListing) === 0) return 0;
+  if ((s.lineFlags & LineFlag.Prompted) !== 0) return listingEnd(s);
   return memberLine(s, line);
 }

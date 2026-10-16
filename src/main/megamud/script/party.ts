@@ -11,13 +11,15 @@ import { send } from './send';
 import { sneakStep } from './stealth';
 import { setState } from './state';
 import { awayExit, doors, move } from '../move/go';
+import { State } from '../states';
+import { LineFlag, PROMPT_SEEN, PartyFlag, PlayerFlag, EntityFlag, EntityType } from '../flags';
 
 /** Ask for the party (`par`). */
 function askParty(s: Session, why: string): number {
   s.waitLines = 2;
-  s.f_32328 = s.now;
-  s.f_e2ac = 0;
-  setState(s, 0x2e);
+  s.parAt = s.now;
+  s.parDue = 0;
+  setState(s, State.Other);
   s.host.activity(why);
   send(s, 'par\r');
   return 1;
@@ -26,48 +28,53 @@ function askParty(s: Session, why: string): number {
 /**
  * `0x408e40` (D17): in a party, `par` when a member is unknown (`2`), or
  * timed (`Party.ParPeriod`; twice as long out of a fight, or when asked,
- * `0xe2ac`); a member whose numbers are unknown asked for `@health`
+ * `parDue`); a member whose numbers are unknown asked for `@health`
  * (`Party.AskHealth`, unless they do not run MegaMUD, player flag 8).
  */
 export function partyStatus(s: Session): number {
-  if (s.partySize < 2 && s.f_e2ac === 0) {
+  if (s.partySize < 2 && s.parDue === 0) {
     s.partyWait = 0;
-    s.f_e298 = 0;
+    s.partyStepPending = 0;
     return 0;
   }
   if (s.hp < 1) return 0;
   if (s.inCombat === 0 && s.MegaMud_AutoCombat === 1 && enemiesHere(s, 0) > 0) return 0;
   const fighting = s.inCombat !== 0 && s.MegaMud_AutoCombat !== 0;
-  if (!fighting && s.now - s.f_32328 > s.Comms_LagWait + 3) {
+  if (!fighting && s.now - s.parAt > s.Comms_LagWait + 3) {
     for (let i = 0; i < s.partySize; i += 1) {
       const m = s.party[i]!;
-      if ((m.flags28 & 2) !== 0)
+      if ((m.flags28 & PartyFlag.ChangedSinceListing) !== 0)
         return askParty(s, `Getting party status (member ${m.name} unknown)`);
     }
   }
   for (let i = 0; i < s.partySize; i += 1) {
     const m = s.party[i]!;
     if (m.name === s.Player_Name) {
-      if ((m.flags28 & 1) !== 0) {
+      if ((m.flags28 & PartyFlag.HealthUnknown) !== 0) {
         m.hp = s.hp;
         m.maxHp = s.Player_MaxHP;
       }
       continue;
     }
-    if ((m.flags28 & 0x8d) !== 1) continue;
-    m.flags28 &= ~1;
+    if (
+      (m.flags28 &
+        (PartyFlag.HealthUnknown | PartyFlag.Invited | PartyFlag.Unlisted | PartyFlag.Offline)) !==
+      PartyFlag.HealthUnknown
+    )
+      continue;
+    m.flags28 &= ~PartyFlag.HealthUnknown;
     if (s.Party_AskHealth === 0) continue;
     const p = findPlayer(s, m.name);
-    if (p && (p.flags & 8) !== 0) continue;
+    if (p && (p.flags & PlayerFlag.NoMegaMud) !== 0) continue;
     s.waitLines = 2;
-    setState(s, 0x2e);
+    setState(s, State.Other);
     s.host.activity(`Getting party member health from ${m.name}`);
     send(s, `/${m.name} @health\r`);
     return 1;
   }
-  const elapsed = s.now - s.f_32328;
+  const elapsed = s.now - s.parAt;
   if (elapsed <= s.Comms_LagWait + 3) return 0;
-  if (s.f_e2ac === 0 && elapsed < s.Party_ParPeriod * 2) {
+  if (s.parDue === 0 && elapsed < s.Party_ParPeriod * 2) {
     if (elapsed < s.Party_ParPeriod || enemiesHere(s, 0) < 1) return 0;
   }
   return askParty(s, 'Getting party status (timed)');
@@ -80,17 +87,17 @@ export function partyStatus(s: Session): number {
  * (`0x200`).
  */
 export function invitePlayers(s: Session): number {
-  if (s.following === 1 || !automated(s) || s.f_a32c !== 0 || s.hp <= 0) return 0;
+  if (s.following === 1 || !automated(s) || s.allOff !== 0 || s.hp <= 0) return 0;
   for (const e of s.room) {
-    if (e.type !== 1) continue;
-    let invite = e.player !== null && (e.player.flags & 0x10) !== 0;
+    if (e.type !== EntityType.Player) continue;
+    let invite = e.player !== null && (e.player.flags & PlayerFlag.InviteIfSeen) !== 0;
     let join = false;
     const i = s.leaderName !== '' && s.Player_Name === s.leaderName ? partyIndex(s, e.name) : -1;
     if (i !== -1) {
       const f = s.party[i]!.flags28;
-      invite = (f & 0x188) !== 0;
-      if ((f & 4) !== 0) {
-        if ((f & 0x200) !== 0) continue;
+      invite = (f & (PartyFlag.Unlisted | PartyFlag.Offline | PartyFlag.LeftBehind)) !== 0;
+      if ((f & PartyFlag.Invited) !== 0) {
+        if ((f & PartyFlag.JoinAsked) !== 0) continue;
         join = true;
         invite = true;
       }
@@ -98,14 +105,16 @@ export function invitePlayers(s: Session): number {
     if (!invite) continue;
     s.rescueCount = 0;
     s.waitLines = 2;
-    setState(s, 0x2e);
+    setState(s, State.Other);
     s.host.activity(`Inviting player ${e.name}`);
     send(s, join ? `/${e.name} @join\r` : `invite ${e.name}\r`);
     addMember(s, e.name, 0);
     const j = partyIndex(s, e.name);
     if (j === -1) continue;
     const m = s.party[j]!;
-    m.flags28 = (m.flags28 | 4 | (join ? 0x200 : 0)) & ~0x188;
+    m.flags28 =
+      (m.flags28 | PartyFlag.Invited | (join ? 0x200 : 0)) &
+      ~(PartyFlag.Unlisted | PartyFlag.Offline | PartyFlag.LeftBehind);
     return 1;
   }
   return 0;
@@ -118,18 +127,25 @@ export function invitePlayers(s: Session): number {
  */
 export function lookAtPlayer(s: Session): number {
   if (s.hp <= 0 || s.Talk_LookPlayers === 0) return 0;
-  if (s.state === 0x20) return 1;
-  if (s.now - s.f_32388 <= s.Comms_LagWait + 3 || s.hidden !== 0 || s.f_a32c !== 0) return 0;
+  if (s.state === State.Looking) return 1;
+  if (s.now - s.lookedAtPlayerAt <= s.Comms_LagWait + 3 || s.hidden !== 0 || s.allOff !== 0)
+    return 0;
   for (let i = 0; i < s.room.length; i += 1) {
     const e = s.room[i]!;
     const p = e.player;
-    if (e.type !== 1 || !p || (e.flags & 2) !== 0 || (p.flags & 0x400) !== 0) continue;
-    if (p.race !== 0 && p.cls !== 0 && (p.flags & 0x20000) !== 0) continue;
+    if (
+      e.type !== EntityType.Player ||
+      !p ||
+      (e.flags & EntityFlag.Shadowy) !== 0 ||
+      (p.flags & PlayerFlag.DontLook) !== 0
+    )
+      continue;
+    if (p.race !== 0 && p.cls !== 0 && (p.flags & PlayerFlag.LookedAt) !== 0) continue;
     s.roomSelected = i;
     s.waitLines = 2;
-    s.lineFlags = (s.lineFlags & ~0x4003) | 0x80000;
-    s.f_32388 = s.now;
-    setState(s, 0x20);
+    s.lineFlags = (s.lineFlags & ~(PROMPT_SEEN | LineFlag.LookDescribed)) | LineFlag.Looking;
+    s.lookedAtPlayerAt = s.now;
+    setState(s, State.Looking);
     s.host.activity(`Looking at player ${e.name}`);
     send(s, `l ${e.name}\r`);
     return 1;
@@ -145,7 +161,7 @@ export function lookAtPlayer(s: Session): number {
  * `0x408540`) is the walker's, not ported yet.
  */
 export function trackPlayer(s: Session): number {
-  if (s.f_a32c !== 0 || s.hp < 1) return 0;
+  if (s.allOff !== 0 || s.hp < 1) return 0;
   if (s.walking !== 0 && s.chaseTarget !== '') {
     const w = s.whoList.find((x) => x.name === s.chaseTarget);
     if (w && w.kind === 5) {
@@ -154,9 +170,9 @@ export function trackPlayer(s: Session): number {
     }
   }
   let follow = s.runDirection !== -1;
-  if (!follow && s.f_90c8 !== 0) {
+  if (!follow && s.tracking !== 0) {
     s.runDirection = awayExit(s);
-    if (s.runDirection === -1) s.f_90c8 = 0;
+    if (s.runDirection === -1) s.tracking = 0;
     else follow = true;
   }
   if (follow && s.walking !== 0) {
@@ -174,8 +190,8 @@ export function trackPlayer(s: Session): number {
     if (s.now - (w.trackedAt ?? 0) < s.PvP_TrackDelay) continue;
     w.trackedAt = s.now;
     s.waitLines = 2;
-    s.f_90c8 = 1;
-    setState(s, 0x22);
+    s.tracking = 1;
+    setState(s, State.Tracking);
     s.host.activity(`Tracking player ${w.name}`);
     send(s, `track ${w.name}\r`);
     return 1;

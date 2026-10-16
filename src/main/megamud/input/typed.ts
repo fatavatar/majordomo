@@ -17,11 +17,13 @@ import { abbrev, splitWord, stricmp, trimSpaces, typedDirection } from '../cstr'
 import { preBackstab } from '../health/prepost';
 import { enemiesHere } from '../room/entities';
 import { forgetAwaited, setState } from '../script/state';
-import { setTask } from '../script/task';
+import { setTask, Task } from '../script/task';
 import type { Session } from '../Session';
 import { findSpell } from '../spells/lookup';
 import { castStamp } from '../combat/timer';
 import { move } from '../move/go';
+import { State } from '../states';
+import { SpellFlag } from '../flags';
 
 export function typedCommand(s: Session, from: number, text: string): void {
   s.lastTyped = text.slice(0, 0x100);
@@ -35,7 +37,7 @@ export function typedCommand(s: Session, from: number, text: string): void {
   const [second, rest2] = splitWord(rest, ' ', 0x1f);
   const word1 = first.toLowerCase();
   const word2 = second.toLowerCase();
-  if (stricmp(word1, s.s_7cf7) === 0) {
+  if (stricmp(word1, s.relogCmd) === 0) {
     s.host.show('[Manual Relog]');
     s.inGame = 0;
   }
@@ -44,8 +46,8 @@ export function typedCommand(s: Session, from: number, text: string): void {
   }
   // `0x460bb0` logs a page to MegaMUD's talk window, which is our talk
   // panel's; `0x488700` records the step for MegaMUD's path recorder
-  // (`0xe174`), which the app does not have.
-  void s.f_e174;
+  // (`recording`), which the app does not have.
+  void s.recording;
   void rest2;
 }
 
@@ -57,7 +59,7 @@ function inGame(
   word2: string,
   rest: string
 ): void {
-  if (s.s_7d21.length === 1 && word1[0] === s.s_7d21) return;
+  if (s.speechPrefix.length === 1 && word1[0] === s.speechPrefix) return;
   const dir = typedDirection(word1);
   if (dir !== -1 && from !== -1 && word2 === '' && move(s, dir, 0) !== 0) {
     s.walking = 0;
@@ -68,60 +70,60 @@ function inGame(
       s.partySize = 0;
       s.following = 0;
     }
-    setTask(s, 0xb);
+    setTask(s, Task.InGame);
   }
   if (abbrev(word1, 'bash', 3) !== 0) {
     const d = typedDirection(word2);
     if (d !== -1) {
       s.moveDir = d;
-      setState(s, 0x17);
+      setState(s, State.Bashing);
     }
   }
   if (abbrev(word1, 'break', 3) !== 0) {
-    s.f_e1d8 = 0;
-    s.engagedMode = 0;
-    s.stateAwaited = 0;
+    s.combatOffExpected = 0;
+    s.engagedMode = State.Nothing;
+    s.stateAwaited = State.Nothing;
     forgetAwaited(s, s.state);
-    setState(s, 0);
+    setState(s, State.Nothing);
   }
   if (s.inCombat === 0) {
     const stealthy = s.Player_Stealth > 0 || s.Other_SuperStealth !== 0;
     if (stealthy && abbrev(word1, 'sneak', 2) !== 0) {
-      if (s.Combat_CanBackStab !== 0 && s.f_a32c === 0 && s.MegaMud_AutoSneak !== 0)
+      if (s.Combat_CanBackStab !== 0 && s.allOff === 0 && s.MegaMud_AutoSneak !== 0)
         preBackstab(s, 0);
       s.sneaking = 1;
-      s.f_e2bc = 0;
-      s.f_e1c8 = 0;
+      s.sneakAsked = 0;
+      s.wasSneaking = 0;
       s.waitLines = 2;
-      setState(s, 0x1b);
+      setState(s, State.Sneaking);
       s.host.activity('Attempting to sneak');
     }
     if (s.inCombat === 0 && stealthy && abbrev(word1, 'hide', 3) !== 0) {
-      if (s.Combat_CanBackStab !== 0 && s.f_a32c === 0 && s.MegaMud_AutoHide !== 0)
+      if (s.Combat_CanBackStab !== 0 && s.allOff === 0 && s.MegaMud_AutoHide !== 0)
         preBackstab(s, 0);
       s.hidden = 1;
-      s.f_e1d0 = 0;
-      s.f_32300 = s.now;
+      s.hideAgain = 0;
+      s.hiddenAt = s.now;
       s.waitLines = 2;
-      setState(s, 0x13);
+      setState(s, State.Hiding);
       s.host.activity('Attempting to hide');
     }
   }
   if (abbrev(word1, 'picklock', 2) !== 0) {
     s.moveDir = typedDirection(word2);
-    setState(s, 0x18);
+    setState(s, State.Picking);
   }
   if (abbrev(word1, 'open', 2) !== 0) {
     s.moveDir = typedDirection(word2);
-    setState(s, 0x1a);
+    setState(s, State.Opening);
   }
   if ((abbrev(word1, 'inventory', 1) !== 0 || abbrev(word1, 'wealth', 3) !== 0) && word2 === '')
-    setState(s, 0x25);
+    setState(s, State.Inventory);
   if ((abbrev(word1, 'who', 3) !== 0 || abbrev(word1, 'scan', 2) !== 0) && word2 === '')
-    setState(s, 0x23);
-  if (abbrev(word1, 'look', 1) !== 0) setState(s, 0x20);
-  if (abbrev(word1, 'search', 3) !== 0) setState(s, 0x21);
-  if (abbrev(word1, 'rest', 4) !== 0 && word2 === '') setState(s, 2);
+    setState(s, State.Who);
+  if (abbrev(word1, 'look', 1) !== 0) setState(s, State.Looking);
+  if (abbrev(word1, 'search', 3) !== 0) setState(s, State.Searching);
+  if (abbrev(word1, 'rest', 4) !== 0 && word2 === '') setState(s, State.RestAsked);
 
   const attackVerb =
     abbrev('attack', word1, 1) !== 0 ||
@@ -132,33 +134,33 @@ function inGame(
     abbrev('jumpkick', word1, 2) !== 0 ||
     abbrev('kick', word1, 3) !== 0;
   if (attackVerb && (s.inCombat !== 0 || word2 !== '')) {
-    s.engagedMode = 0x11;
-    s.f_e1d8 = 1;
-    s.f_8be4 = 1;
+    s.engagedMode = State.Attacking;
+    s.combatOffExpected = 1;
+    s.engagedHere = 1;
     if (s.debug !== 0) s.host.trace('{I8+}');
     if (word2 !== '') {
       setTarget(s, word2);
       rememberTarget(s);
     }
-    setState(s, 0x11);
+    setState(s, State.Attacking);
   } else if (word2 !== '' && (stricmp(word1, 'bs') === 0 || abbrev('backstab', word1, 5) !== 0)) {
-    s.engagedMode = 0;
+    s.engagedMode = State.Nothing;
     clearCastMode(s);
-    s.f_e1d8 = 1;
-    s.f_8be4 = 1;
-    s.f_e1b8 = 0;
-    s.f_e1bc = 0;
+    s.combatOffExpected = 1;
+    s.engagedHere = 1;
+    s.backstabResolved = 0;
+    s.backstabSurprised = 0;
     if (s.debug !== 0) s.host.trace('{I9+}');
     setTarget(s, word2);
     rememberTarget(s);
-    setState(s, 0x12);
+    setState(s, State.Backstabbing);
   } else if (!attackVerb && (word1.length === 3 || word1.length === 4)) {
     typedSpell(s, word1, word2);
   }
   // A telepath or a gangpath typed is logged to MegaMUD's talk window
   // (`0x460bb0`): our talk panel's.
 
-  if (abbrev(word1, 'sysop', 2) !== 0) setState(s, 0x20);
+  if (abbrev(word1, 'sysop', 2) !== 0) setState(s, State.Looking);
   void rest;
 }
 
@@ -166,70 +168,70 @@ function inGame(
 function typedSpell(s: Session, word1: string, word2: string): void {
   const spell = findSpell(s, word1);
   if (!spell) return;
-  if ((spell.flags & 4) === 0) {
+  if ((spell.flags & SpellFlag.EvilInCombat) === 0) {
     s.lastCast = spell.short.slice(0, 0x50);
     if (s.inCombat !== 0 || enemiesHere(s, 0) > 0) {
-      if (s.debug !== 0 && s.f_e1d8 !== 0) s.host.trace('{I9-}');
-      s.f_e1d8 = 0;
-      s.f_e2b8 = 1;
+      if (s.debug !== 0 && s.combatOffExpected !== 0) s.host.trace('{I9-}');
+      s.combatOffExpected = 0;
+      s.attackDue = 1;
       s.waitLines = 2;
     }
     castStamp(s);
     s.skipTick = 1;
-    setState(s, 0x15);
+    setState(s, State.Casting);
     return;
   }
   const area = spellTakesTarget(spell);
-  s.engagedMode = 0;
-  const untargeted = word2 === '' || (spell.flags & 0x80) !== 0;
-  if (word2 === '' && (spell.flags & 0x80) === 0) return;
+  s.engagedMode = State.Nothing;
+  const untargeted = word2 === '' || (spell.flags & SpellFlag.Area) !== 0;
+  if (word2 === '' && (spell.flags & SpellFlag.Area) === 0) return;
   s.lastCast = spell.short.slice(0, 0x50);
   let next: number;
   if (area === 0) {
     if (s.inCombat === 0 && enemiesHere(s, 1) < 1) return;
-    if (s.debug !== 0 && s.f_e1d8 !== 0) s.host.trace('{I8-}');
-    s.f_e1d8 = 0;
-    s.f_8be4 = 1;
-    s.f_e2b8 = 1;
+    if (s.debug !== 0 && s.combatOffExpected !== 0) s.host.trace('{I8-}');
+    s.combatOffExpected = 0;
+    s.engagedHere = 1;
+    s.attackDue = 1;
     s.waitLines = 2;
     castStamp(s);
     s.skipTick = 1;
     if (untargeted) s.target = '';
     else setTarget(s, word2);
-    next = 0x15;
+    next = State.Casting;
   } else {
     if (stricmp(word1, s.Combat_MultAttack) === 0) {
-      next = 0xa;
-      s.f_a3ec = 0;
-      s.engagedMode = 0xa;
+      next = State.CastMulti;
+      s.castsMulti = 0;
+      s.engagedMode = State.CastMulti;
     } else if (stricmp(word1, s.Combat_PreMultAttack) === 0) {
-      next = 9;
-      s.f_a3e8 = 0;
-      s.engagedMode = 9;
+      next = State.CastPreMulti;
+      s.castsPreMulti = 0;
+      s.engagedMode = State.CastPreMulti;
     } else if (stricmp(word1, s.Combat_PreAttack) === 0) {
-      next = 0xb;
-      s.f_a3f0 = 0;
-      s.engagedMode = 0xb;
+      next = State.CastPre;
+      s.castsPre = 0;
+      s.engagedMode = State.CastPre;
     } else if (stricmp(word1, s.Combat_AttackSpl2) === 0) {
-      next = 0xc;
-      s.f_a3f8 = 0;
-      s.engagedMode = 0xc;
+      next = State.CastAux;
+      s.castsAux = 0;
+      s.engagedMode = State.CastAux;
     } else if (stricmp(word1, s.Combat_AttackSpl) === 0) {
-      next = 0xd;
-      s.f_a3f4 = 0;
-      s.engagedMode = 0xd;
+      next = State.CastMain;
+      s.castsMain = 0;
+      s.engagedMode = State.CastMain;
     } else {
-      s.f_a400 = 0;
-      next = 0xf;
+      s.castsUser = 0;
+      next = State.CastUser;
       s.userSpell = spell.short.slice(0, 10);
     }
     if (s.debug !== 0) s.host.trace('{I10+}');
-    s.f_e1d8 = 1;
-    s.f_8be4 = 1;
+    s.combatOffExpected = 1;
+    s.engagedHere = 1;
     resetNoMessage(s, next);
     if (untargeted) {
       s.target = '';
-      s.f_a580 = 1;
+      s.multiAttacking = 1;
     } else {
       setTarget(s, word2);
     }

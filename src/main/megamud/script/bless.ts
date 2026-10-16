@@ -18,6 +18,8 @@ import { enemiesHere } from '../room/entities';
 import type { Session } from '../Session';
 import { findSpell } from '../spells/lookup';
 import { forgetAwaited, setState } from './state';
+import { State } from '../states';
+import { SpellFlag } from '../flags';
 
 const SLOTS = 0xe;
 const OWN = 10;
@@ -54,30 +56,37 @@ function due(s: Session, i: number, first: boolean): boolean {
 
 export function blessStep(s: Session, fighting: number): number {
   if (s.runCount >= 1 && fighting === 0) return 0;
-  if (s.MegaMud_AutoBless === 0 || s.state === 0x12) return 0;
+  if (s.MegaMud_AutoBless === 0 || s.state === State.Backstabbing) return 0;
   if (
-    s.state === 0 &&
+    s.state === State.Nothing &&
     s.sneaking !== 0 &&
     s.walking !== 0 &&
     enemiesHere(s, s.Combat_AttackNeutral) >= 1
   ) {
     return 0;
   }
-  if (s.state === 0x10) {
+  if (s.state === State.Blessing) {
     // A blessing cast, its message not seen: taken as cast, once it was answered.
-    if (s.f_a3e0 === 0) return 1;
-    if (s.blessSlot !== -1 && s.f_a3e4 > 0) {
+    if (s.castAnswered === 0) return 1;
+    if (s.blessSlot !== -1 && s.castTook > 0) {
       s.blessCastAt[s.blessSlot] = s.now;
       s.blessSeenAt[s.blessSlot] = s.now;
       if (s.debug !== 0) s.host.trace(`{bless+${s.blessSlot}}`);
     }
-    forgetAwaited(s, 0x10);
-    setState(s, 0);
+    forgetAwaited(s, State.Blessing);
+    setState(s, State.Nothing);
   }
   if (s.hp < 1 || s.confused !== 0) return 0;
   if (s.inCombat !== 0 && s.Other_BlessCombat === 0) return 0;
   const st = s.state;
-  if ((st === 2 || st === 3 || st === 4 || st === 5) && s.Other_BlessResting === 0) return 0;
+  if (
+    (st === State.RestAsked ||
+      st === State.Resting ||
+      st === State.MeditateAsked ||
+      st === State.Meditating) &&
+    s.Other_BlessResting === 0
+  )
+    return 0;
   if (Math.trunc((s.Player_MaxMana * s.Health_ManaBlessPct) / 100) > s.mana) return 0;
   for (let i = 0; i < SLOTS; i += 1) {
     const first = priority(s, i);
@@ -87,7 +96,7 @@ export function blessStep(s: Session, fighting: number): number {
     const command = slotCommand(s, i);
     if (command === '') continue;
     const spell = findSpell(s, command);
-    if (!spell || (spell.flags & 2) === 0) continue;
+    if (!spell || (spell.flags & SpellFlag.Timed) === 0) continue;
     if (i >= OWN) {
       if (s.now - s.blessCastAt[i]! <= field(s, `Party_PartyBlessWait${i - 9}`)) continue;
       s.blessCastAt[i] = 0;
@@ -95,7 +104,7 @@ export function blessStep(s: Session, fighting: number): number {
     if (!due(s, i, first)) continue;
     if (equipForSpell(s, spell.short) === 1) return 1;
     let at: string | null = null;
-    if (i >= OWN && (spell.flags & 0x80) === 0) {
+    if (i >= OWN && (spell.flags & SpellFlag.Area) === 0) {
       const m = weakestMember(s, 0, 0x1100);
       if (m === -1) continue;
       at = s.party[m]!.name;
@@ -104,14 +113,14 @@ export function blessStep(s: Session, fighting: number): number {
     s.blessSlot = i;
     if (at === null && (spell.item === '' || indexOfNoCase(spell.item, 'use ') !== -1)) {
       // Its message will say whether it took.
-      setState(s, 0x10);
+      setState(s, State.Blessing);
       return 1;
     }
     s.blessCastAt[i] = s.now;
     s.blessSeenAt[i] = s.now;
-    s.f_a3e0 = 1;
-    s.f_a3e4 = 1;
-    setState(s, 0);
+    s.castAnswered = 1;
+    s.castTook = 1;
+    setState(s, State.Nothing);
     return 1;
   }
   s.blessSlot = -1;

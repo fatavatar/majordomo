@@ -6,6 +6,7 @@ import { addMember } from '../party/members';
 import { locationLine } from '../room/where';
 import { remoteCommand } from '../talk/remote';
 import { session } from './fixture';
+import { PlayerFlag, PartyFlag, Exit } from '../flags';
 
 /* `0x4ae4a0` and `0x4b6600`, read 2026-10-12; the commands are MegaMUD's help's "Remote control". */
 
@@ -58,7 +59,9 @@ describe('the remote commands (0x4ae4a0)', () => {
       },
       true
     );
-    const flags = (name: string) => s.data.players!.find((p) => p.name === name)!.flags & 0x30;
+    const flags = (name: string) =>
+      s.data.players!.find((p) => p.name === name)!.flags &
+      (PlayerFlag.InviteIfSeen | PlayerFlag.JoinIfInvited);
     expect([flags('Fatty'), flags('Stranger')]).toEqual([0x20, 0x10]);
     grantPlayers(s, { fatty: { allow: ['join'], deny: [] } }, false);
     expect(flags('Fatty')).toBe(0);
@@ -87,7 +90,7 @@ describe('the remote commands (0x4ae4a0)', () => {
     s.leaderName = 'Skinny';
     expect(remoteCommand(s, tele("@wait (HP's too low)"), 0x10)).toBe(1);
     expect(s.partyWait).toBe(1);
-    expect(s.party[0]!.flags28 & 0x20020).toBe(0x20020);
+    expect(s.party[0]!.flags28 & (PartyFlag.AskedToWait | PartyFlag.AskedForHeal)).toBe(0x20020);
     remoteCommand(s, tele('@ok'), 0x10);
     expect(s.partyWait).toBe(0);
     expect(s.party[0]!.hpPct).toBe(100);
@@ -97,7 +100,7 @@ describe('the remote commands (0x4ae4a0)', () => {
     const { s } = remote();
     addMember(s, 'Fatty', 1);
     remoteCommand(s, 'Fatty says "@held"', 1);
-    expect(s.party[0]!.flags28 & 0x8000).toBe(0x8000);
+    expect(s.party[0]!.flags28 & PartyFlag.Held).toBe(0x8000);
   });
 
   it('switches a setting for a player allowed to (0x800), in a say', () => {
@@ -154,13 +157,13 @@ describe('the remote commands (0x4ae4a0)', () => {
   it('answers @where with the room, or with its map numbers after an rm', () => {
     const { s } = remote(0x10);
     s.roomName = 'Town Square';
-    s.roomExits[0] = 1;
-    s.roomExits[2] = 1;
+    s.roomExits[0] = Exit.Open;
+    s.roomExits[2] = Exit.Open;
     remoteCommand(s, tele('@where'), 0x10);
     expect(pending(s)).toEqual(['/Fatty {Town Square (Exits: N,E)}\r']);
     s.pending = [];
     s.Talk_WhereUseRm = 1;
-    s.f_8130 = 0x1234;
+    s.roomSignature = 0x1234;
     remoteCommand(s, tele('@where'), 0x10);
     expect(pending(s)).toEqual(['rm\r']);
     locationLine(s, 'Location: 12,345');
@@ -218,7 +221,7 @@ describe('bot commands', () => {
     remoteCommand(s, tele('@heal'), 0x10);
     // MegaMUD's own refusal, as for any command the stranger may not use.
     expect(pending(s)).toEqual(['/Stranger {command invalid or not allowed}\r']);
-    expect(s.party.find((m) => m.name === 'Fatty')!.flags28 & 0x20000).toBe(0x20000);
+    expect(s.party.find((m) => m.name === 'Fatty')!.flags28 & PartyFlag.AskedForHeal).toBe(0x20000);
   });
 
   it('answers anyone, a player it has no record of included, when it says so', () => {

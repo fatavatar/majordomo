@@ -7,7 +7,7 @@
  */
 import { indexOf, leadingNumber, splitWord } from '../cstr';
 import { castForgotten } from '../combat/timer';
-import { f_426ab0 } from '../combat/casts';
+import { inAttackCast } from '../combat/casts';
 import { sameItem } from '../room/checkNames';
 import { removeEntity, unkeepAll } from '../room/entities';
 import { queue } from '../script/send';
@@ -16,10 +16,12 @@ import { setTask } from '../script/task';
 import type { RoomEntity, Session } from '../Session';
 import { detourDone } from '../move/destinations';
 import { carryMore, wealthCarried } from './inventory';
+import { State } from '../states';
+import { LineFlag, ItemFlag, EntityType } from '../flags';
 
 /** `0x472420`: the item here of this name. */
 function itemHere(s: Session, name: string): RoomEntity | null {
-  return s.room.find((e) => e.type === 3 && sameItem(e.name, name)) ?? null;
+  return s.room.find((e) => e.type === EntityType.Item && sameItem(e.name, name)) ?? null;
 }
 
 /** A count before a name (`3 iron keys`), when one is there. */
@@ -58,7 +60,7 @@ function gotIt(s: Session, line: string): number {
   }
   s.hidden = 0;
   forgetAwaited(s, s.state);
-  setState(s, 0);
+  setState(s, State.Nothing);
   let [name] = splitWord(rest.replace(/^ +/, ''), '.', 100);
   const [n, bare] = counted(name);
   if (n !== null) {
@@ -67,7 +69,7 @@ function gotIt(s: Session, line: string): number {
   }
   const e = itemHere(s, name);
   if (e) {
-    if (e.item) e.item.flags &= ~0x2000000;
+    if (e.item) e.item.flags &= ~ItemFlag.PickedUpForPath;
     if (count === 0) {
       // How many is unknown: look at the inventory.
       queue(s, 'i\r');
@@ -75,7 +77,7 @@ function gotIt(s: Session, line: string): number {
     }
     e.count -= count;
     if (e.count === 0) removeEntity(s, s.room.indexOf(e));
-    if (s.s_8474 === name) s.s_8474 = '';
+    if (s.itemPickingUp === name) s.itemPickingUp = '';
     const why = `for ${name}`;
     const detour = s.detours.findIndex((d) => d.why === why);
     if (detour !== -1) {
@@ -105,38 +107,38 @@ function notThere(s: Session, line: string): number {
     const name = here === -1 ? splitWord(text, '.', 100)[0] : text.slice(0, Math.min(here, 99));
     gone = itemHere(s, name);
   }
-  if (!gone && s.state === 0x1c) {
+  if (!gone && s.state === State.Getting) {
     const picked = s.room[s.roomSelected];
-    if (picked && picked.type === 3) gone = picked;
+    if (picked && picked.type === EntityType.Item) gone = picked;
   }
   if (gone) {
-    if (gone.item) gone.item.flags &= ~0x2000000;
+    if (gone.item) gone.item.flags &= ~ItemFlag.PickedUpForPath;
     const i = s.room.indexOf(gone);
     if (i !== -1) removeEntity(s, i);
     s.roomSelected = -1;
   }
   unkeepAll(s);
-  s.f_e290 = 1;
-  s.f_32390 = 0;
+  s.lookDue = 1;
+  s.roomLookedAt = 0;
   forgetAwaited(s, s.state);
-  setState(s, 0);
-  s.lineFlags |= 1;
-  s.f_e544 = 4;
+  setState(s, State.Nothing);
+  s.lineFlags |= LineFlag.Prompted;
+  s.dialState = 4;
   return 1;
 }
 
 export function getLine(s: Session, line: string): number {
   if (indexOf(line, 'You do not see ') !== -1) {
-    s.lineFlags &= ~0x84000;
-    if (s.state === 0x12 || s.state === 0x11 || f_426ab0(s, 0) !== 0) {
+    s.lineFlags &= ~(LineFlag.LookDescribed | LineFlag.Looking);
+    if (s.state === State.Backstabbing || s.state === State.Attacking || inAttackCast(s, 0) !== 0) {
       dropTarget(s);
       s.target = '';
-      if (f_426ab0(s, 0) !== 0) castForgotten(s);
+      if (inAttackCast(s, 0) !== 0) castForgotten(s);
       forgetAwaited(s, s.state);
     }
     unkeepAll(s);
-    s.f_e290 = 1;
-    if (s.state === 0x20) return 0;
+    s.lookDue = 1;
+    if (s.state === State.Looking) return 0;
   }
   if (
     indexOf(line, "You don't see ") !== -1 ||
@@ -146,9 +148,9 @@ export function getLine(s: Session, line: string): number {
     return notThere(s, line);
   }
   if (indexOf(line, 'You cannot carry that much') !== -1) {
-    s.f_8468 = 0;
+    s.weightMax = 0;
     forgetAwaited(s, s.state);
-    setState(s, 0);
+    setState(s, State.Nothing);
     return 1;
   }
   if (indexOf(line, ' damage') !== -1) return 0;

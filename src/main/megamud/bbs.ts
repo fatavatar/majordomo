@@ -18,14 +18,14 @@ export function bbsSetup(s: Session, read: (key: string) => string | undefined):
     const v = read(key);
     return v === undefined ? fallback : parseInt(v, 10) || 0;
   };
-  s.s_7cb9 = str('MenuPrompt', 0x29, '[MAJORMUD]:');
+  s.menuPrompt = str('MenuPrompt', 0x29, '[MAJORMUD]:');
   s.logoffCmd = str('LogoffCmd', 0x15, '');
-  s.s_7cf7 = str('RelogCmd', 0x15, ';relog');
+  s.relogCmd = str('RelogCmd', 0x15, ';relog');
   s.ansiCmd = str('AnsiCmd', 0x15, '=a');
-  s.s_7d21 = str('SpeechPrefix', 5, '.');
+  s.speechPrefix = str('SpeechPrefix', 5, '.');
   s.broadcastPrefix = str('BroadcastPrefix', 5, "'");
   s.bbsTalk.chat = [str('LogonMsg', 0x29, 'logs ON'), str('LogoffMsg', 0x29, 'logs OFF')];
-  s.s_7d7d = str('ShutDownMsg', 0x29, 'Please finish up and log off');
+  s.shutdownMsg = str('ShutDownMsg', 0x29, 'Please finish up and log off');
   s.bbsTalk.broadcast = str('BroadcastMsg', 0x29, 'Broadcast');
   s.bbsTalk.notices = [1, 2, 3].map((n) => ({
     text: str(`Global${n}Msg`, 0x29, '--Unused--'),

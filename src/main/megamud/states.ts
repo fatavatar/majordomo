@@ -26,7 +26,8 @@ export const State = {
   Attacking: 0x11,
   Backstabbing: 0x12,
   Hiding: 0x13,
-  Unknown: 0x14,
+  /** Not understood: no status bar name (it shows the fallback `Unknown`), and nothing sets it. */
+  Unknown_14: 0x14,
   Casting: 0x15,
   Moving: 0x16,
   Bashing: 0x17,
@@ -56,7 +57,18 @@ export const State = {
   Recovering: 0x2f
 } as const;
 
-/** `0x426b00`: the attack-cast states, 9 to 15. */
+/** The attack-cast states, in order. */
+export const CAST_STATES = [
+  State.CastPreMulti,
+  State.CastMulti,
+  State.CastPre,
+  State.CastAux,
+  State.CastMain,
+  State.CastAlt,
+  State.CastUser
+] as const;
+
+/** `0x426b00`: the attack-cast states, `CastPreMulti` to `CastUser`. */
 export function isCastState(state: number): boolean {
   return state - 9 >= 0 && state - 9 <= 6;
 }
