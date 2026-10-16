@@ -19,7 +19,7 @@ import { indexFrom, indexOf } from '../cstr';
 import { postMeditate, preMeditate, preRest } from '../health/prepost';
 
 /** `0x54b010`: what MegaMUD sends after `You are now meditating` when it owes the pre-meditate command. */
-export const MEDITATE = 'med\r';
+const MEDITATE = 'med\r';
 
 export function restLine(s: Session, line: string): number {
   if (indexOf(line, 'You are now resting') !== -1) {

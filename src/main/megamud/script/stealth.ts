@@ -7,13 +7,9 @@
  */
 import { postBackstab, postMeditate, postRest, preBackstab } from '../health/prepost';
 import { findCarried } from '../items/inventory';
-import type { Session } from '../Session';
+import { automated, moving, type Session } from '../Session';
 import { send } from './send';
 import { setState } from './state';
-
-function moving(s: Session): boolean {
-  return s.walking !== 0 || s.roaming !== 0 || s.importing !== 0;
-}
 
 /** `0x472aa0`: the monsters here. */
 function monstersHere(s: Session): number {
@@ -91,8 +87,8 @@ function equipFor(s: Session, name: string, what: string, clearFight: boolean): 
 export function sneakStep(s: Session): number {
   if (s.MegaMud_AutoSneak === 0 && s.f_e2bc === 0) {
     if (s.sneaking !== 0 || s.hidden !== 0 || s.MegaMud_AutoHide !== 0) return 0;
-    if (((s.active !== 0 || moving(s)) && s.f_a32c === 0) || s.MegaMud_DefSneak1 === 0) {
-      if (s.active === 0 && !moving(s)) return 0;
+    if ((automated(s) && s.f_a32c === 0) || s.MegaMud_DefSneak1 === 0) {
+      if (!automated(s)) return 0;
       if (s.f_a32c !== 0 || s.MegaMud_DefSneak2 === 0) return 0;
     }
     return postBackstab(s, 0);

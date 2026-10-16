@@ -765,54 +765,42 @@ describe('the ward switch moving to health', () => {
   });
 });
 
-/*
- * `onlyWhenClean` became `penalties`, 2026-09-23 (todo 01): whether the realm
- * charges for a hang-up. The options file takes the new default; a character
- * inherits its realm unless it had said `false`, which was *hang up anyway*.
- */
-describe('the hang-up refusal becoming whether the realm charges', () => {
+/* Whether a realm charges for a hang-up went with the old automation (2026-10-16). */
+describe('the hang penalties', () => {
   beforeEach(() => {
     fs.mkdirSync(home.globalDir, { recursive: true });
   });
 
-  const block = (clean: boolean): string =>
-    `automation:\n  safety:\n    hangUp:\n      enabled: true\n      onlyWhenClean: ${clean}\n`;
   const hangUp = (file: string): Record<string, unknown> => {
     const parsed = parse(fs.readFileSync(file, 'utf8')) as Record<string, unknown>;
     const automation = parsed['automation'] as Record<string, Record<string, unknown>>;
     return automation['safety']!['hangUp'] as Record<string, unknown>;
   };
-  const profile = (id: string, text: string): string => {
-    const file = path.join(home.profilesDir, id, 'profile.yaml');
-    fs.mkdirSync(path.dirname(file), { recursive: true });
-    fs.writeFileSync(file, text, 'utf8');
-    return file;
-  };
 
-  it('gives the options file the new default, with its sentence', () => {
-    fs.writeFileSync(home.options, block(true), 'utf8');
+  it('go from every character, the older spelling too, and from every realm, once', () => {
+    fs.writeFileSync(
+      home.options,
+      'automation:\n  safety:\n    hangUp:\n      enabled: true\n      penalties: false\n',
+      'utf8'
+    );
+    const profile = path.join(home.profilesDir, 'soul', 'profile.yaml');
+    fs.mkdirSync(path.dirname(profile), { recursive: true });
+    fs.writeFileSync(
+      profile,
+      'automation:\n  safety:\n    hangUp:\n      onlyWhenClean: true\n      belowHealth: 0.2\n',
+      'utf8'
+    );
+    const realm = home.server('bearfather').file;
+    fs.mkdirSync(path.dirname(realm), { recursive: true });
+    fs.writeFileSync(realm, 'name: Bearfather\nhost: bbs.bearfather.net\nhangPenalties: true\n');
     migrate();
-    expect(hangUp(home.options)).toEqual({ enabled: true, penalties: false });
-    expect(fs.readFileSync(home.options, 'utf8')).toContain('charges for a hang-up');
-  });
-
-  it('leaves a character to its realm, unless it had said hang up anyway', () => {
-    const copied = profile('festus', block(true));
-    const chosen = profile('soul', block(false));
+    expect(hangUp(home.options)).toEqual({ enabled: true });
+    expect(hangUp(profile)).toEqual({ belowHealth: 0.2 });
+    expect(parse(fs.readFileSync(realm, 'utf8'))).not.toHaveProperty('hangPenalties');
+    expect(said.filter((m) => m.includes('Hang penalties'))).toHaveLength(1);
+    said = [];
     migrate();
-    expect(hangUp(copied)).toEqual({ enabled: true });
-    expect(hangUp(chosen)).toEqual({ enabled: true, penalties: false });
-  });
-
-  it('says so, naming the files, and is safe to run again', () => {
-    fs.writeFileSync(home.options, block(true), 'utf8');
-    migrate();
-    expect(said.join(' ')).toMatch(/became "hangUp.penalties"/);
-    expect(said.join(' ')).toContain(home.options);
-    const after = fs.readFileSync(home.options, 'utf8');
-    migrate();
-    expect(fs.readFileSync(home.options, 'utf8')).toBe(after);
-    expect(said.join(' ')).not.toMatch(/became "hangUp.penalties"/);
+    expect(said.filter((m) => m.includes('Hang penalties'))).toHaveLength(0);
   });
 });
 
@@ -1114,30 +1102,25 @@ describe('owning the status line', () => {
     fs.mkdirSync(home.globalDir, { recursive: true });
   });
 
-  it('is stated after onPartyChange, off, and the designed line beside the ui block', () => {
+  it('states the designed line in the ui block', () => {
     fs.writeFileSync(
       home.options,
-      'ui:\n  showLogo: true\n' +
-        'automation:\n  enabled: true\n  onPartyChange: party\n  idle:\n    enabled: true\n',
+      'ui:\n  showLogo: true\n' + 'automation:\n  enabled: true\n  idle:\n    enabled: true\n',
       'utf8'
     );
     migrate();
     const file = parse(fs.readFileSync(home.options, 'utf8')) as Record<string, unknown>;
     const automation = file['automation'] as Record<string, unknown>;
     const ui = file['ui'] as Record<string, unknown>;
-    expect(automation['statline']).toEqual({ control: false });
+    // The client-set prompt went with the old automation (2026-10-16).
+    expect(automation['statline']).toBeUndefined();
     expect(ui['rewrites']).toEqual(DEFAULT_CONFIG.ui.rewrites);
-    // Where the template puts it; the other blocks the migrations add come after.
-    const keys = Object.keys(automation);
-    expect(keys.indexOf('statline')).toBe(keys.indexOf('onPartyChange') + 1);
-    expect(keys.indexOf('idle')).toBe(keys.indexOf('statline') + 1);
-    expect(said.some((m) => m.includes('automation.statline'))).toBe(true);
   });
 
   it("brings the template's own paragraph rather than a copy of it", () => {
-    fs.writeFileSync(home.options, 'automation:\n  enabled: true\n', 'utf8');
+    fs.writeFileSync(home.options, 'ui:\n  showLogo: true\n', 'utf8');
     migrate(true);
-    expect(fs.readFileSync(home.options, 'utf8')).toMatch(/set statline full custom/);
+    expect(fs.readFileSync(home.options, 'utf8')).toMatch(/A template is text with tags/);
   });
 
   it('moves a designed line the player already had into the rewrites list, with the shipped designs beside it', () => {
@@ -1282,17 +1265,6 @@ describe('owning the status line', () => {
     said = [];
     migrate(true);
     expect(said.filter((m) => m.includes('is a list of designs now'))).toHaveLength(0);
-  });
-
-  it('leaves a file that already answered it alone, twice over', () => {
-    fs.writeFileSync(home.options, 'automation:\n  statline:\n    control: true\n', 'utf8');
-    migrate();
-    migrate();
-    const automation = parse(fs.readFileSync(home.options, 'utf8')).automation as Record<
-      string,
-      unknown
-    >;
-    expect(automation['statline']).toEqual({ control: true });
   });
 
   const quietList = (): string[] =>
@@ -1922,9 +1894,12 @@ toolbar:
     const row = pinned();
     expect(MEGA).toContain('mega:allOff');
     expect(MEGA).not.toContain('mega:melee');
-    expect(row.slice(row.indexOf('search') + 1, row.indexOf('search') + 1 + MEGA.length)).toEqual(
-      MEGA
-    );
+    // Together, in MegaMUD's order; search, which they went in after, is
+    // unpinned since (`theOldSwitchesUnpinned`).
+    const at = row.indexOf(MEGA[0]!);
+    expect(row.slice(at, at + MEGA.length)).toEqual(MEGA);
+    expect(row).not.toContain('search');
+    expect(row).not.toContain('combat');
     expect(said.join(' ')).toContain('Toolbar row is gone');
     expect(fs.readFileSync(home.internal, 'utf8')).toContain("The user's own note");
   });
@@ -1971,12 +1946,6 @@ toolbar:
     expect(pinned()).toEqual([
       'connect',
       'gear:restore',
-      'automation',
-      'combat',
-      'retaliate',
-      // And the bless switch beside retaliate (`pinTheBlessSwitch`).
-      'autoBless',
-      'loot',
       'loop:open',
       // The three transport keys this row shipped with are one button now, and
       // `theTransportBecameOneButton` renames the first of them in place —
@@ -2019,7 +1988,7 @@ toolbar:
     // — the gear button lands after `connect`, which is, and back has no
     // `move:toggle` to sit beside so it goes on the end. The bless switch has
     // none of its neighbours here either, and runs last, so it takes the front.
-    expect(pinned()).toEqual(['autoBless', 'loop:open', 'connect', 'gear:restore', 'move:back']);
+    expect(pinned()).toEqual(['loop:open', 'connect', 'gear:restore', 'move:back']);
   });
 
   /* A deviation from the shipped row lives in `localStorage`, which this
@@ -2125,86 +2094,6 @@ describe('the realm that left the distribution', () => {
   });
 });
 
-describe('the bank on the way into the realm', () => {
-  const ENTRY = `automation:
-  # The user's own note about the probe.
-  onEnterRealm:
-    - rm
-    - st
-    - i
-    - exp
-    - sc
-    - gb
-    - l
-`;
-
-  const probe = (file: string): string[] =>
-    (parse(fs.readFileSync(file, 'utf8')) as { automation: { onEnterRealm: string[] } }).automation
-      .onEnterRealm;
-
-  beforeEach(() => {
-    fs.mkdirSync(path.dirname(home.options), { recursive: true });
-    fs.writeFileSync(home.options, ENTRY, 'utf8');
-  });
-
-  /* Before the closing look, where the shipped list put it, so the last thing
-     the probe left on screen was the room rather than a balance. The look
-     itself is gone by the end of the pass — `stoppedAnnouncingTheLook` runs
-     after this one — so what is asserted here is the order the two steps
-     leave: `bank` last, and no `l` behind it. */
-  it('adds it before the look that ends the probe', () => {
-    migrate();
-    expect(probe(home.options)).toEqual(['rm', 'st', 'i', 'exp', 'sc', 'gb', 'bank']);
-  });
-
-  it('appends when the list does not end with a look', () => {
-    fs.writeFileSync(home.options, 'automation:\n  onEnterRealm:\n    - rm\n    - st\n', 'utf8');
-    migrate();
-    expect(probe(home.options)).toEqual(['rm', 'st', 'bank']);
-  });
-
-  /* Every character's own file too: a profile overlay states its own list, and
-     one left behind is a character whose vault is never read on the way in. */
-  it('reaches a character that states its own probe', () => {
-    const profile = home.profile('vaelor');
-    fs.mkdirSync(profile.dir, { recursive: true });
-    fs.writeFileSync(profile.file, 'automation:\n  onEnterRealm:\n    - rm\n    - l\n', 'utf8');
-    migrate();
-    expect(probe(profile.file)).toEqual(['rm', 'bank']);
-  });
-
-  it('says so, naming the files and no values', () => {
-    migrate();
-    expect(said.join(' ')).toContain('bank');
-  });
-
-  /* The user's own comments are why this goes through `parseDocument`. */
-  it('keeps the notes the user wrote in it', () => {
-    migrate();
-    expect(fs.readFileSync(home.options, 'utf8')).toContain("The user's own note");
-  });
-
-  /* Idempotent: the migration runs on every launch, and a second pass must not
-     file a second copy of the command. */
-  it('does nothing on a second run', () => {
-    migrate();
-    migrate();
-    expect(probe(home.options).filter((c) => c === 'bank')).toHaveLength(1);
-  });
-
-  it('leaves a file that states no entry probe alone', () => {
-    fs.writeFileSync(home.options, 'automation:\n  enabled: true\n', 'utf8');
-    migrate();
-    // Other steps may state their own new blocks in this file; what this one
-    // must not do is invent an entry probe to add `bank` to.
-    const read = parse(fs.readFileSync(home.options, 'utf8')) as {
-      automation: Record<string, unknown>;
-    };
-    expect(read.automation['onEnterRealm']).toBeUndefined();
-    expect(read.automation['enabled']).toBe(true);
-  });
-});
-
 /*
  * The back button, and the trail it walks (todo 04, 2026-09-13). A button
  * added to the shipped row reaches nobody who has already run the client,
@@ -2305,16 +2194,7 @@ tuning:
      client draws is the row it draws, in order.) */
   it('adds it after the transport, leaving the rest alone', () => {
     migrate();
-    expect(pinned()).toEqual([
-      'connect',
-      'gear:restore',
-      'combat',
-      // Beside combat, the nearest of its shipped neighbours on this row.
-      'autoBless',
-      'move:toggle',
-      'move:back',
-      'loop:open'
-    ]);
+    expect(pinned()).toEqual(['connect', 'gear:restore', 'move:toggle', 'move:back', 'loop:open']);
   });
 
   it('does nothing on a second run', () => {
@@ -2361,14 +2241,7 @@ describe('the gear button on an existing toolbar', () => {
      arriving, not while walking. */
   it('adds it beside the dial, leaving the rest alone', () => {
     migrate();
-    expect(pinned()).toEqual([
-      'connect',
-      'gear:restore',
-      'automation',
-      'autoBless',
-      'loop:open',
-      'move:back'
-    ]);
+    expect(pinned()).toEqual(['connect', 'gear:restore', 'loop:open', 'move:back']);
   });
 
   it('says so, because a toolbar that changed silently is one nobody trusts', () => {
@@ -2390,71 +2263,13 @@ describe('the gear button on an existing toolbar', () => {
   it('goes to the front of a row with no dial on it', () => {
     fs.writeFileSync(home.internal, 'toolbar:\n  pinned:\n    - combat\n', 'utf8');
     migrate();
-    expect(pinned()).toEqual(['gear:restore', 'loop:open', 'combat', 'autoBless', 'move:back']);
+    expect(pinned()).toEqual(['gear:restore', 'loop:open', 'move:back']);
   });
 
   it('leaves a file that states no toolbar alone', () => {
     fs.writeFileSync(home.internal, 'terminal:\n  scrollback: 5000\n', 'utf8');
     migrate();
     expect(fs.readFileSync(home.internal, 'utf8')).toBe('terminal:\n  scrollback: 5000\n');
-  });
-});
-
-describe('the bless switch on an existing toolbar', () => {
-  const ROW = `toolbar:
-  pinned:
-    - connect
-    - 'gear:restore'
-    - automation
-    - combat
-    - retaliate
-    - loot
-    - 'loop:open'
-    - 'move:toggle'
-    - 'move:back'
-`;
-
-  const pinned = pinnedBesideMega;
-
-  beforeEach(() => {
-    fs.mkdirSync(path.dirname(home.internal), { recursive: true });
-    fs.writeFileSync(home.internal, ROW, 'utf8');
-  });
-
-  /* Beside retaliate, where the shipped row puts it (todo 04). */
-  it('adds it beside retaliate, leaving the rest alone', () => {
-    migrate();
-    expect(pinned()).toEqual([
-      'connect',
-      'gear:restore',
-      'automation',
-      'combat',
-      'retaliate',
-      'autoBless',
-      'loot',
-      'loop:open',
-      'move:toggle',
-      'move:back'
-    ]);
-  });
-
-  it('says so', () => {
-    migrate();
-    expect(said.join(' ')).toContain('Auto-Bless');
-  });
-
-  it('does nothing on a second run', () => {
-    migrate();
-    migrate();
-    expect((pinned() as string[]).filter((id) => id === 'autoBless')).toHaveLength(1);
-  });
-
-  /* A curated row keeps its own order: the switch lands after the nearest of
-     the neighbours the shipped row gives it, else at the front. */
-  it('goes to the front of a row with none of its neighbours on it', () => {
-    fs.writeFileSync(home.internal, "toolbar:\n  pinned:\n    - 'loop:open'\n", 'utf8');
-    migrate();
-    expect((pinned() as string[])[0]).toBe('autoBless');
   });
 });
 
@@ -3083,14 +2898,7 @@ describe('the anonymous connection', () => {
  * reaches nobody who has already run the client.
  */
 describe('the look that told the room', () => {
-  // `bank` is already here so `askedTheBankOnEntry`, which runs in the same
-  // pass, is a no-op and these read as being about the look alone.
   const ENTRY = `automation:
-  onEnterRealm:
-    - rm
-    - st
-    - bank
-    - l
   idle:
     # The user's own note about the keep-alive.
     enabled: true
@@ -3100,7 +2908,7 @@ describe('the look that told the room', () => {
 
   const read = (file: string) =>
     parse(fs.readFileSync(file, 'utf8')) as {
-      automation: { onEnterRealm: string[]; idle: { command: string } };
+      automation: { idle: { command: string } };
     };
 
   beforeEach(() => {
@@ -3108,11 +2916,9 @@ describe('the look that told the room', () => {
     fs.writeFileSync(home.options, ENTRY, 'utf8');
   });
 
-  it('makes the idle command a bare Enter and drops the closing look', () => {
+  it('makes the idle command a bare Enter', () => {
     migrate();
-    const after = read(home.options).automation;
-    expect(after.idle.command).toBe('');
-    expect(after.onEnterRealm).toEqual(['rm', 'st', 'bank']);
+    expect(read(home.options).automation.idle.command).toBe('');
   });
 
   /* Every character's own file too: a profile overlay states its own, and one
@@ -3131,18 +2937,6 @@ describe('the look that told the room', () => {
     fs.writeFileSync(home.options, 'automation:\n  idle:\n    command: exp\n', 'utf8');
     migrate();
     expect(read(home.options).automation.idle.command).toBe('exp');
-  });
-
-  /* Only a *trailing* look: one in the middle of the list was put there to
-     separate two answers, and removing it changes what the console shows. */
-  it('leaves a look in the middle of the entry probe alone', () => {
-    fs.writeFileSync(
-      home.options,
-      'automation:\n  onEnterRealm:\n    - l\n    - bank\n    - st\n',
-      'utf8'
-    );
-    migrate();
-    expect(read(home.options).automation.onEnterRealm).toEqual(['l', 'bank', 'st']);
   });
 
   it('says so, naming the file and no values', () => {
@@ -3605,24 +3399,12 @@ describe('the new automation settings', () => {
     fs.writeFileSync(home.options, OPTIONS, 'utf8');
   });
 
-  it('states the two new blocks and the in-block keys, at their defaults', () => {
+  it('states the in-block keys, at their defaults', () => {
     migrate();
     const automation = read(home.options);
-    // `worthless` arrives with `statedTheEntityPredicates`, which runs after
-    // this one and fills the same block — the two are asserted separately.
-    expect(automation['drop']).toMatchObject({
-      enabled: false,
-      items: [],
-      whenEncumbered: false
-    });
-    expect(automation['banking']).toEqual({
-      autoDeposit: false,
-      // Added by `statedTheEntityPredicates` in the same run (todo 00), at the
-      // default that keeps what the file was already doing.
-      bank: 0,
-      depositThresholdCopper: 50_000,
-      keepCopper: 500
-    });
+    // Dropping junk and banking went with the old automation (2026-10-16).
+    expect(automation['drop']).toBeUndefined();
+    expect(automation['banking']).toBeUndefined();
     expect(automation['safety']?.['pvp']).toEqual({ notifyGang: false, action: 'none' });
     expect(automation['party']?.['defendParty']).toBe(false);
     expect(automation['spells']).toMatchObject({
@@ -3634,13 +3416,9 @@ describe('the new automation settings', () => {
   });
 
   it('never overwrites a key the user already stated', () => {
-    fs.writeFileSync(
-      home.options,
-      'automation:\n  drop:\n    enabled: true\n    items: [rusty sword]\n',
-      'utf8'
-    );
+    fs.writeFileSync(home.options, 'automation:\n  party:\n    defendParty: true\n', 'utf8');
     migrate();
-    expect(read(home.options)['drop']).toMatchObject({ enabled: true, items: ['rusty sword'] });
+    expect(read(home.options)['party']).toMatchObject({ defendParty: true });
   });
 
   /*
@@ -3700,13 +3478,12 @@ describe('the settings the entities made possible', () => {
 
   /* All off, so nothing about how the client behaves changes — what changes is
      that the file says the settings exist. */
-  it('states the three at their defaults', () => {
-    write('  loot:\n    coins: true\n  drop:\n    enabled: true\n');
+  it('states the two at their defaults', () => {
+    write('  loot:\n    coins: true\n');
     migrate();
     const automation = read(home.options);
     expect(automation['loot']).toMatchObject({ coins: true, minPrice: 0, maxEncumbrance: 0 });
-    expect(automation['drop']).toMatchObject({ enabled: true, worthless: false });
-    expect(said.join(' ')).toContain('Three settings were added');
+    expect(said.join(' ')).toContain('Two settings were added');
   });
 
   /*
@@ -3726,10 +3503,9 @@ describe('the settings the entities made possible', () => {
   });
 
   it('never overwrites what the file already states, and is idempotent', () => {
-    write('  loot:\n    minPrice: 500\n  drop:\n    worthless: true\n');
+    write('  loot:\n    minPrice: 500\n');
     migrate();
     expect(read(home.options)['loot']).toMatchObject({ minPrice: 500 });
-    expect(read(home.options)['drop']).toMatchObject({ worthless: true });
     const once = fs.readFileSync(home.options, 'utf8');
     migrate();
     expect(fs.readFileSync(home.options, 'utf8')).toBe(once);
@@ -3738,8 +3514,8 @@ describe('the settings the entities made possible', () => {
   /*
    * Reaching inside a block that is not there would be the migration inventing
    * configuration. Tested on a *profile*, because the options file legitimately
-   * gains a whole `drop:` block from `statedTheNewAutomation` — a profile that
-   * never mentioned one inherits it and is left alone.
+   * gains whole blocks from `statedTheNewAutomation` — a profile that never
+   * mentioned one inherits it and is left alone.
    */
   it('adds nothing to a profile that states neither block', () => {
     write('  enabled: true\n');
@@ -4281,6 +4057,9 @@ describe('the old engine’s tuning keys', () => {
     # The user's own note.
     engageCooldownMs: 4000
     lookAfterKillMs: 900
+  spells:
+    healCooldownMs: 1000
+    onsetSettleMs: 900
   afk:
     replyEveryMs: 60000
 `,
@@ -4290,8 +4069,72 @@ describe('the old engine’s tuning keys', () => {
 
   it('takes them out, a group left with nothing whole, and keeps what is still read', () => {
     migrate();
-    expect(tuning()['combat']).toEqual({ lookAfterKillMs: 900 });
+    // `lookAfterKillMs` too, the room re-read gone with them (2026-10-16).
+    expect(tuning()).not.toHaveProperty('combat');
     expect(tuning()).not.toHaveProperty('afk');
+    expect(tuning()['spells']).toMatchObject({ onsetSettleMs: 900 });
+    expect(tuning()['spells']).not.toHaveProperty('healCooldownMs');
+  });
+});
+
+/*
+ * The `automation:` keys only the old automation read (2026-10-16): gone
+ * from the options file and from every character's, and the rest of the
+ * block, the user's notes included, left as it was.
+ */
+describe('the old automation’s keys', () => {
+  const OLD = `automation:
+  # The user's own note.
+  enabled: true
+  rules: []
+  onEnterRealm: [rm, st]
+  onPartyChange: party
+  drop:
+    enabled: false
+  banking:
+    autoDeposit: false
+  talk:
+    lookAtPlayers: false
+  statline:
+    control: false
+  events: []
+  train:
+    stats: false
+  movement:
+    sneak: false
+    walkWhileBlind: false
+    walkWhileLosingHp: true
+  quests:
+    enabled: false
+`;
+
+  const read = (file: string): Record<string, unknown> =>
+    (parse(fs.readFileSync(file, 'utf8')) as { automation: Record<string, unknown> }).automation;
+
+  it('takes them out of every file that states one, and says so once', () => {
+    fs.mkdirSync(path.dirname(home.options), { recursive: true });
+    fs.writeFileSync(home.options, OLD, 'utf8');
+    const profile = home.profile('vaelor');
+    fs.mkdirSync(profile.dir, { recursive: true });
+    fs.writeFileSync(profile.file, 'automation:\n  train:\n    stats: true\n', 'utf8');
+    migrate();
+    const automation = read(home.options);
+    for (const key of ['rules', 'onEnterRealm', 'onPartyChange', 'drop', 'banking', 'talk']) {
+      expect(automation).not.toHaveProperty(key);
+    }
+    for (const key of ['statline', 'events', 'train']) expect(automation).not.toHaveProperty(key);
+    expect(automation['quests']).toEqual({ enabled: false });
+    // The old walker's switches, out of `movement:`; the rest of it kept.
+    const movement = automation['movement'] as Record<string, unknown>;
+    expect(movement['sneak']).toBe(false);
+    for (const key of ['walkWhileBlind', 'walkWhileLosingHp'])
+      expect(movement).not.toHaveProperty(key);
+    expect(read(profile.file)).not.toHaveProperty('train');
+    expect(fs.readFileSync(home.options, 'utf8')).toContain("# The user's own note.");
+    expect(said.filter((m) => m.includes('only the old automation read'))).toHaveLength(1);
+    said = [];
+    migrate();
+    expect(said.filter((m) => m.includes('only the old automation read'))).toHaveLength(0);
   });
 });
 
@@ -4512,69 +4355,6 @@ describe('light before the dark, and the supplies list', () => {
 });
 
 /*
- * The pair added on 2026-09-05 with no migration behind it, which is how the
- * reporter's own options file came to end its `movement` block at
- * `extinguishInLight`: the switch that says whether a blind character walks on
- * existed everywhere except the file they were reading.
- */
-describe('waiting a condition out', () => {
-  const profile = (): string => home.profile('vaelor').file;
-
-  beforeEach(() => {
-    fs.writeFileSync(path.join(old, 'user.yaml'), OPTIONS, 'utf8');
-    migrate();
-    fs.mkdirSync(path.dirname(profile()), { recursive: true });
-    fs.writeFileSync(
-      profile(),
-      'server: GreaterMUD (local)\nautomation:\n  movement:\n    # doors\n    openDoors: true\n',
-      'utf8'
-    );
-  });
-
-  it('writes the pair into a movement block that lacks it, with the paragraph', () => {
-    migrate();
-    const movement = (
-      parse(fs.readFileSync(profile(), 'utf8'))['automation'] as Record<string, unknown>
-    )['movement'] as Record<string, unknown>;
-    // `toMatchObject`: door forcing and the light fill their own keys into the
-    // same block on the same run.
-    expect(movement).toMatchObject({
-      openDoors: true,
-      walkWhileBlind: false,
-      walkWhilePoisoned: false
-    });
-    const text = fs.readFileSync(profile(), 'utf8');
-    expect(text).toContain('# doors');
-    expect(text).toContain('IgnoreBlind');
-    // The half the defaults refuse to make configurable, which is the reason
-    // the paragraph travels with the keys.
-    expect(text).toContain('Paralysis always holds');
-    expect(said.some((m) => m.includes('blind or poisoned'))).toBe(true);
-  });
-
-  it('leaves a stated key alone and does not run twice', () => {
-    fs.writeFileSync(
-      profile(),
-      'server: GreaterMUD (local)\nautomation:\n  movement:\n    walkWhileBlind: true\n    walkWhilePoisoned: true\n',
-      'utf8'
-    );
-    migrate();
-    migrate();
-    const movement = (
-      parse(fs.readFileSync(profile(), 'utf8'))['automation'] as Record<string, unknown>
-    )['movement'] as Record<string, unknown>;
-    expect(movement['walkWhileBlind']).toBe(true);
-    expect(said.filter((m) => m.includes('blind or poisoned'))).toHaveLength(0);
-  });
-
-  it('leaves a file with no movement block alone', () => {
-    fs.writeFileSync(profile(), 'server: GreaterMUD (local)\n', 'utf8');
-    migrate();
-    expect(parse(fs.readFileSync(profile(), 'utf8'))['automation']).toBeUndefined();
-  });
-});
-
-/*
  * The third condition wait (2026-09-22): confusion, which a realm's message
  * table states. Ships off, so it is written in with its paragraph, beside the
  * other two where they are stated.
@@ -4600,7 +4380,7 @@ describe('the regions route planning kept out of', () => {
   it('takes a switched-on region off the list, drops both switches, and runs once', () => {
     fs.writeFileSync(
       profile(),
-      'server: GreaterMUD (local)\nautomation:\n  movement:\n    walkWhileConfused: false\n' +
+      'server: GreaterMUD (local)\nautomation:\n  movement:\n    sneak: false\n' +
         '    useVortexes: true\n    enterNegativePlane: false\n',
       'utf8'
     );
@@ -4725,51 +4505,6 @@ describe('the meditate target and the sys goto flee', () => {
     const { health, safety } = automationOf();
     expect(health!['meditateTo']).toBe(0.9);
     expect(safety!['fleeGoto']).toEqual({ enabled: true, destination: 'sil' });
-  });
-});
-
-describe('waiting a confusion out', () => {
-  const profile = (): string => home.profile('vaelor').file;
-
-  beforeEach(() => {
-    fs.writeFileSync(path.join(old, 'user.yaml'), OPTIONS, 'utf8');
-    migrate();
-    fs.mkdirSync(path.dirname(profile()), { recursive: true });
-  });
-
-  it('writes the key after walkWhilePoisoned, with the paragraph', () => {
-    fs.writeFileSync(
-      profile(),
-      'server: GreaterMUD (local)\nautomation:\n  movement:\n    walkWhilePoisoned: true\n    openDoors: true\n',
-      'utf8'
-    );
-    migrate();
-    const text = fs.readFileSync(profile(), 'utf8');
-    const movement = (parse(text)['automation'] as Record<string, unknown>)['movement'] as Record<
-      string,
-      unknown
-    >;
-    expect(movement['walkWhileConfused']).toBe(false);
-    expect(Object.keys(movement).indexOf('walkWhileConfused')).toBe(
-      Object.keys(movement).indexOf('walkWhilePoisoned') + 1
-    );
-    expect(text).toContain("MegaMUD's Ignore Confusion");
-    expect(said.some((m) => m.includes('Walking on while confused'))).toBe(true);
-  });
-
-  it('leaves a stated key alone and does not run twice', () => {
-    fs.writeFileSync(
-      profile(),
-      'server: GreaterMUD (local)\nautomation:\n  movement:\n    walkWhileConfused: true\n',
-      'utf8'
-    );
-    migrate();
-    migrate();
-    const movement = (
-      parse(fs.readFileSync(profile(), 'utf8'))['automation'] as Record<string, unknown>
-    )['movement'] as Record<string, unknown>;
-    expect(movement['walkWhileConfused']).toBe(true);
-    expect(said.filter((m) => m.includes('Walking on while confused'))).toHaveLength(0);
   });
 });
 
@@ -5992,81 +5727,6 @@ describe('the quest run is stated', () => {
   });
 });
 
-describe('training is stated', () => {
-  let home: Home;
-  let dir: string;
-  const said: string[] = [];
-
-  const migrate = (): void =>
-    migrateHome({ home, legacyOptions: [], note: (message) => said.push(message) });
-
-  const automation = (): Record<string, unknown> =>
-    (parse(fs.readFileSync(home.options, 'utf8')).automation ?? {}) as Record<string, unknown>;
-
-  beforeEach(() => {
-    said.length = 0;
-    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mudengine-training-'));
-    home = homeAt(dir);
-    fs.mkdirSync(path.dirname(home.options), { recursive: true });
-  });
-
-  afterEach(() => fs.rmSync(dir, { recursive: true, force: true }));
-
-  it('writes the whole block off and wanting nothing, after movement, into the options file alone, once', () => {
-    fs.writeFileSync(
-      home.options,
-      'automation:\n  movement:\n    openDoors: true\n  spells:\n    attack: mmis\n',
-      'utf8'
-    );
-    const profile = home.profile('vaelor');
-    fs.mkdirSync(path.dirname(profile.file), { recursive: true });
-    fs.writeFileSync(
-      profile.file,
-      'name: Vaelor\nautomation:\n  movement:\n    sneak: true\n',
-      'utf8'
-    );
-    migrate();
-    expect(automation()['train']).toEqual(DEFAULT_CONFIG.automation.train);
-    const text = fs.readFileSync(home.options, 'utf8');
-    // Between the two the file stated, as the template orders them.
-    const keys = Object.keys(automation());
-    expect(keys.indexOf('movement')).toBeLessThan(keys.indexOf('train'));
-    expect(keys.indexOf('train')).toBeLessThan(keys.indexOf('spells'));
-    expect(said.join('\n')).toContain('automation.train');
-    expect(parse(fs.readFileSync(profile.file, 'utf8')).automation).not.toHaveProperty('train');
-    migrate();
-    expect(fs.readFileSync(home.options, 'utf8')).toBe(text);
-  });
-
-  /*
-   * A block the file already states keeps what it says — `statedTheTraining`
-   * writes a whole block or nothing — but the keys added to it *since* are
-   * written in by `statedTheLevelling`, which is the other half of the same
-   * rule: a key added inside a block reaches nobody who already has one.
-   */
-  it('leaves what a stated block says alone, and adds the keys it predates', () => {
-    fs.writeFileSync(home.options, 'automation:\n  train:\n    stats: true\n', 'utf8');
-    migrate();
-    expect(automation()['train']).toEqual({ stats: true, levels: false, trainer: 0 });
-  });
-
-  /*
-   * And collecting the level comes first in the block, because it comes first
-   * in time: the points `stats` spends are awarded by the level `levels`
-   * collects.
-   */
-  it('puts the levelling keys at the head of the block, and says so once', () => {
-    fs.writeFileSync(home.options, 'automation:\n  train:\n    stats: true\n', 'utf8');
-    migrate();
-    const train = automation()['train'] as Record<string, unknown>;
-    expect(Object.keys(train)).toEqual(['levels', 'trainer', 'stats']);
-    expect(said.join('\n')).toContain('automation.train.levels');
-    const after = fs.readFileSync(home.options, 'utf8');
-    migrate();
-    expect(fs.readFileSync(home.options, 'utf8')).toBe(after);
-  });
-});
-
 /**
  * The account's two prompts become rows in the login script.
  *
@@ -6576,55 +6236,6 @@ describe('the survival floor is stated', () => {
     fs.writeFileSync(home.options, 'automation:\n  combat:\n    minSurvival: 0.9\n', 'utf8');
     migrate();
     expect(combat()['minSurvival']).toBe(0.9);
-  });
-});
-
-describe('walking while losing hit points is stated', () => {
-  let home: Home;
-  let dir: string;
-  const said: string[] = [];
-
-  const migrate = (): void =>
-    migrateHome({ home, legacyOptions: [], note: (message) => said.push(message) });
-
-  const movement = (): Record<string, unknown> =>
-    ((parse(fs.readFileSync(home.options, 'utf8')).automation as Record<string, unknown>)[
-      'movement'
-    ] ?? {}) as Record<string, unknown>;
-
-  beforeEach(() => {
-    said.length = 0;
-    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mudengine-losing-hp-'));
-    home = homeAt(dir);
-    fs.mkdirSync(path.dirname(home.options), { recursive: true });
-  });
-
-  afterEach(() => fs.rmSync(dir, { recursive: true, force: true }));
-
-  it('writes it off after walkWhileConfused, once', () => {
-    fs.writeFileSync(
-      home.options,
-      'automation:\n  movement:\n    walkWhileConfused: false\n    collectKeys: true\n',
-      'utf8'
-    );
-    migrate();
-    expect(movement()['walkWhileLosingHp']).toBe(false);
-    const text = fs.readFileSync(home.options, 'utf8');
-    expect(text.indexOf('walkWhileLosingHp:')).toBeGreaterThan(text.indexOf('walkWhileConfused:'));
-    expect(text.indexOf('walkWhileLosingHp:')).toBeLessThan(text.indexOf('collectKeys:'));
-    expect(said.filter((line) => line.includes('Walk While Losing HP'))).toHaveLength(1);
-    migrate();
-    expect(fs.readFileSync(home.options, 'utf8')).toBe(text);
-  });
-
-  it('leaves a stated switch alone', () => {
-    fs.writeFileSync(
-      home.options,
-      'automation:\n  movement:\n    walkWhileLosingHp: true\n',
-      'utf8'
-    );
-    migrate();
-    expect(movement()['walkWhileLosingHp']).toBe(true);
   });
 });
 

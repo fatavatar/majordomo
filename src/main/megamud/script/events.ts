@@ -7,6 +7,7 @@
  * next worked out (`0x435ba0`). Their settings are the character's
  * `[Schedule]` (`0x437870`).
  */
+import { rowField } from '../cstr';
 import { enemiesHere } from '../room/entities';
 import type { Session, TimedEvent } from '../Session';
 import { leaveGame } from './exit';
@@ -180,13 +181,6 @@ export function eventsStep(s: Session): number {
   }
 }
 
-/** A number at the front of `text` (`0x4ad430`), and the text after it and one `:` (`0x4acb90`). */
-function field(text: string): [number, string] {
-  const m = /^ *(-?\d*)/.exec(text)!;
-  const rest = text.slice(m[0].length);
-  return [Number(m[1]) | 0, rest.startsWith(':') ? rest.slice(1) : rest];
-}
-
 /** `0x437870`: the events from the character's `[Schedule]`: `EventN` is `type:hour:minute:text`. */
 export function loadEvents(s: Session, read: (key: string) => string): void {
   s.events = [];
@@ -196,20 +190,10 @@ export function loadEvents(s: Session, read: (key: string) => string): void {
     let type: number;
     let hour: number;
     let minute: number;
-    [type, text] = field(text);
-    [hour, text] = field(text);
-    [minute, text] = field(text);
+    [type, text] = rowField(text);
+    [hour, text] = rowField(text);
+    [minute, text] = rowField(text);
     s.events.push({ type, hour, minute, text: text.slice(0, 0x50), dueAt: 0 });
   }
   s.eventsChanged = 0;
-}
-
-/** `0x437a10`: the events as `[Schedule]` keys. */
-export function saveEvents(s: Session): Record<string, string> {
-  const out: Record<string, string> = {};
-  s.events.forEach((e, n) => {
-    out[`Event${n}`] = `${e.type}:${e.hour}:${e.minute}:${e.text}`;
-  });
-  s.eventsChanged = 0;
-  return out;
 }

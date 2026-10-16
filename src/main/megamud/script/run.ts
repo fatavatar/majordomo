@@ -17,16 +17,12 @@ import { postBackstab, postMeditate, postRest } from '../health/prepost';
 import { healthStep } from '../health/rest';
 import { hangupAllowed } from '../room/checkNames';
 import { allAttackable, currentTarget, enemiesHere, stopToKill } from '../room/entities';
-import type { RoomEntity, Session } from '../Session';
+import { automated, moving, type RoomEntity, type Session } from '../Session';
 import { hangUp } from './game';
 import { send } from './send';
 import { refreshWho } from './setup';
 import { forgetAwaited, setState } from './state';
 import { hideStep, sneakStep } from './stealth';
-
-function moving(s: Session): boolean {
-  return s.walking !== 0 || s.roaming !== 0 || s.importing !== 0;
-}
 
 /** A reason to run: counted, `Combat.RunRooms` (or one) rooms, the alert, and the message. */
 export function startRun(s: Session, rooms: number, what: string, shown: string): void {
@@ -147,10 +143,7 @@ function runChecks(s: Session, stop: number): { stop: number } | number {
         if (s.inCombat === 0) return 0;
         return breakOff(s);
       }
-      if (
-        ((s.active === 0 && !moving(s)) || s.f_a32c !== 0) &&
-        (s.sneaking !== 0 || s.hidden !== 0)
-      ) {
+      if ((!automated(s) || s.f_a32c !== 0) && (s.sneaking !== 0 || s.hidden !== 0)) {
         forgetAwaited(s, s.state);
         setState(s, 0);
         s.host.activity('Unsafe attack conditions, so remaining hidden');
@@ -246,7 +239,7 @@ function reasonsToRun(s: Session, stop: number): { stop: number; fled: boolean }
 function autoAutoCombat(s: Session, stop: number): void {
   if (s.MegaMud_AutoCombat !== 0 || s.Other_AutoAutoCombat === 0) return;
   if (!((stop !== 0 && s.f_a32c === 0) || (s.hidden === 0 && s.sneaking === 0))) return;
-  if (!((s.active !== 0 || moving(s)) && s.f_a32c === 0)) return;
+  if (!(automated(s) && s.f_a32c === 0)) return;
   if (moving(s)) s.f_a328 = 1;
   s.MegaMud_AutoCombat = 1;
   // `0x460d50` redraws MegaMUD's toolbar; ours follows the toggles each second.
@@ -269,7 +262,7 @@ export function runCheck(s: Session): number {
   if (s.hidden !== 0 && s.f_e2b8 === 0) {
     if (s.inCombat === 0) {
       if (s.partySize === 0 && s.now - s.f_32300 < s.PvP_HideDelay) {
-        if ((s.active !== 0 || moving(s)) && s.f_a32c === 0) return 1;
+        if (automated(s) && s.f_a32c === 0) return 1;
         if (s.MegaMud_AutoSneak === 0) return 1;
         sneakStep(s);
         return 1;

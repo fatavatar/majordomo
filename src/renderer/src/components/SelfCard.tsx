@@ -43,8 +43,6 @@ export interface SelfCardProps extends CardChrome, Omit<InventoryBodyProps, 'ret
   profileName: string;
   /** This character's supplies list, and the write. Null on a pinned float. */
   supplies: SupplyList | null;
-  /** Whether the auto-buy switch is on, so an idle list can say why. */
-  suppliesOn: boolean;
 }
 
 const FACES = ['self', 'pack', 'supplies'] as const;
@@ -106,7 +104,6 @@ function SelfCard({
   session,
   profileName,
   supplies,
-  suppliesOn,
   inspect,
   gear,
   loadWearer,
@@ -401,9 +398,6 @@ function SelfCard({
 
   const suppliesFace = (
     <>
-      {!suppliesOn && rows.length > 0 && (
-        <p className="settings-note">{t('cards.self.supplies.switchedOff')}</p>
-      )}
       <CardTable
         caption={t('cards.self.supplies.tableCaption')}
         className="supplies"

@@ -62,8 +62,7 @@ export type ToolbarActionId = (typeof TOOLBAR_ACTIONS)[number];
 
 /**
  * Every button the toolbar has for any character, the ids its pins choose
- * from: the switches, MegaMUD's toggles (a character its engine runs draws
- * them in the switches' place) and the actions.
+ * from: our flee, MegaMUD's toggles and the actions.
  */
 export const TOOLBAR_IDS: readonly ToolbarItemId[] = [
   ...AUTOMATION_SWITCH_NAMES,
@@ -76,57 +75,13 @@ export const TOOLBAR_IDS: readonly ToolbarItemId[] = [
  *
  * Written out rather than derived, and the type makes it exhaustive: a switch
  * added to `AUTOMATION_SWITCHES` with no glyph here does not compile, which is
- * the closed-union rule this project states for `GUARD_FIELDS` applied to the
- * one place a switch becomes visible.
+ * this project's closed-union rule applied to the one place a switch becomes
+ * visible.
  */
 const SWITCH_ICONS: Record<AutomationSwitch, IconName> = {
-  automation: 'bolt',
-  combat: 'sword',
-  retaliate: 'shield',
-  autoBless: 'sparkle',
-  retreat: 'run',
-  // The flag again, deliberately: this is a jump to a named destination, the
-  // same idea a loop's own goto marker draws, not a second `run`.
-  fleeGoto: 'flag',
-  hangUp: 'unplug',
-  loot: 'coins',
-  /*
-   * The flame, which is what a blessing off an item looks like on screen: the
-   * weapon glows and the sentence lands. Shared with the light switch and
-   * deliberately -- both are *invoking an item*, and a second flame-ish glyph
-   * would be a distinction nobody could read at 14px.
-   */
-  invokeItems: 'flame',
-  drop: 'trash',
-  // The magnifier, which is what a search is: `search` is the Reference card's
-  // own glyph for asking a question of something in front of you.
-  search: 'search',
-  // The coins again, deliberately: picking coins up and banking them are the
-  // same idea at two ends of a lap, and the label is what separates them.
-  autoDeposit: 'coins',
-  supplies: 'bag',
-  openDoors: 'door',
-  pickLocks: 'key',
-  bashDoors: 'hammer',
-  sneak: 'eyeOff',
-  provideLight: 'flame',
-  healParty: 'heart',
-  assistLeader: 'users',
-  // The shield again, deliberately: retaliate is this character's own hitting
-  // back and this is the party's — the same idea at two scopes, and the label
-  // is what separates them.
-  defendParty: 'shield',
-  restWithLeader: 'moon',
-  // The people glyph again, deliberately: this is still about this
-  // character's place among its party, the same idea `assistLeader` uses.
-  autoRank: 'users',
-  remotes: 'at',
-  gangpath: 'broadcast',
-  lookAtPlayers: 'eye',
-  // The flag a quest's counter is: the card draws a chain as a track of them.
-  quests: 'flag',
-  // The worn shirt: this switch is about what is on, not about the pack.
-  gear: 'shirtWorn'
+  // The flag, deliberately: this is a jump to a named destination, the same
+  // idea a loop's own goto marker draws, not a second `run`.
+  fleeGoto: 'flag'
 };
 
 /**
@@ -140,67 +95,8 @@ const SWITCH_ICONS: Record<AutomationSwitch, IconName> = {
  */
 function switchLabel(name: AutomationSwitch): string {
   switch (name) {
-    case 'automation':
-      return t('toolbar.automation');
-    case 'combat':
-      return t('toolbar.combat');
-    case 'retaliate':
-      return t('toolbar.retaliate');
-    case 'autoBless':
-      return t('toolbar.autoBless');
-    case 'retreat':
-      return t('toolbar.retreat');
     case 'fleeGoto':
       return t('toolbar.flee');
-    case 'hangUp':
-      return t('toolbar.hangUp');
-    case 'loot':
-      return t('toolbar.loot');
-    case 'drop':
-      return t('toolbar.drop');
-    case 'autoDeposit':
-      return t('toolbar.autoDeposit');
-    case 'openDoors':
-      return t('toolbar.openDoors');
-    case 'pickLocks':
-      return t('toolbar.pickLocks');
-    case 'bashDoors':
-      return t('toolbar.bashDoors');
-    case 'sneak':
-      return t('toolbar.sneak');
-    case 'healParty':
-      return t('toolbar.healParty');
-    case 'assistLeader':
-      return t('toolbar.assistLeader');
-    case 'defendParty':
-      return t('toolbar.defendParty');
-    case 'restWithLeader':
-      return t('toolbar.restWithLeader');
-    case 'autoRank':
-      return t('toolbar.autoRank');
-    case 'remotes':
-      return t('toolbar.remotes');
-    case 'gangpath':
-      return t('toolbar.gangpath');
-    case 'lookAtPlayers':
-      return t('toolbar.lookAtPlayers');
-    case 'search':
-      return t('toolbar.search');
-    case 'supplies':
-      return t('toolbar.supplies');
-    case 'provideLight':
-      return t('toolbar.provideLight');
-    case 'invokeItems':
-      return t('toolbar.invokeItems');
-    case 'quests':
-      return t('toolbar.quests');
-    case 'gear':
-      return t('toolbar.gear');
-    default: {
-      /* A switch in the union with no label is a button nobody can read. */
-      const unreachable: never = name;
-      return unreachable;
-    }
   }
 }
 
@@ -318,10 +214,8 @@ export interface ToolbarSubject {
   canRestoreGear: boolean;
   setSwitch(name: AutomationSwitch, on: boolean): void;
   /**
-   * The MegaMUD engine's toggles, for a character it runs; null for one the
-   * old automation runs. When present they stand where the switches would:
-   * the old automation stands down for such a character, so its switches
-   * would turn nothing on or off.
+   * The MegaMUD engine's toggles; null until the engine has said, which
+   * draws none.
    */
   mega: MegaToggles | null;
   setMegaToggle(name: MegaToggle): void;
@@ -414,9 +308,10 @@ export function toolbarButtons(subject: ToolbarSubject): ToolbarButton[] {
     run: restoreGear
   };
 
-  const switches_: ToolbarButton[] =
-    mega !== null
-      ? MEGA_TOGGLES.map(({ name }) => ({
+  const toggles: ToolbarButton[] =
+    mega === null
+      ? []
+      : MEGA_TOGGLES.map(({ name }) => ({
           id: `mega:${name}` as const,
           label: megaLabel(name),
           icon: MEGA_ICONS[name],
@@ -425,13 +320,6 @@ export function toolbarButtons(subject: ToolbarSubject): ToolbarButton[] {
           // No Hangup is drawn with Connect, not with them.
           disabled: name !== 'allOff' && name !== 'noHangup' && mega.on.allOff,
           run: () => setMegaToggle(name)
-        }))
-      : AUTOMATION_SWITCH_NAMES.map((name) => ({
-          id: name,
-          label: switchLabel(name),
-          icon: SWITCH_ICONS[name],
-          on: switches[name],
-          run: () => setSwitch(name, !switches[name])
         }));
 
   /*
@@ -532,5 +420,5 @@ export function toolbarButtons(subject: ToolbarSubject): ToolbarButton[] {
     }
   ];
 
-  return [dial, gear, ...switches_, ...flee, ...transport];
+  return [dial, gear, ...toggles, ...flee, ...transport];
 }

@@ -10,8 +10,8 @@ import { setState } from '../script/state';
 import type { Session } from '../Session';
 import { recheckStats } from '../stats/exp';
 
-/** What training costs at this level, in copper. */
-function trainingCost(level: number): number {
+/** The gold `train` costs at a level (`0x40d540`), in copper. */
+export function trainingCost(level: number): number {
   const n = level + 2;
   if (level < 10) return n * 0x96;
   if (level === 10) return 3000;

@@ -18,12 +18,7 @@ import { trainingCost } from '../../shared/training';
 import { carriedCount } from '../../shared/supplies';
 import type { TrainerChoice } from '../../shared/world';
 import { MASKED_COMMAND } from '../../shared/automation';
-import type {
-  AutomationSnapshot,
-  EngageDecision,
-  SafetyDecision,
-  SentCommand
-} from '../../shared/automation';
+import type { AutomationSnapshot, SafetyDecision, SentCommand } from '../../shared/automation';
 import { LoginAutomator, type StandDown } from '../automation/LoginAutomator';
 import type { MessageTrigger } from '../../shared/messageTriggers';
 import { mergeItemRules, type ItemRule } from '../../shared/itemRules';
@@ -31,7 +26,6 @@ import { withRealmMonsters, type MonsterRule } from '../../shared/monsterRules';
 import { AutoKeys, type KeyedWay } from '../automation/AutoKeys';
 import type { MegaChoices } from '../../shared/ipc';
 import type { RemoteName } from '../../shared/remotes';
-import type { AutomationSwitch } from '../../shared/config';
 import { NO_LOOP, type LoopProgress } from '../../shared/loops';
 import {
   movementOf,
@@ -46,7 +40,6 @@ import { AFTER_WORD } from '../automation/PackAfter';
 import { bareName } from '../../shared/items';
 import { chargedInCopper, coinReader, type CoinNames } from '../../shared/coins';
 import { Wards } from '../automation/Wards';
-import { RealmMenu } from './RealmMenu';
 import type { Loop } from '../../shared/loops';
 import { splitStop } from '../../shared/loops';
 import {
@@ -134,8 +127,6 @@ import {
   commandOf,
   GREATERMUD_ONLY,
   opensStatScreen,
-  REREAD_ROOM,
-  ROOM_READ_KEY,
   type CommandName
 } from '../../shared/commands';
 import { STATUS_LINE } from '../parse/patterns';
@@ -534,12 +525,6 @@ export interface SessionSink {
    * down by whoever decided where the files go (`WorldBook`).
    */
   realmTold?(realm: RealmWord): void;
-  /**
-   * Flip one automation switch in this character's own file, for the two
-   * things the session decides on the player's behalf (`CombatLease`): combat
-   * lent for a hold, and given back on arrival. Whether it was written.
-   */
-  switchAutomation?(name: AutomationSwitch, on: boolean): boolean;
 }
 
 /** The rooms holding one lair signature, as the hunting survey groups them. */
@@ -690,7 +675,6 @@ export class SessionManager {
   /** Talk-box lines queued this session, so each one's commands can be named together. */
   private macros = 0;
   /** What the realm menu said a hang-up costs on the realm chosen (todo 01). */
-  private readonly realmMenu = new RealmMenu();
   /**
    * Whether the standing-down notice has been said for the stretch of being on
    * the ground in progress. Cleared by the first state that is not, so a
@@ -719,15 +703,6 @@ export class SessionManager {
    * has to be answerable, and so does "why did it not hang up?".
    */
   private readonly safetyLog: SafetyDecision[] = [];
-  /**
-   * What auto-combat opened on, or declined to and why.
-   *
-   * Beside the safety trace and capped the same way, for the reason
-   * `SafetyDecision` already gives: somebody who turned a feature on and saw
-   * nothing happen needs to see that it *decided* not to. Auto-combat is the
-   * loudest thing in the client and recorded only what it did.
-   */
-  private readonly engageLog: EngageDecision[] = [];
   private lastSize: TerminalSize = { cols: 80, rows: 24 };
 
   /**
@@ -792,11 +767,6 @@ export class SessionManager {
   /** The realm's item table (`servers/<id>/items.yaml`), for the MegaMUD engine. */
   private realmItems: readonly ItemRule[] = [];
   private readonly login: LoginAutomator;
-  /**
-   * A room re-read `rereadRoom` asked for and when it went out, until the
-   * listing answers it or `roomOwedMs` passes. See `roomUnsettled`.
-   */
-  private roomOwed: { asked: number; sent: number | null } | null = null;
   /** Where this character should be at all, and the lap that puts it there — todo 05. */
   private readonly hunt: AutoHunt;
   /** Going to get the item a route's door wants — todo 07. */
@@ -855,7 +825,7 @@ export class SessionManager {
    * a saved realm other than its own from the palette, so a word retired on a
    * MajorMUD board must not stay retired when the next connection is to
    * GreaterMUD. The cost of not knowing it is the same realm is one refusal
-   * per connection, which is what `onEnterRealm` already pays.
+   * per connection.
    */
   private readonly unavailable = new Set<CommandName>();
   /** The words already spoken about, so a refusal is said once and not per ask. */
@@ -902,25 +872,13 @@ export class SessionManager {
    * whole client on a realm with no working locate command, which is why the
    * reckoning above it had to be right rather than merely recoverable.
    *
-   * One coalesce key for both callers, because it is one question: a lap that
-   * lost its place and a walk that has just been scattered want the same
-   * sentence back, and two keys would spend two commands on it.
-   *
    * **Public**, in addition to those two callers, for the Room card's own
    * locate button (`Invoke.locate`): a window may ask *that* a location be
    * asked for, but never *which word* — main is what read the realm's
    * setting, so main is what has to pick.
    */
   askWhereIAm(): boolean {
-    if (this.locateWord === null) return false;
-    if (this.mega !== null) return this.megaLocate();
-    return this.queue.enqueue({
-      command: this.locateWord,
-      priority: 'probe',
-      coalesceKey: 'loop-locate',
-      expiresAt: Date.now() + 10_000,
-      reason: t('session.loop.locateReason')
-    });
+    return this.megaLocate();
   }
 
   /**
@@ -1225,7 +1183,6 @@ export class SessionManager {
         if (command.length > 0) {
           this.tracker.observeCommand(command);
           this.login.observeCommand(command);
-          this.noteRealmChoice(command);
           // The classifier needs it too: the server echoes what we send, and
           // `You say "<command>"` is only interpretable next to it.
           this.classifier.observeCommand(command);
@@ -1381,7 +1338,7 @@ export class SessionManager {
         // The lap's **name**, so the hunt can tell its own from one the player
         // started while it was running. See `HuntPlanner.runningLoop`.
         runningLoop: () => this.runningLoopName(),
-        stopLoop: (reason) => this.stopLapAndWalk(reason),
+        stopLoop: () => this.stopLapAndWalk(),
         moveInFlight: () => this.tracker.pendingMoves > 0,
         walking: () => this.walkingNow(),
         /*
@@ -1428,7 +1385,7 @@ export class SessionManager {
           return 'refused' in answer ? answer.refused : null;
         },
         looping: () => this.runningLoopName() !== null,
-        stopLoop: (reason) => this.stopLapAndWalk(reason),
+        stopLoop: () => this.stopLapAndWalk(),
         alsoTake: (name) => this.mega?.alsoTake(name, true),
         stopTaking: (name) => this.mega?.alsoTake(name, false),
         // The route the player asked for: the engine plans its own way from
@@ -1867,48 +1824,6 @@ export class SessionManager {
   }
 
   /**
-   * A monster came, went or died here: read the room again, always
-   * (the player, 2026-09-23 — *ALWAYS be sending enter after a monster dies,
-   * leaves the room, or enters the room*).
-   *
-   * A death, for what it dropped: the drop is rarely announced, and only a
-   * listing's `You notice … here.` says so, which `AutoLoot` picks up from.
-   * An arrival or a departure, for who is left: fifteen giant war dogs walked
-   * in on skinny, the room was believed empty after the first died, and the
-   * character sat down to meditate and walked off through the other fourteen.
-   *
-   * Asked after `lookAfterKillMs` and coalesced, so a kill's two lines and a
-   * burst of arrivals are one Enter each, with the burst already in. A bare
-   * Enter (`REREAD_ROOM`), never `l`, which is said to everybody here. Not
-   * while a step is unanswered: the room it arrives in is the re-read, and an
-   * Enter now would be read as the move's answer.
-   *
-   * **And nothing walks or sits down until it is answered** (`roomUnsettled`):
-   * a step or a `med` decided before the listing is decided on a room that
-   * may hold what just walked in. Bounded by `roomOwedMs` after the send.
-   */
-  private rereadRoom(reason: string, priority: 'probe' | 'combat' = 'probe'): void {
-    if (!this.automationConfig.enabled) return;
-    if (this.tracker.current.phase !== 'in-game') return;
-    if (this.tracker.pendingMoves > 0) return;
-    const now = Date.now();
-    const owed: { asked: number; sent: number | null } = { asked: now, sent: null };
-    this.roomOwed = owed;
-    this.queue.enqueue({
-      command: REREAD_ROOM,
-      priority,
-      coalesceKey: ROOM_READ_KEY,
-      notBefore: now + tuning().combat.lookAfterKillMs,
-      expiresAt: now + tuning().session.retreatPatienceMs,
-      stillWanted: () => this.tracker.current.phase === 'in-game',
-      onSent: () => {
-        if (this.roomOwed !== null) this.roomOwed.sent = Date.now();
-      },
-      reason
-    });
-  }
-
-  /**
    * A monster this character watched die, which is the other way a step runs.
    *
    * Reported 2026-09-15: the dread mystic died in the Meditation Chamber and
@@ -2003,7 +1918,6 @@ export class SessionManager {
     this.itemErrand.reset();
     this.questRunner.reset();
     this.keys.reset();
-    this.roomOwed = null;
     /*
      * The loop and the player's route are the two things a new connection
      * does not put down — *when it is the same realm*. A loop is a list of
@@ -2049,9 +1963,7 @@ export class SessionManager {
     this.realmMismatchSaid = false;
     this.pvpSaid.clear();
     this.safetyLog.length = 0;
-    this.engageLog.length = 0;
     this.login.reset();
-    this.realmMenu.reset();
     this.outbound = '';
     this.phaseWas = 'unknown';
     this.realmTold = null;
@@ -2192,7 +2104,6 @@ export class SessionManager {
          */
         this.tracker.observeCommand(command);
         this.login.observeCommand(command);
-        this.noteRealmChoice(command);
         this.classifier.observeCommand(command);
         /*
          * The earliest moment the client can know the command prompt is about
@@ -2400,7 +2311,7 @@ export class SessionManager {
    * realm-entry probe for this connection and would not fire it again, so a
    * character rerolled at the menu and walked back in kept the old one's name
    * on every card — with `st` and `i`, the two commands that would have
-   * corrected it, sitting in `onEnterRealm` and never sent (2026-08-31).
+   * corrected it, sitting in the entry probe and never sent (2026-08-31).
    *
    * The queue is cleared for the reason the socket-close path clears it:
    * intents raised for a character standing in the realm must not be sent into
@@ -2427,7 +2338,6 @@ export class SessionManager {
     this.itemErrand.reset();
     this.questRunner.reset();
     this.keys.reset();
-    this.roomOwed = null;
     this.pvpSaid.clear();
     /*
      * An edge the realm refused was refused for *this* character — a door it
@@ -2462,14 +2372,17 @@ export class SessionManager {
   }
 
   /**
-   * A probe asked for from a card, proposed to the arbiter like any other.
+   * A probe asked for from a card: on the engine's pending list, as the
+   * actions kept beside it are (`keptQueue`), and not `send`, deliberately —
+   * that is what makes it an automation command, sent when MegaMUD's
+   * scheduler may, and quiet in the console when `internal.yaml` names it.
    *
-   * Through the queue and not `send`, deliberately: that is what makes it an
-   * automation command — paced by the prompt, held while the player is
-   * typing, and quiet in the console when `internal.yaml` names it.
+   * It went to our own queue, which refuses everything but the player's own
+   * while the engine runs the character (`configure`), so every card's press
+   * was dropped unsaid (2026-10-16).
    */
   ask(command: string): boolean {
-    return this.queue.enqueue({
+    return this.keptQueue.enqueue({
       command,
       priority: 'probe',
       coalesceKey: `ask:${command}`,
@@ -2606,12 +2519,12 @@ export class SessionManager {
   /**
    * Where the actions kept beside the engine propose their commands (a ward,
    * a key off the floor): the engine's pending list for a character it runs,
-   * which its scheduler sends when it may and which holds its walk, and our
-   * queue otherwise. Sent is taken as said when it is put on the list.
+   * which its scheduler sends when it may and which holds its walk. Sent is
+   * taken as said when it is put on the list.
    */
   private readonly keptQueue: Pick<CommandQueue, 'enqueue' | 'cancel' | 'queued'> = {
     enqueue: (intent) => {
-      if (this.mega === null) return this.queue.enqueue(intent);
+      if (this.mega === null) return false;
       // MegaMUD's list takes a command once (`0x48ab80`): a repeat is not sent.
       if (this.mega.pendingHas(intent.command)) return false;
       this.megaQueued.push(intent);
@@ -2622,15 +2535,15 @@ export class SessionManager {
       return true;
     },
     cancel: (match) => {
-      if (this.mega === null) return this.queue.cancel(match);
+      if (this.mega === null) return 0;
       const gone = this.megaQueued.filter(match);
       for (const intent of gone) this.mega.unqueue(intent.command);
       this.megaQueued = this.megaQueued.filter((intent) => !gone.includes(intent));
       return gone.length;
     },
     queued: (match) => {
-      if (this.mega === null) return this.queue.queued(match);
       const mega = this.mega;
+      if (mega === null) return false;
       this.megaQueued = this.megaQueued.filter((intent) => mega.pendingHas(intent.command));
       return this.megaQueued.some(match);
     }
@@ -2780,12 +2693,9 @@ export class SessionManager {
     return walk.status === 'walking' && loop.status !== 'running';
   }
 
-  /** Stops the lap and the walk, the engine's (its Go/Stop) or ours. */
-  private stopLapAndWalk(reason: string): void {
-    if (this.mega !== null) {
-      if (this.mega.walking) this.mega.button(0x803);
-      return;
-    }
+  /** Stops the lap and the walk: the engine's Go/Stop. */
+  private stopLapAndWalk(): void {
+    if (this.mega?.walking === true) this.mega.button(0x803);
   }
 
   /** A route walked by the engine, as its Go To to the room it ends in, and only that. */
@@ -2866,7 +2776,8 @@ export class SessionManager {
       );
       return;
     }
-    const refused = this.megaAct(() => mega.walkTo(kept.to, kept.run));
+    // Alone, as the route was first walked (`walkRoute`).
+    const refused = this.megaAct(() => mega.walkTo(kept.to, kept.run, true));
     this.sink.notice(
       refused === null
         ? t('session.move.resumingWalk', {
@@ -3081,12 +2992,7 @@ export class SessionManager {
     const kept = stated.enabled;
     // The MegaMUD engine decides for itself: nothing here acts beside it.
     if (this.mega !== null) {
-      stated = {
-        ...stated,
-        enabled: false,
-        rules: [],
-        remotes: { ...stated.remotes, enabled: false }
-      };
+      stated = { ...stated, enabled: false, remotes: { ...stated.remotes, enabled: false } };
     }
     // The realm's monster table under the character's own rows: every module
     // below is handed what this character actually does about each monster.
@@ -3110,15 +3016,10 @@ export class SessionManager {
     // prefers; derived again the next time a route is planned.
     this.preferred = null;
     this.queue.configure(automation);
-    this.wards.configure(automation.health, this.mega !== null ? kept : automation.enabled);
-    this.questRunner.configure(automation.quests, this.mega !== null ? kept : automation.enabled);
-    this.hunt.configure(
-      automation.hunting,
-      automation.walk,
-      automation.health,
-      this.mega !== null ? kept : automation.enabled
-    );
-    this.keys.configure(automation.movement, this.mega !== null ? kept : automation.enabled);
+    this.wards.configure(automation.health, kept);
+    this.questRunner.configure(automation.quests, kept);
+    this.hunt.configure(automation.hunting, automation.walk, automation.health, kept);
+    this.keys.configure(automation.movement, kept);
     this.login.configure(login);
     this.secret = login.password;
   }
@@ -3558,9 +3459,6 @@ export class SessionManager {
      */
     else if (isPrompt(block.type) || block.type === 'user-stats-assigned') this.releaseStatScreen();
 
-    // Ahead of the login script, which answers the realm prompt inside its own
-    // `onBlock`: the menu has to know it was asked before the answer goes.
-    this.realmMenu.onBlock(block);
     this.login.onBlock(block);
     /*
      * An unrecognised command is not refused by this server — it is *said out
@@ -3661,17 +3559,6 @@ export class SessionManager {
      * room the corpse is in either way.
      */
     for (const dead of this.tracker.takeDeaths()) this.noteQuestKilled(dead);
-    if (block.type === 'mob-dies' || block.type === 'user-gain-experience') {
-      this.rereadRoom(t('automation.combat.reasonLookAfterKill'));
-    } else if (block.type === 'mob-arrives-room' && !this.tracker.roomOpen) {
-      // Inside a room listing the line is the room's prose, and re-reading on
-      // it would print it again, for ever.
-      this.rereadRoom(t('automation.combat.reasonLookAfterArrival'));
-    } else if (block.type === 'mob-leaves-room' && !this.tracker.roomOpen) {
-      this.rereadRoom(t('automation.combat.reasonLookAfterDeparture'));
-    }
-    // The listing that answers it: after the Enter went out, the room's exits.
-    if (block.type === 'room-exits' && this.roomOwed?.sent != null) this.roomOwed = null;
     /*
      * The round clock the one heal or blessing a round is kept to: blows
      * either way mark the rounds, and the server's own refusal spends one.
@@ -3921,14 +3808,18 @@ export class SessionManager {
     }
     if (this.locateWord !== null) {
       const probed = this.tracker.staleProbe(Date.now());
-      if (probed !== null) {
-        this.queue.enqueue({
+      // The engine's pending list, as a card's probe is (`ask`): our own queue
+      // refuses it while the engine runs the character.
+      const asked =
+        probed !== null &&
+        this.keptQueue.enqueue({
           command: this.locateWord,
           priority: 'probe',
           coalesceKey: 'stale-probe',
           expiresAt: Date.now() + tuning().parse.staleMoveMaxMs,
           reason: t('session.walk.probeReason')
         });
+      if (probed !== null && asked) {
         const seconds = Math.round(tuning().parse.staleProbeMs / 1000);
         this.sink.notice(
           probed.length === 0
@@ -4097,11 +3988,6 @@ export class SessionManager {
     return this.automationConfig.loops.find((entry) => entry.name === name);
   }
 
-  /** Every loop this character can run, for the palette. */
-  get loopNames(): string[] {
-    return this.automationConfig.loops.map((entry) => entry.name);
-  }
-
   /** The palette's view: each loop by name, with how many stops it visits. */
   get loopList(): Array<{ name: string; stops: number }> {
     return this.automationConfig.loops.map((entry) => ({
@@ -4257,11 +4143,10 @@ export class SessionManager {
       strength: state.progress.strength ?? null,
       pickSkill: state.progress.picklocks ?? undefined,
       // And which of the two the walker will spend: a door planned on a skill
-      // whose switch is off is a door the walk stops at.
-      forcing: {
-        pick: this.automationConfig.movement.pickLocks,
-        bash: this.automationConfig.movement.bashDoors
-      },
+      // whose switch is off is a door the walk stops at. The MegaMUD engine's
+      // own Other tab's: it picks with Pick locks instead of bashing and
+      // bashes every other locked door (`0x408870`, 2026-10-16).
+      forcing: { pick: (this.mega?.s.Other_CanPickLocks ?? 0) !== 0, bash: true },
       // And the ways and places routes keep out of (todo 806): pruned for a
       // walk nobody watches, offered beside the way round on the panel.
       keepOut: { words: this.automationConfig.movement.keepOutOf, allowed: allowing },
@@ -4597,36 +4482,6 @@ export class SessionManager {
    * character *will* hold at each step, since the way into a chain's later
    * rooms is routinely gated on the rank the step before hands out.
    */
-  /**
-   * The character's own stock rows that a plan should fill, with the realm's
-   * id for each.
-   *
-   * Short of the **ceiling**, not of the floor: a list saying *keep three,
-   * carry six* is asking for six before setting out, and four torches at the
-   * door of a fortress is how a run ends up in the dark (2026-09-22). A row
-   * naming no counter is `AutoLoot`'s to fill off the floor, and an unlisted
-   * pack is not an empty one.
-   */
-  private stockShort(state: CharacterState): Array<{ id: number; row: SupplyItem }> {
-    const world = this.world;
-    if (world === undefined) return [];
-    // Nothing is planned against a switch that is off: `Supplies.fetch`
-    // would answer *Auto-Supplies is off* and the run would wear the refusal
-    // for a torch the quest never asked for.
-    if (!this.automationConfig.enabled || !this.automationConfig.supplies.enabled) return [];
-    if (packRows(state.inventory) === null) return [];
-    const wanted = this.automationConfig.supplies.items.filter(
-      (row) =>
-        row.shop.trim().length > 0 && carriedCount(state, row.name) < Math.max(row.max, row.min)
-    );
-    if (wanted.length === 0) return [];
-    const named = world.itemsNamed(wanted.map((row) => row.name));
-    return wanted.flatMap((row) => {
-      const found = named[row.name];
-      return found === undefined ? [] : [{ id: found.id, row }];
-    });
-  }
-
   async questPlan(block: number, marked: number | null): Promise<QuestPlan | null> {
     const world = this.world;
     if (world === undefined) return null;
@@ -4650,11 +4505,6 @@ export class SessionManager {
     // leg through the same rooms reads the spell as stopped rather than
     // buying a second waterskin.
     const supplies: number[] = [];
-    // And the character's own stock list, which nothing about a quest run
-    // used to fill: each row short of its ceiling, and the leg whose detour
-    // to a counter is cheapest, decided as the legs are priced.
-    const stocking = this.stockShort(state);
-    const stockAt = new Map<number, { step: number; detour: number; item: PlanItem }>();
     let at: RoomId | null = here;
     let rank = fromRank ?? 0;
     let moves = 0;
@@ -4686,37 +4536,6 @@ export class SessionManager {
       for (const item of planned.items) {
         if (item.stops !== undefined && !supplies.includes(item.id)) supplies.push(item.id);
       }
-      if (stocking.length > 0 && at !== null) {
-        const to = planned.at === undefined ? null : planned.at.room;
-        for (const place of world.stockingPlaces(
-          stocking.map((row) => row.id),
-          at,
-          to,
-          priced
-        )) {
-          const row = stocking.find((each) => each.id === place.item);
-          const best = stockAt.get(place.item);
-          if (row === undefined || (best !== undefined && best.detour <= place.detour)) continue;
-          stockAt.set(place.item, {
-            step: steps.length - 1,
-            detour: place.detour,
-            item: {
-              id: row.id,
-              name: row.row.name,
-              held: false,
-              hand: false,
-              count: Math.max(row.row.max, row.row.min),
-              stock: row.row.min,
-              source: {
-                how: 'buy',
-                shops: [place.shop],
-                at: { room: roomId(place.map, place.room), place: place.roomName },
-                detour: place.detour
-              }
-            }
-          });
-        }
-      }
       // The next leg starts where this act happens, reached or not: a plan
       // that stopped pricing at the first blocked room would say nothing
       // about the eight after it.
@@ -4725,18 +4544,6 @@ export class SessionManager {
       rank = step.to ?? rank;
       await new Promise<void>((next) => setImmediate(next));
       if (asked !== this.planAsked) return null;
-    }
-    /*
-     * The stock rows go on last, each on the leg it costs least to stop on —
-     * which is the whole of *delay it until a step where we would be closer*.
-     * Before the step's own items, because the run gathers in the plan's
-     * order and a torch is wanted for the walk rather than for the act.
-     */
-    for (const { step: index, detour, item } of stockAt.values()) {
-      const step = steps[index];
-      if (step === undefined) continue;
-      steps[index] = { ...step, items: [item, ...step.items], moves: (step.moves ?? 0) + detour };
-      moves += detour;
     }
     const reachable = steps.some((step) => step.reachable === false)
       ? false
@@ -5434,10 +5241,10 @@ export class SessionManager {
    * the A* stopped re-walking the whole pack for every room it expands that
    * casts something.
    *
-   * `packKnown` says whether that list is an answer or a silence. `i` is in
-   * the default `onEnterRealm`, so it is true within a second of entering the
-   * realm on any ordinary configuration — but the probe list is the player's,
-   * and a character told never to ask on the way in must not silently become
+   * `packKnown` says whether that list is an answer or a silence. MegaMUD asks
+   * `i` while it does not know the pack (`refreshInventory`), so it is true
+   * soon after entering the realm — but until then, a character must not
+   * silently become
    * a character whose every keyed door is a wall.
    *
    * **Its own method because two things ask it** (2026-09-06): the router,
@@ -5693,7 +5500,14 @@ export class SessionManager {
     return refused === null ? { started: true } : { refused };
   }
 
-  /** A route the player asked for, walked (`run`: with combat off) by MegaMUD's Go To. */
+  /**
+   * A route the player asked for, walked (`run`: with combat off) by MegaMUD's
+   * Go To, **alone**: the loop it had loaded let go. MegaMUD takes up whatever
+   * loop path it still holds on arriving (`resumeLoop`, `0x43d2a0`), and Stop
+   * leaves the path loaded, so a route walked after a lap was stopped — or
+   * during one — walked back into that lap (2026-10-16). A loop is taken up
+   * again only where a restart or a lost line stopped it (`megaEnteredGame`).
+   */
   walkRoute(route: Route, run = false): string | null {
     // MegaMUD's Go To: the room the route ends in, the way its own.
     const end = route.steps.at(-1)?.to;
@@ -5702,7 +5516,7 @@ export class SessionManager {
     if (mega === null) return t('session.megamud.noEngine');
     // The counters, if this way turns on one nobody has read yet.
     this.askCountersFor(route);
-    const refused = this.megaAct(() => mega.walkTo(end, run));
+    const refused = this.megaAct(() => mega.walkTo(end, run, true));
     if (refused === null) this.keepMovement({ to: end, run });
     return refused;
   }
@@ -5711,7 +5525,7 @@ export class SessionManager {
   stepBack(): MovementStart {
     // MegaMUD's Step Back (`0x869`).
     if (this.mega === null) return { refused: t('session.megamud.noEngine') };
-    this.mega.button(0x869);
+    this.mega.press(0x869);
     return { started: true };
   }
 
@@ -5814,17 +5628,6 @@ export class SessionManager {
     return { room: roomId(place.map, place.room), name: item.shop };
   }
 
-  /** A command answering the realm menu: what it said the realm chosen charges, said once. */
-  private noteRealmChoice(command: string): void {
-    const chosen = this.realmMenu.noteCommand(command);
-    if (chosen === null) return;
-    this.sink.notice(
-      chosen.percent > 0
-        ? t('session.safety.realmCharges', { realm: chosen.realm, percent: chosen.percent })
-        : t('session.safety.realmChargesNothing', { realm: chosen.realm })
-    );
-  }
-
   /**
    * Records one safety decision, bounded.
    *
@@ -5896,14 +5699,10 @@ export class SessionManager {
   /** The decision trace, for a renderer that mounted mid-session. */
   get automation(): AutomationSnapshot {
     return {
-      enabled: this.automationConfig.enabled,
       queue: this.queue.snapshot,
       // Newest first: a trace is read backwards from whatever just happened.
       sent: [...this.sentLog].reverse(),
-      // The old rule engine's and message table's answers, gone with them.
-      firings: [],
       safety: [...this.safetyLog].reverse(),
-      engagements: [...this.engageLog].reverse(),
       ...(this.mega ? { mega: this.mega.toggles } : {}),
       ...(this.megaQuestion !== null ? { megaQuestion: this.megaQuestion } : {})
     };

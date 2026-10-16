@@ -566,8 +566,24 @@ interface ControlProps {
   set(section: string, key: string, value: SettingValue): void;
 }
 
+/**
+ * Settings MegaMUD 2.1 draws, loads and saves but never acts on: nothing in
+ * `megamud.exe` reads their slots past its dialog, loader and saver
+ * (`mm.py field 0x8554`, `0x90b4`, `0x30df8`; `IgnoreSpellMsgChecks` has no
+ * slot at all), read 2026-10-16. Drawn, as the dialog draws them, and said to
+ * do nothing.
+ */
+const INERT: ReadonlySet<string> = new Set([
+  'Cash.AutoCollectLootbox',
+  'PvP.RedialPvp',
+  'PvP.PvpSafePeriod',
+  'Other.IgnoreSpellMsgChecks'
+]);
+
 function Control({ control: c, draft, hasPassword, style, set }: ControlProps) {
   const b: ControlBind | undefined = c.bind;
+  const inert = b !== undefined && INERT.has(`${b.section}.${b.key}`);
+  const said = inert ? t('settings.megamud.inertTitle') : undefined;
   const value = b ? valueOf(draft, b.section, b.key) : undefined;
   const label = plain(c.text);
   switch (c.kind) {
@@ -597,9 +613,11 @@ function Control({ control: c, draft, hasPassword, style, set }: ControlProps) {
       return (
         <label
           className="megamud-control megamud-check"
+          data-inert={inert ? 'true' : undefined}
           // Two lines tall in the template: the dialog wraps its text.
           data-wraps={c.h >= 16 ? 'true' : undefined}
           style={style}
+          title={said}
         >
           <input
             checked={on}
@@ -627,6 +645,7 @@ function Control({ control: c, draft, hasPassword, style, set }: ControlProps) {
         <input
           aria-label={b ? `${b.section}.${b.key}` : undefined}
           className="megamud-control megamud-edit"
+          data-inert={inert ? 'true' : undefined}
           disabled={b === undefined}
           inputMode={b?.as === 'int' ? 'numeric' : undefined}
           onChange={(event) => {
@@ -636,6 +655,7 @@ function Control({ control: c, draft, hasPassword, style, set }: ControlProps) {
           }}
           placeholder={password && hasPassword ? t('settings.megamud.passwordKept') : undefined}
           style={style}
+          title={said}
           type={password ? 'password' : 'text'}
           value={value === undefined ? '' : String(value)}
         />

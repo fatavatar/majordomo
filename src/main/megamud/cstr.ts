@@ -5,17 +5,6 @@
  * the buffer's size less its terminator, as the C does.
  */
 
-/** `0x4acbb0`: copy into a buffer of `size` bytes, cutting to `size - 1`. */
-export function strlcpy(src: string, size: number): string {
-  if (size <= 0) return '';
-  return src.length >= size ? src.slice(0, size - 1) : src;
-}
-
-/** `strncpy` then a terminator at `n`: the first `n` characters, at most. */
-export function strncpyz(src: string, n: number): string {
-  return src.slice(0, Math.max(0, n));
-}
-
 /**
  * `0x4ad670`: where `needle` first occurs in `hay`, case-sensitive, or -1.
  * An empty `hay` is -1 even for an empty needle, as the C loop never starts.
@@ -52,11 +41,6 @@ export function insertAt(text: string, at: number, ins: string): string {
 /** `0x4ad140`: drop the first `n` characters (all of them when `n` is past the end). */
 export function dropFirst(text: string, n: number): string {
   return n >= text.length ? '' : text.slice(n);
-}
-
-/** `0x4aca70`/`strchr`: where `ch` first occurs, or -1. */
-export function strchr(text: string, ch: string): number {
-  return text.indexOf(ch);
 }
 
 /** `_stricmp`: compare without regard to ASCII case; <0, 0, >0. */
@@ -211,4 +195,16 @@ export function directionWord(dir: number): string {
 /** `0x4c03b0`: a direction's abbreviation (`n` … `d`), or "(unknown dir)". */
 export function directionShort(dir: number): string {
   return dir >= 0 && dir <= 9 ? DIR_SHORT[dir]! : '(unknown dir)';
+}
+
+/** A number at the front of `text` (`0x4ad430`), and the text after it and one `:` (`0x4acb90`). */
+export function rowField(text: string): [number, string] {
+  const m = /^ *(-?\d*)/.exec(text)!;
+  const rest = text.slice(m[0].length);
+  return [Number(m[1]) | 0, rest.startsWith(':') ? rest.slice(1) : rest];
+}
+
+/** `percent` of `max`, as MegaMUD's integer maths has it (toward zero). */
+export function percentOf(max: number, percent: number): number {
+  return idiv(max * percent, 100);
 }

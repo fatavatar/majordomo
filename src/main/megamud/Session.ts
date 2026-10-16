@@ -425,6 +425,16 @@ export interface SessionHost {
   dial?(): void;
 }
 
+/** Walking a path, roaming or importing one: the engine is taking the character somewhere. */
+export function moving(s: Session): boolean {
+  return s.walking !== 0 || s.roaming !== 0 || s.importing !== 0;
+}
+
+/** That, or AFK (`active`): the engine is acting for the player. */
+export function automated(s: Session): boolean {
+  return s.active !== 0 || moving(s);
+}
+
 export class Session extends RawFields {
   constructor(
     readonly host: SessionHost,
@@ -584,6 +594,18 @@ export class Session extends RawFields {
   exp = 0;
   /** 0xd878: experience still needed for the next level, or -1 when not known. */
   expToLevel = -1;
+  /**
+   * 0x30e00: the rate the end of a lap tests against `Comms.MinExpRate`
+   * (`0x409577`). Only the defaults write it (-1, `0x448712`), so MegaMUD's
+   * lap never hangs up on it; at 0 it hung up on every lap (2026-10-16).
+   */
+  lapExpRate = -1;
+  /**
+   * 0x327a4: 99, as every write leaves it (`0x448692`, `0x449ac9` and three
+   * more), under which a `~` in a macro is sent as itself rather than as
+   * `\x01` (2026-10-16).
+   */
+  tildeMode = 99;
 
   // ------------------------------------------------------------ activity
 

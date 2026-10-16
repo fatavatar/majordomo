@@ -16,12 +16,8 @@ import { findClassByName } from '../data';
 import { findPlayer, partyIndex } from '../room/checkNames';
 import { findEntity } from '../room/entities';
 import { queue } from '../script/send';
-import type { PartyMember, Session } from '../Session';
+import { automated, type PartyMember, type Session } from '../Session';
 import { addMember, partyRefresh, removeMember } from './members';
-
-function moving(s: Session): boolean {
-  return s.walking !== 0 || s.roaming !== 0 || s.importing !== 0;
-}
 
 /** `0x4c1150`: the player is on the last `who`. */
 function online(s: Session, name: string): boolean {
@@ -40,7 +36,7 @@ function fromPercent(pct: number, max: number): number {
 /** Not in a party (any more). */
 function noParty(s: Session, line: string): number {
   if (s.following === 0) {
-    if ((s.active === 0 && !moving(s)) || s.f_a32c !== 0) s.partySize = 0;
+    if (!automated(s) || s.f_a32c !== 0) s.partySize = 0;
     for (let i = s.partySize - 1; i >= 0; i -= 1) {
       const m = s.party[i]!;
       m.flags28 &= ~0x29c;

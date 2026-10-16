@@ -6,7 +6,7 @@
  */
 import type { ItemRec } from '../data';
 import { findCarried, sameItemName } from '../items/inventory';
-import type { Session } from '../Session';
+import { automated, type Session } from '../Session';
 import { goTo, headFor, roomByName } from '../move/destinations';
 import { queue, send } from './send';
 import { setState } from './state';
@@ -17,10 +17,6 @@ const COIN = 0x8000000;
 export function itemWord(s: Session, item: ItemRec | null): string {
   if (!item) return '';
   return item.name === 'runic coin' ? s.runicName : item.name;
-}
-
-function moving(s: Session): boolean {
-  return s.active !== 0 || s.walking !== 0 || s.roaming !== 0 || s.importing !== 0;
 }
 
 /** In the bank (`Cash.Bank`, the room's record's name). */
@@ -84,16 +80,16 @@ export function shareCash(s: Session, all: number): number {
   return shared;
 }
 
-/** `0x406d90` (D40): in the bank, what is asked (`0x842c`; -1 all over `0x850c`) deposited. */
+/** `0x406d90` (D40): in the bank, what is asked (`0x842c`; -1 all over `Cash.MinWealth`) deposited. */
 export function depositCash(s: Session): number {
-  if (!moving(s) || s.f_a32c !== 0 || !inBank(s) || s.f_845c !== 0) return 0;
+  if (!automated(s) || s.f_a32c !== 0 || !inBank(s) || s.f_845c !== 0) return 0;
   let amount = s.f_842c;
   if (amount === -1) {
-    if (s.f_8428 >>> 0 <= s.f_850c >>> 0) {
+    if (s.f_8428 >>> 0 <= s.Cash_MinWealth >>> 0) {
       s.f_842c = 0;
       return 0;
     }
-    amount = s.f_8428 - s.f_850c;
+    amount = s.f_8428 - s.Cash_MinWealth;
     s.f_842c = amount;
   }
   if (amount === 0) return 0;
@@ -110,10 +106,10 @@ export function depositCash(s: Session): number {
   return 1;
 }
 
-/** `0x40d8a0` (D41): in the bank, enough withdrawn for what is wanted (`0x8430`) over `0x850c`. */
+/** `0x40d8a0` (D41): in the bank, enough withdrawn for what is wanted (`0x8430`) over `Cash.MinWealth`. */
 export function withdrawCash(s: Session): number {
-  if (!moving(s) || s.f_a32c !== 0 || !inBank(s) || s.f_8430 === 0) return 0;
-  const want = (s.f_850c + s.f_8430) >>> 0;
+  if (!automated(s) || s.f_a32c !== 0 || !inBank(s) || s.f_8430 === 0) return 0;
+  const want = (s.Cash_MinWealth + s.f_8430) >>> 0;
   const have = s.f_8428 >>> 0;
   if (have >= want) return 0;
   s.sneaking = 0;
@@ -191,14 +187,14 @@ export function fetchCash(s: Session, how: number, amount: number): number {
   return yes ? 0 : 0x20;
 }
 
-/** `0x40db90`: more cash than `Cash.LimitWealth` or `Cash.LimitCoins` allow, and more than is kept. */
+/** `0x40db90`: more cash than `Cash.MaxWealth` or `Cash.MaxCoins` allow, where `Cash.LimitWealth` or `Cash.LimitCoins` is on, and more than is kept. */
 export function overCash(s: Session): number {
-  const kept = s.f_850c >>> 0 < s.f_8428 >>> 0 ? 1 : 0;
-  if (s.Cash_LimitWealth !== 0 && s.f_8510 >>> 0 < s.f_8428 >>> 0) return kept;
+  const kept = s.Cash_MinWealth >>> 0 < s.f_8428 >>> 0 ? 1 : 0;
+  if (s.Cash_LimitWealth !== 0 && s.Cash_MaxWealth >>> 0 < s.f_8428 >>> 0) return kept;
   if (s.Cash_LimitCoins !== 0) {
     let coins = 0;
     for (const c of s.inventory) if (c.item && (c.item.flags & COIN) !== 0) coins += c.count;
-    if (s.f_8514 >>> 0 < coins >>> 0) return kept;
+    if (s.Cash_MaxCoins >>> 0 < coins >>> 0) return kept;
   }
   return 0;
 }

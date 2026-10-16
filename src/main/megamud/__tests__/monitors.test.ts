@@ -7,8 +7,7 @@ import {
   abilityPrompt,
   abilTimedOut,
   loadMonitors,
-  monitorTimer,
-  saveMonitors
+  monitorTimer
 } from '../abilities/monitors';
 import { session } from './fixture';
 
@@ -29,32 +28,6 @@ function monitored(ini: Record<string, string>) {
 const LOW_DR = { Monitor0: '0:7:0:0:5:1:1:30:0:0:0::cast shield' };
 
 describe('the ability monitors', () => {
-  it('reads [AbilMon], and writes it back the same', () => {
-    const { s } = monitored({
-      ...LOW_DR,
-      Monitor1: '0:9:2:2:10:0:384:0:0:1:0:shad:',
-      Monitor1Msg: 'You feel'
-    });
-    expect(s.monitors).toHaveLength(2);
-    const [dr, chained] = s.monitors;
-    expect([dr!.ability, dr!.compare, dr!.value, dr!.useCommand, dr!.when, dr!.interval]).toEqual([
-      7, 0, 5, 1, 1, 30
-    ]);
-    expect(dr!.command).toBe('cast shield');
-    // A chained monitor keeps only its spell and message triggers.
-    expect([chained!.chained, chained!.when, chained!.spell, chained!.message]).toEqual([
-      1,
-      0x180,
-      'shad',
-      'You feel'
-    ]);
-    expect(saveMonitors(s)).toEqual({
-      Monitor0: '0:7:0:0:5:1:1:30:0:0:0::cast shield',
-      Monitor1: '0:9:2:2:10:0:384:0:0:1:0:shad:',
-      Monitor1Msg: 'You feel'
-    });
-  });
-
   it('asks the ability when its timed check is due, and fires on the reply', () => {
     const { s, out } = monitored(LOW_DR);
     monitorTimer(s);

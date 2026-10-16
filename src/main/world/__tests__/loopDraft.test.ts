@@ -5,13 +5,7 @@ import path from 'node:path';
 import zlib from 'node:zlib';
 
 import { WorldGraph } from '../WorldGraph';
-import {
-  draftLoop,
-  LoopDraftCache,
-  preferredEdges,
-  reduceWaypoints,
-  reduceWaypointsYielding
-} from '../loopDraft';
+import { draftLoop, LoopDraftCache, preferredEdges } from '../loopDraft';
 
 function makeWorld(rooms: Array<Record<string, unknown>>): WorldGraph {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mudengine-draft-'));
@@ -141,43 +135,6 @@ describe('planning a hand-built loop', () => {
       { id: '1/1', name: 'Room 1' },
       { id: '1/2', name: 'Room 2' }
     ]);
-  });
-});
-
-describe('reducing a path to waypoints', () => {
-  it('is nothing for nothing', () => {
-    expect(reduceWaypoints(makeWorld(corridor(2)), [])).toEqual([]);
-  });
-
-  it('keeps both ends of a two-room path', () => {
-    expect(reduceWaypoints(makeWorld(corridor(2)), ['1/1', '1/2'])).toEqual(['1/1', '1/2']);
-  });
-
-  it('reduces a straight corridor to its ends', () => {
-    const graph = makeWorld(corridor(6));
-    expect(reduceWaypoints(graph, ['1/1', '1/2', '1/3', '1/4', '1/5', '1/6'])).toEqual([
-      '1/1',
-      '1/6'
-    ]);
-  });
-
-  it('is a single room for a single room', () => {
-    expect(reduceWaypoints(makeWorld(corridor(2)), ['1/1'])).toEqual(['1/1']);
-  });
-
-  /* Handing the thread back between routes changes when, never what. */
-  it('reduces to the same waypoints when it yields between routes', async () => {
-    const graph = makeWorld(square());
-    const paths = [
-      [],
-      ['1/1'],
-      ['1/1', '1/2'],
-      ['1/1', '1/2', '1/4', '1/3', '1/1'],
-      ['1/1', '1/3', '1/4', '1/2', '1/1', '1/2', '1/4']
-    ];
-    for (const path of paths) {
-      expect(await reduceWaypointsYielding(graph, path)).toEqual(reduceWaypoints(graph, path));
-    }
   });
 });
 

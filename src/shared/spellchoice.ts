@@ -329,8 +329,8 @@ export function chooseHealSpell(input: HealChoiceInput | { book: null }): HealCh
 
   /*
    * A party-wide heal is never one target's heal: it reaches everybody, and
-   * whether that is worth its price is `planHeal`'s question, asked of the
-   * whole party at once.
+   * whether that is worth its price is a question asked of the whole party at
+   * once.
    */
   const accepts =
     input.aim === 'self'

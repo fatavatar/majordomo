@@ -170,11 +170,6 @@ notices:
     suppliesStated:
       'A supplies block was written into {file} — the things a character keeps in stock and where
       it buys them. Empty, so nothing changes until an item is added.'
-    conditionWaitsStated:
-      one: 'Walking on while blind or poisoned is a setting, off by default, and was written into
-        {count} file with the paragraph that explains it: {fileList}'
-      many: 'Walking on while blind or poisoned is a setting, off by default, and was written into
-        {count} files with the paragraph that explains it: {fileList}'
     meditateTargetStated:
       one: 'How far up to meditate before walking on is a setting, meditateTo, and was written
         into {count} file at 0 with the paragraph that explains it: {fileList}'
@@ -190,11 +185,6 @@ notices:
         into {count} file with the paragraph that explains it: {fileList}'
       many: 'Casting a drain spell while health is low is a setting, off by default, and was written
         into {count} files with the paragraph that explains it: {fileList}'
-    confusionWaitStated:
-      one: 'Walking on while confused is a setting, off by default, and was written into {count}
-        file with the paragraph that explains it: {fileList}'
-      many: 'Walking on while confused is a setting, off by default, and was written into {count}
-        files with the paragraph that explains it: {fileList}'
     monsterRowsStated:
       one: 'A character''s own monster rows are a setting now, laid over the realm''s monster table,
         and were written into {count} file with the paragraph that explains them: {fileList}'
@@ -218,6 +208,9 @@ notices:
     autoJoinStated:
       many: 'Join When Invited was added, off, to {count} files: {fileList}'
       one: 'Join When Invited was added, off, to {fileList}'
+    oldAutomationKeys:
+      many: 'Settings only the old automation read (rules, entry and party commands, drop, banking, talk, statline, events, training, the walk-while switches) were removed from {count} files: {fileList}'
+      one: 'Settings only the old automation read (rules, entry and party commands, drop, banking, talk, statline, events, training, the walk-while switches) were removed from {fileList}'
     botCommandsStated:
       many: 'Bot Commands (your own commands other players may ask for) was added, empty, to {count} files: {fileList}'
       one: 'Bot Commands (your own commands other players may ask for) was added, empty, to {fileList}'
@@ -227,9 +220,6 @@ notices:
     itemDetailsStated:
       many: 'Item Details (MegaMUD''s item choices, laid over the realm''s item table) were added, empty, to {count} files: {fileList}'
       one: 'Item Details (MegaMUD''s item choices, laid over the realm''s item table) were added, empty, to {fileList}'
-    losingHpWaitStated:
-      many: 'Walk While Losing HP was added, off, to {count} files: {fileList}'
-      one: 'Walk While Losing HP was added, off, to {fileList}'
     partyRankStated:
       many: 'Auto-Rank (MegaMUD''s Party Rank) was added, off and at Mid, to {count} files: {fileList}'
       one: 'Auto-Rank (MegaMUD''s Party Rank) was added, off and at Mid, to {fileList}'
@@ -250,14 +240,6 @@ notices:
     anonymousConnectionDropped:
       'The account and "connect on launch" under connection: were removed from {file}. The client no
       longer connects without a character; each character''s own file carries its account.'
-    bankAskedOnEntry:
-      many:
-        '`bank` was added to the entry probe in {count} files, before the closing look. A balance
-        is now kept between sessions; this refreshes the one vault you can reach on the way in.
-        {fileList}'
-      one: '`bank` was added to the entry probe in {count} file, before the closing look. A balance
-        is now kept between sessions; this refreshes the one vault you can reach on the way in.
-        {fileList}'
     blessingsKeyedOnSpell:
       many:
         'A blessing row is now named by its spell alone, and only party rows carry a recast clock
@@ -280,14 +262,12 @@ notices:
       paragraph that explains them."
     entityPredicates:
       many:
-        "Three settings were added to {count} files, all off: pick up anything over a value, never
-        pick up anything over a weight, and drop what the realm itself prices at nothing. Each asks
-        the realm a question about a thing, which the client could not do until items carried the
-        realm's own row. {fileList}"
-      one: "Three settings were added to {count} file, all off: pick up anything over a value, never
-        pick up anything over a weight, and drop what the realm itself prices at nothing. Each asks
-        the realm a question about a thing, which the client could not do until items carried the
-        realm's own row. {fileList}"
+        "Two settings were added to {count} files, all off: pick up anything over a value, and never
+        pick up anything over a weight. Each asks the realm a question about a thing, which the
+        client could not do until items carried the realm's own row. {fileList}"
+      one: "Two settings were added to {count} file, all off: pick up anything over a value, and never
+        pick up anything over a weight. Each asks the realm a question about a thing, which the
+        client could not do until items carried the realm's own row. {fileList}"
     gmudRealmFailed: 'The {realm} realm could not be removed from your realms: {reason}'
     gmudRealmRemoved:
       '{realm} no longer ships with the client and was removed from your realms ({dir}); nothing
@@ -305,12 +285,12 @@ notices:
     lookNoLongerBroadcast:
       many:
         'The client no longer re-reads rooms with `l` — it prints the same block and tells everybody
-        in the room you are looking around. A bare Enter does it silently, so the idle command and
-        the closing look on entering the realm were changed in {count} files. {fileList}'
+        in the room you are looking around. A bare Enter does it silently, so the idle command was
+        changed in {count} files. {fileList}'
       one:
         'The client no longer re-reads rooms with `l` — it prints the same block and tells everybody
-        in the room you are looking around. A bare Enter does it silently, so the idle command and
-        the closing look on entering the realm were changed in {count} file. {fileList}'
+        in the room you are looking around. A bare Enter does it silently, so the idle command was
+        changed in {count} file. {fileList}'
     loopShelfPinned:
       'The Loops button was added to your toolbar. It opens every loop the client knows —
       Ctrl/Cmd L, or the circular arrow beside the transport controls.'
@@ -346,13 +326,13 @@ notices:
         paragraph that explains it. It is what it was already doing. {fileList}'
     newAutomationStated:
       many:
-        'New settings — dropping junk, banking the purse, defending the party, the crowd spell and
-        the reaction to a player attacking — were written into {count} files with the paragraphs
-        that explain them. All off, which is what the client was already doing. {fileList}'
+        'New settings — defending the party, the crowd spell and the reaction to a player
+        attacking — were written into {count} files with the paragraphs that explain them. All
+        off, which is what the client was already doing. {fileList}'
       one:
-        'New settings — dropping junk, banking the purse, defending the party, the crowd spell and
-        the reaction to a player attacking — were written into {count} file with the paragraphs
-        that explain them. All off, which is what the client was already doing. {fileList}'
+        'New settings — defending the party, the crowd spell and the reaction to a player
+        attacking — were written into {count} file with the paragraphs that explain them. All
+        off, which is what the client was already doing. {fileList}'
     markStated:
       '"ui.showLogo" was written into {file}, on: the client draws its own mark at the left of the
       status rail. Turn it off there or on the MudEngine page in settings.'
@@ -390,10 +370,8 @@ notices:
       have. Seven palettes repaint what the realm sends — four dark, three light — and naming one
       there or on the MudEngine page in settings outranks the two keys beside it.'
     statusLineStated:
-      '"automation.statline" and "ui.rewrites" were written into {file}, all off: whether the
-      client sets the prompt''s shape on the way in, so every prompt carries the maxima, the
-      experience and the purse, and the status line and listings you can design to draw in the
-      realm''s place. Turn any on there or on the Rewrites section in settings.'
+      '"ui.rewrites" was written into {file}, all off: the status line and listings you can design
+      to draw in the realm''s place. Turn any on there or on the Rewrites section in settings.'
     rewritesGathered:
       '"ui.statline" in {file} became the Status line design under "ui.rewrites", beside the
       listings the console can draw in the realm''s place — the pack, the roster, a shop''s
@@ -464,12 +442,6 @@ notices:
         condition under Health to have it used. {fileList}'
       one: '"automation.health.potions" was written into {count} file, empty: name an item and a
         condition under Health to have it used. {fileList}'
-    levelling:
-      many:
-        '"automation.train.levels" and "trainer" were written into {count} files, off: the client
-        will not walk a character to a trainer and level it until you turn that on. {fileList}'
-      one: '"automation.train.levels" and "trainer" were written into {count} file, off: the client
-        will not walk a character to a trainer and level it until you turn that on. {fileList}'
     doorForcingStated:
       many:
         'Picking and bashing locked doors are now settings, and were written into {count} files with
@@ -479,17 +451,13 @@ notices:
         'Picking and bashing locked doors are now settings, and were written into {count} file with
         the paragraph that explains them. Both are off, which is what the client was already doing.
         {fileList}'
-    hangPenalties:
+    hangPenaltiesWent:
       one:
-        '"hangUp.onlyWhenClean" became "hangUp.penalties" in {count} file: whether the realm
-        charges for a hang-up. The options file says no (a PvE realm), a character inherits its
-        realm, and Paradigm''s realm menu answers for itself. Set it under Health › Auto-Hangup, or
-        per realm; the backup beside each file has the old answer. {fileList}'
+        'Hang penalties (whether a realm charges for a hang-up) were removed from {count} file:
+        MegaMUD''s own Hang if below and Relog instead of hanging decide now. {fileList}'
       many:
-        '"hangUp.onlyWhenClean" became "hangUp.penalties" in {count} files: whether the realm
-        charges for a hang-up. The options file says no (a PvE realm), a character inherits its
-        realm, and Paradigm''s realm menu answers for itself. Set it under Health › Auto-Hangup, or
-        per realm; the backup beside each file has the old answer. {fileList}'
+        'Hang penalties (whether a realm charges for a hang-up) were removed from {count} files:
+        MegaMUD''s own Hang if below and Relog instead of hanging decide now. {fileList}'
     wardsMoved:
       many:
         '"automation.movement.useWards" moved to "automation.health.useWards" in {count} files and
@@ -517,9 +485,9 @@ notices:
     gearButtonPinned:
       'A gear button was added to your toolbar, beside the dial. It puts back what the client
       last saw in each worn slot — the first press after a death.'
-    blessSwitchPinned:
-      'An Auto-Bless switch was added to your toolbar, beside retaliate. Off, the blessings you
-      listed are not cast for you until it is on again.'
+    oldSwitchesUnpinned:
+      'The old automation''s switches were taken off the toolbar in {file}: MegaMUD''s own
+      toggles stand in their place.'
     loopsRenamed:
       one:
         'The shipped loops are named the way whoever recorded them named them, rather than after the
@@ -560,9 +528,6 @@ notices:
       many: '"automation.spells.autoChoose" was written into {count} files ({fileList}), off: pick
         the round spell and the cures from the spellbook each round. The spells you named are cast
         until you turn it on.'
-    training: '"automation.train" was written into {file}, off: at a trainer with character points
-      unspent, open the stat screen and buy the figures set under Training, cheapest point first.
-      Nothing is spent until you turn it on and raise a figure.'
     restNextDoor:
       one:
         '"automation.health.restNextDoor" was written into {fileList}, on: a rest in a lair with a
@@ -1074,37 +1039,10 @@ toolbar:
     hide: Auto-Hide
     search: Auto-Search
     afk: AFK
-  invokeItems: Bless from an item
-  provideLight: Auto-Light (Light Dark Rooms)
-  supplies: Auto-Buy Supplies
-  quests: Auto-Quest (Run a Plan)
-  gear: Auto-Gear (Equipment Sets)
-  assistLeader: Auto-Assist Leader
-  autoRank: Auto-Rank (Preferred Rank)
-  autoDeposit: Auto-Deposit (Bank Coins)
-  automation: Auto (On/Off)
-  autoBless: Auto-Bless (Buff Spells)
-  bashDoors: Auto-Bash Doors
-  combat: Auto-Combat
   connect: Connect
-  defendParty: Auto-Defend Party
   disconnect: Disconnect
-  drop: Auto-Drop Junk
-  retreat: Auto-Retreat (Combat)
   flee: Auto-Flee (Sys Goto)
-  gangpath: Allow Remotes on Gangpath
-  hangUp: Auto-Hangup (Panic Disconnect)
-  healParty: Auto-Heal Party Members
-  lookAtPlayers: Auto-Inspect New Players
-  loot: Auto-Get Cash
-  openDoors: Auto-Open Doors
-  pickLocks: Auto-Pick Locks
-  remotes: Remote Control (@ commands)
   restoreGear: Re-equip Gear / Auto-Equip
-  restWithLeader: Follower Auto-Rest
-  search: Auto-Search Rooms
-  retaliate: Retaliate When Attacked
-  sneak: Auto-Sneak on Move
   openLoops: Path Library / Select Loop
   buildLoop: Build a Loop / Path Editor
   startMoving: Start Moving / Resume
@@ -1877,20 +1815,13 @@ cards:
     total: '{copper} copper coins (cc) in all'
   automation:
     badge:
-      off: off
       queueStatus: '{depth} queued · {inFlight} in flight'
       standingDown: standing down
-    emptyDisabled: Automation disabled.
     emptySent: No automated commands sent.
     headings:
-      engagements: Active Engagements
       queued: Queued
-      rules: Rules
       safety: Safety
       sent: Sent
-    ruleBlockedPrefix: 'Blocked: {guard}'
-    engagedPrefix: Engaged target
-    engagedBecause: 'Engaged: {reason}'
     safetyRefusedPrefix: 'Refused: {reason}'
     title: Automation
   chrome:
@@ -2883,7 +2814,6 @@ cards:
       tableCaption: Items kept in stock
       empty: Nothing kept in stock yet.
       howToAdd: To keep an item, click its name in the pack and set a minimum on its panel. An item sold nowhere needs no shop — set a maximum and it is collected when found.
-      switchedOff: Auto-buy is switched off on the toolbar; the list is kept but nothing is bought.
       copyRow: '{item}: {have} carried, keep {min}–{max}, from {shop}'
   stats:
     attackingLabel: Attacking
@@ -3247,19 +3177,19 @@ settings:
     appearance:
       advancedConsole: the console
       consoleFontHint: A monospace fallback and the bundled CP437 face are always appended.
-      consoleFontLabel: Console Font
+      consoleFontLabel: Console font
       consoleFontPlaceholder: LucidaProgrammer Nerd Font Mono
-      consoleDarkThemeLabel: Dark Theme For The Console
+      consoleDarkThemeLabel: Dark theme for the console
       consolePaletteDark: '{paletteLabel} (dark)'
       consolePaletteFollow: Follow the theme
       consolePaletteHint: The sixteen colours the realm's own codes are painted with. Follow the theme and the console wears whatever palette the theme brings, which is how the client has always looked. Name one instead and it settles the console outright, whichever way the chrome reads.
-      consolePaletteLabel: Console Colours
+      consolePaletteLabel: Console colours
       consolePaletteLight: '{paletteLabel} (light)'
       consoleKeepDarkHint: A light theme has to make the realm's black its paper, so colour-coded output arrives inverted. This keeps the console on a dark palette while everything around it stays light; a dark theme ignores it.
-      consoleKeepDarkLabel: Keep The Console Dark
+      consoleKeepDarkLabel: Keep the console dark
       consoleKeepDarkOutranked: Not consulted while Console Colours names a palette — that choice settles the console on its own. Set it back to "Follow the theme" for this to decide again.
       cursorBar: Bar
-      cursorBlink: Blink Cursor
+      cursorBlink: Blink cursor
       cursorBlock: Block
       cursorStyleLabel: Cursor
       cursorUnderline: Underline
@@ -3268,19 +3198,19 @@ settings:
       densityCompact: Compact
       densityLabel: Density
       fontSizeLabel: Size, px
-      scrollbackLabel: Scrollback, Lines
-      showHud: Show Cards Beside Console
-      showLogo: Show The MudEngine Mark
-      tabPlacementLabel: Character Tabs
+      scrollbackLabel: Scrollback, lines
+      showHud: Show cards beside console
+      showLogo: Show the MudEngine mark
+      tabPlacementLabel: Character tabs
       tabsLeft: Down the left, cards right
       tabsRight: Down the right, cards left
       tabsTop: Across the top
       uiFontHint: Everything except the console, which is always fixed-pitch. Blank uses the console face.
-      uiFontLabel: Interface Font
+      uiFontLabel: Interface font
       uiFontPlaceholder: the same face as the console
       vitalCautionPercent: '{vitalName} Caution, %'
       vitalCriticalPercent: Critical, %
-      vitalsLegend: Vital Bar Thresholds
+      vitalsLegend: Vital bar thresholds
       vitalsNote: Fractions of maximum, never points, so one number holds at every level. A maximum
         nothing has stated yet reads as unknown rather than critical.
       vitalHealth: Health
@@ -3288,23 +3218,23 @@ settings:
     records:
       advancedLogSize: how big a log gets
       captureHint: A raw transcript, kept so a line the client could not read can be looked at later.
-      captureLabel: Record Raw Transcript
+      captureLabel: Record raw transcript
       conversationDaysHint:
         Anything older is dropped when the client starts. A year by default, and at least one
         day — to keep nothing, turn the switch above off instead.
-      conversationDaysLabel: Keep Conversations, Days
+      conversationDaysLabel: Keep conversations, days
       conversationsHint:
         The Talk card starts where it left off instead of empty. Only the conversation channels
         are kept, so the file cannot hold a password.
-      conversationsLabel: Persist Conversations
-      enabled: Keep Session Log
+      conversationsLabel: Persist conversations
+      enabled: Keep session log
       fightsHint:
         'Nothing reads it, which is the point: every question worth asking about how a character
         fights needs a record that predates the question.'
-      fightsLabel: Write Fight Log
+      fightsLabel: Write fight log
       folderLabel: Folder
       folderPlaceholder: beside the options file
-      maxBytesLabel: New Log After, Bytes
+      maxBytesLabel: New log after, bytes
       note: What the client writes down. Every one of these is a file beside the options, and the
         recordings hold everything the realm sent and every command sent back — including, on a
         hand-typed login, a password.
@@ -3312,7 +3242,7 @@ settings:
       appearance: Appearance
       records: Records
   combat:
-    monsterRowsLegend: Monster Details
+    monsterRowsLegend: Monster details
     monsterRowsNone: No monster rows of this character's own. The realm's table applies as it is.
     monsterRowsNote:
       What this character does differently about particular monsters, laid over the realm's
@@ -3336,6 +3266,8 @@ settings:
     importNotMegamud: "{fileName} is not a MegaMUD settings file: it has none of MegaMUD's sections."
     importUnreadable: "{fileName} could not be read."
     loading: Loading MegaMUD settings…
+    # On a control MegaMUD 2.1 draws and saves but never acts on (2026-10-16).
+    inertTitle: MegaMUD 2.1 keeps this setting but never acts on it, so it does nothing here either.
     passwordKept: (unchanged)
     # A MegaMUD tab for a character not yet made.
     saveFirst: Create the character first; its MegaMUD settings are made with it.
@@ -3364,12 +3296,12 @@ settings:
         character's own rows, one field at a time. A Friend is never attacked, even when it swings
         first; a band puts a monster first or last.
       advancedPacing: looking around and how fast to send
-      pacingMinGapLabel: Least Gap, ms
+      pacingMinGapLabel: Least gap, ms
       pacingNote:
         'How fast commands may go out is measured from the status line, not guessed: the realm
         accepts about twenty in flight and silently discards the rest.'
-      pacingTimeoutLabel: Give Up After, ms
-      pacingWindowLabel: In Flight
+      pacingTimeoutLabel: Give up after, ms
+      pacingWindowLabel: In flight
     loading: Reading the options file…
     movement:
       loopsNote:
@@ -3379,7 +3311,7 @@ settings:
         Stops a running loop whose experience per hour has fallen under this, once it has run a
         quarter of an hour — a lap that has stopped working looks like one that is working until
         somebody checks. 0 never stops.
-      minExpRateLabel: Stop Loop Under Exp/Hour
+      minExpRateLabel: Stop loop under exp/hour
     realm:
       hostPlaceholder: paramud.mudinfo.net
       loginMenuSendPlaceholder: '1'
@@ -3396,7 +3328,7 @@ settings:
     tabs:
       realm: Realm
   health:
-    belowHealthLabel: Below Health %
+    belowHealthLabel: Below health %
     fleeHint: A second, more desperate escape for realms that answer sys status — sys goto is a real
       command there, not a direction. Breaks off combat the same way Auto-Retreat does, then once
       the fight is over sends sys goto to the destination below instead of walking. Set this lower
@@ -3404,17 +3336,11 @@ settings:
     fleeLabel: Auto-Flee
     fleeLegend: Auto-Flee
     # The realm's ward rules, kept beside the MegaMUD engine (2026-10-14).
-    wardsLegend: Room Wards
+    wardsLegend: Room wards
     fleeDestinationHint: The keyword sys goto is sent with, e.g. sil. Empty means never send it.
-    fleeDestinationLabel: Sys Goto Destination
+    fleeDestinationLabel: Sys goto destination
     fleeDestinationPlaceholder: sil
-    hangPenaltiesHint: Whether this realm charges for a hang-up; Paradigm's realm menu says so itself, and that outranks this.
-    hangPenaltiesLabel: Hang Penalties
-    hangPenaltiesGlobal: As Global says
-    hangPenaltiesYes: Charged
-    hangPenaltiesNo: Not charged
-    hangUpLegend: Auto-Hangup
-    useWards: Keep a Room’s Ward Up
+    useWards: Keep a room’s ward up
     useWardsHint:
       The realm writes rules of this shape itself, and this is whether they are obeyed. Where it
       says a spell stops a room's effect and a carried item's use casts that spell, the item is
@@ -3423,27 +3349,11 @@ settings:
     wardRow:
       one: against {hazard}, cast in {rooms} room
       many: against {hazard}, cast in {rooms} rooms
-    potionRuleAdd: Add a rule
-    potionRuleNamePlaceholder: item, as the pack lists it
-    potionRuleNameAria: 'Item for rule {number}'
-    potionRuleWhenAria: 'When rule {number} fires'
-    potionRuleBelow: below
-    potionRuleBelowAria: 'Threshold for rule {number}, as a percentage'
-    potionRuleVerbAria: 'Verb for rule {number}'
-    potionRuleRemoveAria: 'Remove rule {number}'
-    potionRuleRemoveTitle: Remove this rule
-    potionRuleDuplicate: An earlier rule already says this item at this condition and depth.
-    potionWhenHp: health below
-    potionWhenMana: mana below
-    potionWhenPoisoned: poisoned
-    potionWhenBlind: blinded
-    potionWhenDiseased: diseased
-    potionWhenHeld: held
   hint:
     ariaLabel: What this does
   login:
     addStep: Add a menu
-    legend: Login Menus, This Character
+    legend: Login menus, this character
     note: "Usually empty: the menus are from {realmOrAddress}. Anything here replaces that script
       rather than being added to it, the rows that send {user} and {password} included — so the
       first one you add starts as a copy of the realm's."
@@ -3496,14 +3406,14 @@ settings:
   # Going hunting on its own -- `automation.hunting` (todo 05). Under Movement
   # beside the loops: what it decides is a place.
   hunting:
-    auto: Auto-Hunt (Find the Best Spot)
+    auto: Auto-hunt (find the best spot)
     autoHint:
       With nothing else to do, ask where the best hunting is within reach, walk there, and run a
       loop round it. The loop is built from the survey each time and is never saved.
     legend: Hunting
     note: The Hunting card ranks every lair the map reaches and prices it for this character. This
       is the same answer, walked to without a click.
-    radius: Look Within (Steps)
+    radius: Look within (steps)
     radiusHint: How far to look for a lair, in steps. Blank is everywhere the exits reach.
   # A realm's message table (`RealmMessages`): MegaMUD's Messages.md, imported
   # onto the realm and edited there.
@@ -3528,7 +3438,7 @@ settings:
     endsWithHint:
       The sentence that ends what this one started, such as "The effects of confusion wear off".
       Leave it blank when nothing lasts.
-    endsWithLabel: Ends With
+    endsWithLabel: Ends with
     import: Import Messages.md…
     imported:
       many: 'Imported {count} messages.'
@@ -3593,16 +3503,16 @@ settings:
       sell: Auto-sell (or stash)
     flagsLabel: Options
     ifNeededHint: The path walked to get it when there is too little — a MegaMUD path's file name.
-    ifNeededLabel: If Needed, Do
+    ifNeededLabel: If needed, do
     import: Import Items.md…
     imported: 'Imported {count} items with something to say, of the {read} the file names.'
     keepChip: 'keep {count}'
-    keepLabel: Min. to Keep
+    keepLabel: Min. to keep
     legend: Items
     loading: Reading this realm's items…
     more: 'Showing {shown} of {count}. Search to find the rest.'
     mostChip: 'max {count}'
-    mostLabel: Max to Get
+    mostLabel: Max to get
     nameLabel: Item
     namePlaceholder: healing potion
     needsName: A row needs an item.
@@ -3628,7 +3538,7 @@ settings:
     unreadable: That file could not be read.
   # A realm's learned spell sentences: what a spell prints when it lands and ends, as the wire taught it.
   spellLore:
-    legend: Learned Spell Sentences
+    legend: Learned spell sentences
     note:
       What this client worked out each spell prints when it lands and when it wears off, where the
       shipped table has nothing for it. A blessing is cast again when its ending is seen, so a
@@ -3657,16 +3567,16 @@ settings:
     spellLabel: Spell
     spellPlaceholder: song of great power
     startHint: What the realm prints when it lands on you, as one line.
-    startLabel: When It Lands
+    startLabel: When it lands
     stopHint: What the realm prints when it wears off.
-    stopLabel: When It Ends
+    stopLabel: When it ends
   monsters:
     add: Add a monster
     attackChip: 'attack: {spell}'
     attackHint:
       The spell to fight this monster with instead of the usual attack spell — say a turn-undead
       spell for something that is not alive. It opens the fight too. Leave blank for the usual one.
-    attackLabel: Attack Spell
+    attackLabel: Attack spell
     bands:
       default: Default
       first: First
@@ -3688,7 +3598,7 @@ settings:
     imported: 'Imported {count} monsters with something to say, of the {read} the file names.'
     legend: Monsters
     loading: Reading this realm's monsters…
-    maxLabel: Max Casts
+    maxLabel: Max casts
     more: 'Showing {shown} of {count}. Search to find the rest.'
     nameHint: Part of a name matches too — "guardsman" covers "nasty guardsman".
     nameLabel: Monster
@@ -3706,7 +3616,7 @@ settings:
     notMonsters: '{file} is not a MegaMUD monster database. Choose the Monsters.md from a MegaMUD data folder.'
     preAttackChip: 'first: {spell}'
     preAttackHint: Cast on this monster before the fight is opened; it does not open the fight itself. Leave blank for none.
-    preAttackLabel: Pre-attack Spell
+    preAttackLabel: Pre-attack spell
     priorityLabel: Priority
     relationshipLabel: Relationship
     removedRow: Monster removed.
@@ -3721,133 +3631,32 @@ settings:
     unreadable: That file could not be read.
     unset: '—'
   movement:
-    recoverGear: Recover Your Gear After Death
-    recoverGearFloorLabel: Keep at least (lives)
-    recoverGearFloorHint:
-      Stop going back once this many lives are left. Lives are finite and a recovery walks a
-      stripped character back to whatever killed it. 0 never stops.
-    recoverGearTriesLabel: Give up after (tries)
-    recoverGearTriesHint:
-      How many journeys in a row may fail to reach the kit before it stops trying. A journey that
-      gets there clears the run. 0 never gives up.
-    recoverGearHint:
-      Walks back to the room the character died in, takes the kit and coins still lying there, and
-      puts the kit back on. Holds when hurt and fights nothing on the way; every refusal is said.
-    collectKeys: Pick Up a Key the Way Out Needs
+    collectKeys: Pick up a key the way out needs
     collectKeysHint:
       Only when the realm says an exit of the room needs it, no listing has shown it in the pack,
       and it is lying on this floor. A keyed door with no key is a wall the router plans around, so
       this is the one moment bending down is worth anything. On by default.
-    doorsLegend: Doors
-    keepOutLegend: Keeping Out
-    keepOutOf: Keep Out Of
+    keepOutLegend: Keeping out
+    keepOutOf: Keep out of
     keepOutOfHint:
       Words for a way or a place, as the realm writes them — a route you ask for that crosses one
       is shown beside the way round and you choose; loops, errands and quest runs go round.
     keepOutOfPlaceholder: 'vortex, Negative Power Plane'
-    carryLegend: What It Carries
+    carryLegend: What it carries
     loopsNote: These belong to this character alone. Loops for everyone who plays a realm go on that
       realm’s page; loops for every character go on the Global page.
     loopsWarning: These loops name rooms in the world that ships with the client, and this character
       uses its own.
-    bankWhichLabel: Bank At
-    bankWhichHint:
-      Which counter this character's vault is at. A balance is per counter and the realm states
-      each separately, so depositing at whichever bank you walk past leaves several figures that
-      cannot be added up. Any counter deposits wherever you happen to be standing.
-    bankWhichAny: Any counter
-    bankWhichOption: '{name} — {room}'
-    bankWhichStale: This realm does not place that counter, so nothing is deposited. Pick one from the list.
-    bankDepositHint:
-      At a bank counter with cash on hand over the threshold, deposits everything above the
-      retained amount and asks the vault its figure. Never on an unread balance.
-    bankDepositLabel: Auto-Deposit Coins
-    bankKeepHint: What stays on hand for tolls and shops. 100 copper is a gold crown.
-    bankKeepLabel: Retain Cash on Hand
-    bankLegend: Banking
-    bankThresholdHint:
-      Deposits only once cash on hand exceeds this, so a lap is not spent on small change.
-      100 copper is a gold crown.
-    bankThresholdLabel: Minimum Deposit Threshold
-    dropEnabledHint: Only what you name below is ever dropped, and never anything worn, wielded or
-      lit. The realm data does not mark quest items, so this list is the one authority on junk.
-    dropEnabledLabel: Auto-Drop Junk Items
-    dropItemsHint: Matched by prefix, because that is how the realm reads drop.
-    dropItemsLabel: Junk Item Names
-    dropItemsPlaceholder: rusty sword, torch
-    dropLegend: Dropping Junk
-    dropWhenEncumberedHint: Waits for the realm itself to grade the load as anything but None on the
-      inventory listing. Off, junk is dropped as soon as it turns up in the pack.
-    dropWhenEncumberedLabel: Drop Only When Encumbered
-    lootCoins: Auto-Get Cash
-    lootCoinKindsHint:
-      Which coins are worth bending down for. The cheap ones are most of what drops and every get
-      is a command; unticking them all takes none.
-    lootCoinKindsLabel: Coins to Collect
-    lootDiscardKindsHint:
-      Which coins to put back on the floor whenever you are carrying any. A coin on neither row is
-      kept — that is how you stop collecting copper without throwing away the copper you have.
-    lootDiscardKindsLabel: Coins to Discard
-    lootConvertAtLabel: Convert When
-    lootConvertWithHint:
-      An item that turns small coin into large — GreaterMUD's coin bag. The client cannot tell
-      which item does this, so name it yourself. MajorMUD has none.
-    lootConvertWithLabel: Convert Cash With
-    lootGradeHeavy: Heavy
-    lootGradeMedium: Medium
-    lootGradeNever: Never
-    lootStopAtGradeHint:
-      Stop collecting coins once the server grades the load this heavily. The grade is the
-      server's own word, read off the inventory listing.
-    lootStopAtGradeLabel: Stop Collecting At
-    lootMinPriceHint:
-      Also takes anything the realm prices at or above this, in copper. 0 never does, and an item
-      the realm cannot price is never taken by it.
-    lootMinPriceLabel: Auto-Get Over Value
-    lootMaxEncumbranceHint:
-      Never picks anything heavier up, whatever the list says. 0 never refuses; an item the realm
-      cannot weigh is not refused.
-    lootMaxEncumbranceLabel: Max Item Weight
-    dropWorthlessHint:
-      Drops anything the realm prices at zero. Only its explicit zero, never an item it says
-      nothing about, and never one it marks Not Droppable.
-    dropWorthlessLabel: Auto-Drop Worthless Items
-    searchEnabledHint:
-      The realm hides exits, and a route may be planned through one nobody has looked
-      for. Never in combat, never while resting, and once per room rather than once per status line.
-    searchEnabledLabel: Auto-Search Rooms
-    searchLegend: Searching
-    searchTriesHint: Each try is a command out of the same budget the fighting is done from. Whether
-      one look is enough has never been measured.
-    searchTriesLabel: Searches Per Room
-    lootItemsHint:
-      Matched by prefix, because that is how the realm reads get. Nothing here weighs, values or
-      sells.
-    lootItemsLabel: Auto-Get Items List
-    lootItemsPlaceholder: gem, scroll
-    lootLegend: Auto-Looting
-    itemRowsLegend: Item Details
+    itemRowsLegend: Item details
     itemRowsNone: No item rows here. The realm's item table applies as it is.
     itemRowsNote:
       'What the MegaMUD engine does differently about particular items here — MegaMUD''s item
       details, laid over the realm''s item table one field at a time: collect, discard, equip, buy
       or sell, the least to keep and the most to get. A field left blank keeps the realm''s answer;
       a character''s own rows are laid over the ones on the Global page.'
-    bashDoors: Auto-Bash Doors
-    bashDoorsHint:
-      Brute force, when your strength is close to what the realm records for the door. It
-      costs health, and a bashed door is open already.
-    bashTries: Bashes Per Door
-    openDoors: Auto-Open Doors
-    openDoorsHint: A route stops at a shut door unless this is on. A locked one costs a command per try.
-    openTries: Tries Per Door
-    pickLocks: Auto-Pick Locks
-    pickLocksHint: Tried before bashing, because it costs no health. Needs picklocks near what the
-      realm records for the lock; the door is opened for you afterwards.
-    pickTries: Picks Per Door
   # The player's own commands other players may ask this character for (BotCommand).
   botCommands:
-    legend: Bot Commands
+    legend: Bot commands
     note:
       Your own commands other players may ask this character for, like a healer's @heal. Each is
       answered after MegaMUD's own commands, so a party member's @heal is still MegaMUD's party
@@ -3856,10 +3665,10 @@ settings:
     none: No bot commands yet.
     add: Add a command
     remove: Remove
-    wordLabel: Asked With
+    wordLabel: Asked with
     sendLabel: Sends
     sendHint: In MegaMUD's macros; {source} is whoever asked, ^M is Enter, ~ a pause.
-    replyLabel: Answers With
+    replyLabel: Answers with
     replyHint: Told back to whoever asked, the way they asked; empty for nothing.
     party: Party
     gang: Gang
@@ -3868,7 +3677,7 @@ settings:
     playersLabel: Players
     playersHint: Names, separated by commas.
   remotes:
-    addPlayerLabel: Grant Player Permissions
+    addPlayerLabel: Grant player permissions
     addPlayerPlaceholder: Ardren
     addPlayerHint: As the realm spells it. Clicking a name on the Realm or Players card opens the
       same permissions beside the listing.
@@ -3881,19 +3690,15 @@ settings:
       until something below is granted, and @kill and @hangup are always refused.
     engineNote: Who may send this character remote commands, and which. Whether it answers them at
       all is MegaMUD's own setting, on the Talk tab above.
-    legend: Answering Other Players
+    legend: Answering other players
     playerLegend: Permissions for {name}
     removePlayer: Remove
     removePlayerTitle: Take every permission back off {name}
-  party:
-    preferredRankFront: Front
-    preferredRankMid: Mid
-    preferredRankBack: Back
   profile:
     accentLabel: Colour
-    autoConnectLabel: Connect on Start
+    autoConnectLabel: Connect on start
     copyFromHint: Everything but the name and password — a starting point, not a link to later changes.
-    copyFromLabel: Copy From
+    copyFromLabel: Copy from
     copyFromNone: Nothing — start empty
     encodingHint:
       CP437 unless you know the realm has moved on — its banners are block glyphs that are
@@ -3904,7 +3709,7 @@ settings:
     idHint:
       Letters, numbers, - and _ — names the file, the log and the tab, separate from the display
       name.
-    idLabel: File Name
+    idLabel: File name
     idPlaceholder: thorn
     manageRealms: Manage realms…
     namePlaceholder: Thorn the Unready
@@ -3923,7 +3728,7 @@ settings:
     themeSystem: Follow the system
     usernameLabel: Username
   realms:
-    bbsLegend: MegaMUD BBS Set-up
+    bbsLegend: MegaMUD BBS set-up
     bbsNote:
       What MegaMUD's BBS.INI would say about this realm, for a character the MegaMUD engine runs.
       A key left blank is MegaMUD's own default, shown in the field. The runic coin's name is the
@@ -3935,7 +3740,7 @@ settings:
       messages: Messages
       monsters: Monsters
       items: Items
-      spells: Spell Sentences
+      spells: Spell sentences
       megamud: MegaMUD
     bbs:
       MenuPrompt: Game menu prompt
@@ -3957,7 +3762,7 @@ settings:
       MaxInputSize: Longest line typed
       PvpLevel: PvP level
       MaxHrsPerDay: Hours allowed a day
-    coinsLegend: Coin Names
+    coinsLegend: Coin names
     coinsNote:
       What this realm calls its coins, where it renames them — one realm prints its runic coins as
       Krabby Patties. Write the name as the realm prints it; either singular or plural will do.
@@ -3977,7 +3782,7 @@ settings:
       none: None — guess from name and exits only
       rm: 'rm (GreaterMUD/Paradigm: Location: map,room)'
       sysStatus: 'sys status (MajorMUD: Room n  Map: n)'
-    loginLegend: Login Menus
+    loginLegend: Login menus
     loginNote:
       When the realm prints the text on the left, the client sends what is on the right. Leave
       the answer blank to send a bare Enter, which several menus want. Write {user} or {password}
@@ -3995,26 +3800,6 @@ settings:
     stepSendPlaceholder: '1'
     stepWhenPlaceholder: Please select a realm
     submit: Add realm
-  gear:
-    setAdd: Add a set
-    setNamePlaceholder: What to call it
-    setNameAria: Set {number} name
-    setWhenAria: When set {number} applies
-    setMobPlaceholder: Any monster
-    setMobAria: Set {number} monster
-    setRemoveTitle: Remove this set
-    setRemoveAria: Remove set {number}
-    setShadowed: An earlier set already claims this situation, so this one never applies.
-    itemAdd: Add an item
-    itemPlaceholder: The item, as the pack lists it
-    itemAria: Set {number}, item {item}
-    itemRemoveTitle: Remove this item
-    itemRemoveAria: Remove item {item} from set {number}
-    whenAlways: always
-    whenMoving: while moving
-    whenResting: while resting
-    whenMeditating: while meditating
-    whenFighting: while fighting
   sections:
     character: Character
     login: Login
@@ -4022,50 +3807,8 @@ settings:
     character: Which character
     label: Settings sections
     realm: Which realm
-  spells:
-    addBlessing: Add a blessing
-    blessingDownAria: Move blessing {number} down
-    blessingDuplicate:
-      An earlier row already casts this spell at this target — only that one is kept when this
-      saves.
-    blessingDownTitle: Lower priority
-    blessingFallback: Recast After, s
-    blessingFallbackAria: Blessing {number} fallback seconds
-    blessingInCombat: In Combat
-    blessingMinMana: Not Below Mana %
-    blessingMinManaAria: Blessing {number} mana floor %
-    blessingOverHeal: Before Healing
-    blessingSpellAria: Blessing {number} spell
-    blessingTargetAria: Blessing {number} target
-    blessingTargetParty: Party
-    blessingTargetSelf: Self
-    blessingUpAria: Move blessing {number} up
-    blessingUpTitle: Higher priority
-    cureBlindnessLabel: Cure Blindness Spell
-    cureDiseaseLabel: Cure Disease Spell
-    cureFreedomLabel: Freedom Spell
-    curePoisonLabel: Cure Poison Spell
-    cureHint: The spell to cast when this lands on you. Blank does nothing.
-    cureClosedHint: Your spellbook has no spell that cures this, so there is nothing to cast.
-    pickerPlaceholder: search spells
-    removeBlessingAria: Remove blessing {number}
-    removeBlessingTitle: Remove
-    regenHpLabel: HP Regen
-    regenHpHint:
-      Cast before resting while health is short, above the heal's mana floor. The rest follows on
-      the next line.
-    regenManaLabel: Mana Regen
-    regenManaHint: Cast out of meditation whenever mana is 20 or more short of its maximum.
-    regenMinTickLabel: Min Mana Tick
-    regenMinTickHint:
-      While Mana Regen is up, a tick bringing less mana than this casts it again — so does no gain
-      in 34 seconds. 0 never recasts on the tick.
-    regenHpFullLabel: When HP Full
-    regenHpFullHint: Cast once each time health reaches Keep Resting To HP %.
-    regenManaFullLabel: When Mana Full
-    regenManaFullHint: Cast once each time mana reaches Keep Meditating To Mana %.
   rewrites:
-    listLegend: Your Designs
+    listLegend: Your designs
     note: Each design draws in place of what the realm printed, with what the client knows laid
       beside it, the moment the listing completes; what was drawn stays drawn in the scrollback.
       One design draws each listing, and turning one on turns off the others for it.
@@ -4083,13 +3826,13 @@ settings:
       shop: a shop's shelf
       party: the party
       experience: the experience line
-    bandsLegend: Vital Colours
+    bandsLegend: Vital colours
     bandsNote:
       On every line the client draws, a health or mana figure wears a colour by its share of
       maximum; the first band whose floor it reaches wins. No bands, the line's own colour.
       Unknown maximum, no colour.
-    bandsHp: Health Colours
-    bandsMana: Mana Colours
+    bandsHp: Health colours
+    bandsMana: Mana colours
     bandFromLabel: From, %
     bandColourLabel: Colour
     bandRemove: Remove
@@ -4099,7 +3842,7 @@ settings:
       ariaLabel: Design a rewrite
       nameLabel: Name
       entityLabel: Draws
-      enabledLabel: Draw It Myself
+      enabledLabel: Draw it myself
       enabledHint:
         The lines the realm prints for this are withheld until it completes, and this drawing
         goes in their place; off, the realm's own lines are painted.
@@ -4167,7 +3910,7 @@ settings:
     Blank follows what the realm calls itself at its menu, MajorMUD or Paradigm; type majormud
     or paradigm to pin one, or point at your own .mdb, SQLite copy or .zip for a realm whose
     rooms differ.
-  worldDatabaseLabel: World Database
+  worldDatabaseLabel: World database
   worldDatabasePlaceholder: 'the bundled world the realm names: MajorMUD or Paradigm'
 # What the settings editor says when a save is refused.
 errors:
@@ -4226,7 +3969,6 @@ session:
   loop:
     ambiguousStopName: '{count} rooms are called {name} — name it as "{name} {map}/{room}".'
     preferUnresolved: 'The route {loopName} names a stop the realm cannot settle, so it is not preferred.'
-    locateReason: the loop lost its place
     locateUnavailable:
       This realm has no “{command}” command, so it was said out loud rather than answered. The
       client will work out where it is from the rooms it walks into instead.
@@ -4292,8 +4034,6 @@ session:
       'Mortally wounded: the realm refuses every command until this character is up. Nothing is
       being sent. Someone in the room can aid it.'
     whyMortallyWounded: 'on the ground at {hp} health'
-    realmCharges: '{realm} charges {percent}% for a hang-up, by its realm menu.'
-    realmChargesNothing: '{realm} charges nothing for a hang-up, by its realm menu.'
   realm:
     commandUnavailable:
       This realm has no “{command}” command, so it was said out loud in the room rather than
@@ -4447,7 +4187,6 @@ automation:
     detailConfirming: reading the counter
     whyReset: the connection was reset
     whyLeftRealm: the realm was left
-    whyPlayerMoved: you moved the character yourself
     whyStopped: you asked it to
     whySwitchedOff: Auto-Quest was switched off
     whyWalkStopped: the walk stopped
@@ -4523,10 +4262,6 @@ automation:
       'You stopped {loopName}, so automatic hunting is standing down until this character levels,
       changes its kit, or a lap stops for earning too little.'
     whyStopped: the walk stopped
-  combat:
-    reasonLookAfterKill: 'something died: looking for what it dropped'
-    reasonLookAfterArrival: 'something walked in: reading the room again'
-    reasonLookAfterDeparture: 'something walked out: reading the room again'
   gear:
     capped:
       'Only {max} were sent; {more} more were left. Each one is a command out of the same budget

@@ -138,6 +138,18 @@ describe('walking a path (D48)', () => {
     expect(s.stepsToGo).toBe(3);
   });
 
+  it('does not hang up for a low experience rate at a lap’s start, as MegaMUD never does (0x30e00 stays -1)', () => {
+    const r = walker();
+    const { s } = r;
+    walking(r, LOOP(), 0);
+    s.looping = 1;
+    s.Comms_LogoffLowExp = 1;
+    s.Comms_MinExpRate = 5000;
+    expect(walkPath(s)).toBe(1);
+    expect(s.walking).toBe(1);
+    expect(s.online).toBe(1);
+  });
+
   it('stops at the end of a path with nothing more to do', () => {
     const r = walker();
     const { s, out } = r;

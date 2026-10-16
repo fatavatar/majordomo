@@ -25,7 +25,7 @@ export function membersInStep(s: Session): number {
 }
 
 /** `0x47ddd0`: the one other member in step, when there is exactly one. */
-export function onlyOtherMember(s: Session): string | null {
+function onlyOtherMember(s: Session): string | null {
   let found: string | null = null;
   for (let i = 0; i < s.partySize; i += 1) {
     const m = s.party[i]!;

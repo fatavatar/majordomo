@@ -419,17 +419,6 @@ const TUNING_DEFAULTS = {
      */
     fumbleRetryMs: 1_000
   },
-  /** Fighting on the character's behalf — `AutoCombat`. */
-  combat: {
-    /**
-     * How long after a monster dies the room is read again (an Enter), so
-     * what it dropped is seen and a wanted item picked up (2026-09-23). A
-     * pause rather than at once: the death sentence and the experience line
-     * are two lines for one kill and collapse into one read, and the drop
-     * lines land before it.
-     */
-    lookAfterKillMs: 400
-  },
   /**
    * How a monster's hazards are priced when auto-combat decides what to hit
    * first — `src/shared/menace.ts`.
@@ -1833,8 +1822,7 @@ export const DEFAULT_INTERNAL: InternalConfig = {
     }
   },
   /*
-   * The shipped row: dial in, the master switch, fighting, and the loop's
-   * transport. Everything the user named in the request, and nothing else —
+   * The shipped row: dial in, MegaMUD's toggles, and the loop's transport. Everything the user named in the request, and nothing else —
    * a toolbar that ships full is one nobody curates, and the kebab is right
    * there.
    */
@@ -1846,22 +1834,6 @@ export const DEFAULT_INTERNAL: InternalConfig = {
       // rather than with the loop's transport because it is what somebody does
       // on arriving rather than while walking.
       'gear:restore',
-      'automation',
-      'combat',
-      'retaliate',
-      // Keeping the blessings up, on the row: the switch somebody flips for
-      // one fight to keep the mana for healing, and back after.
-      'autoBless',
-      'loot',
-      /*
-       * Searching every room, on the row rather than in the kebab.
-       *
-       * It costs a command per room, which is the kind of thing somebody turns
-       * on for one corridor and off again — and a switch you toggle that often
-       * behind a menu is one you stop toggling. Everything else here is on the
-       * row for the same reason.
-       */
-      'search',
       // MegaMUD's toggles, for a character its engine runs: those its own
       // toolbar ships showing, all but Auto-Melee, and our flee beside them.
       // The pins decide them as they do the rest, not the `[Toolbar]`

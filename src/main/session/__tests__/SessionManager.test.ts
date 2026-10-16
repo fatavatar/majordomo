@@ -1067,8 +1067,6 @@ describe('hanging up to escape', () => {
     ...DEFAULT_CONFIG.automation,
     enabled: true,
     idle: { ...DEFAULT_CONFIG.automation.idle, enabled: false },
-    onEnterRealm: [],
-    rules: [],
     safety: {
       ...DEFAULT_CONFIG.automation.safety,
       hangUp: {
@@ -1155,8 +1153,6 @@ describe('running away', () => {
     ...DEFAULT_CONFIG.automation,
     enabled: true,
     idle: { ...DEFAULT_CONFIG.automation.idle, enabled: false },
-    onEnterRealm: [],
-    rules: [],
     safety: {
       ...DEFAULT_CONFIG.automation.safety,
       retreat: {
@@ -1377,19 +1373,46 @@ describe('a listing the player has the client draw', () => {
 });
 
 describe('a quiet command asked from a card', () => {
-  /* The arbiter's answer, not the session's: a repeat of a question still
-     waiting is coalesced into it, and the palette is told nothing went out. */
+  /* The engine's pending list takes a command once (`0x48ab80`): a repeat of a
+     question still waiting is not sent, and the palette is told so. */
   it('reports a repeat of a question still waiting as not sent', async () => {
     const { sink } = collect();
     manager = new SessionManager(sink);
+    manager.useMegaMud({
+      settings: defaultSettings(),
+      data: { monsters: [], items: [], spells: [] },
+      grants: {}
+    });
     await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
     const socket = await client();
     socket.write('[HP=100/MA=50]:' + PROMPT_REPAINT);
     await until(() => manager!.character.phase === 'in-game');
-    // Hold the queue the way a half-typed line does, so the first ask waits.
-    manager.send('l');
+    // In the game, so what is queued waits on the engine's pending list.
+    (manager as unknown as { mega: MegaEngine }).mega.s.inGame = 1;
     expect(manager.askRemote('Soul', 'health')).toBe(true);
     expect(manager.askRemote('Soul', 'health')).toBe(false);
+  });
+
+  /* A card's own probe goes the same way: our queue refused it while the
+     engine ran the character, so the Gang card's refresh, the Party card's
+     Leave and the pack's Put on were all dropped unsaid (2026-10-16). */
+  it('puts a card probe on the engine pending list, once', async () => {
+    const { sink } = collect();
+    manager = new SessionManager(sink);
+    manager.useMegaMud({
+      settings: defaultSettings(),
+      data: { monsters: [], items: [], spells: [] },
+      grants: {}
+    });
+    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
+    const socket = await client();
+    socket.write('[HP=100/MA=50]:' + PROMPT_REPAINT);
+    await until(() => manager!.character.phase === 'in-game');
+    const mega = (manager as unknown as { mega: MegaEngine }).mega;
+    mega.s.inGame = 1;
+    expect(manager.ask('follow Soul')).toBe(true);
+    expect(mega.s.pending.some((p) => p.text === 'follow Soul\r')).toBe(true);
+    expect(manager.ask('follow Soul')).toBe(false);
   });
 });
 
@@ -1631,8 +1654,6 @@ describe('fleeing outright', () => {
     ...DEFAULT_CONFIG.automation,
     enabled: true,
     idle: { ...DEFAULT_CONFIG.automation.idle, enabled: false },
-    onEnterRealm: [],
-    rules: [],
     safety: {
       ...DEFAULT_CONFIG.automation.safety,
       fleeGoto: {
@@ -1722,9 +1743,7 @@ describe("answering the realm's messages", () => {
   const answering: AutomationConfig = {
     ...DEFAULT_CONFIG.automation,
     enabled: true,
-    idle: { ...DEFAULT_CONFIG.automation.idle, enabled: false },
-    onEnterRealm: [],
-    rules: []
+    idle: { ...DEFAULT_CONFIG.automation.idle, enabled: false }
   };
   const wire = (socket: net.Socket): (() => string) => {
     const chunks: Buffer[] = [];
@@ -1772,9 +1791,7 @@ describe('leaving the realm for the menu', () => {
   const probing: AutomationConfig = {
     ...DEFAULT_CONFIG.automation,
     enabled: true,
-    idle: { ...DEFAULT_CONFIG.automation.idle, enabled: false },
-    onEnterRealm: ['st'],
-    rules: []
+    idle: { ...DEFAULT_CONFIG.automation.idle, enabled: false }
   };
 
   it('says so, once', async () => {
@@ -1936,8 +1953,6 @@ describe('a player opening on this character', () => {
       ...DEFAULT_CONFIG.automation,
       enabled: true,
       idle: { ...DEFAULT_CONFIG.automation.idle, enabled: false },
-      onEnterRealm: [],
-      rules: [],
       safety: {
         ...DEFAULT_CONFIG.automation.safety,
         pvp: { notifyGang: false, action: 'none' as const, ...over }
@@ -1996,8 +2011,6 @@ describe('re-deciding with nothing new from the wire', () => {
     ...DEFAULT_CONFIG.automation,
     enabled: true,
     idle: { ...DEFAULT_CONFIG.automation.idle, enabled: false },
-    onEnterRealm: [],
-    rules: [],
     health: { ...DEFAULT_CONFIG.automation.health, restBelow }
   });
 
@@ -2227,15 +2240,14 @@ describe('the locate setting', () => {
 
   /*
    * The Room card's own locate button, addressed by `Invoke.locate` rather
-   * than the generic `ask` — see `ipc.ts`: `ask` is gated to a bare word of
-   * at most eight lowercase letters, which `sys status` would fail outright,
+   * than the generic `ask` — see `ipc.ts`: which word is the realm's setting,
    * so the card asks main to send *a* locate word rather than naming one.
    */
   it("sends the button's own probe in whichever word is configured", async () => {
     const { sink } = collect();
     manager = new SessionManager(sink);
     manager.configure(
-      { ...DEFAULT_CONFIG.automation, onEnterRealm: [] },
+      { ...DEFAULT_CONFIG.automation },
       DEFAULT_CONFIG.connection.login,
       DEFAULT_CONFIG.ui.rewrites,
       'sys-status'
@@ -2255,7 +2267,7 @@ describe('the locate setting', () => {
     const { sink } = collect();
     manager = new SessionManager(sink);
     manager.configure(
-      { ...DEFAULT_CONFIG.automation, onEnterRealm: [] },
+      { ...DEFAULT_CONFIG.automation },
       DEFAULT_CONFIG.connection.login,
       DEFAULT_CONFIG.ui.rewrites,
       'none'
@@ -2277,7 +2289,7 @@ describe('the locate setting', () => {
       const { sink } = collect();
       manager = new SessionManager(sink);
       manager.configure(
-        { ...DEFAULT_CONFIG.automation, onEnterRealm: [] },
+        { ...DEFAULT_CONFIG.automation },
         DEFAULT_CONFIG.connection.login,
         DEFAULT_CONFIG.ui.rewrites,
         'sys-status'
@@ -2297,7 +2309,7 @@ describe('the locate setting', () => {
       const { sink } = collect();
       manager = new SessionManager(sink);
       manager.configure(
-        { ...DEFAULT_CONFIG.automation, onEnterRealm: [] },
+        { ...DEFAULT_CONFIG.automation },
         DEFAULT_CONFIG.connection.login,
         DEFAULT_CONFIG.ui.rewrites,
         'sys-status'
@@ -2321,7 +2333,7 @@ describe('the locate setting', () => {
       const { sink } = collect();
       manager = new SessionManager(sink);
       manager.configure(
-        { ...DEFAULT_CONFIG.automation, onEnterRealm: [] },
+        { ...DEFAULT_CONFIG.automation },
         DEFAULT_CONFIG.connection.login,
         DEFAULT_CONFIG.ui.rewrites,
         'sys-status'
@@ -2338,7 +2350,7 @@ describe('the locate setting', () => {
       const { sink } = collect();
       manager = new SessionManager(sink);
       manager.configure(
-        { ...DEFAULT_CONFIG.automation, onEnterRealm: [] },
+        { ...DEFAULT_CONFIG.automation },
         DEFAULT_CONFIG.connection.login,
         DEFAULT_CONFIG.ui.rewrites,
         'none'
@@ -2409,9 +2421,7 @@ describe('what this character costs to move', () => {
     const { sink } = collect();
     manager = new SessionManager(sink, world, {
       ...DEFAULT_CONFIG.automation,
-      enabled: false,
-      onEnterRealm: [],
-      rules: []
+      enabled: false
     });
     await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
     const socket = await client();
@@ -2472,9 +2482,7 @@ describe('what this character costs to move', () => {
     const { sink } = collect();
     manager = new SessionManager(sink, world, {
       ...DEFAULT_CONFIG.automation,
-      enabled: false,
-      onEnterRealm: [],
-      rules: []
+      enabled: false
     });
     const traveller = manager.travellerNow(manager.character);
     expect(traveller.classId).toBeNull();
@@ -2502,8 +2510,6 @@ describe('what this character costs to move', () => {
     manager = new SessionManager(sink, world, {
       ...DEFAULT_CONFIG.automation,
       enabled: false,
-      onEnterRealm: [],
-      rules: [],
       movement: { ...DEFAULT_CONFIG.automation.movement, pickLocks: false, bashDoors: true }
     });
     expect(manager.travellerNow(manager.character).forcing).toEqual({ pick: false, bash: true });
@@ -2526,9 +2532,7 @@ describe('what this character costs to move', () => {
     const { sink } = collect();
     manager = new SessionManager(sink, world, {
       ...DEFAULT_CONFIG.automation,
-      enabled: false,
-      onEnterRealm: [],
-      rules: []
+      enabled: false
     });
     const round: Route = { steps: [], cost: 0, blocked: true };
     const through: Route = {
@@ -2558,8 +2562,6 @@ describe('what this character costs to move', () => {
     manager = new SessionManager(sink, world, {
       ...DEFAULT_CONFIG.automation,
       enabled: false,
-      onEnterRealm: [],
-      rules: [],
       movement: { ...DEFAULT_CONFIG.automation.movement, keepOutOf: ['vortex'] }
     });
     expect(manager.travellerNow(manager.character).keepOut).toEqual({
@@ -2621,15 +2623,11 @@ describe('SessionManager dead link', () => {
     await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
     await client();
 
-    // The arbiter takes a card's ask while the socket is up…
-    expect(manager.ask('rm')).toBe(true);
     manager.send('who\r\n');
     await until(() => drops.length > 0);
     const dead = (): number =>
       notices.filter((notice) => /treating the connection as lost/.test(notice)).length;
     expect(dead()).toBe(1);
-    // …and refuses one once it has gone, rather than filing it as sent.
-    expect(manager.ask('rm')).toBe(false);
 
     manager.send('\r');
     await new Promise((resolve) => setTimeout(resolve, 180));
@@ -2721,7 +2719,7 @@ describe('SessionManager finds', () => {
     manager = new SessionManager(
       sink,
       undefined,
-      { ...DEFAULT_CONFIG.automation, enabled: false, onEnterRealm: [], rules: [] },
+      { ...DEFAULT_CONFIG.automation, enabled: false },
       undefined,
       undefined,
       undefined,
@@ -2799,7 +2797,7 @@ describe('SessionManager finds', () => {
     manager = new SessionManager(
       sink,
       undefined,
-      { ...DEFAULT_CONFIG.automation, enabled: false, onEnterRealm: [], rules: [] },
+      { ...DEFAULT_CONFIG.automation, enabled: false },
       undefined,
       undefined,
       undefined,
@@ -2849,8 +2847,6 @@ describe('the fight of 2026-09-22', () => {
     ...DEFAULT_CONFIG.automation,
     enabled: true,
     idle: { ...DEFAULT_CONFIG.automation.idle, enabled: false },
-    onEnterRealm: [],
-    rules: [],
     combat: { ...DEFAULT_CONFIG.automation.combat, enabled: true }
   });
   const wire = (socket: net.Socket): (() => string) => {
@@ -2881,34 +2877,20 @@ describe('the fight of 2026-09-22', () => {
    * first kill. A burst of arrivals is every one of them on the list, and one
    * Enter once the burst is in.
    */
-  it('counts every monster that walks in, and reads the room once after the burst', async () => {
-    const { socket, seen } = await inTheForest();
-    const sent = (): string[] =>
-      seen()
-        .split(/\r\n?|\n/)
-        .slice(0, -1);
+  it('counts every monster that walks in', async () => {
+    const { socket } = await inTheForest();
     const before = manager!.character.room.occupants.length;
-    const enters = sent().filter((line) => line === '').length;
     socket.write(
       'A dark goblin moves into the room from the north.\r\n'.repeat(3) + '[HP=240/MA=214]:\r\n'
     );
     await until(() => manager!.character.room.occupants.length === before + 3);
-    await until(() => sent().filter((line) => line === '').length > enters);
-    await new Promise((resolve) => setTimeout(resolve, tuning().combat.lookAfterKillMs + 200));
-    expect(sent().filter((line) => line === '').length).toBe(enters + 1);
   });
 
-  it('reads the room after a monster walks out', async () => {
-    const { socket, seen } = await inTheForest();
-    const sent = (): string[] =>
-      seen()
-        .split(/\r\n?|\n/)
-        .slice(0, -1);
+  it('counts a monster that walks out', async () => {
+    const { socket } = await inTheForest();
     const before = manager!.character.room.occupants.length;
-    const enters = sent().filter((line) => line === '').length;
     socket.write('The dark goblin leaves to the north.\r\n[HP=240/MA=214]:\r\n');
     await until(() => manager!.character.room.occupants.length === before - 1);
-    await until(() => sent().filter((line) => line === '').length > enters);
   });
 });
 
@@ -2984,7 +2966,7 @@ describe('the hunting survey prices a kill off the fight record', () => {
     manager = new SessionManager(
       sink,
       lairs(),
-      { ...DEFAULT_CONFIG.automation, enabled: false, onEnterRealm: [], rules: [] },
+      { ...DEFAULT_CONFIG.automation, enabled: false },
       DEFAULT_CONFIG.connection.login,
       undefined,
       undefined,
@@ -3098,8 +3080,6 @@ describe('monsters the table says to run from or hang up on', () => {
     ...DEFAULT_CONFIG.automation,
     enabled: true,
     idle: { ...DEFAULT_CONFIG.automation.idle, enabled: false },
-    onEnterRealm: [],
-    rules: [],
     ...over
   });
 
@@ -3131,8 +3111,6 @@ describe('a talk-box line of several commands', () => {
     // Off: the player's own line goes whatever the master switch says.
     enabled: false,
     idle: { ...DEFAULT_CONFIG.automation.idle, enabled: false },
-    onEnterRealm: [],
-    rules: [],
     pacing: { window: 2, minGapMs: 10, ackTimeoutMs: 30_000 }
   };
 
@@ -3309,7 +3287,25 @@ describe('what the MegaMUD engine was walking, taken up again', () => {
     const walk = vi.spyOn(inside.mega, 'walkTo').mockReturnValue(null);
     host.enteredGame!();
     await Promise.resolve();
-    expect(walk).toHaveBeenCalledWith('1/2', true);
+    expect(walk).toHaveBeenCalledWith('1/2', true, true);
+  });
+
+  /*
+   * A route the player walks is walked alone: MegaMUD takes up whatever loop
+   * path it still holds on arriving, and Stop leaves it loaded, so a route
+   * after a lap walked back into the lap (2026-10-16). Only a restart or a
+   * lost line takes a loop up again.
+   */
+  it('walks a route the player asks for alone, so no stopped lap follows it', () => {
+    const { inside, written } = engine();
+    inside.mega.s.inGame = 1;
+    const walk = vi.spyOn(inside.mega, 'walkTo').mockReturnValue(null);
+    const route = { steps: [{ to: '1/2' }] } as unknown as Parameters<
+      SessionManager['walkRoute']
+    >[0];
+    expect(manager!.walkRoute(route)).toBeNull();
+    expect(walk).toHaveBeenCalledWith('1/2', false, true);
+    expect(written).toEqual([{ to: '1/2', run: false }]);
   });
 
   it('leaves be what MegaMUD’s own On entry started, and lets a loop filed nowhere go', async () => {

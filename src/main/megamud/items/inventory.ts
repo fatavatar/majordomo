@@ -97,7 +97,7 @@ export function coinWeight(s: Session): number {
  * every item of known weight), and the first item of unknown weight and how
  * many such are carried. Null when a line has no item record.
  */
-export function weighInventory(
+function weighInventory(
   s: Session
 ): { weight: number; unknown: Carried | null; unknownCount: number } | null {
   let known = 0;

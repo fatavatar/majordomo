@@ -84,30 +84,6 @@ function waypointsOf(state: Reduction, path: readonly RoomId[]): RoomId[] {
 }
 
 /**
- * The fewest rooms of `path` whose routes reproduce it exactly.
- *
- * Greedy, left to right: the leg from the current waypoint is extended while
- * the planner's own route to the candidate is exactly the rooms recorded
- * between them; the moment it would go another way, the room before the
- * candidate becomes a waypoint. The last room is always one, so the way ends
- * where the picks did.
- *
- * A room the path visits twice — the closing pick of a loop, which is its
- * first — is handled by the same rule: the route from a room to itself is no
- * steps, which never matches the rooms between, so the room before the
- * return becomes the waypoint the closing leg is planned from.
- */
-export function reduceWaypoints(
-  graph: WorldGraph,
-  path: readonly RoomId[],
-  traveller: Traveller = {}
-): RoomId[] {
-  const first = path[0];
-  if (first === undefined) return [];
-  return waypointsOf(reduceMore(graph, path, traveller, seedReduction(first)), path);
-}
-
-/**
  * `reduceWaypoints`, handing the thread back after every route it plans.
  *
  * For a caller reducing hundreds of recorded loops on the thread that holds

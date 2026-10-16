@@ -44,7 +44,7 @@ export function roomKnownHere(s: Session): number {
 }
 
 /** `0x43cec0`: the destination's name: the loop's, else the room's (`0x80fb`). */
-export function showDestination(s: Session): void {
+function showDestination(s: Session): void {
   if (s.looping !== 0) {
     s.destination = s.MegaMud_CurPath.slice(0, 0x34);
     return;

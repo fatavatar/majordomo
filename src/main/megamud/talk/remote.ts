@@ -50,20 +50,27 @@ import { clearPath, copyPath, freeSteps, stepsShown } from '../move/path';
 import type { PathRec, Session } from '../Session';
 import { activateProfile, useProfile } from '../character';
 
-/** The reply prefix for each kind (the table at `0x4b2fb4`). */
-function replyPrefix(s: Session, p: PlayerRec, kind: number, sender: string): string {
+/** The reply prefix for each kind (the table at `0x4b2fb4`); with no record, the sender's name. */
+function replyPrefix(s: Session, p: PlayerRec | null, kind: number, sender: string): string {
   switch (kind) {
     case 0:
       return `>${s.Player_Name}`;
     case 1:
-      return `>${p.name}`;
+      return `>${p?.name ?? sender}`;
     case 8:
       return 'gb ';
     case 0x10:
-      return `/${p.name}`;
+      return `/${p?.name ?? sender}`;
     default:
-      return `/p ${p.userId !== '' ? p.userId : sender}`;
+      return `/p ${p !== null && p.userId !== '' ? p.userId : sender}`;
   }
+}
+
+/** The command in the line, from `start`: blanks off its front, and a said one cut at its quote. */
+function commandText(line: string, start: number, kind: number): string {
+  const raw = line.slice(start).replace(/^ +/, '').slice(0, 99);
+  const quote = kind === 1 ? raw.indexOf('"') : -1;
+  return quote === -1 ? raw : raw.slice(0, quote);
 }
 
 /** `0x491ac0`: the player whose BBS user ID this is. */
@@ -693,13 +700,14 @@ function strangerCommand(
 ): number {
   if (!s.botCommands.some((b) => b.anyone) || s.f_a32c !== 0) return 0;
   if (kind !== 1 && kind !== 0x10 && kind !== 0x20) return 0;
-  let raw = line.slice(start).replace(/^ +/, '').slice(0, 99);
-  if (kind === 1) {
-    const quote = raw.indexOf('"');
-    if (quote !== -1) raw = raw.slice(0, quote);
-  }
-  const to = kind === 1 ? `>${sender}` : kind === 0x10 ? `/${sender}` : `/p ${sender}`;
-  botCommand(s, kind, sender, null, to, raw);
+  botCommand(
+    s,
+    kind,
+    sender,
+    null,
+    replyPrefix(s, null, kind, sender),
+    commandText(line, start, kind)
+  );
   return 0;
 }
 
@@ -751,11 +759,7 @@ export function remoteCommand(s: Session, line: string, kind: number): number {
   let perms = kind === 0 ? 0xffff : p.remote & 0xffff;
   const to = replyPrefix(s, p, kind, sender);
 
-  let raw = line.slice(start).replace(/^ +/, '').slice(0, 99);
-  if (kind === 1) {
-    const quote = raw.indexOf('"');
-    if (quote !== -1) raw = raw.slice(0, quote);
-  }
+  const raw = commandText(line, start, kind);
   const cmd = plainText(s, raw);
   if (
     s.f_a32c !== 0 &&

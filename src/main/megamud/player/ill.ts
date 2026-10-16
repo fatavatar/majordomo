@@ -7,7 +7,7 @@ import { setState } from '../script/state';
 import type { Session } from '../Session';
 
 /** `0x46bb10`: every active Messages.md row's ending tried against the line. */
-export function anyMessageEnded(s: Session, line: string): number {
+function anyMessageEnded(s: Session, line: string): number {
   let ended = 0;
   for (const rec of s.data.messages ?? []) {
     if ((rec.effects & 0x8000) === 0 && messageEnded(s, line, rec) !== 0) ended = 1;

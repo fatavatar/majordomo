@@ -92,7 +92,7 @@ export function corpseOrLootbox(name: string): number {
  * corpse or a lootbox is flagged (`0x8000`, `0x10000`); a whirling vortex or
  * an obsidian obelisk changes the room's hash.
  */
-export function addNoticed(s: Session, text: string): number {
+function addNoticed(s: Session, text: string): number {
   const name = trimSpaces(text.slice(0, 199));
   if (name === '') return 0;
   const e = addEntity(s);

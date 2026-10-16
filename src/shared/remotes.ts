@@ -47,8 +47,6 @@
  */
 
 /** Every `@` command MegaMUD's manual names, in the manual's own order. */
-import { EXP_RATE_SETTLE_MS, type Stealth } from './character';
-import { TRAINED_ATTRIBUTES, type TrainedAttribute } from './training';
 
 export const REMOTE_NAMES = [
   'version',
@@ -123,7 +121,7 @@ export const REMOTE_NAMES = [
   /*
    * Also mudengine's own: the six attributes off the stat sheet, which no
    * MegaMUD remote answers (its manual has none, 2026-09-19). A MegaMUD asked
-   * `@stats` answers `{command invalid or not allowed}`. See `formatStats`.
+   * `@stats` answers `{command invalid or not allowed}`.
    */
   'stats',
   /*
@@ -154,18 +152,6 @@ export const REMOTE_NAMES = [
 ] as const;
 
 export type RemoteName = (typeof REMOTE_NAMES)[number];
-
-/**
- * How far this client can go with one of them.
- *
- * - `answered` — the reply shape is in a capture, so the command round-trips.
- * - `acted` — it asks for an action and acknowledges nothing, so there is
- *   nothing to guess: the action is the whole of it.
- * - `refused` — understood, and declined on purpose. See the note above.
- * - `unread` — no captured reply, so answering would mean inventing a format
- *   another client has to parse. Recorded, reported, not answered.
- */
-export type RemoteSupport = 'answered' | 'acted' | 'refused' | 'unread';
 
 /**
  * The four standing refusals, by id. The sentences themselves are UI copy and
@@ -454,65 +440,6 @@ export const REMOTES: Readonly<Record<RemoteName, RemoteSpec>> = {
 };
 
 /**
- * The extended wording of a question, for a peer known to run this client.
- *
- * One map, read in both directions (`plainRemote`), so the pair cannot drift:
- * an upgrade with no way back would be a question that fails silently for ever
- * once a peer changes client.
- */
-export const EXTENDED_REMOTES: Readonly<Partial<Record<RemoteName, RemoteName>>> = {
-  where: 'where-room',
-  comeback: 'comeback-room'
-};
-
-/** Whether this is one of the extended pair. */
-export function isExtended(name: RemoteName): boolean {
-  return Object.values(EXTENDED_REMOTES).includes(name);
-}
-
-/** The plain question an extended one stands in for, or null. */
-export function plainRemote(name: RemoteName): RemoteName | null {
-  for (const [plain, extended] of Object.entries(EXTENDED_REMOTES)) {
-    if (extended === name) return plain as RemoteName;
-  }
-  return null;
-}
-
-/** One `@` command as it arrived, with whatever followed it. */
-export interface RemoteCall {
-  name: RemoteName;
-  /** Everything after the command word, trimmed, or null when nothing followed. */
-  argument: string | null;
-  /** The command as spelled, for reporting a refusal in the sender's own words. */
-  raw: string;
-}
-
-/**
- * Reads a chat message as an `@` command, or `null`.
- *
- * **Anchored at the start.** `Stiffy gossips: wow ... @health` is somebody
- * talking; `@health` on its own is a command. Anchoring is what keeps a client
- * from being driven by a sentence somebody wrote about it.
- *
- * The trailing `(can't move)` on `@wait` in captures/074 is MegaMUD's own
- * annotation and is kept as the argument rather than being matched: it is not
- * part of the vocabulary and a realm's version may word it differently.
- */
-export function parseRemoteCall(message: string): RemoteCall | null {
-  const match = /^\s*@(?<word>[a-z-]+!?)(?:\s+(?<argument>.*\S))?\s*$/i.exec(message);
-  if (!match?.groups) return null;
-  const word = match.groups['word']!.toLowerCase();
-  const name = REMOTE_NAMES.find((candidate) => candidate === word);
-  if (name === undefined) return null;
-  const argument = match.groups['argument']?.trim() ?? null;
-  return {
-    name,
-    argument: argument === null || argument.length === 0 ? null : argument,
-    raw: word
-  };
-}
-
-/**
  * What another client said back.
  *
  * Two shapes, both captured, both wrapped in braces so neither can be confused
@@ -611,289 +538,6 @@ export function parseRemoteReply(message: string): RemoteReply | null {
     mana: mana === undefined ? null : Number(mana),
     manaMax: manaMax === undefined ? null : Number(manaMax)
   };
-}
-
-/**
- * This client's own `@health` answer, in the format the captures show.
- *
- * **Nothing is sent without a maximum.** `{HP=600/600}` states a pair, and a
- * client with no stat sheet yet has no maximum to state — `{HP=62/0}` would be
- * a lie in the reassuring direction on somebody else's screen, and `{HP=62}` is
- * a shape no capture shows and no other client parses. Null here, and the
- * caller says out loud that it could not answer.
- */
-export function formatVitals(
-  hp: number | null,
-  hpMax: number | null,
-  mana: number | null,
-  manaMax: number | null
-): string | null {
-  if (hp === null || hpMax === null || hpMax <= 0) return null;
-  const body = `HP=${hp}/${hpMax}`;
-  if (mana === null || manaMax === null || manaMax <= 0) return `{${body}}`;
-  return `{${body},MA=${mana}/${manaMax}}`;
-}
-
-/*
- * The answers to the questions, in the shapes MegaMUD 2.1 gave when asked
- * (`npm run probe:megamud -- --to Rand`, 2026-08-29, captures/215). Every one
- * is a single telepath in braces. Pure, so the shapes are tested against the
- * capture rather than against a session.
- *
- * Every one returns **null rather than a number it does not have**: a `@lives`
- * before any stat sheet, a `@where` before any room, a `@wealth` before any
- * listing — and the responder then says so locally instead of sending a zero
- * that reads, on somebody else's screen, as a fact.
- */
-
-/** `1,250` — the thousands separator MegaMUD prints (`Needed: 2,150`). */
-export function withCommas(value: number): string {
-  return Math.trunc(value)
-    .toString()
-    .replace(/\B(?=(\d{3})+(?!\d))/g, ',');
-}
-
-/**
- * `{Made: 0  Needed: 2,150  Rate: ? k/hr  Will level in: ?}` — two spaces
- * between fields, `?` where MegaMUD cannot compute a figure. The captured
- * sample was a character that had made nothing, so `?` is all that is
- * captured for the last two; when this client *can* compute them it prints a
- * rate to one decimal and the wait in hours and minutes — a display on the
- * asker's screen, not a format another client parses.
- *
- * Null before the session has begun: `made` is a running count that starts
- * at zero, and until a first status line has stamped `since` that zero is
- * "nothing counted yet", not "nothing made" — the same zero, and a different
- * fact. A rate that rounds to `0.0` is `?` too, rather than a nothing beside
- * a wait computed from the unrounded figure.
- */
-export function formatExp(
-  made: number,
-  needed: number | null,
-  since: number | null,
-  now: number
-): string | null {
-  if (since === null) return null;
-  const perHour = ratePerHour(made, since, now);
-  const rate = perHour === null ? '?' : `${(perHour / 1000).toFixed(1)}`;
-  const wait = perHour === null || needed === null ? '?' : formatHours(needed / perHour);
-  const need = needed === null ? '?' : withCommas(needed);
-  return `{Made: ${withCommas(made)}  Needed: ${need}  Rate: ${rate} k/hr  Will level in: ${wait}}`;
-}
-
-/**
- * Experience per hour, or null while there is nothing to divide or too little
- * time to divide by (`EXP_RATE_SETTLE_MS`, shared with the Vitals card so the
- * two never disagree about whether a rate exists yet), or when the figure
- * would print as `0.0 k/hr`.
- */
-function ratePerHour(made: number, since: number, now: number): number | null {
-  const elapsed = now - since;
-  if (made <= 0 || elapsed < EXP_RATE_SETTLE_MS) return null;
-  const perHour = made / (elapsed / 3_600_000);
-  return perHour / 1000 < 0.05 ? null : perHour;
-}
-
-function formatHours(hours: number): string {
-  const whole = Math.floor(hours);
-  const minutes = Math.round((hours - whole) * 60);
-  return whole > 0 ? `${whole}h ${minutes}m` : `${minutes}m`;
-}
-
-/** `{Level: 1  Needed: 2,150  Will level in: ?}`. */
-export function formatLevel(
-  level: number | null,
-  needed: number | null,
-  made: number,
-  since: number | null,
-  now: number
-): string | null {
-  if (level === null) return null;
-  const perHour = since === null ? null : ratePerHour(made, since, now);
-  const wait = perHour === null || needed === null ? '?' : formatHours(needed / perHour);
-  const need = needed === null ? '?' : withCommas(needed);
-  return `{Level: ${level}  Needed: ${need}  Will level in: ${wait}}`;
-}
-
-/** `{9 lives remaining}`. */
-export function formatLives(lives: number | null): string | null {
-  return lives === null ? null : `{${lives} lives remaining}`;
-}
-
-/** `{0 copper}` — the purse as `Wealth:` states it, in copper. */
-export function formatWealth(wealth: number | null): string | null {
-  return wealth === null ? null : `{${wealth} copper}`;
-}
-
-/** `{0/2400 - None}` — the figures and the server's own word for the load. */
-export function formatEncumbrance(
-  carried: number | null,
-  max: number | null,
-  word: string | null
-): string | null {
-  if (carried === null || max === null) return null;
-  return word === null ? `{${carried}/${max}}` : `{${carried}/${max} - ${word}}`;
-}
-
-/**
- * `{Newhaven, Village Entrance (Exits: N,S,W,SE)}` — the canonical short
- * direction codes upper-cased, which is what MegaMUD prints too. A room with
- * no exits read prints the name alone rather than an empty list claiming
- * there are none.
- */
-export function formatWhere(name: string | null, exits: readonly string[]): string | null {
-  if (name === null) return null;
-  if (exits.length === 0) return `{${name}}`;
-  return `{${name} (Exits: ${exits.map((exit) => exit.toUpperCase()).join(',')})}`;
-}
-
-/**
- * `{No one}` when the room holds nobody but this character, and the names
- * comma-joined without a space otherwise, the way `@what` joins the floor.
- * Both captured (`captures/215`, `captures/216`, 2026-08-29): `{Probe}` is
- * what MegaMUD 2.1 answered with one other character standing there, which is
- * the frame the analogy had predicted; the join between several names is the
- * analogy still, since only one was ever in the room. Who is named is the
- * caller's decision, stated there.
- */
-export function formatWho(names: readonly string[]): string {
-  return names.length === 0 ? '{No one}' : `{${names.join(',')}}`;
-}
-
-/**
- * `{newbie manual,large sign}` — the floor, comma-joined without a space —
- * and `{Nothing}` for a bare one. Both captured: the empty answer arrived on
- * 2026-08-29 (`captures/218`) once the MegaMUD had been stepped onto a floor
- * with nothing on it, since its own room holds two fixtures nothing will lift.
- */
-export function formatWhat(items: readonly string[]): string {
-  return items.length === 0 ? '{Nothing}' : `{${items.join(',')}}`;
-}
-
-/**
- * `{no}`, or `{yes: 1}` — the two answers on the wire, and nothing wider.
- *
- * Six asks, six `{no}`s at first; the yes arrived on 2026-08-29
- * (`captures/217`) once a character of ours had put one copper ring in the
- * other client's hands: `@have copper ring` → `{yes: 1}`, and `@have ring`
- * for the same item → `{no}`. Two asks show exactly that much: the full name
- * answers, a word from inside it does not. What MegaMUD prints for a second
- * copy — `{yes: 2}`, a stack, a fixed `1` — nobody has seen, and this is a
- * frame another client parses, so a count above one returns null and the
- * responder says so instead of guessing.
- */
-export function formatHave(count: number): string | null {
-  if (count === 0) return '{no}';
-  if (count === 1) return '{yes: 1}';
-  return null;
-}
-
-/**
- * `{ON: Combat,Pre(attacks),Heal,…}` then `{OFF: Nuke,Search,Melee,Hangup}` —
- * two telepaths, MegaMUD's frame with **this client's** switches in it. The
- * words are ours because the settings are: MegaMUD's `Nuke` and `Abils` have
- * no counterpart here, and answering with its words would name settings this
- * client does not have. A decision, and the decision is that the frame is
- * what another client's reader parses and the words are what a person reads.
- */
-export function formatSettings(on: readonly string[], off: readonly string[]): [string, string] {
-  // An empty half says so the way the rest of this file does -- `{No one}`,
-  // `{none}`, `{no}` -- rather than printing a frame with nothing in it.
-  const list = (names: readonly string[]): string =>
-    names.length === 0 ? 'none' : names.join(',');
-  return [`{ON: ${list(on)}}`, `{OFF: ${list(off)}}`];
-}
-
-/**
- * `{MANUAL: Waiting for instructions ... -Hidden}` — MegaMUD's frame: a mode
- * word, a colon, what it is doing, and a suffix for hiding. This client's
- * modes are its own — `WALK` to somewhere, `LOOP` on a named loop, `IDLE` —
- * and the suffix follows the three-state `Stealth` it models: `-Sneaking`,
- * nothing for a character known to be seen, and `-Stealth?` for one nobody
- * has said anything about. Unknown is not "not sneaking": a leader who read
- * no suffix as visible would walk a party into a lair on a guess, which is
- * the guess the three-state exists to refuse. The same decision as
- * `@settings`: the frame is theirs, the words are ours.
- */
-export function formatStatus(
-  mode: 'walk' | 'loop' | 'idle',
-  doing: string,
-  stealth: Stealth
-): string {
-  const word = mode === 'walk' ? 'WALK' : mode === 'loop' ? 'LOOP' : 'IDLE';
-  const suffix = stealth === 'sneaking' ? ' -Sneaking' : stealth === 'unknown' ? ' -Stealth?' : '';
-  return `{${word}: ${doing}${suffix}}`;
-}
-
-/**
- * `{1/2150 Town Gates}` — this character's room as the realm addresses it.
- *
- * **Null where the realm has not placed the character**, like every other
- * formatter here: a room this client is reading by name alone has no address,
- * and inventing one would send another client walking to a room off a guess.
- * The name is carried behind the address as a courtesy to a person reading the
- * telepath; the address is what the other client acts on.
- */
-export function formatRoomAddress(
-  map: number | null,
-  room: number | null,
-  name: string | null
-): string | null {
-  if (map === null || room === null) return null;
-  return name === null ? `{${map}/${room}}` : `{${map}/${room} ${name}}`;
-}
-
-/**
- * The address out of an extended remote's **argument** — `@comeback-room
- * 1/2150` — or null.
- *
- * Bare rather than braced: braces wrap an *answer*, and this is what a command
- * carries. Parse, do not validate: the caller gets a pair of numbers or
- * nothing, and never a string it has to re-read.
- */
-export function parseRoomAddress(argument: string | null): { map: number; room: number } | null {
-  if (argument === null) return null;
-  const match = /^\s*(\d{1,6})\s*\/\s*(\d{1,6})\s*$/.exec(argument);
-  if (!match) return null;
-  return { map: Number(match[1]), room: Number(match[2]) };
-}
-
-/** The realm's own `Races` column names, its `AGL` and `CHM` spelled as they read. */
-const STAT_KEYS: Readonly<Record<TrainedAttribute, string>> = {
-  strength: 'STR',
-  intellect: 'INT',
-  willpower: 'WIL',
-  agility: 'AGI',
-  health: 'HEA',
-  charm: 'CHA'
-};
-
-/**
- * `{STR=60,INT=45,WIL=50,AGI=55,HEA=45,CHA=40}` — the answer to `@stats`.
- *
- * **Ours, not captured**: no MegaMUD remote states attributes, so the frame is
- * `@health`'s (`{HP=600/600,MA=516/516}`) — braces, `KEY=value`, comma-joined
- * — which keeps it apart from chat and from every other reply `parseRemoteReply`
- * reads. The stat screen's field order.
- *
- * **All six or nothing**: one sheet states them together, so a gap is a sheet
- * not yet read, and a partial answer would read as the whole of one.
- */
-export function formatStats(
-  stats: Readonly<Record<TrainedAttribute, number | null>>
-): string | null {
-  const fields: string[] = [];
-  for (const attribute of TRAINED_ATTRIBUTES) {
-    const value = stats[attribute];
-    if (value === null) return null;
-    fields.push(`${STAT_KEYS[attribute]}=${value}`);
-  }
-  return `{${fields.join(',')}}`;
-}
-
-/** `{mudengine 0.5.0}`, in the shape of `{MegaMMUD 2.1}`. */
-export function formatVersion(client: string, version: string): string {
-  return `{${client} ${version}}`;
 }
 
 /**
@@ -1023,18 +667,11 @@ export function formatVersion(client: string, version: string): string {
  * payload, the editor that writes it and the handler that validates it all read
  * `RemoteStance` from here — the alternative was the same three string literals
  * written out in five files, each type-checking on its own while the
- * hand-rolled validator in main silently refused a fourth. That is the
- * `GUARD_FIELDS`/`readField` shape, and `isRemoteStance` is the runtime half so
- * the two cannot drift.
+ * hand-rolled validator in main silently refused a fourth.
  */
 export const REMOTE_STANCES = ['allow', 'deny', 'unset'] as const;
 
 export type RemoteStance = (typeof REMOTE_STANCES)[number];
-
-/** Whether a value off the wire or out of a form is a stance this client knows. */
-export function isRemoteStance(value: unknown): value is RemoteStance {
-  return typeof value === 'string' && (REMOTE_STANCES as readonly string[]).includes(value);
-}
 
 /** Whether a value off the wire or out of a form is a remote this client knows. */
 export function isRemoteName(value: unknown): value is RemoteName {
@@ -1223,20 +860,6 @@ function has(list: readonly RemoteName[], name: RemoteName): boolean {
 }
 
 /**
- * What this player's own entry says about one remote, ignoring the gang.
- *
- * The flyout's three buttons show *the decision somebody made*, not the
- * verdict — those are different, and conflating them is how a person clicks
- * Allow on somebody the gang already covered and sees nothing change.
- */
-export function stanceFor(access: RemoteAccess, from: string, name: RemoteName): RemoteStance {
-  const grant = grantFor(access, from);
-  if (has(grant.deny, name)) return 'deny';
-  if (has(grant.allow, name)) return 'allow';
-  return 'unset';
-}
-
-/**
  * May this player use this remote?
  *
  * Pure, and the single place the question is answered — `Remotes` calls it and
@@ -1272,26 +895,6 @@ export function judgeRemote(
     gangUnresolved: fromGang && evidence.inGang === null,
     notInParty: fromParty && !evidence.inParty
   };
-}
-
-/**
- * Could this sender use **anything** at all?
- *
- * Not a shortcut for `judgeRemote` — it answers a different question, and only
- * one caller has it: whether a command that arrived on a channel this client
- * never answers on is worth reporting. An untrusted stranger gossiping
- * `@health` at the whole realm must not produce a notice on every mudengine
- * character logged in, once per line, for free.
- *
- * A `deny` does not subtract here: somebody with one remote allowed and one
- * denied is still somebody this character has a relationship with, and their
- * attempts are worth seeing.
- */
-export function reachableBy(from: string, access: RemoteAccess, evidence: RemoteEvidence): boolean {
-  const grant = grantFor(access, from);
-  if (grant.allow.length > 0) return true;
-  if (evidence.inParty && access.party.length > 0) return true;
-  return evidence.inGang === true && access.gang.length > 0;
 }
 
 /**

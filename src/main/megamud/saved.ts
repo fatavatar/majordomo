@@ -160,25 +160,34 @@ export function ruleOnto(rec: MonsterRec, rule: MonsterRule): void {
   }
 }
 
+/**
+ * An item record as the loader reads one the file names and nothing else:
+ * flag 1 and not marked changed (`newItem`'s `0x40000000`), its weight not
+ * known (-1).
+ */
+export function loadedItem(name: string): ItemRec {
+  return {
+    id: 0,
+    layer: 0,
+    name: name.slice(0, 30),
+    shop: '',
+    ifNeeded: '',
+    flags: 1,
+    type: 0,
+    location: 0,
+    min: 0,
+    max: 0,
+    weight: -1,
+    price: 0
+  };
+}
+
 /** An item learned before, put on the engine's list as the loader would have read it. */
 export function rememberItem(s: Session, item: LearnedItem): void {
   const key = item.name.toLowerCase();
-  let rec: ItemRec | undefined = s.data.items.find((i) => i.name.toLowerCase() === key);
+  let rec = s.data.items.find((i) => i.name.toLowerCase() === key);
   if (!rec) {
-    rec = {
-      id: 0,
-      layer: 0,
-      name: item.name.slice(0, 30),
-      shop: '',
-      ifNeeded: '',
-      flags: 1,
-      type: 0,
-      location: 0,
-      min: 0,
-      max: 0,
-      weight: -1,
-      price: 0
-    } satisfies ItemRec;
+    rec = loadedItem(item.name);
     s.data.items.push(rec);
   }
   if (item.weight !== null) rec.weight = item.weight;

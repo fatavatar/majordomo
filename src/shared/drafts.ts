@@ -20,7 +20,6 @@ import {
   normalizeGear,
   normalizeQuests,
   type GearConfig,
-  normalizeTrain,
   normalizeParty,
   type PartyConfig,
   type RewritesUiConfig,
@@ -75,7 +74,6 @@ import {
   type ThemeId,
   type ThemePreference
 } from './themes';
-import type { TrainedAttribute } from './training';
 import type { StreamEncoding } from './types';
 import { isRecord } from './values';
 import {
@@ -161,8 +159,6 @@ export interface ServerDraft {
    * `Server.database`.
    */
   database: string;
-  /** Whether a hang-up here is charged; null leaves it to the options file. See `Server.hangPenalties`. */
-  hangPenalties: boolean | null;
   /** What this realm calls its coins, where it renames them. See `Server.coins`. */
   coins: CoinNames;
   /** Its MegaMUD BBS set-up: only the keys it states. See `Server.bbs`. */
@@ -234,13 +230,10 @@ export interface GlobalDraft {
   };
   automation: {
     enabled: boolean;
-    onEnterRealm: string[];
-    onPartyChange: string;
     idle: { enabled: boolean; afterSeconds: number; command: string };
     pacing: { window: number; minGapMs: number; ackTimeoutMs: number };
     walk: { stepTimeoutMs: number; clearAfterSeconds: number; minExpPerHour: number };
-    /** The options file's answer is a plain yes or no: there is nothing above it. */
-    hangUp: Omit<ProfileDraft['hangUp'], 'penalties'> & { penalties: boolean };
+    hangUp: ProfileDraft['hangUp'];
     retreat: ProfileDraft['retreat'];
     fleeGoto: ProfileDraft['fleeGoto'];
     pvp: ProfileDraft['pvp'];
@@ -249,7 +242,6 @@ export interface GlobalDraft {
     health: ProfileDraft['health'];
     movement: ProfileDraft['movement'];
     hunting: ProfileDraft['hunting'];
-    train: ProfileDraft['train'];
     quests: ProfileDraft['quests'];
     gear: ProfileDraft['gear'];
     spells: {
@@ -282,13 +274,9 @@ export interface GlobalDraft {
       invokeItems: boolean;
     };
     loot: ProfileDraft['loot'];
-    drop: ProfileDraft['drop'];
     search: ProfileDraft['search'];
-    banking: ProfileDraft['banking'];
     remotes: ProfileDraft['remotes'];
     afk: ProfileDraft['afk'];
-    talk: ProfileDraft['talk'];
-    statline: ProfileDraft['statline'];
   };
   /** The loops every character may walk: `global/loops/`. */
   loops: Loop[];
@@ -399,8 +387,6 @@ export interface ProfileDraft {
   hangUp: {
     enabled: boolean;
     belowHealth: number;
-    /** This character's own answer; null leaves it to the realm, then the options file. */
-    penalties: boolean | null;
     onPlayerInRoom: boolean;
   };
   /** Running away — the escape that works, and the one to offer first. */
@@ -500,10 +486,6 @@ export interface ProfileDraft {
     /** Stop once this many lives are left. 0 never stops. */
     recoverGearFloor: number;
     /** Conditions as waits, inverted: off waits the condition out. See `MovementConfig`. */
-    walkWhileBlind: boolean;
-    walkWhilePoisoned: boolean;
-    walkWhileConfused: boolean;
-    walkWhileLosingHp: boolean;
     fightOnArrival: boolean;
     /** Ways and places routes keep out of. See `MovementConfig`. */
     keepOutOf: string[];
@@ -515,15 +497,6 @@ export interface ProfileDraft {
    * `HuntingAutomationConfig`.
    */
   hunting: { enabled: boolean; radius: number };
-  /** Spending character points on the stat screen — `automation.train`. See `TrainConfig`. */
-  train: {
-    stats: boolean;
-    wanted: Record<TrainedAttribute, number>;
-    /** Go and collect a level when the experience is there. See `TrainConfig`. */
-    levels: boolean;
-    /** The trainer's shop row, or 0 for the cheapest that will take this character. */
-    trainer: number;
-  };
   /** Running a quest's plan — `automation.quests`. See `QuestsConfig`. */
   quests: { enabled: boolean };
   /** Which kit to be in, and when — `automation.gear`. See `GearConfig`. */
@@ -551,18 +524,8 @@ export interface ProfileDraft {
     convertWith: string;
     convertAt: EncumbranceGate;
   };
-  /** What to put back down — `automation.drop`. See `DropConfig`. */
-  drop: { enabled: boolean; items: string[]; whenEncumbered: boolean; worthless: boolean };
   /** Looking for what a room did not print — `automation.search`. See `SearchConfig`. */
   search: { enabled: boolean; tries: number };
-  /** Banking the purse — `automation.banking`. See `BankingConfig`. */
-  banking: {
-    autoDeposit: boolean;
-    depositThresholdCopper: number;
-    keepCopper: number;
-    /** The chosen counter's shop row; 0 is whichever one it is standing at. */
-    bank: number;
-  };
   /**
    * The loops this character walks — `automation.loops`.
    *
@@ -646,22 +609,8 @@ export interface ProfileDraft {
   remotes: RemotesDraft;
   /** `automation.afk` as the form edits it. See `AfkConfig`. */
   afk: { enabled: boolean; afterMinutes: number; reply: string };
-  /** `automation.talk` — what this character learns about other people. */
-  talk: TalkDraft;
-  /** `automation.statline` — whether the client sets the prompt's shape. */
-  statline: StatlineDraft;
   /** `ui.rewrites` — the status line and listings this player designed for this character. */
   rewrites: RewritesUiConfig;
-}
-
-/** The `automation.talk` block as a form edits it. */
-export interface TalkDraft {
-  lookAtPlayers: boolean;
-}
-
-/** The `automation.statline` block as a form edits it. */
-export interface StatlineDraft {
-  control: boolean;
 }
 
 /**
@@ -752,7 +701,6 @@ export function asServerDraft(value: unknown): ServerDraft | null {
     // IPC boundary, so it is parsed rather than trusted.
     loops: asLoops(value['loops'], LOOP_LIMITS),
     database: text(value['database']).slice(0, 400),
-    hangPenalties: typeof value['hangPenalties'] === 'boolean' ? value['hangPenalties'] : null,
     coins: asCoinNames(value['coins']),
     bbs: asBbsSettings(value['bbs'])
   };
@@ -828,9 +776,7 @@ export function asProfileDraft(value: unknown): ProfileDraft | null {
   const movement = isRecord(value['movement']) ? value['movement'] : {};
   const spells = isRecord(value['spells']) ? value['spells'] : {};
   const loot = isRecord(value['loot']) ? value['loot'] : {};
-  const drop = isRecord(value['drop']) ? value['drop'] : {};
   const search = isRecord(value['search']) ? value['search'] : {};
-  const banking = isRecord(value['banking']) ? value['banking'] : {};
   const alerts = isRecord(value['alerts']) ? value['alerts'] : {};
   const remotes = isRecord(value['remotes']) ? value['remotes'] : {};
   const afk = isRecord(value['afk']) ? value['afk'] : {};
@@ -858,7 +804,6 @@ export function asProfileDraft(value: unknown): ProfileDraft | null {
       // that got dragged, not a decision, and refusing the whole save over it
       // would lose everything else on the form.
       belowHealth: Math.min(1, Math.max(0, Number(hangUp['belowHealth']) || 0)),
-      penalties: typeof hangUp['penalties'] === 'boolean' ? hangUp['penalties'] : null,
       onPlayerInRoom: hangUp['onPlayerInRoom'] === true
     },
     retreat: {
@@ -1001,10 +946,6 @@ export function asProfileDraft(value: unknown): ProfileDraft | null {
       sneak: movement['sneak'] === true,
       provideLight: movement['provideLight'] === true,
       // Off by default, MegaMUD's own: a blank field waits the condition out.
-      walkWhileBlind: movement['walkWhileBlind'] === true,
-      walkWhilePoisoned: movement['walkWhilePoisoned'] === true,
-      walkWhileConfused: movement['walkWhileConfused'] === true,
-      walkWhileLosingHp: movement['walkWhileLosingHp'] === true,
       // `!== false`: on unless it was turned off. See the field.
       fightOnArrival: movement['fightOnArrival'] !== false,
       // A list or nothing: a payload that failed to send it keeps the shipped
@@ -1039,8 +980,6 @@ export function asProfileDraft(value: unknown): ProfileDraft | null {
           : movement['collectKeys'] === true
     },
     hunting: normalizeHuntingAutomation(value['hunting']),
-    // The options file's own reading: a figure is a whole number, 0 to 999.
-    train: normalizeTrain(value['train']),
     quests: normalizeQuests(value['quests']),
     // Parsed by the config's own reader: the set list is a closed union and a
     // bounded list, and one reading of it is what keeps the form and the file
@@ -1070,30 +1009,12 @@ export function asProfileDraft(value: unknown): ProfileDraft | null {
       minPrice: Math.max(0, Math.round(Number(loot['minPrice']) || 0)),
       maxEncumbrance: Math.max(0, Math.round(Number(loot['maxEncumbrance']) || 0))
     },
-    drop: {
-      enabled: drop['enabled'] === true,
-      items: words(drop['items'], 32),
-      whenEncumbered: drop['whenEncumbered'] === true,
-      worthless: drop['worthless'] === true
-    },
     search: {
       enabled: search['enabled'] === true,
       // Floored at one for the reason `normalizeSearch` states: `enabled` is
       // what turns it off, and "on, zero searches" is a switch somebody flips
       // and then waits to see work.
       tries: clamp(search['tries'], 1, 5, 1)
-    },
-    banking: {
-      autoDeposit: banking['autoDeposit'] === true,
-      depositThresholdCopper: Math.max(
-        0,
-        Math.min(1_000_000_000, Math.round(Number(banking['depositThresholdCopper']) || 0))
-      ),
-      keepCopper: Math.max(
-        0,
-        Math.min(1_000_000_000, Math.round(Number(banking['keepCopper']) || 0))
-      ),
-      bank: Math.max(0, Math.min(1_000_000, Math.round(Number(banking['bank']) || 0)))
     },
     /*
      * Parsed by the same function the options file goes through, so a loop
@@ -1195,8 +1116,6 @@ export function asProfileDraft(value: unknown): ProfileDraft | null {
       players: playerGrants(remotes['players']),
       commands: asBotCommands(remotes['commands'])
     },
-    talk: { lookAtPlayers: isRecord(value['talk']) && value['talk']['lookAtPlayers'] === true },
-    statline: { control: isRecord(value['statline']) && value['statline']['control'] === true },
     rewrites: normalizeRewrites(value['rewrites'])
   };
 }
@@ -1292,8 +1211,6 @@ export function asGlobalDraft(value: unknown): GlobalDraft | null {
     },
     automation: {
       enabled: automation['enabled'] === true,
-      onEnterRealm: words(automation['onEnterRealm'], 16),
-      onPartyChange: word(automation['onPartyChange']),
       idle: {
         enabled: idle['enabled'] === true,
         // Never under five seconds: the server acknowledges one command per
@@ -1312,7 +1229,7 @@ export function asGlobalDraft(value: unknown): GlobalDraft | null {
         // Zero is off, so a missing or unreadable figure is the off one.
         minExpPerHour: clamp(walk['minExpPerHour'], 0, 100_000_000, 0)
       },
-      hangUp: { ...asIf.hangUp, penalties: asIf.hangUp.penalties === true },
+      hangUp: asIf.hangUp,
       retreat: asIf.retreat,
       fleeGoto: asIf.fleeGoto,
       pvp: asIf.pvp,
@@ -1321,7 +1238,6 @@ export function asGlobalDraft(value: unknown): GlobalDraft | null {
       health: asIf.health,
       movement: asIf.movement,
       hunting: asIf.hunting,
-      train: asIf.train,
       quests: asIf.quests,
       gear: asIf.gear,
       afk: asIf.afk,
@@ -1355,9 +1271,7 @@ export function asGlobalDraft(value: unknown): GlobalDraft | null {
       },
       // Read by the function that already knows how, like the blocks above.
       loot: asIf.loot,
-      drop: asIf.drop,
       search: asIf.search,
-      banking: asIf.banking,
       remotes: {
         enabled: remotes['enabled'] === true,
         gangpath: remotes['gangpath'] === true,
@@ -1366,12 +1280,6 @@ export function asGlobalDraft(value: unknown): GlobalDraft | null {
         party: remoteNames(remotes['party']),
         players: playerGrants(remotes['players']),
         commands: asBotCommands(remotes['commands'])
-      },
-      talk: {
-        lookAtPlayers: isRecord(automation['talk']) && automation['talk']['lookAtPlayers'] === true
-      },
-      statline: {
-        control: isRecord(automation['statline']) && automation['statline']['control'] === true
       }
     },
     loops: asLoops(value['loops'], LOOP_LIMITS)

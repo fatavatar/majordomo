@@ -480,9 +480,7 @@ interface CardContext {
   /**
    * A gear button, addressed at this character.
    *
-   * Not `ask`: that takes a bare verb of at most eight lowercase letters and
-   * no argument, which is exactly what lets it accept a string from here. Main
-   * holds the pack, the loadout and the realm's word on what can be worn, so
+   * Not `ask`: main holds the pack, the loadout and the realm's word on what can be worn, so
    * what crosses is an action from a closed list. See `shared/gear.ts`.
    */
   gear(action: GearAction, item?: string): void;
@@ -679,7 +677,6 @@ function cardElement(id: CardId, ctx: CardContext): ReactNode {
             failure every addressed field here exists to refuse.
           */
           supplies={ctx.chooseOnMap === null ? null : ctx.supplies}
-          suppliesOn={ctx.toolbar.switches.supplies}
         />
       );
     case 'vitals':

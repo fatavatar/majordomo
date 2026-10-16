@@ -95,12 +95,7 @@ export interface SpellRec {
 }
 
 /** The five coins `0x459860` adds ahead of the file, flag `0x8000000`, layer 99. */
-export const COIN_NAMES = [
-  'copper farthing',
-  'silver noble',
-  'gold crown',
-  'platinum piece'
-] as const;
+const COIN_NAMES = ['copper farthing', 'silver noble', 'gold crown', 'platinum piece'] as const;
 
 function str(body: Uint8Array, offset: number, size: number): string {
   let s = '';
@@ -133,7 +128,7 @@ function u8(body: Uint8Array, at: number): number {
 }
 
 /** `0x46c690`'s copy of one record. */
-export function monsterFrom(body: Uint8Array, layer: number): MonsterRec {
+function monsterFrom(body: Uint8Array, layer: number): MonsterRec {
   const exp32 = u32(body, 0x94);
   const exp16 = u16(body, 0x37);
   return {
@@ -153,7 +148,7 @@ export function monsterFrom(body: Uint8Array, layer: number): MonsterRec {
 }
 
 /** `0x459860`'s copy of one record. */
-export function itemFrom(body: Uint8Array, layer: number): ItemRec {
+function itemFrom(body: Uint8Array, layer: number): ItemRec {
   let flags = u32(body, 0x63) & 0x38ffffff;
   for (let i = 0; i < 10; i += 1) {
     if (i16(body, 0x79 + i * 2) === 100) flags |= 0x20000;
@@ -175,7 +170,7 @@ export function itemFrom(body: Uint8Array, layer: number): ItemRec {
 }
 
 /** `0x4a2990`'s copy of one record. */
-export function spellFrom(body: Uint8Array, layer: number): SpellRec {
+function spellFrom(body: Uint8Array, layer: number): SpellRec {
   return {
     layer,
     id: u16(body, 0x00),
@@ -228,7 +223,7 @@ export interface ClassRec {
 }
 
 /** `0x422790`'s copy of one record. */
-export function classFrom(body: Uint8Array, layer: number): ClassRec {
+function classFrom(body: Uint8Array, layer: number): ClassRec {
   const abilities: number[] = [];
   const values: number[] = [];
   for (let i = 0; i < 10; i += 1) {
@@ -260,7 +255,7 @@ export interface RaceRec {
 }
 
 /** `0x495990`'s copy of one record. */
-export function raceFrom(body: Uint8Array, layer: number): RaceRec {
+function raceFrom(body: Uint8Array, layer: number): RaceRec {
   return {
     id: i16(body, 0x00),
     layer,

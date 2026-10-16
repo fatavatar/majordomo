@@ -307,11 +307,6 @@ export class QuestRunner {
     this.end('stopped', t('automation.quests.abandoned', { why: reason }));
   }
 
-  /** The player typed a direction: the one thing an errand never argues with. */
-  notePlayerMoved(): void {
-    this.abandon(t('automation.quests.whyPlayerMoved'));
-  }
-
   /** Every state change, and the session's own tick between them. */
   onCharacter(state: CharacterState): void {
     const run = this.run;

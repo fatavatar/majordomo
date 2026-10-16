@@ -9,12 +9,13 @@
  * The rest-time statistics (`0x4b81a0`, for the stats window) are left out.
  */
 import { beforeMeditate, beforeRest } from '../abilities/monitors';
-import { idiv } from '../cstr';
+import { idiv, percentOf } from '../cstr';
 import { poisonRows } from '../messages/messages';
 import { removeMember } from '../party/members';
 import { enemiesHere, findEntity } from '../room/entities';
 import { queue, send } from '../script/send';
-import { statsWanted, refreshStats } from '../script/setup';
+import { refreshStats } from '../script/setup';
+import { recheckStats } from '../stats/exp';
 import { forgetAwaited, setState } from '../script/state';
 import { hideStep, sneakStep } from '../script/stealth';
 import type { Session } from '../Session';
@@ -22,17 +23,13 @@ import { castSpell, equipForSpell } from './cast';
 import { healStep } from './heal';
 import { postBackstab, preMeditate, preRest } from './prepost';
 
-function pct(max: number, percent: number): number {
-  return idiv(max * percent, 100);
-}
-
 /** The first reason given is the one kept (`0xe2fc`). */
 function because(s: Session, reason: string): void {
   if (s.restReason === '') s.restReason = reason.slice(0, 99);
 }
 
 /** `0x415f60`: holding for the party, as its leader, and this character is what they wait on. */
-export function partyNeedsRest(s: Session): number {
+function partyNeedsRest(s: Session): number {
   if (s.partyWait === 0 || s.following !== 0) return 0;
   if (s.leaderName !== s.Player_Name || s.sneaking !== 0 || s.hidden !== 0) return 0;
   for (let i = 0; i < s.partySize; i += 1) {
@@ -50,7 +47,7 @@ export function partyNeedsRest(s: Session): number {
 export function meditate(s: Session): number {
   const max = s.Player_MaxMana;
   if (s.Health_UseMeditate === 0 || max === 0) return 0;
-  if (pct(s.Health_ManaFullPct, max) <= s.mana) {
+  if (percentOf(s.Health_ManaFullPct, max) <= s.mana) {
     if (partyNeedsRest(s) === 0) return 0;
     if (max <= s.mana) return 0;
     if (s.Health_MeditateB4Rest === 0 && s.hp < s.Player_MaxHP) return 0;
@@ -157,7 +154,7 @@ export function healthStep(s: Session): number {
     s.f_a32c === 0 &&
     s.now - s.f_32378 > 0x78
   ) {
-    statsWanted(s);
+    recheckStats(s);
     if (refreshStats(s) !== 0) return 1;
   }
   if (
@@ -172,7 +169,7 @@ export function healthStep(s: Session): number {
   if (s.f_e218 !== 0 && s.mustRest === 0 && s.following === 0) return 0;
 
   // The full spells.
-  if (s.mana < pct(s.Player_MaxMana, s.Health_ManaFullPct)) {
+  if (s.mana < percentOf(s.Player_MaxMana, s.Health_ManaFullPct)) {
     s.manaFullCast = 0;
   } else {
     if (s.restManaToFull !== 0) {
@@ -189,7 +186,7 @@ export function healthStep(s: Session): number {
       }
     }
   }
-  if (s.hp < pct(s.Player_MaxHP, s.Health_HpFullPct)) {
+  if (s.hp < percentOf(s.Player_MaxHP, s.Health_HpFullPct)) {
     s.hpFullCast = 0;
   } else {
     if (s.restHpToFull !== 0) {
@@ -209,13 +206,13 @@ export function healthStep(s: Session): number {
 
   // Why rest.
   if (s.Player_MaxHP > 0 && !hpOk) {
-    if (s.hp < pct(s.Health_HpRestPct, s.Player_MaxHP)) {
+    if (s.hp < percentOf(s.Health_HpRestPct, s.Player_MaxHP)) {
       if (why === 0) s.host.activity("Resting because HP's are too low");
       s.restHpToFull = 1;
       why |= 1;
       because(s, "HP's too low");
     }
-    if (s.hp < pct(s.Player_MaxHP, s.Health_HpRunPct)) {
+    if (s.hp < percentOf(s.Player_MaxHP, s.Health_HpRunPct)) {
       if (why === 0) s.host.activity("Resting because HP's are too low");
       urgent = true;
       s.restHpToFull = 1;
@@ -224,13 +221,13 @@ export function healthStep(s: Session): number {
     }
   }
   if (s.Player_MaxMana > 0 && !manaOk) {
-    if (s.mana < pct(s.Health_ManaRestPct, s.Player_MaxMana)) {
+    if (s.mana < percentOf(s.Health_ManaRestPct, s.Player_MaxMana)) {
       if (why === 0) s.host.activity('Resting because Mana/Kai is too low');
       s.restManaToFull = 1;
       why |= 2;
       because(s, 'Mana/Kai too low');
     }
-    if (s.mana < pct(s.Player_MaxMana, s.Health_ManaRunPct)) {
+    if (s.mana < percentOf(s.Player_MaxMana, s.Health_ManaRunPct)) {
       if (why === 0) s.host.activity('Resting because Mana/Kai is too low');
       urgent = true;
       why |= 2;
@@ -282,8 +279,8 @@ export function healthStep(s: Session): number {
     urgent ||
     s.mustRest !== 0 ||
     (s.following !== 0 && s.f_e1c0 !== 0 && (s.hp < s.Player_MaxHP || s.mana < s.Player_MaxMana)) ||
-    (!manaOk && s.mana < pct(s.Player_MaxMana, s.Health_ManaFullPct)) ||
-    (!hpOk && s.hp < pct(s.Player_MaxHP, s.Health_HpFullPct))
+    (!manaOk && s.mana < percentOf(s.Player_MaxMana, s.Health_ManaFullPct)) ||
+    (!hpOk && s.hp < percentOf(s.Player_MaxHP, s.Health_HpFullPct))
   ) {
     wantRest = true;
   }
@@ -361,7 +358,7 @@ export function healthStep(s: Session): number {
       s.hpRegen === 0 &&
       s.Player_MaxMana > 0 &&
       s.Spells_RegenCmd !== '' &&
-      pct(s.Health_ManaHealPct, s.Player_MaxMana) < s.mana
+      percentOf(s.Health_ManaHealPct, s.Player_MaxMana) < s.mana
     ) {
       if (equipForSpell(s, s.Spells_RegenCmd) === 1) return 1;
       if (castSpell(s, s.Spells_RegenCmd, null) !== 0) {
@@ -473,10 +470,10 @@ export function healthStep(s: Session): number {
   // Meditate first?
   let tryMeditate: boolean;
   if (s.Health_MeditateB4Rest === 0) {
-    tryMeditate = s.hp >= pct(s.Player_MaxHP, s.Health_HpRestPct);
+    tryMeditate = s.hp >= percentOf(s.Player_MaxHP, s.Health_HpRestPct);
   } else if (s.meditating === 0) {
     tryMeditate = !(
-      pct(s.Health_ManaRestPct, s.Player_MaxMana) <= s.mana &&
+      percentOf(s.Health_ManaRestPct, s.Player_MaxMana) <= s.mana &&
       (partyWaits === 0 || s.Player_MaxMana <= s.mana)
     );
   } else {

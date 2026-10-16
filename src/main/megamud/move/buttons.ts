@@ -171,6 +171,16 @@ const PLAIN: Record<number, [Toggled, 'always' | 'fighting' | 'never']> = {
   0x8a4: ['f_8be8', 'fighting']
 };
 
+/**
+ * A window command the player gave, rather than one the engine posted
+ * (`0x462d20` with its `lParam` not -1): with User input cancels AFK mode
+ * (`MegaMud.AutoAfkOff`), any but AFK itself ends AFK first, read 2026-10-16.
+ */
+export function playerCommand(s: Session, command: number): void {
+  if (command !== 0x809 && s.MegaMud_AutoAfkOff !== 0) setActive(s, 0);
+  menuCommand(s, command);
+}
+
 /** A window command posted (`0x460b90`) and run now: the ones the engine has. */
 export function menuCommand(s: Session, command: number): void {
   if (command === 0x803) goStop(s);

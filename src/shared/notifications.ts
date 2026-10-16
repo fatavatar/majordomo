@@ -537,18 +537,6 @@ export function eventOfBlock(type: BlockType): AlertEvent | null {
   return EVENT_OF_TYPE.get(type) ?? null;
 }
 
-/** Which event a watch produces, for the five that are watched rather than read. */
-const EVENT_OF_WATCH = new Map<AlertWatch, AlertEvent>(
-  ALERT_EVENT_NAMES.flatMap((name) => {
-    const watch = alertEvent(name).watch;
-    return watch === undefined ? [] : [[watch, name] as [AlertWatch, AlertEvent]];
-  })
-);
-
-export function eventOfWatch(watch: AlertWatch): AlertEvent | null {
-  return EVENT_OF_WATCH.get(watch) ?? null;
-}
-
 /** Whether this event takes a comparison and a number. */
 export function eventIsMeasured(on: AlertEvent): boolean {
   return alertEvent(on).metric === 'figure';

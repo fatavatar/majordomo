@@ -7,13 +7,11 @@ import {
   AUTOMATION_SWITCHES,
   CP437_FALLBACK_FONT,
   DEFAULT_CONFIG,
-  drainHolding,
   readAutomationSwitch,
   normalizeConfig,
   resumeAtMana,
   resolveTerminalFonts,
   resolveUiFonts,
-  targetFromConfig,
   toCssFontStack,
   type AppConfig
 } from '../config';
@@ -184,7 +182,6 @@ describe('normalizeConfig', () => {
         // The default: this realm's own `locate:` key is absent.
         locate: 'rm',
         database: '',
-        hangPenalties: null,
         coins: {},
         bbs: {}
       }
@@ -295,14 +292,6 @@ describe('normalizeConfig', () => {
 
   it('lets logging be turned off', () => {
     expect(normalizeConfig({ logging: { enabled: false } }).logging.enabled).toBe(false);
-  });
-
-  it('defaults the connection to Paradigm, which is what the client ships for', () => {
-    expect(targetFromConfig(DEFAULT_CONFIG)).toEqual({
-      host: 'paramud.mudinfo.net',
-      port: 2323,
-      encoding: 'cp437'
-    });
   });
 });
 
@@ -551,21 +540,6 @@ describe('the drain pair', () => {
   it('lifts a ceiling under the floor, and keeps 0 as no ceiling', () => {
     expect(spells({ drainBelow: 0.5, drainTo: 0.3 }).drainTo).toBe(0.5);
     expect(spells({ drainBelow: 0.5, drainTo: 0 }).drainTo).toBe(0);
-  });
-
-  it('starts under drainBelow and stops at drainTo', () => {
-    const pair = spells({ drainBelow: 0.5, drainTo: 0.7 });
-    expect(drainHolding(pair, 55, 100, false)).toBe(false);
-    expect(drainHolding(pair, 45, 100, false)).toBe(true);
-    expect(drainHolding(pair, 65, 100, true)).toBe(true);
-    expect(drainHolding(pair, 70, 100, true)).toBe(false);
-  });
-
-  it('holds only to drainBelow with no ceiling, and never on an unknown figure', () => {
-    const pair = spells({ drainBelow: 0.5 });
-    expect(drainHolding(pair, 55, 100, true)).toBe(false);
-    expect(drainHolding(pair, null, 100, true)).toBe(false);
-    expect(drainHolding(spells({}), 1, 100, false)).toBe(false);
   });
 });
 
@@ -835,25 +809,21 @@ describe('the automation switches the toolbar flips', () => {
       ...DEFAULT_CONFIG,
       automation: {
         ...DEFAULT_CONFIG.automation,
-        enabled: true,
-        combat: { ...DEFAULT_CONFIG.automation.combat, enabled: true }
+        safety: {
+          ...DEFAULT_CONFIG.automation.safety,
+          fleeGoto: { ...DEFAULT_CONFIG.automation.safety.fleeGoto, enabled: true }
+        }
       }
     };
-    expect(readAutomationSwitch(on.automation, 'automation')).toBe(true);
-    expect(readAutomationSwitch(on.automation, 'combat')).toBe(true);
+    expect(readAutomationSwitch(on.automation, 'fleeGoto')).toBe(true);
     // Off by default, like most of what is automated.
-    expect(readAutomationSwitch(on.automation, 'retreat')).toBe(false);
-    // The two exceptions, on since 2026-09-07: a route that stops at a shut
-    // door stops for no reason a player would recognise, and bashing is gated
-    // on the realm's own strength number. Picking is not one of them.
-    expect(automationSwitches(on.automation).bashDoors).toBe(true);
-    expect(automationSwitches(on.automation).openDoors).toBe(true);
-    expect(automationSwitches(on.automation).pickLocks).toBe(false);
+    expect(automationSwitches(DEFAULT_CONFIG.automation).fleeGoto).toBe(false);
   });
 
   it('refuses a name that is not one', () => {
-    expect(asAutomationSwitch('combat')).toBe('combat');
-    expect(asAutomationSwitch('combat.enabled')).toBeNull();
+    expect(asAutomationSwitch('fleeGoto')).toBe('fleeGoto');
+    expect(asAutomationSwitch('combat')).toBeNull();
+    expect(asAutomationSwitch('fleeGoto.enabled')).toBeNull();
     expect(asAutomationSwitch(7)).toBeNull();
     expect(asAutomationSwitch('toString')).toBeNull();
   });

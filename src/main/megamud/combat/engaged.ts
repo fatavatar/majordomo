@@ -105,7 +105,7 @@ export function combatOff(s: Session): void {
 }
 
 /** `0x42c5b0`: pick the cast mode back up from the state (or the state awaited). */
-export function resumeCastMode(s: Session): number {
+function resumeCastMode(s: Session): number {
   const mode = f_426ab0(s, 0) !== 0 ? s.state : s.stateAwaited;
   if (isCastState(mode)) {
     const spell = castSpellFor(s, mode, 1);

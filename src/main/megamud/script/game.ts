@@ -30,7 +30,7 @@ import { setState } from './state';
 import { setTask, Task } from './task';
 
 /** `0x4b66f0`: the room's map numbers and the `@where` replies waiting on them forgotten. */
-export function forgetWhere(s: Session): void {
+function forgetWhere(s: Session): void {
   s.f_8168 = 0;
   s.f_816c = 0;
   s.f_8170 = 0;

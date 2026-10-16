@@ -70,7 +70,7 @@ function idleName(s: Session): string {
 }
 
 /** The status text, with the count MegaMUD puts after it in brackets. */
-export function statusText(s: Session): string {
+function statusText(s: Session): string {
   let name: string;
   switch (s.state) {
     case 0:

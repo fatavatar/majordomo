@@ -49,7 +49,7 @@ import {
   type SessionId,
   type SessionSummary
 } from '../../shared/ipc';
-import type { AppConfig, AutomationSwitch } from '../../shared/config';
+import type { AppConfig } from '../../shared/config';
 import type { ConnectionState, ConnectionTarget } from '../../shared/types';
 import type { RealmFamily as RealmWord } from '../../shared/character';
 import type { RealmPlayers } from '../../shared/players';
@@ -130,8 +130,6 @@ export interface SessionHostOptions {
     get(id: SessionId): ResumableMovement | null;
     set(id: SessionId, movement: ResumableMovement | null): void;
   };
-  /** Write one automation switch into a character's file; whether it was written. See `CombatLease`. */
-  flipSwitch?(id: SessionId, name: AutomationSwitch, on: boolean): boolean;
   /**
    * What is known about the monsters on *this character's* realm.
    *
@@ -462,7 +460,6 @@ export class SessionHost {
         verdict: (appraisal) =>
           this.options.toAll(Push.verdict, { session: id, payload: appraisal }),
         asks: (offers) => this.options.toAll(Push.asks, { session: id, payload: [...offers] }),
-        switchAutomation: (name, on) => this.options.flipSwitch?.(id, name, on) ?? false,
         realmTold: (realm) => {
           // The address this connection actually went to, which the manager
           // holds from `connect`; a word with no address is a word about nowhere.

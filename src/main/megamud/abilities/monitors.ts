@@ -16,7 +16,7 @@
  * Their settings are the character's `[AbilMon]` (`0x404140`); the settings
  * window that edits them is left out.
  */
-import { atoi, indexOf, stricmp } from '../cstr';
+import { atoi, indexOf, rowField, stricmp } from '../cstr';
 import type { AbilityMonitor, Session } from '../Session';
 import { newMonitor } from '../Session';
 import { expandMacros, queueCommand, send, wake } from '../script/send';
@@ -550,13 +550,6 @@ export function resetMonitors(s: Session): void {
   forgetReply(s);
 }
 
-/** A number at the front of `text` (`0x4ad430`), and the text after it and one `:` (`0x4acb90`). */
-function field(text: string): [number, string] {
-  const m = /^ *(-?\d*)/.exec(text)!;
-  const rest = text.slice(m[0].length);
-  return [Number(m[1]) | 0, rest.startsWith(':') ? rest.slice(1) : rest];
-}
-
 /**
  * `0x404140`: the monitors from the character's `[AbilMon]` (`read` gives a
  * key's value, '' when missing): `MonitorN` is
@@ -571,25 +564,25 @@ export function loadMonitors(s: Session, read: (key: string) => string): void {
     if (text === '') break;
     const m = newMonitor();
     let v: number;
-    [v, text] = field(text);
+    [v, text] = rowField(text);
     m.disabled = v !== 0 ? 1 : 0;
-    [m.ability, text] = field(text);
-    [m.part, text] = field(text);
-    [m.compare, text] = field(text);
-    [m.value, text] = field(text);
-    [m.useCommand, text] = field(text);
-    [v, text] = field(text);
+    [m.ability, text] = rowField(text);
+    [m.part, text] = rowField(text);
+    [m.compare, text] = rowField(text);
+    [m.value, text] = rowField(text);
+    [m.useCommand, text] = rowField(text);
+    [v, text] = rowField(text);
     m.when = v >>> 0;
-    [m.interval, text] = field(text);
-    [v, text] = field(text);
+    [m.interval, text] = rowField(text);
+    [v, text] = rowField(text);
     m.chainOn = v !== 0 ? 1 : 0;
     // The two later fields are there only in newer settings: digits and a colon.
     if (/^\d+:/.test(text)) {
-      [v, text] = field(text);
+      [v, text] = rowField(text);
       m.chained = v !== 0 ? 1 : 0;
     }
     if (/^\d+:/.test(text)) {
-      [v, text] = field(text);
+      [v, text] = rowField(text);
       m.urgent = v !== 0 ? 1 : 0;
     }
     const colon = text.indexOf(':');
@@ -610,32 +603,6 @@ export function loadMonitors(s: Session, read: (key: string) => string): void {
   }
   resetMonitors(s);
   s.monitorsChanged = 0;
-}
-
-/** `0x4048f0`: the monitors as `[AbilMon]` keys. */
-export function saveMonitors(s: Session): Record<string, string> {
-  const out: Record<string, string> = {};
-  s.monitors.forEach((m, n) => {
-    const flag = (v: number): number => (v !== 0 ? 1 : 0);
-    out[`Monitor${n}`] = [
-      flag(m.disabled),
-      m.ability,
-      m.part,
-      m.compare,
-      m.value,
-      m.useCommand,
-      m.when >>> 0,
-      m.interval,
-      flag(m.chainOn),
-      flag(m.chained),
-      flag(m.urgent),
-      m.spell,
-      m.command
-    ].join(':');
-    if (m.message !== '') out[`Monitor${n}Msg`] = m.message;
-  });
-  s.monitorsChanged = 0;
-  return out;
 }
 
 /**

@@ -311,13 +311,6 @@ export function castAllowed(s: Session, secs: number): boolean {
   return !tooSoon(s, secs);
 }
 
-/** `0x49af00`: a cast or lock is still holding this round. */
-export function castHolding(s: Session): boolean {
-  lapse(s);
-  if (!trusted(s)) return tooSoon(s, 0);
-  return s.spellLock !== 0 || s.castStamped !== 0;
-}
-
 /** `0x426eb0`: a blow struck this round (by anyone): a combat round event. */
 export function blowStruck(s: Session): void {
   s.f_32600 = 1;

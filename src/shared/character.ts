@@ -715,10 +715,9 @@ export interface Inventory {
    * zero, here as everywhere.
    *
    * A *time* rather than a flag, because the same fact answers the next
-   * question after it: how old the pack is. `i` is in the default
-   * `onEnterRealm`, so it is set within a second of entering the realm — but
-   * the probe list is the player's, and a character configured never to ask on
-   * the way in is a legitimate choice that must not silently become a
+   * question after it: how old the pack is. MegaMUD asks `i` while it does not
+   * know the pack, so it is set soon after entering the realm — but until then
+   * an unread pack must not silently become a
    * character that cannot route.
    */
   listedAt: number | null;
@@ -1181,26 +1180,6 @@ export interface Party {
 }
 
 export const NO_PARTY: Party = { following: null, members: [], engaged: {}, threatened: {} };
-
-/**
- * The members of the party this character leads whose listed health is under
- * `below`, lowest first — MegaMUD's *Wait For Party Members*. A real member
- * (not an invitation, not this character) with a figure the listing stated.
- * Following, none: the leader decides when the party moves.
- */
-export function membersBelow(state: CharacterState, below: number): PartyMember[] {
-  if (below <= 0 || state.party.following !== null) return [];
-  const me = state.name?.toLowerCase() ?? null;
-  return state.party.members
-    .filter(
-      (member) =>
-        !member.invited &&
-        member.health !== null &&
-        member.health < below &&
-        member.name.toLowerCase() !== me
-    )
-    .sort((a, b) => (a.health ?? 0) - (b.health ?? 0));
-}
 
 /**
  * A room nobody has read yet.
@@ -1783,45 +1762,6 @@ export function gangOnRoster(
  */
 export function ownGang(state: CharacterState): string | null | undefined {
   return gangOnRoster(state, state.name);
-}
-
-/**
- * Has this name **joined** this character's party?
- *
- * Here rather than in either caller because it is the party half of one
- * permission gate, and the gate has two readers: `Remotes.evidenceAbout`, which
- * answers the `@` command, and the Player flyout's Access face, which tells the
- * player whether it will be answered. `AutoCombat.quarry`'s lesson is that two
- * halves of one gate in two files agree exactly until one of them is edited.
- *
- * **An invitation is not membership.** `invited` marks an offer nobody has
- * accepted — the listing prints `[Invited]` where the health and the flag would
- * be — so a row carrying it is not counted. That closes half of the objection
- * that retired the old `party` permission *ground*: if an offer counted,
- * `invite` would be the gesture by which anybody handed themselves this
- * character's party remotes.
- *
- * **It does not close the other half, and that is stated rather than glossed.**
- * `withJoined` puts a full member on the roster for `<name> started to follow
- * you.` without asking whether this character ever invited them, and on this
- * realm following somebody is how a party is joined — so if the server honours
- * an uninvited `follow`, that verb is the same gesture one word along. Nobody
- * has asked the wire; `npm run probe:party -- --pair soul,yang` is where to.
- * What bounds the cost meanwhile is the shipped grant, which is two facts
- * about this character's own body (`RemotesConfig.party`).
- *
- * Two-state, unlike `gangOnRoster`. A gang is learned from a `who` row that may
- * never have been read, so *nobody has said* is a real state there; the party
- * roster is this client's own listing, established by `party` and kept true by
- * the sentences the server volunteers, so a name not on it is a name not in the
- * party.
- */
-/** Everybody besides this character who has joined its party: an invitation is not membership. */
-export function joinedMembers(state: CharacterState): PartyMember[] {
-  const self = state.name?.toLowerCase() ?? null;
-  return state.party.members.filter(
-    (member) => !member.invited && member.name.toLowerCase() !== self
-  );
 }
 
 export function joinedTheParty(state: CharacterState, name: string | null): boolean {

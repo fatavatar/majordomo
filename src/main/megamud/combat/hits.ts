@@ -13,7 +13,7 @@ import type { SpellRec } from '../data';
 import { findItem } from '../room/checkNames';
 import { findEntity, stopToKill } from '../room/entities';
 import type { Session } from '../Session';
-import { findSpell } from '../spells/lookup';
+import { stateSpell } from '../spells/lookup';
 import { isCastState } from '../states';
 import { castSpellFor, countCast, f_426ab0, resetNoMessage, spellTakesTarget } from './casts';
 import { blowStruck, castForgotten } from './timer';
@@ -42,7 +42,7 @@ export function areaDamage(line: string): number {
 }
 
 /** `0x426b20`: this character's own damage line, `You … for 12 damage!` (or an area one). */
-export function ownDamage(line: string): number {
+function ownDamage(line: string): number {
   if (areaDamage(line) !== 0) return 1;
   if (!(line.startsWith('You ') || line.startsWith('Your inaccurate '))) return 0;
   if (line.startsWith('You are ') || line.startsWith('You take ')) return 0;
@@ -77,7 +77,7 @@ export function weaponKinds(s: Session, name: string): number {
 }
 
 /** `0x4747f0`: clear a mark from the monsters of this name, and from the marks remembered. */
-export function unmarkMonsters(s: Session, name: string, flags: number): number {
+function unmarkMonsters(s: Session, name: string, flags: number): number {
   let n = 0;
   for (const e of s.room) {
     if (e.type !== 2) continue;
@@ -105,21 +105,6 @@ function backstabFailed(s: Session, stopsToKill: number): void {
   } else if (!attacksPlainly(s) || (s.owedPostBackstab !== 0 && s.Combat_PostBsCmd === '')) {
     s.f_e2b8 = 1;
   }
-}
-
-/** The configured spell a cast state casts. */
-function stateSpell(s: Session, state: number): SpellRec | null {
-  const short: Record<number, string> = {
-    9: s.Combat_PreMultAttack,
-    0xa: s.Combat_MultAttack,
-    0xb: s.Combat_PreAttack,
-    0xc: s.Combat_AttackSpl2,
-    0xd: s.Combat_AttackSpl,
-    0xe: s.altSpell,
-    0xf: s.userSpell
-  };
-  const name = short[state];
-  return name ? findSpell(s, name) : null;
 }
 
 /** `0x429bb0`. 1 when the line was one of this character's blows or spells landing. */

@@ -33,19 +33,6 @@ export const DIRECTIONS: readonly Direction[] = [
   'd'
 ];
 
-/**
- * A word read as one of the ten, or null.
- *
- * Parse rather than validate, the way `asRoute` does: an exit's `direction` is
- * a `string` because it also carries a text exit's own word (`crimson portal`),
- * so the places that need *a move they can send as one word* narrow it here
- * instead of casting.
- */
-export function asDirection(input: string): Direction | null {
-  const word = input.trim().toLowerCase();
-  return (DIRECTIONS as readonly string[]).includes(word) ? (word as Direction) : null;
-}
-
 /** What the player types to go that way. */
 export const DIRECTION_COMMAND: Record<Direction, string> = {
   n: 'n',
@@ -83,47 +70,6 @@ export const OPPOSITE: Record<Direction, Direction> = {
   u: 'd',
   d: 'u'
 };
-
-/**
- * A direction as the *server* words it, or null.
- *
- * `DIRECTION_NAME` is the other direction — what this client calls each code —
- * and it is not enough to read the server with, because the server has more
- * than one word for the same way. Every entry here is a word a capture shows:
- *
- * | Word | Where |
- * |---|---|
- * | `north` … `down` | everywhere; `parseExit`'s own list |
- * | `below`, `above` | `Obvious exits: north, open trap door below` — 20 lines across the corpus |
- * | `downwards` | `You found an exit downwards!` (`captures/005:187`) |
- *
- * `upwards` is the one entry no capture shows, and it is here deliberately: it
- * is the unmirrored half of a captured pair, a word that costs nothing if no
- * realm ever prints it, and whose absence leaves a hidden **up** exit searched
- * for forever by a walk that cannot tell it has been found. That is a different
- * trade from inventing a *pattern*, which would claim a sentence exists.
- */
-const SPOKEN_DIRECTION: Readonly<Record<string, Direction>> = {
-  north: 'n',
-  south: 's',
-  east: 'e',
-  west: 'w',
-  northeast: 'ne',
-  northwest: 'nw',
-  southeast: 'se',
-  southwest: 'sw',
-  up: 'u',
-  down: 'd',
-  above: 'u',
-  below: 'd',
-  upwards: 'u',
-  downwards: 'd'
-};
-
-export function asSpokenDirection(input: string): Direction | null {
-  const word = input.trim().toLowerCase();
-  return SPOKEN_DIRECTION[word] ?? asDirection(word);
-}
 
 export const DIRECTION_NAME: Record<Direction, string> = {
   n: 'north',
@@ -3662,16 +3608,6 @@ export function chosenWay(route: Route): Route {
   const way = { ...route };
   delete way.keptOut;
   return way;
-}
-
-/**
- * The `movement.keepOutOf` words this way crosses, each once (todo 806) —
- * what a walk the player chose may cross again when it is planned afresh.
- */
-export function crossedWords(route: Route): string[] {
-  return [
-    ...new Set(route.steps.flatMap((step) => (step.keptOut === undefined ? [] : [step.keptOut])))
-  ];
 }
 
 /**

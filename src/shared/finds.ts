@@ -148,25 +148,3 @@ export function within(finds: readonly Find[], days: number, now: number): Find[
   const floor = days > 0 ? now - days * 86_400_000 : Number.NEGATIVE_INFINITY;
   return finds.filter((find) => find.at >= floor).sort(byRarest);
 }
-
-/** Whether a find is one somebody asked to be told about. */
-export function alertsFor(
-  find: Find,
-  watch: readonly string[],
-  cashOverCopper: number
-): 'item' | 'cash' | null {
-  if (find.copper !== null) {
-    // `> 0` rather than `>= 0`: zero is the off position, and an alert on every
-    // farthing is an alert nobody reads.
-    return cashOverCopper > 0 && find.copper >= cashOverCopper ? 'cash' : null;
-  }
-  const name = find.name.toLowerCase();
-  // Contains, not equals: the server prints `a rusty key` and `rusty keys`, and
-  // somebody watching for a key typed `key`.
-  return watch.some((word) => {
-    const wanted = word.trim().toLowerCase();
-    return wanted.length > 0 && name.includes(wanted);
-  })
-    ? 'item'
-    : null;
-}

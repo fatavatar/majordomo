@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { printedWidth, sliceLines, splitMarks } from '../chunks';
+import { sliceLines, splitMarks } from '../chunks';
 
 const mark = { icon: 'bank' as const, label: 'Bank of Godfrey' };
 
@@ -28,13 +28,6 @@ describe('splitting a chunk at its marks', () => {
     expect(splitMarks({ seq: 1, at: 0, text: 'ab\r\n', marks: [{ offset: 9, mark }] })).toEqual([
       { text: 'ab\r\n' }
     ]);
-  });
-});
-
-describe('how wide a printed line is', () => {
-  it('counts glyphs, not escapes or the terminator', () => {
-    expect(printedWidth('\x1b[1;33mBank of Godfrey\x1b[0m\r\n')).toBe(15);
-    expect(printedWidth('plain\r')).toBe(5);
   });
 });
 

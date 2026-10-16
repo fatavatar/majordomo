@@ -6,7 +6,6 @@ import {
   lairPassage,
   appraiseRoom,
   prowessSheetOf,
-  rankByPriority,
   rankByVerdict,
   roomVerdictKey,
   targetOf,
@@ -17,7 +16,6 @@ import {
 import type { Menace, MenacePlayer, MenaceWeights } from '../menace';
 import type { ProwessSheet } from '../prowess';
 import type { MobEntity } from '../entities';
-import type { MobRule, MobTreatment } from '../config';
 import type { MobAttack } from '../world';
 import { EMPTY_CHARACTER } from '../character';
 
@@ -116,14 +114,6 @@ describe('ranking on rounds rather than on health', () => {
     const nuisance = verdict(30, 100, 2);
     const ogre = verdict(50, 3000, 30);
     expect(rankByVerdict([ogre, nuisance])).toEqual([1, 0]);
-  });
-
-  it('puts a monster it cannot cost after every one it can', () => {
-    // Not a monster to open on. The two scales are not comparable, so the
-    // fallbacks are ordered among themselves and placed last.
-    const known = verdict(5, 100, 10);
-    const unknown = verdict(90, 100, null);
-    expect(rankByVerdict([unknown, known])).toEqual([1, 0]);
   });
 
   it('orders the uncostable ones among themselves by menace over health', () => {
@@ -455,79 +445,5 @@ describe('passShare', () => {
     // Unread health is not zero health, and a dead bar is not a divisor.
     expect(passShare({ damage: 30, sure: true }, null, 0.1)).toBeNull();
     expect(passShare({ damage: 30, sure: true }, 0, 0.1)).toBeNull();
-  });
-});
-
-describe('the monster list, which replaces the weighing rather than ranking against it', () => {
-  const rows = (...pairs: Array<[string, MobTreatment]>): MobRule[] =>
-    pairs.map(([mob, treat]) => ({ mob, treat }));
-
-  it('leaves the weighing alone when no row names anything in the room', () => {
-    expect(rankByPriority(['gnoll', 'imp'], rows(['dragon', 'first']))).toBeNull();
-  });
-
-  it('leaves the weighing alone when there are no rows at all', () => {
-    expect(rankByPriority(['gnoll', 'imp'], [])).toBeNull();
-  });
-
-  it('puts a first-band monster ahead of everything unlisted', () => {
-    const order = rankByPriority(['rat', 'gnoll', 'dragon'], rows(['dragon', 'first']));
-    expect(order?.[0]).toBe(2);
-  });
-
-  it('puts a last-band monster behind everything unlisted', () => {
-    const order = rankByPriority(['rat', 'gnoll', 'imp'], rows(['rat', 'last']));
-    expect(order).toEqual([1, 2, 0]);
-  });
-
-  it('orders the five bands exactly as they are written', () => {
-    const order = rankByPriority(
-      ['e', 'd', 'c', 'b', 'a'],
-      rows(['a', 'first'], ['b', 'high'], ['c', 'default'], ['d', 'low'], ['e', 'last'])
-    );
-    // The names were listed worst-first, so a correct ranking reverses them.
-    expect(order).toEqual([4, 3, 2, 1, 0]);
-  });
-
-  it('breaks a tie within a band on the order the room listed them', () => {
-    const order = rankByPriority(['rat', 'gnoll'], rows(['rat', 'high'], ['gnoll', 'high']));
-    expect(order).toEqual([0, 1]);
-  });
-
-  /*
-   * The wire spells a monster four ways and the config file a fifth. A row
-   * written `The Giant Rat` has to rank the `giant rat` the room printed, or
-   * the list silently does nothing for the names people actually type.
-   */
-  it('matches a row against the name the wire spells, article and case aside', () => {
-    const order = rankByPriority(['giant rat', 'gnoll'], rows(['The Giant Rat', 'last']));
-    expect(order).toEqual([1, 0]);
-  });
-
-  /*
-   * An unlisted monster is `default` rather than last: the list is somewhere to
-   * add one row, so everything else keeps sitting in the middle where `high`
-   * and `low` are defined against it.
-   */
-  it('sits an unlisted monster between the high and low bands', () => {
-    const order = rankByPriority(
-      ['low one', 'unlisted', 'high one'],
-      rows(['low one', 'low'], ['high one', 'high'])
-    );
-    expect(order).toEqual([2, 1, 0]);
-  });
-
-  /*
-   * A `never` row is a refusal, not a rank: `choose` declined that monster
-   * long before this, so counting it as *listed* would take the whole room off
-   * the realm's arithmetic on the strength of one nobody is fighting.
-   */
-  it('ignores a row that says never attack, rather than ranking on it', () => {
-    expect(rankByPriority(['rat', 'gnoll'], rows(['rat', 'never']))).toBeNull();
-  });
-
-  it('still ranks on the bands beside a never row', () => {
-    const order = rankByPriority(['rat', 'gnoll'], rows(['rat', 'never'], ['gnoll', 'first']));
-    expect(order).toEqual([1, 0]);
   });
 });

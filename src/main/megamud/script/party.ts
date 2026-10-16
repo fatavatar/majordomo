@@ -6,15 +6,11 @@
 import { addMember } from '../party/members';
 import { findPlayer, partyIndex } from '../room/checkNames';
 import { enemiesHere } from '../room/entities';
-import type { Session } from '../Session';
+import { automated, type Session } from '../Session';
 import { send } from './send';
 import { sneakStep } from './stealth';
 import { setState } from './state';
 import { awayExit, doors, move } from '../move/go';
-
-function moving(s: Session): boolean {
-  return s.active !== 0 || s.walking !== 0 || s.roaming !== 0 || s.importing !== 0;
-}
 
 /** Ask for the party (`par`). */
 function askParty(s: Session, why: string): number {
@@ -84,7 +80,7 @@ export function partyStatus(s: Session): number {
  * (`0x200`).
  */
 export function invitePlayers(s: Session): number {
-  if (s.following === 1 || !moving(s) || s.f_a32c !== 0 || s.hp <= 0) return 0;
+  if (s.following === 1 || !automated(s) || s.f_a32c !== 0 || s.hp <= 0) return 0;
   for (const e of s.room) {
     if (e.type !== 1) continue;
     let invite = e.player !== null && (e.player.flags & 0x10) !== 0;

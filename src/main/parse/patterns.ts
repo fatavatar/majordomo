@@ -88,7 +88,7 @@ export const STATUS_LINE =
  * One statement of each pattern, read twice: by the rules below that type the
  * line, and by `afflictionOnset`, which answers *what does this sentence turn
  * on* for a caller holding a sentence rather than a line. Two copies of a
- * regex agree until one is edited, which is the lesson `GUARD_FIELDS` records.
+ * regex agree until one is edited.
  *
  * `afflictionOnset` exists because the **ending** of a condition is not always
  * one of the four sentences below it: the spell message table pairs `You are
@@ -241,11 +241,6 @@ export const RULES: Rule[] = [
   },
   { type: 'prompt-selection', pattern: /^Please enter your selection:/ },
   { type: 'prompt-realm', pattern: /^Please select a realm:/ },
-  {
-    type: 'realm-listed',
-    pattern: /^\[(?<number>\d+)\] \. (?<name>.+?) \([^)]*\) \[ (?<mode>PvE|PvP Enabled) \]\s*$/
-  },
-  { type: 'realm-hang-penalty', pattern: /^\s*\. \. Hang Penalties (?<percent>\d+)%\s*$/ },
   { type: 'prompt-character', pattern: /^Please select a character:/ },
   { type: 'prompt-menu', pattern: /^\[(?<realm>MAJORMUD|PARADIGM)\]:/ },
   { type: 'login-failed', pattern: /^Invalid username\/password!/ },

@@ -57,6 +57,8 @@ export default function LoopSection({
   return (
     <fieldset className="settings-menus">
       <legend>{t('settings.loopSection.heading')}</legend>
+      {/* Under the legend, where every other fieldset says what it is for. */}
+      <p className="settings-note">{note}</p>
       {loops.length === 0 ? (
         <p className="settings-note">{t('settings.loopSection.empty')}</p>
       ) : (
@@ -135,8 +137,6 @@ export default function LoopSection({
           </ul>
         </details>
       )}
-
-      <p className="settings-note">{note}</p>
     </fieldset>
   );
 }

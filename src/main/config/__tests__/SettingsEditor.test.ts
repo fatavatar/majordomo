@@ -49,7 +49,7 @@ const draft = (over: Partial<ProfileDraft> = {}): ProfileDraft => ({
   accent: 'cyan',
   theme: '',
   login: [],
-  hangUp: { enabled: false, belowHealth: 0.15, penalties: null, onPlayerInRoom: false },
+  hangUp: { enabled: false, belowHealth: 0.15, onPlayerInRoom: false },
   retreat: {
     enabled: false,
     belowHealth: 0.3,
@@ -67,24 +67,16 @@ const draft = (over: Partial<ProfileDraft> = {}): ProfileDraft => ({
   party: { ...DEFAULT_CONFIG.automation.party },
   health: { ...DEFAULT_CONFIG.automation.health },
   movement: { ...DEFAULT_CONFIG.automation.movement },
-  train: {
-    ...DEFAULT_CONFIG.automation.train,
-    wanted: { ...DEFAULT_CONFIG.automation.train.wanted }
-  },
   quests: { ...DEFAULT_CONFIG.automation.quests },
   gear: { ...DEFAULT_CONFIG.automation.gear },
   loot: structuredClone(DEFAULT_CONFIG.automation.loot),
-  drop: structuredClone(DEFAULT_CONFIG.automation.drop),
   search: { ...DEFAULT_CONFIG.automation.search },
-  banking: { ...DEFAULT_CONFIG.automation.banking },
   // Empty is what OPTIONS below gives a character: the options file states no
   // loops, so a draft matching it writes no `loops:` key.
   loops: [],
   spells: { ...DEFAULT_CONFIG.automation.spells },
   alerts: { ...DEFAULT_CONFIG.ui.alerts },
   remotes: { ...DEFAULT_CONFIG.automation.remotes },
-  talk: { ...DEFAULT_CONFIG.automation.talk },
-  statline: { ...DEFAULT_CONFIG.automation.statline },
   rewrites: structuredClone(DEFAULT_CONFIG.ui.rewrites),
   ...over
 });
@@ -363,7 +355,6 @@ describe('servers, one directory each', () => {
     locate: 'rm',
     loops: [],
     database: '',
-    hangPenalties: null,
     coins: {},
     bbs: {},
     ...draft
@@ -383,15 +374,6 @@ describe('servers, one directory each', () => {
       { id: 'bearfather', name: 'Bearfather', host: 'bbs.bearfather.net' }
     ]);
     expect(fs.existsSync(home.server('bearfather').file)).toBe(true);
-  });
-
-  /* Whether a hang-up here is charged: stated when chosen, and no key when left to Global (todo 01). */
-  it('writes the realm\u2019s hang penalty only when it states one', () => {
-    editor.saveServer(null, server({ hangPenalties: true }));
-    expect(new ServerStore(home).all[0]!.server.hangPenalties).toBe(true);
-    editor.saveServer('Bearfather', server({ hangPenalties: null }));
-    expect(new ServerStore(home).all[0]!.server.hangPenalties).toBeNull();
-    expect(fs.readFileSync(home.server('bearfather').file, 'utf8')).not.toContain('hangPenalties');
   });
 
   /* What the realm calls its coins: only the ones it renames, and no key for none. */
@@ -503,7 +485,6 @@ describe('servers, one directory each', () => {
       locate: 'rm',
       loops: [],
       database: '',
-      hangPenalties: null,
       coins: {},
       bbs: {}
     });
@@ -579,7 +560,6 @@ describe('credentials in the messages', () => {
       locate: 'rm',
       loops: [],
       database: '',
-      hangPenalties: null,
       coins: {},
       bbs: {}
     });
@@ -638,7 +618,7 @@ describe('what a character plays against, and what keeps it alive', () => {
    * write one — reported as *"i do not see auto collect or discard cash on the
    * players ui"*.
    */
-  it('writes a character’s own answer to what it picks up and what it sheds', () => {
+  it('writes a character’s own answer to what it picks up', () => {
     editor.saveProfile(
       'vaelor',
       draft({
@@ -647,8 +627,7 @@ describe('what a character plays against, and what keeps it alive', () => {
           coins: true,
           coinKinds: ['runic', 'platinum', 'gold', 'silver'],
           discardKinds: ['copper']
-        },
-        banking: { autoDeposit: true, depositThresholdCopper: 100_000, keepCopper: 500, bank: 0 }
+        }
       })
     );
     const automation = read('vaelor')['automation'] as Record<string, unknown>;
@@ -657,16 +636,8 @@ describe('what a character plays against, and what keeps it alive', () => {
       coinKinds: ['runic', 'platinum', 'gold', 'silver'],
       discardKinds: ['copper']
     });
-    expect(automation['banking']).toEqual({
-      autoDeposit: true,
-      depositThresholdCopper: 100_000,
-      keepCopper: 500,
-      // Whichever counter it stands at, which is what the draft said.
-      bank: 0
-    });
-    // And the two that were not touched are still stated, like every other
+    // And the one that was not touched is still stated, like every other
     // block a character owns: creating takes the copy whole.
-    expect(automation['drop']).toEqual({ ...DEFAULT_CONFIG.automation.drop });
     expect(automation['search']).toEqual({ ...DEFAULT_CONFIG.automation.search });
   });
 
@@ -770,30 +741,13 @@ describe('what a character plays against, and what keeps it alive', () => {
     editor.saveProfile(
       'vaelor',
       draft({
-        hangUp: { enabled: true, belowHealth: 0.2, penalties: true, onPlayerInRoom: false }
+        hangUp: { enabled: true, belowHealth: 0.2, onPlayerInRoom: false }
       })
     );
     const safety = (read('vaelor')['automation'] as Record<string, Record<string, unknown>>)[
       'safety'
     ];
-    expect(safety?.['hangUp']).toEqual({
-      enabled: true,
-      belowHealth: 0.2,
-      penalties: true,
-      onPlayerInRoom: false
-    });
-
-    // Left to the realm: no key, so the realm's own answer reaches it (todo 01).
-    editor.saveProfile(
-      'vaelor',
-      draft({
-        hangUp: { enabled: true, belowHealth: 0.2, penalties: null, onPlayerInRoom: false }
-      })
-    );
-    const again = (read('vaelor')['automation'] as Record<string, Record<string, unknown>>)[
-      'safety'
-    ];
-    expect(again?.['hangUp']).toEqual({ enabled: true, belowHealth: 0.2, onPlayerInRoom: false });
+    expect(safety?.['hangUp']).toEqual({ enabled: true, belowHealth: 0.2, onPlayerInRoom: false });
   });
 
   /*
@@ -849,7 +803,7 @@ describe('what a character plays against, and what keeps it alive', () => {
     editor.saveProfile(
       'vaelor',
       draft({
-        hangUp: { enabled: true, belowHealth: 0.2, penalties: null, onPlayerInRoom: false }
+        hangUp: { enabled: true, belowHealth: 0.2, onPlayerInRoom: false }
       })
     );
     const automation = read('vaelor')['automation'] as Record<string, unknown>;
@@ -1026,7 +980,6 @@ describe('the loops a character owns', () => {
       locate: 'rm',
       loops: [arena],
       database: '',
-      hangPenalties: null,
       coins: {},
       bbs: {}
     });
@@ -1109,7 +1062,6 @@ describe('filing one loop from the Loops modal', () => {
       locate: 'rm',
       loops: [],
       database: '',
-      hangPenalties: null,
       coins: {},
       bbs: {}
     });
@@ -1169,7 +1121,6 @@ describe('filing a MegaMUD folder of loops on a realm', () => {
     locate: 'rm',
     loops,
     database: '',
-    hangPenalties: null,
     coins: {},
     bbs: {}
   });

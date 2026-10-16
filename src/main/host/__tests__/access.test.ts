@@ -96,8 +96,6 @@ describe('AccessTokens', () => {
     expect(tokens.has(token)).toBe(true);
     expect(tokens.has(token.replace(/./, 'z'))).toBe(false);
     expect(tokens.has(null)).toBe(false);
-    tokens.revoke(token);
-    expect(tokens.has(token)).toBe(false);
   });
 });
 

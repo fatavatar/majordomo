@@ -24,7 +24,6 @@ import { loopFileName, type Loop, type LoopScope, type ScopedLoop } from '../../
 import type { Home } from '../app/home';
 import { t } from '../app/i18n';
 import {
-  ownHangPenalties,
   ownItemRules,
   ownMonsterRules,
   PROFILE_ACCENTS,
@@ -340,9 +339,6 @@ export class SettingsEditor {
           document.setIn(['automation', 'safety', 'hangUp'], {
             enabled: draft.hangUp.enabled,
             belowHealth: draft.hangUp.belowHealth,
-            // Absent leaves it to the realm and then the options file, so null
-            // writes no key rather than a copy of what is inherited.
-            ...(draft.hangUp.penalties === null ? {} : { penalties: draft.hangUp.penalties }),
             onPlayerInRoom: draft.hangUp.onPlayerInRoom
           });
         }
@@ -387,17 +383,13 @@ export class SettingsEditor {
           [['automation', 'health'], draft.health, DEFAULT_CONFIG.automation.health],
           [['automation', 'movement'], draft.movement, DEFAULT_CONFIG.automation.movement],
           [['automation', 'hunting'], draft.hunting, DEFAULT_CONFIG.automation.hunting],
-          [['automation', 'train'], draft.train, DEFAULT_CONFIG.automation.train],
           [['automation', 'quests'], draft.quests, DEFAULT_CONFIG.automation.quests],
           [['automation', 'gear'], draft.gear, DEFAULT_CONFIG.automation.gear],
           [['automation', 'loot'], draft.loot, DEFAULT_CONFIG.automation.loot],
-          [['automation', 'drop'], draft.drop, DEFAULT_CONFIG.automation.drop],
           [['automation', 'search'], draft.search, DEFAULT_CONFIG.automation.search],
-          [['automation', 'banking'], draft.banking, DEFAULT_CONFIG.automation.banking],
           [['automation', 'spells'], draft.spells, DEFAULT_CONFIG.automation.spells],
           [['automation', 'remotes'], draft.remotes, DEFAULT_CONFIG.automation.remotes],
           [['automation', 'afk'], draft.afk, DEFAULT_CONFIG.automation.afk],
-          [['automation', 'statline'], draft.statline, DEFAULT_CONFIG.automation.statline],
           // Not under `automation:`, because it is not something the client
           // *does* — it is what this player wants to hear about this character.
           [['ui', 'alerts'], draft.alerts, DEFAULT_CONFIG.ui.alerts],
@@ -819,11 +811,6 @@ export class SettingsEditor {
         if (draft.database.length > 0) document.setIn(['database'], draft.database);
         else if (document.hasIn(['database'])) document.deleteIn(['database']);
 
-        // And whether a hang-up here is charged: absent leaves it to the
-        // options file, so null removes the key rather than writing one.
-        if (draft.hangPenalties !== null) document.setIn(['hangPenalties'], draft.hangPenalties);
-        else if (document.hasIn(['hangPenalties'])) document.deleteIn(['hangPenalties']);
-
         // And what it calls its coins: only the ones it renames, and no key at
         // all for a realm that renames none, as with `locate` above.
         const coins = Object.entries(draft.coins).filter(([, name]) => name.length > 0);
@@ -1002,8 +989,6 @@ export class SettingsEditor {
       },
       automation: {
         enabled: config.automation.enabled,
-        onEnterRealm: [...config.automation.onEnterRealm],
-        onPartyChange: config.automation.onPartyChange,
         idle: { ...config.automation.idle },
         pacing: { ...config.automation.pacing },
         walk: { ...config.automation.walk },
@@ -1011,7 +996,6 @@ export class SettingsEditor {
         hangUp: {
           enabled: config.automation.safety.hangUp.enabled,
           belowHealth: config.automation.safety.hangUp.belowHealth,
-          penalties: config.automation.safety.hangUp.penalties,
           onPlayerInRoom: config.automation.safety.hangUp.onPlayerInRoom
         },
         retreat: retreatOf(config.automation.safety.retreat),
@@ -1021,7 +1005,6 @@ export class SettingsEditor {
         party: { ...config.automation.party },
         health: { ...config.automation.health },
         movement: { ...config.automation.movement },
-        train: { ...config.automation.train, wanted: { ...config.automation.train.wanted } },
         quests: { ...config.automation.quests },
         // Deep, because the sets and their `wear` lists are the draft's
         // own to edit: a shallow copy hands the form the config's arrays.
@@ -1032,13 +1015,9 @@ export class SettingsEditor {
         },
         spells: { ...config.automation.spells },
         loot: { ...config.automation.loot, items: [...config.automation.loot.items] },
-        drop: { ...config.automation.drop, items: [...config.automation.drop.items] },
         search: { ...config.automation.search },
-        banking: { ...config.automation.banking },
         remotes: { ...config.automation.remotes },
-        afk: { ...config.automation.afk },
-        talk: { ...config.automation.talk },
-        statline: { ...config.automation.statline }
+        afk: { ...config.automation.afk }
       },
       loops
     };
@@ -1117,8 +1096,6 @@ export class SettingsEditor {
         set(['logging', 'maxBytes'], draft.logging.maxBytes);
 
         set(['automation', 'enabled'], draft.automation.enabled);
-        set(['automation', 'onEnterRealm'], [...draft.automation.onEnterRealm]);
-        set(['automation', 'onPartyChange'], draft.automation.onPartyChange);
         set(['automation', 'idle'], { ...draft.automation.idle });
         set(['automation', 'pacing'], { ...draft.automation.pacing });
         set(['automation', 'walk'], { ...draft.automation.walk });
@@ -1131,19 +1108,12 @@ export class SettingsEditor {
         set(['automation', 'health'], { ...draft.automation.health });
         set(['automation', 'movement'], { ...draft.automation.movement });
         set(['automation', 'hunting'], { ...draft.automation.hunting });
-        set(['automation', 'train'], {
-          ...draft.automation.train,
-          wanted: { ...draft.automation.train.wanted }
-        });
         set(['automation', 'quests'], { ...draft.automation.quests });
         set(['automation', 'gear'], { ...draft.automation.gear });
         set(['automation', 'spells'], { ...draft.automation.spells });
         set(['automation', 'loot'], { ...draft.automation.loot });
-        set(['automation', 'drop'], { ...draft.automation.drop });
-        set(['automation', 'banking'], { ...draft.automation.banking });
         set(['automation', 'remotes'], { ...draft.automation.remotes });
         set(['automation', 'afk'], { ...draft.automation.afk });
-        set(['automation', 'statline'], { ...draft.automation.statline });
       },
       verify: (value) => {
         /*
@@ -1261,12 +1231,7 @@ export class SettingsEditor {
          * stale the first time the first one changes, which is the rule the
          * options template already keeps: defaults live in exactly one place.
          */
-        // The character's own answer about penalties, read raw as `monsters`
-        // is below: the resolved one may be the realm's or the options file's.
-        hangUp: {
-          ...(effective?.automation.safety.hangUp ?? DEFAULT_CONFIG.automation.safety.hangUp),
-          penalties: ownHangPenalties(record)
-        },
+        hangUp: effective?.automation.safety.hangUp ?? DEFAULT_CONFIG.automation.safety.hangUp,
         retreat: retreatOf(
           effective?.automation.safety.retreat ?? DEFAULT_CONFIG.automation.safety.retreat
         ),
@@ -1293,7 +1258,6 @@ export class SettingsEditor {
         health: effective?.automation.health ?? DEFAULT_CONFIG.automation.health,
         movement: effective?.automation.movement ?? DEFAULT_CONFIG.automation.movement,
         hunting: effective?.automation.hunting ?? DEFAULT_CONFIG.automation.hunting,
-        train: effective?.automation.train ?? DEFAULT_CONFIG.automation.train,
         quests: effective?.automation.quests ?? DEFAULT_CONFIG.automation.quests,
         gear: effective?.automation.gear ?? DEFAULT_CONFIG.automation.gear,
         // The item rows the character's own, for `monsters`' reason above.
@@ -1301,13 +1265,9 @@ export class SettingsEditor {
           ...(effective?.automation.loot ?? DEFAULT_CONFIG.automation.loot),
           itemDetails: ownItemRules(record)
         },
-        drop: effective?.automation.drop ?? DEFAULT_CONFIG.automation.drop,
         search: effective?.automation.search ?? DEFAULT_CONFIG.automation.search,
-        banking: effective?.automation.banking ?? DEFAULT_CONFIG.automation.banking,
         remotes: effective?.automation.remotes ?? DEFAULT_CONFIG.automation.remotes,
         afk: effective?.automation.afk ?? DEFAULT_CONFIG.automation.afk,
-        talk: effective?.automation.talk ?? DEFAULT_CONFIG.automation.talk,
-        statline: effective?.automation.statline ?? DEFAULT_CONFIG.automation.statline,
         rewrites: effective?.ui.rewrites ?? DEFAULT_CONFIG.ui.rewrites,
         /*
          * This character's *own* loops, from its own directory — not the
@@ -1460,7 +1420,7 @@ function blank(id: string): ProfileEditable {
     username: '',
     hasPassword: false,
     login: [],
-    hangUp: { ...DEFAULT_CONFIG.automation.safety.hangUp, penalties: null },
+    hangUp: DEFAULT_CONFIG.automation.safety.hangUp,
     retreat: retreatOf(DEFAULT_CONFIG.automation.safety.retreat),
     fleeGoto: DEFAULT_CONFIG.automation.safety.fleeGoto,
     pvp: DEFAULT_CONFIG.automation.safety.pvp,
@@ -1469,17 +1429,12 @@ function blank(id: string): ProfileEditable {
     health: DEFAULT_CONFIG.automation.health,
     movement: DEFAULT_CONFIG.automation.movement,
     hunting: DEFAULT_CONFIG.automation.hunting,
-    train: DEFAULT_CONFIG.automation.train,
     quests: DEFAULT_CONFIG.automation.quests,
     gear: DEFAULT_CONFIG.automation.gear,
     loot: DEFAULT_CONFIG.automation.loot,
-    drop: DEFAULT_CONFIG.automation.drop,
     search: DEFAULT_CONFIG.automation.search,
-    banking: DEFAULT_CONFIG.automation.banking,
     remotes: DEFAULT_CONFIG.automation.remotes,
     afk: DEFAULT_CONFIG.automation.afk,
-    talk: DEFAULT_CONFIG.automation.talk,
-    statline: DEFAULT_CONFIG.automation.statline,
     rewrites: DEFAULT_CONFIG.ui.rewrites,
     loops: [],
     inherited: [],

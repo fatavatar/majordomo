@@ -16,9 +16,7 @@
  *    every ASCII map, box-drawn frame and column-aligned stat block the game
  *    emits, so it is not a matter of taste.
  */
-import { PRIORITY } from './automation';
 import { bool, int, isRecord, str } from './values';
-import { asEvents, type ScheduledEvent } from './events';
 import { GEAR_WHENS, type GearSet, type GearWhen } from './gear';
 import { asLoops, mergeNamed, type Loop } from './loops';
 /*
@@ -45,7 +43,6 @@ import {
   type ThemeId,
   type ThemePreference
 } from './themes';
-import type { Comparison, Guard, GuardField, Rule, RuleAction, Trigger } from './rules';
 import {
   ALERT_SIDES,
   DEFAULT_ALERT_DEBOUNCE_SECONDS,
@@ -69,7 +66,6 @@ import { asItemRules, type ItemRule } from './itemRules';
 // A value import, and safe: `commands.ts` imports nothing from `shared/`, so
 // there is no cycle for a bundler to resolve the wrong way round.
 import { REREAD_ROOM } from './commands';
-import { TRAINED_ATTRIBUTES, type TrainedAttribute } from './training';
 import { isAnsiColour, type ColourBand } from './template';
 import { DEFAULT_REWRITES, isRewriteEntity, type RewriteDesign, type VitalBands } from './rewrites';
 
@@ -257,12 +253,6 @@ export interface Server {
    * very archive a bundled world was built from is that world.
    */
   database: string;
-  /**
-   * Whether a hang-up here is charged, for every character playing here that
-   * does not say for itself; null leaves it to the options file. See
-   * `HangUpConfig.penalties`.
-   */
-  hangPenalties: boolean | null;
   /**
    * What this realm calls its coins, where it renames them. See `CoinNames`.
    *
@@ -647,17 +637,6 @@ export interface HangUpConfig {
   /** Fraction of maximum health below which hanging up is considered. */
   belowHealth: number;
   /**
-   * Whether this realm charges for a hang-up at all (todo 01).
-   *
-   * Where it does, hanging up is refused while the client can see a reason it
-   * would be charged; where it does not, it hangs up below `belowHealth`.
-   * **Off by default**: a PvE realm charges nothing. Paradigm's realm menu
-   * states it (`Hang Penalties 25%`), and what it said outranks this; a
-   * realm's own `server.yaml` (`hangPenalties`) outranks the options file,
-   * and a character's own file outranks its realm.
-   */
-  penalties: boolean;
-  /**
    * Also hang up when a player is in the room, at any health.
    *
    * Off by default. It is the PvP panic button, and it is also the one most
@@ -1010,73 +989,6 @@ export interface CombatConfig {
   minSurvival: number;
 }
 
-/**
- * What to pick up, unasked.
- *
- * MegaMUD's *auto-get cash* and its item list, the two things every script in
- * the capture corpus did first after a kill (`.@get-all`). Coins are the safe
- * half: they land on the floor only when something dies (`18 gold drop to the
- * ground.`) and weigh nothing worth refusing. Items are named, and matched by
- * the prefix the server itself uses, because `get` is answered by prefix.
- */
-/**
- * Answering the `@` commands another player's client sends this one.
- *
- * MegaMUD's remote-control vocabulary — `/Vaelor @health` telepaths a question
- * and the client on the other end answers `{HP=62/62,MA=10/10}` — which is what
- * makes running several characters at once workable. The vocabulary and the two
- * reply shapes captures actually show are in `src/shared/remotes.ts`.
- *
- * **Off by default, and this one is not merely convention.** What it turns on
- * is a channel by which somebody else's typing moves this character: `@do` runs
- * a command as though it were typed. `@kill` and `@hangup` are refused outright
- * and always will be, but the switch is what somebody chooses when they decide
- * to be reachable at all.
- *
- * **`enabled` is the switch; the two lists are the gate.** Until 2026-08-28
- * there was only the switch, so turning it on answered *everybody*; until
- * 2026-08-29 the gate was three *grounds* — `named`, `party`, `gang` — and a
- * ground allowed somebody **every** command. Both shapes could not express the
- * thing people actually want, which is per command: *"my gang may ask where I
- * am; nobody runs a command on me"*.
- *
- * So permission is stated per remote, per player, with one list behind it for
- * the gang. The switch and the gate stay separate questions because they are:
- * turning the feature off entirely and being reachable by nobody in particular
- * are different states, and a client that conflated them could not tell
- * somebody why their gang was being refused.
- *
- * The decision itself is `judgeRemote` in `src/shared/remotes.ts` — one pure
- * function, so the card showing somebody as allowed and the engine answering
- * them read the same rule rather than two copies of it.
- */
-/**
- * What this character learns about the other people in the room.
- *
- * One option today and its own block rather than a loose key, because the
- * question it answers — how much this character finds out about somebody
- * standing next to it — is a category with more than one member waiting
- * (whether to greet, whether to record a conversation) and a flat key would
- * have to move when the second arrives.
- */
-export interface TalkConfig {
-  /**
-   * Look at a player the first time this character sees them, to learn what
-   * they are wearing.
-   *
-   * **Off by default, and it must stay that way.** A look is a command from
-   * the same budget walking and fighting spend from, and it is *visible*: the
-   * server tells the person they were looked at. A client that automatically
-   * inspected every stranger would announce this character to every player it
-   * passed, which on a PvP realm is a way to be noticed by exactly the people
-   * worth not being noticed by.
-   *
-   * Once per person rather than per sighting: what somebody is wearing changes
-   * rarely, and the Player card stamps the answer with when it was true.
-   */
-  lookAtPlayers: boolean;
-}
-
 export interface RemotesConfig {
   /** Answer `@` commands from other players at all. */
   enabled: boolean;
@@ -1340,36 +1252,6 @@ export interface SearchConfig {
   tries: number;
 }
 
-export interface DropConfig {
-  enabled: boolean;
-  /** Item names to drop whenever the pack lists them. Prefixes, as `drop` reads them. */
-  items: string[];
-  /**
-   * Only shed junk while the server itself grades the load as anything but
-   * `None` (`Encumbrance: 840/2400 - Medium [35%]`). The server's own word,
-   * because the thresholds behind the grades are unsampled — MegaMUD's "67%
-   * is Heavy" is folklore this client has never seen on the wire. An unread
-   * grade drops nothing: unknown is not encumbered, and a drop is not a thing
-   * to do on a guess.
-   */
-  whenEncumbered: boolean;
-  /**
-   * Also drop anything the realm prices at **zero**, without naming it.
-   *
-   * The one entity predicate safe to act on unasked here, and only because it
-   * is the realm's own explicit zero rather than an absence: a price the realm
-   * does not state leaves the item alone, because "worth nothing" and "nobody
-   * has said" are different claims and only one of them is a reason to throw
-   * something away.
-   *
-   * Nothing the realm marks `Not Droppable` is ever dropped by it, nothing
-   * equipped is, and the named list above stays the authority on everything
-   * else — the realm does not mark quest items, which is why this is bounded
-   * to a column it does mark.
-   */
-  worthless: boolean;
-}
-
 /**
  * Banking the purse, unasked — MegaMUD's StashCoin.
  *
@@ -1413,37 +1295,6 @@ export interface SupplyItem {
 export interface SuppliesConfig {
   enabled: boolean;
   items: SupplyItem[];
-}
-
-export interface BankingConfig {
-  autoDeposit: boolean;
-  /**
-   * Deposit only once the purse exceeds this, in copper. Walking to a counter
-   * for pocket change spends the budget the loop walks on, so the threshold
-   * is deliberately well above `keepCopper`.
-   */
-  depositThresholdCopper: number;
-  /** What stays in the purse for tolls and shops, in copper. */
-  keepCopper: number;
-  /**
-   * The bank this character banks at — a `Shops` row id, or 0 for *whichever
-   * counter it is standing at* (todo 00).
-   *
-   * The threshold has always fired at any counter the realm grades `bank`,
-   * which is right for a character that passes several and wrong for one
-   * whose vault is somewhere particular: a balance spread across four vaults
-   * is four figures nobody can add up, and the realm states each separately.
-   *
-   * Keyed by the row, not the shop's name, for `trainersTaking`'s reason: two
-   * rows can share a name and be different counters. A row the realm no
-   * longer places, or one on another realm, deposits nowhere and says so —
-   * never silently at the nearest one instead, which would be the client
-   * choosing a vault the player did not.
-   *
-   * **It does not walk anywhere.** Which bank is the question this answers;
-   * going to one is `automation.loops` and the player's own route.
-   */
-  bank: number;
 }
 
 /**
@@ -1863,16 +1714,6 @@ export interface MovementConfig {
    */
   extinguishInLight: boolean;
   /**
-   * Walk on while the server says this character is blind. Off, a route or a
-   * loop stands still until sight returns — MegaMUD's `IgnoreBlind`, whose
-   * default (`0`) waits, and inverted here so that off means wait. A blind
-   * character cannot read the room it walks into and misses every swing, so
-   * a step taken blind is a step into a lair it will not see. `held`
-   * (paralysis) always holds and has no switch: a step while held is a
-   * command spent to be refused. See `afflictionHolding` in `walk.ts`.
-   */
-  walkWhileBlind: boolean;
-  /**
    * Turn auto-combat back on when a route the player asked for arrives (todo
    * 11). The ordinary reason to walk with it off is to get somewhere without
    * fighting on the way; on arrival the reason is gone. Only a route the
@@ -1891,24 +1732,6 @@ export interface MovementConfig {
    * (`Traveller.keepOut`) unless it starts or ends inside one.
    */
   keepOutOf: string[];
-  /**
-   * Walk on while poisoned. Off, the walk waits the poison out — MegaMUD's
-   * `IgnorePoison` default. A cure under `spells.cures` ends the wait sooner.
-   * Disease is not a movement matter and has no switch.
-   */
-  walkWhilePoisoned: boolean;
-  /**
-   * Walk on while the realm's message table says the character is confused —
-   * MegaMUD's *Ignore Confusion*. Off by default, as MegaMUD's is: a confused
-   * character's commands misfire, and a walk spends them. See `afflictionHolding`.
-   */
-  walkWhileConfused: boolean;
-  /**
-   * Walk on while the realm's message table says the character is losing hit
-   * points — burning, bleeding, acid, plague. Off by default: MegaMUD rests
-   * until such a row's ending. See `afflictionHolding`.
-   */
-  walkWhileLosingHp: boolean;
   /**
    * Pick up a key an exit of this room needs, when it is lying on the floor of
    * it — and only then.
@@ -1956,50 +1779,6 @@ export interface HuntingAutomationConfig {
    * should not leave its area. A number here is that player's answer.
    */
   radius: number;
-}
-
-/**
- * Spending character points on the `train stats` screen — `StatScreen`.
- *
- * Off by default, and inert while every wanted figure is at or under the
- * sheet's: the reviewer's rule (todo 10). `wanted` is where each stat should
- * end up; 0 leaves it alone. The screen replaces the whole terminal and
- * anything typed lands in a field, which is why the queue stands down for it
- * and only this one driver, which reads the screen, is let through.
- */
-export interface TrainConfig {
-  /** Auto Train Stats. */
-  stats: boolean;
-  wanted: Record<TrainedAttribute, number>;
-  /**
-   * Go and collect a level when the experience is there (todo 18).
-   *
-   * Off, because a player banking levels for a reroll exists and a client
-   * that levelled them anyway would have spent their money and their choice.
-   *
-   * Experience past the threshold does nothing at all until a trainer is
-   * paid: no hit points, no skills, no character points. So a client left to
-   * play overnight without this comes back with a night's experience and the
-   * same character it started with — which is the one thing it is for.
-   */
-  levels: boolean;
-  /**
-   * Where to go and level: the trainer's own shop row, or 0 for *the cheapest
-   * that will take me*.
-   *
-   * **A row, not a room name.** Two rows may share a name and they are
-   * different trainers with different bands; and a row placed in several
-   * rooms is one choice, not several.
-   *
-   * The settings screen offers only the rows the realm says will take this
-   * character at this level (`trainersTaking`), because a trainer that
-   * refuses is a walk across two maps to be told so. A stated row that stops
-   * taking this character — every class room does at level 10, every band
-   * does at its ceiling — is **not** silently replaced: the errand refuses
-   * and says so, which is the reviewer's rule and the standing one about
-   * never guessing a location.
-   */
-  trainer: number;
 }
 
 /**
@@ -2195,7 +1974,7 @@ export interface SpellsConfig {
    * chosen per cast from the spellbook and the realm's figures rather than
    * read from `heal` and `healPartyWith`: the cheapest spell expected to cover
    * what is missing, and, with more than one person hurt, a party-wide heal
-   * where it is worth more than one heal on the worst of them (`planHeal`). A
+   * where it is worth more than one heal on the worst of them. A
    * choice that cannot be made falls back to the configured spell and says so.
    * Its own switch rather than `autoChoose`'s, because a player may want the
    * heals chosen and the attack spell typed, or the other way round.
@@ -2452,65 +2231,19 @@ export interface PartyConfig {
    * Ask for the party listing every this many seconds while in a party, twice
    * that out of combat — MegaMUD's *Par Frequency* (15 in MegaMUD). The
    * listing is the only place another member's health shows. 0 asks only when
-   * the party changes (`onPartyChange`).
+   * the party changes.
    */
   parEverySeconds: number;
   /** Ask for the listing after every combat round too — MegaMUD's *Send PAR after combat round*. */
   parAfterRound: boolean;
 }
 
-/**
- * Whether the client owns the prompt's shape.
- *
- * `set statline full custom <template>` puts the maximum health and mana, the
- * experience, what the next level still costs and the purse on every prompt,
- * on both families (`src/shared/statline.ts` composes it; measured live,
- * 2026-09-09). Off by default: the line is a setting on the character, kept
- * server-side, and the client does not change one unasked. Whatever the line
- * is, the client reads it — `pro` says which, and the matcher is built from
- * that rather than from what was sent.
- */
-export interface StatlineConfig {
-  control: boolean;
-}
-
 export interface AutomationConfig {
-  /**
-   * Rules, evaluated over character state. Written against this project's own
-   * vocabulary — see `./rules.ts` for why it is not `tproxy`'s DSL.
-   */
-  rules: Rule[];
   /**
    * Master switch. With this off, only what the player types is ever sent, bar
    * the keep-alive (`idle`), which keeps the connection rather than acting.
    */
   enabled: boolean;
-  /**
-   * Sent once on entering the realm, to populate the HUD from an otherwise
-   * silent server. `exp` and `st` fill in maxima and progress, `i` the
-   * inventory, `who` the roster.
-   *
-   * `rm` is first and is the one that matters: it answers `Location: 1,2147`,
-   * the only exact statement of position this server ever makes, and everything
-   * else the client believes about where it is standing is inference.
-   *
-   * It replaced `pro`, measured rather than reasoned (`npm run probe:tour`):
-   * both carry the location, and `pro` spends **thirty lines** of settings,
-   * evil points and death records saying it — none of which anything here
-   * reads, and all of which lands in the terminal on every connection. `rm`
-   * answers in one line.
-   */
-  onEnterRealm: string[];
-  /**
-   * Asked when the party changes, so the roster is not empty at the moment it
-   * became worth having.
-   *
-   * The party listing is the only place another character's health is visible.
-   * One command on a transition, not periodically — how often to spend one on
-   * it is a judgement about how the character is being played, and a rule with
-   * `partySize` is where that belongs. Empty never asks.
-   */
-  onPartyChange: string;
   idle: IdleConfig;
   pacing: PacingConfig;
   walk: WalkConfig;
@@ -2523,22 +2256,14 @@ export interface AutomationConfig {
   health: HealthConfig;
   /** Picking things up off the floor — MegaMUD's auto-get. */
   loot: LootConfig;
-  /** Dropping named junk back onto it — the other half of MegaMUD's drop list. */
-  drop: DropConfig;
   /** Looking for what the room does not print — see `SearchConfig`. */
   search: SearchConfig;
-  /** Banking the purse at a counter — MegaMUD's StashCoin. */
-  banking: BankingConfig;
   /** Answering for a player who is not at the keyboard — MegaMUD's AutoAfk. */
   afk: AfkConfig;
   /** Keeping the pack stocked. See `SuppliesConfig`. */
   supplies: SuppliesConfig;
   /** Answering another player's `@` commands — MegaMUD's remote control. */
   remotes: RemotesConfig;
-  /** What this character does about other people, short of talking to them. */
-  talk: TalkConfig;
-  /** Whether the client sets the prompt's shape on the way in. See `StatlineConfig`. */
-  statline: StatlineConfig;
   /**
    * The loops a character walks to gain levels — MegaMUD's loops.
    *
@@ -2547,20 +2272,11 @@ export interface AutomationConfig {
    * `resources/loops/megamud.yaml` to copy from.
    */
   loops: Loop[];
-  /**
-   * Commands on a clock — MegaMUD's Events tab.
-   *
-   * `routines` reacts to state; this reacts to *time*. Through the arbiter in
-   * the `probe` band like everything else, so an event never displaces an escape.
-   */
-  events: ScheduledEvent[];
   /** What a planned route is allowed to do on the way. */
   movement: MovementConfig;
   /** Casting, at the one moment a rule cannot express. */
   spells: SpellsConfig;
-  /** Spending character points on the stat screen. */
   hunting: HuntingAutomationConfig;
-  train: TrainConfig;
   /** Carrying a quest's plan through the arbiter. See `QuestsConfig`. */
   quests: QuestsConfig;
   /** Which kit to be in, and when. See `GearConfig`. */
@@ -2797,50 +2513,6 @@ export const DEFAULT_CONFIG: AppConfig = {
   },
   automation: {
     enabled: true,
-    // No rules by default. Automation that acts without being asked to is not
-    // a sensible default for a game where a wrong action costs a character.
-    rules: [],
-    // `pro` first, and it is the important one: it answers `Location: 1,2147`,
-    // which is the *only* exact statement of where the character is standing.
-    // Everything else the client does about position -- unique names, exit
-    // signatures, movement -- is inference from evidence, and the pathfinder is
-    // only as good as its starting point. The legacy engine asked for this on
-    // entering the realm (`user.coffee` `onGameEnter`) and dropping it was an
-    // omission, not a decision.
-    // `gb` last of the listings: it is the only statement of gang membership
-    // that includes the members who are offline, and gang membership is a
-    // permission -- `automation.remotes` answers `@` commands for whoever
-    // shares this character's gang, so the gate starts the session knowing who
-    // that is rather than learning it when somebody first asks. A gangless
-    // character gets one line back saying so, which the classifier reads.
-    // `bank` before the closing look, because the vault a character logs in
-    // standing in is the only one it can read without walking there: `bank`
-    // answers for *this* counter and says nothing about the others. The
-    // balances are kept between sessions (`Belongings`), so this is a refresh
-    // rather than the only way the card is ever filled -- and it costs one
-    // command answered with a refusal for a character that logged out
-    // somewhere else, which is why it is a list the player owns.
-    //
-    // It used to end in `l`. The server prints the whole room block on entering
-    // the realm anyway -- name, description, the floor, `Also here:`, exits and
-    // light -- so the closing look was a second copy of a block already read,
-    // bought at the price of announcing to everybody standing there that this
-    // character had arrived and was looking about. Measured across the recorded
-    // sessions in `logs/`: every one whose entry room had somebody in it printed
-    // `Also here:` before the probe sent anything (`2026-08-27_23-07-19`,
-    // `2026-08-28_10-18-29`, and eight more).
-    //
-    // Dropped rather than replaced: `stringList` filters an empty entry out, so
-    // a list of command words has no spelling for the bare Enter that replaced
-    // `l` everywhere else. Nothing here needs one -- the block already arrived.
-    onEnterRealm: ['rm', 'st', 'i', 'exp', 'sc', 'gb', 'bank'],
-    onPartyChange: 'party',
-    // Off: a look is a spent command and the server tells the person they were
-    // looked at. See `TalkConfig.lookAtPlayers`.
-    talk: { lookAtPlayers: false },
-    // Off: the status line is a setting kept on the character server-side,
-    // and the client does not change one unasked. See `StatlineConfig`.
-    statline: { control: false },
     // Empty is a bare Enter: the room, re-read without telling the room. See
     // `IdleConfig.command` and `REREAD_ROOM`.
     idle: { enabled: true, afterSeconds: 45, command: REREAD_ROOM },
@@ -2857,7 +2529,6 @@ export const DEFAULT_CONFIG: AppConfig = {
       hangUp: {
         enabled: false,
         belowHealth: 0.15,
-        penalties: false,
         onPlayerInRoom: false
       },
       retreat: {
@@ -2955,10 +2626,7 @@ export const DEFAULT_CONFIG: AppConfig = {
       convertWith: '',
       convertAt: 'never'
     },
-    drop: { enabled: false, items: [], whenEncumbered: false, worthless: false },
     search: { enabled: false, tries: 1 },
-    // 500 gold and 5 gold, on the measured ladder: 100 copper to the gold.
-    banking: { autoDeposit: false, depositThresholdCopper: 50_000, keepCopper: 500, bank: 0 },
     // On, with nothing listed: the switch is what the toolbar flips, and the
     // list is what the Self card and the item panel fill. An empty list does
     // nothing, so the default is safe and the first item added starts working.
@@ -2978,7 +2646,6 @@ export const DEFAULT_CONFIG: AppConfig = {
       commands: []
     },
     loops: [],
-    events: [],
     afk: { enabled: false, afterMinutes: 5, reply: '{AFK}' },
     movement: {
       openDoors: true,
@@ -2994,10 +2661,6 @@ export const DEFAULT_CONFIG: AppConfig = {
       recoverGear: false,
       recoverGearTries: 2,
       recoverGearFloor: 2,
-      walkWhileBlind: false,
-      walkWhilePoisoned: false,
-      walkWhileConfused: false,
-      walkWhileLosingHp: false,
       fightOnArrival: true,
       keepOutOf: ['vortex', 'Negative Power Plane'],
       collectKeys: true
@@ -3005,12 +2668,6 @@ export const DEFAULT_CONFIG: AppConfig = {
     hunting: {
       enabled: false,
       radius: 0
-    },
-    train: {
-      stats: false,
-      wanted: { strength: 0, intellect: 0, willpower: 0, agility: 0, health: 0, charm: 0 },
-      levels: false,
-      trainer: 0
     },
     quests: { enabled: false },
     gear: { enabled: false, sets: [], offRound: { item: '', everyRounds: 0 } },
@@ -3064,43 +2721,19 @@ export const DEFAULT_CONFIG: AppConfig = {
  * and the array is where the value lives under `automation:`; a switch added
  * to one and not the other does not compile. `src/shared/__tests__` walks
  * every path against `DEFAULT_CONFIG` and fails for one that leads nowhere or
- * to something that is not a boolean, which is the failure `GUARD_FIELDS`
- * already records: a field in the type and not the list type-checks, then
- * silently does nothing.
+ * to something that is not a boolean: a field in the type and not the list
+ * type-checks, then silently does nothing.
  *
  * Only booleans, and only ones worth flipping mid-play. A threshold is a
  * number and belongs on the settings screen; a list is a list.
+ *
+ * One left: our flee, drawn beside MegaMUD's toggles because MegaMUD has no
+ * toggle of its own for it. The rest went with the old automation
+ * (2026-10-16): a character the engine runs draws MegaMUD's toggles in their
+ * place, and every character runs on the engine.
  */
 export const AUTOMATION_SWITCHES = {
-  /** The master switch. Off, only what the player types is sent, bar the keep-alive. */
-  automation: ['enabled'],
-  combat: ['combat', 'enabled'],
-  retaliate: ['combat', 'retaliate'],
-  autoBless: ['spells', 'autoBless'],
-  retreat: ['safety', 'retreat', 'enabled'],
-  fleeGoto: ['safety', 'fleeGoto', 'enabled'],
-  hangUp: ['safety', 'hangUp', 'enabled'],
-  loot: ['loot', 'coins'],
-  drop: ['drop', 'enabled'],
-  search: ['search', 'enabled'],
-  autoDeposit: ['banking', 'autoDeposit'],
-  supplies: ['supplies', 'enabled'],
-  openDoors: ['movement', 'openDoors'],
-  pickLocks: ['movement', 'pickLocks'],
-  bashDoors: ['movement', 'bashDoors'],
-  sneak: ['movement', 'sneak'],
-  provideLight: ['movement', 'provideLight'],
-  healParty: ['spells', 'healParty'],
-  invokeItems: ['spells', 'invokeItems'],
-  assistLeader: ['party', 'assistLeader'],
-  defendParty: ['party', 'defendParty'],
-  restWithLeader: ['party', 'restWithLeader'],
-  autoRank: ['party', 'autoRank'],
-  remotes: ['remotes', 'enabled'],
-  gangpath: ['remotes', 'gangpath'],
-  lookAtPlayers: ['talk', 'lookAtPlayers'],
-  quests: ['quests', 'enabled'],
-  gear: ['gear', 'enabled']
+  fleeGoto: ['safety', 'fleeGoto', 'enabled']
 } as const satisfies Record<string, readonly string[]>;
 
 export type AutomationSwitch = keyof typeof AUTOMATION_SWITCHES;
@@ -3618,7 +3251,6 @@ function normalizeServer(value: unknown): Server | null {
      * reported.
      */
     database: str(value['database'], ''),
-    hangPenalties: typeof value['hangPenalties'] === 'boolean' ? value['hangPenalties'] : null,
     coins: asCoinNames(value['coins']),
     bbs: asBbsSettings(value['bbs'])
   };
@@ -3700,183 +3332,6 @@ function stringList(value: unknown, fallback: string[]): string[] {
   return Array.isArray(value) ? items : fallback;
 }
 
-/**
- * Every field a guard may name.
- *
- * **This is one half of a pair and both halves have to move together.** The
- * other is `readField` in `RuleEngine`. A field added to the `GuardField` union
- * and to the reader but not to this list is a field the type system accepts and
- * the *parser* refuses — so a rule using it fails to load, silently, and the
- * documented example in `default.yaml` does not work. That is exactly what
- * happened to `target`, `attackers`, `players`, `hostiles` and `hangUpClean`
- * when they were added.
- *
- * Ordered as the field union is, so the two read alongside each other.
- */
-export const GUARD_FIELDS: readonly GuardField[] = [
-  'hp.percent',
-  'hp',
-  'mana.percent',
-  'mana',
-  'level',
-  'inCombat',
-  'resting',
-  'meditating',
-  'occupants',
-  'threats',
-  'mobs',
-  'players',
-  'hostiles',
-  'hangUpClean',
-  'target',
-  'attackers',
-  'partySize',
-  'stealth',
-  'wealth',
-  'phase',
-  'realm',
-  'shopHere',
-  'lairHere',
-  'undeadHere',
-  'toughestHere',
-  'deathSpellHere',
-  'dark',
-  'light'
-];
-
-const COMPARISONS: readonly Comparison[] = ['<', '<=', '>', '>=', '==', '!='];
-
-/** Derived, not restated: a band added to `PRIORITY` is accepted here at once. */
-const PRIORITIES = Object.keys(PRIORITY) as readonly RuleAction['priority'][];
-
-/**
- * `"hp.percent < 0.5"` -> a guard.
- *
- * Written as one string because that is how a person thinks about a condition,
- * but validated field by field: an unknown field or operator is *dropped and
- * reported*, never silently accepted. A guard that quietly never matches is a
- * rule that quietly never fires, which is the failure mode of a stringly-typed
- * DSL.
- */
-export function parseGuard(text: string): Guard | null {
-  const match = /^\s*([\w.]+)\s*(<=|>=|==|!=|<|>)\s*(.+?)\s*$/.exec(text);
-  if (!match) return null;
-
-  const field = match[1] as GuardField;
-  const op = match[2] as Comparison;
-  if (!GUARD_FIELDS.includes(field)) return null;
-  if (!COMPARISONS.includes(op)) return null;
-
-  /*
-   * Surrounding quotes are stripped.
-   *
-   * A guard is one string in the options file — `- target == 'orc rogue'` — so
-   * YAML hands the inner quotes straight through. Without this, that guard
-   * compares against the four-quote-and-space *literal* and can never match,
-   * and there is no way at all to name anything with a space in it.
-   */
-  let raw = match[3] ?? '';
-  const quoted = /^(['"])(.*)\1$/.exec(raw);
-  if (quoted) raw = quoted[2] ?? '';
-
-  let value: number | string | boolean = raw;
-  if (raw === 'true') value = true;
-  else if (raw === 'false') value = false;
-  // Quoted digits stay a string: `target == '1'` is a name, not a number.
-  else if (!quoted && raw !== '' && Number.isFinite(Number(raw))) value = Number(raw);
-
-  return { field, op, value };
-}
-
-function parseTrigger(value: unknown): Trigger | null {
-  if (typeof value !== 'string') return null;
-  const text = value.trim();
-
-  if (text === 'state') return { kind: 'state' };
-  if (text === 'mid-round') return { kind: 'mid-round' };
-
-  const timer = /^every\s+(\d+)(ms|s)?$/.exec(text);
-  if (timer) {
-    const amount = Number(timer[1]);
-    return { kind: 'timer', everyMs: timer[2] === 'ms' ? amount : amount * 1000 };
-  }
-
-  // Anything else is a block type. Not checked against the vocabulary here:
-  // `shared/config.ts` must stay free of the parser, and a rule naming a block
-  // that never occurs simply never fires, which is visible in the trace.
-  return { kind: 'block', type: text };
-}
-
-function parseAction(value: unknown): RuleAction | null {
-  if (typeof value === 'string') {
-    return value.trim() ? { command: value.trim(), priority: 'combat' } : null;
-  }
-  if (!isRecord(value)) return null;
-
-  const command = str(value['command'], '');
-  if (command.length === 0) return null;
-
-  const priority = PRIORITIES.includes(value['priority'] as RuleAction['priority'])
-    ? (value['priority'] as RuleAction['priority'])
-    : 'combat';
-
-  const action: RuleAction = { command, priority };
-  const coalesce = str(value['coalesce'], '');
-  if (coalesce) action.coalesce = coalesce;
-  if (value['expiresMs'] !== undefined) {
-    action.expiresMs = int(value['expiresMs'], 5000, 100, 600_000);
-  }
-  return action;
-}
-
-/**
- * Coerces the `rules:` list.
- *
- * A malformed rule is dropped rather than defaulted: a half-understood rule
- * that fires is far worse than one that does not exist, because it acts on the
- * character's behalf.
- */
-export function normalizeRules(value: unknown): Rule[] {
-  if (!Array.isArray(value)) return [];
-
-  const rules: Rule[] = [];
-  const seen = new Set<string>();
-
-  for (const [index, entry] of value.entries()) {
-    if (!isRecord(entry)) continue;
-
-    const name = str(entry['name'], `rule ${index + 1}`);
-    if (seen.has(name.toLowerCase())) continue;
-
-    const when = parseTrigger(entry['when']);
-    if (!when) continue;
-
-    const rawThen = Array.isArray(entry['then']) ? entry['then'] : [entry['then']];
-    const then = rawThen.map(parseAction).filter((action): action is RuleAction => action !== null);
-    if (then.length === 0) continue;
-
-    const rawIf = Array.isArray(entry['if']) ? entry['if'] : entry['if'] ? [entry['if']] : [];
-    const guards = rawIf
-      .map((guard) => (typeof guard === 'string' ? parseGuard(guard) : null))
-      .filter((guard): guard is Guard => guard !== null);
-    // A guard that failed to parse is dropped, and dropping a guard *widens*
-    // the rule. Refuse the whole rule instead.
-    if (guards.length !== rawIf.length) continue;
-
-    seen.add(name.toLowerCase());
-    rules.push({
-      name,
-      enabled: bool(entry['enabled'], true),
-      when,
-      if: guards,
-      then,
-      cooldownMs: int(entry['cooldownMs'], 1000, 0, 3_600_000)
-    });
-  }
-
-  return rules;
-}
-
 function normalizeAutomation(value: unknown): AutomationConfig {
   const raw = isRecord(value) ? value : {};
   const idle = isRecord(raw['idle']) ? raw['idle'] : {};
@@ -3886,12 +3341,6 @@ function normalizeAutomation(value: unknown): AutomationConfig {
 
   return {
     enabled: bool(raw['enabled'], d.enabled),
-    rules: normalizeRules(raw['rules']),
-    onEnterRealm: stringList(raw['onEnterRealm'], d.onEnterRealm),
-    // Trimmed rather than defaulted when empty: `onPartyChange: ''` is somebody
-    // saying "never ask", which is a legitimate answer.
-    onPartyChange:
-      typeof raw['onPartyChange'] === 'string' ? raw['onPartyChange'].trim() : d.onPartyChange,
     idle: {
       enabled: bool(idle['enabled'], d.idle.enabled),
       afterSeconds: int(idle['afterSeconds'], d.idle.afterSeconds, 5, 3600),
@@ -3918,9 +3367,7 @@ function normalizeAutomation(value: unknown): AutomationConfig {
     party: normalizeParty(raw['party']),
     health: normalizeHealth(raw['health']),
     loot: normalizeLoot(raw['loot']),
-    drop: normalizeDrop(raw['drop']),
     search: normalizeSearch(raw['search']),
-    banking: normalizeBanking(raw['banking']),
     supplies: normalizeSupplies(raw['supplies']),
     remotes: normalizeRemotes(raw['remotes'], d.remotes),
     afk: {
@@ -3937,24 +3384,10 @@ function normalizeAutomation(value: unknown): AutomationConfig {
         .trim()
         .slice(0, 120)
     },
-    talk: {
-      lookAtPlayers: bool(
-        isRecord(raw['talk']) ? raw['talk']['lookAtPlayers'] : undefined,
-        d.talk.lookAtPlayers
-      )
-    },
-    statline: {
-      control: bool(
-        isRecord(raw['statline']) ? raw['statline']['control'] : undefined,
-        d.statline.control
-      )
-    },
     loops: asLoops(raw['loops']),
-    events: asEvents(raw['events']),
     movement: normalizeMovement(raw['movement']),
     spells: normalizeSpells(raw['spells']),
     hunting: normalizeHuntingAutomation(raw['hunting']),
-    train: normalizeTrain(raw['train']),
     quests: normalizeQuests(raw['quests']),
     gear: normalizeGear(raw['gear'])
   };
@@ -4174,23 +3607,6 @@ function partyRank(value: unknown, fallback: PartyRank): PartyRank {
   return PARTY_RANKS.find((known) => known === word) ?? fallback;
 }
 
-function normalizeDrop(value: unknown): DropConfig {
-  const raw = isRecord(value) ? value : {};
-  const d = DEFAULT_CONFIG.automation.drop;
-  const items = Array.isArray(raw['items'])
-    ? raw['items']
-        .filter((entry): entry is string => typeof entry === 'string')
-        .map((entry) => entry.trim())
-        .filter((entry) => entry.length > 0)
-    : d.items;
-  return {
-    enabled: bool(raw['enabled'], d.enabled),
-    items,
-    whenEncumbered: bool(raw['whenEncumbered'], d.whenEncumbered),
-    worthless: bool(raw['worthless'], d.worthless)
-  };
-}
-
 /**
  * Auto-search. One search a room by default, and a ceiling on the count.
  *
@@ -4205,24 +3621,6 @@ function normalizeSearch(value: unknown): SearchConfig {
   return {
     enabled: bool(raw['enabled'], d.enabled),
     tries: int(raw['tries'], d.tries, 1, 5)
-  };
-}
-
-function normalizeBanking(value: unknown): BankingConfig {
-  const raw = isRecord(value) ? value : {};
-  const d = DEFAULT_CONFIG.automation.banking;
-  return {
-    autoDeposit: bool(raw['autoDeposit'], d.autoDeposit),
-    depositThresholdCopper: int(
-      raw['depositThresholdCopper'],
-      d.depositThresholdCopper,
-      0,
-      1_000_000_000
-    ),
-    keepCopper: int(raw['keepCopper'], d.keepCopper, 0, 1_000_000_000),
-    // A shop row id. 0 is *whichever counter it is standing at*, which is what
-    // a file predating the setting was doing.
-    bank: int(raw['bank'], d.bank, 0, 1_000_000)
   };
 }
 
@@ -4257,10 +3655,6 @@ function normalizeMovement(value: unknown): MovementConfig {
     // on the sixth, and the figures are lives on the other end of it.
     recoverGearTries: int(raw['recoverGearTries'], d.recoverGearTries, 0, 20),
     recoverGearFloor: int(raw['recoverGearFloor'], d.recoverGearFloor, 0, 99),
-    walkWhileBlind: bool(raw['walkWhileBlind'], d.walkWhileBlind),
-    walkWhilePoisoned: bool(raw['walkWhilePoisoned'], d.walkWhilePoisoned),
-    walkWhileConfused: bool(raw['walkWhileConfused'], d.walkWhileConfused),
-    walkWhileLosingHp: bool(raw['walkWhileLosingHp'], d.walkWhileLosingHp),
     fightOnArrival: bool(raw['fightOnArrival'], d.fightOnArrival),
     // One word once, however it was spelt: two spellings of one word are one
     // place kept out of.
@@ -4276,25 +3670,6 @@ export function normalizeHuntingAutomation(value: unknown): HuntingAutomationCon
   return {
     enabled: bool(raw['enabled'], d.enabled),
     radius: int(raw['radius'], d.radius, 0, 9_999)
-  };
-}
-
-/** A wanted figure is a whole number; the race's ceiling is applied at the screen, not here. */
-export function normalizeTrain(value: unknown): TrainConfig {
-  const raw = isRecord(value) ? value : {};
-  const d = DEFAULT_CONFIG.automation.train;
-  const wanted = isRecord(raw['wanted']) ? raw['wanted'] : {};
-  const figures = {} as Record<TrainedAttribute, number>;
-  for (const attribute of TRAINED_ATTRIBUTES) {
-    figures[attribute] = int(wanted[attribute], d.wanted[attribute], 0, 999);
-  }
-  return {
-    stats: bool(raw['stats'], d.stats),
-    wanted: figures,
-    levels: bool(raw['levels'], d.levels),
-    // A shop row number. 0 is *the cheapest that will take me*, which is also
-    // what a negative or unreadable figure means: never a guess at a room.
-    trainer: int(raw['trainer'], d.trainer, 0, 999_999)
   };
 }
 
@@ -4616,7 +3991,6 @@ function normalizeSafety(value: unknown): SafetyConfig {
     hangUp: {
       enabled: bool(hangUp['enabled'], d.enabled),
       belowHealth: fraction(hangUp['belowHealth'], d.belowHealth),
-      penalties: bool(hangUp['penalties'], d.penalties),
       onPlayerInRoom: bool(hangUp['onPlayerInRoom'], d.onPlayerInRoom)
     },
     pvp: {
@@ -4649,32 +4023,6 @@ function normalizeLogging(value: unknown): LoggingConfig {
 }
 
 /**
- * The health a held journey walks on again at.
- *
- * One statement of it, because **two things travel** — a loop between its
- * stops and a plain route the player asked for — and both stop for the same
- * pair of thresholds. Two copies of this arithmetic in two files is the shape
- * `AutoCombat.quarry` was pulled together to stop: they agree until one of
- * them is edited.
- *
- * `restTo` is the ceiling where the player set one. Where they did not, `0`
- * means *the single sit-down* to `Recovery` — and read literally by something
- * that travels it is a **zero-width band**: the journey resumes at exactly the
- * health it stopped at, the next blow puts it back, at status-line cadence.
- * So an uncapped rest resumes a margin above the floor instead. Absolute
- * rather than proportional, because a proportional margin vanishes under a low
- * floor, which is the character that most needs the gap; clamped to 1 so a
- * floor at 95% still lets the journey go again.
- *
- * The margin is passed in rather than read here: `src/shared/` is
- * dependency-free by rule, so nothing in it can reach `tuning()`.
- */
-export function resumeAtHealth(health: HealthConfig, marginWhenUncapped: number): number {
-  if (health.restTo > 0) return health.restTo;
-  return Math.min(1, health.restBelow + marginWhenUncapped);
-}
-
-/**
  * The mana fraction a walk or lap held for mana walks on again at — the
  * mana half of `resumeAtHealth`: `meditateTo` where it is set, and otherwise
  * the uncapped margin above `meditateBelow`. 0 where meditating is off.
@@ -4688,65 +4036,4 @@ export function resumeAtMana(health: HealthConfig, marginWhenUncapped: number): 
   if (health.meditateBelow <= 0) return 0;
   if (health.meditateTo > 0) return Math.max(health.meditateTo, health.meditateBelow);
   return Math.min(1, health.meditateBelow + marginWhenUncapped);
-}
-
-/**
- * Whether health is under the figure a walk may travel at — `restBelow` going
- * down, `resumeAtHealth` while already held. Unknown is not low. The walker,
- * the loop and a follower's `@wait` read it, so none of them stops or goes on
- * at a figure the others do not (2026-09-25).
- */
-export function healthHolding(
-  health: HealthConfig,
-  hp: number | null,
-  hpMax: number | null,
-  held: boolean,
-  marginWhenUncapped: number
-): boolean {
-  if (health.restBelow <= 0) return false;
-  if (hp === null || hpMax === null || hpMax <= 0) return false;
-  const floor = held ? resumeAtHealth(health, marginWhenUncapped) : health.restBelow;
-  return hp / hpMax < floor;
-}
-
-/**
- * Whether mana is under the figure a walk may travel at — `meditateBelow`
- * going down, `resumeAtMana` while already held. Unknown is not low.
- */
-export function manaHolding(
-  health: HealthConfig,
-  mana: number | null,
-  manaMax: number | null,
-  held: boolean,
-  marginWhenUncapped: number
-): boolean {
-  if (health.meditateBelow <= 0) return false;
-  if (mana === null || manaMax === null || manaMax <= 0) return false;
-  const floor = held ? resumeAtMana(health, marginWhenUncapped) : health.meditateBelow;
-  return mana / manaMax < floor;
-}
-
-/**
- * Whether a fight should be draining — `drainBelow` going down, `drainTo`
- * (or `drainBelow` where it is 0) while already draining. Unknown is not low.
- */
-export function drainHolding(
-  spells: SpellsConfig,
-  hp: number | null,
-  hpMax: number | null,
-  held: boolean
-): boolean {
-  if (spells.drainBelow <= 0) return false;
-  if (hp === null || hpMax === null || hpMax <= 0) return false;
-  const floor = held ? Math.max(spells.drainTo, spells.drainBelow) : spells.drainBelow;
-  return hp / hpMax < floor;
-}
-
-/** The connection target implied by the config, for the command strip. */
-export function targetFromConfig(config: AppConfig): ConnectionTarget {
-  return {
-    host: config.connection.host,
-    port: config.connection.port,
-    encoding: config.connection.encoding
-  };
 }

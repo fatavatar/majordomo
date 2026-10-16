@@ -15,6 +15,7 @@
  * Detours at a path's start or end: a shop to sell or buy (`0x406f20`), the
  * bank with cash over the limit, and the trainer (`0x40d540`).
  */
+import { trainingCost } from '../player/train';
 import { dueOn, monitorsWaiting } from '../abilities/monitors';
 import { combatOff } from '../combat/engaged';
 import { abbrev, stricmp, strnicmp, typedDirection } from '../cstr';
@@ -263,16 +264,6 @@ function pathDetours(s: Session, atStart: number): number {
   return 0;
 }
 
-/** The gold `train` costs at a level (`0x40d540`). */
-function trainingCost(level: number): number {
-  const n = level + 2;
-  if (level < 10) return n * 0x96;
-  if (level === 10) return 3000;
-  if (level < 0x14) return n * 0x4e2;
-  if (level < 0x32) return n * 3000;
-  return n * 4999;
-}
-
 /**
  * `0x40d540`: at the loop's start with the experience to level
  * (`Other.AutoTrain`), a detour to the nearest trainer for this class and
@@ -436,8 +427,8 @@ export function walkPath(s: Session): number {
     s.looping !== 0 &&
     s.MegaMud_NoHangup === 0 &&
     s.Comms_LogoffLowExp !== 0 &&
-    s.f_30e00 !== -1 &&
-    s.f_30e00 < s.Comms_MinExpRate
+    s.lapExpRate !== -1 &&
+    s.lapExpRate < s.Comms_MinExpRate
   ) {
     s.host.trace(`[Experience rate too low! (${stamp(s)})]`);
     s.f_30de4 = 1;

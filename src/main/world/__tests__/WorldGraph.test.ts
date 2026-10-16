@@ -1709,7 +1709,6 @@ describe('the shipped realm data', () => {
    * only show up as every bar in the game reading "unknown monster".
    */
   it.runIf(has)('names what the realm’s monsters are worth', () => {
-    expect(realm!.mobCount).toBeGreaterThan(1_000);
     expect(realm!.mob('giant rat')?.hp).toBe(12);
     expect(realm!.mob('The Orc Rogue')?.hp).toBe(30);
   });
@@ -1944,7 +1943,6 @@ describe('what the realm says a monster is worth', () => {
   it('loads a realm from before this index existed', () => {
     const old = makeWorld(corridor(2));
     expect(old.size).toBe(2);
-    expect(old.mobCount).toBe(0);
     expect(old.mob('giant rat')).toBeUndefined();
   });
 });
@@ -2131,7 +2129,6 @@ describe('the shop and spell indexes', () => {
   it('degrades to knowing nothing on a realm built before either existed', () => {
     const old = makeWorld(corridor(2));
     expect(old.shop(4)).toBeUndefined();
-    expect(old.spellCount).toBe(0);
     expect(old.searchSpells('heal')).toEqual([]);
   });
 });
@@ -3128,8 +3125,10 @@ describe('lairs', () => {
   it('resolves a lair descriptor to monsters by the realm’s own numbers', () => {
     const world = withLairs();
     expect(world.mobById(109)?.name).toBe('giant rat');
-    expect(world.lairOf(world.byId('1/1')!).map((mob) => mob.name)).toEqual(['giant rat']);
-    expect(world.lairOf(world.byId('1/2')!).map((mob) => mob.hp)).toEqual([50]);
+    expect((world.lair(world.byId('1/1')!, null)?.mobs ?? []).map((mob) => mob.name)).toEqual([
+      'giant rat'
+    ]);
+    expect((world.lair(world.byId('1/2')!, null)?.mobs ?? []).map((mob) => mob.hp)).toEqual([50]);
   });
 
   /* The face's question: how many at once, how often, and what. */
@@ -3541,7 +3540,9 @@ describe('lairs', () => {
   it('reads the Max count as a count, never as a monster', () => {
     const world = withLairs();
     // `(Max 1): 80,` — the 1 is not monster #1.
-    expect(world.lairOf(world.byId('1/2')!).map((mob) => mob.name)).toEqual(['cave bear']);
+    expect((world.lair(world.byId('1/2')!, null)?.mobs ?? []).map((mob) => mob.name)).toEqual([
+      'cave bear'
+    ]);
   });
 
   /*
@@ -3552,7 +3553,7 @@ describe('lairs', () => {
   it('reads the exporter’s bracketed parameters as parameters, not monsters', () => {
     const world = withLairs();
     const spelled = { ...world.byId('1/1')!, lair: '(Max 3): 1,109,[6-30-31-2]' };
-    expect(world.lairOf(spelled).map((mob) => mob.name)).toEqual(['giant rat']);
+    expect((world.lair(spelled, null)?.mobs ?? []).map((mob) => mob.name)).toEqual(['giant rat']);
     expect(world.lair(spelled, null)?.max).toBe(3);
   });
 

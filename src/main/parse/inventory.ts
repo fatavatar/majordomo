@@ -342,8 +342,8 @@ export function withoutItem(state: CharacterState, item: string, count = 1): Cha
  * unannounced (skinny, 2026-09-30). So whatever else the slot held comes off
  * here, or the pack reads as two weapons in one hand and a kit wanting the
  * staff back finds it already on. A two-place slot is not touched: the
- * server refuses a third ring rather than swapping one (`swapPlan`'s
- * `makeRoom`), so nothing is displaced there.
+ * server refuses a third ring rather than swapping one, so nothing is
+ * displaced there.
  */
 export function withEquipped(
   state: CharacterState,

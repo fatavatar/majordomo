@@ -13,7 +13,7 @@
  * realm's tables, a version or two behind; the realm is the authority.
  */
 import type { WorldGraph } from '../world/WorldGraph';
-import { RELATIONSHIP_NUMBER } from './saved';
+import { loadedItem, RELATIONSHIP_NUMBER } from './saved';
 import { COPPER_PER, counterPriceInCopper } from '../../shared/coins';
 import { ITEM_KINDS } from '../../shared/items';
 import { ITEM_FLAG_BITS, ITEM_FLAGS, itemKey, type ItemRule } from '../../shared/itemRules';
@@ -282,21 +282,8 @@ export function megaDataFrom(
   for (const rule of choices.items) {
     let rec = byName.get(rule.item);
     if (rec === undefined) {
-      // A row for an item the realm data does not name: as `rememberItem` makes one.
-      rec = {
-        id: 0,
-        layer: 0,
-        name: rule.item.slice(0, 30),
-        shop: '',
-        ifNeeded: '',
-        flags: 1,
-        type: 0,
-        location: 0,
-        min: 0,
-        max: 0,
-        weight: -1,
-        price: 0
-      };
+      // A row for an item the realm data does not name.
+      rec = loadedItem(rule.item);
       byName.set(rule.item, rec);
       items.push(rec);
     }

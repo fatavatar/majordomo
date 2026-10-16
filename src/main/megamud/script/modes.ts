@@ -4,13 +4,10 @@
  * active the `Def…2` set, unless `NoModeDefs`. Auto-combat kept across a
  * detour (`0xa320`) is put back.
  */
-import type { Session } from '../Session';
+import { automated, type Session } from '../Session';
 
 export function modeDefaults(s: Session): void {
-  const active =
-    (s.active !== 0 || s.walking !== 0 || s.roaming !== 0 || s.importing !== 0) && s.f_a32c === 0
-      ? 1
-      : 0;
+  const active = automated(s) && s.f_a32c === 0 ? 1 : 0;
   if (s.modeApplied !== -1 && s.modeApplied === active) return;
   s.modeApplied = active;
   if (s.MegaMud_NoModeDefs === 0) {

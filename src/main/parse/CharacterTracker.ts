@@ -101,7 +101,7 @@ import { ATTACK_COMMANDS, breaksStealth, commandOf, type CommandName } from '../
 import { wireExit, wireItem } from '../../shared/entities';
 import type { CurrencyEntity, ExitEntity, ItemEntity } from '../../shared/entities';
 import { addCoins } from '../../shared/coins';
-import { observe, playerEntity, playerKey } from '../../shared/players';
+import { playerEntity, playerKey } from '../../shared/players';
 import { noteRemoteCall, noteRemoteClient, trackPlayers } from './players';
 import { keepPartyCurrent } from './partyUpkeep';
 import { trackTally } from './tally';
@@ -852,66 +852,6 @@ export class CharacterTracker {
    */
   noteFumbled(command: string | null): void {
     if (command !== null) this.expect.refused(command);
-  }
-
-  /**
-   * What the realm's message table says is on the character now, and which
-   * effects a sentence has just started or ended.
-   *
-   * The list is replaced whole: `MessageTriggers` holds it and this only
-   * publishes it. The four effects this client also reads off the wire move
-   * their affliction **on the edge only** — a row starting `blind` sets it,
-   * a row ending `blind` clears it unless another row still holds it — so the
-   * client's own reading of the wire goes on moving the same flag between
-   * those edges, and every reader of the flag (cures, potions, the walk's
-   * hold) answers the player's table without knowing it exists.
-   *
-   * Returns whether anything changed.
-   */
-  noteStated(
-    held: readonly StatedEffect[],
-    started: readonly MessageEffect[],
-    ended: readonly MessageEffect[]
-  ): boolean {
-    const s = this.state;
-    let afflictions = s.afflictions;
-    const still = new Set(held.flatMap((entry) => entry.effects));
-    for (const [effect, condition] of STATED_AFFLICTIONS) {
-      if (started.includes(effect) && afflictions[condition] !== 'yes') {
-        afflictions = { ...afflictions, [condition]: 'yes' };
-      } else if (ended.includes(effect) && !still.has(effect) && afflictions[condition] === 'yes') {
-        afflictions = { ...afflictions, [condition]: 'no' };
-      }
-    }
-    const same =
-      afflictions === s.afflictions &&
-      held.length === s.heard.length &&
-      held.every((entry, at) => entry === s.heard[at]);
-    if (same) return false;
-    this.state = { ...s, afflictions, heard: held };
-    return true;
-  }
-
-  /**
-   * A sentence the realm's message table says ends the fight without a
-   * `*Combat Off*` — a target turned to stone, an illusion vanishing, a
-   * monster that changed into another. Read exactly as `*Combat Off*` is.
-   *
-   * Returns whether anything changed.
-   */
-  endFightStated(at: number): boolean {
-    const s = this.state;
-    if (!s.inCombat) return false;
-    this.expect.clearLooks();
-    const next = this.fight.status(s, false, at);
-    if (next === s) return false;
-    this.state = next;
-    return true;
-  }
-
-  /** Whether a room is being listed right now — between its name and its exits. */
-  get roomOpen(): boolean {
-    return this.room.open;
   }
 
   /**
@@ -3614,29 +3554,6 @@ export class CharacterTracker {
   }
 
   /**
-   * Where another client said it was standing, from a `@where-room` answer.
-   *
-   * A **sighting**, and stamped as one: `lastRoomAt` is what the Player card
-   * ages, and a peer's own word about where it is is exactly as good as seeing
-   * them there. The map is not kept, because the registry has never had a
-   * field for one — see `PlayerRecord.lastRoom`; the address is reported whole
-   * by whoever asked.
-   */
-  noteRemoteRoom(from: string, room: number, name: string | null, at: number): boolean {
-    const before = this.state.players;
-    const players = observe(before, from, at, {
-      lastRoom: room,
-      ...(name === null ? {} : { lastRoomName: name }),
-      lastRoomAt: at,
-      online: true
-    });
-    if (players === before) return false;
-    this.state = { ...this.state, players, updatedAt: at };
-    this.rememberPlayers(before, players);
-    return true;
-  }
-
-  /**
    * Every record a block changed goes to the realm's book.
    *
    * By identity: `observe` returns the same record when nothing about it
@@ -5473,7 +5390,7 @@ export class CharacterTracker {
        * 2026-09-23): the first kill emptied the room as far as the client
        * knew, and it sat down to meditate and walked on through the other
        * fourteen. A listing replaces the whole list, so nothing is counted
-       * twice by the Enter that follows (`SessionManager.rereadRoom`).
+       * twice by a re-read that follows.
        */
       case 'mob-arrives-room': {
         // Inside a room listing it is the room's prose. See `RoomDraft.open`.

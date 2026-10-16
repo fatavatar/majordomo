@@ -31,7 +31,7 @@ export function whereAgo(s: Session): string {
 }
 
 /** `0x4b6600`: the waiting `@where` replies answered, with the numbers (`fresh`) or how old they are. */
-export function whereReplies(s: Session, fresh: number): void {
+function whereReplies(s: Session, fresh: number): void {
   if (s.whereAsked.length > 0 && s.inGame !== 0) {
     const where = whereText(s);
     const numbers = fresh !== 0 ? ` - ${s.f_8168}/${s.f_816c}` : whereAgo(s);

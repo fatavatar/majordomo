@@ -31,11 +31,9 @@ function clock(at: number): string {
  *   question of why the bot did nothing.
  */
 function AutomationCard({ automation, ...chrome }: AutomationCardProps) {
-  const { queue, sent, firings, safety, engagements, enabled } = automation;
+  const { queue, sent, safety } = automation;
 
-  const badge = !enabled ? (
-    <span className="chip off">{t('cards.automation.badge.off')}</span>
-  ) : queue.suppressed ? (
+  const badge = queue.suppressed ? (
     // Not an error: the player is typing and automation is standing down,
     // which is the rule, not an exception to it.
     <span className="chip warn">{t('cards.automation.badge.standingDown')}</span>
@@ -53,8 +51,6 @@ function AutomationCard({ automation, ...chrome }: AutomationCardProps) {
       scroll
       title={t('cards.automation.title')}
     >
-      {!enabled && <div className="empty">{t('cards.automation.emptyDisabled')}</div>}
-
       {queue.pending.length > 0 && (
         <>
           <div className="trace-heading">{t('cards.automation.headings.queued')}</div>
@@ -109,67 +105,6 @@ function AutomationCard({ automation, ...chrome }: AutomationCardProps) {
                     : t('cards.automation.safetyRefusedPrefix', {
                         reason: decision.refused ?? decision.because
                       })}
-                </span>
-              </div>
-            ))}
-          </div>
-        </>
-      )}
-
-      {/*
-        And fighting, under the escapes and above the rules, in the order the
-        client itself consults them.
-
-        The half worth having is the *refusals*: "why did it walk past those two
-        thugs" is asked several times an evening, and before this the answer —
-        auto-combat off with nothing moving — took replaying a recorded
-        session through a bespoke script to find. One line per answer rather
-        than per prompt; `AutoCombat` does that filtering, because it is the
-        only thing that knows when the answer changed.
-      */}
-      {engagements.length > 0 && (
-        <>
-          <div className="trace-heading">{t('cards.automation.headings.engagements')}</div>
-          <div className="trace">
-            {engagements.slice(0, 8).map((decision, index) => (
-              <div
-                className={`row${decision.acted ? '' : ' blocked'}`}
-                key={`${decision.at}-${index}`}
-              >
-                <span className="trace-at">{clock(decision.at)}</span>
-                <span className="trace-command">{decision.target}</span>
-                <span className="trace-reason">
-                  {decision.acted
-                    ? decision.because === undefined
-                      ? t('cards.automation.engagedPrefix')
-                      : t('cards.automation.engagedBecause', { reason: decision.because })
-                    : t('cards.automation.safetyRefusedPrefix', {
-                        reason: decision.refused ?? ''
-                      })}
-                </span>
-              </div>
-            ))}
-          </div>
-        </>
-      )}
-
-      {firings.length > 0 && (
-        <>
-          <div className="trace-heading">{t('cards.automation.headings.rules')}</div>
-          <div className="trace">
-            {firings.slice(0, 12).map((firing, index) => (
-              <div
-                className={`row${firing.blockedBy === undefined ? '' : ' blocked'}`}
-                key={`${firing.at}-${index}`}
-              >
-                <span className="trace-at">{clock(firing.at)}</span>
-                <span className="trace-command">{firing.rule}</span>
-                <span className="trace-reason">
-                  {/* A blocked rule names the guard that rejected it, which is
-                      the answer to "why did nothing happen?". */}
-                  {firing.blockedBy === undefined
-                    ? firing.commands.join(', ')
-                    : t('cards.automation.ruleBlockedPrefix', { guard: firing.blockedBy })}
                 </span>
               </div>
             ))}

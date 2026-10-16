@@ -575,71 +575,6 @@ automation:
   # below): that keeps the connection open rather than acting for you.
   enabled: true
 
-  # Asked once on entering the realm. The server volunteers almost nothing --
-  # the status line carries no maxima, no level, no inventory -- so this is how
-  # a freshly connected client stops showing dashes. `sc` is scan, which shares
-  # the `Current Adventurers` block with `who`.
-  #
-  # `rm` is first and matters most: it answers `Location: 1,2147`, the only
-  # exact statement of where you are standing. Everything else the client knows
-  # about position is inference, and a route is only as good as its start.
-  #
-  # `rm` rather than `pro`, measured (`npm run probe:tour`): both carry the
-  # location and `pro` spends thirty lines of settings, evil points and death
-  # records to do it, none of which anything reads. `rm` answers in one.
-  #
-  # `gb` is the only statement of gang membership that includes the members who
-  # are offline, and membership is a permission here: `automation.remotes`
-  # answers `@` commands for whoever shares this character's gang.
-  #
-  # `bank` answers for the counter you are standing at and for no other, so
-  # logging in inside one is the only chance to read it without walking there.
-  # Balances are kept between sessions either way, with the time each was
-  # stated; this refreshes the one you can reach. A character that logged out
-  # somewhere else spends one command to be told so -- drop `bank` from this
-  # list if that is not a trade you want.
-  #
-  # No `l` at the end. The server prints the room -- name, who is in it, exits,
-  # light -- the moment you enter the realm, so a closing look was a second
-  # copy of a block already read, and a look tells everybody standing there
-  # that you are looking around. The client re-reads a room with a bare Enter
-  # now; that has no spelling in a list of command words, and nothing here
-  # needs one.
-  onEnterRealm: [rm, st, i, exp, sc, gb, bank]
-
-  # Asked once when the party changes -- somebody joining, leaving, or moving
-  # rank.
-  #
-  # The party listing is the only place another character's health is visible,
-  # and it costs one command rather than a second connection. Without this the
-  # Party card is empty at exactly the moment it became worth having.
-  #
-  # One command on a transition, not periodically. How often to spend one on it
-  # is a judgement about how you are playing, and a rule with `partySize` is
-  # where that belongs -- there is a worked example below. Empty never asks.
-  onPartyChange: party
-
-  # The prompt is the one line the realm prints on every turn, and what it
-  # carries is yours to choose: `set statline full custom <template>` renders
-  # a template of wildcards there from then on, on GreaterMUD and MajorMUD
-  # alike. With this on, the client sends its own template on the way in --
-  #
-  #   [HP=%h/%H,MA=%m/%M,Exp=%x,Need=%X,Wealth=%c%r]:
-  #
-  # -- so every prompt states the maximum health and mana, the experience,
-  # what the next level still costs and the purse, and none of those go stale
-  # between stat sheets. It then asks `pro` once, whose `Statusline:` row is
-  # what the prompt is read by: what the realm holds, not what was sent. Off
-  # or on, the client reads whatever the line turns out to be, and says which
-  # pattern it is reading it by.
-  #
-  # Off by default: the line is a setting on your character, kept server-side,
-  # and the client does not change one unasked. `pro` is thirty lines; it and
-  # `set` are on internal.yaml's quiet list, so neither reaches the console
-  # when the client sends them.
-  statline:
-    control: false
-
   idle:
     # After a quiet spell, send something. Empty is a bare Enter, which re-reads
     # the room, so it is both a keep-alive and a cheap refresh after someone
@@ -816,38 +751,12 @@ automation:
     recoverGearTries: 2
     recoverGearFloor: 2
 
-    # Conditions as waits -- MegaMUD's IgnoreBlind / IgnorePoison, whose
-    # defaults (0) wait the condition out before the script goes on. Off, a
-    # route or a loop stands still while the server says the character is
-    # blind or poisoned, and walks on when it says the condition has passed;
-    # the card and the tab say which condition it is waiting out. A blind
-    # character cannot read the room it walks into and misses every swing.
-    # Paralysis always holds -- a step while held is a command spent to be
-    # refused -- and disease is left to the cure. A cure spell under `spells:`
-    # ends the wait sooner.
-    walkWhileBlind: false
-    walkWhilePoisoned: false
-
     # Turn auto-combat back on when a route you asked for arrives. The usual
     # reason to walk with it off is to get somewhere without fighting on the
     # way, and on arrival that reason is gone. A loop's leg and an errand are
     # not journeys with an arrival in them. Flips the switch in this file, so
     # the toolbar shows it.
     fightOnArrival: true
-
-    # And confusion -- MegaMUD's Ignore Confusion, off by default as MegaMUD's
-    # is. Nothing on the wire says a character is confused in words this
-    # client knows; a realm's message table does (import MegaMUD's
-    # Messages.md on the realm's settings page), and while it says so a route
-    # or a loop stands still. A confused character's commands misfire.
-    walkWhileConfused: false
-
-    # And losing hit points -- burning, bleeding, acid, plague, as a realm's
-    # message table states it. Off, a route or a loop stands still until the
-    # row's ending, as MegaMUD rests it out; on, it walks on and leaves the
-    # health thresholds to stop it if the damage adds up.
-    walkWhileLosingHp: false
-
 
     # Ways and places routes keep out of, in the realm's own words: a way whose
     # script phrase says one (`go vortex`), or a room whose name does (the
@@ -993,32 +902,6 @@ automation:
     # price, type and where it is worn are the realm data's.
     itemDetails: []
 
-  # Dropping named junk, unasked -- the other half of MegaMUD's drop list, and
-  # what keeps auto-loot from hoarding a pack over the encumbrance the walker
-  # then stalls under.
-  #
-  # `items` is the only authority on what is junk: the realm data does not mark
-  # quest items, so nothing you did not name is ever dropped, and an equipped
-  # item is never dropped whatever the list says. Matched by prefix, as the
-  # server reads `drop`. `whenEncumbered` holds the junk until the server
-  # itself grades the load as anything but None (`Encumbrance: ... - Medium`)
-  # -- the server's own word, because the thresholds behind the grades are
-  # unsampled. Keep this list apart from loot.items above: a name on both is
-  # picked up and dropped again once per room re-read for as long as the room
-  # lists it. Off by default, like everything automated.
-  drop:
-    enabled: false
-    items: []
-    whenEncumbered: false
-    # Also drop anything the realm prices at **zero**, without naming it.
-    #
-    # The one thing safe to shed unasked, and only because it is the realm's
-    # own explicit zero rather than its silence: a price nobody has stated is
-    # not a price of nothing, and dropping on absence would empty a kit into
-    # the road the first time you played a realm this client has no data for.
-    # Nothing marked Not Droppable is ever dropped by it, and nothing equipped.
-    worthless: false
-
   # Searching every room you arrive in, unasked. The realm hides exits -- 249
   # of the shipped realm's are Hidden/Searchable -- and the router already
   # prices one of those at "costs the search", so a route may be planned
@@ -1035,30 +918,6 @@ automation:
   search:
     enabled: false
     tries: 1
-
-  # Banking the purse, unasked -- MegaMUD's StashCoin. Standing at a bank
-  # counter with more than `depositThresholdCopper` in the purse, the client
-  # deposits everything above `keepCopper` -- the sampled verb, a number in
-  # copper (`depo 10000` was captured live; `dep all` never has) -- and asks
-  # `bank` behind it so the vault's own figure stays established. Both numbers
-  # are copper, on the measured ladder: 10 copper to the silver, 100 to the
-  # gold crown, 10,000 to the platinum. The defaults are 500 gold and 5 gold.
-  # It never deposits on an unread purse, and never in combat or while
-  # resting. Off by default, like everything automated.
-  #
-  # `bank` is which counter this character's vault is at, as a `Shops` row id
-  # -- the settings screen picks it from the realm's own list. 0 is whichever
-  # counter it happens to be standing at, which is what this did before the
-  # setting existed. A balance is per counter and the realm states each
-  # separately, so a character banking wherever it walks past ends up with
-  # several figures that cannot be added up. A stated row this realm does not
-  # place deposits nowhere and says so, rather than banking somewhere nobody
-  # chose. It does not walk anywhere: which bank is the question this answers.
-  banking:
-    autoDeposit: false
-    depositThresholdCopper: 50000
-    keepCopper: 500
-    bank: 0
 
   # Answering the `@` commands another player's client sends this one --
   # MegaMUD's remote control, spoken over the game's own chat channels. This
@@ -1185,25 +1044,6 @@ automation:
     #       anyone: false
     #       players: [ardren]
     commands: []
-
-  # Commands on a clock -- MegaMUD's Events tab.
-  #
-  # `routines` above reacts to what happens; this reacts to *when*. Each event
-  # names itself (which is also how it is coalesced, so a slow queue cannot
-  # stack one up), sends one command, and fires either every N seconds or once
-  # a day at HH:MM. Never faster than every 5s: the server acknowledges one
-  # command per status line. Held during combat unless `inCombat: true`, and
-  # sent in the same band as resting -- an event never displaces an escape.
-  #
-  #   events:
-  #     - name: party roster
-  #       command: party
-  #       everySeconds: 120
-  #     - name: morning stock check
-  #       command: list
-  #       at: '09:30'
-  #       disabled: true
-  events: []
 
   # Loops are files now, one each, and which characters may walk one is decided
   # by *which directory it is in*:
@@ -1385,54 +1225,6 @@ automation:
     # the client's clock on the spell is its own reckoning off the realm's
     # stated duration.
     useWards: true
-
-  # Going to collect the level, and spending the points it awards.
-  #
-  # In this game you do not level by earning the experience: you earn it, then
-  # you walk to a trainer and pay. Until you do, every point past the threshold
-  # does nothing at all -- no hit points, no skills, no character points. So a
-  # client left to play overnight with `levels` off comes back with a night's
-  # experience and the same character it started with.
-  #
-  # `levels` is off, because a player banking levels for a reroll exists and a
-  # client that levelled them anyway would have spent their money and their
-  # choice.
-  #
-  # `trainer` is the trainer's own shop row number, or 0 for the cheapest that
-  # will take this character. The settings screen offers only the rooms the
-  # realm says will take it at its level -- the class training rooms stop at
-  # level 10 and every trainer has a band, so a room stated here can stop
-  # taking this character as it grows. It is not silently replaced when that
-  # happens: the errand refuses and says so.
-  #
-  # Spending character points -- the `train stats` screen.
-  #
-  # Every level hands out character points, and an unspent one is hit points
-  # the character never has. `train stats` replaces the whole screen with a
-  # form; the client stands down from it and touches nothing, because the
-  # first field is the family name and a command typed there renames the
-  # character. With `stats` on, the client itself opens the form at a
-  # trainer when points are unspent, reads its figures, buys the cheapest
-  # wanted point first until nothing wanted is affordable, and saves. It
-  # never types into the name fields and never quits the form; what it
-  # bought, what was refused and what is left are all said out loud.
-  #
-  # `wanted` is where each stat should end up. 0, or a figure at or under
-  # the current one, leaves that stat alone -- so the switch does nothing
-  # until a figure here is raised. The race's ceiling caps a figure above it.
-  # The price is the server's: the first ten points above the race's base
-  # cost 1 CP each, the next ten 2 each, and so on.
-  train:
-    levels: false
-    trainer: 0
-    stats: false
-    wanted:
-      strength: 0
-      intellect: 0
-      willpower: 0
-      agility: 0
-      health: 0
-      charm: 0
 
   # Running a quest's plan -- the Quest card's Run it (todo 102).
   #
@@ -1990,7 +1782,7 @@ automation:
 
     # Ask for the party listing every this many seconds in a fight, and twice
     # that out of one, while in a party -- MegaMUD's Par Frequency (15 there).
-    # 0 asks only when the party changes (onPartyChange). Never under 5.
+    # 0 asks only when the party changes. Never under 5.
     parEverySeconds: 0
 
     # And after every combat round -- MegaMUD's Send PAR after combat round.
@@ -2107,18 +1899,6 @@ automation:
       # Fraction of maximum health below which hanging up is considered.
       belowHealth: 0.15
 
-      # Whether this realm charges for a hang-up at all. Off: a PvE realm charges
-      # nothing, so below `belowHealth` the client simply hangs up. On, it
-      # refuses while it can see a reason the disconnect would be charged, and
-      # says so in the terminal rather than declining quietly.
-      #
-      # Paradigm's realm menu states it (`Hang Penalties 25%` under the PvP
-      # realm), and what the menu said outranks this. A realm's own
-      # `server.yaml` can say `hangPenalties: true` for every character playing
-      # there, and a character's own file outranks its realm. MajorMUD says
-      # nothing, so there this setting is the answer.
-      penalties: false
-
       # Also hang up when a player is in the room, at any health. Off: this is
       # the setting most likely to fire inside the five-minute window, which is
       # where a realm's penalty bites.
@@ -2139,161 +1919,6 @@ automation:
     pvp:
       notifyGang: false
       action: none
-
-  # Rules, evaluated over character state. Empty by default: automation that
-  # acts without being asked is not a sensible default in a game where a wrong
-  # action costs a character.
-  #
-  # A rule is:
-  #   when       what triggers it -- `state`, `mid-round`, `every 30s`, or a
-  #              block type such as `mob-hits`
-  #   if         guards, all of which must hold. `<field> <op> <value>` over:
-  #
-  #                hp  hp.percent  mana  mana.percent  level  wealth  phase
-  #                inCombat  resting  meditating
-  #                occupants   everything on the `Also here:` line
-  #                mobs        of those, the ones that are monsters rather than
-  #                            people -- the roster, the listing's own marks and
-  #                            the realm's monster table decide it
-  #                threats     of those, the ones that will attack you on sight
-  #                players     of those, the ones a `who` listing named
-  #                hostiles    of those, the ones the realm calls Outlaw,
-  #                            Criminal, Villain or FIEND
-  #                target      what you are hitting, by name
-  #                attackers   how many things are hitting you
-  #                partySize   how many travel with you, including you
-  #                stealth     `sneaking` or `seen`, unknown until the server
-  #                            has said either
-  #                hangUpClean whether a disconnect looks unpenalised
-  #
-  #              And what the realm data says about the room you are in. These
-  #              answer only once the room has been *placed* -- before that the
-  #              realm has said nothing, and an unknown guard fails rather than
-  #              reading as a reassuring zero:
-  #
-  #                shopHere       true when the realm records a shop here
-  #                lairHere       true when the realm marks this room a lair
-  #                undeadHere     how many monsters here the realm calls undead
-  #                toughestHere   the most health any monster here is known to
-  #                               have; unknown when the realm can place none
-  #                               of them, never 0
-  #                deathSpellHere how many of them cast a spell when they die --
-  #                               146 monsters do, and nothing in the stream
-  #                               says so until it already has
-  #
-  #              And whether you can see where you are standing:
-  #
-  #                dark           the server's own light phrase (`pitch black`,
-  #                               `dimly lit`), or the realm recording this room
-  #                               as dark. The server's word leads; unknown
-  #                               until one of the two says something
-  #                light          what you have to see by: `carried`, `spent` or
-  #                               `none`, off the pack. A torch whose charges no
-  #                               listing counted reads `carried` -- unstated is
-  #                               not zero
-  #
-  #   then       what to send. `{name}` fills from the triggering block's
-  #              captures, then from state -- so `{target}` and `{attacker}`
-  #              both work
-  #   cooldownMs minimum gap between firings
-  #
-  # An unknown field or a guard that will not parse makes the whole rule load
-  # fail, rather than quietly widening it.
-  #
-  # **Unknown is not zero.** A guard against something the client has not
-  # learned yet fails rather than comparing against 0 -- so `hp.percent < 0.3`
-  # cannot fire before a stat sheet has arrived, and `target == x` cannot fire
-  # before you have swung at anything.
-  #
-  # Nothing here reaches the socket directly: rules propose, and the pacing
-  # below decides when. For *running away* and *hanging up*, prefer
-  # `automation.safety` above -- those are safety features rather than tactics,
-  # and they know things a rule cannot, like whether a disconnect is penalised.
-  #
-  # This is also where **automatic lighting** goes, and why the walker only
-  # warns about a dark room instead of doing something about it: lighting a
-  # torch is a command spent from the same budget the fighting is done from,
-  # against an item whose name is realm data, so the client will not guess at
-  # it. The `dark` and `light` fields above let you say it exactly, and read it
-  # back afterwards -- see the last example below.
-  #
-  # rules:
-  #   - name: rest when hurt and out of combat
-  #     when: state
-  #     if:
-  #       - hp.percent < 0.5
-  #       - inCombat == false
-  #     then:
-  #       - command: rest
-  #         priority: combat
-  #         coalesce: rest
-  #     cooldownMs: 10000
-  #
-  #   - name: light the torch when it is dark and one is carried
-  #     # The pair that makes automatic lighting expressible. `light == carried`
-  #     # is the pack's own answer, and a torch whose charges no listing counted
-  #     # reads `carried` rather than `spent` -- unstated is not zero.
-  #     when: state
-  #     if:
-  #       - dark == true
-  #       - light == carried
-  #     then:
-  #       - command: light torch
-  #         priority: probe
-  #         coalesce: light
-  #     cooldownMs: 10000
-  #
-  #   - name: fight back
-  #     when: mob-hits
-  #     if:
-  #       - inCombat == false
-  #     then:
-  #       - command: attack {attacker}
-  #         priority: combat
-  #     cooldownMs: 3000
-  #
-  #   - name: keep hitting what you are already fighting
-  #     # `mid-round` fires ~100ms after the last combat message -- inside a
-  #     # round rather than between rounds. Not obvious, and the one piece of
-  #     # timing knowledge worth taking from tproxy.
-  #     when: mid-round
-  #     if:
-  #       - inCombat == true
-  #     then:
-  #       # No guard on `target` is needed: an unresolved `{placeholder}` sends
-  #       # nothing at all, so this is silent until you have swung at something.
-  #       - command: a {target}
-  #         priority: combat
-  #         coalesce: attack
-  #     cooldownMs: 1000
-  #
-  #   - name: keep an eye on the party
-  #     # The party listing is the only place another member's health is
-  #     # visible, and it is only as current as the last `party`. This is one
-  #     # command every twenty seconds while there is a party to watch, and
-  #     # none at all when there is not.
-  #     when: every 20s
-  #     if:
-  #       - partySize > 0
-  #     then:
-  #       - command: party
-  #         priority: probe
-  #         coalesce: party
-  #     cooldownMs: 15000
-  #
-  #   - name: find out what just walked in
-  #     # A room arrival names somebody and says nothing about them. A `who`
-  #     # listing is what turns that name into a standing, and the Realm card
-  #     # and the alerts both read it -- so this is how "a Villain just walked
-  #     # in" becomes something the client can tell you.
-  #     when: player-arrives-room
-  #     then:
-  #       - command: who
-  #         priority: probe
-  #         coalesce: who
-  #     cooldownMs: 30000
-  #
-  rules: []
 
   # Pacing, from measurement rather than taste. The server accepts about twenty
   # commands in flight and then silently discards the rest -- no complaint, no

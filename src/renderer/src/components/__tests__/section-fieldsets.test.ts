@@ -34,6 +34,7 @@ describe.each([
   [
     'SettingsScreen.tsx',
     [
+      'realm-login',
       'realm-mob-rules',
       'realm-messages',
       'realm-monsters',

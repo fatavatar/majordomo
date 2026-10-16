@@ -178,35 +178,19 @@ export class SessionDebug {
    * stored the other way round for a card that reads backwards.
    */
   automation(snapshot: AutomationSnapshot): void {
-    this.since('rule', snapshot.firings, (firing) =>
-      firing.blockedBy === undefined
-        ? `${firing.rule} → ${firing.commands.join('; ')}`
-        : `${firing.rule} blocked by ${firing.blockedBy}`
-    );
     this.since('safety', snapshot.safety, (decision) =>
       decision.acted
         ? `${decision.action} — ${decision.because}`
         : `${decision.action} refused: ${decision.refused ?? decision.because}`
     );
-    this.since('engage', snapshot.engagements, (decision) =>
-      decision.acted
-        ? `attacked ${decision.target}${decision.because === undefined ? '' : ` — ${decision.because}`}`
-        : `left ${decision.target}: ${decision.refused ?? 'no reason given'}`
-    );
   }
 
   /** The entry each list ended at when it was last read. */
-  private readonly lastSeen: Record<'rule' | 'safety' | 'engage', unknown> = {
-    rule: null,
-    safety: null,
-    engage: null
+  private readonly lastSeen: Record<'safety', unknown> = {
+    safety: null
   };
 
-  private since<T>(
-    tag: 'rule' | 'safety' | 'engage',
-    rows: readonly T[],
-    describe: (row: T) => string
-  ): void {
+  private since<T>(tag: 'safety', rows: readonly T[], describe: (row: T) => string): void {
     if (rows.length === 0) return;
     const at = rows.indexOf(this.lastSeen[tag] as T);
     const fresh = at === -1 ? [...rows] : rows.slice(0, at);

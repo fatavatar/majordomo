@@ -33,7 +33,7 @@ export function castable(s: Session, spell: SpellRec): number {
 }
 
 /** `0x4a32f0`: the spell's magic is within the character's class's range. */
-export function magicSuits(s: Session, spell: SpellRec): number {
+function magicSuits(s: Session, spell: SpellRec): number {
   if (s.Player_Class === 0 || spell.magic === 0) return 1;
   const cls = findClass(s.data, s.Player_Class);
   let low: number;
@@ -105,4 +105,19 @@ export function findSpellByName(s: Session, name: string): SpellRec | null {
     if (castable(s, spell) !== 0 && stricmp(name, spell.name) === 0) return spell;
   }
   return null;
+}
+
+/** The configured spell a cast state casts. */
+export function stateSpell(s: Session, state: number): SpellRec | null {
+  const short: Record<number, string> = {
+    9: s.Combat_PreMultAttack,
+    0xa: s.Combat_MultAttack,
+    0xb: s.Combat_PreAttack,
+    0xc: s.Combat_AttackSpl2,
+    0xd: s.Combat_AttackSpl,
+    0xe: s.altSpell,
+    0xf: s.userSpell
+  };
+  const name = short[state];
+  return name ? findSpell(s, name) : null;
 }

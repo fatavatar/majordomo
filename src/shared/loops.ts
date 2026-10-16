@@ -168,8 +168,8 @@ export type LoopScope = 'global' | 'server' | 'profile';
  * The runtime half of the closed union: a scope that reaches main over IPC is
  * checked against this rather than cast, because the value picks a *directory
  * to write into* and a wire-built path is a write somewhere nobody chose. Kept
- * beside the type so the two move together — the rule `GUARD_FIELDS` and
- * `AppConfig` already carry, and the failure it prevents is the same one: a
+ * beside the type so the two move together — the rule `AppConfig` already
+ * carries, and the failure it prevents is the same one: a
  * member in the type and not in the list typechecks, then refuses at runtime.
  */
 export const LOOP_SCOPES: readonly LoopScope[] = ['global', 'server', 'profile'];
@@ -521,7 +521,7 @@ export type LoopHold =
    * deadlock: see `Recovery.restInFlight`.
    */
   | 'resting'
-  /** Waiting out a stated affliction before the next leg — see `afflictionHolding` in `walk.ts`. */
+  /** Waiting out a stated affliction before the next leg. */
   | 'blind'
   | 'held'
   | 'poisoned'

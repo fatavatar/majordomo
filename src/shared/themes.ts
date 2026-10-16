@@ -1085,11 +1085,6 @@ export function isConsolePalette(value: unknown): value is ConsolePalette {
   return value === 'theme' || isTerminalThemeId(value);
 }
 
-/** The palettes that read the same way round as a given appearance. */
-export function terminalThemesOfAppearance(appearance: Appearance): readonly TerminalThemeId[] {
-  return TERMINAL_THEME_IDS.filter((id) => TERMINAL_THEMES[id].appearance === appearance);
-}
-
 /**
  * The sixteen the console actually paints with.
  *

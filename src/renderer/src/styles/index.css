@@ -12812,6 +12812,13 @@ tr:hover .row-action.worn,
   letter-spacing: normal;
   text-transform: none;
 }
+/* A heading inside a group, as the group's own title reads (2026-10-16). */
+.settings-form[data-megamud='true'] .settings-subhead {
+  font-size: inherit;
+  letter-spacing: normal;
+  text-transform: none;
+  color: var(--text-hi);
+}
 .settings-form[data-megamud='true']
   :is(input:not([type='checkbox'], [type='radio']), select, textarea) {
   padding: 2px 6px;
@@ -12898,6 +12905,11 @@ tr:hover .row-action.worn,
 }
 .megamud-edit:disabled {
   opacity: 0.5;
+}
+/* A setting MegaMUD 2.1 keeps but never acts on: drawn, and drawn as idle. */
+.megamud-control[data-inert='true'] {
+  opacity: 0.5;
+  cursor: help;
 }
 .megamud-button {
   font-size: 11px;

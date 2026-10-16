@@ -93,9 +93,3 @@ export function refreshWho(s: Session): number {
   send(s, 'who\r');
   return 1;
 }
-
-/** `0x495590`: exp, stats and spells to be asked for again (the spells' learned marks cleared). */
-export function statsWanted(s: Session): void {
-  s.f_e29c = 1;
-  for (const spell of s.data.spells) spell.flags &= ~0x1000;
-}

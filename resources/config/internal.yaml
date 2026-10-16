@@ -81,11 +81,8 @@ palette:
 
 # Which buttons the toolbar draws on a fresh client.
 #
-# The toolbar is one row of glyphs docked above the console -- automation you
-# reach for while playing, and the transport controls beside it. Every one is a
-# toggle whose answer lives in the character's own file, so pressing one edits
-# `automation:` there and the button and the settings screen can never disagree
-# about what the character is doing.
+# The toolbar is one row of glyphs docked above the console -- MegaMUD's
+# toggles you reach for while playing, and the transport controls beside it.
 #
 # The vocabulary is far longer than a row, so this is the row you *start* with:
 # the `...` at the end of the toolbar lists every button there is and pins or
@@ -93,19 +90,16 @@ palette:
 # a line here still wins for the button it changes its mind about. Stating this
 # block replaces the default list whole.
 #
-# Names are button ids. The switches are `automation` (the master), `combat`,
-# `retaliate`, `retreat`, `hangUp`, `loot`, `drop`,
-# `search`, `autoDeposit`, `openDoors`, `pickLocks`, `bashDoors`, `sneak`,
-# `healParty`, `assistLeader`, `defendParty`, `restWithLeader`, `remotes`,
-# `gangpath` and `lookAtPlayers`; the rest are `connect`, `gear:restore`,
+# Names are button ids: `connect`, `gear:restore`,
 # `loop:open` (the shelf of every loop), `loop:build` (the card a loop is drawn
 # on, by clicking rooms on the map), `move:toggle` -- one key for the whole
 # transport, which goes or stops whichever of a route and a loop is on -- and
-# `move:back`, one room back the way the character came, per press. A character
-# the MegaMUD engine runs draws MegaMUD's own toggles in place of the switches:
-# `mega:noHangup`, `mega:allOff`, `mega:combat`, `mega:preAttack`, `mega:melee`,
-# `mega:nuke`, `mega:heal`, `mega:bless`, `mega:light`, `mega:get`, `mega:cash`,
-# `mega:sneak`, `mega:hide`, `mega:search` and `mega:afk`, beside `fleeGoto`.
+# `move:back`, one room back the way the character came, per press; MegaMUD's
+# own toggles, `mega:noHangup`, `mega:allOff`, `mega:combat`, `mega:preAttack`,
+# `mega:melee`, `mega:nuke`, `mega:heal`, `mega:bless`, `mega:light`,
+# `mega:get`, `mega:cash`, `mega:sneak`, `mega:hide`, `mega:search` and
+# `mega:afk`; and `fleeGoto`, our flee to a named room, which writes the
+# character's own file.
 toolbar:
   pinned:
     - connect
@@ -114,18 +108,6 @@ toolbar:
     # that recovery -- which is why it sits beside the dial rather than with the
     # loop's transport. Greyed when there is nothing in the pack to put back.
     - 'gear:restore'
-    - automation
-    - combat
-    - retaliate
-    # Keeping the blessings up, on the row: the switch somebody flips for one
-    # fight to keep the mana for healing, and back after.
-    - autoBless
-    - loot
-    # Searching every room, on the row rather than in the kebab: it costs a
-    # command per room, so it is the kind of switch somebody turns on for one
-    # corridor and off again -- and one you toggle that often behind a menu is
-    # one you stop toggling.
-    - search
     # MegaMUD's toggles, for a character its engine runs: the ones MegaMUD's own
     # toolbar ships showing, which is all of them but Auto-Melee. Its own
     # `[Toolbar]` section no longer decides; the `...` pins them as it pins the
@@ -404,14 +386,6 @@ tuning:
     # the server's own figure, and erring long costs latency where erring short
     # costs the command a second time.
     fumbleRetryMs: 1000
-
-  # Fighting on the character's behalf — `AutoCombat`.
-  combat:
-
-    # How long after a monster dies the room is read again (an Enter), so what
-    # it dropped is seen and a wanted item picked up. The death sentence and
-    # the experience line collapse into one read, and the drops land first.
-    lookAfterKillMs: 400
 
   # How a monster's hazards are priced when auto-combat decides what to hit
   # first. A blow is hit points and needs no pricing; everything else a

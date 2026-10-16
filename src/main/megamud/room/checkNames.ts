@@ -18,7 +18,7 @@ import type { RoomEntity, Session } from '../Session';
 import { removeEntity } from './entities';
 
 /** MajorMUD's random monster adjectives (the table at `0x564300`). */
-export const ADJECTIVES = [
+const ADJECTIVES = [
   'angry',
   'big',
   'fat',
@@ -63,8 +63,8 @@ export function nameIn(text: string, name: string): number {
  * whole words, and those put in front longest first, so `findMonster` takes
  * `forgotten dragon slayer` for itself rather than for the `forgotten dragon`
  * its name holds. MegaMUD leaves the flag to be set by hand (its Monster
- * Details' *Find first*); our monster table always means the longest name
- * (`ruleFor`), so the engine sets it wherever it is needed (2026-10-13: the
+ * Details' *Find first*); our monster table always means the longest name,
+ * so the engine sets it wherever it is needed (2026-10-13: the
  * slayer, read as the dragon, was fought with the dragon's settings).
  */
 export function findLongestFirst(s: Session): void {
@@ -146,7 +146,7 @@ export function partyIndex(s: Session, name: string): number {
  * `0x472ca0`: a player within `PvP.LevelRange` of this character's level (its
  * level, or the range a guessed level stands for, flag 2).
  */
-export function playerInRange(s: Session, p: PlayerRec | null): number {
+function playerInRange(s: Session, p: PlayerRec | null): number {
   if (!p) return 0;
   const mine = s.Player_Level;
   const range = s.pvpLevel;
@@ -166,7 +166,7 @@ export function hangupAllowed(s: Session): number {
 }
 
 /** `0x471400`: marks remembered for monsters by name (`0x2524`, 36-byte entries) applied to those here. */
-export function applyMonsterMarks(s: Session): void {
+function applyMonsterMarks(s: Session): void {
   for (const e of s.room) {
     if (e.type !== 2) continue;
     for (const mark of s.monsterMarks) {
@@ -179,7 +179,7 @@ export function applyMonsterMarks(s: Session): void {
 }
 
 /** `0x4714e0`: marks remembered for players by name (`0x6b78`, 16-byte entries) applied to those here. */
-export function applyPlayerMarks(s: Session): void {
+function applyPlayerMarks(s: Session): void {
   for (const e of s.room) {
     if (e.type !== 1) continue;
     for (const mark of s.playerMarks) {

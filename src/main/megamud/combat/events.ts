@@ -42,7 +42,7 @@ import { hangUp } from '../script/game';
 import { queue, send } from '../script/send';
 import { forgetAwaited, setState } from '../script/state';
 import { setTask } from '../script/task';
-import type { RoomEntity, Session } from '../Session';
+import { automated, type RoomEntity, type Session } from '../Session';
 import { isCastState } from '../states';
 import { immunityText } from '../player/cast';
 import { newMonster, newPlayer } from '../data';
@@ -203,8 +203,7 @@ function killed(s: Session): number {
     s.f_8468 = 0;
     return 1;
   }
-  if ((s.active !== 0 || s.walking !== 0 || s.roaming !== 0 || s.importing !== 0) && s.f_a32c === 0)
-    return 1;
+  if (automated(s) && s.f_a32c === 0) return 1;
   goTo(s, 0x67110001, null);
   headFor(s, 0);
   return 1;

@@ -57,9 +57,9 @@ export function equipAll(s: Session): void {
   wake(s);
 }
 
-/** `0x4bc190`: the wealth over what is kept (`0x850c`) deposited. */
+/** `0x4bc190`: the wealth over what is kept (`Cash.MinWealth`) deposited. */
 export function depositAll(s: Session): void {
-  const over = s.f_8428 - s.f_850c;
+  const over = s.f_8428 - s.Cash_MinWealth;
   if (over <= 0) return;
   queue(s, `dep ${over}\r`);
   wake(s);

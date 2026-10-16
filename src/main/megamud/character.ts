@@ -59,8 +59,7 @@ const PROFILE_TABS: readonly [ProfiledSection, string][] = [
 
 /** Profile `n` of a tab is there and enabled (`0xbe44`, `0xcf94`, `0xd804` + `n`·4). */
 function profileOn(s: Session, section: ProfiledSection, n: number): boolean {
-  const slot = n >= 1 && n <= 4 ? s.settings?.profiles[section]?.[n - 1] : null;
-  return slot !== null && slot !== undefined && slot.enabled;
+  return n >= 1 && n <= 4 && s.settings?.profiles[section]?.[n - 1]?.enabled === true;
 }
 
 /**

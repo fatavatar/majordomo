@@ -90,43 +90,6 @@ describe('the realm a character walks', () => {
   });
 });
 
-/* Whether a hang-up is charged: the character, then its realm, then the options file (todo 01). */
-describe('who says a hang-up is charged', () => {
-  const realm = (hangPenalties?: boolean) => ({
-    servers: [
-      {
-        name: 'Bearfather',
-        host: 'bbs.bearfather.net',
-        port: 23,
-        ...(hangPenalties === undefined ? {} : { hangPenalties })
-      }
-    ],
-    automation: { safety: { hangUp: { penalties: false } } }
-  });
-  const penalties = (raw: Record<string, unknown>, config: unknown): boolean =>
-    resolve({ server: 'Bearfather', ...raw }, config).config.automation.safety.hangUp.penalties;
-  const own = (value: boolean) => ({ automation: { safety: { hangUp: { penalties: value } } } });
-
-  it('takes the realm over the options file where the character says nothing', () => {
-    expect(penalties({}, realm(true))).toBe(true);
-    expect(penalties({ automation: { safety: { hangUp: { enabled: true } } } }, realm(true))).toBe(
-      true
-    );
-  });
-
-  it('takes the character over its realm', () => {
-    expect(penalties(own(false), realm(true))).toBe(false);
-    expect(penalties(own(true), realm(false))).toBe(true);
-  });
-
-  it('falls to the options file where the realm says nothing, and that is off', () => {
-    expect(penalties({}, realm())).toBe(false);
-    expect(
-      resolve({ server: 'GreaterMUD (local)' }).config.automation.safety.hangUp.penalties
-    ).toBe(false);
-  });
-});
-
 /* What a realm calls its coins reaches every character playing there. */
 describe('a realm’s coin names', () => {
   it('are the character’s connection’s, from the realm it plays', () => {
@@ -284,31 +247,6 @@ describe('resolveProfile', () => {
     expect(PROFILE_ACCENTS).toContain(
       resolve({ server: 'GreaterMUD (local)', accent: '#ff0000' }).accent
     );
-  });
-
-  it('keeps a rule the options file declares', () => {
-    /*
-     * The regression that cost a live-check run. `normalizeConfig` is not
-     * idempotent: a rule's `when` and `if` are parsed into structures that the
-     * parser cannot read back, so overlaying onto an already-coerced config
-     * silently emptied every character's rule list. A profile overlays the file
-     * and the sum is coerced exactly once.
-     */
-    const withRule = {
-      ...base,
-      automation: {
-        rules: [
-          {
-            name: 'run when hurt',
-            when: 'every 3s',
-            if: ['inCombat == false'],
-            then: [{ command: 'pro', priority: 'idle' }]
-          }
-        ]
-      }
-    };
-    const profile = resolve({ server: 'GreaterMUD (local)' }, withRule);
-    expect(profile.config.automation.rules.map((rule) => rule.name)).toEqual(['run when hurt']);
   });
 
   it('rejects a file that is not a mapping', () => {

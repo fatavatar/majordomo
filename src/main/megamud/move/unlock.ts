@@ -7,7 +7,7 @@
 import { directionShort, indexOf } from '../cstr';
 import { queue } from '../script/send';
 import { setState } from '../script/state';
-import type { Session } from '../Session';
+import { automated, type Session } from '../Session';
 
 export function unlockLine(s: Session, line: string): number {
   const opened =
@@ -47,9 +47,7 @@ export function unlockLine(s: Session, line: string): number {
       s.lineFlags |= 4;
     }
   }
-  const automated =
-    s.active !== 0 || s.walking !== 0 || s.roaming !== 0 || s.importing !== 0 || s.f_a32c !== 0;
-  if (!automated && s.state === 0x18 && s.moveDir !== -1) {
+  if (!automated(s) && s.f_a32c === 0 && s.state === 0x18 && s.moveDir !== -1) {
     if (s.f_db50 < s.Other_PickMax) queue(s, `pick ${directionShort(s.moveDir)}\r`);
     else s.f_db50 = 0;
   }

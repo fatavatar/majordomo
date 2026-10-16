@@ -113,7 +113,7 @@ export function cureStep(s: Session, fighting: number): number {
 }
 
 /** `0x40df50`: a cure spell is set, and unknown or affordable. */
-export function cureCastable(s: Session, short: string): boolean {
+function cureCastable(s: Session, short: string): boolean {
   if (short === '') return false;
   const spell = findSpell(s, short);
   return spell === null || spell.cost === 0 || spell.cost <= s.mana;
@@ -134,7 +134,7 @@ function busyRunning(s: Session): boolean {
  * blindness and disease, and being held when running; out of one, being held
  * or poisoned, unless resting, running or staying hidden.
  */
-export function selfCureWanted(s: Session, fighting: number): boolean {
+function selfCureWanted(s: Session, fighting: number): boolean {
   if (s.f_a32c !== 0 || s.MegaMud_AutoHeal === 0 || s.hp < 1) return false;
   if (s.Player_MaxHP === 0 || s.Player_MaxMana === 0 || s.state === 0x12) return false;
   if (s.state === 0 && s.sneaking !== 0 && s.walking !== 0 && enemiesHere(s, 0) > 0) return false;
@@ -170,7 +170,7 @@ export function selfCureWanted(s: Session, fighting: number): boolean {
  * (`fighting`) blindness (`0x4000`) or disease (`0x2000`); out of one, being
  * held (`0x8000`, with no monsters here) or poison (`0x1000`, out of combat).
  */
-export function partyCureWanted(s: Session, fighting: number): boolean {
+function partyCureWanted(s: Session, fighting: number): boolean {
   if (s.f_a32c !== 0 || s.MegaMud_AutoHeal === 0 || s.partySize < 1) return false;
   if (s.hp < 1 || s.Player_MaxHP === 0 || s.state === 0x12) return false;
   if (s.state === 0 && s.sneaking !== 0 && s.walking !== 0 && enemiesHere(s, 0) >= 1) return false;

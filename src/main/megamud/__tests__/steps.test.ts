@@ -4,7 +4,6 @@ import type { ItemRec } from '../data';
 import { newItem, newPlayer } from '../data';
 import { addMember } from '../party/members';
 import { recoverCorpse } from '../player/corpse';
-import { eventsStep, loadEvents, nextEvent, saveEvents } from '../script/events';
 import { exitStep } from '../script/exit';
 import { searchRoom } from '../script/misc';
 import { invitePlayers, lookAtPlayer, partyStatus } from '../script/party';
@@ -120,7 +119,7 @@ describe('cash (D18, D37, D40, D41, D46)', () => {
     const { s, out } = game();
     s.roomRecord = { signature: 1, name: 'Bank of Godfrey' };
     s.f_8428 = 5000;
-    s.f_850c = 1000;
+    s.Cash_MinWealth = 1000;
     s.f_842c = -1;
     expect(depositCash(s)).toBe(1);
     expect(s.f_8428).toBe(1000);
@@ -256,18 +255,6 @@ describe('party and players (D17, D27, D35)', () => {
 });
 
 describe('timed events and rules (D29, D21)', () => {
-  it('reads [Schedule] and runs a command every few minutes', () => {
-    const { s, out, clock } = game();
-    loadEvents(s, (k) => ({ Event0: '5:-1:10:say hi' })[k] ?? '');
-    expect(saveEvents(s)).toEqual({ Event0: '5:-1:10:say hi' });
-    s.eventNext = nextEvent(s);
-    expect(s.eventNext).toBe(0);
-    expect(eventsStep(s)).toBe(0);
-    s.now = clock.now + 600;
-    expect(eventsStep(s)).toBe(1);
-    expect(sent(out)).toEqual(['say hi', '\r']);
-  });
-
   it('reads [Rules] and runs an action when its conditions hold', () => {
     const { s, out } = game();
     loadRules(s, (k) => ({ R1: '0:0:0:low', R2: '1:1:4:50', R3: '3:14:0:quaff potion' })[k] ?? '');

@@ -10,7 +10,6 @@ import {
   isTerminalThemeId,
   TERMINAL_THEME_IDS,
   TERMINAL_THEMES,
-  terminalThemesOfAppearance,
   isDarkTheme,
   isThemeId,
   isThemePreference,
@@ -393,11 +392,6 @@ describe('console palette registry', () => {
   it('offers `theme` plus every palette, in registration order', () => {
     expect(CONSOLE_PALETTES).toEqual(['theme', ...TERMINAL_THEME_IDS]);
     expect(CONSOLE_PALETTES[0]).toBe(DEFAULT_CONSOLE_PALETTE);
-  });
-
-  it('ships four dark and three light', () => {
-    expect(terminalThemesOfAppearance('dark')).toHaveLength(4);
-    expect(terminalThemesOfAppearance('light')).toHaveLength(3);
   });
 
   it('gives every palette a distinct human label', () => {

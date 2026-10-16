@@ -16,16 +16,12 @@ import {
 } from '../items/inventory';
 import { coinValue, findItem } from '../room/checkNames';
 import { enemiesHere } from '../room/entities';
-import type { Carried, Session } from '../Session';
+import { automated, type Carried, type Session } from '../Session';
 import { itemWord } from './cash';
 import { queue, send } from './send';
 import { setState } from './state';
 
 const COIN = 0x8000000;
-
-function moving(s: Session): boolean {
-  return s.active !== 0 || s.walking !== 0 || s.roaming !== 0 || s.importing !== 0;
-}
 
 /**
  * `0x410960`: room made for `count` of a coin worth more by dropping coins
@@ -330,7 +326,7 @@ function shopHere(s: Session, item: ItemRec): boolean {
  * number, when the wealth covers its price (more below 50 charm).
  */
 export function buyItems(s: Session): number {
-  if (!moving(s) || s.f_a32c !== 0 || !s.roomRecord || ((s.roomRecord.flags ?? 0) & 2) === 0)
+  if (!automated(s) || s.f_a32c !== 0 || !s.roomRecord || ((s.roomRecord.flags ?? 0) & 2) === 0)
     return 0;
   let buy: ItemRec | null = null;
   const asked = s.s_8474 !== '' ? findItem(s, s.s_8474) : null;
@@ -361,7 +357,7 @@ export function buyItems(s: Session): number {
 
 /** `0x40b0b0` (D43): in a shop, an item to sell (`8`) here beyond the number to keep sold. */
 export function sellItems(s: Session): number {
-  if (!moving(s) || s.f_a32c !== 0 || !s.roomRecord || ((s.roomRecord.flags ?? 0) & 2) === 0)
+  if (!automated(s) || s.f_a32c !== 0 || !s.roomRecord || ((s.roomRecord.flags ?? 0) & 2) === 0)
     return 0;
   for (const c of s.inventory) {
     const item = c.item;

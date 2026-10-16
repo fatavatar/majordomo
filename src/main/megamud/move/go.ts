@@ -55,7 +55,7 @@ export function movingClock(s: Session): void {
 }
 
 /** `0x474910`: the players seen here forgotten (`0x8000`; with `all`, their counts too). */
-export function forgetSeen(s: Session, all: number): void {
+function forgetSeen(s: Session, all: number): void {
   if (all !== 0) s.f_32528 = 0;
   for (const p of s.data.players ?? []) {
     p.flags &= ~0x8000;

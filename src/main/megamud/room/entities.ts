@@ -7,7 +7,7 @@ import { findMonster as findMonsterNamed, stripAdjective as stripAdjectiveOf } f
 import { newEntity, type RoomEntity, type Session } from '../Session';
 
 /** The record's `+0x24` bit for "not hostile" (Monsters.md). */
-export const MON_NOT_HOSTILE = 0x200;
+const MON_NOT_HOSTILE = 0x200;
 
 /**
  * `0x472830`: how many hostile monsters are here. An entry counts when it is

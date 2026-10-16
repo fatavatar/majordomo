@@ -3,9 +3,9 @@
  * raw text in, commands out, its clocks kept, and its paths planned by our
  * world graph (docs/megamud/engine-port.md, Walking).
  *
- * **On for a character with a `megamud.ini`** beside its profile. The old
- * automation stands down for it (`SessionManager.configure`); the login,
- * the display, the map and the planners stay ours.
+ * **Every character runs on it** (2026-10-14). The old automation stands
+ * down (`SessionManager.configure`); the login, the display, the map and the
+ * planners stay ours.
  *
  * **Paths.** MegaMUD walks paths whose steps name the room each is taken
  * from by its signature (`0x8130`: the name's hash in the top twelve bits,
@@ -17,13 +17,19 @@
  */
 
 import { stricmp, typedDirection } from '../megamud/cstr';
-import { findClass, type ItemRec, type MegaData, type MonsterRec } from '../megamud/data';
+import {
+  findClass,
+  type ItemRec,
+  type MegaData,
+  type MonsterRec,
+  type SpellRec
+} from '../megamud/data';
 import { applyItemRule } from '../megamud/fromWorld';
 import { bbsSetup } from '../megamud/bbs';
 import { grantPlayers, loadCharacter } from '../megamud/character';
 import { newTerminal, parseData, type TerminalState } from '../megamud/input/ParseData';
 import { typedCommand } from '../megamud/input/typed';
-import { disconnect, menuCommand } from '../megamud/move/buttons';
+import { disconnect, menuCommand, playerCommand } from '../megamud/move/buttons';
 import { blessCommand } from '../megamud/player/cast';
 import { clearDetours, goTo, headFor, startWalking } from '../megamud/move/destinations';
 import { clearPath, copyPath, freeSteps } from '../megamud/move/path';
@@ -258,25 +264,27 @@ export const MEGA_ALERTS = {
 
 export type MegaAlert = keyof typeof MEGA_ALERTS;
 
-/** The session fields the toolbar's toggles flip, kept across a settings reload. */
-const TOGGLE_FIELDS = [
-  'MegaMud_NoHangup',
-  'f_a32c',
-  'MegaMud_AutoCombat',
-  'MegaMud_AutoPreAttack',
-  'f_8be8',
-  'MegaMud_AutoNuke',
-  'MegaMud_AutoHeal',
-  'MegaMud_AutoBless',
-  'MegaMud_AutoLight',
-  'MegaMud_AutoGet',
-  'MegaMud_AutoCash',
-  'MegaMud_AutoSneak',
-  'MegaMud_AutoHide',
-  'MegaMud_AutoSearch',
-  'MegaMud_AutoTrack',
-  'active'
-] as const;
+/** The session field each toolbar toggle shows. */
+const TOGGLE_FIELD = {
+  noHangup: 'MegaMud_NoHangup',
+  allOff: 'f_a32c',
+  combat: 'MegaMud_AutoCombat',
+  preAttack: 'MegaMud_AutoPreAttack',
+  melee: 'f_8be8',
+  nuke: 'MegaMud_AutoNuke',
+  heal: 'MegaMud_AutoHeal',
+  bless: 'MegaMud_AutoBless',
+  light: 'MegaMud_AutoLight',
+  get: 'MegaMud_AutoGet',
+  cash: 'MegaMud_AutoCash',
+  sneak: 'MegaMud_AutoSneak',
+  hide: 'MegaMud_AutoHide',
+  search: 'MegaMud_AutoSearch',
+  afk: 'active'
+} as const satisfies Record<MegaToggle, keyof Session>;
+
+/** The fields the toggles flip, Auto-Track's among them, kept across a settings reload. */
+const TOGGLE_FIELDS = [...Object.values(TOGGLE_FIELD), 'MegaMud_AutoTrack'] as const;
 
 /** MegaMUD's once-a-second timer (`WM_TIMER` 100, set to 1000 ms). */
 const SECOND_MS = 1000;
@@ -340,7 +348,7 @@ export class MegaEngine {
     lost: number;
     until: number;
     /** Put aside for a way being planned (`route`), not for the room being located. */
-    planning?: boolean;
+    planning: boolean;
   } | null = null;
   /**
    * Ways planned (`plan`), by `from>to`: the route answered, or `pending`
@@ -433,9 +441,8 @@ export class MegaEngine {
     bbsSetup(this.s, (key) => setup.bbs?.[key]);
     this.s.now = engineHost.clock();
     const memory = setup.memory;
+    this.recall();
     if (memory) {
-      for (const [name, relationship] of memory.stances) rememberStance(this.s, name, relationship);
-      for (const item of memory.items) rememberItem(this.s, item);
       rememberPlayers(this.s, memory.players);
       // MegaMUD's marks list lives as long as its window does; ours outlives a restart.
       this.s.monsterMarks = (memory.marks ?? []).map(([name, flags]) => ({ name, flags }));
@@ -484,14 +491,7 @@ export class MegaEngine {
    */
   useItems(rules: readonly ItemRule[]): void {
     this.itemRules = rules;
-    for (const rule of rules) {
-      let rec = this.s.data.items.find((item) => itemKey(item.name) === rule.item);
-      if (!rec) {
-        rememberItem(this.s, { name: rule.item, weight: null, slot: null, weapon: false });
-        rec = this.s.data.items.find((item) => itemKey(item.name) === rule.item)!;
-      }
-      applyItemRule(rec, rule, this.host.world());
-    }
+    for (const rule of rules) applyItemRule(this.itemRecord(rule.item), rule, this.host.world());
     for (const name of this.lentItems.keys()) this.takeOnto(name);
   }
 
@@ -504,12 +504,7 @@ export class MegaEngine {
     const key = itemKey(name);
     if (on) {
       if (this.lentItems.has(key)) return;
-      let rec = this.s.data.items.find((item) => itemKey(item.name) === key);
-      if (!rec) {
-        rememberItem(this.s, { name, weight: null, slot: null, weapon: false });
-        rec = this.s.data.items.find((item) => itemKey(item.name) === key)!;
-      }
-      this.lentItems.set(key, rec.flags & ITEM_FLAG_BITS.collect);
+      this.lentItems.set(key, this.itemRecord(name).flags & ITEM_FLAG_BITS.collect);
       this.takeOnto(key);
       return;
     }
@@ -518,6 +513,17 @@ export class MegaEngine {
     this.lentItems.delete(key);
     const rec = this.s.data.items.find((item) => itemKey(item.name) === key);
     if (rec) rec.flags = (rec.flags & ~ITEM_FLAG_BITS.collect) | was;
+  }
+
+  /** An item's record, by name or key; one the records do not name is added. */
+  private itemRecord(name: string): ItemRec {
+    const key = itemKey(name);
+    const find = (): ItemRec | undefined =>
+      this.s.data.items.find((item) => itemKey(item.name) === key);
+    const found = find();
+    if (found) return found;
+    rememberItem(this.s, { name, weight: null, slot: null, weapon: false });
+    return find()!;
   }
 
   private takeOnto(key: string): void {
@@ -604,10 +610,7 @@ export class MegaEngine {
     s.data = structuredClone(data);
     s.data.players = was.players;
     s.data.rooms = was.rooms;
-    if (this.memory) {
-      for (const [name, relationship] of this.memory.stances) rememberStance(s, name, relationship);
-      for (const item of this.memory.items) rememberItem(s, item);
-    }
+    this.recall();
     this.useMonsters(this.monsterRules);
     this.useItems(this.itemRules);
     const item = (rec: ItemRec | null): ItemRec | null =>
@@ -620,6 +623,14 @@ export class MegaEngine {
         e.mon = s.data.monsters.find((m) => m.name === name) ?? e.mon;
       }
     }
+  }
+
+  /** What our stores remember of monsters and items, put on the databases. */
+  private recall(): void {
+    if (this.memory === null) return;
+    for (const [name, relationship] of this.memory.stances)
+      rememberStance(this.s, name, relationship);
+    for (const item of this.memory.items) rememberItem(this.s, item);
   }
 
   /**
@@ -673,11 +684,13 @@ export class MegaEngine {
    */
   buffs(up: readonly ActiveBuff[]): void {
     const s = this.s;
-    s.now = Math.floor(Date.now() / 1000);
+    s.now = s.host.clock();
     this.markLasting();
-    const upFor = (command: string): ActiveBuff | undefined => {
-      const spell = command === '' ? null : findSpell(s, command);
-      return spell === null || (spell.flags & 2) === 0
+    const spellOf = (command: string): SpellRec | null =>
+      command === '' ? null : findSpell(s, command);
+    // Our tracker's buff for a lasting spell of this character's own.
+    const upFor = (spell: SpellRec | null): ActiveBuff | undefined =>
+      spell === null || (spell.flags & 2) === 0
         ? undefined
         : up.find(
             (b) =>
@@ -685,12 +698,9 @@ export class MegaEngine {
               (stricmp(b.spell, spell.name) === 0 ||
                 (b.candidates ?? []).some((name) => stricmp(name, spell.name) === 0))
           );
-    };
     for (let i = 0; i < 10; i += 1) {
-      const command = blessCommand(s, i);
-      const spell = command === '' ? null : findSpell(s, command);
-      const buff = upFor(command);
-      const at = buff?.appliedAt ?? null;
+      const spell = spellOf(blessCommand(s, i));
+      const at = upFor(spell)?.appliedAt ?? null;
       const was = this.blessUp[i] ?? null;
       this.blessUp[i] = at;
       if (at !== null && at !== was) {
@@ -716,7 +726,10 @@ export class MegaEngine {
      * which takes the regen as ended, had him cast `rsto` again (2026-10-14).
      */
     const regenWas = this.regenUp;
-    this.regenUp = [upFor(s.Spells_RegenCmd) !== undefined, upFor(s.Spells_FluxCmd) !== undefined];
+    this.regenUp = [
+      upFor(spellOf(s.Spells_RegenCmd)) !== undefined,
+      upFor(spellOf(s.Spells_FluxCmd)) !== undefined
+    ];
     if (this.regenUp[0]) s.hpRegen = 1;
     else if (regenWas[0]) s.hpRegen = 0;
     if (this.regenUp[1]) s.manaRegen = 1;
@@ -770,7 +783,7 @@ export class MegaEngine {
     if (this.regenUp[0]) s.hpRegen = 1;
     for (const name of CURED_AFFLICTIONS) if (this.afflicted[name] === true) s[name] = 1;
     for (let i = 0; i < 10; i += 1) {
-      if (this.blessUp[i] !== null && this.blessUp[i] !== undefined) s.blessCastAt[i] = s.now;
+      if ((this.blessUp[i] ?? null) !== null) s.blessCastAt[i] = s.now;
     }
   }
 
@@ -797,8 +810,7 @@ export class MegaEngine {
 
   /** A dial failed: redialled by MegaMUD's rule for that (`0x4b71d0`). */
   connectFailed(): void {
-    this.safely(() => connectFailed(this.s));
-    this.noteToggles();
+    this.act(() => connectFailed(this.s));
   }
 
   /** The redial waited on called off, the player's Disconnect: offline, idle (task `0x14`). */
@@ -813,7 +825,7 @@ export class MegaEngine {
   received(text: string): void {
     dataArrived(this.quiet, Date.now());
     this.safely(() => {
-      this.s.now = Math.floor(Date.now() / 1000);
+      this.s.now = this.s.host.clock();
       parseData(this.s, this.t, text);
     });
     this.noteRoom();
@@ -821,7 +833,7 @@ export class MegaEngine {
     const entered = this.s.inGame !== 0 && !this.wasInGame;
     if (entered && this.host.here() === null) this.host.locate();
     this.wasInGame = this.s.inGame !== 0;
-    if (this.parked !== null && this.parked.planning !== true && this.host.here() !== null)
+    if (this.parked !== null && !this.parked.planning && this.host.here() !== null)
       this.safely(() => this.unpark());
     this.noteToggles();
     if (entered) this.host.enteredGame?.();
@@ -840,25 +852,12 @@ export class MegaEngine {
   get toggles(): MegaToggles {
     const s = this.s;
     const allOff = s.f_a32c !== 0;
-    const lit = (value: number): boolean => !allOff && value !== 0;
-    const on: Record<MegaToggle, boolean> = {
-      // Not one of All Off's: it is drawn with Connect (`0x460d50`).
-      noHangup: s.MegaMud_NoHangup !== 0,
-      allOff,
-      combat: lit(s.MegaMud_AutoCombat),
-      preAttack: lit(s.MegaMud_AutoPreAttack),
-      melee: lit(s.f_8be8),
-      nuke: lit(s.MegaMud_AutoNuke),
-      heal: lit(s.MegaMud_AutoHeal),
-      bless: lit(s.MegaMud_AutoBless),
-      light: lit(s.MegaMud_AutoLight),
-      get: lit(s.MegaMud_AutoGet),
-      cash: lit(s.MegaMud_AutoCash),
-      sneak: lit(s.MegaMud_AutoSneak),
-      hide: lit(s.MegaMud_AutoHide),
-      search: lit(s.MegaMud_AutoSearch),
-      afk: lit(s.active)
-    };
+    const on = {} as Record<MegaToggle, boolean>;
+    for (const [name, field] of Object.entries(TOGGLE_FIELD) as [MegaToggle, keyof Session][]) {
+      // No Hangup is not one of All Off's: it is drawn with Connect (`0x460d50`).
+      const own = name === 'noHangup' || name === 'allOff';
+      on[name] = s[field] !== 0 && (own || !allOff);
+    }
     // `0x803`'s Go finds nothing to walk without a destination or roaming.
     const somewhere = s.detours[0]!.room !== 0 || s.detours[0]!.path !== '' || s.roaming !== 0;
     return {
@@ -878,8 +877,8 @@ export class MegaEngine {
   get progress(): { walk: WalkProgress; loop: LoopProgress } {
     const s = this.s;
     const walking = s.walking !== 0;
-    const made = this.made.get(s.path.name.toLowerCase()) ?? null;
-    const lap = this.made.get(s.loopPath.name.toLowerCase())?.loop ?? null;
+    const made = this.madeFor(s.path) ?? null;
+    const lap = this.madeFor(s.loopPath)?.loop ?? null;
     const run = this.loopRun !== null && lap !== null && lap.name === this.loopRun.name;
     const holding = s.inCombat !== 0 ? 'fight' : s.resting !== 0 ? 'resting' : null;
 
@@ -954,15 +953,20 @@ export class MegaEngine {
 
   /** A room's name, from the realm's data. */
   private roomName(room: RoomId | null): string | null {
-    const place = room === null ? null : asRoomReference(room);
-    if (place === null) return null;
-    return this.host.world()?.get(place.map, place.room)?.name ?? room;
+    if (room === null || asRoomReference(room) === null) return null;
+    return this.worldRoom(room)?.name ?? room;
+  }
+
+  /** A room's record in the realm's data. */
+  private worldRoom(room: RoomId): WorldRoom | undefined {
+    const place = asRoomReference(room);
+    return place === null ? undefined : this.host.world()?.get(place.map, place.room);
   }
 
   /** Says so when the walk or the loop moved on: a step, a stop, a lap, a fight. */
   private noteProgress(): void {
     const s = this.s;
-    const lap = this.made.get(s.loopPath.name.toLowerCase())?.loop ?? null;
+    const lap = this.madeFor(s.loopPath)?.loop ?? null;
     // A loop MegaMUD took up itself (a remote's `@loop`, a destination done) is a run too.
     if (this.loopRun === null && s.looping !== 0 && lap !== null) {
       this.loopRun = { name: lap.name, startedAt: Date.now(), lapBegunAt: null };
@@ -1008,14 +1012,13 @@ export class MegaEngine {
   /** A toolbar toggle pressed: its window command. */
   toggle(name: MegaToggle): void {
     const toggle = MEGA_TOGGLES.find((t) => t.name === name);
-    if (toggle) this.button(toggle.command);
+    if (toggle) this.press(toggle.command);
   }
 
   /** A command the player typed. */
   typed(command: string): void {
     this.playerSent();
-    this.safely(() => typedCommand(this.s, 0, command));
-    this.noteToggles();
+    this.act(() => typedCommand(this.s, 0, command));
   }
 
   /**
@@ -1025,7 +1028,7 @@ export class MegaEngine {
    * with nothing sent (`0x4653d0`). Ours go out past it, so it is stamped here.
    */
   playerSent(): void {
-    this.s.now = Math.floor(Date.now() / 1000);
+    this.s.now = this.s.host.clock();
     this.s.f_322a0 = this.s.now;
   }
 
@@ -1097,14 +1100,17 @@ export class MegaEngine {
 
   /** The player's Disconnect (`0x7d4`): hung up on purpose, and not redialled. */
   disconnect(): void {
-    this.safely(() => disconnect(this.s));
-    this.noteToggles();
+    this.act(() => disconnect(this.s));
   }
 
   /** Go/Stop (`0x803`), Roam (`0x808`), AFK (`0x809`), Step Back (`0x869`). */
   button(command: number): void {
-    this.safely(() => menuCommand(this.s, command));
-    this.noteToggles();
+    this.act(() => menuCommand(this.s, command));
+  }
+
+  /** The same, pressed by the player: it may end AFK (`playerCommand`). */
+  press(command: number): void {
+    this.act(() => playerCommand(this.s, command));
   }
 
   /** Whether the engine is walking (Go is on). */
@@ -1175,14 +1181,13 @@ export class MegaEngine {
 
   /** The console's Deposit All (`0x4bc190`): the wealth over what is kept deposited. */
   depositAll(): void {
-    this.safely(() => depositAll(this.s));
-    this.noteToggles();
+    this.act(() => depositAll(this.s));
   }
 
   /** The room the path's next step goes into, for the host to queue what it wants first. */
   private beforeStep(): void {
     if (this.host.beforeStep === undefined) return;
-    const made = this.made.get(this.s.path.name.toLowerCase());
+    const made = this.madeFor(this.s.path);
     if (made === undefined) return;
     const to = made.rooms[this.s.path.at + 1] ?? made.end;
     if (to !== null) this.host.beforeStep(to);
@@ -1220,6 +1225,12 @@ export class MegaEngine {
     this.loopRun = null;
     this.noteToggles();
     return null;
+  }
+
+  /** A step run safely, and the toolbar and cards told what it changed. */
+  private act(run: () => unknown): void {
+    this.safely(run);
+    this.noteToggles();
   }
 
   private safely(run: () => unknown): void {
@@ -1314,9 +1325,8 @@ export class MegaEngine {
   private know(room: RoomId, sig: number): void {
     const rooms = (this.s.data.rooms ??= []);
     if (rooms.some((r) => r.signature === sig)) return;
-    const [map, number] = room.split('/').map(Number);
     const world = this.host.world();
-    const rec = world?.get(map!, number!);
+    const rec = this.worldRoom(room);
     const shop = rec?.shop === undefined ? undefined : world?.shop(rec.shop);
     rooms.push({
       signature: sig,
@@ -1360,8 +1370,7 @@ export class MegaEngine {
   signatureOf(room: RoomId): number | null {
     const learned = this.learned.get(room);
     if (learned !== undefined) return learned;
-    const [map, number] = room.split('/').map(Number);
-    const rec = this.host.world()?.get(map!, number!);
+    const rec = this.worldRoom(room);
     return rec ? worldSignature(rec) : null;
   }
 
@@ -1452,15 +1461,7 @@ export class MegaEngine {
       const gaveUp = this.locateGaveUp;
       this.locateGaveUp = false;
       if (gaveUp || this.parked !== null || !this.host.locate()) return none;
-      const s = this.s;
-      this.parked = {
-        detours: structuredClone(s.detours),
-        walking: s.walking,
-        looping: s.looping,
-        roaming: s.roaming,
-        lost: s.lost,
-        until: Date.now() + LOCATE_WAIT_MS
-      };
+      this.park(false);
       return { flags: 0x20, path: null, steps: -1 };
     }
     let best: Route | null = null;
@@ -1477,18 +1478,7 @@ export class MegaEngine {
       // Still being planned. A walk heading off (`0x43d2a0` asks under task
       // 0xd) is put aside as it is while the room is located, and taken up
       // again with the answer; anything else asking is woken to ask again.
-      const s = this.s;
-      if (s.task === 0xd && this.parked === null) {
-        this.parked = {
-          detours: structuredClone(s.detours),
-          walking: s.walking,
-          looping: s.looping,
-          roaming: s.roaming,
-          lost: s.lost,
-          until: Date.now() + LOCATE_WAIT_MS,
-          planning: true
-        };
-      }
+      if (this.s.task === 0xd && this.parked === null) this.park(true);
       return { flags: 0x20, path: null, steps: -1 };
     }
     if (best === null) return none;
@@ -1563,19 +1553,19 @@ export class MegaEngine {
       return from === to ? null : this.plan(from, to);
     });
     if (planned.includes('pending')) return 'pending';
-    for (let i = 0; i < rooms.length; i += 1) {
+    for (const [i, plan] of planned.entries()) {
       begins.push(steps);
       const from = rooms[i]!;
       const to = rooms[(i + 1) % rooms.length]!;
-      const plan = planned[i];
-      if (plan === null || plan === undefined || plan === 'pending') continue;
+      // A stop listed twice in a row: no leg.
+      if (plan === null || plan === 'pending') continue;
       if (typeof plan === 'string') return plan;
       if (plan.blocked) return plan.reason ?? `No way from ${from} to ${to}.`;
       legs.push(plan);
       steps += plan.steps.length;
     }
     const p = this.makePath(shortName('L', name), name, legs, start, start);
-    this.made.get(p.name.toLowerCase())!.loop = {
+    this.madeFor(p)!.loop = {
       name,
       stops: rooms,
       listed: stops.rooms.length,
@@ -1584,6 +1574,20 @@ export class MegaEngine {
     };
     if (!this.s.paths.includes(p)) this.s.paths.push(p);
     return p;
+  }
+
+  /** The walk put aside, as it stands, until the room is placed or the way planned. */
+  private park(planning: boolean): void {
+    const s = this.s;
+    this.parked = {
+      detours: structuredClone(s.detours),
+      walking: s.walking,
+      looping: s.looping,
+      roaming: s.roaming,
+      lost: s.lost,
+      until: Date.now() + LOCATE_WAIT_MS,
+      planning
+    };
   }
 
   /**
@@ -1611,12 +1615,17 @@ export class MegaEngine {
 
   /** `0x482fc0`'s file: a path made here, by name. */
   private readPath(name: string): PathRec | null {
-    return this.made.get(name.toLowerCase())?.path ?? null;
+    return this.madeFor({ name })?.path ?? null;
+  }
+
+  /** The path made here under a path's name (MegaMUD's are not case-sensitive). */
+  private madeFor(p: { name: string }): MadePath | undefined {
+    return this.made.get(p.name.toLowerCase());
   }
 
   /** `0x4888e0`: a relearned step's room kept, for every path through it. */
   private saveSteps(p: PathRec): number {
-    const made = this.made.get(p.name.toLowerCase());
+    const made = this.madeFor(p);
     if (!made || !p.steps) return 0;
     p.steps.forEach((st, i) => {
       const room = made.rooms[i];

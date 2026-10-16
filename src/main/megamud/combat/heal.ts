@@ -8,14 +8,14 @@
  * `HealCmd2` the minor one, below `HpHealMinor%`. In a fight each needs its
  * mana (`ManaHealAtt%`, `ManaHealMinor%`); out of one, `ManaHeal%`.
  */
-import { idiv } from '../cstr';
+import { percentOf } from '../cstr';
 import { castSpell, equipForSpell } from '../health/cast';
 import { askParty, membersInStep, weakestMember } from '../party/members';
 import { findPlayer } from '../room/checkNames';
 import { currentTarget, enemiesHere } from '../room/entities';
 import { curesFirst } from '../script/cures';
 import { forgetAwaited, setState } from '../script/state';
-import type { RoomEntity, Session } from '../Session';
+import { moving, type RoomEntity, type Session } from '../Session';
 import { findSpell } from '../spells/lookup';
 import { attack } from './attack';
 import { spellTakesTarget, wantsRoomSpell } from './casts';
@@ -24,10 +24,6 @@ import { clearCastMode } from './engaged';
 /** The main heal's immunity mark on a monster, and the minor heal's. */
 const MAIN = 0x80;
 const MINOR = 0x100;
-
-function pct(max: number, percent: number): number {
-  return idiv(max * percent, 100);
-}
 
 function hostile(e: RoomEntity): boolean {
   return e.kind === 4 || e.kind === 5 || e.kind === 6 || (e.flags & 0x10) !== 0;
@@ -42,7 +38,7 @@ function drainable(s: Session, which: number): RoomEntity | null {
  * `0x416060`: the drain heal is over: if it was the fight's spell, the fight
  * casts nothing, and the alt attack's casts are all spent.
  */
-export function drainOver(s: Session): void {
+function drainOver(s: Session): void {
   if (s.f_e364 === 0) return;
   s.f_e364 = 0;
   if (s.altSpell === '') return;
@@ -78,9 +74,8 @@ function fluxRecast(s: Session): number {
 function mayDrain(s: Session): boolean {
   let allowed = true;
   if (s.MegaMud_AutoCombat === 0 || s.runCount > 0) {
-    const moving = s.walking !== 0 || s.roaming !== 0 || s.importing !== 0;
-    if (moving && s.held === 0 && s.partyWait === 0) allowed = false;
-    if (s.MegaMud_AutoCombat === 0 && (s.following !== 0 || !moving)) allowed = false;
+    if (moving(s) && s.held === 0 && s.partyWait === 0) allowed = false;
+    if (s.MegaMud_AutoCombat === 0 && (s.following !== 0 || !moving(s))) allowed = false;
   }
   return s.f_e218 === 0 && allowed;
 }
@@ -110,18 +105,18 @@ export function selfHeal(s: Session): number {
   let mainOk = true;
   let minorOk = true;
   if (s.inCombat === 0 && n < 1) {
-    if (s.mana < pct(s.Health_ManaHealPct, s.Player_MaxMana)) return done();
+    if (s.mana < percentOf(s.Health_ManaHealPct, s.Player_MaxMana)) return done();
     const restPct = s.Health_HpHealPct;
     if (restPct > 0) {
-      if (pct(s.Player_MaxHP, restPct) <= s.hp) return done();
+      if (percentOf(s.Player_MaxHP, restPct) <= s.hp) return done();
       minorPct = restPct;
       if (s.Spells_HealCmd2 === '') mainPct = restPct;
     }
   } else {
     if (s.Health_ManaHealAttPct > 0)
-      mainOk = pct(s.Player_MaxMana, s.Health_ManaHealAttPct) <= s.mana;
+      mainOk = percentOf(s.Player_MaxMana, s.Health_ManaHealAttPct) <= s.mana;
     if (s.Health_ManaHealMinorPct > 0) {
-      minorOk = pct(s.Player_MaxMana, s.Health_ManaHealMinorPct) <= s.mana;
+      minorOk = percentOf(s.Player_MaxMana, s.Health_ManaHealMinorPct) <= s.mana;
     }
     if (!mainOk && !minorOk) return done();
   }
@@ -129,8 +124,8 @@ export function selfHeal(s: Session): number {
   let which: number;
   let minor: boolean;
   let short: string;
-  if (s.Spells_HealCmd === '' || pct(s.Player_MaxHP, mainPct) <= s.hp || !mainOk) {
-    if (s.Spells_HealCmd2 === '' || pct(s.Player_MaxHP, minorPct) <= s.hp || !minorOk) {
+  if (s.Spells_HealCmd === '' || percentOf(s.Player_MaxHP, mainPct) <= s.hp || !mainOk) {
+    if (s.Spells_HealCmd2 === '' || percentOf(s.Player_MaxHP, minorPct) <= s.hp || !minorOk) {
       return done();
     }
     which = MINOR;
@@ -307,7 +302,7 @@ export function partyHeal(s: Session): number {
   let pct2 = s.Party_PartyHeal2Pct;
   let pct1 = s.Party_PartyHeal1Pct;
   if (s.inCombat === 0 && enemiesHere(s, 0) < 1) {
-    if (s.mana < pct(s.Player_MaxMana, s.Health_ManaHealPct)) return 0;
+    if (s.mana < percentOf(s.Player_MaxMana, s.Health_ManaHealPct)) return 0;
     fighting = false;
     if (s.Party_RestHealParty !== 0 && s.Health_HpHealPct > 0) {
       pct1 = Math.max(s.Health_HpHealPct, Math.max(pct1, pct2));
@@ -316,9 +311,9 @@ export function partyHeal(s: Session): number {
   } else {
     fighting = true;
     if (s.Health_ManaHealAttPct > 0)
-      mainOk = pct(s.Player_MaxMana, s.Health_ManaHealAttPct) <= s.mana;
+      mainOk = percentOf(s.Player_MaxMana, s.Health_ManaHealAttPct) <= s.mana;
     if (s.Health_ManaHealMinorPct > 0) {
-      minorOk = pct(s.Player_MaxMana, s.Health_ManaHealMinorPct) <= s.mana;
+      minorOk = percentOf(s.Player_MaxMana, s.Health_ManaHealMinorPct) <= s.mana;
     }
     if (!mainOk && !minorOk) return 0;
   }
@@ -340,11 +335,11 @@ export function partyHeal(s: Session): number {
         minor = s.Health_HpHealPct;
         if (s.Spells_HealCmd2 === '') main = s.Health_HpHealPct;
       }
-      if (mainOk && s.Spells_HealCmd !== '' && s.hp < pct(s.Player_MaxHP, main)) {
+      if (mainOk && s.Spells_HealCmd !== '' && s.hp < percentOf(s.Player_MaxHP, main)) {
         wantMain += 1;
         m.flags28 = f | 0x10000;
       } else {
-        if (minorOk && s.Spells_HealCmd2 !== '' && s.hp < pct(s.Player_MaxHP, minor)) {
+        if (minorOk && s.Spells_HealCmd2 !== '' && s.hp < percentOf(s.Player_MaxHP, minor)) {
           wantMinor += 1;
           f |= 0x40;
         } else {
@@ -356,7 +351,7 @@ export function partyHeal(s: Session): number {
       if (
         s.Party_PartyHealArea !== '' &&
         s.Party_PartyHealAreaPct > 0 &&
-        s.hp < pct(s.Player_MaxHP, s.Party_PartyHealAreaPct)
+        s.hp < percentOf(s.Player_MaxHP, s.Party_PartyHealAreaPct)
       ) {
         wantArea += 1;
       }
@@ -449,7 +444,7 @@ export function askForHelp(s: Session): boolean {
   if (s.diseased !== 0 && askParty(s, 'diseased') !== 0) return true;
   if (s.blind !== 0 && s.Other_IgnoreBlind === 0 && askParty(s, 'blind') !== 0) return true;
   if (s.held !== 0 && askParty(s, 'held') !== 0) return true;
-  if (s.hp < pct(s.Player_MaxHP, s.Party_PartyAskHealPct)) return askParty(s, 'heal') !== 0;
+  if (s.hp < percentOf(s.Player_MaxHP, s.Party_PartyAskHealPct)) return askParty(s, 'heal') !== 0;
   return false;
 }
 

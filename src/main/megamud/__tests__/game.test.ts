@@ -15,7 +15,7 @@ import {
 } from '../script/game';
 import { newTerminal, parseData } from '../input/ParseData';
 import { expandMacros } from '../script/send';
-import { disconnect, menuCommand } from '../move/buttons';
+import { disconnect, menuCommand, playerCommand } from '../move/buttons';
 import { session } from './fixture';
 
 /* `0x42de00`, `0x47b070`'s tail, `0x42d510`, `0x4b6fe0`, `0x42c910`'s end, `0x4acc40` and `0x41bcf0`, read 2026-10-13. */
@@ -26,9 +26,10 @@ describe('macros (0x4acc40)', () => {
     s.msgTarget = 'kobold';
     s.msgArgs[1] = 'two';
     expect(expandMacros(s, 'c mmis {target}^M')).toBe('c mmis kobold\r');
-    expect(expandMacros(s, 'say {2}~ok')).toBe('say two\x01ok');
-    s.f_327a4 = 99;
-    expect(expandMacros(s, 'a~b')).toBe('a~b');
+    // As MegaMUD always leaves it (`tildeMode` 99): a tilde is itself.
+    expect(expandMacros(s, 'say {2}~ok')).toBe('say two~ok');
+    s.tildeMode = 0;
+    expect(expandMacros(s, 'a~b')).toBe('a\x01b');
   });
 
   it('keeps the exe’s quirks: an empty user-id ends the text, a lone target leaves its brace', () => {
@@ -288,6 +289,25 @@ describe('a dial that failed (0x4b71d0)', () => {
 
 /* `0x462d20`'s toggles, read 2026-10-13. */
 describe('the toolbar’s toggles', () => {
+  it('end AFK when the player gives one, with User input cancels AFK mode', () => {
+    const { s } = session();
+    s.active = 1;
+    s.MegaMud_AutoAfkOff = 1;
+    playerCommand(s, 0x821);
+    expect(s.active).toBe(0);
+    s.active = 1;
+    playerCommand(s, 0x809);
+    expect(s.active).toBe(0);
+    s.MegaMud_AutoAfkOff = 0;
+    s.active = 1;
+    playerCommand(s, 0x821);
+    expect(s.active).toBe(1);
+    // One the engine posts is not the player's.
+    s.MegaMud_AutoAfkOff = 1;
+    menuCommand(s, 0x821);
+    expect(s.active).toBe(1);
+  });
+
   it('flip Auto-Nuke, and back to idle only in a fight', () => {
     const { s } = session();
     s.MegaMud_AutoNuke = 0;

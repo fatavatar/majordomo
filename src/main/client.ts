@@ -217,6 +217,9 @@ let home: Home;
 let homeLock: HomeLock | null = null;
 
 /** What a session that has never been dialled reports. Keeps `attach` total. */
+/** What a card may ask to have sent: one line of printable text, as long as a command runs. */
+const ASKABLE = /^[\x20-\x7e]{1,80}$/;
+
 const IDLE_STATE = {
   phase: 'idle' as const,
   target: null,
@@ -1517,8 +1520,6 @@ function createInternal(): InternalStore {
 function createHost(): SessionHost {
   return new SessionHost({
     worldFor,
-    // The same write the toolbar's press makes, so the toggle shows it.
-    flipSwitch: (id, name, on) => new SettingsEditor({ home }).setAutomationSwitch(id, name, on).ok,
     internal: () => internal?.config ?? DEFAULT_INTERNAL,
     loreFor,
     spellLoreFor,
@@ -2595,21 +2596,24 @@ function registerIpc(): void {
    * player owns, so a malformed one is refused rather than matched loosely.
    */
   /*
-   * A command asked for from a card, sent through the arbiter like every
-   * automated command — which is what makes it quiet when `internal.yaml`
-   * says so. Parsed: one word, from a short allowlist, because this is a
-   * window handing main a string that becomes bytes on a socket.
+   * A command asked for from a card, sent through the engine's pending list
+   * like every automated command — which is what makes it quiet when
+   * `internal.yaml` says so. Parsed: one line of printable text, no longer
+   * than a command, because this is a window handing main a string that
+   * becomes bytes on a socket. It was one bare word, which refused the Party
+   * card's `follow <name>` and the Room card's phrases outright; a window can
+   * already type any line (`Send.input`), so a line is no wider a door.
    */
   handle(Invoke.ask, (_caller, session: SessionId, command: unknown) => {
-    if (typeof command !== 'string' || !/^[a-z]{1,8}$/.test(command)) return false;
+    if (typeof command !== 'string' || !ASKABLE.test(command) || command.trim() !== command) {
+      return false;
+    }
     return host?.get(session)?.manager.ask(command) ?? false;
   });
 
   /*
    * *Where am I standing*, in whichever word the realm's own `locate` setting
-   * names. No argument crosses from the window — `ask`'s gate is a bare verb
-   * because that is what lets a window's own string reach the socket at all,
-   * and `sys status` would fail it outright; here main reads the setting and
+   * names. No argument crosses from the window: main reads the setting and
    * picks the word itself, exactly as the gear button decides its own.
    */
   handle(Invoke.locate, (_caller, session: SessionId) => {

@@ -11,7 +11,7 @@ import { f_426ab0 } from '../combat/casts';
 import { clearCastMode, clearMultiCounts, clearTargetCasts, combatOff } from '../combat/engaged';
 import { heldRows } from '../messages/messages';
 import { enemiesHere, findEntity } from '../room/entities';
-import type { Session } from '../Session';
+import { automated, type Session } from '../Session';
 import { recheckStats } from '../stats/exp';
 import { send } from './send';
 import { forgetAwaited, setState } from './state';
@@ -141,8 +141,7 @@ export function thirtySeconds(s: Session): number {
   twoSeconds(s);
   listingTimedOut(s);
   if (s.hp < s.Player_MaxHP || (s.Player_MaxMana >= 1 && s.mana < s.Player_MaxMana)) return 0;
-  if (s.f_a32c === 0 && (s.active !== 0 || s.walking !== 0 || s.roaming !== 0 || s.importing !== 0))
-    s.host.alert?.('idle');
+  if (s.f_a32c === 0 && automated(s)) s.host.alert?.('idle');
   s.blind = 0;
   s.confused = 0;
   s.poisoned = 0;

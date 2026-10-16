@@ -26,7 +26,7 @@ import { hangUp } from '../script/game';
 import { expandMacros, noteCommands, queue, queueCommand, send } from '../script/send';
 import { forgetAwaited, setState } from '../script/state';
 import type { Session } from '../Session';
-import { findSpell, findSpellByName } from '../spells/lookup';
+import { findSpell, findSpellByName, stateSpell } from '../spells/lookup';
 import { blessCommand } from '../player/cast';
 import { blowStruck, castForgotten } from '../combat/timer';
 
@@ -117,21 +117,6 @@ function starts(s: Session, rec: MessageRec, line: string): boolean {
   if ((rec.flags & 4) !== 0) return templateMatch(s, rec.msg, line) !== 0;
   if ((rec.effects & 0x400) !== 0) return indexOf(line, rec.msg) !== -1;
   return line.startsWith(rec.msg);
-}
-
-/** The spell a cast state is configured to cast. */
-function stateSpell(s: Session, state: number): SpellRec | null {
-  const short: Record<number, string> = {
-    9: s.Combat_PreMultAttack,
-    0xa: s.Combat_MultAttack,
-    0xb: s.Combat_PreAttack,
-    0xc: s.Combat_AttackSpl2,
-    0xd: s.Combat_AttackSpl,
-    0xe: s.altSpell,
-    0xf: s.userSpell
-  };
-  const name = short[state];
-  return name ? findSpell(s, name) : null;
 }
 
 /** `0x46a920`. 1 when a row matched (or one ended). */

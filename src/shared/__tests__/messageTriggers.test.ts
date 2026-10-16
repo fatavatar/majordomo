@@ -1,13 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import {
-  asMessageTable,
-  compileSentence,
-  expandResponse,
-  matchSentence,
-  parseMegaMudMessages,
-  triggerForFile
-} from '../messageTriggers';
+import { asMessageTable, parseMegaMudMessages, triggerForFile } from '../messageTriggers';
 
 /** Records copied from MegaMUD 2.1's shipped `Default/Messages.md`, CRLF and all. */
 const FILE = [
@@ -124,88 +117,5 @@ describe('the realm file', () => {
     });
     expect(table.triggers).toHaveLength(1);
     expect(table.triggers[0]!.effects).toEqual(['blind']);
-  });
-});
-
-describe('matching a sentence', () => {
-  it('finds a plain sentence anywhere in the line', () => {
-    const compiled = compileSentence('flays you viciously');
-    expect(matchSentence(compiled, 'The wererat flays you viciously!')).toEqual({});
-    expect(matchSentence(compiled, 'The wererat bites you.')).toBeNull();
-  });
-
-  it('is case-sensitive, as MegaMUD is', () => {
-    expect(matchSentence(compileSentence('You are confused'), 'you are confused')).toBeNull();
-  });
-
-  it('captures a leading name from the start of the line', () => {
-    const compiled = compileSentence('{target} slips into the dark alley.');
-    expect(matchSentence(compiled, 'Soul Reaver slips into the dark alley.')).toEqual({
-      target: 'Soul Reaver'
-    });
-  });
-
-  it('captures damage as digits only', () => {
-    const compiled = compileSentence('You take {dmg} from the poisonous swamp');
-    expect(matchSentence(compiled, 'You take 12 from the poisonous swamp!')).toEqual({ dmg: '12' });
-    expect(matchSentence(compiled, 'You take lots from the poisonous swamp!')).toBeNull();
-  });
-
-  it('lets a trailing token take the rest of the line', () => {
-    const compiled = compileSentence('You lay hands on {target}');
-    expect(matchSentence(compiled, 'You lay hands on Naji Hollow.')).toEqual({
-      target: 'Naji Hollow.'
-    });
-  });
-
-  it('treats regex characters in the sentence as literal text', () => {
-    const compiled = compileSentence('You suffer in the desert heat...');
-    expect(matchSentence(compiled, 'You suffer in the desert heat...')).toEqual({});
-    expect(matchSentence(compiled, 'You suffer in the desert heatxyz')).toBeNull();
-  });
-});
-
-describe('expanding a response', () => {
-  it('sends a bare Enter for ^M alone', () => {
-    expect(expandResponse('^M', {})).toEqual([{ command: '', delayMs: 0 }]);
-  });
-
-  it('splits commands on ^M and sends a last one with no ^M after it', () => {
-    expect(expandResponse('.LOW ON LIVES!^M=x', {})).toEqual([
-      { command: '.LOW ON LIVES!', delayMs: 0 },
-      { command: '=x', delayMs: 0 }
-    ]);
-    expect(expandResponse('drink water', {})).toEqual([{ command: 'drink water', delayMs: 0 }]);
-  });
-
-  it('delays what follows a ~ by half a second each', () => {
-    expect(expandResponse('rem ring^M~~wear ring^M', {})).toEqual([
-      { command: 'rem ring', delayMs: 0 },
-      { command: 'wear ring', delayMs: 1000 }
-    ]);
-  });
-
-  it('picks one alternative, and an empty one sends nothing', () => {
-    expect(expandResponse('hi||hello||', {}, () => 0)).toEqual([{ command: 'hi', delayMs: 0 }]);
-    expect(expandResponse('hi||hello||', {}, () => 0.5)).toEqual([
-      { command: 'hello', delayMs: 0 }
-    ]);
-    expect(expandResponse('hi||hello||', {}, () => 0.99)).toEqual([]);
-  });
-
-  it('substitutes what the sentence captured', () => {
-    expect(expandResponse('cast heal {target}^M', { target: 'Naji' })).toEqual([
-      { command: 'cast heal Naji', delayMs: 0 }
-    ]);
-  });
-
-  it('never substitutes the account', () => {
-    expect(expandResponse('say {pswd}', {})).toEqual([{ command: 'say {pswd}', delayMs: 0 }]);
-  });
-
-  it('reads the escaped literals', () => {
-    expect(expandResponse('say a^|b ^~ c^^', {})).toEqual([
-      { command: 'say a|b ~ c^', delayMs: 0 }
-    ]);
   });
 });

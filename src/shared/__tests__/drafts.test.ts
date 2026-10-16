@@ -56,8 +56,6 @@ describe('a saved server', () => {
       locate: 'rm',
       loops: [],
       database: '',
-      // Absent above: a realm rules nothing until somebody playing it says so.
-      hangPenalties: null,
       // And renames no coin until it says so.
       coins: {},
       bbs: {}
@@ -294,10 +292,6 @@ describe('a character', () => {
         // The bounds on trying again; absent in the payload, so zero.
         recoverGearTries: 0,
         recoverGearFloor: 0,
-        walkWhileBlind: false,
-        walkWhilePoisoned: false,
-        walkWhileConfused: false,
-        walkWhileLosingHp: false,
         // Off unless said: the dangerous regions stay out of planning.
         fightOnArrival: true,
         // A list the payload did not send keeps the shipped words, since an
@@ -377,10 +371,6 @@ describe('a character', () => {
         // The bounds on trying again; absent in the payload, so zero.
         recoverGearTries: 0,
         recoverGearFloor: 0,
-        walkWhileBlind: false,
-        walkWhilePoisoned: false,
-        walkWhileConfused: false,
-        walkWhileLosingHp: false,
         // Off unless said: the dangerous regions stay out of planning.
         fightOnArrival: true,
         keepOutOf: ['vortex', 'Negative Power Plane'],

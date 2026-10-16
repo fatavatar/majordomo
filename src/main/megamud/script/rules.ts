@@ -10,7 +10,7 @@ import { healthStep } from '../health/rest';
 import { membersInStep, weakestMember } from '../party/members';
 import { hangupAllowed } from '../room/checkNames';
 import { enemiesHere, findEntity } from '../room/entities';
-import { atoi, stricmp } from '../cstr';
+import { atoi, rowField, stricmp } from '../cstr';
 import type { Rule, Session } from '../Session';
 import { stamp } from './events';
 import { hangUp } from './game';
@@ -128,13 +128,6 @@ export function rulesStep(s: Session): number {
   }
 }
 
-/** A number at the front of `text` (`0x4ad430`), and the text after it and one `:` (`0x4acb90`). */
-function field(text: string): [number, string] {
-  const m = /^ *(-?\d*)/.exec(text)!;
-  const rest = text.slice(m[0].length);
-  return [Number(m[1]) | 0, rest.startsWith(':') ? rest.slice(1) : rest];
-}
-
 /** `0x49c820`: the rules from the character's `[Rules]`: `R1`, `R2`, … each `kind:what:test:text`. */
 export function loadRules(s: Session, read: (key: string) => string): void {
   s.rules = [];
@@ -144,9 +137,9 @@ export function loadRules(s: Session, read: (key: string) => string): void {
     let kind: number;
     let what: number;
     let test: number;
-    [kind, text] = field(text);
-    [what, text] = field(text);
-    [test, text] = field(text);
+    [kind, text] = rowField(text);
+    [what, text] = rowField(text);
+    [test, text] = rowField(text);
     // `0x4ad0f0`: up to the next `:`, 40 characters.
     const colon = text.indexOf(':');
     s.rules.push({
@@ -157,13 +150,4 @@ export function loadRules(s: Session, read: (key: string) => string): void {
     });
   }
   s.rulesChanged = 0;
-}
-
-/** `0x49dbb0`: the rules as `[Rules]` keys. */
-export function saveRules(s: Session): Record<string, string> {
-  const out: Record<string, string> = {};
-  s.rules.forEach((r, i) => {
-    out[`R${i + 1}`] = `${r.kind}:${r.what}:${r.test}:${r.text}`;
-  });
-  return out;
 }

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { AUTOMATION_SWITCH_NAMES, automationSwitches, DEFAULT_CONFIG } from '@shared/config';
+import { automationSwitches, DEFAULT_CONFIG } from '@shared/config';
 import { DEFAULT_INTERNAL } from '@shared/internal';
 
 import { NOT_MOVING, type Movement } from '@shared/movement';
@@ -51,10 +51,9 @@ describe('the toolbar vocabulary', () => {
     expect(ids).toContain('move:toggle');
   });
 
-  it('offers every automation switch and every action, exactly once', () => {
+  it('offers every action, exactly once', () => {
     const ids = toolbarButtons(subject()).map((button) => button.id);
     expect(new Set(ids).size).toBe(ids.length);
-    for (const name of AUTOMATION_SWITCH_NAMES) expect(ids).toContain(name);
     for (const action of TOOLBAR_ACTIONS) expect(ids).toContain(action);
   });
 
@@ -93,17 +92,6 @@ describe('the toolbar vocabulary', () => {
       toolbarButtons(subject({ dialling: true })).find((button) => button.id === 'connect')!
         .disabled
     ).toBe(true);
-  });
-
-  it('flips a switch to the opposite of what the character says', () => {
-    const setSwitch = vi.fn();
-    const on = automationSwitches(DEFAULT_CONFIG.automation);
-    on.combat = true;
-    const buttons = toolbarButtons(subject({ switches: on, setSwitch }));
-    buttons.find((button) => button.id === 'combat')!.run();
-    expect(setSwitch).toHaveBeenCalledWith('combat', false);
-    buttons.find((button) => button.id === 'retreat')!.run();
-    expect(setSwitch).toHaveBeenCalledWith('retreat', true);
   });
 
   /*
@@ -176,17 +164,6 @@ describe('a toolbar drawn out of the realm', () => {
     expect(key('connect', { dialling: true }).disabled).toBe(true);
   });
 
-  /* A switch writes that character's own file, which wants no connection at
-     all — turning automation off before dialling is the ordinary use. */
-  it('leaves every switch pressable, and pressing one still writes', () => {
-    const setSwitch = vi.fn();
-    for (const name of AUTOMATION_SWITCH_NAMES) {
-      expect(key(name).disabled, `${name} was greyed`).toBeUndefined();
-    }
-    key('combat', { setSwitch }).run();
-    expect(setSwitch).toHaveBeenCalledWith('combat', true);
-  });
-
   /* The shelf and the builder are where a loop is found and drawn, neither of
      which needs a room. */
   it('leaves the shelf and the builder pressable', () => {
@@ -208,11 +185,11 @@ describe('the shipped toolbar row', () => {
 
   it('names only buttons this build actually has', () => {
     const shipped = shippedToolbar(
-      ['connect', 'automation', 'combat', 'retaliate', 'loot', 'move:toggle', 'loop:stop'],
+      ['connect', 'fleeGoto', 'mega:combat', 'combat', 'move:toggle', 'loop:stop'],
       ids
     );
     expect([...shipped].sort()).toEqual(
-      ['automation', 'combat', 'connect', 'move:toggle', 'loot', 'retaliate'].sort()
+      ['connect', 'fleeGoto', 'mega:combat', 'move:toggle'].sort()
     );
   });
 
@@ -286,7 +263,15 @@ describe('the MegaMUD engine’s toggles', () => {
     const toggles = buttons.filter((b) => b.id.startsWith('mega:'));
     expect(toggles.map((b) => b.id)).toEqual(MEGA_TOGGLES.map((t) => `mega:${t.name}`));
     expect(toggles.find((b) => b.id === 'mega:combat')?.on).toBe(true);
-    expect(buttons.some((b) => b.id === 'combat')).toBe(false);
+  });
+
+  /* Our flee beside them, the one switch left, writing the character's file. */
+  it('draw our flee beside them, and pressing it writes', () => {
+    const setSwitch = vi.fn();
+    const buttons = toolbarButtons(subject({ mega, setSwitch }));
+    expect(buttons.some((b) => (b.id as string) === 'combat')).toBe(false);
+    buttons.find((b) => b.id === 'fleeGoto')!.run();
+    expect(setSwitch).toHaveBeenCalledWith('fleeGoto', true);
   });
 
   /* `0x460d50`: All Off greys every toggle but itself, and Go/Stop; No Hangup is Connect's. */

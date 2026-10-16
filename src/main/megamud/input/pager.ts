@@ -12,12 +12,8 @@ import { hangUp } from '../script/game';
 import { expandMacros, send } from '../script/send';
 import { setState } from '../script/state';
 import { setTask } from '../script/task';
-import type { Session } from '../Session';
+import { automated, type Session } from '../Session';
 import { recheckStats } from '../stats/exp';
-
-function automated(s: Session): boolean {
-  return s.active !== 0 || s.walking !== 0 || s.roaming !== 0 || s.importing !== 0;
-}
 
 /** `0x4ac960`: the version in a `P A R A D I G M` banner (`v1.2.3`), or null. */
 function paradigmVersion(line: string): [number, number, number] | null {

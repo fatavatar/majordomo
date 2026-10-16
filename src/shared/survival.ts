@@ -128,17 +128,6 @@ export interface Survival {
   trials: number;
 }
 
-/**
- * A fight the odds book holds: waiting for the character's own figures to be
- * read, queued to be run, one `simulateFight` cannot run (it answered null),
- * or the run.
- */
-export type Odds =
-  | { kind: 'unread' }
-  | { kind: 'pending' }
-  | { kind: 'unrun' }
-  | { kind: 'run'; survival: Survival };
-
 /** The level a share of fights survived reads as. */
 export function survivalLevel(survives: number, levels: SurvivalLevels): SurvivalLevel {
   if (survives > levels.safeAbove) return 'safe';

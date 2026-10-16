@@ -11,7 +11,7 @@ import { clearMultiCounts, targetLeft } from '../combat/engaged';
 import { indexFrom, indexOf, stricmp, trimSpaces } from '../cstr';
 import type { Session } from '../Session';
 import { checkNames, coinValue } from './checkNames';
-import { addEntity, enemiesHere, findEntity, removeEntity } from './entities';
+import { addEntity, dropUnkeptCreatures, enemiesHere, findEntity, removeEntity } from './entities';
 
 /** The class spirits a "spirit" summon adds to the room's signature (`0x8130`), by its order. */
 const SPIRITS = [
@@ -44,7 +44,7 @@ export function alsoHereLine(s: Session, line: string): number {
     if (s.state === 0x20) return 1;
     before = enemiesHere(s, s.Combat_AttackNeutral);
     for (const e of s.room) if (e.type !== 3) e.flags |= 4;
-    dropUnkept(s);
+    dropUnkeptCreatures(s);
     at = found + 0xb;
   } else {
     at = 0;
@@ -114,15 +114,6 @@ export function alsoHereLine(s: Session, line: string): number {
   s.lineFlags |= 8;
   if (s.target !== '' && !findEntity(s, s.target, 0)) targetLeft(s);
   return 1;
-}
-
-/** `0x4726a0` as `0x473f80` calls it: drop the creatures that are not kept. */
-function dropUnkept(s: Session): void {
-  for (let i = s.room.length - 1; i >= 0; i -= 1) {
-    const e = s.room[i]!;
-    if ((e.flags & 1) === 0 && e.type !== 3) removeEntity(s, i);
-  }
-  s.roomSelected = -1;
 }
 
 /**

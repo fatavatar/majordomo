@@ -45,17 +45,12 @@ import type {
   HealthConfig,
   MovementConfig,
   LootConfig,
-  DropConfig,
   SearchConfig,
-  BankingConfig,
   HuntingAutomationConfig,
   GearConfig,
   QuestsConfig,
-  TrainConfig,
   RemotesConfig,
-  StatlineConfig,
   RewritesUiConfig,
-  TalkConfig,
   AfkConfig,
   Server,
   SpellsConfig,
@@ -447,11 +442,10 @@ export interface ProfileEditable {
    * vocabulary. See `LoginConfig.steps`.
    */
   login: LoginStepDraft[];
-  /** Resolved, so inherited values show; `penalties` alone is this character's own, null where it inherits. */
+  /** Resolved, so inherited values show. */
   hangUp: {
     enabled: boolean;
     belowHealth: number;
-    penalties: boolean | null;
     onPlayerInRoom: boolean;
   };
   retreat: {
@@ -482,22 +476,18 @@ export interface ProfileEditable {
   movement: MovementConfig;
   /** Going hunting on its own — where this character should be. Resolved. */
   hunting: HuntingAutomationConfig;
-  /** Spending character points on the stat screen. Resolved, like the rest. */
-  train: TrainConfig;
   /** Running a quest's plan (todo 102). Resolved, like the rest. */
   quests: QuestsConfig;
   /** Which kit to be in, and when. See `GearConfig`. */
   gear: GearConfig;
   /*
-   * What the character picks up, puts down, searches for and banks — resolved,
+   * What the character picks up and searches for — resolved,
    * like the rest (todo 03, 2026-09-12). They were reachable only on the
    * Global page, so `automation.loot` was a client-wide answer to a question
    * two characters on one realm rarely answer the same way.
    */
   loot: LootConfig;
-  drop: DropConfig;
   search: SearchConfig;
-  banking: BankingConfig;
   /**
    * Whether this character answers another player's `@` commands. Resolved.
    *
@@ -508,10 +498,6 @@ export interface ProfileEditable {
   remotes: RemotesConfig;
   /** Answering for an absent player. Resolved, like the rest. */
   afk: AfkConfig;
-  /** What this character learns about other people. Resolved, like the rest. */
-  talk: TalkConfig;
-  /** Whether the client sets the prompt's shape on the way in. Resolved, like the rest. */
-  statline: StatlineConfig;
   /** The status line and listings this player designed for this character. Resolved, like the rest. */
   rewrites: RewritesUiConfig;
   /**
@@ -1031,10 +1017,8 @@ export const Invoke = {
    * A gear button: put the kit back on, put it all on, take it all off, or one
    * item.
    *
-   * Its own channel rather than `ask`, which takes a bare verb of at most eight
-   * lowercase letters and no argument — deliberately, because that is what lets
-   * it accept a string from a renderer at all. These need an *item name*, and
-   * the answer is not to widen that gate but to make main decide: it holds the
+   * Its own channel rather than `ask`: these need an *item name*, and the
+   * answer is to make main decide: it holds the
    * pack, the remembered loadout and the realm's own word on what can be worn,
    * so what crosses is an action from a closed list and, for one item, a name
    * that is checked against the pack before it becomes a command.
@@ -1564,17 +1548,17 @@ export interface IpcApi {
    */
   forgetCharacter(session: SessionId): Promise<boolean>;
   names(session: SessionId): Promise<WorldNames>;
-  /** Whether the arbiter took it. */
+  /**
+   * A command a card asks to have sent, one printable line: on the engine's
+   * pending list. Whether it was taken — false for one already waiting there.
+   */
   ask(session: SessionId, command: string): Promise<boolean>;
   /**
    * *Where am I standing*, asked in whichever word this realm's own `locate`
    * setting names — `rm`, `sys status`, or nothing at all.
    *
-   * Its own channel rather than `ask`, which is gated to a bare verb of at
-   * most eight lowercase letters: `sys status` has a space in it and is
-   * eleven characters, so that gate would refuse it outright, and the answer
-   * is the same one the gear button found — main decides which word this is,
-   * not the window. Resolves to whether anything was actually asked: a realm
+   * Its own channel rather than `ask`, for the reason the gear button has
+   * one: main decides which word this is, not the window. Resolves to whether anything was actually asked: a realm
    * configured for `'none'`, or one whose configured word the wire has
    * already refused this connection, asks nothing and says so by returning
    * `false`.

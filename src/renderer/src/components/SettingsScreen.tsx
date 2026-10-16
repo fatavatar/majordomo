@@ -20,7 +20,6 @@ import RealmItems from './RealmItems';
 import RealmSpellLore from './RealmSpellLore';
 import { MonsterRuleList } from './MonsterRules';
 import SettingsNav, { type NavFieldset, type NavSection } from './SettingsNav';
-import Icon from './Icon';
 import FormField, {
   CheckField,
   NumberField,
@@ -32,6 +31,7 @@ import Advanced from './Advanced';
 import { ItemDetailsFieldset } from './CarrySections';
 import FormActions from './FormActions';
 import GlobalSettings from './GlobalSettings';
+import LoginSteps from './LoginSteps';
 import LoopSection from './LoopSection';
 import MegaMudLoopImport from './MegaMudLoopImport';
 import { WardRules } from './PotionList';
@@ -92,8 +92,6 @@ import {
   DEFAULT_CONFIG,
   DEFAULT_REALM_NAME,
   RETREAT_STRATEGIES,
-  type BankingConfig,
-  type DropConfig,
   type EngagePolicy,
   type LocateMethod,
   type LootConfig,
@@ -103,7 +101,6 @@ import {
   type RewritesUiConfig,
   type SearchConfig
 } from '@shared/config';
-import { TRAINED_ATTRIBUTES, type TrainedAttribute } from '@shared/training';
 import {
   ACTIONABLE_REMOTES,
   type BotCommand,
@@ -129,20 +126,6 @@ const DEFAULT_HEALTH = DEFAULT_CONFIG.automation.health;
 const DEFAULT_MOVEMENT = DEFAULT_CONFIG.automation.movement;
 const DEFAULT_SPELLS = DEFAULT_CONFIG.automation.spells;
 
-/** The six wanted figures as the form holds them: strings, so a half-typed one is not a 0. */
-function wantedStrings(
-  wanted: Record<TrainedAttribute, string | number>
-): Record<TrainedAttribute, string> {
-  const out = {} as Record<TrainedAttribute, string>;
-  for (const attribute of TRAINED_ATTRIBUTES) out[attribute] = String(wanted[attribute]);
-  return out;
-}
-function wantedNumbers(wanted: Record<TrainedAttribute, string>): Record<TrainedAttribute, number> {
-  const out = {} as Record<TrainedAttribute, number>;
-  for (const attribute of TRAINED_ATTRIBUTES)
-    out[attribute] = Number.parseInt(wanted[attribute], 10) || 0;
-  return out;
-}
 const DEFAULT_ALERTS = DEFAULT_CONFIG.ui.alerts;
 
 /**
@@ -232,8 +215,7 @@ function PlayerGrants({
           <h4 className="settings-subhead">
             {t('settings.remotes.playerLegend', { name: who })}
             <button
-              className="chip toggle"
-              data-level="critical"
+              className="quiet"
               onClick={() => write(who, { allow: [], deny: [] })}
               onMouseDown={keepFocus}
               title={t('settings.remotes.removePlayerTitle', { name: who })}
@@ -516,7 +498,11 @@ type RealmSection = 'realm' | 'loops' | 'messages' | 'monsters' | 'items' | 'spe
 
 function realmSections(): NavSection[] {
   return [
-    { id: 'realm', label: t('settings.realms.sections.realm'), fieldsets: [] },
+    {
+      id: 'realm',
+      label: t('settings.realms.sections.realm'),
+      fieldsets: [{ id: 'realm-login', label: t('settings.realms.loginLegend') }]
+    },
     { id: 'loops', label: t('settings.realms.sections.loops'), fieldsets: [] },
     { id: 'messages', label: t('settings.realms.sections.messages'), fieldsets: [] },
     { id: 'monsters', label: t('settings.realms.sections.monsters'), fieldsets: [] },
@@ -526,7 +512,6 @@ function realmSections(): NavSection[] {
       id: 'megamud',
       label: t('settings.realms.sections.megamud'),
       fieldsets: [
-        { id: 'realm-hang-penalties', label: t('settings.health.hangUpLegend') },
         { id: 'realm-coins', label: t('settings.realms.coinsLegend') },
         { id: 'realm-bbs', label: t('settings.realms.bbsLegend') }
       ]
@@ -546,7 +531,6 @@ const SECTION_FIELDSETS: Readonly<Record<Section, readonly NavFieldset[]>> = {
     { id: 'bot-commands', label: t('settings.botCommands.legend') }
   ],
   Sounds: [{ id: 'alerts-rules', label: t('settings.alerts.ruleLegend') }],
-  Other: [{ id: 'movement-doors', label: t('settings.movement.doorsLegend') }],
   Health: [
     { id: 'health-flee', label: t('settings.health.fleeLegend') },
     { id: 'health-wards', label: t('settings.health.wardsLegend') }
@@ -582,8 +566,6 @@ interface CharacterForm {
   login: LoginStepDraft[];
   hangUp: boolean;
   hangUpBelow: string;
-  /** This character's own answer, null where it is left to the realm (todo 01). */
-  hangUpPenalties: boolean | null;
   hangUpOnPlayer: boolean;
   pvpNotifyGang: boolean;
   pvpAction: PvpAction;
@@ -712,10 +694,6 @@ interface CharacterForm {
   lightDimRooms: boolean;
   extinguishInLight: boolean;
   /** Conditions as waits, inverted: off waits blindness / poison out. */
-  walkWhileBlind: boolean;
-  walkWhilePoisoned: boolean;
-  walkWhileConfused: boolean;
-  walkWhileLosingHp: boolean;
   /** The dangerous regions route planning keeps out of unless told. */
   fightOnArrival: boolean;
   /** Ways and places routes keep out of. See `MovementConfig`. */
@@ -726,12 +704,6 @@ interface CharacterForm {
   huntAuto: boolean;
   /** How far to look for a lair, as text; '' is everywhere the exits reach. */
   huntRadius: string;
-  /** Spending character points on the stat screen — `automation.train`. */
-  trainStats: boolean;
-  trainLevels: boolean;
-  /** The chosen trainer's shop row, as text, or '' for the cheapest. */
-  trainTrainer: string;
-  trainWanted: Record<TrainedAttribute, string>;
   /** Running a quest's plan — `automation.quests`. */
   questsEnabled: boolean;
   /** Which kit to be in, and when — `automation.gear`. */
@@ -741,8 +713,8 @@ interface CharacterForm {
   /** As text, so a half-typed figure is not read as 0. */
   gearOffRoundEvery: string;
   /*
-   * Held whole, like `rewrites`, rather than flattened into eighteen fields.
-   * They are the *same four blocks the Global page edits*, and the controls
+   * Held whole, like `rewrites`, rather than flattened into fields.
+   * They are the *same blocks the Global page edits*, and the controls
    * below are that page's controls unchanged — a flattened copy here would be
    * a second spelling of each field for a form to forget one of. The numbers
    * inside are numbers rather than the strings the flat fields use, which is
@@ -750,9 +722,7 @@ interface CharacterForm {
    * so far, and the clamp is the same one on both pages.
    */
   loot: LootConfig;
-  drop: DropConfig;
   search: SearchConfig;
-  banking: BankingConfig;
   /**
    * The loops this character walks — `automation.loops`.
    *
@@ -777,9 +747,6 @@ interface CharacterForm {
   afkReply: string;
   /** Whether this character answers another player's `@` commands. */
   answerRemotes: boolean;
-  lookAtPlayers: boolean;
-  /** Whether the client sets the prompt's shape on the way in — `automation.statline`. */
-  statlineControl: boolean;
   /** The status line and listings this player designed — `ui.rewrites`. */
   rewrites: RewritesUiConfig;
   /** Whether the gang's own channel is one of the channels it answers on. */
@@ -835,7 +802,6 @@ function formOf(entry: ProfileEditable): CharacterForm {
     // As a percentage, because that is how somebody thinks about health. The
     // file keeps a fraction, so the whole client holds one representation.
     hangUpBelow: String(Math.round(entry.hangUp.belowHealth * 100)),
-    hangUpPenalties: entry.hangUp.penalties,
     hangUpOnPlayer: entry.hangUp.onPlayerInRoom,
     pvpNotifyGang: entry.pvp.notifyGang,
     pvpAction: entry.pvp.action,
@@ -917,19 +883,11 @@ function formOf(entry: ProfileEditable): CharacterForm {
     recoverGearFloor: String(entry.movement.recoverGearFloor),
     lightDimRooms: entry.movement.lightDimRooms,
     extinguishInLight: entry.movement.extinguishInLight,
-    walkWhileBlind: entry.movement.walkWhileBlind,
-    walkWhilePoisoned: entry.movement.walkWhilePoisoned,
-    walkWhileConfused: entry.movement.walkWhileConfused,
-    walkWhileLosingHp: entry.movement.walkWhileLosingHp,
     fightOnArrival: entry.movement.fightOnArrival,
     keepOutOf: [...entry.movement.keepOutOf],
     collectKeys: entry.movement.collectKeys,
     huntAuto: entry.hunting.enabled,
     huntRadius: entry.hunting.radius > 0 ? String(entry.hunting.radius) : '',
-    trainStats: entry.train.stats,
-    trainLevels: entry.train.levels,
-    trainTrainer: entry.train.trainer > 0 ? String(entry.train.trainer) : '',
-    trainWanted: wantedStrings(entry.train.wanted),
     questsEnabled: entry.quests.enabled,
     gearEnabled: entry.gear.enabled,
     gearSets: entry.gear.sets.map((set) => ({ ...set, wear: [...set.wear] })),
@@ -937,9 +895,7 @@ function formOf(entry: ProfileEditable): CharacterForm {
     gearOffRoundEvery:
       entry.gear.offRound.everyRounds > 0 ? String(entry.gear.offRound.everyRounds) : '',
     loot: structuredClone(entry.loot),
-    drop: structuredClone(entry.drop),
     search: { ...entry.search },
-    banking: { ...entry.banking },
     // This character's *own* loops. What it inherits is shown beside them and
     // is not editable from here -- see `LoopSection`.
     loops: entry.loops,
@@ -954,8 +910,6 @@ function formOf(entry: ProfileEditable): CharacterForm {
     remoteParty: [...entry.remotes.party],
     remotePlayers: entry.remotes.players,
     remoteCommands: entry.remotes.commands,
-    lookAtPlayers: entry.talk.lookAtPlayers,
-    statlineControl: entry.statline.control,
     rewrites: entry.rewrites
   };
 }
@@ -1070,7 +1024,6 @@ function draftOf(form: CharacterForm): ProfileDraft {
     hangUp: {
       enabled: form.hangUp,
       belowHealth: (Number.parseInt(form.hangUpBelow, 10) || 0) / 100,
-      penalties: form.hangUpPenalties,
       onPlayerInRoom: form.hangUpOnPlayer
     },
     pvp: { notifyGang: form.pvpNotifyGang, action: form.pvpAction },
@@ -1157,10 +1110,6 @@ function draftOf(form: CharacterForm): ProfileDraft {
       recoverGearFloor: Number.parseInt(form.recoverGearFloor, 10) || 0,
       lightDimRooms: form.lightDimRooms,
       extinguishInLight: form.extinguishInLight,
-      walkWhileBlind: form.walkWhileBlind,
-      walkWhilePoisoned: form.walkWhilePoisoned,
-      walkWhileConfused: form.walkWhileConfused,
-      walkWhileLosingHp: form.walkWhileLosingHp,
       fightOnArrival: form.fightOnArrival,
       keepOutOf: form.keepOutOf,
       collectKeys: form.collectKeys
@@ -1170,14 +1119,6 @@ function draftOf(form: CharacterForm): ProfileDraft {
       // Blank and 0 are the same answer — *everywhere the exits reach* — which
       // is what the field's own hint says.
       radius: Number.parseInt(form.huntRadius, 10) || 0
-    },
-    train: {
-      stats: form.trainStats,
-      wanted: wantedNumbers(form.trainWanted),
-      levels: form.trainLevels,
-      // 0 is *the cheapest that will take me*, which is what the picker's
-      // first entry means and what an unset field says.
-      trainer: Number.parseInt(form.trainTrainer, 10) || 0
     },
     quests: { enabled: form.questsEnabled },
     gear: {
@@ -1196,9 +1137,7 @@ function draftOf(form: CharacterForm): ProfileDraft {
       }
     },
     loot: form.loot,
-    drop: form.drop,
     search: form.search,
-    banking: form.banking,
     loops: form.loops,
     alerts: {
       // Whole, with the name trimmed as `normalizeAlertRules` trims it: a row
@@ -1220,8 +1159,6 @@ function draftOf(form: CharacterForm): ProfileDraft {
       // Rows not yet saying what is asked or sent are not written.
       commands: form.remoteCommands.filter((c) => c.word.trim() !== '' && c.send.trim() !== '')
     },
-    talk: { lookAtPlayers: form.lookAtPlayers },
-    statline: { control: form.statlineControl },
     rewrites: form.rewrites
   };
 }
@@ -1287,15 +1224,6 @@ function copyOf(entry: ProfileEditable): CharacterForm {
 /** This form keeps every field as the string in its box, so the percent is one too. */
 const percent = (fraction: number): string => String(percentOf(fraction));
 
-/** A three-way answer as the select spells it: blank leaves it to the scope above. */
-function penaltiesChoice(value: boolean | null): string {
-  return value === null ? '' : value ? 'yes' : 'no';
-}
-
-function penaltiesOf(choice: string): boolean | null {
-  return choice === 'yes' ? true : choice === 'no' ? false : null;
-}
-
 function emptyServerForm(defaults: GlobalDraft | null): ServerDraft {
   return {
     name: '',
@@ -1312,7 +1240,6 @@ function emptyServerForm(defaults: GlobalDraft | null): ServerDraft {
     // somebody says otherwise. There is no Global default to copy: a map is a
     // fact about one place, so there is no sensible "next realm" value for it.
     database: '',
-    hangPenalties: null,
     // The stock names until somebody says this realm renames one.
     coins: {},
     // MegaMUD's defaults until somebody says this realm differs.
@@ -1349,24 +1276,19 @@ function emptyForm(
   const party = defaults?.automation.party ?? DEFAULT_CONFIG.automation.party;
   const movement = defaults?.automation.movement ?? DEFAULT_MOVEMENT;
   const hunting = defaults?.automation.hunting ?? DEFAULT_CONFIG.automation.hunting;
-  const train = defaults?.automation.train ?? DEFAULT_CONFIG.automation.train;
   const quests = defaults?.automation.quests ?? DEFAULT_CONFIG.automation.quests;
   const gear = defaults?.automation.gear ?? DEFAULT_CONFIG.automation.gear;
   const spells = defaults?.automation.spells ?? DEFAULT_SPELLS;
   const alerts = defaults?.ui.alerts ?? DEFAULT_ALERTS;
   const remotes = defaults?.automation.remotes ?? DEFAULT_CONFIG.automation.remotes;
   const afk = defaults?.automation.afk ?? DEFAULT_CONFIG.automation.afk;
-  const talk = defaults?.automation.talk ?? DEFAULT_CONFIG.automation.talk;
-  const statline = defaults?.automation.statline ?? DEFAULT_CONFIG.automation.statline;
   const rewrites = defaults?.ui.rewrites ?? DEFAULT_CONFIG.ui.rewrites;
   const retreat = defaults?.automation.retreat ?? DEFAULT_CONFIG.automation.safety.retreat;
   const fleeGoto = defaults?.automation.fleeGoto ?? DEFAULT_CONFIG.automation.safety.fleeGoto;
   const hangUp = defaults?.automation.hangUp ?? DEFAULT_CONFIG.automation.safety.hangUp;
   const pvp = defaults?.automation.pvp ?? DEFAULT_CONFIG.automation.safety.pvp;
   const loot = defaults?.automation.loot ?? DEFAULT_CONFIG.automation.loot;
-  const drop = defaults?.automation.drop ?? DEFAULT_CONFIG.automation.drop;
   const search = defaults?.automation.search ?? DEFAULT_CONFIG.automation.search;
-  const banking = defaults?.automation.banking ?? DEFAULT_CONFIG.automation.banking;
 
   return {
     id: '',
@@ -1422,7 +1344,6 @@ function emptyForm(
     hangUpBelow: percent(hangUp.belowHealth),
     // Not the options file's answer copied down: a copy would outrank the
     // realm's own, and whether a realm charges is a fact about the realm.
-    hangUpPenalties: null,
     hangUpOnPlayer: hangUp.onPlayerInRoom,
     pvpNotifyGang: pvp.notifyGang,
     pvpAction: pvp.action,
@@ -1501,28 +1422,18 @@ function emptyForm(
     recoverGearFloor: String(movement.recoverGearFloor),
     lightDimRooms: movement.lightDimRooms,
     extinguishInLight: movement.extinguishInLight,
-    walkWhileBlind: movement.walkWhileBlind,
-    walkWhilePoisoned: movement.walkWhilePoisoned,
-    walkWhileConfused: movement.walkWhileConfused,
-    walkWhileLosingHp: movement.walkWhileLosingHp,
     fightOnArrival: movement.fightOnArrival,
     keepOutOf: [...movement.keepOutOf],
     collectKeys: movement.collectKeys,
     huntAuto: hunting.enabled,
     huntRadius: hunting.radius > 0 ? String(hunting.radius) : '',
-    trainStats: train.stats,
-    trainLevels: train.levels,
-    trainTrainer: train.trainer > 0 ? String(train.trainer) : '',
-    trainWanted: wantedStrings(train.wanted),
     questsEnabled: quests.enabled,
     gearEnabled: gear.enabled,
     gearSets: gear.sets.map((set) => ({ ...set, wear: [...set.wear] })),
     gearOffRoundItem: gear.offRound.item,
     gearOffRoundEvery: gear.offRound.everyRounds > 0 ? String(gear.offRound.everyRounds) : '',
     loot: structuredClone(loot),
-    drop: structuredClone(drop),
     search: { ...search },
-    banking: { ...banking },
     loops: [],
     alertRules: (alerts.rules ?? []).map((rule) => ({ ...rule })),
     afkEnabled: afk.enabled,
@@ -1535,8 +1446,6 @@ function emptyForm(
     remoteParty: [...remotes.party],
     remotePlayers: remotes.players,
     remoteCommands: remotes.commands,
-    lookAtPlayers: talk.lookAtPlayers,
-    statlineControl: statline.control,
     rewrites
   };
 }
@@ -2977,78 +2886,6 @@ export default function SettingsScreen({
                         })}
                       </p>
 
-                      {form.login.length > 0 && (
-                        <ul className="settings-steps">
-                          {form.login.map((step, index) => (
-                            <li key={index}>
-                              <input
-                                aria-label={t('settings.login.stepWhenAria', {
-                                  stepNumber: index + 1
-                                })}
-                                onChange={(event) =>
-                                  patch({
-                                    login: form.login.map((entry, at) =>
-                                      at === index ? { ...entry, when: event.target.value } : entry
-                                    )
-                                  })
-                                }
-                                placeholder={t('settings.login.stepWhenPlaceholder')}
-                                value={step.when}
-                              />
-                              <span aria-hidden="true" className="arrow">
-                                →
-                              </span>
-                              <input
-                                aria-label={t('settings.login.stepSendAria', {
-                                  stepNumber: index + 1
-                                })}
-                                className="answer"
-                                onChange={(event) =>
-                                  patch({
-                                    login: form.login.map((entry, at) =>
-                                      at === index ? { ...entry, send: event.target.value } : entry
-                                    )
-                                  })
-                                }
-                                placeholder={t('settings.login.stepSendPlaceholder')}
-                                value={step.send}
-                              />
-                              <input
-                                aria-label={t('settings.login.stepRepeatAria', {
-                                  stepNumber: index + 1
-                                })}
-                                checked={step.repeat ?? false}
-                                className="repeat"
-                                onChange={(event) =>
-                                  patch({
-                                    login: form.login.map((entry, at) =>
-                                      at === index
-                                        ? { ...entry, repeat: event.target.checked }
-                                        : entry
-                                    )
-                                  })
-                                }
-                                title={t('settings.login.stepRepeatTitle')}
-                                type="checkbox"
-                              />
-                              <button
-                                aria-label={t('settings.login.removeStepAria', {
-                                  stepNumber: index + 1
-                                })}
-                                className="quiet"
-                                onClick={() =>
-                                  patch({ login: form.login.filter((_, at) => at !== index) })
-                                }
-                                title={t('settings.login.removeStepTitle')}
-                                type="button"
-                              >
-                                <Icon name="close" />
-                              </button>
-                            </li>
-                          ))}
-                        </ul>
-                      )}
-
                       {/*
                         The first row on an empty list copies the realm's
                         script, then adds the blank one.
@@ -3063,9 +2900,8 @@ export default function SettingsScreen({
                         rather than a guessed pair, since a realm that words
                         its username prompt differently says so there.
                       */}
-                      <button
-                        className="quiet add-step"
-                        onClick={() =>
+                      <LoginSteps
+                        onAdd={() =>
                           patch({
                             login: [
                               ...(form.login.length === 0
@@ -3076,11 +2912,11 @@ export default function SettingsScreen({
                             ]
                           })
                         }
-                        type="button"
-                      >
-                        <Icon name="plus" />
-                        <span>{t('settings.login.addStep')}</span>
-                      </button>
+                        onChange={(login) => patch({ login })}
+                        sendPlaceholder={t('settings.login.stepSendPlaceholder')}
+                        steps={form.login}
+                        whenPlaceholder={t('settings.login.stepWhenPlaceholder')}
+                      />
                     </fieldset>
                   )}
 
@@ -3259,71 +3095,6 @@ export default function SettingsScreen({
                     </>
                   )}
 
-                  {section === 'Other' && (
-                    <>
-                      <fieldset className="settings-menus" data-fieldset="movement-doors">
-                        <legend>{t('settings.movement.doorsLegend')}</legend>
-                        <div className="settings-inline">
-                          <CheckField
-                            checked={form.openDoors}
-                            hint={t('settings.movement.openDoorsHint')}
-                            label={t('settings.movement.openDoors')}
-                            name="open-doors"
-                            onChange={(value) => patch({ openDoors: value })}
-                          />
-                          {form.openDoors && (
-                            <NumberField
-                              label={t('settings.movement.openTries')}
-                              name="open-tries"
-                              onChange={(value) => patch({ openTries: value })}
-                              value={form.openTries}
-                            />
-                          )}
-                        </div>
-                        {/*
-                          Picking above bashing, in the order the walker tries
-                          them — and for the reason it does: one costs a
-                          command and the other costs a command and some
-                          health.
-                        */}
-                        <div className="settings-inline">
-                          <CheckField
-                            checked={form.pickLocks}
-                            hint={t('settings.movement.pickLocksHint')}
-                            label={t('settings.movement.pickLocks')}
-                            name="pick-locks"
-                            onChange={(value) => patch({ pickLocks: value })}
-                          />
-                          {form.pickLocks && (
-                            <NumberField
-                              label={t('settings.movement.pickTries')}
-                              name="pick-tries"
-                              onChange={(value) => patch({ pickTries: value })}
-                              value={form.pickTries}
-                            />
-                          )}
-                        </div>
-                        <div className="settings-inline">
-                          <CheckField
-                            checked={form.bashDoors}
-                            hint={t('settings.movement.bashDoorsHint')}
-                            label={t('settings.movement.bashDoors')}
-                            name="bash-doors"
-                            onChange={(value) => patch({ bashDoors: value })}
-                          />
-                          {form.bashDoors && (
-                            <NumberField
-                              label={t('settings.movement.bashTries')}
-                              name="bash-tries"
-                              onChange={(value) => patch({ bashTries: value })}
-                              value={form.bashTries}
-                            />
-                          )}
-                        </div>
-                      </fieldset>
-                    </>
-                  )}
-
                   {section === 'Health' && (
                     <>
                       <fieldset className="settings-menus" data-fieldset="health-flee">
@@ -3421,36 +3192,6 @@ export default function SettingsScreen({
                       <fieldset className="settings-menus" data-fieldset="movement-carry">
                         <legend>{t('settings.movement.carryLegend')}</legend>
                         <CheckField
-                          checked={form.recoverGear}
-                          hint={t('settings.movement.recoverGearHint')}
-                          label={t('settings.movement.recoverGear')}
-                          name="recover-gear"
-                          onChange={(value) => patch({ recoverGear: value })}
-                        />
-                        {/*
-                          The bounds, drawn only where the switch is on: two
-                          numbers limiting a feature nobody has turned on are
-                          two controls that do nothing (todo 21).
-                        */}
-                        {form.recoverGear && (
-                          <div className="settings-inline">
-                            <NumberField
-                              hint={t('settings.movement.recoverGearFloorHint')}
-                              label={t('settings.movement.recoverGearFloorLabel')}
-                              name="recover-gear-floor"
-                              onChange={(value) => patch({ recoverGearFloor: value })}
-                              value={form.recoverGearFloor}
-                            />
-                            <NumberField
-                              hint={t('settings.movement.recoverGearTriesHint')}
-                              label={t('settings.movement.recoverGearTriesLabel')}
-                              name="recover-gear-tries"
-                              onChange={(value) => patch({ recoverGearTries: value })}
-                              value={form.recoverGearTries}
-                            />
-                          </div>
-                        )}
-                        <CheckField
                           checked={form.collectKeys}
                           hint={t('settings.movement.collectKeysHint')}
                           label={t('settings.movement.collectKeys')}
@@ -3543,6 +3284,8 @@ export default function SettingsScreen({
               ) : (
                 <form
                   className="settings-form"
+                  // In MegaMUD's face, as the Character page is (2026-10-16).
+                  data-megamud="true"
                   data-section="realm"
                   onSubmit={(event) => void submitServer(event)}
                 >
@@ -3679,108 +3422,16 @@ export default function SettingsScreen({
                     WorldGroup front end all differ, and a client with four
                     slots cannot describe them at all.
                   */}
-                      <fieldset className="settings-menus">
+                      <fieldset className="settings-menus" data-fieldset="realm-login">
                         <legend>{t('settings.realms.loginLegend')}</legend>
                         <p className="settings-note">{t('settings.realms.loginNote')}</p>
 
-                        {serverForm.login.length > 0 && (
-                          <ul className="settings-steps">
-                            {serverForm.login.map((step, index) => (
-                              // Keyed by position, deliberately: rows are edited in
-                              // place and identified by nothing else — two blank
-                              // rows are genuinely the same until somebody types.
-                              <li key={index}>
-                                <input
-                                  aria-label={t('settings.login.stepWhenAria', {
-                                    stepNumber: index + 1
-                                  })}
-                                  onChange={(event) =>
-                                    setServerForm({
-                                      ...serverForm,
-                                      login: serverForm.login.map((entry, at) =>
-                                        at === index
-                                          ? { ...entry, when: event.target.value }
-                                          : entry
-                                      )
-                                    })
-                                  }
-                                  placeholder={t('settings.realms.stepWhenPlaceholder')}
-                                  value={step.when}
-                                />
-                                <span aria-hidden="true" className="arrow">
-                                  →
-                                </span>
-                                <input
-                                  aria-label={t('settings.login.stepSendAria', {
-                                    stepNumber: index + 1
-                                  })}
-                                  className="answer"
-                                  onChange={(event) =>
-                                    setServerForm({
-                                      ...serverForm,
-                                      login: serverForm.login.map((entry, at) =>
-                                        at === index
-                                          ? { ...entry, send: event.target.value }
-                                          : entry
-                                      )
-                                    })
-                                  }
-                                  placeholder={t('settings.realms.stepSendPlaceholder')}
-                                  value={step.send}
-                                />
-                                <input
-                                  aria-label={t('settings.login.stepRepeatAria', {
-                                    stepNumber: index + 1
-                                  })}
-                                  checked={step.repeat ?? false}
-                                  className="repeat"
-                                  onChange={(event) =>
-                                    setServerForm({
-                                      ...serverForm,
-                                      login: serverForm.login.map((entry, at) =>
-                                        at === index
-                                          ? { ...entry, repeat: event.target.checked }
-                                          : entry
-                                      )
-                                    })
-                                  }
-                                  title={t('settings.login.stepRepeatTitle')}
-                                  type="checkbox"
-                                />
-                                <button
-                                  aria-label={t('settings.login.removeStepAria', {
-                                    stepNumber: index + 1
-                                  })}
-                                  className="quiet"
-                                  onClick={() =>
-                                    setServerForm({
-                                      ...serverForm,
-                                      login: serverForm.login.filter((_, at) => at !== index)
-                                    })
-                                  }
-                                  title={t('settings.login.removeStepTitle')}
-                                  type="button"
-                                >
-                                  <Icon name="close" />
-                                </button>
-                              </li>
-                            ))}
-                          </ul>
-                        )}
-
-                        <button
-                          className="quiet add-step"
-                          onClick={() =>
-                            setServerForm({
-                              ...serverForm,
-                              login: [...serverForm.login, { when: '', send: '' }]
-                            })
-                          }
-                          type="button"
-                        >
-                          <Icon name="plus" />
-                          <span>{t('settings.login.addStep')}</span>
-                        </button>
+                        <LoginSteps
+                          onChange={(login) => setServerForm({ ...serverForm, login })}
+                          sendPlaceholder={t('settings.realms.stepSendPlaceholder')}
+                          steps={serverForm.login}
+                          whenPlaceholder={t('settings.realms.stepWhenPlaceholder')}
+                        />
                       </fieldset>
 
                       {/*
@@ -3810,6 +3461,8 @@ export default function SettingsScreen({
                           { value: 'none', label: t('settings.realms.locateOptions.none') }
                         ]}
                         value={serverForm.locate}
+                        // Its choices say what each realm prints, which a column cuts off.
+                        wide
                       />
                     </>
                   )}
@@ -3927,32 +3580,11 @@ export default function SettingsScreen({
 
                   {realmSection === 'megamud' && (
                     <>
-                      {/* Whether a hang-up here is charged: a fact about the place (todo 01). */}
-                      <fieldset data-fieldset="realm-hang-penalties">
-                        <legend>{t('settings.health.hangUpLegend')}</legend>
-                        <div className="settings-inline">
-                          <SelectField
-                            hint={t('settings.health.hangPenaltiesHint')}
-                            label={t('settings.health.hangPenaltiesLabel')}
-                            name="realm-hang-penalties"
-                            onChange={(value) =>
-                              setServerForm({ ...serverForm, hangPenalties: penaltiesOf(value) })
-                            }
-                            options={[
-                              { value: '', label: t('settings.health.hangPenaltiesGlobal') },
-                              { value: 'yes', label: t('settings.health.hangPenaltiesYes') },
-                              { value: 'no', label: t('settings.health.hangPenaltiesNo') }
-                            ]}
-                            value={penaltiesChoice(serverForm.hangPenalties)}
-                          />
-                        </div>
-                      </fieldset>
-
                       {/*
                     What this realm calls its coins: a fact about the place, like
                     the ranking above (`Server.coins`). Blank is the stock name.
                   */}
-                      <fieldset data-fieldset="realm-coins">
+                      <fieldset className="settings-menus" data-fieldset="realm-coins">
                         <legend>{t('settings.realms.coinsLegend')}</legend>
                         <p className="settings-note">{t('settings.realms.coinsNote')}</p>
                         <div className="settings-inline">
@@ -3980,7 +3612,7 @@ export default function SettingsScreen({
                     MegaMUD engine. Blank is MegaMUD's default, which the
                     placeholder shows.
                   */}
-                      <fieldset data-fieldset="realm-bbs">
+                      <fieldset className="settings-menus" data-fieldset="realm-bbs">
                         <legend>{t('settings.realms.bbsLegend')}</legend>
                         <p className="settings-note">{t('settings.realms.bbsNote')}</p>
                         <div className="settings-inline">

@@ -171,7 +171,7 @@ export function damageFor(s: Session, mode: number): number {
  * `0x426060`: how many casts `mode` gets, at least 1. The pre-attack takes
  * the target's own count from its monster record when that is set.
  */
-export function castCap(s: Session, mode: number): number {
+function castCap(s: Session, mode: number): number {
   let cap = 1;
   switch (mode) {
     case 9:

@@ -125,9 +125,6 @@ autoReconnect: true
 #     # different from "throw the copper away".
 #     coinKinds: [runic, platinum, gold, silver]
 #     discardKinds: [copper]
-#   banking:
-#     autoDeposit: true
-#     depositThresholdCopper: 100000
 #   # What this character keeps in stock, and where it buys it. The Self card
 #   # and the item panel write this list; a hand-written one reads the same.
 #   supplies:

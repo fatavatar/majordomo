@@ -1972,11 +1972,6 @@ export class WorldGraph {
     return [...this.mobs.values()].map((mob) => mob.name).sort((a, b) => a.localeCompare(b));
   }
 
-  /** How many monsters the realm named. Zero on a realm built before v3. */
-  get mobCount(): number {
-    return this.mobs.size;
-  }
-
   // ---------------------------------------------------------------------
   // Entity builders
   //
@@ -2477,19 +2472,6 @@ export class WorldGraph {
   }
 
   /**
-   * What a room's lair spawns, resolved.
-   *
-   * The descriptor is verbatim realm data — `(Max 2): 781,190,` — and the
-   * numbers are the only key the room table has for its monsters. Resolved
-   * here rather than at build time so the descriptor stays what the realm
-   * said, and a realm built before v9 simply answers nothing.
-   */
-  lairOf(room: WorldRoom): WorldMob[] {
-    // The clock is discarded here: this asks what spawns, never when.
-    return this.lair(room, null)?.mobs ?? [];
-  }
-
-  /**
    * The lair whole: how many at once, and what. Null only for a room the
    * realm does not mark as one — the same test the map's glyph makes, so the
    * two cannot disagree. A descriptor naming no monster this table knows
@@ -2703,10 +2685,6 @@ export class WorldGraph {
     return hazard === null ? null : hazardFor(hazard, level);
   }
 
-  shopRooms(): WorldRoom[] {
-    return [...this.rooms.values()].filter((room) => room.shop !== undefined);
-  }
-
   /**
    * Where a shop of this name is, by the name the item index states.
    *
@@ -2778,22 +2756,6 @@ export class WorldGraph {
    */
   buyingPlaces(item: number, from: RoomId, to: RoomId | null, traveller: Traveller): BuyingPlace[] {
     return this.buyingPlacesFor([item], from, to, traveller);
-  }
-
-  /**
-   * The same for a whole stock list on one pair of sweeps — what topping each
-   * row up would add to *this* leg, so a plan can put the shopping on the leg
-   * that passes nearest the counter. `buyingPlacesFor`'s reason exactly: a
-   * sweep pair per row over a nine-step chain is Dijkstras on the socket's
-   * thread for a handful of torches.
-   */
-  stockingPlaces(
-    items: readonly number[],
-    from: RoomId,
-    to: RoomId | null,
-    traveller: Traveller
-  ): Array<BuyingPlace & { item: number }> {
-    return this.buyingPlacesFor(items, from, to, traveller);
   }
 
   /**
@@ -3758,11 +3720,6 @@ export class WorldGraph {
       if (found) return found;
     }
     return undefined;
-  }
-
-  /** How many spells the realm named. Zero on a realm built before v4. */
-  get spellCount(): number {
-    return this.spells.length;
   }
 
   get info(): WorldMeta {

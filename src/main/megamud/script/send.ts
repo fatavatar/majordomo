@@ -252,7 +252,7 @@ function blank(c: string | undefined): boolean {
  * are sent as they are. 1 when something was sent, 0 when the list is left
  * to the pump, -1 to hold it.
  */
-export function msgSpells(s: Session): number {
+function msgSpells(s: Session): number {
   let sent = false;
   let lastText: string | null = null;
   for (;;) {
@@ -490,7 +490,7 @@ export function expandMacros(s: Session, text: string): string {
       out += s.msgArgs[Number(text[i + 1]) - 1] ?? '';
       next = i + 2;
     } else if (c === '~') {
-      out += s.f_327a4 !== 99 ? '\x01' : c;
+      out += s.tildeMode !== 99 ? '\x01' : c;
     } else if (c === '^') {
       const d = text[i + 1];
       if (d === undefined) break;
@@ -550,7 +550,7 @@ export function plainText(s: Session, text: string): string {
       out += c;
       if (token) i += token.length - 1;
     } else if (c === '~') {
-      if (s.f_327a4 === 99) out += c;
+      if (s.tildeMode === 99) out += c;
     } else if (c === '^') {
       i += 1;
       if (text[i] === 'M') out += '\r';

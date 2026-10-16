@@ -55,11 +55,3 @@ export function splitMarks(chunk: StreamChunk): Segment[] {
   if (at < chunk.text.length) segments.push({ text: chunk.text.slice(at) });
   return segments;
 }
-
-/** Visible columns of a line as printed: escape sequences and the terminator aside. */
-export function printedWidth(text: string): number {
-  return text
-    .replace(/\x1B\[[0-9;?]*[\x40-\x7E]|\x1B[\x30-\x7E]/g, '')
-    .replace(/\r?\n$/, '')
-    .replace(/\r$/, '').length;
-}

@@ -3,8 +3,8 @@ import Advanced from './Advanced';
 import AlertList from './AlertList';
 import { MonsterRuleList } from './MonsterRules';
 import SettingsNav, { type NavFieldset } from './SettingsNav';
-import Icon from './Icon';
 import { CheckField, NumberField, SelectField, TextField } from './FormField';
+import LoginSteps from './LoginSteps';
 import LoopSection from './LoopSection';
 import RewritesDesigner from './RewriteDesigner';
 
@@ -100,7 +100,7 @@ export type GlobalScope = 'client' | 'defaults';
  */
 const SECTIONS: Record<GlobalScope, readonly Section[]> = {
   client: ['appearance', 'records'],
-  defaults: ['realm', 'Auto-roam', 'Combat', 'Health', 'Other', 'Loot', 'Sounds', 'rewrites']
+  defaults: ['realm', 'Auto-roam', 'Combat', 'Health', 'Loot', 'Sounds', 'rewrites']
 };
 
 type Section =
@@ -110,7 +110,6 @@ type Section =
   | 'Auto-roam'
   | 'Combat'
   | 'Health'
-  | 'Other'
   | 'Loot'
   | 'Sounds'
   | 'rewrites';
@@ -133,7 +132,6 @@ const SECTION_FIELDSETS: Record<Section, readonly NavFieldset[]> = {
     { id: 'health-flee', label: t('settings.health.fleeLegend') },
     { id: 'health-wards', label: t('settings.health.wardsLegend') }
   ],
-  Other: [{ id: 'movement-doors', label: t('settings.movement.doorsLegend') }],
   Loot: [{ id: 'movement-carry', label: t('settings.movement.carryLegend') }],
   Sounds: [{ id: 'alerts-rules', label: t('settings.alerts.ruleLegend') }],
   rewrites: []
@@ -147,7 +145,6 @@ const SECTION_LABEL: Record<Section, string> = {
   'Auto-roam': 'Auto-roam',
   Combat: 'Combat',
   Health: 'Health',
-  Other: 'Other',
   Loot: 'Loot',
   Sounds: 'Sounds',
   rewrites: t('settings.tabs.rewrites')
@@ -289,6 +286,8 @@ export default function GlobalSettings({
       />
       <form
         className="settings-form"
+        // In MegaMUD's face, as the Character page is (2026-10-16).
+        data-megamud="true"
         data-section={shown}
         onSubmit={(event) => {
           event.preventDefault();
@@ -553,96 +552,14 @@ export default function GlobalSettings({
               <fieldset className="settings-menus" data-fieldset="realm-login">
                 <legend>{t('settings.realms.loginLegend')}</legend>
                 <p className="settings-note">{t('settings.global.realm.loginMenusNote')}</p>
-                {draft.connection.login.steps.length > 0 && (
-                  <ul className="settings-steps">
-                    {draft.connection.login.steps.map((step, index) => (
-                      <li key={index}>
-                        <input
-                          aria-label={t('settings.login.stepWhenAria', { stepNumber: index + 1 })}
-                          onChange={(event) =>
-                            patch('connection', {
-                              login: {
-                                ...draft.connection.login,
-                                steps: draft.connection.login.steps.map((entry, at) =>
-                                  at === index ? { ...entry, when: event.target.value } : entry
-                                )
-                              }
-                            })
-                          }
-                          placeholder={t('settings.realms.stepWhenPlaceholder')}
-                          value={step.when}
-                        />
-                        <span aria-hidden="true" className="arrow">
-                          →
-                        </span>
-                        <input
-                          aria-label={t('settings.login.stepSendAria', { stepNumber: index + 1 })}
-                          className="answer"
-                          onChange={(event) =>
-                            patch('connection', {
-                              login: {
-                                ...draft.connection.login,
-                                steps: draft.connection.login.steps.map((entry, at) =>
-                                  at === index ? { ...entry, send: event.target.value } : entry
-                                )
-                              }
-                            })
-                          }
-                          placeholder={t('settings.global.realm.loginMenuSendPlaceholder')}
-                          value={step.send}
-                        />
-                        <input
-                          aria-label={t('settings.login.stepRepeatAria', { stepNumber: index + 1 })}
-                          checked={step.repeat ?? false}
-                          className="repeat"
-                          onChange={(event) =>
-                            patch('connection', {
-                              login: {
-                                ...draft.connection.login,
-                                steps: draft.connection.login.steps.map((entry, at) =>
-                                  at === index ? { ...entry, repeat: event.target.checked } : entry
-                                )
-                              }
-                            })
-                          }
-                          title={t('settings.login.stepRepeatTitle')}
-                          type="checkbox"
-                        />
-                        <button
-                          aria-label={t('settings.login.removeStepAria', { stepNumber: index + 1 })}
-                          className="quiet"
-                          onClick={() =>
-                            patch('connection', {
-                              login: {
-                                ...draft.connection.login,
-                                steps: draft.connection.login.steps.filter((_, at) => at !== index)
-                              }
-                            })
-                          }
-                          title={t('settings.login.removeStepTitle')}
-                          type="button"
-                        >
-                          <Icon name="close" />
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-                <button
-                  className="quiet add-step"
-                  onClick={() =>
-                    patch('connection', {
-                      login: {
-                        ...draft.connection.login,
-                        steps: [...draft.connection.login.steps, { when: '', send: '' }]
-                      }
-                    })
+                <LoginSteps
+                  onChange={(steps) =>
+                    patch('connection', { login: { ...draft.connection.login, steps } })
                   }
-                  type="button"
-                >
-                  <Icon name="plus" />
-                  <span>{t('settings.login.addStep')}</span>
-                </button>
+                  sendPlaceholder={t('settings.global.realm.loginMenuSendPlaceholder')}
+                  steps={draft.connection.login.steps}
+                  whenPlaceholder={t('settings.realms.stepWhenPlaceholder')}
+                />
               </fieldset>
             </Advanced>
           </>
@@ -842,13 +759,11 @@ export default function GlobalSettings({
                   />
                 )}
               </div>
-            </fieldset>
-
-            {/*
-            Not behind Advanced: a floor that stops the lap is a decision about
-            the character's night, not a number with a right answer already.
-          */}
-            <div className="settings-inline">
+              {/*
+                In Hunting, the one thing that reads it (\`AutoHunt\`): not behind
+                Advanced, as a floor that stops the lap is a decision about the
+                character's night, not a number with a right answer already.
+              */}
               <NumberField
                 hint={t('settings.global.movement.minExpRateHint')}
                 label={t('settings.global.movement.minExpRateLabel')}
@@ -863,7 +778,7 @@ export default function GlobalSettings({
                 }
                 value={String(draft.automation.walk.minExpPerHour)}
               />
-            </div>
+            </fieldset>
 
             <fieldset className="settings-menus" data-fieldset="quests">
               <legend>{t('settings.quests.legend')}</legend>
@@ -880,47 +795,6 @@ export default function GlobalSettings({
                 name="global-quests-enabled"
                 onChange={(value) => automation({ quests: { enabled: value } })}
               />
-            </fieldset>
-          </>
-        )}
-
-        {shown === 'Other' && (
-          <>
-            <fieldset className="settings-menus" data-fieldset="movement-doors">
-              <legend>{t('settings.movement.doorsLegend')}</legend>
-              <div className="settings-inline">
-                <CheckField
-                  checked={draft.automation.movement.openDoors}
-                  hint={t('settings.movement.openDoorsHint')}
-                  label={t('settings.movement.openDoors')}
-                  name="global-open-doors"
-                  onChange={(value) =>
-                    automation({ movement: { ...draft.automation.movement, openDoors: value } })
-                  }
-                />
-              </div>
-              <div className="settings-inline">
-                <CheckField
-                  checked={draft.automation.movement.pickLocks}
-                  hint={t('settings.movement.pickLocksHint')}
-                  label={t('settings.movement.pickLocks')}
-                  name="global-pick-locks"
-                  onChange={(value) =>
-                    automation({ movement: { ...draft.automation.movement, pickLocks: value } })
-                  }
-                />
-              </div>
-              <div className="settings-inline">
-                <CheckField
-                  checked={draft.automation.movement.bashDoors}
-                  hint={t('settings.movement.bashDoorsHint')}
-                  label={t('settings.movement.bashDoors')}
-                  name="global-bash-doors"
-                  onChange={(value) =>
-                    automation({ movement: { ...draft.automation.movement, bashDoors: value } })
-                  }
-                />
-              </div>
             </fieldset>
           </>
         )}
