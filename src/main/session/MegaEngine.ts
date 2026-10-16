@@ -33,7 +33,6 @@ import { disconnect, menuCommand, playerCommand, playerKey } from '../megamud/mo
 import { blessCommand } from '../megamud/player/cast';
 import { clearDetours, goTo, headFor, startWalking } from '../megamud/move/destinations';
 import { clearPath, copyPath, freeSteps, stepsShown } from '../megamud/move/path';
-import { expFigures } from '../megamud/stats/expMeter';
 import { depositAll } from '../megamud/items/all';
 import { connected, connectFailed, connectionClosed } from '../megamud/script/game';
 import { reEngage } from '../megamud/script/modes';
@@ -60,6 +59,7 @@ import { findSpell } from '../megamud/spells/lookup';
 import { findLongestFirst } from '../megamud/room/checkNames';
 import { caption, setTask, Task } from '../megamud/script/task';
 import {
+  monsterIndex,
   monsterRecords,
   rememberItem,
   rememberPlayers,
@@ -153,13 +153,8 @@ export interface MegaEngineHost {
   opensAWay?(name: string): boolean;
 }
 
-/** What `MegaEngine.statsReport` gives: the engine's own figures, null where unknown. */
+/** What `MegaEngine.statsReport` gives: what only the engine works out. */
 export interface EngineStats {
-  expMade: number;
-  expNeeded: number | null;
-  expNeededLevel: number | null;
-  expPerHour: number | null;
-  levelEta: string | null;
   status: string;
   path: string | null;
 }
@@ -434,6 +429,17 @@ export class MegaEngine {
    * for this one rather than the nearest of them (2026-10-16).
    */
   private goingTo: { sig: number; room: RoomId } | null = null;
+  /**
+   * Stand-in signatures for rooms walked to whose own the realm data cannot
+   * work out (an exit of a kind it cannot say how the game lists) and that
+   * have not been stood in yet: MegaMUD heads for a signature, and the walk
+   * was refused (2026-10-16) though our planner knows the way by the room's
+   * number. A code of 3 in an exit's two bits never comes off an exits line
+   * (a plain exit is 1, a door 2), so no room the game shows has one. Each
+   * is swapped for the room's own when the character stands there
+   * (`noteRoom`), before MegaMUD next asks whether it has arrived.
+   */
+  private readonly standIns = new Map<number, RoomId>();
   private loopRun: { name: string; startedAt: number; lapBegunAt: number | null } | null = null;
   /** The character's `[Alerts]`: the sound each alert plays. */
   private alerts: Readonly<Record<string, unknown>>;
@@ -545,7 +551,8 @@ export class MegaEngine {
    */
   useMonsters(rules: readonly MonsterRule[]): void {
     this.monsterRules = rules;
-    for (const rule of rules) rememberRule(this.s, rule);
+    const index = monsterIndex(this.s);
+    for (const rule of rules) rememberRule(this.s, rule, index);
     // What an errand has lent stays lent through the table changing under it.
     for (const mob of this.lentMonsters.keys()) this.fightOnto(mob);
     findLongestFirst(this.s);
@@ -558,7 +565,15 @@ export class MegaEngine {
    */
   useItems(rules: readonly ItemRule[]): void {
     this.itemRules = rules;
-    for (const rule of rules) applyItemRule(this.itemRecord(rule.item), rule, this.host.world());
+    // The records by key, found once: see `monsterIndex`.
+    const index = new Map<string, ItemRec>();
+    for (const item of this.s.data.items) {
+      const key = itemKey(item.name);
+      if (!index.has(key)) index.set(key, item);
+    }
+    for (const rule of rules) {
+      applyItemRule(this.itemRecord(rule.item, index), rule, this.host.world());
+    }
     for (const name of this.lentItems.keys()) this.takeOnto(name);
   }
 
@@ -582,15 +597,20 @@ export class MegaEngine {
     if (rec) rec.flags = (rec.flags & ~ITEM_FLAG_BITS.collect) | was;
   }
 
-  /** An item's record, by name or key; one the records do not name is added. */
-  private itemRecord(name: string): ItemRec {
+  /**
+   * An item's record, by name or key; one the records do not name is added.
+   * Through `index`, the first record of each key, for a pass over a table.
+   */
+  private itemRecord(name: string, index?: Map<string, ItemRec>): ItemRec {
     const key = itemKey(name);
     const find = (): ItemRec | undefined =>
       this.s.data.items.find((item) => itemKey(item.name) === key);
-    const found = find();
+    const found = index ? index.get(key) : find();
     if (found) return found;
     rememberItem(this.s, { name, weight: null, slot: null, weapon: false });
-    return find()!;
+    const added = find()!;
+    if (index && !index.has(key)) index.set(key, added);
+    return added;
   }
 
   private takeOnto(key: string): void {
@@ -934,8 +954,6 @@ export class MegaEngine {
    */
   statsReport(): EngineStats {
     const s = this.s;
-    const f = expFigures(s);
-    const known = !f.unknown && s.Player_Level > 0;
     // The loop by its run, as the loop card names it: MegaMUD's own path
     // name (`MegaMud_CurPath`) is never set for a path made here, and is the
     // route's, not the loop's, on the way to its start or a detour.
@@ -955,15 +973,7 @@ export class MegaEngine {
       const head = [name, s.destination].filter((part) => part).join(' -> ');
       path = head === '' ? null : walking ? `${head} - ${steps}` : head;
     }
-    return {
-      expMade: f.made,
-      expNeeded: known ? f.toGo : null,
-      expNeededLevel: known ? (f.chart?.level ?? s.Player_Level + 1) : null,
-      expPerHour: f.perHour,
-      levelEta: f.levelIn === '?' ? null : f.levelIn,
-      status: caption(s),
-      path
-    };
+    return { status: caption(s), path };
   }
 
   get toggles(): MegaToggles {
@@ -1327,8 +1337,7 @@ export class MegaEngine {
    * first (2026-10-14).
    */
   walkTo(room: RoomId, run = false, alone = false): string | null {
-    const sig = this.signatureOf(room);
-    if (sig === null) return 'That room has no signature yet.';
+    const sig = this.signatureOf(room) ?? this.standInFor(room);
     const s = this.s;
     if (alone) {
       clearPath(s.loopPath);
@@ -1427,6 +1436,8 @@ export class MegaEngine {
     const here = this.host.here();
     if (here === null) return;
     if (this.learned.get(here) !== sig) this.learn(here, sig);
+    for (const [standIn, room] of this.standIns)
+      if (room === here) this.replaceStandIn(standIn, sig);
   }
 
   private learn(room: RoomId, sig: number): void {
@@ -1497,6 +1508,37 @@ export class MegaEngine {
     if (learned !== undefined) return learned;
     const rec = this.worldRoom(room);
     return rec ? worldSignature(rec) : null;
+  }
+
+  /** The stand-in signature for a room with none worked out (`standIns`). */
+  private standInFor(room: RoomId): number {
+    for (const [sig, at] of this.standIns) if (at === room) return sig;
+    let h = 0x811c9dc5;
+    for (let i = 0; i < room.length; i += 1) h = Math.imul(h ^ room.charCodeAt(i), 0x01000193);
+    // North's two bits 3; never -1 (all bits), MegaMUD's "no room".
+    let sig = (h & ~3) | 3;
+    while (sig === -1 || this.standIns.has(sig)) sig = (sig - 4) | 0;
+    this.standIns.set(sig, room);
+    return sig;
+  }
+
+  /** A stand-in signature replaced by the room's own wherever the walk holds it. */
+  private replaceStandIn(standIn: number, sig: number): void {
+    this.standIns.delete(standIn);
+    const s = this.s;
+    for (const d of s.detours) if (d.room === standIn) d.room = sig;
+    const paths = [s.path, s.loopPath, ...s.paths, ...[...this.made.values()].map((m) => m.path)];
+    for (const p of paths) {
+      if (p.start === standIn) p.start = sig;
+      if (p.end === standIn) p.end = sig;
+    }
+    if (this.goingTo?.sig === standIn) this.goingTo.sig = sig;
+    const rooms = s.data.rooms ?? [];
+    const at = rooms.findIndex((r) => r.signature === standIn);
+    if (at !== -1) {
+      if (rooms.some((r) => r.signature === sig)) rooms.splice(at, 1);
+      else rooms[at]!.signature = sig;
+    }
   }
 
   /** `SessionHost.isRoom`: here is the room walked to, when one was chosen with this signature. */
@@ -1734,7 +1776,13 @@ export class MegaEngine {
     let best: Route | null = null;
     let pending = false;
     const going = this.goingTo;
-    const rooms = going?.sig === to ? [going.room] : this.roomsWith(to).slice(0, 8);
+    const standIn = this.standIns.get(to);
+    const rooms =
+      going?.sig === to
+        ? [going.room]
+        : standIn !== undefined
+          ? [standIn]
+          : this.roomsWith(to).slice(0, 8);
     let unlocks: { needs: Route['needs']; room: RoomId } | null = null;
     for (const room of rooms) {
       if (room === here)
@@ -1826,8 +1874,7 @@ export class MegaEngine {
       ? [...stops.rooms, ...stops.rooms.slice(1, -1).reverse()]
       : stops.rooms;
     if (rooms.length < 2) return `The loop "${name}" has fewer than two stops.`;
-    const start = this.signatureOf(rooms[0]!);
-    if (start === null) return `The loop "${name}" starts in a room with no signature yet.`;
+    const start = this.signatureOf(rooms[0]!) ?? this.standInFor(rooms[0]!);
     const legs: Route[] = [];
     const begins: number[] = [];
     let steps = 0;

@@ -71,14 +71,33 @@ export function nameIn(text: string, name: string): number {
  */
 export function findLongestFirst(s: Session): void {
   const monsters = s.data.monsters;
-  for (const m of monsters) {
-    if (monsters.some((o) => o.name.length < m.name.length && nameIn(m.name, o.name) !== 0))
-      m.flags |= MonsterFlag.FindFirst;
-  }
+  const holders = namesHoldingAnother(monsters.map((m) => m.name));
+  for (const m of monsters) if (holders.has(m.name)) m.flags |= MonsterFlag.FindFirst;
   const first = monsters
     .filter((m) => (m.flags & MonsterFlag.FindFirst) !== 0)
     .sort((a, b) => b.name.length - a.name.length);
   s.data.monsters = [...first, ...monsters.filter((m) => (m.flags & MonsterFlag.FindFirst) === 0)];
+}
+
+/**
+ * The names that hold a shorter one of the list as whole words: every pair
+ * of the realm's 1,400, which held the terminal for a tenth of a second per
+ * character on every settings save (2026-10-16). The answer depends on the
+ * names alone, so the last list's is kept and given again while they stand.
+ */
+let lastHolders: { key: string; holders: ReadonlySet<string> } | null = null;
+
+function namesHoldingAnother(names: readonly string[]): ReadonlySet<string> {
+  const key = names.join('\n');
+  if (lastHolders?.key === key) return lastHolders.holders;
+  const distinct = [...new Set(names)];
+  const holders = new Set(
+    distinct.filter((name) =>
+      distinct.some((other) => other.length < name.length && nameIn(name, other) !== 0)
+    )
+  );
+  lastHolders = { key, holders };
+  return holders;
 }
 
 /** `0x46c3f0`: the monster whose name `text` holds; "find first" monsters (flag 8) are tried first. */

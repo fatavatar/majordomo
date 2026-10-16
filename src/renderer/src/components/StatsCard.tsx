@@ -19,7 +19,9 @@ import {
   ratePerHour,
   rateSeries,
   share,
-  sinceBaseline,
+  clock,
+  levelIn,
+  sinceCardBaseline,
   swings,
   turnedAside,
   type BlowKind,
@@ -81,35 +83,10 @@ function span(blows: BlowTally): string {
     : t('cards.stats.span', { least: blows.least, most: blows.most });
 }
 
-/**
- * A stretch of time on the clock, `h:mm:ss` — MegaMUD's own `Duration:` shape.
- *
- * It was `3m` / `51s`, and the badge these go in is uppercased, so a three
- * minute count read `3M`. One unbroken format also means the badge and the
- * Attacking row cannot disagree about what counts as a long time.
- */
-function clock(ms: number): string {
-  const total = Math.max(0, Math.round(ms / 1000));
-  const pad = (n: number): string => String(n).padStart(2, '0');
-  return `${Math.floor(total / 3600)}:${pad(Math.floor(total / 60) % 60)}:${pad(total % 60)}`;
-}
-
 /** A quiet `avg 4.4`, or nothing where nothing has landed. */
 function average(damage: number, hits: number): string | null {
   const value = mean(damage, hits);
   return value === null ? null : t('cards.stats.avg', { mean: figure(value, 1) });
-}
-
-/**
- * How long the experience still owed will take at the rate being made.
- *
- * MegaMUD's `Will level in`, and the two halves it needs are the two this card
- * already draws. Null the moment either is missing or the rate is not positive:
- * a character making no experience never levels, and `∞` is not a time.
- */
-function levelIn(needed: number | null, perHour: number | null): number | null {
-  if (needed === null || perHour === null || perHour <= 0) return null;
-  return (needed / perHour) * 3_600_000;
 }
 
 /** One row of the accuracy table: a kind of blow, or the summary under them. */
@@ -384,18 +361,8 @@ function StatsCard({ baseline, character, onReset, session, ...chrome }: StatsCa
    * still exactly **one** baseline, written by the button and by the lap alike,
    * so neither has to be compared against the other.
    */
-  /*
-   * A baseline from another series cannot be subtracted from this one. The
-   * totals are kept per character *and realm* and outlive the launch, while
-   * the baseline is kept per character; `since` is set once per series, so a
-   * baseline taken on another realm's record — or on one since thrown away —
-   * carries a different one, and subtracting it would draw the totals
-   * negative.
-   */
-  const stale =
-    baseline !== null &&
-    (tally.since === null || baseline.at === null || baseline.since !== tally.since);
-  const shown = sinceBaseline(tally, stale ? null : baseline);
+  // A baseline from another series is not subtracted: see `sinceCardBaseline`.
+  const shown = sinceCardBaseline(tally, baseline);
 
   // Read once per render rather than per figure, so every number on the card
   // is taken at the same instant — two clocks in one readout disagree.

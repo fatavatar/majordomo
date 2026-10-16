@@ -48,6 +48,7 @@ import { NO_REALM_TABLES, type RealmMemory, type RealmTables } from './session/S
 import { MegaLearned } from './world/MegaLearned';
 import { RealmLore, realmKey } from './world/RealmLore';
 import { PlayerBook, realmAddress } from './world/PlayerBook';
+import { isCombatTally } from '../shared/tally';
 import { cureGates, spellServes, spellTargeting } from '../shared/spellcraft';
 import { DestinationBook, type RealmDestinations } from './world/DestinationBook';
 import { MovementBook } from './session/MovementBook';
@@ -1667,6 +1668,11 @@ function registerIpc(): void {
       autoConnected.add(profile.id);
       void host?.connect(profile.id, profile.target);
     }
+  });
+
+  // The Combat Stats card's baseline, for what is posted to the stats board.
+  on(Send.statsBase, (_caller, session: SessionId, base: unknown) => {
+    host?.get(session)?.manager.useStatsBase(base === null || isCombatTally(base) ? base : null);
   });
 
   on(Send.input, (_caller, session: SessionId, data: string) => {

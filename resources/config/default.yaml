@@ -1996,7 +1996,8 @@ logging:
 
   # Post this character's readings to its realm's mudstats board -- the realm's
   # `statsUrl:` -- every `everySeconds`: a whole snapshot each time (health,
-  # experience and its rate, the room, the pack, what it is doing), never
+  # experience and its rate as the Combat Stats card shows them, since its
+  # Reset or the lap begun, the room, the pack, what it is doing), never
   # sooner than the board allows. Link the character first, on its Login page:
   # the board telepaths it a code, the client reads it off the telepath, and
   # the key the board gives is kept beside the character's password.

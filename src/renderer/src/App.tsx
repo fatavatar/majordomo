@@ -1159,6 +1159,19 @@ export default function App() {
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
   const [profiles, setProfiles] = useState<ProfileSummary[]>([]);
   const [views, setViews] = useState<Record<SessionId, SessionView>>({});
+  /**
+   * Each character's Combat Stats baseline told to main as it changes (its
+   * Reset, a lap begun, read back at attach), so the experience posted to
+   * the realm's stats board is the card's (`Send.statsBase`).
+   */
+  const toldBase = useRef(new Map<SessionId, CombatTally | null>());
+  useEffect(() => {
+    for (const [sid, view] of Object.entries(views)) {
+      if (toldBase.current.has(sid) && toldBase.current.get(sid) === view.statsBase) continue;
+      toldBase.current.set(sid, view.statsBase);
+      api.statsBase(sid, view.statsBase);
+    }
+  }, [api, views]);
 
   /**
    * The characters on screen, one per pane, and which pane the keyboard is

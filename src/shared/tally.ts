@@ -359,6 +359,22 @@ export function sinceBaseline(now: CombatTally, baseline: CombatTally | null): C
   };
 }
 
+/**
+ * The Combat Stats card's figures: the totals since its baseline, or the
+ * whole series where the baseline is from another one. The totals are kept
+ * per character *and realm* and outlive the launch, while the baseline is
+ * kept per character; `since` is set once per series, so a baseline taken on
+ * another realm's record — or on one since thrown away — carries a different
+ * one, and subtracting it would draw the totals negative. One place, so the
+ * card and what is posted to the stats board (2026-10-16) read the same.
+ */
+export function sinceCardBaseline(now: CombatTally, baseline: CombatTally | null): CombatTally {
+  const stale =
+    baseline !== null &&
+    (now.since === null || baseline.at === null || baseline.since !== now.since);
+  return sinceBaseline(now, stale ? null : baseline);
+}
+
 /** A running total of intervals: the settled ones, and when the open one began. */
 interface Clock {
   settled: number;
@@ -615,6 +631,31 @@ function isBlowTally(value: unknown): value is BlowTally {
 export function ratePerHour(total: number, elapsedMs: number, floorMs = 0): number | null {
   if (elapsedMs <= 0 || elapsedMs < floorMs) return null;
   return (total / elapsedMs) * 3_600_000;
+}
+
+/**
+ * How long the experience still owed will take at the rate being made.
+ *
+ * MegaMUD's `Will level in`, and the two halves it needs are the two this card
+ * already draws. Null the moment either is missing or the rate is not positive:
+ * a character making no experience never levels, and `∞` is not a time.
+ */
+export function levelIn(needed: number | null, perHour: number | null): number | null {
+  if (needed === null || perHour === null || perHour <= 0) return null;
+  return (needed / perHour) * 3_600_000;
+}
+
+/**
+ * A stretch of time on the clock, `h:mm:ss` — MegaMUD's own `Duration:` shape.
+ *
+ * It was `3m` / `51s`, and the badge these go in is uppercased, so a three
+ * minute count read `3M`. One unbroken format also means the badge and the
+ * Attacking row cannot disagree about what counts as a long time.
+ */
+export function clock(ms: number): string {
+  const total = Math.max(0, Math.round(ms / 1000));
+  const pad = (n: number): string => String(n).padStart(2, '0');
+  return `${Math.floor(total / 3600)}:${pad(Math.floor(total / 60) % 60)}:${pad(total % 60)}`;
 }
 
 /** Every swing this character made, landed or not — the denominator MegaMUD used. */

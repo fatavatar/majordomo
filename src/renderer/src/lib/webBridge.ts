@@ -164,6 +164,7 @@ export function createWebBridge(): IpcApi {
     resize: (session, size) => send(Send.resize, session, size),
     diagnostics: (on) => send(Send.diagnostics, on),
     debugFeed: (on) => send(Send.debugFeed, on),
+    statsBase: (session, base) => send(Send.statsBase, session, base),
 
     connect: (session, target) => invoke(Invoke.connect, session, target),
     disconnect: (session) => invoke(Invoke.disconnect, session),

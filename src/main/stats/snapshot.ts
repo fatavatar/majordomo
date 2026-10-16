@@ -5,19 +5,38 @@
  * whatever is not posted goes stale there.
  *
  * Our tracker's readings for what the realm prints (vitals off the prompt, the
- * stat sheet, the room, the pack) and the MegaMUD engine's for what only it
- * works out (the experience meter, the task, the path), as its own `@exp`,
- * `@status` and `@path` replies give them, so the board reads the same either
- * way. A reading not known is left out, which the board takes as no reading.
+ * stat sheet, the room, the pack); the experience as the Combat Stats card
+ * shows it, since its baseline (its Reset, or the lap begun), where it had
+ * been the engine's meter since the session began (2026-10-16); and the
+ * MegaMUD engine's for what only it works out (the task, the path), as its
+ * own `@status` and `@path` replies give them. A reading not known is left
+ * out, which the board takes as no reading.
  */
 import type { CharacterState } from '../../shared/character';
+import { experienceOwed, experienceStanding } from '../../shared/experience';
+import {
+  clock,
+  levelIn,
+  onlineFor,
+  ratePerHour,
+  sinceCardBaseline,
+  type CombatTally
+} from '../../shared/tally';
 import type { EngineStats } from '../session/MegaEngine';
 import type { Reading } from './MudStatsApi';
+
+/** The Combat Stats card's scope: its baseline, the hour's floor it reads rates over, and now. */
+export interface CardScope {
+  baseline: CombatTally | null;
+  rateFloorMs: number;
+  now: number;
+}
 
 export function statsSnapshot(
   state: CharacterState,
   engine: EngineStats | null,
-  version: string
+  version: string,
+  card: CardScope
 ): Record<string, Reading> {
   const out: Record<string, Reading> = {};
   const number = (name: string, value: number | null | undefined): void => {
@@ -33,16 +52,20 @@ export function statsSnapshot(
   const { progress, vitals, inventory, room } = state;
   number('level', progress.level);
   number('exp', progress.exp);
-  number('exp_made', engine?.expMade ?? progress.expThisSession);
-  number('exp_needed', engine?.expNeeded ?? progress.expNeeded);
+  // As the Combat Stats card reads them (`StatsCard`).
+  const shown = sinceCardBaseline(state.tally, card.baseline);
+  const perHour = ratePerHour(shown.experience, onlineFor(shown, card.now), card.rateFloorMs);
+  const standing = experienceStanding(progress.level, progress.exp, progress.expTable);
+  const owed = experienceOwed(progress.expNeeded, standing);
+  number('exp_made', shown.experience);
+  number('exp_needed', owed.value);
   number(
     'exp_needed_level',
-    engine?.expNeededLevel ?? (progress.level === null ? null : progress.level + 1)
+    standing?.next ?? (progress.level === null ? null : progress.level + 1)
   );
-  if (engine?.expPerHour !== null && engine?.expPerHour !== undefined) {
-    out['exp_rate_hour'] = engine.expPerHour;
-  }
-  text('level_eta', engine?.levelEta);
+  if (perHour !== null) out['exp_rate_hour'] = perHour;
+  const eta = levelIn(owed.value, perHour);
+  if (eta !== null) out['level_eta'] = clock(eta);
 
   number('hp', vitals.hp);
   number('hp_max', vitals.hpMax);

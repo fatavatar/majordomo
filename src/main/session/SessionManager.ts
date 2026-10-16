@@ -169,6 +169,7 @@ import type {
   TerminalSize
 } from '../../shared/types';
 import { tuning } from '../app/tuning';
+import type { CombatTally } from '../../shared/tally';
 import {
   appraiseRoom,
   EMPTY_ROOM_VERDICT,
@@ -789,6 +790,8 @@ export class SessionManager {
   private readonly wards: Wards;
   /** Posting this character's readings to its realm's mudstats board. See `StatsReporter`. */
   private readonly stats: StatsReporter;
+  /** The Combat Stats card's baseline, as the window last said it (`Send.statsBase`). */
+  private statsBase: CombatTally | null = null;
   /** Bending down for the key to the door in front of you. See `AutoKeys`. */
   private readonly keys: AutoKeys;
   /**
@@ -1309,7 +1312,11 @@ export class SessionManager {
         snapshot: () => {
           const state = this.tracker.current;
           if (state.phase !== 'in-game') return null;
-          return statsSnapshot(state, this.mega?.statsReport() ?? null, APP_VERSION);
+          return statsSnapshot(state, this.mega?.statsReport() ?? null, APP_VERSION, {
+            baseline: this.statsBase,
+            rateFloorMs: tuning().view.rateFloorMs,
+            now: Date.now()
+          });
         },
         playerName: () => {
           const state = this.tracker.current;
@@ -2468,7 +2475,6 @@ export class SessionManager {
     });
   }
 
-  /** The client's own settings — which of its commands are quiet. Hot-reloaded. */
   /** The realm's mudstats board, this character's key, and whether and how often it posts. */
   configureStats(target: StatsTarget, report: StatsReportConfig): void {
     this.stats.configure(target, report);
@@ -2489,6 +2495,12 @@ export class SessionManager {
     return this.stats.status();
   }
 
+  /** The Combat Stats card's baseline, as the window holds it: the experience posted is the card's. */
+  useStatsBase(base: CombatTally | null): void {
+    this.statsBase = base;
+  }
+
+  /** The client's own settings — which of its commands are quiet. Hot-reloaded. */
   configureInternal(internal: InternalConfig): void {
     this.internal = internal;
   }

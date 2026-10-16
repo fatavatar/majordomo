@@ -41,7 +41,9 @@ const SHOP = room(1, 3, 'Shop', [exit('w', 1, 'door')]);
 const BACK = room(1, 4, 'Back Room', []);
 /** The alley's look-alike: its name and exits, so its signature. */
 const OTHER_ALLEY = room(1, 5, 'Dark Alley', [exit('s', 3)]);
-const ROOMS = [SQUARE, ALLEY, SHOP, BACK, OTHER_ALLEY];
+/** A room whose exit is of a kind the realm data cannot say how the game lists: no signature. */
+const VAULT = room(1, 6, 'Vault', [exit('s', 1, 'mystery')]);
+const ROOMS = [SQUARE, ALLEY, SHOP, BACK, OTHER_ALLEY, VAULT];
 
 function step(from: number, to: number, command: string): RouteStep {
   return { from: `1/${from}`, to: `1/${to}`, direction: command, command } as RouteStep;
@@ -59,6 +61,7 @@ function plan(from: string, to: string): Route {
     '1/2>1/3': [step(2, 1, 's'), step(1, 3, 'e')],
     '1/3>1/2': [step(3, 1, 'w'), step(1, 2, 'n')],
     '1/1>1/5': [step(1, 3, 'e'), step(3, 5, 'n')],
+    '1/1>1/6': [step(1, 3, 'e'), step(3, 6, 'n')],
     '1/3>1/4': [{ ...step(3, 4, 'n'), requirement: { kind: 'key', raw: 'Key: 7', keyId: 7 } }]
   };
   return { steps: ways[`${from}>${to}`] ?? [], cost: 1, blocked: false };
@@ -338,6 +341,31 @@ describe('the engine in a session', () => {
     e.s.path.at = e.s.path.count;
     e.s.walking = 0;
     expect(e.progress.walk.status).toBe('arrived');
+    e.dispose();
+  });
+
+  /* "That room has no signature yet." refused a walk our planner had the way for (2026-10-16). */
+  it('walks to a room with no signature worked out, and takes its own on arrival', async () => {
+    vi.useFakeTimers();
+    const { e, at } = engine('1/1');
+    e.s.inGame = 1;
+    e.s.online = 1;
+    e.received('\x1b[1;36mTown Square\r\n\x1b[0;32mObvious exits: north, closed door east\r\n');
+    expect(e.signatureOf('1/6')).toBeNull();
+    expect(e.walkTo('1/6')).toBeNull();
+    await planned();
+    expect(e.s.path.steps!.map((st) => st.command)).toEqual(['e', 'n']);
+    const standIn = e.s.path.end;
+    expect(e.s.detours[0]!.room).toBe(standIn);
+
+    // There: the room's own signature, read off the screen, in its place.
+    at.here = '1/6';
+    e.received('\x1b[1;36mVault\r\n\x1b[0;32mObvious exits: south\r\n');
+    const sig = e.s.roomSignature;
+    expect(sig).not.toBe(standIn);
+    expect(e.signatureOf('1/6')).toBe(sig);
+    expect([e.s.path.end, e.s.detours[0]!.room]).toEqual([sig, sig]);
+    expect(e.s.host.isRoom!(sig)).toBe(true);
     e.dispose();
   });
 

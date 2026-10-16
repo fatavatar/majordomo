@@ -85,9 +85,11 @@ export function savedItems(s: Session): LearnedItem[] {
  * rows of the name (`megamud/fromWorld.ts`) — or one made as the loader would
  * have read it when there are none.
  */
-export function monsterRecords(s: Session, name: string): MonsterRec[] {
+export function monsterRecords(s: Session, name: string, index?: MonsterIndex): MonsterRec[] {
   const key = mobKey(name);
-  const found = s.data.monsters.filter((m) => mobKey(m.name) === key);
+  const found = index
+    ? (index.get(key) ?? [])
+    : s.data.monsters.filter((m) => mobKey(m.name) === key);
   if (found.length > 0) return found;
   const rec: MonsterRec = {
     layer: 0,
@@ -103,7 +105,31 @@ export function monsterRecords(s: Session, name: string): MonsterRec[] {
     attackMax: 0
   };
   s.data.monsters.push(rec);
+  if (index) {
+    const added = mobKey(rec.name);
+    index.set(added, [...(index.get(added) ?? []), rec]);
+  }
   return [rec];
+}
+
+/**
+ * The engine's monster records by `mobKey`, in list order, for a pass that
+ * looks up a whole table of rows: each row's `monsterRecords` filtered every
+ * record, and a table of hundreds over the realm's 1,400 held every
+ * session's terminal for seconds after a settings save (2026-10-16). The
+ * same records, found once.
+ */
+export type MonsterIndex = Map<string, MonsterRec[]>;
+
+export function monsterIndex(s: Session): MonsterIndex {
+  const index: MonsterIndex = new Map();
+  for (const m of s.data.monsters) {
+    const key = mobKey(m.name);
+    const list = index.get(key);
+    if (list) list.push(m);
+    else index.set(key, [m]);
+  }
+  return index;
 }
 
 /** A monster learned before, put on the engine's list as the loader would have read it. */
@@ -130,8 +156,8 @@ const PRIORITY_BITS: Record<MobPriorityBand, number> = {
  * not say is left as the record has it; a cast count of 0 leaves it to the
  * combat setting, as MegaMUD's does. Not marked changed: it is ours already.
  */
-export function rememberRule(s: Session, rule: MonsterRule): void {
-  for (const rec of monsterRecords(s, rule.mob)) ruleOnto(rec, rule);
+export function rememberRule(s: Session, rule: MonsterRule, index?: MonsterIndex): void {
+  for (const rec of monsterRecords(s, rule.mob, index)) ruleOnto(rec, rule);
 }
 
 export function ruleOnto(rec: MonsterRec, rule: MonsterRule): void {

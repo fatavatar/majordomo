@@ -129,6 +129,7 @@ import type {
   WorldRoom
 } from './world';
 import type { Visited } from './destinations';
+import type { CombatTally } from './tally';
 import type {
   ConnectionState,
   ConnectionTarget,
@@ -637,7 +638,13 @@ export const Send = {
    * three or four extra serialisations per line of output for a window that
    * discarded every one of them on arrival.
    */
-  debugFeed: 'client:debug-feed'
+  debugFeed: 'client:debug-feed',
+  /**
+   * A character's Combat Stats baseline as this window holds it (its Reset,
+   * a lap begun, or read back at attach), so what is posted to the realm's
+   * mudstats board is what the card shows (2026-10-16).
+   */
+  statsBase: 'session:stats-base'
 } as const;
 
 /** Renderer -> main, request/response. */
@@ -1197,6 +1204,8 @@ export interface IpcApi {
   diagnostics(on: boolean): void;
   /** This window started or stopped showing the debug view. */
   debugFeed(on: boolean): void;
+  /** A character's Combat Stats baseline, or null for the whole session. See `Send.statsBase`. */
+  statsBase(session: SessionId, base: CombatTally | null): void;
 
   /**
    * Dial a character.
