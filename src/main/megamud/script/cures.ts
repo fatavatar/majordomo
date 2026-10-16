@@ -19,6 +19,11 @@ function cure(s: Session, short: string, at: string | null): number {
   return castSpell(s, short, at);
 }
 
+/** Diseased by MegaMUD's own rows, or by our tracker's reading (`diseaseHeard`). */
+export function diseaseToCure(s: Session): boolean {
+  return s.diseased !== 0 || s.diseaseHeard !== 0;
+}
+
 /** `0x410440`: cure this character. */
 export function selfCures(s: Session, fighting: number): number {
   if (s.f_a32c !== 0 || s.MegaMud_AutoHeal === 0 || s.hp < 1) return 0;
@@ -32,9 +37,10 @@ export function selfCures(s: Session, fighting: number): number {
         return 1;
       }
     }
-    if (s.diseased !== 0 && s.Spells_DiseaseCmd !== '') {
+    if (diseaseToCure(s) && s.Spells_DiseaseCmd !== '') {
       if (cure(s, s.Spells_DiseaseCmd, null) !== 0) {
         s.diseased = 0;
+        s.diseaseHeard = 0;
         return 1;
       }
     }
@@ -142,7 +148,7 @@ function selfCureWanted(s: Session, fighting: number): boolean {
   if (fighting !== 0) {
     if (s.blind !== 0 && s.Other_IgnoreBlind === 0 && cureCastable(s, s.Spells_BlindCmd))
       return true;
-    if (s.diseased !== 0 && cureCastable(s, s.Spells_DiseaseCmd)) return true;
+    if (diseaseToCure(s) && cureCastable(s, s.Spells_DiseaseCmd)) return true;
     if (s.runCount < 1) return false;
   } else {
     if (s.state === 2 || s.state === 4) return false;

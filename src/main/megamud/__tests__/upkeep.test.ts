@@ -103,6 +103,15 @@ describe('curing (0x410440, 0x410130)', () => {
     expect(s.blind).toBe(0);
   });
 
+  it('cures a disease only our tracker heard, in a fight', () => {
+    const { s, out } = character([spell('cure', 0x10)]);
+    s.Spells_DiseaseCmd = 'cure';
+    s.diseaseHeard = 1;
+    expect(selfCures(s, 1)).toBe(1);
+    expect(out.sent).toEqual(['cure\r']);
+    expect(s.diseaseHeard).toBe(0);
+  });
+
   it("cures a member's poison out of a fight", () => {
     const { s, out } = character([spell('slow', 0x20)]);
     s.Spells_PoisonCmd = 'slow';

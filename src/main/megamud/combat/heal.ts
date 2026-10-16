@@ -13,7 +13,7 @@ import { castSpell, equipForSpell } from '../health/cast';
 import { askParty, membersInStep, weakestMember } from '../party/members';
 import { findPlayer } from '../room/checkNames';
 import { currentTarget, enemiesHere } from '../room/entities';
-import { curesFirst } from '../script/cures';
+import { curesFirst, diseaseToCure } from '../script/cures';
 import { forgetAwaited, setState } from '../script/state';
 import { moving, type RoomEntity, type Session } from '../Session';
 import { findSpell } from '../spells/lookup';
@@ -441,7 +441,7 @@ export function partyHeal(s: Session): number {
  */
 export function askForHelp(s: Session): boolean {
   if (membersInStep(s) < 2) return false;
-  if (s.diseased !== 0 && askParty(s, 'diseased') !== 0) return true;
+  if (diseaseToCure(s) && askParty(s, 'diseased') !== 0) return true;
   if (s.blind !== 0 && s.Other_IgnoreBlind === 0 && askParty(s, 'blind') !== 0) return true;
   if (s.held !== 0 && askParty(s, 'held') !== 0) return true;
   if (s.hp < percentOf(s.Player_MaxHP, s.Party_PartyAskHealPct)) return askParty(s, 'heal') !== 0;

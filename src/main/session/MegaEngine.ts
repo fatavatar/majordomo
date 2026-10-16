@@ -298,6 +298,17 @@ const QUIET_POLL_MS = 250;
 /** The afflictions MegaMUD has a cure command for, by its session's flag. */
 const CURED_AFFLICTIONS = ['blind', 'poisoned', 'diseased', 'held'] as const;
 type CuredAffliction = (typeof CURED_AFFLICTIONS)[number];
+/**
+ * The session flag each takes. Disease takes ours, which only the cures read:
+ * MegaMUD rests while its own is up, for a row a realm's Messages.md marks
+ * diseased, and Fatty stood still through every disease ours heard (2026-10-16).
+ */
+const AFFLICTION_FLAG = {
+  blind: 'blind',
+  poisoned: 'poisoned',
+  diseased: 'diseaseHeard',
+  held: 'held'
+} as const satisfies Record<CuredAffliction, keyof Session>;
 
 /** How long a walk waits on the realm saying where the character is. */
 const LOCATE_WAIT_MS = 5000;
@@ -742,14 +753,15 @@ export class MegaEngine {
    * with that effect, and a realm's rows can say otherwise. Skinny's names
    * `You are diseased` as losing HP, so `DiseaseCmd` was never cast for it
    * (2026-10-14). The tracker reads the realm's own sentences for each, so an
-   * affliction it has on is on, and one it has seen end is ended.
+   * affliction it has on is on, and one it has seen end is ended; a disease
+   * only for curing (`AFFLICTION_FLAG`).
    */
   afflictions(now: Readonly<Record<CuredAffliction, Affliction>>): void {
     const s = this.s;
     for (const name of CURED_AFFLICTIONS) {
       const on = now[name] === 'yes';
-      if (on) s[name] = 1;
-      else if (this.afflicted[name] === true) s[name] = 0;
+      if (on) s[AFFLICTION_FLAG[name]] = 1;
+      else if (this.afflicted[name] === true) s[AFFLICTION_FLAG[name]] = 0;
       this.afflicted[name] = on;
     }
   }
@@ -781,7 +793,8 @@ export class MegaEngine {
   private blessingsCleared(): void {
     const s = this.s;
     if (this.regenUp[0]) s.hpRegen = 1;
-    for (const name of CURED_AFFLICTIONS) if (this.afflicted[name] === true) s[name] = 1;
+    for (const name of CURED_AFFLICTIONS)
+      if (this.afflicted[name] === true) s[AFFLICTION_FLAG[name]] = 1;
     for (let i = 0; i < 10; i += 1) {
       if ((this.blessUp[i] ?? null) !== null) s.blessCastAt[i] = s.now;
     }

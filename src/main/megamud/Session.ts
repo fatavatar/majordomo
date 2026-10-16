@@ -926,6 +926,11 @@ export class Session extends RawFields {
   manaRegen = 0;
   /** 0xe214: can't move. */
   held = 0;
+  /**
+   * Ours: diseased by our tracker's reading of the realm (`MegaEngine.afflictions`),
+   * which only the cures read. MegaMUD's own `diseased` also rests (`0x40`).
+   */
+  diseaseHeard = 0;
   /** 0xe1a4: resting (`rest` sent, or the prompt's rest mark). */
   resting = 0;
   /** 0xe1a8 */

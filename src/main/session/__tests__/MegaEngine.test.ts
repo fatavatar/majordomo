@@ -502,7 +502,10 @@ describe('blessings told by our tracker’s buffs', () => {
    * Skinny's Messages.md has no row for divine restoration, so every stat
    * sheet took his regen as ended and he cast `rsto` again (2026-10-14).
    */
-  /* Skinny's Messages.md files `You are diseased` as losing HP: never cured (2026-10-14). */
+  /*
+   * Skinny's Messages.md files `You are diseased` as losing HP: never cured
+   * (2026-10-14). Taken as MegaMUD's own, Fatty rested through it (2026-10-16).
+   */
   it('takes an affliction our tracker has on as on, through the stat display, and off when it ends', () => {
     const e = blessed();
     e.s.inGame = 1;
@@ -512,12 +515,17 @@ describe('blessings told by our tracker’s buffs', () => {
       diseased: 'unknown',
       held: 'no'
     } as const;
-    e.afflictions({ ...none, diseased: 'yes' });
-    expect(e.s.diseased).toBe(1);
-    e.received('Name: Skinny Fatterson                 Lives/CP:      9/7    \r\n');
-    expect(e.s.diseased).toBe(1);
-    e.afflictions({ ...none, diseased: 'no' });
+    e.afflictions({ ...none, blind: 'yes', diseased: 'yes' });
+    expect(e.s.blind).toBe(1);
+    expect(e.s.diseaseHeard).toBe(1);
+    // Only for curing: MegaMUD's own flag, which rests, is left to its rows.
     expect(e.s.diseased).toBe(0);
+    e.received('Name: Skinny Fatterson                 Lives/CP:      9/7    \r\n');
+    expect(e.s.blind).toBe(1);
+    expect(e.s.diseaseHeard).toBe(1);
+    e.afflictions({ ...none, diseased: 'no' });
+    expect(e.s.blind).toBe(0);
+    expect(e.s.diseaseHeard).toBe(0);
     // One the tracker never had is MegaMUD's own to say.
     e.s.poisoned = 1;
     e.afflictions(none);
