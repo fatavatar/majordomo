@@ -152,6 +152,23 @@ describe('items (D19, D20, D42, D43)', () => {
     expect(sent(out)).toEqual(['g opal\r']);
   });
 
+  /* A key dropped by the guard, picked up with Auto-get off and no rule for it (2026-10-16). */
+  it('picks up an item that opens a way the pack lacks, whatever its record says', () => {
+    const { s, out } = game();
+    s.weightMax = 100;
+    s.weightCarried = 10;
+    s.MegaMud_AutoGet = 0;
+    const key = item(s, 'shining steel key', { flags: 0, weight: 1 });
+    s.room = [
+      Object.assign(newEntity(), { type: 3, count: 4, name: 'shining steel key', item: key })
+    ];
+    expect(collectItems(s)).toBe(0);
+    (s.host as { opensAWay?: (name: string) => boolean }).opensAWay = (name) =>
+      name === 'shining steel key';
+    expect(collectItems(s)).toBe(1);
+    expect(sent(out)).toEqual(['g shining steel key\r']);
+  });
+
   it('leaves what would take it past its encumbrance', () => {
     const { s, out } = game();
     s.weightMax = 100;

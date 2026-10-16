@@ -5,7 +5,7 @@ import { goTo, headFor } from '../move/destinations';
 import { doors, runBack } from '../move/go';
 import { noAllowedExits, walkPath } from '../script/path';
 import { fetchCash } from '../script/cash';
-import { newPlayer } from '../data';
+import { newItem, newPlayer } from '../data';
 import { newPath, type PathRec, type PathStep, type SessionHost } from '../Session';
 import { remoteCommand } from '../talk/remote';
 import { session } from './fixture';
@@ -245,6 +245,47 @@ describe('doors and traps (0x408870)', () => {
     expect(doors(s, 2, 0, 'e[use silver key,e]')).toBe(1);
     expect(out.sent).toEqual(['use silver key', '\r']);
     expect(s.pending.map((p) => p.text)).toEqual(['e\r']);
+  });
+
+  /* Our paths write a locked exit's key so; Fatty picked and bashed past one (2026-10-16). */
+  it('uses a carried key before picking the lock', () => {
+    const r = walker();
+    const { s, out } = r;
+    s.roomExits[7] = Exit.ClosedDoor;
+    s.Other_CanPickLocks = 1;
+    s.inventory.push({
+      count: 1,
+      flags: 0,
+      item: { ...newItem(s.data), name: 'shining steel key' }
+    });
+    expect(doors(s, 7, 0, 'sw[use shining steel key sw]')).toBe(1);
+    expect(out.sent).toEqual(['use shining steel key sw', '\r']);
+  });
+
+  /* Fatty picked and bashed a gate only its key opens (2026-10-16). */
+  it('neither picks nor bashes a lock the realm says no skill opens, and stops', () => {
+    const r = walker();
+    const { s, out } = r;
+    s.walking = 1;
+    s.roomExits[7] = Exit.ClosedDoor;
+    s.Other_CanPickLocks = 1;
+    s.Other_PickMax = 3;
+    (s.host as SessionHost).forcible = () => ({ pick: false, bash: false });
+    doors(s, 7, 0, 'sw[use shining steel key sw]');
+    expect(out.sent).toEqual([]);
+    expect(out.shown).toEqual(['[The southwest exit is locked: it needs its key]']);
+    expect(s.walking).toBe(0);
+  });
+
+  it('bashes, without picking, a lock only strength opens', () => {
+    const r = walker();
+    const { s, out } = r;
+    s.roomExits[0] = Exit.ClosedDoor;
+    s.Other_CanPickLocks = 1;
+    s.Other_PickMax = 3;
+    (s.host as SessionHost).forcible = () => ({ pick: false, bash: true });
+    doors(s, 0, 0, null);
+    expect(out.sent).toEqual(['bash north\r']);
   });
 
   it('searches for a trap, then disarms it', () => {

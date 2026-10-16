@@ -209,7 +209,7 @@ export function doors(s: Session, dir: number, flags: number, command: string | 
       if (close !== -1) key = key.slice(0, close);
     }
   }
-  if ((flags & 0x200) !== 0 && s.Other_CanDisarmTraps !== 0) {
+  if ((flags & StepFlag.DisarmTrap) !== 0 && s.Other_CanDisarmTraps !== 0) {
     if (s.trapFound === 0) {
       atDoor(s);
       setState(s, State.Searching);
@@ -274,8 +274,17 @@ export function doors(s: Session, dir: number, flags: number, command: string | 
     s.pickTries = 0;
     if (runBack(s, 0) !== 0) return 1;
   }
+  // Ours: a lock the realm says no skill opens, or none the character has,
+  // is not picked or bashed at; the walk takes its retry path or stops.
+  const may = s.host.forcible?.(dir) ?? { pick: true, bash: true };
+  const pick = may.pick && s.Other_CanPickLocks !== 0 && s.pickTries < s.Other_PickMax * 2;
+  if (!pick && !may.bash) {
+    s.host.show(`[The ${directionWord(dir)} exit is locked: it needs its key]`);
+    s.pickTries = 0;
+    return retryPath(s);
+  }
   atDoor(s);
-  if (s.Other_CanPickLocks === 0 || s.Other_PickMax * 2 <= s.pickTries) {
+  if (!pick) {
     setState(s, State.Bashing);
     s.host.activity('Bashing door');
     send(s, `bash ${directionWord(dir)}\r`);

@@ -136,6 +136,11 @@ export function getItem(s: Session, i: number): number {
     needed = true;
     s.host.activity(`Getting ${e.name} because it is needed for a path`);
   }
+  // Ours: a key, or an item an exit asks for, that the pack lacks.
+  if (!needed && s.host.opensAWay?.(e.name) === true) {
+    needed = true;
+    s.host.activity(`Getting ${e.name} because it opens a way`);
+  }
   let coin = false;
   const coinRule = (name: string, want: number, label: string): boolean => {
     if (!sameItemName(e.name, name)) return true;
@@ -242,7 +247,8 @@ export function collectItems(s: Session): number {
     if (e.type !== EntityType.Item || !e.item) continue;
     if (
       (e.item.flags & (ItemFlag.Collect | ItemFlag.NeededForPath | ItemFlag.Coin)) === 0 &&
-      e.name !== s.itemPickingUp
+      e.name !== s.itemPickingUp &&
+      s.host.opensAWay?.(e.name) !== true
     )
       continue;
     if (getItem(s, i) !== 0) {

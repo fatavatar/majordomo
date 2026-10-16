@@ -425,6 +425,12 @@ export interface RouteOptions {
    * a walk home are walked, not read, and do not pay for it.
    */
   alternatives?: boolean;
+  /**
+   * A refused route's `unlocks` alone, without the reader's other
+   * alternatives: the MegaMUD engine's walks and loop legs, which go and get
+   * what opens the door rather than stop at it (2026-10-16).
+   */
+  unlocks?: boolean;
 }
 
 /**
@@ -7006,7 +7012,7 @@ export class WorldGraph {
       (block) => block.kind === 'key' || block.kind === 'door' || block.kind === 'carry'
     );
     const unlocks =
-      options.alternatives === true && doors
+      (options.alternatives === true || options.unlocks === true) && doors
         ? (this.unlocked(from, to, goal, others, blocks, walkable.drawsAhead) ??
           this.keyedWay(from, to, goal, null, others, walkable.drawsAhead))
         : null;

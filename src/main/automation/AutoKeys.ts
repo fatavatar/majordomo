@@ -103,6 +103,11 @@ export interface KeyEvents {
    * marching. See `onCharacter`.
    */
   busy?(): boolean;
+  /**
+   * Whether the MegaMUD engine picks the key up itself, off any floor
+   * (`MegaEngineHost.opensAWay`): this then only says the refusal it cannot.
+   */
+  engineTakes?(): boolean;
 }
 
 export interface KeySources {
@@ -206,6 +211,7 @@ export class AutoKeys {
         this.sayIfAmbiguous(way, state);
         continue;
       }
+      if (this.events.engineTakes?.() === true) continue;
       this.asked.add(way.keyId);
       this.queue.enqueue({
         command: `get ${lying.name}`,

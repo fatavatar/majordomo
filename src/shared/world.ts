@@ -615,6 +615,34 @@ export function openableHere(requirement: Requirement | null): boolean {
 }
 
 /**
+ * Which skills can open a locked exit, by what the realm states of it: a
+ * `Key:` lock gives to a pick or a bash only where its bracket names that
+ * skill (`[or 157 picklocks]`, `[301 picklocks/strength]`), a `Door` with no
+ * bracket to either, and a stated difficulty above the character's skill is
+ * a wall, as the router prices it (`forcedDoorCost`). A skill not known
+ * (`null`) is not held against it. Anything else, or no requirement, says
+ * nothing and leaves both.
+ *
+ * Read by the MegaMUD engine's door code, which picked and bashed a gate
+ * that only its key opens (Fatty, 2026-10-16).
+ */
+export function forcibleBy(
+  requirement: Requirement | null,
+  picklocks: number | null,
+  strength: number | null
+): { pick: boolean; bash: boolean } {
+  const kind = requirement?.kind;
+  if (requirement === null || (kind !== 'key' && kind !== 'door'))
+    return { pick: true, bash: true };
+  const { pickDifficulty, bashDifficulty } = requirement;
+  if (kind === 'door' && pickDifficulty === undefined && bashDifficulty === undefined)
+    return { pick: true, bash: true };
+  const meets = (need: number | undefined, skill: number | null): boolean =>
+    need !== undefined && (need <= 0 || skill === null || skill >= need);
+  return { pick: meets(pickDifficulty, picklocks), bash: meets(bashDifficulty, strength) };
+}
+
+/**
  * Something standing between two rooms, said in words a player can act on.
  *
  * Composed where the realm data lives (`src/main/world/obstacle.ts`), because

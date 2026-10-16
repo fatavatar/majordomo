@@ -82,17 +82,19 @@ import { NO_LOOP, type LoopProgress } from '../../shared/loops';
 import {
   asRoomReference,
   DIRECTIONS,
+  forcibleBy,
   mobKey,
   roomId,
   spellLasts,
   type RequirementKind,
   type Route,
+  type RouteStep,
   type RoomId,
   type WorldRoom
 } from '../../shared/world';
 import type { WorldGraph } from '../world/WorldGraph';
 import { State } from '../megamud/states';
-import { SpellFlag, ItemFlag, StepFlag, RouteFlag } from '../megamud/flags';
+import { SpellFlag, ItemFlag, StepFlag, RouteFlag, Exit, Darkness } from '../megamud/flags';
 
 /** What the engine needs from the session it runs in. */
 export interface MegaEngineHost {
@@ -138,7 +140,20 @@ export interface MegaEngineHost {
   beforeStep?(to: RoomId): void;
   /** The character is in the game (`0x47b070`'s first prompt), after its own `On entry` start. */
   enteredGame?(): void;
+  /**
+   * Ours: what a refused way needs (the key to a door, an item an exit asks
+   * for) fetched by the item errand, and `then` taken up once it is carried.
+   */
+  fetchFirst?(items: ReadonlyArray<{ id: number; name: string }>, then: AfterFetch): void;
+  /**
+   * Ours: an item on the floor taken whatever the item rules say, because it
+   * opens a way of this realm and the pack lacks it (`movement.collectKeys`).
+   */
+  opensAWay?(name: string): boolean;
 }
+
+/** What a fetch for a refused way takes up once the pack holds what it needed. */
+export type AfterFetch = { walkTo: RoomId } | { loop: string };
 
 /** One of our loops made a MegaMUD loop: its stops, and the step each leg to the next begins at. */
 interface MadeLoop {
@@ -156,6 +171,8 @@ interface MadeLoop {
 interface MadePath {
   path: PathRec;
   rooms: (RoomId | null)[];
+  /** The planner's step each path step walks (null for a lever's pull), for `clearWay`. */
+  walked: (RouteStep | null)[];
   /** The room it ends in. */
   end: RoomId | null;
   loop: MadeLoop | null;
@@ -323,6 +340,19 @@ export interface FleeGoto {
 /** How long a way planned is used again before it is planned afresh. */
 const PLAN_KEPT_MS = 60_000;
 
+/** How many MegaMUD path steps a route is written as: each step, and each lever pulled on the way. */
+function pathLength(route: Route): number {
+  return route.steps.reduce((n, step) => n + 1 + (step.pull?.say.length ?? 0), 0);
+}
+
+/**
+ * How many times the levers in an exit's own room are pulled, and the exit
+ * searched for, before the door code has it: the old walker's budget
+ * (`walk.leverTries`, `walk.searchTries`, both 2 when retired).
+ */
+const LEVER_TRIES = 2;
+const SEARCH_TRIES = 2;
+
 /** A short, steady name for a path MegaMUD can hold (13 characters). */
 function shortName(prefix: string, text: string): string {
   let h = 0x811c9dc5;
@@ -447,6 +477,9 @@ export class MegaEngine {
       route: (from, to) => this.route(from, to),
       isRoom: (sig) => this.isRoom(sig),
       isStepRoom: (p, i) => this.isStepRoom(p, i),
+      opensAWay: (name) => this.host.opensAWay?.(name) ?? false,
+      forcible: (dir) => this.forcible(dir),
+      clearWay: (p, i, dir) => this.clearWay(p, i, dir),
       readPath: (name) => this.readPath(name),
       saveSteps: (p) => this.saveSteps(p),
       blessingsCleared: () => this.blessingsCleared(),
@@ -1435,6 +1468,64 @@ export class MegaEngine {
   }
 
   /**
+   * `SessionHost.clearWay`: a step of one of our paths whose exit is not
+   * open: the levers the realm keeps in this room pulled, else a hidden exit
+   * searched for, each a couple of times, the room looked at again after
+   * (a bare Enter), where the old walker did both. Only while the exit is not
+   * showing, so a lever is not pulled shut again on a lap it stood open.
+   */
+  private clearWay(p: PathRec, i: number, dir: number): number {
+    const s = this.s;
+    const exit = s.roomExits[dir];
+    // Dark, no exit shows at all: nothing here says this one is shut.
+    if (s.darkness >= Darkness.Dark || (exit !== Exit.None && exit !== Exit.ClosedDoor)) return 0;
+    const step = this.madeFor(p)?.walked[i];
+    const world = this.host.world();
+    if (!step || !world || step.direction === 'portal' || this.placedHere() !== step.from) return 0;
+    const key = `${p.name}:${i}`;
+    if (this.clearing?.key !== key) this.clearing = { key, levers: 0, searches: 0 };
+    const tries = this.clearing;
+    const levers = world.leversHere(step.from, step.direction);
+    if (levers.length > 0 && tries.levers < LEVER_TRIES) {
+      tries.levers += 1;
+      s.host.show(`[Pulling ${levers.map((lever) => lever.say).join(', ')} to open the way]`);
+      for (const lever of levers) queue(s, `${lever.say}\r`);
+      queue(s, '\r');
+      wake(s);
+      return 1;
+    }
+    const req = step.requirement;
+    if (
+      exit === Exit.None &&
+      req?.kind === 'hidden' &&
+      req.searchable === true &&
+      tries.searches < SEARCH_TRIES
+    ) {
+      tries.searches += 1;
+      queue(s, `search ${step.direction}\r`);
+      queue(s, '\r');
+      wake(s);
+      return 1;
+    }
+    return 0;
+  }
+
+  private clearing: { key: string; levers: number; searches: number } | null = null;
+
+  /** `SessionHost.forcible`: what the realm states of the exit `dir` from here. */
+  private forcible(dir: number): { pick: boolean; bash: boolean } {
+    const here = this.placedHere();
+    const way = here === null ? undefined : DIRECTIONS[dir];
+    const exit = way && this.worldRoom(here!)?.exits.find((x) => x.direction === way);
+    const s = this.s;
+    return forcibleBy(
+      exit?.requirement ?? null,
+      s.Player_Picklocks > 0 ? s.Player_Picklocks : null,
+      s.Player_Strength > 0 ? s.Player_Strength : null
+    );
+  }
+
+  /**
    * Where our tracker puts the character, when it agrees with the engine's
    * room: a tracker a room behind or ahead says nothing about which
    * look-alike this is.
@@ -1473,6 +1564,19 @@ export class MegaEngine {
       : { room: sig, flags: 0, command };
   }
 
+  /**
+   * A locked exit's key as a MegaMUD path step writes it, `sw[use <key> sw]`:
+   * the door code (`0x408870`) sends it when the key is carried, where a step
+   * without it picks and bashes. Fatty bashed a gate whose key he carried
+   * until he was stopped (2026-10-16).
+   */
+  private keyText(st: RouteStep): string {
+    const req = st.requirement;
+    if (req?.kind !== 'key' || req.keyId === undefined) return '';
+    const name = this.host.world()?.item(req.keyId)?.name;
+    return name === undefined ? '' : `[use ${name} ${st.command}]`;
+  }
+
   private makePath(
     name: string,
     title: string,
@@ -1485,10 +1589,23 @@ export class MegaEngine {
     p.title = title.slice(0, 0x50);
     p.author = 'mudengine';
     const rooms: (RoomId | null)[] = [];
+    const walked: (RouteStep | null)[] = [];
     const steps: PathStep[] = [];
     for (const leg of legs) {
       for (const st of leg.steps) {
+        /*
+         * The levers of a detour the planner put on the way (`RouteStep.pull`,
+         * `WorldGraph.leverErrand`), pulled where it says, before the way
+         * back: path commands MegaMUD sends where they stand
+         * (`typeCommand`), the walk going on after.
+         */
+        for (const say of st.pull?.say ?? []) {
+          rooms.push(st.from);
+          walked.push(null);
+          steps.push(this.stepFrom(st.from, say));
+        }
         rooms.push(st.from);
+        walked.push(st);
         /*
          * A step that is not a plain direction written as a MegaMUD path
          * writes it, `@party <command>`: leading a party, MegaMUD says it to
@@ -1504,8 +1621,11 @@ export class MegaEngine {
         const command =
           typedDirection(st.command) === -1 && !st.command.startsWith('@')
             ? `@party ${st.command}`
-            : st.command;
-        steps.push(this.stepFrom(st.from, command));
+            : `${st.command}${this.keyText(st)}`;
+        const step = this.stepFrom(st.from, command);
+        // A trap the realm states: searched for and disarmed first (`0x408870`).
+        if (st.requirement?.kind === 'trap') step.flags |= StepFlag.DisarmTrap;
+        steps.push(step);
       }
     }
     p.steps = steps;
@@ -1516,11 +1636,32 @@ export class MegaEngine {
     const last = legs.at(-1)?.steps.at(-1)?.to;
     if (first !== undefined) this.know(first, start);
     if (last !== undefined) this.know(last, end);
-    this.made.set(name.toLowerCase(), { path: p, rooms, end: last ?? null, loop: null });
+    this.made.set(name.toLowerCase(), { path: p, rooms, walked, end: last ?? null, loop: null });
     return p;
   }
 
   // ------------------------------------------------------------ the host's paths
+
+  /**
+   * What a refused way needs, handed to the item errand (`fetchFirst`) with
+   * what to take up after: once per ask while its plan is kept, as `route`
+   * is asked again and again. Whether it was handed over.
+   */
+  private fetchFor(needs: Route['needs'], then: AfterFetch): boolean {
+    if (needs === undefined || needs.length === 0 || this.host.fetchFirst === undefined)
+      return false;
+    const key = JSON.stringify(then);
+    const asked = this.fetchAsked;
+    if (asked !== null && asked.key === key && Date.now() - asked.at < PLAN_KEPT_MS) return true;
+    this.fetchAsked = { key, at: Date.now() };
+    this.host.show(
+      `[Fetching ${needs.map((item) => item.name).join(', ')} first: the way needs it]`
+    );
+    this.host.fetchFirst(needs, then);
+    return true;
+  }
+
+  private fetchAsked: { key: string; at: number } | null = null;
 
   /** `0x43fd90`, ours: the way from here to the room with signature `to`. */
   private route(from: number, to: number): RouteFound {
@@ -1540,11 +1681,14 @@ export class MegaEngine {
     let pending = false;
     const going = this.goingTo;
     const rooms = going?.sig === to ? [going.room] : this.roomsWith(to).slice(0, 8);
+    let unlocks: { needs: Route['needs']; room: RoomId } | null = null;
     for (const room of rooms) {
       if (room === here)
         return { flags: 0, path: this.makePath(this.routeName(), 'route', [], from, to), steps: 0 };
       const plan = this.plan(here, room);
       if (plan === 'pending') pending = true;
+      if (typeof plan !== 'string' && plan.blocked && plan.unlocks?.needs !== undefined)
+        unlocks ??= { needs: plan.unlocks.needs, room };
       if (typeof plan === 'string' || plan.blocked) continue;
       if (best === null || plan.steps.length < best.steps.length) best = plan;
     }
@@ -1555,7 +1699,19 @@ export class MegaEngine {
       if (this.s.task === Task.Thinking && this.parked === null) this.park(true);
       return { flags: RouteFlag.Cancelled, path: null, steps: -1 };
     }
-    if (best === null) return none;
+    if (best === null) {
+      // Ours: refused for a key or an item the pack lacks, it is fetched and
+      // the walk (or the loop whose start this is) taken up again after.
+      const loop = this.s.loopPath.start === to ? this.madeFor(this.s.loopPath)?.loop : null;
+      const then: AfterFetch | null = loop
+        ? { loop: loop.name }
+        : unlocks === null
+          ? null
+          : { walkTo: unlocks.room };
+      if (then !== null && this.fetchFor(unlocks?.needs, then))
+        return { flags: RouteFlag.Cancelled, path: null, steps: -1 };
+      return none;
+    }
     const p = this.makePath(this.routeName(), 'route', [best], from, to);
     if (p.steps!.length > 0) p.steps![0]!.room = from;
     return { flags: 0, path: p, steps: p.count };
@@ -1634,9 +1790,13 @@ export class MegaEngine {
       // A stop listed twice in a row: no leg.
       if (plan === null || plan === 'pending') continue;
       if (typeof plan === 'string') return plan;
-      if (plan.blocked) return plan.reason ?? `No way from ${from} to ${to}.`;
+      if (plan.blocked) {
+        if (this.fetchFor(plan.unlocks?.needs, { loop: name }))
+          return `The loop "${name}" starts once the pack holds what its way needs.`;
+        return plan.reason ?? `No way from ${from} to ${to}.`;
+      }
       legs.push(plan);
-      steps += plan.steps.length;
+      steps += pathLength(plan);
     }
     const p = this.makePath(shortName('L', name), name, legs, start, start);
     this.madeFor(p)!.loop = {

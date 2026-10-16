@@ -678,6 +678,7 @@ function takeStep(s: Session, st: PathStep, any: boolean): number {
   const moves =
     dir === -1 && leadsTo !== 0 && !(strnicmp(st.command, '@party ', 7) === 0 && s.partySize > 1);
   if (any && dir !== -1 && s.roomExits[dir] === Exit.None) dir = roamExit(s);
+  if (!any && dir !== -1 && s.host.clearWay?.(path, path.step, dir) === 1) return 1;
   if (dir !== -1 && doors(s, dir, st.flags, st.command) !== 0) return 1;
   if (s.allOff !== 0 || s.movementHalted !== 0) return 0;
   const rested = postRest(s, 5, 0);

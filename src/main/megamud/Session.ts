@@ -408,6 +408,22 @@ export interface SessionHost {
    */
   isStepRoom?(p: PathRec, i: number): boolean;
   /**
+   * Ours: whether the closed exit `dir` from here gives to picking or
+   * bashing, by what the realm states of it; both when nothing is known.
+   */
+  forcible?(dir: number): { pick: boolean; bash: boolean };
+  /**
+   * Ours: step `i` of path `p`, out by `dir`, made ready where the realm
+   * says how (levers in this room, a hidden exit searched for); 1 when
+   * something was sent and the step waits, 0 for MegaMUD's door code.
+   */
+  clearWay?(p: PathRec, i: number, dir: number): number;
+  /**
+   * Ours: an item here taken as one needed for a path, whatever its record
+   * says, because it opens a way of the realm the pack lacks.
+   */
+  opensAWay?(name: string): boolean;
+  /**
    * `0x482fc0`'s file: a path by its name (a `route`'s among them); the
    * paths known (`Session.paths`) are looked in when this is absent or null.
    */

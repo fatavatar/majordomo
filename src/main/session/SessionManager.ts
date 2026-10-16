@@ -231,7 +231,13 @@ import {
   type SurvivalHeal
 } from '../../shared/survival';
 import type { MegaToggle } from '../../shared/megamud/toggles';
-import { MegaEngine, type FleeGoto, type MegaAlert, type MegaEngineSetup } from './MegaEngine';
+import {
+  MegaEngine,
+  type AfterFetch,
+  type FleeGoto,
+  type MegaAlert,
+  type MegaEngineSetup
+} from './MegaEngine';
 import type { ResumableMovement } from './MovementBook';
 import { WindowCommand } from '../../shared/megamud/toggles';
 
@@ -1309,7 +1315,9 @@ export class SessionManager {
         busy: () =>
           this.tracker.pendingMoves > 0 ||
           // MegaMUD's All Off.
-          this.mega?.toggles.on.allOff === true
+          this.mega?.toggles.on.allOff === true,
+        // The engine takes it off any floor (`opensAWay`), this one among them.
+        engineTakes: () => this.mega !== null
       }
     );
     /*
@@ -1917,6 +1925,7 @@ export class SessionManager {
     this.wards.reset();
     this.hunt.reset();
     this.itemErrand.reset();
+    this.afterFetch = null;
     this.questRunner.reset();
     this.keys.reset();
     /*
@@ -2352,6 +2361,7 @@ export class SessionManager {
     this.wards.reset();
     this.hunt.reset();
     this.itemErrand.reset();
+    this.afterFetch = null;
     this.questRunner.reset();
     this.keys.reset();
     this.pvpSaid.clear();
@@ -2889,10 +2899,16 @@ export class SessionManager {
           // Where MegaMUD would play the sound its `[Alerts]` names.
           alert: (which) => this.sink.notice(megaAlertText(which)),
           world: () => this.world,
+          // With the way a refusal for a key would take once it is carried,
+          // which the engine fetches (`fetchFirst`).
           plan: (from, to) =>
             this.world
-              ? planRoute(this.world, from, to, this.lapTraveller(this.tracker.current))
+              ? planRoute(this.world, from, to, this.lapTraveller(this.tracker.current), {
+                  unlocks: true
+                })
               : t('session.loop.noRealmData'),
+          fetchFirst: (items, then) => this.megaFetchFirst(items, then),
+          opensAWay: (name) => this.opensAWay(name),
           loopRooms: (name) => {
             const loop = this.loopNamed(name) ?? this.megaLoops.get(name);
             if (loop === undefined) return t('session.move.noSuchLoop', { name });
@@ -3715,6 +3731,8 @@ export class SessionManager {
     // And whether the thing a door wants is in the pack yet (todo 07).
     this.megaBuyTick(state);
     this.itemErrand.onCharacter(state);
+    // And what the engine's walk or loop waited on that fetch for.
+    this.takeUpAfterFetch(state);
     // And the quest run, which drives the errands above one step at a time.
     this.questRunner.onCharacter(state);
   }
@@ -5290,6 +5308,80 @@ export class SessionManager {
    * halves of one gate in two files" failure at its worst — the client would
    * bend down for a key it already had, or stand on one it needed.
    */
+
+  /**
+   * What the engine's walk or loop is waiting on the item errand for: taken
+   * up once the errand lets go with the pack holding every item, dropped
+   * (the errand has said why) otherwise.
+   */
+  private afterFetch: { items: Array<{ id: number; name: string }>; then: AfterFetch } | null =
+    null;
+
+  /**
+   * A way the engine was refused for want of a key or an item: the errand
+   * sent for it (bought, or hunted off its droppers), and the walk or loop
+   * started again after. Out of the engine's own call, which the errand's
+   * loop would otherwise start inside (2026-10-16).
+   */
+  private megaFetchFirst(
+    items: ReadonlyArray<{ id: number; name: string }>,
+    then: AfterFetch
+  ): void {
+    queueMicrotask(() => {
+      const state = this.tracker.current;
+      const refused = this.itemErrand.collect([...items], null, state);
+      if (refused !== null) {
+        this.sink.notice(refused);
+        return;
+      }
+      this.afterFetch = { items: [...items], then };
+      this.takeUpAfterFetch(state);
+    });
+  }
+
+  private takeUpAfterFetch(state: CharacterState): void {
+    const owed = this.afterFetch;
+    const mega = this.mega;
+    if (owed === null || this.itemErrand.running) return;
+    this.afterFetch = null;
+    if (mega === null || owed.items.some((item) => carriedCount(state, item.name) === 0)) return;
+    const then = owed.then;
+    const refused = this.megaAct(() =>
+      'loop' in then ? mega.startLoop(then.loop) : mega.walkTo(then.walkTo, false, true)
+    );
+    if (refused !== null) this.sink.notice(refused);
+  }
+
+  /**
+   * Whether an item on the floor opens a way of this realm the pack lacks —
+   * a `Key:` lock's or an `Item:` exit's — for the engine to take it whatever
+   * its item rules say (`movement.collectKeys`, as `AutoKeys` reads it).
+   */
+  private opensAWay(name: string): boolean {
+    const world = this.world;
+    if (!world || !this.automationConfig.movement.collectKeys) return false;
+    const id = world.itemIdNamed(name);
+    if (id === null || !this.gateItems(world).has(id)) return false;
+    const pack = this.packContents(this.tracker.current);
+    return pack.packKnown && !pack.keys.includes(id);
+  }
+
+  /** The items some exit of the realm asks for, worked out once per realm. */
+  private gateItems(world: WorldGraph): Set<number> {
+    if (this.gateItemsOf?.world === world) return this.gateItemsOf.ids;
+    const ids = new Set<number>();
+    for (const room of world.everyRoom()) {
+      for (const exit of room.exits) {
+        const req = exit.requirement;
+        if ((req?.kind === 'key' || req?.kind === 'item') && req.keyId !== undefined)
+          ids.add(req.keyId);
+      }
+    }
+    this.gateItemsOf = { world, ids };
+    return ids;
+  }
+
+  private gateItemsOf: { world: WorldGraph; ids: Set<number> } | null = null;
 
   private packContents(state: CharacterState): { keys: number[]; packKnown: boolean } {
     return { keys: state.inventory.rows, packKnown: state.inventory.listedAt !== null };

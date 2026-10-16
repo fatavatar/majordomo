@@ -329,6 +329,24 @@ one's way of moving the character is the engine's for a character it runs:
   for the room ahead is asked for before each step of the engine's path, by
   a hook of ours in `walkPath` (`SessionHost.beforeStep`): what it queues
   holds the step until it is sent. The wards switch is on the Health row.
+- **The realm's doors on the engine's paths** (2026-10-16): a path we make
+  carries a locked exit's key as MegaMUD's recorded paths do,
+  `sw[use <key> sw]`, for the door code (`0x408870`) to send when it is
+  carried; that code picks or bashes only what the realm says a skill opens
+  (`SessionHost.forcible`, `forcibleBy`), and stops at a lock nothing it has
+  opens. A walk or a loop leg the planner refuses for a key or an item the
+  pack lacks has it fetched by the item errand, the walk or loop started
+  again after (`MegaEngineHost.fetchFirst`, `Route.unlocks`), and anything
+  an exit of the realm asks for is picked up off any floor while the pack
+  lacks it (`opensAWay`, `movement.collectKeys`), auto-keys only saying what
+  it cannot. Steps and arrivals are told apart by room number where our
+  paths know it (`isRoom`, `isStepRoom`), not by signature alone. The
+  planner's lever detours (`RouteStep.pull`, `WorldGraph.leverErrand`) are
+  written into the path as commands at the lever, before the way back; the
+  levers in an exit's own room are pulled, and a searchable hidden exit
+  searched for, twice each while the exit is not showing, before the door
+  code (`SessionHost.clearWay`); and a trap the realm states sets the step's
+  `DisarmTrap`.
 - **What was being walked** (2026-10-14): a loop that was running, or a
   route the player started, is kept per character (`MovementBook`,
   `movement.json`) and taken up again at the next first prompt in the game

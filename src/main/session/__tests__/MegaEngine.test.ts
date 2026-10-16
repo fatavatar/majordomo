@@ -8,6 +8,7 @@ import {
   MegaEngine,
   nameHash,
   worldSignature,
+  type AfterFetch,
   type EngineLessons,
   type EngineMemory,
   type MegaEngineHost
@@ -57,17 +58,23 @@ function plan(from: string, to: string): Route {
     '1/3>1/1': [step(3, 1, 'w')],
     '1/2>1/3': [step(2, 1, 's'), step(1, 3, 'e')],
     '1/3>1/2': [step(3, 1, 'w'), step(1, 2, 'n')],
-    '1/1>1/5': [step(1, 3, 'e'), step(3, 5, 'n')]
+    '1/1>1/5': [step(1, 3, 'e'), step(3, 5, 'n')],
+    '1/3>1/4': [{ ...step(3, 4, 'n'), requirement: { kind: 'key', raw: 'Key: 7', keyId: 7 } }]
   };
   return { steps: ways[`${from}>${to}`] ?? [], cost: 1, blocked: false };
 }
 
-function engine(here: string | null = '1/1') {
+function engine(here: string | null = '1/1', ways: Record<string, Route> = {}) {
   const sent: string[] = [];
   const shown: string[] = [];
+  const fetches: Array<[string[], AfterFetch]> = [];
   const world = {
     get: (map: number, n: number) => ROOMS.find((r) => r.map === map && r.room === n),
-    everyRoom: () => ROOMS.values()
+    everyRoom: () => ROOMS.values(),
+    item: (id: number) => (id === 7 ? { name: 'shining steel key' } : undefined),
+    // The lever in the square that opens the way north.
+    leversHere: (from: string, direction: string) =>
+      from === '1/1' && direction === 'n' ? [{ at: '1/1', roomName: '', say: 'pull lever' }] : []
   };
   const at = { here, locates: 0, canLocate: true };
   const host: MegaEngineHost = {
@@ -82,7 +89,8 @@ function engine(here: string | null = '1/1') {
     },
     world: () => world as never,
     // Planned off main's thread in the client (`RoutePlanner`): answered later.
-    plan: (from, to) => Promise.resolve(plan(from, to)),
+    plan: (from, to) => Promise.resolve(ways[`${from}>${to}`] ?? plan(from, to)),
+    fetchFirst: (items, then) => fetches.push([items.map((item) => item.name), then]),
     loopRooms: (name) =>
       name === 'Ring' ? { rooms: ['1/2', '1/3'], bounce: false } : 'no such loop'
   };
@@ -91,7 +99,7 @@ function engine(here: string | null = '1/1') {
     data: { monsters: [], items: [], spells: [] },
     grants: {}
   });
-  return { e, sent, shown, at };
+  return { e, sent, shown, at, fetches };
 }
 
 afterEach(() => vi.useRealTimers());
@@ -341,6 +349,117 @@ describe('the engine in a session', () => {
     e.dispose();
   });
 
+  /* A key not carried: fetched, then the walk or the loop again (2026-10-16). */
+  const refusedForKey = (): Route => ({
+    steps: [],
+    cost: 0,
+    blocked: true,
+    reason: 'needs shining steel key',
+    unlocks: { ...plan('1/1', '1/2'), needs: [{ id: 7, name: 'shining steel key' }] }
+  });
+
+  it('fetches the key a refused walk needs, the walk taken up after', async () => {
+    vi.useFakeTimers();
+    const { e, fetches } = engine('1/1', { '1/1>1/4': refusedForKey() });
+    e.s.inGame = 1;
+    e.s.online = 1;
+    e.received('\x1b[1;36mTown Square\r\n\x1b[0;32mObvious exits: north, closed door east\r\n');
+    expect(e.walkTo('1/4')).toBeNull();
+    await planned();
+    expect(fetches).toEqual([[['shining steel key'], { walkTo: '1/4' }]]);
+    expect(e.s.walking).toBe(0);
+    e.dispose();
+  });
+
+  it('fetches the key a loop’s leg needs, the loop started after', async () => {
+    vi.useFakeTimers();
+    const { e, fetches, shown } = engine('1/1', { '1/2>1/3': refusedForKey() });
+    e.s.inGame = 1;
+    e.s.online = 1;
+    e.received('\x1b[1;36mTown Square\r\n\x1b[0;32mObvious exits: north, closed door east\r\n');
+    expect(e.startLoop('Ring')).toBeNull();
+    await planned();
+    expect(fetches).toEqual([[['shining steel key'], { loop: 'Ring' }]]);
+    expect(shown).toContain('[The loop "Ring" starts once the pack holds what its way needs.]');
+    e.dispose();
+  });
+
+  /* The planner's levers and hidden exits, done by the engine's walk (2026-10-16). */
+  it('pulls a lever elsewhere where the planner’s detour says, the loop’s legs still lined up', async () => {
+    vi.useFakeTimers();
+    const detour: Route = {
+      steps: [
+        step(2, 1, 's'),
+        { ...step(1, 2, 'n'), pull: { say: ['pull lever', 'push stone'], opensName: 'Shop' } },
+        step(2, 3, 'e')
+      ],
+      cost: 3,
+      blocked: false
+    };
+    const { e, at } = engine('1/2', { '1/2>1/3': detour });
+    e.s.inGame = 1;
+    e.s.online = 1;
+    e.received('\x1b[1;36mDark Alley\r\n\x1b[0;32mObvious exits: south\r\n');
+    expect(e.startLoop('Ring')).toBeNull();
+    await planned();
+    const made = e.s.paths.find((p) => p.title === 'Ring')!;
+    expect(made.steps!.map((st) => st.command)).toEqual([
+      's',
+      'pull lever',
+      'push stone',
+      'n',
+      'e',
+      'w',
+      'n'
+    ]);
+    // The rooms line up with the steps past the pulls: step 5 leaves 1/3, step 4 does not.
+    at.here = '1/3';
+    e.s.roomSignature = e.signatureOf('1/3')!;
+    expect([e.s.host.isStepRoom!(made, 5), e.s.host.isStepRoom!(made, 4)]).toEqual([true, false]);
+    e.dispose();
+  });
+
+  it('pulls the levers in the room while the way is not showing, a couple of times', async () => {
+    vi.useFakeTimers();
+    const { e } = engine('1/1');
+    e.s.inGame = 1;
+    e.s.online = 1;
+    e.received('\x1b[1;36mTown Square\r\n\x1b[0;32mObvious exits: north, closed door east\r\n');
+    expect(e.walkTo('1/2')).toBeNull();
+    await planned();
+    const clear = () => e.s.host.clearWay!(e.s.path, 0, 0);
+    // Showing: MegaMUD's own step.
+    expect(clear()).toBe(0);
+    e.s.roomExits[0] = 0;
+    e.s.pending = [];
+    expect(clear()).toBe(1);
+    expect(e.s.pending.map((p) => p.text)).toEqual(['pull lever\r', '\r']);
+    // Sent; the way still shut: once more, then the door code's.
+    e.s.pending = [];
+    expect([clear(), clear()]).toEqual([1, 0]);
+    e.dispose();
+  });
+
+  it('searches for a hidden exit the realm says is searchable', async () => {
+    vi.useFakeTimers();
+    const hidden: Route = {
+      steps: [{ ...step(2, 1, 's'), requirement: { kind: 'hidden', raw: '', searchable: true } }],
+      cost: 1,
+      blocked: false
+    };
+    const { e } = engine('1/2', { '1/2>1/1': hidden });
+    e.s.inGame = 1;
+    e.s.online = 1;
+    e.received('\x1b[1;36mDark Alley\r\n\x1b[0;32mObvious exits: south\r\n');
+    expect(e.walkTo('1/1')).toBeNull();
+    await planned();
+    e.s.roomExits[1] = 0;
+    e.s.pending = [];
+    expect(e.s.host.clearWay!(e.s.path, 0, 1)).toBe(1);
+    expect(e.s.pending.map((p) => p.text)).toEqual(['search s\r', '\r']);
+    e.dispose();
+  });
+
   /* Fatty went through the portal without telling Skinny (2026-10-14). */
   it('writes a portal step as MegaMUD’s @party step: said to a party, sent alone', async () => {
     vi.useFakeTimers();
@@ -351,6 +470,19 @@ describe('the engine in a session', () => {
     expect(e.walkTo('1/4')).toBeNull();
     await planned();
     expect(e.s.path.steps!.map((st) => st.command)).toEqual(['e', '@party go portal']);
+    e.dispose();
+  });
+
+  /* Fatty bashed a gate whose key he carried (2026-10-16). */
+  it('writes a locked exit’s key into its step, as MegaMUD’s paths carry it', async () => {
+    vi.useFakeTimers();
+    const { e } = engine('1/3');
+    e.s.inGame = 1;
+    e.s.online = 1;
+    e.received('\x1b[1;36mShop\r\n\x1b[0;32mObvious exits: closed door west\r\n');
+    expect(e.walkTo('1/4')).toBeNull();
+    await planned();
+    expect(e.s.path.steps!.map((st) => st.command)).toEqual(['n[use shining steel key n]']);
     e.dispose();
   });
 

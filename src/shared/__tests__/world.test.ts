@@ -7,11 +7,13 @@ import {
   hazardFor,
   type SpellHazard,
   newDemands,
+  forcibleBy,
   openableHere,
   parseLair,
   lairsAlong,
   trapOn,
   trapsAlong,
+  type Requirement,
   type Route,
   type RouteStep
 } from '../world';
@@ -407,6 +409,33 @@ describe('parseLair', () => {
  * chip and the walker's rung each ask it and three copies agree only until one
  * is edited.
  */
+describe('forcibleBy', () => {
+  const lock = (extra: Partial<Requirement>): Requirement =>
+    ({ kind: 'key', raw: 'Key: 7', keyId: 7, ...extra }) as Requirement;
+
+  it('opens a key-only lock to neither skill', () => {
+    expect(forcibleBy(lock({}), 500, 500)).toEqual({ pick: false, bash: false });
+  });
+
+  it('opens a lock to the skills its bracket names, at or above the difficulty', () => {
+    expect(forcibleBy(lock({ pickDifficulty: 157 }), 200, 500)).toEqual({
+      pick: true,
+      bash: false
+    });
+    const both = lock({ pickDifficulty: 301, bashDifficulty: 301 });
+    expect(forcibleBy(both, 100, 320)).toEqual({ pick: false, bash: true });
+    expect(forcibleBy(both, null, null)).toEqual({ pick: true, bash: true });
+  });
+
+  it('leaves a plain door, and anything not a lock, to either', () => {
+    expect(forcibleBy({ kind: 'door', raw: 'Door' } as Requirement, 0, 0)).toEqual({
+      pick: true,
+      bash: true
+    });
+    expect(forcibleBy(null, 0, 0)).toEqual({ pick: true, bash: true });
+  });
+});
+
 describe('openableHere', () => {
   const gated = (actions?: Array<{ say: string[]; at?: { map: number; room: number } }>) => ({
     kind: 'hidden' as const,
