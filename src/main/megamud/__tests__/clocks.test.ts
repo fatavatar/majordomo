@@ -2,10 +2,11 @@ import { describe, expect, it } from 'vitest';
 
 import { loadMonitors } from '../abilities/monitors';
 import { newTerminal } from '../input/ParseData';
-import { afk } from '../move/buttons';
+import { afk, playerCommand, playerKey } from '../move/buttons';
 import { newQuietClock, quietTick, secondTick, setActive } from '../script/timer';
 import { session } from './fixture';
 import { Task } from '../script/task';
+import { WindowCommand } from '../../../shared/megamud/toggles';
 
 /* `0x4653d0`, `0x464910`, `0x42c910`'s quiet timers and `0x4c09a0`, read 2026-10-13. */
 
@@ -36,8 +37,8 @@ describe('the one-second timer (0x4653d0)', () => {
     const { s, out, clock } = r;
     s.MegaMud_AutoAfk = 1;
     s.MegaMud_AfkTimeout = 5;
-    s.unknown_322c0 = clock.now;
-    s.probablyLastTypedAt = clock.now - 100;
+    s.lastWindowCommandAt = clock.now;
+    s.lastKeyAt = clock.now - 100;
     clock.now += 299;
     secondTick(s);
     expect(s.active).toBe(0);
@@ -45,6 +46,35 @@ describe('the one-second timer (0x4653d0)', () => {
     secondTick(s);
     expect(s.active).toBe(1);
     expect(out.shown).toEqual(['[AFK now ON]']);
+  });
+
+  /* Every toolbar click turned AFK straight back on: neither clock was ever stamped (2026-10-16). */
+  it('counts the idle from the last window command or key, which end AFK', () => {
+    const r = ticking();
+    const { s, clock } = r;
+    s.MegaMud_AutoAfk = 1;
+    s.MegaMud_AutoAfkOff = 1;
+    s.MegaMud_AfkTimeout = 5;
+    secondTick(s);
+    clock.now += 301;
+    secondTick(s);
+    expect(s.active).toBe(1);
+
+    playerCommand(s, WindowCommand.AutoGet);
+    expect(s.active).toBe(0);
+    clock.now += 299;
+    secondTick(s);
+    expect(s.active).toBe(0);
+    clock.now += 2;
+    secondTick(s);
+    expect(s.active).toBe(1);
+
+    clock.now += 10;
+    playerKey(s);
+    expect(s.active).toBe(0);
+    clock.now += 299;
+    secondTick(s);
+    expect(s.active).toBe(0);
   });
 
   it('prompts again when nothing came back for LagWait + 15 seconds', () => {

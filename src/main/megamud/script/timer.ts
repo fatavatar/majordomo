@@ -85,8 +85,8 @@ export function secondTick(s: Session): void {
   if (s.expMeterStart === 0) s.expMeterStart = s.now;
   if (s.expMeterEnd === 0) s.expMeterEnd = s.now;
   if (s.lastHitAt === 0) s.lastHitAt = s.now;
-  if (s.probablyLastTypedAt === 0) s.probablyLastTypedAt = s.now;
-  if (s.unknown_322c0 === 0) s.unknown_322c0 = s.now;
+  if (s.lastKeyAt === 0) s.lastKeyAt = s.now;
+  if (s.lastWindowCommandAt === 0) s.lastWindowCommandAt = s.now;
   expBaseline(s);
   if (s.eventNext === -1) {
     s.eventNext = nextEvent(s);
@@ -108,9 +108,9 @@ export function secondTick(s: Session): void {
     }
   }
   const idleSince =
-    (s.now - s.probablyLastTypedAt) >>> 0 < (s.now - s.unknown_322c0) >>> 0
-      ? s.probablyLastTypedAt
-      : s.unknown_322c0;
+    (s.now - s.lastKeyAt) >>> 0 < (s.now - s.lastWindowCommandAt) >>> 0
+      ? s.lastKeyAt
+      : s.lastWindowCommandAt;
   if (
     (s.MegaMud_AfkTimeout * 0x3c) >>> 0 < (s.now - idleSince) >>> 0 &&
     s.online !== 0 &&

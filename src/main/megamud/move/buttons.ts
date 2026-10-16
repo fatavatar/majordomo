@@ -64,6 +64,7 @@ export function goStop(s: Session): void {
  * as a lost carrier; walking and following stopped, out of the game.
  */
 export function disconnect(s: Session): void {
+  s.lastWindowCommandAt = s.now;
   s.noRedial = 0;
   s.skipRedialOnce = 1;
   s.walking = 0;
@@ -190,8 +191,26 @@ export function playerCommand(s: Session, command: number): void {
   menuCommand(s, command);
 }
 
-/** A window command posted (`0x460b90`) and run now: the ones the engine has. */
+/**
+ * `0x4172b0`, `0x4b5150`: a key pressed in the terminal, or a line entered:
+ * the idle clock the AFK check counts from stamped, and AFK, with User input
+ * cancels AFK mode (`MegaMud.AutoAfkOff`), ended. Read 2026-10-16.
+ */
+export function playerKey(s: Session): void {
+  s.now = s.host.clock();
+  s.lastKeyAt = s.now;
+  if (s.active === 1) {
+    if (s.MegaMud_AutoAfkOff !== 0) setActive(s, 0);
+    modeDefaults(s);
+  }
+}
+
+/**
+ * A window command posted (`0x460b90`) and run now: the ones the engine has.
+ * Every one stamps the idle clock the AFK check counts from (`0x462d20`).
+ */
 export function menuCommand(s: Session, command: number): void {
+  s.lastWindowCommandAt = s.now;
   if (command === WindowCommand.GoStop) goStop(s);
   else if (command === WindowCommand.Roam) roam(s);
   else if (command === WindowCommand.Afk) afk(s);

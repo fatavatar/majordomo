@@ -2032,6 +2032,21 @@ export class SessionManager {
     return this.current;
   }
 
+  /** The player's keyboard: what they typed sent, and the engine told they are at it. */
+  typedInput(data: string): void {
+    this.send(data);
+    this.keyPressed();
+  }
+
+  /**
+   * The player at the keyboard, which MegaMUD's idle clock and its User input
+   * cancels AFK mode answer to (`playerKey`). Only the player's own keys: a
+   * line the client sends for them, clearing an abandoned one, is not.
+   */
+  keyPressed(): void {
+    this.mega?.key();
+  }
+
   send(data: string): void {
     /*
      * A pasted run split onto the channel the player has already named.
@@ -5547,7 +5562,7 @@ export class SessionManager {
   stepBack(): MovementStart {
     // MegaMUD's Step Back (`0x869`).
     if (this.mega === null) return { refused: t('session.megamud.noEngine') };
-    this.mega.press(0x869);
+    this.mega.press(WindowCommand.StepBack);
     return { started: true };
   }
 

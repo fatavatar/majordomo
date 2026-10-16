@@ -470,7 +470,7 @@ export function healthStep(s: Session): number {
     (s.following === 0 || s.probablyLeaderResting === 0)
   ) {
     const lag = s.Comms_LagWait + 5;
-    if (s.now - s.probablyLastTypedAt < lag) return 0;
+    if (s.now - s.lastKeyAt < lag) return 0;
     if (s.now - s.movedAt < lag) return 0;
   }
 

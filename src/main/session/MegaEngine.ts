@@ -29,7 +29,7 @@ import { bbsSetup } from '../megamud/bbs';
 import { grantPlayers, loadCharacter } from '../megamud/character';
 import { newTerminal, parseData, type TerminalState } from '../megamud/input/ParseData';
 import { typedCommand } from '../megamud/input/typed';
-import { disconnect, menuCommand, playerCommand } from '../megamud/move/buttons';
+import { disconnect, menuCommand, playerCommand, playerKey } from '../megamud/move/buttons';
 import { blessCommand } from '../megamud/player/cast';
 import { clearDetours, goTo, headFor, startWalking } from '../megamud/move/destinations';
 import { clearPath, copyPath, freeSteps } from '../megamud/move/path';
@@ -1044,6 +1044,11 @@ export class MegaEngine {
   }
 
   /**
+  /** The player at the keyboard: a keystroke or a line, ending an idle AFK (`playerKey`). */
+  key(): void {
+    this.act(() => playerKey(this.s));
+  }
+
    * The player sent a line, a bare Enter among them. MegaMUD sends the
    * player's line itself (`0x48e7f0` → `0x42d9f0`), which stamps the clock
    * its re-prompt counts from: a bare Enter after `LagWait` + 15 seconds

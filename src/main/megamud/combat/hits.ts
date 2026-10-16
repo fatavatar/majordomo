@@ -330,7 +330,7 @@ function staleCombat(s: Session): void {
       s.combatOnAt,
       s.combatOffAt,
       s.movedAt,
-      s.probablyLastTypedAt,
+      s.lastKeyAt,
       s.castAt
     ].every(quiet)
   ) {

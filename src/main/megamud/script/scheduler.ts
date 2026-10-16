@@ -102,7 +102,7 @@ export function schedule(s: Session): boolean {
   if (s.state > State.Unknown_14) {
     if (s.now - s.stateSince < s.Comms_LagWait + 9) return false;
     if (s.allOff !== 0) return false;
-    if (s.now - s.probablyLastTypedAt < 10) return false;
+    if (s.now - s.lastKeyAt < 10) return false;
     if (listingTimedOut(s) !== 0) return true;
     s.host.trace('[Bueller?]');
     s.inCombat = 0;

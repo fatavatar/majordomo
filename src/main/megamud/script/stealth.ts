@@ -46,8 +46,7 @@ export function hideStep(s: Session): number {
   }
   if (s.stealthRefused < 3 && s.stealthFails < 10) {
     if (s.hp < 1) return 0;
-    if (s.hideAgain === 0 && !moving(s) && s.now - s.probablyLastTypedAt < s.Comms_LagWait + 6)
-      return 0;
+    if (s.hideAgain === 0 && !moving(s) && s.now - s.lastKeyAt < s.Comms_LagWait + 6) return 0;
     if (getUp(s) !== 0) return 1;
     if (preBackstab(s, 0) !== 0) return 1;
     s.hideAgain = 0;

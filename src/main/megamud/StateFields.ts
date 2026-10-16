@@ -374,13 +374,17 @@ export class StateFields extends SettingsFields {
   expMeterStart = 0;
   /** 0x322b8: when the experience meter's span last advanced. */
   expMeterEnd = 0;
-  /** 0x322c0: an idle clock the AFK check reads; the port sets it only on the first tick. */
-  unknown_322c0 = 0;
   /**
-   * 0x322d0: PROBABLY when the player last typed (the AFK clock); the port sets it only on the
-   * first tick.
+   * 0x322c0: when a window command was last given, stamped first thing by every
+   * window's command handler (`0x462d20`, `0x45ed80`, `0x41e740`, `0x4bc6e0`);
+   * with `lastKeyAt`, the idle the AFK check counts.
    */
-  probablyLastTypedAt = 0;
+  lastWindowCommandAt = 0;
+  /**
+   * 0x322d0: when the player last pressed a key in the terminal (`0x4172b0`,
+   * `0x4175d0`) or entered a line in the command box (`0x4b5150`).
+   */
+  lastKeyAt = 0;
   /** 0x322d8: when the last attack was sent. */
   attackSentAt = 0;
   /**
