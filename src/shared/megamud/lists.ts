@@ -319,6 +319,16 @@ export function statlineAdd(command: string, item: number, colour: number, kai: 
   return token === '' ? text : `${text.slice(0, close)}${token}${text.slice(close)}`;
 }
 
+/**
+ * The figure beside a Health percentage, as `0x442dc0` writes it whenever the
+ * box changes: that share of the maximum, `[n/max]`, or `[n]` once the
+ * maximum is past 999 (read 2026-10-16).
+ */
+export function healthShare(percent: number, max: number): string {
+  const n = Math.trunc((Math.min(100, Math.max(0, Math.trunc(percent))) * max) / 100);
+  return max > 999 ? `[${n}]` : `[${n}/${max}]`;
+}
+
 /** What the line shows for: the character's figures as they are. */
 export interface StatlineSample {
   hp: number;

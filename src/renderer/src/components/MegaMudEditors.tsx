@@ -26,6 +26,7 @@ import {
   STATLINE_DEFAULT,
   STATLINE_ITEMS,
   eventsOf,
+  healthShare,
   monitorsOf,
   newMonitorRow,
   statlineAdd,
@@ -134,6 +135,36 @@ export function customControl(tab: string, c: TabControl, ctx: EditorContext): R
 
 type Make = (ctx: EditorContext, c: TabControl) => ReactNode;
 
+/**
+ * Each Health percentage's label, by the label's id: the box beside it and
+ * whose maximum it is a share of (`0x442dc0`, read 2026-10-16).
+ */
+const SHARE_LABELS: Readonly<Record<number, { key: string; of: 'MaxHP' | 'MaxMana' }>> = {
+  1178: { key: 'HpFull%', of: 'MaxHP' },
+  1190: { key: 'HpRest%', of: 'MaxHP' },
+  1181: { key: 'HpHeal%', of: 'MaxHP' },
+  5034: { key: 'HpHealMinor%', of: 'MaxHP' },
+  1184: { key: 'HpHealAtt%', of: 'MaxHP' },
+  1193: { key: 'HpRun%', of: 'MaxHP' },
+  1187: { key: 'HpLogoff%', of: 'MaxHP' },
+  1236: { key: 'ManaFull%', of: 'MaxMana' },
+  1264: { key: 'ManaRest%', of: 'MaxMana' },
+  1242: { key: 'ManaHeal%', of: 'MaxMana' },
+  5037: { key: 'ManaHealMinor%', of: 'MaxMana' },
+  1245: { key: 'ManaHealAtt%', of: 'MaxMana' },
+  1267: { key: 'ManaRun%', of: 'MaxMana' },
+  1229: { key: 'ManaBless%', of: 'MaxMana' }
+};
+
+function shares(): Record<string, Make> {
+  return Object.fromEntries(
+    Object.entries(SHARE_LABELS).map(([id, share]) => [
+      `Health:${id}`,
+      (ctx: EditorContext) => <Share ctx={ctx} of={share.of} setting={share.key} />
+    ])
+  );
+}
+
 const CUSTOM: Readonly<Record<string, Make>> = {
   'Sounds:1527': (ctx) => <AlertList ctx={ctx} />,
   'Statline:1731': (ctx) => (
@@ -228,6 +259,7 @@ const CUSTOM: Readonly<Record<string, Make>> = {
   'Events:5176': (ctx, c) => <MoveMonitor ctx={ctx} by={-1} label={c.text} />,
   'Events:5177': (ctx, c) => <MoveMonitor ctx={ctx} by={1} label={c.text} />,
   'Health:5215': (ctx) => <CopyFrom ctx={ctx} section="Health" />,
+  ...shares(),
   'Spells:5223': (ctx) => <CopyFrom ctx={ctx} section="Spells" />,
   'Combat:5207': (ctx) => <CopyFrom ctx={ctx} section="Combat" />,
   'Spells:5149': (ctx, c) => (
@@ -377,6 +409,32 @@ function AlertList({ ctx }: { ctx: EditorContext }) {
         );
       })}
     </div>
+  );
+}
+
+/* ------------------------------------------------------------ Health */
+
+/**
+ * The figure a Health percentage comes to (`healthShare`), of the maximum the
+ * character is known to have now, else the one last saved: the template's own
+ * text is a placeholder, `(999/999)`.
+ */
+function Share({
+  ctx,
+  setting,
+  of
+}: {
+  ctx: EditorContext;
+  setting: string;
+  of: 'MaxHP' | 'MaxMana';
+}) {
+  const known = of === 'MaxHP' ? ctx.choices?.statline.maxHp : ctx.choices?.statline.maxMana;
+  const max =
+    known !== undefined && known > 0 ? known : Number(value(ctx.draft, 'Player', of) ?? 0);
+  return (
+    <span className="megamud-control megamud-label" style={ctx.style}>
+      {healthShare(Number(value(ctx.draft, 'Health', setting) ?? 0), max)}
+    </span>
   );
 }
 

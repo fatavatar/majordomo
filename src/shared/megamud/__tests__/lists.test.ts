@@ -5,6 +5,7 @@ import {
   monitorsOf,
   newMonitorRow,
   statlineAdd,
+  healthShare,
   statlinePreview,
   withEvents,
   withMonitors
@@ -105,5 +106,17 @@ describe('the statline builder', () => {
     };
     expect(statlinePreview('full', sample)).toBe('[HP=50,MA=3]: (Resting) ');
     expect(statlinePreview('full custom %f2[HP=%h/%H%B]:', sample)).toBe('[HP=50/80]:');
+  });
+});
+
+describe('the Health tab figures (0x442dc0)', () => {
+  it('shows a percentage as its share of the maximum', () => {
+    expect(healthShare(90, 243)).toBe('[218/243]');
+    expect(healthShare(0, 243)).toBe('[0/243]');
+    expect(healthShare(150, 40)).toBe('[40/40]');
+  });
+
+  it('drops the maximum once it is past 999', () => {
+    expect(healthShare(50, 1200)).toBe('[600]');
   });
 });
