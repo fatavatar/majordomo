@@ -31,6 +31,7 @@ import {
   type PotionRule,
   type PotionWhen,
   type PvpAction,
+  type StatsReportConfig,
   type EncumbranceGate,
   type LocateMethod,
   type TabsPreference
@@ -163,6 +164,8 @@ export interface ServerDraft {
   coins: CoinNames;
   /** Its MegaMUD BBS set-up: only the keys it states. See `Server.bbs`. */
   bbs: BbsSettings;
+  /** Its mudstats board, or empty. See `Server.statsUrl`. */
+  statsUrl: string;
 }
 
 /**
@@ -410,6 +413,8 @@ export interface ProfileDraft {
   };
   /** What to do the moment a player opens on this character — `automation.safety.pvp`. */
   pvp: { notifyGang: boolean; action: PvpAction };
+  /** Posting readings to the realm's mudstats board — `logging.stats`. */
+  stats: StatsReportConfig;
   /**
    * Fighting on the character's behalf — see `CombatConfig`.
    *
@@ -702,7 +707,8 @@ export function asServerDraft(value: unknown): ServerDraft | null {
     loops: asLoops(value['loops'], LOOP_LIMITS),
     database: text(value['database']).slice(0, 400),
     coins: asCoinNames(value['coins']),
-    bbs: asBbsSettings(value['bbs'])
+    bbs: asBbsSettings(value['bbs']),
+    statsUrl: text(value['statsUrl']).trim().slice(0, 400)
   };
 }
 
@@ -770,6 +776,7 @@ export function asProfileDraft(value: unknown): ProfileDraft | null {
   const retreat = isRecord(value['retreat']) ? value['retreat'] : {};
   const fleeGoto = isRecord(value['fleeGoto']) ? value['fleeGoto'] : {};
   const pvp = isRecord(value['pvp']) ? value['pvp'] : {};
+  const stats = isRecord(value['stats']) ? value['stats'] : {};
   const combat = isRecord(value['combat']) ? value['combat'] : {};
   const health = isRecord(value['health']) ? value['health'] : {};
   const party = isRecord(value['party']) ? value['party'] : {};
@@ -827,6 +834,10 @@ export function asProfileDraft(value: unknown): ProfileDraft | null {
     pvp: {
       notifyGang: pvp['notifyGang'] === true,
       action: pvp['action'] === 'retreat' ? 'retreat' : 'none'
+    },
+    stats: {
+      enabled: stats['enabled'] === true,
+      everySeconds: clamp(stats['everySeconds'], 15, 86400, 60)
     },
     combat: {
       enabled: combat['enabled'] === true,

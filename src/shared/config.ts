@@ -185,6 +185,18 @@ export interface ConnectionConfig {
   coins: CoinNames;
   /** The realm's MegaMUD BBS set-up. Resolved from the server's own; see `Server.bbs`. */
   bbs: BbsSettings;
+  /**
+   * Where this character's readings are posted, and the key that may post
+   * them: the realm's `statsUrl` and the character's own `account.statsKey`.
+   * Either empty is nothing posted. See `LoggingConfig.stats`.
+   */
+  stats: StatsTarget;
+}
+
+/** A mudstats board and this character's key to it (`/api/ingest`). */
+export interface StatsTarget {
+  url: string;
+  key: string;
 }
 
 /**
@@ -266,6 +278,15 @@ export interface Server {
    * `shared/megamud/bbs.ts`.
    */
   bbs: BbsSettings;
+  /**
+   * The mudstats board this realm's characters may post their readings to
+   * (`http://<host>:8099`), or empty for none.
+   *
+   * **On the realm, for the reason `coins` is.** A board watches one realm's
+   * characters, so every character here posts to the same one; whether one
+   * does, and how often, is the character's (`logging.stats`).
+   */
+  statsUrl: string;
 }
 
 export interface FontConfig {
@@ -522,6 +543,24 @@ export interface LoggingConfig {
   directory: string;
   /** Stop appending past this size, rather than filling a disk unattended. */
   maxBytes: number;
+  /** Posting this character's readings to its realm's mudstats board. See `StatsReportConfig`. */
+  stats: StatsReportConfig;
+}
+
+/**
+ * Whether this character posts its readings to the realm's mudstats board
+ * (`Server.statsUrl`), and how often.
+ *
+ * Off until switched on: posting tells the board to stop asking the
+ * character by telepath, so this client becomes its only source there. Each
+ * post is a whole snapshot, so the board's figures never go stale between
+ * them; the board's own floor (`min_interval`) is never undercut, whatever
+ * this says.
+ */
+export interface StatsReportConfig {
+  enabled: boolean;
+  /** Seconds between posts. */
+  everySeconds: number;
 }
 
 /**
@@ -2447,7 +2486,9 @@ export const DEFAULT_CONFIG: AppConfig = {
     // The stock names. A realm that renames a coin says so in its own `coins:`.
     coins: {},
     // MegaMUD's defaults. A realm that differs says so in its own `bbs:`.
-    bbs: {}
+    bbs: {},
+    // No board; a realm states its own `statsUrl:`, a character its key.
+    stats: { url: '', key: '' }
   },
   /*
    * None. A realm is a directory under `realms/`, and the client seeds one
@@ -2509,7 +2550,8 @@ export const DEFAULT_CONFIG: AppConfig = {
     conversations: true,
     conversationDays: 365,
     directory: '',
-    maxBytes: 64 * 1024 * 1024
+    maxBytes: 64 * 1024 * 1024,
+    stats: { enabled: false, everySeconds: 60 }
   },
   automation: {
     enabled: true,
@@ -2938,7 +2980,8 @@ export function normalizeConfig(input: unknown): AppConfig {
         DEFAULT_CONFIG.connection.locate
       ),
       coins: asCoinNames(connection['coins']),
-      bbs: asBbsSettings(connection['bbs'])
+      bbs: asBbsSettings(connection['bbs']),
+      stats: normalizeStatsTarget(connection['stats'])
     },
     // Both keys, oldest last: `profiles:` was this block's name before a
     // profile came to mean a character.
@@ -3252,7 +3295,8 @@ function normalizeServer(value: unknown): Server | null {
      */
     database: str(value['database'], ''),
     coins: asCoinNames(value['coins']),
-    bbs: asBbsSettings(value['bbs'])
+    bbs: asBbsSettings(value['bbs']),
+    statsUrl: str(value['statsUrl'], '').trim()
   };
 }
 
@@ -4018,8 +4062,24 @@ function normalizeLogging(value: unknown): LoggingConfig {
     directory: str(raw['directory'], DEFAULT_CONFIG.logging.directory),
     // Floor of 64 KiB: a cap smaller than one screenful of combat is a
     // misconfiguration rather than a preference.
-    maxBytes: int(raw['maxBytes'], DEFAULT_CONFIG.logging.maxBytes, 64 * 1024, 4 * 1024 ** 3)
+    maxBytes: int(raw['maxBytes'], DEFAULT_CONFIG.logging.maxBytes, 64 * 1024, 4 * 1024 ** 3),
+    stats: normalizeStatsReport(raw['stats'])
   };
+}
+
+function normalizeStatsReport(value: unknown): StatsReportConfig {
+  const raw = isRecord(value) ? value : {};
+  const d = DEFAULT_CONFIG.logging.stats;
+  // A floor of fifteen seconds, the board's own; a day at most.
+  return {
+    enabled: bool(raw['enabled'], d.enabled),
+    everySeconds: int(raw['everySeconds'], d.everySeconds, 15, 86400)
+  };
+}
+
+function normalizeStatsTarget(value: unknown): StatsTarget {
+  const raw = isRecord(value) ? value : {};
+  return { url: str(raw['url'], '').trim(), key: str(raw['key'], '').trim() };
 }
 
 /**

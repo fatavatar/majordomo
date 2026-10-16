@@ -31,6 +31,7 @@ import {
   type TableKind
 } from './config/RealmTableStore';
 import { LoopStore } from './config/LoopStore';
+import { detailOf, MudStatsApi } from './stats/MudStatsApi';
 import { SettingsEditor, type SettingsEditorOptions } from './config/SettingsEditor';
 import { LoopCatalogue } from './config/LoopCatalogue';
 import { migrateHome } from './config/Migration';
@@ -3096,6 +3097,13 @@ function registerIpc(): void {
 
   handle(Invoke.megamudSettings, (_caller, rawId: unknown) => {
     const id = asProfileId(rawId);
+    /*
+     * A character created a moment ago is asked for straight after its save,
+     * before the store's poll has read it (2026-10-16): its MegaMUD tabs stayed
+     * hidden, as for a character not yet made, until a restart. Read the
+     * folder now, as a save of these settings does.
+     */
+    if (id !== null && profileFor(id) === undefined) profiles?.refresh();
     const profile = id === null ? undefined : profileFor(id);
     if (profile === undefined || id === null) return null;
     const settings = structuredClone(megamudSettingsOf(id, profile));
@@ -3106,6 +3114,24 @@ function registerIpc(): void {
       hasPassword: password !== '',
       choices: host?.get(id)?.manager.megaChoices() ?? null
     } satisfies MegaMudSettingsView;
+  });
+
+  handle(Invoke.seenPlayers, (_caller, rawId: unknown) => {
+    const id = asProfileId(rawId);
+    if (id === null) return [];
+    return playersFor(id)
+      .recall()
+      .map((facts) => facts.name);
+  });
+
+  handle(Invoke.forgetPlayer, (_caller, rawId: unknown, rawName: unknown) => {
+    const id = asProfileId(rawId);
+    const target = id === null ? undefined : profileFor(id)?.target;
+    if (target === undefined || typeof rawName !== 'string') {
+      return t('app.profiles.noSuchCharacter');
+    }
+    playerBook?.forget(realmAddress(target), rawName);
+    return null;
   });
 
   handle(Invoke.saveMegamud, (_caller, rawId: unknown, raw: unknown) => {
@@ -3188,6 +3214,44 @@ function registerIpc(): void {
     const result = editor().setGangRemotes(session, parsed);
     if (result.ok) publishRosters();
     return result.ok ? null : result.error;
+  });
+
+  /*
+   * The realm's mudstats board. The link runs on the character's own session,
+   * which is what reads the code off the telepath the board sends; the key it
+   * gets is written beside the password, and the profile's reload hands it to
+   * the session's reporter. Nothing here ever returns the key.
+   */
+  const keepStatsKey =
+    (session: string) =>
+    (key: string): string | null => {
+      const result = editor().setStatsKey(session, key);
+      return result.ok ? null : result.error;
+    };
+  handle(Invoke.statsLink, async (_caller, session: unknown) => {
+    if (typeof session !== 'string') return t('app.profiles.noSuchCharacter');
+    const manager = host?.get(session)?.manager;
+    if (!manager) return t('mudstats.link.notConnected');
+    return manager.statsLink(keepStatsKey(session));
+  });
+  handle(Invoke.statsUnlink, async (_caller, session: unknown) => {
+    if (typeof session !== 'string') return t('app.profiles.noSuchCharacter');
+    const manager = host?.get(session)?.manager;
+    if (!manager) return t('mudstats.link.notConnected');
+    return manager.statsUnlink(keepStatsKey(session));
+  });
+  handle(Invoke.statsStatus, async (_caller, session: unknown) => {
+    if (typeof session !== 'string') return t('app.profiles.noSuchCharacter');
+    const manager = host?.get(session)?.manager;
+    if (!manager) return t('mudstats.link.notConnected');
+    return manager.statsStatus();
+  });
+  handle(Invoke.statsTest, async (_caller, url: unknown) => {
+    if (typeof url !== 'string' || url.trim() === '') return t('mudstats.test.noUrl');
+    const answer = await new MudStatsApi(url.trim()).fields();
+    if (answer.status !== 200) return t('mudstats.test.failed', { detail: detailOf(answer) });
+    const floor = Number(answer.body['min_interval']);
+    return t('mudstats.test.ok', { seconds: Number.isFinite(floor) ? floor : '?' });
   });
 
   /* Whether the gang's own channel is answered on at all. Same card, same push. */

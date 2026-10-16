@@ -522,6 +522,7 @@ export class SessionHost {
 
     manager.configureInternal(this.options.internal());
     manager.configureRealm(this.realmFor(id, config));
+    manager.configureStats(config.connection.stats, config.logging.stats);
     const mega = this.options.megamudFor?.(id) ?? null;
     manager.useMegaMud(mega?.setup ?? null);
     const movement = this.options.movement;
@@ -658,6 +659,7 @@ export class SessionHost {
       );
       slot.manager.configureInternal(this.options.internal());
       slot.manager.configureRealm(this.realmFor(slot.id, config));
+      slot.manager.configureStats(config.connection.stats, config.logging.stats);
       const mega = this.options.megamudFor?.(slot.id) ?? null;
       if ((mega?.key ?? null) !== slot.megaKey) {
         slot.megaKey = mega?.key ?? null;

@@ -183,7 +183,8 @@ describe('normalizeConfig', () => {
         locate: 'rm',
         database: '',
         coins: {},
-        bbs: {}
+        bbs: {},
+        statsUrl: ''
       }
     ]);
   });

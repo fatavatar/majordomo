@@ -174,6 +174,21 @@ export class PlayerBook {
     this.queueNotify();
   }
 
+  /**
+   * One player taken off a realm's record, from the Players row (2026-10-16):
+   * a name somebody does not want listed. Until seen again, which records them
+   * afresh; the sessions' own registries keep what they hold, and tell the
+   * book nothing more until the next sighting. Whether there was one.
+   */
+  forget(realm: string, name: string): boolean {
+    this.load();
+    const table = this.realms.get(realmKey(realm));
+    if (table === undefined || !table.delete(playerKey(name))) return false;
+    this.pending.get(realmKey(realm))?.delete(playerKey(name));
+    this.schedule();
+    return true;
+  }
+
   private subscribe(realm: string, listener: Listener): () => void {
     let set = this.listeners.get(realm);
     if (!set) {

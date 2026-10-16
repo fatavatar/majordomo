@@ -1993,3 +1993,17 @@ logging:
   # Stop appending past this size rather than filling a disk unattended. The
   # client says so in the terminal when it stops. 64 MiB.
   maxBytes: 67108864
+
+  # Post this character's readings to its realm's mudstats board -- the realm's
+  # `statsUrl:` -- every `everySeconds`: a whole snapshot each time (health,
+  # experience and its rate, the room, the pack, what it is doing), never
+  # sooner than the board allows. Link the character first, on its Login page:
+  # the board telepaths it a code, the client reads it off the telepath, and
+  # the key the board gives is kept beside the character's password.
+  #
+  # Off by default, because posting tells the board to stop asking the
+  # character by telepath: this client becomes its only source there, and
+  # nothing is posted while it is out of the game.
+  stats:
+    enabled: false
+    everySeconds: 60

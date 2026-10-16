@@ -129,34 +129,50 @@ const DEFAULT_SPELLS = DEFAULT_CONFIG.automation.spells;
 const DEFAULT_ALERTS = DEFAULT_CONFIG.ui.alerts;
 
 /**
- * The per-player half of `automation.remotes`, edited from a form.
+ * The per-player half of `automation.remotes`, edited from a form: the
+ * Players row (2026-10-16).
  *
- * The Player flyout is the surface most people use, and it can only be opened
- * on somebody the client has **seen** — a name in a room, on a `who`, in a
- * telepath. That is the wrong constraint for setting a pair of characters up
- * before either has logged in, which is the ordinary case for the person
- * running four of them. So the same grid is here, addressed by a typed name.
+ * **Everyone the realm has seen is listed** (`PlayerBook`, from any of this
+ * player's characters there), with whoever has a grant here, so a person is
+ * chosen rather than spelled. A name can still be typed: setting a pair of
+ * characters up before either has logged in is the ordinary case for the
+ * person running four of them, and the field narrows the list as it is typed.
+ * **Remove** forgets the person from the realm's record and takes their grant
+ * back; seen again, they are listed again.
  *
  * **One person at a time.** A form showing every named player's fifty-seven
  * rows at once would be a wall nobody reads; the names are chips, and choosing
- * one opens that person's grid. Somebody with nothing granted is not kept — an
- * empty grant is the absence of a decision, and a list that accumulated a name
- * per click would read as a list of people with permissions when it holds
- * people with none.
+ * one opens that person's grid. Somebody with nothing granted is kept in the
+ * file as nobody — an empty grant is the absence of a decision.
  */
 function PlayerGrants({
   grants,
-  onChange
+  seen,
+  onChange,
+  onForget
 }: {
   grants: Record<string, PlayerGrant>;
+  /** The names the realm has seen, as it spells them. */
+  seen: readonly string[];
   onChange(next: Record<string, PlayerGrant>): void;
+  onForget(name: string): void;
 }) {
-  const names = Object.keys(grants).sort();
   const [chosen, setChosen] = useState<string | null>(null);
   const [typed, setTyped] = useState('');
 
-  const who = chosen !== null && chosen in grants ? chosen : (names[0] ?? null);
-  const grant = who === null ? null : grants[who]!;
+  /** Lower-cased, as grants are keyed, to the realm's own spelling where it has one. */
+  const spelled = new Map<string, string>(Object.keys(grants).map((key) => [key, key]));
+  for (const name of seen) spelled.set(name.trim().toLowerCase(), name.trim());
+  const granted = (key: string): boolean => key in grants;
+  const everyone = [...spelled.keys()]
+    .filter((key) => key.length > 0)
+    .sort((a, b) => Number(granted(b)) - Number(granted(a)) || (a < b ? -1 : a > b ? 1 : 0));
+  const find = typed.trim().toLowerCase();
+  const names = find === '' ? everyone : everyone.filter((key) => key.includes(find));
+
+  const who = chosen !== null && spelled.has(chosen) ? chosen : null;
+  const grant = who === null ? null : (grants[who] ?? { allow: [], deny: [] });
+  const shown = (key: string): string => spelled.get(key) ?? key;
 
   const write = (key: string, next: PlayerGrant): void => {
     const rest = { ...grants };
@@ -177,34 +193,39 @@ function PlayerGrants({
         name="remotes-add-player"
         onChange={setTyped}
         onSubmit={() => {
-          const key = typed.trim().toLowerCase();
-          if (key.length === 0) return;
+          if (find.length === 0) return;
           setTyped('');
-          setChosen(key);
           // Created empty and kept only once something is granted, so a name
           // typed by mistake leaves nothing behind.
-          if (!(key in grants)) {
-            onChange({ ...grants, [key]: { allow: [], deny: [] } });
-          }
+          setChosen(find);
+          if (!spelled.has(find)) onChange({ ...grants, [find]: { allow: [], deny: [] } });
         }}
         placeholder={t('settings.remotes.addPlayerPlaceholder')}
         spellCheck={false}
         value={typed}
       />
 
-      {names.length === 0 ? null : (
+      {everyone.length === 0 ? (
+        <p className="settings-note">{t('settings.players.none')}</p>
+      ) : (
         <div className="settings-chips" role="group">
           {names.map((name) => (
             <button
               aria-pressed={name === who}
               className="chip toggle"
+              data-granted={granted(name) ? 'true' : 'false'}
               data-on={name === who ? 'true' : 'false'}
               key={name}
-              onClick={() => setChosen(name)}
+              onClick={() => setChosen(name === who ? null : name)}
               onMouseDown={keepFocus}
+              title={
+                granted(name)
+                  ? t('settings.players.grantedTitle', { name: shown(name) })
+                  : undefined
+              }
               type="button"
             >
-              {name}
+              {shown(name)}
             </button>
           ))}
         </div>
@@ -213,12 +234,16 @@ function PlayerGrants({
       {who === null || grant === null ? null : (
         <>
           <h4 className="settings-subhead">
-            {t('settings.remotes.playerLegend', { name: who })}
+            {t('settings.remotes.playerLegend', { name: shown(who) })}
             <button
               className="quiet"
-              onClick={() => write(who, { allow: [], deny: [] })}
+              onClick={() => {
+                write(who, { allow: [], deny: [] });
+                onForget(shown(who));
+                setChosen(null);
+              }}
               onMouseDown={keepFocus}
-              title={t('settings.remotes.removePlayerTitle', { name: who })}
+              title={t('settings.remotes.removePlayerTitle', { name: shown(who) })}
               type="button"
             >
               {t('settings.remotes.removePlayer')}
@@ -252,7 +277,7 @@ function PlayerGrants({
                   : { allow: [], deny: [] })
               })
             }
-            subject={who}
+            subject={shown(who)}
           />
 
           {/*
@@ -331,6 +356,10 @@ export interface SettingsScreenProps {
   saveMegamud(id: string, settings: MegaSettings): Promise<string | null>;
   saveServer(previousName: string | null, draft: ServerDraft): Promise<string | null>;
   deleteServer(name: string): Promise<string | null>;
+  /** The realm's mudstats board: link, unlink and ask after a character, and test an address. */
+  stats: StatsActions;
+  /** The players a character's realm has seen, for the Players row, and one forgotten. */
+  players: PlayerActions;
   /** Writes the options file everything is inherited from. */
   saveGlobal(draft: GlobalDraft): Promise<string | null>;
   revealConfig(): void;
@@ -479,10 +508,15 @@ function showsGlobal(tab: string): tab is GlobalTab {
  * file, untouched.
  */
 type Section = string;
-const SECTIONS: readonly Section[] = ['profile', 'login', ...MEGA_TABS];
+/** Ours, after MegaMUD's Talk tab: who may send this character remote commands. */
+const PLAYERS = 'players';
+const SECTIONS: readonly Section[] = ['profile', 'login', ...MEGA_TABS].flatMap((section) =>
+  section === 'Talk' ? [section, PLAYERS] : [section]
+);
 function sectionLabel(section: Section): string {
   if (section === 'profile') return t('settings.sections.character');
   if (section === 'login') return t('settings.sections.login');
+  if (section === PLAYERS) return t('settings.sections.players');
   return section;
 }
 
@@ -501,7 +535,10 @@ function realmSections(): NavSection[] {
     {
       id: 'realm',
       label: t('settings.realms.sections.realm'),
-      fieldsets: [{ id: 'realm-login', label: t('settings.realms.loginLegend') }]
+      fieldsets: [
+        { id: 'realm-login', label: t('settings.realms.loginLegend') },
+        { id: 'realm-stats', label: t('settings.realms.statsLegend') }
+      ]
     },
     { id: 'loops', label: t('settings.realms.sections.loops'), fieldsets: [] },
     { id: 'messages', label: t('settings.realms.sections.messages'), fieldsets: [] },
@@ -520,16 +557,17 @@ function realmSections(): NavSection[] {
 }
 
 const SECTION_FIELDSETS: Readonly<Record<Section, readonly NavFieldset[]>> = {
-  login: [{ id: 'login', label: t('settings.login.legend') }],
+  login: [
+    { id: 'login', label: t('settings.login.legend') },
+    { id: 'stats', label: t('settings.mudstats.legend') }
+  ],
   'Auto-roam': [
     { id: 'movement-keep-out', label: t('settings.movement.keepOutLegend') },
     { id: 'hunting', label: t('settings.hunting.legend') },
     { id: 'quests', label: t('settings.quests.legend') }
   ],
-  Talk: [
-    { id: 'remotes', label: t('settings.remotes.legend') },
-    { id: 'bot-commands', label: t('settings.botCommands.legend') }
-  ],
+  Talk: [{ id: 'bot-commands', label: t('settings.botCommands.legend') }],
+  [PLAYERS]: [{ id: 'remotes', label: t('settings.remotes.legend') }],
   Sounds: [{ id: 'alerts-rules', label: t('settings.alerts.ruleLegend') }],
   Health: [
     { id: 'health-flee', label: t('settings.health.fleeLegend') },
@@ -569,6 +607,9 @@ interface CharacterForm {
   hangUpOnPlayer: boolean;
   pvpNotifyGang: boolean;
   pvpAction: PvpAction;
+  /** Posting to the realm's mudstats board (`logging.stats`), and every how many seconds. */
+  statsEnabled: boolean;
+  statsEvery: string;
   retreat: boolean;
   retreatBelow: string;
   /** MegaMUD's `ManaRun%`, as a percentage string like `retreatBelow`. */
@@ -805,6 +846,8 @@ function formOf(entry: ProfileEditable): CharacterForm {
     hangUpOnPlayer: entry.hangUp.onPlayerInRoom,
     pvpNotifyGang: entry.pvp.notifyGang,
     pvpAction: entry.pvp.action,
+    statsEnabled: entry.stats.enabled,
+    statsEvery: String(entry.stats.everySeconds),
     combat: entry.combat.enabled,
     combatAttack: entry.combat.attack,
     combatOpener: entry.combat.opener,
@@ -1027,6 +1070,10 @@ function draftOf(form: CharacterForm): ProfileDraft {
       onPlayerInRoom: form.hangUpOnPlayer
     },
     pvp: { notifyGang: form.pvpNotifyGang, action: form.pvpAction },
+    stats: {
+      enabled: form.statsEnabled,
+      everySeconds: Math.max(15, Number.parseInt(form.statsEvery, 10) || 60)
+    },
     party: {
       assistLeader: form.partyAssist,
       defendParty: form.partyDefend,
@@ -1243,7 +1290,9 @@ function emptyServerForm(defaults: GlobalDraft | null): ServerDraft {
     // The stock names until somebody says this realm renames one.
     coins: {},
     // MegaMUD's defaults until somebody says this realm differs.
-    bbs: {}
+    bbs: {},
+    // No board until somebody names one.
+    statsUrl: ''
   };
 }
 
@@ -1347,6 +1396,10 @@ function emptyForm(
     hangUpOnPlayer: hangUp.onPlayerInRoom,
     pvpNotifyGang: pvp.notifyGang,
     pvpAction: pvp.action,
+    // Off for a new character whatever the options file says: posting tells
+    // the board to stop asking it, which is the player's to choose.
+    statsEnabled: false,
+    statsEvery: String(DEFAULT_CONFIG.logging.stats.everySeconds),
     combat: combat.enabled,
     combatAttack: combat.attack,
     combatOpener: combat.opener,
@@ -1548,6 +1601,120 @@ function bbsLabel(key: BbsKey): string {
   }
 }
 
+/** The realm's record of players, as the Players row reads it (`Invoke.seenPlayers`). */
+export interface PlayerActions {
+  seen(id: string): Promise<string[]>;
+  forget(id: string, name: string): Promise<string | null>;
+}
+
+/** The mudstats calls the screen makes, each answering in a sentence (`Invoke.statsLink` and the rest). */
+export interface StatsActions {
+  link(id: string): Promise<string>;
+  unlink(id: string): Promise<string>;
+  status(id: string): Promise<string>;
+  test(url: string): Promise<string>;
+}
+
+/** The board a character's realm names, or '' — the form's realm, by name. */
+function boardOf(snapshot: SettingsSnapshot | null, serverName: string | null): string {
+  if (snapshot === null || serverName === null) return '';
+  const wanted = serverName.toLowerCase();
+  return snapshot.servers.find((server) => server.name.toLowerCase() === wanted)?.statsUrl ?? '';
+}
+
+/**
+ * Link, unlink and ask after a character's mudstats key, each answered in a
+ * sentence under the buttons. The link takes as long as the board takes to
+ * telepath the code, so the sentence says it is waiting meanwhile.
+ */
+function StatsLink({
+  actions,
+  id,
+  linked
+}: {
+  actions: StatsActions;
+  id: string;
+  linked: boolean;
+}): React.JSX.Element {
+  const [said, setSaid] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const run = (call: () => Promise<string>, working: string): void => {
+    setBusy(true);
+    setSaid(working);
+    void call()
+      .then(setSaid)
+      .catch((error: unknown) => setSaid(String(error)))
+      .finally(() => setBusy(false));
+  };
+  return (
+    <>
+      <p className="settings-note">
+        {linked ? t('settings.mudstats.linked') : t('settings.mudstats.notLinked')}
+      </p>
+      <div className="settings-inline">
+        <button
+          disabled={busy}
+          onClick={() => run(() => actions.link(id), t('settings.mudstats.linking'))}
+          type="button"
+        >
+          {t('settings.mudstats.link')}
+        </button>
+        <button
+          disabled={busy}
+          onClick={() => run(() => actions.status(id), t('settings.mudstats.asking'))}
+          type="button"
+        >
+          {t('settings.mudstats.check')}
+        </button>
+        <button
+          disabled={busy}
+          onClick={() => run(() => actions.unlink(id), t('settings.mudstats.unlinking'))}
+          type="button"
+        >
+          {t('settings.mudstats.unlink')}
+        </button>
+      </div>
+      {said !== null && (
+        <p className="settings-note" role="status">
+          {said}
+        </p>
+      )}
+    </>
+  );
+}
+
+/** Whether a board answers at the address typed, and its floor between posts. */
+function StatsTest({ actions, url }: { actions: StatsActions; url: string }): React.JSX.Element {
+  const [said, setSaid] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  return (
+    <>
+      <div className="settings-inline">
+        <button
+          disabled={busy || url.trim() === ''}
+          onClick={() => {
+            setBusy(true);
+            setSaid(t('settings.mudstats.asking'));
+            void actions
+              .test(url)
+              .then(setSaid)
+              .catch((error: unknown) => setSaid(String(error)))
+              .finally(() => setBusy(false));
+          }}
+          type="button"
+        >
+          {t('settings.realms.statsTest')}
+        </button>
+      </div>
+      {said !== null && (
+        <p className="settings-note" role="status">
+          {said}
+        </p>
+      )}
+    </>
+  );
+}
+
 export default function SettingsScreen({
   open,
   openAt = null,
@@ -1564,6 +1731,8 @@ export default function SettingsScreen({
   saveMegamud,
   saveServer,
   deleteServer,
+  stats,
+  players,
   saveGlobal,
   revealConfig,
   revealProfiles,
@@ -1632,6 +1801,19 @@ export default function SettingsScreen({
     selected === null || selected === NEW_CHARACTER ? null : selected,
     megaStore
   );
+  /** Who the chosen character's realm has seen, asked for when its Players row is open. */
+  const [seen, setSeen] = useState<string[]>([]);
+  useEffect(() => {
+    let live = true;
+    setSeen([]);
+    if (selected === null || selected === NEW_CHARACTER || section !== PLAYERS) return;
+    void players.seen(selected).then((names) => {
+      if (live) setSeen(names);
+    });
+    return () => {
+      live = false;
+    };
+  }, [selected, section, players]);
   /**
    * Whether the shelf of shipped loops is open, and what is on it.
    *
@@ -2921,6 +3103,51 @@ export default function SettingsScreen({
                   )}
 
                   {/*
+                    The realm's mudstats board, beside the account because the
+                    key it gives is kept with the password. The realm says
+                    where the board is; whether this character posts there, and
+                    how often, is the character's.
+                  */}
+                  {section === 'login' && (
+                    <fieldset className="settings-menus" data-fieldset="stats">
+                      <legend>{t('settings.mudstats.legend')}</legend>
+                      <p className="settings-note">
+                        {boardOf(snapshot, form.serverName) === ''
+                          ? t('settings.mudstats.noBoard')
+                          : t('settings.mudstats.note', {
+                              url: boardOf(snapshot, form.serverName)
+                            })}
+                      </p>
+                      <div className="settings-inline">
+                        <CheckField
+                          checked={form.statsEnabled}
+                          label={t('settings.mudstats.enabledLabel')}
+                          name="stats-enabled"
+                          onChange={(value) => patch({ statsEnabled: value })}
+                        />
+                        {form.statsEnabled && (
+                          <NumberField
+                            hint={t('settings.mudstats.everyHint')}
+                            label={t('settings.mudstats.everyLabel')}
+                            name="stats-every"
+                            onChange={(value) => patch({ statsEvery: value })}
+                            value={form.statsEvery}
+                          />
+                        )}
+                      </div>
+                      {form.id !== '' && (
+                        <StatsLink
+                          actions={stats}
+                          id={form.id}
+                          linked={
+                            characters.find((entry) => entry.id === form.id)?.statsLinked === true
+                          }
+                        />
+                      )}
+                    </fieldset>
+                  )}
+
+                  {/*
   MegaMUD's own tab, as its settings dialog draws it, and under it what
   this client keeps for the character that belongs with it (2026-10-14).
 */}
@@ -3030,21 +3257,6 @@ export default function SettingsScreen({
 
                   {section === 'Talk' && (
                     <>
-                      <fieldset className="settings-menus" data-fieldset="remotes">
-                        <legend>{t('settings.remotes.legend')}</legend>
-                        {/*
-    Who may drive this character, and how far: the per-player grants the
-    MegaMUD engine reads as each player's remote bits (`grantPlayers`).
-    Whether remotes are answered at all is MegaMUD's own, on the Talk tab
-    above; the gang and party lists were the old automation's (2026-10-14).
-  */}
-                        <p className="settings-warn">{t('settings.remotes.channelWarning')}</p>
-                        <p className="settings-note">{t('settings.remotes.engineNote')}</p>
-                        <PlayerGrants
-                          grants={form.remotePlayers}
-                          onChange={(players) => patch({ remotePlayers: players })}
-                        />
-                      </fieldset>
                       {/*
                         The player's own commands others may ask this
                         character for, answered after MegaMUD's own
@@ -3059,6 +3271,30 @@ export default function SettingsScreen({
                         />
                       </fieldset>
                     </>
+                  )}
+
+                  {section === PLAYERS && (
+                    <fieldset className="settings-menus" data-fieldset="remotes">
+                      <legend>{t('settings.remotes.legend')}</legend>
+                      {/*
+    Who may drive this character, and how far: the per-player grants the
+    MegaMUD engine reads as each player's remote bits (`grantPlayers`).
+    Whether remotes are answered at all is MegaMUD's own, on its Talk tab;
+    the gang and party lists were the old automation's (2026-10-14). Its own
+    row since 2026-10-16, listing whoever the realm has seen.
+  */}
+                      <p className="settings-warn">{t('settings.remotes.channelWarning')}</p>
+                      <p className="settings-note">{t('settings.remotes.engineNote')}</p>
+                      <PlayerGrants
+                        grants={form.remotePlayers}
+                        onChange={(remotePlayers) => patch({ remotePlayers })}
+                        onForget={(name) => {
+                          setSeen((was) => was.filter((entry) => entry !== name));
+                          void players.forget(form.id, name);
+                        }}
+                        seen={seen}
+                      />
+                    </fieldset>
                   )}
 
                   {section === 'Statline' && (
@@ -3432,6 +3668,26 @@ export default function SettingsScreen({
                           steps={serverForm.login}
                           whenPlaceholder={t('settings.realms.stepWhenPlaceholder')}
                         />
+                      </fieldset>
+
+                      {/*
+                    The mudstats board this realm's characters may post their
+                    readings to (`Server.statsUrl`). Each character says
+                    whether it does, on its Login page.
+                  */}
+                      <fieldset className="settings-menus" data-fieldset="realm-stats">
+                        <legend>{t('settings.realms.statsLegend')}</legend>
+                        <p className="settings-note">{t('settings.realms.statsNote')}</p>
+                        <TextField
+                          label={t('settings.realms.statsUrlLabel')}
+                          name="realm-stats-url"
+                          onChange={(value) => setServerForm({ ...serverForm, statsUrl: value })}
+                          placeholder="http://192.168.0.220:8099"
+                          spellCheck={false}
+                          value={serverForm.statsUrl}
+                          wide
+                        />
+                        <StatsTest actions={stats} url={serverForm.statsUrl} />
                       </fieldset>
 
                       {/*

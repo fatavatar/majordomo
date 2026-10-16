@@ -64,6 +64,23 @@ describe('what a realm knows about its players', () => {
     expect(again[0]).toMatchObject({ name: 'Soul', equipment: GLOVES, equipmentAt: 500 });
   });
 
+  /* The Players row's Remove (2026-10-16): off the list, for good, until seen again. */
+  it('forgets a player on one realm, across a restart, and learns them again when seen', () => {
+    const first = store();
+    first.forRealm('orohost:2427').remember(facts());
+    first.forRealm('orohost:2427').remember(facts({ name: 'Rend' }));
+    first.forRealm('bbs.example:23').remember(facts());
+    expect(first.forget('orohost:2427', 'SOUL')).toBe(true);
+    expect(first.forget('orohost:2427', 'Nobody')).toBe(false);
+    first.flush();
+
+    const again = store();
+    expect(again.forRealm('orohost:2427').recall().map((f) => f.name)).toEqual(['Rend']);
+    expect(again.forRealm('bbs.example:23').recall().map((f) => f.name)).toEqual(['Soul']);
+    again.forRealm('orohost:2427').remember(facts({ lastSeen: 2_000 }));
+    expect(again.forRealm('orohost:2427').recall().map((f) => f.name)).toContain('Soul');
+  });
+
   /*
    * Soul on GreaterMUD is not Soul on a MajorMUD board, whatever map data
    * either ships — and two entries that dial one address are one realm.

@@ -85,19 +85,31 @@ function wait(minutes: number, hoursADay: number): string {
   return `${years}-${years + 1} years`;
 }
 
-export function expMeter(s: Session): ExpMeter {
+/**
+ * The meter's figures before they are written out: what `expMeter` formats,
+ * and what a stats board is posted as numbers (`StatsReporter`).
+ */
+export interface ExpFigures {
+  made: number;
+  /** The realm has not said what the next level needs. */
+  unknown: boolean;
+  /** The level owed, worked out on the chart, where `exp` says 0. */
+  chart: { needed: number; level: number; owed: number } | null;
+  /** What the next level (or the one after those owed) still needs. */
+  toGo: number;
+  /** An hour's rate, or null before a minute has been measured. */
+  perHour: number | null;
+  levelIn: string;
+}
+
+export function expFigures(s: Session): ExpFigures {
   expBaseline(s);
   const baseline = s.expBaseline;
-  const made = commas(s.expBefore - baseline + s.exp);
+  const made = s.expBefore - baseline + s.exp;
 
   const unknown = s.expToLevel === -1;
   const chart = !unknown && s.expToLevel === 0 ? charted(s) : null;
   const toGo = chart?.needed ?? Math.max(0, s.expToLevel);
-  const needed = unknown
-    ? '?'
-    : chart
-      ? `${large(chart.needed)} (L${chart.level})`
-      : commas(s.expToLevel);
 
   // Scaled up before dividing, finer for a small gain.
   const gained = s.exp - baseline;
@@ -105,8 +117,8 @@ export function expMeter(s: Session): ExpMeter {
   const elapsed = s.expMeterEnd - s.expMeterStart;
   const scaledHours = elapsed >= 0 ? Math.floor((elapsed * scale) / HOUR) : 0;
   const seconds = scaledHours === 0 ? 0 : elapsed;
-  if (seconds < MINUTE) return { made, needed, rate: '? k/hr', levelIn: '?' };
-  const rate = Math.floor((gained * scale) / scaledHours);
+  if (seconds < MINUTE) return { made, unknown, chart, toGo, perHour: null, levelIn: '?' };
+  const perHour = Math.floor((gained * scale) / scaledHours);
 
   let levelIn = '?';
   if (!unknown) {
@@ -121,5 +133,20 @@ export function expMeter(s: Session): ExpMeter {
           : prefix + wait(Math.floor(toGo / perMinute) + 1, s.maxHours);
     }
   }
-  return { made, needed, rate: rateText(rate), levelIn };
+  return { made, unknown, chart, toGo, perHour, levelIn };
+}
+
+export function expMeter(s: Session): ExpMeter {
+  const f = expFigures(s);
+  const needed = f.unknown
+    ? '?'
+    : f.chart
+      ? `${large(f.chart.needed)} (L${f.chart.level})`
+      : commas(s.expToLevel);
+  return {
+    made: commas(f.made),
+    needed,
+    rate: f.perHour === null ? '? k/hr' : rateText(f.perHour),
+    levelIn: f.levelIn
+  };
 }

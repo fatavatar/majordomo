@@ -90,6 +90,32 @@ describe('the realm a character walks', () => {
   });
 });
 
+/* The realm's mudstats board, with the character's own key to it (2026-10-16). */
+describe('a realm’s stats board', () => {
+  it('is the character’s connection’s, with the key beside its password', () => {
+    const config = {
+      servers: [
+        { name: 'Skinny Inc', host: 'bbs.thelucks.org', port: 2424, statsUrl: 'http://b:8099' }
+      ]
+    };
+    const profile = resolve(
+      {
+        server: 'Skinny Inc',
+        account: { username: 'fatty', password: 'pw', statsKey: 'mudk_1_s' },
+        logging: { stats: { enabled: true, everySeconds: 5 } }
+      },
+      config
+    );
+    expect(profile.config.connection.stats).toEqual({ url: 'http://b:8099', key: 'mudk_1_s' });
+    // Never under the board's own floor.
+    expect(profile.config.logging.stats).toEqual({ enabled: true, everySeconds: 15 });
+    expect(resolve({ server: 'GreaterMUD (local)' }).config.connection.stats).toEqual({
+      url: '',
+      key: ''
+    });
+  });
+});
+
 /* What a realm calls its coins reaches every character playing there. */
 describe('a realm’s coin names', () => {
   it('are the character’s connection’s, from the realm it plays', () => {

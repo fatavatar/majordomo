@@ -9774,6 +9774,11 @@ tr:hover .row-action.worn,
   gap: 6px;
 }
 
+/* Somebody with a grant, among everyone the realm has seen: listed first, and marked. */
+.remote-players .chip.toggle[data-granted='true'][data-on='false'] {
+  font-weight: 600;
+}
+
 /* The gang's own head: which gang this character is in. */
 .gang-head {
   margin: 0;

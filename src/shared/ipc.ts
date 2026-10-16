@@ -58,6 +58,7 @@ import type {
   PartyConfig,
   PotionWhen,
   PvpAction,
+  StatsReportConfig,
   SuppliesConfig,
   SupplyItem
 } from './config';
@@ -461,6 +462,10 @@ export interface ProfileEditable {
   fleeGoto: { enabled: boolean; belowHealth: number; destination: string };
   /** What to do when a player opens on this character. Resolved, like the two above. */
   pvp: { notifyGang: boolean; action: PvpAction };
+  /** Posting readings to the realm's mudstats board. Resolved, like the two above. */
+  stats: StatsReportConfig;
+  /** Whether a mudstats key is on file — never the key, for the reason `hasPassword` is not. */
+  statsLinked: boolean;
   /**
    * Fighting on this character's behalf. Resolved, like the two above.
    *
@@ -836,6 +841,12 @@ export const Invoke = {
    */
   megamudSettings: 'settings:megamud',
   saveMegamud: 'settings:save-megamud',
+  /**
+   * The players a character's realm has seen (`PlayerBook`), by name, for the
+   * Players row's list; and one of them forgotten from it, until seen again.
+   */
+  seenPlayers: 'settings:seen-players',
+  forgetPlayer: 'settings:forget-player',
   saveServer: 'settings:save-server',
   /** Write the options file everything is inherited from. */
   saveGlobal: 'settings:save-global',
@@ -860,6 +871,16 @@ export const Invoke = {
    * `saveProfile`.
    */
   setGangRemotes: 'settings:gang-remotes',
+  /**
+   * The realm's mudstats board (`Server.statsUrl`): link this character (the
+   * handshake, its code read off the telepath the board sends), unlink it
+   * (its key retired there), what the board says of it, and whether a board
+   * answers at an address at all. Each resolves to a sentence for the screen.
+   */
+  statsLink: 'stats:link',
+  statsUnlink: 'stats:unlink',
+  statsStatus: 'stats:status',
+  statsTest: 'stats:test',
   /** Whether this character answers `@` commands on the gangpath at all. */
   setRemoteGangpath: 'settings:remote-gangpath',
   /**
@@ -1320,6 +1341,10 @@ export interface IpcApi {
   megamudSettings(id: string): Promise<MegaMudSettingsView | null>;
   /** Writes a character's MegaMUD settings; why it refused, or null. */
   saveMegamud(id: string, settings: MegaSettings): Promise<string | null>;
+  /** The names a character's realm has seen, as the realm spells them. */
+  seenPlayers(id: string): Promise<string[]>;
+  /** One forgotten from the realm's record of players; why it could not be, or null. */
+  forgetPlayer(id: string, name: string): Promise<string | null>;
   /**
    * Writes the options file everything is inherited from.
    *
@@ -1342,6 +1367,14 @@ export interface IpcApi {
   setRemoteGrant(session: SessionId, name: string, grant: PlayerGrant): Promise<string | null>;
   /** Writes this character's whole gang list, for the same reason. */
   setGangRemotes(session: SessionId, remotes: RemoteName[]): Promise<string | null>;
+  /** Links this character to its realm's mudstats board, in the game. What happened. */
+  statsLink(session: SessionId): Promise<string>;
+  /** Retires this character's mudstats key and forgets it. What happened. */
+  statsUnlink(session: SessionId): Promise<string>;
+  /** What the board says of this character's key. */
+  statsStatus(session: SessionId): Promise<string>;
+  /** Whether a mudstats board answers at `url`, and its floor between posts. */
+  statsTest(url: string): Promise<string>;
   /** Turns gangpath answering on or off for one character. */
   setRemoteGangpath(session: SessionId, on: boolean): Promise<string | null>;
   /**

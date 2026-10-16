@@ -169,6 +169,7 @@ function resolveServer(
   database: string;
   coins: CoinNames;
   bbs: BbsSettings;
+  statsUrl: string;
 } | null {
   if (typeof value === 'string') {
     const found = byName(servers, value);
@@ -180,7 +181,8 @@ function resolveServer(
           locate: found.locate,
           database: found.database,
           coins: found.coins,
-          bbs: found.bbs
+          bbs: found.bbs,
+          statsUrl: found.statsUrl
         }
       : null;
   }
@@ -214,6 +216,7 @@ function resolveServer(
       // reason it may state its database: there is nowhere else to say it.
       coins: asCoinNames(value['coins']),
       bbs: asBbsSettings(value['bbs']),
+      statsUrl: str(value['statsUrl'], '').trim(),
       target: {
         host,
         port,
@@ -314,11 +317,19 @@ export function ownMonsterRules(raw: Record<string, unknown>): MonsterRule[] {
  * the same BBS account simply state the same username twice, and if their
  * passwords drift apart that is theirs to notice, not the client's to prevent.
  */
-function resolveAccount(value: unknown): { username: string; password: string } | null {
+function resolveAccount(
+  value: unknown
+): { username: string; password: string; statsKey: string } | null {
   if (!isRecord(value)) return null;
   const username = str(value['username'], '');
   if (username.length === 0) return null;
-  return { username, password: str(value['password'], '') };
+  return {
+    username,
+    password: str(value['password'], ''),
+    // The key the realm's mudstats board gave this character, beside the
+    // password and kept as one: it may write the character's record there.
+    statsKey: str(value['statsKey'], '')
+  };
 }
 
 /**
@@ -380,7 +391,7 @@ export function resolveProfile(id: string, raw: unknown, baseSource: unknown): P
    * holds unchanged: a rejected password is never retried, a repeated prompt
    * stops the sequence, a missing answer leaves the prompt alone.
    */
-  const credentials = account ?? { username: '', password: '' };
+  const credentials = account ?? { username: '', password: '', statsKey: '' };
   const patch = overlay(
     // Anything the profile says about the client generally — automation, ui,
     // logging — is the overlay. The connection block is assembled from the
@@ -400,6 +411,8 @@ export function resolveProfile(id: string, raw: unknown, baseSource: unknown): P
         coins: server.coins,
         // And its MegaMUD BBS set-up.
         bbs: server.bbs,
+        // And its mudstats board, with this character's own key to it.
+        stats: { url: server.statsUrl, key: credentials.statsKey },
         login: {
           enabled: credentials.username.length > 0,
           /*

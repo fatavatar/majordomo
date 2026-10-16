@@ -58,7 +58,8 @@ describe('a saved server', () => {
       database: '',
       // And renames no coin until it says so.
       coins: {},
-      bbs: {}
+      bbs: {},
+      statsUrl: ''
     });
   });
 

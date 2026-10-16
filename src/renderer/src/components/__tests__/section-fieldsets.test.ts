@@ -42,7 +42,8 @@ describe.each([
       'realm-spell-lore',
       'realm-hang-penalties',
       'realm-coins',
-      'realm-bbs'
+      'realm-bbs',
+      'realm-stats'
     ],
     // The Character page's Item Details, drawn by the fieldset it shares with Global (2026-10-14).
     ['CarrySections.tsx']

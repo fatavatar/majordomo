@@ -24,6 +24,9 @@ import type { MessageTrigger } from '../../shared/messageTriggers';
 import { mergeItemRules, type ItemRule } from '../../shared/itemRules';
 import { withRealmMonsters, type MonsterRule } from '../../shared/monsterRules';
 import { AutoKeys, type KeyedWay } from '../automation/AutoKeys';
+import { StatsReporter, type KeepKey } from '../stats/StatsReporter';
+import { statsSnapshot } from '../stats/snapshot';
+import { version as APP_VERSION } from '../../../package.json';
 import type { MegaChoices } from '../../shared/ipc';
 import type { RemoteName } from '../../shared/remotes';
 import { NO_LOOP, type LoopProgress } from '../../shared/loops';
@@ -146,6 +149,8 @@ import {
   type CombatConfig,
   type LocateMethod,
   type LoginConfig,
+  type StatsReportConfig,
+  type StatsTarget,
   type SupplyItem,
   type RewritesUiConfig
 } from '../../shared/config';
@@ -782,6 +787,8 @@ export class SessionManager {
   private readonly questRunner: QuestRunner;
   /** Keeping a room's ward up off a carried item (todo 105). */
   private readonly wards: Wards;
+  /** Posting this character's readings to its realm's mudstats board. See `StatsReporter`. */
+  private readonly stats: StatsReporter;
   /** Bending down for the key to the door in front of you. See `AutoKeys`. */
   private readonly keys: AutoKeys;
   /**
@@ -1293,6 +1300,25 @@ export class SessionManager {
      * statement the router does (`packContents`), so the two cannot disagree
      * about whether the key is already held.
      */
+    /*
+     * And the realm's mudstats board, where this character posts its readings
+     * (`logging.stats`), its key read off the telepath the board sends it.
+     */
+    this.stats = new StatsReporter(
+      {
+        snapshot: () => {
+          const state = this.tracker.current;
+          if (state.phase !== 'in-game') return null;
+          return statsSnapshot(state, this.mega?.statsReport() ?? null, APP_VERSION);
+        },
+        playerName: () => {
+          const state = this.tracker.current;
+          return state.phase === 'in-game' ? state.name : null;
+        },
+        notice: (text) => this.sink.notice(text)
+      },
+      `mudengine ${APP_VERSION}`
+    );
     this.keys = new AutoKeys(
       automation.movement,
       automation.enabled,
@@ -2443,6 +2469,26 @@ export class SessionManager {
   }
 
   /** The client's own settings — which of its commands are quiet. Hot-reloaded. */
+  /** The realm's mudstats board, this character's key, and whether and how often it posts. */
+  configureStats(target: StatsTarget, report: StatsReportConfig): void {
+    this.stats.configure(target, report);
+  }
+
+  /** Links this character to its realm's board, keeping the key with `keep`. What happened. */
+  statsLink(keep: KeepKey): Promise<string> {
+    return this.stats.link(keep);
+  }
+
+  /** Retires this character's key at the board and forgets it. What happened. */
+  statsUnlink(keep: KeepKey): Promise<string> {
+    return this.stats.unlink(keep);
+  }
+
+  /** What the board says of this character's key. */
+  statsStatus(): Promise<string> {
+    return this.stats.status();
+  }
+
   configureInternal(internal: InternalConfig): void {
     this.internal = internal;
   }
@@ -3276,6 +3322,7 @@ export class SessionManager {
   }
 
   dispose(): void {
+    this.stats.dispose();
     if (this.megaHeldTimer !== null) clearTimeout(this.megaHeldTimer);
     if (this.megaSheetTimer !== null) clearTimeout(this.megaSheetTimer);
     this.mega?.dispose();
@@ -3503,6 +3550,10 @@ export class SessionManager {
      * both mean the same thing — there is a command line again.
      */
     if (block.type === 'user-stats-screen') this.holdForStatScreen(t('session.stats.screen'));
+    // A telepath may be the code the realm's mudstats board sent (`StatsReporter.link`).
+    if (block.type === 'conversation-telepath' && block.groups['message'] !== undefined) {
+      this.stats.heard(block.groups['message']);
+    }
     /*
      * And the exit sentence releases it too (todo 115): `SAVE` prints the
      * suicide-password paragraph and the room *before* the prompt, and the

@@ -60,6 +60,7 @@ const draft = (over: Partial<ProfileDraft> = {}): ProfileDraft => ({
   },
   fleeGoto: { enabled: false, belowHealth: 0.2, destination: '' },
   pvp: { notifyGang: false, action: 'none' },
+  stats: { enabled: false, everySeconds: 60 },
   // The shipped defaults, so a draft that says nothing about combat writes no
   // `combat:` block at all -- which is the behaviour the tests below assert.
   combat: { ...DEFAULT_CONFIG.automation.combat },
@@ -300,6 +301,21 @@ ui:
     expect(read('vaelor')['account']).toEqual({ username: 'someone', password: 'secret-value' });
   });
 
+  /* The mudstats key is written by the link, never by the form (2026-10-16). */
+  it('keeps the stats key through a save, and writes and forgets it on its own', () => {
+    editor.saveProfile('vaelor', draft());
+    expect(editor.setStatsKey('vaelor', 'mudk_1_secret').ok).toBe(true);
+    editor.saveProfile('vaelor', draft({ name: 'Vaelor the Second' }));
+    expect(read('vaelor')['account']).toEqual({
+      username: 'someone',
+      password: 'secret-value',
+      statsKey: 'mudk_1_secret'
+    });
+    expect(editor.snapshot().characters.find((c) => c.id === 'vaelor')?.statsLinked).toBe(true);
+    editor.setStatsKey('vaelor', '');
+    expect(read('vaelor')['account']).toEqual({ username: 'someone', password: 'secret-value' });
+  });
+
   it('refuses to touch a file that does not parse', () => {
     const file = home.profile('broken').file;
     fs.mkdirSync(path.dirname(file), { recursive: true });
@@ -357,6 +373,7 @@ describe('servers, one directory each', () => {
     database: '',
     coins: {},
     bbs: {},
+    statsUrl: '',
     ...draft
   });
 
@@ -486,7 +503,8 @@ describe('servers, one directory each', () => {
       loops: [],
       database: '',
       coins: {},
-      bbs: {}
+      bbs: {},
+      statsUrl: ''
     });
     expect(servers()).toEqual([
       { id: 'greatermud-local', name: 'GreaterMUD (local)', host: '127.0.0.1' }
@@ -561,7 +579,8 @@ describe('credentials in the messages', () => {
       loops: [],
       database: '',
       coins: {},
-      bbs: {}
+      bbs: {},
+      statsUrl: ''
     });
     for (const file of fs.readdirSync(dir)) {
       if (!fs.statSync(path.join(dir, file)).isFile()) continue;
@@ -981,7 +1000,8 @@ describe('the loops a character owns', () => {
       loops: [arena],
       database: '',
       coins: {},
-      bbs: {}
+      bbs: {},
+      statsUrl: ''
     });
     editor.saveProfile('vaelor', draft());
 
@@ -1063,7 +1083,8 @@ describe('filing one loop from the Loops modal', () => {
       loops: [],
       database: '',
       coins: {},
-      bbs: {}
+      bbs: {},
+      statsUrl: ''
     });
     expect(editor.addLoop('server', 'GreaterMUD (local)', sewers)).toEqual({ ok: true });
     const store = new LoopStore(home);
@@ -1122,7 +1143,8 @@ describe('filing a MegaMUD folder of loops on a realm', () => {
     loops,
     database: '',
     coins: {},
-    bbs: {}
+    bbs: {},
+    statsUrl: ''
   });
   const loop = (name: string): Loop => ({
     name,

@@ -2952,6 +2952,16 @@ export default function App() {
       deleteProfile: (id: string) => api.deleteProfile(id),
       saveServer: (previous: string | null, draft: ServerDraft) => api.saveServer(previous, draft),
       deleteServer: (name: string) => api.deleteServer(name),
+      stats: {
+        link: (id: string) => api.statsLink(id),
+        unlink: (id: string) => api.statsUnlink(id),
+        status: (id: string) => api.statsStatus(id),
+        test: (url: string) => api.statsTest(url)
+      },
+      players: {
+        seen: (id: string) => api.seenPlayers(id),
+        forget: (id: string, name: string) => api.forgetPlayer(id, name)
+      },
       saveGlobal: (draft: GlobalDraft) => api.saveGlobal(draft),
       revealConfig: () => reveal(() => api.revealConfig()),
       revealProfiles: () => reveal(() => api.revealProfiles()),
@@ -6105,6 +6115,8 @@ export default function App() {
         saveMegamud={settingsApi.saveMegamud}
         saveGlobal={settingsApi.saveGlobal}
         saveServer={settingsApi.saveServer}
+        stats={settingsApi.stats}
+        players={settingsApi.players}
       />
     </div>
   );

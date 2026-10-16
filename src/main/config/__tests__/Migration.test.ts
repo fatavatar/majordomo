@@ -3240,7 +3240,8 @@ describe('the conversation log stated in logging:', () => {
       enabled: true,
       fights: true,
       conversations: true,
-      conversationDays: 365
+      conversationDays: 365,
+      stats: { enabled: false, everySeconds: 60 }
     });
     const once = fs.readFileSync(home.options, 'utf8');
     expect(once).toContain('# My note.');
@@ -3252,7 +3253,23 @@ describe('the conversation log stated in logging:', () => {
   it('never overwrites a key the user already stated', () => {
     fs.writeFileSync(home.options, 'logging:\n  conversations: false\n', 'utf8');
     migrate();
-    expect(readLogging()).toEqual({ conversations: false, conversationDays: 365 });
+    expect(readLogging()).toEqual({
+      conversations: false,
+      conversationDays: 365,
+      stats: { enabled: false, everySeconds: 60 }
+    });
+  });
+
+  /* Posting to the realm's mudstats board (2026-10-16): stated off, its paragraph kept. */
+  it('states the stats report off, with its paragraph, and never overwrites one stated', () => {
+    migrate(true);
+    const once = fs.readFileSync(home.options, 'utf8');
+    expect(once).toContain("realm's mudstats board");
+    migrate(true);
+    expect(fs.readFileSync(home.options, 'utf8')).toBe(once);
+    fs.writeFileSync(home.options, 'logging:\n  stats:\n    enabled: true\n', 'utf8');
+    migrate();
+    expect(readLogging()['stats']).toEqual({ enabled: true });
   });
 });
 

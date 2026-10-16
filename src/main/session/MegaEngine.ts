@@ -32,7 +32,8 @@ import { typedCommand } from '../megamud/input/typed';
 import { disconnect, menuCommand, playerCommand, playerKey } from '../megamud/move/buttons';
 import { blessCommand } from '../megamud/player/cast';
 import { clearDetours, goTo, headFor, startWalking } from '../megamud/move/destinations';
-import { clearPath, copyPath, freeSteps } from '../megamud/move/path';
+import { clearPath, copyPath, freeSteps, stepsShown } from '../megamud/move/path';
+import { expFigures } from '../megamud/stats/expMeter';
 import { depositAll } from '../megamud/items/all';
 import { connected, connectFailed, connectionClosed } from '../megamud/script/game';
 import { reEngage } from '../megamud/script/modes';
@@ -57,7 +58,7 @@ import {
 } from '../megamud/Session';
 import { findSpell } from '../megamud/spells/lookup';
 import { findLongestFirst } from '../megamud/room/checkNames';
-import { setTask, Task } from '../megamud/script/task';
+import { caption, setTask, Task } from '../megamud/script/task';
 import {
   monsterRecords,
   rememberItem,
@@ -150,6 +151,17 @@ export interface MegaEngineHost {
    * opens a way of this realm and the pack lacks it (`movement.collectKeys`).
    */
   opensAWay?(name: string): boolean;
+}
+
+/** What `MegaEngine.statsReport` gives: the engine's own figures, null where unknown. */
+export interface EngineStats {
+  expMade: number;
+  expNeeded: number | null;
+  expNeededLevel: number | null;
+  expPerHour: number | null;
+  levelEta: string | null;
+  status: string;
+  path: string | null;
 }
 
 /** What a fetch for a refused way takes up once the pack holds what it needed. */
@@ -478,6 +490,7 @@ export class MegaEngine {
       isRoom: (sig) => this.isRoom(sig),
       isStepRoom: (p, i) => this.isStepRoom(p, i),
       opensAWay: (name) => this.host.opensAWay?.(name) ?? false,
+      caption: () => caption(this.s),
       forcible: (dir) => this.forcible(dir),
       clearWay: (p, i, dir) => this.clearWay(p, i, dir),
       readPath: (name) => this.readPath(name),
@@ -912,6 +925,47 @@ export class MegaEngine {
    * character's toolbar shows, and whether it is walking: with All Off on,
    * every other toggle reads off and Go is not to be pressed.
    */
+  /**
+   * What the engine alone knows of the character, for its realm's mudstats
+   * board (`StatsReporter`): the experience meter's figures (`0x4a7250`, as
+   * `@exp` gives them), the task's caption (`0x4aac80`, as `@status`), and
+   * the path walked with the steps left (as `@path`, our loop's name for its
+   * file). Null where the engine has nothing to say.
+   */
+  statsReport(): EngineStats {
+    const s = this.s;
+    const f = expFigures(s);
+    const known = !f.unknown && s.Player_Level > 0;
+    // The loop by its run, as the loop card names it: MegaMUD's own path
+    // name (`MegaMud_CurPath`) is never set for a path made here, and is the
+    // route's, not the loop's, on the way to its start or a detour.
+    const lap = this.madeFor(s.loopPath)?.loop ?? null;
+    const loop = this.loopRun?.name ?? (s.looping !== 0 ? (lap?.name ?? null) : null);
+    const made = this.madeFor(s.path);
+    const walking = s.walking !== 0 && s.path.steps !== null;
+    const n = stepsShown(s);
+    const to =
+      loop !== null && made?.loop?.name !== loop ? 'loop' : s.looping === 0 ? 'go' : 'lap end';
+    const steps = n < 0 ? `? steps to ${to}` : `${n} step${n === 1 ? '' : 's'} to ${to}`;
+    let path: string | null = null;
+    if (loop !== null) {
+      path = walking ? `${loop} - ${steps}` : loop;
+    } else if (walking || s.MegaMud_CurPath !== '') {
+      const name = made ? null : s.path.title || s.MegaMud_CurPath || null;
+      const head = [name, s.destination].filter((part) => part).join(' -> ');
+      path = head === '' ? null : walking ? `${head} - ${steps}` : head;
+    }
+    return {
+      expMade: f.made,
+      expNeeded: known ? f.toGo : null,
+      expNeededLevel: known ? (f.chart?.level ?? s.Player_Level + 1) : null,
+      expPerHour: f.perHour,
+      levelEta: f.levelIn === '?' ? null : f.levelIn,
+      status: caption(s),
+      path
+    };
+  }
+
   get toggles(): MegaToggles {
     const s = this.s;
     const allOff = s.allOff !== 0;

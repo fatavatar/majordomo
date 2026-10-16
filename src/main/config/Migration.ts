@@ -281,6 +281,7 @@ function migrateAll(options: MigrationOptions): void {
   statedTheItemDetails(home, note, options.template);
   pinTheMegaToggles(home, note, options.internalTemplate);
   statedTheBotCommands(home, note, options.template);
+  statedTheMudstats(home, note, options.template);
   theOldAutomationKeysWent(home, note);
   theHangPenaltiesWent(home, note);
   theOldSwitchesUnpinned(home, note);
@@ -6072,6 +6073,49 @@ function statedTheSurvivalFloor(
     stated.length === 1
       ? t('notices.migration.survivalFloorStated.one', params)
       : t('notices.migration.survivalFloorStated.many', params)
+  );
+}
+
+/**
+ * `logging.stats` into every file that states `logging:` without it, off and
+ * every 60 seconds, after `maxBytes` with the template's paragraph
+ * (2026-10-16): posting a character's readings to its realm's mudstats board.
+ * Off is what the client already did. Idempotent; nothing stated is
+ * overwritten.
+ */
+function statedTheMudstats(
+  home: Home,
+  note: (message: string) => void,
+  template: string | undefined
+): void {
+  const comment = templateComments(template, 'logging').get('logging.stats');
+  const files = [home.options, ...directories(home.profilesDir).map((id) => home.profile(id).file)];
+  const stated: string[] = [];
+
+  for (const file of files) {
+    edit(file, (document) => {
+      const logging = document.getIn(['logging'], true);
+      if (!isMap(logging) || logging.has('stats')) return false;
+      const pair = document.createPair(
+        'stats',
+        document.createNode({ ...DEFAULT_CONFIG.logging.stats })
+      ) as Pair;
+      if (typeof comment === 'string' && isScalar(pair.key)) pair.key.commentBefore = comment;
+      const after = logging.items.findIndex(
+        (item) => isScalar(item.key) && item.key.value === 'maxBytes'
+      );
+      logging.items.splice(after === -1 ? logging.items.length : after + 1, 0, pair);
+      stated.push(file);
+      return true;
+    });
+  }
+
+  if (stated.length === 0) return;
+  const params = { count: stated.length, fileList: stated.join(', ') };
+  note(
+    stated.length === 1
+      ? t('notices.migration.mudstatsStated.one', params)
+      : t('notices.migration.mudstatsStated.many', params)
   );
 }
 

@@ -257,6 +257,26 @@ describe('the engine in a session', () => {
     e.dispose();
   });
 
+  /* The stats board showed no loop on a run (2026-10-16): MegaMUD's path name is never set for a made path. */
+  it('names the loop run for the stats board, on the way to it and on it', async () => {
+    vi.useFakeTimers();
+    const { e } = engine('1/1');
+    e.s.inGame = 1;
+    e.s.online = 1;
+    e.received('\x1b[1;36mTown Square\r\n\x1b[0;32mObvious exits: north, closed door east\r\n');
+    expect(e.statsReport().path).toBeNull();
+    expect(e.startLoop('Ring')).toBeNull();
+    await planned();
+    expect(e.statsReport().path).toBe('Ring - 1 step to loop');
+    e.s.path.name = e.s.loopPath.name;
+    e.s.looping = 1;
+    expect(e.statsReport().path).toMatch(/^Ring - \d+ steps? to lap end$/);
+    // Held in a fight, still on the loop.
+    e.s.walking = 0;
+    expect(e.statsReport().path).toBe('Ring');
+    e.dispose();
+  });
+
   it('refuses a loop it cannot make', () => {
     vi.useFakeTimers();
     const { e } = engine();

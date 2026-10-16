@@ -87,6 +87,10 @@ const api: IpcApi = {
   setRemoteGrant: (session, name, grant) =>
     ipcRenderer.invoke(Invoke.setRemoteGrant, session, name, grant),
   setGangRemotes: (session, remotes) => ipcRenderer.invoke(Invoke.setGangRemotes, session, remotes),
+  statsLink: (session) => ipcRenderer.invoke(Invoke.statsLink, session),
+  statsUnlink: (session) => ipcRenderer.invoke(Invoke.statsUnlink, session),
+  statsStatus: (session) => ipcRenderer.invoke(Invoke.statsStatus, session),
+  statsTest: (url) => ipcRenderer.invoke(Invoke.statsTest, url),
   setRemoteGangpath: (session, on) => ipcRenderer.invoke(Invoke.setRemoteGangpath, session, on),
   setAutomationSwitch: (session, name, on) =>
     ipcRenderer.invoke(Invoke.setAutomationSwitch, session, name, on),
@@ -123,6 +127,8 @@ const api: IpcApi = {
   saveProfile: (id, draft) => ipcRenderer.invoke(Invoke.saveProfile, id, draft),
   deleteProfile: (id) => ipcRenderer.invoke(Invoke.deleteProfile, id),
   megamudSettings: (id) => ipcRenderer.invoke(Invoke.megamudSettings, id),
+  seenPlayers: (id) => ipcRenderer.invoke(Invoke.seenPlayers, id),
+  forgetPlayer: (id, name) => ipcRenderer.invoke(Invoke.forgetPlayer, id, name),
   saveMegamud: (id, settings) => ipcRenderer.invoke(Invoke.saveMegamud, id, settings),
   saveServer: (previousName, draft) => ipcRenderer.invoke(Invoke.saveServer, previousName, draft),
   deleteServer: (name) => ipcRenderer.invoke(Invoke.deleteServer, name),

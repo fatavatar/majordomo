@@ -263,13 +263,17 @@ export class SettingsEditor {
            * credentials every time somebody changed its colour.
            */
           const existing = document.getIn(['account', 'password']);
+          // And the mudstats key beside it, which the form never holds: it
+          // is written by the link (`setStatsKey`), and only kept here.
+          const statsKey = document.getIn(['account', 'statsKey']);
           document.setIn(['account'], {
             username: draft.username,
             password: draft.changePassword
               ? draft.password
               : typeof existing === 'string'
                 ? existing
-                : ''
+                : '',
+            ...(typeof statsKey === 'string' && statsKey.length > 0 ? { statsKey } : {})
           });
         } else if (document.hasIn(['account'])) {
           // No username is a character that has not been given an account
@@ -352,6 +356,14 @@ export class SettingsEditor {
           document.setIn(['automation', 'safety', 'pvp'], {
             notifyGang: draft.pvp.notifyGang,
             action: draft.pvp.action
+          });
+        }
+
+        // Posting to the realm's mudstats board, written once it is said.
+        if (creating || draft.stats.enabled || document.hasIn(['logging', 'stats'])) {
+          document.setIn(['logging', 'stats'], {
+            enabled: draft.stats.enabled,
+            everySeconds: draft.stats.everySeconds
           });
         }
 
@@ -565,6 +577,25 @@ export class SettingsEditor {
    * they would naturally use it on. A command nobody can find does not exist,
    * and neither does one that silently cannot fire.
    */
+  /**
+   * This character's mudstats key, beside its password (`account.statsKey`),
+   * or none: written by the link and the unlink, never by the form, which is
+   * never told it. Without an account there is nowhere to keep one.
+   */
+  setStatsKey(id: string, key: string): EditResult {
+    const file = this.profilePath(id);
+    if (!fs.existsSync(file)) {
+      return { ok: false, error: t('errors.settings.characterNotFound', { id }) };
+    }
+    return editYaml(file, {
+      mutate: (document) => {
+        if (key.length > 0) document.setIn(['account', 'statsKey'], key);
+        else if (document.hasIn(['account', 'statsKey']))
+          document.deleteIn(['account', 'statsKey']);
+      }
+    });
+  }
+
   setRemoteGangpath(id: string, on: boolean): EditResult {
     const file = this.profilePath(id);
     if (!fs.existsSync(file)) {
@@ -821,6 +852,10 @@ export class SettingsEditor {
         const bbs = Object.entries(draft.bbs).filter(([, value]) => value.length > 0);
         if (bbs.length > 0) document.setIn(['bbs'], Object.fromEntries(bbs));
         else if (document.hasIn(['bbs'])) document.deleteIn(['bbs']);
+
+        // And its mudstats board, written only when it has one.
+        if (draft.statsUrl.length > 0) document.setIn(['statsUrl'], draft.statsUrl);
+        else if (document.hasIn(['statsUrl'])) document.deleteIn(['statsUrl']);
       },
       verify: (value) => {
         const server = asServer(value, id);
@@ -1238,6 +1273,11 @@ export class SettingsEditor {
         fleeGoto:
           effective?.automation.safety.fleeGoto ?? DEFAULT_CONFIG.automation.safety.fleeGoto,
         pvp: effective?.automation.safety.pvp ?? DEFAULT_CONFIG.automation.safety.pvp,
+        stats: effective?.logging.stats ?? DEFAULT_CONFIG.logging.stats,
+        statsLinked:
+          isRecord(account) &&
+          typeof account['statsKey'] === 'string' &&
+          account['statsKey'].length > 0,
         /*
          * The resolved combat block, except for the monster rows, which are
          * the character's **own** from the file as written (todo 01).
@@ -1424,6 +1464,8 @@ function blank(id: string): ProfileEditable {
     retreat: retreatOf(DEFAULT_CONFIG.automation.safety.retreat),
     fleeGoto: DEFAULT_CONFIG.automation.safety.fleeGoto,
     pvp: DEFAULT_CONFIG.automation.safety.pvp,
+    stats: DEFAULT_CONFIG.logging.stats,
+    statsLinked: false,
     combat: DEFAULT_CONFIG.automation.combat,
     party: DEFAULT_CONFIG.automation.party,
     health: DEFAULT_CONFIG.automation.health,

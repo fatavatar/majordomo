@@ -211,6 +211,9 @@ notices:
     oldAutomationKeys:
       many: 'Settings only the old automation read (rules, entry and party commands, drop, banking, talk, statline, events, training, the walk-while switches) were removed from {count} files: {fileList}'
       one: 'Settings only the old automation read (rules, entry and party commands, drop, banking, talk, statline, events, training, the walk-while switches) were removed from {fileList}'
+    mudstatsStated:
+      many: 'Report to Stats Server (off, every 60 seconds) was added to {count} files: {fileList}'
+      one: 'Report to Stats Server (off, every 60 seconds) was added to {fileList}'
     botCommandsStated:
       many: 'Bot Commands (your own commands other players may ask for) was added, empty, to {count} files: {fileList}'
       one: 'Bot Commands (your own commands other players may ask for) was added, empty, to {fileList}'
@@ -3677,10 +3680,11 @@ settings:
     playersLabel: Players
     playersHint: Names, separated by commas.
   remotes:
-    addPlayerLabel: Grant player permissions
+    addPlayerLabel: Find or add a player
     addPlayerPlaceholder: Ardren
-    addPlayerHint: As the realm spells it. Clicking a name on the Realm or Players card opens the
-      same permissions beside the listing.
+    addPlayerHint: Narrows the list as you type. Enter adds a name nobody has seen yet, to set them
+      up before they log in. Clicking a name on the Realm or Players card opens the same
+      permissions beside the listing.
     autoInviteHint: Invites them the moment they're seen in the room, whichever of you walks in —
       nobody has to ask. Not the same as granting @invite below, which only answers their own
       @invite request. Works even with Enable Remote Control off above.
@@ -3688,12 +3692,14 @@ settings:
     channelWarning:
       A channel by which another player’s typing moves the character — it answers nobody
       until something below is granted, and @kill and @hangup are always refused.
-    engineNote: Who may send this character remote commands, and which. Whether it answers them at
-      all is MegaMUD's own setting, on the Talk tab above.
+    engineNote: Who may send this character remote commands, and which. Everyone your characters
+      have seen on this realm is listed; choose one to set theirs. Whether it answers them at all
+      is MegaMUD's own setting, on the Talk tab.
     legend: Answering other players
     playerLegend: Permissions for {name}
     removePlayer: Remove
-    removePlayerTitle: Take every permission back off {name}
+    removePlayerTitle: Take every permission back off {name} and take them off this list, until
+      they're seen again
   profile:
     accentLabel: Colour
     autoConnectLabel: Connect on start
@@ -3727,7 +3733,33 @@ settings:
     themeLabel: Theme
     themeSystem: Follow the system
     usernameLabel: Username
+  mudstats:
+    legend: Stats Server
+    note:
+      Post this character's readings to the realm's stats board at {url}, a whole snapshot each
+      time. While it posts, the board stops asking it by telepath, so this client becomes its only
+      source there.
+    noBoard: This character's realm names no stats board. Set one on the realm's page first.
+    enabledLabel: Report to the stats server
+    everyLabel: Every (seconds)
+    everyHint: Never sooner than the board allows, whatever this says.
+    linked: Linked — a key from the board is kept beside this character's password.
+    notLinked:
+      Not linked. Link asks the board to telepath this character a code, reads it off the telepath
+      and keeps the key it gives. The character must be in the game.
+    link: Link
+    check: Check
+    unlink: Unlink
+    linking: Asking the board for a code, then waiting for its telepath…
+    asking: Asking the board…
+    unlinking: Retiring the key…
   realms:
+    statsLegend: Stats Server
+    statsNote:
+      The mudstats board this realm's characters may post their readings to. Each character says
+      whether it does, and how often, on its Login page. Blank is none.
+    statsUrlLabel: Board address
+    statsTest: Test
     bbsLegend: MegaMUD BBS set-up
     bbsNote:
       What MegaMUD's BBS.INI would say about this realm, for a character the MegaMUD engine runs.
@@ -3803,6 +3835,10 @@ settings:
   sections:
     character: Character
     login: Login
+    players: Players
+  players:
+    none: Nobody seen on this realm yet. Type a name above to set someone up before they're seen.
+    grantedTitle: '{name} has permissions here'
   nav:
     character: Which character
     label: Settings sections
@@ -4334,6 +4370,37 @@ monsters:
     escape: Flee
     friend: Friend
     hangup: Hang up
+mudstats:
+  link:
+    noBoard: This character's realm names no stats board.
+    busy: A link is already waiting for its code.
+    notInGame: The character has to be in the game to read the board's code.
+    notConnected: That character is not open.
+    refused: 'The stats board refused: {detail}'
+    waiting: Asked the stats board for a code; waiting for its telepath to {player}…
+    noCode: No code reached the character before it expired. Link again to ask for another.
+    linked: Linked to the stats board as {player}.
+  unlink:
+    none: This character has no stats key.
+    done: The stats key was retired at the board and forgotten here.
+    forgottenOnly: 'Forgotten here; the board did not retire it: {detail}'
+  status:
+    noBoard: This character's realm names no stats board.
+    notLinked: Not linked to the stats board.
+    refused: 'The stats board did not recognise the key: {detail}'
+    posting: posting
+    off: not posting
+    linked: Linked as {player} — {posts} posts so far, {state}.
+  post:
+    back: The stats board is answering again.
+    keyRefused: 'The stats board refused this character''s key, so posting has stopped. Link it again. ({detail})'
+    switchedOff: 'The stats board does not take posts for this character, so posting has stopped. ({detail})'
+    rejected: 'The stats board rejected a post, so posting has stopped. ({detail})'
+    unreachable: 'The stats board is not answering; trying again later. ({detail})'
+  test:
+    noUrl: Give the board's address first.
+    failed: 'No stats board answered there: {detail}'
+    ok: A stats board answered; it takes a post at most every {seconds} seconds.
 movement:
   # The back button, when the previous room is not one step away: a one-way
   # exit, a door that shut, a corridor that only runs the other way.
