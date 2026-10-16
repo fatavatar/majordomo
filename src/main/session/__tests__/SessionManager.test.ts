@@ -1517,6 +1517,19 @@ describe('asking for the quest counters', () => {
     return { socket, wire: () => Buffer.concat(chunks).toString('latin1') };
   }
 
+  /* Fatty's typed `u` read as a step sent the post-rest ahead of its Enter (2026-10-16). */
+  it('sends what the engine writes on reading a typed line behind that line', async () => {
+    const { wire } = await ashore(gatedWorld());
+    const s = (manager as unknown as { mega: MegaEngine }).mega.s;
+    s.Health_PostRestCmd = 'eq firestone pendant';
+    s.Health_PrePostRest = 1;
+    s.owedPostRest = 1;
+    manager!.send('e');
+    manager!.send('\r');
+    await until(() => wire().includes('pendant'));
+    expect(wire()).toContain('e\r\neq firestone pendant\r\n');
+  });
+
   /* The engine's pending list rather than the wire: the plan raised the question. */
   const asked = (): boolean =>
     (manager as unknown as { mega: MegaEngine }).mega.s.pending.some((p) => p.text === 'abil\r');

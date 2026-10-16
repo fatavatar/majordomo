@@ -2121,14 +2121,14 @@ export class SessionManager {
          */
         if (opensStatScreen(command)) this.holdForStatScreen(t('session.stats.asked'));
         this.noteSent(command, 'user');
-        this.mega?.typed(command);
+        this.megaBehindTyped(() => this.mega?.typed(command));
         this.noteQuestSaid(command);
       } else {
         // The player pressing Return on an empty line reprints the room just
         // as the walker's nudge does, and the block it produces has to be
         // attributed to it for the same reason. Same gate, same door.
         this.tracker.observeReread();
-        this.mega?.playerSent();
+        this.megaBehindTyped(() => this.mega?.playerSent());
       }
       this.sink.command?.(this.reportable(command), 'user');
     }
@@ -2935,12 +2935,33 @@ export class SessionManager {
     return true;
   }
 
+  /**
+   * The engine reading a line the player committed, whose Enter is not on the
+   * wire yet: the realm still holds the typed text, so what the engine writes
+   * meanwhile waits behind it. A typed `u` read as a step sent the post-rest
+   * `eq firestone pendant` first, and the realm said `ueq firestone pendant`
+   * out loud (Fatty, 2026-10-16).
+   */
+  private megaBehindTyped(read: () => void): void {
+    this.megaReadingTyped = true;
+    try {
+      read();
+    } finally {
+      this.megaReadingTyped = false;
+    }
+  }
+
+  private megaReadingTyped = false;
+
   /** The engine's writes, observed as automation's commands are. */
   private megaWrite(text: string): void {
     const abandonedAt = this.typingSince + tuning().queue.abandonedLineMs;
-    if (this.outbound.length > 0 && Date.now() < abandonedAt) {
+    if (this.megaReadingTyped || (this.outbound.length > 0 && Date.now() < abandonedAt)) {
       this.megaHeld += text;
-      this.megaHeldTimer ??= setTimeout(() => this.releaseMega(), abandonedAt - Date.now());
+      this.megaHeldTimer ??= setTimeout(
+        () => this.releaseMega(),
+        Math.max(0, abandonedAt - Date.now())
+      );
       return;
     }
     this.megaLine += text;
