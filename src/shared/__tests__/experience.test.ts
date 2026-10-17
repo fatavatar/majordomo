@@ -94,20 +94,27 @@ describe('the chart the realm data implies', () => {
     expect(high?.rows[0]?.experience).toBe(23466);
   });
 
-  it('derives nothing at all above the level the ladder is confirmed to', () => {
+  it('holds above level 13, where the chain it replaced did not', () => {
+    // The Half-Ogre Mystic above, charged 40,195,899 for level 29 on
+    // GreaterMUD (2026-08-28); the old chain said 99,835,591.
+    expect(experienceChart(280, 29).at(-1)?.experience).toBe(40_195_899);
+    const high = derivedExperienceTable(280, 28);
+    expect(high?.rows.map((row) => row.level)).toEqual([27, 28, 29, 30, 31, 32, 33, 34, 35, 36]);
+  });
+
+  it('runs on to the level experience not yet trained for is going towards', () => {
     /*
-     * The falsification, with a seed the same session states: the Half-Ogre
-     * Mystic above is charged 40,195,899 for level 29 and the chain says
-     * 99,835,591. So the chain stops at `EXPERIENCE_CONFIRMED_TO`, and a
-     * character past it gets nothing rather than a window trailing off — half a
-     * window reads as the realm's table with rows missing.
+     * Archer, a Dragonkin Archer (chart 150) trained to 10 holding 1,753,195
+     * (2026-10-17): the realm prices level 11 at 189,328, and the experience
+     * pays for every level to 17.
      */
-    expect(experienceChart(280, 29).at(-1)?.experience).not.toBe(40_195_899);
-    expect(derivedExperienceTable(280, 28)).toBeNull();
-    expect(derivedExperienceTable(280, 15)).toBeNull();
-    // The last level that still derives something, and it stops at 13.
-    const edge = derivedExperienceTable(KANG_PALADIN.percent, 14);
-    expect(edge?.rows.map((row) => row.level)).toEqual([13]);
+    const table = derivedExperienceTable(150, 10, 1_753_195)!;
+    expect(table.rows.find((row) => row.level === 11)?.experience).toBe(189_328);
+    expect(table.rows.at(-1)).toEqual({ level: 18, experience: 2_375_488, source: 'database' });
+    const standing = experienceStanding(10, 1_753_195, table);
+    expect(standing).toMatchObject({ earned: 17, next: 18, needed: 622_293, ahead: true });
+    // Experience inside the realm's window adds nothing past it.
+    expect(derivedExperienceTable(150, 10, 200_000)!.rows.at(-1)?.level).toBe(18);
   });
 
   it('marks every derived row as derived', () => {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { expForLevel } from '../stats/expChart';
+import { expForLevel } from '../../../shared/megamud/expChart';
 import { expMeter } from '../stats/expMeter';
 import { session } from './fixture';
 

@@ -460,6 +460,12 @@ export function looksLikeEffectSentence(text: string): boolean {
   return wordsOf(text).length <= 14;
 }
 
+/** Whether `exp` has paid for every level `table` holds, so the level it is going towards is past it. */
+function outrun(table: ExperienceTable | null, exp: number | null): boolean {
+  const top = table?.rows.at(-1);
+  return exp !== null && top !== undefined && exp >= top.experience;
+}
+
 export class CharacterTracker {
   private state: CharacterState = structuredClone(EMPTY_CHARACTER);
   /** The server's lineage, as `SessionManager` read it. See `useFamily`. */
@@ -2456,6 +2462,11 @@ export class CharacterTracker {
    * `exp` prints no table, so on the realm this client defaults to the wire
    * only ever states one row and freezing on it left a chart of one.
    *
+   * And the experience, once it has paid for every level the table holds: the
+   * table runs on to the first level not yet paid for (2026-10-17, Archer
+   * trained to 10 with enough for 17), so experience past its top asks for
+   * more of it.
+   *
    * The guard is exact rather than cautious: nothing that feeds the sum has
    * moved, so the sum cannot have changed. That matters because this runs on
    * every block, and a status line arrives several times a second.
@@ -2467,7 +2478,8 @@ export class CharacterTracker {
       state.race === before.race &&
       state.className === before.className &&
       level === before.progress.level &&
-      table === before.progress.expTable
+      table === before.progress.expTable &&
+      !outrun(table, state.progress.exp)
     )
       return state;
 
@@ -2475,7 +2487,7 @@ export class CharacterTracker {
     if (!world || state.race === null || state.className === null || level === null) return state;
     const percent = world.experiencePercent(state.race, state.className);
     if (percent === null) return state;
-    const derived = derivedExperienceTable(percent, level);
+    const derived = derivedExperienceTable(percent, level, state.progress.exp);
     if (derived === null) return state;
     const merged = withDerivedExperience(table, derived);
     if (merged === table) return state;
@@ -2837,9 +2849,8 @@ export class CharacterTracker {
    *
    * `%X` is `GetTotalExpNeededForLevel(Level + 1) - Experience`, so the sum
    * is the realm's own row for the level above — restated on every prompt,
-   * which is what turns `EXPERIENCE_CONFIRMED_TO` from a ceiling into a
-   * record as a character climbs. Only while something is still owed:
-   * `Need=0` is the realm saying the next level is affordable, and `exp + 0`
+   * which keeps the realm's own word on the row a character climbs to. Only
+   * while something is still owed: `Need=0` is the realm saying the next level is affordable, and `exp + 0`
    * would price it at whatever the character happens to hold. Nothing is
    * rebuilt while the table already holds the row.
    */

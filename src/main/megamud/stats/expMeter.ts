@@ -12,7 +12,7 @@
 import { findClass, findRace } from '../data';
 import { expBaseline } from '../script/timer';
 import type { Session } from '../Session';
-import { expForLevel } from './expChart';
+import { expForLevel } from '../../../shared/megamud/expChart';
 
 export interface ExpMeter {
   made: string;

@@ -35,16 +35,16 @@ function ratio(level: number): [bigint, bigint] {
   return [level <= 55 ? 115n : level <= 58 ? 109n : 108n, 100n];
 }
 
-/** The experience `level` takes on `chart`; 0 below level 2. Not GreaterMUD's (`0x439840`). */
-export function expForLevel(level: number, chart: number): bigint {
-  if (level < 2) return 0n;
+/**
+ * Every level's experience on `chart` from level 2 up, in one pass, as the
+ * chain `expForLevel` walks to reach one of them. Without end: the caller says
+ * where to stop.
+ */
+export function* expLevels(chart: number): Generator<[level: number, experience: bigint]> {
   let billions = 0n;
-  let rest = 0n;
-  for (let at = 2; at <= level; at += 1) {
-    if (at === 2) {
-      rest = BigInt(chart >>> 0) * 10n;
-      continue;
-    }
+  let rest = BigInt(chart >>> 0) * 10n;
+  yield [2, rest];
+  for (let at = 3; ; at += 1) {
     const [num, den] = ratio(at);
     let product = num * rest;
     let grown: bigint;
@@ -72,6 +72,13 @@ export function expForLevel(level: number, chart: number): bigint {
       rest -= BILLION;
       billions += 1n;
     }
+    yield [at, billions * BILLION + rest];
   }
-  return billions * BILLION + rest;
+}
+
+/** The experience `level` takes on `chart`; 0 below level 2. Not GreaterMUD's (`0x439840`). */
+export function expForLevel(level: number, chart: number): bigint {
+  if (level < 2) return 0n;
+  for (const [at, experience] of expLevels(chart)) if (at === level) return experience;
+  return 0n;
 }

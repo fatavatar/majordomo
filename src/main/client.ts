@@ -1274,6 +1274,17 @@ function asGrant(value: unknown): PlayerGrant | null {
     : { allow, deny };
 }
 
+/**
+ * What the character rests its HP to: MegaMUD's *HP Full %* (`Health.HpFull%`),
+ * which the engine rests to (`0x414300`), as a fraction. The tab said the old
+ * automation's `health.restTo`, which nothing reads since the engine took over
+ * (2026-10-17: every rest read "resting to 70%").
+ */
+function restCeilingOf(profile: Profile): number {
+  const full = Number(megamudSettingsOf(profile.id, profile).live['Health']?.['HpFull%']);
+  return Number.isFinite(full) && full > 0 ? Math.min(full, 100) / 100 : 0;
+}
+
 /** Every character on disk, and whether a session is open for it. */
 function profileSummaries(): ProfileSummary[] {
   return (profiles?.profiles ?? []).map((profile) => ({
@@ -1286,7 +1297,7 @@ function profileSummaries(): ProfileSummary[] {
     serverName: profile.serverName,
     remotes: profile.config.automation.remotes,
     switches: automationSwitches(profile.config.automation),
-    restTo: profile.config.automation.health.restTo,
+    restTo: restCeilingOf(profile),
     supplies: profile.config.automation.supplies
   }));
 }

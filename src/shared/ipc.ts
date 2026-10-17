@@ -346,9 +346,10 @@ export interface ProfileSummary {
    */
   switches: AutomationSwitches;
   /**
-   * The ceiling a stretch of resting is carried on to — `automation.health`'s
-   * `restTo`, resolved, as a fraction; 0 where the character rests only at the
-   * floor.
+   * The ceiling a stretch of resting is carried on to — the character's
+   * MegaMUD *HP Full %* (`Health.HpFull%`), which the engine rests to, as a
+   * fraction (2026-10-17; it was the old automation's `restTo`, which nothing
+   * reads now); 0 where it is not stated.
    *
    * Beside `remotes` and `switches` for their reason exactly: it is a
    * *resolved* value, and the tab rail reporting `resting to 90%` off the

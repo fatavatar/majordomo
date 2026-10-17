@@ -38,6 +38,12 @@
  *
  * ## Where the arithmetic comes from
  *
+ * MegaMUD's own chart, `0x439e70`, ported in `megamud/expChart.ts`: level 2 is
+ * ten times the chart number, and each level after is the one below it times
+ * a ratio from a table, floored at each step. The chart number is
+ * `100 + race + class` (`ExpTable`), which MMUD-Explorer's `frmExpCalc`
+ * composes the same way.
+ *
  * Measured, not remembered. Two characters' tables were recorded from the wire
  * (`~/.config/mudengine/logs`, 2026-09-01 and 2026-09-03, both on Paradigm):
  *
@@ -46,40 +52,19 @@
  * | Gaunt One Mystic | 120 | 420 | 6400 |
  * | Kang Paladin | 150 | 490 | 7400 |
  *
- * `(100 + race + class) × 10` gives both exactly, and MMUD-Explorer's own
- * `frmExpCalc` composes its chart number the same way (`ExpTable + 100` for the
- * class, plus the race's) — two independent statements of one formula. The
- * corpus corroborates the base: `captures/115` has a character on a realm where
- * the pair contributes nothing, and its level 2 costs exactly `1000`.
+ * The port gives all twenty-two of their numbers exactly, and the realm's
+ * next-level totals at every level the engine's logs hold, 78 of them up to
+ * level 81 (2026-10-13). It also gives **GreaterMUD**'s (`orohost`,
+ * 2026-08-26 to 08-28): a Kang Mystic charged 32,842 for level 6, a Half-Ogre
+ * Mystic 55,309 for level 7 and 40,195,899 for level 29.
  *
- * Every level after the second is the one below it times a ratio that steps
- * every second level — `10/5`, then `11/6` twice, `12/7` twice, `13/8` twice —
- * **floored at each step**, which is what makes the chain reproduce the wire's
- * numbers rather than merely approximate them. Ten values of one table and
- * twelve of the other, all twenty-two exact.
+ * ## It holds at every level
  *
- * And it is not one server's arithmetic. Four more readings from **GreaterMUD**
- * (`orohost`, 2026-08-26 to 08-28) land on the same chain: a Kang Mystic seeded
- * at 2850 is charged 32,842 for level 6 and a Half-Ogre Mystic seeded at 2800
- * is charged 55,309 for level 7, both exact. Two more characters in the corpus
- * (`captures/004` at level 11, `captures/020` at 12) have their printed
- * requirement reproduced by a whole-percent table of 215.
- *
- * ## How far up it holds — and it does not hold far
- *
- * **The chain is confirmed to level 13 and falsified above it.** The same
- * Half-Ogre Mystic whose level 7 it gets exactly is charged **40,195,899** for
- * level 29, where the chain says 99,835,591; `captures/012` prints a level-19
- * requirement no percentage reproduces at all, and `captures/087` a level-49
- * one an order of magnitude below. Three independent falsifications, one of
- * them on a realm whose seed the same session states.
- *
- * So `EXPERIENCE_CONFIRMED_TO` is where the derivation stops, and above it this
- * client derives **nothing** and says so on the card. A ten-level window of
- * numbers that are right is worth more than a full chart that is wrong from
- * level 14 up, and a player at level 28 is one `exp` away from the realm's own
- * answer. This is an exemption with a date on it: a recorded table above level
- * 13 either extends the constant or replaces the ladder.
+ * Until 2026-10-17 this file chained its own ratios, which matched to level 13
+ * and not above: it put 99,835,591 on that level 29. So it derived nothing
+ * past 13, and a character holding experience for levels beyond that, untrained
+ * (Archer, trained to 10 with enough for 17), read as owing nothing towards
+ * anything. MegaMUD's chart has no such limit, so neither has this.
  *
  * The seed has its own limit, and it is the realm database rather than the
  * arithmetic. `orohost` runs a realm whose class table matches no `.mdb` on
@@ -89,6 +74,8 @@
  * per-row provenance and the contradiction rule below exist for: the card marks
  * what it worked out, and the first row the realm states settles it.
  */
+
+import { expLevels } from './megamud/expChart';
 
 /** Where a number came from. Shown on the card, never inferred. */
 export type ExperienceSource = 'realm' | 'database';
@@ -126,58 +113,56 @@ export interface ExperienceTable {
 export const EXPERIENCE_WINDOW = 10;
 
 /**
- * The highest level `experienceChart` may be trusted to, and it is a claim with
- * a date on it (2026-09-03).
- *
- * Every recorded table stops at 13 and every reading above it disagrees with
- * the ladder — see the header. Deriving past this would put a confidently wrong
- * number on the card for exactly the characters least able to check it by eye,
- * and the check costs one `exp`.
+ * How far past the next level a derived table looks for the first level not
+ * yet paid for: the 250 levels MegaMUD's meter looks (`0x4a7250`).
  */
-export const EXPERIENCE_CONFIRMED_TO = 13;
+export const EXPERIENCE_SEARCH = 250;
 
-/**
- * Experience required to reach `level` for a character on `percent`.
- *
- * Chained from level 2 with a floor at every step, because that is what the
- * wire's numbers are: `floor(previous × ratio)`, not `floor(base × ratio^n)`.
- * The two differ by single digits from level 5 up, and the wire is exact.
- */
+/** Experience required for each level from 2 to `upto`, for a character on `percent`. */
 export function experienceChart(percent: number, upto: number): ExperienceLevel[] {
+  return chartWhile(percent, (level) => level <= upto);
+}
+
+function chartWhile(
+  percent: number,
+  more: (level: number, experience: number) => boolean
+): ExperienceLevel[] {
   const rows: ExperienceLevel[] = [];
   if (!Number.isFinite(percent) || percent <= 0) return rows;
-  let value = Math.floor(percent * 10);
-  if (upto >= 2) rows.push({ level: 2, experience: value, source: 'database' });
-  for (let level = 3; level <= upto; level += 1) {
-    /*
-     * The ratio steps every second level — 10/5, 11/6, 11/6, 12/7, 12/7 — so
-     * the numerator is 10 at level 3 and gains one every two levels after.
-     */
-    const step = 10 + Math.ceil((level - 3) / 2);
-    value = Math.floor((value * step) / (step - 5));
-    rows.push({ level, experience: value, source: 'database' });
+  for (const [level, value] of expLevels(percent)) {
+    const experience = Number(value);
+    if (!more(level, experience)) break;
+    rows.push({ level, experience, source: 'database' });
   }
   return rows;
 }
 
 /**
- * The window of a derived table for a character at `level`.
+ * The window of a derived table for a character at `level` holding `exp`.
  *
- * Same shape as the realm's own listing: one level below, eight above. Level 1
- * is never a row — it costs nothing and the realm does not print it — and
- * nothing above `EXPERIENCE_CONFIRMED_TO` is a row either, so a character past
- * that gets **null** rather than a short table trailing off mid-window. Half a
- * window would read as the realm's table with rows missing; nothing reads as
- * what it is, and the card asks.
+ * Same shape as the realm's own listing, one level below and eight above, and
+ * on past that to the first level `exp` has not paid for, so a character who has
+ * put off the guild for levels is told the level its experience is going
+ * towards. Level 1 is never a row: it costs nothing and the realm does not
+ * print it.
  */
-export function derivedExperienceTable(percent: number, level: number): ExperienceTable | null {
+export function derivedExperienceTable(
+  percent: number,
+  level: number,
+  exp: number | null = null
+): ExperienceTable | null {
   if (!Number.isInteger(level) || level < 1) return null;
   const first = Math.max(2, level - 1);
-  if (first > EXPERIENCE_CONFIRMED_TO) return null;
-  const last = Math.min(level + EXPERIENCE_WINDOW - 2, EXPERIENCE_CONFIRMED_TO);
-  const chart = experienceChart(percent, last);
-  if (chart.length === 0) return null;
-  return { rows: chart.filter((row) => row.level >= first) };
+  const window = level + EXPERIENCE_WINDOW - 2;
+  // Each row is taken while the window lasts or the row before it is paid for.
+  let paid = false;
+  const chart = chartWhile(percent, (at, experience) => {
+    const take = at <= window || (paid && at <= level + EXPERIENCE_SEARCH);
+    paid = exp !== null && experience <= exp;
+    return take;
+  });
+  const rows = chart.filter((row) => row.level >= first);
+  return rows.length === 0 ? null : { rows };
 }
 
 /**
