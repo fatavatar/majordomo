@@ -62,6 +62,7 @@ const api: IpcApi = {
   resize: (session: SessionId, size: TerminalSize) => ipcRenderer.send(Send.resize, session, size),
   diagnostics: (on: boolean) => ipcRenderer.send(Send.diagnostics, on),
   debugFeed: (on: boolean) => ipcRenderer.send(Send.debugFeed, on),
+  statsReset: (session) => ipcRenderer.send(Send.statsReset, session),
   statsBase: (session, base) => ipcRenderer.send(Send.statsBase, session, base),
 
   connect: (session, target?: ConnectionTarget) =>

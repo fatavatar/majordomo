@@ -10828,7 +10828,8 @@ describe('the spellbook and the belongings record', () => {
       }> | null,
       durations: {} as Record<string, number>,
       abilities: null as AbilitySums | null,
-      stats: null as StatsRecord | null
+      stats: null as StatsRecord | null,
+      statsBase: null as CombatTally | null
     };
     return {
       state,
@@ -10859,6 +10860,10 @@ describe('the spellbook and the belongings record', () => {
         recallStats: () => state.stats,
         rememberStats: (tally: CombatTally) => {
           state.stats = { savedAt: state.stats?.savedAt ?? 0, tally: { ...tally } };
+        },
+        recallStatsBase: () => state.statsBase,
+        rememberStatsBase: (base: CombatTally | null) => {
+          state.statsBase = base;
         },
         forget: () => false
       }
@@ -10995,6 +11000,34 @@ describe('the spellbook and the belongings record', () => {
       expect(tally.onlineMs).toBe(3_000);
       expect(tally.engagedSince).toBeNull();
       expect(tally.engagedMs).toBe(2_000);
+    });
+
+    /*
+     * The Combat Stats card's baseline is main's, kept with the tally
+     * (2026-10-17): Fatty's board posted the whole series, the container
+     * never having been told the Reset a window held.
+     */
+    it('keeps the card’s baseline with the tally, through a launch, and adopts a window’s once', () => {
+      const { sink, state } = fakeBelongings();
+      const tracker = new CharacterTracker();
+      tracker.useBelongings(sink);
+      feedThrough(tracker, [...ARRIVE, 'You gain 66 experience.']);
+      tracker.rebaseStats();
+      expect(tracker.current.statsBase).toBe(tracker.current.tally);
+      expect(state.statsBase).toBe(tracker.current.tally);
+      // A window's older baseline is refused while main has one.
+      expect(tracker.adoptStatsBase({ ...NO_TALLY, since: T0 })).toBe(false);
+
+      const next = new CharacterTracker();
+      next.useBelongings(sink);
+      next.reset();
+      expect(next.current.statsBase?.experience).toBe(66);
+
+      const fresh = new CharacterTracker();
+      fresh.useBelongings(fakeBelongings().sink);
+      fresh.reset();
+      expect(fresh.adoptStatsBase({ ...NO_TALLY, since: T0, experience: 10 })).toBe(true);
+      expect(fresh.current.statsBase?.experience).toBe(10);
     });
 
     it('seeds nothing kept as nothing counted', () => {

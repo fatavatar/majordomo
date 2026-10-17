@@ -89,6 +89,12 @@ interface BelongingsFile {
    * Absent means never kept. See `StatsRecord`.
    */
   stats?: StatsRecord;
+  /**
+   * The Combat Stats card's baseline — the totals as they stood at its last
+   * Reset or lap begun — so the card and the stats board read from the same
+   * moment, whichever window is open or none. Absent is the whole series.
+   */
+  statsBase?: CombatTally;
 }
 
 export interface BelongingsOptions {
@@ -116,6 +122,8 @@ export class Belongings implements BelongingsSink {
   private identity: CharacterIdentity | null = null;
   /** Null is *never kept*. See `recallStats`. */
   private stats: StatsRecord | null = null;
+  /** The Combat Stats card's baseline: see `BelongingsSink.recallStatsBase`. */
+  private statsBase: CombatTally | null = null;
   private timer: NodeJS.Timeout | null = null;
   /** When the armed timer fires, so a sooner request can replace a later one. */
   private due = 0;
@@ -206,6 +214,16 @@ export class Belongings implements BelongingsSink {
     return this.stats;
   }
 
+  recallStatsBase(): CombatTally | null {
+    return this.statsBase;
+  }
+
+  rememberStatsBase(base: CombatTally | null): void {
+    if (this.suspended) return;
+    this.statsBase = base;
+    this.schedule();
+  }
+
   rememberStats(tally: CombatTally): void {
     if (this.suspended) return;
     /*
@@ -248,6 +266,7 @@ export class Belongings implements BelongingsSink {
     this.abilities = null;
     this.identity = null;
     this.stats = null;
+    this.statsBase = null;
     this.schedule();
     return true;
   }
@@ -343,6 +362,7 @@ export class Belongings implements BelongingsSink {
       this.abilities = parsed.abilities ?? null;
       this.identity = parsed.identity ?? null;
       this.stats = parsed.stats ?? null;
+      this.statsBase = parsed.statsBase ?? null;
     } catch (error) {
       /*
        * Suspended rather than started fresh: this is the only copy of what the
@@ -388,7 +408,8 @@ export class Belongings implements BelongingsSink {
       // Omitted while never read, so the absence survives the round trip.
       ...(this.abilities !== null ? { abilities: this.abilities } : {}),
       ...(this.identity !== null ? { identity: this.identity } : {}),
-      ...(this.stats !== null ? { stats: this.stats } : {})
+      ...(this.stats !== null ? { stats: this.stats } : {}),
+      ...(this.statsBase !== null ? { statsBase: this.statsBase } : {})
     };
     const temporary = `${this.options.file}.tmp`;
     try {
@@ -508,6 +529,7 @@ function isBelongingsFile(value: unknown): value is BelongingsFile {
   if (file.abilities !== undefined && !isAbilitySums(file.abilities)) return false;
   if (file.identity !== undefined && !isIdentity(file.identity)) return false;
   if (file.stats !== undefined && !isStatsRecord(file.stats)) return false;
+  if (file.statsBase !== undefined && !isCombatTally(file.statsBase)) return false;
   return file.banks.every(isBankBalance);
 }
 

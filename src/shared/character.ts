@@ -1519,6 +1519,13 @@ export interface CharacterState {
    * when a character is no longer in the realm.
    */
   tally: CombatTally;
+  /**
+   * The Combat Stats card's baseline: the tally as it stood at the card's
+   * last Reset or a lap begun, which the card and the stats board both read
+   * from (`sinceCardBaseline`), or null for the whole series. Main's, kept
+   * with the tally (2026-10-17), so every window and the board agree.
+   */
+  statsBase: CombatTally | null;
   party: Party;
   /** Whether this character is moving unseen. See `Stealth`. */
   stealth: Stealth;
@@ -1658,6 +1665,7 @@ export const EMPTY_CHARACTER: CharacterState = {
   inCombat: false,
   combat: NO_COMBAT,
   tally: NO_TALLY,
+  statsBase: null,
   party: NO_PARTY,
   stealth: 'unknown',
   afflictions: NO_AFFLICTIONS,

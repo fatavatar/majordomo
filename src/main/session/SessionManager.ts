@@ -790,8 +790,8 @@ export class SessionManager {
   private readonly wards: Wards;
   /** Posting this character's readings to its realm's mudstats board. See `StatsReporter`. */
   private readonly stats: StatsReporter;
-  /** The Combat Stats card's baseline, as the window last said it (`Send.statsBase`). */
-  private statsBase: CombatTally | null = null;
+  /** The lap the Combat Stats baseline was last taken at (`megaProgressed`). */
+  private lapRebasedAt: number | null = null;
   /** Bending down for the key to the door in front of you. See `AutoKeys`. */
   private readonly keys: AutoKeys;
   /**
@@ -1313,7 +1313,7 @@ export class SessionManager {
           const state = this.tracker.current;
           if (state.phase !== 'in-game') return null;
           return statsSnapshot(state, this.mega?.statsReport() ?? null, APP_VERSION, {
-            baseline: this.statsBase,
+            baseline: state.statsBase,
             rateFloorMs: tuning().view.rateFloorMs,
             now: Date.now()
           });
@@ -2495,9 +2495,15 @@ export class SessionManager {
     return this.stats.status();
   }
 
-  /** The Combat Stats card's baseline, as the window holds it: the experience posted is the card's. */
-  useStatsBase(base: CombatTally | null): void {
-    this.statsBase = base;
+  /** The Combat Stats card's Reset: the baseline taken now, for every window and the board. */
+  resetStats(): void {
+    this.tracker.rebaseStats();
+    this.publishCharacter();
+  }
+
+  /** A baseline a window kept before main kept one (`CharacterTracker.adoptStatsBase`). */
+  adoptStatsBase(base: CombatTally): void {
+    if (this.tracker.adoptStatsBase(base)) this.publishCharacter();
   }
 
   /** The client's own settings — which of its commands are quiet. Hot-reloaded. */
@@ -2800,6 +2806,15 @@ export class SessionManager {
         startedAt: loop.startedAt,
         exp: loop.startedAt === null ? null : this.tracker.current.progress.exp
       };
+    }
+    /*
+     * A lap begun re-bases the Combat Stats card, so the steps out from town
+     * are not counted as a stretch the loop earned nothing over. Here, in
+     * main, so it happens whether or not a window is open (2026-10-17).
+     */
+    if (loop.lapBegunAt !== null && loop.lapBegunAt !== this.lapRebasedAt) {
+      this.lapRebasedAt = loop.lapBegunAt;
+      this.resetStats();
     }
     this.sink.walk?.(walk);
     this.sink.loop?.({ ...loop, expAtStart: this.megaLoopRun.exp });

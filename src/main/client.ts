@@ -1670,9 +1670,13 @@ function registerIpc(): void {
     }
   });
 
-  // The Combat Stats card's baseline, for what is posted to the stats board.
+  // The Combat Stats card's Reset, and a baseline a window kept from before
+  // main kept them, taken while main has none (2026-10-17).
+  on(Send.statsReset, (_caller, session: SessionId) => {
+    host?.get(session)?.manager.resetStats();
+  });
   on(Send.statsBase, (_caller, session: SessionId, base: unknown) => {
-    host?.get(session)?.manager.useStatsBase(base === null || isCombatTally(base) ? base : null);
+    if (isCombatTally(base)) host?.get(session)?.manager.adoptStatsBase(base);
   });
 
   on(Send.input, (_caller, session: SessionId, data: string) => {

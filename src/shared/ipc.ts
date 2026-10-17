@@ -640,10 +640,13 @@ export const Send = {
    */
   debugFeed: 'client:debug-feed',
   /**
-   * A character's Combat Stats baseline as this window holds it (its Reset,
-   * a lap begun, or read back at attach), so what is posted to the realm's
-   * mudstats board is what the card shows (2026-10-16).
+   * A character's Combat Stats Reset. Main keeps the baseline with the tally
+   * (`CharacterState.statsBase`) and re-bases it at a lap begun itself, so
+   * every window and the realm's stats board read from one moment
+   * (2026-10-17).
    */
+  statsReset: 'session:stats-reset',
+  /** A baseline this window kept from before main kept one, taken once while main has none. */
   statsBase: 'session:stats-base'
 } as const;
 
@@ -1204,8 +1207,10 @@ export interface IpcApi {
   diagnostics(on: boolean): void;
   /** This window started or stopped showing the debug view. */
   debugFeed(on: boolean): void;
-  /** A character's Combat Stats baseline, or null for the whole session. See `Send.statsBase`. */
-  statsBase(session: SessionId, base: CombatTally | null): void;
+  /** A character's Combat Stats Reset. See `Send.statsReset`. */
+  statsReset(session: SessionId): void;
+  /** A baseline this window kept from before main kept one. See `Send.statsBase`. */
+  statsBase(session: SessionId, base: CombatTally): void;
 
   /**
    * Dial a character.

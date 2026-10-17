@@ -1338,7 +1338,8 @@ export class CharacterTracker {
        * launch hands back the tally `leaveRealm` settled; a launch hands back
        * the file's, with any clock it left open closed at the write.
        */
-      tally: this.recalledTally()
+      tally: this.recalledTally(),
+      statsBase: this.belongings.recallStatsBase()
     };
     this.room.discard();
     this.expect.forget();
@@ -3661,6 +3662,7 @@ export class CharacterTracker {
       loadout: this.belongings.recallLoadout().map((worn) => ({ ...worn })),
       spellbook: this.belongings.recallSpellbook()?.map((spell) => ({ ...spell })) ?? null,
       abilities: this.belongings.recallAbilities(),
+      statsBase: null,
       // And the totals, which were somebody gone's. The character is standing
       // in the realm, so the clocks that were running start again now.
       tally:
@@ -3682,6 +3684,29 @@ export class CharacterTracker {
    * socket closing left `onlineSince` running, and the write is the last
    * moment the client is known to have been in the realm.
    */
+  /**
+   * The Combat Stats card's baseline taken now: its Reset, or a lap begun
+   * (`SessionManager`). Kept with the tally, so the card in any window and
+   * the stats board read from this moment.
+   */
+  rebaseStats(): void {
+    const base = this.state.tally;
+    if (this.state.statsBase === base) return;
+    this.state = { ...this.state, statsBase: base, updatedAt: Date.now() };
+    this.belongings.rememberStatsBase(base);
+  }
+
+  /**
+   * A baseline a window kept from before main kept one, taken once while main
+   * has none, so a Reset pressed before 2026-10-17 is not lost. Whether taken.
+   */
+  adoptStatsBase(base: CombatTally): boolean {
+    if (this.state.statsBase !== null) return false;
+    this.state = { ...this.state, statsBase: base, updatedAt: Date.now() };
+    this.belongings.rememberStatsBase(base);
+    return true;
+  }
+
   private recalledTally(): CombatTally {
     const kept = this.belongings.recallStats();
     return kept === null ? NO_TALLY : settleClocks(kept.tally, kept.savedAt);
