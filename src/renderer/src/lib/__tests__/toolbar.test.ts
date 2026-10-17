@@ -255,7 +255,9 @@ describe('the MegaMUD engine’s toggles', () => {
     },
     walking: false,
     looping: false,
-    canGo: true
+    canGo: true,
+    ran: 0,
+    fled: 0
   };
 
   it('stand where the switches would, every one of them, for the pins to choose from', () => {

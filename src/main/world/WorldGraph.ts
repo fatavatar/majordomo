@@ -404,17 +404,19 @@ export interface Traveller {
  * there and back — `WorldGraph.leverErrand`.
  */
 interface LeverErrand {
-  /** The room the levers are pulled in. */
-  at: RoomId;
-  /** One phrase per lever, the realm's own spelling first. */
-  say: string[];
-  /** What the step is priced at: both legs and the pulls. */
+  /**
+   * The rooms the levers are pulled in, in the order walked: one, or every
+   * room of a set the realm counts together (`Needs N Actions` over N rooms).
+   * Each with one phrase per lever, the realm's own spelling first.
+   */
+  stops: { at: RoomId; say: string[] }[];
+  /** What the step is priced at: every leg and the pulls. */
   price: number;
-  /** The way from the door's room to the levers, and back again. */
-  out: Map<RoomId, { prev: RoomId; exit: WorldExit | PortalExit }>;
-  back: Map<RoomId, { prev: RoomId; exit: WorldExit | PortalExit }>;
-  outCost: number;
-  backCost: number;
+  /**
+   * The ways walked: from the door's room to the first stop, from each stop
+   * to the next, and from the last back to the door's room.
+   */
+  legs: { cameFrom: Map<RoomId, { prev: RoomId; exit: WorldExit | PortalExit }>; cost: number }[];
 }
 
 /** What a caller wants beyond the plan itself. */
@@ -470,6 +472,17 @@ export interface RouteOptions {
  * spellings of a key agree exactly until one of them is edited — the same
  * reason `refusedEdges` keys through one expression.
  */
+/** The most rooms a lever set may span and still be planned: every order of them is tried. */
+const MAX_LEVER_ROOMS = 4;
+
+/** Every order of a few rooms. */
+function orders<T>(items: readonly T[]): T[][] {
+  if (items.length <= 1) return [[...items]];
+  return items.flatMap((item, i) =>
+    orders([...items.slice(0, i), ...items.slice(i + 1)]).map((rest) => [item, ...rest])
+  );
+}
+
 function leverKey(room: RoomId, direction: string): string {
   return `${room}|${direction}`;
 }
@@ -4226,8 +4239,8 @@ export class WorldGraph {
    *
    * Empty for the ordinary exit, which is 225 of the shipped realm's exits
    * away from all of them. The caller decides what to do with several: all in
-   * one room is an errand, spread over rooms is a journey this client does not
-   * plan.
+   * one room is an errand, and a set spread over rooms is a round of them
+   * (`leverErrand`).
    */
   leversFor(room: RoomId, direction: string): readonly RemoteLever[] {
     return this.levers.get(leverKey(room, direction)) ?? NO_LEVERS;
@@ -4332,12 +4345,12 @@ export class WorldGraph {
    * the door refused. Priced here, it is a door like any other: the legs and
    * the pulls, and `buildRoute` puts both legs on the plan.
    *
-   * **The shapes `fetchLever` acts on, and only those.** Levers spread over
-   * several rooms that the realm counts as one set (`Needs N Actions` with N
-   * levers) are a round of rooms, walked by `runLeverSet` on the wire and not
-   * planned; a lever in the door's own room is `leversHere`. Everything else
-   * names alternatives — the Inner Gate's two Guardrooms each raise it — so
-   * the cheapest room is the errand. A room holding fewer levers than the
+   * **The shapes the walker acted on.** Levers spread over several rooms
+   * that the realm counts as one set (`Needs N Actions` with N levers) are a
+   * round of the rooms, out from the door and back, in the cheapest order
+   * (2026-10-17). A lever in the door's own room is `leversHere`. Everything
+   * else names alternatives — the Inner Gate's two Guardrooms each raise it —
+   * so the cheapest room is the errand. A room holding fewer levers than the
    * realm says are needed opens nothing and is passed over.
    *
    * **One level deep.** The legs are planned for a traveller that plans no
@@ -4364,28 +4377,50 @@ export class WorldGraph {
     const needed = this.rooms.get(from)?.exits.find((exit) => exit.direction === direction)
       ?.requirement?.actionsNeeded;
     let best: LeverErrand | null = null;
-    if (!(rooms.size > 1 && needed !== undefined && needed === levers.length)) {
-      const walker: Traveller = { ...traveller, noLeverErrands: true };
-      const limit = tuning().world.leverDetourCost;
+    const walker: Traveller = { ...traveller, noLeverErrands: true };
+    const limit = tuning().world.leverDetourCost;
+    /** The round through `order` from the door's room and back, priced, or null where a leg is too far. */
+    const round = (order: RoomId[]): LeverErrand | null => {
+      const stops: LeverErrand['stops'] = [];
+      const legs: LeverErrand['legs'] = [];
+      let price = 0;
+      let at = from;
+      for (const next of [...order, from]) {
+        const leg = this.leverLeg(at, next, walker, limit);
+        if (leg === null) return null;
+        legs.push(leg);
+        price += leg.cost;
+        if (next !== from) {
+          const pulled = rooms.get(next)!;
+          const pull = this.pullPrice(pulled, traveller);
+          if (pull === null) return null;
+          price += pull;
+          stops.push({ at: next, say: pulled.map((lever) => lever.say) });
+        }
+        at = next;
+      }
+      return { stops, price, legs };
+    };
+    if (rooms.size > 1 && needed !== undefined && needed === levers.length) {
+      /*
+       * A set over several rooms, pulled in any order (2026-10-17): Archer's
+       * loop walked into the hidden north wall of the crypt's Stone Hallway
+       * (1/1056), which opens on a lever in 1/1038 and another in 1/1044,
+       * and sent `n` there for as long as he was let. The old walker's
+       * `runLeverSet` walked such a set on the wire, and went with it.
+       * Planned as one round, in the cheapest order of a few rooms.
+       */
+      if (rooms.size <= MAX_LEVER_ROOMS) {
+        for (const order of orders([...rooms.keys()])) {
+          const errand = round(order);
+          if (errand !== null && (best === null || errand.price < best.price)) best = errand;
+        }
+      }
+    } else {
       for (const [at, pulled] of rooms) {
         if (needed !== undefined && pulled.length < needed) continue;
-        const pull = this.pullPrice(pulled, traveller);
-        if (pull === null) continue;
-        const out = this.leverLeg(from, at, walker, limit);
-        if (out === null) continue;
-        const back = this.leverLeg(at, from, walker, limit);
-        if (back === null) continue;
-        const price = out.cost + back.cost + pull;
-        if (best !== null && price >= best.price) continue;
-        best = {
-          at,
-          say: pulled.map((lever) => lever.say),
-          price,
-          out: out.cameFrom,
-          back: back.cameFrom,
-          outCost: out.cost,
-          backCost: back.cost
-        };
+        const errand = round([at]);
+        if (errand !== null && (best === null || errand.price < best.price)) best = errand;
       }
     }
     held.set(key, best);
@@ -8101,10 +8136,24 @@ export class WorldGraph {
      * prices at a flat discouragement because it cannot see the room: where
      * the walk to them is planned (`leverErrand`), that walk is the price.
      */
+    /*
+     * Where the walk to them cannot be planned (too far, or behind another
+     * lever's door), the exit is a wall like any other nothing here can open
+     * (2026-10-17). The flat discouragement leaned on the old walker's
+     * `fetchLever`, which made the errand when the step was refused; on the
+     * MegaMUD engine nothing does, and a plan through it walked into the wall
+     * and pushed at it.
+     */
+    const unreached = leveredElsewhere(exit.requirement)
+      ? openGates
+        ? tuning().world.wallCost
+        : null
+      : walled;
     const penalty =
       priced !== null && (priced >= tuning().world.wallCost || leveredElsewhere(exit.requirement))
-        ? (this.leverPrice(from, exit.direction, traveller) ?? walled)
+        ? (this.leverPrice(from, exit.direction, traveller) ?? unreached)
         : walled;
+    if (penalty === null) return null;
 
     // A portal costs its penalty over a plain step, so the router prefers
     // ordinary corridors unless the teleport genuinely shortens the way.
@@ -8708,11 +8757,22 @@ export class WorldGraph {
     traveller: Traveller
   ): RouteStep[] {
     const walker: Traveller = { ...traveller, noLeverErrands: true };
-    const out = this.buildRoute(errand.out, errand.at, errand.outCost, walker).steps;
-    const back = this.buildRoute(errand.back, door, errand.backCost, walker).steps;
-    const [first, ...rest] = back;
-    if (first === undefined) return out;
-    return [...out, { ...first, pull: { say: errand.say, opensName: beyond } }, ...rest];
+    const steps: RouteStep[] = [];
+    // The levers of the stop just reached, said on the first step out of it.
+    let saying: string[] = [];
+    errand.legs.forEach((leg, i) => {
+      const to = errand.stops[i]?.at ?? door;
+      const [first, ...rest] = this.buildRoute(leg.cameFrom, to, leg.cost, walker).steps;
+      if (first !== undefined) {
+        steps.push(
+          saying.length > 0 ? { ...first, pull: { say: saying, opensName: beyond } } : first,
+          ...rest
+        );
+        saying = [];
+      }
+      saying = [...saying, ...(errand.stops[i]?.say ?? [])];
+    });
+    return steps;
   }
 
   /**

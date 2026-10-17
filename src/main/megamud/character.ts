@@ -131,6 +131,30 @@ export function loadCharacter(s: Session, mega: MegaSettings): void {
 }
 
 /**
+ * The `[Player]` section's fields: the character as the realm last said it
+ * is (its name, level, figures), which MegaMUD reads off the stat sheet and
+ * writes to the file, not settings anybody edits.
+ */
+const PLAYER_FIELDS = SETTINGS.filter((def) => def.section === 'Player')
+  .map(fieldName)
+  .filter((name): name is string => name !== null);
+
+/**
+ * A character's settings changed while it plays: loaded again, but for what
+ * the realm has said of it (`PLAYER_FIELDS`). Our file never holds those
+ * readings, so loading it whole put back `Name=*Not Known*` and level 0
+ * until the next stat sheet; and in the meantime the engine took itself for
+ * a stranger in its own party and telepathed itself `@health` after every
+ * listing (Archer, 2026-10-16: `Why are you telepathing to yourself?`).
+ */
+export function reloadCharacter(s: Session, mega: MegaSettings): void {
+  const fields = s as unknown as Record<string, unknown>;
+  const read = PLAYER_FIELDS.map((name) => [name, fields[name]] as const);
+  loadCharacter(s, mega);
+  for (const [name, value] of read) fields[name] = value;
+}
+
+/**
  * Which of MegaMUD's remote bits (`RemoteFlag`, `0x4ae4a0`) each of the app's
  * remote names falls under (`@home` under `QueryVersion`, `@join` under
  * `QueryInventory`, `@do` also needing `SysopCommands` for `sys`).

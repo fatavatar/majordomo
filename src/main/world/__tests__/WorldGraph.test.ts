@@ -1827,6 +1827,25 @@ describe('the shipped realm data', () => {
     expect(realm!.route(roomId(1, 1056), '1/1038', traveller).blocked).toBe(false);
     expect(realm!.route('1/1038', '1/1044', traveller).blocked).toBe(false);
     expect(realm!.route('1/1044', roomId(1, 1056), traveller).blocked).toBe(false);
+
+    /*
+     * And the plan walks that round (2026-10-17): Archer's loop sent `n` at
+     * the wall for as long as he was let, the set being left to the old
+     * walker's `runLeverSet`, which went with it. Both rooms, a pull on the
+     * way out of each, back at the gate, then north.
+     */
+    const through = realm!.route(roomId(1, 1056), roomId(1, 1063), traveller);
+    expect(through.blocked).toBe(false);
+    const pulls = through.steps.filter((step) => step.pull !== undefined);
+    expect(pulls.map((step) => [step.from, step.pull!.say])).toEqual(
+      expect.arrayContaining([
+        ['1/1038', ['pull lever']],
+        ['1/1044', ['pull lever']]
+      ])
+    );
+    expect(pulls).toHaveLength(2);
+    const last = through.steps.at(-1)!;
+    expect([last.from, last.to, last.direction]).toEqual(['1/1056', '1/1063', 'n']);
   });
 });
 
@@ -2812,10 +2831,13 @@ describe('the levers that open an exit', () => {
 
     /*
      * A set spread over rooms — `Needs 2 Actions` with a lever in each of two
-     * — is a round of them, which `Walker.runLeverSet` walks on the wire and
-     * this does not plan: one room's lever opens nothing on its own.
+     * — is a round of them: one room's lever opens nothing on its own. It
+     * was left to `Walker.runLeverSet` on the wire, which went with the old
+     * walker, and the MegaMUD engine walked into the wall (2026-10-17). So it
+     * is planned: to each room in turn, a pull on the way out of each, back,
+     * and through.
      */
-    it('does not plan a set of levers spread over several rooms', () => {
+    it('plans a set of levers spread over several rooms as one round', () => {
       const graph = makeWorld([
         {
           m: 1,
@@ -2852,8 +2874,14 @@ describe('the levers that open an exit', () => {
         }
       ]);
       const route = graph.route('1/1', '1/2', { packKnown: true });
-      expect(route.steps.map((step) => step.to)).toEqual(['1/2']);
-      expect(route.steps[0]!.pull).toBeUndefined();
+      expect(route.blocked).toBe(false);
+      expect(route.steps.map((step) => [step.from, step.to, step.pull?.say ?? null])).toEqual([
+        ['1/1', '1/8', null],
+        ['1/8', '1/1', ['pull lever']],
+        ['1/1', '1/9', null],
+        ['1/9', '1/1', ['push lever']],
+        ['1/1', '1/2', null]
+      ]);
     });
   });
 

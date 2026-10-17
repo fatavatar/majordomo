@@ -35,6 +35,7 @@ import type { MobLore } from '../../shared/lore';
 import { mobKey, nameAnswersTo, roomAddress, roomId, type RoomId } from '../../shared/world';
 import { anchorToBand, type WoundBand } from '../../shared/wounds';
 import { tuning } from '../app/tuning';
+import type { OwnBlow } from './tally';
 
 /**
  * What one monster has taken in the fight currently running.
@@ -559,7 +560,8 @@ export class FightTracker {
     target: string | undefined,
     attacker: string | undefined,
     damage: number,
-    proc = false
+    /** Whose a blow naming nobody is: this character's proc or spell (`OwnBlow`). */
+    own: OwnBlow = null
   ): CharacterState | null {
     this.fell = null;
     if (target !== undefined && /^you$/i.test(target)) {
@@ -572,7 +574,7 @@ export class FightTracker {
      * fragment the old rule wrote into `{target}`.
      */
     if (!target) {
-      return attacker !== undefined && /^you$/i.test(attacker)
+      return (attacker !== undefined && /^you$/i.test(attacker)) || own === 'spell'
         ? { ...s, combat: struck(s.combat, at, {}) }
         : null;
     }
@@ -596,9 +598,9 @@ export class FightTracker {
      * it. `CombatTally.swings` is the field that answers the other question
      * and it enumerates the kinds a swing can be, so `proc` stays outside it.
      */
-    const mine = named || proc;
+    const mine = named || own !== null;
     if (named) this.landed = { key: mobKey(target), at, used: 0 };
-    else if (proc && this.landed !== null) this.landed.used += 1;
+    else if (own === 'proc' && this.landed !== null) this.landed.used += 1;
 
     /*
      * Somebody *else's* blow on a monster is recorded and changes nothing

@@ -53,7 +53,9 @@ import {
 } from '../../shared/config';
 import {
   DEFAULT_ALERT_DEBOUNCE_SECONDS,
+  isAlertEvent,
   NOTICE_CHANNELS,
+  TAB_ALERTS,
   type AlertRule
 } from '../../shared/notifications';
 import { DEFAULT_REWRITES, type RewriteDesign, type RewriteEntity } from '../../shared/rewrites';
@@ -282,6 +284,7 @@ function migrateAll(options: MigrationOptions): void {
   pinTheMegaToggles(home, note, options.internalTemplate);
   statedTheBotCommands(home, note, options.template);
   statedTheMudstats(home, note, options.template);
+  onlyTheTabAlertsAreCritical(home, note);
   theOldAutomationKeysWent(home, note);
   theHangPenaltiesWent(home, note);
   theOldSwitchesUnpinned(home, note);
@@ -6116,6 +6119,44 @@ function statedTheMudstats(
     stated.length === 1
       ? t('notices.migration.mudstatsStated.one', params)
       : t('notices.migration.mudstatsStated.many', params)
+  );
+}
+
+/**
+ * Alert rows at `critical` on anything but the four tab alerts lowered to
+ * `warning` (2026-10-17): hung up, the link dropped (`connection-lost`), ran
+ * and fled are the only critical alerts, and the only ones that light a
+ * character's tab (`TAB_ALERTS`). The shipped health and attacked rows were
+ * critical, and a row the player wrote at critical is lowered with them,
+ * said by file. Idempotent.
+ */
+function onlyTheTabAlertsAreCritical(home: Home, note: (message: string) => void): void {
+  const files = [home.options, ...directories(home.profilesDir).map((id) => home.profile(id).file)];
+  const lowered: string[] = [];
+
+  for (const file of files) {
+    edit(file, (document) => {
+      const rules = document.getIn(['ui', 'alerts', 'rules'], true);
+      if (!isSeq(rules)) return false;
+      let touched = false;
+      for (const item of rules.items) {
+        if (!isMap(item) || String(item.get('level') ?? '') !== 'critical') continue;
+        const on = String(item.get('on') ?? '');
+        if (isAlertEvent(on) && TAB_ALERTS.has(on)) continue;
+        item.set('level', 'warning');
+        touched = true;
+      }
+      if (touched) lowered.push(file);
+      return touched;
+    });
+  }
+
+  if (lowered.length === 0) return;
+  const params = { count: lowered.length, fileList: lowered.join(', ') };
+  note(
+    lowered.length === 1
+      ? t('notices.migration.criticalAlertsLowered.one', params)
+      : t('notices.migration.criticalAlertsLowered.many', params)
   );
 }
 

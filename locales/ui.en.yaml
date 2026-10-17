@@ -214,6 +214,11 @@ notices:
     mudstatsStated:
       many: 'Report to Stats Server (off, every 60 seconds) was added to {count} files: {fileList}'
       one: 'Report to Stats Server (off, every 60 seconds) was added to {fileList}'
+    criticalAlertsLowered:
+      many: 'Alert rows at critical were lowered to warning in {count} files, as only hung up,
+        dropped, ran and fled are critical now and light a character''s tab: {fileList}'
+      one: 'Alert rows at critical were lowered to warning in {fileList}, as only hung up,
+        dropped, ran and fled are critical now and light a character''s tab'
     botCommandsStated:
       many: 'Bot Commands (your own commands other players may ask for) was added, empty, to {count} files: {fileList}'
       one: 'Bot Commands (your own commands other players may ask for) was added, empty, to {fileList}'
@@ -1073,11 +1078,9 @@ tabs:
     editAria: Edit {characterName}…
     markError: error
     markFighting: fighting
-    markHurt: hurt
     markLooping: looping
     markMeditating: meditating
     markOffline: offline
-    markPvp: attacked! (PvP)
     markRecovering: recovering
     markSearching: searching
     markBlocked: blocked
@@ -1428,6 +1431,9 @@ cards:
       mobArrived: '{name} is in the room — {dispositionWord}'
       mobArrivedUncertainSuffix: ', by the worst of what the realm says'
       playerArrived: '{name} is in the room — {alignment}'
+    escape:
+      fled: Fled the fight by sys goto
+      ran: Ran from the fight
     session:
       dropped: The link dropped — you are out of the realm
       hungUp: Hung up for you — you are out of the realm
@@ -2832,7 +2838,10 @@ cards:
       span: Min-Max
     dealtLabel: Damage dealt
     deflectedLabel: Deflected
-    dodgedLabel: Dodged
+    dodgeLabel: Dodge
+    hitLabel: Hit
+    missLabel: Miss
+    ofCount: '{part} of {whole}'
     empty: Nothing has been fought yet.
     expMadeLabel: Exp. made
     expNeededLabel: Exp. needed
@@ -3157,6 +3166,8 @@ settings:
       throttled: the realm tells you to slow down
       arrived: you arrive where you were going
       connectionLost: the connection drops
+      fled: you flee by sys goto
+      ran: you run from a fight
       hostileArrives: a hostile player walks in
       monsterArrives: a monster that attacks on sight walks in
       hostileInRealm: a hostile player is in the realm

@@ -67,6 +67,13 @@ export interface MegaToggles {
   looping: boolean;
   /** Go would walk something: in the game, not All Off, with a path or roaming to pick up. */
   canGo: boolean;
+  /**
+   * How many runs from a fight the engine has begun, and how many Auto-Flee
+   * sys gotos it has sent, since it started: the window raises its `ran` and
+   * `fled` alerts as these go up (`escapeNotices`).
+   */
+  ran: number;
+  fled: number;
 }
 
 /**

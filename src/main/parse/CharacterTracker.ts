@@ -104,7 +104,7 @@ import { addCoins } from '../../shared/coins';
 import { playerEntity, playerKey } from '../../shared/players';
 import { noteRemoteCall, noteRemoteClient, trackPlayers } from './players';
 import { keepPartyCurrent } from './partyUpkeep';
-import { trackTally } from './tally';
+import { trackTally, type OwnBlow } from './tally';
 import { NO_TALLY, settleClocks, type CombatTally } from '../../shared/tally';
 import { readStatAll, statedBasis } from '../../shared/stated';
 import {
@@ -312,6 +312,19 @@ function leftRoom(before: Room, after: Room): boolean {
  * captures/168's false candidate — and letting those through would give the
  * binding back the reach this exists to take away.
  */
+/**
+ * This character's own cast line: the caster's line of a spell's message row
+ * (`You begin to chant in a fierce tone!`, read as a `realm-message` of role
+ * 1), or the `You cast …` frame. See `CharacterTracker.readsAsOwnSpell`.
+ */
+function isOwnCastLine(block: Block): boolean {
+  const g = block.groups ?? {};
+  if (block.type === 'realm-message') {
+    return g['role'] === '1' && (g['kind'] === 'spell' || g['kind'] === 'cast');
+  }
+  return block.type === 'spell-cast' && /^you$/i.test(g['caster'] ?? '');
+}
+
 function isProcHousekeeping(block: Block): boolean {
   if (block.type === 'status-line') return true;
   return block.type === 'unknown' && block.text.trim().length === 0;
@@ -708,6 +721,8 @@ export class CharacterTracker {
   private belongings: BelongingsSink = NO_BELONGINGS;
   /** The fight this character is in — its own memory, its own file. */
   private readonly fight: FightTracker;
+  /** This character's cast line was the last thing said, bar the status line: see `readsAsOwnSpell`. */
+  private castLineOpen = false;
   /** What the commands sent are waiting on — the command path's memory, its own file. */
   private readonly expect = new Expectations();
   /** The confirmed moves behind this character. See the `trail` getter. */
@@ -2480,6 +2495,10 @@ export class CharacterTracker {
      * the two answers from being asked either side of that write.
      */
     const proc = this.readsAsProc(block, before);
+    // Or this character's own spell, the damage line after its cast line.
+    const own: OwnBlow = proc ? 'proc' : this.readsAsOwnSpell(block) ? 'spell' : null;
+    this.castLineOpen =
+      isOwnCastLine(block) || (this.castLineOpen && (own === 'spell' || isProcHousekeeping(block)));
     /*
      * And anything that is *not* the proc breaks the binding it would have
      * ridden on, unless it is the prompt or a blank line.
@@ -2508,7 +2527,7 @@ export class CharacterTracker {
     if (PLAYER_STATUS_HEADER.test(block.text.trim())) this.sheetOpen = true;
     // And every other listing, on the classifier's word — see `listingOpen`.
     this.listingOpen = collecting;
-    const reduced = this.reduce(block, rows, proc);
+    const reduced = this.reduce(block, rows, own);
     this.listingOpen = false;
     if (block.type === 'player-status' || block.type === 'status-line') this.sheetOpen = false;
     // After the reducer, so the experience line reads the line before it.
@@ -2604,7 +2623,7 @@ export class CharacterTracker {
      * off the *transition*, so it is given both states rather than only the
      * one the reducer produced.
      */
-    const tally = trackTally(base.tally, block, base, before, proc);
+    const tally = trackTally(base.tally, block, base, before, own);
     // Written down as it moves, so the Combat Stats card opens where it was
     // left; the record defers the write, so this costs the parse path nothing.
     if (tally !== this.state.tally) this.belongings.rememberStats(tally);
@@ -3844,6 +3863,29 @@ export class CharacterTracker {
    * the index does not carry, or a pack nothing has listed all leave the blow
    * exactly where it was.
    */
+  /**
+   * Whether this damage line is this character's own spell (2026-10-17).
+   *
+   * On this realm a spell's damage line is the spell's own message and names
+   * no caster — `A strange force rips into stone giant for 202 damage!`, `A
+   * horde of shrieking spirits ravages your foe for 190 damage!` — so the
+   * spell row counted only the `You cast … for N damage!` frame, which this
+   * realm does not print, and booked nothing. What says it is ours is the
+   * line before it: the caster's own line of the spell's message row (`You
+   * begin to chant in a fierce tone!`, `You scatter some ashes in a sweeping
+   * motion!`), which only the caster sees, written in the same breath as the
+   * damage. Another caster's is `Skinny begins to chant…`, and leaves the
+   * damage after it theirs. Every damage line naming nobody that follows,
+   * with nothing but the status line or a blank between, is the cast's: a
+   * room spell lands once for each monster.
+   */
+  private readsAsOwnSpell(block: Block): boolean {
+    if (!this.castLineOpen || block.type !== 'user-hits') return false;
+    const groups = block.groups ?? {};
+    if (groups['attacker'] !== undefined) return false;
+    return groups['target'] === undefined || !/^you$/i.test(groups['target']);
+  }
+
   private readsAsProc(block: Block, state: CharacterState): boolean {
     if (block.type !== 'user-hits') return false;
     const groups = block.groups ?? {};
@@ -3862,8 +3904,8 @@ export class CharacterTracker {
   private reduce(
     block: Block,
     rows?: Array<Record<string, string>>,
-    /** See `readsAsProc`. Only the `user-hits` case reads it. */
-    proc = false
+    /** See `readsAsProc` and `readsAsOwnSpell`. Only the `user-hits` case reads it. */
+    own: OwnBlow = null
   ): CharacterState | null {
     const s = this.state;
     const g = block.groups;
@@ -6740,7 +6782,7 @@ export class CharacterTracker {
           g['target'],
           this.vouchedFor(s, g),
           int(g['damage']) ?? 0,
-          proc
+          own
         );
         // A party member's blow on a monster is what the leader is fighting;
         // a monster's blow on a member is the fight brought to the party; and

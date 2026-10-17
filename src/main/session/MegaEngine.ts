@@ -26,7 +26,7 @@ import {
 } from '../megamud/data';
 import { applyItemRule } from '../megamud/fromWorld';
 import { bbsSetup } from '../megamud/bbs';
-import { grantPlayers, loadCharacter } from '../megamud/character';
+import { grantPlayers, loadCharacter, reloadCharacter } from '../megamud/character';
 import { newTerminal, parseData, type TerminalState } from '../megamud/input/ParseData';
 import { typedCommand } from '../megamud/input/typed';
 import { disconnect, menuCommand, playerCommand, playerKey } from '../megamud/move/buttons';
@@ -441,6 +441,10 @@ export class MegaEngine {
    */
   private readonly standIns = new Map<number, RoomId>();
   private loopRun: { name: string; startedAt: number; lapBegunAt: number | null } | null = null;
+  /** Runs begun and Auto-Flee's sys gotos sent, for the window's tab alerts (`noteRun`). */
+  private ran = 0;
+  private fled = 0;
+  private wasRunning = false;
   /** The character's `[Alerts]`: the sound each alert plays. */
   private alerts: Readonly<Record<string, unknown>>;
   /** Where what is learned is kept; null when nowhere. */
@@ -539,7 +543,14 @@ export class MegaEngine {
           }),
         SECOND_MS
       ),
-      setInterval(() => this.safely(() => quietTick(this.s, this.t, this.quiet)), QUIET_POLL_MS),
+      setInterval(
+        () =>
+          this.safely(() => {
+            quietTick(this.s, this.t, this.quiet);
+            if (this.noteRun()) this.noteToggles();
+          }),
+        QUIET_POLL_MS
+      ),
       setInterval(() => this.safely(() => this.parkedTimeout()), QUIET_POLL_MS)
     );
   }
@@ -669,7 +680,7 @@ export class MegaEngine {
     // change is not a character opened afresh, which is when MegaMUD lets
     // them go (`0x4721d0`). Every save wiped what was learned (2026-10-14).
     const marks = [s.monsterMarks, s.playerMarks] as const;
-    loadCharacter(s, setup.settings);
+    reloadCharacter(s, setup.settings);
     [s.monsterMarks, s.playerMarks] = marks;
     bbsSetup(s, (key) => setup.bbs?.[key]);
     [s.MegaMud_CurPath, s.MegaMud_SelPath, s.MegaMud_CurPathStep] = kept;
@@ -925,6 +936,7 @@ export class MegaEngine {
       parseData(this.s, this.t, text);
     });
     this.noteRoom();
+    if (this.noteRun()) this.noteToggles();
     // Into the game with nowhere known: ask once, before anything wants a way.
     const entered = this.s.inGame !== 0 && !this.wasInGame;
     if (entered && this.host.here() === null) this.host.locate();
@@ -991,7 +1003,9 @@ export class MegaEngine {
       on,
       walking: s.walking !== 0,
       looping: s.looping !== 0,
-      canGo: s.inGame !== 0 && !allOff && somewhere
+      canGo: s.inGame !== 0 && !allOff && somewhere,
+      ran: this.ran,
+      fled: this.fled
     };
   }
 
@@ -1109,14 +1123,28 @@ export class MegaEngine {
   }
 
   /** Says so when the toggles or the walking moved since last said: a press, a mode's defaults, a remote, a step. */
+  /**
+   * A run begun (`runCount` from none), whatever began it — a run percent, a
+   * backstab refused, a player to flee, Auto-Flee's first step — counted for
+   * the window's `ran` alert, one of the four that light a tab (2026-10-17).
+   */
+  private noteRun(): boolean {
+    const running = this.s.runCount > 0;
+    const begun = running && !this.wasRunning;
+    this.wasRunning = running;
+    if (begun) this.ran += 1;
+    return begun;
+  }
+
   private noteToggles(): void {
+    this.noteRun();
     this.noteProgress();
     if (this.redialing !== this.wasRedialing) {
       this.wasRedialing = this.redialing;
       this.host.redialChanged?.();
     }
-    const { on, walking, looping, canGo } = this.toggles;
-    const now = JSON.stringify([on, walking, looping, canGo]);
+    const { on, walking, looping, canGo, ran, fled } = this.toggles;
+    const now = JSON.stringify([on, walking, looping, canGo, ran, fled]);
     if (now === this.toggled) return;
     this.toggled = now;
     this.host.toggled?.();
@@ -1228,6 +1256,8 @@ export class MegaEngine {
     this.fleeSpent = true;
     s.host.show(`[Flee: sys goto ${armed.destination}]`);
     send(s, `sys goto ${armed.destination}\r`);
+    this.fled += 1;
+    this.noteToggles();
   }
 
   /** The player's Disconnect (`0x7d4`): hung up on purpose, and not redialled. */

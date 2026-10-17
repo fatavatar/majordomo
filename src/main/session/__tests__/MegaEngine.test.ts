@@ -344,6 +344,41 @@ describe('the engine in a session', () => {
     e.dispose();
   });
 
+  /* Archer telepathed himself `@health` after a settings save (2026-10-16). */
+  it('keeps who the realm said the character is through a settings reload', () => {
+    vi.useFakeTimers();
+    const { e } = engine('1/1');
+    e.s.Player_Name = 'Archer';
+    e.s.Player_Level = 12;
+    e.s.Player_MaxHP = 89;
+    const settings = defaultSettings();
+    settings.live['Combat']!['AttackCmd'] = 'kill';
+    e.reload({ settings, data: { monsters: [], items: [], spells: [] }, grants: {} });
+    expect([e.s.Player_Name, e.s.Player_Level, e.s.Player_MaxHP]).toEqual(['Archer', 12, 89]);
+    e.dispose();
+  });
+
+  /* A run begun lights the character's tab (2026-10-17): counted once per run. */
+  it('counts each run from a fight it begins, for the window', () => {
+    vi.useFakeTimers();
+    const { e } = engine('1/1');
+    e.s.inGame = 1;
+    expect(e.toggles.ran).toBe(0);
+    e.s.runCount = 2;
+    e.received('\x1b[1;36mTown Square\r\n\x1b[0;32mObvious exits: north, closed door east\r\n');
+    expect(e.toggles.ran).toBe(1);
+    // Still the same run, a room on.
+    e.s.runCount = 1;
+    e.received('\x1b[1;36mTown Square\r\n\x1b[0;32mObvious exits: north, closed door east\r\n');
+    expect(e.toggles.ran).toBe(1);
+    e.s.runCount = 0;
+    e.received('\x1b[1;36mTown Square\r\n\x1b[0;32mObvious exits: north, closed door east\r\n');
+    e.s.runCount = 1;
+    e.received('\x1b[1;36mTown Square\r\n\x1b[0;32mObvious exits: north, closed door east\r\n');
+    expect([e.toggles.ran, e.toggles.fled]).toEqual([2, 0]);
+    e.dispose();
+  });
+
   /* "That room has no signature yet." refused a walk our planner had the way for (2026-10-16). */
   it('walks to a room with no signature worked out, and takes its own on arrival', async () => {
     vi.useFakeTimers();

@@ -3273,6 +3273,43 @@ describe('the conversation log stated in logging:', () => {
   });
 });
 
+/* Only hung up, dropped, ran and fled are critical (2026-10-17). */
+describe('alert rows at critical', () => {
+  it('are lowered to warning but for the four tab alerts, and only once', () => {
+    fs.mkdirSync(path.dirname(home.options), { recursive: true });
+    fs.writeFileSync(
+      home.options,
+      [
+        'ui:',
+        '  alerts:',
+        '    rules:',
+        "      - 'on': health",
+        '        level: critical',
+        "      - 'on': connection-lost",
+        '        level: critical',
+        "      - 'on': mana",
+        '        level: warning',
+        ''
+      ].join('\n'),
+      'utf8'
+    );
+    migrate();
+    const rules = (
+      parse(fs.readFileSync(home.options, 'utf8')) as {
+        ui: { alerts: { rules: Array<{ on: string; level: string }> } };
+      }
+    ).ui.alerts.rules;
+    expect(rules.map((rule) => [rule.on, rule.level])).toEqual([
+      ['health', 'warning'],
+      ['connection-lost', 'critical'],
+      ['mana', 'warning']
+    ]);
+    const once = fs.readFileSync(home.options, 'utf8');
+    migrate();
+    expect(fs.readFileSync(home.options, 'utf8')).toBe(once);
+  });
+});
+
 /*
  * The escape stops naming a command the server does not have.
  *

@@ -255,8 +255,11 @@ ui:
   # find. The terminal already carries every line, so the card deliberately
   # carries very little: a fight that cannot be won, a command the server said
   # out loud, a vital crossing a threshold, a player attacking you. Which line
-  # is critical and which is the record is decided in the client, from what the
-  # fact costs; these two settings decide who hears about it.
+  # is a warning and which is the record is decided in the client, from what the
+  # fact costs; these two settings decide who hears about it. Critical is for
+  # four alone: hung up, the link dropped, ran and fled -- the character out
+  # of the realm or out of a fight -- and they are the only alerts that light a
+  # character's tab.
   alerts:
     # Your own alerts, tried in order, and the ONLY thing that decides.
     #
@@ -327,7 +330,7 @@ ui:
         side: below
         value: 35
         percent: true
-        level: critical
+        level: warning
         alert: true
         notify: true
         whileFocused: false
@@ -342,7 +345,7 @@ ui:
         whileFocused: false
         quietSeconds: 30
       - 'on': attacked
-        level: critical
+        level: warning
         alert: true
         notify: true
         whileFocused: true

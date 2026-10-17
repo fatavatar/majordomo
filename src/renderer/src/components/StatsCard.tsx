@@ -173,7 +173,6 @@ const KIND_LABEL: Record<BlowKind, string> = {
 const FACE_IDS = ['stats', 'more'] as const;
 const MORE_ROWS: ReadonlySet<string> = new Set([
   'deflected',
-  'dodged',
   'sneak',
   'coins',
   'income',
@@ -516,6 +515,37 @@ function StatsCard({ baseline, character, onReset, session, ...chrome }: StatsCa
         label: t('cards.stats.killRateLabel'),
         value: rate(ratePerHour(shown.kills, elapsed, tuning().rateFloorMs))
       },
+      /*
+       * The character's hit, miss and dodge, measured since the scope began
+       * (2026-10-17): a swing landed or missed, of every swing it made, and
+       * an attack on it dodged, of every attack made on it. Spells and procs
+       * are not swings, and are left out of the first two as MegaMUD's own
+       * window left them.
+       */
+      {
+        key: 'hit',
+        label: t('cards.stats.hitLabel'),
+        value: percent(share(total - shown.missed, total)),
+        second: t('cards.stats.ofCount', {
+          part: figure(total - shown.missed),
+          whole: figure(total)
+        }),
+        when: everHappened(swings(tally))
+      },
+      {
+        key: 'miss',
+        label: t('cards.stats.missLabel'),
+        value: percent(share(shown.missed, total)),
+        second: t('cards.stats.ofCount', { part: figure(shown.missed), whole: figure(total) }),
+        when: everHappened(swings(tally))
+      },
+      {
+        key: 'dodge',
+        label: t('cards.stats.dodgeLabel'),
+        value: percent(share(shown.dodged, incoming)),
+        second: t('cards.stats.ofCount', { part: figure(shown.dodged), whole: figure(incoming) }),
+        when: everHappened(tally.taken.hits + turnedAside(tally))
+      },
       {
         key: 'dealt',
         label: t('cards.stats.dealtLabel'),
@@ -542,13 +572,6 @@ function StatsCard({ baseline, character, onReset, session, ...chrome }: StatsCa
         value: figure(shown.turned),
         second: percent(share(shown.turned, incoming)),
         when: everHappened(tally.turned)
-      },
-      {
-        key: 'dodged',
-        label: t('cards.stats.dodgedLabel'),
-        value: figure(shown.dodged),
-        second: percent(share(shown.dodged, incoming)),
-        when: everHappened(tally.dodged)
       },
       {
         key: 'sneak',

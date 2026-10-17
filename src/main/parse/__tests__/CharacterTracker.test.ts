@@ -22,6 +22,7 @@ import {
 import type { Discovery } from '../../../shared/memory';
 import type { RoomOccupant } from '../../../shared/character';
 import type { ShippedSentences } from '../../../shared/sentences';
+import { MessageBook } from '../../../shared/messages';
 import { ActionBook, parseActionsCsv } from '../../../shared/actions';
 import { DeathBook, parseDeathMessagesCsv } from '../../../shared/death-messages';
 import { NO_MESSAGES } from '../../../shared/messages';
@@ -126,7 +127,9 @@ function play(
       return learned.length === 0 ? shipped : [...new Set([...learned, ...shipped])];
     },
     // And the realm's emotes, where a test ships them.
-    sentences ? (text) => sentences.actions.match(text) : undefined
+    sentences ? (text) => sentences.actions.match(text) : undefined,
+    // And the server's message table: a spell's cast and damage lines.
+    sentences ? (text) => sentences.messages.match(text) : undefined
   );
   let seq = 0;
   // Lines are a millisecond apart unless a step says otherwise, so a test
@@ -4347,6 +4350,88 @@ describe('how the target is holding up', () => {
  * forty-per-cent chance of `silvery mace`, whose power of 1–3 is the 1, 2 and
  * 3 that spark line carries.
  */
+/*
+ * A spell's damage line on this realm is the spell's own message and names no
+ * caster (2026-10-17): the spell row counted nothing. The caster's own line of
+ * the spell's message row, before it, says whose it is.
+ */
+describe('this character’s own spells', () => {
+  const sentences = (): ShippedSentences => ({
+    ...shipped(),
+    messages: MessageBook.fromRows([
+      {
+        number: 3086,
+        kind: 'spell',
+        lines: [
+          'You begin to chant in a fierce tone!',
+          '%s begins to chant in a fierce tone!',
+          '%s begins to chant in a fierce tone!'
+        ]
+      },
+      {
+        number: 3087,
+        kind: 'other',
+        lines: [
+          'A strange force rips into %s for %d damage!',
+          'A strange force rips into you for %d damage!',
+          'A strange force rips into %s for %s damage!'
+        ]
+      }
+    ])
+  });
+  const HALL = [
+    'Giant Hall',
+    'Also here: stone giant, Skinny.',
+    'Obvious exits: east',
+    '*Combat Engaged*'
+  ];
+
+  it('books the damage after its own cast line as a spell, and another caster’s as theirs', () => {
+    const tracker = play(
+      [
+        ...HALL,
+        'You begin to chant in a fierce tone!',
+        'A strange force rips into stone giant for 202 damage!',
+        'Skinny begins to chant in a fierce tone!',
+        'A strange force rips into stone giant for 150 damage!'
+      ],
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      sentences()
+    );
+    expect(tracker.current.tally.dealt.spell).toEqual({
+      hits: 1,
+      damage: 202,
+      least: 202,
+      most: 202
+    });
+    expect(tracker.current.combat.health?.damage).toEqual({ mine: 202, others: 150 });
+  });
+
+  it('takes every monster a room spell lands on, and nothing once something else is said', () => {
+    const tally = play(
+      [
+        ...HALL,
+        'You begin to chant in a fierce tone!',
+        'A strange force rips into stone giant for 120 damage!',
+        'A strange force rips into Skinny for 90 damage!',
+        'The stone giant swipes at you!',
+        'A strange force rips into stone giant for 60 damage!'
+      ],
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      sentences()
+    ).current.tally;
+    expect([tally.dealt.spell.hits, tally.dealt.spell.damage]).toEqual([2, 210]);
+  });
+});
+
 describe('a blow the sentence attributes to nobody', () => {
   /** The abilities the shipped realm gives item 347, `shimmering longsword`. */
   const PROC_WEAPON: Array<[number, number]> = [

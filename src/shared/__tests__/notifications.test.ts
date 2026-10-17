@@ -8,6 +8,8 @@ import {
   desktopAlert,
   namedNotices,
   linkNotices,
+  escapeNotices,
+  TAB_ALERTS,
   noticeFor,
   partyNotices,
   raisable,
@@ -66,9 +68,10 @@ function withVitals(hp: number | null, hpMax: number | null, at = 2000): Charact
 }
 
 describe('which blocks are worth a notice', () => {
-  it('ranks a failed login as critical', () => {
+  /* Only the four tab alerts are critical (2026-10-17). */
+  it('ranks a failed login as a warning', () => {
     const notice = noticeFor(block('login-failed', 'Invalid password.'), t);
-    expect(notice?.severity).toBe('critical');
+    expect(notice?.severity).toBe('warning');
     expect(notice?.channel).toBe('session');
   });
 
@@ -226,6 +229,24 @@ describe('a route reaching where it was going', () => {
   });
 });
 
+/* Ran and fled light a tab, read off the engine's counts (2026-10-17). */
+describe('the engine getting a character out of a fight', () => {
+  it('says each run begun and each sys goto sent, critical, as the counts go up', () => {
+    expect(escapeNotices(undefined, { ran: 1, fled: 0 }, 1, t)).toEqual([]);
+    expect(escapeNotices({ ran: 0, fled: 0 }, { ran: 0, fled: 0 }, 2, t)).toEqual([]);
+    const raised = escapeNotices({ ran: 0, fled: 0 }, { ran: 1, fled: 1 }, 3, t);
+    expect(raised.map((n) => [n.event, n.severity])).toEqual([
+      ['ran', 'critical'],
+      ['fled', 'critical']
+    ]);
+    expect(raised.every((n) => TAB_ALERTS.has(n.event!))).toBe(true);
+  });
+
+  it('lights a tab for those four alone', () => {
+    expect([...TAB_ALERTS].sort()).toEqual(['connection-lost', 'fled', 'ran']);
+  });
+});
+
 describe('a character leaving the realm', () => {
   it('says nothing when the player pressed Disconnect', () => {
     expect(linkNotices(LINK, { ...LINK, phase: 'closed', endedBy: 'player' }, 8, t)).toHaveLength(
@@ -238,6 +259,9 @@ describe('a character leaving the realm', () => {
     expect(raised).toHaveLength(1);
     expect(raised[0]!.desktop).toBe('hungup');
     expect(raised[0]!.channel).toBe('session');
+    // One of the four tab alerts, and critical (2026-10-17).
+    expect(raised[0]!.severity).toBe('critical');
+    expect(TAB_ALERTS.has(raised[0]!.event!)).toBe(true);
   });
 
   it('alerts when the client hung up for an absent player, in its own words', () => {
@@ -253,10 +277,10 @@ describe('a character leaving the realm', () => {
 });
 
 describe('a vital that has just got worse', () => {
-  it('alerts on the crossing into critical', () => {
+  it('alerts on the crossing into critical, as a warning', () => {
     const raised = vitalNotices(withVitals(60, 100), withVitals(20, 100), BOUNDS, t);
     expect(raised).toHaveLength(1);
-    expect(raised[0]!.severity).toBe('critical');
+    expect(raised[0]!.severity).toBe('warning');
     expect(raised[0]!.channel).toBe('vitals');
     // And is the happening somebody switches on to be told about away from the
     // window, rather than merely one of the critical ones.
@@ -357,7 +381,7 @@ describe('who has turned up', () => {
   it('interrupts for somebody hostile', () => {
     const raised = rosterNotices(withRoster([]), withRoster([who('Grimjaw', 'Outlaw')]), t);
     expect(raised).toHaveLength(1);
-    expect(raised[0]!.severity).toBe('critical');
+    expect(raised[0]!.severity).toBe('warning');
     expect(raised[0]!.channel).toBe('realm');
   });
 
@@ -371,7 +395,7 @@ describe('who has turned up', () => {
     const after = withRoster([who('Grimjaw', 'Villain')]);
     const raised = rosterNotices(before, after, t);
     expect(raised).toHaveLength(1);
-    expect(raised[0]!.severity).toBe('critical');
+    expect(raised[0]!.severity).toBe('warning');
   });
 
   it('does not cry wolf twice about the same person', () => {
@@ -451,7 +475,7 @@ describe('somebody in the room', () => {
     const roster = [who('Cutthroat', 'Villain')];
     const raised = roomNotices(inRoom([], roster), inRoom(['Cutthroat'], roster), t);
     expect(raised).toHaveLength(1);
-    expect(raised[0]!.severity).toBe('critical');
+    expect(raised[0]!.severity).toBe('warning');
     expect(raised[0]!.channel).toBe('room');
   });
 
@@ -542,7 +566,7 @@ describe('somebody in the party in trouble', () => {
       t
     );
     expect(raised).toHaveLength(1);
-    expect(raised[0]!.severity).toBe('critical');
+    expect(raised[0]!.severity).toBe('warning');
     expect(raised[0]!.channel).toBe('party');
     expect(raised[0]!.text).toContain('Soul');
   });

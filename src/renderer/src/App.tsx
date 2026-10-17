@@ -171,7 +171,9 @@ import {
   partyNotices,
   roomNotices,
   rosterNotices,
+  escapeNotices,
   namedNotices,
+  TAB_ALERTS,
   vitalNotices,
   watchNotices,
   walkNotices,
@@ -286,7 +288,8 @@ interface SessionView {
    * means. Counted rather than kept: the notices themselves are already in
    * `notices`, and a tab has room for a number.
    */
-  unseen: { critical: number; warning: number; latest: string | null };
+  /** The tab alerts raised while this character was not on screen (`TAB_ALERTS`), and the newest. */
+  unseen: { alerts: number; latest: string | null };
   /**
    * What this character has found that the realm data does not have.
    *
@@ -393,7 +396,7 @@ const EMPTY_VIEW: SessionView = {
   telnet: [],
   talk: [],
   notices: [],
-  unseen: { critical: 0, warning: 0, latest: null },
+  unseen: { alerts: 0, latest: null },
   learned: [],
   finds: [],
   questSaid: {},
@@ -404,27 +407,29 @@ const EMPTY_VIEW: SessionView = {
  * Folds new notices into the unseen count for a character.
  *
  * A character on screen has seen them by definition, so nothing accumulates for
- * the one being played — the count exists for the other three. `info` is not
- * counted: a tab that lights up for somebody arriving in the realm is a tab
- * nobody reads, and the whole value of the mark is that it is rare.
+ * the one being played — the count exists for the other three. Only the tab
+ * alerts are counted (`TAB_ALERTS`: hung up, dropped, ran, fled; 2026-10-17):
+ * a tab lit for a failed command or a red bar is a tab lit all evening, and
+ * the whole value of the mark is that it is rare.
  */
 function missed(
   current: SessionView['unseen'],
   raised: Notice[],
   shown: boolean
 ): SessionView['unseen'] {
-  if (shown) return current.critical === 0 && current.warning === 0 ? current : EMPTY_UNSEEN;
-  const worth = raised.filter((notice) => notice.severity !== 'info');
+  if (shown) return current.alerts === 0 ? current : EMPTY_UNSEEN;
+  const worth = raised.filter(
+    (notice) => notice.event !== undefined && TAB_ALERTS.has(notice.event)
+  );
   if (worth.length === 0) return current;
   return {
-    critical: current.critical + worth.filter((n) => n.severity === 'critical').length,
-    warning: current.warning + worth.filter((n) => n.severity === 'warning').length,
+    alerts: current.alerts + worth.length,
     // The newest, for the tab's title: a number says how much and this says what.
     latest: worth[worth.length - 1]!.text
   };
 }
 
-const EMPTY_UNSEEN = { critical: 0, warning: 0, latest: null } as const;
+const EMPTY_UNSEEN = { alerts: 0, latest: null } as const;
 
 /** Keeps a log bounded without reallocating it on every append. */
 /**
@@ -2099,7 +2104,7 @@ export default function App() {
         // A window that has just attached has not missed anything: the
         // backscroll it replays is the record, and a count of alerts raised
         // before it existed is a number nobody can act on.
-        unseen: { critical: 0, warning: 0, latest: null },
+        unseen: { alerts: 0, latest: null },
         learned: snapshot.learned,
         finds: snapshot.finds,
         questSaid: snapshot.questSaid,
@@ -2118,9 +2123,7 @@ export default function App() {
   useEffect(() => {
     shownRef.current = new Set(panes);
     for (const id of panes) {
-      patchView(id, (v) =>
-        v.unseen.critical === 0 && v.unseen.warning === 0 ? v : { ...v, unseen: EMPTY_UNSEEN }
-      );
+      patchView(id, (v) => (v.unseen.alerts === 0 ? v : { ...v, unseen: EMPTY_UNSEEN }));
     }
   }, [panes, patchView]);
 
@@ -2372,7 +2375,24 @@ export default function App() {
       // a fact about one, and it is answered once.
       api.onCharacterReset((message) => setResetAsked(message)),
       api.onAutomation(({ session: id, payload }) =>
-        patchView(id, (v) => ({ ...v, automation: payload }))
+        patchView(id, (v) => {
+          // The engine running or fleeing from a fight: two of the tab alerts.
+          const raised = wanted(
+            alertsRef.current,
+            escapeNotices(v.automation.mega, payload.mega, Date.now(), t),
+            quietFor(id)
+          );
+          if (raised.length === 0) return { ...v, automation: payload };
+          return {
+            ...v,
+            automation: payload,
+            notices: raised.reduce(
+              (log, notice) => capped(log, notice, tuning().noticeLimit),
+              v.notices
+            ),
+            unseen: missed(v.unseen, raised, shownRef.current.has(id))
+          };
+        })
       ),
       api.onVerdict(({ session: id, payload }) =>
         patchView(id, (v) => ({ ...v, verdict: payload }))
