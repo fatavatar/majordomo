@@ -15,6 +15,15 @@ import { defaultSettings, type MegaSettings, type SettingValue } from './setting
 const PERCENT = 100;
 const SELF_BLESSINGS = 10;
 const PARTY_BLESSINGS = 4;
+/**
+ * MegaMUD's *If leading, wait only (mins)* for the old automation's "wait as
+ * long as it takes" (`waitNoLongerMinutes: 0`). MegaMUD has no such setting:
+ * its 0 gives up the moment the party starts waiting (`0x4816b0` compares
+ * `PartyWaitMax * 60` seconds), so a 0 carried across walked the leader on
+ * through every `@wait` (Archer through blind Bowel's, 2026-10-17). A day is
+ * as long as it takes.
+ */
+export const WAIT_AS_LONG_AS_IT_TAKES = 1440;
 
 /** MegaMUD's `Cash.Want…` key for each coin. */
 const WANT: Record<Denomination, string> = {
@@ -98,7 +107,11 @@ export function megamudFromConfig(
   set('Party', 'ParPeriod', party.parEverySeconds);
   set('Party', 'PartyAskHeal%', percent(party.askForHealBelow));
   set('Party', 'PartyWait%', percent(party.waitForMembersBelow));
-  set('Party', 'PartyWaitMax', party.waitNoLongerMinutes);
+  set(
+    'Party',
+    'PartyWaitMax',
+    party.waitNoLongerMinutes === 0 ? WAIT_AS_LONG_AS_IT_TAKES : party.waitNoLongerMinutes
+  );
 
   // Coins: wanted, not wanted, or dropped (-1).
   for (const coin of DENOMINATIONS) {

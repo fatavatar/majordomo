@@ -214,6 +214,11 @@ notices:
     mudstatsStated:
       many: 'Report to Stats Server (off, every 60 seconds) was added to {count} files: {fileList}'
       one: 'Report to Stats Server (off, every 60 seconds) was added to {fileList}'
+    waitLimitWaits:
+      many: 'MegaMUD''s "If leading, wait only" was 0 minutes, which gives up on a @wait at once,
+        and is now {minutes} in {count} files: {fileList}'
+      one: 'MegaMUD''s "If leading, wait only" was 0 minutes, which gives up on a @wait at once,
+        and is now {minutes} in {fileList}'
     criticalAlertsLowered:
       many: 'Alert rows at critical were lowered to warning in {count} files, as only hung up,
         dropped, ran and fled are critical now and light a character''s tab: {fileList}'

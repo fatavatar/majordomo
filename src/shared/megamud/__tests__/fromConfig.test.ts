@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { DEFAULT_CONFIG } from '../../config';
-import { megamudFromConfig } from '../fromConfig';
+import { megamudFromConfig, WAIT_AS_LONG_AS_IT_TAKES } from '../fromConfig';
 import { defaultSettings, settingDef } from '../settings';
 
 /* Healbot's and Fatty's settings carried over where MegaMUD has the same one (2026-10-13). */
@@ -29,6 +29,14 @@ describe('MegaMUD settings started from the old automation', () => {
     'holy shield': 'hshd'
   };
   const settings = megamudFromConfig(automation, (spell) => words[spell] ?? spell);
+
+  /* Archer led blind Bowel on through every @wait (2026-10-17): MegaMUD's 0 gives up at once. */
+  it('carries "wait as long as it takes" as a day, and a stated limit as it is', () => {
+    expect(settings.live['Party']!['PartyWaitMax']).toBe(WAIT_AS_LONG_AS_IT_TAKES);
+    const five = structuredClone(automation);
+    five.party.waitNoLongerMinutes = 5;
+    expect(megamudFromConfig(five, (spell) => spell).live['Party']!['PartyWaitMax']).toBe(5);
+  });
 
   it('writes only keys MegaMUD has', () => {
     const defaults = defaultSettings();

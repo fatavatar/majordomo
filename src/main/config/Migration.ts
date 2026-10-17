@@ -58,6 +58,7 @@ import {
   TAB_ALERTS,
   type AlertRule
 } from '../../shared/notifications';
+import { WAIT_AS_LONG_AS_IT_TAKES } from '../../shared/megamud/fromConfig';
 import { DEFAULT_REWRITES, type RewriteDesign, type RewriteEntity } from '../../shared/rewrites';
 import { DEFAULT_INTERNAL } from '../../shared/internal';
 import { asShippedWorld } from '../../shared/worlds';
@@ -285,6 +286,7 @@ function migrateAll(options: MigrationOptions): void {
   statedTheBotCommands(home, note, options.template);
   statedTheMudstats(home, note, options.template);
   onlyTheTabAlertsAreCritical(home, note);
+  theWaitLimitWaits(home, note);
   theOldAutomationKeysWent(home, note);
   theHangPenaltiesWent(home, note);
   theOldSwitchesUnpinned(home, note);
@@ -6119,6 +6121,40 @@ function statedTheMudstats(
     stated.length === 1
       ? t('notices.migration.mudstatsStated.one', params)
       : t('notices.migration.mudstatsStated.many', params)
+  );
+}
+
+/**
+ * A character's MegaMUD `Party.PartyWaitMax` of 0 made a day (2026-10-17).
+ * Carried across from the old automation's `waitNoLongerMinutes: 0` — "as
+ * long as it takes" — it is MegaMUD's "not at all": the wait timed out the
+ * moment it began, and Archer led blind Bowel on through every `@wait`. See
+ * `WAIT_AS_LONG_AS_IT_TAKES`. Idempotent.
+ */
+function theWaitLimitWaits(home: Home, note: (message: string) => void): void {
+  const files = directories(home.profilesDir).map((id) => home.profile(id).file);
+  const changed: string[] = [];
+  for (const file of files) {
+    edit(file, (document) => {
+      const party = document.getIn(['megamud', 'Party'], true);
+      if (!isMap(party)) return false;
+      const limit = party.get('PartyWaitMax');
+      if (limit !== 0 && limit !== '0') return false;
+      party.set('PartyWaitMax', WAIT_AS_LONG_AS_IT_TAKES);
+      changed.push(file);
+      return true;
+    });
+  }
+  if (changed.length === 0) return;
+  const params = {
+    count: changed.length,
+    fileList: changed.join(', '),
+    minutes: WAIT_AS_LONG_AS_IT_TAKES
+  };
+  note(
+    changed.length === 1
+      ? t('notices.migration.waitLimitWaits.one', params)
+      : t('notices.migration.waitLimitWaits.many', params)
   );
 }
 

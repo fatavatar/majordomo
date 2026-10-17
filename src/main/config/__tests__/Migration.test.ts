@@ -8,6 +8,7 @@ import { migrateHome } from '../Migration';
 import { LoopStore } from '../LoopStore';
 import { DEFAULT_INTERNAL } from '../../../shared/internal';
 import { ServerStore } from '../ServerStore';
+import { WAIT_AS_LONG_AS_IT_TAKES } from '../../../shared/megamud/fromConfig';
 import { homeAt, type Home } from '../../app/home';
 import { ACTIONABLE_REMOTES } from '../../../shared/remotes';
 import { DEFAULT_CONFIG } from '../../../shared/config';
@@ -3270,6 +3271,33 @@ describe('the conversation log stated in logging:', () => {
     fs.writeFileSync(home.options, 'logging:\n  stats:\n    enabled: true\n', 'utf8');
     migrate();
     expect(readLogging()['stats']).toEqual({ enabled: true });
+  });
+});
+
+/* MegaMUD's wait limit of 0 gave up on every @wait at once (2026-10-17). */
+describe('a MegaMUD wait limit of 0', () => {
+  it('is made a day, a stated limit kept, and only once', () => {
+    const write = (id: string, limit: number): void => {
+      fs.mkdirSync(path.dirname(home.profile(id).file), { recursive: true });
+      fs.writeFileSync(
+        home.profile(id).file,
+        `name: ${id}\nmegamud:\n  Party:\n    PartyWaitMax: ${limit}\n`,
+        'utf8'
+      );
+    };
+    write('archer', 0);
+    write('fatty', 5);
+    migrate();
+    const limit = (id: string): unknown =>
+      (
+        parse(fs.readFileSync(home.profile(id).file, 'utf8')) as {
+          megamud: { Party: { PartyWaitMax: number } };
+        }
+      ).megamud.Party.PartyWaitMax;
+    expect([limit('archer'), limit('fatty')]).toEqual([WAIT_AS_LONG_AS_IT_TAKES, 5]);
+    const once = fs.readFileSync(home.profile('archer').file, 'utf8');
+    migrate();
+    expect(fs.readFileSync(home.profile('archer').file, 'utf8')).toBe(once);
   });
 });
 
