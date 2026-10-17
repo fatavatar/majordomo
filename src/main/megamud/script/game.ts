@@ -243,11 +243,20 @@ export function sessionEnded(s: Session): number {
  * game (2026-10-14). Left in task 2, every line went to the connection and
  * none to the game: Skinny, redialled after a drop, logged on and stood for
  * five hours without a command.
+ *
+ * Online from here, as `0x45ad00` goes online the moment its dial connects
+ * (`0x4b6e00`), before any logon: so a BBS that answers and hangs up again
+ * is an unexpected disconnection, redialled with `Comms.RedialCarrier`.
+ * Online only from the first prompt, it was a plain close and never
+ * redialled: Fatty and Healbot, redialled after the nightly cleanup
+ * (2026-10-17, 07:19), were told "Sorry, this system is not available at the
+ * moment" and stayed off for hours.
  */
 export function connected(s: Session): void {
   s.socketUp = -1;
   s.sessionOpen = 1;
   if (s.task >= Task.Connecting && s.task <= Task.LoggingOn) setTask(s, Task.Idle);
+  goOnline(s, 1);
 }
 
 /**

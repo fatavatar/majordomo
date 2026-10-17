@@ -209,6 +209,24 @@ describe('the socket gone (0x42c910)', () => {
     expect(s.inGame).toBe(0);
   });
 
+  /*
+   * Fatty and Healbot, redialled after the nightly cleanup (2026-10-17): the
+   * BBS answered "Sorry, this system is not available at the moment" and
+   * hung up before any logon, and nothing dialled again.
+   */
+  it('redials a BBS that answers and hangs up before the game', () => {
+    const { s, out, clock } = session();
+    s.Comms_RedialCarrier = 1;
+    s.Comms_RedialPause = 5;
+    s.task = Task.Connecting2;
+    connected(s);
+    parseData(s, newTerminal(), 'Sorry, this system is not available at the moment.\r\n');
+    connectionClosed(s);
+    expect(out.shown).toContain('Unexpected disconnection.');
+    expect(s.task).toBe(Task.Redial);
+    expect(s.redialAt).toBe(clock.now + 5);
+  });
+
   it('is plain after a hang-up, and lets the next one through', () => {
     const { s, out } = session();
     connected(s);
