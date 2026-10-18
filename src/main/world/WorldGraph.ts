@@ -1039,6 +1039,29 @@ export function edgePenalty(requirement: Requirement | null, traveller: Travelle
  * length the realm states no duration against, is a wall — unknown is never
  * the reassuring answer, and here the reassuring answer drowns somebody.
  */
+/**
+ * A room's text exits, each left the commands the realm would take it for:
+ * one an earlier exit of the room (north to down) also answers goes through
+ * that one. Rhudaur, Massive Doors (2/2519) takes `go alley`, `go alleyway`
+ * and `enter alley` both east and west, and `go alley` puts a character in the
+ * east alley (2/2540, `south, east, west`): Archer, routed to the west one
+ * (2/2530) on 2026-10-18, was put east each time and walked west back to the
+ * doors, round nine times. An exit left none is `answeredBy` the one that
+ * takes them, and impassable to the planner.
+ */
+function claimCommands(exits: WorldExit[]): void {
+  const claimed = new Map<string, Direction>();
+  for (const exit of exits) {
+    const requirement = exit.requirement;
+    if (requirement?.kind !== 'text' || requirement.commands === undefined) continue;
+    const own = requirement.commands.filter((command) => !claimed.has(command.toLowerCase()));
+    if (own.length === 0)
+      requirement.answeredBy = claimed.get(requirement.commands[0]!.toLowerCase());
+    else requirement.commands = own;
+    for (const command of own) claimed.set(command.toLowerCase(), exit.direction);
+  }
+}
+
 function corridorCost(requirement: Requirement | null): number | null {
   const corridor = requirement?.corridor;
   if (corridor === undefined) return 0;
@@ -1051,8 +1074,9 @@ function statedPenalty(requirement: Requirement | null, traveller: Traveller): n
 
   switch (requirement.kind) {
     case 'text':
-      // Not an obstacle, just a different command. No penalty at all.
-      return 0;
+      // Not an obstacle, just a different command. No penalty at all, unless
+      // every word it takes goes through another exit first (`claimCommands`).
+      return requirement.answeredBy === undefined ? 0 : null;
 
     case 'door':
       return forcedDoorCost(requirement, traveller, 12);
@@ -6593,6 +6617,7 @@ export class WorldGraph {
       if (requirement !== null) this.resolveSpells(requirement, exit.m);
       exits.push({ direction, map: exit.m, room: exit.r, requirement });
     }
+    claimCommands(exits);
 
     const result: WorldRoom = {
       map,

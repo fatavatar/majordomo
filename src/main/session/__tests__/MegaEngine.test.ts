@@ -4,10 +4,10 @@ import { newTerminal, parseData } from '../../megamud/input/ParseData';
 import { defaultSettings } from '../../../shared/megamud/settings';
 import type { RoomId, Route, RouteStep, WorldRoom } from '../../../shared/world';
 import { session } from '../../megamud/__tests__/fixture';
+import { roomNameHash } from '../../megamud/room/roomName';
+import { worldSignature } from '../../world/megamudSignature';
 import {
   MegaEngine,
-  nameHash,
-  worldSignature,
   type AfterFetch,
   type EngineLessons,
   type EngineLogKind,
@@ -124,7 +124,7 @@ describe('room signatures from the realm data', () => {
     );
     expect(s.roomSignature).not.toBe(0);
     expect(worldSignature(SQUARE)).toBe(s.roomSignature);
-    expect(nameHash('Town Square') & 0xfff00000).toBe(s.roomSignature & 0xfff00000);
+    expect(roomNameHash('Town Square') & 0xfff00000).toBe(s.roomSignature & 0xfff00000);
   });
 
   it('are unsure of an exit whose listing the realm data cannot say', () => {
@@ -543,6 +543,27 @@ describe('the engine in a session', () => {
     e.dispose();
   });
 
+  /*
+   * Archer, put in the east alley by a `go alley` planned for the west one
+   * (2026-10-18): the tracker was sure of the wrong room and nothing asked.
+   */
+  it('asks the realm where it is when MegaMUD finds the room is not the step’s, once a step', async () => {
+    vi.useFakeTimers();
+    const { e, at } = engine('1/1');
+    e.s.inGame = 1;
+    e.s.online = 1;
+    e.received('\x1b[1;36mTown Square\r\n\x1b[0;32mObvious exits: north, closed door east\r\n');
+    expect(e.walkTo('1/2')).toBeNull();
+    await planned();
+    const before = at.locates;
+    e.s.host.uncertain!(e.s.path, 0);
+    e.s.host.uncertain!(e.s.path, 0);
+    expect(at.locates).toBe(before + 1);
+    e.s.host.uncertain!(e.s.path, 1);
+    expect(at.locates).toBe(before + 2);
+    e.dispose();
+  });
+
   it('pulls the levers in the room while the way is not showing, a couple of times', async () => {
     vi.useFakeTimers();
     const { e } = engine('1/1');
@@ -564,7 +585,11 @@ describe('the engine in a session', () => {
     e.dispose();
   });
 
-  it('searches for a hidden exit the realm says is searchable', async () => {
+  /*
+   * Archer, in the Closet off the keep's hallway (2026-10-18), searched west
+   * twice, then walked into the wall some thirty times.
+   */
+  it('searches for a hidden exit the realm says is searchable until it shows', async () => {
     vi.useFakeTimers();
     const hidden: Route = {
       steps: [{ ...step(2, 1, 's'), requirement: { kind: 'hidden', raw: '', searchable: true } }],
@@ -581,6 +606,17 @@ describe('the engine in a session', () => {
     e.s.pending = [];
     expect(e.s.host.clearWay!(e.s.path, 0, 1)).toBe(1);
     expect(e.s.pending.map((p) => p.text)).toEqual(['search s\r', '\r']);
+    // Two searches that found nothing are rolls of a skill: the step holds and searches again.
+    for (let i = 0; i < 5; i += 1) {
+      e.s.pending = [];
+      expect(e.s.host.clearWay!(e.s.path, 0, 1)).toBe(1);
+      expect(e.s.pending.map((p) => p.text)).toEqual(['search s\r', '\r']);
+    }
+    // Found: the exit shows, and the step is MegaMUD's own again.
+    e.s.roomExits[1] = 1;
+    e.s.pending = [];
+    expect(e.s.host.clearWay!(e.s.path, 0, 1)).toBe(0);
+    expect(e.s.pending).toEqual([]);
     e.dispose();
   });
 

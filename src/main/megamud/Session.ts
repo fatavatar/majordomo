@@ -408,6 +408,12 @@ export interface SessionHost {
    */
   isStepRoom?(p: PathRec, i: number): boolean;
   /**
+   * Ours: the room here is not step `i`'s of path `p` by MegaMUD's own check,
+   * the room looked at again (`0x409170`): the realm asked where the
+   * character is, so the check that follows reads a room the realm placed.
+   */
+  uncertain?(p: PathRec, i: number): void;
+  /**
    * Ours: whether the closed exit `dir` from here gives to picking or
    * bashing, by what the realm states of it; both when nothing is known.
    */

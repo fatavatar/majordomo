@@ -544,7 +544,10 @@ function walkStep(s: Session, first: PathStep): number {
     }
     if (s.darkness < Darkness.Dark && !atStep(s, path, path.step) && !any) {
       s.stepTries += 1;
-      if (s.stepTries === 1) return tryAgain(s);
+      if (s.stepTries === 1) {
+        s.host.uncertain?.(path, path.step);
+        return tryAgain(s);
+      }
       let tries = s.stepTries;
       if (s.MegaMud_FixSteps !== 0) {
         if (askingRelearn !== 0) return 1;

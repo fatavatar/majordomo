@@ -94,9 +94,13 @@ describe('walking a path (D48)', () => {
     s.path.prev = 0;
     s.roomSignature = A;
     s.state = State.Nothing;
+    const asked: number[] = [];
+    s.host.uncertain = (_p, i) => asked.push(i);
     expect(walkPath(s)).toBe(1);
     expect(out.sent).toEqual([]);
     expect(s.lookDue).toBe(1);
+    // Ours: the realm asked where the character is, for the look that follows.
+    expect(asked).toEqual([1]);
     expect(walkPath(s)).toBe(1);
     // Still in A: the path is back a step, and `n` is sent again.
     expect(s.MegaMud_CurPathStep).toBe(1);

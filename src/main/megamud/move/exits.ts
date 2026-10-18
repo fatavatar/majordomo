@@ -171,18 +171,23 @@ function continued(s: Session, rest: string): void {
   s.lineFlags |= LineFlag.ExitsContinue;
 }
 
-/** The room is read: its signature, and what a new room means. */
-function finish(s: Session, before: number): number {
-  s.roomName = s.roomNameSeen.slice(0, 0x34);
+/** A room's signature from its name's hash and its exits (`Exit`, north to down). */
+export function roomSignatureOf(nameHash: number, exits: readonly number[]): number {
   let code = 0;
   for (let dir = 0; dir < 10; dir += 1) {
-    let v = s.roomExits[dir] === Exit.ProbablyHidden ? 0 : (s.roomExits[dir] ?? 0);
+    let v = exits[dir] === Exit.ProbablyHidden ? 0 : (exits[dir] ?? 0);
     if (v === Exit.OpenDoor) v = Exit.ClosedDoor;
     code |= v << (dir * 2);
   }
-  let sig = ((s.roomNameHash & 0xfff00000) | code) >>> 0;
+  let sig = ((nameHash & 0xfff00000) | code) >>> 0;
   if (sig === 0xb7200050) sig = 0xb7200055;
-  s.roomSignature = sig | 0;
+  return sig | 0;
+}
+
+/** The room is read: its signature, and what a new room means. */
+function finish(s: Session, before: number): number {
+  s.roomName = s.roomNameSeen.slice(0, 0x34);
+  s.roomSignature = roomSignatureOf(s.roomNameHash, s.roomExits);
   if (s.inCombat === 0 && s.roomSignature !== before) unkeepAll(s);
   if (s.roomSignature !== before) {
     s.lostNeedsKnownRoom = 0;

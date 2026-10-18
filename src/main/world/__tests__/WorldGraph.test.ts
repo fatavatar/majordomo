@@ -474,6 +474,49 @@ describe('routing', () => {
     expect(route.steps[0]?.direction).toBe('w');
   });
 
+  /*
+   * Rhudaur, Massive Doors takes `go alley` east and west, and the realm puts
+   * a character in the east alley: Archer, routed to the west one, went round
+   * nine times (2026-10-18).
+   */
+  it('goes through the first exit of a room for a Text command two exits take', () => {
+    const graph = makeWorld([
+      {
+        m: 2,
+        r: 1,
+        n: 'Massive Doors',
+        x: {
+          e: { m: 2, r: 2, i: 'Text: go alley, enter alley' },
+          w: { m: 2, r: 3, i: 'Text: go alley, enter alley, go west alley' },
+          s: { m: 2, r: 4 }
+        }
+      },
+      { m: 2, r: 2, n: 'Dark Alley', x: { w: { m: 2, r: 1 } } },
+      { m: 2, r: 3, n: 'Dark Alley', x: { e: { m: 2, r: 1 } } },
+      { m: 2, r: 4, n: 'Street', x: { n: { m: 2, r: 1 } } }
+    ]);
+    expect(graph.route('2/1', '2/2').steps.map((step) => step.command)).toEqual(['go alley']);
+    // Left only the words no exit before it takes.
+    expect(graph.route('2/1', '2/3').steps.map((step) => step.command)).toEqual(['go west alley']);
+    const shut = makeWorld([
+      {
+        m: 2,
+        r: 1,
+        n: 'Massive Doors',
+        x: {
+          e: { m: 2, r: 2, i: 'Text: go alley, enter alley' },
+          w: { m: 2, r: 3, i: 'Text: go alley, enter alley' }
+        }
+      },
+      { m: 2, r: 2, n: 'Dark Alley', x: { w: { m: 2, r: 1 } } },
+      { m: 2, r: 3, n: 'Dark Alley', x: { e: { m: 2, r: 1 } } }
+    ]);
+    expect(
+      shut.byId('2/1')?.exits.find((exit) => exit.direction === 'w')?.requirement
+    ).toMatchObject({ answeredBy: 'e' });
+    expect(shut.route('2/1', '2/3').blocked).toBe(true);
+  });
+
   /**
    * A locked door beside a long way round. The detour is six rooms, which is
    * longer than a held key costs (4) but the only option without one.

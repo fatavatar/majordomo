@@ -5,7 +5,9 @@
  * pathfinder to re-derive them. We do, so a loop here is a list of *places*
  * (`src/shared/loops.ts`). Bringing one across therefore means:
  *
- *   1. place its first room in the realm,
+ *   1. place its first room in the realm: by the coordinates a recorder typed,
+ *      by its name, or by the signature MegaMUD recorded for every room on the
+ *      way (`placedBySignature`),
  *   2. replay its recorded directions through the realm to recover the loop
  *      it actually walks,
  *   3. reduce that to the fewest waypoints whose routes reproduce it exactly
@@ -24,6 +26,7 @@ import type { MegaMudConversion, MegaMudPath } from '../../shared/megamudPaths';
 import { roomId, type Direction, type RoomId, type WorldRoom } from '../../shared/world';
 import { reduceWaypointsYielding } from './loopDraft';
 import type { WorldGraph } from './WorldGraph';
+import { worldSignature } from './megamudSignature';
 
 const DIRECTIONS = new Set<string>(['n', 's', 'e', 'w', 'ne', 'nw', 'se', 'sw', 'u', 'd']);
 /** MegaMUD records long forms too; the realm data is canonical short. */
@@ -39,6 +42,36 @@ const LONG: Readonly<Record<string, Direction>> = {
   up: 'u',
   down: 'd'
 };
+
+/**
+ * How many of a recording's steps must be taken from a room with the
+ * signature MegaMUD recorded there for a start to be placed by them. The
+ * placed loops of MudRev's Default folder agree on 95 to 100% of their steps
+ * (95 of 96, 144 of 146), the one wrong start that walked and closed on 8 of
+ * 126 (2026-10-18).
+ */
+const SIGNATURES_AGREE = 0.9;
+
+/** The realm's rooms by signature, read on the first loop that needs them. */
+class Signatures {
+  private index: Map<number, WorldRoom[]> | null = null;
+
+  constructor(private readonly graph: WorldGraph) {}
+
+  rooms(signature: number): readonly WorldRoom[] {
+    if (this.index === null) {
+      this.index = new Map();
+      for (const room of this.graph.everyRoom()) {
+        const code = worldSignature(room);
+        if (code === null) continue;
+        const list = this.index.get(code >>> 0);
+        if (list) list.push(room);
+        else this.index.set(code >>> 0, [room]);
+      }
+    }
+    return this.index.get(signature) ?? [];
+  }
+}
 
 /**
  * A room placed by the coordinates at the end of a name, when the realm has
@@ -58,7 +91,58 @@ function placedBy(graph: WorldGraph, name: string): { room: WorldRoom; at: numbe
 }
 
 /**
- * Where the loop starts, and the rooms it walks from there.
+ * Where the loop starts, and the rooms it walks from there: by what the
+ * recorder typed (`placedByName`), and where that finds no room or one the
+ * steps do not fit, by what MegaMUD recorded (`placedBySignature`).
+ */
+function placed(
+  graph: WorldGraph,
+  signatures: Signatures,
+  path: MegaMudPath
+): { start: WorldRoom; rooms: RoomId[] | null } | null {
+  const named = placedByName(graph, path);
+  if (named !== null && named.rooms !== null) return named;
+  return placedBySignature(graph, signatures, path) ?? named;
+}
+
+/**
+ * Where the loop starts by the signatures MegaMUD recorded (2026-10-18): each
+ * step names the room it is taken from by its signature, so a start is a room
+ * with the first one whose replay comes back to itself and passes through
+ * rooms with the recorded ones (`SIGNATURES_AGREE`). Several that do are
+ * settled by which agrees on more steps, and two that agree as well are no
+ * answer. MudRev's Default folder names 34 of its starts in words of the
+ * recorder's own (`Rocky Trail - Dragon Start`, `Gloomy Mountain (Loop)`)
+ * the realm has no room called; 25 are placed this way.
+ */
+function placedBySignature(
+  graph: WorldGraph,
+  signatures: Signatures,
+  path: MegaMudPath
+): { start: WorldRoom; rooms: RoomId[] } | null {
+  const codes = path.codes;
+  if (codes === undefined || codes.length === 0 || codes.length !== path.steps.length) return null;
+  let best: { start: WorldRoom; rooms: RoomId[]; agree: number } | null = null;
+  let tied = false;
+  for (const start of signatures.rooms(codes[0]!)) {
+    const walked = walk(graph, start, path.steps);
+    if (walked === null || walked.rooms.at(-1) !== walked.rooms[0]) continue;
+    const agree = walked.from.filter((room, i) => {
+      const signature = worldSignature(room);
+      return signature !== null && signature >>> 0 === codes[i];
+    }).length;
+    if (agree < SIGNATURES_AGREE * codes.length) continue;
+    if (best === null || agree > best.agree) {
+      best = { start, rooms: walked.rooms, agree };
+      tied = false;
+    } else if (agree === best.agree) tied = true;
+  }
+  return best !== null && !tied ? { start: best.start, rooms: best.rooms } : null;
+}
+
+/**
+ * Where the loop starts by what the recorder typed, and the rooms it walks
+ * from there.
  *
  * `Rooms.md`'s coordinates for its first room first, then the header's. Past
  * those, a name: and a name the realm gives several rooms (98 are called
@@ -71,7 +155,7 @@ function placedBy(graph: WorldGraph, name: string): { room: WorldRoom; at: numbe
  * Null when the realm has no room to begin from; `rooms` null when it has one
  * and the steps do not fit it.
  */
-function placed(
+function placedByName(
   graph: WorldGraph,
   path: MegaMudPath
 ): { start: WorldRoom; rooms: RoomId[] | null } | null {
@@ -124,9 +208,20 @@ function friendlyTitle(graph: WorldGraph, title: string, start: WorldRoom): stri
 
 /** Every room the recorded directions walk through, or null where they do not fit. */
 function replay(graph: WorldGraph, from: WorldRoom, steps: readonly string[]): RoomId[] | null {
+  return walk(graph, from, steps)?.rooms ?? null;
+}
+
+/** `replay`, with the room each step is taken from beside it. */
+function walk(
+  graph: WorldGraph,
+  from: WorldRoom,
+  steps: readonly string[]
+): { rooms: RoomId[]; from: WorldRoom[] } | null {
   const rooms = [roomId(from.map, from.room)];
+  const taken: WorldRoom[] = [];
   let here = from;
   for (const step of steps) {
+    taken.push(here);
     // `w[use dragon key w]` — the bracket is MegaMUD's extra commands for the
     // same move, which the planner and walker handle themselves — and
     // `e -- comment` is an annotation. Both are shed before reading the move.
@@ -155,7 +250,7 @@ function replay(graph: WorldGraph, from: WorldRoom, steps: readonly string[]): R
     rooms.push(roomId(next.map, next.room));
     here = next;
   }
-  return rooms;
+  return { rooms, from: taken };
 }
 
 /**
@@ -173,8 +268,9 @@ export async function loopsFromMegaMud(
 ): Promise<MegaMudConversion> {
   const dropped = { start: 0, steps: 0, short: 0 };
   const found: { loop: Loop; file: string }[] = [];
+  const signatures = new Signatures(graph);
   for (const path of paths) {
-    const place = placed(graph, path);
+    const place = placed(graph, signatures, path);
     if (place === null) {
       dropped.start += 1;
       continue;

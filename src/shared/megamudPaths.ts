@@ -13,6 +13,10 @@
  * 3C900060:0000:w
  * ```
  *
+ * A room's code is MegaMUD's signature for it: its name's hash and its
+ * exits (`roomSignatureOf`). Each step line opens with the code of the room
+ * the step is taken from, so a recording names every room it walks through.
+ *
  * The codes line opens with the start room's code and the end room's. A
  * **loop** is a path whose two are the same room — which is how MegaMUD
  * itself tells them apart, and finds 282 in its MudRev `Default` folder where
@@ -44,6 +48,12 @@ export interface MegaMudPath {
   startRow: string | null;
   /** Each step's command, in order: a direction, or anything else sent on the way. */
   steps: string[];
+  /**
+   * MegaMUD's signature for the room each step is taken from, beside `steps`
+   * (2026-10-18): what places a start whose name the realm does not know.
+   * Absent from a window that did not send them.
+   */
+  codes?: number[];
 }
 
 /** What an import did: how many loops it wrote, and how many it could not place and why. */
@@ -73,7 +83,7 @@ export const MEGAMUD_PATH_LIMITS = { paths: 2000, steps: 5000, text: 200 } as co
 const TITLE = /^\[([^\]]*)\]\[([^\]]*)\]$/;
 const ROOM = /^\[(\w{1,8}):([^:\]]*):(.+)\]$/;
 const CODES = /^([0-9A-F]{8}):([0-9A-F]{8}):/i;
-const STEP = /^[0-9A-F]{8}:[0-9A-F]{4}:(.*)$/i;
+const STEP = /^([0-9A-F]{8}):[0-9A-F]{4}:(.*)$/i;
 
 /**
  * One path file as a loop, or null when it is not one.
@@ -92,6 +102,14 @@ export function readMegaMudLoop(
   if (!codes || codes[1]!.toUpperCase() !== codes[2]!.toUpperCase()) return null;
   const room = lines.map((line) => ROOM.exec(line)).find((found) => found !== null);
   if (!room) return null;
+  const steps = lines
+    .map((line) => STEP.exec(line))
+    .flatMap((found) => {
+      const command = found?.[2]?.trim() ?? '';
+      return found && command.length > 0
+        ? [{ command, code: Number.parseInt(found[1]!, 16) >>> 0 }]
+        : [];
+    });
   return {
     file,
     title: (
@@ -100,9 +118,8 @@ export function readMegaMudLoop(
     area: room[2]!.trim(),
     start: room[3]!.trim(),
     startRow: rooms.get(codes[1]!.toUpperCase()) ?? null,
-    steps: lines
-      .map((line) => STEP.exec(line)?.[1]?.trim())
-      .filter((step): step is string => step !== undefined && step.length > 0)
+    steps: steps.map((step) => step.command),
+    codes: steps.map((step) => step.code)
   };
 }
 
@@ -142,9 +159,19 @@ export function asMegaMudPaths(value: unknown): MegaMudPath[] {
   for (const entry of value.slice(0, MEGAMUD_PATH_LIMITS.paths)) {
     if (typeof entry !== 'object' || entry === null) continue;
     const record = entry as Record<string, unknown>;
-    const steps = Array.isArray(record['steps'])
-      ? record['steps'].slice(0, MEGAMUD_PATH_LIMITS.steps).map(text).filter(Boolean)
+    const given = Array.isArray(record['steps'])
+      ? record['steps'].slice(0, MEGAMUD_PATH_LIMITS.steps).map(text)
       : [];
+    // A code for each step or none: one out of step with its steps names the wrong rooms.
+    const codes =
+      Array.isArray(record['codes']) &&
+      record['codes'].slice(0, MEGAMUD_PATH_LIMITS.steps).length === given.length &&
+      record['codes']
+        .slice(0, MEGAMUD_PATH_LIMITS.steps)
+        .every((code) => Number.isInteger(code) && code >= 0 && code <= 0xffffffff)
+        ? (record['codes'].slice(0, MEGAMUD_PATH_LIMITS.steps) as number[])
+        : null;
+    const steps = given.filter(Boolean);
     const start = text(record['start']);
     if (start.length === 0 || steps.length === 0) continue;
     const startRow = text(record['startRow']);
@@ -154,7 +181,8 @@ export function asMegaMudPaths(value: unknown): MegaMudPath[] {
       area: text(record['area']),
       start,
       startRow: startRow.length > 0 ? startRow : null,
-      steps
+      steps,
+      ...(codes !== null ? { codes: codes.filter((_, i) => given[i] !== '') } : {})
     });
   }
   return paths;

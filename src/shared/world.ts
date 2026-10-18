@@ -182,6 +182,12 @@ export interface Requirement {
    */
   commands?: string[];
   /**
+   * An earlier exit of this room that answers every command this one names
+   * (`Text: go alley` east and west of one room): the realm takes that one, so
+   * this exit is never reached by them. See `WorldGraph.toRoom`.
+   */
+  answeredBy?: Direction;
+  /**
    * The item this exit demands, as an `Items` row id.
    *
    * Two instructions state one, and they are the same fact from the router's

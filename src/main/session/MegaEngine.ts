@@ -87,7 +87,6 @@ import {
   mobKey,
   roomId,
   spellLasts,
-  type RequirementKind,
   type Route,
   type RouteStep,
   type RoomId,
@@ -96,6 +95,7 @@ import {
 import type { WorldGraph } from '../world/WorldGraph';
 import { State } from '../megamud/states';
 import { SpellFlag, ItemFlag, StepFlag, RouteFlag, Exit, Darkness } from '../megamud/flags';
+import { worldSignature } from '../world/megamudSignature';
 
 /**
  * The engine's fields that decide whether it walks, rests or waits: each
@@ -271,49 +271,6 @@ export interface EngineLessons {
   marks: LearnedMark[] | null;
 }
 
-/** `0x498a60`'s hash of a room's name, the signature's top twelve bits. */
-export function nameHash(name: string): number {
-  let hash = 0;
-  for (let i = 0; i < name.length; i += 1)
-    hash = (hash + (i + 1) * (name.charCodeAt(i) & 0xff)) | 0;
-  return (hash << 20) | 0;
-}
-
-/** Exits the game lists as plain ones, whatever stops a character using them. */
-const PLAIN: ReadonlySet<RequirementKind> = new Set([
-  'level',
-  'class',
-  'race',
-  'alignment',
-  'ability',
-  'trap'
-]);
-
-/**
- * A room's signature as the exits line would give it (`0x438f90`'s
- * `finish`), from the realm data: a plain exit 1, a door or gate 2, a hidden
- * one 0. Null when an exit's kind leaves it unsure how the game lists it.
- */
-export function worldSignature(room: WorldRoom): number | null {
-  const codes = new Array<number>(10).fill(0);
-  for (const exit of room.exits) {
-    const dir = DIRECTIONS.indexOf(exit.direction);
-    if (dir === -1) continue;
-    const kind = exit.requirement?.kind ?? null;
-    let code: number;
-    if (kind === null || PLAIN.has(kind)) code = 1;
-    else if (kind === 'door' || kind === 'key') code = 2;
-    else if (kind === 'hidden') code = 0;
-    else return null;
-    codes[dir] = Math.max(codes[dir]!, code);
-  }
-  let code = 0;
-  codes.forEach((v, dir) => (code |= v << (dir * 2)));
-  let sig = ((nameHash(room.name) & 0xfff00000) | code) >>> 0;
-  if (sig === 0xb7200050) sig = 0xb7200055;
-  return sig | 0;
-}
-
 /** MegaMUD's alerts (`0x4c0640`'s callers), each the `[Alerts]` key naming its sound. */
 export const MEGA_ALERTS = {
   idle: 'AlertIdle',
@@ -395,12 +352,11 @@ function pathLength(route: Route): number {
 }
 
 /**
- * How many times the levers in an exit's own room are pulled, and the exit
- * searched for, before the door code has it: the old walker's budget
- * (`walk.leverTries`, `walk.searchTries`, both 2 when retired).
+ * How many times the levers in an exit's own room are pulled before the door
+ * code has it: the old walker's budget (`walk.leverTries`, 2 when retired). A
+ * hidden exit the realm says a search reveals has none: see `clearWay`.
  */
 const LEVER_TRIES = 2;
-const SEARCH_TRIES = 2;
 
 /** A short, steady name for a path MegaMUD can hold (13 characters). */
 function shortName(prefix: string, text: string): string {
@@ -548,6 +504,7 @@ export class MegaEngine {
       route: (from, to) => this.route(from, to),
       isRoom: (sig) => this.isRoom(sig),
       isStepRoom: (p, i) => this.isStepRoom(p, i),
+      uncertain: (p, i) => this.uncertain(p, i),
       opensAWay: (name) => this.host.opensAWay?.(name) ?? false,
       caption: () => caption(this.s),
       forcible: (dir) => this.forcible(dir),
@@ -1670,11 +1627,36 @@ export class MegaEngine {
   }
 
   /**
+   * `SessionHost.uncertain`: MegaMUD's step check finds this is not the
+   * step's room, so the realm is asked where the character is (`locate`,
+   * `sys status` or `rm`), once a step, and our tracker takes the answer
+   * before the check is made again (2026-10-18). Without it a tracker sure of
+   * the wrong room stayed sure: nothing asks while it has one.
+   */
+  private uncertain(p: PathRec, i: number): void {
+    const key = `${p.name}:${i}`;
+    if (this.askedWhere === key) return;
+    this.askedWhere = key;
+    if (this.host.locate()) this.host.logged?.('doing', 'Asking the realm where we are');
+  }
+
+  /** The path step whose room was last asked about (`uncertain`). */
+  private askedWhere: string | null = null;
+
+  /**
    * `SessionHost.clearWay`: a step of one of our paths whose exit is not
-   * open: the levers the realm keeps in this room pulled, else a hidden exit
-   * searched for, each a couple of times, the room looked at again after
-   * (a bare Enter), where the old walker did both. Only while the exit is not
-   * showing, so a lever is not pulled shut again on a lap it stood open.
+   * open: the levers the realm keeps in this room pulled a couple of times,
+   * else a hidden exit searched for, the room looked at again after (a bare
+   * Enter), where the old walker did both. Only while the exit is not showing,
+   * so a lever is not pulled shut again on a lap it stood open.
+   *
+   * A hidden exit the realm marks searchable is searched for until it shows,
+   * and the step held until then, as the old walker came to (2026-09-06): a
+   * search is a roll of a skill, and two that failed are not the realm being
+   * wrong. Bounded at two, the step went on into the wall: Archer, in the
+   * Closet off the keep's hallway on 2026-10-18, searched west twice, then
+   * walked into it some thirty times until two searches typed by hand found
+   * the concealed door.
    */
   private clearWay(p: PathRec, i: number, dir: number): number {
     const s = this.s;
@@ -1697,12 +1679,8 @@ export class MegaEngine {
       return 1;
     }
     const req = step.requirement;
-    if (
-      exit === Exit.None &&
-      req?.kind === 'hidden' &&
-      req.searchable === true &&
-      tries.searches < SEARCH_TRIES
-    ) {
+    if (exit === Exit.None && req?.kind === 'hidden' && req.searchable === true) {
+      if (tries.searches === 0) s.host.show(`[Searching ${step.direction} for the hidden exit]`);
       tries.searches += 1;
       queue(s, `search ${step.direction}\r`);
       queue(s, '\r');
