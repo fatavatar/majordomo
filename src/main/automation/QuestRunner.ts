@@ -791,11 +791,19 @@ export class QuestRunner {
       this.setback(t('automation.quests.refusalEscaping'));
       return;
     }
-    const route = this.planner.routeTo(to);
-    if (typeof route === 'string') {
-      this.setback(t('automation.quests.refusalNoRoute', { room: this.placeName(to), why: route }));
+    const planned = this.planner.routeTo(to);
+    if (typeof planned === 'string') {
+      this.setback(
+        t('automation.quests.refusalNoRoute', { room: this.placeName(to), why: planned })
+      );
       return;
     }
+    // Shut for what the pack lacks: the way it opens, which the walk fetches
+    // for first, as a person's Go To does (2026-10-18).
+    const route =
+      planned.blocked && planned.unlocks !== undefined && (planned.unlocks.needs?.length ?? 0) > 0
+        ? planned.unlocks
+        : planned;
     if (route.blocked) {
       this.setback(
         t('automation.quests.refusalNoRoute', {

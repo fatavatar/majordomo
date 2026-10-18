@@ -74,6 +74,7 @@ export type IconName =
   | 'logout'
   | 'bolt'
   | 'sword'
+  | 'swords'
   | 'shield'
   | 'shirt'
   | 'shirtOff'
@@ -386,6 +387,24 @@ const ICONS: Record<IconName, ReactNode> = {
       <path d="M7.4 14.4h9.2" />
       <path d="M12 14.4v5" />
       <path d="M9.7 20.4h4.6" />
+    </>
+  ),
+  /*
+   * Crossed swords: MMUD Explorer's own mark (mudtool's `⚔`), for the button
+   * and the command that open it (2026-10-18). Two blades corner to corner,
+   * the guards down by the grips and a pommel on each, as `⚔` draws them: with
+   * the guards at the crossing it read as an X at 15px.
+   */
+  swords: (
+    <>
+      <path d="M4 4 15.5 15.5" />
+      <path d="M13.2 17.8l4.6-4.6" />
+      <path d="M15.5 15.5 19 19" />
+      <circle cx="19.8" cy="19.8" r="1" />
+      <path d="M20 4 8.5 15.5" />
+      <path d="M6.2 13.2l4.6 4.6" />
+      <path d="M8.5 15.5 5 19" />
+      <circle cx="4.2" cy="19.8" r="1" />
     </>
   ),
   shield: <path d="M12 2.8 4.8 5.6v5.5c0 4.4 3 8.2 7.2 10.1 4.2-1.9 7.2-5.7 7.2-10.1V5.6Z" />,

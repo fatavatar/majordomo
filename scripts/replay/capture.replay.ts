@@ -298,6 +298,9 @@ it('replays a capture through the engine', { timeout: 30 * 60_000 }, async () =>
       case 'depositAll':
         manager.depositAll();
         break;
+      case 'buyItem':
+        manager.buyNow(act.item, act.remove);
+        break;
       case 'megamud': {
         // Recorded without the login, which the profile has.
         const recorded = structuredClone(act.settings);

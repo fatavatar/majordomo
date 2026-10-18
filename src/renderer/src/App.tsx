@@ -65,6 +65,7 @@ import VitalsCard from './components/VitalsCard';
 import SelfCard from './components/SelfCard';
 import type { SupplyList } from './components/SupplyControls';
 import LoopsModal from './components/LoopsModal';
+import ExplorerScreen from './components/ExplorerScreen';
 import HomeBrowser from './components/HomeBrowser';
 import { registerRealmPicker } from './lib/pickers';
 import LoopBuilderCard, {
@@ -97,6 +98,7 @@ import type { MonsterRule } from '@shared/monsterRules';
 import type { ItemRule } from '@shared/itemRules';
 import type { MegaMudPath } from '@shared/megamudPaths';
 import type { IpcApi, LearnedSpellRow } from '@shared/ipc';
+import type { ExplorerKind, ExplorerOptions } from '@shared/explorer';
 import { CONSOLE_PALETTES, TERMINAL_THEMES, THEME_PREFERENCES, THEMES } from '@shared/themes';
 import { usePaneWidths } from './hooks/usePaneWidths';
 import { usePinnedCommands } from './hooks/usePins';
@@ -1211,6 +1213,8 @@ export default function App() {
    * launch because somebody once looked at it is chrome nobody asked for.
    */
   const [loopsOpen, setLoopsOpen] = useState(false);
+  /** MMUD Explorer's Weapons and Armour, for the character on screen (2026-10-18). */
+  const [explorerOpen, setExplorerOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [routeOpen, setRouteOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -2856,6 +2860,61 @@ export default function App() {
     if (loopsOpen && session === NO_SESSION) closeLoops();
   }, [loopsOpen, session, closeLoops]);
 
+  /*
+   * MMUD Explorer, on the Loops screen's terms: the shown character's, only
+   * for one that exists, and put away if it goes.
+   */
+  const closeExplorer = useCallback(() => {
+    setExplorerOpen(false);
+    returnFocus();
+  }, [returnFocus]);
+  const toggleExplorer = useCallback(() => {
+    if (explorerOpen) closeExplorer();
+    else if (session !== NO_SESSION) setExplorerOpen(true);
+  }, [explorerOpen, closeExplorer, session]);
+  useEffect(() => {
+    if (explorerOpen && session === NO_SESSION) closeExplorer();
+  }, [explorerOpen, session, closeExplorer]);
+  const explorerList = useCallback(
+    (kind: ExplorerKind, options: ExplorerOptions) => api.explorerList(session, kind, options),
+    [api, session]
+  );
+  const explorerDetail = useCallback(
+    (item: number) => api.explorerDetail(session, item),
+    [api, session]
+  );
+  const explorerBuyPlan = useCallback(
+    (item: number) => api.explorerBuyPlan(session, item),
+    [api, session]
+  );
+  const explorerBuy = useCallback(
+    (item: number, wear: boolean) => api.explorerBuy(session, item, wear),
+    [api, session]
+  );
+  // What Buy's plan answers for beside the gear: the purse, the room, the vaults.
+  const explorerPurseKey = [
+    character.inventory.wealth ?? '',
+    character.room.name ?? '',
+    character.room.map ?? '',
+    character.room.number ?? '',
+    character.banks.map((bank) => `${bank.name}:${bank.copper}`).join(',')
+  ].join('|');
+  // What the lists answer for: read again when the class, level or gear change.
+  const explorerKey = useMemo(
+    () =>
+      [
+        character.className ?? '',
+        character.race ?? '',
+        character.progress.level ?? '',
+        character.inventory.items
+          .filter((item) => item.equipped)
+          .map((item) => item.name)
+          .sort()
+          .join(',')
+      ].join('|'),
+    [character.className, character.race, character.progress.level, character.inventory.items]
+  );
+
   /**
    * The rail takes no typed input, so opening it leaves focus in the terminal
    * and there is nothing to hand back on close.
@@ -4447,6 +4506,15 @@ export default function App() {
         // rather than once per way in.
         run: toggleLoops
       },
+      {
+        id: 'explorer:open',
+        icon: 'swords' as const,
+        label: t('explorer.paletteLabel'),
+        group: 'navigate' as const,
+        keywords: ['weapons', 'armour', 'armor', 'gear', 'equipment', 'mme', 'explorer', 'buy'],
+        movesFocus: true,
+        run: toggleExplorer
+      },
       // Loops: the loop a character walks to gain levels. Asked of the
       // session rather than read off the global config, because a profile
       // overlay replaces `automation.loops` — the global list is the wrong
@@ -4796,6 +4864,7 @@ export default function App() {
       editGlobal,
       editDefaults,
       loops,
+      toggleExplorer,
       view.loop.status,
       widths.rail,
       widths.tabs,
@@ -4877,6 +4946,7 @@ export default function App() {
     routeOpen &&
     !paletteOpen &&
     !loopsOpen &&
+    !explorerOpen &&
     !settingsOpen
       ? [{ key: 'Escape', run: closeRoute }]
       : []),
@@ -4886,6 +4956,7 @@ export default function App() {
     searchOpen &&
     !paletteOpen &&
     !loopsOpen &&
+    !explorerOpen &&
     !routeOpen &&
     !settingsOpen
       ? [{ key: 'Escape', run: closeSearch }]
@@ -4896,6 +4967,7 @@ export default function App() {
     railOpen &&
     !paletteOpen &&
     !loopsOpen &&
+    !explorerOpen &&
     !searchOpen &&
     !routeOpen &&
     !settingsOpen
@@ -4914,6 +4986,7 @@ export default function App() {
     debugOpen &&
     !paletteOpen &&
     !loopsOpen &&
+    !explorerOpen &&
     !searchOpen &&
     !routeOpen &&
     !railOpen &&
@@ -5162,6 +5235,7 @@ export default function App() {
            * control bound to nowhere already follows in this client.
            */
           openLoops: shown ? toggleLoops : null,
+          openExplorer: shown ? toggleExplorer : null,
           openBuilder: shown ? openBuilder : null
         },
         // Per client, not per character: which buttons somebody keeps to hand
@@ -5955,6 +6029,19 @@ export default function App() {
         card's Loop face drives the loop that is running; this is where one is
         found.
       */}
+      <ExplorerScreen
+        buy={explorerBuy}
+        buyPlan={explorerBuyPlan}
+        characterKey={explorerKey}
+        characterName={character.name ?? session}
+        detail={explorerDetail}
+        list={explorerList}
+        onClose={closeExplorer}
+        open={explorerOpen}
+        purseKey={explorerPurseKey}
+        session={session}
+      />
+
       <LoopsModal
         characterName={character.name ?? session}
         here={loopHere}

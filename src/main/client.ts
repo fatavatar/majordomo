@@ -144,6 +144,14 @@ import { megamudFromConfig } from '../shared/megamud/fromConfig';
 import { asMegaToggle } from '../shared/megamud/toggles';
 import type { MegaData } from './megamud/data';
 import { megaDataFrom } from './megamud/fromWorld';
+import {
+  explorerDetail,
+  explorerList,
+  explorerWear,
+  realmFile,
+  type MmeRealm
+} from './mme/Explorer';
+import { asExplorerOptions, type ExplorerBuyPlan, type ExplorerKind } from '../shared/explorer';
 import { planRoute } from './world/RoutePlanner';
 import type { EngineMemory, MegaEngineSetup } from './session/MegaEngine';
 import type { LearnedSpellTable, SessionSummary } from '../shared/ipc';
@@ -2538,6 +2546,92 @@ function registerIpc(): void {
    * click on a card. One handler across the three indexes because the caller
    * has a *name* and should not need to know which table answers it.
    */
+  /*
+   * MMUD Explorer for one character (2026-10-18): its realm's own database
+   * file, read with MME's logic, and the character as it is now.
+   */
+  const explorerRealm = (session: SessionId): MmeRealm | string => {
+    const file = realms?.databaseFile(profileFor(session)?.database ?? '') ?? null;
+    if (file === null || !existsSync(file)) return t('app.explorer.noDatabase');
+    try {
+      return realmFile(file);
+    } catch (error) {
+      return t('app.explorer.unreadable', { reason: errorMessage(error) });
+    }
+  };
+  handle(
+    Invoke.explorerList,
+    async (_caller, session: SessionId, kind: unknown, options: unknown) => {
+      const none = { supported: false, columns: [], rows: [], abilities: [] };
+      const realm = explorerRealm(session);
+      const manager = host?.get(session)?.manager;
+      if (typeof realm === 'string' || manager === undefined)
+        return { ...none, reason: typeof realm === 'string' ? realm : '' };
+      const which: ExplorerKind = kind === 'armour' ? 'armour' : 'weapons';
+      try {
+        const list = await explorerList(
+          realm,
+          manager.character,
+          which,
+          asExplorerOptions(options)
+        );
+        return list.supported ? list : { ...list, reason: t('app.explorer.unsupported') };
+      } catch (error) {
+        return { ...none, reason: t('app.explorer.unreadable', { reason: errorMessage(error) }) };
+      }
+    }
+  );
+  handle(Invoke.explorerDetail, async (_caller, session: SessionId, item: unknown) => {
+    const realm = explorerRealm(session);
+    const manager = host?.get(session)?.manager;
+    if (typeof realm === 'string' || manager === undefined || typeof item !== 'number') return null;
+    try {
+      return await explorerDetail(realm, manager.character, item);
+    } catch {
+      return null;
+    }
+  });
+  /*
+   * Buy and Buy + Wear: the counter, the price and the vault off the session
+   * (`purchaseFor`, which the press acts on too), and what comes off for it
+   * off MME's slot rule. The item is the realm's, by number.
+   */
+  const explorerWearing = async (
+    session: SessionId,
+    item: number
+  ): Promise<ExplorerBuyPlan['wear']> => {
+    const realm = explorerRealm(session);
+    const manager = host?.get(session)?.manager;
+    if (typeof realm === 'string' || manager === undefined) return { wearable: false, remove: [] };
+    try {
+      return await explorerWear(realm, manager.character, item);
+    } catch {
+      return { wearable: false, remove: [] };
+    }
+  };
+  handle(Invoke.explorerBuyPlan, async (_caller, session: SessionId, item: unknown) => {
+    const manager = host?.get(session)?.manager;
+    const row = typeof item === 'number' ? worldFor(session)?.item(item) : undefined;
+    if (manager === undefined || row === undefined) return null;
+    // Unplaced, the realm is asked first, as a route is (`ensureLocated`).
+    if (manager.character.room.map === null) await manager.ensureLocated();
+    const wear = await explorerWearing(session, row.id);
+    return { ...manager.purchaseFor({ id: row.id, name: row.name }), wear };
+  });
+  handle(Invoke.explorerBuy, async (_caller, session: SessionId, item: unknown, wear: unknown) => {
+    const manager = host?.get(session)?.manager;
+    const row = typeof item === 'number' ? worldFor(session)?.item(item) : undefined;
+    if (manager === undefined || row === undefined) return t('app.explorer.noSuchItem');
+    if (manager.character.room.map === null) await manager.ensureLocated();
+    let remove: string[] | null = null;
+    if (wear === true) {
+      const wearing = await explorerWearing(session, row.id);
+      if (!wearing.wearable) return t('app.explorer.notWorn', { item: row.name });
+      remove = wearing.remove;
+    }
+    return manager.buyNow({ id: row.id, name: row.name }, remove);
+  });
+
   handle(Invoke.lookup, async (_caller, session: SessionId, query: unknown) => {
     const world = worldFor(session);
     if (!world) return { mobs: [], items: [], spells: [], races: [], classes: [] };

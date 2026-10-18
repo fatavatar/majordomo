@@ -320,6 +320,25 @@ describe('running a quest plan', () => {
     expect(runner.progress.phase).toBe('walking');
   });
 
+  /*
+   * A leg shut for a key the pack lacks is walked as a person's Go To walks
+   * it, the key fetched first, where it was a setback (2026-10-18).
+   */
+  it('walks a leg a missing key shuts by the way the key opens', () => {
+    const opened: Route = { ...ROUTE, needs: [{ id: 7, name: 'shining steel key' }] };
+    const runner = make({ routeTo: () => ({ ...ROUTE, blocked: true, unlocks: opened }) });
+    expect(runner.start(plan(STEP_ONE), QUEST, inRealm())).toBeNull();
+    expect(walked).toEqual([opened]);
+    expect(runner.progress.phase).toBe('walking');
+  });
+
+  it('still holds a leg shut with nothing the pack could open it with', () => {
+    const runner = make({ routeTo: () => ({ ...ROUTE, blocked: true, reason: 'a wall' }) });
+    expect(runner.start(plan(STEP_ONE), QUEST, inRealm())).toBeNull();
+    expect(walked).toEqual([]);
+    expect(runner.progress.phase).toBe('held');
+  });
+
   it('gives up only after the setbacks run out, and says how many', () => {
     const runner = make({ walk: () => 'a move is already on the way' });
     expect(runner.start(plan(STEP_ONE), QUEST, inRealm())).toBeNull();

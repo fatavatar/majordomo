@@ -1655,6 +1655,22 @@ describe('the shipped realm data', () => {
   });
 
   /*
+   * PhoenixQuest's acid gland (2026-10-18): on no drop list, the white
+   * jelly's death spell hands it over (`ItemHandover` `killed`), and a quest
+   * run sent for it was told the realm named nowhere it comes from.
+   */
+  it.runIf(has)('finds where to kill for an item a death hands over', () => {
+    const ring = { rooms: 8, radius: tuning().hunting.clusterRadius };
+    const gland = { id: 966, name: 'acid gland' };
+    expect(realm!.sourcesOf(gland).mobs).toEqual([]);
+    const found = realm!.droppingPlaces(gland, roomId(1, 1), { level: 30 }, ring);
+    expect(found.droppers).toEqual([{ mob: 'white jelly', placed: 1 }]);
+    expect(found.lairs).toEqual([
+      expect.objectContaining({ id: roomId(9, 146), mob: 'white jelly' })
+    ]);
+  });
+
+  /*
    * A ring, not a march (on review, 2026-09-21): the cheapest eight from here
    * spanned five maps for an `oak chest`, which five monsters drop, and a lap
    * over those is a circuit of several hundred moves with every monster long

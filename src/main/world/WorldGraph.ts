@@ -5888,7 +5888,20 @@ export class WorldGraph {
     traveller: Traveller,
     ring: { rooms: number; radius: number }
   ): DropSources {
-    const { mobs } = this.sourcesOf(item);
+    const { mobs: dropping } = this.sourcesOf(item);
+    /*
+     * And the monsters whose death hands it over (`ItemHandover` `killed`,
+     * format 39): not a drop, a `giveitem` in the block the death runs, and
+     * hunted the same way. PhoenixQuest's acid gland is the white jelly's
+     * death spell's, on no drop list, and a quest run sent for it was told
+     * the realm said nowhere (2026-10-18). The handover's room stands in for
+     * a monster the realm places nowhere else.
+     */
+    const killed = (this.items.get(item.id)?.from ?? []).filter(
+      (handover): handover is ItemHandover & { who: string } =>
+        handover.kind === 'killed' && handover.who !== undefined
+    );
+    const mobs = [...new Set([...dropping, ...killed.map((handover) => handover.who)])];
     const spawns = new Map<RoomId, { room: WorldRoom; mob: string; via?: string }>();
     const droppers: Dropper[] = [];
     const summoned = new Map<RoomId, { room: WorldRoom; mob: string; via: string }>();
@@ -5899,6 +5912,15 @@ export class WorldGraph {
         const id = roomId(room.map, room.room);
         placed.add(id);
         if (!spawns.has(id)) spawns.set(id, { room, mob: name });
+      }
+      if (placed.size === 0) {
+        for (const handover of killed) {
+          if (handover.who !== name || handover.room === undefined) continue;
+          const room = this.byId(handover.room);
+          if (room === undefined) continue;
+          placed.add(handover.room);
+          if (!spawns.has(handover.room)) spawns.set(handover.room, { room, mob: name });
+        }
       }
       droppers.push({ mob: name, placed: placed.size });
       // A dropper the realm places nowhere is found where whatever summons it

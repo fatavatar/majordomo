@@ -103,6 +103,13 @@ export interface MegaChoices {
   statline: StatlineSample;
 }
 import type { StatlineSample } from './megamud/lists';
+import type {
+  ExplorerBuyPlan,
+  ExplorerDetail,
+  ExplorerKind,
+  ExplorerList,
+  ExplorerOptions
+} from './explorer';
 import type { InternalConfig } from './internal';
 import type { Loop, LoopProgress, LoopScope, ScopedLoop } from './loops';
 import type { WalkProgress } from './walk';
@@ -1033,6 +1040,19 @@ export const Invoke = {
    */
   lookup: 'world:lookup',
   /**
+   * MMUD Explorer's Weapons and Armour lists for a character on its realm,
+   * and one item's detail (`src/main/mme/Explorer.ts`, 2026-10-18).
+   */
+  explorerList: 'explorer:list',
+  explorerDetail: 'explorer:detail',
+  /**
+   * The Explorer's Buy (2026-10-18): what pressing it would do now, and the
+   * press, Buy or Buy + Wear, which sends the character to the counter, by the
+   * bank first where the purse is short (`SessionManager.buyNow`).
+   */
+  explorerBuyPlan: 'explorer:buy-plan',
+  explorerBuy: 'explorer:buy',
+  /**
    * Strike an observation out of what this character has learned about the
    * realm. The player's call — an observation is one sample of one walk, and
    * a mistyped direction the server accepted looks exactly like a discovery.
@@ -1586,6 +1606,18 @@ export interface IpcApi {
    */
   wearer(session: SessionId): Promise<Wearer>;
   lookup(session: SessionId, query: string): Promise<WorldLookup>;
+  /** MMUD Explorer's list of a kind for this character. See `Invoke.explorerList`. */
+  explorerList(
+    session: SessionId,
+    kind: ExplorerKind,
+    options: ExplorerOptions
+  ): Promise<ExplorerList>;
+  /** One item's detail in MMUD Explorer's words; null where there is none. */
+  explorerDetail(session: SessionId, item: number): Promise<ExplorerDetail | null>;
+  /** What Buy would do for this item now; null where the realm has no such item. */
+  explorerBuyPlan(session: SessionId, item: number): Promise<ExplorerBuyPlan | null>;
+  /** Buy it, and wear it where `wear`; why not, or null where it is on its way. */
+  explorerBuy(session: SessionId, item: number, wear: boolean): Promise<string | null>;
   /** Whether there was such an observation to strike. The push that follows carries the rest. */
   forget(session: SessionId, discovery: Pick<Discovery, 'from' | 'command'>): Promise<boolean>;
   /** Whether there was such a find to strike. The push that follows carries the rest. */

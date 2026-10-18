@@ -2382,6 +2382,45 @@ describe('the locate setting', () => {
       expect(await manager.ensureLocated(300)).toBe(false);
     });
 
+    /*
+     * Archer's `sys goto sil` landed in one of the realm's two
+     * `Temple, Halls of the Dead` (2026-10-18), and nothing asked until a
+     * plan wanted a way: unplaced, the realm is asked at once.
+     */
+    it('asks the realm the moment a room it walked into cannot be placed', async () => {
+      const { sink } = collect();
+      manager = new SessionManager(sink);
+      manager.configure(
+        { ...DEFAULT_CONFIG.automation },
+        DEFAULT_CONFIG.connection.login,
+        DEFAULT_CONFIG.ui.rewrites,
+        'sys-status'
+      );
+      await manager.connect(dial());
+      const socket = await client();
+      const received: Buffer[] = [];
+      socket.on('data', (chunk) => received.push(chunk));
+      const asks = () =>
+        Buffer.concat(received).toString('latin1').split('sys status\r\n').length - 1;
+      socket.write('[HP=100/MA=50]:' + PROMPT_REPAINT + 'Room 796  Map: 16\r\n');
+      await until(() => manager!.character.room.map === 16);
+      const before = asks();
+
+      socket.write(
+        '[HP=100/MA=50]:sys goto sil\r\n\r\nTemple, Halls of the Dead\r\n' +
+          'Obvious exits: up\r\n[HP=100/MA=50]:'
+      );
+      await until(() => manager!.character.room.name === 'Temple, Halls of the Dead');
+      expect(manager.character.room.map).toBeNull();
+      await until(() => asks() === before + 1);
+
+      // The same room again, before the answer: asked once, not per block.
+      socket.write('\r\nTemple, Halls of the Dead\r\nObvious exits: up\r\n[HP=100/MA=50]:');
+      socket.write('Room 2189  Map: 1\r\n');
+      await until(() => manager!.character.room.map === 1);
+      expect(asks()).toBe(before + 1);
+    });
+
     it('returns false at once when there is nothing to ask', async () => {
       const { sink } = collect();
       manager = new SessionManager(sink);
@@ -3454,6 +3493,175 @@ describe('the actions kept beside the MegaMUD engine', () => {
         why: t('automation.collect.whyNotSold', { shop: 'General Store' })
       })
     );
+  });
+
+  /*
+   * The Explorer's Buy and an errand's purchase alike (2026-10-18): what the
+   * counter charges this character against the purse, and the vault the
+   * record says covers a shortfall, drawn from first; refused, and said why,
+   * where none is known to.
+   */
+  describe('paying for a purchase', () => {
+    const vault = {
+      shop: 7,
+      name: 'Bank of Silvermere',
+      map: 1,
+      room: 5,
+      roomName: 'Town Bank',
+      copper: 900,
+      detour: 2,
+      moves: 4
+    };
+    const setUp = (wealth: number | null, banks: Array<{ name: string; copper: number }>) => {
+      engine();
+      const inside = manager as unknown as {
+        mega: MegaEngine;
+        megaBuying: { cash?: unknown } | null;
+        tracker: object;
+        world: unknown;
+        priceAt(name: string, shop: string): number | null;
+        fundsFor(
+          name: string,
+          counter: string,
+          count: number
+        ): { price: number | null; withdraw: number; bank?: unknown; refusal?: string };
+        megaBuyTick(state: CharacterState): void;
+        wearBought(name: string, remove: readonly string[]): void;
+      };
+      inside.mega.s.inGame = 1;
+      let state = {
+        ...manager!.character,
+        room: { ...manager!.character.room, map: 1, number: 1 },
+        progress: { ...manager!.character.progress, charm: 50 },
+        inventory: { ...manager!.character.inventory, wealth, items: [] },
+        banks: banks.map((bank) => ({ shop: 7, at: 0, ...bank }))
+      } as unknown as CharacterState;
+      Object.defineProperty(inside.tracker, 'current', { get: () => state });
+      const cashPlaces = vi.fn((balances: ReadonlyArray<{ copper: number }>, need: number) =>
+        balances.some((bank) => bank.copper >= need) ? [vault] : []
+      );
+      inside.world = { cashPlaces };
+      inside.priceAt = () => 500;
+      const set = (change: Partial<CharacterState>) => (state = { ...state, ...change });
+      return { inside, cashPlaces, set, state: () => state };
+    };
+
+    it('goes straight to the counter with the price on hand', () => {
+      const { inside, cashPlaces } = setUp(600, []);
+      expect(inside.fundsFor('broadsword', '1/9', 1)).toEqual({
+        price: 500,
+        purse: 600,
+        withdraw: 0
+      });
+      expect(cashPlaces).not.toHaveBeenCalled();
+    });
+
+    it('draws the shortfall from a vault the record says holds it', () => {
+      const { inside, cashPlaces } = setUp(200, [{ name: 'Bank of Silvermere', copper: 900 }]);
+      const funds = inside.fundsFor('broadsword', '1/9', 1);
+      expect([funds.withdraw, funds.bank, funds.refusal]).toEqual([300, vault, undefined]);
+      expect(cashPlaces).toHaveBeenCalledWith(
+        expect.anything(),
+        300,
+        '1/1',
+        '1/9',
+        expect.anything()
+      );
+    });
+
+    it('refuses a short purse, saying whether no vault was read or none holds enough', () => {
+      const words = { item: 'broadsword', short: '3 gold' };
+      expect(setUp(200, []).inside.fundsFor('broadsword', '1/9', 1).refusal).toBe(
+        t('automation.collect.refusalNoVaultRead', words)
+      );
+      expect(
+        setUp(200, [{ name: 'Bank of Silvermere', copper: 100 }]).inside.fundsFor(
+          'broadsword',
+          '1/9',
+          1
+        ).refusal
+      ).toBe(t('automation.collect.refusalVaultsShort', words));
+    });
+
+    it('withdraws at the vault, reads the purse back, then walks on to the counter', () => {
+      vi.useFakeTimers();
+      const { inside, set, state } = setUp(200, [{ name: 'Bank of Silvermere', copper: 900 }]);
+      const walk = vi.spyOn(inside.mega, 'walkTo').mockReturnValue(null);
+      const then = vi.fn();
+      inside.megaBuying = {
+        row: { name: 'broadsword', min: 1, max: 1, shop: 'Weaponsmith', at: null },
+        room: '1/9',
+        shop: 'Weaponsmith',
+        at: false,
+        asked: null,
+        cash: {
+          room: '1/5',
+          name: vault.name,
+          withdraw: 300,
+          need: 500,
+          walking: false,
+          asked: null
+        },
+        then
+      } as unknown as { cash?: unknown };
+      inside.megaBuyTick(state());
+      expect(inside.mega.s.pending.map((p) => p.text)).toEqual(['withdraw 300\r', 'i\r']);
+      inside.megaBuyTick(state());
+      expect(inside.mega.s.pending).toHaveLength(2);
+
+      set({ inventory: { ...state().inventory, wealth: 500 } });
+      inside.megaBuyTick(state());
+      expect(walk).toHaveBeenCalledWith('1/9', false, true);
+      expect(inside.megaBuying?.cash).toBeUndefined();
+      expect(then).not.toHaveBeenCalled();
+    });
+
+    it('gives the purchase up when the vault pays nothing out', () => {
+      vi.useFakeTimers();
+      const { inside, state } = setUp(200, [{ name: 'Bank of Silvermere', copper: 900 }]);
+      inside.megaBuying = {
+        row: { name: 'broadsword', min: 1, max: 1, shop: 'Weaponsmith', at: null },
+        room: '1/9',
+        shop: 'Weaponsmith',
+        at: false,
+        asked: null,
+        cash: {
+          room: '1/5',
+          name: vault.name,
+          withdraw: 300,
+          need: 500,
+          walking: false,
+          asked: null
+        }
+      } as unknown as { cash?: unknown };
+      inside.megaBuyTick(state());
+      vi.advanceTimersByTime(tuning().supplies.buyTimeoutMs + 1);
+      inside.megaBuyTick(state());
+      expect(inside.megaBuying).toBeNull();
+      expect(notices.at(-1)).toBe(
+        t('automation.collect.megaNotBought', {
+          item: 'broadsword',
+          shop: 'Weaponsmith',
+          why: t('automation.collect.whyNotPaid', { bank: vault.name })
+        })
+      );
+    });
+
+    it('wears what Buy + Wear bought, what the slot held taken off first', () => {
+      const { inside } = setUp(600, []);
+      inside.wearBought('broadsword', ['shortsword', 'buckler']);
+      expect(inside.mega.s.pending.map((p) => p.text)).toEqual([
+        'remove shortsword\r',
+        'remove buckler\r',
+        'eq broadsword\r'
+      ]);
+      expect(notices.at(-1)).toBe(
+        t('automation.collect.wearingInstead', {
+          item: 'broadsword',
+          removed: 'shortsword, buckler'
+        })
+      );
+    });
   });
 
   /* A quest's legs let the stopped loop go: it is taken up again by name (2026-10-14). */

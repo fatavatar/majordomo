@@ -233,6 +233,23 @@ export function copperSpread(copper: number): CurrencyEntity {
   return currencyOf(counts);
 }
 
+/**
+ * A copper total in coins, as the realm counts them (`3 platinum, 12 gold`),
+ * for a sentence; `nothing` for none. Each coin by its plain name, or by
+ * `named` where the realm calls one something else.
+ */
+export function copperWords(
+  copper: number,
+  named: Partial<Record<Denomination, string>> = {}
+): string {
+  const spread = copperSpread(copper);
+  const words = [...DENOMINATIONS]
+    .sort((a, b) => COPPER_PER[b] - COPPER_PER[a])
+    .filter((which) => spread[which] > 0)
+    .map((which) => `${spread[which]} ${named[which] ?? which}`);
+  return words.length === 0 ? 'nothing' : words.join(', ');
+}
+
 /** The same, with one denomination added to what is already counted. */
 export function addCoins(
   cash: CurrencyEntity | null,

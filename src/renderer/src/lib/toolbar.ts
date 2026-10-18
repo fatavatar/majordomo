@@ -37,6 +37,8 @@ export const TOOLBAR_ACTIONS = [
   'gear:restore',
   'loop:open',
   'loop:build',
+  // MMUD Explorer's Weapons and Armour, for the character on screen (2026-10-18).
+  'explorer:open',
   /**
    * Go, or stop — the whole transport, on one key (2026-09-11).
    *
@@ -240,6 +242,8 @@ export interface ToolbarSubject {
    * client does with every control bound to nowhere.
    */
   openLoops: (() => void) | null;
+  /** Open MMUD Explorer's Weapons and Armour. Null on a pinned float for `openLoops`' reason. */
+  openExplorer: (() => void) | null;
   /**
    * Open the loop builder — the card a loop is drawn on. Null on a pinned
    * float for `openLoops`' reason: the builder plans on the shown
@@ -272,6 +276,7 @@ export function toolbarButtons(subject: ToolbarSubject): ToolbarButton[] {
     stopMoving,
     stepBack,
     openLoops,
+    openExplorer,
     openBuilder,
     canRestoreGear,
     restoreGear
@@ -361,6 +366,21 @@ export function toolbarButtons(subject: ToolbarSubject): ToolbarButton[] {
           }
         ];
 
+  const explorer: ToolbarButton[] =
+    openExplorer === null
+      ? []
+      : [
+          {
+            // Never disabled, for the shelf's reason: the realm's items are
+            // there whether or not the character is in the realm.
+            id: 'explorer:open',
+            label: t('toolbar.openExplorer'),
+            icon: 'swords',
+            on: false,
+            run: openExplorer
+          }
+        ];
+
   const builder: ToolbarButton[] =
     openBuilder === null
       ? []
@@ -382,6 +402,7 @@ export function toolbarButtons(subject: ToolbarSubject): ToolbarButton[] {
   const transport: ToolbarButton[] = [
     ...shelf,
     ...builder,
+    ...explorer,
     {
       id: 'move:toggle',
       /*

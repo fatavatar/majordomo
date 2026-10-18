@@ -71,6 +71,13 @@ app:
     stillConnected: '{name} is still connected.'
   megamud:
     invalidSettings: Those MegaMUD settings could not be read.
+  # MMUD Explorer's lists, which read the realm's own database file.
+  explorer:
+    noDatabase: This realm names no database file to read, so the Explorer has nothing to show.
+    noSuchItem: The realm has no such item.
+    notWorn: '{item} is not something to wear.'
+    unreadable: 'The realm''s database could not be read: {reason}'
+    unsupported: The Explorer computes stock MajorMUD only, and this realm's database is GreaterMUD.
   quit:
     cancelButton: Cancel
     confirmButton: Quit and disconnect
@@ -837,6 +844,84 @@ notices:
     shippedLoaded: '{rooms} rooms from {source} in {ms}ms'
     shippedMissing: no realm data at {path}. Routing and the map will not work; run `npm run build:world`.
     shippedRealmLabel: shipped realm
+# MMUD Explorer's Weapons and Armour lists, for the character on screen,
+# worked out with MME's own logic on the realm's database (2026-10-18).
+explorer:
+  ability: Ability
+  anyType: Any
+  anywhere: Anywhere
+  armourType: Armour type
+  attack: Attack
+  backstabs: BS-able
+  calcCombat: Calc. Combat
+  choose: Choose an item to read what MMUD Explorer says of it.
+  close: Close
+  count: '{shown} of {of}'
+  dialogLabel: MMUD Explorer for {characterName}
+  empty: Nothing here matches.
+  fast: 85% speed
+  find: Search…
+  inGameOnly: In the game
+  limiteds: Limiteds
+  loading: Reading the realm…
+  lowerHeight: Height of the detail and references
+  maxSpeed: Speed <=
+  maxStrength: Str <=
+  minDamage: Dmg >=
+  minMagic: Magic >=
+  negates: Negates (= Spell#)
+  noLimit: No limit
+  noReferences: Nothing in the realm refers to it.
+  nonMagic: Non-magic
+  paletteLabel: 'Explorer: weapons and armour'
+  references: References
+  referencesWidth: Width of the references
+  unsupported: The Explorer has nothing for this realm.
+  usableOnly: Usable by {characterName}
+  vsAC: vs AC
+  vsDR: DR
+  vsDodge: Dodge
+  weaponType: Weapon type
+  worn: Worn
+  # Calc. Combat's attacks, as MME names them.
+  attacks:
+    bash: Bash
+    normal: Normal
+    smash: Smash
+    surprise: Backstab
+  # Buy and Buy + Wear: where it goes, what it pays, the bank first (2026-10-18).
+  buy:
+    bankFirst: Withdraws {amount} from {bank} ({room}) first; the record has {balance} there.
+    buy: Buy
+    buyWear: Buy + Wear
+    heading: Buy
+    notWorn: Not something to wear.
+    onHand: 'On hand: {purse}.'
+    sent: On the way.
+    takesOff: Takes off {items} first.
+    unpriced: price unknown
+    where: '{shop}, {room} — {moves} moves, {price}'
+  columns:
+    ac: AC/DR
+    acPerEncumbrance: AC/Enc
+    accuracy: Acc
+    armourType: Armr Type
+    backstab: BS Acc
+    crits: Crits
+    encumbrance: Enc
+    level: Level
+    limit: Limit
+    max: Max
+    min: Min
+    name: Name
+    slot: Worn
+    speed: Speed
+    strength: Str
+    weaponType: Wepn Type
+  kinds:
+    armour: Armour
+    weapons: Weapons
+
 # The Loops modal: the shelf of every loop, grouped by area, opened from
 # anywhere. The Loop card drives the loop that is running; this is where one
 # is found.
@@ -1059,6 +1144,7 @@ toolbar:
   flee: Auto-Flee (Sys Goto)
   restoreGear: Re-equip Gear / Auto-Equip
   openLoops: Path Library / Select Loop
+  openExplorer: Weapons & Armour (MMUD Explorer)
   buildLoop: Build a Loop / Path Editor
   startMoving: Start Moving / Resume
   stopMoving: Stop Moving
@@ -4183,6 +4269,20 @@ automation:
     # The MegaMUD engine's purchase for an errand, which is ours (2026-10-14).
     megaNotBought: 'Did not buy {item} at {shop}: {why}'
     whyNotSold: '{shop} sold nothing for the last buy'
+    # The cash a purchase needs, drawn first where the purse is short (2026-10-18).
+    cashFirst: 'Withdrawing {amount} from {bank} first, to buy {item}.'
+    whyNotPaid: '{bank} paid nothing out for the withdrawal'
+    refusalNoVaultRead:
+      'Not enough on hand for {item}: {short} short, and no bank''s balance has been read to draw it
+      from. Say `bank` at one first.'
+    refusalVaultsShort:
+      'Not enough on hand for {item}: {short} short, and no bank the record knows holds that much.'
+    # The Explorer's Buy and Buy + Wear (2026-10-18).
+    buyingIt: 'Going to buy {item} at {shop} in {room}, for {price}.'
+    boughtIt: 'Bought {item} at {shop}.'
+    refusalNoCounter: 'Nowhere this character can reach sells {item}.'
+    wearingIt: 'Bought {item}; putting it on.'
+    wearingInstead: 'Bought {item}; taking off {removed} and putting it on.'
     refusalBusy: Something is already being collected.
     replacingLap: 'Stopping {loopName} to go and collect it; it will not start again on its own.'
     refusalLapStopped: 'The hunt for {item} stopped before the pack held one.'

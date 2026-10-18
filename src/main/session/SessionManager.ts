@@ -16,7 +16,8 @@ import {
 } from '../../shared/abilities';
 import { trainingCost } from '../../shared/training';
 import { carriedCount } from '../../shared/supplies';
-import type { TrainerChoice } from '../../shared/world';
+import type { CashPlace, TrainerChoice } from '../../shared/world';
+import type { ExplorerBuyPlan } from '../../shared/explorer';
 import { MASKED_COMMAND } from '../../shared/automation';
 import type { AutomationSnapshot, SafetyDecision, SentCommand } from '../../shared/automation';
 import { LoginAutomator, type StandDown } from '../automation/LoginAutomator';
@@ -41,7 +42,7 @@ import { ItemErrand, type ItemSources } from '../automation/ItemErrand';
 import { QuestRunner } from '../automation/QuestRunner';
 import { AFTER_WORD } from '../automation/PackAfter';
 import { bareName } from '../../shared/items';
-import { chargedInCopper, coinReader, type CoinNames } from '../../shared/coins';
+import { chargedInCopper, coinReader, copperWords, type CoinNames } from '../../shared/coins';
 import { Wards } from '../automation/Wards';
 import type { Loop } from '../../shared/loops';
 import { splitStop } from '../../shared/loops';
@@ -393,6 +394,7 @@ export type SessionAct =
   | { act: 'megaToggle'; name: MegaToggle }
   | { act: 'megaAnswer'; question: string; yes: boolean }
   | { act: 'depositAll' }
+  | { act: 'buyItem'; item: { id: number; name: string }; remove: string[] | null }
   | { act: 'megamud'; settings: MegaSettings };
 
 /** What `configureRealm` is told: the tables, and what the realm calls its coins. */
@@ -1402,7 +1404,7 @@ export class SessionManager {
         survey: (radius) => this.huntingGrounds(radius),
         routeTo: (room) => this.planFromHere(room),
         // The engine's Go To.
-        walk: (route) => this.megaWalk(route),
+        walk: (route) => this.megaGoTo(route, false),
         runLoop: (loop) => {
           const answer = this.beginLoop(loop);
           return 'refused' in answer ? answer.refused : null;
@@ -1528,13 +1530,29 @@ export class SessionManager {
          */
         printsCounters: () =>
           this.serverFamily === 'greatermud' || this.tracker.current.abilities !== null,
-        routeTo: (room) => this.planFromHere(room),
-        walk: (route) => this.megaWalk(route),
-        stopWalking: () => {
+        /*
+         * Planned as the engine's Go To walks it (2026-10-18), where it was
+         * planned for the route panel and a way a key opened was a setback:
+         * the lap's traveller, with the way the pack would open (`unlocks`),
+         * which the engine fetches for and then walks. Unplaced, the realm is
+         * asked first, as a person's route is (`ensureLocated`).
+         */
+        routeTo: (room) => {
+          if (roomAddress(this.tracker.current.room) === null) this.askWhereIAm();
+          return this.planFromHere(room, { unlocks: true }, true);
+        },
+        walk: (route) => this.megaGoTo(route, false),
+        stopWalking: (reason) => {
           if (this.walkingNow()) this.mega?.button(WindowCommand.GoStop);
+          // A leg fetching what its way needs first: the fetch is the leg's.
+          if (this.afterFetch !== null) {
+            this.afterFetch = null;
+            this.itemErrand.abandon(reason);
+          }
         },
         moveInFlight: () => this.tracker.pendingMoves > 0,
-        walking: () => this.walkingNow(),
+        // Fetching what the way needs is walking the leg: the walk is owed after it.
+        walking: () => this.walkingNow() || this.afterFetch !== null,
         busy: () => this.mega?.toggles.on.allOff === true,
         looping: () => this.runningLoopName() !== null,
         hold: () => this.megaHold(),
@@ -2601,7 +2619,11 @@ export class SessionManager {
   private useCoins(names: CoinNames): void {
     const reader = coinReader(names);
     this.classifier.useCoins(reader);
+    this.coinNames = names;
   }
+
+  /** What this realm calls its coins, for a sentence about money (`coinWords`). */
+  private coinNames: CoinNames = {};
 
   /**
    * The ported MegaMUD engine, for a character with a `megamud.ini`: while
@@ -2695,6 +2717,21 @@ export class SessionManager {
     at: boolean;
     /** When the last `buy` went out, and what was carried then; null before one. */
     asked: { at: number; had: number } | null;
+    /**
+     * Cash drawn first where the purse is short (2026-10-18): walking to the
+     * vault, then asking it, until the purse holds what the counter charges.
+     */
+    cash?: {
+      room: RoomId;
+      name: string;
+      withdraw: number;
+      need: number;
+      walking: boolean;
+      /** When the `withdraw` went out; null before it has. */
+      asked: number | null;
+    };
+    /** What follows the purchase once the pack holds it: Buy + Wear's wearing. */
+    then?: () => void;
   } | null = null;
   /** The engine's walk as last published, to tell a walk ending (`megaWalkEnded`). */
   private megaWalkWas: WalkProgress['status'] = 'idle';
@@ -2719,28 +2756,214 @@ export class SessionManager {
     const arrived = walk.status === 'arrived';
     const reason = arrived ? null : walk.reason;
     const buying = this.megaBuying;
-    if (buying !== null && !buying.at) {
-      if (arrived && roomAddress(this.tracker.current.room) === buying.room) buying.at = true;
+    const here = roomAddress(this.tracker.current.room);
+    if (buying?.cash?.walking === true) {
+      if (arrived && here === buying.cash.room) {
+        buying.cash.walking = false;
+        this.megaBuyTick(this.tracker.current);
+      } else this.megaBuyGiveUp(reason ?? t('automation.hunt.whyStopped'));
+    } else if (buying !== null && !buying.at) {
+      if (arrived && here === buying.room) buying.at = true;
       else this.megaBuyGiveUp(reason ?? t('automation.hunt.whyStopped'));
     }
     this.hunt.onWalkEnded(arrived, reason, this.tracker.current);
     this.questRunner.onWalkEnded(arrived, reason, this.tracker.current);
   }
 
-  /** An errand's purchase handed to the engine: walked to the counter, then bought. */
-  private megaBuy(row: SupplyItem): string | null {
+  /**
+   * An errand's purchase handed to the engine: the cash drawn first where the
+   * purse is short of what the counter charges (`fundsFor`), walked to the
+   * counter, then bought; `then` once the pack holds it.
+   */
+  private megaBuy(row: SupplyItem, then?: () => void): string | null {
     if (this.mega === null) return t('session.megamud.noEngine');
     if (this.megaBuying !== null) return t('automation.collect.refusalBusy');
     const place = this.shopRoom(row);
     if (typeof place === 'string') return place;
-    const here = roomAddress(this.tracker.current.room) === place.room;
-    if (!here) {
-      const refused = this.mega.walkTo(place.room, false, true);
+    const count = Math.max(1, row.min - carriedCount(this.tracker.current, row.name));
+    const funds = this.fundsFor(row.name, place.room, count);
+    if (funds.refusal !== undefined) return funds.refusal;
+    const where = roomAddress(this.tracker.current.room);
+    const bank = funds.bank;
+    // The vault first where there is one to go to, else the counter.
+    const first = bank === undefined ? place.room : roomId(bank.map, bank.room);
+    if (where !== first) {
+      const refused = this.mega.walkTo(first, false, true);
       if (refused !== null) return refused;
     }
-    this.megaBuying = { row, room: place.room, shop: place.name, at: here, asked: null };
+    this.megaBuying = {
+      row,
+      room: place.room,
+      shop: place.name,
+      at: bank === undefined && where === place.room,
+      asked: null,
+      ...(bank === undefined
+        ? {}
+        : {
+            cash: {
+              room: first,
+              name: bank.name,
+              withdraw: funds.withdraw,
+              need: funds.price ?? 0,
+              walking: where !== first,
+              asked: null
+            }
+          }),
+      ...(then === undefined ? {} : { then })
+    };
+    if (bank !== undefined) {
+      this.sink.notice(
+        t('automation.collect.cashFirst', {
+          amount: this.coinWords(funds.withdraw),
+          bank: bank.name,
+          item: row.name
+        })
+      );
+    }
     this.megaBuyTick(this.tracker.current);
     return null;
+  }
+
+  /**
+   * What pressing Buy in the Explorer would do now (2026-10-18): the nearest
+   * counter that stocks it by the way there (`buyingPlaces`), what it charges
+   * this character, and the vault the shortfall comes from first where the
+   * purse is short (`fundsFor`), or why it cannot be bought. What `buyNow`
+   * acts on, so the pane and the purchase agree.
+   */
+  purchaseFor(item: { id: number; name: string }): Omit<ExplorerBuyPlan, 'wear'> {
+    const state = this.tracker.current;
+    const here = roomAddress(state.room);
+    const base = { item: item.id, name: item.name, price: null, purse: state.inventory.wealth };
+    const world = this.world;
+    if (world === undefined) return { ...base, refusal: t('session.loop.noRealmData') };
+    if (here === null) return { ...base, refusal: t('session.loop.unknownRoom') };
+    const counter = world.buyingPlaces(item.id, here, null, this.travellerNow(state))[0];
+    if (counter === undefined)
+      return { ...base, refusal: t('automation.collect.refusalNoCounter', { item: item.name }) };
+    const funds = this.fundsFor(item.name, roomId(counter.map, counter.room), 1);
+    return {
+      ...base,
+      price: funds.price,
+      shop: {
+        name: counter.shop,
+        roomName: counter.roomName,
+        map: counter.map,
+        room: counter.room,
+        moves: counter.moves
+      },
+      ...(funds.bank === undefined
+        ? {}
+        : {
+            bank: {
+              name: funds.bank.name,
+              roomName: funds.bank.roomName,
+              withdraw: funds.withdraw,
+              balance: funds.bank.copper
+            }
+          }),
+      ...(funds.refusal === undefined ? {} : { refusal: funds.refusal })
+    };
+  }
+
+  /**
+   * The Explorer's Buy, and Buy + Wear where `remove` is given (what comes off
+   * the slot first, MME's own slot rule in `mme/Explorer.ts`): one more of it
+   * bought at the counter `purchaseFor` names, the cash drawn first where the
+   * purse is short, and then, for Buy + Wear, worn. Why not, or null.
+   */
+  buyNow(item: { id: number; name: string }, remove: string[] | null): string | null {
+    this.sink.acted?.({ act: 'buyItem', item, remove });
+    const plan = this.purchaseFor(item);
+    if (plan.refusal !== undefined) return plan.refusal;
+    const shop = plan.shop!;
+    const have = carriedCount(this.tracker.current, item.name);
+    const row: SupplyItem = {
+      name: item.name,
+      min: have + 1,
+      max: have + 1,
+      shop: shop.name,
+      at: { map: shop.map, room: shop.room }
+    };
+    const refused = this.megaBuy(row, () =>
+      remove === null
+        ? this.sink.notice(t('automation.collect.boughtIt', { item: item.name, shop: shop.name }))
+        : this.wearBought(item.name, remove)
+    );
+    if (refused !== null) return refused;
+    this.sink.notice(
+      t('automation.collect.buyingIt', {
+        item: item.name,
+        shop: shop.name,
+        room: shop.roomName,
+        price: plan.price === null ? '?' : this.coinWords(plan.price)
+      })
+    );
+    return null;
+  }
+
+  /** Buy + Wear's last step: what the slot holds taken off, and the purchase put on. */
+  private wearBought(name: string, remove: readonly string[]): void {
+    const mega = this.mega;
+    if (mega === null) return;
+    for (const old of remove) mega.queue(`remove ${old}`);
+    mega.queue(`eq ${name}`);
+    this.sink.notice(
+      remove.length === 0
+        ? t('automation.collect.wearingIt', { item: name })
+        : t('automation.collect.wearingInstead', { item: name, removed: remove.join(', ') })
+    );
+  }
+
+  /** A copper total in this realm's coins, for a sentence. */
+  private coinWords(copper: number): string {
+    return copperWords(copper, this.coinNames);
+  }
+
+  /**
+   * What buying `count` of `name` at `counter` costs this character, and where
+   * the cash comes from where the purse is short (2026-10-18): the counter's
+   * charge after charm (`priceAt`, `chargedInCopper`) against the purse, and
+   * the vault the character's own record says holds the shortfall, best by
+   * the detour to the counter (`WorldGraph.cashPlaces`). A vault nobody has
+   * asked is never walked to — `cashPlaces`' own rule, a walk to learn a
+   * balance being a guess at one — so a short purse with no vault known to
+   * cover it is refused, and says which. An unpriced item or an unread purse
+   * is not short: there is nothing to check it against.
+   */
+  private fundsFor(
+    name: string,
+    counter: RoomId,
+    count: number
+  ): {
+    price: number | null;
+    purse: number | null;
+    withdraw: number;
+    bank?: CashPlace;
+    refusal?: string;
+  } {
+    const state = this.tracker.current;
+    const quoted = this.priceAt(name, counter);
+    const price = quoted === null ? null : chargedInCopper(quoted, state.progress.charm) * count;
+    const purse = state.inventory.wealth;
+    if (price === null || purse === null || price <= purse) return { price, purse, withdraw: 0 };
+    const withdraw = price - purse;
+    const here = roomAddress(state.room);
+    const bank =
+      this.world === undefined || here === null
+        ? undefined
+        : this.world.cashPlaces(state.banks, withdraw, here, counter, this.travellerNow(state))[0];
+    if (bank !== undefined) return { price, purse, withdraw, bank };
+    const words = { item: name, short: this.coinWords(withdraw) };
+    return {
+      price,
+      purse,
+      withdraw,
+      refusal:
+        state.banks.length === 0
+          ? t('automation.collect.refusalNoVaultRead', words)
+          : t('automation.collect.refusalVaultsShort', words)
+    };
   }
 
   /**
@@ -2750,10 +2973,17 @@ export class SessionManager {
    */
   private megaBuyTick(state: CharacterState): void {
     const buying = this.megaBuying;
-    if (buying === null || !buying.at || this.mega === null) return;
+    if (buying === null || this.mega === null) return;
+    const cash = buying.cash;
+    if (cash !== undefined) {
+      this.megaCashTick(state, buying, cash);
+      return;
+    }
+    if (!buying.at) return;
     const have = carriedCount(state, buying.row.name);
     if (have >= Math.max(1, buying.row.min)) {
       this.megaBuying = null;
+      buying.then?.();
       return;
     }
     const command = `buy ${buying.row.name}`;
@@ -2772,6 +3002,43 @@ export class SessionManager {
       this.mega.queue(command, () => {
         if (this.megaBuying === buying && buying.asked !== null) buying.asked.at = Date.now();
       });
+    }
+  }
+
+  /**
+   * At the vault, `withdraw` the shortfall and read the purse back (`i`),
+   * then on to the counter once it holds what the counter charges; a vault
+   * that `tuning.supplies.buyTimeoutMs` after it was asked has not paid out
+   * gives the purchase up, said.
+   */
+  private megaCashTick(
+    state: CharacterState,
+    buying: NonNullable<typeof this.megaBuying>,
+    cash: NonNullable<NonNullable<typeof this.megaBuying>['cash']>
+  ): void {
+    const mega = this.mega;
+    if (mega === null || cash.walking) return;
+    if ((state.inventory.wealth ?? 0) >= cash.need) {
+      delete buying.cash;
+      const here = roomAddress(state.room) === buying.room;
+      if (here) {
+        buying.at = true;
+        this.megaBuyTick(state);
+        return;
+      }
+      const refused = mega.walkTo(buying.room, false, true);
+      if (refused !== null) this.megaBuyGiveUp(refused);
+      return;
+    }
+    if (cash.asked === null) {
+      cash.asked = Date.now();
+      mega.queue(`withdraw ${cash.withdraw}`);
+      // The listing is what states the purse, so the tick above can read it.
+      mega.queue('i');
+      return;
+    }
+    if (Date.now() - cash.asked >= tuning().supplies.buyTimeoutMs) {
+      this.megaBuyGiveUp(t('automation.collect.whyNotPaid', { bank: cash.name }));
     }
   }
 
@@ -2828,11 +3095,21 @@ export class SessionManager {
     if (this.mega?.walking === true) this.mega.button(WindowCommand.GoStop);
   }
 
-  /** A route walked by the engine, as its Go To to the room it ends in, and only that. */
-  private megaWalk(route: Route): string | null {
+  /**
+   * A route walked by MegaMUD's Go To, to the room it ends in and only that:
+   * the one door for a person's route and a quest's leg (2026-10-18). The
+   * counters asked where the way turns on one nobody has read, and the walk
+   * tried again when a question MegaMUD asks of it is answered (`megaAct`).
+   * The engine plans its own way, with what the realm says of keys, levers,
+   * hidden exits and the rest, and fetches what a locked way needs first.
+   */
+  private megaGoTo(route: Route, run: boolean): string | null {
     const end = route.steps.at(-1)?.to;
-    if (this.mega === null || end === undefined) return null;
-    return this.mega.walkTo(end, false, true);
+    if (end === undefined) return null;
+    const mega = this.mega;
+    if (mega === null) return t('session.megamud.noEngine');
+    this.askCountersFor(route);
+    return this.megaAct(() => mega.walkTo(end, run, true));
   }
 
   /**
@@ -3090,7 +3367,32 @@ export class SessionManager {
     const word = this.locateWord;
     if (word === null || !this.client.connected) return false;
     this.megaWrite(`${word}\r`);
+    if (roomAddress(this.tracker.current.room) === null) this.locateAskedAt = Date.now();
     return true;
+  }
+
+  /** When the realm was last asked where an unplaced character is; null once it is placed. */
+  private locateAskedAt: number | null = null;
+
+  /**
+   * A room the record cannot place, asked of the realm at once (2026-10-18):
+   * the map, a purchase and every plan wait on where the character stands,
+   * and nothing else would ask until one of them wanted a way. Archer's
+   * `sys goto sil` landed in `Temple, Halls of the Dead`, which the realm has
+   * twice with the same exits (1/2189 and 18/295), and the Explorer's Buy sat
+   * refused, room unknown, until a step. Once a time unplaced, and again on a
+   * room block `locateResolveMs` after an ask that placed nothing.
+   */
+  private notePlaced(): void {
+    const room = this.tracker.current.room;
+    if (roomAddress(room) !== null) {
+      this.locateAskedAt = null;
+      return;
+    }
+    if (room.name === null) return;
+    const asked = this.locateAskedAt;
+    if (asked !== null && Date.now() - asked < tuning().session.locateResolveMs) return;
+    if (this.megaLocate()) this.sink.engineLog?.('doing', 'Asking the realm where we are');
   }
 
   /**
@@ -3698,6 +4000,7 @@ export class SessionManager {
     const lineChanged = this.tracker.apply(block, undefined, collecting);
     const batchChanged = batch ? this.tracker.apply(batch, batch.rows) : false;
     const changed = lineChanged || batchChanged;
+    if (changed) this.notePlaced();
     // The tracker records that a stat sheet would settle a buff ending; the
     // routine is what asks for one. Facts fan out, actions funnel in.
     if (this.tracker.takeSheetRequest()) {
@@ -5772,15 +6075,10 @@ export class SessionManager {
    * again only where a restart or a lost line stopped it (`megaEnteredGame`).
    */
   walkRoute(route: Route, run = false): string | null {
-    // MegaMUD's Go To: the room the route ends in, the way its own.
+    const refused = this.megaGoTo(route, run);
     const end = route.steps.at(-1)?.to;
-    if (end === undefined) return null;
-    const mega = this.mega;
-    if (mega === null) return t('session.megamud.noEngine');
-    // The counters, if this way turns on one nobody has read yet.
-    this.askCountersFor(route);
-    const refused = this.megaAct(() => mega.walkTo(end, run, true));
-    if (refused === null) this.keepMovement({ to: end, run });
+    // A person's walk is owed across a lost line; a quest's leg is its run's.
+    if (refused === null && end !== undefined) this.keepMovement({ to: end, run });
     return refused;
   }
 
