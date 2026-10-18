@@ -1993,9 +1993,14 @@ logging:
   # opens whichever is in force.
   directory: ''
 
-  # Stop appending past this size rather than filling a disk unattended. The
-  # client says so in the terminal when it stops. 64 MiB.
+  # A session log, a capture or a fight log goes on in a new file past this
+  # size, so a long session is recorded to its end. 64 MiB.
   maxBytes: 67108864
+
+  # What the logs folder may hold in all. Past it the oldest logs and
+  # captures are deleted, never one a session is still writing, so a client
+  # left running for weeks cannot fill the disk. 2 GiB.
+  keepBytes: 2147483648
 
   # Post this character's readings to its realm's mudstats board -- the realm's
   # `statsUrl:` -- every `everySeconds`: a whole snapshot each time (health,

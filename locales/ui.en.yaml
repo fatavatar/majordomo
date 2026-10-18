@@ -71,7 +71,6 @@ app:
     stillConnected: '{name} is still connected.'
   megamud:
     invalidSettings: Those MegaMUD settings could not be read.
-    writeFailed: The MegaMUD settings were not written — {error}
   quit:
     cancelButton: Cancel
     confirmButton: Quit and disconnect
@@ -219,6 +218,9 @@ notices:
         and is now {minutes} in {count} files: {fileList}'
       one: 'MegaMUD''s "If leading, wait only" was 0 minutes, which gives up on a @wait at once,
         and is now {minutes} in {fileList}'
+    logsKept:
+      many: 'Keep logs up to (2 GiB in all; the oldest go past it) was added to {count} files: {fileList}'
+      one: 'Keep logs up to (2 GiB in all; the oldest go past it) was added to {fileList}'
     criticalAlertsLowered:
       many: 'Alert rows at critical were lowered to warning in {count} files, as only hung up,
         dropped, ran and fled are critical now and light a character''s tab: {fileList}'
@@ -3253,6 +3255,7 @@ settings:
       fightsLabel: Write fight log
       folderLabel: Folder
       folderPlaceholder: beside the options file
+      keepBytesLabel: Keep logs up to, bytes in all
       maxBytesLabel: New log after, bytes
       note: What the client writes down. Every one of these is a file beside the options, and the
         recordings hold everything the realm sent and every command sent back — including, on a
@@ -3284,12 +3287,9 @@ settings:
     importedOver: MegaMUD settings replaced from {fileName}. The login and password are left as they were; Undo puts the old settings back.
     importNotMegamud: "{fileName} is not a MegaMUD settings file: it has none of MegaMUD's sections."
     importUnreadable: "{fileName} could not be read."
-    loading: Loading MegaMUD settings…
     # On a control MegaMUD 2.1 draws and saves but never acts on (2026-10-16).
     inertTitle: MegaMUD 2.1 keeps this setting but never acts on it, so it does nothing here either.
     passwordKept: (unchanged)
-    # A MegaMUD tab for a character not yet made.
-    saveFirst: Create the character first; its MegaMUD settings are made with it.
   dialog:
     closeAria: Close settings
     # The corner of the panel. Drag to resize, double-click to put it back.

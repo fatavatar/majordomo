@@ -3242,6 +3242,7 @@ describe('the conversation log stated in logging:', () => {
       fights: true,
       conversations: true,
       conversationDays: 365,
+      keepBytes: 2 * 1024 ** 3,
       stats: { enabled: false, everySeconds: 60 }
     });
     const once = fs.readFileSync(home.options, 'utf8');
@@ -3257,6 +3258,7 @@ describe('the conversation log stated in logging:', () => {
     expect(readLogging()).toEqual({
       conversations: false,
       conversationDays: 365,
+      keepBytes: 2 * 1024 ** 3,
       stats: { enabled: false, everySeconds: 60 }
     });
   });
@@ -3271,6 +3273,21 @@ describe('the conversation log stated in logging:', () => {
     fs.writeFileSync(home.options, 'logging:\n  stats:\n    enabled: true\n', 'utf8');
     migrate();
     expect(readLogging()['stats']).toEqual({ enabled: true });
+  });
+
+  /* The logs folder had no limit and had reached 3.6 GB (2026-10-18). */
+  it('states what the logs folder may hold, after maxBytes, never over one stated', () => {
+    fs.writeFileSync(home.options, 'logging:\n  maxBytes: 1000000\n  enabled: true\n', 'utf8');
+    migrate(true);
+    const once = fs.readFileSync(home.options, 'utf8');
+    expect(once).toContain('What the logs folder may hold in all');
+    expect(Object.keys(readLogging()).slice(0, 2)).toEqual(['maxBytes', 'keepBytes']);
+    expect(readLogging()['keepBytes']).toBe(2 * 1024 ** 3);
+    migrate(true);
+    expect(fs.readFileSync(home.options, 'utf8')).toBe(once);
+    fs.writeFileSync(home.options, 'logging:\n  keepBytes: 100000000\n', 'utf8');
+    migrate();
+    expect(readLogging()['keepBytes']).toBe(100000000);
   });
 });
 

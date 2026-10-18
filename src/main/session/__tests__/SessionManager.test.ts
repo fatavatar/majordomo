@@ -12,6 +12,7 @@ import {
   SessionManager,
   type RealmData,
   type RealmFinds,
+  type SessionAct,
   type SessionSink
 } from '../SessionManager';
 import type { MegaEngine, MegaEngineHost } from '../MegaEngine';
@@ -1516,6 +1517,27 @@ describe('asking for the quest counters', () => {
     (manager as unknown as { mega: MegaEngine }).mega.s.inGame = 1;
     return { socket, wire: () => Buffer.concat(chunks).toString('latin1') };
   }
+
+  /* What a capture replays from: the engine's settings, never its login (2026-10-17). */
+  it('records the engine’s settings as it connects, without the login', async () => {
+    const acts: SessionAct[] = [];
+    const { sink } = collect();
+    manager = new SessionManager({ ...sink, acted: (act) => acts.push(act) });
+    const settings = defaultSettings();
+    settings.live['BBS']!['UserID'] = 'archer';
+    settings.live['BBS']!['Password'] = 'hunter2';
+    manager.useMegaMud({ settings, data: { monsters: [], items: [], spells: [] }, grants: {} });
+    expect(acts).toEqual([]);
+    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
+    const recorded = acts.find((act) => act.act === 'megamud');
+    expect(recorded).toBeDefined();
+    expect(JSON.stringify(recorded)).not.toContain('hunter2');
+    expect(
+      recorded?.act === 'megamud' && recorded.settings.live['BBS']?.['UserID']
+    ).toBeUndefined();
+    manager.stopMoving();
+    expect(acts.at(-1)).toEqual({ act: 'stopMoving' });
+  });
 
   /* Fatty's typed `u` read as a step sent the post-rest ahead of its Enter (2026-10-16). */
   it('sends what the engine writes on reading a typed line behind that line', async () => {
@@ -3253,6 +3275,9 @@ describe('what the MegaMUD engine was walking, taken up again', () => {
   const running = { ...NO_LOOP, status: 'running' as const, name: 'Ring', startedAt: 1000 };
   const stopped = { ...running, status: 'stopped' as const };
 
+  /** The session's own loop start, which a resume takes: not the player's `startLoop`. */
+  const resumer = () => manager as unknown as { beginLoop: (loop: Loop) => { started: true } };
+
   function engine(kept: ResumableMovement | null = null) {
     const collected = collect();
     manager = new SessionManager(collected.sink);
@@ -3289,7 +3314,7 @@ describe('what the MegaMUD engine was walking, taken up again', () => {
   it('takes the loop up again once in the game', async () => {
     const { inside, host, notices } = engine({ loop: 'Ring' });
     inside.megaLoops.set('Ring', ring);
-    const start = vi.spyOn(manager!, 'startLoop').mockReturnValue({ started: true });
+    const start = vi.spyOn(resumer(), 'beginLoop').mockReturnValue({ started: true });
     host.enteredGame!();
     await Promise.resolve();
     expect(start).toHaveBeenCalledWith(ring);
@@ -3325,7 +3350,7 @@ describe('what the MegaMUD engine was walking, taken up again', () => {
   it('leaves be what MegaMUD’s own On entry started, and lets a loop filed nowhere go', async () => {
     const walking = engine({ loop: 'Ring' });
     walking.inside.mega.s.walking = 1;
-    const start = vi.spyOn(manager!, 'startLoop');
+    const start = vi.spyOn(resumer(), 'beginLoop');
     walking.host.enteredGame!();
     await Promise.resolve();
     expect(start).not.toHaveBeenCalled();

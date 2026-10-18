@@ -28,12 +28,18 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import { slug, stamp } from './filename';
+import { holding, partName, pruneLogs, released } from './logBudget';
 import { errorMessage } from '../../shared/values';
 import type { ConnectionTarget, StreamLine } from '../../shared/types';
+import type { EngineLogKind } from './MegaEngine';
+import type { SessionAct } from './SessionManager';
 
 export interface SessionCaptureOptions {
   directory: string;
+  /** Go on in a new part past this many bytes. */
   maxBytes: number;
+  /** What the logs directory may hold in all (`logBudget.ts`). */
+  keepBytes?: number | undefined;
   onProblem?: ((message: string) => void) | undefined;
   /**
    * The capture has created its file. Said here rather than at the dial,
@@ -50,6 +56,12 @@ export class SessionCapture {
   private file = '';
   /** The opening record, written ahead of the first real one. */
   private meta: Record<string, unknown> | null = null;
+  /** The first part's name and its opening record, and which part is being written. */
+  private first = '';
+  private opening: Record<string, unknown> = {};
+  private part = 1;
+  /** Whether this part holds anything past its heading. */
+  private filled = false;
 
   constructor(private readonly options: SessionCaptureOptions) {}
 
@@ -74,6 +86,7 @@ export class SessionCapture {
     this.close();
     this.stopped = false;
     this.written = 0;
+    this.filled = false;
     this.startedAt = at.getTime();
 
     const label = slug(session.length > 0 ? session : `${target.host}_${target.port}`);
@@ -91,6 +104,9 @@ export class SessionCapture {
       encoding: target.encoding,
       startedAt: at.toISOString()
     };
+    this.first = this.file;
+    this.opening = this.meta;
+    this.part = 1;
   }
 
   /** Creates the file on the first record worth keeping, `meta` ahead of it. */
@@ -99,6 +115,9 @@ export class SessionCapture {
     if (this.stopped || this.file.length === 0) return false;
     try {
       fs.mkdirSync(this.options.directory, { recursive: true });
+      holding(this.file);
+      if (this.options.keepBytes !== undefined)
+        pruneLogs(this.options.directory, this.options.keepBytes);
       this.stream = fs.createWriteStream(this.file, { flags: 'a' });
       this.stream.on('error', (error) => this.fail(`Capture write failed: ${error.message}`));
       const meta = this.meta;
@@ -139,6 +158,16 @@ export class SessionCapture {
     this.record({ k: 'out', s: command, src: source });
   }
 
+  /** What the player did through the app, to replay (`SessionAct`). */
+  act(act: SessionAct): void {
+    this.record({ k: 'act', ...act });
+  }
+
+  /** A line of the MegaMUD engine's own log (`EngineLogKind`). */
+  engine(kind: EngineLogKind, text: string): void {
+    this.record({ k: 'engine', kind, s: text });
+  }
+
   /**
    * Stops recording, and resolves once the last line is actually on disk.
    *
@@ -157,6 +186,7 @@ export class SessionCapture {
   close(): Promise<void> {
     const stream = this.stream;
     this.stream = null;
+    if (this.file !== '') released(this.file);
     this.file = '';
     if (!stream) return Promise.resolve();
     return new Promise((resolve) => {
@@ -169,13 +199,31 @@ export class SessionCapture {
     const line = JSON.stringify({ t: Date.now() - this.startedAt, ...entry }) + '\n';
 
     const size = Buffer.byteLength(line, 'utf8');
-    if (this.written + size > this.options.maxBytes) {
-      this.fail('Capture reached its size limit; no longer recording.');
-      return;
+    // A part holds at least one write, so a long one never leaves a part of only its heading.
+    if (this.filled && this.written + size > this.options.maxBytes) {
+      this.nextPart();
+      if (!this.ensureStream()) return;
     }
 
     this.written += size;
+    this.filled = true;
     this.stream?.write(line);
+  }
+
+  /**
+   * The current part full: the next one, opened with the same `meta` and its
+   * part number, so each part reads on its own and its times run on from the
+   * session's start.
+   */
+  private nextPart(): void {
+    this.stream?.end();
+    this.stream = null;
+    released(this.file);
+    this.part += 1;
+    this.file = partName(this.first, this.part);
+    this.written = 0;
+    this.filled = false;
+    this.meta = { ...this.opening, part: this.part };
   }
 
   private fail(message: string): void {
@@ -183,6 +231,7 @@ export class SessionCapture {
     this.stopped = true;
     this.stream?.end();
     this.stream = null;
+    if (this.file !== '') released(this.file);
     this.options.onProblem?.(message);
   }
 }

@@ -1,10 +1,8 @@
-import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react';
+import { Fragment, useRef, useState, type ReactNode } from 'react';
 import { customControl, drawnHere } from './MegaMudEditors';
 import { CheckField, NumberField, TextField } from './FormField';
 import Icon from './Icon';
-import { useAutoSave, type AutoSave } from '../hooks/useAutoSave';
-import { begin, canRedo, canUndo, record, redo, undo, type History } from '../lib/history';
-import type { MegaChoices, MegaMudSettingsView } from '@shared/ipc';
+import type { MegaChoices } from '@shared/ipc';
 import {
   SETTINGS_TABS,
   type ChecklistRow,
@@ -29,7 +27,7 @@ import { t } from '../lib/i18n';
  * out: its sixteen tabs, each control where the dialog template puts it and
  * showing the setting MegaMUD's tab shows (`settingsTabs.ts`, read from
  * `megamud.exe` and `MegaRes.dll`). A change is written, as it is made, to
- * the character's `megamud.ini`, which is what runs it on the ported MegaMUD engine.
+ * the character's `megamud:`, which is what runs it on the ported MegaMUD engine.
  *
  * The page is drawn in dialog units, scaled: a MegaMUD player finds every
  * box where it always was. A control the tab fills from somewhere else (the
@@ -40,27 +38,21 @@ import { t } from '../lib/i18n';
  * this client keeps for the character under it (2026-10-14).
  */
 
-/** The page's reach into the client: a character's MegaMUD settings, read and written. */
-export interface MegaMudStore {
-  load(id: string): Promise<MegaMudSettingsView | null>;
-  save(id: string, settings: MegaSettings): Promise<string | null>;
-}
-
 /**
- * One character's MegaMUD settings as the page holds them: on file and being
- * edited, saved as they are changed (`useAutoSave`), with undo and redo.
+ * One character's MegaMUD settings as its tabs edit them: a part of the
+ * character's own draft (2026-10-18), saved and undone with the rest of it,
+ * where they were loaded, saved and undone beside it.
  */
 export interface MegaMudDraft {
-  /** The character, or null for one not yet made (nothing to load). */
-  id: string | null;
-  view: MegaMudSettingsView | null;
-  draft: MegaSettings | null;
-  save: AutoSave;
-  can: { undo: boolean; redo: boolean };
+  /** Whose they are, so a tab starts afresh for another character. */
+  id: string;
+  draft: MegaSettings;
+  /** Whether `BBS.Password` is set on file; the draft's is always empty. */
+  hasPassword: boolean;
+  /** What its running engine offers to choose from, or null with none running. */
+  choices: MegaChoices | null;
   set(section: string, key: string, value: SettingValue): void;
   update(change: (current: MegaSettings) => MegaSettings): void;
-  undo(): void;
-  redo(): void;
 }
 
 /** Dialog units to pixels: MS Sans Serif 8's base units (6×13), scaled up. */
@@ -91,64 +83,21 @@ function withValue(
   return next;
 }
 
-export function useMegaMudDraft(id: string | null, store: MegaMudStore): MegaMudDraft {
-  const { load, save } = store;
-  const [view, setView] = useState<MegaMudSettingsView | null>(null);
-  /** Whose settings `history` holds, so a switch never saves one under the other's id. */
-  const [loadedFor, setLoadedFor] = useState<string | null>(null);
-  const [history, setHistory] = useState<History<MegaSettings> | null>(null);
-
-  useEffect(() => {
-    let live = true;
-    setView(null);
-    setLoadedFor(null);
-    setHistory(null);
-    if (id === null) return;
-    void load(id).then((found) => {
-      if (!live) return;
-      setView(found);
-      setHistory(found ? begin(structuredClone(found.settings)) : null);
-      setLoadedFor(id);
-    });
-    return () => {
-      live = false;
-    };
-  }, [id, load]);
-
-  const draft = history?.present ?? null;
-  /*
-   * Saved as changed, like the rest of the Character page (2026-10-14). A
-   * character with none on file yet runs on settings started from its old
-   * automation, and the first change writes them.
-   */
-  const autoSave = useAutoSave<MegaSettings>({
-    value: loadedFor === id ? draft : null,
-    identity: id,
-    enabled: id !== null && loadedFor === id,
-    same: (a, b) => JSON.stringify(a) === JSON.stringify(b),
-    save: (settings) => (id === null ? Promise.resolve(null) : save(id, settings))
-  });
-
-  const change = (next: (current: MegaSettings) => MegaSettings): void =>
-    setHistory((current) =>
-      current === null
-        ? current
-        : record(current, next(current.present), (a, b) => JSON.stringify(a) === JSON.stringify(b))
-    );
-
+/** A character's MegaMUD settings for its tabs, changed by `update` on the character's draft. */
+export function megaMudDraft(
+  id: string,
+  draft: MegaSettings,
+  hasPassword: boolean,
+  choices: MegaChoices | null,
+  update: (change: (current: MegaSettings) => MegaSettings) => void
+): MegaMudDraft {
   return {
     id,
-    view,
     draft,
-    save: autoSave,
-    can: {
-      undo: history !== null && canUndo(history),
-      redo: history !== null && canRedo(history)
-    },
-    set: (section, key, value) => change((current) => withValue(current, section, key, value)),
-    update: change,
-    undo: () => setHistory((current) => (current ? undo(current) : current)),
-    redo: () => setHistory((current) => (current ? redo(current) : current))
+    hasPassword,
+    choices,
+    set: (section, key, value) => update((current) => withValue(current, section, key, value)),
+    update
   };
 }
 
@@ -180,9 +129,8 @@ export function isMegaTab(section: string): boolean {
 
 /**
  * One of MegaMUD's tabs for the chosen character, as its dialog lays it out,
- * saved as it is changed like the rest of the Character page and undone by
- * its Undo (`useMergedHistory`). A character with no MegaMUD settings yet is
- * switched over by a press.
+ * a part of the Character page's draft: saved as it is changed and undone by
+ * its Undo, as every other field there is.
  */
 export function MegaMudPanel({
   tab,
@@ -196,21 +144,18 @@ export function MegaMudPanel({
 }) {
   const page = SETTINGS_TABS.find((p) => p.title === tab);
   if (page === undefined || NO_PAGE.includes(tab)) return null;
-  const { view, draft } = mega;
-  if (mega.id === null) return <p className="settings-note">{t('settings.megamud.saveFirst')}</p>;
-  if (view === null || draft === null)
-    return <div className="settings-form empty">{t('settings.megamud.loading')}</div>;
+  const { draft } = mega;
   return (
     <div className="megamud-settings">
       <TabPage
-        choices={view.choices}
+        choices={mega.choices}
         controls={page.controls}
         draft={draft}
         key={`${mega.id}-${tab}`}
         loops={loops}
         tab={tab}
         update={mega.update}
-        hasPassword={view.hasPassword}
+        hasPassword={mega.hasPassword}
         height={page.h}
         onProfile={(n) => mega.update((current) => switchProfile(current, n))}
         onProfileEnabled={(n, on) =>
@@ -268,8 +213,7 @@ const MEGA_ACCOUNT: readonly (readonly AccountField[])[] = [
 
 /** `MEGA_ACCOUNT`, for a character the engine runs. */
 export function MegaMudAccount({ mega }: { mega: MegaMudDraft }) {
-  const { view, draft } = mega;
-  if (view === null || draft === null) return null;
+  const { draft } = mega;
   const field = ({ section, key, label, as }: AccountField) => {
     const value = valueOf(draft, section, key);
     const name = `megamud-${section}-${key}`;

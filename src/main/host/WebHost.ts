@@ -294,14 +294,18 @@ export function createWebHost(layout: Layout): Host {
   /**
    * Find the tabs that have gone without saying so.
    *
-   * A tab that did not answer the last ping is closed; every other one is
-   * pinged again. Rescheduled from the file each time rather than set once,
-   * so an edit to `pingIntervalMs` reaches the next tick.
+   * A tab that did not answer the last ping, and has taken nothing off its
+   * socket since, is closed; every other one is pinged again. A tab still
+   * reading what was queued ahead of the ping (a fresh tab's snapshots, on a
+   * slow link) is reading, whatever the ping says. Rescheduled from the file
+   * each time rather than set once, so an edit to `pingIntervalMs` reaches
+   * the next tick.
    */
   const scheduleSweep = (): void => {
     sweep = setTimeout(() => {
       for (const tab of tabs.values()) {
-        if (!tab.alive) {
+        const taking = tab.connection.taking();
+        if (!tab.alive && !taking) {
           tab.connection.close(1001, 'no answer to ping');
           continue;
         }

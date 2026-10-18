@@ -14,6 +14,8 @@ import {
   type ServerDraft
 } from '../../../shared/drafts';
 import { ServerStore } from '../ServerStore';
+import { defaultSettings, type MegaSettings } from '../../../shared/megamud/settings';
+import { megamudFromConfig } from '../../../shared/megamud/fromConfig';
 import { LoopStore } from '../LoopStore';
 import { DEFAULT_CONFIG, normalizeConfig } from '../../../shared/config';
 import { UNCATEGORISED, type Loop } from '../../../shared/loops';
@@ -1668,5 +1670,95 @@ describe('the supplies list', () => {
 
   it('refuses a character that does not exist', () => {
     expect(editor.setSupplies('nobody-at-all', []).ok).toBe(false);
+  });
+});
+
+describe('a character’s MegaMUD settings, saved with the rest of it', () => {
+  const stated = (id: string): Record<string, Record<string, unknown>> =>
+    read(id)['megamud'] as Record<string, Record<string, unknown>>;
+  const withFile = (megamud: string): void => {
+    const file = home.profile('vaelor').file;
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, `server: GreaterMUD (local)\n${megamud}`, 'utf8');
+  };
+  const shown = (id: string) => {
+    const entry = editor.snapshot().characters.find((c) => c.id === id);
+    if (entry === undefined) throw new Error(`no ${id}`);
+    return entry;
+  };
+
+  it('writes what the draft says, with the rest of the character', () => {
+    const megamud = defaultSettings();
+    megamud.live['Health']!['HpRest%'] = 61;
+    expect(editor.saveProfile('vaelor', draft({ megamud }))).toEqual({ ok: true });
+    expect(stated('vaelor')['Health']).toMatchObject({ 'HpRest%': 61 });
+  });
+
+  it('leaves the file’s alone when the draft carries none', () => {
+    withFile('megamud:\n  Health:\n    HpRest%: 44\n');
+    expect(editor.saveProfile('vaelor', draft({ accent: 'violet' }))).toEqual({ ok: true });
+    expect(stated('vaelor')['Health']).toEqual({ 'HpRest%': 44 });
+  });
+
+  it('keeps the password on file when the draft’s is empty, and never shows it', () => {
+    withFile('megamud:\n  BBS:\n    Password: hunter2\n  Health:\n    HpRest%: 44\n');
+    const entry = shown('vaelor');
+    expect(entry.megamud.live['BBS']!['Password']).toBe('');
+    expect(entry.megamudHasPassword).toBe(true);
+    expect(entry.megamud.live['Health']!['HpRest%']).toBe(44);
+
+    const megamud = structuredClone(entry.megamud);
+    megamud.live['Health']!['HpRest%'] = 50;
+    expect(editor.saveProfile('vaelor', draft({ megamud }))).toEqual({ ok: true });
+    expect(stated('vaelor')['BBS']).toMatchObject({ Password: 'hunter2' });
+    expect(stated('vaelor')['Health']).toEqual({ 'HpRest%': 50 });
+  });
+
+  it('keeps the sections the window does not edit', () => {
+    withFile('megamud:\n  Custom:\n    Thing: kept\n');
+    expect(editor.saveProfile('vaelor', draft({ megamud: shown('vaelor').megamud }))).toEqual({
+      ok: true
+    });
+    expect(stated('vaelor')['Custom']).toEqual({ Thing: 'kept' });
+  });
+
+  it('refuses a draft that is not settings at all, writing nothing', () => {
+    withFile('megamud:\n  Health:\n    HpRest%: 44\n');
+    const before = fs.readFileSync(home.profile('vaelor').file, 'utf8');
+    const result = editor.saveProfile('vaelor', {
+      ...draft(),
+      megamud: { nonsense: true } as unknown as MegaSettings
+    });
+    expect(result.ok).toBe(false);
+    expect(fs.readFileSync(home.profile('vaelor').file, 'utf8')).toBe(before);
+  });
+
+  it('shows a character that will not resolve its file’s settings, not MegaMUD’s defaults', () => {
+    const file = home.profile('vaelor').file;
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, 'server: Nowhere\nmegamud:\n  Health:\n    HpRest%: 44\n', 'utf8');
+    const entry = shown('vaelor');
+    expect(entry.error).toBeDefined();
+    expect(entry.megamud.live['Health']!['HpRest%']).toBe(44);
+  });
+
+  it('shows what the engine runs a character on, as the client works it out', () => {
+    withFile('');
+    const provided = new SettingsEditor({
+      home,
+      megamud: () => {
+        const settings = defaultSettings();
+        settings.live['Health']!['HpRest%'] = 33;
+        return settings;
+      }
+    });
+    const entry = provided.snapshot().characters.find((c) => c.id === 'vaelor');
+    expect(entry?.megamud.live['Health']!['HpRest%']).toBe(33);
+  });
+
+  it('offers a new character the options file’s automation carried across', () => {
+    expect(editor.snapshot().newMegamud).toEqual(
+      megamudFromConfig(normalizeConfig(parse(OPTIONS)).automation, (spell) => spell)
+    );
   });
 });

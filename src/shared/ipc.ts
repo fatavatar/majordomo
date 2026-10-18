@@ -88,14 +88,6 @@ export interface LearnedSpellTable {
   rows: LearnedSpellRow[];
 }
 
-export interface MegaMudSettingsView {
-  /** `BBS.Password` always empty here. */
-  settings: MegaSettings;
-  hasPassword: boolean;
-  /** What its running engine offers to choose from, or null with none running. */
-  choices: MegaChoices | null;
-}
-
 /**
  * What MegaMUD's settings dialogs pick from, out of a running engine: the
  * rooms its room list names (Special Rooms, `roomByName`), and the weapons,
@@ -469,6 +461,15 @@ export interface ProfileEditable {
   /** Whether a mudstats key is on file — never the key, for the reason `hasPassword` is not. */
   statsLinked: boolean;
   /**
+   * Its MegaMUD settings (`megamud:`), edited and saved with the rest of the
+   * character (2026-10-18): what its file states, or, with none there yet,
+   * what the engine runs it on, started from its old automation. `BBS.Password`
+   * always empty, for the reason `hasPassword` is not the password.
+   */
+  megamud: MegaSettings;
+  /** Whether `megamud`'s `BBS.Password` is set on file. */
+  megamudHasPassword: boolean;
+  /**
    * Fighting on this character's behalf. Resolved, like the two above.
    *
    * The whole block rather than a switch, because every field of it is a thing
@@ -569,6 +570,12 @@ export interface SettingsSnapshot {
    * character whose own book could narrow the list.
    */
   realmSpells: SpellOption[];
+  /**
+   * The MegaMUD settings a new character starts from: the options file's
+   * automation carried across (`megamudFromConfig`), as a character with none
+   * on file runs.
+   */
+  newMegamud: MegaSettings;
   /** Where the files are, so the screen can offer to reveal them. */
   home: string;
   configPath: string;
@@ -845,13 +852,11 @@ export const Invoke = {
   saveProfile: 'settings:save-profile',
   deleteProfile: 'settings:delete-profile',
   /**
-   * A character's MegaMUD settings (its `profile.yaml`'s `megamud:`), read
-   * and written whole. The password stays in main: it crosses as empty, and an
-   * empty one written back leaves the stored one alone. Saving them is what
-   * turns the ported MegaMUD engine on for the character.
+   * What a character's running engine offers its MegaMUD tabs to choose from
+   * (`MegaChoices`). Its settings themselves are the character's, in the
+   * snapshot and `saveProfile` (2026-10-18).
    */
-  megamudSettings: 'settings:megamud',
-  saveMegamud: 'settings:save-megamud',
+  megamudChoices: 'settings:megamud-choices',
   /**
    * The players a character's realm has seen (`PlayerBook`), by name, for the
    * Players row's list; and one of them forgotten from it, until seen again.
@@ -1352,10 +1357,8 @@ export interface IpcApi {
   deleteProfile(id: string): Promise<string | null>;
   saveServer(previousName: string | null, draft: ServerDraft): Promise<string | null>;
   deleteServer(name: string): Promise<string | null>;
-  /** A character's MegaMUD settings, and whether it has them yet; null for no such character. */
-  megamudSettings(id: string): Promise<MegaMudSettingsView | null>;
-  /** Writes a character's MegaMUD settings; why it refused, or null. */
-  saveMegamud(id: string, settings: MegaSettings): Promise<string | null>;
+  /** What a character's running engine offers its MegaMUD tabs; null with none running. */
+  megamudChoices(id: string): Promise<MegaChoices | null>;
   /** The names a character's realm has seen, as the realm spells them. */
   seenPlayers(id: string): Promise<string[]>;
   /** One forgotten from the realm's record of players; why it could not be, or null. */

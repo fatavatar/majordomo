@@ -906,6 +906,14 @@ export default function GlobalSettings({
                 }
                 value={draft.logging.maxBytes}
               />
+              <NumberField
+                label={t('settings.client.records.keepBytesLabel')}
+                name="global-log-keep-bytes"
+                onChange={(value) =>
+                  patch('logging', { keepBytes: Number.parseInt(value, 10) || 0 })
+                }
+                value={draft.logging.keepBytes}
+              />
             </Advanced>
           </>
         )}

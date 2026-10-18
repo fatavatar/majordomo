@@ -287,6 +287,7 @@ function migrateAll(options: MigrationOptions): void {
   statedTheMudstats(home, note, options.template);
   onlyTheTabAlertsAreCritical(home, note);
   theWaitLimitWaits(home, note);
+  statedTheLogBudget(home, note, options.template);
   theOldAutomationKeysWent(home, note);
   theHangPenaltiesWent(home, note);
   theOldSwitchesUnpinned(home, note);
@@ -6121,6 +6122,45 @@ function statedTheMudstats(
     stated.length === 1
       ? t('notices.migration.mudstatsStated.one', params)
       : t('notices.migration.mudstatsStated.many', params)
+  );
+}
+
+/**
+ * `logging.keepBytes` into every file that states `logging:` without it, 2 GiB,
+ * after `maxBytes` with the template's paragraph (2026-10-18): what the logs
+ * folder may hold in all, the oldest deleted past it. The folder had no limit
+ * and had reached 3.6 GB. Idempotent; nothing stated is overwritten.
+ */
+function statedTheLogBudget(
+  home: Home,
+  note: (message: string) => void,
+  template: string | undefined
+): void {
+  const comment = templateComments(template, 'logging').get('logging.keepBytes');
+  const files = [home.options, ...directories(home.profilesDir).map((id) => home.profile(id).file)];
+  const stated: string[] = [];
+
+  for (const file of files) {
+    edit(file, (document) => {
+      const logging = document.getIn(['logging'], true);
+      if (!isMap(logging) || logging.has('keepBytes')) return false;
+      const pair = document.createPair('keepBytes', DEFAULT_CONFIG.logging.keepBytes) as Pair;
+      if (typeof comment === 'string' && isScalar(pair.key)) pair.key.commentBefore = comment;
+      const after = logging.items.findIndex(
+        (item) => isScalar(item.key) && item.key.value === 'maxBytes'
+      );
+      logging.items.splice(after === -1 ? logging.items.length : after + 1, 0, pair);
+      stated.push(file);
+      return true;
+    });
+  }
+
+  if (stated.length === 0) return;
+  const params = { count: stated.length, fileList: stated.join(', ') };
+  note(
+    stated.length === 1
+      ? t('notices.migration.logsKept.one', params)
+      : t('notices.migration.logsKept.many', params)
   );
 }
 

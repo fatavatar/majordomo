@@ -97,7 +97,6 @@ import type { MonsterRule } from '@shared/monsterRules';
 import type { ItemRule } from '@shared/itemRules';
 import type { MegaMudPath } from '@shared/megamudPaths';
 import type { IpcApi, LearnedSpellRow } from '@shared/ipc';
-import type { MegaSettings } from '@shared/megamud/settings';
 import { CONSOLE_PALETTES, TERMINAL_THEMES, THEME_PREFERENCES, THEMES } from '@shared/themes';
 import { usePaneWidths } from './hooks/usePaneWidths';
 import { usePinnedCommands } from './hooks/usePins';
@@ -2920,8 +2919,7 @@ export default function App() {
     () => ({
       load: () => api.settingsSnapshot(),
       saveProfile: (id: string, draft: ProfileDraft) => api.saveProfile(id, draft),
-      megamudSettings: (id: string) => api.megamudSettings(id),
-      saveMegamud: (id: string, settings: MegaSettings) => api.saveMegamud(id, settings),
+      megamudChoices: (id: string) => api.megamudChoices(id),
       deleteProfile: (id: string) => api.deleteProfile(id),
       saveServer: (previous: string | null, draft: ServerDraft) => api.saveServer(previous, draft),
       deleteServer: (name: string) => api.deleteServer(name),
@@ -6079,8 +6077,7 @@ export default function App() {
         loadMobNames={settingsApi.loadMobNames}
         revealProfiles={settingsApi.revealProfiles}
         saveProfile={settingsApi.saveProfile}
-        megamudSettings={settingsApi.megamudSettings}
-        saveMegamud={settingsApi.saveMegamud}
+        megamudChoices={settingsApi.megamudChoices}
         saveGlobal={settingsApi.saveGlobal}
         saveServer={settingsApi.saveServer}
         stats={settingsApi.stats}

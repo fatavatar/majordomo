@@ -75,6 +75,14 @@ export function frame(opcode: number, payload: Buffer): Buffer {
   return Buffer.concat([header, payload]);
 }
 
+/**
+ * How many times the cap a peer may have queued behind answers it is still
+ * reading before it is closed: room for five characters' attach snapshots
+ * (about 11 MB each) and what is pushed while they go out, 128 MiB at the
+ * shipped cap.
+ */
+const BEHIND_ANSWERS = 16;
+
 export interface ConnectionOptions {
   /** The largest message accepted, declared length included. */
   maxMessageBytes: number;
@@ -103,8 +111,14 @@ export class WebSocketConnection {
   /** A message being reassembled from fragments, or null between messages. */
   private fragments: Buffer[] | null = null;
   private fragmentBytes = 0;
-  /** Answers still queued, which the cap does not count. See `send`. */
-  private requestedBytes = 0;
+  /**
+   * Answers still queued, and what was queued behind them while they were,
+   * which the cap does not count. See `send`.
+   */
+  private answeringBytes = 0;
+  /** Bytes the peer has taken off the socket, and as many at the last `taking` asked. */
+  private taken = 0;
+  private takenBefore = 0;
   private closeSent = false;
   private closed = false;
   /** What this side said on the way out, so the end is reported as it was meant. */
@@ -131,21 +145,42 @@ export class WebSocketConnection {
    * answer — and is queued outside the cap: an attach snapshot carries the
    * whole backscroll, 100,000 lines of it by default and over 11 MB, and
    * counted against the cap it closed every tab on a link slower than
-   * loopback with the next push behind it. The cap is for the stream a peer
-   * did not ask for, and a stalled peer still reaches it behind the answer.
+   * loopback with the next push behind it.
+   *
+   * And so is a push queued while an answer is still going out: it waits its
+   * turn behind something the peer is reading, which is no sign the peer has
+   * stopped. Counted, it closed every fresh tab on the container (2026-10-18):
+   * five characters' snapshots went out at once, the three playing pushed
+   * their state behind them, and the tab was closed and reconnected for as
+   * long as anybody waited. What waits behind answers has a ceiling of its
+   * own (`BEHIND_ANSWERS`), so a peer that stalls mid-answer is still closed.
    */
   send(text: string, requested = false): void {
     if (!this.open) return;
-    if (!this.roomToWrite()) return;
+    if (!this.roomToWrite(requested)) return;
     const bytes = frame(OPCODE.text, Buffer.from(text, 'utf8'));
-    if (!requested) {
-      this.socket.write(bytes);
+    if (!requested && this.answeringBytes === 0) {
+      this.socket.write(bytes, () => {
+        this.taken += bytes.length;
+      });
       return;
     }
-    this.requestedBytes += bytes.length;
+    this.answeringBytes += bytes.length;
     this.socket.write(bytes, () => {
-      this.requestedBytes -= bytes.length;
+      this.answeringBytes -= bytes.length;
+      this.taken += bytes.length;
     });
+  }
+
+  /**
+   * Whether the peer has taken anything off the socket since this was last
+   * asked: a tab reading a long answer cannot answer a ping queued behind it,
+   * and is reading all the same. See `WebHost`'s sweep.
+   */
+  taking(): boolean {
+    const moved = this.taken !== this.takenBefore;
+    this.takenBefore = this.taken;
+    return moved;
   }
 
   /**
@@ -153,9 +188,11 @@ export class WebSocketConnection {
    * buffered for. 1008 is the policy code: nothing about the frames was
    * wrong, the tab simply stopped taking them.
    */
-  private roomToWrite(): boolean {
-    const unasked = this.socket.writableLength - this.requestedBytes;
-    if (unasked <= this.options.maxBufferedBytes) return true;
+  private roomToWrite(requested: boolean): boolean {
+    const unasked = this.socket.writableLength - this.answeringBytes;
+    const behind =
+      !requested && this.answeringBytes > this.options.maxBufferedBytes * BEHIND_ANSWERS;
+    if (unasked <= this.options.maxBufferedBytes && !behind) return true;
     this.close(1008, 'not reading');
     return false;
   }

@@ -33,6 +33,7 @@
     "test": "vitest run",
     "test:realm": "vitest run --config vitest.realm.config.ts",
     "test:full": "npm run test && npm run test:realm",
+    "replay": "vitest run --config vitest.replay.config.ts",
     "test:watch": "vitest",
     "verify": "node scripts/gate.mjs --narrow",
     "gate": "node scripts/gate.mjs",

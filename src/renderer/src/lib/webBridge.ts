@@ -251,10 +251,9 @@ export function createWebBridge(): IpcApi {
 
     saveProfile: (id, draft) => invoke(Invoke.saveProfile, id, draft),
     deleteProfile: (id) => invoke(Invoke.deleteProfile, id),
-    megamudSettings: (id) => invoke(Invoke.megamudSettings, id),
+    megamudChoices: (id) => invoke(Invoke.megamudChoices, id),
     seenPlayers: (id) => invoke(Invoke.seenPlayers, id),
     forgetPlayer: (id, name) => invoke(Invoke.forgetPlayer, id, name),
-    saveMegamud: (id, settings) => invoke(Invoke.saveMegamud, id, settings),
     saveServer: (previousName, draft) => invoke(Invoke.saveServer, previousName, draft),
     deleteServer: (name) => invoke(Invoke.deleteServer, name),
     settingsSnapshot: () => invoke(Invoke.settingsSnapshot),

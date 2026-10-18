@@ -227,6 +227,35 @@ describe('the socket gone (0x42c910)', () => {
     expect(s.redialAt).toBe(clock.now + 5);
   });
 
+  /*
+   * Healbot, off for the nightly cleanup (2026-10-18): logged off at the
+   * shutdown notice, waited `Comms.CleanupPeriod`, redialled while the BBS was
+   * still down, was hung up on, and never dialled again.
+   */
+  it('redials a cleanup redial that the BBS hangs up on', () => {
+    const { s, out, clock } = session();
+    s.Comms_RedialCarrier = 1;
+    s.Comms_RedialCleanup = 1;
+    s.Comms_CleanupPeriod = 3;
+    s.Comms_RedialPause = 5;
+    connected(s);
+    goOnline(s, 1);
+    s.exitForShutdown = 1;
+    hangUp(s, 0);
+    connectionClosed(s);
+    expect(s.task).toBe(Task.Redial);
+    expect(s.redialAt).toBe(clock.now + 180);
+
+    s.task = Task.Connecting2;
+    connected(s);
+    parseData(s, newTerminal(), 'Sorry, this system is not available at the moment.\r\n');
+    connectionClosed(s);
+    expect(out.shown).toContain('Unexpected disconnection.');
+    expect(out.shown).not.toContain('Disconnected.');
+    expect(s.task).toBe(Task.Redial);
+    expect(s.redialAt).toBe(clock.now + 5);
+  });
+
   it('is plain after a hang-up, and lets the next one through', () => {
     const { s, out } = session();
     connected(s);

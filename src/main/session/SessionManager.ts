@@ -237,12 +237,14 @@ import {
   type SurvivalHeal
 } from '../../shared/survival';
 import type { MegaToggle } from '../../shared/megamud/toggles';
+import type { MegaSettings } from '../../shared/megamud/settings';
 import {
   MegaEngine,
   type AfterFetch,
   type FleeGoto,
   type MegaAlert,
-  type MegaEngineSetup
+  type MegaEngineSetup,
+  type EngineLogKind
 } from './MegaEngine';
 import type { ResumableMovement } from './MovementBook';
 import { WindowCommand } from '../../shared/megamud/toggles';
@@ -368,6 +370,30 @@ export interface RealmTables {
 
 /** A realm with no directory: nothing imported. */
 export const NO_REALM_TABLES: RealmTables = { messages: [], monsters: [], items: [] };
+
+/**
+ * What the player did to this session through the app rather than the
+ * keyboard, for a capture to replay (`npm run replay`): what is typed is on
+ * the wire already, and these are the rest of what drives the engine. The
+ * MegaMUD settings are its own, as the engine was given them, without the
+ * login.
+ */
+export type SessionAct =
+  | { act: 'walkPlan'; route: Route; run: boolean }
+  | {
+      act: 'collectThenWalk';
+      items: Array<{ id: number; name: string }>;
+      route: Route;
+      run: boolean;
+    }
+  | { act: 'startMoving'; loop: string | null }
+  | { act: 'startLoop'; loop: Loop }
+  | { act: 'stopMoving' }
+  | { act: 'stepBack' }
+  | { act: 'megaToggle'; name: MegaToggle }
+  | { act: 'megaAnswer'; question: string; yes: boolean }
+  | { act: 'depositAll' }
+  | { act: 'megamud'; settings: MegaSettings };
 
 /** What `configureRealm` is told: the tables, and what the realm calls its coins. */
 export interface RealmData extends RealmTables {
@@ -500,6 +526,10 @@ export interface SessionSink {
    * One place does this, so a capture and the tracker cannot disagree.
    */
   command?(command: string, source: 'user' | 'automation'): void;
+  /** What the player did through the app. See `SessionAct`. */
+  acted?(act: SessionAct): void;
+  /** The MegaMUD engine's own log (`MegaEngineHost.logged`). */
+  engineLog?(kind: EngineLogKind, text: string): void;
   /** How a route walk is going, when one is running. */
   walk?(progress: WalkProgress): void;
   /**
@@ -1374,7 +1404,7 @@ export class SessionManager {
         // The engine's Go To.
         walk: (route) => this.megaWalk(route),
         runLoop: (loop) => {
-          const answer = this.startLoop(loop);
+          const answer = this.beginLoop(loop);
           return 'refused' in answer ? answer.refused : null;
         },
         // The lap's **name**, so the hunt can tell its own from one the player
@@ -1423,7 +1453,7 @@ export class SessionManager {
           if (running !== null) {
             this.sink.notice(t('automation.collect.replacingLap', { loopName: running }));
           }
-          const answer = this.startLoop(loop);
+          const answer = this.beginLoop(loop);
           return 'refused' in answer ? answer.refused : null;
         },
         looping: () => this.runningLoopName() !== null,
@@ -1935,6 +1965,8 @@ export class SessionManager {
   }
 
   async connect(target: ConnectionTarget): Promise<ConnectionState> {
+    // The capture opens before this: the settings the engine starts from, first in it.
+    this.actSettings();
     this.telnetLog.length = 0;
     this.lineLog.length = 0;
     this.lineSeq = 0;
@@ -2454,6 +2486,7 @@ export class SessionManager {
    * wealth over what it keeps deposited (2026-10-14).
    */
   depositAll(): boolean {
+    this.sink.acted?.({ act: 'depositAll' });
     if (this.mega === null) return false;
     this.mega.depositAll();
     return true;
@@ -2606,6 +2639,10 @@ export class SessionManager {
    * the lair it chose (`huntLoop`) — by name, for its `loopRooms` to find.
    */
   private readonly megaLoops = new Map<string, Loop>();
+  /** The engine's MegaMUD settings as last given it, for the capture (`SessionAct`). */
+  private megaSettings: MegaSettings | null = null;
+  /** What the engine last said it was doing. */
+  private megaDoing = '';
   /**
    * Where the actions kept beside the engine propose their commands (a ward,
    * a key off the floor): the engine's pending list for a character it runs,
@@ -2867,7 +2904,7 @@ export class SessionManager {
         this.keepMovement(null);
         return;
       }
-      const answer = this.startLoop(loop);
+      const answer = this.beginLoop(loop);
       this.sink.notice(
         'refused' in answer
           ? t('session.move.resumeRefused', { reason: answer.refused })
@@ -2923,6 +2960,9 @@ export class SessionManager {
 
   /** Runs the MegaMUD engine for this character, or stops it (null). */
   useMegaMud(setup: MegaEngineSetup | null): void {
+    this.megaSettings = setup?.settings ?? null;
+    // A settings save while playing; `connect` records them at the start.
+    if (this.client.connected) this.actSettings();
     if (this.mega !== null && setup !== null) {
       this.mega.reload(setup);
       return;
@@ -2969,6 +3009,14 @@ export class SessionManager {
           // After the engine's own handling of the prompt, not inside it.
           enteredGame: () => queueMicrotask(() => this.megaEnteredGame()),
           ask: (text) => this.megaAsk(text),
+          logged: (kind, text) => {
+            // An activity once until it changes: the rest step says its own every tick.
+            if (kind === 'doing') {
+              if (text === this.megaDoing) return;
+              this.megaDoing = text;
+            }
+            this.sink.engineLog?.(kind, text);
+          },
           // Where MegaMUD would play the sound its `[Alerts]` names.
           alert: (which) => this.sink.notice(megaAlertText(which)),
           world: () => this.world,
@@ -5672,6 +5720,7 @@ export class SessionManager {
     route: Route,
     run = false
   ): string | null {
+    this.sink.acted?.({ act: 'collectThenWalk', items, route, run });
     return this.unchosen(route) ?? this.itemErrand.collect(items, route, this.tracker.current, run);
   }
 
@@ -5696,6 +5745,7 @@ export class SessionManager {
    * it* (todo 06).
    */
   walkPlan(route: Route, run = false): WalkStart {
+    this.sink.acted?.({ act: 'walkPlan', route, run });
     const unchosen = this.unchosen(route);
     if (unchosen !== null) return { refused: unchosen };
     return this.started(route, run);
@@ -5730,6 +5780,7 @@ export class SessionManager {
 
   /** One room back the way the character came, per press: MegaMUD's Step Back. */
   stepBack(): MovementStart {
+    this.sink.acted?.({ act: 'stepBack' });
     // MegaMUD's Step Back (`0x869`).
     if (this.mega === null) return { refused: t('session.megamud.noEngine') };
     this.mega.press(WindowCommand.StepBack);
@@ -5755,6 +5806,7 @@ export class SessionManager {
 
   /** Stop moving: MegaMUD's Go/Stop, whichever of a route and a loop it is walking. */
   stopMoving(): void {
+    this.sink.acted?.({ act: 'stopMoving' });
     // MegaMUD's Stop: its Go/Stop button, when it is going.
     if (this.mega?.walking === true) this.mega.button(WindowCommand.GoStop);
     // The one door a person's stop comes through, so it is the one place that
@@ -5767,6 +5819,7 @@ export class SessionManager {
    * its Go, picking up whatever it was walking.
    */
   startMoving(loopName: string | null): MovementStart {
+    this.sink.acted?.({ act: 'startMoving', loop: loopName });
     const mega = this.mega;
     if (mega === null) return { refused: t('session.megamud.noEngine') };
     // A loop named is made MegaMUD's loop (`@loop`); none is its Go.
@@ -5784,6 +5837,12 @@ export class SessionManager {
    * hunt's) kept for the engine to find (`megaLoops`).
    */
   startLoop(loop: Loop): MovementStart {
+    this.sink.acted?.({ act: 'startLoop', loop });
+    return this.beginLoop(loop);
+  }
+
+  /** `startLoop` for the session's own reasons: a hunt's lap, a resumed one. Not the player's. */
+  private beginLoop(loop: Loop): MovementStart {
     const mega = this.mega;
     if (mega === null) return { refused: t('session.megamud.noEngine') };
     if (this.loopNamed(loop.name) === undefined) this.megaLoops.set(loop.name, loop);
@@ -5937,6 +5996,18 @@ export class SessionManager {
   }
 
   /** A player's action on the engine, kept so a question it asks can be answered by running it again. */
+  /** The engine's settings to the capture, without the login (`SessionAct`). */
+  private actSettings(): void {
+    if (this.megaSettings === null || this.sink.acted === undefined) return;
+    const settings = structuredClone(this.megaSettings);
+    const bbs = settings.live['BBS'];
+    if (bbs !== undefined) {
+      delete bbs['UserID'];
+      delete bbs['Password'];
+    }
+    this.sink.acted({ act: 'megamud', settings });
+  }
+
   private megaAct<T>(act: () => T): T {
     this.megaRetry = act;
     return act();
@@ -5949,6 +6020,7 @@ export class SessionManager {
   }
 
   megaAnswer(question: string, yes: boolean): void {
+    this.sink.acted?.({ act: 'megaAnswer', question, yes });
     if (this.megaQuestion !== question) return;
     this.megaQuestion = null;
     this.publishAutomation();
@@ -5960,6 +6032,7 @@ export class SessionManager {
 
   /** One of the MegaMUD engine's toolbar toggles pressed; why not, when it cannot be. */
   megaToggle(name: MegaToggle): string | null {
+    this.sink.acted?.({ act: 'megaToggle', name });
     if (this.mega === null) return t('session.megamud.noEngine');
     this.mega.toggle(name);
     return null;

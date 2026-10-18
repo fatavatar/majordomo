@@ -97,6 +97,42 @@ import type { WorldGraph } from '../world/WorldGraph';
 import { State } from '../megamud/states';
 import { SpellFlag, ItemFlag, StepFlag, RouteFlag, Exit, Darkness } from '../megamud/flags';
 
+/**
+ * The engine's fields that decide whether it walks, rests or waits: each
+ * change to them goes to `MegaEngineHost.logged` as `gates`, so a
+ * capture says why a character stood still (2026-10-17: Archer stood a
+ * minute after his webs dissolved, and nothing recorded why).
+ */
+const GATES = [
+  'state',
+  'task',
+  'walking',
+  'looping',
+  'inCombat',
+  'held',
+  'blind',
+  'confused',
+  'attackPrevented',
+  'restUntilOff',
+  'partyWait',
+  'holdingLeader',
+  'mustRest',
+  'restReason',
+  'resting',
+  'meditating',
+  'runCount',
+  'rescueCount',
+  'partyAskPending'
+] as const satisfies readonly (keyof Session)[];
+
+/**
+ * What the engine's own log says (`MegaEngineHost.logged`): `doing`, its
+ * status bar's activity (`0x4aab70`); `gates`, what changed of `GATES`;
+ * `step`, MegaMUD's debug step marks (`{D17}`, `{L12}`, …), on whenever
+ * something keeps the log; `said`, a line of its own on the console.
+ */
+export type EngineLogKind = 'doing' | 'gates' | 'step' | 'said';
+
 /** What the engine needs from the session it runs in. */
 export interface MegaEngineHost {
   /** To the socket, as typed. */
@@ -139,6 +175,12 @@ export interface MegaEngineHost {
    * holds the step until it is sent. See `SessionHost.beforeStep`.
    */
   beforeStep?(to: RoomId): void;
+  /**
+   * The engine's own log, everything it would say with MegaMUD's debug on
+   * (`EngineLogKind`), for a capture to keep beside the lines it answered.
+   * With it, the debug step marks go here and not to the console.
+   */
+  logged?(kind: EngineLogKind, text: string): void;
   /** The character is in the game (`0x47b070`'s first prompt), after its own `On entry` start. */
   enteredGame?(): void;
   /**
@@ -485,9 +527,16 @@ export class MegaEngine {
   ) {
     const engineHost: SessionHost = {
       write: (text) => this.write(text),
-      trace: (text) => this.host.show(text),
-      activity: () => {},
-      show: (text) => this.host.show(text),
+      // A debug step mark (`{…}`) is for the log alone; MegaMUD's other notes are shown too.
+      trace: (text) => {
+        if (text.startsWith('{') && this.host.logged !== undefined) {
+          this.host.logged('step', text);
+          return;
+        }
+        this.said(text);
+      },
+      activity: (text) => this.host.logged?.('doing', text),
+      show: (text) => this.said(text),
       clock: () => Math.floor(Date.now() / 1000),
       tickMs: () => Date.now(),
       alert: (which) => this.alert(which),
@@ -515,6 +564,8 @@ export class MegaEngine {
     // A copy: the data read is shared between sessions, and the engine changes it as it learns.
     this.s = new Session(engineHost, structuredClone(setup.data));
     loadCharacter(this.s, setup.settings);
+    // MegaMUD's debug marks, for the log: they only ever print (`logged`), never steer.
+    if (host.logged !== undefined) this.s.debug = 1;
     bbsSetup(this.s, (key) => setup.bbs?.[key]);
     this.s.now = engineHost.clock();
     const memory = setup.memory;
@@ -537,6 +588,7 @@ export class MegaEngine {
         () =>
           this.safely(() => {
             secondTick(this.s);
+            this.noteGates();
             this.fleeTick();
             this.keepLearned();
             this.noteToggles();
@@ -944,7 +996,31 @@ export class MegaEngine {
     if (this.parked !== null && !this.parked.planning && this.host.here() !== null)
       this.safely(() => this.unpark());
     this.noteToggles();
+    this.noteGates();
     if (entered) this.host.enteredGame?.();
+  }
+
+  /** The gates as last told (`GATES`). */
+  private gates: Partial<Record<(typeof GATES)[number], unknown>> = {};
+
+  /** What changed of the gates, told as `state 0→46, held 1→0`. */
+  private noteGates(): void {
+    if (this.host.logged === undefined) return;
+    const moved: string[] = [];
+    for (const key of GATES) {
+      const now = this.s[key];
+      if (now === this.gates[key]) continue;
+      if (key in this.gates)
+        moved.push(`${key} ${JSON.stringify(this.gates[key])}→${JSON.stringify(now)}`);
+      this.gates[key] = now;
+    }
+    if (moved.length > 0) this.host.logged('gates', moved.join(', '));
+  }
+
+  /** A line of MegaMUD's own, to the console and the log. */
+  private said(text: string): void {
+    this.host.logged?.('said', text);
+    this.host.show(text);
   }
 
   /** Whether the character is in the game (`0x47b070`'s first prompt seen, not since left). */

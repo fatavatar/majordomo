@@ -505,7 +505,9 @@ export class SessionHost {
           // this client redacts a password. Both records take the same value.
           slot.capture?.out(command, source);
           debug.out(command, source);
-        }
+        },
+        acted: (act) => slot.capture?.act(act),
+        engineLog: (kind, text) => slot.capture?.engine(kind, text)
       },
       this.options.worldFor(id),
       config.automation,
@@ -603,6 +605,7 @@ export class SessionHost {
       slot.capture ??= new SessionCapture({
         directory,
         maxBytes: config.logging.maxBytes,
+        keepBytes: config.logging.keepBytes,
         onProblem: problem,
         // Said when the file exists, not when the dial went out: a retry that
         // never connects creates no capture and should announce none.
@@ -620,6 +623,7 @@ export class SessionHost {
       slot.log ??= new SessionLog({
         directory,
         maxBytes: config.logging.maxBytes,
+        keepBytes: config.logging.keepBytes,
         onProblem: problem
       });
       slot.log.open(target, undefined, id);

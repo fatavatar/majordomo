@@ -39,6 +39,7 @@ import {
 import { DENOMINATIONS, type Denomination } from './character';
 import { asCoinNames, type CoinNames } from './coins';
 import { asBbsSettings, type BbsSettings } from './megamud/bbs';
+import type { MegaSettings } from './megamud/settings';
 import {
   DEFAULT_ALERT_DEBOUNCE_SECONDS,
   isAlertEvent,
@@ -230,6 +231,7 @@ export interface GlobalDraft {
     conversations: boolean;
     conversationDays: number;
     maxBytes: number;
+    keepBytes: number;
   };
   automation: {
     enabled: boolean;
@@ -616,6 +618,13 @@ export interface ProfileDraft {
   afk: { enabled: boolean; afterMinutes: number; reply: string };
   /** `ui.rewrites` — the status line and listings this player designed for this character. */
   rewrites: RewritesUiConfig;
+  /**
+   * Its MegaMUD settings (`megamud:`), saved with the rest of it (2026-10-18),
+   * where they had a save of their own. Taken key by key over the file's own
+   * where they are written (`settingsFromDraft`), which needs the file; absent
+   * leaves the file's alone.
+   */
+  megamud?: MegaSettings;
 }
 
 /**
@@ -1127,7 +1136,9 @@ export function asProfileDraft(value: unknown): ProfileDraft | null {
       players: playerGrants(remotes['players']),
       commands: asBotCommands(remotes['commands'])
     },
-    rewrites: normalizeRewrites(value['rewrites'])
+    rewrites: normalizeRewrites(value['rewrites']),
+    // Parsed where it is written, over the file's own: see the field.
+    ...(isRecord(value['megamud']) ? { megamud: value['megamud'] as unknown as MegaSettings } : {})
   };
 }
 
@@ -1218,7 +1229,8 @@ export function asGlobalDraft(value: unknown): GlobalDraft | null {
       fights: logging['fights'] === true,
       conversations: logging['conversations'] === true,
       conversationDays: clamp(logging['conversationDays'], 1, 36500, 365),
-      maxBytes: clamp(logging['maxBytes'], 0, 1_000_000_000, 50_000_000)
+      maxBytes: clamp(logging['maxBytes'], 0, 1_000_000_000, 50_000_000),
+      keepBytes: clamp(logging['keepBytes'], 0, 1024 ** 4, 2 * 1024 ** 3)
     },
     automation: {
       enabled: automation['enabled'] === true,

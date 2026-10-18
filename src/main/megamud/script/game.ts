@@ -284,6 +284,18 @@ export function connectionClosed(s: Session): void {
     s.exitForShutdown = 0;
     s.exitForLogoff = 0;
     s.connectionLive = 0;
+    /*
+     * Not MegaMUD's: the hang-up that took it off for the cleanup is done, so
+     * it no longer stands for the next close. MegaMUD 2.1 keeps it (`0xe158`
+     * is written only at `0x42d545`, the hang-up, and cleared at `0x42ce23`,
+     * a plain close, and `0x4632db`, the Connect button; read 2026-10-18), so
+     * a cleanup redial that the BBS hung up on was taken as its own hang-up and
+     * never dialled again, and one that logged on hung up on nothing all
+     * session. Healbot, off for the cleanup at 07:15 on 2026-10-18 and
+     * redialled at 07:18 while the BBS still said "Sorry, this system is not
+     * available", stayed off for four hours.
+     */
+    s.hangingUp = 0;
     s.exitForRelog = 0;
     goOnline(s, 0);
     setTask(s, Task.Redial);

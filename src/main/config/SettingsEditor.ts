@@ -1,5 +1,12 @@
 import fs from 'node:fs';
-import { settingsToStored, type MegaSettings } from '../../shared/megamud/settings';
+import {
+  defaultSettings,
+  settingsFromDraft,
+  settingsFromStored,
+  settingsToStored,
+  type MegaSettings
+} from '../../shared/megamud/settings';
+import { megamudFromConfig } from '../../shared/megamud/fromConfig';
 import path from 'node:path';
 import { isMap, isSeq, parse, Scalar } from 'yaml';
 
@@ -28,6 +35,7 @@ import {
   ownMonsterRules,
   PROFILE_ACCENTS,
   resolveProfile,
+  type Profile,
   type ProfileAccent
 } from '../../shared/profiles';
 import { isThemePreference, type ThemePreference } from '../../shared/themes';
@@ -85,6 +93,13 @@ export interface SettingsEditorOptions {
     };
     realm(): SpellOption[];
   };
+  /**
+   * The MegaMUD settings a character runs on (`megamudSettingsOf`): its
+   * file's, or, with none there, started from its old automation with the
+   * realm's spell words, which are the realm layer's to answer. Without it,
+   * the file's or MegaMUD's defaults.
+   */
+  megamud?: (id: string, profile: Profile) => MegaSettings;
 }
 
 /**
@@ -131,10 +146,12 @@ function differs(mine: unknown, value: unknown): boolean {
 export class SettingsEditor {
   private readonly home: Home;
   private readonly spells: SettingsEditorOptions['spells'];
+  private readonly megamud: SettingsEditorOptions['megamud'];
 
   constructor(options: SettingsEditorOptions) {
     this.home = options.home;
     this.spells = options.spells;
+    this.megamud = options.megamud;
   }
 
   private profilePath(id: string): string {
@@ -205,10 +222,25 @@ export class SettingsEditor {
      * not this one. That is the whole of "Global is just defaults".
      */
     const creating = !fs.existsSync(file);
+    /*
+     * Its MegaMUD settings, with the rest of it (2026-10-18), over the file's
+     * own so the sections the window does not edit are kept. The password
+     * never crossed: an empty one leaves the stored one alone.
+     */
+    let megamud: MegaSettings | null = null;
+    if (draft.megamud !== undefined) {
+      const onFile = creating ? defaultSettings() : storedMegamud(file);
+      megamud = settingsFromDraft(draft.megamud, onFile);
+      if (megamud === null) return { ok: false, error: t('app.megamud.invalidSettings') };
+      if (megamud.live['BBS']!['Password'] === '') {
+        megamud.live['BBS']!['Password'] = onFile.live['BBS']?.['Password'] ?? '';
+      }
+    }
 
     const written = editYaml(file, {
       mutate: (document) => {
         document.setIn(['name'], draft.name.length > 0 ? draft.name : id);
+        if (megamud !== null) document.setIn(['megamud'], settingsToStored(megamud));
         document.setIn(['accent'], draft.accent);
         document.setIn(['autoConnect'], draft.autoConnect);
         document.setIn(['autoReconnect'], draft.autoReconnect);
@@ -550,21 +582,6 @@ export class SettingsEditor {
     const gang = [...new Set(remotes)];
     return editYaml(file, {
       mutate: (document) => document.setIn(['automation', 'remotes', 'gang'], gang)
-    });
-  }
-
-  /**
-   * This character's MegaMUD settings, whole, as its `megamud:` mapping
-   * (`settingsToStored`: MegaMUD's sections and keys, what differs from its
-   * defaults). Having them is what runs the character on the MegaMUD engine.
-   */
-  saveMegamud(id: string, settings: MegaSettings): EditResult {
-    const file = this.profilePath(id);
-    if (!fs.existsSync(file)) {
-      return { ok: false, error: t('errors.settings.characterNotFound', { id }) };
-    }
-    return editYaml(file, {
-      mutate: (document) => document.setIn(['megamud'], settingsToStored(settings))
     });
   }
 
@@ -1020,7 +1037,8 @@ export class SettingsEditor {
         fights: config.logging.fights,
         conversations: config.logging.conversations,
         conversationDays: config.logging.conversationDays,
-        maxBytes: config.logging.maxBytes
+        maxBytes: config.logging.maxBytes,
+        keepBytes: config.logging.keepBytes
       },
       automation: {
         enabled: config.automation.enabled,
@@ -1129,6 +1147,7 @@ export class SettingsEditor {
         set(['logging', 'conversations'], draft.logging.conversations);
         set(['logging', 'conversationDays'], draft.logging.conversationDays);
         set(['logging', 'maxBytes'], draft.logging.maxBytes);
+        set(['logging', 'keepBytes'], draft.logging.keepBytes);
 
         set(['automation', 'enabled'], draft.automation.enabled);
         set(['automation', 'idle'], { ...draft.automation.idle });
@@ -1278,6 +1297,7 @@ export class SettingsEditor {
           isRecord(account) &&
           typeof account['statsKey'] === 'string' &&
           account['statsKey'].length > 0,
+        ...this.megamudOf(id, resolved.error === undefined ? resolved.profile : null, record),
         /*
          * The resolved combat block, except for the monster rows, which are
          * the character's **own** from the file as written (todo 01).
@@ -1347,10 +1367,31 @@ export class SettingsEditor {
       },
       global: this.globalDraft(),
       realmSpells: this.spells?.realm() ?? [],
+      newMegamud: megamudFromConfig(config.automation, (spell) => spell),
       home: this.home.root,
       configPath: this.home.options,
       profilesDir: this.home.profilesDir
     };
+  }
+
+  /**
+   * A character's MegaMUD settings for the form, the password kept back: what
+   * it runs on, or, for one that will not resolve, what its file states, so a
+   * save from the form never writes MegaMUD's defaults over them.
+   */
+  private megamudOf(
+    id: string,
+    profile: Profile | null,
+    file: Record<string, unknown>
+  ): Pick<ProfileEditable, 'megamud' | 'megamudHasPassword'> {
+    const settings = structuredClone(
+      profile === null
+        ? settingsFromStored(file['megamud'])
+        : (this.megamud?.(id, profile) ?? profile.megamud)
+    );
+    const password = String(settings.live['BBS']?.['Password'] ?? '');
+    settings.live['BBS']!['Password'] = '';
+    return { megamud: settings, megamudHasPassword: password !== '' };
   }
 
   /** The character directories, sorted, so the list does not reshuffle. */
@@ -1442,6 +1483,16 @@ function themeOf(ui: unknown): ThemePreference | '' {
   return isThemePreference(theme) ? theme : '';
 }
 
+/** The MegaMUD settings a character's file states, or MegaMUD's defaults. */
+function storedMegamud(file: string): MegaSettings {
+  try {
+    const raw: unknown = parse(fs.readFileSync(file, 'utf8'));
+    return settingsFromStored(isRecord(raw) ? raw['megamud'] : undefined);
+  } catch {
+    return defaultSettings();
+  }
+}
+
 function accentOf(value: unknown, fallback: ProfileAccent): ProfileAccent {
   return PROFILE_ACCENTS.includes(value as ProfileAccent) ? (value as ProfileAccent) : fallback;
 }
@@ -1466,6 +1517,8 @@ function blank(id: string): ProfileEditable {
     pvp: DEFAULT_CONFIG.automation.safety.pvp,
     stats: DEFAULT_CONFIG.logging.stats,
     statsLinked: false,
+    megamud: defaultSettings(),
+    megamudHasPassword: false,
     combat: DEFAULT_CONFIG.automation.combat,
     party: DEFAULT_CONFIG.automation.party,
     health: DEFAULT_CONFIG.automation.health,

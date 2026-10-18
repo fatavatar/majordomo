@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import zlib from 'node:zlib';
 
-import { FightLog, readFights } from '../FightLog';
+import { FightLog, olderFights, readFights } from '../FightLog';
 import type { FightRecord } from '../../../shared/fights';
 
 let dir: string;
@@ -231,6 +231,26 @@ describe('what the record says about a monster', () => {
     const later = new FightLog(file);
     expect((await later.summary('giant rat'))?.fights).toBe(4);
     later.dispose();
+  });
+
+  /* Skinny's fight log had reached 40 MB with no limit (2026-10-18). */
+  it('rolls a file past its size on opening, and still counts both', async () => {
+    vi.useRealTimers();
+    const first = new FightLog(file);
+    first.record(fight({ mob: 'giant rat', mine: 30, at: 1 }));
+    first.dispose();
+    const second = new FightLog(file, {}, 1);
+    expect(fs.existsSync(olderFights(file))).toBe(true);
+    expect(fs.existsSync(file)).toBe(false);
+    second.record(fight({ mob: 'giant rat', mine: 10, at: 2 }));
+    second.dispose();
+    const third = new FightLog(file);
+    expect(await third.summary('giant rat')).toMatchObject({ fights: 2, meanMine: 20 });
+    third.dispose();
+    // Rolled again, the oldest goes: what is kept is two files at most.
+    const fourth = new FightLog(file, {}, 1);
+    expect(await fourth.summary('giant rat')).toMatchObject({ fights: 1, meanMine: 10 });
+    fourth.dispose();
   });
 
   it('answers as empty, out loud, from a record it cannot read', async () => {

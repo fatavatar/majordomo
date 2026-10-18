@@ -541,8 +541,17 @@ export interface LoggingConfig {
    * reliably writable location on all three platforms.
    */
   directory: string;
-  /** Stop appending past this size, rather than filling a disk unattended. */
+  /**
+   * A session log, a capture or a fight log goes on in a new file past this
+   * size. It used to stop, which lost the rest of a long session.
+   */
   maxBytes: number;
+  /**
+   * What the logs directory may hold in all: the oldest logs and captures are
+   * deleted past it, never one a session has open (2026-10-18: it had grown to
+   * 3.6 GB). 2 GiB by default.
+   */
+  keepBytes: number;
   /** Posting this character's readings to its realm's mudstats board. See `StatsReportConfig`. */
   stats: StatsReportConfig;
 }
@@ -2551,6 +2560,7 @@ export const DEFAULT_CONFIG: AppConfig = {
     conversationDays: 365,
     directory: '',
     maxBytes: 64 * 1024 * 1024,
+    keepBytes: 2 * 1024 ** 3,
     stats: { enabled: false, everySeconds: 60 }
   },
   automation: {
@@ -4063,6 +4073,8 @@ function normalizeLogging(value: unknown): LoggingConfig {
     // Floor of 64 KiB: a cap smaller than one screenful of combat is a
     // misconfiguration rather than a preference.
     maxBytes: int(raw['maxBytes'], DEFAULT_CONFIG.logging.maxBytes, 64 * 1024, 4 * 1024 ** 3),
+    // Floor of 64 MiB, room for a session's files; at most a terabyte.
+    keepBytes: int(raw['keepBytes'], DEFAULT_CONFIG.logging.keepBytes, 64 * 1024 ** 2, 1024 ** 4),
     stats: normalizeStatsReport(raw['stats'])
   };
 }

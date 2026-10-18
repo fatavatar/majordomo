@@ -10,6 +10,7 @@ import {
   worldSignature,
   type AfterFetch,
   type EngineLessons,
+  type EngineLogKind,
   type EngineMemory,
   type MegaEngineHost
 } from '../MegaEngine';
@@ -159,6 +160,46 @@ describe('what an errand lends the engine', () => {
     e.alsoFight('stone statue', false);
     expect({ relationship: rec().relationship, flags: rec().flags }).toEqual(before);
     e.dispose();
+  });
+});
+
+/* Archer stood a minute after his webs dissolved, and nothing recorded why (2026-10-17). */
+describe('the engine’s own log', () => {
+  function logging() {
+    const made = engine();
+    const logged: [EngineLogKind, string][] = [];
+    (made.e as unknown as { host: MegaEngineHost }).host.logged = (kind, text) =>
+      logged.push([kind, text]);
+    return { ...made, logged };
+  }
+
+  it('tells what changed of what its steps wait on, and what it is doing', () => {
+    const { e, logged } = logging();
+    e.received('\r\n');
+    expect(logged).toEqual([]);
+    e.s.held = 1;
+    e.s.partyWait = 1;
+    e.received('\r\n');
+    expect(logged).toEqual([['gates', 'held 0→1, partyWait 0→1']]);
+    e.s.host.activity('Resting because we can’t move');
+    expect(logged.at(-1)).toEqual(['doing', 'Resting because we can’t move']);
+    e.dispose();
+  });
+
+  it('keeps its debug step marks off the console, and its own lines on it', () => {
+    const { e, shown, logged } = logging();
+    e.s.host.trace('{D17}');
+    e.s.host.trace('[Bueller?]');
+    expect(logged).toEqual([
+      ['step', '{D17}'],
+      ['said', '[Bueller?]']
+    ]);
+    expect(shown).toEqual(['[Bueller?]']);
+    e.dispose();
+  });
+
+  it('turns MegaMUD’s debug on only for a host that keeps the log', () => {
+    expect(engine().e.s.debug).toBe(0);
   });
 });
 

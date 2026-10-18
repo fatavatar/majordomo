@@ -139,14 +139,14 @@ import {
   type ItemTable
 } from '../shared/itemRules';
 import { asMegaMudPaths, type LoopImport } from '../shared/megamudPaths';
-import { settingsFromDraft, type MegaSettings } from '../shared/megamud/settings';
+import type { MegaSettings } from '../shared/megamud/settings';
 import { megamudFromConfig } from '../shared/megamud/fromConfig';
 import { asMegaToggle } from '../shared/megamud/toggles';
 import type { MegaData } from './megamud/data';
 import { megaDataFrom } from './megamud/fromWorld';
 import { planRoute } from './world/RoutePlanner';
 import type { EngineMemory, MegaEngineSetup } from './session/MegaEngine';
-import type { LearnedSpellTable, MegaMudSettingsView, SessionSummary } from '../shared/ipc';
+import type { LearnedSpellTable, SessionSummary } from '../shared/ipc';
 import { EMPTY_CHARACTER } from '../shared/character';
 import { IDLE_WALK } from '../shared/walk';
 import { isLoopScope, mergeLoops, NO_LOOP } from '../shared/loops';
@@ -638,9 +638,11 @@ function fightsFor(id: SessionId): FightSink {
   if (!(config?.config.logging.fights ?? DEFAULT_CONFIG.logging.fights)) return NO_FIGHTS;
   const existing = fightLogs.get(id);
   if (existing) return existing;
-  const log = new FightLog(home.state('fights', `${id}.jsonl.gz`), {
-    notice: (message) => announce('fights', message)
-  });
+  const log = new FightLog(
+    home.state('fights', `${id}.jsonl.gz`),
+    { notice: (message) => announce('fights', message) },
+    config?.config.logging.maxBytes ?? DEFAULT_CONFIG.logging.maxBytes
+  );
   fightLogs.set(id, log);
   // Folded now, off the thread: the hunting survey asks synchronously, and
   // automatic hunting's first survey would otherwise price nothing and keep
@@ -2898,7 +2900,8 @@ function registerIpc(): void {
     realm: () => realms?.shippedGraph().castableSpells() ?? []
   };
 
-  const editor = (): SettingsEditor => new SettingsEditor({ home, spells: settingsSpells });
+  const editor = (): SettingsEditor =>
+    new SettingsEditor({ home, spells: settingsSpells, megamud: megamudSettingsOf });
 
   handle(Invoke.settingsSnapshot, () => editor().snapshot());
 
@@ -3116,25 +3119,9 @@ function registerIpc(): void {
     return result.ok ? null : result.error;
   });
 
-  handle(Invoke.megamudSettings, (_caller, rawId: unknown) => {
+  handle(Invoke.megamudChoices, (_caller, rawId: unknown) => {
     const id = asProfileId(rawId);
-    /*
-     * A character created a moment ago is asked for straight after its save,
-     * before the store's poll has read it (2026-10-16): its MegaMUD tabs stayed
-     * hidden, as for a character not yet made, until a restart. Read the
-     * folder now, as a save of these settings does.
-     */
-    if (id !== null && profileFor(id) === undefined) profiles?.refresh();
-    const profile = id === null ? undefined : profileFor(id);
-    if (profile === undefined || id === null) return null;
-    const settings = structuredClone(megamudSettingsOf(id, profile));
-    const password = String(settings.live['BBS']?.['Password'] ?? '');
-    settings.live['BBS']!['Password'] = '';
-    return {
-      settings,
-      hasPassword: password !== '',
-      choices: host?.get(id)?.manager.megaChoices() ?? null
-    } satisfies MegaMudSettingsView;
+    return id === null ? null : (host?.get(id)?.manager.megaChoices() ?? null);
   });
 
   handle(Invoke.seenPlayers, (_caller, rawId: unknown) => {
@@ -3152,33 +3139,6 @@ function registerIpc(): void {
       return t('app.profiles.noSuchCharacter');
     }
     playerBook?.forget(realmAddress(target), rawName);
-    return null;
-  });
-
-  handle(Invoke.saveMegamud, (_caller, rawId: unknown, raw: unknown) => {
-    const id = asProfileId(rawId);
-    /*
-     * A character created a moment ago, its settings read from a MegaMUD
-     * file (2026-10-14), may not have reached the store, which polls: read
-     * the folder now rather than refuse it.
-     */
-    if (id !== null && profileFor(id) === undefined) profiles?.refresh();
-    const profile = id === null ? undefined : profileFor(id);
-    if (profile === undefined || id === null) return t('app.profiles.noSuchCharacter');
-    const settings = settingsFromDraft(raw, profile.megamud);
-    if (settings === null) return t('app.megamud.invalidSettings');
-    // Empty is "leave it alone": the password never crossed.
-    if (settings.live['BBS']!['Password'] === '') {
-      settings.live['BBS']!['Password'] = profile.megamud.live['BBS']?.['Password'] ?? '';
-    }
-    const written = editor().saveMegamud(id, settings);
-    if (!written.ok) return t('app.megamud.writeFailed', { error: written.error });
-    /*
-     * Read back now rather than on the store's next poll: the window asks for
-     * the settings again straight after saving, and the running engine takes
-     * them from the store.
-     */
-    profiles?.refresh();
     return null;
   });
 

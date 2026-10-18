@@ -86,36 +86,38 @@ describe('what a session log keeps', () => {
  * unattended. This is the property that makes leaving one running safe, and
  * nothing was checking it.
  */
+/*
+ * Past the cap the log goes on in a new part (2026-10-18): it used to stop,
+ * and Skinny's went silent for the last five hours of a session.
+ */
 describe('the size cap', () => {
-  it('stops appending once the cap is reached', async () => {
+  const written = async (log: SessionLog): Promise<Record<string, string>> => {
+    await log.close();
+    return Object.fromEntries(
+      fs.readdirSync(dir).map((name) => [name, fs.readFileSync(path.join(dir, name), 'utf8')])
+    );
+  };
+
+  it('goes on in a new part once the cap is reached', async () => {
     const log = open(64);
     log.write('x'.repeat(40));
     log.write('y'.repeat(40));
-    const text = await contents(log);
-    expect(text.length).toBeLessThanOrEqual(64);
-    expect(text).not.toContain('y');
+    const files = await written(log);
+    const names = Object.keys(files).sort();
+    expect(names).toEqual(['2026-08-25_12-00-00_vaelor.2.log', '2026-08-25_12-00-00_vaelor.log']);
+    expect(files[names[1]!]).toContain('x'.repeat(40));
+    expect(files[names[1]!]).not.toContain('y');
+    expect(files[names[0]!]).toContain('--- continued, part 2 ---');
+    expect(files[names[0]!]).toContain('y'.repeat(40));
+    expect(problems).toEqual([]);
   });
 
-  it('says so rather than going quiet', () => {
+  it('keeps every part under the cap but one write', async () => {
     const log = open(64);
-    log.write('x'.repeat(100));
-    expect(problems.join(' ')).toMatch(/limit|no longer recording/i);
-    void log.close();
-  });
-
-  /* A message per write would be a warning nobody reads. */
-  it('says it once, however much more arrives', () => {
-    const log = open(64);
-    for (let i = 0; i < 10; i += 1) log.write('x'.repeat(100));
-    expect(problems).toHaveLength(1);
-    void log.close();
-  });
-
-  it('stays stopped for the rest of the session', async () => {
-    const log = open(64);
-    log.write('x'.repeat(100));
-    log.write('short');
-    expect(await contents(log)).not.toContain('short');
+    for (let i = 0; i < 10; i += 1) log.write('z'.repeat(30));
+    const files = await written(log);
+    expect(Object.keys(files).length).toBeGreaterThan(3);
+    for (const text of Object.values(files)) expect(text.length).toBeLessThanOrEqual(64 + 30);
   });
 });
 

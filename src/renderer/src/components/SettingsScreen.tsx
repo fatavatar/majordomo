@@ -42,9 +42,9 @@ import {
   MegaMudPanel,
   characterOfIni,
   isMegaTab,
-  useMegaMudDraft
+  megaMudDraft
 } from './MegaMudSettings';
-import type { MegaSettings } from '@shared/megamud/settings';
+import { defaultSettings, type MegaSettings } from '@shared/megamud/settings';
 import RemoteList from './RemoteList';
 import RewritesDesigner from './RewriteDesigner';
 
@@ -65,7 +65,6 @@ import {
   type History
 } from '../lib/history';
 import { useAutoSave } from '../hooks/useAutoSave';
-import { mergedSave, useMergedHistory } from '../hooks/useMergedHistory';
 import { useSettingsPanel } from '../hooks/useSettingsPanel';
 import { PROFILE_ACCENTS, type ProfileAccent } from '@shared/profiles';
 import { isThemePreference, THEME_IDS, THEMES, type ThemePreference } from '@shared/themes';
@@ -82,7 +81,7 @@ import type { Loop, ScopedLoop } from '@shared/loops';
 import type {
   LearnedSpellRow,
   LearnedSpellTable,
-  MegaMudSettingsView,
+  MegaChoices,
   ProfileEditable,
   SessionId,
   SettingsSnapshot
@@ -351,9 +350,8 @@ export interface SettingsScreenProps {
   load(): Promise<SettingsSnapshot>;
   saveProfile(id: string, draft: ProfileDraft): Promise<string | null>;
   deleteProfile(id: string): Promise<string | null>;
-  /** A character's MegaMUD settings, read and written. See `MegaMudSettings`. */
-  megamudSettings(id: string): Promise<MegaMudSettingsView | null>;
-  saveMegamud(id: string, settings: MegaSettings): Promise<string | null>;
+  /** What a character's running engine offers its MegaMUD tabs. See `MegaMudSettings`. */
+  megamudChoices(id: string): Promise<MegaChoices | null>;
   saveServer(previousName: string | null, draft: ServerDraft): Promise<string | null>;
   deleteServer(name: string): Promise<string | null>;
   /** The realm's mudstats board: link, unlink and ask after a character, and test an address. */
@@ -790,6 +788,12 @@ interface CharacterForm {
   answerRemotes: boolean;
   /** The status line and listings this player designed — `ui.rewrites`. */
   rewrites: RewritesUiConfig;
+  /**
+   * Its MegaMUD settings, the `megamud:` its MegaMUD tabs edit, in this one
+   * form with everything else (2026-10-18). `BBS.Password` always empty: the
+   * screen is never told it.
+   */
+  megamud: MegaSettings;
   /** Whether the gang's own channel is one of the channels it answers on. */
   remoteGangpath: boolean;
   /** Whether a leader's invitation is joined without waiting for `@join`. */
@@ -953,7 +957,8 @@ function formOf(entry: ProfileEditable): CharacterForm {
     remoteParty: [...entry.remotes.party],
     remotePlayers: entry.remotes.players,
     remoteCommands: entry.remotes.commands,
-    rewrites: entry.rewrites
+    rewrites: entry.rewrites,
+    megamud: entry.megamud
   };
 }
 
@@ -1206,7 +1211,8 @@ function draftOf(form: CharacterForm): ProfileDraft {
       // Rows not yet saying what is asked or sent are not written.
       commands: form.remoteCommands.filter((c) => c.word.trim() !== '' && c.send.trim() !== '')
     },
-    rewrites: form.rewrites
+    rewrites: form.rewrites,
+    megamud: form.megamud
   };
 }
 
@@ -1318,7 +1324,8 @@ function emptyServerForm(defaults: GlobalDraft | null): ServerDraft {
  */
 function emptyForm(
   servers: SettingsSnapshot['servers'],
-  defaults: GlobalDraft | null
+  defaults: GlobalDraft | null,
+  megamud: MegaSettings | null
 ): CharacterForm {
   const combat = defaults?.automation.combat ?? DEFAULT_COMBAT;
   const health = defaults?.automation.health ?? DEFAULT_HEALTH;
@@ -1499,7 +1506,8 @@ function emptyForm(
     remoteParty: [...remotes.party],
     remotePlayers: remotes.players,
     remoteCommands: remotes.commands,
-    rewrites
+    rewrites,
+    megamud: megamud ?? defaultSettings()
   };
 }
 
@@ -1727,8 +1735,7 @@ export default function SettingsScreen({
   load,
   saveProfile,
   deleteProfile,
-  megamudSettings,
-  saveMegamud,
+  megamudChoices,
   saveServer,
   deleteServer,
   stats,
@@ -1788,19 +1795,19 @@ export default function SettingsScreen({
    * comment above for the test a section has to pass.
    */
   const [section, setSection] = useState<Section>('profile');
-  /*
-   * The chosen character's MegaMUD settings, for its MegaMUD tabs: loaded with
-   * the character, edited beside the rest of the page and saved as they are
-   * changed, as it is (`useMegaMudDraft`). None for a character not yet made.
-   */
-  const megaStore = useMemo(
-    () => ({ load: megamudSettings, save: saveMegamud }),
-    [megamudSettings, saveMegamud]
-  );
-  const mega = useMegaMudDraft(
-    selected === null || selected === NEW_CHARACTER ? null : selected,
-    megaStore
-  );
+  /** What the chosen character's running engine offers its MegaMUD tabs to choose from. */
+  const [megaChoices, setMegaChoices] = useState<MegaChoices | null>(null);
+  useEffect(() => {
+    let live = true;
+    setMegaChoices(null);
+    if (selected === null || selected === NEW_CHARACTER) return;
+    void megamudChoices(selected).then((found) => {
+      if (live) setMegaChoices(found);
+    });
+    return () => {
+      live = false;
+    };
+  }, [selected, megamudChoices]);
   /** Who the chosen character's realm has seen, asked for when its Players row is open. */
   const [seen, setSeen] = useState<string[]>([]);
   useEffect(() => {
@@ -1830,9 +1837,6 @@ export default function SettingsScreen({
    * used would read as one that had not worked.
    */
   const [copyFrom, setCopyFrom] = useState('');
-  /** A new character's MegaMUD settings read from a MegaMUD file, written when it is created. */
-  const [iniMega, setIniMega] = useState<MegaSettings | null>(null);
-  useEffect(() => setIniMega(null), [selected]);
   const [picking, setPicking] = useState(false);
   const [catalogue, setCatalogue] = useState<Loop[] | null>(null);
   const [serverPick, setServerPick] = useState<string | null>(null);
@@ -1969,7 +1973,7 @@ export default function SettingsScreen({
         setTab('characters');
         setSelected(NEW_CHARACTER);
         setCopyFrom('');
-        loadForm(emptyForm(next.servers, next.global));
+        loadForm(emptyForm(next.servers, next.global, next.newMegamud));
         return;
       }
       const asked = openAt === null ? undefined : next.characters.find((e) => e.id === openAt);
@@ -2005,7 +2009,9 @@ export default function SettingsScreen({
   useEffect(() => {
     if (!open || selected === null || form !== null) return;
     if (selected === NEW_CHARACTER) {
-      return loadForm(emptyForm(snapshot?.servers ?? [], snapshot?.global ?? null));
+      return loadForm(
+        emptyForm(snapshot?.servers ?? [], snapshot?.global ?? null, snapshot?.newMegamud ?? null)
+      );
     }
     const found = snapshot?.characters.find((entry) => entry.id === selected);
     if (found) loadForm(formOf(found));
@@ -2128,7 +2134,6 @@ export default function SettingsScreen({
        * `setSelected`, so the save still knows whose file it is.
        */
       characterSave.flush();
-      mega.save.flush();
       setSelected(id);
       setProblem(null);
       setSaved(null);
@@ -2144,11 +2149,12 @@ export default function SettingsScreen({
       setPicking(false);
       setCopyFrom('');
       if (id === null) return loadForm(null);
-      if (id === NEW_CHARACTER) return loadForm(emptyForm(servers, snapshot?.global ?? null));
+      if (id === NEW_CHARACTER)
+        return loadForm(emptyForm(servers, snapshot?.global ?? null, snapshot?.newMegamud ?? null));
       const found = characters.find((entry) => entry.id === id);
       loadForm(found ? formOf(found) : null);
     },
-    [characters, servers, snapshot, characterSave.flush, mega.save.flush]
+    [characters, servers, snapshot, characterSave.flush]
   );
 
   /**
@@ -2264,28 +2270,6 @@ export default function SettingsScreen({
   );
 
   /** Whichever form is on screen: its way back, and how its saving is going. */
-  /*
-   * The Character page edits two files, the character's and its MegaMUD
-   * settings, and has one Undo, one Redo and one save state for both: the
-   * last change is undone wherever it was made (2026-10-14).
-   */
-  const characterUndo = useMergedHistory({
-    character: {
-      present: history?.present,
-      can: {
-        undo: history !== null && canUndo(history),
-        redo: history !== null && canRedo(history)
-      },
-      undo: () => setHistory((current) => (current ? undo(current) : current)),
-      redo: () => setHistory((current) => (current ? redo(current) : current))
-    },
-    megamud: { present: mega.draft, can: mega.can, undo: mega.undo, redo: mega.redo }
-  });
-  const characterPageSave = useMemo(
-    () => mergedSave(characterSave, mega.save),
-    [characterSave, mega.save]
-  );
-
   const active = useMemo(() => {
     if (showsGlobal(tab)) {
       return {
@@ -2309,8 +2293,16 @@ export default function SettingsScreen({
         redo: () => setServerHistory((current) => (current ? redo(current) : current))
       };
     }
-    return { save: characterPageSave, ...characterUndo };
-  }, [tab, globalSave, serverSave, characterPageSave, characterUndo, globalHistory, serverHistory]);
+    return {
+      save: characterSave,
+      can: {
+        undo: history !== null && canUndo(history),
+        redo: history !== null && canRedo(history)
+      },
+      undo: () => setHistory((current) => (current ? undo(current) : current)),
+      redo: () => setHistory((current) => (current ? redo(current) : current))
+    };
+  }, [tab, globalSave, serverSave, characterSave, globalHistory, serverHistory, history]);
 
   /**
    * Closing does not lose the last second of typing.
@@ -2446,6 +2438,34 @@ export default function SettingsScreen({
     setSaved(null);
   };
 
+  /**
+   * The character's MegaMUD settings for its MegaMUD tabs: a part of its form,
+   * changed through its history like every other field, so one Undo and one
+   * save cover the page. Changes are taken on the latest form, as a tab may
+   * make two in one event.
+   */
+  const mega =
+    form === null
+      ? null
+      : megaMudDraft(
+          selected ?? '',
+          form.megamud,
+          characters.find((entry) => entry.id === selected)?.megamudHasPassword ?? false,
+          megaChoices,
+          (change) => {
+            setHistory((current) =>
+              current === null
+                ? current
+                : record(
+                    current,
+                    { ...current.present, megamud: change(current.present.megamud) },
+                    sameForm
+                  )
+            );
+            setSaved(null);
+          }
+        );
+
   const submitCharacter = async (event: FormEvent): Promise<void> => {
     event.preventDefault();
     if (!form) return;
@@ -2457,11 +2477,6 @@ export default function SettingsScreen({
 
     const error = await saveProfile(id, draft);
     if (error !== null) return setProblem(error);
-    if (selected === NEW_CHARACTER && iniMega !== null) {
-      const megaError = await saveMegamud(id, iniMega);
-      if (megaError !== null) setProblem(megaError);
-      setIniMega(null);
-    }
     const next = await refresh();
     setSaved(t('settings.characters.saved', { characterName: form.name || id }));
     // A character just created is the one you want open.
@@ -2787,7 +2802,6 @@ export default function SettingsScreen({
                           name="copy-from"
                           onChange={(value) => {
                             setCopyFrom(value);
-                            setIniMega(null);
                             setProblem(null);
                             setSaved(null);
                             const found = characters.find((entry) => entry.id === value);
@@ -2795,7 +2809,13 @@ export default function SettingsScreen({
                             // undo what choosing did or the control is
                             // one-way.
                             loadForm(
-                              found ? copyOf(found) : emptyForm(servers, snapshot?.global ?? null)
+                              found
+                                ? copyOf(found)
+                                : emptyForm(
+                                    servers,
+                                    snapshot?.global ?? null,
+                                    snapshot?.newMegamud ?? null
+                                  )
                             );
                           }}
                           options={[
@@ -2820,7 +2840,11 @@ export default function SettingsScreen({
                             const who = characterOfIni(settings);
                             const base =
                               characters.find((entry) => entry.id === copyFrom) === undefined
-                                ? emptyForm(servers, snapshot?.global ?? null)
+                                ? emptyForm(
+                                    servers,
+                                    snapshot?.global ?? null,
+                                    snapshot?.newMegamud ?? null
+                                  )
                                 : form;
                             const realm = servers.find(
                               (server) => server.name.toLowerCase() === who.bbs.toLowerCase()
@@ -2832,27 +2856,25 @@ export default function SettingsScreen({
                               username: who.username,
                               password: who.password,
                               changePassword: true,
-                              ...(realm === undefined ? {} : { serverName: realm.name })
+                              ...(realm === undefined ? {} : { serverName: realm.name }),
+                              megamud: settings
                             });
-                            setIniMega(settings);
                             setProblem(null);
                             setSaved(t('settings.megamud.importedNew', { fileName }));
                           }}
                         />
                       ) : (
-                        mega.draft !== null && (
-                          <MegaMudIniImport
-                            label={t('settings.megamud.importOver')}
-                            onRead={(settings, fileName) => {
-                              // The login stays the character's: an empty password is "leave it".
-                              const next = structuredClone(settings);
-                              next.live['BBS']!['Password'] = '';
-                              mega.update(() => next);
-                              setProblem(null);
-                              setSaved(t('settings.megamud.importedOver', { fileName }));
-                            }}
-                          />
-                        )
+                        <MegaMudIniImport
+                          label={t('settings.megamud.importOver')}
+                          onRead={(settings, fileName) => {
+                            // The login stays the character's: an empty password is "leave it".
+                            const next = structuredClone(settings);
+                            next.live['BBS']!['Password'] = '';
+                            patch({ megamud: next });
+                            setProblem(null);
+                            setSaved(t('settings.megamud.importedOver', { fileName }));
+                          }}
+                        />
                       )}
 
                       {selected === NEW_CHARACTER && (
@@ -3033,7 +3055,7 @@ export default function SettingsScreen({
                         ]}
                         value={form.theme}
                       />
-                      <MegaMudAccount mega={mega} />
+                      {mega !== null && <MegaMudAccount mega={mega} />}
                     </>
                   )}
 
@@ -3151,7 +3173,7 @@ export default function SettingsScreen({
   MegaMUD's own tab, as its settings dialog draws it, and under it what
   this client keeps for the character that belongs with it (2026-10-14).
 */}
-                  {isMegaTab(section) && (
+                  {isMegaTab(section) && mega !== null && (
                     <MegaMudPanel
                       loops={[
                         ...(form?.loops ?? []),
