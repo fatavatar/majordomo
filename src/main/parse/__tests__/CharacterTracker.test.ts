@@ -8459,6 +8459,41 @@ describe('what the server has said is wrong with the character', () => {
     });
   });
 
+  /* So a flag that is wrong can be traced to the line that set it (2026-10-18). */
+  it('keeps the line that set each one on, and forgets it when it ends', () => {
+    const tracker = play([
+      '[HP=34]:',
+      'Poison burns through your veins!',
+      'Your legs are paralyzed!'
+    ]);
+    expect(tracker.current.afflictionCauses.poisoned).toMatchObject({
+      line: 'Poison burns through your veins!',
+      how: 'said'
+    });
+    expect(tracker.current.afflictionCauses.held).toMatchObject({
+      line: 'Your legs are paralyzed!',
+      how: 'said'
+    });
+    const ended = play([
+      '[HP=34]:',
+      'Poison burns through your veins!',
+      'The dizzying poison runs its course.'
+    ]);
+    expect(ended.current.afflictionCauses.poisoned).toBeUndefined();
+  });
+
+  it('keeps the onset, not a later sentence saying it again', () => {
+    const tracker = play([
+      '[HP=34]:',
+      'Poison burns through your veins!',
+      '[HP=33]:',
+      'Poison burns through your veins!'
+    ]);
+    const cause = tracker.current.afflictionCauses.poisoned;
+    expect(cause?.line).toBe('Poison burns through your veins!');
+    expect(tracker.current.afflictions.poisoned).toBe('yes');
+  });
+
   /*
    * The hold family, reported live 2026-09-11: `ne`, and the server answered
    * `You are flat on your back!` and nothing else. Eight seconds later the
@@ -8519,6 +8554,12 @@ describe('what the server has said is wrong with the character', () => {
         knockdownLore()
       );
       expect(down.current.afflictions.held).toBe('yes');
+      // Set by the realm's knockdown, as its message.
+      expect(down.current.afflictionCauses.held).toMatchObject({
+        line: 'You are flat on your back!',
+        how: 'spell',
+        spell: 'knockdown'
+      });
 
       const up = play(
         ['[HP=143/MA=29]:', 'You are flat on your back!', 'You get back on your feet.'],
@@ -11492,6 +11533,15 @@ describe('what a stranger was last seen fighting', () => {
  * fact `command-not-understood` carries, in a sentence that names nothing.
  */
 describe('a command confusion threw away', () => {
+  it('sets confusion on, with the fumble as its cause', () => {
+    const tracker = play(['[HP=134/MA=24]:', 'You fumble in confusion!']);
+    expect(tracker.current.afflictions.confused).toBe('yes');
+    expect(tracker.current.afflictionCauses.confused).toMatchObject({
+      line: 'You fumble in confusion!',
+      how: 'fumble'
+    });
+  });
+
   it('drops the move it queued, so the next room answers the right one', () => {
     const tracker = play([
       '[HP=134/MA=24]:',

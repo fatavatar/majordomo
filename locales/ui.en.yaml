@@ -3004,6 +3004,14 @@ cards:
       diseased: diseased
       held: held
       poisoned: poisoned
+    # An affliction's tooltip: how the line under it was read, and when.
+    cause:
+      engine: 'MegaMUD read it so at {at}:'
+      fumble: 'A command the realm threw away, at {at}:'
+      message: 'MegaMUD''s message {row}, at {at}:'
+      said: 'The realm said so at {at}:'
+      spell: 'The message of the realm''s {spell}, at {at}:'
+      unseen: 'A room the character could not see, at {at}:'
     # And the ones only a realm's message table states (`CharacterState.stated`).
     stated:
       confused: confused

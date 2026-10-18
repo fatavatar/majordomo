@@ -73,7 +73,12 @@ import { ITEM_FLAG_BITS, itemKey, type ItemRule } from '../../shared/itemRules';
 import type { MonsterRule, Relationship } from '../../shared/monsterRules';
 import type { PlayerFacts } from '../../shared/players';
 import type { LearnedItem, LearnedMark } from '../world/MegaLearned';
-import type { ActiveBuff, Affliction } from '../../shared/character';
+import {
+  byEngine,
+  type ActiveBuff,
+  type Affliction,
+  type AfflictionCause
+} from '../../shared/character';
 import type { MegaSettings } from '../../shared/megamud/settings';
 import { MEGA_TOGGLES, type MegaToggle, type MegaToggles } from '../../shared/megamud/toggles';
 import type { MegaChoices } from '../../shared/ipc';
@@ -139,6 +144,11 @@ export interface MegaEngineHost {
   write(text: string): void;
   /** A line of MegaMUD's own on the console. */
   show(text: string): void;
+  /**
+   * The engine turned one of its afflictions on or off (`noteAfflictions`),
+   * with what turned it on, for the character's own record of them.
+   */
+  afflicted?(name: SharedAffliction, on: boolean, cause: AfflictionCause | null): void;
   /** The engine closes the connection. */
   hangUp(): void;
   /** The engine dials again (after its redial pause). */
@@ -320,20 +330,27 @@ const SECOND_MS = 1000;
  */
 const QUIET_POLL_MS = 250;
 
-/** The afflictions MegaMUD has a cure command for, by its session's flag. */
-const CURED_AFFLICTIONS = ['blind', 'poisoned', 'diseased', 'held'] as const;
-type CuredAffliction = (typeof CURED_AFFLICTIONS)[number];
 /**
- * The session flag each takes. Disease takes ours, which only the cures read:
- * MegaMUD rests while its own is up, for a row a realm's Messages.md marks
- * diseased, and Fatty stood still through every disease ours heard (2026-10-16).
+ * The afflictions MegaMUD keeps a session flag for, one record of them with
+ * our tracker's (2026-10-18): what either reads goes into the other
+ * (`afflictions`, `noteAfflictions`), so the character's afflictions are what
+ * the engine acts on, with what set each.
+ */
+const SHARED_AFFLICTIONS = ['blind', 'poisoned', 'diseased', 'held', 'confused'] as const;
+export type SharedAffliction = (typeof SHARED_AFFLICTIONS)[number];
+/**
+ * The session flag each of ours takes. Disease takes ours, which only the
+ * cures read: MegaMUD rests while its own is up, for a row a realm's
+ * Messages.md marks diseased, and Fatty stood still through every disease ours
+ * heard (2026-10-16).
  */
 const AFFLICTION_FLAG = {
   blind: 'blind',
   poisoned: 'poisoned',
   diseased: 'diseaseHeard',
-  held: 'held'
-} as const satisfies Record<CuredAffliction, keyof Session>;
+  held: 'held',
+  confused: 'confused'
+} as const satisfies Record<SharedAffliction, keyof Session>;
 
 /** How long a walk waits on the realm saying where the character is. */
 const LOCATE_WAIT_MS = 5000;
@@ -475,7 +492,9 @@ export class MegaEngine {
   /** The marks list as last kept (`keepLearned`). */
   private marksKept = '[]';
   /** The afflictions our tracker had on, at the last look (`afflictions`). */
-  private afflicted: Partial<Record<CuredAffliction, boolean>> = {};
+  private afflicted: Partial<Record<SharedAffliction, boolean>> = {};
+  /** The engine's afflictions as last told to the host (`noteAfflictions`). */
+  private flagged: Partial<Record<SharedAffliction, boolean>> = {};
 
   constructor(
     private readonly host: MegaEngineHost,
@@ -512,6 +531,7 @@ export class MegaEngine {
       readPath: (name) => this.readPath(name),
       saveSteps: (p) => this.saveSteps(p),
       blessingsCleared: () => this.blessingsCleared(),
+      lineRead: (line) => this.noteAfflictions(line),
       beforeStep: () => this.beforeStep(),
       echo: (text) => this.sent(text)
     };
@@ -546,6 +566,7 @@ export class MegaEngine {
           this.safely(() => {
             secondTick(this.s);
             this.noteGates();
+            this.noteAfflictions(null);
             this.fleeTick();
             this.keepLearned();
             this.noteToggles();
@@ -858,13 +879,56 @@ export class MegaEngine {
    * affliction it has on is on, and one it has seen end is ended; a disease
    * only for curing (`AFFLICTION_FLAG`).
    */
-  afflictions(now: Readonly<Record<CuredAffliction, Affliction>>): void {
+  afflictions(
+    now: Readonly<Record<SharedAffliction, Affliction>>,
+    causes: Readonly<Partial<Record<SharedAffliction, AfflictionCause>>> = {}
+  ): void {
     const s = this.s;
-    for (const name of CURED_AFFLICTIONS) {
-      const on = now[name] === 'yes';
+    for (const name of SHARED_AFFLICTIONS) {
+      // One the engine set itself, told back, is not our tracker's reading:
+      // taken as ours, an ended disease of MegaMUD's own stayed on as ours.
+      const on = now[name] === 'yes' && !byEngine(causes[name]);
       if (on) s[AFFLICTION_FLAG[name]] = 1;
       else if (this.afflicted[name] === true) s[AFFLICTION_FLAG[name]] = 0;
       this.afflicted[name] = on;
+      // Known to our tracker already: nothing to tell it back.
+      this.flagged[name] = this.engineHas(name);
+    }
+  }
+
+  /** Whether the engine has an affliction on: disease by either of its flags. */
+  private engineHas(name: SharedAffliction): boolean {
+    const s = this.s;
+    if (name === 'diseased') return s.diseased !== 0 || s.diseaseHeard !== 0;
+    return s[AFFLICTION_FLAG[name]] !== 0;
+  }
+
+  /**
+   * The engine's afflictions that changed since last told, told to the host
+   * with the line that changed them (`line`, null away from one): a
+   * Messages.md row's when one matched it (`msgSpell`), else MegaMUD's own
+   * reading of it. So the character shows what the engine acts on, and why.
+   */
+  private noteAfflictions(line: string | null): void {
+    if (this.host.afflicted === undefined) return;
+    const s = this.s;
+    for (const name of SHARED_AFFLICTIONS) {
+      const on = this.engineHas(name);
+      if (on === (this.flagged[name] ?? false)) continue;
+      this.flagged[name] = on;
+      const row = line !== null && s.msgSpell !== '' ? s.msgSpell : null;
+      this.host.afflicted(
+        name,
+        on,
+        on
+          ? {
+              line: (line ?? '').trim(),
+              at: Date.now(),
+              how: row !== null ? 'message' : 'engine',
+              ...(row !== null ? { spell: row } : {})
+            }
+          : null
+      );
     }
   }
 
@@ -896,7 +960,7 @@ export class MegaEngine {
   private blessingsCleared(): void {
     const s = this.s;
     if (this.regenUp[0]) s.hpRegen = 1;
-    for (const name of CURED_AFFLICTIONS)
+    for (const name of SHARED_AFFLICTIONS)
       if (this.afflicted[name] === true) s[AFFLICTION_FLAG[name]] = 1;
     for (let i = 0; i < 10; i += 1) {
       if ((this.blessUp[i] ?? null) !== null) s.blessCastAt[i] = s.now;
@@ -954,6 +1018,7 @@ export class MegaEngine {
       this.safely(() => this.unpark());
     this.noteToggles();
     this.noteGates();
+    this.noteAfflictions(null);
     if (entered) this.host.enteredGame?.();
   }
 

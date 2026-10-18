@@ -182,6 +182,7 @@ export function parseData(s: Session, t: TerminalState, chunk: string): number {
         if (ch !== 10) break;
         s.lineFlags &= ~PROMPT_SEEN;
         dispatchLine(s, s.line, 1, 0);
+        s.host.lineRead?.(s.line.text);
         s.line = { text: '', attr: [] };
         s.lineFlags &= ~PROMPT_SEEN;
         refreshStatus(s);
@@ -198,7 +199,9 @@ export function parseData(s: Session, t: TerminalState, chunk: string): number {
         }
     }
   }
-  if (dispatchLine(s, s.line, 0, 0) !== 0) s.line = { text: '', attr: [] };
+  const handled = dispatchLine(s, s.line, 0, 0);
+  if (s.line.text.length > 0) s.host.lineRead?.(s.line.text);
+  if (handled !== 0) s.line = { text: '', attr: [] };
   if (s.line.text.length === 0) {
     if ((s.lineFlags & LineFlag.Prompted) !== 0) {
       schedule(s);

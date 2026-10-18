@@ -33,6 +33,7 @@ import {
   type Afflictions,
   type Affliction,
   type StatedEffect,
+  type AfflictionCause,
   type KnownSpell,
   type RealmFamily as RealmWord,
   type ActiveBuff,
@@ -871,6 +872,18 @@ export class CharacterTracker {
    * Left stranded, the expectation poisons dead reckoning exactly as the
    * refused `go manhole` did — the only position this client has ever lost.
    */
+  /**
+   * An affliction the MegaMUD engine turned on or off, with what turned it on:
+   * one record of them with the engine's (`MegaEngine.noteAfflictions`).
+   * Whether anything changed.
+   */
+  noteAffliction(which: keyof Afflictions, on: boolean, cause?: AfflictionCause): boolean {
+    const next = afflicted(this.state, which, on ? 'yes' : 'no', cause);
+    if (next === null) return false;
+    this.state = next;
+    return true;
+  }
+
   noteFumbled(command: string | null): void {
     if (command !== null) this.expect.refused(command);
   }
@@ -1442,6 +1455,7 @@ export class CharacterTracker {
       stealth: 'unknown',
       // And nobody is poisoned in a realm they have left; the next session says.
       afflictions: NO_AFFLICTIONS,
+      afflictionCauses: {},
       // Nor confused: what a message started, a new session has not heard.
       heard: [],
       // A buff may in fact survive a relog — nothing has measured it — but a
@@ -3390,16 +3404,22 @@ export class CharacterTracker {
    * own command. Null when nothing here holds, or when the flag already says
    * so.
    */
-  private heldByOnset(s: CharacterState, candidates: readonly string[]): CharacterState | null {
+  private heldByOnset(
+    s: CharacterState,
+    candidates: readonly string[],
+    block: Block
+  ): CharacterState | null {
     const rows = candidates.map((name) => this.world?.spellNamed(name));
+    const by = (test: (row: (typeof rows)[number]) => boolean): AfflictionCause =>
+      causeOf(block, 'spell', candidates[rows.findIndex(test)]);
     let next: CharacterState | null = null;
     if (rows.some(holdsMovement)) {
       this.expect.shiftHeldMove();
-      next = afflicted(s, 'held', 'yes');
+      next = afflicted(s, 'held', 'yes', by(holdsMovement));
     }
     // A confusion landing refuses nothing by itself — the fumbles come later,
     // one command at a time — so the flag is set and no claim is taken.
-    if (rows.some(confuses)) next = afflicted(next ?? s, 'confused', 'yes') ?? next;
+    if (rows.some(confuses)) next = afflicted(next ?? s, 'confused', 'yes', by(confuses)) ?? next;
     return next;
   }
 
@@ -6100,27 +6120,27 @@ export class CharacterTracker {
       // Each pair is the server saying a condition began and ended; nothing
       // else moves a flag, so a cure the server answers with nothing leaves it.
       case 'user-blinded':
-        return afflicted(s, 'blind', 'yes');
+        return afflicted(s, 'blind', 'yes', causeOf(block, 'said'));
       case 'user-blind-ends':
         return afflicted(s, 'blind', 'no');
       case 'user-poisoned':
-        return afflicted(s, 'poisoned', 'yes');
+        return afflicted(s, 'poisoned', 'yes', causeOf(block, 'said'));
       case 'user-poison-ends':
         return afflicted(s, 'poisoned', 'no');
       case 'user-diseased':
-        return afflicted(s, 'diseased', 'yes');
+        return afflicted(s, 'diseased', 'yes', causeOf(block, 'said'));
       case 'user-disease-ends':
         return afflicted(s, 'diseased', 'no');
       case 'user-held':
-        return afflicted(s, 'held', 'yes');
+        return afflicted(s, 'held', 'yes', causeOf(block, 'said'));
       case 'user-held-ends':
         return afflicted(s, 'held', 'no');
       case 'user-confused':
-        return afflicted(s, 'confused', 'yes');
+        return afflicted(s, 'confused', 'yes', causeOf(block, 'said'));
       // A command thrown away is the one proof of confusion that needs no
       // table: `CheckConfusion` prints it only on a hit.
       case 'command-fumbled':
-        return afflicted(s, 'confused', 'yes');
+        return afflicted(s, 'confused', 'yes', causeOf(block, 'fumble'));
 
       /*
        * A cast confirmation naming this character as the recipient is the one
@@ -6225,7 +6245,7 @@ export class CharacterTracker {
          * buff *and* stands the walk still, and the branches below return
          * `null` for a sentence that changed no buff.
          */
-        const base = this.heldByOnset(s, candidates) ?? s;
+        const base = this.heldByOnset(s, candidates, block) ?? s;
         const held = base === s ? null : base;
 
         /*
@@ -6973,7 +6993,7 @@ export class CharacterTracker {
        */
       case 'room-unseen': {
         const arrival = this.arrivedUnseen(s, 'blind');
-        return afflicted(arrival ?? s, 'blind', 'yes') ?? arrival;
+        return afflicted(arrival ?? s, 'blind', 'yes', causeOf(block, 'unseen')) ?? arrival;
       }
 
       case 'room-description': {
@@ -7088,13 +7108,26 @@ function stoodUp(s: CharacterState): Afflictions {
   return s.afflictions.held === 'yes' ? { ...s.afflictions, held: 'no' } : s.afflictions;
 }
 
+/**
+ * An affliction set or ended, its cause kept beside it while it is on: the
+ * onset's, as a condition already on is not set again.
+ */
 function afflicted(
   s: CharacterState,
   which: keyof Afflictions,
-  value: Affliction
+  value: Affliction,
+  cause?: AfflictionCause
 ): CharacterState | null {
   if (s.afflictions[which] === value) return null;
-  return { ...s, afflictions: { ...s.afflictions, [which]: value } };
+  const causes = { ...s.afflictionCauses };
+  delete causes[which];
+  if (value === 'yes' && cause !== undefined) causes[which] = cause;
+  return { ...s, afflictions: { ...s.afflictions, [which]: value }, afflictionCauses: causes };
+}
+
+/** What set an affliction: this line, read this way. */
+function causeOf(block: Block, how: AfflictionCause['how'], spell?: string): AfflictionCause {
+  return { line: block.text.trim(), at: block.at, how, ...(spell !== undefined ? { spell } : {}) };
 }
 
 /**

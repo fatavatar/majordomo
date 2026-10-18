@@ -14,6 +14,8 @@ import {
   type EngineMemory,
   type MegaEngineHost
 } from '../MegaEngine';
+import type { AfflictionCause } from '../../../shared/character';
+import { MessageEffect } from '../../megamud/flags';
 import { coinItems, newMonster, type MonsterRec, type SpellRec } from '../../megamud/data';
 import { collectItems } from '../../megamud/script/items';
 import { newEntity } from '../../megamud/Session';
@@ -72,6 +74,7 @@ function engine(here: string | null = '1/1', ways: Record<string, Route> = {}) {
   const sent: string[] = [];
   const shown: string[] = [];
   const fetches: Array<[string[], AfterFetch]> = [];
+  const told: Array<[string, boolean, AfflictionCause | null]> = [];
   const world = {
     get: (map: number, n: number) => ROOMS.find((r) => r.map === map && r.room === n),
     everyRoom: () => ROOMS.values(),
@@ -84,6 +87,7 @@ function engine(here: string | null = '1/1', ways: Record<string, Route> = {}) {
   const host: MegaEngineHost = {
     write: (text) => sent.push(text),
     show: (text) => shown.push(text),
+    afflicted: (name, on, cause) => told.push([name, on, cause]),
     hangUp: () => {},
     dial: () => {},
     here: () => at.here,
@@ -103,7 +107,7 @@ function engine(here: string | null = '1/1', ways: Record<string, Route> = {}) {
     data: { monsters: [], items: [], spells: [] },
     grants: {}
   });
-  return { e, sent, shown, at, fetches };
+  return { e, sent, shown, at, fetches, told };
 }
 
 afterEach(() => vi.useRealTimers());
@@ -838,7 +842,8 @@ describe('blessings told by our tracker’s buffs', () => {
       blind: 'unknown',
       poisoned: 'unknown',
       diseased: 'unknown',
-      held: 'no'
+      held: 'no',
+      confused: 'unknown'
     } as const;
     e.afflictions({ ...none, blind: 'yes', diseased: 'yes' });
     expect(e.s.blind).toBe(1);
@@ -855,6 +860,73 @@ describe('blessings told by our tracker’s buffs', () => {
     e.s.poisoned = 1;
     e.afflictions(none);
     expect(e.s.poisoned).toBe(1);
+  });
+
+  /*
+   * One record of afflictions with our tracker's (2026-10-18): what the
+   * engine turns on is told, with the line and the Messages.md row that did.
+   */
+  it('tells what it turns on, with the line and the row, and when it goes off', () => {
+    const { e, told } = engine();
+    e.s.inGame = 1;
+    e.s.online = 1;
+    e.s.data.messages = [
+      {
+        layer: 0,
+        name: 'venom',
+        msg: 'The venom burns',
+        endMsg: 'The venom fades',
+        action: '',
+        effects: MessageEffect.Poisoned,
+        flags: 0,
+        number: 0,
+        firedAt: 0
+      }
+    ];
+    e.received('The venom burns in your veins!\r\n');
+    expect(told).toEqual([
+      [
+        'poisoned',
+        true,
+        expect.objectContaining({
+          line: 'The venom burns in your veins!',
+          how: 'message',
+          spell: 'venom'
+        })
+      ]
+    ]);
+    e.received('The venom fades.\r\n');
+    expect(told.at(-1)).toEqual(['poisoned', false, null]);
+    e.dispose();
+  });
+
+  it('does not tell back what our tracker had on, nor take back as ours what it told', () => {
+    const { e, told } = engine();
+    e.s.inGame = 1;
+    const none = {
+      blind: 'unknown',
+      poisoned: 'unknown',
+      diseased: 'unknown',
+      held: 'unknown',
+      confused: 'unknown'
+    } as const;
+    e.afflictions({ ...none, blind: 'yes' });
+    e.received('\r\n');
+    expect(told).toEqual([]);
+    // MegaMUD's own disease, told and back again from the tracker as the engine's.
+    e.s.diseased = 1;
+    e.received('\r\n');
+    expect(told.at(-1)?.slice(0, 2)).toEqual(['diseased', true]);
+    e.afflictions(
+      { ...none, blind: 'yes', diseased: 'yes' },
+      { diseased: { line: '', at: 0, how: 'message', spell: 'pox' } }
+    );
+    expect(e.s.diseaseHeard).toBe(0);
+    // Ended by MegaMUD's own row: off, and told.
+    e.s.diseased = 0;
+    e.received('\r\n');
+    expect(told.at(-1)).toEqual(['diseased', false, null]);
+    e.dispose();
   });
 
   it('keeps the regen spell working while it is up, through the stat display', () => {

@@ -390,6 +390,8 @@ export interface SessionHost {
    * Messages.md rows. Ours: the blessings our tracker has up, put back.
    */
   blessingsCleared?(): void;
+  /** Ours: a line the handlers have read (`ParseData`), whole or the prompt left over. */
+  lineRead?(line: string): void;
   /**
    * `0x43fd90`: the way from one room to another (signatures), over the
    * paths known; our world graph's in place of MegaMUD's path search.

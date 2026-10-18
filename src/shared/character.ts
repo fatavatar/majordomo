@@ -123,6 +123,32 @@ export function isStated(state: Pick<CharacterState, 'heard'>, effect: MessageEf
   return state.heard.some((entry) => entry.effects.includes(effect));
 }
 
+/**
+ * Why the tracker took an affliction as on (2026-10-18): the line that said
+ * so, when, and how it was read, so a flag that is wrong can be traced to
+ * the sentence that set it.
+ */
+export interface AfflictionCause {
+  /** The line, as the realm printed it. */
+  line: string;
+  at: number;
+  /**
+   * How it was read: the realm's own sentence for the condition (`said`), a
+   * spell of the realm's whose message it is (`spell`), a command the realm
+   * threw away (`fumble`), or a room the character could not see (`unseen`);
+   * or by the MegaMUD engine, a row of its Messages.md (`message`) or its own
+   * reading of the line (`engine`).
+   */
+  how: 'said' | 'spell' | 'fumble' | 'unseen' | 'message' | 'engine';
+  /** For `spell`, the realm's spell whose message it is; for `message`, the row. */
+  spell?: string;
+}
+
+/** Whether the MegaMUD engine set an affliction on, rather than our tracker. */
+export function byEngine(cause: AfflictionCause | undefined): boolean {
+  return cause?.how === 'message' || cause?.how === 'engine';
+}
+
 export const NO_AFFLICTIONS: Afflictions = {
   blind: 'unknown',
   poisoned: 'unknown',
@@ -1553,6 +1579,11 @@ export interface CharacterState {
   /** What the server has said is wrong with this character. See `Affliction`. */
   afflictions: Afflictions;
   /**
+   * What set each affliction that is on (`AfflictionCause`): the onset, kept
+   * while it lasts. One that is not `yes` says nothing.
+   */
+  afflictionCauses: Readonly<Partial<Record<keyof Afflictions, AfflictionCause>>>;
+  /**
    * What the realm's message table says is on this character. See
    * `StatedEffect`. Not `stated`, which is the `stat all` sheet.
    */
@@ -1669,6 +1700,7 @@ export const EMPTY_CHARACTER: CharacterState = {
   party: NO_PARTY,
   stealth: 'unknown',
   afflictions: NO_AFFLICTIONS,
+  afflictionCauses: {},
   heard: [],
   buffs: [],
   spellbook: null,
