@@ -3,7 +3,13 @@ import fs from 'node:fs';
 import path from 'node:path';
 import zlib from 'node:zlib';
 
-import { explorerDetail, explorerList, explorerWear, type MmeRealm } from '../Explorer';
+import {
+  explorerDetail,
+  explorerGear,
+  explorerList,
+  explorerWear,
+  type MmeRealm
+} from '../Explorer';
 import { EMPTY_CHARACTER, type CharacterState } from '../../../shared/character';
 import type { ExplorerSegment } from '../../../shared/explorer';
 
@@ -172,5 +178,27 @@ describe('MMUD Explorer for the character being played', () => {
       remove: ['greatsword']
     });
     expect(await explorerWear(fixture(), armed, 1008)).toEqual({ wearable: false, remove: [] });
+  });
+
+  /* The Gear card: MME's Find Best, each slot beside what is worn (2026-10-18). */
+  it('finds the best of each slot by the criterion, beside what is worn', async () => {
+    const base = character();
+    const vested = {
+      ...base,
+      inventory: {
+        ...base.inventory,
+        items: [{ id: 332, name: 'padded vest', equipped: true }]
+      }
+    } as unknown as CharacterState;
+    const options = { criterion: 0, noLimited: false, soldOnly: false };
+    const board = await explorerGear(fixture(), vested, options, () => true);
+    expect(board.criteria[0]).toEqual(['Armour', 'AC/DR Combo']);
+    expect(board.criteria.some(([, label]) => label === 'VileWard')).toBe(false);
+    const torso = board.slots.find((slot) => slot.label === 'Torso');
+    expect(torso?.worn).toMatchObject({ number: 332, name: 'padded vest', value: 61 });
+    expect(torso?.best?.value).toBeGreaterThan(61);
+    // Kept to what a counter stocks, the vest, sold nowhere here, stays the best.
+    const sold = await explorerGear(fixture(), vested, { ...options, soldOnly: true }, () => false);
+    expect(sold.slots.find((slot) => slot.label === 'Torso')?.best?.number).toBe(332);
   });
 });

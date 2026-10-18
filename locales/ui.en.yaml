@@ -892,6 +892,7 @@ explorer:
   # Buy and Buy + Wear: where it goes, what it pays, the bank first (2026-10-18).
   buy:
     bankFirst: Withdraws {amount} from {bank} ({room}) first; the record has {balance} there.
+    bankUnread: Asks {bank} ({room}) for its balance and withdraws {amount} there first.
     buy: Buy
     buyWear: Buy + Wear
     heading: Buy
@@ -1790,6 +1791,8 @@ cards:
         fromBank: '{short} from {bank}'
         fromBankTitle:
           'The purse holds {purse}; the run withdraws the rest at {place}, which last said {held}.'
+        fromBankUnreadTitle:
+          'The purse holds {purse}; the run asks {place} for its balance and withdraws the rest there.'
         short: the purse and the banks on record hold too little
         shortTitle:
           'The purse holds {purse} and no bank on record holds the rest. Ask a bank for its balance
@@ -1974,6 +1977,28 @@ cards:
     copyLink: Copy link
   float:
     resizeTooltip: Resize
+  # MMUD Explorer's Find Best for the character as it is (2026-10-18).
+  gear:
+    already: worn already
+    badge:
+      many: '{count} upgrades'
+      one: '{count} upgrade'
+    buy: Buy
+    buyTitle: Buy {item}
+    buyWearTitle: 'Buy + Wear: buy {item} and put it on'
+    criterion: Find the best by
+    explore: Open {item} in the Explorer
+    leaveEmpty: best left empty
+    loading: Reading the realm…
+    noLimited: No limiteds
+    none: Nothing this character can use fits any slot.
+    sent: On the way.
+    soldOnly: Sold in shops
+    title: Gear
+    unsupported: The Explorer has nothing for this realm.
+    wear: Wear
+    wornNothing: nothing worn there now
+    wornNow: 'now: {item} ({value})'
   header:
     dragHint: Drag to rearrange, or onto the console to float
     resizeHint: Drag to change the card's height; double-click to reset it
@@ -4272,9 +4297,9 @@ automation:
     # The cash a purchase needs, drawn first where the purse is short (2026-10-18).
     cashFirst: 'Withdrawing {amount} from {bank} first, to buy {item}.'
     whyNotPaid: '{bank} paid nothing out for the withdrawal'
-    refusalNoVaultRead:
-      'Not enough on hand for {item}: {short} short, and no bank''s balance has been read to draw it
-      from. Say `bank` at one first.'
+    whyNoBalance: '{bank} did not say its balance'
+    whyVaultShort: '{bank} holds {held}, short of the {amount} wanted'
+    refusalNoVault: 'Not enough on hand for {item}: {short} short, and no bank can be reached.'
     refusalVaultsShort:
       'Not enough on hand for {item}: {short} short, and no bank the record knows holds that much.'
     # The Explorer's Buy and Buy + Wear (2026-10-18).

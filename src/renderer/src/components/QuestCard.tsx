@@ -2395,11 +2395,17 @@ function cashWords(cash: PlanCash): Array<{ words: string; tone: string; title?:
         bank: cash.bank.name
       }),
       tone: 'info',
-      title: t('cards.quests.plan.cash.fromBankTitle', {
-        purse: cash.purse.toLocaleString(),
-        held: cash.bank.copper.toLocaleString(),
-        place: cash.bank.place
-      })
+      title:
+        cash.bank.copper === null
+          ? t('cards.quests.plan.cash.fromBankUnreadTitle', {
+              purse: cash.purse.toLocaleString(),
+              place: cash.bank.place
+            })
+          : t('cards.quests.plan.cash.fromBankTitle', {
+              purse: cash.purse.toLocaleString(),
+              held: cash.bank.copper.toLocaleString(),
+              place: cash.bank.place
+            })
     });
   } else if (cash.short) {
     parts.push({

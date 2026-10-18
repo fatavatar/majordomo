@@ -41,6 +41,7 @@ import SettingsScreen, {
 } from './components/SettingsScreen';
 import StandbyCard from './components/StandbyCard';
 import StatsCard from './components/StatsCard';
+import GearCard from './components/GearCard';
 import ConversationCard from './components/ConversationCard';
 import BanksCard from './components/BanksCard';
 import QuestCard from './components/QuestCard';
@@ -98,7 +99,7 @@ import type { MonsterRule } from '@shared/monsterRules';
 import type { ItemRule } from '@shared/itemRules';
 import type { MegaMudPath } from '@shared/megamudPaths';
 import type { IpcApi, LearnedSpellRow } from '@shared/ipc';
-import type { ExplorerKind, ExplorerOptions } from '@shared/explorer';
+import type { ExplorerKind, ExplorerOptions, GearOptions } from '@shared/explorer';
 import { CONSOLE_PALETTES, TERMINAL_THEMES, THEME_PREFERENCES, THEMES } from '@shared/themes';
 import { usePaneWidths } from './hooks/usePaneWidths';
 import { usePinnedCommands } from './hooks/usePins';
@@ -507,6 +508,12 @@ interface CardContext {
   stopRun(): void;
   /** Where to hunt from where this character stands — addressed, like the book. */
   loadHunting(measure: string | null): ReturnType<IpcApi['huntingGrounds']>;
+  /** The Gear card's board, addressed: MME's Find Best for this character. */
+  loadGear(options: GearOptions): ReturnType<IpcApi['explorerGear']>;
+  /** Buy, or Buy + Wear, for this character. */
+  buyItem(item: number, wear: boolean): ReturnType<IpcApi['explorerBuy']>;
+  /** The Explorer opened on an item; null for a character not shown, whose Explorer it is not. */
+  explore: ((kind: ExplorerKind, item: number) => void) | null;
   /**
    * Walks a loop the Hunting card built, filed nowhere or under this
    * character — the builder's own save, offered for the *shown* character
@@ -607,6 +614,8 @@ interface AddressedActions {
   runPlan(block: number, marked: number | null): ReturnType<IpcApi['questRun']>;
   stopRun(): void;
   loadHunting(measure: string | null): ReturnType<IpcApi['huntingGrounds']>;
+  loadGear(options: GearOptions): ReturnType<IpcApi['explorerGear']>;
+  buyItem(item: number, wear: boolean): ReturnType<IpcApi['explorerBuy']>;
   startMoving(loop: string | null): void;
   stopMoving(): void;
   /** Re-base the Combat Stats card to this character's totals as they stand. */
@@ -637,6 +646,24 @@ function emptyCardHidden(chrome: CardChrome, id: CardId, hasSomethingToSay: bool
 }
 
 /** The card for an id, drawn from a context. Exhaustive over the vocabulary. */
+/**
+ * What MMUD Explorer's answers for a character turn on: its class, race,
+ * level and what it wears. The Explorer's lists and the Gear card are read
+ * again when it changes.
+ */
+function wornKey(character: CharacterState): string {
+  return [
+    character.className ?? '',
+    character.race ?? '',
+    character.progress.level ?? '',
+    character.inventory.items
+      .filter((item) => item.equipped)
+      .map((item) => item.name)
+      .sort()
+      .join(',')
+  ].join('|');
+}
+
 function cardElement(id: CardId, ctx: CardContext): ReactNode {
   const { chrome, character, view } = ctx;
   switch (id) {
@@ -1002,6 +1029,16 @@ function cardElement(id: CardId, ctx: CardContext): ReactNode {
           character={character}
           onReset={ctx.resetStats}
           session={ctx.session}
+        />
+      );
+    case 'gear':
+      return (
+        <GearCard
+          {...chrome}
+          buy={ctx.buyItem}
+          characterKey={wornKey(character)}
+          explore={ctx.explore}
+          load={ctx.loadGear}
         />
       );
     case 'reference':
@@ -2872,6 +2909,16 @@ export default function App() {
     if (explorerOpen) closeExplorer();
     else if (session !== NO_SESSION) setExplorerOpen(true);
   }, [explorerOpen, closeExplorer, session]);
+  // The Gear card's way in: the Explorer on one item.
+  const [explorerFocus, setExplorerFocus] = useState<{
+    kind: ExplorerKind;
+    item: number;
+    at: number;
+  } | null>(null);
+  const openExplorerAt = useCallback((kind: ExplorerKind, item: number) => {
+    setExplorerFocus({ kind, item, at: Date.now() });
+    setExplorerOpen(true);
+  }, []);
   useEffect(() => {
     if (explorerOpen && session === NO_SESSION) closeExplorer();
   }, [explorerOpen, session, closeExplorer]);
@@ -2900,20 +2947,7 @@ export default function App() {
     character.banks.map((bank) => `${bank.name}:${bank.copper}`).join(',')
   ].join('|');
   // What the lists answer for: read again when the class, level or gear change.
-  const explorerKey = useMemo(
-    () =>
-      [
-        character.className ?? '',
-        character.race ?? '',
-        character.progress.level ?? '',
-        character.inventory.items
-          .filter((item) => item.equipped)
-          .map((item) => item.name)
-          .sort()
-          .join(',')
-      ].join('|'),
-    [character.className, character.race, character.progress.level, character.inventory.items]
-  );
+  const explorerKey = wornKey(character);
 
   /**
    * The rail takes no typed input, so opening it leaves focus in the terminal
@@ -5045,6 +5079,8 @@ export default function App() {
         runPlan: (block, marked) => api.questRun(sid, block, marked),
         stopRun: () => void api.questStop(sid),
         loadHunting: (measure) => api.huntingGrounds(sid, measure),
+        loadGear: (options) => api.explorerGear(sid, options),
+        buyItem: (item, wear) => api.explorerBuy(sid, item, wear),
         startMoving: (loop) => startMovingRef.current(sid, loop, null),
         stopMoving: () => void api.stopMoving(sid),
         // Through a ref like `selectPlayer` beside it: this one changes state
@@ -5162,6 +5198,9 @@ export default function App() {
         runPlan: bound.runPlan,
         stopRun: bound.stopRun,
         loadHunting: bound.loadHunting,
+        loadGear: bound.loadGear,
+        buyItem: bound.buyItem,
+        explore: shown ? openExplorerAt : null,
         runHunt: shown ? runHunt : null,
         createHunt: shown ? createHunt : null,
         realmAt: loadedAt,
@@ -5285,7 +5324,8 @@ export default function App() {
       navigationVisible,
       loops,
       startLoop,
-      sayRefusal
+      sayRefusal,
+      openExplorerAt
     ]
   );
 
@@ -6035,6 +6075,7 @@ export default function App() {
         characterKey={explorerKey}
         characterName={character.name ?? session}
         detail={explorerDetail}
+        focus={explorerFocus}
         list={explorerList}
         onClose={closeExplorer}
         open={explorerOpen}

@@ -17,7 +17,7 @@ import fs from 'node:fs';
 
 import { by, db, loadDB } from './vendor/js/db.js';
 import { detectEngine, engine } from './vendor/js/mmud/engine.js';
-import { blankChar, char, roster, switchChar } from './vendor/js/char.js';
+import { blankChar, char, EQ_SLOTS, roster, switchChar } from './vendor/js/char.js';
 import { setSetting } from './vendor/js/state.js';
 import { isInGame, itemUsableBy } from './vendor/js/mmud/usable.js';
 import {
@@ -30,7 +30,15 @@ import {
   weaponCols,
   type HookColumn
 } from './vendor/js/mmud/details.js';
-import { equipItem, equipSlotFor } from './vendor/js/mmud/charstats.js';
+import {
+  eqSlotLists,
+  equipItem,
+  equipSlotFor,
+  findBest,
+  findBestValue,
+  FIND_BEST,
+  type FindBestRule
+} from './vendor/js/mmud/charstats.js';
 import { setWeaponOpts, weaponMax, weaponMin, weaponSpeed } from './vendor/js/hooks/combat.js';
 import { MUD } from './vendor/js/mmud/combat.js';
 import { armourType, weaponType, wornType } from './vendor/js/mmud/enums.js';
@@ -49,7 +57,10 @@ import type {
   ExplorerList,
   ExplorerOptions,
   ExplorerRow,
-  ExplorerSegment
+  ExplorerSegment,
+  GearBoard,
+  GearOptions,
+  GearPick
 } from '../../shared/explorer';
 
 /** The tables mudtool reads, as the realm database names them. */
@@ -504,5 +515,56 @@ export async function explorerWear(
   return {
     wearable: true,
     remove: [...off].map((n) => String(by.item.get(n)?.['Name'] ?? n))
+  };
+}
+
+/**
+ * MME's Find Best menu as stock MajorMUD offers it: GreaterMUD's own
+ * abilities (VileWard) left out, which `findBest` finds nothing for here.
+ */
+function gearCriteria(): Array<{ group: string; label: string; rule: FindBestRule }> {
+  return FIND_BEST.flatMap(([group, rules]) =>
+    rules
+      .filter(([, rule]) => rule.greater !== true)
+      .map(([label, rule]) => ({ group, label, rule }))
+  );
+}
+
+/**
+ * The Gear card (2026-10-18): MME's Find Best for the character as it is,
+ * by the criterion asked, each slot's choice beside what is worn there.
+ * MME's own lists (`eqSlotLists`, its dropdowns with the global filter on:
+ * what this character can use, in the game, and what it wears), narrowed to
+ * what some counter stocks where `soldOnly`, so Buy has somewhere to go.
+ */
+export async function explorerGear(
+  realm: MmeRealm,
+  state: CharacterState,
+  options: GearOptions,
+  sold: (item: number) => boolean
+): Promise<GearBoard> {
+  await useRealm(realm);
+  if (!supported()) return { supported: false, criteria: [], slots: [] };
+  const criteria = gearCriteria();
+  const rule = (criteria[options.criterion] ?? criteria[0]!).rule;
+  useCharacter(state);
+  const worn = char.equipped;
+  const lists = eqSlotLists(char, { globalFilter: true, onlyInGame: true }).map((list, x) =>
+    options.soldOnly ? list.filter((n) => n === worn[x] || sold(n)) : list
+  );
+  const best = findBest(worn, lists, rule, { noLimited: options.noLimited }).equipped;
+  const pick = (n: number | undefined): GearPick | null => {
+    const item = n === undefined || n < 1 ? undefined : by.item.get(n);
+    if (item === undefined) return null;
+    return { number: n!, name: String(item['Name']), value: findBestValue(item, rule) };
+  };
+  return {
+    supported: true,
+    criteria: criteria.map(({ group, label }) => [group, label]),
+    slots: EQ_SLOTS.flatMap((label, slot) => {
+      const now = pick(worn[slot]);
+      const choice = pick(best[slot]);
+      return now === null && choice === null ? [] : [{ slot, label, worn: now, best: choice }];
+    })
   };
 }

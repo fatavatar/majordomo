@@ -1279,8 +1279,11 @@ export interface PlanCash {
   unpriced: number;
   /** The purse in copper, or null where no listing has counted it. */
   purse: number | null;
-  /** The vault nearest the first counter that holds what the purse lacks, where one is on record. */
-  bank?: { name: string; room: string; place: string; copper: number };
+  /**
+   * The vault nearest the first counter that holds what the purse lacks by
+   * the record, else the nearest never asked (`copper` null), asked there.
+   */
+  bank?: { name: string; room: string; place: string; copper: number | null };
   /** The purse is short and no vault on record holds the rest. */
   short: boolean;
 }

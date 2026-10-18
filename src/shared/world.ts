@@ -956,8 +956,12 @@ export interface BankChoice {
  * ranked by the detour as `BuyingPlace` is.
  */
 export interface CashPlace extends BankChoice {
-  /** What the character's own record says is on deposit there, in copper. */
-  copper: number;
+  /**
+   * What the character's own record says is on deposit there, in copper;
+   * null for a vault never asked, whose `bank` is said there before it is
+   * drawn from (2026-10-18).
+   */
+  copper: number | null;
   /** What stopping here adds to the way to the counter, in plain steps. */
   detour: number;
   moves: number;

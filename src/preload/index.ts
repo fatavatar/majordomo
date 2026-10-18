@@ -175,6 +175,7 @@ const api: IpcApi = {
   explorerDetail: (session, item) => ipcRenderer.invoke(Invoke.explorerDetail, session, item),
   explorerBuyPlan: (session, item) => ipcRenderer.invoke(Invoke.explorerBuyPlan, session, item),
   explorerBuy: (session, item, wear) => ipcRenderer.invoke(Invoke.explorerBuy, session, item, wear),
+  explorerGear: (session, options) => ipcRenderer.invoke(Invoke.explorerGear, session, options),
   forget: (session, discovery) => ipcRenderer.invoke(Invoke.forget, session, discovery),
   forgetFind: (session, find) => ipcRenderer.invoke(Invoke.forgetFind, session, find),
   forgetCharacter: (session) => ipcRenderer.invoke(Invoke.forgetCharacter, session),

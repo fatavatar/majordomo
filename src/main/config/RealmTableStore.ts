@@ -20,7 +20,7 @@
  * parser, and the next MegaMUD import would have been a third. A table is now
  * a `TableKind`: what differs, and nothing else.
  *
- * Read on demand and cached by the file's size and time, because it is asked
+ * Read on demand and cached by the file's size and time (`fileStamp`), because it is asked
  * for whenever a session is (re)configured and almost never changes. Watched
  * by an owned poll like every file the user owns (see `ConfigStore` for why
  * not `fs.watch`), so a table edited by hand reaches characters already
@@ -52,7 +52,7 @@ import {
   type MonsterTable
 } from '../../shared/monsterRules';
 import { directoryNames } from './dirs';
-import { Poller } from './Poller';
+import { fileStamp, Poller } from './Poller';
 import { editYaml, type EditResult } from './YamlFile';
 
 /** What every realm table has: where it was imported from, if it was. */
@@ -146,7 +146,7 @@ export declare interface RealmTableStore<Table extends RealmTable> {
 }
 
 export class RealmTableStore<Table extends RealmTable> extends EventEmitter {
-  private readonly cache = new Map<string, { stamp: string; table: Table }>();
+  private readonly cache = new Map<string, { stamp: string; table: Table; at: number }>();
   /** Files already reported as unreadable, by stamp, so a bad file is said once. */
   private readonly reported = new Set<string>();
   private readonly poller: Poller;
@@ -158,7 +158,7 @@ export class RealmTableStore<Table extends RealmTable> extends EventEmitter {
   ) {
     super();
     this.poller = new Poller({
-      signature: () => this.signature(),
+      signature: (settledAt) => this.signature(settledAt),
       reload: () => {
         this.poller.settle();
         this.emit('change');
@@ -181,10 +181,13 @@ export class RealmTableStore<Table extends RealmTable> extends EventEmitter {
    */
   forServer(serverId: string): Table {
     const file = this.file(serverId);
-    const stamp = this.stamp(file);
-    if (stamp === null) return this.kind.empty;
+    // Against the moment the cached copy was read, so a same-length save in
+    // that read's own mtime tick is still a different file (`fileStamp`).
     const cached = this.cache.get(serverId);
-    if (cached?.stamp === stamp) return cached.table;
+    if (cached !== undefined && this.stamp(file, cached.at) === cached.stamp) return cached.table;
+    const at = Date.now();
+    const stamp = this.stamp(file, at);
+    if (stamp === null) return this.kind.empty;
 
     let table = this.kind.empty;
     try {
@@ -197,7 +200,7 @@ export class RealmTableStore<Table extends RealmTable> extends EventEmitter {
         );
       }
     }
-    this.cache.set(serverId, { stamp, table });
+    this.cache.set(serverId, { stamp, table, at });
     return table;
   }
 
@@ -244,23 +247,22 @@ export class RealmTableStore<Table extends RealmTable> extends EventEmitter {
     this.removeAllListeners();
   }
 
-  private stamp(file: string): string | null {
+  private stamp(file: string, settledAt: number): string | null {
     try {
-      const info = fs.statSync(file);
-      return `${info.size}:${info.mtimeMs}`;
+      return fileStamp(file, settledAt);
     } catch {
       return null;
     }
   }
 
-  private signature(): string {
+  private signature(settledAt: number): string {
     let ids: string[] = [];
     try {
       ids = directoryNames(this.home.serversDir);
     } catch {
       return '';
     }
-    return ids.map((id) => `${id}:${this.stamp(this.file(id)) ?? 'none'}`).join('|');
+    return ids.map((id) => `${id}:${this.stamp(this.file(id), settledAt) ?? 'none'}`).join('|');
   }
 }
 

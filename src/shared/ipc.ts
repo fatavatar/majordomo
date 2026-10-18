@@ -108,7 +108,9 @@ import type {
   ExplorerDetail,
   ExplorerKind,
   ExplorerList,
-  ExplorerOptions
+  ExplorerOptions,
+  GearBoard,
+  GearOptions
 } from './explorer';
 import type { InternalConfig } from './internal';
 import type { Loop, LoopProgress, LoopScope, ScopedLoop } from './loops';
@@ -1052,6 +1054,8 @@ export const Invoke = {
    */
   explorerBuyPlan: 'explorer:buy-plan',
   explorerBuy: 'explorer:buy',
+  /** The Gear card: MME's Find Best for the character as it is (`explorerGear`). */
+  explorerGear: 'explorer:gear',
   /**
    * Strike an observation out of what this character has learned about the
    * realm. The player's call — an observation is one sample of one walk, and
@@ -1618,6 +1622,8 @@ export interface IpcApi {
   explorerBuyPlan(session: SessionId, item: number): Promise<ExplorerBuyPlan | null>;
   /** Buy it, and wear it where `wear`; why not, or null where it is on its way. */
   explorerBuy(session: SessionId, item: number, wear: boolean): Promise<string | null>;
+  /** MME's Find Best for this character, slot by slot. See `Invoke.explorerGear`. */
+  explorerGear(session: SessionId, options: GearOptions): Promise<GearBoard>;
   /** Whether there was such an observation to strike. The push that follows carries the rest. */
   forget(session: SessionId, discovery: Pick<Discovery, 'from' | 'command'>): Promise<boolean>;
   /** Whether there was such a find to strike. The push that follows carries the rest. */

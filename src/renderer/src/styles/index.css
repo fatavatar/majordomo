@@ -13539,3 +13539,144 @@ tr:hover .row-action.worn,
 .megamud-list label[data-choice='true'] {
   padding-left: 12px;
 }
+
+/* The Gear card: MME's Find Best beside what is worn, an upgrade in amber with Buy beside it. */
+.gear-controls {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  margin-bottom: 6px;
+}
+
+.gear-picker {
+  background: color-mix(in srgb, var(--ink-line) 40%, transparent);
+  border: var(--rule) solid transparent;
+  border-radius: var(--r-chip);
+  color: var(--text-hi);
+  cursor: pointer;
+  font: inherit;
+  max-width: 100%;
+  min-width: 0;
+  padding: 2px 4px;
+}
+
+.gear-picker:hover {
+  background: color-mix(in srgb, var(--ink-line) 60%, transparent);
+}
+
+.gear-check {
+  align-items: center;
+  color: var(--text-lo);
+  cursor: pointer;
+  display: inline-flex;
+  font-size: var(--font-micro);
+  gap: 4px;
+}
+
+.gear-list {
+  display: grid;
+  gap: 0;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+/* Slot, best and its buttons on one line; what is worn under the best, quieter. */
+.gear-row {
+  align-items: baseline;
+  column-gap: 8px;
+  display: grid;
+  font-variant-numeric: tabular-nums;
+  grid-template-areas:
+    'slot best best'
+    '. worn actions';
+  grid-template-columns: 4.5em minmax(0, 1fr) auto;
+  padding: 3px 0;
+}
+
+.gear-row + .gear-row {
+  border-top: var(--rule) solid color-mix(in srgb, var(--ink-line) 50%, transparent);
+}
+
+.gear-slot {
+  color: var(--text-lo);
+  grid-area: slot;
+}
+
+.gear-best {
+  grid-area: best;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.gear-row[data-upgrade='true'] .gear-best {
+  color: var(--pending);
+}
+
+.gear-worn {
+  color: var(--text-lo-quiet);
+  font-size: var(--font-micro);
+  grid-area: worn;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.gear-value {
+  color: var(--text-lo-quiet);
+  font-size: var(--font-micro);
+}
+
+.gear-gain {
+  color: var(--ok);
+  font-size: var(--font-micro);
+  font-weight: 600;
+}
+
+/* The item's name, a link into the Explorer: none of a button's chrome. */
+button.gear-item {
+  background: none;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  color: inherit;
+  font: inherit;
+  height: auto;
+  padding: 0;
+  text-align: left;
+}
+
+button.gear-item:hover {
+  text-decoration: underline;
+}
+
+.gear-actions {
+  align-self: center;
+  display: flex;
+  gap: 4px;
+  grid-area: actions;
+}
+
+button.gear-buy {
+  background: color-mix(in srgb, var(--accent) var(--tone-weak), transparent);
+  border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+  box-shadow: none;
+  color: var(--accent);
+  font-size: var(--font-micro);
+  font-weight: 600;
+  height: 20px;
+  padding: 0 6px;
+}
+
+button.gear-buy:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--accent) var(--tone), transparent);
+  border-color: var(--accent);
+}
+
+.gear-card .aside[data-tone='ok'] {
+  color: var(--ok);
+}
+
+.gear-card .aside[data-tone='danger'] {
+  color: var(--danger);
+}

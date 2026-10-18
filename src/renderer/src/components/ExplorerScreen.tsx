@@ -66,6 +66,8 @@ export interface ExplorerScreenProps {
   buyPlan(item: number): Promise<ExplorerBuyPlan | null>;
   /** Why not, or null where the character is on its way. */
   buy(item: number, wear: boolean): Promise<string | null>;
+  /** An item to open on, from the Gear card; `at` tells one ask of the same item from the next. */
+  focus: { kind: ExplorerKind; item: number; at: number } | null;
   onClose(): void;
 }
 
@@ -314,12 +316,18 @@ function BuyBox({
         </div>
       ) : plan.bank !== undefined ? (
         <div className="ex-buy-line" data-tone="pending">
-          {t('explorer.buy.bankFirst', {
-            amount: coins(plan.bank.withdraw),
-            bank: plan.bank.name,
-            room: plan.bank.roomName,
-            balance: coins(plan.bank.balance)
-          })}
+          {plan.bank.balance === null
+            ? t('explorer.buy.bankUnread', {
+                amount: coins(plan.bank.withdraw),
+                bank: plan.bank.name,
+                room: plan.bank.roomName
+              })
+            : t('explorer.buy.bankFirst', {
+                amount: coins(plan.bank.withdraw),
+                bank: plan.bank.name,
+                room: plan.bank.roomName,
+                balance: coins(plan.bank.balance)
+              })}
         </div>
       ) : (
         <div className="ex-buy-line" data-tone="ok">
@@ -377,6 +385,7 @@ export default function ExplorerScreen({
   detail,
   buyPlan,
   buy,
+  focus,
   onClose
 }: ExplorerScreenProps) {
   const [kind, setKind] = useState<ExplorerKind>('weapons');
@@ -507,6 +516,33 @@ export default function ExplorerScreen({
     const kept = all.filter((row) => passes(row, kind, filters, backstabForced));
     return orderRows(kept, (row) => cellOf(row, sort.id), sort.dir);
   }, [all, kind, filters, sort, asked, cellOf]);
+
+  // Opened on an item: its list, the search cleared, the item chosen and scrolled to.
+  const scrollToRef = useRef<number | null>(null);
+  const kindRef = useRef(kind);
+  kindRef.current = kind;
+  useEffect(() => {
+    if (focus === null) return;
+    if (kindRef.current !== focus.kind) {
+      setKind(focus.kind);
+      setAnswer(null);
+      setFilters((f) => ({ ...f, type: '', slot: '', ability: DEFAULT_FILTERS.ability }));
+      setSort({ id: 'Name', dir: 1 });
+    }
+    setFilters((f) => ({ ...f, query: '' }));
+    setChosen(focus.item);
+    scrollToRef.current = focus.item;
+  }, [focus]);
+  useEffect(() => {
+    const wanted = scrollToRef.current;
+    if (wanted === null) return;
+    const at = rows.findIndex((row) => row.number === wanted);
+    if (at < 0) return;
+    scrollToRef.current = null;
+    const top = Math.max(0, at * ROW_PX - ROW_PX * 3);
+    bodyRef.current?.scrollTo({ top });
+    setScrollTop(top);
+  }, [rows]);
 
   if (!open) return null;
 

@@ -3569,10 +3569,19 @@ describe('the actions kept beside the MegaMUD engine', () => {
       );
     });
 
-    it('refuses a short purse, saying whether no vault was read or none holds enough', () => {
+    it('goes by a vault nobody has asked, to ask it there', () => {
+      const { inside } = setUp(200, []);
+      const unread = { ...vault, copper: null };
+      inside.world = { cashPlaces: () => [unread] };
+      expect(inside.fundsFor('broadsword', '1/9', 1).bank).toEqual(unread);
+    });
+
+    it('refuses a short purse only where no vault can be reached or every one is short', () => {
       const words = { item: 'broadsword', short: '3 gold' };
-      expect(setUp(200, []).inside.fundsFor('broadsword', '1/9', 1).refusal).toBe(
-        t('automation.collect.refusalNoVaultRead', words)
+      const none = setUp(200, []);
+      none.inside.world = { cashPlaces: () => [] };
+      expect(none.inside.fundsFor('broadsword', '1/9', 1).refusal).toBe(
+        t('automation.collect.refusalNoVault', words)
       );
       expect(
         setUp(200, [{ name: 'Bank of Silvermere', copper: 100 }]).inside.fundsFor(
@@ -3583,12 +3592,9 @@ describe('the actions kept beside the MegaMUD engine', () => {
       ).toBe(t('automation.collect.refusalVaultsShort', words));
     });
 
-    it('withdraws at the vault, reads the purse back, then walks on to the counter', () => {
-      vi.useFakeTimers();
-      const { inside, set, state } = setUp(200, [{ name: 'Bank of Silvermere', copper: 900 }]);
-      const walk = vi.spyOn(inside.mega, 'walkTo').mockReturnValue(null);
-      const then = vi.fn();
-      inside.megaBuying = {
+    /** At the vault, nothing asked of it yet. */
+    const atVault = (then?: () => void) =>
+      ({
         row: { name: 'broadsword', min: 1, max: 1, shop: 'Weaponsmith', at: null },
         room: '1/9',
         shop: 'Weaponsmith',
@@ -3596,18 +3602,38 @@ describe('the actions kept beside the MegaMUD engine', () => {
         asked: null,
         cash: {
           room: '1/5',
+          shop: 7,
           name: vault.name,
           withdraw: 300,
           need: 500,
           walking: false,
+          balanceAsked: null,
           asked: null
         },
-        then
-      } as unknown as { cash?: unknown };
+        ...(then === undefined ? {} : { then })
+      }) as unknown as { cash?: unknown };
+    let pendingNow: () => Array<{ text: string }> = () => [];
+    const said = () => pendingNow().map((p) => p.text);
+
+    it('says bank at the vault, then withdraws, reads the purse back and walks on', () => {
+      vi.useFakeTimers();
+      const { inside, set, state } = setUp(200, []);
+      pendingNow = () => inside.mega.s.pending;
+      const walk = vi.spyOn(inside.mega, 'walkTo').mockReturnValue(null);
+      const then = vi.fn();
+      inside.megaBuying = atVault(then);
       inside.megaBuyTick(state());
-      expect(inside.mega.s.pending.map((p) => p.text)).toEqual(['withdraw 300\r', 'i\r']);
+      expect(said()).toEqual(['bank\r']);
+      pendingPump(inside.mega.s);
       inside.megaBuyTick(state());
-      expect(inside.mega.s.pending).toHaveLength(2);
+      expect(said()).toEqual([]);
+
+      vi.advanceTimersByTime(100);
+      set({ banks: [{ shop: 7, name: vault.name, copper: 900, at: Date.now() }] });
+      inside.megaBuyTick(state());
+      expect(said()).toEqual(['withdraw 300\r', 'i\r']);
+      inside.megaBuyTick(state());
+      expect(said()).toHaveLength(2);
 
       set({ inventory: { ...state().inventory, wealth: 500 } });
       inside.megaBuyTick(state());
@@ -3616,24 +3642,59 @@ describe('the actions kept beside the MegaMUD engine', () => {
       expect(then).not.toHaveBeenCalled();
     });
 
+    it('takes the balance the realm says over the record, and gives up where it is short', () => {
+      vi.useFakeTimers();
+      const { inside, set, state } = setUp(200, [{ name: vault.name, copper: 900 }]);
+      pendingNow = () => inside.mega.s.pending;
+      inside.megaBuying = atVault();
+      inside.megaBuyTick(state());
+      pendingPump(inside.mega.s);
+      // The record's 900, read before the ask, is not the answer.
+      inside.megaBuyTick(state());
+      expect(said()).toEqual([]);
+      vi.advanceTimersByTime(100);
+      set({ banks: [{ shop: 7, name: vault.name, copper: 120, at: Date.now() }] });
+      inside.megaBuyTick(state());
+      expect(inside.megaBuying).toBeNull();
+      expect(notices.at(-1)).toBe(
+        t('automation.collect.megaNotBought', {
+          item: 'broadsword',
+          shop: 'Weaponsmith',
+          why: t('automation.collect.whyVaultShort', {
+            bank: vault.name,
+            held: '1 gold, 2 silver',
+            amount: '3 gold'
+          })
+        })
+      );
+    });
+
+    it('gives the purchase up when the vault says no balance', () => {
+      vi.useFakeTimers();
+      const { inside, state } = setUp(200, []);
+      inside.megaBuying = atVault();
+      inside.megaBuyTick(state());
+      pendingPump(inside.mega.s);
+      vi.advanceTimersByTime(tuning().supplies.buyTimeoutMs + 1);
+      inside.megaBuyTick(state());
+      expect(inside.megaBuying).toBeNull();
+      expect(notices.at(-1)).toBe(
+        t('automation.collect.megaNotBought', {
+          item: 'broadsword',
+          shop: 'Weaponsmith',
+          why: t('automation.collect.whyNoBalance', { bank: vault.name })
+        })
+      );
+    });
+
     it('gives the purchase up when the vault pays nothing out', () => {
       vi.useFakeTimers();
-      const { inside, state } = setUp(200, [{ name: 'Bank of Silvermere', copper: 900 }]);
-      inside.megaBuying = {
-        row: { name: 'broadsword', min: 1, max: 1, shop: 'Weaponsmith', at: null },
-        room: '1/9',
-        shop: 'Weaponsmith',
-        at: false,
-        asked: null,
-        cash: {
-          room: '1/5',
-          name: vault.name,
-          withdraw: 300,
-          need: 500,
-          walking: false,
-          asked: null
-        }
-      } as unknown as { cash?: unknown };
+      const { inside, set, state } = setUp(200, []);
+      inside.megaBuying = atVault();
+      inside.megaBuyTick(state());
+      pendingPump(inside.mega.s);
+      vi.advanceTimersByTime(100);
+      set({ banks: [{ shop: 7, name: vault.name, copper: 900, at: Date.now() }] });
       inside.megaBuyTick(state());
       vi.advanceTimersByTime(tuning().supplies.buyTimeoutMs + 1);
       inside.megaBuyTick(state());

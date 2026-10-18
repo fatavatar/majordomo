@@ -174,6 +174,12 @@ export const CARDS = [
    * and the rail is short on purpose.
    */
   { id: 'stats', label: t('cards.stats.title') },
+  /*
+   * What this character could wear instead, by MMUD Explorer's Find Best,
+   * with Buy beside each upgrade (2026-10-18). Put away by default for the
+   * Stats card's reason: a question asked between evenings, not watched.
+   */
+  { id: 'gear', label: t('cards.gear.title') },
   // The diagnostics half. Toggled as a group by the rail shortcut, and each one
   // can still be put away on its own — "all cards" means all of them.
   { id: 'session', label: t('cards.session.title') },
@@ -205,6 +211,7 @@ const DEFAULT_AWAY: readonly CardId[] = [
   'gang',
   'banks',
   'stats',
+  'gear',
   'builder',
   'quests',
   'hunting'

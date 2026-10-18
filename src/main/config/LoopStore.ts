@@ -34,7 +34,7 @@ import { parse } from 'yaml';
 import { asLoops, type Loop } from '../../shared/loops';
 import type { Home } from '../app/home';
 import { directoryNames } from './dirs';
-import { Poller } from './Poller';
+import { fileStamp, Poller } from './Poller';
 
 export interface LoopStoreEvents {
   change: () => void;
@@ -58,7 +58,7 @@ export class LoopStore extends EventEmitter {
   ) {
     super();
     this.poller = new Poller({
-      signature: () => this.signature(),
+      signature: (settledAt) => this.signature(settledAt),
       reload: () => {
         this.read();
         this.emit('change');
@@ -149,15 +149,16 @@ export class LoopStore extends EventEmitter {
    *
    * Names, sizes and mtimes rather than contents: the point is to notice a
    * change cheaply, and re-reading every loop twice a second to find out
-   * whether any of them changed is the cost this avoids.
+   * whether any of them changed is the cost this avoids. Contents only for a
+   * file saved about when it was read, whose mtime cannot say (`fileStamp`).
    */
-  private signature(): string {
-    const parts: string[] = [stamp(this.home.globalLoops)];
+  private signature(settledAt: number): string {
+    const parts: string[] = [stamp(this.home.globalLoops, settledAt)];
     for (const id of directories(this.home.serversDir)) {
-      parts.push(`s:${id}:${stamp(this.home.server(id).loops)}`);
+      parts.push(`s:${id}:${stamp(this.home.server(id).loops, settledAt)}`);
     }
     for (const id of directories(this.home.profilesDir)) {
-      parts.push(`p:${id}:${stamp(this.home.profile(id).loops)}`);
+      parts.push(`p:${id}:${stamp(this.home.profile(id).loops, settledAt)}`);
     }
     return parts.join('|');
   }
@@ -206,13 +207,12 @@ function yamlFiles(dir: string): string[] {
   }
 }
 
-/** One directory's listing as a revision string. */
-function stamp(dir: string): string {
+/** One directory's listing as a revision string, each file's part `fileStamp`'s. */
+function stamp(dir: string, settledAt: number): string {
   return yamlFiles(dir)
     .map((name) => {
       try {
-        const info = fs.statSync(path.join(dir, name));
-        return `${name}:${info.size}:${info.mtimeMs}`;
+        return `${name}:${fileStamp(path.join(dir, name), settledAt)}`;
       } catch {
         return `${name}:gone`;
       }

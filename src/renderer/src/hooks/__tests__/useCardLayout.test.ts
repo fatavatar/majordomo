@@ -41,7 +41,8 @@ describe('a rail that has never been arranged', () => {
       'quests',
       'hunting',
       'conversation',
-      'stats'
+      'stats',
+      'gear'
     ]);
     expect(layout.floats).toEqual([]);
   });

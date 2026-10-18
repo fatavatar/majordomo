@@ -33,7 +33,7 @@ import { asServer, type Server } from '../../shared/config';
 import type { Home } from '../app/home';
 import { t } from '../app/i18n';
 import { directoryNames } from './dirs';
-import { Poller } from './Poller';
+import { fileStamp, Poller } from './Poller';
 
 /** One server and the directory it was read from. */
 export interface StoredServer {
@@ -65,7 +65,7 @@ export class ServerStore extends EventEmitter {
   ) {
     super();
     this.poller = new Poller({
-      signature: () => this.signature(),
+      signature: (settledAt) => this.signature(settledAt),
       reload: () => {
         this.read();
         this.emit('change');
@@ -155,12 +155,11 @@ export class ServerStore extends EventEmitter {
     }
   }
 
-  private signature(): string {
+  private signature(settledAt: number): string {
     return this.ids()
       .map((id) => {
         try {
-          const info = fs.statSync(this.home.server(id).file);
-          return `${id}:${info.size}:${info.mtimeMs}`;
+          return `${id}:${fileStamp(this.home.server(id).file, settledAt)}`;
         } catch {
           return `${id}:gone`;
         }

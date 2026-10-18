@@ -157,10 +157,64 @@ export interface ExplorerBuyPlan {
   price: number | null;
   /** The purse, copper; null where no listing has said. */
   purse: number | null;
-  /** The vault the shortfall is drawn from first, and its balance by the record. */
-  bank?: { name: string; roomName: string; withdraw: number; balance: number };
+  /** The vault the shortfall is drawn from first, and its balance by the record; null never asked. */
+  bank?: { name: string; roomName: string; withdraw: number; balance: number | null };
   /** Why it cannot be bought now; absent where it can. */
   refusal?: string;
   /** Buy + Wear: whether it is worn at all, and what comes off for it. */
   wear: { wearable: boolean; remove: string[] };
+}
+
+/**
+ * The Gear card's question (2026-10-18): MME's Find Best (`findBest`, its
+ * `frmMain.InvenFindBest`) for the character as it is, by one of MME's
+ * criteria, each slot's best set against what is worn there.
+ */
+export interface GearOptions {
+  /** Which of `GearBoard.criteria`, by its place in the list. */
+  criterion: number;
+  /** MME's `No Limiteds`. */
+  noLimited: boolean;
+  /** Only what some counter in the realm stocks, so Buy can buy it. */
+  soldOnly: boolean;
+}
+
+export const DEFAULT_GEAR_OPTIONS: GearOptions = { criterion: 0, noLimited: false, soldOnly: true };
+
+/** Options that crossed the wire, parsed: anything unreadable is the default. */
+export function asGearOptions(value: unknown): GearOptions {
+  const o = (typeof value === 'object' && value !== null ? value : {}) as Record<string, unknown>;
+  const criterion = o['criterion'];
+  return {
+    criterion:
+      typeof criterion === 'number' && Number.isInteger(criterion) && criterion >= 0
+        ? criterion
+        : 0,
+    noLimited: o['noLimited'] === true,
+    soldOnly: o['soldOnly'] !== false
+  };
+}
+
+/** One item in a slot, and what the criterion makes of it. */
+export interface GearPick {
+  number: number;
+  name: string;
+  value: number;
+}
+
+/** One of MME's slots (`EQ_SLOTS`): what is worn, and Find Best's choice. */
+export interface GearSlot {
+  slot: number;
+  label: string;
+  worn: GearPick | null;
+  /** The same item as `worn` where nothing beats it; null where the slot is best left empty. */
+  best: GearPick | null;
+}
+
+export interface GearBoard {
+  supported: boolean;
+  reason?: string;
+  /** MME's Find Best menu, `[group, label]`, in its order. */
+  criteria: Array<[string, string]>;
+  slots: GearSlot[];
 }

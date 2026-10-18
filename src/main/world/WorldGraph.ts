@@ -2897,6 +2897,11 @@ export class WorldGraph {
    * By **id**, like `stockedBy` beside it and for the same reason: a shop
    * stocks rows, and the realm repeats item names across rows.
    */
+  /** Whether some counter the realm places stocks this row: what the Gear card's `Sold` keeps to. */
+  sold(item: number): boolean {
+    return this.stockRooms(item).length > 0;
+  }
+
   private stockRooms(item: number): readonly WorldRoom[] {
     if (this.stocking === null) {
       const index = new Map<number, WorldRoom[]>();
@@ -3185,14 +3190,17 @@ export class WorldGraph {
 
   /**
    * The vaults holding at least `need` copper by this character's own record,
-   * best first by what stopping at each adds to the way to `to` (todo 00).
+   * best first by what stopping at each adds to the way to `to` (todo 00),
+   * and after them the vaults nobody has asked, `copper` null, best first the
+   * same way (2026-10-18): the errand says `bank` at a vault before it draws
+   * from it, so one never asked is asked there rather than left out, where
+   * the purchase was refused until the player said `bank` somewhere.
    *
    * `buyingPlacesFor`'s arithmetic over bank rooms instead of counters, on the
    * same two sweeps: the detour, not the distance, since the cash is wanted at
-   * the counter and a vault the way already passes costs nothing. A vault
-   * nobody has asked is not a candidate — a walk to learn a balance is a guess
-   * at one — and the one the record overstates is found out at its counter,
-   * where the errand asks `bank` before it withdraws.
+   * the counter and a vault the way already passes costs nothing. One the
+   * record says is short is left out; one it overstates is found out at its
+   * counter, by that same `bank`.
    */
   cashPlaces(
     balances: readonly BankBalance[],
@@ -3201,11 +3209,11 @@ export class WorldGraph {
     to: RoomId | null,
     traveller: Traveller
   ): CashPlace[] {
-    const candidates: Array<{ choice: BankChoice; copper: number }> = [];
+    const candidates: Array<{ choice: BankChoice; copper: number | null }> = [];
     for (const choice of this.banks()) {
       const held = balanceOf({ id: choice.shop, name: choice.name }, balances);
-      if (held === null || held.copper < need) continue;
-      candidates.push({ choice, copper: held.copper });
+      if (held !== null && held.copper < need) continue;
+      candidates.push({ choice, copper: held?.copper ?? null });
     }
     if (candidates.length === 0) return [];
     const wanted = new Set(candidates.map(({ choice }) => roomId(choice.map, choice.room)));
@@ -3233,8 +3241,15 @@ export class WorldGraph {
         moves: reach.moves
       });
     }
+    // A vault the record says holds it before one never asked.
+    const unread = (place: CashPlace): number => (place.copper === null ? 1 : 0);
     return places.sort(
-      (a, b) => a.detour - b.detour || a.moves - b.moves || a.map - b.map || a.room - b.room
+      (a, b) =>
+        unread(a) - unread(b) ||
+        a.detour - b.detour ||
+        a.moves - b.moves ||
+        a.map - b.map ||
+        a.room - b.room
     );
   }
 

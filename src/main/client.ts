@@ -146,12 +146,18 @@ import type { MegaData } from './megamud/data';
 import { megaDataFrom } from './megamud/fromWorld';
 import {
   explorerDetail,
+  explorerGear,
   explorerList,
   explorerWear,
   realmFile,
   type MmeRealm
 } from './mme/Explorer';
-import { asExplorerOptions, type ExplorerBuyPlan, type ExplorerKind } from '../shared/explorer';
+import {
+  asExplorerOptions,
+  asGearOptions,
+  type ExplorerBuyPlan,
+  type ExplorerKind
+} from '../shared/explorer';
 import { planRoute } from './world/RoutePlanner';
 import type { EngineMemory, MegaEngineSetup } from './session/MegaEngine';
 import type { LearnedSpellTable, SessionSummary } from '../shared/ipc';
@@ -2630,6 +2636,25 @@ function registerIpc(): void {
       remove = wearing.remove;
     }
     return manager.buyNow({ id: row.id, name: row.name }, remove);
+  });
+  handle(Invoke.explorerGear, async (_caller, session: SessionId, options: unknown) => {
+    const none = { supported: false, criteria: [], slots: [] };
+    const realm = explorerRealm(session);
+    const manager = host?.get(session)?.manager;
+    if (typeof realm === 'string' || manager === undefined)
+      return { ...none, reason: typeof realm === 'string' ? realm : '' };
+    const world = worldFor(session);
+    try {
+      const board = await explorerGear(
+        realm,
+        manager.character,
+        asGearOptions(options),
+        (item) => world?.sold(item) ?? true
+      );
+      return board.supported ? board : { ...board, reason: t('app.explorer.unsupported') };
+    } catch (error) {
+      return { ...none, reason: t('app.explorer.unreadable', { reason: errorMessage(error) }) };
+    }
   });
 
   handle(Invoke.lookup, async (_caller, session: SessionId, query: unknown) => {

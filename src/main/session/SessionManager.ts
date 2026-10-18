@@ -64,6 +64,7 @@ import { DialCancelled, TelnetClient } from '../net/TelnetClient';
 import { LinkWatch } from './LinkWatch';
 import { isPrompt, type Block } from '../../shared/blocks';
 import {
+  balanceOf,
   bankKey,
   ownAlignment,
   packRows,
@@ -2723,10 +2724,13 @@ export class SessionManager {
      */
     cash?: {
       room: RoomId;
+      shop: number;
       name: string;
       withdraw: number;
       need: number;
       walking: boolean;
+      /** When its `bank` went out, which is said before every withdrawal; null before it has. */
+      balanceAsked: number | null;
       /** When the `withdraw` went out; null before it has. */
       asked: number | null;
     };
@@ -2802,10 +2806,12 @@ export class SessionManager {
         : {
             cash: {
               room: first,
+              shop: bank.shop,
               name: bank.name,
               withdraw: funds.withdraw,
               need: funds.price ?? 0,
               walking: where !== first,
+              balanceAsked: null,
               asked: null
             }
           }),
@@ -2924,12 +2930,14 @@ export class SessionManager {
    * What buying `count` of `name` at `counter` costs this character, and where
    * the cash comes from where the purse is short (2026-10-18): the counter's
    * charge after charm (`priceAt`, `chargedInCopper`) against the purse, and
-   * the vault the character's own record says holds the shortfall, best by
-   * the detour to the counter (`WorldGraph.cashPlaces`). A vault nobody has
-   * asked is never walked to — `cashPlaces`' own rule, a walk to learn a
-   * balance being a guess at one — so a short purse with no vault known to
-   * cover it is refused, and says which. An unpriced item or an unread purse
-   * is not short: there is nothing to check it against.
+   * the vault the character's own record says holds the shortfall, else the
+   * nearest never asked, best by the detour to the counter
+   * (`WorldGraph.cashPlaces`); its `bank` is said there before the
+   * withdrawal, so a vault never asked is asked, where the purchase was
+   * refused until the player said `bank` (2026-10-18). Refused, and said
+   * which, only where every vault is known short or none can be reached. An
+   * unpriced item or an unread purse is not short: there is nothing to check
+   * it against.
    */
   private fundsFor(
     name: string,
@@ -2961,7 +2969,7 @@ export class SessionManager {
       withdraw,
       refusal:
         state.banks.length === 0
-          ? t('automation.collect.refusalNoVaultRead', words)
+          ? t('automation.collect.refusalNoVault', words)
           : t('automation.collect.refusalVaultsShort', words)
     };
   }
@@ -3006,10 +3014,12 @@ export class SessionManager {
   }
 
   /**
-   * At the vault, `withdraw` the shortfall and read the purse back (`i`),
-   * then on to the counter once it holds what the counter charges; a vault
-   * that `tuning.supplies.buyTimeoutMs` after it was asked has not paid out
-   * gives the purchase up, said.
+   * At the vault, its `bank` first, so the balance is the realm's word and
+   * not the record's, which may be stale or never read; then `withdraw` the
+   * shortfall and read the purse back (`i`), and on to the counter once it
+   * holds what the counter charges. A vault that does not say its balance,
+   * holds less than the shortfall, or `tuning.supplies.buyTimeoutMs` after
+   * it was asked has not paid out gives the purchase up, said.
    */
   private megaCashTick(
     state: CharacterState,
@@ -3030,14 +3040,38 @@ export class SessionManager {
       if (refused !== null) this.megaBuyGiveUp(refused);
       return;
     }
+    const timeout = tuning().supplies.buyTimeoutMs;
+    if (cash.balanceAsked === null) {
+      cash.balanceAsked = Number.POSITIVE_INFINITY;
+      mega.queue('bank', () => {
+        if (buying.cash === cash) cash.balanceAsked = Date.now();
+      });
+      return;
+    }
     if (cash.asked === null) {
+      const held = balanceOf({ id: cash.shop, name: cash.name }, state.banks);
+      if (held === null || held.at < cash.balanceAsked) {
+        if (Date.now() - cash.balanceAsked >= timeout)
+          this.megaBuyGiveUp(t('automation.collect.whyNoBalance', { bank: cash.name }));
+        return;
+      }
+      if (held.copper < cash.withdraw) {
+        this.megaBuyGiveUp(
+          t('automation.collect.whyVaultShort', {
+            bank: cash.name,
+            held: this.coinWords(held.copper),
+            amount: this.coinWords(cash.withdraw)
+          })
+        );
+        return;
+      }
       cash.asked = Date.now();
       mega.queue(`withdraw ${cash.withdraw}`);
       // The listing is what states the purse, so the tick above can read it.
       mega.queue('i');
       return;
     }
-    if (Date.now() - cash.asked >= tuning().supplies.buyTimeoutMs) {
+    if (Date.now() - cash.asked >= timeout) {
       this.megaBuyGiveUp(t('automation.collect.whyNotPaid', { bank: cash.name }));
     }
   }

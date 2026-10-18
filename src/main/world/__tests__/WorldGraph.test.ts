@@ -1550,7 +1550,8 @@ describe('what a counter charges, and which vault pays for it', () => {
     expect(places[0]).toMatchObject({ copper: 9_000_000, moves: 10 });
   });
 
-  it('leaves out a vault short of the need, and one nobody has asked', () => {
+  /* Asked there, by the `bank` said before every withdrawal (2026-10-18). */
+  it('leaves out a vault short of the need, and offers one nobody has asked', () => {
     const places = town().cashPlaces(
       [said(2, 'Silvermere Bank', 100)],
       1650,
@@ -1558,7 +1559,21 @@ describe('what a counter charges, and which vault pays for it', () => {
       ends.to,
       {}
     );
-    expect(places).toEqual([]);
+    expect(places.map((place) => [place.name, place.copper])).toEqual([['Bank of Godfrey', null]]);
+  });
+
+  it('puts a vault the record says holds it before a nearer one never asked', () => {
+    const places = town().cashPlaces(
+      [said(2, 'Silvermere Bank', 9_000_000)],
+      1650,
+      ends.from,
+      ends.to,
+      {}
+    );
+    expect(places.map((place) => [place.name, place.copper])).toEqual([
+      ['Silvermere Bank', 9_000_000],
+      ['Bank of Godfrey', null]
+    ]);
   });
 
   it('matches a balance the header gave no id by the name, article and all', () => {
@@ -1569,7 +1584,10 @@ describe('what a counter charges, and which vault pays for it', () => {
       ends.to,
       {}
     );
-    expect(places.map((place) => place.name)).toEqual(['Bank of Godfrey']);
+    expect(places.map((place) => [place.name, place.copper])).toEqual([
+      ['Bank of Godfrey', 5000],
+      ['Silvermere Bank', null]
+    ]);
   });
 });
 

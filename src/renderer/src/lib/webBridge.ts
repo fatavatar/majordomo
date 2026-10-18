@@ -304,6 +304,7 @@ export function createWebBridge(): IpcApi {
     explorerDetail: (session, item) => invoke(Invoke.explorerDetail, session, item),
     explorerBuyPlan: (session, item) => invoke(Invoke.explorerBuyPlan, session, item),
     explorerBuy: (session, item, wear) => invoke(Invoke.explorerBuy, session, item, wear),
+    explorerGear: (session, options) => invoke(Invoke.explorerGear, session, options),
     forget: (session, discovery) => invoke(Invoke.forget, session, discovery),
     forgetFind: (session, find) => invoke(Invoke.forgetFind, session, find),
     forgetCharacter: (session) => invoke(Invoke.forgetCharacter, session),

@@ -1,4 +1,4 @@
-/** `mmud/charstats.js`: `equipItem`, `equipSlotFor`. Ours, beside mudtool's copy. */
+/** `mmud/charstats.js`: `equipItem`, `equipSlotFor`, Find Best. Ours, beside mudtool's copy. */
 import type { MmeChar } from '../char';
 export function equipItem(
   c: Pick<MmeChar, 'equipped'>,
@@ -10,3 +10,22 @@ export function equipSlotFor(
   item: number,
   opts?: { use2ndWrist?: boolean }
 ): { slot?: number; already?: number; nowhere?: boolean };
+/** One of the Find Best menu's rules: abilities summed, a field, or AC and DR together. */
+export interface FindBestRule {
+  abils?: number[];
+  field?: string;
+  acdr?: boolean;
+  greater?: boolean;
+}
+export const FIND_BEST: Array<[string, Array<[string, FindBestRule]>]>;
+export function eqSlotLists(
+  c: Pick<MmeChar, 'equipped'>,
+  opts?: { globalFilter?: boolean; onlyInGame?: boolean }
+): number[][];
+export function findBestValue(item: Record<string, unknown>, rule: FindBestRule): number;
+export function findBest(
+  equipped: readonly number[],
+  lists: number[][],
+  rule: FindBestRule,
+  opts?: { next?: boolean; holds?: boolean[]; noLimited?: boolean; use2ndWrist?: boolean }
+): { equipped: number[]; found: boolean };
