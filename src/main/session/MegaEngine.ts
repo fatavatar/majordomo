@@ -163,10 +163,12 @@ export interface MegaEngineHost {
   locate(): boolean;
   world(): WorldGraph | undefined;
   /**
-   * The shortest walkable way between two rooms, planned off main's thread
-   * (`RoutePlanner`); a string when there is nothing to plan on.
+   * The way between two rooms, planned off main's thread (`RoutePlanner`); a
+   * string when there is nothing to plan on. `walking` is what for: a walk
+   * to a room, planned as the route panel plans one, or a loop's leg, as the
+   * loop was drawn (2026-10-18).
    */
-  plan(from: RoomId, to: RoomId): Promise<Route> | string;
+  plan(from: RoomId, to: RoomId, walking: PlanFor): Promise<Route> | string;
   /** A loop's stops as rooms, or why not. */
   loopRooms(name: string): { rooms: RoomId[]; bounce: boolean } | string;
   /** MegaMUD's yes-or-no questions; no when absent. */
@@ -360,6 +362,12 @@ export interface FleeGoto {
   belowHealth: number;
   destination: string;
 }
+/** What a way is planned for: a walk to a room (`route`), or a loop's leg (`lap`). */
+export type PlanFor = 'route' | 'lap';
+
+/** A plan kept: what for, and between which rooms. */
+const planKey = (walking: PlanFor, from: RoomId, to: RoomId): string => `${walking}:${from}>${to}`;
+
 /** How long a way planned is used again before it is planned afresh. */
 const PLAN_KEPT_MS = 60_000;
 
@@ -1464,7 +1472,17 @@ export class MegaEngine {
    * resumes a loop path), so its end would never come; the loop is let go
    * first (2026-10-14).
    */
-  walkTo(room: RoomId, run = false, alone = false): string | null {
+  walkTo(room: RoomId, run = false, alone = false, planned?: Route): string | null {
+    /*
+     * A way already planned and shown — the route panel's, a quest leg's — is
+     * the way walked, kept as this walk's plan from where it starts (2026-10-18).
+     * Asked afresh, the planner's thread planned it for the lap's traveller:
+     * Archer was shown the slums and the Black House's key and walked the
+     * Dragontooth Hills instead. Off that way, the walk plans as it always did.
+     */
+    const start = planned?.steps[0]?.from;
+    if (planned !== undefined && start !== undefined && !planned.blocked)
+      this.plans.set(planKey('route', start, room), { route: planned, at: Date.now() });
     const sig = this.signatureOf(room) ?? this.standInFor(room);
     const s = this.s;
     if (alone) {
@@ -1936,7 +1954,7 @@ export class MegaEngine {
     for (const room of rooms) {
       if (room === here)
         return { flags: 0, path: this.makePath(this.routeName(), 'route', [], from, to), steps: 0 };
-      const plan = this.plan(here, room);
+      const plan = this.plan(here, room, 'route');
       if (plan === 'pending') pending = true;
       if (typeof plan !== 'string' && plan.blocked && plan.unlocks?.needs !== undefined)
         unlocks ??= { needs: plan.unlocks.needs, room };
@@ -1972,12 +1990,12 @@ export class MegaEngine {
    * The way between two rooms: kept from an earlier ask, or asked of the
    * planner's thread and `pending` until it answers (`planArrived`).
    */
-  private plan(from: RoomId, to: RoomId): Route | string | 'pending' {
-    const key = `${from}>${to}`;
+  private plan(from: RoomId, to: RoomId, walking: PlanFor): Route | string | 'pending' {
+    const key = planKey(walking, from, to);
     const kept = this.plans.get(key);
     if (kept === 'pending') return kept;
     if (kept !== undefined && Date.now() - kept.at < PLAN_KEPT_MS) return kept.route;
-    const asked = this.host.plan(from, to);
+    const asked = this.host.plan(from, to, walking);
     if (typeof asked === 'string') return asked;
     this.plans.set(key, 'pending');
     asked
@@ -2030,7 +2048,7 @@ export class MegaEngine {
     // Every leg asked for at once, so the planner's thread works on them together.
     const planned = rooms.map((from, i) => {
       const to = rooms[(i + 1) % rooms.length]!;
-      return from === to ? null : this.plan(from, to);
+      return from === to ? null : this.plan(from, to, 'lap');
     });
     if (planned.includes('pending')) return 'pending';
     for (const [i, plan] of planned.entries()) {

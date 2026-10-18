@@ -109,8 +109,13 @@ import type {
   ExplorerKind,
   ExplorerList,
   ExplorerOptions,
+  ExplorerRoomView,
   GearBoard,
-  GearOptions
+  GearOptions,
+  RoomMapOptions,
+  RoomSearch,
+  RoomSearchResult,
+  RoomViewRequest
 } from './explorer';
 import type { InternalConfig } from './internal';
 import type { Loop, LoopProgress, LoopScope, ScopedLoop } from './loops';
@@ -1056,6 +1061,10 @@ export const Invoke = {
   explorerBuy: 'explorer:buy',
   /** The Gear card: MME's Find Best for the character as it is (`explorerGear`). */
   explorerGear: 'explorer:gear',
+  /** The Rooms tab: MME's map from a room, a cell's tooltip, and its finders. */
+  explorerRoomView: 'explorer:room-view',
+  explorerRoomTip: 'explorer:room-tip',
+  explorerRoomSearch: 'explorer:room-search',
   /**
    * Strike an observation out of what this character has learned about the
    * realm. The player's call — an observation is one sample of one walk, and
@@ -1616,14 +1625,29 @@ export interface IpcApi {
     kind: ExplorerKind,
     options: ExplorerOptions
   ): Promise<ExplorerList>;
-  /** One item's detail in MMUD Explorer's words; null where there is none. */
-  explorerDetail(session: SessionId, item: number): Promise<ExplorerDetail | null>;
+  /** One item's or spell's detail in MMUD Explorer's words; null where there is none. */
+  explorerDetail(
+    session: SessionId,
+    kind: ExplorerKind,
+    item: number,
+    options: ExplorerOptions
+  ): Promise<ExplorerDetail | null>;
   /** What Buy would do for this item now; null where the realm has no such item. */
   explorerBuyPlan(session: SessionId, item: number): Promise<ExplorerBuyPlan | null>;
   /** Buy it, and wear it where `wear`; why not, or null where it is on its way. */
   explorerBuy(session: SessionId, item: number, wear: boolean): Promise<string | null>;
   /** MME's Find Best for this character, slot by slot. See `Invoke.explorerGear`. */
   explorerGear(session: SessionId, options: GearOptions): Promise<GearBoard>;
+  /** MME's map from a room, with its references and the character's room. */
+  explorerRoomView(session: SessionId, request: RoomViewRequest): Promise<ExplorerRoomView>;
+  /** One cell's tooltip, asked as it is hovered. */
+  explorerRoomTip(
+    session: SessionId,
+    map: number,
+    room: number,
+    options: RoomMapOptions
+  ): Promise<string>;
+  explorerRoomSearch(session: SessionId, search: RoomSearch): Promise<RoomSearchResult>;
   /** Whether there was such an observation to strike. The push that follows carries the rest. */
   forget(session: SessionId, discovery: Pick<Discovery, 'from' | 'command'>): Promise<boolean>;
   /** Whether there was such a find to strike. The push that follows carries the rest. */

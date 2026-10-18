@@ -225,6 +225,13 @@
   --map-room: color-mix(in srgb, var(--text-lo) 26%, transparent);
   --map-room-edge: color-mix(in srgb, var(--text-lo) 55%, transparent);
   --map-link: color-mix(in srgb, var(--text-lo) 45%, transparent);
+  /* mudmaps' kinds (2026-10-18), from the same accents: a way up or down, a
+     room that answers a command, and the marks for a way out a line cannot
+     draw, cyan where it lands on the picture and green where it leaves it. */
+  --map-stairs: color-mix(in srgb, var(--accent) 50%, var(--marker));
+  --map-cmd: color-mix(in srgb, var(--accent) 60%, var(--ok));
+  --map-jump: var(--accent);
+  --map-away: var(--ok);
 
   /* Glass: the card fill, and the stronger one for a surface over a surface. */
   --glass-fill: color-mix(in srgb, var(--ink-card) 74%, transparent);

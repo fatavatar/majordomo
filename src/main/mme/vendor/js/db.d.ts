@@ -8,6 +8,7 @@ export const db: {
   Spells: Row[];
   Shops: Row[];
   Monsters: Row[];
+  Rooms: Row[];
   [table: string]: unknown;
 };
 export const by: {
@@ -17,7 +18,10 @@ export const by: {
   shop: Map<number, Row>;
   cls: Map<number, Row>;
   race: Map<number, Row>;
+  textblock: Map<number, Row>;
+  room: Map<string, Row>;
 };
+export function roomKey(map: number, room: number): string;
 export function loadDB(
   base: string,
   fetchJSON: (path: string) => Promise<unknown>

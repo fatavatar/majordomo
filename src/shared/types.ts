@@ -170,6 +170,15 @@ export interface InlineGlyph {
   commands?: string[];
 }
 
+/** A tag beside a room's name that says something and sends nothing. */
+export interface TerminalNote {
+  label: string;
+  /** The whole of it: which way, where it leads, and what it needs. */
+  title: string;
+  /** What kind of thing stands there, as the map's bars colour it. */
+  tone: string;
+}
+
 export interface TerminalMark {
   /**
    * The glyph in the margin before the line, which indents it two cells.
@@ -192,6 +201,12 @@ export interface TerminalMark {
    * take is worse than no button — it broadcasts the text to the room.
    */
   actions?: TerminalAction[];
+  /**
+   * What the room asks of whoever would leave it, as tags after the buttons
+   * (2026-10-18): a door, a key and whether it is carried, a hidden way and
+   * what opens it, a trap, a toll, a gate, a spell. Statements, never sent.
+   */
+  notes?: TerminalNote[];
   /** Glyphs inside the line, on a line the client drew (`ui.rewrites`). */
   inline?: InlineGlyph[];
 }

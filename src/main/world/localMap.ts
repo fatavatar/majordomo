@@ -68,6 +68,16 @@ export function localMap(graph: WorldGraph, centre: RoomId, radius = DEFAULT_RAD
       shop: room.shop !== undefined,
       lair: room.lair !== undefined
     };
+    // Where each way out on the plane leads, so the picture joins only the rooms it does.
+    const exitsTo: Partial<Record<Direction, RoomId>> = {};
+    for (const exit of room.exits) {
+      if (STEP[exit.direction as Direction] === null) continue;
+      if (exit.requirement?.spellEffect === 'scatters') continue;
+      exitsTo[exit.direction as Direction] = graph.beyond(exit);
+    }
+    if (Object.keys(exitsTo).length > 0) cell.exitsTo = exitsTo;
+    if ((room.npcId ?? 0) > 0) cell.npc = true;
+    if ((room.commands?.length ?? 0) > 0) cell.commands = true;
     const place = room.shop === undefined ? undefined : graph.shop(room.shop)?.kind;
     if (place !== undefined) cell.place = place;
 

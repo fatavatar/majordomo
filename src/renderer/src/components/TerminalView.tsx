@@ -19,6 +19,7 @@ import type {
   TerminalAction,
   TerminalActionName,
   TerminalMark,
+  TerminalNote,
   TerminalSize,
   InlineGlyph
 } from '@shared/types';
@@ -1140,7 +1141,8 @@ function decorate(
     });
   }
   for (const glyph of mark.inline ?? []) inlineGlyph(term, marker, glyph, indent.length, press);
-  if (mark.actions?.length) actionButtons(term, marker, mark.actions, indent, text, press);
+  if (mark.actions?.length || mark.notes?.length)
+    actionButtons(term, marker, mark.actions ?? [], mark.notes ?? [], indent, text, press);
 }
 
 /**
@@ -1214,6 +1216,7 @@ function actionButtons(
   term: Terminal,
   marker: IMarker,
   actions: readonly TerminalAction[],
+  notes: readonly TerminalNote[],
   indent: string,
   text: string,
   press: Press
@@ -1256,6 +1259,21 @@ function actionButtons(
         else for (const command of action.commands) press.send(command);
       });
       element.append(button);
+    }
+    /*
+     * And what the room asks of whoever would leave it: a door, a key and
+     * whether it is carried, a hidden way, a trap, a toll, a gate, a spell
+     * (2026-10-18). Tags, not buttons: they say, and send nothing; the
+     * title is the whole of it.
+     */
+    for (const note of notes) {
+      const tag = document.createElement('span');
+      tag.className = 'terminal-note';
+      tag.dataset['tone'] = note.tone;
+      tag.textContent = note.label;
+      tag.title = note.title;
+      tag.addEventListener('mousedown', (event) => event.preventDefault());
+      element.append(tag);
     }
   });
 }

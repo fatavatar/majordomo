@@ -148,6 +148,9 @@ import {
   explorerDetail,
   explorerGear,
   explorerList,
+  explorerRoomSearch,
+  explorerRoomTip,
+  explorerRoomView,
   explorerWear,
   realmFile,
   type MmeRealm
@@ -155,8 +158,11 @@ import {
 import {
   asExplorerOptions,
   asGearOptions,
+  asRoomViewRequest,
+  EXPLORER_KINDS,
   type ExplorerBuyPlan,
-  type ExplorerKind
+  type ExplorerKind,
+  type RoomSearch
 } from '../shared/explorer';
 import { planRoute } from './world/RoutePlanner';
 import type { EngineMemory, MegaEngineSetup } from './session/MegaEngine';
@@ -2556,6 +2562,21 @@ function registerIpc(): void {
    * MMUD Explorer for one character (2026-10-18): its realm's own database
    * file, read with MME's logic, and the character as it is now.
    */
+  /** A finder's question off the wire, or null for one that does not parse. */
+  const asRoomSearch = (value: unknown): RoomSearch | null => {
+    const o = (typeof value === 'object' && value !== null ? value : {}) as Record<string, unknown>;
+    const text = (key: string): string | null =>
+      typeof o[key] === 'string' ? (o[key] as string).slice(0, 200) : null;
+    const find = text('find');
+    if (find !== null) return { find, after: text('after') };
+    const list = text('list');
+    if (list !== null) return { list };
+    const leads = text('leads');
+    return leads !== null && /^\d+\/\d+$/.test(leads) ? { leads } : null;
+  };
+  /** A list's name off the wire; anything else is the Weapons list. */
+  const explorerKindOf = (kind: unknown): ExplorerKind =>
+    EXPLORER_KINDS.includes(kind as ExplorerKind) ? (kind as ExplorerKind) : 'weapons';
   const explorerRealm = (session: SessionId): MmeRealm | string => {
     const file = realms?.databaseFile(profileFor(session)?.database ?? '') ?? null;
     if (file === null || !existsSync(file)) return t('app.explorer.noDatabase');
@@ -2573,7 +2594,7 @@ function registerIpc(): void {
       const manager = host?.get(session)?.manager;
       if (typeof realm === 'string' || manager === undefined)
         return { ...none, reason: typeof realm === 'string' ? realm : '' };
-      const which: ExplorerKind = kind === 'armour' ? 'armour' : 'weapons';
+      const which = explorerKindOf(kind);
       try {
         const list = await explorerList(
           realm,
@@ -2587,16 +2608,26 @@ function registerIpc(): void {
       }
     }
   );
-  handle(Invoke.explorerDetail, async (_caller, session: SessionId, item: unknown) => {
-    const realm = explorerRealm(session);
-    const manager = host?.get(session)?.manager;
-    if (typeof realm === 'string' || manager === undefined || typeof item !== 'number') return null;
-    try {
-      return await explorerDetail(realm, manager.character, item);
-    } catch {
-      return null;
+  handle(
+    Invoke.explorerDetail,
+    async (_caller, session: SessionId, kind: unknown, item: unknown, options: unknown) => {
+      const realm = explorerRealm(session);
+      const manager = host?.get(session)?.manager;
+      if (typeof realm === 'string' || manager === undefined || typeof item !== 'number')
+        return null;
+      try {
+        return await explorerDetail(
+          realm,
+          manager.character,
+          explorerKindOf(kind),
+          item,
+          asExplorerOptions(options)
+        );
+      } catch {
+        return null;
+      }
     }
-  });
+  );
   /*
    * Buy and Buy + Wear: the counter, the price and the vault off the session
    * (`purchaseFor`, which the press acts on too), and what comes off for it
@@ -2636,6 +2667,67 @@ function registerIpc(): void {
       remove = wearing.remove;
     }
     return manager.buyNow({ id: row.id, name: row.name }, remove);
+  });
+  /*
+   * The Rooms tab: MME's map and finders on the realm's own rooms, the
+   * character's room marked. A request that does not parse is answered as
+   * no such room rather than a throw.
+   */
+  handle(Invoke.explorerRoomView, async (_caller, session: SessionId, request: unknown) => {
+    const realm = explorerRealm(session);
+    const manager = host?.get(session)?.manager;
+    const asked = asRoomViewRequest(request);
+    const none = {
+      supported: false,
+      found: false,
+      map: asked?.map ?? 0,
+      room: asked?.room ?? 0,
+      name: '',
+      grid: null,
+      compass: [],
+      refs: [],
+      info: '',
+      here: null
+    };
+    if (typeof realm === 'string' || manager === undefined || asked === null)
+      return { ...none, reason: typeof realm === 'string' ? realm : '' };
+    try {
+      const view = await explorerRoomView(realm, manager.character, asked);
+      return view.supported ? view : { ...view, reason: t('app.explorer.unsupported') };
+    } catch (error) {
+      return { ...none, reason: t('app.explorer.unreadable', { reason: errorMessage(error) }) };
+    }
+  });
+  handle(
+    Invoke.explorerRoomTip,
+    async (_caller, session: SessionId, map: unknown, room: unknown, options: unknown) => {
+      const realm = explorerRealm(session);
+      const manager = host?.get(session)?.manager;
+      const asked = asRoomViewRequest({ map, room, options });
+      if (typeof realm === 'string' || manager === undefined || asked === null) return '';
+      try {
+        return await explorerRoomTip(
+          realm,
+          manager.character,
+          asked.map,
+          asked.room,
+          asked.options
+        );
+      } catch {
+        return '';
+      }
+    }
+  );
+  handle(Invoke.explorerRoomSearch, async (_caller, session: SessionId, search: unknown) => {
+    const realm = explorerRealm(session);
+    const manager = host?.get(session)?.manager;
+    const asked = asRoomSearch(search);
+    if (typeof realm === 'string' || manager === undefined || asked === null) return {};
+    try {
+      return await explorerRoomSearch(realm, manager.character, asked);
+    } catch {
+      return {};
+    }
   });
   handle(Invoke.explorerGear, async (_caller, session: SessionId, options: unknown) => {
     const none = { supported: false, criteria: [], slots: [] };

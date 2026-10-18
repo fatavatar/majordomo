@@ -41,7 +41,8 @@ describe('laying out a map', () => {
     const drawing = layoutMap(cells(['1/1', 0, 0, []]));
     expect(drawing.nodes).toHaveLength(1);
     expect(drawing.nodes[0]?.here).toBe(true);
-    expect(drawing.nodes[0]?.kind).toBe('here');
+    // Its kind is its own: standing in it is said apart (`here`).
+    expect(drawing.nodes[0]?.kind).toBe('room');
   });
 
   it('marks exactly one room as where you are', () => {
@@ -77,26 +78,73 @@ describe('laying out a map', () => {
     expect(layoutMap(map).links).toEqual([]);
   });
 
-  it('gives each kind of room its own kind, most urgent first', () => {
-    const map = cells(['1/1', 0, 0, []], ['1/2', 1, 0, []], ['1/3', 2, 0, []], ['1/4', 3, 0, []]);
+  /* mudmaps' kinds and their order: shop, somebody living there, a command, a lair, a way up or down (2026-10-18). */
+  it('gives each kind of room its own kind, in mudmaps’ order', () => {
+    const map = cells(
+      ['1/1', 0, 0, []],
+      ['1/2', 1, 0, []],
+      ['1/3', 2, 0, []],
+      ['1/4', 3, 0, []],
+      ['1/5', 4, 0, []],
+      ['1/6', 5, 0, []]
+    );
     map.cells[1]!.lair = true;
     map.cells[2]!.shop = true;
     map.cells[3]!.vertical = 'down';
+    map.cells[4]!.npc = true;
+    map.cells[4]!.lair = true;
+    map.cells[5]!.commands = true;
+    map.cells[5]!.vertical = 'up';
     expect(layoutMap(map).nodes.map((entry) => entry.kind)).toEqual([
-      'here',
+      'room',
       'lair',
       'shop',
-      'stairs'
+      'stairs',
+      'npc',
+      'cmd'
     ]);
+    // Somebody living in a lair: the npc's square, the lair's diamond on its corner.
+    expect(node(map, '1/5')!.lairBadge).toBe(true);
+    expect(node(map, '1/2')!.lairBadge).toBeUndefined();
+  });
+
+  it('letters a temple, tavern, inn and trainer, and leaves a plain shop bare', () => {
+    const map = cells(['1/1', 0, 0, []], ['1/2', 1, 0, []], ['1/3', 2, 0, []]);
+    Object.assign(map.cells[1]!, { shop: true, place: 'trainer' });
+    Object.assign(map.cells[2]!, { shop: true, place: 'shop' });
+    expect(node(map, '1/2')!.letter).toBe('G');
+    expect(node(map, '1/3')!.letter).toBeUndefined();
   });
 
   it('still shows you where you are, whatever else the room is', () => {
     const map = cells(['1/1', 0, 0, []]);
     map.cells[0]!.lair = true;
     map.cells[0]!.shop = true;
-    // Standing in it outranks what it is: the one thing the map must never lose
-    // is which square is yours.
-    expect(layoutMap(map).nodes[0]?.kind).toBe('here');
+    // Standing in it is never lost, and what it is is not lost to it either.
+    expect(layoutMap(map).nodes[0]).toMatchObject({ here: true, kind: 'shop', lairBadge: true });
+  });
+
+  /*
+   * An exit to a room that is not the one in the square it points at is an
+   * arrow, not a corridor (mudmaps, 2026-10-18): a line would join the wrong two.
+   */
+  it('draws an exit as an arrow where the room in its square is not the one it reaches', () => {
+    const map = cells(['1/1', 0, 0, ['e']], ['1/2', 1, 0, []], ['1/9', 0, 2, []]);
+    map.cells[0]!.exitsTo = { e: '1/9' };
+    const drawing = layoutMap(map);
+    expect(drawing.links).toEqual([]);
+    expect(node(map, '1/1')!.arrows).toEqual([{ direction: 'e', to: '1/9', local: true }]);
+    // Off this picture, the square holding another room: still an arrow, saying so.
+    map.cells[0]!.exitsTo = { e: '2/7' };
+    expect(node(map, '1/1')!.arrows).toEqual([{ direction: 'e', to: '2/7', local: false }]);
+    // Into an empty square to a room past the picture's edge: undrawn, as an exit into the dark.
+    map.cells[0]!.exits = ['e', 'n'];
+    map.cells[0]!.exitsTo = { e: '1/2', n: '1/40' };
+    expect(node(map, '1/1')!.arrows).toBeUndefined();
+    // Where it does reach the room beside it, the corridor, as ever.
+    map.cells[0]!.exitsTo = { e: '1/2' };
+    expect(layoutMap(map).links).toHaveLength(1);
+    expect(node(map, '1/1')!.arrows).toBeUndefined();
   });
 
   it('keeps a staircase findable even when it is drawn in the plane', () => {
@@ -201,7 +249,7 @@ describe('a bank on the map', () => {
       ],
       truncated: false
     } as never);
-    expect(drawn.nodes.map((node) => node.kind)).toEqual(['here', 'bank', 'shop']);
+    expect(drawn.nodes.map((node) => node.kind)).toEqual(['room', 'bank', 'shop']);
   });
 });
 

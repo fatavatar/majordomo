@@ -7,11 +7,14 @@ import {
   explorerDetail,
   explorerGear,
   explorerList,
+  explorerRoomSearch,
+  explorerRoomTip,
+  explorerRoomView,
   explorerWear,
   type MmeRealm
 } from '../Explorer';
 import { EMPTY_CHARACTER, type CharacterState } from '../../../shared/character';
-import type { ExplorerSegment } from '../../../shared/explorer';
+import { DEFAULT_ROOM_MAP_OPTIONS, type ExplorerSegment } from '../../../shared/explorer';
 
 /*
  * mudtool's pinned v1.11p export (`vendor/fixtures`), which its own tests'
@@ -134,7 +137,7 @@ describe('MMUD Explorer for the character being played', () => {
   });
 
   it('writes an item’s detail as MME does, its references kept', async () => {
-    const detail = await explorerDetail(fixture(), character(), 64);
+    const detail = await explorerDetail(fixture(), character(), 'weapons', 64);
     expect(detail?.name).toBe('longsword');
     expect(plain(detail!.text).length).toBeGreaterThan(0);
     expect(detail!.refs.length).toBeGreaterThan(0);
@@ -200,5 +203,128 @@ describe('MMUD Explorer for the character being played', () => {
     // Kept to what a counter stocks, the vest, sold nowhere here, stays the best.
     const sold = await explorerGear(fixture(), vested, { ...options, soldOnly: true }, () => false);
     expect(sold.slots.find((slot) => slot.label === 'Torso')?.best?.number).toBe(332);
+  });
+
+  /* The Spells tab: mudtool's columns, its filter, the book (2026-10-18). */
+  it('lists spells with mudtool’s columns, the book’s marked', async () => {
+    const mage = character({
+      className: 'Mage',
+      spellbook: [{ name: 'fireball' }] as unknown as CharacterState['spellbook']
+    });
+    const list = await explorerList(fixture(), mage, 'spells');
+    expect(list.columns.map((column) => column.id)).toEqual([
+      'Number',
+      'Name',
+      'Short',
+      'Magery',
+      'ReqLevel',
+      'mana',
+      'diff',
+      'dmg',
+      'dmgm',
+      'heal',
+      'healm',
+      'detail'
+    ]);
+    const fireball = list.rows.find((row) => row.name === 'fireball')!;
+    expect(fireball).toMatchObject({ usable: true, worn: true });
+    expect(fireball.shown?.['diff']).toMatch(/^\d+%$/);
+    const detail = await explorerDetail(fixture(), mage, 'spells', fireball.number);
+    expect(plain(detail!.text)).toContain('Target: ');
+  });
+
+  /*
+   * What mudtool's own `spell filters (FilterSpells)` test reads of fireball,
+   * as main sends it; the window's filter is tested on these facts
+   * (`renderer/src/lib/__tests__/explorer.test.ts`).
+   */
+  it('gives the Spells filter fireball’s facts as FilterSpells reads them', async () => {
+    const list = await explorerList(fixture(), character({ className: 'Priest' }), 'spells');
+    const fireball = list.rows.find((row) => row.name === 'fireball')!;
+    expect(fireball.spell).toMatchObject({ magery: 1, attType: 1, targets: 12 });
+    expect(fireball.facts.abilities.some(([abil]) => abil === 17)).toBe(true);
+    expect(fireball.facts.abilities.some(([abil]) => abil === 1)).toBe(false);
+    // A Priest cannot cast it.
+    expect(fireball.usable).toBe(false);
+  });
+
+  /* The Shops tab, and references that say which tab opens them (2026-10-18). */
+  it('lists shops, a trainer fitting by class and level, a shelf whose items link', async () => {
+    const list = await explorerList(fixture(), character({ className: 'Warrior' }), 'shops');
+    expect(list.columns.map((column) => column.id)).toEqual(['Number', 'Name', 'ShopType']);
+    // `Leave this blank` is not listed, as MME leaves it out.
+    expect(list.rows.some((row) => row.name === 'Leave this blank')).toBe(false);
+    const school = list.rows.find((row) => row.number === 14)!;
+    expect(school.shop).toEqual({ type: 8, trainerFits: false });
+    const novice = character({
+      className: 'Warrior',
+      progress: { ...character().progress, level: 5 }
+    });
+    const forNovice = await explorerList(fixture(), novice, 'shops');
+    expect(forNovice.rows.find((row) => row.number === 14)?.shop?.trainerFits).toBe(true);
+
+    const swords = await explorerDetail(fixture(), character(), 'shops', 5);
+    expect(swords?.stock?.trainer).toBe(false);
+    expect(swords?.stock?.rows[0]).toMatchObject({ tab: 'weapons' });
+    // Located in Room 1/355, a link to the Rooms tab.
+    const room = swords!.refs.flatMap((ref) => ref.text).find((run) => 'kind' in run);
+    expect(room).toMatchObject({ kind: 'room', n: '1/355', tab: 'rooms' });
+  });
+
+  /* The Rooms tab: MME's map from Newhaven's entrance, its references, its finders. */
+  it('draws MME’s map from a room, with its compass, the character’s room and its finders', async () => {
+    const standing = character({
+      room: { ...character().room, map: 1, number: 2141 }
+    });
+    const request = {
+      map: 1,
+      room: 2140,
+      size: 'main',
+      options: DEFAULT_ROOM_MAP_OPTIONS,
+      center: null
+    };
+    const view = await explorerRoomView(fixture(), standing, request);
+    expect(view).toMatchObject({ found: true, name: 'Newhaven, Village Entrance', here: '1/2141' });
+    expect(view.grid?.cells).toHaveLength(30 * 23);
+    expect(view.grid?.cells[view.grid.center]).toMatchObject({ map: 1, room: 2140 });
+    expect(view.compass.find((exit) => exit.dir === 'N')?.target).toBe('1/2141');
+    // Drawn as the client's maps draw (2026-10-18): each corridor once, from one end.
+    const grid = view.grid!;
+    const step: Record<string, number> = {
+      n: -grid.cols,
+      s: grid.cols,
+      e: 1,
+      w: -1,
+      ne: 1 - grid.cols,
+      nw: -1 - grid.cols,
+      se: 1 + grid.cols,
+      sw: -1 + grid.cols
+    };
+    const corridors = grid.cells.flatMap((cell, i) =>
+      cell === null ? [] : cell.links.map((link) => [i, i + step[link.dir]!].sort().join('-'))
+    );
+    expect(corridors.length).toBeGreaterThan(0);
+    expect(new Set(corridors).size).toBe(corridors.length);
+    const junkyard = await explorerRoomView(fixture(), standing, { ...request, room: 39 });
+    expect(junkyard.grid!.cells[junkyard.grid!.center]).toMatchObject({
+      map: 1,
+      room: 39,
+      kind: 'shop'
+    });
+    expect(view.info).toContain('Newhaven, Village Entrance (1/2140)');
+    expect(await explorerRoomTip(fixture(), standing, 1, 2141, DEFAULT_ROOM_MAP_OPTIONS)).toContain(
+      '(1/2141)'
+    );
+
+    const found = await explorerRoomSearch(fixture(), standing, { find: 'Junkyard', after: null });
+    expect(found.room).toBe('1/39');
+    const listed = await explorerRoomSearch(fixture(), standing, { list: 'junkyard' });
+    expect(listed.lines?.[0]?.place).toEqual({ tab: 'rooms', n: '1/39' });
+    const leads = await explorerRoomSearch(fixture(), standing, { leads: '1/2141' });
+    expect(leads.lines?.some((line) => line.place?.n === '1/2140')).toBe(true);
+    // A room the realm has not: no map, said so.
+    expect((await explorerRoomView(fixture(), standing, { ...request, room: 32000 })).found).toBe(
+      false
+    );
   });
 });

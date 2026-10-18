@@ -33,6 +33,7 @@ import {
   useMemo,
   useRef,
   type KeyboardEvent,
+  type ReactNode,
   type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent
 } from 'react';
@@ -52,6 +53,18 @@ import {
 } from '@shared/map';
 import type { RoomId } from '@shared/world';
 import { tuning } from '../lib/tuning';
+import {
+  Arrow,
+  Bar,
+  Chevron,
+  chevronAt,
+  exitArrowAt,
+  LairBadge,
+  Portal,
+  portalAt,
+  RoomShape,
+  toneOf
+} from './MapGlyphs';
 
 /**
  * What is drawn *on* a room, and how far past the room's own radius each one
@@ -174,79 +187,13 @@ function round(value: number): number {
 }
 
 function shape(node: MapNode) {
-  // The room's radius, read once per shape rather than six times.
   const r = tuning().mapRoomRadius;
-  if (node.kind === 'shop') return <circle className="map-shape" cx={node.x} cy={node.y} r={r} />;
-  /* A bank: the shop's circle with a `$` in it, in gold — where the money is. */
-  if (node.kind === 'bank') {
-    return (
-      <>
-        <circle className="map-shape" cx={node.x} cy={node.y} r={r + 0.4} />
-        <text className="map-bank" textAnchor="middle" x={node.x} y={node.y + 1.15}>
-          $
-        </text>
-      </>
-    );
-  }
-  if (node.kind === 'lair') {
-    const points = [
-      `${node.x},${node.y - r - 0.6}`,
-      `${node.x + r + 0.6},${node.y}`,
-      `${node.x},${node.y + r + 0.6}`,
-      `${node.x - r - 0.6},${node.y}`
-    ].join(' ');
-    return <polygon className="map-shape" points={points} />;
-  }
   return (
-    <rect
-      className="map-shape"
-      height={r * 2}
-      rx={1.1}
-      width={r * 2}
-      x={node.x - r}
-      y={node.y - r}
-    />
+    <>
+      <RoomShape kind={node.kind} letter={node.letter} r={r} x={node.x} y={node.y} />
+      {node.lairBadge === true && <LairBadge r={r} x={node.x} y={node.y} />}
+    </>
   );
-}
-
-/**
- * The hazard triangle a trapped corridor wears, centred on a point.
- *
- * One function for the map and its legend, so the key looks like the thing it
- * names. Sized to the corridor: a room is `mapRoomRadius` (3) from its centre
- * and rooms sit `MAP_CELL` (10) apart, so the passage between two edges is
- * four units and a door's bar is 4.2 across; this is 3.2 wide and 2.8 tall,
- * which reads as a mark on the passage rather than a third room in it.
- */
-function trapPoints(x: number, y: number, scale = 1): string {
-  const w = 1.6 * scale;
-  const up = 1.6 * scale;
-  const down = 1.2 * scale;
-  return `${x},${y - up} ${x + w},${y + down} ${x - w},${y + down}`;
-}
-
-/**
- * Which way a room leaves the plane, drawn as the way it actually goes.
- *
- * A chevron pointing up on a room whose only other exit is *down* is a map
- * stating the opposite of the truth, and plenty of rooms have both. Up points
- * up, down points down, both shows both.
- */
-function Vertical({ which, x, y }: { which: 'up' | 'down' | 'both'; x: number; y: number }) {
-  const up = `M ${x - 1.4} ${y + 0.5} L ${x} ${y - 0.9} L ${x + 1.4} ${y + 0.5}`;
-  const down = `M ${x - 1.4} ${y - 0.5} L ${x} ${y + 0.9} L ${x + 1.4} ${y - 0.5}`;
-  const bothUp = `M ${x - 1.4} ${y - 0.3} L ${x} ${y - 1.7} L ${x + 1.4} ${y - 0.3}`;
-  const bothDown = `M ${x - 1.4} ${y + 0.3} L ${x} ${y + 1.7} L ${x + 1.4} ${y + 0.3}`;
-
-  if (which === 'both') {
-    return (
-      <>
-        <path className="map-vertical" d={bothUp} />
-        <path className="map-vertical" d={bothDown} />
-      </>
-    );
-  }
-  return <path className="map-vertical" d={which === 'up' ? up : down} />;
 }
 
 export interface MapPlanProps {
@@ -555,53 +502,27 @@ const Picture = memo(function Picture({
           ))}
       </g>
 
+      {/*
+       * The bar in the tone of what stands there (mudmaps' `REQ_TONE`), a
+       * trap's the hazard triangle: a trap is not shut, the route walks
+       * through it and takes the hit, so it is its own shape and not a bar
+       * in another hue (§6).
+       */}
       <g className="map-blocks">
         {drawing.links
           .filter((link) => link.obstacle)
-          .map((link, index) => {
-            const mx = (link.x1 + link.x2) / 2;
-            const my = (link.y1 + link.y2) / 2;
-            /*
-             * A trap is not a bar. A bar says *shut*, and a trap is not shut:
-             * the route walks straight through it and takes the hit, which is
-             * the one obstacle on this map the character cannot open, pay or
-             * search for. So it is its own shape — the hazard triangle,
-             * upright whichever way the corridor runs, because it is a glyph
-             * rather than a gate across the passage. It was a bar in a second
-             * hue for as long as the map existed, and §6 says hue alone may
-             * not carry a condition: the legend had no entry for it and a red
-             * bar beside an amber one read as a door of another kind.
-             */
-            if (link.obstacle!.kind === 'trap') {
-              return (
-                <polygon
-                  className="map-trap"
-                  data-kind="trap"
-                  key={index}
-                  points={trapPoints(mx, my)}
-                >
-                  <title>{link.obstacle!.detail}</title>
-                </polygon>
-              );
-            }
-            // Across the corridor, so it reads as a bar in the way rather
-            // than a mark beside it.
-            const along = Math.atan2(link.y2 - link.y1, link.x2 - link.x1);
-            const nx = Math.cos(along + Math.PI / 2) * 2.1;
-            const ny = Math.sin(along + Math.PI / 2) * 2.1;
-            return (
-              <line
-                data-kind={link.obstacle!.kind}
-                key={index}
-                x1={mx - nx}
-                x2={mx + nx}
-                y1={my - ny}
-                y2={my + ny}
-              >
-                <title>{link.obstacle!.detail}</title>
-              </line>
-            );
-          })}
+          .map((link, index) => (
+            <g data-kind={link.obstacle!.kind} key={index}>
+              <title>{link.obstacle!.detail}</title>
+              <Bar
+                tone={toneOf(link.obstacle!.kind)}
+                x1={link.x1}
+                x2={link.x2}
+                y1={link.y1}
+                y2={link.y2}
+              />
+            </g>
+          ))}
       </g>
 
       {drawing.nodes.map((node) => {
@@ -695,6 +616,7 @@ const Picture = memo(function Picture({
           <g
             aria-label={choose === undefined ? undefined : node.name}
             className="map-room"
+            data-here={node.here ? 'true' : undefined}
             data-kind={node.kind}
             data-room={node.id}
             key={node.id}
@@ -803,20 +725,41 @@ const Picture = memo(function Picture({
               />
             )}
             {shape(node)}
-            {/*
-             * A room that also leads up or down. The plane cannot show it —
-             * placing what is up there would draw two rooms in one square
-             * and call it a floor plan — so the room carries a mark instead.
-             * Not on a builder's map, where the way is a control beside the
-             * room and a second chevron inside it was the one the reader
-             * clicked, expecting to go up.
-             */}
-            {onAway === undefined && node.vertical !== null && (
-              <Vertical which={node.vertical} x={node.x} y={node.y} />
-            )}
           </g>
         );
       })}
+
+      {/*
+       * The ways out the plane cannot draw, beside each room (mudmaps,
+       * 2026-10-18): up and down as chevrons at the right shoulder, a room
+       * command that moves you a portal off the left, and an exit a straight
+       * corridor would draw wrong an arrow the way it goes. Each says where
+       * it leads. On a builder's map the first two are controls, below.
+       */}
+      <g className="map-marks">
+        {drawing.nodes.flatMap((node) => [
+          ...(onAway === undefined ? awayMarks(node) : []),
+          ...(node.arrows ?? []).map((arrow) => {
+            const at = exitArrowAt(node.x, node.y, tuning().mapRoomRadius, arrow.direction);
+            const where = arrow.local
+              ? t('cards.map.arrowLocal', { direction: arrow.direction })
+              : t('cards.map.arrowAway', { direction: arrow.direction });
+            return (
+              <g
+                className="map-mark"
+                data-gated={arrow.obstacle === undefined ? undefined : 'true'}
+                data-reach={arrow.local ? 'local' : 'away'}
+                key={`${node.id}>${arrow.direction}`}
+              >
+                <title>
+                  {arrow.obstacle === undefined ? where : `${where} — ${arrow.obstacle.detail}`}
+                </title>
+                <Arrow ux={at.ux} uy={at.uy} x={at.x} y={at.y} />
+              </g>
+            );
+          })
+        ])}
+      </g>
 
       {/*
        * The ways out that leave the plane, as controls, beside the rooms that
@@ -840,6 +783,57 @@ const Picture = memo(function Picture({
     </>
   );
 });
+
+/**
+ * A room's ways off the plane as marks, on a map that does not take them:
+ * its chevrons and portals, each saying where it goes, and a room the realm
+ * gives only a direction for still wearing its chevron.
+ */
+function awayMarks(node: MapNode): ReactNode[] {
+  const r = tuning().mapRoomRadius;
+  const slots = { up: 0, down: 0, teleport: 0 };
+  const marks = (node.away ?? []).map((away) => {
+    const slot = slots[away.kind]++;
+    const at =
+      away.kind === 'teleport'
+        ? portalAt(node.x, node.y, r, slot)
+        : chevronAt(node.x, node.y, r, away.kind === 'up', slot);
+    const where =
+      away.kind === 'up'
+        ? t('cards.map.away.up', { roomName: away.name })
+        : away.kind === 'down'
+          ? t('cards.map.away.down', { roomName: away.name })
+          : t('cards.map.away.teleport', { command: away.command, roomName: away.name });
+    return (
+      <g
+        className="map-mark"
+        data-gated={away.obstacle === undefined ? undefined : 'true'}
+        data-reach="jump"
+        key={`${node.id}:${away.kind}:${away.to}`}
+      >
+        <title>{away.obstacle === undefined ? where : `${where} — ${away.obstacle.detail}`}</title>
+        {away.kind === 'teleport' ? (
+          <Portal x={at.x} y={at.y} />
+        ) : (
+          <Chevron up={away.kind === 'up'} x={at.x} y={at.y} />
+        )}
+      </g>
+    );
+  });
+  // A way up or down the realm names no room for: its chevron, saying nothing more.
+  for (const up of [true, false]) {
+    const kind = up ? 'up' : 'down';
+    if (slots[kind] > 0) continue;
+    if (node.vertical !== 'both' && node.vertical !== kind) continue;
+    const at = chevronAt(node.x, node.y, r, up);
+    marks.push(
+      <g className="map-mark" data-reach="jump" key={`${node.id}:${kind}`}>
+        <Chevron up={up} x={at.x} y={at.y} />
+      </g>
+    );
+  }
+  return marks;
+}
 
 /**
  * One way out of a room that the plane cannot draw, as a control.
@@ -867,11 +861,11 @@ function AwayControl({
   onAway: (away: MapAway, from: RoomId) => void;
 }) {
   const r = tuning().mapRoomRadius;
-  const dx = away.kind === 'teleport' ? -(r + AWAY.over) : r + AWAY.over;
-  // A room with several ways of one kind stacks them outward.
-  const dy = (away.kind === 'up' ? -1 : away.kind === 'down' ? 1 : 0) * (AWAY.size + 0.6);
-  const x = node.x + dx + (away.kind === 'teleport' ? -index * (AWAY.size * 2 + 0.6) : 0);
-  const y = node.y + dy;
+  // Where the same way sits as a mark on every other map: the controls are the marks, pressable.
+  const { x, y } =
+    away.kind === 'teleport'
+      ? portalAt(node.x, node.y, r, index)
+      : chevronAt(node.x, node.y, r, away.kind === 'up', index);
   const where =
     away.kind === 'up'
       ? t('cards.map.away.up', { roomName: away.name })
@@ -906,17 +900,9 @@ function AwayControl({
       {/* The hit target: a glyph this small cannot be pointed at. */}
       <circle className="map-away-hit" cx={x} cy={y} r={AWAY.size + AWAY.hit} />
       {away.kind === 'teleport' ? (
-        <TeleportGlyph size={AWAY.size} x={x} y={y} />
+        <Portal x={x} y={y} />
       ) : (
-        <path
-          className="map-away-glyph"
-          d={
-            away.kind === 'up'
-              ? `M ${x - AWAY.size} ${y + AWAY.size * 0.5} L ${x} ${y - AWAY.size * 0.6} L ${x + AWAY.size} ${y + AWAY.size * 0.5}`
-              : `M ${x - AWAY.size} ${y - AWAY.size * 0.5} L ${x} ${y + AWAY.size * 0.6} L ${x + AWAY.size} ${y - AWAY.size * 0.5}`
-          }
-          strokeWidth={AWAY.stroke}
-        />
+        <Chevron up={away.kind === 'up'} x={x} y={y} />
       )}
       {/*
        * Something in the way — a door on the stairs, a level the portal
@@ -942,21 +928,38 @@ function GatedBar({ size, x, y }: { size: number; x: number; y: number }) {
   );
 }
 
-/**
- * A teleport's mark: a ring with a dot in it, which reads as *a hole to
- * somewhere* at any size the map draws it, where a swirl turns to mush.
- */
-function TeleportGlyph({ size, x, y }: { size: number; x: number; y: number }) {
+/** One room as the legend keys it: the map's own shape in the map's own group, so it looks the same. */
+function KeyRoom({
+  kind,
+  letter,
+  here = false
+}: {
+  kind: MapNode['kind'];
+  letter?: string;
+  here?: boolean;
+}) {
   return (
-    <>
-      <circle className="map-away-glyph" cx={x} cy={y} r={size} strokeWidth={AWAY.stroke} />
-      <circle className="map-away-dot" cx={x} cy={y} r={size * 0.35} />
-    </>
+    <g className="map-room" data-here={here ? 'true' : undefined} data-kind={kind}>
+      <RoomShape kind={kind} letter={letter} r={3} x={0} y={0} />
+    </g>
+  );
+}
+
+/** One legend entry: its picture in a 12-unit box, and what it is. */
+function Key({ kind, label, children }: { kind?: string; label: string; children: ReactNode }) {
+  return (
+    <span data-kind={kind}>
+      <svg aria-hidden="true" className="key" viewBox="-6 -6 12 12">
+        {children}
+      </svg>
+      {label}
+    </span>
   );
 }
 
 /**
- * What the shapes mean, listed whether or not one of them is in view.
+ * What the shapes mean, listed whether or not one of them is in view, in
+ * mudmaps' kinds (2026-10-18).
  *
  * A legend that gained an entry only when a door was on screen changed the
  * card's height as the character walked, and every control below it moved
@@ -965,215 +968,154 @@ function TeleportGlyph({ size, x, y }: { size: number; x: number; y: number }) {
 export function MapLegend({ builder = false }: { builder?: boolean } = {}) {
   return (
     <div className="map-legend">
-      <span data-kind="here">
-        <svg aria-hidden="true" className="key" viewBox="-6 -6 12 12">
-          <circle className="map-you" cx="0" cy="0" r="5.2" />
-          <rect className="map-shape" height="6" rx="1.1" width="6" x="-3" y="-3" />
-        </svg>
-        {t('cards.map.legendYou')}
-      </span>
+      <Key kind="here" label={t('cards.map.legendYou')}>
+        <circle className="map-you" cx="0" cy="0" r="5.2" />
+        <KeyRoom here kind="room" />
+      </Key>
       {/*
         The route and the lap, listed like every other symbol whether or not
-        anything is being walked. A key that appeared when a route was planned
-        would change the card's height mid-walk, which is the churn the fixed
-        box exists to prevent.
-      */}
-      {/*
-        The builder draws neither the halo nor a lap's stops; its own keys
-        below say what its rings mean, and a key for a mark the picture never
-        makes is a legend to nothing.
+        anything is being walked. The builder draws neither the halo nor a
+        lap's stops; its own keys below say what its rings mean.
       */}
       {!builder && (
         <>
-          <span data-kind="route">
-            <svg aria-hidden="true" className="key" viewBox="-6 -6 12 12">
-              <g className="map-trail">
-                <line x1="-5" x2="5" y1="0" y2="0" />
-                <polygon
-                  className="map-trail-arrow"
-                  points={arrowAt({ x1: -5, y1: 0, x2: 5, y2: 0 }, 2.4)}
-                />
-              </g>
-              <circle className="map-onroute" cx="0" cy="0" r="4.6" />
-              <rect className="map-shape" height="6" rx="1.1" width="6" x="-3" y="-3" />
-            </svg>
-            {t('cards.map.legendRoute')}
-          </span>
-          <span data-kind="stop">
-            <svg aria-hidden="true" className="key" viewBox="-6 -6 12 12">
-              <circle className="map-stop" cx="0" cy="0" r="5.2" />
-              <rect className="map-shape" height="6" rx="1.1" width="6" x="-3" y="-3" />
-            </svg>
-            {t('cards.map.legendStop')}
-          </span>
+          <Key kind="route" label={t('cards.map.legendRoute')}>
+            <g className="map-trail">
+              <line x1="-5" x2="5" y1="0" y2="0" />
+              <polygon
+                className="map-trail-arrow"
+                points={arrowAt({ x1: -5, y1: 0, x2: 5, y2: 0 }, 2.4)}
+              />
+            </g>
+            <circle className="map-onroute" cx="0" cy="0" r="4.6" />
+            <KeyRoom kind="room" />
+          </Key>
+          <Key kind="stop" label={t('cards.map.legendStop')}>
+            <circle className="map-stop" cx="0" cy="0" r="5.2" />
+            <KeyRoom kind="room" />
+          </Key>
         </>
       )}
+      <Key kind="find" label={t('cards.map.legendFind')}>
+        <KeyRoom kind="room" />
+        <circle className="map-find" cx="3" cy="-3" r="1.6" />
+      </Key>
+      <Key kind="stairs" label={t('cards.map.legendVertical')}>
+        <KeyRoom kind="stairs" />
+      </Key>
+      <Key kind="shop" label={t('cards.map.legendShop')}>
+        <KeyRoom kind="shop" />
+      </Key>
+      <Key kind="trainer" label={t('cards.map.legendLettered')}>
+        <KeyRoom kind="shop" letter="G" />
+      </Key>
+      <Key kind="bank" label={t('cards.map.legendBank')}>
+        <KeyRoom kind="bank" />
+      </Key>
+      <Key kind="npc" label={t('cards.map.legendNpc')}>
+        <KeyRoom kind="npc" />
+      </Key>
+      <Key kind="cmd" label={t('cards.map.legendCommand')}>
+        <KeyRoom kind="cmd" />
+      </Key>
+      <Key kind="lair" label={t('cards.map.legendLair')}>
+        <KeyRoom kind="lair" />
+      </Key>
       {/*
-        Listed whether or not one is in view, like every key here: the absence
-        of a symbol is itself a fact, and a legend that changed as the character
-        walked would change the card's height while it was being read.
+        Always, even where nothing is shut. A key that appears and disappears
+        as you walk changes the card's height with it.
       */}
-      <span data-kind="find">
-        <svg aria-hidden="true" className="key" viewBox="-6 -6 12 12">
-          <rect className="map-shape" height="6" rx="1.1" width="6" x="-3" y="-3" />
-          <circle className="map-find" cx="3" cy="-3" r="1.6" />
-        </svg>
-        {t('cards.map.legendFind')}
-      </span>
-      <span data-kind="shop">
-        <svg aria-hidden="true" className="key" viewBox="-6 -6 12 12">
-          <circle className="map-shape" cx="0" cy="0" r="3" />
-        </svg>
-        {t('cards.map.legendShop')}
-      </span>
-      <span data-kind="bank">
-        <svg aria-hidden="true" className="key" viewBox="-6 -6 12 12">
-          <circle className="map-shape" cx="0" cy="0" r="3.4" />
-          <text className="map-bank" textAnchor="middle" x="0" y="1.5">
-            $
-          </text>
-        </svg>
-        {t('cards.map.legendBank')}
-      </span>
-      <span data-kind="lair">
-        <svg aria-hidden="true" className="key" viewBox="-6 -6 12 12">
-          <polygon className="map-shape" points="0,-3.6 3.6,0 0,3.6 -3.6,0" />
-        </svg>
-        {t('cards.map.legendLair')}
-      </span>
-      {/*
-        A way up or down: the chevrons the room wears, or — on the builder's
-        map, where they are controls beside the room — the chevrons where the
-        controls sit, keyed with what a press does. The same glyph in the same
-        place as on the picture, so the key looks like the thing it names.
-      */}
+      <Key kind="door" label={t('cards.map.legendShut')}>
+        <g className="map-links">
+          <line data-kind="door" x1="-5" x2="5" y1="0" y2="0" />
+        </g>
+        <Bar tone="door" x1={-5} x2={5} y1={0} y2={0} />
+      </Key>
+      <Key kind="hidden" label={t('cards.map.legendHidden')}>
+        <g className="map-links">
+          <line data-kind="hidden" x1="-5" x2="5" y1="0" y2="0" />
+        </g>
+        <Bar tone="hidden" x1={-5} x2={5} y1={0} y2={0} />
+      </Key>
+      <Key kind="trap" label={t('cards.map.legendTrap')}>
+        <g className="map-links">
+          <line data-kind="trap" x1="-5" x2="5" y1="1" y2="1" />
+        </g>
+        <Bar tone="trap" x1={-5} x2={5} y1={1} y2={1} />
+      </Key>
+      {/* The ways out the plane cannot draw: up and down, a portal, an arrow. */}
       {builder ? (
-        <span data-kind="look">
-          <svg aria-hidden="true" className="key" viewBox="-6 -6 12 12">
-            <rect className="map-shape" height="6" rx="1.1" width="6" x="-5" y="-3" />
-            <g className="map-away">
-              <path className="map-away-glyph" d="M 2 -1.2 L 3.6 -3 L 5.2 -1.2" strokeWidth="0.8" />
-              <path className="map-away-glyph" d="M 2 1.2 L 3.6 3 L 5.2 1.2" strokeWidth="0.8" />
-            </g>
-          </svg>
-          {t('cards.map.legendLook')}
-        </span>
+        <Key kind="look" label={t('cards.map.legendLook')}>
+          <KeyRoom kind="room" />
+          <g className="map-away">
+            <Chevron up x={4.4} y={-2} />
+            <Chevron up={false} x={4.4} y={2} />
+          </g>
+        </Key>
       ) : (
-        <span>
-          <svg aria-hidden="true" className="key" viewBox="-6 -6 12 12">
-            <rect className="map-shape" height="6" rx="1.1" width="6" x="-3" y="-3" />
-            <path className="map-vertical" d="M -1.4 -0.3 L 0 -1.7 L 1.4 -0.3" />
-            <path className="map-vertical" d="M -1.4 0.3 L 0 1.7 L 1.4 0.3" />
-          </svg>
-          {t('cards.map.legendVertical')}
-        </span>
+        <Key kind="updown" label={t('cards.map.legendUpDown')}>
+          <g className="map-mark" data-reach="jump">
+            <Chevron up x={0} y={-1.9} />
+            <Chevron up={false} x={0} y={1.9} />
+          </g>
+        </Key>
       )}
-      {/*
-        Always, even where nothing is shut. A key that appears and
-        disappears as you walk changes the card's height with it, and the
-        controls below move under the pointer — which is the whole reason
-        this card is a fixed box.
-      */}
-      <span data-kind="door">
-        <svg aria-hidden="true" className="key" viewBox="-6 -6 12 12">
-          <g className="map-blocks">
-            <line x1="-4" x2="4" y1="0" y2="0" />
-            <line data-kind="door" x1="0" x2="0" y1="-3.4" y2="3.4" />
-          </g>
-        </svg>
-        {t('cards.map.legendShut')}
-      </span>
-      {/*
-        A trap, listed for the same reason as the door: the realm has 305 of
-        them and a key that appeared only when one was in view would move the
-        card's picture as the character walked.
-      */}
-      <span data-kind="trap">
-        <svg aria-hidden="true" className="key" viewBox="-6 -6 12 12">
-          <g className="map-blocks">
-            <line x1="-5" x2="5" y1="1" y2="1" />
-          </g>
-          {/* Scaled up to the key's 12-unit box, the way the door's bar is. */}
-          <polygon className="map-trap" points={trapPoints(0, 0.6, 2.2)} />
-        </svg>
-        {t('cards.map.legendTrap')}
-      </span>
+      <Key kind="teleport" label={t('cards.map.legendTeleport')}>
+        <g className={builder ? 'map-away' : 'map-mark'} data-reach="jump">
+          <Portal x={0} y={0} />
+        </g>
+      </Key>
+      <Key kind="arrow" label={t('cards.map.legendArrow')}>
+        <g className="map-mark" data-reach="local">
+          <Arrow ux={1} uy={0} x={0} y={0} />
+        </g>
+      </Key>
+      <Key kind="away" label={t('cards.map.legendArrowAway')}>
+        <g className="map-mark" data-reach="away">
+          <Arrow ux={1} uy={0} x={0} y={0} />
+        </g>
+      </Key>
       {/*
         The builder's own marks, on the builder's map only: a legend on the
         Map card for rings that card never draws would be a key to nothing.
-        Listed always while the builder is open, for the reason every other
-        key is.
       */}
       {builder && (
         <>
-          <span data-kind="start">
-            <svg aria-hidden="true" className="key" viewBox="-6 -6 12 12">
-              <circle className="map-start" cx="0" cy="0" r="5.2" />
-              <rect className="map-shape" height="6" rx="1.1" width="6" x="-3" y="-3" />
-            </svg>
-            {t('cards.map.legendStart')}
-          </span>
-          <span data-kind="pick">
-            <svg aria-hidden="true" className="key" viewBox="-6 -6 12 12">
-              <circle className="map-pick" cx="0" cy="0" r="4.8" />
-              <rect className="map-shape" height="6" rx="1.1" width="6" x="-3" y="-3" />
-            </svg>
-            {t('cards.map.legendPick')}
-          </span>
-          <span data-kind="through">
-            <svg aria-hidden="true" className="key" viewBox="-6 -6 12 12">
-              <g className="map-trail">
-                <line x1="-5" x2="5" y1="0" y2="0" />
-                <polygon
-                  className="map-trail-arrow"
-                  points={arrowAt({ x1: -5, y1: 0, x2: 5, y2: 0 }, 2.4)}
-                />
-              </g>
-              <circle className="map-through" cx="0" cy="0" r="4.8" />
-              <rect className="map-shape" height="6" rx="1.1" width="6" x="-3" y="-3" />
-            </svg>
-            {t('cards.map.legendThrough')}
-          </span>
-          {/*
-            The way doubling back over itself, which is the one thing a lap
-            does that a route does not — so the key is here and not on the Map
-            card, where a legend for a colour that picture can never draw would
-            be a key to nothing.
-          */}
-          <span data-kind="again">
-            <svg aria-hidden="true" className="key" viewBox="-6 -6 12 12">
-              <g className="map-trail" data-band="1">
-                <line x1="-5" x2="5" y1="0" y2="0" />
-                <polygon
-                  className="map-trail-arrow"
-                  points={arrowAt({ x1: -5, y1: 0, x2: 5, y2: 0 }, 2.4)}
-                />
-              </g>
-            </svg>
-            {t('cards.map.legendAgain')}
-          </span>
-          <span data-kind="teleport">
-            <svg aria-hidden="true" className="key" viewBox="-6 -6 12 12">
-              <g className="map-away">
-                <TeleportGlyph size={3.4} x={0} y={0} />
-              </g>
-            </svg>
-            {t('cards.map.legendTeleport')}
-          </span>
+          <Key kind="start" label={t('cards.map.legendStart')}>
+            <circle className="map-start" cx="0" cy="0" r="5.2" />
+            <KeyRoom kind="room" />
+          </Key>
+          <Key kind="pick" label={t('cards.map.legendPick')}>
+            <circle className="map-pick" cx="0" cy="0" r="4.8" />
+            <KeyRoom kind="room" />
+          </Key>
+          <Key kind="through" label={t('cards.map.legendThrough')}>
+            <g className="map-trail">
+              <line x1="-5" x2="5" y1="0" y2="0" />
+              <polygon
+                className="map-trail-arrow"
+                points={arrowAt({ x1: -5, y1: 0, x2: 5, y2: 0 }, 2.4)}
+              />
+            </g>
+            <circle className="map-through" cx="0" cy="0" r="4.8" />
+            <KeyRoom kind="room" />
+          </Key>
+          <Key kind="again" label={t('cards.map.legendAgain')}>
+            <g className="map-trail" data-band="1">
+              <line x1="-5" x2="5" y1="0" y2="0" />
+              <polygon
+                className="map-trail-arrow"
+                points={arrowAt({ x1: -5, y1: 0, x2: 5, y2: 0 }, 2.4)}
+              />
+            </g>
+          </Key>
           {/* A way out with something in it — listed always, like the door. */}
-          <span data-kind="gated">
-            <svg aria-hidden="true" className="key" viewBox="-6 -6 12 12">
-              <g className="map-away" data-gated="door">
-                <path
-                  className="map-away-glyph"
-                  d="M -3.4 1.7 L 0 -2.4 L 3.4 1.7"
-                  strokeWidth="0.8"
-                />
-                <GatedBar size={3.4} x={0} y={1.2} />
-              </g>
-            </svg>
-            {t('cards.map.legendGated')}
-          </span>
+          <Key kind="gated" label={t('cards.map.legendGated')}>
+            <g className="map-away" data-gated="door">
+              <Chevron up x={0} y={-0.4} />
+              <GatedBar size={3.4} x={0} y={1.2} />
+            </g>
+          </Key>
         </>
       )}
     </div>

@@ -301,10 +301,15 @@ export function createWebBridge(): IpcApi {
     wearer: (session) => invoke(Invoke.wearer, session),
     lookup: (session, query) => invoke(Invoke.lookup, session, query),
     explorerList: (session, kind, options) => invoke(Invoke.explorerList, session, kind, options),
-    explorerDetail: (session, item) => invoke(Invoke.explorerDetail, session, item),
+    explorerDetail: (session, kind, item, options) =>
+      invoke(Invoke.explorerDetail, session, kind, item, options),
     explorerBuyPlan: (session, item) => invoke(Invoke.explorerBuyPlan, session, item),
     explorerBuy: (session, item, wear) => invoke(Invoke.explorerBuy, session, item, wear),
     explorerGear: (session, options) => invoke(Invoke.explorerGear, session, options),
+    explorerRoomView: (session, request) => invoke(Invoke.explorerRoomView, session, request),
+    explorerRoomTip: (session, map, room, options) =>
+      invoke(Invoke.explorerRoomTip, session, map, room, options),
+    explorerRoomSearch: (session, search) => invoke(Invoke.explorerRoomSearch, session, search),
     forget: (session, discovery) => invoke(Invoke.forget, session, discovery),
     forgetFind: (session, find) => invoke(Invoke.forgetFind, session, find),
     forgetCharacter: (session) => invoke(Invoke.forgetCharacter, session),

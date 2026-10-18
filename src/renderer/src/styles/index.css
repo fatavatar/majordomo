@@ -2822,32 +2822,47 @@ kbd {
   cursor: help;
 }
 
-.map-blocks line {
+/*
+ * The bar across a corridor, in the tone of what stands there (mudmaps'
+ * `REQ_TONE`, 2026-10-18). Hue reinforces and never carries it alone (§6): a
+ * key's bar is heavier, a spell's dotted, a trap's the hazard triangle — a
+ * trap is not shut, the route walks through and takes the hit — and every one
+ * has a `<title>` naming it.
+ */
+.map-bar {
+  fill: none;
   pointer-events: none;
   stroke: var(--pending);
   stroke-linecap: round;
   stroke-width: 1.1;
 }
 
-/*
- * A trap is not an obstacle you open; it is one you regret. A bar says *shut*
- * and a trap is not shut — the route walks straight through it and takes the
- * hit — so it is its own shape, the hazard triangle, upright whichever way the
- * corridor runs (`MapPlan`). The lair's red at the lair's tone, because both
- * are where the damage is, and the shape says which (§6): it was a bar in a
- * second hue for as long as the map existed, with no entry in the legend.
- */
-.map-trap {
+.map-bar[data-tone='key'] {
+  stroke-width: 1.6;
+}
+
+.map-bar[data-tone='hidden'] {
+  stroke: var(--marker);
+}
+
+.map-bar[data-tone='toll'] {
+  stroke: var(--mark-bank);
+}
+
+.map-bar[data-tone='gate'] {
+  stroke: var(--danger);
+}
+
+.map-bar[data-tone='cast'] {
+  stroke: var(--accent);
+  stroke-dasharray: 0.6 0.5;
+}
+
+.map-bar[data-tone='trap'] {
   fill: color-mix(in srgb, var(--danger) 55%, transparent);
-  pointer-events: none;
   stroke: var(--danger);
   stroke-linejoin: round;
   stroke-width: 0.5;
-}
-
-.map-blocks line[data-kind='hidden'],
-.map-blocks line[data-kind='text'] {
-  stroke: var(--marker);
 }
 
 /*
@@ -2880,9 +2895,25 @@ kbd {
     stroke var(--dur-tint) var(--ease-out);
 }
 
+/* mudmaps' kinds: one colour each, the shape saying it first (§6). */
+.map-room[data-kind='stairs'] > .map-shape {
+  fill: color-mix(in srgb, var(--map-stairs) 40%, transparent);
+  stroke: var(--map-stairs);
+}
+
 .map-room[data-kind='shop'] > .map-shape {
-  fill: color-mix(in srgb, var(--pending) 55%, transparent);
+  fill: color-mix(in srgb, var(--pending) 45%, transparent);
   stroke: var(--pending);
+}
+
+.map-room[data-kind='npc'] > .map-shape {
+  fill: color-mix(in srgb, var(--marker) 40%, transparent);
+  stroke: var(--marker);
+}
+
+.map-room[data-kind='cmd'] > .map-shape {
+  fill: color-mix(in srgb, var(--map-cmd) 40%, transparent);
+  stroke: var(--map-cmd);
 }
 
 .map-room[data-kind='lair'] > .map-shape {
@@ -2896,17 +2927,43 @@ kbd {
   stroke: var(--mark-bank);
 }
 
-.map-bank {
-  fill: var(--mark-bank);
+/* A shop's letter and the bank's dollar. */
+.map-sym {
+  fill: var(--text-hi);
   font-family: var(--font-mono);
   font-size: 3.2px;
   font-weight: 700;
-  paint-order: stroke;
   pointer-events: none;
   stroke: none;
 }
 
-.map-room[data-kind='here'] > .map-shape {
+.map-bank {
+  fill: var(--mark-bank);
+}
+
+/* Somebody lives here; the room answers a command. */
+.map-pip {
+  fill: var(--marker);
+  pointer-events: none;
+}
+
+.map-ring {
+  fill: none;
+  pointer-events: none;
+  stroke: var(--map-cmd);
+  stroke-width: 0.5;
+}
+
+/* A lettered room that is a lair as well. */
+.map-lairbadge {
+  fill: var(--danger);
+  pointer-events: none;
+  stroke: var(--ink-void);
+  stroke-width: 0.3;
+}
+
+/* The character's own room keeps its kind's shape, in the accent. */
+.map-room[data-here='true'] > .map-shape {
   fill: var(--accent);
   stroke: var(--accent);
 }
@@ -2917,17 +2974,54 @@ kbd {
   stroke: var(--accent);
 }
 
-/* Leads up or down, which the plane cannot show. */
-.map-vertical {
-  fill: none;
-  stroke: var(--marker);
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  stroke-width: 0.7;
+/*
+ * The ways out the plane cannot draw, beside the room (mudmaps' `vmark`):
+ * chevrons up and down, a portal, an arrow; cyan where the room it reaches is
+ * on the picture, green where it is not, edged amber where something stands
+ * in the way.
+ */
+.map-mark {
+  --mark: var(--map-jump);
+  cursor: help;
 }
 
-.map-room[data-kind='here'] .map-vertical {
-  stroke: var(--on-accent);
+.map-mark[data-reach='away'] {
+  --mark: var(--map-away);
+}
+
+.map-glyph {
+  fill: var(--mark, var(--map-jump));
+  stroke: none;
+}
+
+.map-chev {
+  fill: none;
+  stroke: var(--mark, var(--map-jump));
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 0.8;
+}
+
+.map-portal {
+  fill: none;
+  stroke: var(--mark, var(--map-jump));
+  stroke-dasharray: 1 0.6;
+  stroke-width: 0.6;
+}
+
+.map-portal-dot {
+  fill: var(--mark, var(--map-jump));
+}
+
+.map-mark[data-gated] .map-glyph:not(.map-chev, .map-portal) {
+  stroke: var(--pending);
+  stroke-linejoin: round;
+  stroke-width: 0.5;
+}
+
+.map-mark[data-gated] .map-chev,
+.map-mark[data-gated] .map-portal {
+  filter: drop-shadow(0 0.6px 0 var(--pending));
 }
 
 .map-room:hover > .map-shape {
@@ -2970,34 +3064,12 @@ kbd {
   width: 12px;
 }
 
-.map-legend .key .map-shape {
-  fill: var(--map-room);
-  stroke: var(--map-room-edge);
-  stroke-width: 0.5;
+/* A key is a map room, so the room's own rules colour it: one look for both. */
+.map-legend .key .map-room {
+  cursor: default;
 }
 
-/* The key has to look like the thing it names, or it is a second legend. */
-.map-legend [data-kind='here'] .key .map-shape {
-  fill: var(--accent);
-  stroke: var(--accent);
-}
-
-.map-legend [data-kind='shop'] .key .map-shape {
-  fill: color-mix(in srgb, var(--pending) 55%, transparent);
-  stroke: var(--pending);
-}
-
-.map-legend [data-kind='lair'] .key .map-shape {
-  fill: color-mix(in srgb, var(--danger) 55%, transparent);
-  stroke: var(--danger);
-}
-
-.map-legend [data-kind='bank'] .key .map-shape {
-  fill: color-mix(in srgb, var(--mark-bank) 30%, transparent);
-  stroke: var(--mark-bank);
-}
-
-.map-legend [data-kind='bank'] .key .map-bank {
+.map-legend .key .map-sym {
   font-size: 4.2px;
 }
 
@@ -4206,46 +4278,25 @@ button.quest-plan-back {
   fill: transparent;
 }
 
-.map-away-glyph {
-  fill: none;
-  stroke: var(--marker);
-  stroke-linecap: round;
-  stroke-linejoin: round;
+.map-away {
+  --mark: var(--marker);
 }
 
-.map-away-dot {
-  fill: var(--marker);
-}
-
-.map-away:hover .map-away-glyph,
-.map-away:focus-visible .map-away-glyph {
-  stroke: var(--accent);
+.map-away:hover,
+.map-away:focus-visible {
+  --mark: var(--accent);
 }
 
 /* A way out with something in it — a door on the stairs, a level a portal
    wants — wears a bar across its glyph, the corridor's own mark for a shut
-   passage, in the obstacle bar's hue; the title says what with. The hue
-   alone was the first cut, and the legend then had nothing to key. */
-.map-away[data-gated] .map-away-glyph {
-  stroke: var(--pending);
-}
-
-.map-away[data-gated] .map-away-dot {
-  fill: var(--pending);
+   passage, in the obstacle bar's hue; the title says what with. */
+.map-away[data-gated] {
+  --mark: var(--pending);
 }
 
 .map-away-bar {
   stroke: var(--pending);
   stroke-linecap: round;
-}
-
-.map-away:hover .map-away-dot,
-.map-away:focus-visible .map-away-dot {
-  fill: var(--accent);
-}
-
-.map-legend [data-kind='teleport'] .key .map-away-glyph {
-  stroke-width: 1;
 }
 
 /* ========================================================= automation card */
@@ -4794,6 +4845,8 @@ button.quest-plan-back {
 
 .explorer-screen {
   --ex-sel: color-mix(in srgb, var(--accent) var(--tone-weak), var(--ink-raised));
+  /* One height for every box and dropdown on the bars, which a checkbox's line takes too. */
+  --ex-control: 25px;
   background: var(--ink-void);
   border: 1px solid var(--ink-line);
   border-radius: var(--r-card);
@@ -4871,9 +4924,11 @@ button.quest-plan-back {
   background: var(--ink-void);
   border: 1px solid var(--ink-edge);
   border-radius: 4px;
+  box-sizing: border-box;
   color: var(--text-hi);
   font: inherit;
-  padding: 4px 7px;
+  height: var(--ex-control);
+  padding: 0 7px;
 }
 
 .explorer-screen input:focus,
@@ -4884,6 +4939,8 @@ button.quest-plan-back {
 
 .explorer-screen input[type='checkbox'] {
   accent-color: var(--pending);
+  height: auto;
+  margin: 0;
   padding: 0;
 }
 
@@ -4946,12 +5003,15 @@ button.quest-plan-back {
   gap: 4px 8px;
 }
 
+/*
+ * A checkbox's line is a control's height, centred, so on a bar aligned to
+ * its bottom edge it sits level with the dropdowns and boxes beside it.
+ */
 .ex-checks {
   align-items: center;
   display: flex;
   flex-wrap: wrap;
   gap: 4px 12px;
-  padding-bottom: 4px;
 }
 
 .ex-check {
@@ -4961,6 +5021,7 @@ button.quest-plan-back {
   display: flex;
   font-size: 12px;
   gap: 5px;
+  height: var(--ex-control);
 }
 
 .ex-count {
@@ -12631,6 +12692,45 @@ tr:hover .row-action.worn,
   white-space: nowrap;
 }
 
+/*
+ * What a room asks of whoever would leave it (2026-10-18): tags beside its
+ * buttons, in the tone the map's bars wear for the same thing — a door amber,
+ * a hidden way violet, a toll gold, a trap and a gate red, a spell the accent.
+ * Not buttons: no fill, a hairline edge, and the title says the whole of it.
+ */
+.terminal-note {
+  --note: var(--marker);
+  border: var(--rule) solid color-mix(in srgb, var(--note) 55%, transparent);
+  border-radius: var(--r-chip);
+  color: var(--note);
+  cursor: help;
+  font-family: var(--font-mono);
+  font-size: var(--font-micro);
+  line-height: 1;
+  max-height: 100%;
+  padding: 0 5px;
+  pointer-events: auto;
+  white-space: nowrap;
+}
+
+.terminal-note[data-tone='door'],
+.terminal-note[data-tone='key'] {
+  --note: var(--pending);
+}
+
+.terminal-note[data-tone='toll'] {
+  --note: var(--mark-bank);
+}
+
+.terminal-note[data-tone='trap'],
+.terminal-note[data-tone='gate'] {
+  --note: var(--danger);
+}
+
+.terminal-note[data-tone='cast'] {
+  --note: var(--accent);
+}
+
 .terminal-action:hover {
   background: color-mix(in srgb, var(--accent) var(--tone-strong), transparent);
   border-color: color-mix(in srgb, var(--accent) var(--tone-strong), transparent);
@@ -13679,4 +13779,307 @@ button.gear-buy:hover:not(:disabled) {
 
 .gear-card .aside[data-tone='danger'] {
   color: var(--danger);
+}
+
+/*
+ * The Explorer's links (2026-10-18): a reference a tab here shows opens it,
+ * as mudtool's `a.xref` do, drawn as text and not as a button.
+ */
+button.ex-link {
+  background: none;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  color: var(--accent);
+  cursor: pointer;
+  font: inherit;
+  height: auto;
+  padding: 0;
+  text-align: left;
+}
+
+button.ex-link:hover {
+  text-decoration: underline;
+}
+
+.ex-back {
+  margin-left: auto;
+}
+
+.ex-back + .ex-global {
+  margin-left: 0;
+}
+
+.ex-note {
+  color: var(--text-lo-quiet);
+  font-size: 12px;
+  margin: 0 0 8px;
+}
+
+/* A shop's shelf or a trainer's table. */
+.ex-stock {
+  border-collapse: collapse;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  margin-bottom: 10px;
+  width: 100%;
+}
+
+.ex-stock th {
+  color: var(--text-lo-quiet);
+  font-weight: 600;
+  text-align: left;
+}
+
+.ex-stock th,
+.ex-stock td {
+  border-bottom: 1px solid var(--ink-line);
+  padding: 2px 8px 2px 0;
+}
+
+.ex-stock .ex-num {
+  text-align: right;
+}
+
+/* The Rooms tab: mudtool's `styles/rooms.css`, on this client's tokens. */
+.rm {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.rm-goto,
+.rm-find {
+  align-items: center;
+  display: flex;
+  gap: 6px;
+}
+
+.rm-num {
+  width: 5em;
+}
+
+.rm-said {
+  align-self: center;
+  color: var(--danger);
+  font-size: 12px;
+}
+
+.rm-options {
+  position: relative;
+}
+
+.rm-options > summary {
+  align-items: center;
+  display: inline-flex;
+  list-style: none;
+}
+
+.rm-options-menu {
+  background: var(--ink-raised);
+  border: 1px solid var(--ink-edge);
+  border-radius: 6px;
+  box-shadow: var(--glass-shadow);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 10px;
+  position: absolute;
+  right: 0;
+  top: calc(100% + 4px);
+  white-space: nowrap;
+  z-index: 5;
+}
+
+.rm-body {
+  display: grid;
+  flex: 1 1 auto;
+  grid-template-columns: minmax(0, 1fr) 340px;
+  min-height: 0;
+}
+
+.rm-map {
+  background: var(--ink-void);
+  border-right: 1px solid var(--ink-line);
+  min-height: 0;
+  min-width: 0;
+  position: relative;
+}
+
+.rm-svg {
+  display: block;
+  height: 100%;
+  width: 100%;
+}
+
+/* The client's map drawing (`MapGlyphs`), on MME's layout: a room is the Map card's. */
+.rm-cell-hit {
+  cursor: pointer;
+}
+
+/* The room the map is drawn from, MME's start cell. */
+.rm-start {
+  fill: none;
+  pointer-events: none;
+  stroke: var(--pending);
+}
+
+.rm-side {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-height: 0;
+  overflow: auto;
+  padding: 12px 14px;
+}
+
+.rm-here-head {
+  align-items: baseline;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.rm-sec-head {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  justify-content: space-between;
+}
+
+.rm-compass {
+  display: grid;
+  gap: 3px;
+  grid-template-columns: repeat(3, 2.6em) auto;
+  grid-template-rows: repeat(3, 1.9em);
+  margin: 8px 0;
+}
+
+.rm-dir {
+  align-items: center;
+  background: none;
+  border: 1px solid var(--ink-edge);
+  border-radius: 4px;
+  box-shadow: none;
+  color: var(--text-hi);
+  display: flex;
+  font: inherit;
+  font-size: 11px;
+  height: auto;
+  justify-content: center;
+  padding: 0;
+  text-transform: uppercase;
+}
+
+button.rm-dir {
+  cursor: pointer;
+}
+
+button.rm-dir:hover {
+  border-color: var(--pending);
+  color: var(--pending);
+}
+
+button.rm-dir.is-mapchange {
+  border-color: var(--marker);
+  color: var(--marker);
+}
+
+.rm-dir.is-off {
+  border-color: var(--ink-line);
+  color: var(--text-lo-quiet);
+  opacity: 0.5;
+}
+
+.rm-mid {
+  border: none;
+}
+
+.rm-ud {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  grid-column: 4;
+  grid-row: 1 / 4;
+  margin-left: 10px;
+}
+
+.rm-ud .rm-dir {
+  height: 1.9em;
+  width: 2.6em;
+}
+
+.rm-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.rm-walk:not(:disabled) {
+  border-color: var(--pending);
+  color: var(--pending);
+}
+
+ul.rm-refs {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+ul.rm-refs li {
+  border-bottom: 1px solid var(--ink-line);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+  padding: 2px 0;
+}
+
+.rm-none {
+  padding: 4px 0;
+}
+
+.rm-info {
+  background: var(--ink-card);
+  border: 1px solid var(--ink-line);
+  border-radius: 5px;
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  margin: 10px 0 0;
+  padding: 8px 10px;
+  white-space: pre-wrap;
+}
+
+.rm-x {
+  padding: 0 8px;
+}
+
+/* A cell's text, MME's yellow tooltip as mudtool draws it. */
+.rm-tip {
+  background: #fffbd6;
+  border: 1px solid #a89a3a;
+  border-radius: 6px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
+  color: #111;
+  font-size: 12px;
+  max-width: 460px;
+  padding: 7px 10px;
+  pointer-events: none;
+  position: fixed;
+  white-space: pre-wrap;
+  z-index: 50;
+}
+
+/* Up or down, where a cell has both. */
+.rm-menu {
+  background: var(--ink-raised);
+  border: 1px solid var(--ink-edge);
+  border-radius: 6px;
+  box-shadow: var(--glass-shadow);
+  display: flex;
+  gap: 6px;
+  padding: 6px;
+  position: fixed;
+  z-index: 60;
 }

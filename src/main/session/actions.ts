@@ -59,7 +59,7 @@
  * `AutoDeposit` runs it, sending the `i` and composing the figure from the
  * listing that answers it. Nothing about the amount is decided here.
  */
-import type { TerminalAction } from '../../shared/types';
+import type { TerminalAction, TerminalCommandAction } from '../../shared/types';
 import type { ShopKind } from '../../shared/world';
 import { t } from '../app/i18n';
 import { tuning } from '../app/tuning';
@@ -80,12 +80,13 @@ import { tuning } from '../app/tuning';
  * ours, and the label doubles as the thing a player can retype; `Go Manhole`
  * would be a button whose face and payload disagree.
  */
-function exitActions(commands: readonly string[]): TerminalAction[] {
-  return commands.map((command) => ({
-    label: command,
-    commands: [command],
-    title: t('terminal.actions.exitTitle', { command })
-  }));
+function exitActions(commands: ReadonlyArray<string | TerminalCommandAction>): TerminalAction[] {
+  return commands.map((command) =>
+    // Given whole, with its title saying where it leads and what it needs (`roomTags`).
+    typeof command !== 'string'
+      ? command
+      : { label: command, commands: [command], title: t('terminal.actions.exitTitle', { command }) }
+  );
 }
 
 /**
@@ -142,7 +143,7 @@ function bankActions(wealth: number | null, bankBalance: number | null): Termina
 
 export function actionsFor(
   kind: ShopKind | undefined,
-  exits: readonly string[],
+  exits: ReadonlyArray<string | TerminalCommandAction>,
   wealth: number | null,
   /** What `bank` last said this vault holds, or null while it has not been asked. */
   bankBalance: number | null = null

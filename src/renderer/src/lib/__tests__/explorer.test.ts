@@ -118,3 +118,66 @@ describe('the Explorer’s filters, as mudtool’s tabs apply them', () => {
     ).toBe(false);
   });
 });
+
+/*
+ * mudtool's own `spell filters (FilterSpells)` test (`test/explorers.test.js`),
+ * on fireball's facts as main sends them (`main/mme/__tests__/Explorer.test.ts`).
+ */
+describe('the Spells filter (spellPasses)', () => {
+  const fireball = (over: Partial<NonNullable<ExplorerRow['spell']>> = {}): ExplorerRow => ({
+    ...row(64, {}, { abilities: [[17, 0]] }),
+    name: 'fireball',
+    usable: false,
+    spell: {
+      magery: 1,
+      mageryLevel: 3,
+      targets: 12,
+      attType: 1,
+      learnable: 1,
+      anyMagery: false,
+      usableLearnable: false,
+      kaiLearns: true,
+      short: 'fbal',
+      mageryName: 'Mage-3',
+      level: 10,
+      mana: 12,
+      target: 'Room',
+      ...over
+    }
+  });
+  const keeps = (f: Partial<ExplorerFilters>, spell = fireball()): boolean =>
+    passes(spell, 'spells', filters({ usableOnly: false, ...f }));
+
+  it('keeps by magery, attack, target and ability as mudtool does', () => {
+    expect(keeps({ magery: 1 })).toBe(true);
+    expect(keeps({ magery: 2 })).toBe(false);
+    // `Hot/Fire` is the list's 2, `AttType` 1.
+    expect(keeps({ attType: 2 })).toBe(true);
+    expect(keeps({ attType: 1 })).toBe(false);
+    // Room: targets 11, 12, 9 and 3.
+    expect(keeps({ target: 5 })).toBe(true);
+    expect(keeps({ target: 3 })).toBe(false);
+    expect(keeps({ hasAbility: 17 })).toBe(true);
+    expect(keeps({ hasAbility: 1 })).toBe(false);
+  });
+
+  it('keeps to the character with the global filter, a Priest not casting fireball', () => {
+    expect(keeps({ usableOnly: true })).toBe(false);
+    expect(keeps({ usableOnly: true }, { ...fireball(), usable: true })).toBe(true);
+  });
+
+  it('keeps a learnable spell of no magery for any magery the character may learn it under', () => {
+    const open = fireball({ magery: 0, anyMagery: true });
+    expect(keeps({ magery: 2, usableOnly: true }, { ...open, usable: true })).toBe(true);
+    expect(keeps({ magery: 2 }, open)).toBe(false);
+  });
+
+  it('keeps to learnable spells, Kai the exception, and finds one by its short name', () => {
+    const unlearnable = fireball({ learnable: 0 });
+    expect(keeps({ learnableOnly: true }, unlearnable)).toBe(false);
+    expect(keeps({ learnableOnly: true, magery: 5 }, fireball({ learnable: 0, magery: 5 }))).toBe(
+      true
+    );
+    expect(keeps({ query: 'fbal' })).toBe(true);
+  });
+});

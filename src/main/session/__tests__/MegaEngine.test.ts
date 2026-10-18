@@ -84,6 +84,8 @@ function engine(here: string | null = '1/1', ways: Record<string, Route> = {}) {
       from === '1/1' && direction === 'n' ? [{ at: '1/1', roomName: '', say: 'pull lever' }] : []
   };
   const at = { here, locates: 0, canLocate: true };
+  // What each plan was asked for: a walk, or a loop's leg.
+  const planned: string[] = [];
   const host: MegaEngineHost = {
     write: (text) => sent.push(text),
     show: (text) => shown.push(text),
@@ -97,7 +99,10 @@ function engine(here: string | null = '1/1', ways: Record<string, Route> = {}) {
     },
     world: () => world as never,
     // Planned off main's thread in the client (`RoutePlanner`): answered later.
-    plan: (from, to) => Promise.resolve(ways[`${from}>${to}`] ?? plan(from, to)),
+    plan: (from, to, walking) => {
+      planned.push(walking);
+      return Promise.resolve(ways[`${from}>${to}`] ?? plan(from, to));
+    },
     fetchFirst: (items, then) => fetches.push([items.map((item) => item.name), then]),
     loopRooms: (name) =>
       name === 'Ring' ? { rooms: ['1/2', '1/3'], bounce: false } : 'no such loop'
@@ -107,7 +112,7 @@ function engine(here: string | null = '1/1', ways: Record<string, Route> = {}) {
     data: { monsters: [], items: [], spells: [] },
     grants: {}
   });
-  return { e, sent, shown, at, fetches, told };
+  return { e, sent, shown, at, fetches, told, planned };
 }
 
 afterEach(() => vi.useRealTimers());
@@ -210,7 +215,7 @@ describe('the engine’s own log', () => {
 describe('the engine in a session', () => {
   it('walks a loop of ours as MegaMUD’s loop, from the room it is in', async () => {
     vi.useFakeTimers();
-    const { e, sent } = engine('1/1');
+    const { e, sent, planned: asked } = engine('1/1');
     e.s.inGame = 1;
     e.s.online = 1;
     e.received('\x1b[1;36mTown Square\r\n\x1b[0;32mObvious exits: north, closed door east\r\n');
@@ -223,6 +228,8 @@ describe('the engine in a session', () => {
     // On the way to its start: the route from here is the path walked.
     expect(e.s.walking).toBe(1);
     expect(e.s.path.steps!.map((st) => st.command)).toEqual(['n']);
+    // The legs as the loop was drawn, the way to its start as a walk (2026-10-18).
+    expect([...new Set(asked)].sort()).toEqual(['lap', 'route']);
     expect(sent).toEqual([]);
     e.dispose();
   });
@@ -446,6 +453,43 @@ describe('the engine in a session', () => {
     expect(e.signatureOf('1/6')).toBe(sig);
     expect([e.s.path.end, e.s.detours[0]!.room]).toEqual([sig, sig]);
     expect(e.s.host.isRoom!(sig)).toBe(true);
+    e.dispose();
+  });
+
+  /*
+   * The way shown is the way walked (2026-10-18): Archer was shown the slums
+   * and walked the Dragontooth Hills, the planner asked afresh for the lap's
+   * traveller. Here the planner's own way north is not the one handed over.
+   */
+  it('walks the way it was handed, not one the planner would pick', async () => {
+    vi.useFakeTimers();
+    const { e } = engine('1/1');
+    e.s.inGame = 1;
+    e.s.online = 1;
+    e.received('\x1b[1;36mTown Square\r\n\x1b[0;32mObvious exits: north, closed door east\r\n');
+    const shown: Route = {
+      steps: [step(1, 3, 'e'), step(3, 2, 'w')],
+      cost: 9,
+      blocked: false
+    };
+    expect(e.walkTo('1/2', false, true, shown)).toBeNull();
+    await planned();
+    expect(e.s.path.steps!.map((st) => st.command)).toEqual(['e', 'w']);
+    e.dispose();
+  });
+
+  it('plans afresh where the way it was handed does not start where it stands', async () => {
+    vi.useFakeTimers();
+    const { e, planned: asked } = engine('1/1');
+    e.s.inGame = 1;
+    e.s.online = 1;
+    e.received('\x1b[1;36mTown Square\r\n\x1b[0;32mObvious exits: north, closed door east\r\n');
+    const elsewhere: Route = { steps: [step(3, 2, 'go gate')], cost: 9, blocked: false };
+    expect(e.walkTo('1/2', false, true, elsewhere)).toBeNull();
+    await planned();
+    expect(e.s.path.steps!.map((st) => st.command)).toEqual(['n']);
+    // Planned afresh as a walk, the route panel's way, and not as a loop's leg.
+    expect(asked).toEqual(['route']);
     e.dispose();
   });
 

@@ -3382,7 +3382,8 @@ describe('what the MegaMUD engine was walking, taken up again', () => {
       SessionManager['walkRoute']
     >[0];
     expect(manager!.walkRoute(route)).toBeNull();
-    expect(walk).toHaveBeenCalledWith('1/2', false, true);
+    // The route itself, which the engine walks as planned.
+    expect(walk).toHaveBeenCalledWith('1/2', false, true, route);
     expect(written).toEqual([{ to: '1/2', run: false }]);
   });
 

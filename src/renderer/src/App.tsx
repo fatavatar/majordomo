@@ -99,7 +99,14 @@ import type { MonsterRule } from '@shared/monsterRules';
 import type { ItemRule } from '@shared/itemRules';
 import type { MegaMudPath } from '@shared/megamudPaths';
 import type { IpcApi, LearnedSpellRow } from '@shared/ipc';
-import type { ExplorerKind, ExplorerOptions, GearOptions } from '@shared/explorer';
+import type {
+  ExplorerKind,
+  ExplorerOptions,
+  GearOptions,
+  RoomMapOptions,
+  RoomSearch,
+  RoomViewRequest
+} from '@shared/explorer';
 import { CONSOLE_PALETTES, TERMINAL_THEMES, THEME_PREFERENCES, THEMES } from '@shared/themes';
 import { usePaneWidths } from './hooks/usePaneWidths';
 import { usePinnedCommands } from './hooks/usePins';
@@ -2927,9 +2934,28 @@ export default function App() {
     [api, session]
   );
   const explorerDetail = useCallback(
-    (item: number) => api.explorerDetail(session, item),
+    (kind: ExplorerKind, item: number, options: ExplorerOptions) =>
+      api.explorerDetail(session, kind, item, options),
     [api, session]
   );
+  const explorerRoomView = useCallback(
+    (request: RoomViewRequest) => api.explorerRoomView(session, request),
+    [api, session]
+  );
+  const explorerRoomTip = useCallback(
+    (map: number, room: number, options: RoomMapOptions) =>
+      api.explorerRoomTip(session, map, room, options),
+    [api, session]
+  );
+  const explorerRoomSearch = useCallback(
+    (search: RoomSearch) => api.explorerRoomSearch(session, search),
+    [api, session]
+  );
+  // The character's room as the Rooms tab keys one.
+  const explorerHere =
+    character.room.map === null || character.room.number === null
+      ? null
+      : `${character.room.map}/${character.room.number}`;
   const explorerBuyPlan = useCallback(
     (item: number) => api.explorerBuyPlan(session, item),
     [api, session]
@@ -3767,6 +3793,14 @@ export default function App() {
       if (at !== null) chooseOnMap(at.map, at.room);
     },
     [chooseOnMap]
+  );
+  // The Explorer's Walk here: the route panel at the room, the Explorer put away.
+  const explorerWalkTo = useCallback(
+    (room: string) => {
+      setExplorerOpen(false);
+      goToRoom(room);
+    },
+    [goToRoom]
   );
   const stopMoving = useCallback(() => {
     // One stop for both: main works out whether it is a lap or a route, and
@@ -6076,11 +6110,16 @@ export default function App() {
         characterName={character.name ?? session}
         detail={explorerDetail}
         focus={explorerFocus}
+        hereRoom={explorerHere}
         list={explorerList}
         onClose={closeExplorer}
         open={explorerOpen}
         purseKey={explorerPurseKey}
+        roomSearch={explorerRoomSearch}
+        roomTip={explorerRoomTip}
+        roomView={explorerRoomView}
         session={session}
+        walkTo={explorerWalkTo}
       />
 
       <LoopsModal

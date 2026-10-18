@@ -9,6 +9,7 @@ export interface MmeChar {
   equipped: number[];
   learnedSpells: number[];
   weaponVsChar: { ac: number; dr: number; dodge: number };
+  spellVsMR: number;
   [field: string]: unknown;
 }
 export const EQ_SLOTS: string[];

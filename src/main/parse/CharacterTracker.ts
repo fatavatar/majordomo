@@ -1221,6 +1221,42 @@ export class CharacterTracker {
   }
 
   /**
+   * The room a room block of this name is about to be (2026-10-18), for what
+   * `SessionManager.markFor` draws beside its name line before `act()` has
+   * placed it: where the pending move leads — by its direction, or by the
+   * exit or room script that takes its command — and where nothing is
+   * pending, or a re-read is, the room stood in. Only where that room
+   * carries the name printed; null otherwise, and for a peek, which shows
+   * somewhere the character is not going.
+   */
+  roomAboutToPrint(name: string): RoomId | null {
+    const world = this.world;
+    const { map, number } = this.state.room;
+    if (world === undefined || map === null || number === null) return null;
+    const here = roomId(map, number);
+    const wanted = name.trim().toLowerCase();
+    const named = (id: RoomId): RoomId | null =>
+      world.byId(id)?.name.trim().toLowerCase() === wanted ? id : null;
+    const head = this.expect.head();
+    if (head === null || head === undefined || head.kind === 'reread') return named(here);
+    if (head.kind !== 'move') return null;
+    const room = world.byId(here);
+    if (room === undefined) return null;
+    const command = head.command?.trim().toLowerCase();
+    const exit =
+      head.direction !== null
+        ? room.exits.find((entry) => entry.direction === head.direction)
+        : room.exits.find((entry) =>
+            entry.requirement?.commands?.some((said) => said.toLowerCase() === command)
+          );
+    if (exit !== undefined) return named(world.beyond(exit));
+    const portal = world
+      .portalsFrom(here)
+      .find((way) => way.requirement.commands?.some((said) => said.toLowerCase() === command));
+    return portal === undefined ? null : named(world.beyond(portal));
+  }
+
+  /**
    * How many *moves* are still waiting for their room.
    *
    * Read by `SessionManager` and handed to auto-combat: a fight opened while

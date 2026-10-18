@@ -852,6 +852,8 @@ explorer:
   anywhere: Anywhere
   armourType: Armour type
   attack: Attack
+  back: Back
+  backTitle: Back to what was open before
   backstabs: BS-able
   calcCombat: Calc. Combat
   choose: Choose an item to read what MMUD Explorer says of it.
@@ -908,20 +910,113 @@ explorer:
     accuracy: Acc
     armourType: Armr Type
     backstab: BS Acc
+    cast: Cast
     crits: Crits
+    detail: Detail
     encumbrance: Enc
     level: Level
     limit: Limit
+    magery: Magery
+    mana: Mana
     max: Max
     min: Min
     name: Name
+    shopType: Type
+    short: Short
     slot: Worn
     speed: Speed
     strength: Str
     weaponType: Wepn Type
   kinds:
     armour: Armour
+    rooms: Rooms
+    shops: Shops
+    spells: Spells
     weapons: Weapons
+  # The Rooms tab, MME's room walker (frmMap), 2026-10-18.
+  rooms:
+    findLabel: Room name…
+    go: Go
+    goDown: Down
+    goUp: Up
+    leadsHere: Leads here
+    leadsHereTitle: 'Room {room} can be gotten to via:'
+    list: List
+    listed: 'Rooms named like “{text}”:'
+    listedCapped: 'Rooms named like “{text}” (first 500):'
+    map: Map
+    mapRoom: Map/Room
+    missing: Room {room} was not found.
+    next: Next
+    nextTitle: Walk the map to the next room with this name (Find Next)
+    notFound: Name not found.
+    nothing: Nothing.
+    nothingHere: Nothing here.
+    options:
+      alsoMark: Also mark
+      dupes: Allow a room drawn twice
+      followMap: Follow map changes
+      markNothing: Nothing more
+      markShops: Shops
+      markSpells: Room spells
+      noCMD: Don't mark room commands
+      noHidden: Don't follow hidden exits
+      noLairs: Don't mark lairs
+      noNPC: Don't mark NPCs
+      noRestricted: Don't follow restricted exits
+      overwrite: Allow cells to be overwritten
+    optionsButton: Options
+    refsTitle: Refs [{name} ({room})]
+    room: Room
+    size: Map size
+    standingHere: '{characterName} is here'
+    thisRoom: This room
+    walkHere: Walk here
+    walkHereTitle: Plan the way here for {characterName} on the route panel
+    whereAmI: Where am I
+    whereAmITitle: Draw the map from {characterName}'s room
+  # The Shops tab (LoadShops, PullShopDetail), 2026-10-18.
+  shops:
+    charm: Charm
+    charmValue: Charm
+    cost: Cost
+    level: LVL
+    locatedIn: Located in
+    max: Max
+    regen: Regen
+    sell: Sell
+    showAll: Show All
+    showTrainers: Show Trainers
+  # The Spells bar, MME's FilterSpells and chkSpellOptions (2026-10-18).
+  spells:
+    antiMagic: Anti-Magic
+    attack: Attack
+    bard: Bard
+    cold: Cold/Ice
+    druid: Druid
+    fire: Hot/Fire
+    hasAbility: Has ability
+    kai: Kai
+    learnableOnly: Learnable Only
+    level: level {level}
+    lightning: Lightning
+    mage: Mage
+    magery: Magery
+    mageryLevel: Level
+    mana: '{mana} mana'
+    monster: Monster
+    mr: MR
+    normal: Normal
+    party: Party
+    poison: Poison
+    priest: Priest
+    room: Room
+    self: Self
+    stone: Stone
+    target: Target
+    user: User
+    vsMR: Calc vs MR
+    water: Water
 
 # The Loops modal: the shelf of every loop, grouped by area, opened from
 # anywhere. The Loop card drives the loop that is running; this is where one
@@ -1108,6 +1203,27 @@ terminal:
     noMatches: none
     placeholder: Find in backscroll…
     previousLabel: Previous match
+  # What a room asks of whoever would leave it, the tags beside its name (2026-10-18).
+  tags:
+    command: '{command}'
+    commandNeeding: '{command} — {detail}'
+    exit: '{direction}: {label}'
+    exitHere: '{direction}: {detail}'
+    exitTitle: '{direction} to {room}: {detail}'
+    keyCarried: '{direction}: {key}, carried'
+    keyMissing: '{direction}: needs {key}'
+    keyUnknown: a key
+    lever: 'Opens the way {direction}: {opens}'
+    leverElsewhere: '{direction}: lever in {room}'
+    leverItem: 'Opens the way {direction}: {opens}. Needs {item} carried.'
+    leads: '{command}: to {room}'
+    leadsNeeding: '{command}: to {room} — {detail}'
+    roomSpell: casts {spell}
+    roomSpellDamage: About {damage} damage a tick.
+    roomSpellStopped: 'Stopped by: {items}.'
+    roomSpellTitle: This room casts {spell} on whoever is in it.
+    search: 'Search {direction} for the hidden way to {room}.'
+    searchHere: Search {direction} for the hidden way out.
   backscrollRestoreFailed:
     Could not restore this character's backscroll ({message}) — showing new output
     only.
@@ -2143,8 +2259,18 @@ cards:
     legendAgain: covered again
     legendThrough: on the way
     legendTrap: trap
-    legendVertical: up/down
+    legendVertical: way up or down
     legendYou: you
+    # mudmaps' marks and kinds (2026-10-18).
+    arrowAway: '{direction}: to a room off this map'
+    arrowLocal: '{direction}: to a room elsewhere on this map'
+    legendArrow: exit elsewhere here
+    legendArrowAway: exit off the map
+    legendCommand: answers a command
+    legendHidden: hidden / needs a word
+    legendLettered: temple T, tavern P, inn I, trainer G
+    legendNpc: somebody lives here
+    legendUpDown: up / down
     svgAriaLabel: '{roomCount} rooms around {roomName}'
     svgAriaLabelDestination: '{roomCount} rooms around the destination, {roomName}'
     title: Map

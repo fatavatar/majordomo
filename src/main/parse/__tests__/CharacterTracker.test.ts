@@ -1505,6 +1505,44 @@ describe('leaving the realm', () => {
     expect(tracker.pendingCount).toBe(1);
   });
 
+  /*
+   * Which room a room block is about to be, for the tags beside its name
+   * (2026-10-18): a name 108 rooms share is answered for the one the step
+   * leads to, read off the realm before the block is applied.
+   */
+  const SHIPPED = path.resolve('resources/world/paradigm.jsonl.gz');
+  it.runIf(fs.existsSync(SHIPPED))('says which room the next room block is about to be', () => {
+    const world = WorldGraph.load(SHIPPED);
+    const classifier = new Classifier();
+    const tracker = new CharacterTracker(world);
+    let seq = 0;
+    const feed = (text: string): void => {
+      seq += 1;
+      const { block, batch } = classifier.classify({
+        seq,
+        at: 1_700_000_000_000 + seq,
+        text,
+        plain: text,
+        terminator: 'newline'
+      });
+      tracker.apply(block);
+      if (batch) tracker.apply(batch);
+    };
+    feed('[HP=98/MA=50]:');
+    feed('Room 1442  Map: 1');
+    expect([tracker.current.room.map, tracker.current.room.number]).toEqual([1, 1442]);
+    // Nothing pending: a reprint of where it stands, by that room's own name.
+    expect(tracker.roomAboutToPrint('Black House, Kitchen')).toBe('1/1442');
+    // A step down: the room it leads to, only by its own name.
+    tracker.observeCommand('d');
+    expect(tracker.roomAboutToPrint('Black House, Basement')).toBe('1/1450');
+    expect(tracker.roomAboutToPrint('Slum Street')).toBeNull();
+    // A peek shows somewhere the character is not going.
+    const peeking = new CharacterTracker(world);
+    peeking.observeCommand('l n');
+    expect(peeking.roomAboutToPrint('Black House, Kitchen')).toBeNull();
+  });
+
   it('reads a step as a step, and answers the queue in order', () => {
     const tracker = new CharacterTracker();
     tracker.observeCommand('n');

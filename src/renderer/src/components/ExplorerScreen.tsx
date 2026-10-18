@@ -8,6 +8,7 @@ import {
   type UIEvent
 } from 'react';
 
+import ExplorerRooms from './ExplorerRooms';
 import { Splitter } from './Splitter';
 import { keepFocus } from '../lib/focus';
 import type { SplitRange } from '../lib/splitter';
@@ -32,8 +33,15 @@ import {
   type ExplorerKind,
   type ExplorerList,
   type ExplorerOptions,
+  type ExplorerPlace,
+  type ExplorerRoomView,
   type ExplorerRow,
-  type ExplorerSegment
+  type ExplorerSegment,
+  type ExplorerTab,
+  type RoomMapOptions,
+  type RoomSearch,
+  type RoomSearchResult,
+  type RoomViewRequest
 } from '@shared/explorer';
 
 /**
@@ -62,20 +70,98 @@ export interface ExplorerScreenProps {
   /** Changes when what Buy would do might: the purse, the room, a bank's balance. */
   purseKey: string;
   list(kind: ExplorerKind, options: ExplorerOptions): Promise<ExplorerList>;
-  detail(item: number): Promise<ExplorerDetail | null>;
+  detail(
+    kind: ExplorerKind,
+    item: number,
+    options: ExplorerOptions
+  ): Promise<ExplorerDetail | null>;
   buyPlan(item: number): Promise<ExplorerBuyPlan | null>;
   /** Why not, or null where the character is on its way. */
   buy(item: number, wear: boolean): Promise<string | null>;
   /** An item to open on, from the Gear card; `at` tells one ask of the same item from the next. */
   focus: { kind: ExplorerKind; item: number; at: number } | null;
+  /** The character's room, `map/room`, which the Rooms tab opens on and marks. */
+  hereRoom: string | null;
+  roomView(request: RoomViewRequest): Promise<ExplorerRoomView>;
+  roomTip(map: number, room: number, options: RoomMapOptions): Promise<string>;
+  roomSearch(search: RoomSearch): Promise<RoomSearchResult>;
+  /** Send the character to a room by the route panel, the Explorer put away. */
+  walkTo(room: string): void;
   onClose(): void;
 }
 
 /** The lists, in MME's order. */
 const KINDS: ReadonlyArray<{ id: ExplorerKind; label: () => string }> = [
   { id: 'weapons', label: () => t('explorer.kinds.weapons') },
-  { id: 'armour', label: () => t('explorer.kinds.armour') }
+  { id: 'armour', label: () => t('explorer.kinds.armour') },
+  { id: 'spells', label: () => t('explorer.kinds.spells') },
+  { id: 'shops', label: () => t('explorer.kinds.shops') }
 ];
+
+/** Where the Rooms tab opens with neither the character placed nor a room walked: mudtool's own. */
+const FIRST_ROOM = '1/2140';
+
+/** How far back the Back button walks. */
+const TRAIL_MAX = 50;
+
+/** A place on the trail Back walks: a tab, and the record on it, null for none chosen. */
+interface Visit {
+  tab: ExplorerTab;
+  n: number | string | null;
+}
+
+/** The Spells bar's choices (`FilterSpells`), each list's place its value. */
+const MAGERIES = (): string[] => [
+  t('explorer.anyType'),
+  t('explorer.spells.mage'),
+  t('explorer.spells.priest'),
+  t('explorer.spells.druid'),
+  t('explorer.spells.bard'),
+  t('explorer.spells.kai')
+];
+const TARGETS = (): string[] => [
+  t('explorer.anyType'),
+  t('explorer.spells.self'),
+  t('explorer.spells.user'),
+  t('explorer.spells.monster'),
+  t('explorer.spells.party'),
+  t('explorer.spells.room')
+];
+const ATTACK_TYPES = (): string[] => [
+  t('explorer.anyType'),
+  t('explorer.spells.cold'),
+  t('explorer.spells.fire'),
+  t('explorer.spells.stone'),
+  t('explorer.spells.lightning'),
+  t('explorer.spells.normal'),
+  t('explorer.spells.water'),
+  t('explorer.spells.poison')
+];
+
+/** One of the Spells bar's numbered choices: its place in `labels` is the filter's value. */
+function Pick({
+  label,
+  labels,
+  value,
+  onChange
+}: {
+  label: string;
+  labels: readonly string[];
+  value: number;
+  onChange(value: number): void;
+}) {
+  return (
+    <Field label={label}>
+      <select onChange={(event) => onChange(Number(event.target.value))} value={String(value)}>
+        {labels.map((text, i) => (
+          <option key={i} value={i}>
+            {text}
+          </option>
+        ))}
+      </select>
+    </Field>
+  );
+}
 
 /** Calc. Combat's attacks, as MME names them. */
 const ATTACK_LABEL: Record<ExplorerAttack, () => string> = {
@@ -140,19 +226,106 @@ function keepSplit(split: ExplorerSplit): void {
 const RETYPE_MS = 350;
 
 /** A run of MME's text: a reference drawn as one, the rest as it is. */
-function Runs({ runs }: { runs: readonly ExplorerSegment[] }) {
+/**
+ * Marked-up text: a reference a tab here shows is a link that opens it, as
+ * mudtool's `a.xref` are; one no tab shows yet reads as a reference all the
+ * same, and says what it names.
+ */
+function Runs({
+  runs,
+  follow
+}: {
+  runs: readonly ExplorerSegment[];
+  follow?: (place: ExplorerPlace) => void;
+}) {
   return (
     <>
       {runs.map((run, i) =>
-        'kind' in run ? (
-          <span className="ex-ref" data-kind={run.kind} key={i}>
+        !('kind' in run) ? (
+          <span key={i}>{run.text}</span>
+        ) : run.tab !== null && follow !== undefined ? (
+          <button
+            className="ex-link ex-ref"
+            data-kind={run.kind}
+            key={i}
+            onClick={() => follow({ tab: run.tab!, n: run.n })}
+            onMouseDown={keepFocus}
+            title={`${run.kind} #${run.n}`}
+            type="button"
+          >
+            {run.text}
+          </button>
+        ) : (
+          <span className="ex-ref" data-kind={run.kind} key={i} title={`${run.kind} #${run.n}`}>
             {run.text}
           </span>
-        ) : (
-          <span key={i}>{run.text}</span>
         )
       )}
     </>
+  );
+}
+
+/** A shop's shelf or a trainer's table (`PullShopDetail`'s list), its items links. */
+function Stock({
+  stock,
+  follow
+}: {
+  stock: NonNullable<ExplorerDetail['stock']>;
+  follow(place: ExplorerPlace): void;
+}) {
+  const rows = stock.trainer
+    ? [...stock.rows].sort((a, b) => (a.level ?? 0) - (b.level ?? 0))
+    : [...stock.rows].sort((a, b) => (a.name ?? '').localeCompare(b.name ?? ''));
+  return (
+    <table className="ex-stock">
+      <thead>
+        {stock.trainer ? (
+          <tr>
+            <th>{t('explorer.shops.level')}</th>
+            <th>{t('explorer.shops.cost')}</th>
+          </tr>
+        ) : (
+          <tr>
+            <th>#</th>
+            <th>{t('explorer.columns.name')}</th>
+            <th>{t('explorer.shops.max')}</th>
+            <th>{t('explorer.shops.regen')}</th>
+            <th>{t('explorer.shops.cost')}</th>
+          </tr>
+        )}
+      </thead>
+      <tbody>
+        {rows.map((row, i) =>
+          stock.trainer ? (
+            <tr key={i}>
+              <td className="ex-num">{row.level}</td>
+              <td>{row.cost}</td>
+            </tr>
+          ) : (
+            <tr key={i}>
+              <td className="ex-num">{row.item}</td>
+              <td>
+                {row.tab != null && row.item !== undefined ? (
+                  <button
+                    className="ex-link ex-ref"
+                    onClick={() => follow({ tab: row.tab!, n: row.item! })}
+                    onMouseDown={keepFocus}
+                    type="button"
+                  >
+                    {row.name}
+                  </button>
+                ) : (
+                  row.name
+                )}
+              </td>
+              <td className="ex-num">{row.max}</td>
+              <td>{row.regen}</td>
+              <td>{row.cost}</td>
+            </tr>
+          )
+        )}
+      </tbody>
+    </table>
   );
 }
 
@@ -371,6 +544,11 @@ function BuyBox({
 function subLine(kind: ExplorerKind, row: ExplorerRow | undefined): string {
   if (row === undefined) return '';
   const c = row.cells;
+  const spell = row.spell;
+  // mudtool's Spells heading: `#7 · smit · Priest-1 · level 3 · 4 mana · Monster`.
+  if (kind === 'shops') return `#${row.number} · ${c['ShopType'] ?? ''}`;
+  if (kind === 'spells' && spell !== undefined)
+    return `#${row.number} · ${spell.short} · ${spell.mageryName} · ${t('explorer.spells.level', { level: spell.level })} · ${t('explorer.spells.mana', { mana: spell.mana })} · ${spell.target}`;
   return kind === 'weapons'
     ? `#${row.number} · ${row.facts.type} · ${c['Min'] ?? 0}-${c['Max'] ?? 0} @ ${c['Speed'] ?? 0}`
     : `#${row.number} · ${row.facts.slot ?? ''} · ${row.facts.type} · AC/DR ${row.shown?.['acdr'] ?? ''}`;
@@ -386,9 +564,18 @@ export default function ExplorerScreen({
   buyPlan,
   buy,
   focus,
+  hereRoom,
+  roomView,
+  roomTip,
+  roomSearch,
+  walkTo,
   onClose
 }: ExplorerScreenProps) {
   const [kind, setKind] = useState<ExplorerKind>('weapons');
+  // The tab shown: a list, which keeps `kind` and all of its state, or the Rooms walker.
+  const [tab, setTab] = useState<ExplorerTab>('weapons');
+  const [roomAt, setRoomAt] = useState<string | null>(null);
+  const [trail, setTrail] = useState<Visit[]>([]);
   const [answer, setAnswer] = useState<ExplorerList | null>(null);
   const [filters, setFilters] = useState<ExplorerFilters>(DEFAULT_FILTERS);
   const [options, setOptions] = useState<ExplorerOptions>(DEFAULT_EXPLORER_OPTIONS);
@@ -446,13 +633,13 @@ export default function ExplorerScreen({
     setShown(null);
     if (!open || chosen === null) return;
     let live = true;
-    void detail(chosen).then((found) => {
+    void detail(kind, chosen, asked).then((found) => {
       if (live) setShown(found);
     });
     return () => {
       live = false;
     };
-  }, [open, chosen, detail, characterKey]);
+  }, [open, kind, chosen, detail, characterKey, asked]);
 
   // Escape puts it away, as every surface over the console does.
   useEffect(() => {
@@ -517,22 +704,64 @@ export default function ExplorerScreen({
     return orderRows(kept, (row) => cellOf(row, sort.id), sort.dir);
   }, [all, kind, filters, sort, asked, cellOf]);
 
-  // Opened on an item: its list, the search cleared, the item chosen and scrolled to.
+  /*
+   * Going somewhere (2026-10-18): a list, its search cleared and the record
+   * chosen and scrolled to; or the Rooms walker at a room. What a reference,
+   * the Gear card and Back all do.
+   */
   const scrollToRef = useRef<number | null>(null);
   const kindRef = useRef(kind);
   kindRef.current = kind;
-  useEffect(() => {
-    if (focus === null) return;
-    if (kindRef.current !== focus.kind) {
-      setKind(focus.kind);
-      setAnswer(null);
-      setFilters((f) => ({ ...f, type: '', slot: '', ability: DEFAULT_FILTERS.ability }));
-      setSort({ id: 'Name', dir: 1 });
+  const goTo = useCallback((visit: Visit): void => {
+    setTab(visit.tab);
+    if (visit.tab === 'rooms') {
+      if (visit.n !== null) setRoomAt(String(visit.n));
+      return;
     }
+    if (kindRef.current !== visit.tab) {
+      setKind(visit.tab);
+      setAnswer(null);
+      setChosen(null);
+      setFilters((f) => ({
+        ...f,
+        type: '',
+        slot: '',
+        ability: DEFAULT_FILTERS.ability,
+        magery: 0,
+        mageryLevel: 0,
+        target: 0,
+        attType: 0,
+        hasAbility: 0
+      }));
+      setSort({ id: 'Name', dir: 1 });
+      setScrollTop(0);
+      bodyRef.current?.scrollTo({ top: 0 });
+    }
+    if (visit.n === null) return;
     setFilters((f) => ({ ...f, query: '' }));
-    setChosen(focus.item);
-    scrollToRef.current = focus.item;
-  }, [focus]);
+    setChosen(Number(visit.n));
+    scrollToRef.current = Number(visit.n);
+  }, []);
+  // Where Back returns to: the tab shown, and its record.
+  const visitNow = (): Visit => (tab === 'rooms' ? { tab, n: roomAt } : { tab: kind, n: chosen });
+  /** Go somewhere, remembering where from. */
+  const follow = (visit: Visit | ExplorerPlace): void => {
+    const now = visitNow();
+    setTrail((was) => [...was.slice(1 - TRAIL_MAX), now]);
+    goTo(visit);
+  };
+  const back = (): void => {
+    const last = trail.at(-1);
+    if (last === undefined) return;
+    setTrail(trail.slice(0, -1));
+    goTo(last);
+  };
+  const links = (text: readonly ExplorerSegment[]): ReactNode => (
+    <Runs follow={follow} runs={text} />
+  );
+  useEffect(() => {
+    if (focus !== null) goTo({ tab: focus.kind, n: focus.item });
+  }, [focus, goTo]);
   useEffect(() => {
     const wanted = scrollToRef.current;
     if (wanted === null) return;
@@ -556,21 +785,25 @@ export default function ExplorerScreen({
   );
   const template = tracks.join(' ');
   const ems = columns.reduce(
-    (sum, column) => sum + (column.id === 'Name' ? NAME_EM : Number.parseFloat(column.width) || 4),
+    (sum, column) =>
+      sum +
+      (column.id === 'Name'
+        ? NAME_EM
+        : // A `minmax(14em, 3fr)` track is its floor.
+          Number.parseFloat(column.width.replace(/^minmax\(/, '')) || 4),
     0
   );
   const tableWidth = `max(100%, calc(${ems}em + ${GAP_PX * (columns.length - 1) + PAD_PX * 2}px))`;
   const first = Math.max(0, Math.floor(scrollTop / ROW_PX) - OVERSCAN);
   const last = Math.min(rows.length, first + viewRows + OVERSCAN * 2);
   const chosenRow = all.find((row) => row.number === chosen);
-  const switchKind = (next: ExplorerKind): void => {
-    setKind(next);
-    setAnswer(null);
-    setChosen(null);
-    set({ type: '', slot: '', ability: DEFAULT_FILTERS.ability });
-    setSort({ id: 'Name', dir: 1 });
-    setScrollTop(0);
-    bodyRef.current?.scrollTo({ top: 0 });
+  const switchTab = (next: ExplorerTab): void => {
+    if (next === tab) return;
+    follow(
+      next === 'rooms'
+        ? { tab: 'rooms', n: roomAt ?? hereRoom ?? FIRST_ROOM }
+        : { tab: next, n: next === kind ? chosen : null }
+    );
   };
 
   const abilityField = (
@@ -623,10 +856,10 @@ export default function ExplorerScreen({
           <nav className="ex-tabs" role="tablist">
             {KINDS.map((entry) => (
               <button
-                aria-selected={kind === entry.id}
+                aria-selected={tab === entry.id}
                 className="ex-tab"
                 key={entry.id}
-                onClick={() => switchKind(entry.id)}
+                onClick={() => switchTab(entry.id)}
                 onMouseDown={keepFocus}
                 role="tab"
                 type="button"
@@ -634,7 +867,27 @@ export default function ExplorerScreen({
                 {entry.label()}
               </button>
             ))}
+            <button
+              aria-selected={tab === 'rooms'}
+              className="ex-tab"
+              onClick={() => switchTab('rooms')}
+              onMouseDown={keepFocus}
+              role="tab"
+              type="button"
+            >
+              {t('explorer.kinds.rooms')}
+            </button>
           </nav>
+          <button
+            className="ex-btn ex-back"
+            disabled={trail.length === 0}
+            onClick={back}
+            onMouseDown={keepFocus}
+            title={t('explorer.backTitle')}
+            type="button"
+          >
+            {t('explorer.back')}
+          </button>
           <label className="ex-global" data-on={filters.usableOnly ? 'true' : 'false'}>
             <input
               checked={filters.usableOnly}
@@ -648,311 +901,437 @@ export default function ExplorerScreen({
           </button>
         </header>
 
-        <div className="ex-toolbar">
-          <input
-            aria-label={t('explorer.find')}
-            className="ex-search"
-            onChange={(event) => set({ query: event.target.value })}
-            placeholder={t('explorer.find')}
-            spellCheck={false}
-            value={filters.query}
+        {tab === 'rooms' ? (
+          <ExplorerRooms
+            at={roomAt ?? hereRoom ?? FIRST_ROOM}
+            characterName={characterName}
+            follow={follow}
+            here={hereRoom}
+            onWalk={(room) => follow({ tab: 'rooms', n: room })}
+            runs={links}
+            search={roomSearch}
+            tip={roomTip}
+            view={roomView}
+            walkTo={walkTo}
           />
-          {kind === 'weapons' ? (
-            <>
-              <Choice
-                any={t('explorer.anyType')}
-                label={t('explorer.weaponType')}
-                onChange={(type) => set({ type })}
-                options={types}
-                value={filters.type}
+        ) : (
+          <>
+            <div className="ex-toolbar">
+              <input
+                aria-label={t('explorer.find')}
+                className="ex-search"
+                onChange={(event) => set({ query: event.target.value })}
+                placeholder={t('explorer.find')}
+                spellCheck={false}
+                value={filters.query}
               />
-              <Figure
-                label={t('explorer.maxSpeed')}
-                onChange={(maxSpeed) => set({ maxSpeed })}
-                value={filters.maxSpeed}
-              />
-              <Figure
-                label={t('explorer.maxStrength')}
-                onChange={(maxStrength) => set({ maxStrength })}
-                value={filters.maxStrength}
-                width="4em"
-              />
-              <Choice
-                any={t('explorer.anyType')}
-                label={t('explorer.minMagic')}
-                onChange={(magic) => set({ magic: Number(magic) || 0 })}
-                options={Array.from({ length: 15 }, (_, i): [string, string] => [
-                  String(i + 1),
-                  i === 14 ? '15+' : String(i + 1)
-                ])}
-                value={filters.magic === 0 ? '' : String(filters.magic)}
-              />
-              <div className="ex-checks">
-                <Check
-                  checked={filters.nonMagic}
-                  label={t('explorer.nonMagic')}
-                  onChange={(nonMagic) => set({ nonMagic })}
-                />
-                <Check
-                  checked={filters.backstabs}
-                  label={t('explorer.backstabs')}
-                  onChange={(backstabs) => set({ backstabs })}
-                />
-                <Check
-                  checked={filters.limiteds}
-                  label={t('explorer.limiteds')}
-                  onChange={(limiteds) => set({ limiteds })}
-                />
-              </div>
-            </>
-          ) : (
-            <>
-              <Choice
-                any={t('explorer.anywhere')}
-                label={t('explorer.worn')}
-                onChange={(slot) => set({ slot })}
-                options={slots}
-                value={filters.slot}
-              />
-              <Choice
-                any={t('explorer.anyType')}
-                label={t('explorer.armourType')}
-                onChange={(type) => set({ type })}
-                options={types}
-                value={filters.type}
-              />
-              <div className="ex-checks">
-                <Check
-                  checked={filters.nonMagic}
-                  label={t('explorer.nonMagic')}
-                  onChange={(nonMagic) => set({ nonMagic })}
-                />
-                <Check
-                  checked={filters.noLimit}
-                  label={t('explorer.noLimit')}
-                  onChange={(noLimit) => set({ noLimit })}
-                />
-              </div>
-            </>
-          )}
-          {abilityField}
-          <div className="ex-checks">
-            <Check
-              checked={filters.inGameOnly}
-              label={t('explorer.inGameOnly')}
-              onChange={(inGameOnly) => set({ inGameOnly })}
-            />
-          </div>
-          {kind === 'weapons' && (
-            <div className="ex-calc">
-              <Check
-                checked={options.calc}
-                label={t('explorer.calcCombat')}
-                onChange={(calc) => setOption({ calc })}
-              />
-              {options.calc && (
+              {kind === 'shops' ? (
                 <>
-                  <Field label={t('explorer.attack')}>
+                  <button
+                    className="ex-btn"
+                    onClick={() => set({ trainersOnly: !filters.trainersOnly })}
+                    onMouseDown={keepFocus}
+                    type="button"
+                  >
+                    {filters.trainersOnly
+                      ? t('explorer.shops.showAll')
+                      : t('explorer.shops.showTrainers')}
+                  </button>
+                  <div className="ex-checks">
+                    <Check
+                      checked={options.shopCharm}
+                      label={t('explorer.shops.charm')}
+                      onChange={(shopCharm) => setOption({ shopCharm, shopSell: false })}
+                    />
+                    <Check
+                      checked={options.shopSell}
+                      label={t('explorer.shops.sell')}
+                      onChange={(shopSell) => setOption({ shopSell, shopCharm: false })}
+                    />
+                  </div>
+                  <Figure
+                    label={t('explorer.shops.charmValue')}
+                    onChange={(charm) => setOption({ charm })}
+                    value={options.charm}
+                    width="4.5em"
+                  />
+                </>
+              ) : kind === 'spells' ? (
+                <>
+                  <Pick
+                    label={t('explorer.spells.magery')}
+                    labels={MAGERIES()}
+                    onChange={(magery) => set({ magery })}
+                    value={filters.magery}
+                  />
+                  <Pick
+                    label={t('explorer.spells.mageryLevel')}
+                    labels={[t('explorer.anyType'), '1', '2', '3']}
+                    onChange={(mageryLevel) => set({ mageryLevel })}
+                    value={filters.mageryLevel}
+                  />
+                  <Pick
+                    label={t('explorer.spells.target')}
+                    labels={TARGETS()}
+                    onChange={(target) => set({ target })}
+                    value={filters.target}
+                  />
+                  <Pick
+                    label={t('explorer.spells.attack')}
+                    labels={ATTACK_TYPES()}
+                    onChange={(attType) => set({ attType })}
+                    value={filters.attType}
+                  />
+                  <Field label={t('explorer.spells.hasAbility')}>
                     <select
-                      onChange={(event) =>
-                        setOption({ attack: event.target.value as ExplorerAttack })
-                      }
-                      value={options.attack}
+                      onChange={(event) => set({ hasAbility: Number(event.target.value) })}
+                      value={String(filters.hasAbility)}
                     >
-                      {EXPLORER_ATTACKS.map((attack) => (
-                        <option key={attack} value={attack}>
-                          {ATTACK_LABEL[attack]()}
+                      <option value="0">{t('explorer.anyType')}</option>
+                      {abilityOptions.map(([id, text]) => (
+                        <option key={id} value={id}>
+                          {text}
                         </option>
                       ))}
                     </select>
                   </Field>
-                  <Check
-                    checked={options.fast}
-                    label={t('explorer.fast')}
-                    onChange={(fast) => setOption({ fast })}
-                  />
-                  <Figure
-                    label={t('explorer.vsAC')}
-                    onChange={(vsAC) => setOption({ vsAC: vsAC ?? 0 })}
-                    value={options.vsAC}
-                    width="4em"
-                  />
-                  <Figure
-                    label={t('explorer.vsDR')}
-                    onChange={(vsDR) => setOption({ vsDR: vsDR ?? 0 })}
-                    value={options.vsDR}
-                    width="4em"
-                  />
-                  <Figure
-                    label={t('explorer.vsDodge')}
-                    onChange={(vsDodge) => setOption({ vsDodge: vsDodge ?? 0 })}
-                    value={options.vsDodge}
-                    width="4em"
-                  />
-                  <Figure
-                    label={t('explorer.minDamage')}
-                    onChange={(minDamage) => set({ minDamage: minDamage ?? 0 })}
-                    value={filters.minDamage}
-                    width="4.5em"
-                  />
-                </>
-              )}
-            </div>
-          )}
-          <span className="ex-count">
-            {t('explorer.count', { shown: rows.length, of: all.length })}
-          </span>
-        </div>
-
-        <div
-          className="ex-body"
-          ref={bodyBoxRef}
-          style={{
-            ['--ex-lower' as string]: `${split.lower}px`,
-            ['--ex-refs' as string]: `${split.refs}px`
-          }}
-        >
-          <div className="ex-list">
-            {answer === null ? (
-              <div className="ex-empty">{t('explorer.loading')}</div>
-            ) : !answer.supported ? (
-              <div className="ex-empty">{answer.reason ?? t('explorer.unsupported')}</div>
-            ) : (
-              <div
-                className="ex-table"
-                role="grid"
-                style={{ ['--ex-cols' as string]: template, ['--ex-width' as string]: tableWidth }}
-              >
-                <div
-                  className="ex-rows"
-                  onScroll={(event: UIEvent<HTMLDivElement>) =>
-                    setScrollTop(event.currentTarget.scrollTop)
-                  }
-                  ref={bodyRef}
-                >
-                  <div className="ex-head" role="row">
-                    {columns.map((column) => (
-                      <button
-                        aria-sort={
-                          sort.id === column.id
-                            ? sort.dir === 1
-                              ? 'ascending'
-                              : 'descending'
-                            : undefined
-                        }
-                        className="ex-th"
-                        data-numeric={column.numeric === true ? 'true' : undefined}
-                        key={column.id}
-                        // A figure's first press is the largest first, as mudtool's is.
-                        onClick={() =>
-                          setSort((was) =>
-                            was.id === column.id
-                              ? { id: column.id, dir: was.dir === 1 ? -1 : 1 }
-                              : { id: column.id, dir: column.numeric === true ? -1 : 1 }
-                          )
-                        }
-                        onMouseDown={keepFocus}
-                        role="columnheader"
-                        title={column.label}
-                        type="button"
-                      >
-                        {column.label}
-                      </button>
-                    ))}
+                  <div className="ex-checks">
+                    <Check
+                      checked={filters.learnableOnly}
+                      label={t('explorer.spells.learnableOnly')}
+                      onChange={(learnableOnly) => set({ learnableOnly })}
+                    />
                   </div>
-                  {rows.length === 0 ? (
-                    <div className="ex-empty">{t('explorer.empty')}</div>
-                  ) : (
-                    <div className="ex-spacer" style={{ height: rows.length * ROW_PX }}>
-                      {rows.slice(first, last).map((row, i) => (
-                        <div
-                          aria-selected={chosen === row.number}
-                          className="ex-row"
-                          data-unusable={row.usable ? undefined : 'true'}
-                          data-worn={row.worn ? 'true' : undefined}
-                          key={row.number}
-                          onClick={() => setChosen(row.number)}
-                          role="row"
-                          style={{ top: (first + i) * ROW_PX }}
-                        >
-                          {columns.map((column) => (
-                            <span
-                              className="ex-td"
-                              data-numeric={column.numeric === true ? 'true' : undefined}
-                              key={column.id}
-                              role="gridcell"
-                            >
-                              {row.shown?.[column.id] ?? cellOf(row, column.id) ?? ''}
-                            </span>
-                          ))}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
-          <Splitter
-            edge="bottom"
-            label={t('explorer.lowerHeight')}
-            measure={() => lowerRef.current?.getBoundingClientRect().height ?? split.lower}
-            onChange={(lower) => setSplit((was) => ({ ...was, lower }))}
-            onReset={() => setSplit((was) => ({ ...was, lower: DEFAULT_SPLIT.lower }))}
-            rangeFor={lowerRange}
-          />
-          <div className="ex-lower" ref={lowerRef}>
-            <section className="ex-detail">
-              {chosen === null ? (
-                <div className="ex-empty">{t('explorer.choose')}</div>
-              ) : shown === null ? (
-                <div className="ex-empty">{t('explorer.loading')}</div>
+                </>
+              ) : kind === 'weapons' ? (
+                <>
+                  <Choice
+                    any={t('explorer.anyType')}
+                    label={t('explorer.weaponType')}
+                    onChange={(type) => set({ type })}
+                    options={types}
+                    value={filters.type}
+                  />
+                  <Figure
+                    label={t('explorer.maxSpeed')}
+                    onChange={(maxSpeed) => set({ maxSpeed })}
+                    value={filters.maxSpeed}
+                  />
+                  <Figure
+                    label={t('explorer.maxStrength')}
+                    onChange={(maxStrength) => set({ maxStrength })}
+                    value={filters.maxStrength}
+                    width="4em"
+                  />
+                  <Choice
+                    any={t('explorer.anyType')}
+                    label={t('explorer.minMagic')}
+                    onChange={(magic) => set({ magic: Number(magic) || 0 })}
+                    options={Array.from({ length: 15 }, (_, i): [string, string] => [
+                      String(i + 1),
+                      i === 14 ? '15+' : String(i + 1)
+                    ])}
+                    value={filters.magic === 0 ? '' : String(filters.magic)}
+                  />
+                  <div className="ex-checks">
+                    <Check
+                      checked={filters.nonMagic}
+                      label={t('explorer.nonMagic')}
+                      onChange={(nonMagic) => set({ nonMagic })}
+                    />
+                    <Check
+                      checked={filters.backstabs}
+                      label={t('explorer.backstabs')}
+                      onChange={(backstabs) => set({ backstabs })}
+                    />
+                    <Check
+                      checked={filters.limiteds}
+                      label={t('explorer.limiteds')}
+                      onChange={(limiteds) => set({ limiteds })}
+                    />
+                  </div>
+                </>
               ) : (
                 <>
-                  <h2 className="ex-name">{shown.name}</h2>
-                  <div className="ex-sub">{subLine(kind, chosenRow)}</div>
-                  <BuyBox
-                    buy={buy}
-                    buyPlan={buyPlan}
-                    characterKey={characterKey}
-                    item={shown.number}
-                    purseKey={purseKey}
+                  <Choice
+                    any={t('explorer.anywhere')}
+                    label={t('explorer.worn')}
+                    onChange={(slot) => set({ slot })}
+                    options={slots}
+                    value={filters.slot}
                   />
-                  <p className="ex-text">
-                    <Runs runs={shown.text} />
-                  </p>
+                  <Choice
+                    any={t('explorer.anyType')}
+                    label={t('explorer.armourType')}
+                    onChange={(type) => set({ type })}
+                    options={types}
+                    value={filters.type}
+                  />
+                  <div className="ex-checks">
+                    <Check
+                      checked={filters.nonMagic}
+                      label={t('explorer.nonMagic')}
+                      onChange={(nonMagic) => set({ nonMagic })}
+                    />
+                    <Check
+                      checked={filters.noLimit}
+                      label={t('explorer.noLimit')}
+                      onChange={(noLimit) => set({ noLimit })}
+                    />
+                  </div>
                 </>
               )}
-            </section>
-            <Splitter
-              edge="right"
-              label={t('explorer.referencesWidth')}
-              measure={() => refsRef.current?.getBoundingClientRect().width ?? split.refs}
-              onChange={(refs) => setSplit((was) => ({ ...was, refs }))}
-              onReset={() => setSplit((was) => ({ ...was, refs: DEFAULT_SPLIT.refs }))}
-              rangeFor={refsRange}
-            />
-            <section className="ex-references" ref={refsRef}>
-              <h3 className="ex-heading">{t('explorer.references')}</h3>
-              {shown === null || shown.refs.length === 0 ? (
-                <div className="ex-empty">{chosen === null ? '' : t('explorer.noReferences')}</div>
-              ) : (
-                <table className="ex-refs">
-                  <tbody>
-                    {shown.refs.map((ref, i) => (
-                      <tr key={i}>
-                        <td className="ex-pct">{ref.pct === undefined ? '' : `${ref.pct}%`}</td>
-                        <td>
-                          <Runs runs={ref.text} />
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+              {kind !== 'spells' && kind !== 'shops' && abilityField}
+              <div className="ex-checks">
+                <Check
+                  checked={filters.inGameOnly}
+                  label={t('explorer.inGameOnly')}
+                  onChange={(inGameOnly) => set({ inGameOnly })}
+                />
+              </div>
+              {kind === 'spells' && (
+                <div className="ex-calc">
+                  <Check
+                    checked={options.mrCalc}
+                    label={t('explorer.spells.vsMR')}
+                    onChange={(mrCalc) => setOption({ mrCalc })}
+                  />
+                  {options.mrCalc && (
+                    <>
+                      <Figure
+                        label={t('explorer.spells.mr')}
+                        onChange={(vsMR) => setOption({ vsMR: vsMR ?? 0 })}
+                        value={options.vsMR}
+                        width="4em"
+                      />
+                      <Check
+                        checked={options.antiMagic}
+                        label={t('explorer.spells.antiMagic')}
+                        onChange={(antiMagic) => setOption({ antiMagic })}
+                      />
+                    </>
+                  )}
+                </div>
               )}
-            </section>
-          </div>
-        </div>
+              {kind === 'weapons' && (
+                <div className="ex-calc">
+                  <Check
+                    checked={options.calc}
+                    label={t('explorer.calcCombat')}
+                    onChange={(calc) => setOption({ calc })}
+                  />
+                  {options.calc && (
+                    <>
+                      <Field label={t('explorer.attack')}>
+                        <select
+                          onChange={(event) =>
+                            setOption({ attack: event.target.value as ExplorerAttack })
+                          }
+                          value={options.attack}
+                        >
+                          {EXPLORER_ATTACKS.map((attack) => (
+                            <option key={attack} value={attack}>
+                              {ATTACK_LABEL[attack]()}
+                            </option>
+                          ))}
+                        </select>
+                      </Field>
+                      <Check
+                        checked={options.fast}
+                        label={t('explorer.fast')}
+                        onChange={(fast) => setOption({ fast })}
+                      />
+                      <Figure
+                        label={t('explorer.vsAC')}
+                        onChange={(vsAC) => setOption({ vsAC: vsAC ?? 0 })}
+                        value={options.vsAC}
+                        width="4em"
+                      />
+                      <Figure
+                        label={t('explorer.vsDR')}
+                        onChange={(vsDR) => setOption({ vsDR: vsDR ?? 0 })}
+                        value={options.vsDR}
+                        width="4em"
+                      />
+                      <Figure
+                        label={t('explorer.vsDodge')}
+                        onChange={(vsDodge) => setOption({ vsDodge: vsDodge ?? 0 })}
+                        value={options.vsDodge}
+                        width="4em"
+                      />
+                      <Figure
+                        label={t('explorer.minDamage')}
+                        onChange={(minDamage) => set({ minDamage: minDamage ?? 0 })}
+                        value={filters.minDamage}
+                        width="4.5em"
+                      />
+                    </>
+                  )}
+                </div>
+              )}
+              <span className="ex-count">
+                {t('explorer.count', { shown: rows.length, of: all.length })}
+              </span>
+            </div>
+
+            <div
+              className="ex-body"
+              ref={bodyBoxRef}
+              style={{
+                ['--ex-lower' as string]: `${split.lower}px`,
+                ['--ex-refs' as string]: `${split.refs}px`
+              }}
+            >
+              <div className="ex-list">
+                {answer === null ? (
+                  <div className="ex-empty">{t('explorer.loading')}</div>
+                ) : !answer.supported ? (
+                  <div className="ex-empty">{answer.reason ?? t('explorer.unsupported')}</div>
+                ) : (
+                  <div
+                    className="ex-table"
+                    role="grid"
+                    style={{
+                      ['--ex-cols' as string]: template,
+                      ['--ex-width' as string]: tableWidth
+                    }}
+                  >
+                    <div
+                      className="ex-rows"
+                      onScroll={(event: UIEvent<HTMLDivElement>) =>
+                        setScrollTop(event.currentTarget.scrollTop)
+                      }
+                      ref={bodyRef}
+                    >
+                      <div className="ex-head" role="row">
+                        {columns.map((column) => (
+                          <button
+                            aria-sort={
+                              sort.id === column.id
+                                ? sort.dir === 1
+                                  ? 'ascending'
+                                  : 'descending'
+                                : undefined
+                            }
+                            className="ex-th"
+                            data-numeric={column.numeric === true ? 'true' : undefined}
+                            key={column.id}
+                            // A figure's first press is the largest first, as mudtool's is.
+                            onClick={() =>
+                              setSort((was) =>
+                                was.id === column.id
+                                  ? { id: column.id, dir: was.dir === 1 ? -1 : 1 }
+                                  : { id: column.id, dir: column.numeric === true ? -1 : 1 }
+                              )
+                            }
+                            onMouseDown={keepFocus}
+                            role="columnheader"
+                            title={column.label}
+                            type="button"
+                          >
+                            {column.label}
+                          </button>
+                        ))}
+                      </div>
+                      {rows.length === 0 ? (
+                        <div className="ex-empty">{t('explorer.empty')}</div>
+                      ) : (
+                        <div className="ex-spacer" style={{ height: rows.length * ROW_PX }}>
+                          {rows.slice(first, last).map((row, i) => (
+                            <div
+                              aria-selected={chosen === row.number}
+                              className="ex-row"
+                              data-unusable={row.usable ? undefined : 'true'}
+                              data-worn={row.worn ? 'true' : undefined}
+                              key={row.number}
+                              onClick={() => setChosen(row.number)}
+                              role="row"
+                              style={{ top: (first + i) * ROW_PX }}
+                            >
+                              {columns.map((column) => (
+                                <span
+                                  className="ex-td"
+                                  data-numeric={column.numeric === true ? 'true' : undefined}
+                                  key={column.id}
+                                  role="gridcell"
+                                >
+                                  {row.shown?.[column.id] ?? cellOf(row, column.id) ?? ''}
+                                </span>
+                              ))}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+              <Splitter
+                edge="bottom"
+                label={t('explorer.lowerHeight')}
+                measure={() => lowerRef.current?.getBoundingClientRect().height ?? split.lower}
+                onChange={(lower) => setSplit((was) => ({ ...was, lower }))}
+                onReset={() => setSplit((was) => ({ ...was, lower: DEFAULT_SPLIT.lower }))}
+                rangeFor={lowerRange}
+              />
+              <div className="ex-lower" ref={lowerRef}>
+                <section className="ex-detail">
+                  {chosen === null ? (
+                    <div className="ex-empty">{t('explorer.choose')}</div>
+                  ) : shown === null ? (
+                    <div className="ex-empty">{t('explorer.loading')}</div>
+                  ) : (
+                    <>
+                      <h2 className="ex-name">{shown.name}</h2>
+                      <div className="ex-sub">{subLine(kind, chosenRow)}</div>
+                      {(kind === 'weapons' || kind === 'armour') && (
+                        <BuyBox
+                          buy={buy}
+                          buyPlan={buyPlan}
+                          characterKey={characterKey}
+                          item={shown.number}
+                          purseKey={purseKey}
+                        />
+                      )}
+                      <p className="ex-text">{links(shown.text)}</p>
+                      {shown.note !== undefined && <p className="ex-note">{shown.note}</p>}
+                      {shown.stock !== undefined && shown.stock.rows.length > 0 && (
+                        <Stock follow={follow} stock={shown.stock} />
+                      )}
+                    </>
+                  )}
+                </section>
+                <Splitter
+                  edge="right"
+                  label={t('explorer.referencesWidth')}
+                  measure={() => refsRef.current?.getBoundingClientRect().width ?? split.refs}
+                  onChange={(refs) => setSplit((was) => ({ ...was, refs }))}
+                  onReset={() => setSplit((was) => ({ ...was, refs: DEFAULT_SPLIT.refs }))}
+                  rangeFor={refsRange}
+                />
+                <section className="ex-references" ref={refsRef}>
+                  <h3 className="ex-heading">{shown?.refsTitle ?? t('explorer.references')}</h3>
+                  {shown === null || shown.refs.length === 0 ? (
+                    <div className="ex-empty">
+                      {chosen === null ? '' : t('explorer.noReferences')}
+                    </div>
+                  ) : (
+                    <table className="ex-refs">
+                      <tbody>
+                        {shown.refs.map((ref, i) => (
+                          <tr key={i}>
+                            <td className="ex-pct">{ref.pct === undefined ? '' : `${ref.pct}%`}</td>
+                            <td>{links(ref.text)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                </section>
+              </div>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );

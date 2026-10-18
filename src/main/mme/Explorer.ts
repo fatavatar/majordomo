@@ -15,18 +15,24 @@
  */
 import fs from 'node:fs';
 
-import { by, db, loadDB } from './vendor/js/db.js';
+import { by, db, loadDB, roomKey } from './vendor/js/db.js';
 import { detectEngine, engine } from './vendor/js/mmud/engine.js';
 import { blankChar, char, EQ_SLOTS, roster, switchChar } from './vendor/js/char.js';
 import { setSetting } from './vendor/js/state.js';
-import { isInGame, itemUsableBy } from './vendor/js/mmud/usable.js';
+import { isInGame, itemUsableBy, spellUsableBy } from './vendor/js/mmud/usable.js';
 import {
   abilityList,
   armourCols,
   hasAbil,
   hooks,
   itemDetail,
+  plain,
   segments,
+  shopDetail,
+  lairInfoFor,
+  spellCols,
+  spellDetail,
+  spellListed,
   weaponCols,
   type HookColumn
 } from './vendor/js/mmud/details.js';
@@ -39,9 +45,41 @@ import {
   FIND_BEST,
   type FindBestRule
 } from './vendor/js/mmud/charstats.js';
-import { setWeaponOpts, weaponMax, weaponMin, weaponSpeed } from './vendor/js/hooks/combat.js';
+import {
+  charIllumination,
+  lairDamageLine,
+  setSpellOpts,
+  setWeaponOpts,
+  weaponMax,
+  weaponMin,
+  weaponSpeed
+} from './vendor/js/hooks/combat.js';
 import { MUD } from './vendor/js/mmud/combat.js';
-import { armourType, weaponType, wornType } from './vendor/js/mmud/enums.js';
+import {
+  armourType,
+  magery,
+  shopType,
+  spellTargets,
+  weaponType,
+  wornType
+} from './vendor/js/mmud/enums.js';
+import {
+  buildMap,
+  CELL,
+  DIR_NAMES,
+  DIRS,
+  EXIT,
+  findRoomByName,
+  getRoom,
+  leadsHere,
+  MAP_SIZES,
+  roomExits,
+  roomRefs,
+  roomTooltip,
+  searchRooms,
+  type MapCell
+} from './vendor/js/mmud/roommap.js';
+import { roomTeleports } from './vendor/js/mmud/textblocks.js';
 import type { Row } from './vendor/js/db.js';
 import { t } from '../app/i18n';
 import { openRealm } from '../world/RealmSource';
@@ -57,7 +95,17 @@ import type {
   ExplorerList,
   ExplorerOptions,
   ExplorerRow,
+  ExplorerPlace,
+  ExplorerRoomView,
   ExplorerSegment,
+  ExplorerShopFacts,
+  ExplorerSpellFacts,
+  ExplorerTab,
+  RoomCell,
+  RoomLine,
+  RoomSearch,
+  RoomSearchResult,
+  RoomViewRequest,
   GearBoard,
   GearOptions,
   GearPick
@@ -198,8 +246,10 @@ function useCharacter(state: CharacterState, options?: ExplorerOptions): void {
     return n > 0 ? [n] : [];
   });
   // Calc. Combat's target (`txtWeaponExtras(2..4)`), which MME keeps on the character.
-  if (options !== undefined)
+  if (options !== undefined) {
     c.weaponVsChar = { ac: options.vsAC, dr: options.vsDR, dodge: options.vsDodge };
+    c.spellVsMR = options.vsMR;
+  }
   roster.chars = [{ id: 'live', char: c }];
   switchChar('live');
 }
@@ -377,6 +427,244 @@ function factsOf(
   };
 }
 
+/**
+ * MME's context for a detail or a row (mudtool's `tabs/exhelp.js` `ctx`): the
+ * character's, with the global filter on, which is what this client always
+ * answers for.
+ */
+function mmeContext(): Record<string, unknown> {
+  return {
+    useChar: true,
+    level: char.level,
+    cls: char.cls,
+    race: char.race,
+    alignment: char.alignment,
+    charm: char.stats.cha,
+    shopsFirst: false,
+    equipped: char.equipped
+  };
+}
+
+/**
+ * The Spells list's columns, mudtool's `tabs/spells.js` in its order: its own
+ * (`spellCols`, at the character's level), the combat hook's Dmg, Dmg/M, Heal
+ * and Heal/M, and the quick detail last. `Cast` and not `Diff`: the chance is
+ * the character's own, as MME's is with the global filter on.
+ */
+function spellColumns(): Column[] {
+  const context = mmeContext();
+  const cols = new Map<number, ReturnType<typeof spellCols>>();
+  const of = (spell: Row): ReturnType<typeof spellCols> => {
+    const n = spell['Number'] as number;
+    let found = cols.get(n);
+    if (found === undefined) {
+      found = spellCols(spell, context);
+      cols.set(n, found);
+    }
+    return found;
+  };
+  return [
+    ...leading(),
+    {
+      id: 'Short',
+      label: t('explorer.columns.short'),
+      width: '4.5em',
+      get: (s) => String(s['Short'] ?? '')
+    },
+    {
+      id: 'Magery',
+      label: t('explorer.columns.magery'),
+      width: '6.5em',
+      get: (s) => magery(s['Magery'], s['MageryLVL'])
+    },
+    {
+      id: 'ReqLevel',
+      label: t('explorer.columns.level'),
+      numeric: true,
+      width: '4em',
+      get: (s) => s['ReqLevel'] as number
+    },
+    {
+      id: 'mana',
+      label: t('explorer.columns.mana'),
+      numeric: true,
+      width: '4em',
+      get: (s) => of(s).mana
+    },
+    {
+      id: 'diff',
+      label: t('explorer.columns.cast'),
+      numeric: true,
+      width: '4em',
+      // `47%` as MME shows it, sorted as the figure.
+      get: (s) => Number.parseInt(String(of(s).diff), 10) || 0,
+      show: (_value, s) => String(of(s).diff)
+    },
+    ...hooked(hooks.columns.spells),
+    {
+      id: 'detail',
+      label: t('explorer.columns.detail'),
+      width: 'minmax(14em, 3fr)',
+      get: (s) => plain(of(s).detail)
+    }
+  ];
+}
+
+/** What the Spells filter bar and the detail's heading read of a spell. */
+function spellFactsOf(spell: Row): ExplorerSpellFacts {
+  const classes = String(spell['Classes'] ?? '');
+  const learnable = (spell['Learnable'] as number) || 0;
+  const mageryNumber = (spell['Magery'] as number) || 0;
+  return {
+    magery: mageryNumber,
+    mageryLevel: (spell['MageryLVL'] as number) || 0,
+    targets: (spell['Targets'] as number) || 0,
+    attType: (spell['AttType'] as number) || 0,
+    learnable,
+    // `spellPasses`' own test, the character's class read here.
+    anyMagery:
+      learnable > 0 &&
+      mageryNumber === 0 &&
+      engine.nmrVersion >= 1.7 &&
+      (!char.cls || classes === '(*)' || classes.includes(`(${char.cls})`)),
+    usableLearnable: spellUsableBy(
+      spell,
+      char.cls || 0,
+      char.level || 0,
+      char.alignment || 0,
+      true
+    ),
+    kaiLearns: !engine.disableKai,
+    short: String(spell['Short'] ?? ''),
+    mageryName: magery(spell['Magery'], spell['MageryLVL']),
+    level: (spell['ReqLevel'] as number) || 0,
+    mana: (spell['ManaCost'] as number) || 0,
+    target: spellTargets(spell['Targets'])
+  };
+}
+
+/** One Spells row: as an item's, with the spell's own facts, and in the book where the character knows it. */
+function spellRowOf(spell: Row, columns: readonly Column[]): ExplorerRow {
+  const n = spell['Number'] as number;
+  const cells: Record<string, ExplorerCell> = {};
+  const shown: Record<string, string> = {};
+  for (const column of columns) {
+    const value = column.get(spell);
+    cells[column.id] = value;
+    if (column.show !== undefined) shown[column.id] = column.show(value, spell);
+  }
+  return {
+    number: n,
+    name: String(spell['Name']),
+    usable: spellUsableBy(spell, char.cls || 0, char.level || 0, char.alignment || 0),
+    inGame: isInGame(spell),
+    worn: char.learnedSpells.includes(n),
+    cells,
+    ...(Object.keys(shown).length > 0 ? { shown } : {}),
+    // The item bar's facts, neutral: only *Has ability* reads them here.
+    facts: {
+      type: '',
+      magical: 0,
+      hasMagical: false,
+      hitMagic: 0,
+      limit: 0,
+      strength: 0,
+      speed: 0,
+      abilities: abilitySlots(spell),
+      negates: []
+    },
+    spell: spellFactsOf(spell)
+  };
+}
+
+/** The shops `AddShop2LV` lists: named, and not the realm's `sdf` or `Leave this blank` rows. */
+const shopListed = (shop: Row): boolean => {
+  const name = String(shop['Name'] ?? '');
+  return name !== '' && name.slice(0, 3).toLowerCase() !== 'sdf' && name !== 'Leave this blank';
+};
+
+/** The Shops list's columns, mudtool's `tabs/shops.js`: number, name, type. */
+function shopColumns(): Column[] {
+  return [
+    ...leading(),
+    {
+      id: 'ShopType',
+      label: t('explorer.columns.shopType'),
+      width: '8em',
+      get: (s) => shopType(s['ShopType'])
+    }
+  ];
+}
+
+/** `LoadShops(bTrainersOnly)`'s test of a trainer against the character: its class and level. */
+function shopFactsOf(shop: Row): ExplorerShopFacts {
+  const type = (shop['ShopType'] as number) || 0;
+  const classRest = (shop['ClassRest'] as number) || 0;
+  const level = char.level;
+  const fits =
+    !(char.cls && classRest !== 0 && classRest !== char.cls) &&
+    !(
+      level > 0 &&
+      (((shop['MinLVL'] as number) || 0) > level + 1 || ((shop['MaxLVL'] as number) || 0) <= level)
+    );
+  return { type, trainerFits: type === 8 && fits };
+}
+
+function shopRowOf(shop: Row, columns: readonly Column[]): ExplorerRow {
+  const cells: Record<string, ExplorerCell> = {};
+  for (const column of columns) cells[column.id] = column.get(shop);
+  return {
+    number: shop['Number'] as number,
+    name: String(shop['Name']),
+    usable: true,
+    inGame: isInGame(shop),
+    worn: false,
+    cells,
+    facts: {
+      type: '',
+      magical: 0,
+      hasMagical: false,
+      hitMagic: 0,
+      limit: 0,
+      strength: 0,
+      speed: 0,
+      abilities: [],
+      negates: []
+    },
+    shop: shopFactsOf(shop)
+  };
+}
+
+/**
+ * `PullShopDetail`: its line, its stock at the character's charm (or the
+ * charm asked) bought or sold, a trainer's cost by level, and the rooms it
+ * is in, each a link.
+ */
+function shopDetailOf(number: number, options?: ExplorerOptions): ExplorerDetail | null {
+  const shop = by.shop.get(number);
+  if (shop === undefined) return null;
+  const charm = options?.charm ?? char.stats.cha;
+  const priced = options?.shopCharm === true || options?.shopSell === true;
+  const detail = shopDetail(shop, priced ? charm : 0, options?.shopSell === true);
+  return {
+    number,
+    name: String(shop['Name']),
+    text: runs(detail.text),
+    refs: detail.refs.map((ref) => ({
+      text: runs(ref.text),
+      ...(typeof ref.pct === 'number' ? { pct: ref.pct } : {})
+    })),
+    refsTitle: t('explorer.shops.locatedIn'),
+    ...(detail.charmMod ? { note: detail.charmMod } : {}),
+    stock: {
+      trainer: detail.trainer,
+      rows: detail.rows.map((row) =>
+        row.item === undefined ? row : { ...row, tab: tabOf('item', row.item) }
+      )
+    }
+  };
+}
+
 /** One list row: every column's cell, what it shows where that differs, and the filters' facts. */
 function rowOf(item: Row, kind: ExplorerKind, columns: readonly Column[]): ExplorerRow {
   const n = item['Number'] as number;
@@ -428,11 +716,23 @@ export async function explorerList(
     fast: options?.fast === true,
     minDmg: 0
   });
-  const type = kind === 'weapons' ? ITEM_TYPE.weapon : ITEM_TYPE.armour;
-  const columns = kind === 'weapons' ? weaponColumns() : armourColumns();
-  const rows = db.Items.filter((item) => item['ItemType'] === type).map((item) =>
-    rowOf(item, kind, columns)
-  );
+  // The Spells tab's vs MR, after the character for the same reason.
+  setSpellOpts({ calc: options?.mrCalc === true, antiMagic: options?.antiMagic === true });
+  let columns: Column[];
+  let rows: ExplorerRow[];
+  if (kind === 'spells') {
+    columns = spellColumns();
+    rows = db.Spells.filter(spellListed).map((spell) => spellRowOf(spell, columns));
+  } else if (kind === 'shops') {
+    columns = shopColumns();
+    rows = db.Shops.filter(shopListed).map((shop) => shopRowOf(shop, columns));
+  } else {
+    const type = kind === 'weapons' ? ITEM_TYPE.weapon : ITEM_TYPE.armour;
+    columns = kind === 'weapons' ? weaponColumns() : armourColumns();
+    rows = db.Items.filter((item) => item['ItemType'] === type).map((item) =>
+      rowOf(item, kind, columns)
+    );
+  }
   return {
     supported: true,
     columns: columns.map(({ id, label, width, numeric }) => ({
@@ -446,23 +746,64 @@ export async function explorerList(
   };
 }
 
-/** mudtool's marked-up text as runs, its references kept (`segments`). */
+/**
+ * The tab a reference opens (mudtool's `ui/nav.js` `KIND`), or null for one
+ * no tab here shows yet. An item by its list: a weapon's, and every other
+ * worn-or-not armour row on Armour, which lists them all, until Sundry is
+ * here to take the unworn ones as mudtool's `itemTab` does.
+ */
+function tabOf(kind: string, n: number | string): ExplorerTab | null {
+  switch (kind) {
+    case 'item': {
+      const item = by.item.get(Number(n));
+      if (item?.['ItemType'] === ITEM_TYPE.weapon) return 'weapons';
+      if (item?.['ItemType'] === ITEM_TYPE.armour) return 'armour';
+      return null;
+    }
+    case 'spell':
+      return 'spells';
+    case 'shop':
+      return 'shops';
+    case 'room':
+      return 'rooms';
+    default:
+      return null;
+  }
+}
+
+/** Where a whole line of references leads, or null where no tab shows it. */
+function placeOf(ref: { kind: string; n: number | string } | null): ExplorerPlace | null {
+  if (ref === null) return null;
+  const tab = tabOf(ref.kind, ref.n);
+  return tab === null ? null : { tab, n: ref.n };
+}
+
+/** mudtool's marked-up text as runs, its references kept (`segments`) with the tab each opens. */
 function runs(text: string): ExplorerSegment[] {
-  return segments(text) as ExplorerSegment[];
+  return segments(text).map((run) =>
+    'kind' in run ? { ...run, tab: tabOf(run.kind, run.n) } : run
+  );
 }
 
 /** One item's detail as MME writes it, compared against what is worn in its slot. */
 export async function explorerDetail(
   realm: MmeRealm,
   state: CharacterState,
-  number: number
+  kind: ExplorerKind,
+  number: number,
+  options?: ExplorerOptions
 ): Promise<ExplorerDetail | null> {
   await useRealm(realm);
   if (!supported()) return null;
-  useCharacter(state);
-  const item = by.item.get(number);
+  useCharacter(state, options);
+  setSpellOpts({ calc: options?.mrCalc === true, antiMagic: options?.antiMagic === true });
+  if (kind === 'shops') return shopDetailOf(number, options);
+  const item = kind === 'spells' ? by.spell.get(number) : by.item.get(number);
   if (item === undefined) return null;
-  const detail = itemDetail(item, { equipped: char.equipped });
+  const detail =
+    kind === 'spells'
+      ? spellDetail(item, mmeContext())
+      : itemDetail(item, { equipped: char.equipped });
   return {
     number,
     name: String(item['Name']),
@@ -568,3 +909,333 @@ export async function explorerGear(
     })
   };
 }
+
+/** The character's room as MME keys one, or null where it is not placed. */
+function hereOf(state: CharacterState): string | null {
+  const { map, number } = state.room;
+  return map === null || number === null ? null : roomKey(map, number);
+}
+
+/** A room's text with the character's own part: its illumination and a lair's damage to it. */
+function tooltipOf(row: Row, options: Record<string, unknown>): string {
+  return roomTooltip(row, {
+    ...options,
+    illu: charIllumination(),
+    lairDamage: (group: unknown, regen: number) => lairDamageLine(lairInfoFor(group, regen))
+  });
+}
+
+/** A ref as a line: its text with its links, and where the whole line leads. */
+function lineOf(entry: {
+  text: string;
+  ref: { kind: string; n: number | string } | null;
+}): RoomLine {
+  return { text: runs(entry.text), place: placeOf(entry.ref) };
+}
+
+/** Each of MME's directions as a step on its grid, and as the client's own word. */
+const GRID_STEP: Record<string, { dx: number; dy: number; word: string }> = {
+  N: { dx: 0, dy: -1, word: 'n' },
+  S: { dx: 0, dy: 1, word: 's' },
+  E: { dx: 1, dy: 0, word: 'e' },
+  W: { dx: -1, dy: 0, word: 'w' },
+  NE: { dx: 1, dy: -1, word: 'ne' },
+  NW: { dx: -1, dy: -1, word: 'nw' },
+  SE: { dx: 1, dy: 1, word: 'se' },
+  SW: { dx: -1, dy: 1, word: 'sw' }
+};
+
+/** The way back along each direction, so a corridor is drawn once. */
+const BACK: Record<string, string> = {
+  N: 'S',
+  S: 'N',
+  E: 'W',
+  W: 'E',
+  NE: 'SW',
+  SW: 'NE',
+  NW: 'SE',
+  SE: 'NW'
+};
+
+/** The directions a corridor is drawn from, the other half drawn from the room at the far end. */
+const DRAWN_FROM = new Set(['E', 'S', 'SE', 'SW']);
+
+/**
+ * What stands in an exit, MME's `nExitType` as the tone the client's maps
+ * draw it in (`MapGlyphs.toneOf`'s): a key, a door or gate, a toll, a trap,
+ * a level, class, race, standing or ability, a spell cast on the way, and
+ * everything that wants a word, an item, a wait or a ticket hidden.
+ */
+function toneOfExit(code: number | undefined): string | undefined {
+  switch (code) {
+    case EXIT['KEY']:
+      return 'key';
+    case EXIT['DOOR']:
+    case EXIT['GATE']:
+      return 'door';
+    case EXIT['TOLL']:
+      return 'toll';
+    case EXIT['TRAP']:
+    case EXIT['SPELLTRAP']:
+      return 'trap';
+    case EXIT['CLASS']:
+    case EXIT['RACE']:
+    case EXIT['LEVEL']:
+    case EXIT['ALIGN']:
+    case EXIT['ABILITY']:
+    case EXIT['MAX']:
+      return 'gate';
+    case EXIT['CAST']:
+      return 'cast';
+    case EXIT['HIDDEN']:
+    case EXIT['ITEM']:
+    case EXIT['TEXT']:
+    case EXIT['TIMED']:
+    case EXIT['TICKET']:
+    case EXIT['BLOCKED']:
+    case EXIT['DELAY']:
+      return 'hidden';
+    default:
+      return undefined;
+  }
+}
+
+/** `SHOP_TYPE`'s hospital, tavern, training and inn as mudmaps letters them. */
+const SHOP_LETTERS: Record<number, string> = { 5: 'T', 6: 'P', 8: 'G', 9: 'I' };
+/** `SHOP_TYPE`'s bank. */
+const BANK = 7;
+
+/** A room's name and number, as a way's title names where it leads. */
+function placeName(map: number, room: number): string {
+  const row = getRoom(map, room);
+  return `${row === null ? '?' : String(row['Name'])} (${map}/${room})`;
+}
+
+/**
+ * One charted cell, in the client's drawing (2026-10-18): what the room is
+ * in mudmaps' order (a shop or bank, somebody living there, a command, a
+ * lair, a way up or down), its corridors to the cells beside it that hold the
+ * rooms they reach, and arrows, chevrons and portals for the ways a straight
+ * line cannot draw. The map options' *don't mark lairs, NPCs, commands* say
+ * what is not shown.
+ */
+function cellOf(
+  cell: MapCell,
+  i: number,
+  grid: { cols: number; rows: number; cells: Array<MapCell | null> },
+  shown: ReadonlySet<string>,
+  options: Record<string, unknown>
+): RoomCell {
+  const self = roomKey(cell.map, cell.room);
+  const row = cell.row;
+  const exits = row === null ? [] : roomExits(row);
+  const follow = (dir: 'U' | 'D'): string | null => {
+    const exit = exits[DIRS.indexOf(dir)];
+    return exit && !exit.action && exit.map && exit.room ? roomKey(exit.map, exit.room) : null;
+  };
+  const shopRow = row === null ? undefined : by.shop.get((row['Shop'] as number) || 0);
+  const lair = options['noLairs'] !== true && String(row?.['Lair'] ?? '').length > 1;
+  const npc = options['noNPC'] !== true && ((row?.['NPC'] as number) || 0) > 0;
+  const command = options['noCMD'] !== true && ((row?.['CMD'] as number) || 0) > 0;
+  const shopType = shopRow === undefined ? null : (shopRow['ShopType'] as number) || 0;
+  const kind: RoomCell['kind'] =
+    shopType === BANK
+      ? 'bank'
+      : shopType !== null
+        ? 'shop'
+        : npc
+          ? 'npc'
+          : command
+            ? 'cmd'
+            : lair
+              ? 'lair'
+              : follow('U') !== null || follow('D') !== null
+                ? 'stairs'
+                : 'room';
+  const letter = shopType === null ? undefined : SHOP_LETTERS[shopType];
+  const col = i % grid.cols;
+  const line = Math.floor(i / grid.cols);
+  const beside = (dir: string): MapCell | null => {
+    const step = GRID_STEP[dir]!;
+    const c = col + step.dx;
+    const r = line + step.dy;
+    if (c < 0 || r < 0 || c >= grid.cols || r >= grid.rows) return null;
+    return grid.cells[r * grid.cols + c] ?? null;
+  };
+  const links: RoomCell['links'] = [];
+  const arrows: RoomCell['arrows'] = [];
+  for (const exit of exits) {
+    if (exit === null || exit.action || !exit.map || !exit.room) continue;
+    const step = GRID_STEP[exit.dir];
+    if (step === undefined) continue;
+    const to = roomKey(exit.map, exit.room);
+    const next = beside(exit.dir);
+    const tone = toneOfExit(exit.code);
+    const title = exit.type !== undefined && exit.type.length > 2 ? exit.type : undefined;
+    if (next !== null && next.map === exit.map && next.room === exit.room) {
+      // Once per corridor: from this end, or from here where the far end has no way back.
+      const back = next.row === null ? null : roomExits(next.row)[DIRS.indexOf(BACK[exit.dir]!)];
+      const backHere = back && !back.action && back.map === cell.map && back.room === cell.room;
+      if (DRAWN_FROM.has(exit.dir) || !backHere)
+        links.push({ dir: step.word, ...(tone ? { tone } : {}), ...(title ? { title } : {}) });
+      continue;
+    }
+    /*
+     * An exit into an empty square to a room the map does not hold is only
+     * past the grid's edge, and is not drawn; one to another map is, as
+     * mudmaps marks a way to another area.
+     */
+    if (next === null && !shown.has(to) && exit.map === cell.map) continue;
+    arrows.push({
+      dir: step.word,
+      to,
+      local: shown.has(to),
+      title: `${DIR_NAMES[exit.dir] ?? exit.dir}: ${placeName(exit.map, exit.room)}${title ? ` ${title}` : ''}`,
+      gated: tone !== undefined
+    });
+  }
+  const away: RoomCell['away'] = [];
+  for (const dir of ['U', 'D'] as const) {
+    const exit = exits[DIRS.indexOf(dir)];
+    if (!exit || exit.action || !exit.map || !exit.room) continue;
+    away.push({
+      kind: dir === 'U' ? 'up' : 'down',
+      to: roomKey(exit.map, exit.room),
+      title: `${DIR_NAMES[dir]}: ${placeName(exit.map, exit.room)}${exit.type && exit.type.length > 2 ? ` ${exit.type}` : ''}`,
+      gated: toneOfExit(exit.code) !== undefined
+    });
+  }
+  if (command && row !== null)
+    for (const tp of roomTeleports(row['CMD'] as number, cell.map))
+      away.push({
+        kind: 'teleport',
+        to: roomKey(tp.map, tp.room),
+        title: `${tp.command}: ${placeName(tp.map, tp.room)}`,
+        gated: false
+      });
+  const base = {
+    map: cell.map,
+    room: cell.room,
+    kind,
+    ...(letter !== undefined && kind === 'shop' ? { letter } : {}),
+    ...(lair && kind !== 'lair' ? { lairBadge: true } : {}),
+    links,
+    arrows,
+    away
+  };
+  if (row === null) return { ...base, target: null };
+  if (cell.color === CELL.UP) return { ...base, target: follow('U') };
+  if (cell.color === CELL.DOWN) return { ...base, target: follow('D') };
+  if (cell.color === CELL.BOTH)
+    return { ...base, target: self, upDown: { up: follow('U'), down: follow('D') } };
+  return { ...base, target: self };
+}
+
+/**
+ * The Rooms tab for one room (2026-10-18): MME's map laid out from it
+ * (`buildMap`, `MapStartMapping`), the compass, its references and its full
+ * text (`MapGetRoomLoc`), and the character's room, which the map marks.
+ */
+export async function explorerRoomView(
+  realm: MmeRealm,
+  state: CharacterState,
+  request: RoomViewRequest
+): Promise<ExplorerRoomView> {
+  const { map, room } = request;
+  const empty = { found: false, map, room, name: '', grid: null, compass: [], refs: [], info: '' };
+  await useRealm(realm);
+  if (!supported()) return { ...empty, supported: false, here: null };
+  useCharacter(state);
+  const here = hereOf(state);
+  const row = getRoom(map, room);
+  if (row === null) return { ...empty, supported: true, here };
+  const size = MAP_SIZES.find((s) => s.id === request.size) ?? MAP_SIZES[0]!;
+  const options = { ...request.options };
+  const grid = buildMap(map, room, size, options, request.center, null);
+  const shownRooms = new Set(
+    grid.cells.flatMap((cell) => (cell === null ? [] : [roomKey(cell.map, cell.room)]))
+  );
+  const exits = roomExits(row);
+  return {
+    supported: true,
+    found: true,
+    map,
+    room,
+    name: String(row['Name']),
+    grid: {
+      cols: grid.cols,
+      rows: grid.rows,
+      zoom: grid.zoom,
+      center: grid.center,
+      cells: grid.cells.map((cell, i) =>
+        cell === null ? null : cellOf(cell, i, grid, shownRooms, options)
+      )
+    },
+    compass: DIRS.map((dir, i) => {
+      const exit = exits[i];
+      const leads = exit && !exit.action && exit.map && exit.room;
+      return {
+        dir,
+        target: leads ? roomKey(exit.map!, exit.room!) : null,
+        title: exit ? `${DIR_NAMES[dir] ?? dir}: ${exit.raw}` : '',
+        mapChange: leads ? exit.map !== map : false
+      };
+    }),
+    refs: roomRefs(map, room, options).map(lineOf),
+    info: tooltipOf(row, { ...options, showAllExits: true }),
+    here
+  };
+}
+
+/** A cell's tooltip, asked on the hover: the room's text, or its number where the realm has none. */
+export async function explorerRoomTip(
+  realm: MmeRealm,
+  state: CharacterState,
+  map: number,
+  room: number,
+  options: RoomViewRequest['options']
+): Promise<string> {
+  await useRealm(realm);
+  if (!supported()) return '';
+  useCharacter(state);
+  const row = getRoom(map, room);
+  return row === null ? `Map ${map} Room ${room}` : tooltipOf(row, { ...options });
+}
+
+/** MME's room finders: Find Next by name, List by name (its first 500), Leads here. */
+export async function explorerRoomSearch(
+  realm: MmeRealm,
+  state: CharacterState,
+  search: RoomSearch
+): Promise<RoomSearchResult> {
+  await useRealm(realm);
+  if (!supported()) return {};
+  useCharacter(state);
+  if ('find' in search) {
+    const found = findRoomByName(search.find, search.after);
+    return {
+      room:
+        found === null
+          ? null
+          : roomKey(found['Map Number'] as number, found['Room Number'] as number)
+    };
+  }
+  if ('list' in search) {
+    const found = searchRooms(search.list);
+    return {
+      capped: found.length >= ROOM_LIST_LIMIT,
+      lines: found.map((row) => {
+        const key = roomKey(row['Map Number'] as number, row['Room Number'] as number);
+        return {
+          text: [{ text: `${String(row['Name'])} (${key})` }],
+          place: { tab: 'rooms', n: key }
+        };
+      })
+    };
+  }
+  const [map, room] = search.leads.split('/').map(Number);
+  return { lines: leadsHere(map ?? 0, room ?? 0, { onlyInGame: true }).map(lineOf) };
+}
+
+/** `searchRooms`' own limit, which MME's list stops at. */
+const ROOM_LIST_LIMIT = 500;

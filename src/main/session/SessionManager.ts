@@ -57,6 +57,7 @@ import {
   type Route
 } from '../../shared/world';
 import { actionsFor } from './actions';
+import { roomTagsNamed } from './roomTags';
 import { CharacterTracker } from '../parse/CharacterTracker';
 import { Classifier } from '../parse/Classifier';
 import { LineTokenizer, plainText, stripAnsi } from '../net/LineTokenizer';
@@ -1532,15 +1533,15 @@ export class SessionManager {
         printsCounters: () =>
           this.serverFamily === 'greatermud' || this.tracker.current.abilities !== null,
         /*
-         * Planned as the engine's Go To walks it (2026-10-18), where it was
-         * planned for the route panel and a way a key opened was a setback:
-         * the lap's traveller, with the way the pack would open (`unlocks`),
-         * which the engine fetches for and then walks. Unplaced, the realm is
-         * asked first, as a person's route is (`ensureLocated`).
+         * Planned as the route panel plans a walk, with the way the pack
+         * would open (`unlocks`), which the engine fetches for and then walks
+         * (2026-10-18); the engine walks the leg as planned and plans it again
+         * the same way if it has to. Unplaced, the realm is asked first, as a
+         * person's route is (`ensureLocated`).
          */
         routeTo: (room) => {
           if (roomAddress(this.tracker.current.room) === null) this.askWhereIAm();
-          return this.planFromHere(room, { unlocks: true }, true);
+          return this.planFromHere(room, { unlocks: true });
         },
         walk: (route) => this.megaGoTo(route, false),
         stopWalking: (reason) => {
@@ -3143,7 +3144,8 @@ export class SessionManager {
     const mega = this.mega;
     if (mega === null) return t('session.megamud.noEngine');
     this.askCountersFor(route);
-    return this.megaAct(() => mega.walkTo(end, run, true));
+    // The way planned, walked: the engine plans afresh only off it.
+    return this.megaAct(() => mega.walkTo(end, run, true, route));
   }
 
   /**
@@ -3337,13 +3339,25 @@ export class SessionManager {
           // Where MegaMUD would play the sound its `[Alerts]` names.
           alert: (which) => this.sink.notice(megaAlertText(which)),
           world: () => this.world,
-          // With the way a refusal for a key would take once it is carried,
-          // which the engine fetches (`fetchFirst`).
-          plan: (from, to) =>
+          /*
+           * With the way a refusal for a key would take once it is carried,
+           * which the engine fetches (`fetchFirst`). A walk planned as the
+           * route panel plans one, its preferred corridors and its dangers
+           * weighed, so a walk planned again on the way is the planner the
+           * player chose by; a loop's leg as the loop was drawn, by distance
+           * and passability (`lapTraveller`, 2026-10-18).
+           */
+          plan: (from, to, walking) =>
             this.world
-              ? planRoute(this.world, from, to, this.lapTraveller(this.tracker.current), {
-                  unlocks: true
-                })
+              ? planRoute(
+                  this.world,
+                  from,
+                  to,
+                  walking === 'route'
+                    ? this.travellerNow(this.tracker.current)
+                    : this.lapTraveller(this.tracker.current),
+                  { unlocks: true }
+                )
               : t('session.loop.noRealmData'),
           fetchFirst: (items, then) => this.megaFetchFirst(items, then),
           opensAWay: (name) => this.opensAWay(name),
@@ -5987,20 +6001,39 @@ export class SessionManager {
         ? undefined
         : banks.find((held) => bankKey(held.name) === bankKey(place.shop))) ??
       banks.find((held) => bankKey(held.name) === bankKey(name));
+    /*
+     * What the room asks of whoever would leave it (2026-10-18): its commands,
+     * each saying where it leads and what it needs, a `search` for a hidden
+     * way the realm marks searchable, and a tag for every other way out with
+     * something in it, a key's saying whether it is carried. A peeked room's
+     * tags are the neighbour's, as true there as here, and still sent nothing.
+     */
+    const carried = this.packContents(this.tracker.current).keys;
+    const tags =
+      this.world === undefined
+        ? null
+        : roomTagsNamed(
+            this.world,
+            name,
+            (item) => carried.includes(item),
+            this.tracker.roomAboutToPrint(name)
+          );
     const actions = this.tracker.nextRoomIsPeek
       ? []
       : actionsFor(
           kind,
-          this.world?.exitCommandsNamed(name) ?? [],
+          tags?.commands ?? [],
           this.tracker.current.inventory.wealth,
           vault?.copper ?? null
         );
-    if (!kind && actions.length === 0) return undefined;
+    const notes = tags?.notes ?? [];
+    if (!kind && actions.length === 0 && notes.length === 0) return undefined;
     const mark: TerminalMark = {
       icon: kind ?? 'shop',
       label: place?.shop ?? name
     };
     if (actions.length > 0) mark.actions = actions;
+    if (notes.length > 0) mark.notes = notes;
     return mark;
   }
 
