@@ -12,6 +12,7 @@ import {
   RoomShape,
   toneOf
 } from './MapGlyphs';
+import { MapLegend } from './MapPlan';
 import { keepFocus } from '../lib/focus';
 import { t } from '../lib/i18n';
 import {
@@ -41,7 +42,10 @@ import type { Direction } from '@shared/world';
  * up-and-down one asks, shift-click re-centres the grid, and the keypad moves
  * by the compass. A cell's text is asked as it is hovered.
  *
- * Not here yet: MME's presets, its legend, the MegaMUD pathing pane, and
+ * The key under the map is the client's (`MapLegend`), and this is the one
+ * map that carries it (2026-10-19).
+ *
+ * Not here yet: MME's presets, the MegaMUD pathing pane, and
  * textblock trees, whose references read as plain text until they are.
  */
 export interface ExplorerRoomsProps {
@@ -554,6 +558,7 @@ export default function ExplorerRooms({
               </g>
             </svg>
           )}
+          <MapLegend />
         </div>
 
         <aside className="rm-side">

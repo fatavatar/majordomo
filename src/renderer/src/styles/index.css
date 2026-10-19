@@ -3073,14 +3073,6 @@ kbd {
   font-size: 4.2px;
 }
 
-/*
- * The route in the legend, at the weight the map draws it — a corridor stroke
- * is a hairline at 12px, and the key has to look like the thing it names.
- */
-.map-legend [data-kind='route'] .key .map-trail line {
-  stroke-width: 1.6;
-}
-
 /* ========================================================== the quest book */
 
 /*
@@ -13902,6 +13894,8 @@ button.ex-link:hover {
 .rm-map {
   background: var(--ink-void);
   border-right: 1px solid var(--ink-line);
+  display: flex;
+  flex-direction: column;
   min-height: 0;
   min-width: 0;
   position: relative;
@@ -13909,8 +13903,15 @@ button.ex-link:hover {
 
 .rm-svg {
   display: block;
-  height: 100%;
+  flex: 1 1 auto;
+  min-height: 0;
   width: 100%;
+}
+
+/* The key under the map, kept off its edge. */
+.rm-map > .map-legend {
+  margin: 0;
+  padding: 8px 12px 10px;
 }
 
 /* The client's map drawing (`MapGlyphs`), on MME's layout: a room is the Map card's. */

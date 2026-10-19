@@ -124,6 +124,22 @@ function raceRec(r: WorldRace): RaceRec {
   return { id: r.id, layer: 0, name: r.name.slice(0, 30), exp: r.expTable ?? 0 };
 }
 
+/** The longest short name MegaMUD keeps (`Spells.md`). */
+const SHORT_MAX = 6;
+
+/**
+ * What is typed to cast a spell. The build writes `short` only where it
+ * differs from the name, so `blur`, `mend`, `harm` and `free` — named as
+ * they are typed — arrived with none, and the engine could not find them:
+ * Bowel's first blessing, `blur`, was never cast (2026-10-19), 1,250 of
+ * mudrev's spells and 685 of stock's alike. A name past MegaMUD's six is a
+ * monster's attack, never typed.
+ */
+function shortOf(spell: WorldSpell): string {
+  if (spell.short !== undefined) return spell.short.slice(0, SHORT_MAX);
+  return spell.name.length <= SHORT_MAX ? spell.name : '';
+}
+
 function spellRec(spell: WorldSpell): SpellRec {
   let flags = TARGET_BITS[spell.targets ?? 0] ?? 0;
   if ((spell.duration ?? 0) > 0) flags |= SpellFlag.Timed;
@@ -131,7 +147,7 @@ function spellRec(spell: WorldSpell): SpellRec {
   return {
     layer: 0,
     id: spell.id,
-    short: (spell.short ?? '').slice(0, 6),
+    short: shortOf(spell),
     name: spell.name.slice(0, 30),
     item: '',
     flags,

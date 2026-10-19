@@ -153,10 +153,8 @@ const AWAY = { over: 2.4, size: 1.5, stroke: 0.6, hit: 1.2 } as const;
  * The midpoint, not the end: an arrowhead at the end of a leg lands on the room
  * marker and fights with it, and every leg's end is another leg's start.
  */
-function arrowAt(leg: { x1: number; y1: number; x2: number; y2: number }, scale?: number): string {
-  // The legend's keys are drawn in a 12-unit box rather than in map units, so
-  // they hand in their own size — the same thing the trap's key does.
-  const size = scale ?? tuning().mapRoomRadius / 1.5;
+function arrowAt(leg: { x1: number; y1: number; x2: number; y2: number }): string {
+  const size = tuning().mapRoomRadius / 1.5;
   const dx = leg.x2 - leg.x1;
   const dy = leg.y2 - leg.y1;
   const length = Math.hypot(dx, dy);
@@ -958,47 +956,26 @@ function Key({ kind, label, children }: { kind?: string; label: string; children
 }
 
 /**
- * What the shapes mean, listed whether or not one of them is in view, in
- * mudmaps' kinds (2026-10-18).
+ * What the shapes mean, on MMUD Explorer's Rooms map — the one map that keys
+ * them (2026-10-19): the Map card, the route panel and the loop builder are
+ * read at a glance or with their own panel beside them, and the user asked
+ * for the key there only. Listed whether or not each is in view, so the box
+ * under the map keeps its size as it is walked.
  *
- * A legend that gained an entry only when a door was on screen changed the
- * card's height as the character walked, and every control below it moved
- * under the pointer — which is the whole reason the map card is a fixed box.
+ * Only what that map draws: the character's room and the room the map is
+ * drawn from, the rooms by kind, the bars across a corridor, and the ways out
+ * the plane cannot draw.
  */
-export function MapLegend({ builder = false }: { builder?: boolean } = {}) {
+export function MapLegend() {
   return (
     <div className="map-legend">
       <Key kind="here" label={t('cards.map.legendYou')}>
         <circle className="map-you" cx="0" cy="0" r="5.2" />
         <KeyRoom here kind="room" />
       </Key>
-      {/*
-        The route and the lap, listed like every other symbol whether or not
-        anything is being walked. The builder draws neither the halo nor a
-        lap's stops; its own keys below say what its rings mean.
-      */}
-      {!builder && (
-        <>
-          <Key kind="route" label={t('cards.map.legendRoute')}>
-            <g className="map-trail">
-              <line x1="-5" x2="5" y1="0" y2="0" />
-              <polygon
-                className="map-trail-arrow"
-                points={arrowAt({ x1: -5, y1: 0, x2: 5, y2: 0 }, 2.4)}
-              />
-            </g>
-            <circle className="map-onroute" cx="0" cy="0" r="4.6" />
-            <KeyRoom kind="room" />
-          </Key>
-          <Key kind="stop" label={t('cards.map.legendStop')}>
-            <circle className="map-stop" cx="0" cy="0" r="5.2" />
-            <KeyRoom kind="room" />
-          </Key>
-        </>
-      )}
-      <Key kind="find" label={t('cards.map.legendFind')}>
+      <Key kind="start" label={t('cards.map.legendStart')}>
+        <circle className="rm-start" cx="0" cy="0" r="5" />
         <KeyRoom kind="room" />
-        <circle className="map-find" cx="3" cy="-3" r="1.6" />
       </Key>
       <Key kind="stairs" label={t('cards.map.legendVertical')}>
         <KeyRoom kind="stairs" />
@@ -1021,10 +998,6 @@ export function MapLegend({ builder = false }: { builder?: boolean } = {}) {
       <Key kind="lair" label={t('cards.map.legendLair')}>
         <KeyRoom kind="lair" />
       </Key>
-      {/*
-        Always, even where nothing is shut. A key that appears and disappears
-        as you walk changes the card's height with it.
-      */}
       <Key kind="door" label={t('cards.map.legendShut')}>
         <g className="map-links">
           <line data-kind="door" x1="-5" x2="5" y1="0" y2="0" />
@@ -1044,24 +1017,14 @@ export function MapLegend({ builder = false }: { builder?: boolean } = {}) {
         <Bar tone="trap" x1={-5} x2={5} y1={1} y2={1} />
       </Key>
       {/* The ways out the plane cannot draw: up and down, a portal, an arrow. */}
-      {builder ? (
-        <Key kind="look" label={t('cards.map.legendLook')}>
-          <KeyRoom kind="room" />
-          <g className="map-away">
-            <Chevron up x={4.4} y={-2} />
-            <Chevron up={false} x={4.4} y={2} />
-          </g>
-        </Key>
-      ) : (
-        <Key kind="updown" label={t('cards.map.legendUpDown')}>
-          <g className="map-mark" data-reach="jump">
-            <Chevron up x={0} y={-1.9} />
-            <Chevron up={false} x={0} y={1.9} />
-          </g>
-        </Key>
-      )}
+      <Key kind="updown" label={t('cards.map.legendUpDown')}>
+        <g className="map-mark" data-reach="jump">
+          <Chevron up x={0} y={-1.9} />
+          <Chevron up={false} x={0} y={1.9} />
+        </g>
+      </Key>
       <Key kind="teleport" label={t('cards.map.legendTeleport')}>
-        <g className={builder ? 'map-away' : 'map-mark'} data-reach="jump">
+        <g className="map-mark" data-reach="jump">
           <Portal x={0} y={0} />
         </g>
       </Key>
@@ -1075,49 +1038,6 @@ export function MapLegend({ builder = false }: { builder?: boolean } = {}) {
           <Arrow ux={1} uy={0} x={0} y={0} />
         </g>
       </Key>
-      {/*
-        The builder's own marks, on the builder's map only: a legend on the
-        Map card for rings that card never draws would be a key to nothing.
-      */}
-      {builder && (
-        <>
-          <Key kind="start" label={t('cards.map.legendStart')}>
-            <circle className="map-start" cx="0" cy="0" r="5.2" />
-            <KeyRoom kind="room" />
-          </Key>
-          <Key kind="pick" label={t('cards.map.legendPick')}>
-            <circle className="map-pick" cx="0" cy="0" r="4.8" />
-            <KeyRoom kind="room" />
-          </Key>
-          <Key kind="through" label={t('cards.map.legendThrough')}>
-            <g className="map-trail">
-              <line x1="-5" x2="5" y1="0" y2="0" />
-              <polygon
-                className="map-trail-arrow"
-                points={arrowAt({ x1: -5, y1: 0, x2: 5, y2: 0 }, 2.4)}
-              />
-            </g>
-            <circle className="map-through" cx="0" cy="0" r="4.8" />
-            <KeyRoom kind="room" />
-          </Key>
-          <Key kind="again" label={t('cards.map.legendAgain')}>
-            <g className="map-trail" data-band="1">
-              <line x1="-5" x2="5" y1="0" y2="0" />
-              <polygon
-                className="map-trail-arrow"
-                points={arrowAt({ x1: -5, y1: 0, x2: 5, y2: 0 }, 2.4)}
-              />
-            </g>
-          </Key>
-          {/* A way out with something in it — listed always, like the door. */}
-          <Key kind="gated" label={t('cards.map.legendGated')}>
-            <g className="map-away" data-gated="door">
-              <Chevron up x={0} y={-0.4} />
-              <GatedBar size={3.4} x={0} y={1.2} />
-            </g>
-          </Key>
-        </>
-      )}
     </div>
   );
 }

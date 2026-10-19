@@ -113,6 +113,24 @@ describe("MegaMUD's databases from the realm's own data", () => {
     );
   });
 
+  /*
+   * The build writes `short` only where it differs from the name, and Bowel's
+   * first blessing, `blur`, was never cast: the engine had no spell typed so
+   * (2026-10-19). A name past six letters with no short is an attack line.
+   */
+  it('takes a spell named as it is typed as its own short', () => {
+    const data = megaDataFrom(
+      world({
+        spells: [
+          { id: 129, name: 'blur', level: 1, mana: 4, targets: 2, duration: 70, magery: 1 },
+          { id: 7, name: 'breathes flame', targets: 4 }
+        ]
+      }),
+      NONE
+    );
+    expect(data.spells.map((spell) => spell.short)).toEqual(['blur', '']);
+  });
+
   /* MegaMUD finds a monster case and all; the trolloc went unfought (2026-10-14). */
   it('names a monster as the realm spells it', () => {
     const data = megaDataFrom(

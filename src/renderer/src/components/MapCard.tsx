@@ -73,8 +73,8 @@ export interface MapCardProps extends CardChrome {
  * Looked at through `MapView`, which every map in the client shares: the wheel
  * zooms about the pointer, a drag on the background pans, a pointer at rest
  * on a room opens what the realm knows about it, the neighbourhood fetched is
- * whatever the window can see, and the legend under it keys what is drawn.
- * What is this card's is the centre — always where the character is, so every
+ * whatever the window can see. The legend is the Explorer's Rooms map's
+ * alone (2026-10-19). What is this card's is the centre — always where the character is, so every
  * step recentres the picture — and the zoom, which it keeps as its density
  * setting.
  */
@@ -203,9 +203,8 @@ function MapCard({
       {/*
        * The picture, always present — including while there is nothing to
        * draw, so the view keeps its measured size across the moment it is
-       * told where the character is. Its box and the legend under it are
-       * `MapView`'s own, so this card and every other map are one picture
-       * with one key.
+       * told where the character is. Its box is `MapView`'s own, so this card
+       * and every other map are one picture.
        *
        * Clicking a room opens what the realm knows about it, and the walk is
        * a button on that panel; it does not walk one, and it does not plan one

@@ -2341,19 +2341,11 @@ cards:
     buildAction: Build a loop or route
     centreFallback: the centre
     legendBank: bank
-    legendGated: gated
     legendLair: lair
-    legendLook: look up/down
-    legendPick: clicked
-    legendRoute: route
-    legendFind: found by searching
     legendShop: shop
     legendShut: shut
     legendStart: start
-    legendStop: stop
     legendTeleport: teleport
-    legendAgain: covered again
-    legendThrough: on the way
     legendTrap: trap
     legendVertical: way up or down
     legendYou: you
