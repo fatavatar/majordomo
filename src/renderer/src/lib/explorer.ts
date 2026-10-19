@@ -51,6 +51,148 @@ export interface ExplorerFilters {
   learnableOnly: boolean;
   /** Shops: *Show Trainers* (`LoadShops(bTrainersOnly)`). */
   trainersOnly: boolean;
+  /** Monsters: the bar (`txtMonster*`, `cmbMonsterRegen`, `chkMonMagic`). */
+  monster: MonsterBar;
+  /** Monsters: *Extra filters* (`frmMonsterFilters`); a limit of 9999 is off. */
+  extra: MonsterExtra;
+}
+
+/** The Monsters bar, mudtool's `f`. */
+export interface MonsterBar {
+  /** Regen `<=` (0) or `>=` (1) hours. */
+  regenOp: number;
+  regen: number;
+  maxDamage: number;
+  maxHP: number;
+  minExp: number;
+  magicOn: boolean;
+  maxMagic: number;
+}
+
+/** `frmMonsterFilters`, mudtool's `x`: 9999 is no limit. */
+export interface MonsterExtra {
+  enabled: boolean;
+  /** Show every monster, greying the ones that do not match. */
+  showAll: boolean;
+  /** 0 none, 1 copper+, 2 silver+, 3 gold+, 4 platinum+, 5 runic. */
+  drops: number;
+  ac: number;
+  dr: number;
+  mr: number;
+  bsDef: number;
+  gameLimit: number;
+  lairExp: number;
+  numLairs: number;
+  mobsLTE: number;
+  mobsGTE: number;
+  dodge: number;
+  accMaj: number;
+  accMax: number;
+  undead: boolean;
+  nonHostileEvil: boolean;
+  nonHostileNG: boolean;
+  noPoison: boolean;
+  noConfusion: boolean;
+  noFear: boolean;
+  /** Three ability filters, AND'ed: `[ability, 0 <= or 1 >=, value]`. */
+  abils: Array<[number, number, number]>;
+}
+
+/** No limit, in `frmMonsterFilters`' own number. */
+export const NO_LIMIT = 9999;
+
+export const DEFAULT_MONSTER_BAR: MonsterBar = {
+  regenOp: 0,
+  regen: 999,
+  maxDamage: 99999,
+  maxHP: 99999,
+  minExp: 0,
+  magicOn: false,
+  maxMagic: 999
+};
+
+export const DEFAULT_MONSTER_EXTRA: MonsterExtra = {
+  enabled: false,
+  showAll: false,
+  drops: 0,
+  ac: NO_LIMIT,
+  dr: NO_LIMIT,
+  mr: NO_LIMIT,
+  bsDef: NO_LIMIT,
+  gameLimit: NO_LIMIT,
+  lairExp: 0,
+  numLairs: 0,
+  mobsLTE: NO_LIMIT,
+  mobsGTE: 0,
+  dodge: NO_LIMIT,
+  accMaj: NO_LIMIT,
+  accMax: NO_LIMIT,
+  undead: false,
+  nonHostileEvil: false,
+  nonHostileNG: false,
+  noPoison: false,
+  noConfusion: false,
+  noFear: false,
+  abils: [
+    [0, 1, 0],
+    [0, 1, 0],
+    [0, 1, 0]
+  ]
+};
+
+/**
+ * `FilterMonsters` (mudtool's `tabs/monsters.js` `passes`) over a Monsters
+ * row: the bar, and the extra filters where they are on. `byLair` is the mode
+ * the list was asked in, which the facts were worked out for.
+ */
+export function passesMonster(row: ExplorerRow, f: ExplorerFilters, byLair: boolean): boolean {
+  const m = row.monster;
+  if (m === undefined) return false;
+  const x = f.extra;
+  const bar = f.monster;
+  const on = x.enabled;
+  if (on) {
+    const [c, s, g, p, r] = m.coins;
+    if (x.drops === 1 && c + s + g + p + r === 0) return false;
+    if (x.drops === 5 && r < 1) return false;
+    if (x.drops === 4 && p + r < 1) return false;
+    if (x.drops === 3 && g + p + r < 1) return false;
+    if (x.drops === 2 && s + g + p + r < 1) return false;
+    if (x.ac !== NO_LIMIT && m.ac > x.ac) return false;
+    if (x.dr !== NO_LIMIT && m.dr > x.dr) return false;
+    if (x.mr !== NO_LIMIT && m.mr > x.mr) return false;
+    if (m.bsDefense !== null && x.bsDef !== NO_LIMIT && m.bsDefense > x.bsDef) return false;
+    if (x.undead && !m.undead) return false;
+    if (x.nonHostileEvil && ![6, 0, 4, 3].includes(m.align)) return false;
+    if (x.nonHostileNG && ![0, 4, 3].includes(m.align)) return false;
+  }
+  if (bar.regenOp === 0 ? m.regen > bar.regen : m.regen < bar.regen) return false;
+  if (m.hp > bar.maxHP) return false;
+  if (on) {
+    if (m.gameLimit !== null && x.gameLimit !== NO_LIMIT && m.gameLimit > x.gameLimit) return false;
+    if (m.lairExp !== null && x.lairExp > 0 && m.lairExp < x.lairExp) return false;
+    if (x.numLairs > 0 && m.lairs < x.numLairs) return false;
+    if (x.mobsLTE !== NO_LIMIT && (m.possy > x.mobsLTE || m.maxRegen > x.mobsLTE)) return false;
+    if (x.mobsGTE > 0 && m.mobs < x.mobsGTE) return false;
+    if (x.noPoison && m.poison) return false;
+    if (x.noConfusion && m.confusion) return false;
+    if (x.noFear && m.fear) return false;
+    if (x.accMaj !== NO_LIMIT && m.accMajority > x.accMaj) return false;
+    if (x.accMax !== NO_LIMIT && m.accMax > x.accMax) return false;
+    for (const [abil, op, val] of x.abils) {
+      if (!(abil > 0)) continue;
+      const held = m.abilities.find(([a]) => a === abil);
+      // `<= n` passes a monster without the ability, as MME's does.
+      const ok =
+        held === undefined ? op === 0 && val > 0 : op === 0 ? held[1] <= val : held[1] >= val;
+      if (!ok) return false;
+    }
+  }
+  if (bar.magicOn && m.magic > bar.maxMagic) return false;
+  if (on && x.dodge !== NO_LIMIT && m.dodge > x.dodge) return false;
+  if (bar.minExp > 0 && m.exp < bar.minExp) return false;
+  if (bar.maxDamage > 0 && !byLair && m.damage > bar.maxDamage) return false;
+  return true;
 }
 
 export const DEFAULT_FILTERS: ExplorerFilters = {
@@ -74,7 +216,9 @@ export const DEFAULT_FILTERS: ExplorerFilters = {
   attType: 0,
   hasAbility: 0,
   learnableOnly: false,
-  trainersOnly: false
+  trainersOnly: false,
+  monster: DEFAULT_MONSTER_BAR,
+  extra: DEFAULT_MONSTER_EXTRA
 };
 
 /** MME's trainer type (`ShopType` 8). */
@@ -154,7 +298,9 @@ export function passes(
   row: ExplorerRow,
   kind: ExplorerKind,
   f: ExplorerFilters,
-  backstabForced = false
+  backstabForced = false,
+  /** Monsters: listed by lair, which the facts were worked out for. */
+  byLair = false
 ): boolean {
   if (f.inGameOnly && !row.inGame) return false;
   const needle = f.query.trim().toLowerCase();
@@ -164,10 +310,13 @@ export function passes(
   // The spell's own test reads usability itself, *Learnable Only* and all.
   if (kind === 'spells') return passesSpell(row, f);
   if (kind === 'shops') return passesShop(row, f);
+  if (kind === 'monsters') return passesMonster(row, f, byLair);
   if (f.usableOnly && !row.usable) return false;
   const facts = row.facts;
   if (f.type !== '' && facts.type !== f.type) return false;
   if (!passesAbility(row, f.ability)) return false;
+  // Sundry's whole bar is the ability filter (`FilterSundry`).
+  if (kind === 'sundry') return true;
   if (kind === 'armour') {
     if (f.noLimit && facts.limit !== 0) return false;
     if (f.slot !== '' && facts.slot !== f.slot) return false;

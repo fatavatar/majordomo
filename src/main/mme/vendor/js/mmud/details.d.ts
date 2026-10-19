@@ -11,7 +11,7 @@ export function armourCols(
 ): { level: number; acc: number; crits: number; abilVal: number; ac: string; acEnc: number };
 export function itemDetail(
   item: Row | number,
-  ctx?: { equipped?: number[] }
+  ctx?: { equipped?: number[] } & Record<string, unknown>
 ): { text: string; refs: Array<{ text: string; pct?: number | string }> };
 export function segments(
   text: string
@@ -26,7 +26,14 @@ export interface HookColumn {
   fmt?(value: number | string, item: Row): string | number;
 }
 export const hooks: {
-  columns: { weapons: HookColumn[]; armour: HookColumn[]; spells: HookColumn[] };
+  columns: {
+    weapons: HookColumn[];
+    armour: HookColumn[];
+    spells: HookColumn[];
+    monsters: HookColumn[];
+  };
+  monsterExtraRows: Array<(monster: Row, ctx: Record<string, unknown>) => MonsterRow[]>;
+  monsterDamageIn?: (n: number) => { damage: number; calculated: boolean };
 };
 /** MME's ability filter's choices, `[number, name]`. */
 export function abilityList(): Array<[number, string]>;
@@ -66,3 +73,55 @@ export function shopDetail(
 };
 /** `GetLairInfo`. */
 export function lairInfoFor(groupIndex: unknown, maxRegen?: number): unknown;
+/** `GetItemValue`: what an item costs, and its friendly price. */
+export function itemValue(
+  item: Row | number,
+  charm?: number,
+  markup?: number
+): { nCopperBuy: number; sFriendlyBuy: string };
+/** A row of `PullMonsterDetail`'s table: its label and text, marked up, and a class. */
+export interface MonsterRow {
+  label: string;
+  text: string;
+  cls?: string;
+}
+export function monsterDetail(monster: Row | number, ctx?: Record<string, unknown>): MonsterRow[];
+export function monsterExp(monster: Row): number;
+export function fmtComma(n: number): string;
+/** A lair's averages over its spawns (`GetLairInfo`). */
+export function lairAverages(
+  summonedBy: string,
+  ctx?: Record<string, unknown>
+): {
+  nTotalLairs: number;
+  nAvgHP: number;
+  nAvgDmgLair: number;
+  nMaxRegen: number;
+};
+export function monsterPossy(n: number): { possy: number; spawnChance: number };
+export function monsterAttackSummary(
+  monster: Row,
+  spellTypes?: boolean,
+  specials?: boolean
+): {
+  nAccMax: number;
+  nAccMajority: number;
+  bAtkPoison?: boolean;
+  bAtkConfusion?: boolean;
+  bAtkFear?: boolean;
+};
+export function monsterSpellAttackCol(monster: Row): string;
+export function expPerDmgHP(exp: number, avgDmg: number, hp: number): number;
+export function classCols(c: Row): {
+  exp: string;
+  weapon: string;
+  armour: string;
+  magic: string;
+  combat: number;
+  hp: string;
+};
+export function classAbilities(c: Row): string;
+export function raceAbilities(r: Row): string;
+export function raceStat(r: Row, key: string): string;
+/** `RaceColorCode`: per race, each stat `lo` or `hi` where it is twenty off the average. */
+export function raceColours(races: Row[]): Map<number, Record<string, 'lo' | 'hi'>>;

@@ -14,7 +14,11 @@ import {
   type MmeRealm
 } from '../Explorer';
 import { EMPTY_CHARACTER, type CharacterState } from '../../../shared/character';
-import { DEFAULT_ROOM_MAP_OPTIONS, type ExplorerSegment } from '../../../shared/explorer';
+import {
+  DEFAULT_EXPLORER_OPTIONS,
+  DEFAULT_ROOM_MAP_OPTIONS,
+  type ExplorerSegment
+} from '../../../shared/explorer';
 
 /*
  * mudtool's pinned v1.11p export (`vendor/fixtures`), which its own tests'
@@ -326,5 +330,55 @@ describe('MMUD Explorer for the character being played', () => {
     expect((await explorerRoomView(fixture(), standing, { ...request, room: 32000 })).found).toBe(
       false
     );
+  });
+
+  /* The rest of MME's tabs (2026-10-18): Sundry, Monsters, Class/Race. */
+  it('lists sundry items, a chest’s contents linked, and links an unworn item there', async () => {
+    const list = await explorerList(fixture(), character(), 'sundry');
+    expect(list.columns.map((column) => column.id)).toEqual([
+      'Number',
+      'Name',
+      'ItemType',
+      'Encum',
+      'Limit'
+    ]);
+    // MME applies no global filter to Sundry.
+    expect(list.rows.every((row) => row.usable)).toBe(true);
+    expect(list.rows.some((row) => row.number === 1008)).toBe(true);
+    const box = await explorerDetail(fixture(), character(), 'sundry', 906);
+    expect(box?.chest?.length).toBeGreaterThan(0);
+    expect(box?.chest?.[0]?.tab).not.toBeNull();
+    expect(box?.sub).toMatch(/^#906 · /);
+  });
+
+  it('lists monsters by mob and by lair, with MME’s columns and what its filter reads', async () => {
+    const byMob = await explorerList(fixture(), character(), 'monsters');
+    expect(byMob.columns.map((column) => column.id)).toContain('exphr');
+    expect(byMob.lairs).toBe(true);
+    const rogue = byMob.rows.find((row) => row.name === 'orc rogue')!;
+    expect(rogue.monster).toMatchObject({ hp: 30, exp: 22, coins: [20, 10, 0, 0, 0] });
+    const byLair = await explorerList(fixture(), character(), 'monsters', {
+      ...DEFAULT_EXPLORER_OPTIONS,
+      byLair: true
+    });
+    // By lair the lair's averages: HP and damage over its spawns, the damage marked.
+    const lairRogue = byLair.rows.find((row) => row.name === 'orc rogue')!;
+    expect(lairRogue.shown?.['dmg']).toMatch(/\*$/);
+    const detail = await explorerDetail(fixture(), character(), 'monsters', rogue.number);
+    expect(detail?.table?.[0]?.label.map((run) => run.text).join('')).toBe('Experience');
+  });
+
+  it('lists classes and races, a race’s stats toned, and builds a class with a race', async () => {
+    const classes = await explorerList(fixture(), character(), 'classes');
+    expect(classes.rows.find((row) => row.name === 'Warrior')?.cells['abilities']).toBe('Bash');
+    const races = await explorerList(fixture(), character(), 'races');
+    expect(races.rows.some((row) => row.tones !== undefined)).toBe(true);
+    const warrior = classes.rows.find((row) => row.name === 'Warrior')!;
+    const built = await explorerDetail(fixture(), character(), 'classes', warrior.number, {
+      ...DEFAULT_EXPLORER_OPTIONS,
+      builder: true
+    });
+    expect(built?.races?.length).toBeGreaterThan(0);
+    expect(built?.text.map((run) => run.text).join('').length).toBeGreaterThan(0);
   });
 });

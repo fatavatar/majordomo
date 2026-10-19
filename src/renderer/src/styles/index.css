@@ -14083,3 +14083,146 @@ ul.rm-refs li {
   position: fixed;
   z-index: 60;
 }
+
+/* The Monsters bar (2026-10-18): By Mob / By Lair, and the extra filters' panel. */
+.ex-seg {
+  display: flex;
+  gap: 0;
+}
+
+.ex-seg .ex-btn {
+  border-radius: 0;
+}
+
+.ex-seg .ex-btn:first-child {
+  border-radius: 4px 0 0 4px;
+}
+
+.ex-seg .ex-btn:last-child {
+  border-radius: 0 4px 4px 0;
+}
+
+.ex-seg .ex-btn[aria-pressed='true'] {
+  border-color: var(--pending);
+  color: var(--pending);
+}
+
+.ex-extra {
+  position: relative;
+}
+
+.ex-extra > summary {
+  align-items: center;
+  display: inline-flex;
+  height: var(--ex-control);
+  list-style: none;
+}
+
+.ex-extra > summary[data-on] {
+  border-color: var(--pending);
+  color: var(--pending);
+}
+
+.ex-extra-panel {
+  background: var(--ink-raised);
+  border: 1px solid var(--ink-edge);
+  border-radius: 6px;
+  box-shadow: var(--glass-shadow);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: 90vw;
+  padding: 10px 12px;
+  position: absolute;
+  right: 0;
+  top: calc(100% + 4px);
+  width: max-content;
+  z-index: 6;
+}
+
+.ex-extra-grid {
+  display: grid;
+  gap: 6px 12px;
+  grid-template-columns: repeat(4, auto);
+}
+
+/* A monster's detail, `PullMonsterDetail`'s labelled rows. */
+.ex-mon {
+  border-collapse: collapse;
+  font-size: 12px;
+  width: 100%;
+}
+
+.ex-mon th {
+  color: var(--text-lo-quiet);
+  font-weight: normal;
+  padding: 2px 10px 2px 0;
+  text-align: left;
+  vertical-align: top;
+  white-space: nowrap;
+}
+
+.ex-mon td {
+  overflow-wrap: anywhere;
+  padding: 2px 0;
+  white-space: pre-wrap;
+}
+
+/* mudtool's row classes, on this client's tokens. */
+.ex-mon tr[data-cls='b'] th,
+.ex-mon tr[data-cls='b'] td,
+.ex-mon tr[data-cls='bh'] th {
+  color: var(--text-hi);
+  font-weight: 600;
+}
+
+.ex-mon tr[data-cls='bh'] th {
+  color: var(--pending);
+  padding-top: 4px;
+}
+
+.ex-mon tr[data-cls='red'] > *,
+.ex-mon tr[data-cls='fear'] td,
+.ex-mon tr[data-cls='slay'] td {
+  color: var(--danger);
+}
+
+.ex-mon tr[data-cls='blue'] > * {
+  color: var(--map-stairs);
+}
+
+.ex-mon tr[data-cls='purple'] > * {
+  color: var(--marker);
+}
+
+.ex-mon tr[data-cls='green'] > *,
+.ex-mon tr[data-cls='poison'] td {
+  color: var(--ok);
+}
+
+.ex-mon tr[data-cls='confusion'] td {
+  color: var(--pending);
+}
+
+.ex-mon tr[data-cls='fear'] td,
+.ex-mon tr[data-cls='poison'] td,
+.ex-mon tr[data-cls='confusion'] td,
+.ex-mon tr[data-cls='slay'] td {
+  font-weight: 700;
+}
+
+.ex-mon tr + tr th,
+.ex-mon tr + tr td {
+  border-top: 1px solid color-mix(in srgb, var(--ink-line) 50%, transparent);
+}
+
+/* A race's stat twenty off the average, as MME's `RaceColorCode` colours it. */
+.ex-td[data-tone='hi'],
+.ex-mon tr[data-cls='stat-hi'] td {
+  color: var(--ok);
+}
+
+.ex-td[data-tone='lo'],
+.ex-mon tr[data-cls='stat-lo'] td {
+  color: var(--danger);
+}

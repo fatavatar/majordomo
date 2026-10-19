@@ -1663,8 +1663,10 @@ describe('the shipped realm data', () => {
     }
     // The cheapest to reach first: the Entrance Hall before the quarters behind it.
     expect(found.lairs[0]).toMatchObject({ id: roomId(12, 2099), name: 'Entrance Hall' });
-    // A room nothing leads out of: placed all the same, and nowhere to go.
-    const shut = realm!.droppingPlaces(head, roomId(17, 2020), festus, ring);
+    // A room nothing leads out of: placed all the same, and nowhere to go. The
+    // Jail Cell; the old man's cell (17/2020) was this until format 52 read
+    // his `ask old man portal`.
+    const shut = realm!.droppingPlaces(head, roomId(1, 44), festus, ring);
     expect(shut).toEqual({ droppers: [{ mob: 'saracen raider', placed: 16 }], lairs: [] });
     // Nothing drops a thing nobody drops, and it is said as that.
     expect(
@@ -7381,7 +7383,7 @@ describe('an item that teleports is an edge the router may walk', () => {
     expect(right.blocked).toBe(false);
   });
 
-  it("names the walk's wall and the token's level together, on the shipped realm", () => {
+  it('names the wall on the cheapest way out, and walks it once that is carried, on the shipped realm', () => {
     /*
      * The report this was written for: *going from 16 273 to 1 297 is trying
      * to use token of silvermere but it is level 25 restricted*. The Sandbar's
@@ -7398,15 +7400,24 @@ describe('an item that teleports is an edge the router may walk', () => {
       { alternatives: true }
     );
     expect(route.blocked).toBe(true);
+    /*
+     * Since format 52 the cheapest way is neither: the king crab claw opens
+     * the Sandstone Stair (16/287 d), and Seher'Sahham, at its foot, answers
+     * `ask Seher'Sahham home` with Silvermere (1/140) — the half a person can
+     * fetch, named alone.
+     */
     expect(route.blocks).toEqual([
-      expect.objectContaining({ kind: 'carry', itemName: 'rope and grapple' }),
-      expect.objectContaining({
-        kind: 'level',
-        name: 'token of Silvermere',
-        minLevel: 25,
-        level: 21
-      })
+      expect.objectContaining({ kind: 'carry', itemName: 'king crab claw' })
     ]);
+    const claw = graph.itemIdNamed('king crab claw')!;
+    const asked = graph.route(
+      roomId(16, 273),
+      roomId(1, 297),
+      { keys: [token, claw], packKnown: true, level: 21 },
+      { alternatives: true }
+    );
+    expect(asked.blocked).toBe(false);
+    expect(asked.steps.map((step) => step.command)).toContain("ask Seher'Sahham home");
     // With the rope, the walk is the plan and the token is not offered.
     const rope = graph.itemIdNamed('rope and grapple')!;
     const walked = graph.route(

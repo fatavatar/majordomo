@@ -29,3 +29,5 @@ export function findBest(
   rule: FindBestRule,
   opts?: { next?: boolean; holds?: boolean[]; noLimited?: boolean; use2ndWrist?: boolean }
 ): { equipped: number[]; found: boolean };
+export function calcCharStats(c: MmeChar, opt?: Record<string, unknown>): unknown;
+export function calcCharSummary(c: MmeChar, panel: unknown): unknown;

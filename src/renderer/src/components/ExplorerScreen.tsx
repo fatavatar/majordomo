@@ -9,6 +9,8 @@ import {
 } from 'react';
 
 import ExplorerRooms from './ExplorerRooms';
+import { Check, Choice, Field, Figure, Pick } from './ExplorerFields';
+import ExplorerMonsterBar from './ExplorerMonsterBar';
 import { Splitter } from './Splitter';
 import { keepFocus } from '../lib/focus';
 import type { SplitRange } from '../lib/splitter';
@@ -94,7 +96,11 @@ export interface ExplorerScreenProps {
 const KINDS: ReadonlyArray<{ id: ExplorerKind; label: () => string }> = [
   { id: 'weapons', label: () => t('explorer.kinds.weapons') },
   { id: 'armour', label: () => t('explorer.kinds.armour') },
+  { id: 'sundry', label: () => t('explorer.kinds.sundry') },
   { id: 'spells', label: () => t('explorer.kinds.spells') },
+  { id: 'monsters', label: () => t('explorer.kinds.monsters') },
+  // One tab for both lists, as mudtool's Class/Race; races are its second view.
+  { id: 'classes', label: () => t('explorer.kinds.classRace') },
   { id: 'shops', label: () => t('explorer.kinds.shops') }
 ];
 
@@ -137,31 +143,6 @@ const ATTACK_TYPES = (): string[] => [
   t('explorer.spells.water'),
   t('explorer.spells.poison')
 ];
-
-/** One of the Spells bar's numbered choices: its place in `labels` is the filter's value. */
-function Pick({
-  label,
-  labels,
-  value,
-  onChange
-}: {
-  label: string;
-  labels: readonly string[];
-  value: number;
-  onChange(value: number): void;
-}) {
-  return (
-    <Field label={label}>
-      <select onChange={(event) => onChange(Number(event.target.value))} value={String(value)}>
-        {labels.map((text, i) => (
-          <option key={i} value={i}>
-            {text}
-          </option>
-        ))}
-      </select>
-    </Field>
-  );
-}
 
 /** Calc. Combat's attacks, as MME names them. */
 const ATTACK_LABEL: Record<ExplorerAttack, () => string> = {
@@ -329,94 +310,41 @@ function Stock({
   );
 }
 
-/** A labelled field on the filter bar, as mudtool's `.field`. */
-function Field({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <label className="ex-field">
-      <span className="ex-field-label">{label}</span>
-      <span className="ex-field-row">{children}</span>
-    </label>
-  );
-}
-
-/** A dropdown of `Any` and then the values given. */
-function Choice({
-  label,
-  any,
-  value,
-  options,
-  onChange
+/** A container's contents and the chance of each, MME's *View Chest Contents*, each a link. */
+function Chest({
+  chest,
+  follow
 }: {
-  label: string;
-  any: string;
-  value: string;
-  options: ReadonlyArray<string | [string, string]>;
-  onChange(value: string): void;
+  chest: NonNullable<ExplorerDetail['chest']>;
+  follow(place: ExplorerPlace): void;
 }) {
   return (
-    <Field label={label}>
-      <select onChange={(event) => onChange(event.target.value)} value={value}>
-        <option value="">{any}</option>
-        {options.map((option) => {
-          const [id, text] = typeof option === 'string' ? [option, option] : option;
-          return (
-            <option key={id} value={id}>
-              {text}
-            </option>
-          );
-        })}
-      </select>
-    </Field>
-  );
-}
-
-/** A figure, or blank for none; committed as typed. */
-function Figure({
-  label,
-  value,
-  onChange,
-  width = '5em'
-}: {
-  label: string;
-  value: number | null;
-  onChange(value: number | null): void;
-  width?: string;
-}) {
-  return (
-    <Field label={label}>
-      <input
-        inputMode="numeric"
-        onChange={(event) => {
-          const text = event.target.value.trim();
-          const n = Number.parseInt(text, 10);
-          onChange(text === '' || Number.isNaN(n) ? null : n);
-        }}
-        style={{ width }}
-        value={value === null ? '' : String(value)}
-      />
-    </Field>
-  );
-}
-
-/** A filter's tick, as mudtool draws one. */
-function Check({
-  label,
-  checked,
-  onChange
-}: {
-  label: string;
-  checked: boolean;
-  onChange(on: boolean): void;
-}) {
-  return (
-    <label className="ex-check">
-      <input
-        checked={checked}
-        onChange={(event) => onChange(event.target.checked)}
-        type="checkbox"
-      />
-      {label}
-    </label>
+    <>
+      <h3 className="ex-heading">{t('explorer.sundry.chest')}</h3>
+      <table className="ex-stock">
+        <tbody>
+          {chest.map((entry) => (
+            <tr key={entry.item}>
+              <td className="ex-num">{entry.pct}%</td>
+              <td>
+                {entry.tab === null ? (
+                  entry.name
+                ) : (
+                  <button
+                    className="ex-link ex-ref"
+                    onClick={() => follow({ tab: entry.tab!, n: entry.item })}
+                    onMouseDown={keepFocus}
+                    type="button"
+                  >
+                    {entry.name}
+                  </button>
+                )}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </>
   );
 }
 
@@ -698,10 +626,17 @@ export default function ExplorerScreen({
     [filters.ability.abil]
   );
 
-  const rows = useMemo(() => {
+  // The rows that do not match, where the extra monster filters show every one, greyed.
+  const [rows, dimmed] = useMemo(() => {
     const backstabForced = asked.calc && asked.attack === 'surprise';
-    const kept = all.filter((row) => passes(row, kind, filters, backstabForced));
-    return orderRows(kept, (row) => cellOf(row, sort.id), sort.dir);
+    const showAll = kind === 'monsters' && filters.extra.enabled && filters.extra.showAll;
+    const dim = new Set<number>();
+    const kept = all.filter((row) => {
+      const ok = passes(row, kind, filters, backstabForced, asked.byLair);
+      if (!ok && showAll && (!filters.inGameOnly || row.inGame)) dim.add(row.number);
+      return ok || dim.has(row.number);
+    });
+    return [orderRows(kept, (row) => cellOf(row, sort.id), sort.dir), dim] as const;
   }, [all, kind, filters, sort, asked, cellOf]);
 
   /*
@@ -856,7 +791,7 @@ export default function ExplorerScreen({
           <nav className="ex-tabs" role="tablist">
             {KINDS.map((entry) => (
               <button
-                aria-selected={tab === entry.id}
+                aria-selected={tab === entry.id || (entry.id === 'classes' && tab === 'races')}
                 className="ex-tab"
                 key={entry.id}
                 onClick={() => switchTab(entry.id)}
@@ -925,7 +860,45 @@ export default function ExplorerScreen({
                 spellCheck={false}
                 value={filters.query}
               />
-              {kind === 'shops' ? (
+              {kind === 'classes' || kind === 'races' ? (
+                <div className="ex-seg" role="group">
+                  {(['classes', 'races', 'builder'] as const).map((view) => {
+                    const on =
+                      view === 'builder'
+                        ? kind === 'classes' && options.builder
+                        : kind === view && !(view === 'classes' && options.builder);
+                    return (
+                      <button
+                        aria-pressed={on}
+                        className="ex-btn"
+                        key={view}
+                        onClick={() => {
+                          setOption({ builder: view === 'builder' });
+                          const list = view === 'races' ? 'races' : 'classes';
+                          if (list !== kind) follow({ tab: list, n: null });
+                        }}
+                        onMouseDown={keepFocus}
+                        type="button"
+                      >
+                        {view === 'classes'
+                          ? t('explorer.classes.classes')
+                          : view === 'races'
+                            ? t('explorer.classes.races')
+                            : t('explorer.classes.builder')}
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : kind === 'sundry' ? null : kind === 'monsters' ? (
+                <ExplorerMonsterBar
+                  abilityOptions={abilityOptions.filter(([id]) => id !== '-1')}
+                  byLair={options.byLair}
+                  filters={filters}
+                  lairsStated={answer?.lairs ?? true}
+                  set={set}
+                  setByLair={(byLair) => setOption({ byLair })}
+                />
+              ) : kind === 'shops' ? (
                 <>
                   <button
                     className="ex-btn"
@@ -1081,7 +1054,7 @@ export default function ExplorerScreen({
                   </div>
                 </>
               )}
-              {kind !== 'spells' && kind !== 'shops' && abilityField}
+              {(kind === 'weapons' || kind === 'armour' || kind === 'sundry') && abilityField}
               <div className="ex-checks">
                 <Check
                   checked={filters.inGameOnly}
@@ -1241,7 +1214,9 @@ export default function ExplorerScreen({
                             <div
                               aria-selected={chosen === row.number}
                               className="ex-row"
-                              data-unusable={row.usable ? undefined : 'true'}
+                              data-unusable={
+                                row.usable && !dimmed.has(row.number) ? undefined : 'true'
+                              }
                               data-worn={row.worn ? 'true' : undefined}
                               key={row.number}
                               onClick={() => setChosen(row.number)}
@@ -1252,6 +1227,7 @@ export default function ExplorerScreen({
                                 <span
                                   className="ex-td"
                                   data-numeric={column.numeric === true ? 'true' : undefined}
+                                  data-tone={row.tones?.[column.id]}
                                   key={column.id}
                                   role="gridcell"
                                 >
@@ -1283,8 +1259,8 @@ export default function ExplorerScreen({
                   ) : (
                     <>
                       <h2 className="ex-name">{shown.name}</h2>
-                      <div className="ex-sub">{subLine(kind, chosenRow)}</div>
-                      {(kind === 'weapons' || kind === 'armour') && (
+                      <div className="ex-sub">{shown.sub ?? subLine(kind, chosenRow)}</div>
+                      {(kind === 'weapons' || kind === 'armour' || kind === 'sundry') && (
                         <BuyBox
                           buy={buy}
                           buyPlan={buyPlan}
@@ -1293,10 +1269,40 @@ export default function ExplorerScreen({
                           purseKey={purseKey}
                         />
                       )}
+                      {shown.races !== undefined && (
+                        <Field label={t('explorer.classes.race')}>
+                          <select
+                            onChange={(event) =>
+                              setOption({ builderRace: Number(event.target.value) })
+                            }
+                            value={String(options.builderRace)}
+                          >
+                            <option value="0">{t('explorer.classes.chooseRace')}</option>
+                            {shown.races.map(([n, name]) => (
+                              <option key={n} value={n}>
+                                {name}
+                              </option>
+                            ))}
+                          </select>
+                        </Field>
+                      )}
                       <p className="ex-text">{links(shown.text)}</p>
                       {shown.note !== undefined && <p className="ex-note">{shown.note}</p>}
                       {shown.stock !== undefined && shown.stock.rows.length > 0 && (
                         <Stock follow={follow} stock={shown.stock} />
+                      )}
+                      {shown.chest !== undefined && <Chest chest={shown.chest} follow={follow} />}
+                      {shown.table !== undefined && (
+                        <table className="ex-mon">
+                          <tbody>
+                            {shown.table.map((row, i) => (
+                              <tr data-cls={row.cls} key={i}>
+                                <th>{links(row.label)}</th>
+                                <td>{links(row.text)}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
                       )}
                     </>
                   )}

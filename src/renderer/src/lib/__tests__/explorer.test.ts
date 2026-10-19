@@ -3,6 +3,9 @@ import { describe, expect, it } from 'vitest';
 import {
   abilityValue,
   DEFAULT_FILTERS,
+  DEFAULT_MONSTER_BAR,
+  DEFAULT_MONSTER_EXTRA,
+  type MonsterExtra,
   orderRows,
   passes,
   type ExplorerFilters
@@ -179,5 +182,67 @@ describe('the Spells filter (spellPasses)', () => {
       true
     );
     expect(keeps({ query: 'fbal' })).toBe(true);
+  });
+});
+
+/* `FilterMonsters` over a monster's facts as main sends them (mudtool's `tabs/monsters.js`). */
+describe('the Monsters filter (FilterMonsters)', () => {
+  const monster = (over: Partial<NonNullable<ExplorerRow['monster']>> = {}): ExplorerRow => ({
+    ...row(1),
+    monster: {
+      regen: 0,
+      hp: 30,
+      damage: 6,
+      exp: 22,
+      magic: 0,
+      dodge: -1,
+      coins: [20, 10, 0, 0, 0],
+      ac: 10,
+      dr: 1,
+      mr: 40,
+      bsDefense: 0,
+      undead: false,
+      align: 2,
+      gameLimit: 0,
+      lairExp: 24,
+      lairs: 58,
+      maxRegen: 1.5,
+      possy: 1.5,
+      mobs: 1.5,
+      poison: false,
+      confusion: false,
+      fear: false,
+      accMajority: 20,
+      accMax: 20,
+      abilities: [],
+      ...over
+    }
+  });
+  const keeps = (f: Partial<ExplorerFilters>, m = monster(), byLair = false): boolean =>
+    passes(m, 'monsters', filters({ usableOnly: false, ...f }), false, byLair);
+
+  it('keeps by the bar: HP, damage, exp and magic', () => {
+    expect(keeps({})).toBe(true);
+    expect(keeps({ monster: { ...DEFAULT_MONSTER_BAR, maxHP: 20 } })).toBe(false);
+    expect(keeps({ monster: { ...DEFAULT_MONSTER_BAR, maxDamage: 5 } })).toBe(false);
+    // By lair, Damage <= is not read: the lair's damage is a clear's, not a hit's.
+    expect(keeps({ monster: { ...DEFAULT_MONSTER_BAR, maxDamage: 5 } }, monster(), true)).toBe(
+      true
+    );
+    expect(keeps({ monster: { ...DEFAULT_MONSTER_BAR, minExp: 50 } })).toBe(false);
+  });
+
+  it('applies the extra filters only where they are on, and `<=` passes one without the ability', () => {
+    const silver = { ...DEFAULT_MONSTER_EXTRA, drops: 3 };
+    expect(keeps({ extra: silver })).toBe(true);
+    expect(keeps({ extra: { ...silver, enabled: true } })).toBe(false);
+    const ability: MonsterExtra['abils'] = [
+      [34, 0, 5],
+      [0, 1, 0],
+      [0, 1, 0]
+    ];
+    expect(keeps({ extra: { ...DEFAULT_MONSTER_EXTRA, enabled: true, abils: ability } })).toBe(
+      true
+    );
   });
 });

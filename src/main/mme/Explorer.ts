@@ -18,7 +18,7 @@ import fs from 'node:fs';
 import { by, db, loadDB, roomKey } from './vendor/js/db.js';
 import { detectEngine, engine } from './vendor/js/mmud/engine.js';
 import { blankChar, char, EQ_SLOTS, roster, switchChar } from './vendor/js/char.js';
-import { setSetting } from './vendor/js/state.js';
+import { setSetting, setView, settings } from './vendor/js/state.js';
 import { isInGame, itemUsableBy, spellUsableBy } from './vendor/js/mmud/usable.js';
 import {
   abilityList,
@@ -26,10 +26,24 @@ import {
   hasAbil,
   hooks,
   itemDetail,
+  itemValue,
   plain,
   segments,
   shopDetail,
   lairInfoFor,
+  classAbilities,
+  classCols,
+  raceAbilities,
+  raceColours,
+  raceStat,
+  lairAverages,
+  monsterAttackSummary,
+  monsterDetail,
+  monsterExp,
+  monsterPossy,
+  monsterSpellAttackCol,
+  expPerDmgHP,
+  fmtComma,
   spellCols,
   spellDetail,
   spellListed,
@@ -40,6 +54,8 @@ import {
   eqSlotLists,
   equipItem,
   equipSlotFor,
+  calcCharStats,
+  calcCharSummary,
   findBest,
   findBestValue,
   FIND_BEST,
@@ -57,6 +73,7 @@ import {
 import { MUD } from './vendor/js/mmud/combat.js';
 import {
   armourType,
+  itemType,
   magery,
   shopType,
   spellTargets,
@@ -80,6 +97,20 @@ import {
   type MapCell
 } from './vendor/js/mmud/roommap.js';
 import { roomTeleports } from './vendor/js/mmud/textblocks.js';
+import { chestContents } from './vendor/js/mmud/chest.js';
+import {
+  attackConfig,
+  expHrCharacter,
+  expHrProfile,
+  expPerHourCell,
+  EXPHR_DEFAULTS,
+  monsterExpPerHour,
+  normaliseExpHrConfig,
+  scriptingRows,
+  type ExpHrResult
+} from './vendor/js/mmud/exphr.js';
+import { profileFromChar } from './vendor/js/mmud/profile.js';
+import { buildClassRace } from './vendor/js/mmud/builder.js';
 import type { Row } from './vendor/js/db.js';
 import { t } from '../app/i18n';
 import { openRealm } from '../world/RealmSource';
@@ -93,6 +124,7 @@ import type {
   ExplorerFacts,
   ExplorerKind,
   ExplorerList,
+  ExplorerMonsterFacts,
   ExplorerOptions,
   ExplorerRow,
   ExplorerPlace,
@@ -577,6 +609,37 @@ function spellRowOf(spell: Row, columns: readonly Column[]): ExplorerRow {
   };
 }
 
+/** Sundry's rows (`lvOtherItems`): armour worn nowhere, and every item type past a weapon. */
+const sundryListed = (item: Row): boolean =>
+  (item['ItemType'] === ITEM_TYPE.armour && !item['Worn']) || (item['ItemType'] as number) > 1;
+
+/** The Sundry list's columns, mudtool's `tabs/sundry.js`: number, name, type, encumbrance, limit. */
+function sundryColumns(): Column[] {
+  return [
+    ...leading(),
+    {
+      id: 'ItemType',
+      label: t('explorer.columns.itemType'),
+      width: '7em',
+      get: (i) => itemType(i['ItemType'])
+    },
+    {
+      id: 'Encum',
+      label: t('explorer.columns.encumbrance'),
+      numeric: true,
+      width: '4em',
+      get: (i) => (i['Encum'] as number) || 0
+    },
+    {
+      id: 'Limit',
+      label: t('explorer.columns.limit'),
+      numeric: true,
+      width: '4em',
+      get: (i) => (i['Limit'] as number) || 0
+    }
+  ];
+}
+
 /** The shops `AddShop2LV` lists: named, and not the realm's `sdf` or `Leave this blank` rows. */
 const shopListed = (shop: Row): boolean => {
   const name = String(shop['Name'] ?? '');
@@ -723,6 +786,27 @@ export async function explorerList(
   if (kind === 'spells') {
     columns = spellColumns();
     rows = db.Spells.filter(spellListed).map((spell) => spellRowOf(spell, columns));
+  } else if (kind === 'sundry') {
+    columns = sundryColumns();
+    rows = db.Items.filter(sundryListed).map((item) => ({
+      ...rowOf(item, kind, columns),
+      // MME does not apply the global filter to Sundry (`FilterSundry`).
+      usable: true
+    }));
+  } else if (kind === 'monsters') {
+    const byLair = options?.byLair === true && engine.nmrVersion >= LAIR_NMR;
+    setView('monstersByLair', byLair);
+    columns = monsterColumns(byLair);
+    rows = db.Monsters.filter((m) => monsterListed(m, byLair)).map((m) =>
+      monsterRowOf(m, columns, byLair)
+    );
+  } else if (kind === 'classes' || kind === 'races') {
+    const table = kind === 'classes' ? db.Classes : db.Races;
+    columns = kind === 'classes' ? classColumns() : raceColumns();
+    const tones = kind === 'races' ? raceColours(db.Races.filter((r) => r['Name'])) : null;
+    rows = table
+      .filter((r) => r['Name'])
+      .map((r) => classRaceRowOf(r, columns, tones?.get(r['Number'] as number)));
   } else if (kind === 'shops') {
     columns = shopColumns();
     rows = db.Shops.filter(shopListed).map((shop) => shopRowOf(shop, columns));
@@ -742,26 +826,33 @@ export async function explorerList(
       ...(numeric === true ? { numeric: true } : {})
     })),
     rows,
-    abilities: abilityList()
+    abilities: abilityList(),
+    ...(kind === 'monsters' ? { lairs: engine.nmrVersion >= LAIR_NMR } : {})
   };
 }
 
 /**
  * The tab a reference opens (mudtool's `ui/nav.js` `KIND`), or null for one
- * no tab here shows yet. An item by its list: a weapon's, and every other
- * worn-or-not armour row on Armour, which lists them all, until Sundry is
- * here to take the unworn ones as mudtool's `itemTab` does.
+ * no tab here shows yet.
  */
 function tabOf(kind: string, n: number | string): ExplorerTab | null {
   switch (kind) {
     case 'item': {
+      // mudtool's `itemTab`: a weapon, a worn armour row, and everything else on Sundry.
       const item = by.item.get(Number(n));
-      if (item?.['ItemType'] === ITEM_TYPE.weapon) return 'weapons';
-      if (item?.['ItemType'] === ITEM_TYPE.armour) return 'armour';
-      return null;
+      if (item === undefined) return null;
+      if (item['ItemType'] === ITEM_TYPE.weapon) return 'weapons';
+      if (item['ItemType'] === ITEM_TYPE.armour && item['Worn']) return 'armour';
+      return 'sundry';
     }
     case 'spell':
       return 'spells';
+    case 'monster':
+      return 'monsters';
+    case 'class':
+      return 'classes';
+    case 'race':
+      return 'races';
     case 'shop':
       return 'shops';
     case 'room':
@@ -798,12 +889,18 @@ export async function explorerDetail(
   useCharacter(state, options);
   setSpellOpts({ calc: options?.mrCalc === true, antiMagic: options?.antiMagic === true });
   if (kind === 'shops') return shopDetailOf(number, options);
+  if (kind === 'monsters') return monsterDetailOf(number, options);
+  if (kind === 'classes') return classDetailOf(number, options);
+  if (kind === 'races') return raceDetailOf(number);
   const item = kind === 'spells' ? by.spell.get(number) : by.item.get(number);
   if (item === undefined) return null;
   const detail =
     kind === 'spells'
       ? spellDetail(item, mmeContext())
-      : itemDetail(item, { equipped: char.equipped });
+      : kind === 'sundry'
+        ? itemDetail(item, { ...mmeContext(), onSundry: true })
+        : itemDetail(item, { equipped: char.equipped });
+  const chest = kind === 'sundry' ? chestContents(item) : null;
   return {
     number,
     name: String(item['Name']),
@@ -811,7 +908,20 @@ export async function explorerDetail(
     refs: detail.refs.map((ref: { text: string; pct?: number | string }) => ({
       text: runs(ref.text),
       ...(typeof ref.pct === 'number' ? { pct: ref.pct } : {})
-    }))
+    })),
+    ...(kind === 'sundry'
+      ? { sub: `#${number} · ${itemType(item['ItemType'])} · ${itemValue(item).sFriendlyBuy}` }
+      : {}),
+    ...(chest === null || chest.length === 0
+      ? {}
+      : {
+          chest: chest.map((entry) => ({
+            item: entry.item,
+            name: String(by.item.get(entry.item)?.['Name'] ?? `item ${entry.item}`),
+            pct: entry.pct,
+            tab: tabOf('item', entry.item)
+          }))
+        })
   };
 }
 
@@ -1239,3 +1349,565 @@ export async function explorerRoomSearch(
 
 /** `searchRooms`' own limit, which MME's list stops at. */
 const ROOM_LIST_LIMIT = 500;
+
+/** NMR 1.83, from which the realm states lairs, game limits and BS defence (`engine.nmrVersion`). */
+const LAIR_NMR = 1.83;
+
+/** The three monsters `FilterMonsters` leaves out by lair, by number and name. */
+const NOT_BY_LAIR: ReadonlyArray<[number, string]> = [
+  [1086, 'cloaked figure'],
+  [1087, 'disenchanter'],
+  [597, 'Dao Lord']
+];
+
+/** The monsters `AddMonster2LV` lists: named, not `sdf`, and by lair not the three MME leaves out. */
+function monsterListed(m: Row, byLair: boolean): boolean {
+  const name = String(m['Name'] ?? '');
+  if (name === '' || name.slice(0, 3) === 'sdf') return false;
+  return !(byLair && NOT_BY_LAIR.some(([n, named]) => m['Number'] === n && name === named));
+}
+
+/** A monster's lair averages, kept for the list it was asked for. */
+const lairCache = new Map<number, ReturnType<typeof lairAverages>>();
+function lairOf(m: Row): ReturnType<typeof lairAverages> {
+  const n = m['Number'] as number;
+  let found = lairCache.get(n);
+  if (found === undefined) {
+    found = lairAverages(String(m['Summoned By'] ?? ''), mmeContext());
+    lairCache.set(n, found);
+  }
+  return found;
+}
+
+/** `GetPreCalculatedMonsterDamage`: the realm's figure until it is worked out against the character. */
+function damageIn(m: Row): number {
+  return hooks.monsterDamageIn?.(m['Number'] as number).damage ?? ((m['AvgDmg'] as number) || 0);
+}
+
+/** The Damage column's figure: a lair's average by lair for a monster that only spawns there. */
+function avgDamage(m: Row, byLair: boolean): number {
+  const lair = byLair ? lairOf(m) : null;
+  return lair !== null && lair.nTotalLairs > 0 && m['RegenTime'] === 0
+    ? lair.nAvgDmgLair
+    : damageIn(m);
+}
+
+/** How many lairs `Summoned By` names. */
+const lairCount = (m: Row): number =>
+  String(m['Summoned By'] ?? '').match(/\(lair\)/gi)?.length ?? 0;
+
+/**
+ * The Monsters list's columns, mudtool's `tabs/monsters.js` in its order,
+ * the exp/hour hook's beside them; the Damage column a lair's average by lair
+ * (`*`).
+ */
+function monsterColumns(byLair: boolean): Column[] {
+  lairCache.clear();
+  const nmr = engine.nmrVersion;
+  const num = (
+    id: string,
+    label: string,
+    width: string,
+    get: (m: Row) => ExplorerCell,
+    show?: (value: ExplorerCell, m: Row) => string
+  ): Column => ({ id, label, width, numeric: true, get, ...(show === undefined ? {} : { show }) });
+  const comma = (v: ExplorerCell): string => ((v as number) > 0 ? fmtComma(v as number) : '0');
+  return [
+    ...leading(),
+    num('RegenTime', t('explorer.columns.regen'), '3.5em', (m) => (m['RegenTime'] as number) || 0),
+    num('exp', t('explorer.columns.exp'), '6em', (m) => monsterExp(m), comma),
+    num('HP', t('explorer.columns.hp'), '4.5em', (m) => (m['HP'] as number) || 0, comma),
+    num(
+      'acdr',
+      t('explorer.columns.ac'),
+      '4.5em',
+      (m) => ((m['ArmourClass'] as number) || 0) + ((m['DamageResist'] as number) || 0),
+      (_v, m) => `${m['ArmourClass']}/${m['DamageResist']}`
+    ),
+    num('dodge', t('explorer.columns.dodge'), '4em', (m) => Math.max(0, hasAbil(m, 34, 0))),
+    num('MagicRes', t('explorer.columns.mr'), '3.5em', (m) => (m['MagicRes'] as number) || 0),
+    num(
+      'acc',
+      t('explorer.columns.attackAcc'),
+      '6em',
+      (m) => monsterAttackSummary(m).nAccMax,
+      (_v, m) => {
+        const a = monsterAttackSummary(m);
+        return a.nAccMajority !== a.nAccMax ? `${a.nAccMajority}/${a.nAccMax}` : String(a.nAccMax);
+      }
+    ),
+    num(
+      'dmg',
+      t('explorer.columns.damage'),
+      '5em',
+      (m) => avgDamage(m, byLair),
+      (v, m) =>
+        ((v as number) > 0 ? fmtComma(v as number) : v === 0 ? '0' : '?') +
+        (byLair && lairOf(m).nTotalLairs > 0 && m['RegenTime'] === 0 ? '*' : '')
+    ),
+    num(
+      'edh',
+      t('explorer.columns.expPerDamage'),
+      '6.5em',
+      (m) => expPerDmgHP(monsterExp(m), avgDamage(m, byLair), (m['HP'] as number) || 0),
+      comma
+    ),
+    ...hooked(hooks.columns.monsters),
+    num(
+      'AvgLairExp',
+      t('explorer.columns.lairExp'),
+      '5.5em',
+      (m) => (m['AvgLairExp'] as number) || 0,
+      (v) => (v ? Number(v).toLocaleString('en-US') : '0')
+    ),
+    num('lairs', t('explorer.columns.lairs'), '4em', lairCount, (v) => (v ? String(v) : '')),
+    num(
+      'mobs',
+      nmr >= LAIR_NMR ? t('explorer.columns.mobsSpawn') : t('explorer.columns.mobs'),
+      '6.5em',
+      (m) => {
+        const p = monsterPossy(m['Number'] as number);
+        return p.spawnChance > 0 ? p.spawnChance * 100 * p.possy : p.possy;
+      },
+      (_v, m) => {
+        const p = monsterPossy(m['Number'] as number);
+        return !p.possy
+          ? ''
+          : p.spawnChance > 0
+            ? `${p.possy} / ${Math.round(p.spawnChance * 100)}%`
+            : String(p.possy);
+      }
+    ),
+    num(
+      'mag',
+      t('explorer.columns.magic'),
+      '3.5em',
+      (m) => Math.max(0, hasAbil(m, 28, 0)),
+      (v) => (v ? String(v) : '')
+    ),
+    ...(nmr >= LAIR_NMR
+      ? [
+          num(
+            'BSDefense',
+            t('explorer.columns.bsDefense'),
+            '5.5em',
+            (m) => (m['BSDefense'] as number) || 0,
+            (v) => (v ? String(v) : '')
+          )
+        ]
+      : []),
+    {
+      id: 'Undead',
+      label: t('explorer.columns.undead'),
+      width: '4.5em',
+      get: (m) => ((m['Undead'] as number) > 0 ? 'X' : '')
+    },
+    {
+      id: 'spatk',
+      label: t('explorer.columns.spellAttack'),
+      width: '5.5em',
+      get: (m) => monsterSpellAttackCol(m)
+    }
+  ];
+}
+
+/** What `FilterMonsters` reads of a monster, for the mode asked. */
+function monsterFactsOf(m: Row, byLair: boolean): ExplorerMonsterFacts {
+  const nmr = engine.nmrVersion;
+  const lair = nmr >= LAIR_NMR ? lairOf(m) : null;
+  const possy = monsterPossy(m['Number'] as number);
+  const attack = monsterAttackSummary(m, false, true);
+  const n = (key: string): number => (m[key] as number) || 0;
+  return {
+    regen: n('RegenTime'),
+    hp: byLair && lair !== null && lair.nTotalLairs > 0 ? lair.nAvgHP : n('HP'),
+    damage: avgDamage(m, byLair),
+    exp: monsterExp(m),
+    magic: Math.max(0, hasAbil(m, 28, 0)),
+    dodge: hasAbil(m, 34, 0) > 0 ? hasAbil(m, 34) : -1,
+    coins: [n('C'), n('S'), n('G'), n('P'), n('R')],
+    ac: n('ArmourClass'),
+    dr: n('DamageResist'),
+    mr: n('MagicRes'),
+    bsDefense: nmr >= LAIR_NMR ? n('BSDefense') : null,
+    undead: n('Undead') !== 0,
+    align: n('Align'),
+    gameLimit: nmr >= LAIR_NMR ? n('GameLimit') : null,
+    lairExp: nmr >= LAIR_NMR ? n('AvgLairExp') : null,
+    lairs: lair !== null ? lair.nTotalLairs : lairCount(m),
+    maxRegen: lair?.nMaxRegen ?? 0,
+    possy: possy.possy,
+    mobs: nmr >= LAIR_NMR ? (lair?.nMaxRegen ?? 0) : possy.possy,
+    poison: attack.bAtkPoison === true,
+    confusion: attack.bAtkConfusion === true,
+    fear: attack.bAtkFear === true,
+    accMajority: attack.nAccMajority,
+    accMax: attack.nAccMax,
+    abilities: abilitySlots(m)
+  };
+}
+
+function monsterRowOf(m: Row, columns: readonly Column[], byLair: boolean): ExplorerRow {
+  const cells: Record<string, ExplorerCell> = {};
+  const shown: Record<string, string> = {};
+  for (const column of columns) {
+    const value = column.get(m);
+    cells[column.id] = value;
+    if (column.show !== undefined) shown[column.id] = column.show(value, m);
+  }
+  return {
+    number: m['Number'] as number,
+    name: String(m['Name']),
+    usable: true,
+    inGame: isInGame(m),
+    worn: false,
+    cells,
+    ...(Object.keys(shown).length > 0 ? { shown } : {}),
+    facts: {
+      type: '',
+      magical: 0,
+      hasMagical: false,
+      hitMagic: 0,
+      limit: 0,
+      strength: 0,
+      speed: 0,
+      abilities: abilitySlots(m),
+      negates: []
+    },
+    monster: monsterFactsOf(m, byLair)
+  };
+}
+
+/** `PullMonsterDetail`: MME's labelled rows, each marked up with its links. */
+function monsterDetailOf(number: number, options?: ExplorerOptions): ExplorerDetail | null {
+  const m = by.monster.get(number);
+  if (m === undefined) return null;
+  const byLair = options?.byLair === true && engine.nmrVersion >= LAIR_NMR;
+  setView('monstersByLair', byLair);
+  const rows = monsterDetail(m, { ...mmeContext(), lairMode: byLair });
+  return {
+    number,
+    name: String(m['Name']),
+    // mudtool's heading: the number alone.
+    sub: `#${number}`,
+    text: [],
+    refs: [],
+    table: rows.slice(1).map((row) => ({
+      label: runs(row.label),
+      text: runs(row.text),
+      ...(row.cls ? { cls: row.cls } : {})
+    }))
+  };
+}
+
+/*
+ * Exp/hour on the Monsters list and in its detail, mudtool's `hooks/exphr.js`
+ * glue on the vendored estimate (`mmud/exphr.js`): the character's inputs
+ * gathered once per character, each monster's result kept until the
+ * character changes. The settings are MME's defaults until the Tools tab
+ * offers them.
+ */
+interface ExpHrEnv {
+  key: string;
+  env: Record<string, unknown>;
+  list: Map<number, ExpHrResult>;
+  detail: Map<number, ExpHrResult>;
+}
+let expHr: ExpHrEnv | null = null;
+
+/** The estimate's inputs for the character now (`getEnv`), gathered once per character. */
+function expHrEnv(): ExpHrEnv {
+  const key = JSON.stringify([
+    char.cls,
+    char.race,
+    char.level,
+    char.stats,
+    char.equipped,
+    char.attack,
+    settings['exphr']
+  ]);
+  if (expHr?.key === key) return expHr;
+  const useChar = settings['globalFilter'] === true;
+  const panel = calcCharStats(char, { globalFilter: useChar });
+  const summary = calcCharSummary(char, panel);
+  const cp = profileFromChar(char, { globalFilter: useChar });
+  const ch = expHrCharacter(char, {
+    useChar,
+    profile: useChar ? cp : expHrProfile(cp, false),
+    panel,
+    summary
+  });
+  const profile = expHrProfile(cp, useChar, ch.spellOverhead);
+  const lairs = new Map<string, unknown>();
+  const env = {
+    ch,
+    profile,
+    attack: attackConfig(char.attack, char.equipped),
+    config: normaliseExpHrConfig((settings['exphr'] as Record<string, unknown>) ?? EXPHR_DEFAULTS),
+    lair: (summonedBy: string) => {
+      if (!lairs.has(summonedBy)) lairs.set(summonedBy, lairAverages(summonedBy));
+      return lairs.get(summonedBy);
+    },
+    monsterDamage: (m: Row) => {
+      const d = hooks.monsterDamageIn?.(m['Number'] as number);
+      return d?.calculated === true ? d.damage : m['AvgDmg'];
+    },
+    useChar
+  };
+  expHr = { key, env, list: new Map(), detail: new Map() };
+  return expHr;
+}
+
+function expHrFor(m: Row, list: boolean): ExpHrResult {
+  const at = expHrEnv();
+  const cache = list ? at.list : at.detail;
+  const n = m['Number'] as number;
+  let found = cache.get(n);
+  if (found === undefined) {
+    try {
+      found = monsterExpPerHour(m, { ...at.env, list });
+    } catch {
+      found = { kind: 'none', info: null };
+    }
+    cache.set(n, found);
+  }
+  return found;
+}
+
+hooks.columns.monsters.push(
+  {
+    key: 'exphr',
+    label: 'Exp/hr',
+    num: true,
+    width: '6.5em',
+    get: (m) => expHrFor(m, true).info?.nExpPerHour ?? '',
+    fmt: (v, m) =>
+      v === '' ? '' : expPerHourCell(v as number) + (expHrFor(m, true).kind === 'lair' ? '' : ' *')
+  },
+  {
+    key: 'recover',
+    label: 'Recover',
+    num: true,
+    width: '4.5em',
+    get: (m) => {
+      const r = expHrFor(m, true);
+      const recoveryOnly =
+        (expHrEnv().env['config'] as { recoveryOnly?: boolean }).recoveryOnly === true;
+      return r.info !== null && !recoveryOnly ? Math.round(r.info.nTimeRecovering * 100) : '';
+    },
+    fmt: (v) => (v === '' ? '' : `${v}%`)
+  }
+);
+
+hooks.monsterExtraRows.push((m) => {
+  const r = expHrFor(m, false);
+  const at = expHrEnv().env;
+  return scriptingRows(m, r, {
+    useChar: at['useChar'] === true,
+    showAll: (at['config'] as { showAll?: boolean }).showAll === true
+  });
+});
+
+/** The Class/Race tab's classes (`AddClass2LV`), mudtool's `tabs/classes.js` columns. */
+function classColumns(): Column[] {
+  return [
+    ...leading(),
+    {
+      id: 'ExpTable',
+      label: t('explorer.columns.expPct'),
+      numeric: true,
+      width: '4.5em',
+      get: (c) => (c['ExpTable'] as number) || 0,
+      show: (_v, c) => classCols(c).exp
+    },
+    {
+      id: 'weapon',
+      label: t('explorer.columns.weapon'),
+      width: '7em',
+      get: (c) => classCols(c).weapon
+    },
+    {
+      id: 'ArmourType',
+      label: t('explorer.columns.armour'),
+      numeric: true,
+      width: '6.5em',
+      get: (c) => (c['ArmourType'] as number) || 0,
+      show: (_v, c) => classCols(c).armour
+    },
+    {
+      id: 'magic',
+      label: t('explorer.columns.magic'),
+      width: '6.5em',
+      get: (c) => classCols(c).magic
+    },
+    {
+      id: 'CombatLVL',
+      label: t('explorer.columns.combat'),
+      numeric: true,
+      width: '3.5em',
+      get: (c) => ((c['CombatLVL'] as number) || 0) - 2
+    },
+    { id: 'hp', label: t('explorer.columns.hp'), width: '4em', get: (c) => classCols(c).hp },
+    {
+      id: 'abilities',
+      label: t('explorer.columns.abilities'),
+      width: 'minmax(12em, 2fr)',
+      get: (c) => plain(classAbilities(c))
+    }
+  ];
+}
+
+/** A race's stats, MME's keys and the client's column words, in `AddRace2LV`'s order. */
+const RACE_STATS: ReadonlyArray<[string, () => string]> = [
+  ['STR', () => t('explorer.columns.str')],
+  ['INT', () => t('explorer.columns.int')],
+  ['WIL', () => t('explorer.columns.wis')],
+  ['AGL', () => t('explorer.columns.agi')],
+  ['HEA', () => t('explorer.columns.hea')],
+  ['CHM', () => t('explorer.columns.cha')]
+];
+
+/** The Class/Race tab's races (`AddRace2LV`), each stat its range, sorted by its sum. */
+function raceColumns(): Column[] {
+  return [
+    ...leading(),
+    {
+      id: 'ExpTable',
+      label: t('explorer.columns.expPct'),
+      numeric: true,
+      width: '4.5em',
+      get: (r) => (r['ExpTable'] as number) || 0,
+      show: (v) => `${v}%`
+    },
+    {
+      id: 'HPPerLVL',
+      label: t('explorer.columns.hp'),
+      numeric: true,
+      width: '3.5em',
+      get: (r) => (r['HPPerLVL'] as number) || 0
+    },
+    ...RACE_STATS.map(([key, label]): Column => ({
+      id: `x${key}`,
+      label: label(),
+      numeric: true,
+      width: '4.5em',
+      get: (r) => ((r[`m${key}`] as number) || 0) + ((r[`x${key}`] as number) || 0),
+      show: (_v, r) => raceStat(r, key)
+    })),
+    {
+      id: 'abilities',
+      label: t('explorer.columns.abilities'),
+      width: 'minmax(12em, 2fr)',
+      get: (r) => plain(raceAbilities(r))
+    }
+  ];
+}
+
+/** A class's or race's row; a race's stats toned `hi` or `lo` as `RaceColorCode` colours them. */
+function classRaceRowOf(
+  r: Row,
+  columns: readonly Column[],
+  tones: Record<string, 'lo' | 'hi'> | undefined
+): ExplorerRow {
+  const cells: Record<string, ExplorerCell> = {};
+  const shown: Record<string, string> = {};
+  for (const column of columns) {
+    const value = column.get(r);
+    cells[column.id] = value;
+    if (column.show !== undefined) shown[column.id] = column.show(value, r);
+  }
+  const toned =
+    tones === undefined
+      ? {}
+      : Object.fromEntries(Object.entries(tones).map(([key, tone]) => [`x${key}`, tone]));
+  return {
+    number: r['Number'] as number,
+    name: String(r['Name']),
+    usable: true,
+    inGame: true,
+    worn: false,
+    cells,
+    ...(Object.keys(shown).length > 0 ? { shown } : {}),
+    ...(Object.keys(toned).length > 0 ? { tones: toned } : {}),
+    facts: {
+      type: '',
+      magical: 0,
+      hasMagical: false,
+      hitMagic: 0,
+      limit: 0,
+      strength: 0,
+      speed: 0,
+      abilities: [],
+      negates: []
+    }
+  };
+}
+
+/** A fact of a class's or race's detail, as a row of the detail's table. */
+const fact = (label: string, text: string, cls?: string) => ({
+  label: [{ text: label }],
+  text: runs(text),
+  ...(cls === undefined ? {} : { cls })
+});
+
+/**
+ * `PullClassDetail`, or the builder (`RefreshClassRaceBuilder`): the class's
+ * exp, HP and sample swings at five levels, with the race asked.
+ */
+function classDetailOf(number: number, options?: ExplorerOptions): ExplorerDetail | null {
+  const c = by.cls.get(number);
+  if (c === undefined) return null;
+  const name = String(c['Name']);
+  if (options?.builder === true) {
+    return {
+      number,
+      name: t('explorer.classes.builderOf', { name }),
+      sub: t('explorer.classes.builderSub'),
+      text: [{ text: buildClassRace(number, options.builderRace).join('\n') }],
+      refs: [],
+      races: db.Races.filter((r) => r['Name'])
+        .map((r): [number, string] => [r['Number'] as number, String(r['Name'])])
+        .sort((a, b) => a[1].localeCompare(b[1]))
+    };
+  }
+  const k = classCols(c);
+  return {
+    number,
+    name,
+    sub: t('explorer.classes.classSub', { number }),
+    text: [],
+    refs: [],
+    table: [
+      fact(t('explorer.classes.exp'), k.exp),
+      fact(t('explorer.classes.weapon'), k.weapon),
+      fact(t('explorer.classes.armour'), k.armour),
+      fact(t('explorer.classes.magic'), k.magic),
+      fact(t('explorer.classes.combat'), String(k.combat)),
+      fact(t('explorer.classes.hpPerLevel'), k.hp),
+      fact(t('explorer.classes.abilities'), classAbilities(c) || t('explorer.classes.none'))
+    ]
+  };
+}
+
+/** `PullRaceDetail`: its exp, HP bonus, CP, stats toned as MME colours them, and abilities. */
+function raceDetailOf(number: number): ExplorerDetail | null {
+  const r = by.race.get(number);
+  if (r === undefined) return null;
+  const tones = raceColours(db.Races.filter((race) => race['Name'])).get(number) ?? {};
+  return {
+    number,
+    name: String(r['Name']),
+    sub: t('explorer.classes.raceSub', { number }),
+    text: [],
+    refs: [],
+    table: [
+      fact(t('explorer.classes.exp'), `${r['ExpTable']}%`),
+      fact(t('explorer.classes.hpBonus'), String(r['HPPerLVL'])),
+      fact(t('explorer.classes.baseCP'), String(r['BaseCP'])),
+      ...RACE_STATS.map(([key, label]) =>
+        fact(label(), raceStat(r, key), tones[key] === undefined ? undefined : `stat-${tones[key]}`)
+      ),
+      fact(t('explorer.classes.abilities'), raceAbilities(r) || t('explorer.classes.none'))
+    ]
+  };
+}

@@ -2897,6 +2897,12 @@ export class WorldGraph {
    * By **id**, like `stockedBy` beside it and for the same reason: a shop
    * stocks rows, and the realm repeats item names across rows.
    */
+  /** Every row some counter the realm places stocks, for a thread that cannot ask `sold`. */
+  soldItems(): number[] {
+    this.stockRooms(0);
+    return [...this.stocking!.keys()];
+  }
+
   /** Whether some counter the realm places stocks this row: what the Gear card's `Sold` keeps to. */
   sold(item: number): boolean {
     return this.stockRooms(item).length > 0;

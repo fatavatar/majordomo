@@ -9,9 +9,19 @@
  */
 
 /** Which of MME's lists. */
-export type ExplorerKind = 'weapons' | 'armour' | 'spells' | 'shops';
+export type ExplorerKind =
+  'weapons' | 'armour' | 'sundry' | 'spells' | 'monsters' | 'shops' | 'classes' | 'races';
 
-export const EXPLORER_KINDS: readonly ExplorerKind[] = ['weapons', 'armour', 'spells', 'shops'];
+export const EXPLORER_KINDS: readonly ExplorerKind[] = [
+  'weapons',
+  'armour',
+  'sundry',
+  'spells',
+  'monsters',
+  'shops',
+  'classes',
+  'races'
+];
 
 /**
  * The Explorer's tabs: the lists, and the Rooms walker, which is a map and not
@@ -104,11 +114,56 @@ export interface ExplorerRow {
   cells: Record<string, ExplorerCell>;
   /** What a cell shows, where that is not its value (`AC/DR` `6/0.1`). */
   shown?: Record<string, string>;
+  /** A cell's tone, where MME colours it (a race's stat `hi` or `lo`, `RaceColorCode`). */
+  tones?: Record<string, string>;
   facts: ExplorerFacts;
   /** A spell's own facts, on the Spells list. */
   spell?: ExplorerSpellFacts;
   /** A shop's, on the Shops list. */
   shop?: ExplorerShopFacts;
+  /** A monster's, on the Monsters list. */
+  monster?: ExplorerMonsterFacts;
+}
+
+/**
+ * What the Monsters filters read of a monster (`FilterMonsters` and
+ * `frmMonsterFilters`, mudtool's `tabs/monsters.js` `passes`), 2026-10-18:
+ * the realm's numbers, and the ones worked out for the mode asked (by mob or
+ * by lair), so the window applies MME's test without its tables. A figure
+ * the realm's version does not state is null, and its filter passes it.
+ */
+export interface ExplorerMonsterFacts {
+  regen: number;
+  /** The HP and damage `HP <=` and `Damage <=` read: a lair's averages by lair. */
+  hp: number;
+  damage: number;
+  exp: number;
+  magic: number;
+  /** Its dodge, -1 where it states none. */
+  dodge: number;
+  /** Copper, silver, gold, platinum and runic it may drop. */
+  coins: [number, number, number, number, number];
+  ac: number;
+  dr: number;
+  mr: number;
+  bsDefense: number | null;
+  undead: boolean;
+  align: number;
+  gameLimit: number | null;
+  lairExp: number | null;
+  /** How many lairs it is in, as `# Lairs >=` counts them. */
+  lairs: number;
+  /** Mobs a lair holds at most (`nMaxRegen`), and its group size (`possy`). */
+  maxRegen: number;
+  possy: number;
+  /** What `Mobs/Lair >=` reads: the lair's most by NMR 1.83, else the group. */
+  mobs: number;
+  poison: boolean;
+  confusion: boolean;
+  fear: boolean;
+  accMajority: number;
+  accMax: number;
+  abilities: Array<[number, number]>;
 }
 
 /**
@@ -121,6 +176,8 @@ export interface ExplorerList {
   rows: ExplorerRow[];
   /** The abilities the filter offers, `[number, name]`, as MME lists them. */
   abilities: Array<[number, string]>;
+  /** Monsters: the realm states lairs (NMR 1.83), without which there is no by-lair mode. */
+  lairs?: boolean;
   reason?: string;
 }
 
@@ -148,6 +205,11 @@ export interface ExplorerOptions {
   vsMR: number;
   /** The target has anti-magic (`chkSpellOptions(2)`). */
   antiMagic: boolean;
+  /** Monsters: listed by lair (`optMonsterFilter(1)`), NMR 1.83 on. */
+  byLair: boolean;
+  /** Classes: the builder (`cmdClassRace(2)`), and the race it builds with; 0 none. */
+  builder: boolean;
+  builderRace: number;
   /** Shops: prices after charm, and the price it pays (`chkShopShowCharm(0)`, `(1)`). */
   shopCharm: boolean;
   shopSell: boolean;
@@ -165,6 +227,9 @@ export const DEFAULT_EXPLORER_OPTIONS: ExplorerOptions = {
   mrCalc: false,
   vsMR: 50,
   antiMagic: false,
+  byLair: false,
+  builder: false,
+  builderRace: 0,
   shopCharm: false,
   shopSell: false,
   charm: null
@@ -189,6 +254,9 @@ export function asExplorerOptions(value: unknown): ExplorerOptions {
     mrCalc: o['mrCalc'] === true,
     vsMR: o['vsMR'] === undefined ? DEFAULT_EXPLORER_OPTIONS.vsMR : n(o['vsMR']),
     antiMagic: o['antiMagic'] === true,
+    byLair: o['byLair'] === true,
+    builder: o['builder'] === true,
+    builderRace: Math.max(0, n(o['builderRace'])),
     shopCharm: o['shopCharm'] === true,
     shopSell: o['shopSell'] === true,
     charm: typeof o['charm'] === 'number' ? Math.max(0, n(o['charm'])) : null
@@ -223,6 +291,14 @@ export interface ExplorerDetail {
   note?: string;
   /** A shop's stock, or a trainer's cost by level (`PullShopDetail`). */
   stock?: ExplorerStock;
+  /** A container's contents and the chance of each, MME's *View Chest Contents*. */
+  chest?: Array<{ item: number; name: string; pct: number; tab: ExplorerTab | null }>;
+  /** What the detail's heading says beside the number, where main words it (a sundry item's type and price). */
+  sub?: string;
+  /** A monster's detail, `PullMonsterDetail`'s labelled rows, each marked up; a class's or race's facts. */
+  table?: Array<{ label: ExplorerSegment[]; text: ExplorerSegment[]; cls?: string }>;
+  /** The builder's race picker, `[number, name]`, where the detail is a class's build. */
+  races?: Array<[number, string]>;
 }
 
 /** A shop's shelf, or a trainer's table, as `shopDetail` gives it. */

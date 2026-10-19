@@ -905,34 +905,127 @@ explorer:
     unpriced: price unknown
     where: '{shop}, {room} — {moves} moves, {price}'
   columns:
+    abilities: Abilities
     ac: AC/DR
     acPerEncumbrance: AC/Enc
     accuracy: Acc
+    agi: Agi
+    armour: Armour
     armourType: Armr Type
+    attackAcc: Acc (Maj/Mx)
     backstab: BS Acc
+    bsDefense: BS Defense
     cast: Cast
+    cha: Cha
+    combat: Cmbt
     crits: Crits
+    damage: Damage
     detail: Detail
+    dodge: Dodge
     encumbrance: Enc
+    exp: Exp
+    expPct: Exp%
+    expPerDamage: Exp/(Dmg+HP)
+    hea: Hea
+    hp: HP
+    int: Int
+    itemType: Type
+    lairExp: Lair Exp
+    lairs: Lairs
     level: Level
     limit: Limit
     magery: Magery
+    magic: Mag.
     mana: Mana
     max: Max
     min: Min
+    mobs: '#Mobs'
+    mobsSpawn: Mobs/Spwn
+    mr: MR
     name: Name
+    regen: RGN
     shopType: Type
     short: Short
     slot: Worn
     speed: Speed
+    spellAttack: Spell Atk.
+    str: Str
     strength: Str
+    undead: Undead
+    weapon: Weapon
     weaponType: Wepn Type
+    wis: Wis
   kinds:
     armour: Armour
+    classRace: Class/Race
+    monsters: Monsters
     rooms: Rooms
     shops: Shops
     spells: Spells
+    sundry: Sundry
     weapons: Weapons
+  # The Class/Race tab (PullClassDetail, PullRaceDetail, the builder), 2026-10-18.
+  classes:
+    abilities: Abilities
+    armour: Armour
+    baseCP: Base CP
+    builder: Builder
+    builderOf: '{name} builder'
+    builderSub: exp, HP and sample weapon swings at five levels
+    chooseRace: '(choose a race)'
+    classSub: 'class #{number}'
+    classes: Classes
+    combat: Combat
+    exp: Exp
+    hpBonus: HP bonus
+    hpPerLevel: HP/level
+    magic: Magic
+    none: '(none)'
+    race: Race
+    raceSub: 'race #{number}'
+    races: Races
+    weapon: Weapon
+  # The Monsters tab (FilterMonsters, frmMonsterFilters), 2026-10-18.
+  monsters:
+    abilities: Ability filters (all AND'ed)
+    ac: AC <=
+    accMaj: Majority attack ACCY <=
+    accMax: MAX attack ACCY <=
+    bsDef: BS Def <=
+    byLair: By Lair
+    byMob: By Mob
+    dodge: Dodge <=
+    dr: DR <=
+    drops: Drops coin
+    dropsCopper: Copper+
+    dropsGold: Gold+
+    dropsNone: No filter
+    dropsPlatinum: Platinum+
+    dropsRunic: Runic
+    dropsSilver: Silver+
+    enabled: Enabled
+    extra: Extra filters
+    gameLimit: Game Limit <=
+    lairExp: Lair EXP >=
+    magic: Magic
+    maxDamage: Damage <=
+    maxHP: HP <=
+    maxMagic: Magic <=
+    minExp: Exp >=
+    mobsGTE: Mobs/Lair >=
+    mobsLTE: Mobs/Lair <=
+    mr: Magic Res <=
+    noAbility: (none)
+    noConfusion: No Confusion
+    noFear: No Fear
+    noPoison: No Poison
+    nonHostileEvil: Non-Hostile VS Evil
+    nonHostileNG: Non-Hostile VS Neutral/Good
+    numLairs: '# Lairs >='
+    regen: Regen (hrs)
+    reset: Reset
+    showAll: Show all monsters, greying those that don't match
+    undead: Is Undead
   # The Rooms tab, MME's room walker (frmMap), 2026-10-18.
   rooms:
     findLabel: Room name…
@@ -975,6 +1068,9 @@ explorer:
     walkHereTitle: Plan the way here for {characterName} on the route panel
     whereAmI: Where am I
     whereAmITitle: Draw the map from {characterName}'s room
+  # The Sundry tab (lvOtherItems), 2026-10-18.
+  sundry:
+    chest: Chest contents
   # The Shops tab (LoadShops, PullShopDetail), 2026-10-18.
   shops:
     charm: Charm

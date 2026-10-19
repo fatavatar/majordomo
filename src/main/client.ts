@@ -144,17 +144,7 @@ import { megamudFromConfig } from '../shared/megamud/fromConfig';
 import { asMegaToggle } from '../shared/megamud/toggles';
 import type { MegaData } from './megamud/data';
 import { megaDataFrom } from './megamud/fromWorld';
-import {
-  explorerDetail,
-  explorerGear,
-  explorerList,
-  explorerRoomSearch,
-  explorerRoomTip,
-  explorerRoomView,
-  explorerWear,
-  realmFile,
-  type MmeRealm
-} from './mme/Explorer';
+import { explorerAsk } from './mme/ExplorerThread';
 import {
   asExplorerOptions,
   asGearOptions,
@@ -2577,14 +2567,14 @@ function registerIpc(): void {
   /** A list's name off the wire; anything else is the Weapons list. */
   const explorerKindOf = (kind: unknown): ExplorerKind =>
     EXPLORER_KINDS.includes(kind as ExplorerKind) ? (kind as ExplorerKind) : 'weapons';
-  const explorerRealm = (session: SessionId): MmeRealm | string => {
+  /*
+   * The realm's database file, which the Explorer's thread reads
+   * (`ExplorerThread`), or why there is none to read.
+   */
+  const explorerRealm = (session: SessionId): { file: string } | string => {
     const file = realms?.databaseFile(profileFor(session)?.database ?? '') ?? null;
     if (file === null || !existsSync(file)) return t('app.explorer.noDatabase');
-    try {
-      return realmFile(file);
-    } catch (error) {
-      return t('app.explorer.unreadable', { reason: errorMessage(error) });
-    }
+    return { file };
   };
   handle(
     Invoke.explorerList,
@@ -2596,8 +2586,9 @@ function registerIpc(): void {
         return { ...none, reason: typeof realm === 'string' ? realm : '' };
       const which = explorerKindOf(kind);
       try {
-        const list = await explorerList(
-          realm,
+        const list = await explorerAsk(
+          'list',
+          realm.file,
           manager.character,
           which,
           asExplorerOptions(options)
@@ -2616,8 +2607,9 @@ function registerIpc(): void {
       if (typeof realm === 'string' || manager === undefined || typeof item !== 'number')
         return null;
       try {
-        return await explorerDetail(
-          realm,
+        return await explorerAsk(
+          'detail',
+          realm.file,
           manager.character,
           explorerKindOf(kind),
           item,
@@ -2641,7 +2633,7 @@ function registerIpc(): void {
     const manager = host?.get(session)?.manager;
     if (typeof realm === 'string' || manager === undefined) return { wearable: false, remove: [] };
     try {
-      return await explorerWear(realm, manager.character, item);
+      return await explorerAsk('wear', realm.file, manager.character, item);
     } catch {
       return { wearable: false, remove: [] };
     }
@@ -2692,7 +2684,7 @@ function registerIpc(): void {
     if (typeof realm === 'string' || manager === undefined || asked === null)
       return { ...none, reason: typeof realm === 'string' ? realm : '' };
     try {
-      const view = await explorerRoomView(realm, manager.character, asked);
+      const view = await explorerAsk('roomView', realm.file, manager.character, asked);
       return view.supported ? view : { ...view, reason: t('app.explorer.unsupported') };
     } catch (error) {
       return { ...none, reason: t('app.explorer.unreadable', { reason: errorMessage(error) }) };
@@ -2706,8 +2698,9 @@ function registerIpc(): void {
       const asked = asRoomViewRequest({ map, room, options });
       if (typeof realm === 'string' || manager === undefined || asked === null) return '';
       try {
-        return await explorerRoomTip(
-          realm,
+        return await explorerAsk(
+          'roomTip',
+          realm.file,
           manager.character,
           asked.map,
           asked.room,
@@ -2724,7 +2717,7 @@ function registerIpc(): void {
     const asked = asRoomSearch(search);
     if (typeof realm === 'string' || manager === undefined || asked === null) return {};
     try {
-      return await explorerRoomSearch(realm, manager.character, asked);
+      return await explorerAsk('roomSearch', realm.file, manager.character, asked);
     } catch {
       return {};
     }
@@ -2737,11 +2730,12 @@ function registerIpc(): void {
       return { ...none, reason: typeof realm === 'string' ? realm : '' };
     const world = worldFor(session);
     try {
-      const board = await explorerGear(
-        realm,
+      const board = await explorerAsk(
+        'gear',
+        realm.file,
         manager.character,
         asGearOptions(options),
-        (item) => world?.sold(item) ?? true
+        world?.soldItems() ?? null
       );
       return board.supported ? board : { ...board, reason: t('app.explorer.unsupported') };
     } catch (error) {

@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
-import { itemsInScripts, leversAsked, leversInScript, parseRoomScript } from '../roomScript';
+import {
+  itemsInScripts,
+  leversAsked,
+  leversInScript,
+  parseRoomScript,
+  teleportsAsked
+} from '../roomScript';
 
 /*
  * `Rooms.CMD` → `TBInfo.Action`, verbatim from `gmud20230902.mdb`. Every
@@ -285,5 +291,56 @@ describe('the levers a script pulls', () => {
       1: { action: 'pull lever:remoteaction 909 0 0 3', linkTo: 0 }
     };
     expect(leversAsked(1, 'shadow guard', (id) => blocks[id])).toEqual([]);
+  });
+
+  /*
+   * And the teleport behind a conversation — format 52. Dhelvanen's greeting
+   * (mudrev, 2026-10-19) answers `ready:9028`, 9028 holds nothing and links
+   * to `teleport 1530 7`, the only way into the White Corridor and to the Lady
+   * of the Dark. Read as a room's script line, so `parseRoomScript` lands it.
+   */
+  it('reads the teleport a monster’s keyword reaches as a room command', () => {
+    const blocks: Record<number, { action: string; linkTo: number }> = {
+      177: { action: 'dragon:179\nready:9028\nreturn:9050', linkTo: 178 },
+      178: { action: '', linkTo: 0 },
+      179: { action: 'message 12', linkTo: 0 },
+      9028: { action: '', linkTo: 9049 },
+      9049: { action: 'teleport 1530 7', linkTo: 0 },
+      9050: { action: '', linkTo: 0 }
+    };
+    const lines = teleportsAsked(177, 'Dhelvanen', (id) => blocks[id]);
+    expect(lines).toEqual(['ask Dhelvanen ready:teleport 1530 7']);
+    const [command, ...rest] = parseRoomScript(lines.join('\n'), () => undefined);
+    expect(rest).toEqual([]);
+    expect(command).toMatchObject({ say: ['ask Dhelvanen ready'], to: '7/1530' });
+    expect(command?.need).toBeUndefined();
+  });
+
+  /*
+   * A gate governs its own line: the barmaid's `adventure` is a line per
+   * class, each ending in the same teleport, and is fifteen ways in — not one
+   * that wants every class at once.
+   */
+  it('reads each line of a reached block as its own way, gate and all', () => {
+    const blocks: Record<number, { action: string; linkTo: number }> = {
+      1: { action: 'go:2\nleave:2', linkTo: 0 },
+      2: { action: 'class 1:teleport 10 4\nclass 2:minlevel 40 99:teleport 10 4', linkTo: 0 }
+    };
+    const commands = parseRoomScript(
+      teleportsAsked(1, 'ferryman', (id) => blocks[id]).join('\n'),
+      () => undefined
+    );
+    expect(commands).toEqual([
+      expect.objectContaining({
+        say: ['ask ferryman go', 'ask ferryman leave'],
+        to: '4/10',
+        need: ['class 1']
+      }),
+      expect.objectContaining({
+        say: ['ask ferryman go', 'ask ferryman leave'],
+        to: '4/10',
+        need: ['class 2', 'minlevel 40']
+      })
+    ]);
   });
 });

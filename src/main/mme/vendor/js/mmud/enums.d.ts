@@ -5,3 +5,4 @@ export function wornType(n: unknown): string;
 export function magery(n: unknown, level?: unknown): string;
 export function spellTargets(n: unknown): string;
 export function shopType(n: unknown): string;
+export function itemType(n: unknown): string;

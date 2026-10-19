@@ -5,7 +5,13 @@ import path from 'node:path';
 import type { RealmSource } from './RealmSource';
 import { number, text } from './values';
 import type { ArchiveIdentity, ShippedWorld } from '../../shared/worlds';
-import { itemsInScripts, leversAsked, leversInScript, parseRoomScript } from './roomScript';
+import {
+  itemsInScripts,
+  leversAsked,
+  leversInScript,
+  parseRoomScript,
+  teleportsAsked
+} from './roomScript';
 import { parseAction } from './instructions';
 import { itemKind } from '../../shared/items';
 import { HAZARD_ABILITY, MIN_LEVEL_ABILITY } from '../../shared/abilities';
@@ -100,8 +106,9 @@ import {
  * | 50 | **Every item the realm names has a detail row** (2026-10-14). The detail index was kept to the items something refers to — an exit, a shop, a drop list, a script — which was right for the Reference card and wrong for the MegaMUD engine, whose item table is the realm's whole one as MegaMUD's `Items.md` was: an item nothing refers to (216 of mudrev's 2,833, `silver bracelet` lying in Town Square among them) was "added to known items" afresh each time it was seen, with no weight, price or kind. |
  * | 51 | **A monster's name as the realm spells it** (2026-10-14). Names were lowercased for the router's key, which is the form the wire gives after an article; but the realm prints a few with capitals and no article — `Demon Trolloc`, in Stanky Cave — and MegaMUD finds a monster by its name as printed, case and all (`0x46f9f0`, `strstr`). The MegaMUD engine took the trolloc for a player and never fought it. `BuiltMob.nc` carries the realm's spelling wherever it is not the lowercase. |
  * | 47 | **The coin a price is counted in.** `Items.Currency` was never read, so the realm's `Price` was a number in no unit and a counter's charge could not be known before `list` was spent on it: a quest run walked to the General Store for two waterskins, was quoted 50 silver nobles each against an empty purse, and stood there with 8.6 million copper in the Bank of Godfrey. `BuiltItem.cur` carries the code (0 copper … 4 runic, `BuyCommand.GetCopperValue`) where it is not copper, and `WorldGraph.priceAt` multiplies it through the shop's markup exactly as the server does, so the supplies errand knows what to withdraw before it walks — todo 00 |
+ * | 52 | **A conversation that moves you** (2026-10-19). A monster's greeting reaches a script like any other, and format 38 read the levers behind one and not the teleports: Dhelvanen, in the Luxurious Room 7/1008, answers `ask dhelvanen ready` with block 9028, which links to `teleport 1530 7` — the White Corridor, and map 15 where the Lady of the Dark is summoned — and nothing else in the realm reaches it, so the router had no way there at all. `teleportsAsked` reads every line a greeting's keywords reach into `ask <monster> <word>:<steps>`, each line on its own as a gate governs only its line (the barmaid's `adventure` is a line per class), and each becomes a command of the rooms `Summoned By` places the monster in, read by `parseRoomScript` and kept where it lands, so `linkPortals` walks it like any other |
  */
-export const REALM_FORMAT = 51;
+export const REALM_FORMAT = 52;
 
 /**
  * What `build-world.mjs` says about a world it is bundling: which of the two
@@ -1408,11 +1415,18 @@ export function buildRealm(source: RealmSource, today: string, shipped?: Shipped
    * literally *this number, on your map* — a monster standing at 12/1920 and
    * 5/1920 opens whichever of the two the player is in.
    */
+  /*
+   * And the ways a conversation moves you — format 52. Lines of the script
+   * of each room the realm places the monster in, read with that room's own
+   * (`teleportsAsked`): Dhelvanen's `ready` is the only way to the White
+   * Corridor and the Lady of the Dark.
+   */
+  const askedHere = new Map<string, string[]>();
   for (const row of source.table('Monsters')?.rows ?? []) {
     const greet = number(row['GreetTXT']);
     const who = text(row['Name']).trim();
     if (greet === null || greet <= 0 || who.length === 0) continue;
-    const asked = leversAsked(greet, who, (id) => {
+    const block = (id: number): { action: string; linkTo: number } | undefined => {
       const action = scripts.get(id);
       const linkTo = chains.get(id) ?? 0;
       /*
@@ -1422,12 +1436,18 @@ export function buildRealm(source: RealmSource, today: string, shipped?: Shipped
        * ends the walk one block short of every lever there is.
        */
       return action === undefined && linkTo === 0 ? undefined : { action: action ?? '', linkTo };
-    });
-    if (asked.length === 0) continue;
+    };
+    const asked = leversAsked(greet, who, block);
+    const moves = teleportsAsked(greet, who, block);
+    if (asked.length === 0 && moves.length === 0) continue;
 
     const places: Array<{ map: number; room: number }> = [];
     for (const match of text(row['Summoned By']).matchAll(/(\d+)\s*\/\s*(\d+)/g)) {
       places.push({ map: Number(match[1]), room: Number(match[2]) });
+    }
+    for (const place of places) {
+      const here = `${place.map}/${place.room}`;
+      askedHere.set(here, [...(askedHere.get(here) ?? []), ...moves]);
     }
     for (const lever of asked) {
       for (const place of places) {
@@ -1596,9 +1616,20 @@ export function buildRealm(source: RealmSource, today: string, shipped?: Shipped
             (id) => named.get(id),
             (id) => landings.get(id)
           );
+    const here = `${room['m'] as number}/${room['r'] as number}`;
+    // What the monsters placed here move you with when asked, where it lands.
+    const asked = askedHere.get(here);
+    if (asked !== undefined && asked.length > 0) {
+      for (const answer of parseRoomScript(
+        asked.join('\n'),
+        (id) => named.get(id),
+        (id) => landings.get(id)
+      )) {
+        if (answer.to !== undefined) answers.push(answer);
+      }
+    }
     if (answers.length > 0) scripted += 1;
 
-    const here = `${room['m'] as number}/${room['r'] as number}`;
     /*
      * The levers pulled *in* this room become words it answers, each saying
      * which exit it opens. A lever whose exit is somewhere else says so with

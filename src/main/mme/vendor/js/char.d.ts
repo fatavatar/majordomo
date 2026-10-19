@@ -10,6 +10,7 @@ export interface MmeChar {
   learnedSpells: number[];
   weaponVsChar: { ac: number; dr: number; dodge: number };
   spellVsMR: number;
+  attack: Record<string, unknown>;
   [field: string]: unknown;
 }
 export const EQ_SLOTS: string[];
