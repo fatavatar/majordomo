@@ -23,7 +23,7 @@ import type { PlayerFacts } from '../../../shared/players';
 import type { WalkProgress } from '../../../shared/walk';
 import type { LoopProgress } from '../../../shared/loops';
 import { State } from '../../megamud/states';
-import { ItemFlag, SpellFlag } from '../../megamud/flags';
+import { Darkness, ItemFlag, SpellFlag } from '../../megamud/flags';
 
 function room(map: number, number: number, name: string, exits: WorldRoom['exits']): WorldRoom {
   return { map, room: number, name, exits } as WorldRoom;
@@ -779,6 +779,73 @@ describe('the engine in a session', () => {
     vi.advanceTimersByTime(5500);
     expect(e.s.lost).toBe(1);
     expect(at.locates).toBeGreaterThan(0);
+    e.dispose();
+  });
+
+  /*
+   * Archer, leaving the Lady of the Dark through the White Corridor's unlit
+   * rooms (2026-10-19): a step refused in the dark, and MegaMUD's lost walk
+   * sent forty moves into walls without asking the realm where he was.
+   */
+  it('asks the realm where it is when lost in the dark, and walks on from its answer', async () => {
+    vi.useFakeTimers();
+    const { e, at, sent } = engine('1/1');
+    e.s.inGame = 1;
+    e.s.online = 1;
+    e.received('\x1b[1;36mTown Square\r\n\x1b[0;32mObvious exits: north, closed door east\r\n');
+    expect(e.walkTo('1/2')).toBeNull();
+    await planned();
+    expect(e.s.walking).toBe(1);
+    const before = at.locates;
+    // Two refusals where nothing can be seen: lost.
+    for (let i = 0; i < 2; i += 1) {
+      e.s.darkness = Darkness.Dark;
+      e.s.state = State.Moving;
+      e.received('There is no exit in that direction!\r\n');
+    }
+    expect(at.locates).toBe(before + 1);
+    expect(e.s.walking).toBe(0);
+    expect(e.s.lost).toBe(0);
+    // Our tracker's guess is not the answer: nothing goes on until it is read.
+    at.here = '1/3';
+    e.received('[HP=100]:');
+    expect(e.s.walking).toBe(0);
+    sent.length = 0;
+    e.located();
+    await planned();
+    expect(e.s.walking).toBe(1);
+    expect(e.s.path.steps!.map((st) => st.command)).toEqual(['w', 'n']);
+    // Refused again in the room the realm named: MegaMUD's own search.
+    for (let i = 0; i < 2; i += 1) {
+      e.s.darkness = Darkness.Dark;
+      e.s.state = State.Moving;
+      e.received('There is no exit in that direction!\r\n');
+    }
+    expect(at.locates).toBe(before + 1);
+    expect(e.s.lost).toBe(1);
+    e.dispose();
+  });
+
+  /*
+   * MegaMUD says only *There are no paths defined*; the planner knows why, and
+   * Archer's walk to the Lava Tube was refused with nothing else said
+   * (2026-10-19).
+   */
+  it('says why the planner found no way, beside MegaMUD’s own line', async () => {
+    vi.useFakeTimers();
+    const refused: Route = {
+      steps: [],
+      cost: 0,
+      blocked: true,
+      reason: 'Beyond opens only to "move boulder" said in Boulder Cave (1/9)'
+    };
+    const { e, shown } = engine('1/1', { '1/1>1/2': refused });
+    e.s.inGame = 1;
+    e.s.online = 1;
+    e.received('\x1b[1;36mTown Square\r\n\x1b[0;32mObvious exits: north, closed door east\r\n');
+    e.walkTo('1/2');
+    await planned();
+    expect(shown).toContain(`[${refused.reason}]`);
     e.dispose();
   });
 

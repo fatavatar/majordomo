@@ -3134,6 +3134,27 @@ export type RouteBlock =
     }
   | {
       /**
+       * A way only a word said in another room opens — a lever, a boulder —
+       * where the plan cannot fetch it: further than a route goes for one
+       * (`tuning.world.leverDetourCost`), or wanting an item a listed pack
+       * lacks. Before this a refusal over one said *the realm data joins no
+       * path*: the Lava Tube's only door opens to `move boulder` in 7/1000
+       * (2026-10-19), and the realm data joins it perfectly well.
+       */
+      kind: 'lever';
+      at: RoomId;
+      to: RoomId;
+      name: string;
+      /** The realm's phrase, and the room it is said in. */
+      say: string;
+      leverAt: RoomId;
+      leverName: string;
+      /** The item the word wants, where the listed pack lacks it. */
+      itemId?: number;
+      itemName?: string;
+    }
+  | {
+      /**
        * A quest counter the exit wants, against what `abil` said this
        * character holds.
        *
@@ -3373,6 +3394,12 @@ export function describeBlock(block: RouteBlock): string {
         .join(', ');
       return `${block.name} is locked — needs ${opens.join(' or ')}; ${mine}`;
     }
+    case 'lever': {
+      const where = `${block.leverName} (${block.leverAt})`;
+      return block.itemName === undefined
+        ? `${block.name} opens only to "${block.say}" said in ${where}, further than a route goes to fetch it`
+        : `${block.name} opens only to "${block.say}" said in ${where}, carrying ${block.itemName}`;
+    }
     case 'keptOut':
       return `${block.name} is kept out of — "${block.word}" is on your Keep Out Of list`;
     case 'unreachable':
@@ -3398,6 +3425,7 @@ export function blockItem(block: RouteBlock): { id: number; name: string } | nul
         ? null
         : { id: block.keyId, name: block.itemName };
     case 'carry':
+    case 'lever':
       return block.itemId === undefined || block.itemName === undefined
         ? null
         : { id: block.itemId, name: block.itemName };

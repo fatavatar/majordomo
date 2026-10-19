@@ -422,6 +422,12 @@ export class MegaEngine {
     until: number;
     /** Put aside for a way being planned (`route`), not for the room being located. */
     planning: boolean;
+    /**
+     * Put aside until the realm's answer is read (`lostInDark`): our tracker
+     * holds a room already, the one it guessed in the dark, and that is not
+     * the answer being waited for.
+     */
+    answer: boolean;
   } | null = null;
   /**
    * Ways planned (`plan`), by `from>to`: the route answered, or `pending`
@@ -532,6 +538,7 @@ export class MegaEngine {
       isRoom: (sig) => this.isRoom(sig),
       isStepRoom: (p, i) => this.isStepRoom(p, i),
       uncertain: (p, i) => this.uncertain(p, i),
+      lostInDark: () => this.lostInDark(),
       opensAWay: (name) => this.host.opensAWay?.(name) ?? false,
       caption: () => caption(this.s),
       forcible: (dir) => this.forcible(dir),
@@ -1017,12 +1024,19 @@ export class MegaEngine {
       parseData(this.s, this.t, text);
     });
     this.noteRoom();
+    // A room seen: out of the dark the realm placed us in.
+    if (this.s.darkness === Darkness.Lit) this.placedInDark = null;
     if (this.noteRun()) this.noteToggles();
     // Into the game with nowhere known: ask once, before anything wants a way.
     const entered = this.s.inGame !== 0 && !this.wasInGame;
     if (entered && this.host.here() === null) this.host.locate();
     this.wasInGame = this.s.inGame !== 0;
-    if (this.parked !== null && !this.parked.planning && this.host.here() !== null)
+    if (
+      this.parked !== null &&
+      !this.parked.planning &&
+      !this.parked.answer &&
+      this.host.here() !== null
+    )
       this.safely(() => this.unpark());
     this.noteToggles();
     this.noteGates();
@@ -1727,6 +1741,44 @@ export class MegaEngine {
   private askedWhere: string | null = null;
 
   /**
+   * `SessionHost.lostInDark`: a walk lost in the dark asks the realm where
+   * the character is and is put aside until it answers, then planned again
+   * from there (`located`) — where MegaMUD tries the exits blind. Not twice
+   * from the room the realm last named: refused again there, the way the
+   * data gives is not the realm's, and MegaMUD's own search is what is left.
+   */
+  private lostInDark(): number {
+    const s = this.s;
+    if (this.parked !== null || s.walking === 0) return 0;
+    const here = this.host.here();
+    if (here !== null && here === this.placedInDark) return 0;
+    if (!this.host.locate()) return 0;
+    this.host.logged?.('doing', 'Lost in the dark: asking the realm where we are');
+    s.lost = 0;
+    this.park(false, true);
+    s.walking = 0;
+    s.looping = 0;
+    s.roaming = 0;
+    return 1;
+  }
+
+  /** The room the realm named for a walk lost in the dark (`lostInDark`). */
+  private placedInDark: RoomId | null = null;
+
+  /**
+   * The realm has said where the character is, and our tracker has taken it:
+   * a walk put aside for the answer (`lostInDark`) is planned again from
+   * there.
+   */
+  located(): void {
+    const parked = this.parked;
+    if (parked === null || !parked.answer) return;
+    parked.answer = false;
+    this.placedInDark = this.host.here();
+    if (this.placedInDark !== null) this.safely(() => this.unpark());
+  }
+
+  /**
    * `SessionHost.clearWay`: a step of one of our paths whose exit is not
    * open: the levers the realm keeps in this room pulled a couple of times,
    * else a hidden exit searched for, the room looked at again after (a bare
@@ -1951,6 +2003,8 @@ export class MegaEngine {
           ? [standIn]
           : this.roomsWith(to).slice(0, 8);
     let unlocks: { needs: Route['needs']; room: RoomId } | null = null;
+    /** Why the first way refused was refused, the planner's own sentence. */
+    let why: string | null = null;
     for (const room of rooms) {
       if (room === here)
         return { flags: 0, path: this.makePath(this.routeName(), 'route', [], from, to), steps: 0 };
@@ -1958,7 +2012,10 @@ export class MegaEngine {
       if (plan === 'pending') pending = true;
       if (typeof plan !== 'string' && plan.blocked && plan.unlocks?.needs !== undefined)
         unlocks ??= { needs: plan.unlocks.needs, room };
-      if (typeof plan === 'string' || plan.blocked) continue;
+      if (typeof plan === 'string' || plan.blocked) {
+        why ??= typeof plan === 'string' ? plan : (plan.reason ?? null);
+        continue;
+      }
       if (best === null || plan.steps.length < best.steps.length) best = plan;
     }
     if (pending) {
@@ -1979,6 +2036,8 @@ export class MegaEngine {
           : { walkTo: unlocks.room };
       if (then !== null && this.fetchFor(unlocks?.needs, then))
         return { flags: RouteFlag.Cancelled, path: null, steps: -1 };
+      // Ours: why, beside MegaMUD's *There are no paths defined* (2026-10-19).
+      if (why !== null) this.host.show(`[${why}]`);
       return none;
     }
     const p = this.makePath(this.routeName(), 'route', [best], from, to);
@@ -2015,7 +2074,7 @@ export class MegaEngine {
   /** The planner's answers are in: what waited on them asks again. */
   private planArrived(): void {
     if ([...this.plans.values()].includes('pending')) return;
-    if (this.parked !== null && this.host.here() !== null) this.unpark();
+    if (this.parked !== null && !this.parked.answer && this.host.here() !== null) this.unpark();
     const loop = this.loopWaiting;
     this.loopWaiting = null;
     if (loop !== null) {
@@ -2079,7 +2138,7 @@ export class MegaEngine {
   }
 
   /** The walk put aside, as it stands, until the room is placed or the way planned. */
-  private park(planning: boolean): void {
+  private park(planning: boolean, answer = false): void {
     const s = this.s;
     this.parked = {
       detours: structuredClone(s.detours),
@@ -2088,7 +2147,8 @@ export class MegaEngine {
       roaming: s.roaming,
       lost: s.lost,
       until: Date.now() + LOCATE_WAIT_MS,
-      planning
+      planning,
+      answer
     };
   }
 

@@ -65,6 +65,17 @@ function noExit(s: Session): number {
     return 1;
   }
   s.darkMisses = 0;
+  /*
+   * Ours: the realm says where the character is (2026-10-19). Archer,
+   * leaving the Lady of the Dark through the White Corridor's unlit rooms,
+   * had a step refused and walked blind — forty moves into walls — while
+   * the realm would have named the room for asking.
+   */
+  if (s.host.lostInDark?.() === 1) {
+    s.darkTries = 0;
+    setState(s, State.Nothing);
+    return 1;
+  }
   const tries = s.darkTries;
   s.darkTries += 1;
   if (s.darkTries < 0x15) {

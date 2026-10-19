@@ -904,6 +904,21 @@ export function edgeBlock(
 const UNEVALUATED = 60;
 
 /**
+ * What one lever costs over the step it opens: one phrase the realm always
+ * answers, then the step — a text exit's price (`portalPenalty`), not a
+ * search's (2026-10-19). Priced with the search at 25 and 5 a lever, three
+ * levers in the Black House's own rooms and the Grand Stair's cost ninety
+ * steps of walking, and Archer, level 33 with the black star key, was sent
+ * 120 rooms round by the Dragon's Teeth Hills to the Lava Fields instead.
+ * A search is a roll of a skill that can fail many times over; a lever is
+ * not.
+ */
+const LEVER_COST = 3;
+
+/** What a hidden exit's search costs: a roll of a skill, sent until it shows. */
+const SEARCH_COST = 25;
+
+/**
  * Whether a hidden exit's levers want an item the pack does not hold.
  *
  * `missing` once the pack has been listed and lacks one; `unlisted` while
@@ -1147,8 +1162,8 @@ function statedPenalty(requirement: Requirement | null, traveller: Traveller): n
        *
        * An action-gated one costs the levers where the realm puts every one of
        * them in the room the exit leaves from, because `Walker.pullLevers`
-       * sends those too: it is the same rung, priced the same way, one command
-       * per lever. 150 of the shipped realm's 217 are that shape.
+       * sends those: one command per lever, which the realm answers every
+       * time (`LEVER_COST`). 150 of the shipped realm's 217 are that shape.
        *
        * Everything else stays expensive rather than impossible, which is what
        * this line has always said. The levers are somewhere else, and this
@@ -1158,8 +1173,8 @@ function statedPenalty(requirement: Requirement | null, traveller: Traveller): n
        * not — `Walker.fetchLever` then makes the errand when the step is
        * refused.
        */
-      if (requirement.searchable) return 25;
-      if (openableHere(requirement)) return 25 + 5 * requirement.actions!.length;
+      if (requirement.searchable) return SEARCH_COST;
+      if (openableHere(requirement)) return LEVER_COST * requirement.actions!.length;
       return 200;
     }
 
@@ -4369,7 +4384,7 @@ export class WorldGraph {
    * lever, by a character with no talisman.
    */
   private pullPrice(levers: readonly RemoteLever[], traveller: Traveller): number | null {
-    const open = 25 + 5 * levers.length;
+    const open = LEVER_COST * levers.length;
     const wanted = levers
       .map((lever) => lever.item)
       .filter((item): item is number => item !== undefined);
@@ -4423,6 +4438,18 @@ export class WorldGraph {
       ?.requirement?.actionsNeeded;
     let best: LeverErrand | null = null;
     const walker: Traveller = { ...traveller, noLeverErrands: true };
+    /*
+     * **How far the lever is, by the walk alone** (2026-10-19). The bound is
+     * a distance — a plain room 1, a search 26 — and the legs were measured
+     * with the lairs and room spells on the way priced in, so a character at
+     * part health met it in a room or two of lairs: the Lava Tube's only door
+     * opens on `move boulder` in 7/1000, ten plain rooms away, and Archer's
+     * walk to the Red Dragons loop from the Lady of the Dark was refused,
+     * *no way there at all*, while the loop's own legs, planned without the
+     * lairs, went through it. The legs are found by the walk; what waits on
+     * them is added to the price after (`riskAlong`), as the plan would.
+     */
+    const reach: Traveller = { ...walker, danger: undefined, hazard: undefined };
     const limit = tuning().world.leverDetourCost;
     /** The round through `order` from the door's room and back, priced, or null where a leg is too far. */
     const round = (order: RoomId[]): LeverErrand | null => {
@@ -4431,10 +4458,10 @@ export class WorldGraph {
       let price = 0;
       let at = from;
       for (const next of [...order, from]) {
-        const leg = this.leverLeg(at, next, walker, limit);
+        const leg = this.leverLeg(at, next, reach, limit);
         if (leg === null) return null;
         legs.push(leg);
-        price += leg.cost;
+        price += leg.cost + this.riskAlong(leg.cameFrom, at, next, traveller);
         if (next !== from) {
           const pulled = rooms.get(next)!;
           const pull = this.pullPrice(pulled, traveller);
@@ -4470,6 +4497,32 @@ export class WorldGraph {
     }
     held.set(key, best);
     return best;
+  }
+
+  /**
+   * What waits in the rooms a leg enters, priced as `stepCost` prices it: the
+   * lairs against this character and what each room does to whoever stands
+   * in it.
+   */
+  private riskAlong(
+    cameFrom: ReadonlyMap<RoomId, { prev: RoomId; exit: WorldExit | PortalExit }>,
+    from: RoomId,
+    to: RoomId,
+    traveller: Traveller
+  ): number {
+    if (traveller.danger === undefined && traveller.hazard === undefined) return 0;
+    let risk = 0;
+    for (let at = to; at !== from;) {
+      const room = this.rooms.get(at);
+      if (room !== undefined) {
+        if (traveller.danger !== undefined) risk += dangerPenalty(traveller.danger(room));
+        if (traveller.hazard !== undefined) risk += dangerPenalty(traveller.hazard(room));
+      }
+      const came = cameFrom.get(at);
+      if (came === undefined) break;
+      at = came.prev;
+    }
+    return risk;
   }
 
   /**
@@ -8605,6 +8658,38 @@ export class WorldGraph {
         // Not pruned, but priced as a wall: a door below both skills, which
         // the plan itself walks when nothing else leads there.
         const wall = edgeWall(exit.requirement, traveller);
+        /*
+         * Or a hidden way opened only by a word said in another room the plan
+         * cannot fetch (2026-10-19): too far, or wanting what the pack lacks.
+         * Named with the phrase and the room, where it was *no way there at
+         * all*. A door says what forces it as well, on its own block.
+         */
+        const elsewhere = this.leversFor(prev, exit.direction).filter((lever) => lever.at !== prev);
+        if (
+          elsewhere.length > 0 &&
+          leveredElsewhere(exit.requirement) &&
+          this.leverPrice(prev, exit.direction, traveller) === null
+        ) {
+          const lever = elsewhere[0]!;
+          const lacking =
+            lever.item !== undefined &&
+            traveller.packKnown === true &&
+            traveller.keys?.includes(lever.item) !== true
+              ? lever.item
+              : undefined;
+          const item = lacking === undefined ? undefined : this.item(lacking);
+          blocks.unshift({
+            kind: 'lever',
+            at: prev,
+            to: cursor,
+            name: this.rooms.get(cursor)?.name ?? cursor,
+            say: lever.say,
+            leverAt: lever.at,
+            leverName: lever.roomName || (this.rooms.get(lever.at)?.name ?? lever.at),
+            ...(lacking === undefined ? {} : { itemId: lacking }),
+            ...(item === undefined ? {} : { itemName: item.name })
+          });
+        }
         // Named as a wall only where nothing here opens it, the reading
         // `stepCost` priced it by. `Walker.pullLevers` sends the phrase.
         if (wall !== null && this.leverPrice(prev, exit.direction, traveller) === null) {

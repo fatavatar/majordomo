@@ -355,12 +355,13 @@ describe('edgePenalty', () => {
   /*
    * The other kind of hidden exit, once the levers are read — todo 01.
    *
-   * A passage this room can open costs the commands, exactly as a searchable
-   * one costs the search: `Walker.pullLevers` sends them, so the route is
-   * priced through it rather than around it. 150 of the shipped realm's gated
-   * exits are that shape.
+   * A passage this room can open costs the commands: `Walker.pullLevers`
+   * sends them, so the route is priced through it rather than around it. 150
+   * of the shipped realm's gated exits are that shape. **A command, not a
+   * search** (2026-10-19): the realm answers a lever every time, and priced
+   * as a search the Black House's three sent Archer 120 rooms round.
    */
-  it('prices a hidden exit this room can open like a search', () => {
+  it('prices a hidden exit this room can open as its commands, under a search', () => {
     const here = {
       kind: 'hidden' as const,
       raw: 'Hidden/Needs 1 Actions, any order',
@@ -369,8 +370,10 @@ describe('edgePenalty', () => {
       actions: [{ say: ['pull lever'] }]
     };
     const opaque = { kind: 'hidden' as const, raw: 'Hidden/Needs 2 Actions', searchable: false };
+    const searched = { kind: 'hidden' as const, raw: 'Hidden/Searchable', searchable: true };
     expect(edgePenalty(here, {})!).toBeLessThan(edgePenalty(opaque, {})!);
-    expect(edgePenalty(here, {})!).toBeGreaterThanOrEqual(25);
+    expect(edgePenalty(here, {})!).toBeGreaterThan(0);
+    expect(edgePenalty(here, {})!).toBeLessThan(edgePenalty(searched, {})!);
   });
 
   /* A lever two rooms away is a room this function cannot see, so the flat
@@ -2839,6 +2842,24 @@ describe('the levers that open an exit', () => {
     });
 
     /*
+     * How far the lever is goes by the walk, and what waits on the way is
+     * priced on top (2026-10-19). Measured with the lairs in, a guardroom
+     * worth a few hundred to a character at part health was further than
+     * `leverDetourCost`, and the only door into the Lava Tube — `move
+     * boulder` in 7/1000 — a wall: Archer's walk from the Lady of the Dark
+     * to the Red Dragons loop was refused as *no way there at all*.
+     */
+    it('reaches a lever past a lair, and prices the lair on the errand', () => {
+      const plain = barred('1/9').route('1/1', '1/2', { packKnown: true });
+      const lair = (room: WorldRoom): number | null => (room.room === 9 ? 0.5 : null);
+      const route = barred('1/9').route('1/1', '1/2', { packKnown: true, danger: lair });
+      expect(route.blocked).toBe(false);
+      expect(route.steps[1]!.pull?.say).toEqual(['lift portcullis']);
+      expect(route.cost).toBeGreaterThan(plain.cost + tuning().world.leverDetourCost);
+      expect(route.cost).toBeLessThan(tuning().world.wallCost);
+    });
+
+    /*
      * Planned from the door's room, the first leg retraces the way in when
      * the lever is off a room the plan already crossed — the Grand Stair's is
      * off 7/148, two rooms before the door. Those steps are taken out: the
@@ -2878,6 +2899,59 @@ describe('the levers that open an exit', () => {
      * Past `leverDetourCost` the lever is too far to plan: the wall stands,
      * and the walker's errand is what finds it, as it always was.
      */
+    /*
+     * A hidden way only a far word opens is named, the word and where it is
+     * said, rather than *the realm data joins no path* (2026-10-19): the Lava
+     * Tube's only door opens to `move boulder` in 7/1000.
+     */
+    it('names the word and its room when a far lever is the only way', () => {
+      const far = tuning().world.leverDetourCost + 5;
+      const corridor = Array.from({ length: far }, (_, index) => ({
+        m: 1,
+        r: 100 + index,
+        n: index + 1 === far ? 'Boulder Cave' : 'Long Corridor',
+        x: {
+          w: index === 0 ? { m: 1, r: 1 } : { m: 1, r: 99 + index },
+          ...(index + 1 < far ? { e: { m: 1, r: 101 + index } } : {})
+        },
+        ...(index + 1 === far
+          ? { cmd: [{ say: ['move boulder'], opens: { room: '1/1', direction: 'w' } }] }
+          : {})
+      }));
+      const graph = makeWorld([
+        {
+          m: 1,
+          r: 1,
+          n: 'Lava Tube',
+          x: {
+            w: {
+              m: 1,
+              r: 2,
+              i: 'Hidden/Needs 1 Actions, any order',
+              a: [{ say: ['move boulder'], at: { map: 1, room: 100 + far - 1 } }]
+            },
+            e: { m: 1, r: 100 }
+          }
+        },
+        { m: 1, r: 2, n: 'Dead End', x: {} },
+        ...corridor
+      ]);
+      const route = graph.route('1/1', '1/2', { packKnown: true });
+      expect(route.blocked).toBe(true);
+      expect(route.blocks).toEqual([
+        expect.objectContaining({
+          kind: 'lever',
+          name: 'Dead End',
+          say: 'move boulder',
+          leverAt: `1/${100 + far - 1}`,
+          leverName: 'Boulder Cave'
+        })
+      ]);
+      expect(describeBlock(route.blocks![0]!)).toBe(
+        `Dead End opens only to "move boulder" said in Boulder Cave (1/${100 + far - 1}), further than a route goes to fetch it`
+      );
+    });
+
     it('leaves it a wall when the lever is further than the router reaches', () => {
       const far = tuning().world.leverDetourCost + 5;
       const corridor = Array.from({ length: far }, (_, index) => ({
@@ -6266,7 +6340,7 @@ describe('a lever that needs an item', () => {
     const graph = makeWorld(passage());
     const carrying = graph.route(roomId(1, 1), roomId(1, 2), { packKnown: true, keys: [815] });
     expect(carrying.blocked).toBe(false);
-    expect(carrying.cost).toBe(1 + 25 + 5);
+    expect(carrying.cost).toBe(1 + 3);
     expect(carrying.steps[0]?.requirement?.actions?.[0]?.item).toBe(815);
 
     const unlisted = graph.route(roomId(1, 1), roomId(1, 2), { keys: [] });
@@ -7381,6 +7455,28 @@ describe('an item that teleports is an edge the router may walk', () => {
       classId: 4
     });
     expect(right.blocked).toBe(false);
+  });
+
+  /*
+   * Reported 2026-10-19: Archer, level 33 with the black star key, was walked
+   * from Silvermere to the Lava Fields by the Dragon's Teeth Hills — 289
+   * moves — where the Black House's are 169. Its three hidden ways open to a
+   * word said in the room, and a word was priced as a search.
+   */
+  it('goes through the Black House to the Lava Fields with the black star key, on the shipped realm', () => {
+    const graph = WorldGraph.load('resources/world/majormud.jsonl.gz');
+    const key = graph.itemIdNamed('black star key')!;
+    const route = graph.route(roomId(1, 1), roomId(7, 1288), {
+      level: 33,
+      packKnown: true,
+      keys: [key],
+      keepOut: { words: ['vortex'], allowed: [] }
+    });
+    expect(route.blocked).toBe(false);
+    expect(route.steps.some((step) => step.from === roomId(1, 1224) && step.command === 'e')).toBe(
+      true
+    );
+    expect(route.steps.length).toBeLessThan(200);
   });
 
   it('names the wall on the cheapest way out, and walks it once that is carried, on the shipped realm', () => {

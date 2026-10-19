@@ -416,6 +416,13 @@ export interface SessionHost {
    */
   uncertain?(p: PathRec, i: number): void;
   /**
+   * Ours: lost in the dark, a move refused twice where no room can be seen
+   * (`0x437ff0`): 1 when the realm was asked where the character is and the
+   * walk put aside until it answers, planned again from the room it names;
+   * 0 for MegaMUD's own blind tries.
+   */
+  lostInDark?(): number;
+  /**
    * Ours: whether the closed exit `dir` from here gives to picking or
    * bashing, by what the realm states of it; both when nothing is known.
    */

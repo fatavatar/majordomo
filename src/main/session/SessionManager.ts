@@ -4049,6 +4049,8 @@ export class SessionManager {
     const batchChanged = batch ? this.tracker.apply(batch, batch.rows) : false;
     const changed = lineChanged || batchChanged;
     if (changed) this.notePlaced();
+    // The realm's answer, taken: a walk the engine put aside for it goes on.
+    if (block.type === 'user-location' || block.type === 'user-profile') this.mega?.located();
     // The tracker records that a stat sheet would settle a buff ending; the
     // routine is what asks for one. Facts fan out, actions funnel in.
     if (this.tracker.takeSheetRequest()) {
