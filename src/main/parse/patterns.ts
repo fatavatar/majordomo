@@ -2996,10 +2996,18 @@ export const BATCH_RULES: BatchRule[] = [
        */
       /^(?:(?<resourceWord>Mana|Kai):\s+(?:\*\s*)?(?<mana>\d+)\/(?<manaMax>\d+))?\s*(?:Spellcasting:\s+(?<spellcasting>\d+)\s+)?Traps:\s+(?<traps>\d+)/,
       /^\s*Picklocks:\s+(?<picklocks>\d+)/,
-      /^Strength:\s+(?<strength>\d+)\s+Agility:\s+(?<agility>\d+)\s+Tracking:\s+(?<tracking>\d+)/,
+      /*
+       * A stat may carry the `*` the mana figures do, and hard against the
+       * colon: `Strength: *205    Agility:*150` and `Intellect:*105` on
+       * Fatty's sheet (2026-10-19), a stat items or spells have raised. Without
+       * it each line failed whole, the strength and agility stayed unknown,
+       * and MMUD Explorer swung his Mithril Hammer at agility 0 — fewer than
+       * the five swings he gets.
+       */
+      /^Strength:\s*(?:\*\s*)?(?<strength>\d+)\s+Agility:\s*(?:\*\s*)?(?<agility>\d+)\s+Tracking:\s*(?:\*\s*)?(?<tracking>\d+)/,
       // Captured from the live server; the ported qualifiers did not have these.
-      /^Intellect:\s+(?<intellect>\d+)\s+Health:\s+(?<health>\d+)\s+Martial Arts:\s+(?<martialArts>\d+)/,
-      /^Willpower:\s+(?<willpower>\d+)\s+Charm:\s+(?<charm>\d+)\s+MagicRes:\s+(?<magicRes>\d+)/
+      /^Intellect:\s*(?:\*\s*)?(?<intellect>\d+)\s+Health:\s*(?:\*\s*)?(?<health>\d+)\s+Martial Arts:\s*(?:\*\s*)?(?<martialArts>\d+)/,
+      /^Willpower:\s*(?:\*\s*)?(?<willpower>\d+)\s+Charm:\s*(?:\*\s*)?(?<charm>\d+)\s+MagicRes:\s*(?:\*\s*)?(?<magicRes>\d+)/
     ]
   }
 ];

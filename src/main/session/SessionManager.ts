@@ -1461,6 +1461,7 @@ export class SessionManager {
           return 'refused' in answer ? answer.refused : null;
         },
         looping: () => this.runningLoopName() !== null,
+        besideLair: (room) => this.besideLair(room),
         stopLoop: () => this.stopLapAndWalk(),
         alsoTake: (name) => this.mega?.alsoTake(name, true),
         stopTaking: (name) => this.mega?.alsoTake(name, false),
@@ -1473,7 +1474,13 @@ export class SessionManager {
         // To the room where the item is asked for (todo 806), walked alone.
         walkTo: (room) => {
           if (roomAddress(this.tracker.current.room) === room) return null;
-          return this.mega?.walkTo(room, false, true) ?? t('session.megamud.noEngine');
+          /*
+           * Not `this.mega?.walkTo(…) ?? …`: a walk begun answers null, and
+           * `??` took that for no engine — Archer's *Collect it first* walked
+           * and said *not run by the MegaMUD engine* (2026-10-19).
+           */
+          const mega = this.mega;
+          return mega === null ? t('session.megamud.noEngine') : mega.walkTo(room, false, true);
         },
         walking: () => this.walkingNow(),
         // The phrase in the `probe` band, as the quest run's act, and seen by
@@ -3361,6 +3368,7 @@ export class SessionManager {
               : t('session.loop.noRealmData'),
           fetchFirst: (items, then) => this.megaFetchFirst(items, then),
           opensAWay: (name) => this.opensAWay(name),
+          leaveFor: (name) => this.leaveFor(name),
           loopRooms: (name) => {
             const loop = this.loopNamed(name) ?? this.megaLoops.get(name);
             if (loop === undefined) return t('session.move.noSuchLoop', { name });
@@ -5235,7 +5243,13 @@ export class SessionManager {
     const asks = world.itemAsks(item.id, here, traveller);
     const { maxLoopRooms, clusterRadius } = tuning().hunting;
     const ring = { rooms: maxLoopRooms, radius: clusterRadius };
-    return { shops, asks, ...world.droppingPlaces(item, here, this.lapTraveller(state), ring) };
+    const drops = world.droppingPlaces(item, here, this.lapTraveller(state), ring);
+    // Nothing reachable yet: where it could be had, and what the way there wants.
+    if (shops.length > 0 || asks.length > 0 || drops.lairs.length > 0) {
+      return { shops, asks, ...drops };
+    }
+    const locked = world.lockedSource(item.id, here, traveller);
+    return { shops, asks, ...drops, ...(locked === null ? {} : { locked }) };
   }
 
   /**
@@ -5835,6 +5849,51 @@ export class SessionManager {
       'loop' in then ? mega.startLoop(then.loop) : mega.walkTo(then.walkTo, false, true)
     );
     if (refused !== null) this.sink.notice(refused);
+  }
+
+  /**
+   * A room one step from `room`, named as a loop stop: through an exit that
+   * asks nothing where there is one, else through whatever the room has —
+   * the dark-elf archmage's Ritual Chamber (8/558) has one way out, a door,
+   * which the walk opens and the planner prices like any other. Null where
+   * the room has no way out at all.
+   */
+  private besideLair(room: RoomId): string | null {
+    const world = this.world;
+    const here = world?.byId(room);
+    if (world === undefined || here === undefined) return null;
+    const beside = (exits: readonly WorldRoom['exits'][number][]): WorldRoom | undefined =>
+      exits
+        .map((exit) => world.byId(roomId(exit.map, exit.room)))
+        .find((next) => next !== undefined && roomId(next.map, next.room) !== room);
+    const plain = here.exits.filter(
+      (exit) => exit.requirement === null || exit.requirement === undefined
+    );
+    const next = beside(plain) ?? beside(here.exits);
+    return next === undefined ? null : `${next.name} ${roomId(next.map, next.room)}`;
+  }
+
+  /** Whether this character's item errand is after `name` (`ItemErrand.wants`). */
+  errandWants(name: string): boolean {
+    return this.itemErrand.wants(name);
+  }
+
+  /**
+   * Whether a party member's errand is fetching what lies here — told by the
+   * sessions around this one (`useParty`), which know the others.
+   */
+  private partyWants: (name: string) => boolean = () => false;
+
+  /** The sessions beside this one, asked what their errands are fetching (`SessionHost`). */
+  useParty(wants: (name: string) => boolean): void {
+    this.partyWants = wants;
+  }
+
+  /** An item on the floor left for the party member fetching it (2026-10-19). */
+  private leaveFor(name: string): boolean {
+    // Never for something this character's own errand is after.
+    if (this.errandWants(name)) return false;
+    return this.partyWants(name);
   }
 
   /**

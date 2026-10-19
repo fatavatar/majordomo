@@ -169,6 +169,23 @@ describe('items (D19, D20, D42, D43)', () => {
     expect(sent(out)).toEqual(['g shining steel key\r']);
   });
 
+  /* Bowel's collect-keys took the gate key Archer's errand had come for (2026-10-19). */
+  it('leaves an item on the floor for the party member fetching it', () => {
+    const { s, out } = game();
+    s.weightMax = 100;
+    s.weightCarried = 10;
+    s.MegaMud_AutoGet = 1;
+    const key = item(s, 'gate key', { flags: 2, weight: 1 });
+    const gem = item(s, 'opal', { flags: 2, weight: 1 });
+    s.room = [
+      Object.assign(newEntity(), { type: 3, count: 1, name: 'gate key', item: key }),
+      Object.assign(newEntity(), { type: 3, count: 1, name: 'opal', item: gem })
+    ];
+    (s.host as { leaveFor?: (name: string) => boolean }).leaveFor = (name) => name === 'gate key';
+    expect(collectItems(s)).toBe(1);
+    expect(sent(out)).toEqual(['g opal\r']);
+  });
+
   it('leaves what would take it past its encumbrance', () => {
     const { s, out } = game();
     s.weightMax = 100;

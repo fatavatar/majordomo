@@ -46,6 +46,25 @@ function stated() {
 }
 
 describe('stat (0x494e70)', () => {
+  /*
+   * Fatty's sheet, 2026-10-19: a raised stat starred, hard against the label.
+   * `0x4ad430` stops at the star, so MegaMUD read 0 for both, and the
+   * `"Intellect: "` it compares misses `Intellect:*105` altogether.
+   */
+  it('reads a starred stat, ours where MegaMUD reads none', () => {
+    const { s } = session();
+    s.inGame = 1;
+    for (const line of [
+      'Strength: *205    Agility:*150         Tracking:      313',
+      'Intellect:*105    Health:  146         Martial Arts:   67',
+      'Willpower:*130    Charm:   120         MagicRes:      118'
+    ])
+      statLine(s, line);
+    expect([s.Player_Strength, s.Player_Agility, s.Player_Tracking]).toEqual([205, 150, 313]);
+    expect([s.Player_Intellect, s.Player_Health, s.Player_MartialArts]).toEqual([105, 146, 67]);
+    expect([s.Player_Wisdom, s.Player_Charm, s.Player_MagicRes]).toEqual([130, 120, 118]);
+  });
+
   it('reads every column', () => {
     const { s } = stated();
     expect(s.Player_Surname).toBe('Fatterson');

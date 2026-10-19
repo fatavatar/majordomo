@@ -245,6 +245,13 @@ export function collectItems(s: Session): number {
   for (let i = 0; i < s.room.length; i += 1) {
     const e = s.room[i]!;
     if (e.type !== EntityType.Item || !e.item) continue;
+    /*
+     * Ours: left for the party member whose errand is fetching it, whatever
+     * says to take it here (2026-10-19). Bowel's collect-keys took the gate
+     * key Archer's *Collect it first* had come for, and Archer's errand
+     * waited on a key in somebody else's pack.
+     */
+    if (s.host.leaveFor?.(e.name) === true) continue;
     if (
       (e.item.flags & (ItemFlag.Collect | ItemFlag.NeededForPath | ItemFlag.Coin)) === 0 &&
       e.name !== s.itemPickingUp &&

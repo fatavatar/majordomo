@@ -4534,6 +4534,12 @@ automation:
     several: 'This way needs {items}; collecting each in turn before walking it.'
     asking: 'Going to {room}, {steps} steps away, to say "{say}" for {item}.'
     askingHere: 'Saying "{say}" here in {room} for {item}.'
+    # What the answer takes, fetched before it is asked (format 53).
+    takesFirst: '"{say}" in {room} takes {needs} for {item}; fetching that first.'
+    refusalTakesItself: 'Not collecting {item}: "{say}" takes {needs}, which comes only by way of {item} itself.'
+    # A source the way to which wants something carried first (2026-10-19).
+    lockedFirst: '{item} is had in {room}, and the way there needs {needs}; fetching that first.'
+    refusalLockedItself: 'Not collecting {item}: the way to {room} needs {needs}, which comes only by way of {item} itself.'
     reasonSay: 'collecting: {command}'
     reasonPackAfter: 'collecting: did it hand the item over?'
     refusalNotReached: 'Not collecting: the walk to {room} ended somewhere else.'

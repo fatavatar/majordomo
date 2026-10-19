@@ -51,6 +51,12 @@ export interface ItemSources extends DropSources {
    * or a room script that summons a dropper (todo 806). `WorldGraph.itemAsks`.
    */
   asks: readonly ItemAsk[];
+  /**
+   * Where it could be had that cannot be reached yet, and what the way there
+   * needs carried (`WorldGraph.lockedSource`) — asked only where nothing above
+   * is reachable. Fetched first, and this item after.
+   */
+  locked?: { room: RoomId; roomName: string; needs: readonly Wanted[] };
 }
 
 export interface ItemPlanner {
@@ -70,6 +76,11 @@ export interface ItemPlanner {
   buying(): boolean;
   /** Run a loop filed nowhere, as the hunt does. */
   runLoop(loop: Loop): string | null;
+  /**
+   * A room one plain step from `room`, as a loop names a stop (`Name map/room`),
+   * or null where none: the second stop of a hunt the realm gives one lair.
+   */
+  besideLair(room: RoomId): string | null;
   looping(): boolean;
   stopLoop(reason: string): void;
   /** Take this by name while the errand runs — session-scoped, never the file. */
@@ -128,6 +139,13 @@ type Phase =
       run: boolean;
       place: ItemAsk;
       said: boolean;
+      /**
+       * When the walk there was asked for, and whether it has been seen under
+       * way: the engine plans on the planner's thread, so for a moment after
+       * `walkTo` it is not walking yet, and *not walking, not there* is not
+       * *the walk ended somewhere else* until it has begun.
+       */
+      walk: { askedAt: number; begun: boolean };
       /** When the queue first refused the phrase, which bounds the retrying. */
       refusedAt: number | null;
       pack: PackCheck;
@@ -175,6 +193,19 @@ export class ItemErrand {
    * item is fetched once: the list is the way's, deduplicated by id. `run` is
    * *Run it*, carried to the walk the errand ends in.
    */
+  /**
+   * Whether this errand is after `name`: the item it is fetching or one still
+   * to come. Never when idle, nor once the pack holds what it came for and it
+   * is walking on. Names as the room prints them, so case aside.
+   */
+  wants(name: string): boolean {
+    const phase = this.phase;
+    if (phase.kind !== 'buying' && phase.kind !== 'hunting' && phase.kind !== 'asking')
+      return false;
+    const asked = name.trim().toLowerCase();
+    return [phase.item, ...phase.rest].some((item) => item.name.trim().toLowerCase() === asked);
+  }
+
   collect(
     items: readonly Wanted[],
     owes: Route | null,
@@ -200,11 +231,19 @@ export class ItemErrand {
         t('automation.collect.several', { items: missing.map((item) => item.name).join(', ') })
       );
     }
-    return this.fetch(first, missing.slice(1), owes, run);
+    return this.fetch(first, missing.slice(1), owes, run, state);
   }
 
   /** Start on one item, with `rest` still to come after it. */
-  private fetch(item: Wanted, rest: Wanted[], owes: Route | null, run: boolean): string | null {
+  private fetch(
+    item: Wanted,
+    rest: Wanted[],
+    owes: Route | null,
+    run: boolean,
+    state: CharacterState,
+    /** The items this one is being fetched for, so a price that leads back to one of them is refused. */
+    chain: readonly number[] = []
+  ): string | null {
     // Where the errand is taking this character afterwards, so the counter is
     // chosen by how far off *that* road it is rather than by how near it is to
     // where the character happens to be standing.
@@ -266,6 +305,27 @@ export class ItemErrand {
      */
     const ask = sources.asks[0];
     if (ask !== undefined) {
+      /*
+       * **What the answer takes, first** (format 53, 2026-10-19). The sleazy
+       * shopkeeper's `orb` is `takeitem 810` — a dark blue orb — before the
+       * adamantite and moldy keys, and asked empty-handed it gives nothing:
+       * Archer's errand would have walked there to be refused. The price is
+       * fetched like any other item, wherever the realm says it comes from,
+       * and this one is asked for after it.
+       */
+      const lacking = (ask.takes ?? []).filter((need) => carriedCount(state, need.name) === 0);
+      if (lacking.length > 0) {
+        const where = {
+          item: item.name,
+          say: ask.say,
+          room: ask.roomName,
+          needs: lacking.map((need) => need.name).join(', ')
+        };
+        return this.first(lacking, item, rest, owes, run, state, chain, {
+          notice: t('automation.collect.takesFirst', where),
+          circular: t('automation.collect.refusalTakesItself', where)
+        });
+      }
       const refused = this.planner.walkTo(ask.room);
       if (refused !== null) return this.refuse(item, refused);
       // A summoned dropper's loot is picked up for as long as the errand runs.
@@ -278,6 +338,7 @@ export class ItemErrand {
         run,
         place: ask,
         said: false,
+        walk: { askedAt: this.now(), begun: false },
         refusedAt: null,
         pack: packCheck()
       };
@@ -290,6 +351,28 @@ export class ItemErrand {
       return null;
     }
     const lair = sources.lairs[0];
+    /*
+     * **Nothing reachable yet, but somewhere the way can be opened** (2026-10-19).
+     * The dark-elf archmage is behind the Dark Tower's glowing key, and the
+     * captains who drop the opal brooch the key is given for are behind the
+     * gate key and the bloodstone orb: what the way needs is fetched first,
+     * and this asked for again after, with the pack as it is by then.
+     */
+    const locked = sources.locked;
+    if (lair === undefined && locked !== undefined) {
+      const lacking = locked.needs.filter((need) => carriedCount(state, need.name) === 0);
+      if (lacking.length > 0) {
+        const where = {
+          item: item.name,
+          room: locked.roomName,
+          needs: lacking.map((need) => need.name).join(', ')
+        };
+        return this.first(lacking, item, rest, owes, run, state, chain, {
+          notice: t('automation.collect.lockedFirst', where),
+          circular: t('automation.collect.refusalLockedItself', where)
+        });
+      }
+    }
     if (lair === undefined) {
       /*
        * Which of three it is, since each sends the player somewhere different
@@ -317,6 +400,17 @@ export class ItemErrand {
      * within reach that holds a dropper, nearest first.
      */
     const stops = sources.lairs.map((room) => ({ room: `${room.name} ${room.id}` }));
+    /*
+     * **One lair is a stop out and back** (2026-10-19). A loop wants two
+     * stops, and the dark-elf archmage — the only dropper of the dark blue
+     * orb the sleazy shopkeeper takes — has one lair: the errand was refused,
+     * *fewer than two stops*. A room beside it makes the lap a step out and
+     * a step back in, which is how a single lair is camped.
+     */
+    if (stops.length === 1) {
+      const beside = this.planner.besideLair(lair.id);
+      if (beside !== null) stops.push({ room: beside });
+    }
     const loop: Loop = { name: t('automation.collect.loopName', { item: item.name }), stops };
     // Picked up while the errand runs, and only while it runs.
     this.planner.alsoTake(item.name);
@@ -350,6 +444,36 @@ export class ItemErrand {
    * Said out loud, because an errand that stopped silently is a route the
    * player thinks is still owed.
    */
+  /**
+   * What `item` needs first — what an answer takes, or what the way to its
+   * source wants carried — fetched before it, in the order given, and `item`
+   * fetched after. Refused where one of them is the item itself or one it is
+   * being fetched for: a price that comes only by way of what it pays for.
+   */
+  private first(
+    lacking: readonly Wanted[],
+    item: Wanted,
+    rest: readonly Wanted[],
+    owes: Route | null,
+    run: boolean,
+    state: CharacterState,
+    chain: readonly number[],
+    say: { notice: string; circular: string }
+  ): string | null {
+    const circular = [item.id, ...chain];
+    if (lacking.some((need) => circular.includes(need.id))) return this.refuse(item, say.circular);
+    this.events.notice?.(say.notice);
+    const later = rest.filter((next) => !lacking.some((need) => need.id === next.id));
+    return this.fetch(
+      lacking[0]!,
+      [...lacking.slice(1), item, ...later],
+      owes,
+      run,
+      state,
+      circular
+    );
+  }
+
   abandon(reason: string): void {
     if (this.phase.kind === 'idle') return;
     const { item } = this.phase;
@@ -449,7 +573,7 @@ export class ItemErrand {
     const still = rest.filter((next) => carriedCount(state, next.name) === 0);
     const next = still[0];
     if (next !== undefined) {
-      this.fetch(next, still.slice(1), owes, run);
+      this.fetch(next, still.slice(1), owes, run, state);
       return;
     }
     // Nothing owed: a quest run's fetch, which plans its own next leg.
@@ -483,8 +607,21 @@ export class ItemErrand {
   private onAsking(phase: Extract<Phase, { kind: 'asking' }>): void {
     const { item, place, pack } = phase;
     if (!phase.said) {
-      if (this.planner.walking()) return;
+      if (this.planner.walking()) {
+        if (!phase.walk.begun) this.phase = { ...phase, walk: { ...phase.walk, begun: true } };
+        return;
+      }
       if (this.planner.here() !== place.room) {
+        /*
+         * Not yet begun is not ended (2026-10-19): Archer's errand said *going
+         * to Musty Store* and *the walk ended somewhere else* in one second,
+         * the engine still planning, and was walked there with nothing left
+         * to ask. Waited for until the walk is seen, or the handover's window
+         * passes without one.
+         */
+        const waiting =
+          !phase.walk.begun && this.now() - phase.walk.askedAt < tuning().walk.errandHandoverMs;
+        if (waiting) return;
         this.fail(item, t('automation.collect.refusalNotReached', { room: place.roomName }));
         return;
       }

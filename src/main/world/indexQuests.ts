@@ -169,6 +169,13 @@ export interface BuiltItemFrom {
   w?: string;
   at?: string;
   say?: string[];
+  /**
+   * What the answer takes, or wants carried, before it hands anything over:
+   * the line's `takeitem` and `checkitem` items (format 53). The sleazy
+   * shopkeeper's `orb` is `takeitem 810` — a dark blue orb — then the
+   * adamantite and moldy keys, and asked empty-handed it gives nothing.
+   */
+  tk?: number[];
 }
 
 /**
@@ -229,11 +236,13 @@ export function itemsInReach(read: BlocksInReach): {
           : owner.kind === 'room' && phrase.length > 0
             ? [phrase]
             : [];
+      const takes = itemsTakenInLine(line);
       const place: BuiltItemFrom = {
         k: owner.kind,
         ...maybe('w', owner.kind === 'room' ? undefined : owner.who),
         ...maybe('at', owner.room),
-        ...maybe('say', say.length > 0 ? say : undefined)
+        ...maybe('say', say.length > 0 ? say : undefined),
+        ...maybe('tk', takes.length > 0 ? takes : undefined)
       };
       for (const item of given) {
         const held = from.get(item);
@@ -244,8 +253,14 @@ export function itemsInReach(read: BlocksInReach): {
         // One owner is one place, however many of its lines hand the thing
         // over: block 1446 says `get roots`, `pick roots`, `pull roots`, `cut
         // roots` and `grab roots`, and they are one errand with five spellings.
+        // And one price: a word that wants the brooch is not the word that
+        // wants the orb, whoever says both.
         const twin = held.find(
-          (entry) => entry.k === place.k && entry.w === place.w && entry.at === place.at
+          (entry) =>
+            entry.k === place.k &&
+            entry.w === place.w &&
+            entry.at === place.at &&
+            (entry.tk ?? []).join(',') === (place.tk ?? []).join(',')
         );
         if (twin === undefined) {
           held.push(place);
@@ -431,6 +446,24 @@ function teleportInChain(
     at = block.linkTo;
   }
   return null;
+}
+
+/**
+ * What one script line takes, or wants carried, before it hands anything
+ * over: its `takeitem` and `checkitem` items up to the first `giveitem`
+ * (format 53). A block stops at the first step that fails, so these are the
+ * price of what follows them, and one after the handover is not.
+ */
+function itemsTakenInLine(line: string): number[] {
+  const taken: number[] = [];
+  for (const step of line.split(':')) {
+    const [verb, first] = step.trim().split(/\s+/);
+    if (verb === 'giveitem') break;
+    if (verb !== 'takeitem' && verb !== 'checkitem') continue;
+    const id = number(first);
+    if (id !== null && id > 0 && !taken.includes(id)) taken.push(id);
+  }
+  return taken;
 }
 
 /**

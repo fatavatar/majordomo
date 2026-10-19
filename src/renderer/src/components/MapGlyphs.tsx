@@ -207,9 +207,15 @@ export function Chevron({ x, y, up }: { x: number; y: number; up: boolean }): Re
   );
 }
 
-/** Where a portal sits by its room: off its left, stacked outward. */
+/**
+ * Where a portal sits by its room: off its left, the second above it and the
+ * third below, in the gap before the next room (2026-10-19). Stacked outward
+ * as mudmaps stacks them, a room with three — Jael's, since the realm's
+ * conversations became teleports — put its third ring on the room beside it.
+ */
 export function portalAt(x: number, y: number, r: number, slot = 0) {
-  return { x: x - r - GAP.portal - slot * GAP.portalStep, y };
+  const row = slot === 0 ? 0 : (slot % 2 === 1 ? -1 : 1) * Math.ceil(slot / 2);
+  return { x: x - r - GAP.portal, y: y + row * GAP.portalStep };
 }
 
 /** A room command that moves you: a dashed ring with a dot in it. */

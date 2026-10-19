@@ -7619,6 +7619,33 @@ describe('lives, and the word for the load', () => {
   });
 
   /*
+   * Fatty's sheet, 2026-10-19: a raised stat starred, hard against the colon.
+   * Unread, his agility was nobody's and the Explorer swung his hammer at 0.
+   */
+  it('reads the stats the sheet marks with a star', () => {
+    const tracker = play([
+      'Name: Fatty Fatterson                  Lives/CP:      9/0    ',
+      'Race: Serpentkin  Exp: 34405449823     Perception:    218',
+      'Class: Skald      Level: 87            Stealth:         0',
+      'Hits:  1378/1455  Armour Class: 167/54 Thievery:        0',
+      'Mana: * 256/290   Spellcasting: 378    Traps:         274',
+      '                                       Picklocks:     218',
+      'Strength: *205    Agility:*150         Tracking:      313',
+      'Intellect:*105    Health:  146         Martial Arts:   67',
+      'Willpower:*130    Charm:   120         MagicRes:      118',
+      '[HP=1378/MA=256]:'
+    ]);
+    expect(tracker.current.progress).toMatchObject({
+      strength: 205,
+      agility: 150,
+      intellect: 105,
+      health: 146,
+      willpower: 130,
+      charm: 120
+    });
+  });
+
+  /*
    * Skinny, 2026-10-06: the last sheet said 810, a buff wore off, and `med`
    * at `MA=760` was refused 131 times until the next sheet said 760.
    */

@@ -7463,6 +7463,48 @@ describe('an item that teleports is an edge the router may walk', () => {
    * moves — where the Black House's are 169. Its three hidden ways open to a
    * word said in the room, and a word was priced as a search.
    */
+  /*
+   * Archer's *Collect it first* for the sleazy shopkeeper's keys (2026-10-19):
+   * the dark blue orb he takes is dropped only by the dark-elf archmage, in
+   * the Ritual Chamber behind the Dark Tower's glowing key, which he gives for
+   * an opal brooch the captains drop behind the gate key and bloodstone orb.
+   * Asked of each link in turn, with what the errand has brought back by then,
+   * the realm answers the order to fetch them in.
+   */
+  it('names what the way to a locked source needs, link by link, on the shipped realm', () => {
+    const graph = WorldGraph.load('resources/world/majormud.jsonl.gz');
+    const archer: Traveller = {
+      level: 38,
+      strength: 120,
+      pickSkill: 0,
+      forcing: { pick: false, bash: true },
+      packKnown: true,
+      keys: []
+    };
+    const carrying = (...keys: number[]): Traveller => ({ ...archer, keys });
+    const needs = (item: number, traveller: Traveller) =>
+      graph.lockedSource(item, roomId(1, 1), traveller)?.needs.map((need) => need.name) ?? null;
+    const ORB = 810;
+    expect(needs(ORB, archer)).toEqual(['bloodstone orb', 'gate key', 'glowing key']);
+    // Through the gate with the orb: only the tower's key between him and the archmage.
+    expect(needs(ORB, carrying(807, 806))).toEqual(['glowing key']);
+    // The archmage's room is no lair until the tower is open, and one after.
+    const ring = { rooms: 8, radius: 3 };
+    expect(graph.droppingPlaces({ id: ORB }, roomId(1, 1), carrying(807, 806), ring).lairs).toEqual(
+      []
+    );
+    expect(
+      graph
+        .droppingPlaces({ id: ORB }, roomId(1, 1), carrying(807, 806, 808), ring)
+        .lairs.map((lair) => lair.id)
+    ).toEqual([roomId(8, 558)]);
+    // The brooch for the key, and the key for the brooch, are reachable then.
+    expect(needs(811, carrying(807, 806))).toBeNull();
+    expect(graph.itemAsks(808, roomId(1, 1), carrying(807, 806)).map((ask) => ask.room)).toEqual([
+      roomId(8, 486)
+    ]);
+  });
+
   it('goes through the Black House to the Lava Fields with the black star key, on the shipped realm', () => {
     const graph = WorldGraph.load('resources/world/majormud.jsonl.gz');
     const key = graph.itemIdNamed('black star key')!;

@@ -13,9 +13,17 @@ import type { Session } from '../Session';
 import { State } from '../states';
 import { MessageFlag, PlayerFlag } from '../flags';
 
-/** `0x4ad430` at column `at`: the number there, and the text after it. */
+/**
+ * `0x4ad430` at column `at`: the number there, and the text after it.
+ *
+ * Ours: past the `*` the realm puts before a raised stat (2026-10-19).
+ * Fatty's sheet reads `Strength: *205    Agility:*150`, the star where the
+ * number's first column is, and `0x4ad430` stops at it: MegaMUD reads both
+ * as 0, and so did this, for every character with a stat items or spells
+ * have raised.
+ */
 function numberAt(line: string, at: number): [number, string] {
-  const text = line.slice(at);
+  const text = line.slice(at).replace(/^ *\* */, '');
   const [n, end] = leadingNumber(text);
   return [n, text.slice(end)];
 }
@@ -116,19 +124,24 @@ export function statLine(s: Session, line: string): number {
     s.Player_Picklocks = numberAt(line, 0x34)[0];
     return 1;
   }
-  if (indexOf(line, 'Strength: ') === 0) {
+  /*
+   * Ours: the label without the space MegaMUD compares (`"Intellect: "`),
+   * because a starred stat takes it — `Intellect:*105`, `Willpower:*130` —
+   * and the line went unread (2026-10-19).
+   */
+  if (indexOf(line, 'Strength:') === 0) {
     s.Player_Strength = numberAt(line, 10)[0];
     s.Player_Agility = numberAt(line, 0x1a)[0];
     s.Player_Tracking = numberAt(line, 0x34)[0];
     return 1;
   }
-  if (indexOf(line, 'Intellect: ') === 0) {
+  if (indexOf(line, 'Intellect:') === 0) {
     s.Player_Intellect = numberAt(line, 10)[0];
     s.Player_Health = numberAt(line, 0x1a)[0];
     s.Player_MartialArts = numberAt(line, 0x34)[0];
     return 1;
   }
-  if (indexOf(line, 'Wisdom: ') !== 0 && indexOf(line, 'Willpower: ') !== 0) return 0;
+  if (indexOf(line, 'Wisdom:') !== 0 && indexOf(line, 'Willpower:') !== 0) return 0;
   s.Player_Wisdom = numberAt(line, 10)[0];
   s.Player_Charm = numberAt(line, 0x1a)[0];
   s.Player_MagicRes = numberAt(line, 0x34)[0];

@@ -205,6 +205,8 @@ export interface MegaEngineHost {
    * opens a way of this realm and the pack lacks it (`movement.collectKeys`).
    */
   opensAWay?(name: string): boolean;
+  /** Ours: an item left on the floor for a party member whose errand is fetching it. */
+  leaveFor?(name: string): boolean;
 }
 
 /** What `MegaEngine.statsReport` gives: what only the engine works out. */
@@ -540,6 +542,7 @@ export class MegaEngine {
       uncertain: (p, i) => this.uncertain(p, i),
       lostInDark: () => this.lostInDark(),
       opensAWay: (name) => this.host.opensAWay?.(name) ?? false,
+      leaveFor: (name) => this.host.leaveFor?.(name) ?? false,
       caption: () => caption(this.s),
       forcible: (dir) => this.forcible(dir),
       clearWay: (p, i, dir) => this.clearWay(p, i, dir),

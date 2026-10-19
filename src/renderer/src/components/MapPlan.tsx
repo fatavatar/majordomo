@@ -789,20 +789,17 @@ const Picture = memo(function Picture({
  */
 function awayMarks(node: MapNode): ReactNode[] {
   const r = tuning().mapRoomRadius;
-  const slots = { up: 0, down: 0, teleport: 0 };
-  const marks = (node.away ?? []).map((away) => {
-    const slot = slots[away.kind]++;
-    const at =
-      away.kind === 'teleport'
-        ? portalAt(node.x, node.y, r, slot)
-        : chevronAt(node.x, node.y, r, away.kind === 'up', slot);
-    const where =
-      away.kind === 'up'
-        ? t('cards.map.away.up', { roomName: away.name })
-        : away.kind === 'down'
-          ? t('cards.map.away.down', { roomName: away.name })
-          : t('cards.map.away.teleport', { command: away.command, roomName: away.name });
-    return (
+  const slots = { up: 0, down: 0 };
+  const ways = node.away ?? [];
+  const marks: ReactNode[] = [];
+  for (const away of ways) {
+    if (away.kind === 'teleport') continue;
+    const up = away.kind === 'up';
+    const at = chevronAt(node.x, node.y, r, up, slots[away.kind]++);
+    const where = up
+      ? t('cards.map.away.up', { roomName: away.name })
+      : t('cards.map.away.down', { roomName: away.name });
+    marks.push(
       <g
         className="map-mark"
         data-gated={away.obstacle === undefined ? undefined : 'true'}
@@ -810,14 +807,37 @@ function awayMarks(node: MapNode): ReactNode[] {
         key={`${node.id}:${away.kind}:${away.to}`}
       >
         <title>{away.obstacle === undefined ? where : `${where} — ${away.obstacle.detail}`}</title>
-        {away.kind === 'teleport' ? (
-          <Portal x={at.x} y={at.y} />
-        ) : (
-          <Chevron up={away.kind === 'up'} x={at.x} y={at.y} />
-        )}
+        <Chevron up={up} x={at.x} y={at.y} />
       </g>
     );
-  });
+  }
+  /*
+   * **A room's teleports are one ring**, every one of them in its title
+   * (2026-10-19). Since the realm's conversations became teleports a room
+   * holds up to three — Jael's — and a ring each, stacked by the room's side,
+   * sat on the room beside it and on the character's own halo: a cluster of
+   * dashed rings nobody could read. Gated only where every one wants
+   * something; one free way is a free way.
+   */
+  const teleports = ways.filter((away) => away.kind === 'teleport');
+  if (teleports.length > 0) {
+    const at = portalAt(node.x, node.y, r);
+    const said = teleports.map((away) => {
+      const where = t('cards.map.away.teleport', { command: away.command, roomName: away.name });
+      return away.obstacle === undefined ? where : `${where} — ${away.obstacle.detail}`;
+    });
+    marks.push(
+      <g
+        className="map-mark"
+        data-gated={teleports.every((away) => away.obstacle !== undefined) ? 'true' : undefined}
+        data-reach="jump"
+        key={`${node.id}:teleport`}
+      >
+        <title>{said.join('\n')}</title>
+        <Portal x={at.x} y={at.y} />
+      </g>
+    );
+  }
   // A way up or down the realm names no room for: its chevron, saying nothing more.
   for (const up of [true, false]) {
     const kind = up ? 'up' : 'down';

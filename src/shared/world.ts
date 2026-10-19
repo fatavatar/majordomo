@@ -1010,6 +1010,12 @@ export type ItemHandover = {
   /** The words that reach it. A death has none: nothing is said. */
   say?: string[];
   /**
+   * What the answer takes, or wants carried, before it hands this over, by
+   * the realm's item id (format 53): the sleazy shopkeeper's `orb` takes a
+   * dark blue orb for the adamantite and moldy keys.
+   */
+  takes?: number[];
+  /**
    * What the way to that room demands be carried, outermost frontier first.
    *
    * Joined by the **quest book** alone (`WorldGraph.joinStep`), which is the
@@ -1164,6 +1170,8 @@ export interface ItemAsk {
   say: string;
   /** The dropper the phrase summons, where it is a summons rather than a handover. */
   summons?: string;
+  /** What the answer takes, or wants carried, first — fetched before it is asked (format 53). */
+  takes?: Array<{ id: number; name: string }>;
   /** How many moves from where the character stood, for the sentence. */
   steps: number;
 }

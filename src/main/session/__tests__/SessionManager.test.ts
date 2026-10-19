@@ -1374,6 +1374,86 @@ describe('a listing the player has the client draw', () => {
   });
 });
 
+describe('the second stop of a hunt the realm gives one lair', () => {
+  function worldOf(rooms: Array<Record<string, unknown>>): WorldGraph {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mudengine-world-'));
+    const file = path.join(dir, 'rooms.jsonl.gz');
+    fs.writeFileSync(
+      file,
+      zlib.gzipSync(
+        [
+          JSON.stringify({ v: 1, source: 'test', rooms: rooms.length, generatedAt: 'x' }),
+          ...rooms.map((room) => JSON.stringify(room))
+        ].join('\n') + '\n'
+      )
+    );
+    const graph = WorldGraph.load(file);
+    fs.rmSync(dir, { recursive: true, force: true });
+    return graph;
+  }
+  const beside = (world: WorldGraph, room: string): string | null => {
+    const { sink } = collect();
+    manager = new SessionManager(sink, world);
+    return (manager as unknown as { besideLair(room: string): string | null }).besideLair(room);
+  };
+
+  /* The dark-elf archmage's Ritual Chamber (8/558): one way out, a door (2026-10-19). */
+  it('steps through the one door where that is the only way out', () => {
+    const world = worldOf([
+      {
+        m: 8,
+        r: 558,
+        n: 'Ritual Chamber',
+        x: { n: { m: 8, r: 557, i: 'Door [51 picklocks/strength]' } }
+      },
+      { m: 8, r: 557, n: 'Spiral Stairway', x: { s: { m: 8, r: 558 } } }
+    ]);
+    expect(beside(world, '8/558')).toBe('Spiral Stairway 8/557');
+  });
+
+  it('prefers a way out that asks nothing, and says none where there is no way out', () => {
+    const world = worldOf([
+      {
+        m: 1,
+        r: 1,
+        n: 'Den',
+        x: { n: { m: 1, r: 2, i: 'Door [51 picklocks/strength]' }, e: { m: 1, r: 3 } }
+      },
+      { m: 1, r: 2, n: 'Hall', x: {} },
+      { m: 1, r: 3, n: 'Yard', x: {} }
+    ]);
+    expect(beside(world, '1/1')).toBe('Yard 1/3');
+    expect(beside(world, '1/3')).toBeNull();
+  });
+});
+
+describe('the item errand walking by the engine', () => {
+  /*
+   * Archer, 2026-10-19: *Collect it first* walked off for the bloodstone orb
+   * and the panel said *not run by the MegaMUD engine*. The errand's walk
+   * answered `walkTo(…) ?? noEngine`, and a walk begun answers null.
+   */
+  it('says nothing when the walk to an item begins, and refuses only without an engine', () => {
+    const { sink } = collect();
+    manager = new SessionManager(sink);
+    const errand = (
+      manager as unknown as {
+        itemErrand: { planner: { walkTo(room: string): string | null } };
+      }
+    ).itemErrand;
+    expect(errand.planner.walkTo('1/2')).toContain('MegaMUD engine');
+    manager.useMegaMud({
+      settings: defaultSettings(),
+      data: { monsters: [], items: [], spells: [] },
+      grants: {}
+    });
+    const mega = (manager as unknown as { mega: MegaEngine }).mega;
+    const walkTo = vi.spyOn(mega, 'walkTo').mockReturnValue(null);
+    expect(errand.planner.walkTo('1/2')).toBeNull();
+    expect(walkTo).toHaveBeenCalledWith('1/2', false, true);
+  });
+});
+
 describe('a quiet command asked from a card', () => {
   /* The engine's pending list takes a command once (`0x48ab80`): a repeat of a
      question still waiting is not sent, and the palette is told so. */

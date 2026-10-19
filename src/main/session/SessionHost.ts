@@ -529,6 +529,7 @@ export class SessionHost {
     manager.useMegaMud(mega?.setup ?? null);
     const movement = this.options.movement;
     if (movement) manager.useMovementBook(movement.get(id), (m) => movement.set(id, m));
+    manager.useParty((item) => this.partyFetching(manager, item));
     const slot: SessionSlot = {
       id,
       manager,
@@ -706,6 +707,29 @@ export class SessionHost {
     slot.backscroll.close();
     this.slots.delete(id);
     this.options.publishRoster();
+  }
+
+  /**
+   * Whether a party member of `manager`'s character, played here too, has an
+   * errand fetching `item` (2026-10-19): Bowel's collect-keys took the gate
+   * key Archer's *Collect it first* had come for. In one party as both of
+   * them list it — each the other's member — so a stranger's errand, or one
+   * across two realms that share a name, leaves nothing on the floor.
+   */
+  private partyFetching(manager: SessionManager, item: string): boolean {
+    const me = manager.character;
+    const mine = new Set(me.party.members.map((member) => member.name.toLowerCase()));
+    if (me.name === null || mine.size < 2) return false;
+    const name = me.name.toLowerCase();
+    for (const slot of this.slots.values()) {
+      const other = slot.manager;
+      if (other === manager || other.character.name === null) continue;
+      if (!mine.has(other.character.name.toLowerCase())) continue;
+      if (!other.character.party.members.some((member) => member.name.toLowerCase() === name))
+        continue;
+      if (other.errandWants(item)) return true;
+    }
+    return false;
   }
 
   /** Quitting. The only thing that ends a session other than an explicit unload. */

@@ -439,6 +439,11 @@ export interface SessionHost {
    */
   opensAWay?(name: string): boolean;
   /**
+   * Ours: an item on the floor left where it lies, because a party member's
+   * errand is fetching it (2026-10-19).
+   */
+  leaveFor?(name: string): boolean;
+  /**
    * `0x482fc0`'s file: a path by its name (a `route`'s among them); the
    * paths known (`Session.paths`) are looked in when this is absent or null.
    */

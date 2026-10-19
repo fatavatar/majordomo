@@ -971,6 +971,23 @@ function buyingRank(place: BuyingPlace, dearerSteps: number): number {
 }
 
 /**
+ * Whether a way priced at `cost` is one the character can walk: under the
+ * wall the router charges for a door it cannot force or a deadly room, which
+ * it walks only when nothing else leads there (2026-10-19). A source reached
+ * only so — the dark-elf archmage behind the Dark Tower's glowing key — is no
+ * source yet, and an errand sent there walks into the door.
+ */
+function unwalled(cost: number, traveller?: Traveller): boolean {
+  if (cost < tuning().world.wallCost) return true;
+  /*
+   * Unless nobody has read the skills: an unread strength and picklocks grade
+   * every door the realm lets be forced as a wall (`gradedCost`), which says
+   * nothing about this one, and unknown never blocks.
+   */
+  return traveller !== undefined && traveller.strength == null && traveller.pickSkill == null;
+}
+
+/**
  * What a lair costs to route through, from what one pass is expected to take.
  *
  * A share of the health the character has now (`Traveller.danger`), priced
@@ -2866,7 +2883,9 @@ export class WorldGraph {
       const reach = head.get(id);
       // Nothing the router can walk leads there, so there is no detour to
       // state. Left out rather than ranked last: a figure would be a fiction.
-      if (reach === undefined) continue;
+      // Nor through a wall: a door the character cannot open is no way there
+      // (`unwalled`, 2026-10-19).
+      if (reach === undefined || !unwalled(reach.cost, traveller)) continue;
       const shop = room.shop === undefined ? undefined : this.shops.get(room.shop);
       if (shop === undefined) continue;
       let detour = reach.cost;
@@ -5864,7 +5883,7 @@ export class WorldGraph {
     return places
       .flatMap((place) => {
         const priced = reach.get(place.room);
-        return priced === undefined ? [] : [{ place, priced }];
+        return priced === undefined || !unwalled(priced.cost, traveller) ? [] : [{ place, priced }];
       })
       .sort((a, b) => a.priced.cost - b.priced.cost || a.place.room.localeCompare(b.place.room))
       .map(({ place, priced }) => ({ ...place, steps: priced.moves }));
@@ -5880,16 +5899,19 @@ export class WorldGraph {
    */
   private askPlaces(item: number): Array<Omit<ItemAsk, 'steps'>> {
     const found: Array<Omit<ItemAsk, 'steps'>> = [];
-    const add = (room: RoomId, say: string, summons?: string): void => {
+    const add = (room: RoomId, say: string, summons?: string, takes?: number[]): void => {
       const known = this.rooms.get(room);
       if (known === undefined || found.some((entry) => entry.room === room && entry.say === say)) {
         return;
       }
+      // Named, for the sentence and the pack: the realm's own names.
+      const taken = (takes ?? []).map((id) => ({ id, name: this.item(id)?.name ?? `#${id}` }));
       found.push({
         room,
         roomName: known.name,
         say,
-        ...(summons === undefined ? {} : { summons })
+        ...(summons === undefined ? {} : { summons }),
+        ...(taken.length > 0 ? { takes: taken } : {})
       });
     };
     for (const handover of this.items.get(item)?.from ?? []) {
@@ -5898,9 +5920,9 @@ export class WorldGraph {
       if (at === null || word === undefined) continue;
       const room = roomId(at.map, at.room);
       if (handover.kind === 'asked' && handover.who !== undefined) {
-        add(room, `ask ${handover.who} ${word}`);
+        add(room, `ask ${handover.who} ${word}`, undefined, handover.takes);
       } else if (handover.kind === 'said') {
-        add(room, word);
+        add(room, word, undefined, handover.takes);
       }
     }
     if (this.summonScripts === null) {
@@ -6009,9 +6031,9 @@ export class WorldGraph {
     }
     for (const [id, place] of summoned) if (!spawns.has(id)) spawns.set(id, place);
     if (spawns.size === 0) return { droppers, lairs: [] };
-    const priced = [...this.sweepTo(from, new Set(spawns.keys()), traveller)].sort(
-      (a, b) => a[1].cost - b[1].cost || a[1].moves - b[1].moves || a[0].localeCompare(b[0])
-    );
+    const priced = [...this.sweepTo(from, new Set(spawns.keys()), traveller)]
+      .filter(([, reach]) => unwalled(reach.cost, traveller))
+      .sort((a, b) => a[1].cost - b[1].cost || a[1].moves - b[1].moves || a[0].localeCompare(b[0]));
     const first = priced[0];
     if (first === undefined) return { droppers, lairs: [] };
     const around = this.withinSteps(first[0], ring.radius, traveller);
@@ -7167,8 +7189,15 @@ export class WorldGraph {
     const doors = blocks.some(
       (block) => block.kind === 'key' || block.kind === 'door' || block.kind === 'carry'
     );
+    /*
+     * **And asked by an errand whatever the refusal names** (2026-10-19). The
+     * dark-elf archmage's Ritual Chamber explained itself by the level-40
+     * Negative Power Plane, a gate no fetching opens, so nobody asked whether
+     * keys went round — and the Dark Tower's glowing key, gate key and
+     * bloodstone orb do. A reader's alternatives keep the cheaper rule above.
+     */
     const unlocks =
-      (options.alternatives === true || options.unlocks === true) && doors
+      options.unlocks === true || (options.alternatives === true && doors)
         ? (this.unlocked(from, to, goal, others, blocks, walkable.drawsAhead) ??
           this.keyedWay(from, to, goal, null, others, walkable.drawsAhead))
         : null;
@@ -7661,23 +7690,85 @@ export class WorldGraph {
    * reach — which is not something to send anybody for.
    */
   private fetchPrice(item: number, from: RoomId, traveller: Traveller): number | null {
-    const rooms = new Set<RoomId>(this.stockRooms(item).map((room) => roomId(room.map, room.room)));
-    for (const name of this.sourcesOf({ id: item }).mobs) {
-      const mob = this.mob(name);
-      if (mob === undefined) continue;
-      // And, for a dropper only ever summoned, whatever summons it (todo 806).
-      for (const who of [mob, ...this.summonersOf(mob)]) {
-        for (const { room } of this.spawnRoomsOf(who)) rooms.add(roomId(room.map, room.room));
-      }
-    }
-    // And where saying something gets it.
-    for (const { room } of this.askPlaces(item)) rooms.add(room);
+    const rooms = this.fetchRooms(item);
     if (rooms.size === 0) return null;
     let best: number | null = null;
     for (const { cost } of this.sweepTo(from, rooms, traveller).values()) {
       if (best === null || cost < best) best = cost;
     }
     return best;
+  }
+
+  /**
+   * Every room this item can be had in: a counter that stocks it, a room the
+   * realm places a monster that drops it (or whatever summons one only ever
+   * summoned, todo 806), and where saying something gets it.
+   */
+  private fetchRooms(item: number): Set<RoomId> {
+    const rooms = new Set<RoomId>(this.stockRooms(item).map((room) => roomId(room.map, room.room)));
+    for (const name of this.sourcesOf({ id: item }).mobs) {
+      const mob = this.mob(name);
+      if (mob === undefined) continue;
+      for (const who of [mob, ...this.summonersOf(mob)]) {
+        for (const { room } of this.spawnRoomsOf(who)) rooms.add(roomId(room.map, room.room));
+      }
+    }
+    for (const { room } of this.askPlaces(item)) rooms.add(room);
+    return rooms;
+  }
+
+  /**
+   * Where an item could be had that this traveller cannot reach yet, and what
+   * the way there needs carried — for an errand to fetch first (2026-10-19).
+   *
+   * Archer's errand for the dark blue orb: its one dropper, the dark-elf
+   * archmage, is in the Ritual Chamber, behind the Dark Tower's glowing key,
+   * which the sleazy shopkeeper gives for an opal brooch, which the captains
+   * drop behind the gate key and the bloodstone orb. Each link is the same
+   * question, so the errand asks it again with each thing it brings back.
+   *
+   * The nearest place by the sweep that holds every key the realm names, and
+   * then the way there planned for this traveller, `unlocks` naming what it
+   * lacks. Null where no place is reached even so, or the way wants nothing
+   * fetching opens.
+   */
+  lockedSource(
+    item: number,
+    from: RoomId,
+    traveller: Traveller
+  ): { room: RoomId; roomName: string; needs: Array<{ id: number; name: string }> } | null {
+    const rooms = this.fetchRooms(item);
+    if (rooms.size === 0) return null;
+    const carried = traveller.keys ?? [];
+    const equipped: Traveller = {
+      ...traveller,
+      keys: [...carried, ...this.namedExitItems().filter((id) => !carried.includes(id))]
+    };
+    let nearest: { room: RoomId; cost: number } | null = null;
+    for (const [room, { cost }] of this.sweepTo(from, rooms, equipped)) {
+      if (nearest === null || cost < nearest.cost) nearest = { room, cost };
+    }
+    if (nearest === null) return null;
+    const route = this.route(from, nearest.room, traveller, { unlocks: true });
+    /*
+     * Blocked, what fetching would open; walked through a wall — the Dark
+     * Tower's `Key: 808 [or 1000 picklocks]`, which the router prices rather
+     * than prunes — what opens the walls it crosses.
+     */
+    const needs = route.blocked
+      ? (route.unlocks?.needs ?? [])
+      : unwalled(route.cost, traveller)
+        ? []
+        : (route.walls ?? []).flatMap((wall) => {
+            const opens = blockItem(wall);
+            return opens === null ? [] : [opens];
+          });
+    if (needs.length === 0) return null;
+    return {
+      room: nearest.room,
+      roomName: this.rooms.get(nearest.room)?.name ?? nearest.room,
+      needs: needs.map(({ id, name }) => ({ id, name }))
+    };
   }
 
   /**
@@ -9499,11 +9590,15 @@ function readHandovers(raw: unknown): ItemHandover[] {
     const say = (Array.isArray(record['say']) ? record['say'] : [])
       .map((word) => String(word).trim())
       .filter((word) => word.length > 0);
+    const takes = (Array.isArray(record['tk']) ? record['tk'] : [])
+      .map(Number)
+      .filter((id) => Number.isInteger(id) && id > 0);
     found.push({
       kind,
       ...(who.length > 0 ? { who } : {}),
       ...(/^\d+\/\d+$/.test(room) ? { room } : {}),
-      ...(say.length > 0 ? { say } : {})
+      ...(say.length > 0 ? { say } : {}),
+      ...(takes.length > 0 ? { takes } : {})
     });
   }
   return found;
