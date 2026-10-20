@@ -91,22 +91,28 @@ function Picker({
   const [typed, setTyped] = useState('');
   const [matches, setMatches] = useState<Array<[number, string]>>([]);
   const [said, setSaid] = useState<string | null>(null);
+  /*
+   * The name alone is asked for: a suggestion picked fills the box with
+   * `name (n)`, which no name holds (2026-10-20), and its number is what Add
+   * takes.
+   */
+  const asked = typed.replace(/\s*\(\d+\)\s*$/, '');
   useEffect(() => {
     let live = true;
-    void find(kind, typed).then((found) => {
+    void find(kind, asked).then((found) => {
       if (live) setMatches(found);
     });
     return () => {
       live = false;
     };
-  }, [find, kind, typed]);
+  }, [find, kind, asked]);
   const id = `ex-pick-${kind}`;
   const add = (): void => {
     const exact = /\((\d+)\)\s*$/.exec(typed) ?? /^\s*(\d+)\s*$/.exec(typed);
     const n =
       exact !== null
         ? Number(exact[1])
-        : (matches.find(([, name]) => name.toLowerCase() === typed.trim().toLowerCase())?.[0] ??
+        : (matches.find(([, name]) => name.toLowerCase() === asked.trim().toLowerCase())?.[0] ??
           matches[0]?.[0]);
     if (n === undefined || !matches.some(([m]) => m === n)) {
       setSaid(t('explorer.lists.noMatch', { typed }));

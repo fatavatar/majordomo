@@ -2261,6 +2261,31 @@ export class MegaEngine {
     if (this.parked !== null && Date.now() >= this.parked.until) this.unpark();
   }
 
+  /**
+   * The items the walk now under way needs (2026-10-20): the key a door on
+   * it asks for, the item an exit on it asks for, an item a step uses — what
+   * `movement.collectKeys` takes off a floor. Read off the planner's steps
+   * the path and the loop were made from (`MadePath.walked`), so a route
+   * through the black star key's door wants that key and no other; none
+   * while nothing is walked, the player at the keys.
+   */
+  walkNeeds(): ReadonlySet<number> {
+    const s = this.s;
+    const needs = new Set<number>();
+    const from = (p: PathRec): void => {
+      for (const st of this.madeFor(p)?.walked ?? []) {
+        if (st === null) continue;
+        const req = st.requirement;
+        if ((req?.kind === 'key' || req?.kind === 'item') && req.keyId !== undefined)
+          needs.add(req.keyId);
+        if (st.invoke !== undefined) needs.add(st.invoke.id);
+      }
+    };
+    if (s.walking !== 0) from(s.path);
+    if (s.looping !== 0) from(s.loopPath);
+    return needs;
+  }
+
   /** `0x482fc0`'s file: a path made here, by name. */
   private readPath(name: string): PathRec | null {
     return this.madeFor({ name })?.path ?? null;

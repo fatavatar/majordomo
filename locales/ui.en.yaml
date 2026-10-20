@@ -898,8 +898,14 @@ explorer:
     bankFirst: Withdraws {amount} from {bank} ({room}) first; the record has {balance} there.
     bankUnread: Asks {bank} ({room}) for its balance and withdraws {amount} there first.
     buy: Buy
+    buyLearn: Buy + Learn
+    buyLearnTitle: 'Buy {item} and read it, which adds the spell to the spellbook'
     buyWear: Buy + Wear
     heading: Buy
+    learnFrom: 'Learned from {item}'
+    learnHeading: Learn
+    noScroll: No item in the realm teaches this spell.
+    notLearnable: '{characterName} cannot learn this spell.'
     notWorn: Not something to wear.
     onHand: 'On hand: {purse}.'
     sent: On the way.
@@ -4303,11 +4309,11 @@ settings:
     unreadable: That file could not be read.
     unset: '—'
   movement:
-    collectKeys: Pick up a key the way out needs
+    collectKeys: Pick up a key the route needs
     collectKeysHint:
-      Only when the realm says an exit of the room needs it, no listing has shown it in the pack,
-      and it is lying on this floor. A keyed door with no key is a wall the router plans around, so
-      this is the one moment bending down is worth anything. On by default.
+      Only for the route or loop being walked, and only what one of its doors or exits needs, when
+      no listing has shown it in the pack and it is lying on this floor. Nothing is taken while
+      walking by hand. On by default.
     keepOutLegend: Keeping out
     keepOutOf: Keep out of
     keepOutOfHint:
@@ -4844,6 +4850,9 @@ automation:
     boughtIt: 'Bought {item} at {shop}.'
     refusalNoCounter: 'Nowhere this character can reach sells {item}.'
     wearingIt: 'Bought {item}; putting it on.'
+    # Buy + Learn (2026-10-20).
+    learningIt: 'Bought {item}; reading it.'
+    refusalKnown: '{spell} is in the spellbook already.'
     # The EQ tab's plan put on (2026-10-19).
     wearNothing: Everything the plan puts on is worn already, or must be bought first.
     wearingLoadout: 'Putting the plan on: {count} commands.'

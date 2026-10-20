@@ -1075,6 +1075,12 @@ export const Invoke = {
    */
   explorerBuyPlan: 'explorer:buy-plan',
   explorerBuy: 'explorer:buy',
+  /**
+   * Buy + Learn (2026-10-20): what buying a spell's scroll would do now, the
+   * cheapest that teaches it, and the press, which buys it and reads it.
+   */
+  explorerLearnPlan: 'explorer:learn-plan',
+  explorerLearn: 'explorer:learn',
   /** The Gear card: MME's Find Best for the character as it is (`explorerGear`). */
   explorerGear: 'explorer:gear',
   /**
@@ -1685,6 +1691,10 @@ export interface IpcApi {
   explorerBuyPlan(session: SessionId, item: number): Promise<ExplorerBuyPlan | null>;
   /** Buy it, and wear it where `wear`; why not, or null where it is on its way. */
   explorerBuy(session: SessionId, item: number, wear: boolean): Promise<string | null>;
+  /** The scroll that teaches a spell, as Buy plans it; null where nothing teaches it. */
+  explorerLearnPlan(session: SessionId, spell: number): Promise<ExplorerBuyPlan | null>;
+  /** Buys the item and reads it. Why not, or null. */
+  explorerLearn(session: SessionId, item: number): Promise<string | null>;
   /** MME's Find Best for this character, slot by slot. See `Invoke.explorerGear`. */
   explorerGear(session: SessionId, options: GearOptions): Promise<GearBoard>;
   /** MME's EQ page for this character and the plan. See `Invoke.explorerEq`. */

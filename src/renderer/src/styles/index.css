@@ -11595,27 +11595,45 @@ tr:hover .row-action.worn,
   pointer-events: none;
 }
 
+/*
+ * MMUD Explorer's field (`.explorer-screen input`), asked for here 2026-10-20:
+ * a box sunk to the void with an edge you can see, rather than a tint with no
+ * edge that read as a label until it was clicked. `background-color` and not
+ * the shorthand, so `.has-bar`'s strip above keeps its image. The search
+ * boxes were the browser's own and are boxed with the rest; the template
+ * (`.rewrite-template`) takes the same ground and edge in its console face.
+ */
 .settings-form input[type='text'],
 .settings-form input:not([type]),
 .settings-form input[type='password'],
+.settings-form input[type='search'],
 .settings-form select {
-  background: color-mix(in srgb, var(--ink-line) 40%, transparent);
-  border: 1px solid transparent;
-  border-radius: var(--r-chip);
+  background-color: var(--ink-void);
+  border: 1px solid var(--ink-edge);
+  border-radius: 4px;
   color: var(--text-hi);
   font: inherit;
   min-width: 0;
-  padding: 6px 9px;
-  transition:
-    border-color var(--dur-control) var(--ease-out),
-    background var(--dur-control) var(--ease-out);
+  padding: 3px 7px;
+  transition: border-color var(--dur-control) var(--ease-out);
 }
 
 .settings-form input:focus,
-.settings-form select:focus {
-  background: color-mix(in srgb, var(--ink-line) 60%, transparent);
+.settings-form select:focus,
+.settings-form textarea:focus {
   border-color: color-mix(in srgb, var(--accent) var(--tone-strong), transparent);
   outline: none;
+}
+
+.settings-form :is(input[type='checkbox'], input[type='radio']) {
+  accent-color: var(--pending);
+}
+
+/* A table's find pill is already the box; its field inside is not boxed again. */
+.settings-form .table-find input {
+  background-color: transparent;
+  border: 0;
+  padding: 0;
 }
 
 .settings-form em.hint {
@@ -12027,7 +12045,8 @@ tr:hover .row-action.worn,
  * purpose -- it is the same ring, told where it is.
  */
 .settings-form input:focus,
-.settings-form select:focus {
+.settings-form select:focus,
+.settings-form textarea:focus {
   border-color: color-mix(in srgb, var(--group-hue) var(--tone-strong), transparent);
 }
 
@@ -13064,9 +13083,9 @@ tr:hover .row-action.worn,
 
 /* The template, in the console's face: what is typed here is drawn there. */
 .rewrite-template {
-  background: var(--ink-raised);
-  border: 1px solid var(--ink-line);
-  border-radius: var(--r-control);
+  background: var(--ink-void);
+  border: 1px solid var(--ink-edge);
+  border-radius: 4px;
   color: var(--text-hi);
   flex: 0 0 auto;
   font-family: var(--font-terminal, var(--font-dos));
@@ -14039,9 +14058,9 @@ tr:hover .row-action.worn,
   padding: 2px 6px;
   font: inherit;
   color: var(--text-hi);
-  background: var(--ink-raised);
+  background: var(--ink-void);
   border: 1px solid var(--ink-edge);
-  border-radius: var(--r-control);
+  border-radius: 4px;
 }
 /* A search box is already the box; its field inside is not boxed again. */
 .settings-form[data-megamud='true'] .table-find input {

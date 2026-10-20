@@ -562,6 +562,28 @@ describe('the engine in a session', () => {
     e.dispose();
   });
 
+  /*
+   * What collect-keys takes (2026-10-20): what the walk under way needs and
+   * nothing else, and nothing with no walk at all.
+   */
+  it('needs the key its own door asks for, and nothing while not walking', async () => {
+    vi.useFakeTimers();
+    const { e } = engine('1/3');
+    e.s.inGame = 1;
+    e.s.online = 1;
+    e.received('\x1b[1;36mShop\r\n\x1b[0;32mObvious exits: closed door west\r\n');
+    expect([...e.walkNeeds()]).toEqual([]);
+    expect(e.walkTo('1/4')).toBeNull();
+    await planned();
+    expect(e.s.walking).toBe(1);
+    expect([...e.walkNeeds()]).toEqual([7]);
+    // A way through no keyed door needs no key.
+    expect(e.walkTo('1/1')).toBeNull();
+    await planned();
+    expect([...e.walkNeeds()]).toEqual([]);
+    e.dispose();
+  });
+
   /* A key not carried: fetched, then the walk or the loop again (2026-10-16). */
   const refusedForKey = (): Route => ({
     steps: [],

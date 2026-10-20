@@ -2669,6 +2669,25 @@ function registerIpc(): void {
     return manager.buyNow({ id: row.id, name: row.name }, remove);
   });
   /*
+   * Buy + Learn: the scroll that teaches a spell, as Buy plans it, and the
+   * press, which buys it and reads it. The spell and the item are the
+   * realm's, by number.
+   */
+  handle(Invoke.explorerLearnPlan, async (_caller, session: SessionId, spell: unknown) => {
+    const manager = host?.get(session)?.manager;
+    if (manager === undefined || typeof spell !== 'number') return null;
+    if (manager.character.room.map === null) await manager.ensureLocated();
+    const plan = manager.learnPlanFor(spell);
+    return plan === null ? null : { ...plan, wear: { wearable: false, remove: [] } };
+  });
+  handle(Invoke.explorerLearn, async (_caller, session: SessionId, item: unknown) => {
+    const manager = host?.get(session)?.manager;
+    const row = typeof item === 'number' ? worldFor(session)?.item(item) : undefined;
+    if (manager === undefined || row === undefined) return t('app.explorer.noSuchItem');
+    if (manager.character.room.map === null) await manager.ensureLocated();
+    return manager.buyNow({ id: row.id, name: row.name }, null, true);
+  });
+  /*
    * The Rooms tab: MME's map and finders on the realm's own rooms, the
    * character's room marked. A request that does not parse is answered as
    * no such room rather than a throw.

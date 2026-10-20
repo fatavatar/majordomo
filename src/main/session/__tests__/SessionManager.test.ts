@@ -3608,6 +3608,8 @@ describe('the actions kept beside the MegaMUD engine', () => {
         ): { price: number | null; withdraw: number; bank?: unknown; refusal?: string };
         megaBuyTick(state: CharacterState): void;
         wearBought(name: string, remove: readonly string[]): void;
+        learnBought(name: string): void;
+        purchaseFor(item: { id: number; name: string }): { item: number; price: number | null };
       };
       inside.mega.s.inGame = 1;
       let state = {
@@ -3883,6 +3885,35 @@ describe('the actions kept beside the MegaMUD engine', () => {
           item: 'broadsword',
           removed: 'shortsword, buckler'
         })
+      );
+    });
+    /* Buy + Learn (2026-10-20): the cheapest scroll that teaches the spell, and read once bought. */
+    it('reads what Buy + Learn bought', () => {
+      const { inside } = setUp(600, []);
+      inside.learnBought('scroll of minor healing');
+      expect(inside.mega.s.pending.map((p) => p.text)).toEqual(['read scroll of minor healing\r']);
+      expect(notices.at(-1)).toBe(
+        t('automation.collect.learningIt', { item: 'scroll of minor healing' })
+      );
+    });
+
+    it('plans the cheapest scroll that teaches the spell, and refuses one already known', () => {
+      const { inside, set } = setUp(600, []);
+      const scrolls = [
+        { id: 1, name: 'scroll of minor healing', abilities: [[42, 13]] },
+        { id: 2, name: 'tome of minor healing', abilities: [[42, 13]] },
+        { id: 3, name: 'scroll of harm', abilities: [[42, 12]] }
+      ];
+      inside.world = {
+        allItems: () => scrolls,
+        spellById: (id: number) => (id === 13 ? { name: 'minor healing' } : null)
+      };
+      inside.purchaseFor = (item) => ({ item: item.id, price: item.id === 2 ? 100 : 300 });
+      expect(manager!.learnPlanFor(13)).toMatchObject({ item: 2, price: 100 });
+      expect(manager!.learnPlanFor(99)).toBeNull();
+      set({ spellbook: [{ name: 'Minor Healing' }] as unknown as CharacterState['spellbook'] });
+      expect(manager!.learnPlanFor(13)?.refusal).toBe(
+        t('automation.collect.refusalKnown', { spell: 'minor healing' })
       );
     });
   });

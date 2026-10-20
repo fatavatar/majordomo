@@ -86,6 +86,9 @@ export interface ExplorerScreenProps {
   buyPlan(item: number): Promise<ExplorerBuyPlan | null>;
   /** Why not, or null where the character is on its way. */
   buy(item: number, wear: boolean): Promise<string | null>;
+  /** Buy + Learn (2026-10-20): the scroll that teaches a spell, as Buy plans it, and the press. */
+  learnPlan(spell: number): Promise<ExplorerBuyPlan | null>;
+  learn(item: number): Promise<string | null>;
   /** An item to open on, from the Gear card; `at` tells one ask of the same item from the next. */
   focus: { kind: ExplorerKind; item: number; at: number } | null;
   /** The character's room, `map/room`, which the Rooms tab opens on and marks. */
@@ -409,31 +412,83 @@ function BuyBox({
   purseKey,
   characterKey,
   buyPlan,
-  buy
+  buy,
+  learn
 }: {
   item: number;
   purseKey: string;
   characterKey: string;
   buyPlan: ExplorerScreenProps['buyPlan'];
   buy: ExplorerScreenProps['buy'];
+  /**
+   * A spell's box (2026-10-20): `item` is the spell, the plan is for the
+   * scroll that teaches it, and the second button buys and reads it.
+   */
+  learn?: {
+    plan: ExplorerScreenProps['learnPlan'];
+    press: ExplorerScreenProps['learn'];
+    /** The class may learn it (`spellUsableBy`); why not, where it may not. */
+    refused: string | null;
+  };
 }) {
-  const [plan, setPlan] = useState<ExplorerBuyPlan | null>(null);
+  const [plan, setPlan] = useState<{ asked: number; plan: ExplorerBuyPlan | null } | null>(null);
   const [said, setSaid] = useState<{ text: string; ok: boolean } | null>(null);
   const [sending, setSending] = useState(false);
   useEffect(() => setSaid(null), [item]);
+  const planOf = learn?.plan ?? buyPlan;
   useEffect(() => {
     let live = true;
-    void buyPlan(item).then((found) => {
-      if (live) setPlan(found);
+    void planOf(item).then((found) => {
+      if (live) setPlan({ asked: item, plan: found });
     });
     return () => {
       live = false;
     };
-  }, [item, buyPlan, purseKey, characterKey]);
-  if (plan === null || plan.item !== item) return null;
+  }, [item, planOf, purseKey, characterKey]);
+  if (plan === null || plan.asked !== item) return null;
+  if (plan.plan === null) {
+    return learn === undefined ? null : (
+      <div className="ex-buy">
+        <h3 className="ex-heading">{t('explorer.buy.learnHeading')}</h3>
+        <div className="ex-buy-line">{t('explorer.buy.noScroll')}</div>
+      </div>
+    );
+  }
+  return (
+    <BuyLines
+      buy={buy}
+      learn={learn}
+      plan={plan.plan}
+      said={said}
+      sending={sending}
+      setSaid={setSaid}
+      setSending={setSending}
+    />
+  );
+}
+
+/** The Buy box's lines and buttons, for its plan. */
+function BuyLines({
+  plan,
+  buy,
+  learn,
+  said,
+  setSaid,
+  sending,
+  setSending
+}: {
+  plan: ExplorerBuyPlan;
+  buy: ExplorerScreenProps['buy'];
+  learn: { press: ExplorerScreenProps['learn']; refused: string | null } | undefined;
+  said: { text: string; ok: boolean } | null;
+  setSaid(said: { text: string; ok: boolean } | null): void;
+  sending: boolean;
+  setSending(sending: boolean): void;
+}) {
+  const item = plan.item;
   const press = (wear: boolean): void => {
     setSending(true);
-    void buy(item, wear)
+    void (learn !== undefined && wear ? learn.press(item) : buy(item, wear))
       .then((why) =>
         setSaid(
           why === null ? { text: t('explorer.buy.sent'), ok: true } : { text: why, ok: false }
@@ -446,7 +501,11 @@ function BuyBox({
   const removes = plan.wear.remove.join(', ');
   return (
     <div className="ex-buy">
-      <h3 className="ex-heading">{t('explorer.buy.heading')}</h3>
+      <h3 className="ex-heading">
+        {learn === undefined
+          ? t('explorer.buy.heading')
+          : t('explorer.buy.learnFrom', { item: plan.name })}
+      </h3>
       {shop !== undefined && (
         <div className="ex-buy-line">
           {t('explorer.buy.where', {
@@ -490,21 +549,33 @@ function BuyBox({
         >
           {t('explorer.buy.buy')}
         </button>
-        <button
-          className="ex-buy-button"
-          disabled={blocked || !plan.wear.wearable}
-          onClick={() => press(true)}
-          title={
-            !plan.wear.wearable
-              ? t('explorer.buy.notWorn')
-              : removes === ''
-                ? undefined
-                : t('explorer.buy.takesOff', { items: removes })
-          }
-          type="button"
-        >
-          {t('explorer.buy.buyWear')}
-        </button>
+        {learn !== undefined ? (
+          <button
+            className="ex-buy-button"
+            disabled={blocked || learn.refused !== null}
+            onClick={() => press(true)}
+            title={learn.refused ?? t('explorer.buy.buyLearnTitle', { item: plan.name })}
+            type="button"
+          >
+            {t('explorer.buy.buyLearn')}
+          </button>
+        ) : (
+          <button
+            className="ex-buy-button"
+            disabled={blocked || !plan.wear.wearable}
+            onClick={() => press(true)}
+            title={
+              !plan.wear.wearable
+                ? t('explorer.buy.notWorn')
+                : removes === ''
+                  ? undefined
+                  : t('explorer.buy.takesOff', { items: removes })
+            }
+            type="button"
+          >
+            {t('explorer.buy.buyWear')}
+          </button>
+        )}
         {said !== null && (
           <span className="ex-buy-said" data-tone={said.ok ? 'ok' : 'danger'}>
             {said.text}
@@ -538,6 +609,8 @@ export default function ExplorerScreen({
   detail,
   buyPlan,
   buy,
+  learnPlan,
+  learn,
   focus,
   hereRoom,
   roomView,
@@ -1419,6 +1492,23 @@ export default function ExplorerScreen({
                           buyPlan={buyPlan}
                           characterKey={characterKey}
                           item={shown.number}
+                          purseKey={purseKey}
+                        />
+                      )}
+                      {kind === 'spells' && (
+                        <BuyBox
+                          buy={buy}
+                          buyPlan={buyPlan}
+                          characterKey={characterKey}
+                          item={shown.number}
+                          learn={{
+                            plan: learnPlan,
+                            press: learn,
+                            refused:
+                              chosenRow === undefined || chosenRow.usable
+                                ? null
+                                : t('explorer.buy.notLearnable', { characterName })
+                          }}
                           purseKey={purseKey}
                         />
                       )}

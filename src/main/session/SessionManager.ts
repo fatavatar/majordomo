@@ -11,6 +11,7 @@ import { macroLength, parseMacro } from '../../shared/macro';
 import {
   capabilitiesOf,
   HAZARD_ABILITY,
+  LEARN_SPELL_ABILITY,
   poisonRefusesRest,
   type Capabilities
 } from '../../shared/abilities';
@@ -396,7 +397,12 @@ export type SessionAct =
   | { act: 'megaToggle'; name: MegaToggle }
   | { act: 'megaAnswer'; question: string; yes: boolean }
   | { act: 'depositAll' }
-  | { act: 'buyItem'; item: { id: number; name: string }; remove: string[] | null }
+  | {
+      act: 'buyItem';
+      item: { id: number; name: string };
+      remove: string[] | null;
+      learn?: boolean;
+    }
   | { act: 'wearLoadout'; commands: string[] }
   | { act: 'megamud'; settings: MegaSettings };
 
@@ -2890,8 +2896,13 @@ export class SessionManager {
    * bought at the counter `purchaseFor` names, the cash drawn first where the
    * purse is short, and then, for Buy + Wear, worn. Why not, or null.
    */
-  buyNow(item: { id: number; name: string }, remove: string[] | null): string | null {
-    this.sink.acted?.({ act: 'buyItem', item, remove });
+  buyNow(
+    item: { id: number; name: string },
+    remove: string[] | null,
+    /** Buy + Learn: the scroll read once it is bought (`learnPlanFor`). */
+    learn = false
+  ): string | null {
+    this.sink.acted?.({ act: 'buyItem', item, remove, ...(learn ? { learn } : {}) });
     const plan = this.purchaseFor(item);
     if (plan.refusal !== undefined) return plan.refusal;
     const shop = plan.shop!;
@@ -2904,9 +2915,11 @@ export class SessionManager {
       at: { map: shop.map, room: shop.room }
     };
     const refused = this.megaBuy(row, () =>
-      remove === null
-        ? this.sink.notice(t('automation.collect.boughtIt', { item: item.name, shop: shop.name }))
-        : this.wearBought(item.name, remove)
+      learn
+        ? this.learnBought(item.name)
+        : remove === null
+          ? this.sink.notice(t('automation.collect.boughtIt', { item: item.name, shop: shop.name }))
+          : this.wearBought(item.name, remove)
     );
     if (refused !== null) return refused;
     this.sink.notice(
@@ -2933,6 +2946,47 @@ export class SessionManager {
     for (const command of commands) mega.queue(command);
     this.sink.notice(t('automation.collect.wearingLoadout', { count: commands.length }));
     return null;
+  }
+
+  /**
+   * Buy + Learn's plan (2026-10-20): the realm's items that teach the spell
+   * (`LEARN_SPELL_ABILITY`, the spell's row in the value — 223 scrolls and
+   * books on the shipped realm), priced as Buy prices one, the cheapest this
+   * character can buy first and otherwise why the first cannot be. Null
+   * where nothing teaches it; refused where the spellbook holds it already.
+   */
+  learnPlanFor(spellId: number): Omit<ExplorerBuyPlan, 'wear'> | null {
+    const world = this.world;
+    if (world === undefined) return null;
+    const teaching = [...world.allItems()].filter((item) =>
+      item.abilities?.some(([id, value]) => id === LEARN_SPELL_ABILITY && value === spellId)
+    );
+    if (teaching.length === 0) return null;
+    const plans = teaching.map((item) => this.purchaseFor({ id: item.id, name: item.name }));
+    const spell = world.spellById(spellId);
+    const known =
+      spell !== null &&
+      (this.tracker.current.spellbook ?? []).some(
+        (held) => held.name.toLowerCase() === spell.name.toLowerCase()
+      );
+    if (known)
+      return { ...plans[0]!, refusal: t('automation.collect.refusalKnown', { spell: spell.name }) };
+    const buyable = plans
+      .filter((plan) => plan.refusal === undefined)
+      .sort(
+        (a, b) =>
+          (a.price ?? Number.MAX_SAFE_INTEGER) - (b.price ?? Number.MAX_SAFE_INTEGER) ||
+          (a.shop?.moves ?? 0) - (b.shop?.moves ?? 0)
+      );
+    return buyable[0] ?? plans[0]!;
+  }
+
+  /** Buy + Learn's last step: the scroll read, which adds its spell to the book. */
+  private learnBought(name: string): void {
+    const mega = this.mega;
+    if (mega === null) return;
+    mega.queue(`read ${name}`);
+    this.sink.notice(t('automation.collect.learningIt', { item: name }));
   }
 
   /** Buy + Wear's last step: what the slot holds taken off, and the purchase put on. */
@@ -5952,35 +6006,24 @@ export class SessionManager {
   }
 
   /**
-   * Whether an item on the floor opens a way of this realm the pack lacks —
-   * a `Key:` lock's or an `Item:` exit's — for the engine to take it whatever
-   * its item rules say (`movement.collectKeys`, as `AutoKeys` reads it).
+   * Whether an item on the floor is one the walk under way needs and the
+   * pack lacks — a `Key:` lock's or an `Item:` exit's on its way — for the
+   * engine to take it whatever its item rules say (`movement.collectKeys`).
+   *
+   * Only the walk's (2026-10-20): it was any item that opened any exit of
+   * the realm, so a route needing the black star key took every key on the
+   * way, and a character walked by hand took them too. Now a walk takes what
+   * its own doors want (`MegaEngine.walkNeeds`) and no walk takes nothing.
    */
   private opensAWay(name: string): boolean {
     const world = this.world;
-    if (!world || !this.automationConfig.movement.collectKeys) return false;
+    const mega = this.mega;
+    if (!world || mega === null || !this.automationConfig.movement.collectKeys) return false;
     const id = world.itemIdNamed(name);
-    if (id === null || !this.gateItems(world).has(id)) return false;
+    if (id === null || !mega.walkNeeds().has(id)) return false;
     const pack = this.packContents(this.tracker.current);
     return pack.packKnown && !pack.keys.includes(id);
   }
-
-  /** The items some exit of the realm asks for, worked out once per realm. */
-  private gateItems(world: WorldGraph): Set<number> {
-    if (this.gateItemsOf?.world === world) return this.gateItemsOf.ids;
-    const ids = new Set<number>();
-    for (const room of world.everyRoom()) {
-      for (const exit of room.exits) {
-        const req = exit.requirement;
-        if ((req?.kind === 'key' || req?.kind === 'item') && req.keyId !== undefined)
-          ids.add(req.keyId);
-      }
-    }
-    this.gateItemsOf = { world, ids };
-    return ids;
-  }
-
-  private gateItemsOf: { world: WorldGraph; ids: Set<number> } | null = null;
 
   private packContents(state: CharacterState): { keys: number[]; packKnown: boolean } {
     return { keys: state.inventory.rows, packKnown: state.inventory.listedAt !== null };

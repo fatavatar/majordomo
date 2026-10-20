@@ -2970,6 +2970,14 @@ export default function App() {
     (item: number, wear: boolean) => api.explorerBuy(session, item, wear),
     [api, session]
   );
+  const explorerLearnPlan = useCallback(
+    (spell: number) => api.explorerLearnPlan(session, spell),
+    [api, session]
+  );
+  const explorerLearn = useCallback(
+    (item: number) => api.explorerLearn(session, item),
+    [api, session]
+  );
   // What Buy's plan answers for beside the gear: the purse, the room, the vaults.
   const explorerPurseKey = [
     character.inventory.wealth ?? '',
@@ -6217,6 +6225,8 @@ export default function App() {
         detail={explorerDetail}
         eq={explorerEq}
         focus={explorerFocus}
+        learn={explorerLearn}
+        learnPlan={explorerLearnPlan}
         lists={explorerLists}
         tools={explorerTools}
         hereRoom={explorerHere}
