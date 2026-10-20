@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { parse } from 'yaml';
 
-import { SettingsEditor } from '../SettingsEditor';
+import { loopFileText, SettingsEditor } from '../SettingsEditor';
 import { homeAt, type Home } from '../../app/home';
 import { resolveProfile } from '../../../shared/profiles';
 import {
@@ -16,7 +16,7 @@ import {
 import { ServerStore } from '../ServerStore';
 import { defaultSettings, type MegaSettings } from '../../../shared/megamud/settings';
 import { megamudFromConfig } from '../../../shared/megamud/fromConfig';
-import { LoopStore } from '../LoopStore';
+import { LoopStore, readLoops } from '../LoopStore';
 import { DEFAULT_CONFIG, normalizeConfig } from '../../../shared/config';
 import { UNCATEGORISED, type Loop } from '../../../shared/loops';
 
@@ -1632,6 +1632,64 @@ describe('what the spell pickers are offered', () => {
     ]);
     // The saved server's own address, resolved — not a blank or the default.
     expect(asked).toContainEqual({ id: 'vaelor', host: 'gmud-tgs', port: 2427 });
+  });
+});
+
+/* A loop handed to another player as a file, and taken in from one (2026-10-19). */
+describe('a shared loop file', () => {
+  it('reads back as the loop it was written from, filed in the realm', () => {
+    const loop = {
+      name: 'Sewer circuit',
+      bounce: true,
+      stops: [{ room: 'Sewer Tunnel 1/606' }, { room: 'Sewer Junction 1/610', linger: 30 }]
+    };
+    const text = loopFileText(loop);
+    expect(text).toContain('A mudengine loop');
+    const result = editor.importLoopText('global', null, text);
+    expect(result).toEqual({ ok: true, count: 1, replaced: 0 });
+    expect(editor.importLoopText('global', null, text)).toEqual({
+      ok: true,
+      count: 1,
+      replaced: 1
+    });
+    const kept = readLoops(parse(text), 'x')[0];
+    expect(kept).toMatchObject(loop);
+  });
+
+  it('refuses a file that holds no loop, or is not YAML', () => {
+    expect(editor.importLoopText('global', null, 'just: words').ok).toBe(false);
+    expect(editor.importLoopText('global', null, '{ unclosed').ok).toBe(false);
+  });
+});
+
+/* The Explorer's Item Manager writes the character's own item rows (2026-10-19). */
+describe("a character's own item rows", () => {
+  const rowsOf = (id: string): unknown =>
+    (
+      (read(id)['automation'] as Record<string, unknown> | undefined)?.['loot'] as
+        Record<string, unknown> | undefined
+    )?.['itemDetails'];
+
+  it('writes the rows whole, a flag switched off kept as said', () => {
+    editor.saveProfile('vaelor', draft());
+    expect(
+      editor.setItemDetails('vaelor', [
+        { item: 'torch', buy: true, keep: 3 },
+        { item: 'rat tail', sell: false },
+        { item: 'nothing said' }
+      ]).ok
+    ).toBe(true);
+    expect(rowsOf('vaelor')).toEqual([
+      { item: 'torch', buy: true, keep: 3 },
+      { item: 'rat tail', sell: false }
+    ]);
+    expect(resolveProfile('vaelor', read('vaelor'), parse(OPTIONS)).error).toBeUndefined();
+    editor.setItemDetails('vaelor', []);
+    expect(rowsOf('vaelor')).toEqual([]);
+  });
+
+  it('refuses a character that does not exist', () => {
+    expect(editor.setItemDetails('nobody-at-all', []).ok).toBe(false);
   });
 });
 

@@ -27,7 +27,7 @@ export const EXPLORER_KINDS: readonly ExplorerKind[] = [
  * The Explorer's tabs: the lists, and the Rooms walker, which is a map and not
  * a list (`ExplorerRoomView`). What a reference opens (`ExplorerSegment.tab`).
  */
-export type ExplorerTab = ExplorerKind | 'rooms';
+export type ExplorerTab = ExplorerKind | 'rooms' | 'eq' | 'lists' | 'tools';
 
 /** One column: its heading and how wide, and whether it holds figures. */
 export interface ExplorerColumn {
@@ -403,6 +403,215 @@ export interface GearBoard {
   /** MME's Find Best menu, `[group, label]`, in its order. */
   criteria: Array<[string, string]>;
   slots: GearSlot[];
+}
+
+/** MME's slot count (`EQ_SLOTS`) and its stat panel's (`TOTAL_STAT_LBLS + 1`). */
+export const EQ_SLOT_COUNT = 20;
+export const EQ_STAT_COUNT = 47;
+
+/**
+ * The attack the EQ tab's `Attk` is worked out for (2026-10-19): MME's
+ * choose-attack pop-up (`ui/attack.js`), its `char.attack` by name. `weapon`
+ * is the weapon in the plan, with bash or smash; a spell by its number, at
+ * the character's level; martial arts by `ma` (1 punch, 2 kick, 3 jumpkick).
+ */
+export interface EqAttack {
+  type: 'weapon' | 'bash' | 'smash' | 'spell' | 'martial' | 'oneshot';
+  spell: number;
+  ma: number;
+  backstab: boolean;
+}
+
+export const DEFAULT_EQ_ATTACK: EqAttack = { type: 'weapon', spell: 0, ma: 1, backstab: false };
+
+/**
+ * What the EQ tab plans for a character (2026-10-19), kept by the window
+ * per character: the loadout picked, or null for what the character wears,
+ * MME's Hold boxes and its manual stat adjustments (`statAdjustments`, AC
+ * and DR in tenths), and the panel's own switches.
+ */
+export interface EqPlan {
+  equipped: number[] | null;
+  holds: boolean[];
+  adjustments: number[];
+  /** `chkInvenHideCharStats`: the items alone. */
+  itemsOnly: boolean;
+  attack: EqAttack;
+}
+
+export const DEFAULT_EQ_PLAN: EqPlan = {
+  equipped: null,
+  holds: new Array<boolean>(EQ_SLOT_COUNT).fill(false),
+  adjustments: new Array<number>(EQ_STAT_COUNT).fill(0),
+  itemsOnly: false,
+  attack: DEFAULT_EQ_ATTACK
+};
+
+const EQ_ATTACK_TYPES: ReadonlyArray<EqAttack['type']> = [
+  'weapon',
+  'bash',
+  'smash',
+  'spell',
+  'martial',
+  'oneshot'
+];
+
+/** A plan that crossed the wire, parsed: anything unreadable is the default. */
+export function asEqPlan(value: unknown): EqPlan {
+  const o = (typeof value === 'object' && value !== null ? value : {}) as Record<string, unknown>;
+  const whole = (v: unknown, low: number, high: number): number =>
+    typeof v === 'number' && Number.isFinite(v) ? Math.max(low, Math.min(high, Math.trunc(v))) : 0;
+  const list = <T>(v: unknown, size: number, each: (entry: unknown) => T): T[] =>
+    Array.from({ length: size }, (_, i) => each(Array.isArray(v) ? v[i] : undefined));
+  const attack = (
+    typeof o['attack'] === 'object' && o['attack'] !== null ? o['attack'] : {}
+  ) as Record<string, unknown>;
+  return {
+    equipped: Array.isArray(o['equipped'])
+      ? list(o['equipped'], EQ_SLOT_COUNT, (n) => whole(n, 0, 99999))
+      : null,
+    holds: list(o['holds'], EQ_SLOT_COUNT, (held) => held === true),
+    adjustments: list(o['adjustments'], EQ_STAT_COUNT, (n) => whole(n, -9990, 99990)),
+    itemsOnly: o['itemsOnly'] === true,
+    attack: {
+      type: EQ_ATTACK_TYPES.includes(attack['type'] as EqAttack['type'])
+        ? (attack['type'] as EqAttack['type'])
+        : 'weapon',
+      spell: whole(attack['spell'], 0, 99999),
+      ma: Math.max(1, Math.min(3, whole(attack['ma'], 1, 3))),
+      backstab: attack['backstab'] === true
+    }
+  };
+}
+
+/** One of the EQ tab's slots: what may go in it, what is picked, and what is worn. */
+export interface EqSlot {
+  slot: number;
+  label: string;
+  /** The picker's items, `[number, name]`: MME's list with the global filter on. */
+  options: Array<[number, string]>;
+  /** What the plan puts here, 0 nothing; and what the character wears here. */
+  chosen: number;
+  worn: number;
+  /** The plan's item is in the pack (or worn already), so it is put on without buying. */
+  carried: boolean;
+  /** What it adds, and why it adds nothing where MME says so. */
+  tip: string;
+  warn: string;
+  disabled?: boolean;
+}
+
+/** One figure of the stat panel, as MME colours it, and what adds to it. */
+export interface EqStat {
+  i: number;
+  label: string;
+  text: string;
+  /** `neg`, `pos` or `hi` (`InvenColorCodeStats`), `zero`, or MME's attack tones. */
+  tone: string;
+  tips: string[];
+  adjusted: boolean;
+}
+
+/** The EQ tab, MME's equipment page, for the character and its plan. */
+export interface EqView {
+  supported: boolean;
+  reason?: string;
+  /** `Name · Class · Race · level N`. */
+  who: string;
+  slots: EqSlot[];
+  /** `lblInvenStats`' two columns, in MME's order, and the martial arts grid. */
+  left: EqStat[];
+  right: EqStat[];
+  martial: EqStat[][];
+  attk: EqStat;
+  encumbrance: { now: number; max: number; level: string; percent: number; tips: string[] };
+  /** `AC/DR` as MME prints it, and what adds to each. */
+  armour: { text: string; ac: string[]; dr: string[] };
+  /** What the pack weighs beyond the plan, from the reported encumbrance; null unreported. */
+  packWeight: number | null;
+  /** `Effective crit N%` and `Accuracy with this attack: N`, where MME shows them. */
+  notes: string[];
+  /** The attack, as the chooser names it, and the spells it offers. */
+  attackName: string;
+  attackSpells: Array<[number, string]>;
+  /** MME's Find Best menu, `[group, label]`. */
+  criteria: Array<[string, string]>;
+  /** `InvenCopytoClipboard`: the loadout and stats, and the commands that wear it. */
+  copyText: string;
+  commands: string;
+}
+
+/** The EQ tab where there is nothing to show. */
+export const NO_EQ_VIEW: EqView = {
+  supported: false,
+  who: '',
+  slots: [],
+  left: [],
+  right: [],
+  martial: [],
+  attk: { i: 46, label: 'Attk', text: '', tone: '', tips: [], adjusted: false },
+  encumbrance: { now: 0, max: 0, level: '', percent: 0, tips: [] },
+  armour: { text: '', ac: [], dr: [] },
+  packWeight: null,
+  notes: [],
+  attackName: '',
+  attackSpells: [],
+  criteria: [],
+  copyText: '',
+  commands: ''
+};
+
+/**
+ * The Lists tab's compare lists (2026-10-19), mudtool's `tabs/lists.js`:
+ * the records a player put side by side, with that list's own columns.
+ */
+export type CompareKind = 'weapons' | 'armour' | 'spells' | 'monsters';
+export const COMPARE_KINDS: readonly CompareKind[] = ['weapons', 'armour', 'spells', 'monsters'];
+
+export interface CompareRow {
+  number: number;
+  name: string;
+  /** Weapons and armour: usable by this character; everything else true. */
+  usable: boolean;
+  cells: Record<string, ExplorerCell>;
+  /** Monsters: a damage worked out against the character, which mudtool marks. */
+  worked?: boolean;
+}
+
+export interface CompareList {
+  supported: boolean;
+  reason?: string;
+  columns: ExplorerColumn[];
+  rows: CompareRow[];
+}
+
+/** One item as the Item Manager's columns show it (`AddListViewRowsForItem`). */
+export interface ItemFacts {
+  number: number;
+  name: string;
+  enc: number;
+  type: string;
+  /** Where it is worn, a weapon's type, or `Nowhere`. */
+  worn: string;
+  usable: boolean;
+  /** `buy / sell` at the character's charm, MME's short words; '' sold nowhere. */
+  value: string;
+  /** The counter it is cheapest at, and how many more stock it. */
+  shop: string | null;
+  more: number;
+}
+
+/** Find Best or Next Best asked of the EQ tab. */
+export interface EqFind {
+  criterion: number;
+  next: boolean;
+  noLimited: boolean;
+}
+
+/** What Find Best picked, slot by slot, and whether it found anything. */
+export interface EqFound {
+  equipped: number[];
+  found: boolean;
 }
 
 /**

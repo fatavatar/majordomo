@@ -12,6 +12,7 @@ import { queue, send } from './send';
 import { setState } from './state';
 import { State } from '../states';
 import { ItemFlag } from '../flags';
+import { deposited } from '../stats/window';
 
 /** `0x4bfef0`: the word a command uses for an item (the realm's own name for runic coins). */
 export function itemWord(s: Session, item: ItemRec | null): string {
@@ -27,6 +28,14 @@ function inBank(s: Session): boolean {
 /** `0x410780` (D18): a coin not wanted (its `Cash.WantX` -1) dropped. */
 export function discardCash(s: Session): number {
   if (s.hp <= 0 || s.weightMax <= 0 || s.allOff !== 0 || s.cashNeeded !== 0) return 0;
+  /*
+   * Ours: a purchase of ours is drawing on the purse (2026-10-19). Archer and
+   * Bowel drop copper, silver and gold (`Cash.WantX` -1), and a bank pays a
+   * withdrawal out in whatever coins make it up: under a platinum piece, the
+   * whole of it was on the floor before the counter was reached. Their
+   * change goes once it is bought.
+   */
+  if (s.host.keepCoins?.() === true) return 0;
   let unwanted = false;
   for (const c of s.inventory) {
     const item = c.item;
@@ -100,6 +109,7 @@ export function depositCash(s: Session): number {
   setState(s, State.Depositing);
   s.host.activity('Depositing cash');
   send(s, `deposit ${amount >>> 0}\r`);
+  deposited(s, amount >>> 0);
   s.depositAsked = 0;
   s.wealth -= amount;
   return 1;

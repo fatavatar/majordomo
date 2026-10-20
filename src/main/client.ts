@@ -32,7 +32,7 @@ import {
 } from './config/RealmTableStore';
 import { LoopStore } from './config/LoopStore';
 import { detailOf, MudStatsApi } from './stats/MudStatsApi';
-import { SettingsEditor, type SettingsEditorOptions } from './config/SettingsEditor';
+import { loopFileText, SettingsEditor, type SettingsEditorOptions } from './config/SettingsEditor';
 import { LoopCatalogue } from './config/LoopCatalogue';
 import { migrateHome } from './config/Migration';
 import { homeAt, homeRoot, type Home } from './app/home';
@@ -145,9 +145,14 @@ import { asMegaToggle } from '../shared/megamud/toggles';
 import type { MegaData } from './megamud/data';
 import { megaDataFrom } from './megamud/fromWorld';
 import { explorerAsk } from './mme/ExplorerThread';
+import { asToolRequest } from '../shared/explorerTools';
 import {
   asExplorerOptions,
   asGearOptions,
+  asEqPlan,
+  COMPARE_KINDS,
+  type CompareKind,
+  NO_EQ_VIEW,
   asRoomViewRequest,
   EXPLORER_KINDS,
   type ExplorerBuyPlan,
@@ -159,7 +164,10 @@ import type { EngineMemory, MegaEngineSetup } from './session/MegaEngine';
 import type { LearnedSpellTable, SessionSummary } from '../shared/ipc';
 import { EMPTY_CHARACTER } from '../shared/character';
 import { IDLE_WALK } from '../shared/walk';
-import { isLoopScope, mergeLoops, NO_LOOP } from '../shared/loops';
+import { asLoops, isLoopScope, loopFileName, mergeLoops, NO_LOOP } from '../shared/loops';
+
+/** The most a shared loop file may hold: far over any loop, far under a socket's message. */
+const LOOP_FILE_MAX = 256 * 1024;
 import { EMPTY_AUTOMATION } from '../shared/automation';
 import { IDLE_QUEST_RUN } from '../shared/quests';
 import { EMPTY_ROOM_VERDICT } from '../shared/verdict';
@@ -2743,6 +2751,149 @@ function registerIpc(): void {
     }
   });
 
+  /*
+   * The EQ tab: MME's page for the plan, Find Best over it, and the plan put
+   * on. A plan or a search that does not parse is the default.
+   */
+  handle(Invoke.explorerEq, async (_caller, session: SessionId, plan: unknown) => {
+    const realm = explorerRealm(session);
+    const manager = host?.get(session)?.manager;
+    if (typeof realm === 'string' || manager === undefined)
+      return { ...NO_EQ_VIEW, reason: typeof realm === 'string' ? realm : '' };
+    try {
+      const view = await explorerAsk('eq', realm.file, manager.character, asEqPlan(plan));
+      return view.supported ? view : { ...view, reason: t('app.explorer.unsupported') };
+    } catch (error) {
+      return {
+        ...NO_EQ_VIEW,
+        reason: t('app.explorer.unreadable', { reason: errorMessage(error) })
+      };
+    }
+  });
+  handle(
+    Invoke.explorerEqBest,
+    async (_caller, session: SessionId, plan: unknown, find: unknown) => {
+      const realm = explorerRealm(session);
+      const manager = host?.get(session)?.manager;
+      const asked = asEqPlan(plan);
+      if (typeof realm === 'string' || manager === undefined)
+        return { equipped: asked.equipped ?? [], found: false };
+      const f = (typeof find === 'object' && find !== null ? find : {}) as Record<string, unknown>;
+      try {
+        return await explorerAsk('eqBest', realm.file, manager.character, asked, {
+          criterion:
+            typeof f['criterion'] === 'number' ? Math.max(0, Math.trunc(f['criterion'])) : 0,
+          next: f['next'] === true,
+          noLimited: f['noLimited'] === true
+        });
+      } catch {
+        return { equipped: asked.equipped ?? [], found: false };
+      }
+    }
+  );
+  handle(Invoke.explorerEqWear, async (_caller, session: SessionId, plan: unknown) => {
+    const realm = explorerRealm(session);
+    const manager = host?.get(session)?.manager;
+    if (typeof realm === 'string' || manager === undefined)
+      return { refusal: t('app.explorer.noCharacter'), buy: [] };
+    try {
+      const wear = await explorerAsk('eqWear', realm.file, manager.character, asEqPlan(plan));
+      return { refusal: manager.wearLoadout(wear.commands), buy: wear.buy };
+    } catch (error) {
+      return { refusal: t('app.explorer.unreadable', { reason: errorMessage(error) }), buy: [] };
+    }
+  });
+
+  /*
+   * The Lists tab: a compare list, a picker's matches and the Item Manager's
+   * columns, numbers and words parsed at the door.
+   */
+  const numbersOf = (value: unknown): number[] =>
+    Array.isArray(value)
+      ? value
+          .filter((n): n is number => typeof n === 'number' && Number.isInteger(n) && n > 0)
+          .slice(0, 500)
+      : [];
+  const compareKindOf = (value: unknown): CompareKind =>
+    COMPARE_KINDS.includes(value as CompareKind) ? (value as CompareKind) : 'weapons';
+  handle(
+    Invoke.explorerCompare,
+    async (_caller, session: SessionId, kind: unknown, numbers: unknown) => {
+      const realm = explorerRealm(session);
+      const manager = host?.get(session)?.manager;
+      const none = { supported: false, columns: [], rows: [] };
+      if (typeof realm === 'string' || manager === undefined)
+        return { ...none, reason: typeof realm === 'string' ? realm : '' };
+      try {
+        const list = await explorerAsk(
+          'compare',
+          realm.file,
+          manager.character,
+          compareKindOf(kind),
+          numbersOf(numbers)
+        );
+        return list.supported ? list : { ...list, reason: t('app.explorer.unsupported') };
+      } catch (error) {
+        return { ...none, reason: t('app.explorer.unreadable', { reason: errorMessage(error) }) };
+      }
+    }
+  );
+  handle(Invoke.explorerFind, async (_caller, session: SessionId, kind: unknown, text: unknown) => {
+    const realm = explorerRealm(session);
+    if (typeof realm === 'string' || typeof text !== 'string') return [];
+    try {
+      return await explorerAsk(
+        'find',
+        realm.file,
+        kind === 'items' ? 'items' : compareKindOf(kind),
+        text.slice(0, 64)
+      );
+    } catch {
+      return [];
+    }
+  });
+  handle(
+    Invoke.explorerItems,
+    async (_caller, session: SessionId, numbers: unknown, names: unknown) => {
+      const realm = explorerRealm(session);
+      const manager = host?.get(session)?.manager;
+      if (typeof realm === 'string' || manager === undefined) return [];
+      const words = Array.isArray(names)
+        ? names.filter((name): name is string => typeof name === 'string').slice(0, 500)
+        : [];
+      try {
+        return await explorerAsk('items', realm.file, manager.character, numbersOf(numbers), words);
+      } catch {
+        return [];
+      }
+    }
+  );
+  handle(Invoke.explorerTool, async (_caller, session: SessionId, request: unknown) => {
+    const realm = explorerRealm(session);
+    const manager = host?.get(session)?.manager;
+    const asked = asToolRequest(request);
+    if (typeof realm === 'string' || manager === undefined || asked === null) return null;
+    try {
+      return await explorerAsk('tool', realm.file, manager.character, asked);
+    } catch {
+      return null;
+    }
+  });
+  handle(Invoke.itemRulesFor, (_caller, session: unknown) => {
+    if (typeof session !== 'string') return { realm: [], own: [] };
+    const profile = profileFor(session as SessionId);
+    return {
+      realm: realmTablesFor(session as SessionId).items,
+      own: profile?.config.automation.loot.itemDetails ?? []
+    };
+  });
+  handle(Invoke.setItemDetails, (_caller, session: unknown, rules: unknown) => {
+    if (typeof session !== 'string') return t('app.profiles.noSuchCharacter');
+    const result = editor().setItemDetails(session, asItemRules(rules));
+    if (result.ok) publishRosters();
+    return result.ok ? null : result.error;
+  });
+
   handle(Invoke.lookup, async (_caller, session: SessionId, query: unknown) => {
     const world = worldFor(session);
     if (!world) return { mobs: [], items: [], spells: [], races: [], classes: [] };
@@ -3310,6 +3461,34 @@ function registerIpc(): void {
       replaced: result.replaced,
       dropped
     } satisfies LoopImport;
+  });
+
+  /*
+   * A loop as a file to hand on. The loop crossed the wire, so it is parsed;
+   * a name is the character's own, found as its laps find it.
+   */
+  handle(Invoke.exportLoop, async (_caller, session: unknown, given: unknown, format: unknown) => {
+    const manager =
+      typeof session === 'string' ? host?.get(session as SessionId)?.manager : undefined;
+    const loop =
+      typeof given === 'string' ? manager?.loopNamed(given) : asLoops([given], LOOP_LIMITS)[0];
+    if (loop === undefined) return { error: t('app.loop.noSuchLoop') };
+    if (format !== 'megamud') {
+      return { file: `${loopFileName(loop.name)}.yaml`, text: loopFileText(loop) };
+    }
+    if (manager === undefined) return { error: t('app.session.notConnected') };
+    const made = await manager.exportMegaLoop(loop);
+    return typeof made === 'string' ? { error: made } : made;
+  });
+  handle(Invoke.importLoopFile, (_caller, scope: unknown, owner: unknown, text: unknown) => {
+    if (!isLoopScope(scope) || typeof text !== 'string')
+      return { ok: false, error: t('errors.settings.loopFileEmpty') };
+    if (text.length > LOOP_FILE_MAX)
+      return { ok: false, error: t('errors.settings.loopFileTooBig') };
+    const result = editor().importLoopText(scope, typeof owner === 'string' ? owner : null, text);
+    // Live now rather than on the store's next poll, for `addLoop`'s reason.
+    if (result.ok) loops?.refresh();
+    return result;
   });
 
   handle(Invoke.saveProfile, (_caller, rawId: unknown, rawDraft: unknown) => {

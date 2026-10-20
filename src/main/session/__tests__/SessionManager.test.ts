@@ -3632,7 +3632,9 @@ describe('the actions kept beside the MegaMUD engine', () => {
       expect(inside.fundsFor('broadsword', '1/9', 1)).toEqual({
         price: 500,
         purse: 600,
-        withdraw: 0
+        withdraw: 0,
+        need: 500,
+        shortfall: 0
       });
       expect(cashPlaces).not.toHaveBeenCalled();
     });
@@ -3648,6 +3650,44 @@ describe('the actions kept beside the MegaMUD engine', () => {
         '1/9',
         expect.anything()
       );
+    });
+
+    /*
+     * The Cash tab's minimum cash on hand kept after buying (2026-10-19), as
+     * MegaMUD's own withdrawal adds it (D41): topped up where the purse pays
+     * and would fall under it, and the price alone where no vault covers both.
+     */
+    it('withdraws enough to keep the minimum cash on hand after buying', () => {
+      const covered = setUp(600, [{ name: 'Bank of Silvermere', copper: 900 }]);
+      covered.inside.mega.s.Cash_MinWealth = 300;
+      expect(covered.inside.fundsFor('broadsword', '1/9', 1)).toMatchObject({
+        withdraw: 200,
+        need: 800,
+        shortfall: 0,
+        bank: vault
+      });
+      const short = setUp(200, [{ name: 'Bank of Silvermere', copper: 900 }]);
+      short.inside.mega.s.Cash_MinWealth = 300;
+      expect(short.inside.fundsFor('broadsword', '1/9', 1)).toMatchObject({
+        withdraw: 600,
+        need: 800,
+        shortfall: 300
+      });
+      // A vault that holds the price's shortfall and not the minimum besides.
+      const lean = setUp(200, [{ name: 'Bank of Silvermere', copper: 400 }]);
+      lean.inside.mega.s.Cash_MinWealth = 300;
+      expect(lean.inside.fundsFor('broadsword', '1/9', 1)).toMatchObject({
+        withdraw: 300,
+        need: 500
+      });
+      // Nothing to top up from, and the purse pays: bought from the purse.
+      const purse = setUp(600, []);
+      purse.inside.mega.s.Cash_MinWealth = 300;
+      purse.inside.world = { cashPlaces: () => [] };
+      expect(purse.inside.fundsFor('broadsword', '1/9', 1)).toMatchObject({
+        withdraw: 0,
+        need: 500
+      });
     });
 
     it('goes by a vault nobody has asked, to ask it there', () => {
@@ -3721,6 +3761,47 @@ describe('the actions kept beside the MegaMUD engine', () => {
       expect(walk).toHaveBeenCalledWith('1/9', false, true);
       expect(inside.megaBuying?.cash).toBeUndefined();
       expect(then).not.toHaveBeenCalled();
+    });
+
+    /* The realm's balance holds the price and not the minimum besides: the price alone. */
+    it('withdraws the price alone where the vault holds less than the minimum as well', () => {
+      vi.useFakeTimers();
+      const { inside, set, state } = setUp(200, []);
+      pendingNow = () => inside.mega.s.pending;
+      const buying = atVault() as unknown as {
+        cash: { withdraw: number; need: number; shortfall: number };
+      };
+      Object.assign(buying.cash, { withdraw: 600, need: 800, shortfall: 300 });
+      inside.megaBuying = buying;
+      inside.megaBuyTick(state());
+      pendingPump(inside.mega.s);
+      vi.advanceTimersByTime(100);
+      set({ banks: [{ shop: 7, name: vault.name, copper: 400, at: Date.now() }] });
+      inside.megaBuyTick(state());
+      expect(said()).toEqual(['withdraw 300\r', 'i\r']);
+      expect(buying.cash.need).toBe(500);
+    });
+
+    /* Only the minimum to top up, and the vault cannot: bought from the purse. */
+    it('goes on to the counter where only the minimum was to be topped up and cannot be', () => {
+      vi.useFakeTimers();
+      const { inside, set, state } = setUp(600, []);
+      pendingNow = () => inside.mega.s.pending;
+      const walk = vi.spyOn(inside.mega, 'walkTo').mockReturnValue(null);
+      const buying = atVault() as unknown as {
+        cash?: { withdraw: number; need: number; shortfall: number };
+      };
+      Object.assign(buying.cash!, { withdraw: 200, need: 800, shortfall: 0 });
+      inside.megaBuying = buying;
+      inside.megaBuyTick(state());
+      pendingPump(inside.mega.s);
+      vi.advanceTimersByTime(100);
+      set({ banks: [{ shop: 7, name: vault.name, copper: 50, at: Date.now() }] });
+      inside.megaBuyTick(state());
+      inside.megaBuyTick(state());
+      expect(said().some((line) => line.startsWith('withdraw'))).toBe(false);
+      expect(walk).toHaveBeenCalledWith('1/9', false, true);
+      expect(inside.megaBuying).not.toBeNull();
     });
 
     it('takes the balance the realm says over the record, and gives up where it is short', () => {

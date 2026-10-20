@@ -19,6 +19,7 @@ import { currentTarget } from '../room/entities';
 import { castForgotten } from './timer';
 import { State } from '../states';
 import { EntityFlag, EntityType } from '../flags';
+import { castTook, roundDealt } from '../stats/window';
 
 /**
  * `0x425c40`: a round's damage is shown (`Display.ShowRounds`) and cleared,
@@ -32,6 +33,7 @@ export function combatRoundEnd(s: Session): void {
     s.probablyRoundCounted = 0;
   } else {
     if (s.Display_ShowRounds !== 0) s.host.show(`(Dmg:${s.roundDamage} Tot:${s.fightDamage})`);
+    roundDealt(s, s.roundDamage);
     s.roundDamage = 0;
     s.roundBlowSeen = 0;
     s.probablyRoundCounted = 0;
@@ -79,6 +81,7 @@ export function castWatchdog(s: Session): number {
     }
     s.host.activity(`Retrying ${label} spell: no spell messages seen`);
   } else {
+    castTook(s, mode, 0);
     giveUpSpell(s, mode);
     (s as unknown as Record<string, number>)[field as string] = 0;
     s.host.activity(`Skipping ${label} spell: no spell message seen`);

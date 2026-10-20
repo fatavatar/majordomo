@@ -23,6 +23,8 @@ import { isInGame, itemUsableBy, spellUsableBy } from './vendor/js/mmud/usable.j
 import {
   abilityList,
   armourCols,
+  bestShopPrice,
+  truncate,
   hasAbil,
   hooks,
   itemDetail,
@@ -56,21 +58,32 @@ import {
   equipSlotFor,
   calcCharStats,
   calcCharSummary,
+  encumLevel,
+  encumThresholds,
+  equipCommands,
   findBest,
+  STAT_LABELS,
+  statDisplay,
+  type CharStatsPanel,
   findBestValue,
   FIND_BEST,
   type FindBestRule
 } from './vendor/js/mmud/charstats.js';
 import {
+  attkStat,
   charIllumination,
+  currentAttackName,
   lairDamageLine,
+  monsterDamageIn,
+  spellColumns as spellFigures,
+  weaponAttack,
   setSpellOpts,
   setWeaponOpts,
   weaponMax,
   weaponMin,
   weaponSpeed
 } from './vendor/js/hooks/combat.js';
-import { MUD } from './vendor/js/mmud/combat.js';
+import { ATTACK, MUD } from './vendor/js/mmud/combat.js';
 import {
   armourType,
   itemType,
@@ -140,8 +153,19 @@ import type {
   RoomViewRequest,
   GearBoard,
   GearOptions,
-  GearPick
+  GearPick,
+  EqAttack,
+  EqFind,
+  EqFound,
+  EqPlan,
+  EqStat,
+  EqView,
+  CompareKind,
+  CompareList,
+  CompareRow,
+  ItemFacts
 } from '../../shared/explorer';
+import { DEFAULT_EQ_PLAN, EQ_SLOT_COUNT, NO_EQ_VIEW } from '../../shared/explorer';
 
 /** The tables mudtool reads, as the realm database names them. */
 const TABLES = [
@@ -215,7 +239,7 @@ export function realmFile(file: string): MmeRealm {
 let loaded: string | null = null;
 
 /** The realm loaded into mudtool, unless it already is. Throws when it cannot be read. */
-async function useRealm(realm: MmeRealm): Promise<void> {
+export async function useRealm(realm: MmeRealm): Promise<void> {
   if (loaded === realm.key) return;
   // `loadDB`'s own reading, from here: a manifest naming each table.
   const manifest = { tables: Object.fromEntries(TABLES.map((name) => [name, { file: name }])) };
@@ -233,7 +257,7 @@ async function useRealm(realm: MmeRealm): Promise<void> {
 }
 
 /** Whether mudtool computes this realm: stock MajorMUD, not GreaterMUD. */
-function supported(): boolean {
+export function supported(): boolean {
   return engine.greater !== true;
 }
 
@@ -1018,6 +1042,651 @@ export async function explorerGear(
       return now === null && choice === null ? [] : [{ slot, label, worn: now, best: choice }];
     })
   };
+}
+
+/** The EQ tab's slot names (mudtool's `tabs/eq.js`), by `EQ_SLOTS` index. */
+const SLOT_LABEL = [
+  'Head',
+  'Ears',
+  'Neck',
+  'Back',
+  'Torso',
+  'Arms',
+  'Wrist',
+  'Wrist',
+  'Hands',
+  'Finger',
+  'Finger',
+  'Waist',
+  'Legs',
+  'Feet',
+  'Worn',
+  'Off-Hand',
+  'Weapon',
+  'Eyes',
+  'Face',
+  'Everywhere'
+];
+/** The stat panel's two columns, as the labels sit on MME's picture (`tabs/eq.js`). */
+const EQ_LEFT = [5, 6, 7, 8, 9, 10, 11, 30, 12, 13, 14, 15, 33, 31, 4];
+const EQ_RIGHT = [16, 17, 18, 19, 20, 32, 21, 22, 23, 24, 25, 26, 27, 28, 29];
+/** The martial arts grid's rows (DMG, Skill, Accy), each its first figure, punch then kick then jumpkick. */
+const EQ_MARTIAL: Array<[string, number]> = [
+  ['DMG', 34],
+  ['Skill', 37],
+  ['Accy', 40]
+];
+const SECOND_WRIST = 7;
+
+/** `char.attack` for the EQ tab's attack, at the character's level. */
+function attackOf(attack: EqAttack, level: number): Record<string, unknown> {
+  const type = {
+    weapon: ATTACK.weapon,
+    bash: ATTACK.bash,
+    smash: ATTACK.smash,
+    spell: attack.spell > 0 ? ATTACK.spell : ATTACK.oneshot,
+    martial: ATTACK.martial,
+    oneshot: ATTACK.oneshot
+  }[attack.type];
+  return {
+    ...blankChar().attack,
+    type,
+    spellNum: attack.spell,
+    spellLvl: level,
+    ma: attack.ma,
+    backstab: attack.backstab
+  };
+}
+
+/** MME's attack spells (`ui/attack.js` `RefreshSpells`) this character has learned. */
+function learnedAttackSpells(): Array<[number, string]> {
+  const damaging = (spell: Row): boolean =>
+    String(spell['Short'] ?? '').length > 0 &&
+    Array.from({ length: 10 }, (_, x) => spell[`Abil-${x}`]).some((abil) =>
+      [1, 8, 17].includes(abil as number)
+    );
+  return (db.Spells as Row[])
+    .filter((spell) => damaging(spell) && char.learnedSpells.includes(spell['Number'] as number))
+    .map((spell) => [spell['Number'] as number, `${String(spell['Name'])} (${spell['Number']})`]);
+}
+
+/**
+ * The character as the EQ tab plans it (2026-10-19): what it wears, or the
+ * plan's loadout; the pack, read off the inventory, as MME's carried items
+ * (everything held the loadout does not put on); the rest of what it
+ * carries, by the encumbrance the game reports, as MME's additional weight;
+ * the blessings up as its bless spells; and the plan's adjustments and
+ * attack. What the pack weighs beyond the loadout, or null unreported.
+ */
+export function useEqCharacter(state: CharacterState, plan: EqPlan): number | null {
+  useCharacter(state);
+  const worn = char.equipped.slice();
+  const equipped = plan.equipped ?? worn;
+  char.equipped = equipped.slice();
+  const encum = (n: number): number => (by.item.get(n)?.['Encum'] as number | undefined) ?? 0;
+  // The pack: everything held, less one of each the loadout puts on.
+  const held = new Map<number, number>();
+  for (const item of state.inventory.items) {
+    const id = item.row?.id ?? item.id;
+    if (id === undefined || !by.item.has(id)) continue;
+    held.set(id, (held.get(id) ?? 0) + Math.max(1, item.count ?? 1));
+  }
+  for (const n of equipped) if (n > 0 && held.has(n)) held.set(n, held.get(n)! - 1);
+  char.itemManager = [...held]
+    .filter(([, qty]) => qty > 0)
+    .map(([item, qty]) => ({ item, flag: 'CARRIED', qty, fieldQty: qty, source: 'Inventory' }));
+  // The rest of the pack, as `cmdEquipButtons(2)` works it out from the reported figure.
+  const reported = state.inventory.encumbrance;
+  let packWeight: number | null = null;
+  if (reported !== null) {
+    let known = 0;
+    for (const n of worn) if (n > 0) known += encum(n);
+    for (const item of state.inventory.items) {
+      const id = item.row?.id ?? item.id;
+      if (id !== undefined && !item.equipped) known += encum(id) * Math.max(1, item.count ?? 1);
+    }
+    packWeight = Math.max(0, reported - known);
+    char.addWeight = packWeight;
+    char.useAddWeight = packWeight > 0;
+  }
+  char.bless = Array.from({ length: 10 }, (_, i) => {
+    const buff = state.buffs[i];
+    return buff === undefined ? 0 : numberNamed(db.Spells, buff.spell);
+  });
+  char.statAdjustments = plan.adjustments.slice();
+  char.attack = attackOf(plan.attack, char.level);
+  return packWeight;
+}
+
+/** One figure of the panel, as MME shows it. */
+function eqStat(panel: CharStatsPanel, i: number, label = STAT_LABELS[i]!): EqStat {
+  const value = panel.stats[i] ?? 0;
+  const shown = statDisplay(i, value);
+  return {
+    i,
+    label,
+    text: shown.text,
+    tone: shown.cls !== '' ? shown.cls : value === 0 ? 'zero' : '',
+    tips: panel.tips[i] ?? [],
+    adjusted: (char.statAdjustments[i] ?? 0) !== 0
+  };
+}
+
+/** `InvenCopytoClipboard` (not the equip-commands form), mudtool's `eqText`. */
+function eqCopyText(panel: CharStatsPanel): string {
+  const c = char;
+  const out: string[] = [];
+  const named = (rows: Row[], n: number): string =>
+    String(rows.find((row) => row['Number'] === n)?.['Name'] ?? '');
+  if (c.cls) out.push(`Class: ${named(db.Classes as Row[], c.cls)}`);
+  if (c.race) out.push(`Race: ${named(db.Races as Row[], c.race)}`);
+  if (c.level > 0) out.push(`Level: ${c.level}`);
+  if ((panel.eff['str'] ?? 0) > 0) out.push(`Strength: ${panel.eff['str']}`);
+  if (out.length > 0) out.push('');
+  const st = panel.stats;
+  if (st[2] || st[3]) out.push(`Armour Class: ${st[2]}/${st[3]}`);
+  const enc = encumLevel(st[0] ?? 0, st[1] ?? 0);
+  out.push(
+    `Encumberance: ${st[0]}/${st[1]} - ${enc.name} (${enc.pct}%)`,
+    '',
+    'They are equipped with:',
+    ''
+  );
+  const line = (x: number): void => {
+    const item = by.item.get(c.equipped[x]!);
+    if (item !== undefined) out.push(String(item['Name']).padEnd(31) + `(${SLOT_LABEL[x]})`);
+  };
+  for (let x = 0; x < EQ_SLOT_COUNT; x++) if (x !== OFFHAND_SLOT && x !== WEAPON_SLOT) line(x);
+  line(OFFHAND_SLOT);
+  line(WEAPON_SLOT);
+  const stats: string[] = [];
+  for (let x = 4; x <= 42; x++) {
+    if (!st[x]) continue;
+    stats.push(`${STAT_LABELS[x]} ${statDisplay(x, st[x]!).text}`);
+  }
+  if (stats.length > 0) out.push('', `Stats: ${stats.join(', ')}`);
+  return out.join('\r\n');
+}
+
+/**
+ * MMUD Explorer's EQ tab (2026-10-19), mudtool's `tabs/eq.js`: the twenty
+ * slots with MME's lists, the stat panel `CalcCharacterStats` works out for
+ * the loadout planned, with what adds to every figure, and the commands
+ * that put it on — for the character as the game reports it
+ * (`useEqCharacter`).
+ */
+export async function explorerEq(
+  realm: MmeRealm,
+  state: CharacterState,
+  plan: EqPlan
+): Promise<EqView> {
+  await useRealm(realm);
+  if (!supported()) return NO_EQ_VIEW;
+  useCharacter(state);
+  const worn = char.equipped.slice();
+  const packWeight = useEqCharacter(state, plan);
+  const use2ndWrist = (settings['use2ndWrist'] as boolean | undefined) ?? true;
+  const panel = calcCharStats(char, { hideCharStats: plan.itemsOnly, globalFilter: true });
+  const lists = eqSlotLists(char, { globalFilter: true });
+  const held = new Set(
+    state.inventory.items.flatMap((item) => {
+      const id = item.row?.id ?? item.id;
+      return id === undefined ? [] : [id];
+    })
+  );
+  const named = (n: number): string => String(by.item.get(n)?.['Name'] ?? n);
+  const st = panel.stats;
+  const enc = encumLevel(st[0] ?? 0, st[1] ?? 0);
+  const attk = attkStat();
+  const notes: string[] = [];
+  if (panel.critEffective !== st[7])
+    notes.push(t('explorer.eq.critEffective', { crit: panel.critEffective }));
+  if (panel.attackAccyAdj)
+    notes.push(t('explorer.eq.attackAccuracy', { accuracy: (st[10] ?? 0) + panel.attackAccyAdj }));
+  const className = String(
+    (db.Classes as Row[]).find((row) => row['Number'] === char.cls)?.['Name'] ?? ''
+  );
+  const raceName = String(
+    (db.Races as Row[]).find((row) => row['Number'] === char.race)?.['Name'] ?? ''
+  );
+  return {
+    supported: true,
+    who: [
+      char.name || null,
+      className || null,
+      raceName || null,
+      char.level ? t('explorer.eq.level', { level: char.level }) : null
+    ]
+      .filter((part): part is string => part !== null)
+      .join(' · '),
+    slots: EQ_SLOTS.map((_, x) => {
+      const chosen = char.equipped[x] ?? 0;
+      const slot = panel.slots[x] ?? { tip: [], warn: '' };
+      return {
+        slot: x,
+        label: SLOT_LABEL[x]!,
+        options: lists[x]!.map((n): [number, string] => [n, `${named(n)} (${n})`]),
+        chosen,
+        worn: worn[x] ?? 0,
+        carried: chosen === 0 || held.has(chosen),
+        tip: slot.tip.join(', '),
+        warn: slot.warn,
+        ...(x === SECOND_WRIST && !use2ndWrist ? { disabled: true } : {})
+      };
+    }),
+    left: EQ_LEFT.map((i) => eqStat(panel, i, i === 4 ? 'Encumbrance %' : STAT_LABELS[i])),
+    right: EQ_RIGHT.map((i) => eqStat(panel, i)),
+    martial: EQ_MARTIAL.map(([row, first]) =>
+      [0, 1, 2].map((k) => eqStat(panel, first + k, `${['Punch', 'Kick', 'Jumpkick'][k]} ${row}`))
+    ),
+    attk: {
+      i: 46,
+      label: 'Attk',
+      text: attk.text,
+      tone: attk.cls !== '' ? attk.cls : attk.text === '0' ? 'zero' : '',
+      tips: attk.tip === '' ? [] : [attk.tip],
+      adjusted: false
+    },
+    encumbrance: {
+      now: st[0] ?? 0,
+      max: st[1] ?? 0,
+      level: enc.name,
+      percent: enc.pct,
+      tips: [
+        ...(panel.tips[0] ?? []),
+        '',
+        ...encumThresholds(st[1] ?? 0).map(([level, weight]) => `${level} @ ${weight}`)
+      ]
+    },
+    armour: {
+      text: `${panel.acInt}/${panel.drInt}`,
+      ac: panel.tips[2] ?? [],
+      dr: panel.tips[3] ?? []
+    },
+    packWeight,
+    notes,
+    attackName: currentAttackName(false),
+    attackSpells: learnedAttackSpells(),
+    criteria: gearCriteria().map(({ group, label }) => [group, label]),
+    copyText: eqCopyText(panel),
+    commands: equipCommands(char.equipped, worn)
+  };
+}
+
+/**
+ * Putting the plan on (2026-10-19): MME's commands for it
+ * (`equipCommands`, what comes off and then what goes on) for the slots
+ * whose item the pack holds, less what is worn already; and the items it
+ * does not hold, which are bought and worn (`ExplorerBuy`).
+ */
+export async function explorerEqWear(
+  realm: MmeRealm,
+  state: CharacterState,
+  plan: EqPlan
+): Promise<{ commands: string[]; buy: Array<{ number: number; name: string }> }> {
+  await useRealm(realm);
+  if (!supported() || plan.equipped === null) return { commands: [], buy: [] };
+  useCharacter(state);
+  const worn = char.equipped.slice();
+  const held = new Set(
+    state.inventory.items.flatMap((item) => {
+      const id = item.row?.id ?? item.id;
+      return id === undefined ? [] : [id];
+    })
+  );
+  const planned = plan.equipped.map((n, x) => (n > 0 && !held.has(n) ? (worn[x] ?? 0) : n));
+  const wearing = new Set(worn.filter((n) => n > 0).map((n) => String(by.item.get(n)?.['Name'])));
+  const commands = equipCommands(planned, worn)
+    .split('\r\n')
+    .filter((line) => line !== '' && !(line.startsWith('eq ') && wearing.has(line.slice(3))));
+  const buy = [...new Set(plan.equipped.filter((n) => n > 0 && !held.has(n)))].map((n) => ({
+    number: n,
+    name: String(by.item.get(n)?.['Name'] ?? n)
+  }));
+  return { commands, buy };
+}
+
+/** AC and DR as MME writes them in a list, tenths. */
+const acdrOf = (row: Row): string =>
+  `${(row['ArmourClass'] as number) / 10}/${(row['DamageResist'] as number) / 10}`;
+
+/** A compare list's column: mudtool's `COLS` entry, its heading, and what it reads. */
+interface CompareColumn {
+  id: string;
+  label: string;
+  numeric?: boolean;
+  get(row: Row): ExplorerCell;
+}
+
+/** mudtool's `tabs/lists.js` `COLS`, kind by kind, after the number. */
+function compareColumns(kind: CompareKind): CompareColumn[] {
+  const name: CompareColumn = {
+    id: 'Name',
+    label: t('explorer.columns.name'),
+    get: (r) => String(r['Name'])
+  };
+  switch (kind) {
+    case 'weapons':
+      return [
+        name,
+        {
+          id: 'type',
+          label: t('explorer.columns.itemType'),
+          get: (r) => weaponType(r['WeaponType'])
+        },
+        {
+          id: 'minmax',
+          label: t('explorer.columns.minMax'),
+          numeric: true,
+          get: (r) => `${r['Min']}-${r['Max']}`
+        },
+        {
+          id: 'Speed',
+          label: t('explorer.columns.speed'),
+          numeric: true,
+          get: (r) => r['Speed'] as number
+        },
+        {
+          id: 'Accy',
+          label: t('explorer.columns.accy'),
+          numeric: true,
+          get: (r) => r['Accy'] as number
+        },
+        {
+          id: 'StrReq',
+          label: t('explorer.columns.str'),
+          numeric: true,
+          get: (r) => r['StrReq'] as number
+        },
+        {
+          id: 'Encum',
+          label: t('explorer.columns.encumbrance'),
+          numeric: true,
+          get: (r) => r['Encum'] as number
+        },
+        { id: 'acdr', label: t('explorer.columns.ac'), numeric: true, get: acdrOf },
+        {
+          id: 'swings',
+          label: t('explorer.columns.swings'),
+          numeric: true,
+          get: (r) => truncate(weaponAttack(r)?.swings ?? 0, 2)
+        },
+        {
+          id: 'round',
+          label: t('explorer.columns.roundDamage'),
+          numeric: true,
+          get: (r) => weaponAttack(r)?.roundTotal ?? 0
+        }
+      ];
+    case 'armour':
+      return [
+        name,
+        { id: 'worn', label: t('explorer.columns.slot'), get: (r) => wornType(r['Worn']) },
+        {
+          id: 'type',
+          label: t('explorer.columns.itemType'),
+          get: (r) => armourType(r['ArmourType'])
+        },
+        { id: 'acdr', label: t('explorer.columns.ac'), numeric: true, get: acdrOf },
+        {
+          id: 'Accy',
+          label: t('explorer.columns.accy'),
+          numeric: true,
+          get: (r) => r['Accy'] as number
+        },
+        {
+          id: 'Encum',
+          label: t('explorer.columns.encumbrance'),
+          numeric: true,
+          get: (r) => r['Encum'] as number
+        }
+      ];
+    case 'spells':
+      return [
+        name,
+        { id: 'Short', label: t('explorer.columns.short'), get: (r) => String(r['Short'] ?? '') },
+        {
+          id: 'ReqLevel',
+          label: t('explorer.columns.level'),
+          numeric: true,
+          get: (r) => r['ReqLevel'] as number
+        },
+        {
+          id: 'ManaCost',
+          label: t('explorer.columns.mana'),
+          numeric: true,
+          get: (r) => r['ManaCost'] as number
+        },
+        {
+          id: 'magery',
+          label: t('explorer.columns.magery'),
+          get: (r) => magery(r['Magery'], r['MageryLVL'])
+        },
+        {
+          id: 'minmax',
+          label: t('explorer.columns.minMax'),
+          numeric: true,
+          get: (r) => `${r['MinBase']}-${r['MaxBase']}`
+        },
+        {
+          id: 'Dur',
+          label: t('explorer.columns.duration'),
+          numeric: true,
+          get: (r) => r['Dur'] as number
+        },
+        {
+          id: 'dmg',
+          label: t('explorer.columns.dmg'),
+          numeric: true,
+          get: (r) => spellFigures(r).dmgText
+        },
+        {
+          id: 'heal',
+          label: t('explorer.columns.heal'),
+          numeric: true,
+          get: (r) => spellFigures(r).healText
+        }
+      ];
+    case 'monsters':
+      return [
+        name,
+        {
+          id: 'EXP',
+          label: t('explorer.columns.exp'),
+          numeric: true,
+          get: (r) => ((r['EXP'] as number | undefined) ?? 0).toLocaleString('en-US')
+        },
+        { id: 'HP', label: t('explorer.columns.hp'), numeric: true, get: (r) => r['HP'] as number },
+        {
+          id: 'acdr',
+          label: t('explorer.columns.ac'),
+          numeric: true,
+          get: (r) => `${r['ArmourClass']}/${r['DamageResist']}`
+        },
+        {
+          id: 'MagicRes',
+          label: t('explorer.columns.mr'),
+          numeric: true,
+          get: (r) => r['MagicRes'] as number
+        },
+        {
+          id: 'damage',
+          label: t('explorer.columns.damage'),
+          numeric: true,
+          get: (r) => monsterDamageIn(r['Number'] as number).damage
+        }
+      ];
+  }
+}
+
+/** Each compare list's records, by number. */
+function recordsOf(kind: CompareKind): Map<number, Row> {
+  return (kind === 'spells' ? by.spell : kind === 'monsters' ? by.monster : by.item) as Map<
+    number,
+    Row
+  >;
+}
+
+/**
+ * MMUD Explorer's compare lists (2026-10-19), mudtool's `compareList`: the
+ * records asked for, in the order given, with the list's own columns, for
+ * the character as the game reports it.
+ */
+export async function explorerCompare(
+  realm: MmeRealm,
+  state: CharacterState,
+  kind: CompareKind,
+  numbers: readonly number[]
+): Promise<CompareList> {
+  await useRealm(realm);
+  if (!supported()) return { supported: false, columns: [], rows: [] };
+  useCharacter(state);
+  const columns = compareColumns(kind);
+  const records = recordsOf(kind);
+  const rows = numbers.flatMap((n): CompareRow[] => {
+    const row = records.get(n);
+    if (row === undefined) return [];
+    const usable =
+      kind === 'weapons' || kind === 'armour'
+        ? !char.cls || itemUsableBy(row, char, { ignoreMinItemLevel: true })
+        : true;
+    return [
+      {
+        number: n,
+        name: String(row['Name']),
+        usable,
+        cells: Object.fromEntries(columns.map((column) => [column.id, column.get(row)])),
+        ...(kind === 'monsters' && monsterDamageIn(n).calculated ? { worked: true } : {})
+      }
+    ];
+  });
+  return {
+    supported: true,
+    columns: [
+      { id: 'Number', label: '#', numeric: true, width: '3.5em' },
+      ...columns.map((column) => ({
+        id: column.id,
+        label: column.label,
+        width: column.id === 'Name' ? 'minmax(10em, 2fr)' : '6em',
+        ...(column.numeric === true ? { numeric: true } : {})
+      }))
+    ],
+    rows
+  };
+}
+
+/**
+ * The records a compare list's picker offers for what is typed: a number,
+ * or names holding it, the realm's order, at most `limit`. Weapons and
+ * armour are items of their type (`ItemType` 1 and 0); `items` is any item.
+ */
+export async function explorerFind(
+  realm: MmeRealm,
+  kind: CompareKind | 'items',
+  text: string,
+  limit = 25
+): Promise<Array<[number, string]>> {
+  await useRealm(realm);
+  if (!supported()) return [];
+  const records = kind === 'items' ? (by.item as Map<number, Row>) : recordsOf(kind);
+  const typed = text.trim().toLowerCase();
+  if (typed === '') return [];
+  const fits = (row: Row): boolean =>
+    kind === 'weapons' ? row['ItemType'] === 1 : kind === 'armour' ? row['ItemType'] === 0 : true;
+  const found: Array<[number, string]> = [];
+  const asNumber = /^\d+$/.test(typed) ? Number(typed) : null;
+  if (asNumber !== null) {
+    const row = records.get(asNumber);
+    if (row !== undefined && fits(row)) found.push([asNumber, String(row['Name'])]);
+  }
+  for (const [n, row] of records) {
+    if (found.length >= limit) break;
+    if (n === asNumber || !fits(row)) continue;
+    if (String(row['Name']).toLowerCase().includes(typed)) found.push([n, String(row['Name'])]);
+  }
+  return found;
+}
+
+/**
+ * The Item Manager's columns for items (2026-10-19), mudtool's
+ * `itemManager`: weight, type, where worn, whether usable, and the cheapest
+ * counter's buy and sell at the character's charm (its items' bonuses in).
+ */
+export async function explorerItems(
+  realm: MmeRealm,
+  state: CharacterState,
+  numbers: readonly number[],
+  /** Items an item rule names, by name as `itemKey` keys one. */
+  names: readonly string[] = []
+): Promise<ItemFacts[]> {
+  await useRealm(realm);
+  if (!supported()) return [];
+  const key = (name: string): string => name.trim().toLowerCase().replace(/\s+/g, ' ');
+  const wanted = new Set(names.map(key));
+  const named: number[] = [];
+  if (wanted.size > 0)
+    for (const [n, item] of by.item as Map<number, Row>) {
+      const k = key(String(item['Name']));
+      if (!wanted.has(k)) continue;
+      wanted.delete(k);
+      named.push(n);
+    }
+  useEqCharacter(state, DEFAULT_EQ_PLAN);
+  const charm = calcCharStats(char, { globalFilter: true }).eff['cha'] ?? 0;
+  const shopName = (n: number): string | null =>
+    n > 0 ? String((by.shop.get(n) as Row | undefined)?.['Name'] ?? `#${n}`) : null;
+  return [...new Set([...numbers, ...named])].flatMap((n): ItemFacts[] => {
+    const item = by.item.get(n) as Row | undefined;
+    if (item === undefined) return [];
+    const price = bestShopPrice(item, charm);
+    const type = item['ItemType'];
+    return [
+      {
+        number: n,
+        name: String(item['Name']),
+        enc: (item['Encum'] as number | undefined) ?? 0,
+        type: itemType(type),
+        worn:
+          type === 0
+            ? wornType(item['Worn'])
+            : type === 1
+              ? weaponType(item['WeaponType'])
+              : 'Nowhere',
+        usable: itemUsableBy(item, char, { ignoreMinItemLevel: true }),
+        value: price.value,
+        shop: shopName(price.shop),
+        more: price.more
+      }
+    ];
+  });
+}
+
+/** Next Best's place in its search, per character and criterion (`InvenFindBest`'s `state`). */
+const nextBest = new Map<string, Record<string, unknown>>();
+
+/** The EQ tab's Find Best and Next Best (`InvenFindBest`), over the slots not held. */
+export async function explorerEqBest(
+  realm: MmeRealm,
+  state: CharacterState,
+  plan: EqPlan,
+  find: EqFind
+): Promise<EqFound> {
+  await useRealm(realm);
+  if (!supported()) return { equipped: plan.equipped ?? [], found: false };
+  useEqCharacter(state, plan);
+  const criteria = gearCriteria();
+  const rule = (criteria[find.criterion] ?? criteria[0]!).rule;
+  const key = `${state.name ?? ''}|${find.criterion}`;
+  if (!find.next || !nextBest.has(key)) nextBest.set(key, {});
+  const lists = eqSlotLists(char, { globalFilter: true });
+  const found = findBest(char.equipped, lists, rule, {
+    next: find.next,
+    holds: plan.holds,
+    noLimited: find.noLimited,
+    use2ndWrist: (settings['use2ndWrist'] as boolean | undefined) ?? true,
+    state: nextBest.get(key)
+  } as Parameters<typeof findBest>[3]);
+  return { equipped: found.equipped, found: found.found };
 }
 
 /** The character's room as MME keys one, or null where it is not placed. */

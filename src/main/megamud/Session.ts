@@ -11,6 +11,7 @@
  * the stamp, never a live clock. `tick()` is `GetTickCount64`.
  */
 import type { BotCommand } from '../../shared/remotes';
+import type { MegaCount } from '../../shared/tally';
 import type { ItemRec, MegaData, MonsterRec, PlayerRec, RoomRec } from './data';
 import type { MegaSettings } from '../../shared/megamud/settings';
 import { StateFields } from './StateFields';
@@ -443,6 +444,17 @@ export interface SessionHost {
    * errand is fetching it (2026-10-19).
    */
   leaveFor?(name: string): boolean;
+  /**
+   * Ours: a purchase is drawing on the purse, so no coin is discarded until
+   * it is made (2026-10-19) — what MegaMUD's own `cashNeeded` holds for its
+   * detours, without the withdrawal that comes with it.
+   */
+  keepCoins?(): boolean;
+  /**
+   * Ours: what MegaMUD's statistics window counts, as it is counted
+   * (`stats/window.ts`), for the character's tally.
+   */
+  counted?(count: MegaCount): void;
   /**
    * `0x482fc0`'s file: a path by its name (a `route`'s among them); the
    * paths known (`Session.paths`) are looked in when this is absent or null.

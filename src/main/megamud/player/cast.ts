@@ -39,6 +39,7 @@ import { findSpell } from '../spells/lookup';
 import { isCastState, State } from '../states';
 import { castForgotten, castStamp, roundEvent, RoundEvent, spellLocked } from '../combat/timer';
 import { LineFlag, EntityFlag, EntityType } from '../flags';
+import { castTook } from '../stats/window';
 
 const CAST_OPENINGS = [
   'You cast ',
@@ -169,6 +170,7 @@ function castOrAttempt(
       s.roundBlowSeen = 1;
       s.probablyRoundCounted = 1;
     }
+    castTook(s, mode, 0);
     countCast(s, mode, 0);
     resetNoMessage(s, mode);
     s.castMessageSeen = 1;
@@ -246,6 +248,7 @@ function castOrAttempt(
     s.skipTick = 1;
   }
   if (hitLine(s, line) === 0) {
+    castTook(s, mode, 1);
     countCast(s, mode, 1);
     if (s.debug !== 0) s.host.trace(`{${s.castShort}^}`);
     s.lineFlags |= LineFlag.FightLineSeen;

@@ -31,6 +31,7 @@ import { blessCommand } from '../player/cast';
 import { blowStruck, castForgotten } from '../combat/timer';
 import { State } from '../states';
 import { LineFlag, MessageFlag, MessageEffect, EntityFlag, EntityType } from '../flags';
+import { castTook } from '../stats/window';
 
 /** What a template's fields captured (`0x59c300`…), kept on the session when it matches. */
 interface Captures {
@@ -273,6 +274,7 @@ function countedByMessage(s: Session, spell: SpellRec | null): number {
   }
   if (s.debug !== 0) s.host.trace(`{${s.msgSpell}+}`);
   resetNoMessage(s, s.castMode);
+  castTook(s, s.castMode, 1);
   countCast(s, s.castMode, 1);
   s.lineFlags |= LineFlag.FightLineSeen;
   s.sneaking = 0;

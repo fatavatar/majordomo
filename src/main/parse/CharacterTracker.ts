@@ -86,7 +86,7 @@ import {
   wordsOf,
   type SpellLore
 } from '../../shared/spell-messages';
-import { castIn, confuses, holdsMovement } from '../../shared/spellcraft';
+import { castIn, confuses, holdsMovement, sharedBy } from '../../shared/spellcraft';
 import { afflictionOnset, PLAYER_STATUS_HEADER, sheetLines, STATUS_LINE } from './patterns';
 import type { Discovery } from '../../shared/memory';
 import { NO_FIGHTS, type FightSink } from '../../shared/fights';
@@ -106,7 +106,13 @@ import { playerEntity, playerKey } from '../../shared/players';
 import { noteRemoteCall, noteRemoteClient, trackPlayers } from './players';
 import { keepPartyCurrent } from './partyUpkeep';
 import { trackTally, type OwnBlow } from './tally';
-import { NO_TALLY, settleClocks, type CombatTally } from '../../shared/tally';
+import {
+  NO_TALLY,
+  settleClocks,
+  withMegaCount,
+  type CombatTally,
+  type MegaCount
+} from '../../shared/tally';
 import { readStatAll, statedBasis } from '../../shared/stated';
 import {
   rosterFrom,
@@ -3197,19 +3203,33 @@ export class CharacterTracker {
    * up, which this does not touch.
    */
   private conditionsOf(name: string): Array<keyof Afflictions> {
-    const sentence = unnamedEffectSentence(name);
-    if (sentence !== null) {
-      const causes = this.spellLore.effects.seen(sentence)?.causes ?? {};
-      return AFFLICTIONS.filter((condition) => causes[condition] === 'confirmed');
+    return this.conditionsOfAny([name]);
+  }
+
+  /**
+   * The conditions a sentence several spells share turns on: what each
+   * states of itself, and a hold or a confusion only where the spells agree
+   * on it (`sharedBy`).
+   */
+  private conditionsOfAny(names: readonly string[]): Array<keyof Afflictions> {
+    const conditions = new Set<keyof Afflictions>();
+    const rows: Array<ReturnType<WorldGraph['spellNamed']> | undefined> = [];
+    for (const name of names) {
+      const sentence = unnamedEffectSentence(name);
+      if (sentence !== null) {
+        const causes = this.spellLore.effects.seen(sentence)?.causes ?? {};
+        for (const condition of AFFLICTIONS)
+          if (causes[condition] === 'confirmed') conditions.add(condition);
+        continue;
+      }
+      rows.push(this.world?.spellNamed(name));
+      const start = this.spellLore.startOf(name);
+      const stated = start === null ? null : afflictionOnset(start);
+      if (stated !== null) conditions.add(stated);
     }
-    const conditions: Array<keyof Afflictions> = [];
-    const row = this.world?.spellNamed(name);
-    if (holdsMovement(row)) conditions.push('held');
-    if (confuses(row)) conditions.push('confused');
-    const start = this.spellLore.startOf(name);
-    const stated = start === null ? null : afflictionOnset(start);
-    if (stated !== null && !conditions.includes(stated)) conditions.push(stated);
-    return conditions;
+    if (sharedBy(rows, holdsMovement)) conditions.add('held');
+    if (sharedBy(rows, confuses)) conditions.add('confused');
+    return [...conditions];
   }
 
   /**
@@ -3222,9 +3242,8 @@ export class CharacterTracker {
     for (const { sentence } of sheetLines(text)) {
       const onset = afflictionOnset(sentence);
       if (onset !== null) stated.add(onset);
-      for (const name of this.spellsBegunBy(sentence)) {
-        for (const condition of this.conditionsOf(name)) stated.add(condition);
-      }
+      for (const condition of this.conditionsOfAny(this.spellsBegunBy(sentence)))
+        stated.add(condition);
       const causes = this.spellLore.effects.seen(sentence)?.causes ?? {};
       for (const condition of AFFLICTIONS)
         if (causes[condition] !== undefined) stated.add(condition);
@@ -3245,8 +3264,8 @@ export class CharacterTracker {
    */
   private namedCause(s: CharacterState, condition: keyof Afflictions): boolean {
     return s.buffs.some((buff) =>
-      this.buffNames(buff).some(
-        (name) => !isUnnamedEffect(name) && this.conditionsOf(name).includes(condition)
+      this.conditionsOfAny(this.buffNames(buff).filter((name) => !isUnnamedEffect(name))).includes(
+        condition
       )
     );
   }
@@ -3449,13 +3468,14 @@ export class CharacterTracker {
     const by = (test: (row: (typeof rows)[number]) => boolean): AfflictionCause =>
       causeOf(block, 'spell', candidates[rows.findIndex(test)]);
     let next: CharacterState | null = null;
-    if (rows.some(holdsMovement)) {
+    if (sharedBy(rows, holdsMovement)) {
       this.expect.shiftHeldMove();
       next = afflicted(s, 'held', 'yes', by(holdsMovement));
     }
     // A confusion landing refuses nothing by itself — the fumbles come later,
     // one command at a time — so the flag is set and no claim is taken.
-    if (rows.some(confuses)) next = afflicted(next ?? s, 'confused', 'yes', by(confuses)) ?? next;
+    if (sharedBy(rows, confuses))
+      next = afflicted(next ?? s, 'confused', 'yes', by(confuses)) ?? next;
     return next;
   }
 
@@ -3772,6 +3792,16 @@ export class CharacterTracker {
     this.state = { ...this.state, statsBase: base, updatedAt: Date.now() };
     this.belongings.rememberStatsBase(base);
     return true;
+  }
+
+  /**
+   * What the MegaMUD engine counted (`megamud/stats/window.ts`), into the
+   * tally beside what the stream counts. Published with the next block.
+   */
+  megaCounted(count: MegaCount, at = Date.now()): void {
+    const tally = withMegaCount(this.state.tally, count, at);
+    this.state = { ...this.state, tally };
+    this.belongings.rememberStats(tally);
   }
 
   private recalledTally(): CombatTally {

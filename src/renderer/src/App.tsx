@@ -99,7 +99,12 @@ import type { MonsterRule } from '@shared/monsterRules';
 import type { ItemRule } from '@shared/itemRules';
 import type { MegaMudPath } from '@shared/megamudPaths';
 import type { IpcApi, LearnedSpellRow } from '@shared/ipc';
+import { mean, sinceCardBaseline, swings } from '@shared/tally';
+import type { ToolRequest } from '@shared/explorerTools';
 import type {
+  CompareKind,
+  EqFind,
+  EqPlan,
   ExplorerKind,
   ExplorerOptions,
   GearOptions,
@@ -152,6 +157,7 @@ import { IDLE_WALK, type WalkProgress } from '@shared/walk';
 import { DEFAULT_INTERNAL, type InternalConfig } from '@shared/internal';
 import type { HuntingRoom } from '@shared/hunting';
 import { NO_LOOP, type Loop, type LoopProgress } from '@shared/loops';
+import { saveText } from './lib/download';
 import { movementOf, type Movement, type MovementConfirm } from '@shared/movement';
 import { megaMovement } from '@shared/megamud/toggles';
 import { EMPTY_AUTOMATION, type AutomationSnapshot } from '@shared/automation';
@@ -2974,6 +2980,81 @@ export default function App() {
   ].join('|');
   // What the lists answer for: read again when the class, level or gear change.
   const explorerKey = wornKey(character);
+  /*
+   * The EQ tab's calls, and what its page answers for beside the gear: the
+   * pack, its reported weight, and the blessings up.
+   */
+  const explorerEqKey = [
+    explorerKey,
+    character.inventory.items.map((item) => `${item.name}x${item.count ?? 1}`).join(','),
+    character.inventory.encumbrance ?? '',
+    character.buffs.map((buff) => buff.spell).join(',')
+  ].join('|');
+  const explorerEq = useMemo(
+    () => ({
+      characterKey: explorerEqKey,
+      view: (plan: EqPlan) => api.explorerEq(session, plan),
+      best: (plan: EqPlan, find: EqFind) => api.explorerEqBest(session, plan, find),
+      wear: (plan: EqPlan) => api.explorerEqWear(session, plan),
+      copy: (text: string) => void api.copyText(text)
+    }),
+    [api, session, explorerEqKey]
+  );
+  /*
+   * The Tools tab's: its calculators, and the Combat Stats card's own Hit,
+   * Crit and Weapon rows as MegaMUD's Hit, Crit and Extra, % of every swing
+   * and the average, for the Swing calculator's true average.
+   */
+  const statsShown = sinceCardBaseline(character.tally, character.statsBase);
+  const swungAll = swings(statsShown);
+  const fromStats =
+    swungAll === 0
+      ? null
+      : {
+          hitP: Math.round((statsShown.dealt.melee.hits / swungAll) * 100),
+          hitA: Math.round(mean(statsShown.dealt.melee.damage, statsShown.dealt.melee.hits) ?? 0),
+          extraP: Math.round((statsShown.dealt.proc.hits / swungAll) * 100),
+          extraA: Math.round(mean(statsShown.dealt.proc.damage, statsShown.dealt.proc.hits) ?? 0),
+          critP: Math.round((statsShown.dealt.critical.hits / swungAll) * 100),
+          critA: Math.round(
+            mean(statsShown.dealt.critical.damage, statsShown.dealt.critical.hits) ?? 0
+          )
+        };
+  const fromStatsKey = JSON.stringify(fromStats);
+  const explorerTools = useMemo(
+    () => ({
+      characterKey: explorerEqKey,
+      tool: <R extends ToolRequest>(request: R) => api.explorerTool(session, request),
+      fromStats: JSON.parse(fromStatsKey) as typeof fromStats,
+      copy: (text: string) => void api.copyText(text)
+    }),
+    [api, session, explorerEqKey, fromStatsKey] // eslint-disable-line react-hooks/exhaustive-deps
+  );
+  // The Lists tab's: the pack as the game lists it, and the item rules its Item Manager writes.
+  const explorerPack = useMemo(
+    () =>
+      character.inventory.items.map((item) => ({
+        number: item.row?.id ?? item.id ?? null,
+        name: item.name,
+        count: item.count ?? 1,
+        equipped: item.equipped
+      })),
+    [character.inventory.items]
+  );
+  const explorerLists = useMemo(
+    () => ({
+      pack: explorerPack,
+      characterKey: explorerEqKey,
+      compare: (kind: CompareKind, numbers: number[]) =>
+        api.explorerCompare(session, kind, numbers),
+      find: (kind: CompareKind | 'items', text: string) => api.explorerFind(session, kind, text),
+      items: (numbers: number[], names: string[]) => api.explorerItems(session, numbers, names),
+      rules: () => api.itemRulesFor(session),
+      saveRules: (own: ItemRule[]) => api.setItemDetails(session, own),
+      copy: (text: string) => void api.copyText(text)
+    }),
+    [api, session, explorerPack, explorerEqKey]
+  );
 
   /**
    * The rail takes no typed input, so opening it leaves focus in the terminal
@@ -3034,6 +3115,29 @@ export default function App() {
    * keys an effect on one then runs it on every render — which is how a refused
    * save came to flash and vanish before anybody could read it.
    */
+  /**
+   * A loop handed out as a file (2026-10-19): this client's own loop file for
+   * another player to import, or MegaMUD's path file for the character
+   * `from`, its legs planned. Saved as a download; why not said in the
+   * console as well, and answered.
+   */
+  const exportLoopFile = useCallback(
+    async (
+      from: SessionId | null,
+      loop: Loop | string,
+      format: 'mudengine' | 'megamud'
+    ): Promise<string | null> => {
+      const made = await api.exportLoop(from, loop, format);
+      if ('error' in made) {
+        terminals.current.get(from ?? activeRef.current)?.notice(made.error);
+        return made.error;
+      }
+      saveText(made.file, made.text);
+      return null;
+    },
+    [api]
+  );
+
   const settingsApi = useMemo(
     () => ({
       load: () => api.settingsSnapshot(),
@@ -3066,6 +3170,8 @@ export default function App() {
       importMonsters: (realm: string, fileName: string, monsters: MonsterRule[]) =>
         api.importMonsters(realm, fileName, monsters),
       importLoops: (realm: string, paths: MegaMudPath[]) => api.importLoops(realm, paths),
+      exportLoop: (loop: Loop) => void exportLoopFile(null, loop, 'mudengine'),
+      importLoopFile: (realm: string, text: string) => api.importLoopFile('server', realm, text),
       saveMonsters: (realm: string, monsters: MonsterRule[]) => api.saveMonsters(realm, monsters),
       loadItems: (realm: string) => api.loadItems(realm),
       importItems: (realm: string, fileName: string, items: ItemRule[]) =>
@@ -6109,7 +6215,10 @@ export default function App() {
         characterKey={explorerKey}
         characterName={character.name ?? session}
         detail={explorerDetail}
+        eq={explorerEq}
         focus={explorerFocus}
+        lists={explorerLists}
+        tools={explorerTools}
         hereRoom={explorerHere}
         list={explorerList}
         onClose={closeExplorer}
@@ -6129,6 +6238,9 @@ export default function App() {
         loops={loopChoices}
         onChoose={runChosenLoop}
         onClose={closeLoops}
+        onExport={(choice, format) =>
+          exportLoopFile(session, choice.kind === 'loop' ? choice.loop : choice.name, format)
+        }
         open={loopsOpen}
         realmName={profiles.find((profile) => profile.id === session)?.serverName ?? ''}
       />
@@ -6230,6 +6342,8 @@ export default function App() {
         loadMonsters={settingsApi.loadMonsters}
         importMonsters={settingsApi.importMonsters}
         importLoops={settingsApi.importLoops}
+        exportLoop={settingsApi.exportLoop}
+        importLoopFile={settingsApi.importLoopFile}
         saveMonsters={settingsApi.saveMonsters}
         loadItems={settingsApi.loadItems}
         importItems={settingsApi.importItems}

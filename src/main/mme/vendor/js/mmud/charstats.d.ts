@@ -29,5 +29,26 @@ export function findBest(
   rule: FindBestRule,
   opts?: { next?: boolean; holds?: boolean[]; noLimited?: boolean; use2ndWrist?: boolean }
 ): { equipped: number[]; found: boolean };
-export function calcCharStats(c: MmeChar, opt?: Record<string, unknown>): unknown;
+/** `CalcCharacterStats`' panel: the figures by `lblInvenCharStat` index, and what adds to each. */
+export interface CharStatsPanel {
+  stats: number[];
+  tips: string[][];
+  acInt: number;
+  drInt: number;
+  critEffective: number;
+  attackAccyAdj: number;
+  slots: Array<{ tip: string[]; warn: string }>;
+  eff: Record<string, number>;
+}
+export function calcCharStats(c: MmeChar, opt?: Record<string, unknown>): CharStatsPanel;
+/** `InvenColorCodeStats`: a figure's text and tone. */
+export function statDisplay(i: number, v: number): { text: string; cls: string };
+export function encumLevel(cur: number, max: number): { name: string; pct: number };
+export function encumThresholds(max: number): Array<[string, number]>;
+export const STAT_LABELS: string[];
+/** `InvenCopytoClipboard`'s commands: what comes off, then what goes on. */
+export function equipCommands(
+  equipped: readonly number[],
+  wornInGame: readonly number[] | null
+): string;
 export function calcCharSummary(c: MmeChar, panel: unknown): unknown;

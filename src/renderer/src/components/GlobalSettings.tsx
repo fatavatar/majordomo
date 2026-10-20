@@ -69,6 +69,8 @@ export interface GlobalSettingsProps {
   onOpenPicker(): void;
   onDonePicking(): void;
   onToggleLoop(loop: Loop): void;
+  /** A loop handed out as a file for another player to import. */
+  onExportLoop(loop: Loop): void;
   firstFieldRef: React.RefObject<HTMLInputElement>;
   /**
    * What the spell pickers offer here: the shipped realm's castable spells.
@@ -180,6 +182,7 @@ export default function GlobalSettings({
   onOpenPicker,
   onDonePicking,
   onToggleLoop,
+  onExportLoop,
   firstFieldRef,
   realmSpells,
   palette,
@@ -714,6 +717,7 @@ export default function GlobalSettings({
               loops={draft.loops}
               note={t('settings.global.movement.loopsNote')}
               onDonePicking={onDonePicking}
+              onExport={onExportLoop}
               onOpenPicker={onOpenPicker}
               onToggle={onToggleLoop}
               picking={picking}

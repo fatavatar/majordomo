@@ -33,6 +33,7 @@ import FormActions from './FormActions';
 import GlobalSettings from './GlobalSettings';
 import LoginSteps from './LoginSteps';
 import LoopSection from './LoopSection';
+import LoopFileImport from './LoopFileImport';
 import MegaMudLoopImport from './MegaMudLoopImport';
 import { WardRules } from './PotionList';
 import {
@@ -381,6 +382,13 @@ export interface SettingsScreenProps {
   saveSpellLore(realm: string, rows: LearnedSpellRow[]): Promise<string | null>;
   /** A MegaMUD folder's loops onto a realm. See `MegaMudLoopImport`. */
   importLoops(realm: string, paths: MegaMudPath[]): Promise<LoopImport>;
+  /** A loop handed out as a mudengine loop file (2026-10-19). See `LoopFileImport`. */
+  exportLoop(loop: Loop): void;
+  /** A shared loop file onto a realm. */
+  importLoopFile(
+    realm: string,
+    text: string
+  ): Promise<{ ok: true; count: number; replaced: number } | { ok: false; error: string }>;
   /**
    * The loops the client ships, for the Movement tab to offer.
    *
@@ -1756,6 +1764,8 @@ export default function SettingsScreen({
   loadSpellLore,
   saveSpellLore,
   importLoops,
+  exportLoop,
+  importLoopFile,
   loadLoops,
   loadTrainers,
   loadBanks,
@@ -2707,6 +2717,7 @@ export default function SettingsScreen({
             ) : (
               <GlobalSettings
                 catalogue={catalogue}
+                onExportLoop={exportLoop}
                 draft={globalForm}
                 palette={palette}
                 scope={tab}
@@ -3213,6 +3224,7 @@ export default function SettingsScreen({
                         note={t('settings.movement.loopsNote')}
                         onDonePicking={() => setPicking(false)}
                         onOpenPicker={openPicker}
+                        onExport={exportLoop}
                         onToggle={toggleLoop}
                         picking={picking}
                         /*
@@ -3762,9 +3774,16 @@ export default function SettingsScreen({
                         note={t('settings.realms.loopsNote')}
                         onDonePicking={() => setPicking(false)}
                         onOpenPicker={openPicker}
+                        onExport={exportLoop}
                         onToggle={toggleServerLoop}
                         picking={picking}
                       >
+                        <LoopFileImport
+                          beforeImport={serverSave.flush}
+                          importFile={importLoopFile}
+                          onImported={() => void importedServerLoops()}
+                          realm={serverPick === NEW_SERVER ? null : serverPick}
+                        />
                         <MegaMudLoopImport
                           beforeImport={serverSave.flush}
                           importLoops={importLoops}

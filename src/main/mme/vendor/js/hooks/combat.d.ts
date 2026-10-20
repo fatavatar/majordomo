@@ -14,3 +14,23 @@ export function setSpellOpts(options: { calc?: boolean; antiMagic?: boolean }): 
 export function charIllumination(): number;
 /** A lair's damage line, against the character. */
 export function lairDamageLine(info: unknown): string;
+/** The EQ tab's `Attk`: the attack's damage a round against nothing, and its name. */
+export function attkStat(): { text: string; tip: string; cls: string };
+export function currentAttackName(desc?: boolean): string;
+/** A weapon's attack with the Weapons tab's options (`AddWeapon2LV`'s `CalculateAttack`). */
+export function weaponAttack(item: Row | number): { swings?: number; roundTotal?: number } | null;
+/** A spell's Dmg and Heal columns. */
+export function spellColumns(
+  spell: Row,
+  castLevel?: number,
+  generic?: boolean
+): {
+  dmgText: string;
+  healText: string;
+  dmg: number;
+  heal: number;
+  dmgPerMana: number;
+  healPerMana: number;
+};
+/** A monster's damage against the character, worked out where it can be. */
+export function monsterDamageIn(n: number): { damage: number; vs: string; calculated: boolean };

@@ -4,7 +4,13 @@ import path from 'node:path';
 import zlib from 'node:zlib';
 
 import {
+  explorerCompare,
   explorerDetail,
+  explorerEq,
+  explorerFind,
+  explorerItems,
+  explorerEqBest,
+  explorerEqWear,
   explorerGear,
   explorerList,
   explorerRoomSearch,
@@ -15,6 +21,7 @@ import {
 } from '../Explorer';
 import { EMPTY_CHARACTER, type CharacterState } from '../../../shared/character';
 import {
+  DEFAULT_EQ_PLAN,
   DEFAULT_EXPLORER_OPTIONS,
   DEFAULT_ROOM_MAP_OPTIONS,
   type ExplorerSegment
@@ -207,6 +214,130 @@ describe('MMUD Explorer for the character being played', () => {
     // Kept to what a counter stocks, the vest, sold nowhere here, stays the best.
     const sold = await explorerGear(fixture(), vested, { ...options, soldOnly: true }, () => false);
     expect(sold.slots.find((slot) => slot.label === 'Torso')?.best?.number).toBe(332);
+  });
+
+  /*
+   * The EQ tab (2026-10-19): MME's equipment page for the character as the
+   * game reports it — the vest worn, a longsword in the pack, 500 the
+   * reported encumbrance — and a plan picked over it.
+   */
+  describe('the EQ tab', () => {
+    const base = character();
+    const packed = {
+      ...base,
+      inventory: {
+        ...base.inventory,
+        encumbrance: 500,
+        items: [
+          { id: 332, name: 'padded vest', equipped: true },
+          { id: 64, name: 'longsword', equipped: false }
+        ]
+      }
+    } as unknown as CharacterState;
+    const planned = (equipped: Record<number, number>) => ({
+      ...DEFAULT_EQ_PLAN,
+      equipped: Array.from({ length: 20 }, (_, x) => equipped[x] ?? 0)
+    });
+
+    it('opens on what is worn, the pack weighed at what the game reports', async () => {
+      const page = await explorerEq(fixture(), packed, DEFAULT_EQ_PLAN);
+      expect(page.supported).toBe(true);
+      const torso = page.slots.find((slot) => slot.label === 'Torso');
+      expect(torso).toMatchObject({ chosen: 332, worn: 332, carried: true });
+      expect(page.encumbrance.now).toBe(500);
+      expect(page.packWeight).toBeGreaterThan(0);
+      expect(page.left.map((stat) => stat.label)).toContain('Accuracy');
+      expect(page.criteria[0]).toEqual(['Armour', 'AC/DR Combo']);
+    });
+
+    it('moves the longsword from the pack to the hand, the weight the same', async () => {
+      const page = await explorerEq(fixture(), packed, planned({ 4: 332, 16: 64 }));
+      expect(page.slots[16]).toMatchObject({ chosen: 64, worn: 0, carried: true });
+      expect(page.encumbrance.now).toBe(500);
+      const wear = await explorerEqWear(fixture(), packed, planned({ 4: 332, 16: 64 }));
+      expect(wear).toEqual({ commands: ['eq longsword'], buy: [] });
+    });
+
+    it('names what the pack lacks for Buy + Wear, and sends nothing for it', async () => {
+      const wear = await explorerEqWear(fixture(), packed, planned({ 4: 332, 16: 78 }));
+      expect(wear.commands).toEqual([]);
+      expect(wear.buy).toEqual([{ number: 78, name: 'greatsword' }]);
+      const page = await explorerEq(fixture(), packed, planned({ 4: 332, 16: 78 }));
+      expect(page.slots[16]?.carried).toBe(false);
+    });
+
+    it('finds better than the vest, and keeps a held slot', async () => {
+      const found = await explorerEqBest(fixture(), packed, planned({ 4: 332 }), {
+        criterion: 0,
+        next: false,
+        noLimited: false
+      });
+      expect(found.found).toBe(true);
+      expect(found.equipped[4]).not.toBe(332);
+      const held = await explorerEqBest(
+        fixture(),
+        packed,
+        { ...planned({ 4: 332 }), holds: Array.from({ length: 20 }, (_, x) => x === 4) },
+        { criterion: 0, next: false, noLimited: false }
+      );
+      expect(held.equipped[4]).toBe(332);
+    });
+
+    it('adds a manual adjustment to its figure', async () => {
+      const before = await explorerEq(fixture(), packed, DEFAULT_EQ_PLAN);
+      const adjustments = DEFAULT_EQ_PLAN.adjustments.map((v, i) => (i === 10 ? 5 : v));
+      const after = await explorerEq(fixture(), packed, { ...DEFAULT_EQ_PLAN, adjustments });
+      const accuracy = (page: typeof before) => page.left.find((stat) => stat.i === 10)!;
+      expect(accuracy(after).adjusted).toBe(true);
+      expect(Number(accuracy(after).text.replace('+', ''))).toBe(
+        Number(accuracy(before).text.replace('+', '')) + 5
+      );
+    });
+  });
+
+  /* The Lists tab (2026-10-19): mudtool's compare lists, the picker and the Item Manager's columns. */
+  describe('the Lists tab', () => {
+    it('lists the weapons asked for, with mudtool’s compare columns', async () => {
+      const list = await explorerCompare(fixture(), character(), 'weapons', [64, 78, 999999]);
+      expect(list.columns.map((column) => column.label)).toEqual([
+        '#',
+        'Name',
+        'Type',
+        'Min-Max',
+        'Speed',
+        'Accy',
+        'Str',
+        'Enc',
+        'AC/DR',
+        '#Swings',
+        'Dmg/Rnd'
+      ]);
+      expect(list.rows.map((row) => row.name)).toEqual(['longsword', 'greatsword']);
+      expect(list.rows[0]?.cells['type']).toBe('1H Sharp');
+      expect(Number(list.rows[0]?.cells['swings'])).toBeGreaterThan(0);
+      // A Thief cannot swing the greatsword.
+      const thief = await explorerCompare(
+        fixture(),
+        character({ className: 'Thief' }),
+        'weapons',
+        [78]
+      );
+      expect(thief.rows[0]?.usable).toBe(false);
+    });
+
+    it('offers matches for a number or a name, weapons only on the weapons list', async () => {
+      expect((await explorerFind(fixture(), 'weapons', '64'))[0]).toEqual([64, 'longsword']);
+      const swords = await explorerFind(fixture(), 'weapons', 'sword');
+      expect(swords.some(([, name]) => name === 'longsword')).toBe(true);
+      expect((await explorerFind(fixture(), 'armour', 'longsword')).length).toBe(0);
+    });
+
+    it('gives the Item Manager’s columns, by number or by a rule’s name', async () => {
+      const facts = await explorerItems(fixture(), character(), [64], ['Padded Vest']);
+      expect(facts.map((fact) => fact.name)).toEqual(['longsword', 'padded vest']);
+      expect(facts[0]).toMatchObject({ type: 'Weapon', worn: '1H Sharp', usable: true });
+      expect(facts[1]).toMatchObject({ type: 'Armour', worn: 'Torso' });
+    });
   });
 
   /* The Spells tab: mudtool's columns, its filter, the book (2026-10-18). */

@@ -27,6 +27,7 @@ export type IconName =
   | 'skip'
   | 'reverse'
   | 'loop'
+  | 'download'
   | 'user'
   | 'users'
   | 'popout'
@@ -278,6 +279,7 @@ const ICONS: Record<IconName, ReactNode> = {
   folder: (
     <path d="M4 7a2 2 0 0 1 2-2h3.2l2 2.5H18a2 2 0 0 1 2 2V17a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2Z" />
   ),
+  download: <path d="M12 4v11M7.5 10.5 12 15l4.5-4.5M5 19.5h14" />,
   fileText: (
     <>
       <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8Z" />

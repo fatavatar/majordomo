@@ -7505,6 +7505,29 @@ describe('an item that teleports is an edge the router may walk', () => {
     ]);
   });
 
+  /*
+   * Reported 2026-10-19: Skinny's walk to the Rakshasha Lord was refused,
+   * *Treetops opens only to "tear bark" said in Treetops (16/569), further
+   * than a route goes to fetch it*. The way north from 16/551 is the last of
+   * five levers, each behind the door the one before opens, and a detour was
+   * planned one lever deep.
+   */
+  it('pulls a chain of levers each behind the last, in order, on the shipped realm', () => {
+    const graph = WorldGraph.load('resources/world/majormud.jsonl.gz');
+    const route = graph.route(roomId(16, 545), roomId(16, 640), { level: 50 });
+    expect(route.blocked).toBe(false);
+    expect(route.steps.flatMap((step) => step.pull?.say ?? [])).toEqual([
+      'turn knot',
+      'move branch',
+      'pull vine',
+      'push knot',
+      'tear bark'
+    ]);
+    expect(route.steps.some((step) => step.from === roomId(16, 551) && step.command === 'n')).toBe(
+      true
+    );
+  });
+
   it('goes through the Black House to the Lava Fields with the black star key, on the shipped realm', () => {
     const graph = WorldGraph.load('resources/world/majormud.jsonl.gz');
     const key = graph.itemIdNamed('black star key')!;

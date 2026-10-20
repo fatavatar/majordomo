@@ -57,6 +57,11 @@ export interface LoopsModalProps {
    * shapes the row is — a loop to file, or a name already on disk.
    */
   onChoose(choice: LoopChoice, destination: LoopDestination): void;
+  /**
+   * A row handed out as a file (2026-10-19): mudengine's own loop file for
+   * another player, or MegaMUD's path file for this character. Why not, or null.
+   */
+  onExport(choice: LoopChoice, format: 'mudengine' | 'megamud'): Promise<string | null>;
   onClose(): void;
 }
 
@@ -129,6 +134,7 @@ export default function LoopsModal({
   realmName,
   here,
   onChoose,
+  onExport,
   onClose
 }: LoopsModalProps) {
   const [query, setQuery] = useState('');
@@ -200,6 +206,18 @@ export default function LoopsModal({
     () => groups.flatMap((group) => (isOpen(group) ? group.loops : [])),
     [groups, isOpen]
   );
+
+  // What the last export came to: the file being saved, or why there is none.
+  const [exported, setExported] = useState<{ text: string; ok: boolean } | null>(null);
+  const exportRow = async (row: LoopRow, format: 'mudengine' | 'megamud'): Promise<void> => {
+    setExported({ text: t('loops.exporting', { loopName: row.name }), ok: true });
+    const refused = await onExport(row.choice, format);
+    setExported(
+      refused === null
+        ? { text: t('loops.exported', { loopName: row.name }), ok: true }
+        : { text: refused, ok: false }
+    );
+  };
 
   const choose = (row: LoopRow): void => {
     onChoose(row.choice, destination);
@@ -347,6 +365,35 @@ export default function LoopsModal({
                               ? t('loops.stopsCount.one', { count: row.stops })
                               : t('loops.stopsCount.many', { count: row.stops })}
                           </span>
+                          {/* Handed out, not run: the row's own press runs it. */}
+                          <button
+                            aria-label={t('loops.exportAriaLabel', { loopName: row.name })}
+                            className="quiet loops-export"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              void exportRow(row, 'mudengine');
+                            }}
+                            onMouseDown={keepFocus}
+                            tabIndex={-1}
+                            title={t('loops.exportTitle')}
+                            type="button"
+                          >
+                            <Icon name="download" />
+                          </button>
+                          <button
+                            aria-label={t('loops.exportMegaAriaLabel', { loopName: row.name })}
+                            className="quiet loops-export"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              void exportRow(row, 'megamud');
+                            }}
+                            onMouseDown={keepFocus}
+                            tabIndex={-1}
+                            title={t('loops.exportMegaTitle')}
+                            type="button"
+                          >
+                            {t('loops.exportMega')}
+                          </button>
                         </li>
                       );
                     })}
@@ -372,6 +419,11 @@ export default function LoopsModal({
           absence of one. Nothing is said by hue alone — each chip names its
           destination in words and `aria-pressed` says which is held.
         */}
+        {exported !== null && (
+          <p className={`messages-status ${exported.ok ? 'ok' : 'bad'}`} role="status">
+            {exported.text}
+          </p>
+        )}
         <div aria-label={t('loops.destinationLabel')} className="loops-destination" role="group">
           <span className="loops-destination-label">{t('loops.destinationLabel')}</span>
           {destinations.map((option) => (

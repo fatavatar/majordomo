@@ -106,6 +106,25 @@ describe('cash (D18, D37, D40, D41, D46)', () => {
     expect(sent(out)).toEqual(['drop 12 copper farthing\r']);
   });
 
+  /*
+   * A purchase of ours drawing on the purse (2026-10-19): Archer drops copper,
+   * silver and gold, and a withdrawal under a platinum piece was all of them.
+   */
+  it('keeps every coin while a purchase is drawing on the purse, and drops after', () => {
+    const { s, out } = game();
+    s.weightMax = 100;
+    s.Cash_WantCopper = -1;
+    const copper = item(s, 'copper farthing', { flags: 0x8000000 });
+    s.inventory = [{ count: 12, flags: 0, item: copper }];
+    let buying = true;
+    (s.host as { keepCoins?: () => boolean }).keepCoins = () => buying;
+    expect(discardCash(s)).toBe(0);
+    expect(sent(out)).toEqual([]);
+    buying = false;
+    expect(discardCash(s)).toBe(1);
+    expect(sent(out)).toEqual(['drop 12 copper farthing\r']);
+  });
+
   it('shares coins with the party', () => {
     const { s } = game();
     s.partySize = 2;

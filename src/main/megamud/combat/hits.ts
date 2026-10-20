@@ -1,9 +1,10 @@
 /**
  * This character's own blows and spells landing (`0x429bb0`): damage dealt,
  * misses, backstabs and their surprise, and what a hit says about immunity.
- * Read 2026-10-12. The per-weapon and per-mode tallies it keeps
- * (`0x32540`–`0x32584`, `0x426f70`) feed MegaMUD's statistics window only,
- * so the port keeps the round's damage and drops the rest.
+ * Read 2026-10-12. Of the tallies it keeps for MegaMUD's statistics window,
+ * the rungs' (`0x426ef0`, `0x426f70`) are counted (`stats/window.ts`); the
+ * hit, miss, crit and backstab ones (`0x32540`–`0x32584`) are what the
+ * stream counts already.
  *
  * Only lines drawn in the colours the server uses for combat (`\t`, `\f`, 6,
  * `\v`) are read, and only while fighting or casting at a monster.
@@ -18,6 +19,7 @@ import { CAST_STATES, isCastState, State } from '../states';
 import { castSpellFor, countCast, inAttackCast, resetNoMessage, spellTakesTarget } from './casts';
 import { blowStruck, castForgotten } from './timer';
 import { EntityFlag, LineFlag, WEAPON_KINDS, WeaponKind, EntityType } from '../flags';
+import { castTook, rungBlow } from '../stats/window';
 
 const FOES = [
   ' your foe',
@@ -220,7 +222,9 @@ export function hitLine(s: Session, line: string): number {
       s.skipTick = 1;
     }
   }
-  if (!(mode >= State.CastPreMulti && mode <= State.CastMain)) {
+  if (mode >= State.CastPreMulti && mode <= State.CastMain) {
+    rungBlow(s, mode, dealt);
+  } else {
     const surprise = SURPRISES.some((phrase) => indexOf(line, phrase) !== -1);
     if (!surprise) {
       const critical = indexOf(line, ' critically ') !== -1;
@@ -250,6 +254,7 @@ export function hitLine(s: Session, line: string): number {
   if (dealt >= 1 && !weaponHit && !casting && sameTargetHere(s)) clearWeaponImmunity(s);
   if (mode === State.CastMulti || mode === State.CastPreMulti) s.multiDamage += dealt;
   if (casting) {
+    castTook(s, mode, 1);
     countCast(s, mode, 1);
     resetNoMessage(s, mode);
     if (mode === s.castMode || (s.castMode === State.Nothing && mode === s.state)) {

@@ -390,13 +390,11 @@ export interface Traveller {
    */
   penalised?: ReadonlySet<string>;
   /**
-   * Set on the traveller a lever detour is planned for (`leverErrand`), so a
-   * door on the way to a lever is priced as it stands rather than planned
-   * round in turn. A lever behind a lever is `Walker.fetchLever`'s errand
-   * stack, found on the wire; planning it here would recurse through every
-   * door whose lever is behind another. Never set by a caller.
+   * How many lever detours deep the traveller is being planned
+   * (`leverErrand`): a door on the way to a lever has its own lever's detour
+   * planned in turn, up to `MAX_LEVER_DEPTH`. Never set by a caller.
    */
-  noLeverErrands?: boolean;
+  leverDepth?: number;
 }
 
 /**
@@ -474,6 +472,14 @@ export interface RouteOptions {
  */
 /** The most rooms a lever set may span and still be planned: every order of them is tried. */
 const MAX_LEVER_ROOMS = 4;
+
+/**
+ * How many levers deep a detour is planned, each behind the door the next
+ * opens (2026-10-19). The Treetops' way north from 16/551 is five: `tear
+ * bark` in 16/569, behind `push knot` in 16/567, behind `pull vine` in
+ * 16/556, behind `move branch` in 16/561, behind `turn knot` in 16/547.
+ */
+const MAX_LEVER_DEPTH = 6;
 
 /** Every order of a few rooms. */
 function orders<T>(items: readonly T[]): T[][] {
@@ -1880,6 +1886,13 @@ export class WorldGraph {
    * and a search asks the same door once per room it expands from.
    */
   private readonly errands = new WeakMap<Traveller, Map<string, LeverErrand | null>>();
+  /**
+   * The travellers a detour's legs are walked and measured for, one pair per
+   * traveller (2026-10-19): made afresh for every door, the doors on the legs
+   * missed `errands` and were planned again for every door outside them, and
+   * the Treetops' chain of five took thirty seconds a route.
+   */
+  private readonly deeper = new WeakMap<Traveller, { walker: Traveller; reach: Traveller }>();
   /**
    * Every item name the realm has, for recognising one in a line of text.
    * Empty before v11, where the console recognised only the ~100 items some
@@ -4432,14 +4445,18 @@ export class WorldGraph {
    * so the cheapest room is the errand. A room holding fewer levers than the
    * realm says are needed opens nothing and is passed over.
    *
-   * **One level deep.** The legs are planned for a traveller that plans no
-   * errands of its own (`Traveller.noLeverErrands`): a lever behind another
-   * lever's door is the walker's errand stack, and planning it here would
-   * recurse through every such door in the realm. Kept per traveller, because
-   * a search asks the same door from every room it expands.
+   * **Levers behind levers** (2026-10-19). A door on a leg whose own lever
+   * is elsewhere is that lever's detour, planned the same way one level
+   * deeper (`Traveller.leverDepth`), to `MAX_LEVER_DEPTH`. One level was the
+   * old walker's errand stack, found on the wire; on the MegaMUD engine
+   * nothing does it, and the route to the Rakshasa Lord through the Treetops'
+   * chain of five was refused, *further than a route goes*. Kept per
+   * traveller, because a search asks the same door from every room it
+   * expands.
    */
   private leverErrand(from: RoomId, direction: string, traveller: Traveller): LeverErrand | null {
-    if (traveller.noLeverErrands === true) return null;
+    const depth = traveller.leverDepth ?? 0;
+    if (depth >= MAX_LEVER_DEPTH) return null;
     const levers = this.leversFor(from, direction);
     if (levers.length === 0 || levers.some((lever) => lever.at === from)) return null;
     const key = leverKey(from, direction);
@@ -4456,7 +4473,7 @@ export class WorldGraph {
     const needed = this.rooms.get(from)?.exits.find((exit) => exit.direction === direction)
       ?.requirement?.actionsNeeded;
     let best: LeverErrand | null = null;
-    const walker: Traveller = { ...traveller, noLeverErrands: true };
+    const { reach } = this.deeperOf(traveller);
     /*
      * **How far the lever is, by the walk alone** (2026-10-19). The bound is
      * a distance — a plain room 1, a search 26 — and the legs were measured
@@ -4468,7 +4485,6 @@ export class WorldGraph {
      * lairs, went through it. The legs are found by the walk; what waits on
      * them is added to the price after (`riskAlong`), as the plan would.
      */
-    const reach: Traveller = { ...walker, danger: undefined, hazard: undefined };
     const limit = tuning().world.leverDetourCost;
     /** The round through `order` from the door's room and back, priced, or null where a leg is too far. */
     const round = (order: RoomId[]): LeverErrand | null => {
@@ -4516,6 +4532,17 @@ export class WorldGraph {
     }
     held.set(key, best);
     return best;
+  }
+
+  /** The traveller a detour's legs are walked for, and the one they are measured for. */
+  private deeperOf(traveller: Traveller): { walker: Traveller; reach: Traveller } {
+    let held = this.deeper.get(traveller);
+    if (held === undefined) {
+      const walker: Traveller = { ...traveller, leverDepth: (traveller.leverDepth ?? 0) + 1 };
+      held = { walker, reach: { ...walker, danger: undefined, hazard: undefined } };
+      this.deeper.set(traveller, held);
+    }
+    return held;
   }
 
   /**
@@ -9000,7 +9027,7 @@ export class WorldGraph {
     beyond: string,
     traveller: Traveller
   ): RouteStep[] {
-    const walker: Traveller = { ...traveller, noLeverErrands: true };
+    const { walker } = this.deeperOf(traveller);
     const steps: RouteStep[] = [];
     // The levers of the stop just reached, said on the first step out of it.
     let saying: string[] = [];

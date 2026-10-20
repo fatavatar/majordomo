@@ -16,6 +16,7 @@
  */
 import type { MessageImport, MessageTable, MessageTrigger } from './messageTriggers';
 import type { ItemImport, ItemRule, ItemTable } from './itemRules';
+import type { ToolAnswer, ToolRequest } from './explorerTools';
 import type { MonsterImport, MonsterRule, MonsterTable } from './monsterRules';
 import type { LoopImport, MegaMudPath } from './megamudPaths';
 import type { AutomationSnapshot } from './automation';
@@ -112,6 +113,13 @@ import type {
   ExplorerRoomView,
   GearBoard,
   GearOptions,
+  EqFind,
+  EqFound,
+  EqPlan,
+  EqView,
+  CompareKind,
+  CompareList,
+  ItemFacts,
   RoomMapOptions,
   RoomSearch,
   RoomSearchResult,
@@ -1009,6 +1017,14 @@ export const Invoke = {
    * for `importMonsters`' reason (`shared/megamudPaths.ts`).
    */
   importLoops: 'settings:import-loops',
+  /**
+   * A loop as a file to hand to somebody (2026-10-19): this client's own
+   * loop file, for another player to import (`importLoopFile`), or MegaMUD's
+   * path file for this character, its legs planned (`MegaEngine.exportLoop`).
+   */
+  exportLoop: 'loop:export',
+  /** Loops from a shared loop file, filed in a scope beside its own. */
+  importLoopFile: 'settings:import-loop-file',
   /** Where to hunt from here: the lairs within reach, priced for this character. */
   huntingGrounds: 'world:hunt',
   trainers: 'world:trainers',
@@ -1061,6 +1077,27 @@ export const Invoke = {
   explorerBuy: 'explorer:buy',
   /** The Gear card: MME's Find Best for the character as it is (`explorerGear`). */
   explorerGear: 'explorer:gear',
+  /**
+   * The EQ tab (2026-10-19): MME's equipment page for the loadout planned,
+   * Find Best over it, and the plan put on — what the pack holds by MME's
+   * commands, the rest named for Buy + Wear.
+   */
+  explorerEq: 'explorer:eq',
+  explorerEqBest: 'explorer:eq-best',
+  explorerEqWear: 'explorer:eq-wear',
+  /**
+   * The Lists tab (2026-10-19): a compare list's rows, a picker's matches,
+   * the Item Manager's columns for items, and the character's item rules —
+   * the realm's table and its own rows over it — which the Item Manager's
+   * flags are, and writes (`setItemDetails`).
+   */
+  explorerCompare: 'explorer:compare',
+  explorerFind: 'explorer:find',
+  explorerItems: 'explorer:items',
+  itemRulesFor: 'settings:item-rules',
+  /** The Tools tab: one ask of a calculator (`shared/explorerTools.ts`). */
+  explorerTool: 'explorer:tool',
+  setItemDetails: 'settings:item-details',
   /** The Rooms tab: MME's map from a room, a cell's tooltip, and its finders. */
   explorerRoomView: 'explorer:room-view',
   explorerRoomTip: 'explorer:room-tip',
@@ -1479,6 +1516,18 @@ export interface IpcApi {
   saveSpellLore(realm: string, rows: LearnedSpellRow[]): Promise<string | null>;
   /** Adds a MegaMUD folder's loops to a realm's, and says how many came across. */
   importLoops(realm: string, paths: MegaMudPath[]): Promise<LoopImport>;
+  /** A loop as a file, by the loop or by a name the character holds. The file, or why not. */
+  exportLoop(
+    session: SessionId | null,
+    loop: Loop | string,
+    format: 'mudengine' | 'megamud'
+  ): Promise<{ file: string; text: string } | { error: string }>;
+  /** Loops from a shared loop file's text, into a scope. How many, or why not. */
+  importLoopFile(
+    scope: LoopScope,
+    owner: string | null,
+    text: string
+  ): Promise<{ ok: true; count: number; replaced: number } | { ok: false; error: string }>;
   /*
    * Addressed, like every push: with a realm per character, an unaddressed
    * query would answer from whichever realm happened to be the client's — and a
@@ -1638,6 +1687,30 @@ export interface IpcApi {
   explorerBuy(session: SessionId, item: number, wear: boolean): Promise<string | null>;
   /** MME's Find Best for this character, slot by slot. See `Invoke.explorerGear`. */
   explorerGear(session: SessionId, options: GearOptions): Promise<GearBoard>;
+  /** MME's EQ page for this character and the plan. See `Invoke.explorerEq`. */
+  explorerEq(session: SessionId, plan: EqPlan): Promise<EqView>;
+  explorerEqBest(session: SessionId, plan: EqPlan, find: EqFind): Promise<EqFound>;
+  explorerCompare(session: SessionId, kind: CompareKind, numbers: number[]): Promise<CompareList>;
+  explorerFind(
+    session: SessionId,
+    kind: CompareKind | 'items',
+    text: string
+  ): Promise<Array<[number, string]>>;
+  explorerItems(session: SessionId, numbers: number[], names: string[]): Promise<ItemFacts[]>;
+  /** One ask of the Tools tab's calculators; null where it cannot be answered. */
+  explorerTool<R extends ToolRequest>(
+    session: SessionId,
+    request: R
+  ): Promise<ToolAnswer<R> | null>;
+  /** The realm's item table and the character's own rows over it. */
+  itemRulesFor(session: SessionId): Promise<{ realm: ItemRule[]; own: ItemRule[] }>;
+  /** The character's own item rows, written whole. Why not, or null. */
+  setItemDetails(session: SessionId, rules: ItemRule[]): Promise<string | null>;
+  /** Puts the plan's carried items on; what it lacks, to buy and wear, or why not. */
+  explorerEqWear(
+    session: SessionId,
+    plan: EqPlan
+  ): Promise<{ refusal: string | null; buy: Array<{ number: number; name: string }> }>;
   /** MME's map from a room, with its references and the character's room. */
   explorerRoomView(session: SessionId, request: RoomViewRequest): Promise<ExplorerRoomView>;
   /** One cell's tooltip, asked as it is hovered. */

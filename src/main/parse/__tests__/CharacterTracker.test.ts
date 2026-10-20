@@ -8676,6 +8676,58 @@ describe('what the server has said is wrong with the character', () => {
     });
 
     /*
+     * Reported live 2026-10-19: Bowel showed held, from a wrathful curse,
+     * after `You feel unlucky!`. Record 8540 is curse's and wrathful curse's
+     * both, and only wrathful curse holds, so the sentence is no hold.
+     */
+    it('holds on a shared sentence only where its spells agree', () => {
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mudengine-holds-'));
+      const file = path.join(dir, 'rooms.jsonl.gz');
+      const header = {
+        v: 32,
+        source: 'test',
+        rooms: 0,
+        generatedAt: 'x',
+        spells: [
+          { id: 15, n: 'curse', dur: 60, ab: [[13, -5]] },
+          {
+            id: 853,
+            n: 'wrathful curse',
+            dur: 7,
+            ab: [
+              [74, 0],
+              [13, -999]
+            ]
+          }
+        ]
+      };
+      fs.writeFileSync(file, zlib.gzipSync(JSON.stringify(header) + '\n'));
+      const realm = WorldGraph.load(file);
+      fs.rmSync(dir, { recursive: true, force: true });
+      const lore = spellLoreOf(
+        SpellMessageBook.fromRows([
+          { spell: 'curse', start: 'You feel unlucky!', stop: 'The effects of curse wear off!' },
+          {
+            spell: 'wrathful curse',
+            start: 'You feel unlucky!',
+            stop: 'The effects of curse wear off!'
+          }
+        ]),
+        new SpellMessageBook()
+      );
+      const tracker = play(
+        ['[HP=143/MA=29]:', { send: 'ne' }, 'You feel unlucky!'],
+        realm,
+        undefined,
+        undefined,
+        undefined,
+        lore
+      );
+      expect(tracker.current.afflictions.held).toBe('unknown');
+      expect(tracker.pendingMoves).toBe(1);
+    });
+
+    /*
      * `You are held!` is the literal `CheckForHoldPerson` falls back to when
      * the ability is on the character but no active effect carries a sentence
      * to print. Fixed in the server's code, so it is a pattern and needs no

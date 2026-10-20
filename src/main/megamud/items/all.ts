@@ -7,6 +7,7 @@
 import { queue, wake } from '../script/send';
 import type { Session } from '../Session';
 import { ItemFlag, CarriedFlag } from '../flags';
+import { deposited } from '../stats/window';
 
 /**
  * `0x4bc390`: everything here not marked never to take (`0x40`) marked to
@@ -62,6 +63,7 @@ export function depositAll(s: Session): void {
   if (over <= 0) return;
   queue(s, `dep ${over}\r`);
   wake(s);
+  deposited(s, over);
   s.depositAsked = 0;
   s.wealth -= over;
 }

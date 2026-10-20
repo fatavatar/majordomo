@@ -397,6 +397,27 @@ export function confuses(spell: Pick<WorldSpell, 'abilities'> | null | undefined
 }
 
 /**
+ * Whether a sentence several spells share does what `test` asks of one: one
+ * of them does, and none whose realm row states its abilities says otherwise.
+ *
+ * One message record is many spells' (2026-10-19): `You feel unlucky!` begins
+ * curse, song of misfortune, blight, the ebony greataxe and wrathful curse
+ * (record 8540), and wrathful curse alone carries `HoldPerson`. Read as any
+ * of them, Bowel's curse was a hold he never had. A row that states no
+ * abilities says nothing either way, so `You are flat on your back!` is still
+ * knockdown's hold beside earthquake hold, which states none.
+ */
+export function sharedBy(
+  spells: ReadonlyArray<Pick<WorldSpell, 'abilities'> | null | undefined>,
+  test: (spell: Pick<WorldSpell, 'abilities'>) => boolean
+): boolean {
+  return (
+    spells.some((spell) => spell != null && test(spell)) &&
+    spells.every((spell) => spell == null || (spell.abilities ?? []).length === 0 || test(spell))
+  );
+}
+
+/**
  * Who a spell may be cast on, from `Spells.Targets`.
  *
  * The realm records this in a column the database documents nowhere, so the

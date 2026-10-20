@@ -8,7 +8,7 @@ import {
 } from '../../shared/megamud/settings';
 import { megamudFromConfig } from '../../shared/megamud/fromConfig';
 import path from 'node:path';
-import { isMap, isSeq, parse, Scalar } from 'yaml';
+import { Document, isMap, isSeq, parse, Scalar } from 'yaml';
 
 import { editYaml, removeYaml, type EditResult } from './YamlFile';
 import type { PlayerGrant, RemoteName } from '../../shared/remotes';
@@ -27,6 +27,7 @@ import {
   type SupplyItem
 } from '../../shared/config';
 import { fileSlug } from '../../shared/files';
+import { itemRuleForFile, itemSaysAnything, type ItemRule } from '../../shared/itemRules';
 import { loopFileName, type Loop, type LoopScope, type ScopedLoop } from '../../shared/loops';
 import type { Home } from '../app/home';
 import { t } from '../app/i18n';
@@ -657,6 +658,30 @@ export class SettingsEditor {
   }
 
   /**
+   * A character's own item rows (`automation.loot.itemDetails`), written
+   * whole: the Explorer's Item Manager (2026-10-19) changes some of them, and
+   * the rows are the character's own, laid over the realm's table, never the
+   * resolved list — the reason `setSupplies` writes its list whole.
+   */
+  setItemDetails(id: string, rules: readonly ItemRule[]): EditResult {
+    const file = this.profilePath(id);
+    if (!fs.existsSync(file)) {
+      return { ok: false, error: t('errors.settings.characterNotFound', { id }) };
+    }
+    const rows = rules.filter(itemSaysAnything).map(itemRuleForFile);
+    return editYaml(file, {
+      mutate: (document) => {
+        document.setIn(['automation', 'loot', 'itemDetails'], rows);
+        const list = document.getIn(['automation', 'loot', 'itemDetails'], true);
+        if (isSeq(list)) {
+          list.flow = false;
+          for (const row of list.items) if (isMap(row)) row.flow = true;
+        }
+      }
+    });
+  }
+
+  /**
    * Flips one `automation:` boolean in a character's own file.
    *
    * The toolbar's write, and the narrowest one here: the control shows one
@@ -759,6 +784,30 @@ export class SettingsEditor {
       if (!written.ok) return written;
     }
     return { ok: true, replaced };
+  }
+
+  /**
+   * Loops from a file another player shared (`loopFileText`, or any loop
+   * file written by hand): read as a loops directory reads one, filed in
+   * this scope beside its own, one of the same name replaced.
+   */
+  importLoopText(
+    scope: LoopScope,
+    owner: string | null,
+    text: string
+  ): { ok: true; count: number; replaced: number } | { ok: false; error: string } {
+    let loops: Loop[];
+    try {
+      loops = readLoops(parse(text), t('settings.loopSection.importedName'));
+    } catch (error) {
+      return {
+        ok: false,
+        error: t('errors.settings.loopFileUnreadable', { reason: errorMessage(error) })
+      };
+    }
+    if (loops.length === 0) return { ok: false, error: t('errors.settings.loopFileEmpty') };
+    const result = this.addLoops(scope, owner, loops);
+    return result.ok ? { ok: true, count: loops.length, replaced: result.replaced } : result;
   }
 
   /**
@@ -1565,6 +1614,16 @@ function loopNode(loop: Loop): Record<string, unknown> {
           }
     )
   };
+}
+
+/**
+ * A loop as a file another player's client reads (2026-10-19): the file this
+ * client writes for it (`loopNode`), with a line saying what it is.
+ */
+export function loopFileText(loop: Loop): string {
+  const document = new Document(loopNode(loop));
+  document.commentBefore = ' A mudengine loop. Import it from a loop list in Settings.';
+  return document.toString();
 }
 
 /**

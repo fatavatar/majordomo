@@ -23,6 +23,8 @@ export interface LoopSectionProps {
   onDonePicking(): void;
   /** Whatever else this scope offers after the shelf: a realm's MegaMUD import. */
   children?: React.ReactNode;
+  /** A loop handed out as a file for another player to import (2026-10-19). */
+  onExport?(loop: Loop): void;
 }
 
 /**
@@ -50,9 +52,22 @@ export default function LoopSection({
   picking,
   onOpenPicker,
   onDonePicking,
-  children
+  children,
+  onExport
 }: LoopSectionProps): React.JSX.Element {
   const chosen = new Set(loops.map((loop) => loop.name));
+  const exportButton = (loop: Loop): React.JSX.Element | null =>
+    onExport === undefined ? null : (
+      <button
+        aria-label={t('settings.loopSection.exportAriaLabel', { loopName: loop.name })}
+        className="quiet"
+        onClick={() => onExport(loop)}
+        title={t('settings.loopSection.exportTitle')}
+        type="button"
+      >
+        <Icon name="download" />
+      </button>
+    );
 
   return (
     <fieldset className="settings-menus">
@@ -72,6 +87,7 @@ export default function LoopSection({
                   ? t('settings.loopPicker.stopsCount.one', { count: loop.stops.length })
                   : t('settings.loopPicker.stopsCount.many', { count: loop.stops.length })}
               </span>
+              {exportButton(loop)}
               <button
                 aria-label={t('settings.loopSection.removeAriaLabel', { loopName: loop.name })}
                 className="quiet"
@@ -132,6 +148,7 @@ export default function LoopSection({
                     ? t('settings.loopSection.scopeGlobal')
                     : (owner ?? t('settings.loopSection.scopeRealm'))}
                 </span>
+                {exportButton(loop)}
               </li>
             ))}
           </ul>

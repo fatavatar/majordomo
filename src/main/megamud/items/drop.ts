@@ -78,7 +78,7 @@ export function dropLine(s: Session, line: string): number {
     }
   }
   if (count >= 1) {
-    carryLess(s, name, count);
+    carryLess(s, name, count, hid ? State.Stashing : State.Dropping);
     const item = findItem(s, name);
     if (item) {
       if (!hid && !gave) {

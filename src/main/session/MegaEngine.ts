@@ -72,6 +72,7 @@ import {
 import { ITEM_FLAG_BITS, itemKey, type ItemRule } from '../../shared/itemRules';
 import type { MonsterRule, Relationship } from '../../shared/monsterRules';
 import type { PlayerFacts } from '../../shared/players';
+import type { MegaCount } from '../../shared/tally';
 import type { LearnedItem, LearnedMark } from '../world/MegaLearned';
 import {
   byEngine,
@@ -207,6 +208,10 @@ export interface MegaEngineHost {
   opensAWay?(name: string): boolean;
   /** Ours: an item left on the floor for a party member whose errand is fetching it. */
   leaveFor?(name: string): boolean;
+  /** Ours: a purchase is drawing on the purse, so no coin is discarded until it is made. */
+  keepCoins?(): boolean;
+  /** Ours: what MegaMUD's statistics window counts, for the character's tally. */
+  counted?(count: MegaCount): void;
 }
 
 /** What `MegaEngine.statsReport` gives: what only the engine works out. */
@@ -386,6 +391,12 @@ function pathLength(route: Route): number {
 const LEVER_TRIES = 2;
 
 /** A short, steady name for a path MegaMUD can hold (13 characters). */
+/** A loop's area as MegaMUD names its loops, `Area: Room-map room`; null where it states none. */
+function loopArea(name: string): string | null {
+  const at = name.indexOf(':');
+  return at > 0 ? name.slice(0, at).trim() : null;
+}
+
 function shortName(prefix: string, text: string): string {
   let h = 0x811c9dc5;
   for (let i = 0; i < text.length; i += 1) h = Math.imul(h ^ text.charCodeAt(i), 0x01000193);
@@ -543,6 +554,8 @@ export class MegaEngine {
       lostInDark: () => this.lostInDark(),
       opensAWay: (name) => this.host.opensAWay?.(name) ?? false,
       leaveFor: (name) => this.host.leaveFor?.(name) ?? false,
+      keepCoins: () => this.host.keepCoins?.() ?? false,
+      counted: (count) => this.host.counted?.(count),
       caption: () => caption(this.s),
       forcible: (dir) => this.forcible(dir),
       clearWay: (p, i, dir) => this.clearWay(p, i, dir),
@@ -2138,6 +2151,76 @@ export class MegaEngine {
     };
     if (!this.s.paths.includes(p)) this.s.paths.push(p);
     return p;
+  }
+
+  /**
+   * A loop as MegaMUD's own path file (2026-10-19), for MegaMUD to walk: the
+   * path `loopPath` makes for this character — its legs planned as a lap's,
+   * the levers, keys and party commands on its steps — written as
+   * `0x4888e0` writes one. The start room's line is MegaMUD's room record
+   * (`[code:area:name]`), which `0x482fc0` files under the room's signature
+   * when MegaMUD has none for it, so the loop is placed on its first load.
+   *
+   * A leg the planner refuses is said, never fetched for: an export is not
+   * a walk. Nor is a start no signature can be worked out for, which MegaMUD
+   * could never find itself in.
+   */
+  async exportLoop(name: string): Promise<{ file: string; text: string } | string> {
+    const stops = this.host.loopRooms(name);
+    if (typeof stops === 'string') return stops;
+    const rooms = stops.bounce
+      ? [...stops.rooms, ...stops.rooms.slice(1, -1).reverse()]
+      : stops.rooms;
+    if (rooms.length < 2) return `The loop "${name}" has fewer than two stops.`;
+    const start = this.signatureOf(rooms[0]!);
+    if (start === null) return `MegaMUD has no way to know the loop's first room, ${rooms[0]}.`;
+    // Every leg planned first, as the lap's would be, so `loopPath` finds them all.
+    const legs = rooms.map((from, i): [RoomId, RoomId] => [from, rooms[(i + 1) % rooms.length]!]);
+    for (const [from, to] of legs) {
+      if (from === to) continue;
+      const asked = this.host.plan(from, to, 'lap');
+      if (typeof asked === 'string') return asked;
+      const route = await asked.catch((error: unknown): Route => ({
+        steps: [],
+        cost: 0,
+        blocked: true,
+        reason: error instanceof Error ? error.message : String(error)
+      }));
+      if (route.blocked) return route.reason ?? `No way from ${from} to ${to}.`;
+      this.plans.set(planKey('lap', from, to), { route, at: Date.now() });
+    }
+    const p = this.loopPath(name);
+    if (typeof p === 'string')
+      return p === 'pending' ? `The loop "${name}" is still being planned.` : p;
+    const room = this.worldRoom(rooms[0]!);
+    const roomName = (room?.name ?? rooms[0]!).slice(0, 0x28);
+    // MegaMUD's own short code for a room is four letters of its name (`ACRY`, Ancient Crypt).
+    const code =
+      roomName
+        .split(/\s+/)
+        .map((word) => word.replace(/[^A-Za-z]/g, ''))
+        .join('')
+        .slice(0, 4)
+        .toUpperCase() || 'MUDE';
+    const area = (loopArea(name) ?? 'mudengine').slice(0, 0x14);
+    const hex = (n: number, width: number): string =>
+      (n >>> 0).toString(16).toUpperCase().padStart(width, '0');
+    const steps = (p.steps ?? []).map(
+      (st) => `${hex(st.room, 8)}:${hex(st.flags & ~StepFlag.Resynced & 0xffff, 4)}:${st.command}`
+    );
+    const lines = [
+      `[${name.slice(0, 0x50)}][mudengine]`,
+      `[${code}:${area}:${roomName}]`,
+      `${hex(start, 8)}:${hex(start, 8)}:${steps.length}:-1:0:::`,
+      ...steps
+    ];
+    const base =
+      name
+        .replace(/^[^:]*:\s*/, '')
+        .replace(/[^A-Za-z0-9]/g, '')
+        .slice(0, 4)
+        .toUpperCase() || 'MUDE';
+    return { file: `${base}LOOP.mp`, text: `${lines.join('\r\n')}\r\n` };
   }
 
   /** The walk put aside, as it stands, until the room is placed or the way planned. */

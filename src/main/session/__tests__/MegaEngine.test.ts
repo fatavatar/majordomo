@@ -23,6 +23,7 @@ import type { PlayerFacts } from '../../../shared/players';
 import type { WalkProgress } from '../../../shared/walk';
 import type { LoopProgress } from '../../../shared/loops';
 import { State } from '../../megamud/states';
+import { readMegaMudLoop } from '../../../shared/megamudPaths';
 import { Darkness, ItemFlag, SpellFlag } from '../../megamud/flags';
 
 function room(map: number, number: number, name: string, exits: WorldRoom['exits']): WorldRoom {
@@ -231,6 +232,46 @@ describe('the engine in a session', () => {
     // The legs as the loop was drawn, the way to its start as a walk (2026-10-18).
     expect([...new Set(asked)].sort()).toEqual(['lap', 'route']);
     expect(sent).toEqual([]);
+    e.dispose();
+  });
+
+  /*
+   * A loop handed to MegaMUD (2026-10-19): the path the engine walks it by,
+   * written as MegaMUD writes one (`0x4888e0`), its first room's record on
+   * the line MegaMUD files an unknown start by.
+   */
+  it('writes a loop as MegaMUD’s own path file', async () => {
+    const { e } = engine('1/1');
+    const made = await e.exportLoop('Ring');
+    expect(typeof made).toBe('object');
+    const { file, text } = made as { file: string; text: string };
+    expect(file).toBe('RINGLOOP.mp');
+    const hex = (n: number): string => (n >>> 0).toString(16).toUpperCase().padStart(8, '0');
+    const alley = hex(worldSignature(ALLEY)!);
+    const square = hex(worldSignature(SQUARE)!);
+    expect(text.split('\r\n')).toEqual([
+      '[Ring][mudengine]',
+      '[DARK:mudengine:Dark Alley]',
+      `${alley}:${alley}:4:-1:0:::`,
+      `${alley}:0000:s`,
+      `${square}:0000:e`,
+      `${hex(worldSignature(SHOP)!)}:0000:w`,
+      `${square}:0000:n`,
+      ''
+    ]);
+    // What MegaMUD's own folder import reads it back as.
+    const read = readMegaMudLoop(file, text);
+    expect(read?.steps).toEqual(['s', 'e', 'w', 'n']);
+    e.dispose();
+  });
+
+  it('says why a loop cannot be written, and fetches nothing for it', async () => {
+    const { e, fetches } = engine('1/1', {
+      '1/2>1/3': { steps: [], cost: 0, blocked: true, reason: 'The gate is shut.' }
+    });
+    expect(await e.exportLoop('Ring')).toBe('The gate is shut.');
+    expect(await e.exportLoop('Nowhere')).toBe('no such loop');
+    expect(fetches).toEqual([]);
     e.dispose();
   });
 

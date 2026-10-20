@@ -397,6 +397,7 @@ export type SessionAct =
   | { act: 'megaAnswer'; question: string; yes: boolean }
   | { act: 'depositAll' }
   | { act: 'buyItem'; item: { id: number; name: string }; remove: string[] | null }
+  | { act: 'wearLoadout'; commands: string[] }
   | { act: 'megamud'; settings: MegaSettings };
 
 /** What `configureRealm` is told: the tables, and what the realm calls its coins. */
@@ -2736,6 +2737,8 @@ export class SessionManager {
       name: string;
       withdraw: number;
       need: number;
+      /** The price's shortfall alone, withdrawn where the vault cannot cover the minimum too. */
+      shortfall: number;
       walking: boolean;
       /** When its `bank` went out, which is said before every withdrawal; null before it has. */
       balanceAsked: number | null;
@@ -2817,7 +2820,8 @@ export class SessionManager {
               shop: bank.shop,
               name: bank.name,
               withdraw: funds.withdraw,
-              need: funds.price ?? 0,
+              need: funds.need,
+              shortfall: funds.shortfall,
               walking: where !== first,
               balanceAsked: null,
               asked: null
@@ -2916,6 +2920,21 @@ export class SessionManager {
     return null;
   }
 
+  /**
+   * The EQ tab's plan put on (2026-10-19): MME's commands for what the pack
+   * holds (`explorerEqWear`), through the engine as Buy + Wear's are. Why
+   * not, or null.
+   */
+  wearLoadout(commands: readonly string[]): string | null {
+    this.sink.acted?.({ act: 'wearLoadout', commands: [...commands] });
+    const mega = this.mega;
+    if (mega === null) return t('session.megamud.noEngine');
+    if (commands.length === 0) return t('automation.collect.wearNothing');
+    for (const command of commands) mega.queue(command);
+    this.sink.notice(t('automation.collect.wearingLoadout', { count: commands.length }));
+    return null;
+  }
+
   /** Buy + Wear's last step: what the slot holds taken off, and the purchase put on. */
   private wearBought(name: string, remove: readonly string[]): void {
     const mega = this.mega;
@@ -2955,6 +2974,10 @@ export class SessionManager {
     price: number | null;
     purse: number | null;
     withdraw: number;
+    /** What the purse must hold before the counter: the price, and the minimum kept where it can be. */
+    need: number;
+    /** The shortfall alone, what is withdrawn where a vault cannot cover the minimum as well. */
+    shortfall: number;
     bank?: CashPlace;
     refusal?: string;
   } {
@@ -2962,19 +2985,38 @@ export class SessionManager {
     const quoted = this.priceAt(name, counter);
     const price = quoted === null ? null : chargedInCopper(quoted, state.progress.charm) * count;
     const purse = state.inventory.wealth;
-    if (price === null || purse === null || price <= purse) return { price, purse, withdraw: 0 };
-    const withdraw = price - purse;
+    /*
+     * **And the cash kept on hand after it** (2026-10-19): the Cash tab's
+     * `Minimum cash on hand`, which MegaMUD's own withdrawal adds to what it
+     * wants (D41). A purse that pays and would fall under it is topped up.
+     */
+    const keep = Math.max(0, this.mega?.s.Cash_MinWealth ?? 0);
+    if (price === null || purse === null || price + keep <= purse) {
+      return { price, purse, withdraw: 0, need: price ?? 0, shortfall: 0 };
+    }
+    const shortfall = Math.max(0, price - purse);
     const here = roomAddress(state.room);
-    const bank =
+    const vault = (amount: number): CashPlace | undefined =>
       this.world === undefined || here === null
         ? undefined
-        : this.world.cashPlaces(state.banks, withdraw, here, counter, this.travellerNow(state))[0];
-    if (bank !== undefined) return { price, purse, withdraw, bank };
+        : this.world.cashPlaces(state.banks, amount, here, counter, this.travellerNow(state))[0];
+    const full = price + keep - purse;
+    const topped = vault(full);
+    if (topped !== undefined) {
+      return { price, purse, withdraw: full, need: price + keep, shortfall, bank: topped };
+    }
+    // No vault covers the minimum as well: the price alone, where the purse is short of it.
+    if (shortfall === 0) return { price, purse, withdraw: 0, need: price, shortfall: 0 };
+    const withdraw = shortfall;
+    const bank = vault(withdraw);
+    if (bank !== undefined) return { price, purse, withdraw, need: price, shortfall, bank };
     const words = { item: name, short: this.coinWords(withdraw) };
     return {
       price,
       purse,
       withdraw,
+      need: price,
+      shortfall,
       refusal:
         state.banks.length === 0
           ? t('automation.collect.refusalNoVault', words)
@@ -3061,6 +3103,16 @@ export class SessionManager {
       if (held === null || held.at < cash.balanceAsked) {
         if (Date.now() - cash.balanceAsked >= timeout)
           this.megaBuyGiveUp(t('automation.collect.whyNoBalance', { bank: cash.name }));
+        return;
+      }
+      // Short of the minimum as well, but not of the price: the price alone.
+      if (held.copper < cash.withdraw && cash.shortfall > 0 && held.copper >= cash.shortfall) {
+        cash.need -= cash.withdraw - cash.shortfall;
+        cash.withdraw = cash.shortfall;
+      }
+      // Only the minimum was to be topped up, and the vault cannot: bought from the purse.
+      if (held.copper < cash.withdraw && cash.shortfall === 0) {
+        cash.need = 0;
         return;
       }
       if (held.copper < cash.withdraw) {
@@ -3369,6 +3421,9 @@ export class SessionManager {
           fetchFirst: (items, then) => this.megaFetchFirst(items, then),
           opensAWay: (name) => this.opensAWay(name),
           leaveFor: (name) => this.leaveFor(name),
+          // A purchase of ours under way: every coin kept until it is made.
+          keepCoins: () => this.megaBuying !== null,
+          counted: (count) => this.tracker.megaCounted(count),
           loopRooms: (name) => {
             const loop = this.loopNamed(name) ?? this.megaLoops.get(name);
             if (loop === undefined) return t('session.move.noSuchLoop', { name });
@@ -6271,6 +6326,18 @@ export class SessionManager {
   startLoop(loop: Loop): MovementStart {
     this.sink.acted?.({ act: 'startLoop', loop });
     return this.beginLoop(loop);
+  }
+
+  /**
+   * A loop as a MegaMUD path file for this character (`MegaEngine.exportLoop`),
+   * one from the shelf kept for the engine to find as a lap's would be. Its
+   * file name and text, or why not.
+   */
+  async exportMegaLoop(loop: Loop): Promise<{ file: string; text: string } | string> {
+    const mega = this.mega;
+    if (mega === null) return t('session.megamud.noEngine');
+    if (this.loopNamed(loop.name) === undefined) this.megaLoops.set(loop.name, loop);
+    return mega.exportLoop(loop.name);
   }
 
   /** `startLoop` for the session's own reasons: a hunt's lap, a resumed one. Not the player's. */

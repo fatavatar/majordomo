@@ -55,6 +55,7 @@ app:
     noneFit: None of the {count} loops fit this realm's map, so nothing was added. Choose the
       MegaMUD folder recorded on this realm.
     notFound: No loop named {name} in this character's options.
+    noSuchLoop: There is no such loop to export.
     unknownScope: Invalid loop scope.
   onboarding:
     noCharactersYet:
@@ -74,6 +75,7 @@ app:
   # MMUD Explorer's lists, which read the realm's own database file.
   explorer:
     noDatabase: This realm names no database file to read, so the Explorer has nothing to show.
+    noCharacter: There is no character to put it on.
     noSuchItem: The realm has no such item.
     notWorn: '{item} is not something to wear.'
     unreadable: 'The realm''s database could not be read: {reason}'
@@ -907,8 +909,9 @@ explorer:
   columns:
     abilities: Abilities
     ac: AC/DR
-    acPerEncumbrance: AC/Enc
     accuracy: Acc
+    accy: Accy
+    acPerEncumbrance: AC/Enc
     agi: Agi
     armour: Armour
     armourType: Armr Type
@@ -921,12 +924,15 @@ explorer:
     crits: Crits
     damage: Damage
     detail: Detail
+    dmg: Dmg
     dodge: Dodge
+    duration: Dur
     encumbrance: Enc
     exp: Exp
     expPct: Exp%
     expPerDamage: Exp/(Dmg+HP)
     hea: Hea
+    heal: Heal
     hp: HP
     int: Int
     itemType: Type
@@ -939,11 +945,13 @@ explorer:
     mana: Mana
     max: Max
     min: Min
+    minMax: Min-Max
     mobs: '#Mobs'
     mobsSpawn: Mobs/Spwn
     mr: MR
     name: Name
     regen: RGN
+    roundDamage: Dmg/Rnd
     shopType: Type
     short: Short
     slot: Worn
@@ -951,6 +959,7 @@ explorer:
     spellAttack: Spell Atk.
     str: Str
     strength: Str
+    swings: '#Swings'
     undead: Undead
     weapon: Weapon
     weaponType: Wepn Type
@@ -958,12 +967,290 @@ explorer:
   kinds:
     armour: Armour
     classRace: Class/Race
+    eq: EQ
+    lists: Lists
+    tools: Tools
     monsters: Monsters
     rooms: Rooms
     shops: Shops
     spells: Spells
     sundry: Sundry
     weapons: Weapons
+  # The Tools tab (mudtool's tabs/tools.js and js/tools/*.js), 2026-10-19.
+  tools:
+    ac: AC
+    agility: Agility
+    align: Align
+    antiMagic: Anti-Magic
+    attack: Attack
+    attacker: Attacker
+    attackerAccuracy: Attacker accuracy
+    attacksim: Monster Attack Sim
+    averageNote: 'Avg damage vs 0 AC/DR, with the character''s other stats'
+    averageRound: Average round
+    backstab: Backstab Calc
+    backstabAttack: Backstab
+    bashing: Bashing
+    bsDamage: Backstab damage
+    bsForChar: BS accuracy worked out for the character.
+    bsHint: 'Max damage from strength is not added for you: put all of it in Max Damage. +Min damage from strength is. The weapon''s own stats are added; with a different weapon in the hand, its stats are taken off.'
+    bsMax: BS Max DMG
+    bsMin: BS Min DMG
+    bsRange: '{min} - {max} (AVG: {avg})'
+    calc: Calc.
+    charLevel: Char LVL
+    charm: Charm
+    chartIs: 'Chart {chart}%'
+    chooseMonster: Choose monster
+    class: Class
+    classStealth: Class Stealth
+    coin: Coin Converter
+    combat: Combat
+    combat1: 1 (Poor)
+    combat2: 2 (Fair)
+    combat3: 3 (Average)
+    combat4: 4 (Good)
+    combat5: 5 (Excellent)
+    combatLog: Combat log
+    convert: '\/ Convert /\'
+    copper: Copper
+    copy: Copy to clipboard
+    copySwings: Copy only swings
+    copyTrue: Copy only true avg
+    critAvg: Crit AVG
+    critPct: 'Crit %'
+    currentChar: Current char.
+    custom: Custom
+    customChart: custom
+    defender: Defender
+    defenses: 'The character''s defences'
+    diff: Diff
+    dmgPerMana: Dmg/M
+    dodgeCap: 'Dodge cap: {cap}%'
+    dodgeIs: 'Dodge: {dodge}%'
+    dodgePct: 'Dodge %'
+    dodgeSoftCap: 'Dodge DR-cap: {soft}% - {cap}%'
+    dr: DR
+    dynamic: or Dynamic
+    encum: Encum.
+    encumbrance: 'Encumbrance: {percent}%'
+    energyPerSwing: 'Energy per swing: {energy}'
+    euLeft: EU left
+    exp: Exp Calc
+    experience: Experience
+    expTable: 'Exp Table %'
+    extraAvg: Extra AVG
+    extraPct: 'Extra %'
+    fast: Fast (85)
+    fromLevel: From level
+    fromStats: From Combat Stats
+    fromStatsTitle: 'Hit, Crit and Weapon (MegaMUD''s Extra) from this character''s Combat Stats card'
+    fromWeapon: 'From the weapon: {bits}'
+    gold: Gold
+    goMonster: go to monster ›
+    goWeapon: go to weapon ›
+    healPerMana: Heal/M
+    hideEnergy: Hide energy info
+    hit: Hit Calc
+    hitAvg: Hit AVG
+    hitHint: 'Current char. and vs Char. fill in the character''s figures; vs Player and Manual keep what is typed.'
+    hitIs: 'Hit: {hit}%'
+    hitMinCap: 'Hit min-cap:'
+    hitPct: 'Hit %'
+    hitRate: Hit rate
+    learnedKey: 'Spells this character''s book holds are marked.'
+    level: Level
+    listSpells: List Spells
+    lvl: LVL
+    manual: Manual
+    maxDamage: Max Damage
+    maxEncum: Max Enc.
+    maxRoundOnly: Show the combat log only for the max round seen
+    megaDodge: MegaMUD Dodge
+    mobNotEvil: The monster is not evil.
+    monster: Monster
+    needed: Needed
+    noBS: No BS
+    noClass: none
+    none: None
+    normal: Normal (100)
+    normalAttack: Normal
+    notApplicable: N/A
+    notepad: Notepad
+    nothingToSim: Nothing to simulate.
+    overallIs: 'Overall hit: {overall}%'
+    platinum: Platinum
+    protEvil: Pr. Evil
+    qnd: 'QnD crits: {crits}'
+    qndEncum: '(under 67% for QnD)'
+    race: Race
+    rates: |
+      The currency conversion rates are:
+      100 platinum pieces == 1 runic coin
+      100 gold crowns == 1 platinum piece
+      10 silver nobles == 1 gold crown
+      10 copper farthings == 1 silver noble
+    rawSwing: 'Raw swing: {swings}'
+    reload: Reload
+    resCold: R-Cold
+    reset: Reset
+    resFire: R-Fire
+    resLightning: R-Litng
+    resStone: R-Stone
+    results: Results
+    resWater: R-Water
+    round: Round
+    runic: Runic
+    running: Running…
+    runSim: Run Simulator
+    seeHidden: See Hidden
+    shadow: Shadow
+    silver: Silver
+    simAttack: Attack
+    simAverage: 'AVG Dmg/Rnd: {average}'
+    simAvgHit: Avg Hit
+    simDodged: '%resist /dodge'
+    simHint: 'MR below 50 takes extra damage from spells MR reduces. MegaMUD Dodge checks dodge before AC, so the dodge % is what MegaMUD reports.'
+    simHitPct: '% Hit'
+    simMax: 'Max/Seen: {max}/{seen}'
+    simResisted: '%dmg Resist'
+    simRounds: '# Rounds to Sim'
+    simRoundsRun: '{rounds} rounds'
+    simSplit: '(Physical/Spell: {physical}/{spell})'
+    simTrueChance: 'True Attk%'
+    slow: Slow (125)
+    slowness: Slowness ability
+    speed: Speed
+    spellbook: Spell Book
+    spellCount: '{count} spells'
+    stats: Stats
+    stealth: Stealth
+    strength: Strength
+    strengthShort: 'Strength below the weapon''s {strength}'
+    swing: Swing Calc
+    swings: Swings
+    swingsLeft: Swings / EU remaining
+    toLevel: To level
+    trueAverage: True average
+    trueAverageIs: 'True average: {average}'
+    typeToSearch: Type to search…
+    vsAC: vs AC
+    vsBsDefense: vs BS Defense
+    vsChar: vs Char.
+    vsDodge: vs Dodge
+    vsMob: vs Mob
+    vsPerception: vs Perception
+    vsPlayer: vs Player
+    vsProtEvil: vs Prot. Evil
+    weapon: Weapon
+    weight: 'Weight: {weight}'
+  # The Lists tab (mudtool's tabs/lists.js): the compare lists and the Item
+  # Manager, whose flags are the character's own item rules (2026-10-19).
+  lists:
+    add: Add
+    addCompare: Add to compare
+    clear: Clear list
+    clearFlags: Clear flags
+    clearSure: Clear it?
+    compared: In the compare list
+    compareEmpty: Empty. Add records here, or with Add to compare on a record or the EQ tab.
+    copied: 'Copied {count} commands.'
+    copyCommands: Copy commands
+    drop: Drop
+    dropTitle: 'Drop: Auto-discard, dropped when carried'
+    enc: Enc
+    flag: Flag
+    imEmpty: Nothing carried, and no item rules of this character's own. Add an item to set a rule for it.
+    imHint:
+      The flags are this character's item rules, over the realm's table. Sell / Buy, Drop and Pick up / Equip
+      change them, and + and − its Min. to keep or Max to get.
+    itemManager: Item Manager
+    minusTitle: One fewer to keep, or to get
+    no: 'No'
+    noCommands: No flagged rows to make commands from.
+    noMatch: 'No match for "{typed}".'
+    noShop: none
+    own: own
+    pickPlaceholder: name or number…
+    pickupEquip: Pick up / Equip
+    pickupTitle: 'Cycle Pick up (Auto-collect) → Equip (Auto-equip) → neither'
+    plusTitle: One more to keep, or to get
+    qty: QTY
+    remove: Remove
+    removeRows: Remove
+    removeTitle: Take the rows off, and this character's own rules for them
+    saved: 'Item rules changed for {count}.'
+    selectAll: Select all
+    selectFirst: Select some rows first.
+    sellBuy: Sell / Buy
+    sellTitle: 'Cycle Sell (Auto-sell) → Buy (Auto-buy, up to Min. to keep) → neither'
+    shop: Shop
+    source: Source
+    sourceAdded: Added
+    sourceEquipped: Equipped
+    sourceInventory: Inventory
+    sourceRule: Rule
+    summary: '{rows} rows · carried weight {weight}'
+    type: Type
+    usable: Usable
+    value: Value
+    worn: Worn
+    'yes': 'Yes'
+  # The EQ tab (frmMain's equipment page, mudtool's tabs/eq.js), 2026-10-19.
+  eq:
+    addCompare: Add all to compare
+    adjust: 'Adjust {stat}'
+    adjustHint: Added to the figure worked out. AC and DR in whole points.
+    armourClass: 'AC:'
+    adjustAccuracy:
+      Only the largest +Accuracy from ability 22 on a single slot, across items, class, race and auras, counts.
+    attack: 'Attack: {name}'
+    attackAccuracy: 'Accuracy with this attack: {accuracy}'
+    attackApply: Apply
+    attackBackstab: Backstab first
+    attackBash: Bash
+    attackMartial: Martial arts
+    attackNoSpells: No attack spell in the spellbook.
+    attackOneshot: One-shot everything
+    attackSmash: Smash
+    attackSpell: Learned spell
+    attackWeapon: The weapon in the plan
+    buyWear: Buy + Wear
+    buyWearTitle: 'Buy {item} and put it on'
+    clearAdjustments: Clear adjustments
+    copyCommands: Copy the commands
+    copyStats: Copy EQ/Stats
+    critEffective: 'Effective crit {crit}% (diminishing returns over 40)'
+    encumbrance: Encumbrance
+    equipped: 'Equipped: {who}'
+    findBest: Find Best
+    findBestHint: Searches each slot not held, among what this character can use.
+    holdAll: Hold all
+    holdTitle: 'Hold: Find Best leaves this slot alone'
+    itemsOnly: Items only (no class, race or blessings)
+    jumpkick: JmpKck
+    kick: Kick
+    level: 'level {level}'
+    maAccuracy: Accy
+    maDamage: DMG
+    maSkill: Skill
+    nextBest: Next Best
+    none: (none)
+    nothingFound: Nothing found.
+    packWeight: 'The pack beyond the plan: {weight}, from the reported encumbrance.'
+    packUnreported: The pack's weight is unreported until an inventory is read.
+    pointAt: Point at a figure to see what adds to it. Click one to adjust it.
+    punch: Punch
+    releaseAll: Release all
+    resetWorn: Back to what is worn
+    skipLimited: Skip limited items
+    title: Find Best
+    toBuy: 'Not in the pack, so Buy + Wear: {items}.'
+    unequipAll: Unequip all
+    wear: Wear the plan
+    wearTitle: Put on what the pack holds, and take off what the plan leaves out
+    weight: Weight
+    worn: 'worn: {item}'
   # The Class/Race tab (PullClassDetail, PullRaceDetail, the builder), 2026-10-18.
   classes:
     abilities: Abilities
@@ -1145,6 +1432,15 @@ loops:
   startedKept: 'Started {loopName}, and kept it.'
   startedOnly: 'Started {loopName}.'
   paletteLabel: 'Loops: find one to walk'
+  # A loop handed out as a file (2026-10-19): mudengine's own loop file for
+  # another player to import, or a MegaMUD path file for this character.
+  exportAriaLabel: 'Export {loopName} as a loop file'
+  exportTitle: Export as a loop file another player can import
+  exportMega: .mp
+  exportMegaAriaLabel: 'Export {loopName} as a MegaMUD path'
+  exportMegaTitle: Export as a MegaMUD loop path (.mp), its way planned for this character
+  exporting: 'Exporting {loopName}…'
+  exported: 'Exported {loopName}.'
 # Command palette: entries, groups, hints and chrome.
 palette:
   character:
@@ -3162,6 +3458,11 @@ cards:
     badge:
       nothingYet: nothing yet
     coinsLabel: Coins collected
+    # The MegaMUD engine's own counts, in its statistics window's words (2026-10-19).
+    depositedLabel: Deposit/Sold
+    itemsFigure: '{count} items'
+    itemsLabel: Items collected
+    stashedLabel: Stashed
     column:
       count: Count
       kind: Attack Type
@@ -3197,8 +3498,16 @@ cards:
       backstab: Backstab
       cast: Cast
       crit: Crit
+      # MegaMUD's attack rungs, named as its window names them while the
+      # rung's command is unset; with one set, the row is the command.
+      main: Main
       melee: Melee
       miss: Miss
+      multi: Multi
+      pre: Pre
+      preMulti: PreM
+      round: Round
+      second: Cast2
       # A weapon's chance-on-hit. The realm's own word for the pair is
       # `PercentSpell`; `Weapon` is what a player calls it, and the row sits
       # apart from Melee because it lands off a swing rather than being one.
@@ -3734,6 +4043,17 @@ settings:
     searchPlaceholderLoading: Search the shipped loops
   loopSection:
     addLoop: Add a loop
+    # A loop file another player exported (2026-10-19), and handing one out.
+    exportAriaLabel: 'Export {loopName}'
+    exportTitle: Export as a loop file another player can import
+    fileImportLabel: Import a loop file…
+    fileImportNote:
+      A loop file another player exported from their loop list. It is added to this realm, replacing
+      one of the same name.
+    fileImported:
+      one: 'Imported 1 loop ({replaced} replaced one of the same name).'
+      many: 'Imported {count} loops ({replaced} replaced one of the same name).'
+    importedName: Imported loop
     importDropped: 'Left out: {start} whose first room this realm''s map does not have, {steps} whose
       steps do not fit it, {short} too short to walk.'
     importLabel: Import MegaMUD loops…
@@ -4304,6 +4624,9 @@ errors:
     duplicateRealmName: There is already a realm called {name}.
     globalAddressMismatch: the address did not survive being saved
     loopScopeUnknown: Nowhere to put that loop — the character or realm it named is not there.
+    loopFileEmpty: That file holds no loop this client can read.
+    loopFileTooBig: That file is too big to be a loop file.
+    loopFileUnreadable: 'That file is not a loop file: {reason}'
     tooManyLoops: That would give this realm more than {max} loops (it holds {held}), more than its
       page can keep. Remove some first.
     remoteNameRequired: No name given.
@@ -4521,6 +4844,9 @@ automation:
     boughtIt: 'Bought {item} at {shop}.'
     refusalNoCounter: 'Nowhere this character can reach sells {item}.'
     wearingIt: 'Bought {item}; putting it on.'
+    # The EQ tab's plan put on (2026-10-19).
+    wearNothing: Everything the plan puts on is worn already, or must be bought first.
+    wearingLoadout: 'Putting the plan on: {count} commands.'
     wearingInstead: 'Bought {item}; taking off {removed} and putting it on.'
     refusalBusy: Something is already being collected.
     replacingLap: 'Stopping {loopName} to go and collect it; it will not start again on its own.'

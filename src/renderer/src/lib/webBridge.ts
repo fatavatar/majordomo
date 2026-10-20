@@ -306,6 +306,19 @@ export function createWebBridge(): IpcApi {
     explorerBuyPlan: (session, item) => invoke(Invoke.explorerBuyPlan, session, item),
     explorerBuy: (session, item, wear) => invoke(Invoke.explorerBuy, session, item, wear),
     explorerGear: (session, options) => invoke(Invoke.explorerGear, session, options),
+    explorerEq: (session, plan) => invoke(Invoke.explorerEq, session, plan),
+    explorerEqBest: (session, plan, find) => invoke(Invoke.explorerEqBest, session, plan, find),
+    explorerEqWear: (session, plan) => invoke(Invoke.explorerEqWear, session, plan),
+    explorerCompare: (session, kind, numbers) =>
+      invoke(Invoke.explorerCompare, session, kind, numbers),
+    explorerFind: (session, kind, text) => invoke(Invoke.explorerFind, session, kind, text),
+    explorerItems: (session, numbers, names) =>
+      invoke(Invoke.explorerItems, session, numbers, names),
+    itemRulesFor: (session) => invoke(Invoke.itemRulesFor, session),
+    explorerTool: (session, request) => invoke(Invoke.explorerTool, session, request),
+    exportLoop: (session, loop, format) => invoke(Invoke.exportLoop, session, loop, format),
+    importLoopFile: (scope, owner, text) => invoke(Invoke.importLoopFile, scope, owner, text),
+    setItemDetails: (session, rules) => invoke(Invoke.setItemDetails, session, rules),
     explorerRoomView: (session, request) => invoke(Invoke.explorerRoomView, session, request),
     explorerRoomTip: (session, map, room, options) =>
       invoke(Invoke.explorerRoomTip, session, map, room, options),

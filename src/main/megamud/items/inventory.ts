@@ -18,6 +18,7 @@ import { forgetAwaited, setState } from '../script/state';
 import type { Carried, Session } from '../Session';
 import { State } from '../states';
 import { LineFlag, INVENTORY_LISTING, PROMPT_SEEN, ItemFlag, CarriedFlag } from '../flags';
+import { carriedOff, itemsCollected } from '../stats/window';
 
 /** The wear slots an item's `(…)` names (the table at `0x562580`), from 2 up. */
 const SLOTS: [number, string][] = [
@@ -175,6 +176,7 @@ export function carryMore(s: Session, name: string, count: number): number {
   }
   if ((item.flags & ItemFlag.Coin) === 0) {
     s.weightCarried += item.weight * count;
+    itemsCollected(s, count);
   } else {
     s.weightCarried += coinWeightAdded(s, c, count);
   }
@@ -442,18 +444,20 @@ export function inventoryLine(s: Session, line: string, last: number): number {
 /**
  * `0x453900`: `count` of `name` no longer carried (dropped, hidden, sold or
  * bought with): the encumbrance adjusted, and the line gone when none are
- * left. MegaMUD's `how` (the state) only fed its statistics window.
+ * left. `how` is the state it went in, for the statistics window.
  */
-export function carryLess(s: Session, name: string, count: number): number {
+export function carryLess(s: Session, name: string, count: number, how: number): number {
   const c = findCarried(s, name);
   if (!c) return 0;
   const item = c.item;
   if (item) {
-    if ((item.flags & ItemFlag.Coin) === 0) {
+    const coin = (item.flags & ItemFlag.Coin) !== 0;
+    if (!coin) {
       s.weightCarried -= item.weight * count;
     } else {
       s.weightCarried += coinWeightAdded(s, c, -count);
     }
+    carriedOff(s, how, coin, count, coin ? coinValue(s, item.name) : 0);
   }
   c.count -= count;
   if (c.count < 1) {

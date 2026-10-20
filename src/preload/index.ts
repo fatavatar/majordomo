@@ -177,6 +177,23 @@ const api: IpcApi = {
   explorerBuyPlan: (session, item) => ipcRenderer.invoke(Invoke.explorerBuyPlan, session, item),
   explorerBuy: (session, item, wear) => ipcRenderer.invoke(Invoke.explorerBuy, session, item, wear),
   explorerGear: (session, options) => ipcRenderer.invoke(Invoke.explorerGear, session, options),
+  explorerEq: (session, plan) => ipcRenderer.invoke(Invoke.explorerEq, session, plan),
+  explorerEqBest: (session, plan, find) =>
+    ipcRenderer.invoke(Invoke.explorerEqBest, session, plan, find),
+  explorerEqWear: (session, plan) => ipcRenderer.invoke(Invoke.explorerEqWear, session, plan),
+  explorerCompare: (session, kind, numbers) =>
+    ipcRenderer.invoke(Invoke.explorerCompare, session, kind, numbers),
+  explorerFind: (session, kind, text) =>
+    ipcRenderer.invoke(Invoke.explorerFind, session, kind, text),
+  explorerItems: (session, numbers, names) =>
+    ipcRenderer.invoke(Invoke.explorerItems, session, numbers, names),
+  itemRulesFor: (session) => ipcRenderer.invoke(Invoke.itemRulesFor, session),
+  explorerTool: (session, request) => ipcRenderer.invoke(Invoke.explorerTool, session, request),
+  exportLoop: (session, loop, format) =>
+    ipcRenderer.invoke(Invoke.exportLoop, session, loop, format),
+  importLoopFile: (scope, owner, text) =>
+    ipcRenderer.invoke(Invoke.importLoopFile, scope, owner, text),
+  setItemDetails: (session, rules) => ipcRenderer.invoke(Invoke.setItemDetails, session, rules),
   explorerRoomView: (session, request) =>
     ipcRenderer.invoke(Invoke.explorerRoomView, session, request),
   explorerRoomTip: (session, map, room, options) =>

@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -8,6 +9,9 @@ import {
   type UIEvent
 } from 'react';
 
+import ExplorerEq, { type ExplorerEqProps } from './ExplorerEq';
+import ExplorerLists, { type CompareLists, type ExplorerListsProps } from './ExplorerLists';
+import ExplorerTools, { type ExplorerToolsProps } from './ExplorerTools';
 import ExplorerRooms from './ExplorerRooms';
 import { Check, Choice, Field, Figure, Pick } from './ExplorerFields';
 import ExplorerMonsterBar from './ExplorerMonsterBar';
@@ -26,8 +30,10 @@ import {
 } from '../lib/explorer';
 import type { SessionId } from '@shared/ipc';
 import {
+  COMPARE_KINDS,
   DEFAULT_EXPLORER_OPTIONS,
   EXPLORER_ATTACKS,
+  type CompareKind,
   type ExplorerAttack,
   type ExplorerBuyPlan,
   type ExplorerColumn,
@@ -89,7 +95,47 @@ export interface ExplorerScreenProps {
   roomSearch(search: RoomSearch): Promise<RoomSearchResult>;
   /** Send the character to a room by the route panel, the Explorer put away. */
   walkTo(room: string): void;
+  /** The EQ tab's page, Find Best and wear, and what it answers for (`ExplorerEq`). */
+  eq: Pick<ExplorerEqProps, 'view' | 'best' | 'wear' | 'copy' | 'characterKey'>;
+  /** The Lists tab's calls, the pack, and what its Item Manager answers for (`ExplorerLists`). */
+  lists: Pick<
+    ExplorerListsProps,
+    'pack' | 'characterKey' | 'compare' | 'find' | 'items' | 'rules' | 'saveRules' | 'copy'
+  >;
+  /** The Tools tab's calculators, and the Combat Stats its Swing calculator reads (`ExplorerTools`). */
+  tools: Pick<ExplorerToolsProps, 'tool' | 'fromStats' | 'copy' | 'characterKey'>;
   onClose(): void;
+}
+
+/** The compare lists, kept per character (mudtool keeps them on the character). */
+const compareKey = (session: string): string => `mudengine.explorer.compare.${session}`;
+const NO_COMPARE: CompareLists = { weapons: [], armour: [], spells: [], monsters: [] };
+
+function recallCompare(session: string): CompareLists {
+  try {
+    const kept = JSON.parse(localStorage.getItem(compareKey(session)) ?? 'null') as Record<
+      string,
+      unknown
+    > | null;
+    const list = (v: unknown): number[] =>
+      Array.isArray(v) ? v.filter((n): n is number => typeof n === 'number') : [];
+    return {
+      weapons: list(kept?.['weapons']),
+      armour: list(kept?.['armour']),
+      spells: list(kept?.['spells']),
+      monsters: list(kept?.['monsters'])
+    };
+  } catch {
+    return NO_COMPARE;
+  }
+}
+
+function keepCompare(session: string, lists: CompareLists): void {
+  try {
+    localStorage.setItem(compareKey(session), JSON.stringify(lists));
+  } catch {
+    // Storage refused: the lists last this visit.
+  }
 }
 
 /** The lists, in MME's order. */
@@ -484,6 +530,7 @@ function subLine(kind: ExplorerKind, row: ExplorerRow | undefined): string {
 
 export default function ExplorerScreen({
   open,
+  session,
   characterName,
   characterKey,
   purseKey,
@@ -497,8 +544,14 @@ export default function ExplorerScreen({
   roomTip,
   roomSearch,
   walkTo,
+  eq,
+  lists,
+  tools,
   onClose
 }: ExplorerScreenProps) {
+  const [compared, setCompared] = useState<CompareLists>(() => recallCompare(session));
+  useEffect(() => setCompared(recallCompare(session)), [session]);
+  useEffect(() => keepCompare(session, compared), [session, compared]);
   const [kind, setKind] = useState<ExplorerKind>('weapons');
   // The tab shown: a list, which keeps `kind` and all of its state, or the Rooms walker.
   const [tab, setTab] = useState<ExplorerTab>('weapons');
@@ -514,7 +567,18 @@ export default function ExplorerScreen({
   const [shown, setShown] = useState<ExplorerDetail | null>(null);
   const [scrollTop, setScrollTop] = useState(0);
   const [viewRows, setViewRows] = useState(40);
-  const bodyRef = useRef<HTMLDivElement>(null);
+  const bodyRef = useRef<HTMLDivElement | null>(null);
+  /*
+   * The list's scrolling box as it is drawn now (2026-10-19): the Rooms tab
+   * takes the list away and coming back draws a new one, where the rows it
+   * holds were measured off the box taken away, 0 tall, and the scroll said
+   * was the old box's, and the list came back a row or two or blank.
+   */
+  const [rowsBox, setRowsBox] = useState<HTMLDivElement | null>(null);
+  const rowsAt = useCallback((box: HTMLDivElement | null): void => {
+    bodyRef.current = box;
+    setRowsBox(box);
+  }, []);
   // The two panels under the list, sized by their handles and kept for next time.
   const [split, setSplit] = useState<ExplorerSplit>(recallSplit);
   useEffect(() => keepSplit(split), [split]);
@@ -584,14 +648,19 @@ export default function ExplorerScreen({
 
   // How many rows the list's box holds, for drawing only those.
   useEffect(() => {
-    const body = bodyRef.current;
-    if (!open || body === null) return;
-    const measure = (): void => setViewRows(Math.ceil(body.clientHeight / ROW_PX) + 1);
+    if (!open || rowsBox === null) return;
+    const measure = (): void => setViewRows(Math.ceil(rowsBox.clientHeight / ROW_PX) + 1);
     measure();
     const observer = new ResizeObserver(measure);
-    observer.observe(body);
+    observer.observe(rowsBox);
     return () => observer.disconnect();
-  }, [open, answer]);
+  }, [open, rowsBox]);
+  // A list drawn again is where it was left.
+  const scrollTopRef = useRef(scrollTop);
+  scrollTopRef.current = scrollTop;
+  useLayoutEffect(() => {
+    if (rowsBox !== null) rowsBox.scrollTop = scrollTopRef.current;
+  }, [rowsBox]);
 
   const all = useMemo(() => answer?.rows ?? [], [answer]);
   const types = useMemo(() => [...new Set(all.map((row) => row.facts.type))].sort(), [all]);
@@ -649,6 +718,7 @@ export default function ExplorerScreen({
   kindRef.current = kind;
   const goTo = useCallback((visit: Visit): void => {
     setTab(visit.tab);
+    if (visit.tab === 'eq' || visit.tab === 'lists' || visit.tab === 'tools') return;
     if (visit.tab === 'rooms') {
       if (visit.n !== null) setRoomAt(String(visit.n));
       return;
@@ -678,7 +748,12 @@ export default function ExplorerScreen({
     scrollToRef.current = Number(visit.n);
   }, []);
   // Where Back returns to: the tab shown, and its record.
-  const visitNow = (): Visit => (tab === 'rooms' ? { tab, n: roomAt } : { tab: kind, n: chosen });
+  const visitNow = (): Visit =>
+    tab === 'rooms'
+      ? { tab, n: roomAt }
+      : tab === 'eq' || tab === 'lists' || tab === 'tools'
+        ? { tab, n: null }
+        : { tab: kind, n: chosen };
   /** Go somewhere, remembering where from. */
   const follow = (visit: Visit | ExplorerPlace): void => {
     const now = visitNow();
@@ -706,7 +781,7 @@ export default function ExplorerScreen({
     const top = Math.max(0, at * ROW_PX - ROW_PX * 3);
     bodyRef.current?.scrollTo({ top });
     setScrollTop(top);
-  }, [rows]);
+  }, [rows, rowsBox]);
 
   if (!open) return null;
 
@@ -789,6 +864,26 @@ export default function ExplorerScreen({
       >
         <header className="ex-top">
           <nav className="ex-tabs" role="tablist">
+            <button
+              aria-selected={tab === 'eq'}
+              className="ex-tab"
+              onClick={() => switchTab('eq')}
+              onMouseDown={keepFocus}
+              role="tab"
+              type="button"
+            >
+              {t('explorer.kinds.eq')}
+            </button>
+            <button
+              aria-selected={tab === 'lists'}
+              className="ex-tab"
+              onClick={() => switchTab('lists')}
+              onMouseDown={keepFocus}
+              role="tab"
+              type="button"
+            >
+              {t('explorer.kinds.lists')}
+            </button>
             {KINDS.map((entry) => (
               <button
                 aria-selected={tab === entry.id || (entry.id === 'classes' && tab === 'races')}
@@ -811,6 +906,16 @@ export default function ExplorerScreen({
               type="button"
             >
               {t('explorer.kinds.rooms')}
+            </button>
+            <button
+              aria-selected={tab === 'tools'}
+              className="ex-tab"
+              onClick={() => switchTab('tools')}
+              onMouseDown={keepFocus}
+              role="tab"
+              type="button"
+            >
+              {t('explorer.kinds.tools')}
             </button>
           </nav>
           <button
@@ -836,7 +941,36 @@ export default function ExplorerScreen({
           </button>
         </header>
 
-        {tab === 'rooms' ? (
+        {tab === 'eq' ? (
+          <ExplorerEq
+            addCompare={(added) =>
+              setCompared((was) => {
+                const next = { ...was };
+                for (const { kind: list, n } of added)
+                  if (!next[list].includes(n)) next[list] = [...next[list], n];
+                return next;
+              })
+            }
+            buy={buy}
+            characterKey={eq.characterKey}
+            copy={eq.copy}
+            follow={follow}
+            session={session}
+            view={eq.view}
+            best={eq.best}
+            wear={eq.wear}
+          />
+        ) : tab === 'tools' ? (
+          <ExplorerTools {...tools} follow={follow} session={session} />
+        ) : tab === 'lists' ? (
+          <ExplorerLists
+            {...lists}
+            follow={follow}
+            lists={compared}
+            session={session}
+            setLists={setCompared}
+          />
+        ) : tab === 'rooms' ? (
           <ExplorerRooms
             at={roomAt ?? hereRoom ?? FIRST_ROOM}
             characterName={characterName}
@@ -1174,7 +1308,7 @@ export default function ExplorerScreen({
                       onScroll={(event: UIEvent<HTMLDivElement>) =>
                         setScrollTop(event.currentTarget.scrollTop)
                       }
-                      ref={bodyRef}
+                      ref={rowsAt}
                     >
                       <div className="ex-head" role="row">
                         {columns.map((column) => (
@@ -1260,6 +1394,25 @@ export default function ExplorerScreen({
                     <>
                       <h2 className="ex-name">{shown.name}</h2>
                       <div className="ex-sub">{shown.sub ?? subLine(kind, chosenRow)}</div>
+                      {/* MME's Add to compare, to the Lists tab's list of this kind. */}
+                      {(COMPARE_KINDS as readonly string[]).includes(kind) && (
+                        <button
+                          className="ex-btn ex-compare"
+                          disabled={compared[kind as CompareKind].includes(shown.number)}
+                          onClick={() =>
+                            setCompared((was) => ({
+                              ...was,
+                              [kind]: [...was[kind as CompareKind], shown.number]
+                            }))
+                          }
+                          onMouseDown={keepFocus}
+                          type="button"
+                        >
+                          {compared[kind as CompareKind].includes(shown.number)
+                            ? t('explorer.lists.compared')
+                            : t('explorer.lists.addCompare')}
+                        </button>
+                      )}
                       {(kind === 'weapons' || kind === 'armour' || kind === 'sundry') && (
                         <BuyBox
                           buy={buy}

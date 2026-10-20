@@ -125,3 +125,10 @@ export function raceAbilities(r: Row): string;
 export function raceStat(r: Row, key: string): string;
 /** `RaceColorCode`: per race, each stat `lo` or `hi` where it is twenty off the average. */
 export function raceColours(races: Row[]): Map<number, Record<string, 'lo' | 'hi'>>;
+/** `AddListViewRowsForItem`'s Value and Shop: the cheapest counter and its buy / sell, at a charm. */
+export function bestShopPrice(
+  item: Row | number,
+  charm?: number
+): { shop: number; more: number; value: string; sellOnly: boolean; copperSell: number };
+/** `Fix` to `places` decimals. */
+export function truncate(v: number, places?: number): number;

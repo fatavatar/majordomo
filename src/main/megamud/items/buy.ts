@@ -59,7 +59,7 @@ export function coinList(
 
 /** A coin paid: carried no more. */
 function paid(s: Session): (name: string, count: number) => void {
-  return (name, count) => carryLess(s, name, count);
+  return (name, count) => carryLess(s, name, count, State.Buying);
 }
 
 export function buyLine(s: Session, line: string): number {

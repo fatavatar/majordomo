@@ -46,7 +46,7 @@ export function sellLine(s: Session, line: string): number {
         count = n;
       }
     }
-    if (count > 0) carryLess(s, name, count);
+    if (count > 0) carryLess(s, name, count, State.Selling);
     at = forAt + 5;
   } else {
     s.lineFlags &= ~LineFlag.SellCoinsContinue;

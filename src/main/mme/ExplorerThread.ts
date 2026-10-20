@@ -13,6 +13,7 @@
 import { Worker } from 'node:worker_threads';
 
 import * as facade from './Explorer';
+import { explorerTool } from './ExplorerTools';
 import { realmFile } from './Explorer';
 
 /** The facade's calls the thread answers, by name, each with the realm named by its file. */
@@ -23,6 +24,13 @@ export const EXPLORER_CALLS = {
   roomView: facade.explorerRoomView,
   roomTip: facade.explorerRoomTip,
   roomSearch: facade.explorerRoomSearch,
+  eq: facade.explorerEq,
+  eqBest: facade.explorerEqBest,
+  eqWear: facade.explorerEqWear,
+  compare: facade.explorerCompare,
+  find: facade.explorerFind,
+  items: facade.explorerItems,
+  tool: explorerTool,
   gear: (
     realm: facade.MmeRealm,
     state: Parameters<typeof facade.explorerGear>[1],

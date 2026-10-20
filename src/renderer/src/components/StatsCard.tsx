@@ -8,6 +8,8 @@ import { experienceOwed, experienceStanding } from '@shared/experience';
 import {
   BLOW_KINDS,
   DEFAULT_STATS_GRAPH,
+  MEGA_MODES,
+  NO_MEGA_TALLY,
   DEFAULT_STATS_HOURS,
   damageDealt,
   engagedFor,
@@ -29,6 +31,7 @@ import {
   type CombatTally,
   type AwaySpell,
   type ExperienceSample,
+  type MegaMode,
   type StatsGraph
 } from '@shared/tally';
 import type { SessionId } from '@shared/ipc';
@@ -115,6 +118,18 @@ const KIND_LABEL: Record<BlowKind, string> = {
 };
 
 /**
+ * MegaMUD's own rows for its attack rungs (2026-10-19), named as its window
+ * names them where the rung's command is unset; set, the row is the command.
+ */
+const MODE_LABEL: Record<MegaMode, string> = {
+  pre: t('cards.stats.kind.pre'),
+  preMulti: t('cards.stats.kind.preMulti'),
+  multi: t('cards.stats.kind.multi'),
+  main: t('cards.stats.kind.main'),
+  second: t('cards.stats.kind.second')
+};
+
+/**
  * How this character has been fighting, added up.
  *
  * The MegaMUD Stats window's question, answered from the stream — and after
@@ -141,9 +156,11 @@ const KIND_LABEL: Record<BlowKind, string> = {
  *
  * What is still deliberately **not** here:
  *
- * - **No proc, off-hand, Pre / Main / Aux / Multi row.** Those are names
- *   MegaMUD gave to *its own* attack script's rungs, not things the server
- *   says. The wire says a spell landed and for how much, and that is one row.
+ * - **Pre / PreM / Multi / Main / Cast2 only where the MegaMUD engine ran**
+ *   (2026-10-19). Those are *its own* attack script's rungs, not things the
+ *   server says, so the stream counts a spell as one row; the engine knows
+ *   which rung it cast and counts them as its window does (`tally.mega`), as
+ *   it does a round's damage and what it collected, sold and stashed.
  * - **"Deflected", not "dodged", for the rest.** The server prints `The
  *   lashworm lunges at you!` and says nothing about why it did no damage.
  *   Calling *that* a dodge would be a claim read off a sentence that makes
@@ -152,9 +169,9 @@ const KIND_LABEL: Record<BlowKind, string> = {
  *   announces nothing that could add up resting, walking or idling the same
  *   way. `Attacking 41%` is true; a pie of four slices where three were
  *   guessed is not.
- * - **No coin banked or sold, and no item count.** MegaMUD's `Deposit/Sold`
- *   and `Stashed` are totals of what *it* did, and this client is not the only
- *   thing spending a purse. Its `Items` column has no frame at all: the server
+ * - **Coin banked or sold and items only from the engine.** MegaMUD's
+ *   `Deposit/Sold` and `Stashed` are totals of what *it* did, so they are
+ *   counted where it does them (`tally.mega`). Off the wire alone: the server
  *   confirms a coin pick-up (`You picked up 17 copper farthings`) and says
  *   **nothing** when an item is taken — grepped across all 220 captures,
  *   2026-09-02, and the only `You get …` line in any of them is `You get back
@@ -175,6 +192,9 @@ const MORE_ROWS: ReadonlySet<string> = new Set([
   'deflected',
   'sneak',
   'coins',
+  'items',
+  'deposited',
+  'stashed',
   'income',
   'attacking'
 ]);
@@ -406,6 +426,7 @@ function StatsCard({ baseline, character, onReset, session, ...chrome }: StatsCa
    * reading zero, for as long as the session lasts.
    */
   const everHappened = (count: number): boolean => count > 0;
+  const mega = shown.mega ?? NO_MEGA_TALLY;
 
   const rows: Row[] = [
     ...BLOW_KINDS.filter((kind) => everHappened(tally.dealt[kind].hits)).map((kind) => ({
@@ -424,6 +445,23 @@ function StatsCard({ baseline, character, onReset, session, ...chrome }: StatsCa
       accuracy: kind === 'spell' || kind === 'proc' ? null : share(shown.dealt[kind].hits, total),
       blows: shown.dealt[kind]
     })),
+    /*
+     * The engine's rungs, by its window's reckoning: a share of the casts
+     * that took (`0x4a8a10`), and the damage they landed for.
+     */
+    ...MEGA_MODES.filter((mode) => {
+      const ever = tally.mega?.modes[mode];
+      return ever !== undefined && everHappened(ever.took + ever.failed + ever.blows.hits);
+    }).map((mode) => {
+      const rung = (shown.mega ?? NO_MEGA_TALLY).modes[mode];
+      return {
+        key: `mega-${mode}`,
+        label: rung.command === '' ? MODE_LABEL[mode] : rung.command,
+        hits: rung.blows.hits,
+        accuracy: share(rung.took, rung.took + rung.failed),
+        blows: rung.blows
+      };
+    }),
     ...(everHappened(tally.missed)
       ? [
           {
@@ -432,6 +470,18 @@ function StatsCard({ baseline, character, onReset, session, ...chrome }: StatsCa
             hits: shown.missed,
             accuracy: share(shown.missed, total),
             blows: { hits: shown.missed, damage: 0, least: null, most: null }
+          }
+        ]
+      : []),
+    // A round's damage, its least and most and the average, as the window's `Round:`.
+    ...(everHappened(tally.mega?.rounds.hits ?? 0)
+      ? [
+          {
+            key: 'mega-round',
+            label: t('cards.stats.kind.round'),
+            hits: (shown.mega ?? NO_MEGA_TALLY).rounds.hits,
+            accuracy: null,
+            blows: (shown.mega ?? NO_MEGA_TALLY).rounds
           }
         ]
       : [])
@@ -587,6 +637,30 @@ function StatsCard({ baseline, character, onReset, session, ...chrome }: StatsCa
         label: t('cards.stats.coinsLabel'),
         value: figure(shown.coins),
         when: everHappened(tally.coins)
+      },
+      /*
+       * What the engine collected, banked or sold and stashed: its window's
+       * `Items` column, and its copper beside the coins picked up.
+       */
+      {
+        key: 'items',
+        label: t('cards.stats.itemsLabel'),
+        value: figure(mega.items.collected),
+        when: everHappened(tally.mega?.items.collected ?? 0)
+      },
+      {
+        key: 'deposited',
+        label: t('cards.stats.depositedLabel'),
+        value: figure(mega.copper.deposited),
+        second: t('cards.stats.itemsFigure', { count: figure(mega.items.sold) }),
+        when: everHappened((tally.mega?.copper.deposited ?? 0) + (tally.mega?.items.sold ?? 0))
+      },
+      {
+        key: 'stashed',
+        label: t('cards.stats.stashedLabel'),
+        value: figure(mega.copper.stashed),
+        second: t('cards.stats.itemsFigure', { count: figure(mega.items.stashed) }),
+        when: everHappened((tally.mega?.copper.stashed ?? 0) + (tally.mega?.items.stashed ?? 0))
       },
       {
         key: 'income',
