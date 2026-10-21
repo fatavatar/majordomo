@@ -1693,6 +1693,42 @@ describe("a character's own item rows", () => {
   });
 });
 
+/* A clicked monster's Edit writes the character's own monster rows (2026-10-20). */
+describe("a character's own monster rows", () => {
+  const rowsOf = (id: string): unknown =>
+    (
+      (read(id)['automation'] as Record<string, unknown> | undefined)?.['combat'] as
+        Record<string, unknown> | undefined
+    )?.['monsters'];
+
+  it('writes the rows whole, and reads back only what the file states', () => {
+    editor.saveProfile('vaelor', draft());
+    expect(
+      editor.setCombatMonsters('vaelor', [
+        { mob: 'grey lord', relationship: 'avoid', attack: { spell: 'mmis', max: 2 } },
+        { mob: 'gnome inventor', priority: 'first', noBackstab: true },
+        { mob: 'nothing said' }
+      ]).ok
+    ).toBe(true);
+    expect(rowsOf('vaelor')).toEqual([
+      { mob: 'grey lord', relationship: 'avoid', attack: { spell: 'mmis', max: 2 } },
+      { mob: 'gnome inventor', priority: 'first', noBackstab: true }
+    ]);
+    expect(resolveProfile('vaelor', read('vaelor'), parse(OPTIONS)).error).toBeUndefined();
+    expect(editor.ownRules('vaelor').monsters.map((row) => row.mob)).toEqual([
+      'grey lord',
+      'gnome inventor'
+    ]);
+    editor.setCombatMonsters('vaelor', []);
+    expect(rowsOf('vaelor')).toEqual([]);
+  });
+
+  it('refuses a character that does not exist, and reads it as no rows', () => {
+    expect(editor.setCombatMonsters('nobody-at-all', []).ok).toBe(false);
+    expect(editor.ownRules('nobody-at-all')).toEqual({ monsters: [], items: [] });
+  });
+});
+
 describe('the supplies list', () => {
   const suppliesOf = (id: string): unknown =>
     (read(id)['automation'] as Record<string, unknown> | undefined)?.['supplies'];

@@ -11,6 +11,7 @@
 import { SETTINGS } from '../../shared/megamud/schema';
 import type { MegaSettings, ProfiledSection } from '../../shared/megamud/settings';
 import { clearCastMode } from './combat/engaged';
+import { refreshImmunities } from './combat/immunity';
 import { forgetRoomMonsters, forgetRoomPlayers } from './script/game';
 import type { PlayerGrant, RemoteName } from '../../shared/remotes';
 import { loadMonitors } from './abilities/monitors';
@@ -84,14 +85,31 @@ export function activateProfile(s: Session, n: number): number {
   }
   noCastLimits(s);
   s.Profiles_ActiveProfile = n;
+  profileChanged(s);
+  return 1;
+}
+
+/**
+ * What `0x446910` lets go once another profile is on: the rest-to-full
+ * marks, the cast mode, and the monsters and players remembered, whose
+ * immunities were to the old profile's spells. Also a profile chosen in the
+ * settings and saved (`MegaEngine.reload`), where Skinny (2026-10-21) kept
+ * the black rosebush immune to the main attack spell after profile 2's
+ * `dfur` replaced profile 3's `lite`, and meleed it.
+ */
+export function profileChanged(s: Session): void {
   s.restHpToFull = 0;
   s.restManaToFull = 0;
   s.hpFullAt = 0;
   s.manaFullAt = 0;
   clearCastMode(s);
+  // Kept, where MegaMUD lets them go: a mark names its spell now, so one
+  // profile's are no other's (`combat/immunity.ts`).
+  const marks = s.monsterMarks;
   forgetRoomMonsters(s);
+  s.monsterMarks = marks;
   forgetRoomPlayers(s);
-  return 1;
+  refreshImmunities(s);
 }
 
 /**

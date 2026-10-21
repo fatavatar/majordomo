@@ -107,7 +107,7 @@ describe('profile copies', () => {
     'Enabled=1',
     'HpRest%=40',
     '[Health.P2]',
-    'Enabled=0',
+    'Enabled=1',
     'HpRest%=10'
   ].join('\r\n');
 
@@ -115,7 +115,40 @@ describe('profile copies', () => {
     const settings = settingsFromIni(ini);
     expect(settings.profiles.Health[0]?.values['HpRest%']).toBe(40);
     expect(settings.profiles.Health[0]?.values['HpFull%']).toBe(0);
-    expect(settings.profiles.Health[1]?.enabled).toBe(false);
+    expect(settings.profiles.Health[1]?.enabled).toBe(true);
+    expect(
+      settingsFromIni(ini.replace('Enabled=1\r\nHpRest%=10', 'Enabled=0\r\nHpRest%=10')).profiles
+        .Health[1]?.enabled
+    ).toBe(false);
+  });
+
+  /*
+   * `0x447290`: a tab whose copy of the active profile is not enabled is on
+   * copy 1 (2026-10-21). The live values went into the unticked copy, and a
+   * switch loaded it.
+   */
+  it('keeps a tab whose copy of the profile is not enabled on copy 1', () => {
+    const off = settingsFromIni(ini.replace('Enabled=1\r\nHpRest%=10', 'Enabled=0\r\nHpRest%=10'));
+    expect(off.profiles.Health[0]?.values['HpRest%']).toBe(70);
+    expect(off.profiles.Health[1]?.values['HpRest%']).toBe(10);
+    const combat = settingsFromIni(
+      `${ini.replace('ActiveProfile=2', 'ActiveProfile=1')}\r\n[Combat.P2]\r\nEnabled=1\r\nMaxCastCnt=7`
+    );
+    const back = switchProfile(switchProfile(combat, 1), 2);
+    expect(num(back, 'Combat', 'MaxCastCnt')).toBe(7);
+    const offBack = switchProfile(
+      settingsFromIni(
+        `${ini.replace('ActiveProfile=2', 'ActiveProfile=1').replace('Enabled=1\r\nHpRest%=10', 'Enabled=0\r\nHpRest%=10')}\r\n[Combat.P2]\r\nEnabled=1\r\nMaxCastCnt=7`
+      ),
+      2
+    );
+    expect(num(offBack, 'Health', 'HpRest%')).toBe(70);
+    expect(num(offBack, 'Combat', 'MaxCastCnt')).toBe(7);
+  });
+
+  it('refuses a profile no tab has enabled, as MegaMUD does', () => {
+    const settings = settingsFromIni(ini);
+    expect(switchProfile(settings, 3)).toBe(settings);
   });
 
   it('copies the live values into the active copy', () => {

@@ -26,7 +26,8 @@ import {
 } from '../megamud/data';
 import { applyItemRule } from '../megamud/fromWorld';
 import { bbsSetup } from '../megamud/bbs';
-import { grantPlayers, loadCharacter, reloadCharacter } from '../megamud/character';
+import { CAST_IMMUNITY, refreshImmunities } from '../megamud/combat/immunity';
+import { grantPlayers, loadCharacter, profileChanged, reloadCharacter } from '../megamud/character';
 import { newTerminal, parseData, type TerminalState } from '../megamud/input/ParseData';
 import { typedCommand } from '../megamud/input/typed';
 import { disconnect, menuCommand, playerCommand, playerKey } from '../megamud/move/buttons';
@@ -581,7 +582,13 @@ export class MegaEngine {
     if (memory) {
       rememberPlayers(this.s, memory.players);
       // MegaMUD's marks list lives as long as its window does; ours outlives a restart.
-      this.s.monsterMarks = (memory.marks ?? []).map(([name, flags]) => ({ name, flags }));
+      // A rung's immunity saved before marks named their spell is not known
+      // to be any spell's, and is let go (`combat/immunity.ts`).
+      this.s.monsterMarks = (memory.marks ?? []).map(([name, flags, spells]) => ({
+        name,
+        flags: flags & ~CAST_IMMUNITY,
+        ...(spells && spells.length > 0 ? { spells: [...spells] } : {})
+      }));
     }
     this.marksKept = JSON.stringify(this.s.monsterMarks);
     grantPlayers(this.s, setup.grants, setup.joinWhenInvited);
@@ -741,8 +748,13 @@ export class MegaEngine {
     // change is not a character opened afresh, which is when MegaMUD lets
     // them go (`0x4721d0`). Every save wiped what was learned (2026-10-14).
     const marks = [s.monsterMarks, s.playerMarks] as const;
+    const profile = s.Profiles_ActiveProfile;
     reloadCharacter(s, setup.settings);
+    // Another profile chosen in the settings is a profile put on (`@profile`).
+    if (s.Profiles_ActiveProfile !== profile) profileChanged(s);
     [s.monsterMarks, s.playerMarks] = marks;
+    // The spells the rungs cast may have changed under the immunities.
+    refreshImmunities(s);
     bbsSetup(s, (key) => setup.bbs?.[key]);
     [s.MegaMud_CurPath, s.MegaMud_SelPath, s.MegaMud_CurPathStep] = kept;
     TOGGLE_FIELDS.forEach((field, i) => (s[field] = toggles[i]!));
@@ -815,7 +827,11 @@ export class MegaEngine {
       stances: s.monstersChanged !== 0 ? savedStances(s) : [],
       items: s.itemsChanged !== 0 ? savedItems(s) : [],
       signatures: [...this.unkept],
-      marks: marked ? s.monsterMarks.map((m): LearnedMark => [m.name, m.flags]) : null
+      marks: marked
+        ? s.monsterMarks.map((m): LearnedMark =>
+            m.spells?.length ? [m.name, m.flags, m.spells] : [m.name, m.flags]
+          )
+        : null
     };
     this.marksKept = marks;
     // Players are our tracker's to keep (`PlayerBook`): the mark is only cleared.
@@ -976,10 +992,29 @@ export class MegaEngine {
     this.lastingMarked = true;
     for (const spell of this.s.data.spells) {
       if ((spell.flags & SpellFlag.Timed) !== 0) continue;
-      const known = world.spellNamed(spell.name);
+      // By its number first: a name can be another spell's too, and
+      // "divine intervention" is also a lasting one's, which held mudrev's
+      // `intr` to the round timer (2026-10-21).
+      const byId = spell.id > 0 ? world.spellById(spell.id) : null;
+      const known =
+        byId !== null && byId.name.toLowerCase() === spell.name.toLowerCase()
+          ? byId
+          : world.spellNamed(spell.name);
       if (known !== null && spellLasts(known, (id) => world.spellById(id)))
         spell.flags |= SpellFlag.Timed;
     }
+  }
+
+  /**
+   * The spells the character's spellbook lists, as our tracker last read it:
+   * which of the spells sharing a short word is this character's
+   * (`findSpell`). Kept apart from `Known`, which MegaMUD clears to ask again.
+   */
+  knowSpellbook(names: readonly string[]): void {
+    const next = new Set(names.map((name) => name.toLowerCase()));
+    const was = this.s.spellbookNames;
+    if (next.size === was.size && [...next].every((name) => was.has(name))) return;
+    this.s.spellbookNames = next;
   }
 
   /**

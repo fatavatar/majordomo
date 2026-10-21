@@ -197,6 +197,9 @@ const api: IpcApi = {
   importLoopFile: (scope, owner, text) =>
     ipcRenderer.invoke(Invoke.importLoopFile, scope, owner, text),
   setItemDetails: (session, rules) => ipcRenderer.invoke(Invoke.setItemDetails, session, rules),
+  monsterRulesFor: (session) => ipcRenderer.invoke(Invoke.monsterRulesFor, session),
+  setCombatMonsters: (session, rules) =>
+    ipcRenderer.invoke(Invoke.setCombatMonsters, session, rules),
   explorerRoomView: (session, request) =>
     ipcRenderer.invoke(Invoke.explorerRoomView, session, request),
   explorerRoomTip: (session, map, room, options) =>

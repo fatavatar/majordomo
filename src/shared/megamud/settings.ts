@@ -20,7 +20,8 @@
  *   one: after the copies are read, the live values are copied *into* the
  *   active copy (`0x447d80` → `0x44e150`), and when there is no copy 1 the
  *   live values become it. The active copy is `Profiles.ActiveProfile` when
- *   that is 1 to 4 and present, else 1 (`0x447290`).
+ *   that is 1 to 4 and that tab has it enabled, else 1 (`0x447290`, which
+ *   `0x4496c0` asks with the tab's `Enabled` flags; read 2026-10-21).
  * - A few keys are clamped or fall back to an older name: see `LOADER_RULES`.
  * - **Twins.** A few settings are read from two names into one place in the
  *   struct (`TWINS`: the AFK keys of `[MegaMud]` and `[Talk]` at `0x8c48`–
@@ -294,7 +295,7 @@ function settingsFromSections(ini: IniSection[]): MegaSettings {
       slots.push({ enabled, values });
     }
     if (!slots[0]) slots[0] = { enabled: true, values: profileCopy(settings.live, section) };
-    const index = active >= 1 && active <= 4 && slots[active - 1] ? active - 1 : 0;
+    const index = copyInUse(slots, active);
     slots[index] = { enabled: slots[index]!.enabled, values: profileCopy(settings.live, section) };
     settings.profiles[section] = slots;
   }
@@ -443,24 +444,35 @@ export function text(settings: MegaSettings, section: string, key: string): stri
 }
 
 /**
- * Switches to another profile copy: the live values are stored into the
- * active copy, the chosen copy becomes live, and `ActiveProfile` names it.
- * A copy that is not there is made from the live values.
+ * `0x447290`: the copy of a tab that profile `n` uses, as an index: copy `n`
+ * where that tab has it enabled, else copy 1. A tab with copy 3 unticked
+ * stays on copy 1 under profile 3; the loader and the settings' switch had
+ * taken any copy that was there (2026-10-21).
+ */
+export function copyInUse(slots: readonly (ProfileSlot | null)[], n: number): number {
+  return n >= 1 && n <= 4 && slots[n - 1]?.enabled === true ? n - 1 : 0;
+}
+
+/**
+ * Switches to another profile, as `0x446910` puts one on: each tab's live
+ * values are stored into the copy it was using, the copy profile `to` uses
+ * becomes live (`copyInUse`), and `ActiveProfile` names it. Unchanged where
+ * no tab has copy `to` enabled, which MegaMUD refuses.
  */
 export function switchProfile(settings: MegaSettings, to: number): MegaSettings {
   if (to < 1 || to > 4) return settings;
+  if (!PROFILED_SECTIONS.some((section) => copyInUse(settings.profiles[section], to) === to - 1))
+    return settings;
   const next: MegaSettings = structuredClone(settings);
   const from = num(next, 'Profiles', 'ActiveProfile');
   for (const section of PROFILED_SECTIONS) {
     const slots = next.profiles[section];
-    const index = from >= 1 && from <= 4 && slots[from - 1] ? from - 1 : 0;
+    const index = copyInUse(slots, from);
     slots[index] = {
       enabled: slots[index]?.enabled ?? true,
       values: profileCopy(next.live, section)
     };
-    const chosen = slots[to - 1] ?? { enabled: true, values: profileCopy(next.live, section) };
-    slots[to - 1] = chosen;
-    Object.assign(next.live[section]!, chosen.values);
+    Object.assign(next.live[section]!, slots[copyInUse(slots, to)]!.values);
   }
   next.live['Profiles']!['ActiveProfile'] = to;
   return next;

@@ -111,92 +111,17 @@ export function ItemRuleList({
     }
   };
 
-  /** Sets or clears one optional field; `undefined` removes the key outright. */
-  const setField = <K extends keyof ItemRule>(key: K, value: ItemRule[K] | undefined): void =>
-    setEditing((was) => {
-      if (was === null) return was;
-      const draft = { ...was.draft };
-      if (value === undefined) delete draft[key];
-      else draft[key] = value;
-      return { ...was, draft };
-    });
-
-  const countField = (key: 'keep' | 'most', label: string) => (
-    <NumberField
-      label={label}
-      name={`${namePrefix}-${key}`}
-      onChange={(value) => {
-        const n = Number.parseInt(value, 10);
-        setField(key, Number.isFinite(n) && n > 0 ? n : undefined);
-      }}
-      placeholder="0"
-      value={editing?.draft[key] !== undefined ? String(editing.draft[key]) : ''}
-    />
-  );
-
-  const textField = (key: 'ifNeeded' | 'shop', label: string, hint: string) => (
-    <TextField
-      hint={hint}
-      label={label}
-      name={`${namePrefix}-${key}`}
-      onChange={(value) => setField(key, value.trim().length === 0 ? undefined : value)}
-      onSubmit={() => void commit()}
-      spellCheck={false}
-      value={editing?.draft[key] ?? ''}
-    />
-  );
-
-  const editor = (
-    <div className="message-editor">
-      <div className="settings-inline">
-        <TextField
-          label={t('settings.items.nameLabel')}
-          name={`${namePrefix}-item`}
-          onChange={(value) => setField('item', value)}
-          onSubmit={() => void commit()}
-          placeholder={t('settings.items.namePlaceholder')}
-          spellCheck={false}
-          value={editing?.draft.item ?? ''}
-        />
-      </div>
-      <div className="message-effects" role="group" aria-label={t('settings.items.flagsLabel')}>
-        <span className="message-effects-label">{t('settings.items.flagsLabel')}</span>
-        {ITEM_FLAGS.map((flag) => {
-          const on = editing?.draft[flag] === true;
-          return (
-            <button
-              aria-pressed={on}
-              className="chip pick"
-              key={flag}
-              onClick={() => setField(flag, on ? undefined : true)}
-              type="button"
-            >
-              {flagLabel(flag)}
-            </button>
-          );
-        })}
-      </div>
-      <div className="settings-inline">
-        {countField('keep', t('settings.items.keepLabel'))}
-        {countField('most', t('settings.items.mostLabel'))}
-      </div>
-      {textField('ifNeeded', t('settings.items.ifNeededLabel'), t('settings.items.ifNeededHint'))}
-      {textField('shop', t('settings.items.shopLabel'), t('settings.items.shopHint'))}
-      <div className="message-editor-actions">
-        <button className="primary" onClick={() => void commit()} type="button">
-          {t('settings.items.saveRow')}
-        </button>
-        <button className="quiet" onClick={() => setEditing(null)} type="button">
-          {t('settings.items.cancel')}
-        </button>
-        {editing?.item !== null && editing?.item !== undefined && (
-          <button className="danger" onClick={() => void remove()} type="button">
-            {t('settings.items.removeRow')}
-          </button>
-        )}
-      </div>
-    </div>
-  );
+  const editor =
+    editing === null ? null : (
+      <ItemRuleEditor
+        draft={editing.draft}
+        namePrefix={namePrefix}
+        onCancel={() => setEditing(null)}
+        onDraft={(draft) => setEditing((was) => (was === null ? was : { ...was, draft }))}
+        onRemove={editing.item === null ? null : () => void remove()}
+        onSave={() => void commit()}
+      />
+    );
 
   return (
     <>
@@ -256,27 +181,7 @@ export function ItemRuleList({
                     type="button"
                   >
                     <span className="message-name">{row.item}</span>
-                    <span className="message-chips">
-                      {ITEM_FLAGS.filter((flag) => row[flag] === true).map((flag) => (
-                        <span className="chip quiet" key={flag}>
-                          {flagLabel(flag)}
-                        </span>
-                      ))}
-                      {row.keep !== undefined && (
-                        <span className="chip">
-                          {t('settings.items.keepChip', { count: row.keep })}
-                        </span>
-                      )}
-                      {row.most !== undefined && (
-                        <span className="chip">
-                          {t('settings.items.mostChip', { count: row.most })}
-                        </span>
-                      )}
-                      {row.shop !== undefined && <span className="chip info">{row.shop}</span>}
-                      {row.ifNeeded !== undefined && (
-                        <span className="chip info">{row.ifNeeded}</span>
-                      )}
-                    </span>
+                    <ItemRuleChips row={row} />
                   </button>
                 </div>
                 {editing?.item === row.item && editor}
@@ -292,5 +197,143 @@ export function ItemRuleList({
         </>
       )}
     </>
+  );
+}
+
+export interface ItemRuleEditorProps {
+  draft: ItemRule;
+  onDraft(draft: ItemRule): void;
+  onSave(): void;
+  onCancel(): void;
+  /** Removes the row being edited; null for a row not saved yet. */
+  onRemove: (() => void) | null;
+  /** What the remove button says, where it is not the list's word. */
+  removeLabel?: string;
+  /** Name prefix for the fields, so two editors on one page stay distinct. */
+  namePrefix: string;
+  /** Draws the item's name field; off where the row's item is already chosen. */
+  named?: boolean;
+}
+
+/**
+ * One item row's fields, and save, cancel and remove: the list's editor, and
+ * a clicked item's Edit in the Reference panel (2026-10-20).
+ */
+export function ItemRuleEditor({
+  draft,
+  onDraft,
+  onSave,
+  onCancel,
+  onRemove,
+  removeLabel,
+  namePrefix,
+  named = true
+}: ItemRuleEditorProps): React.JSX.Element {
+  /** Sets or clears one optional field; `undefined` removes the key outright. */
+  const setField = <K extends keyof ItemRule>(key: K, value: ItemRule[K] | undefined): void => {
+    const next = { ...draft };
+    if (value === undefined) delete next[key];
+    else next[key] = value;
+    onDraft(next);
+  };
+
+  const countField = (key: 'keep' | 'most', label: string) => (
+    <NumberField
+      label={label}
+      name={`${namePrefix}-${key}`}
+      onChange={(value) => {
+        const n = Number.parseInt(value, 10);
+        setField(key, Number.isFinite(n) && n > 0 ? n : undefined);
+      }}
+      placeholder="0"
+      value={draft[key] !== undefined ? String(draft[key]) : ''}
+    />
+  );
+
+  const textField = (key: 'ifNeeded' | 'shop', label: string, hint: string) => (
+    <TextField
+      hint={hint}
+      label={label}
+      name={`${namePrefix}-${key}`}
+      onChange={(value) => setField(key, value.trim().length === 0 ? undefined : value)}
+      onSubmit={onSave}
+      spellCheck={false}
+      value={draft[key] ?? ''}
+    />
+  );
+
+  return (
+    <div className="message-editor">
+      {named && (
+        <div className="settings-inline">
+          <TextField
+            label={t('settings.items.nameLabel')}
+            name={`${namePrefix}-item`}
+            onChange={(value) => setField('item', value)}
+            onSubmit={onSave}
+            placeholder={t('settings.items.namePlaceholder')}
+            spellCheck={false}
+            value={draft.item}
+          />
+        </div>
+      )}
+      <div className="message-effects" role="group" aria-label={t('settings.items.flagsLabel')}>
+        <span className="message-effects-label">{t('settings.items.flagsLabel')}</span>
+        {ITEM_FLAGS.map((flag) => {
+          const on = draft[flag] === true;
+          return (
+            <button
+              aria-pressed={on}
+              className="chip pick"
+              key={flag}
+              onClick={() => setField(flag, on ? undefined : true)}
+              type="button"
+            >
+              {flagLabel(flag)}
+            </button>
+          );
+        })}
+      </div>
+      <div className="settings-inline">
+        {countField('keep', t('settings.items.keepLabel'))}
+        {countField('most', t('settings.items.mostLabel'))}
+      </div>
+      {textField('ifNeeded', t('settings.items.ifNeededLabel'), t('settings.items.ifNeededHint'))}
+      {textField('shop', t('settings.items.shopLabel'), t('settings.items.shopHint'))}
+      <div className="message-editor-actions">
+        <button className="primary" onClick={onSave} type="button">
+          {t('settings.items.saveRow')}
+        </button>
+        <button className="quiet" onClick={onCancel} type="button">
+          {t('settings.items.cancel')}
+        </button>
+        {onRemove !== null && (
+          <button className="danger" onClick={onRemove} type="button">
+            {removeLabel ?? t('settings.items.removeRow')}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** What a row states, as chips: the list's summary, and the Reference panel's. */
+export function ItemRuleChips({ row }: { row: ItemRule }): React.JSX.Element {
+  return (
+    <span className="message-chips">
+      {ITEM_FLAGS.filter((flag) => row[flag] === true).map((flag) => (
+        <span className="chip quiet" key={flag}>
+          {flagLabel(flag)}
+        </span>
+      ))}
+      {row.keep !== undefined && (
+        <span className="chip">{t('settings.items.keepChip', { count: row.keep })}</span>
+      )}
+      {row.most !== undefined && (
+        <span className="chip">{t('settings.items.mostChip', { count: row.most })}</span>
+      )}
+      {row.shop !== undefined && <span className="chip info">{row.shop}</span>}
+      {row.ifNeeded !== undefined && <span className="chip info">{row.ifNeeded}</span>}
+    </span>
   );
 }

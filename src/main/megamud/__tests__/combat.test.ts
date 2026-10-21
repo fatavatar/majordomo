@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
 import { attack } from '../combat/attack';
+import { applyImmunity } from '../combat/immunity';
+import { breakOff } from '../combat/engaged';
 import { combatStep, partyHeal, selfHeal } from '../combat/heal';
 import type { SpellRec } from '../data';
 import { addEntity } from '../room/entities';
@@ -211,6 +213,65 @@ describe('running and attacking (0x40e190)', () => {
     monster(s, 'giant rat');
     expect(runCheck(s)).toBe(1);
     expect(out.sent).toEqual(['mmis giant rat\r']);
+  });
+
+  /*
+   * The main spell before the second (asked for 2026-10-21), where MegaMUD
+   * tries the second first: the second waits for the main to have no effect.
+   */
+  it('casts the main attack spell before the second, and the second where the main has no effect', () => {
+    const { s, out } = fighter([spell('lite', 0x20), spell('dfur', 0x20)]);
+    s.Combat_AttackSpl = 'lite';
+    s.Combat_MaxCastCnt = 3;
+    s.Combat_AttMaxDmg = 1000;
+    s.Combat_AttackSpl2 = 'dfur';
+    s.Combat_MaxCastCnt2 = 3;
+    s.Combat_AttMaxDmg2 = 1000;
+    monster(s, 'giant rat');
+    expect(runCheck(s)).toBe(1);
+    expect(out.sent).toEqual(['lite giant rat\r']);
+    const { s: again, out: told } = fighter([spell('lite', 0x20), spell('dfur', 0x20)]);
+    Object.assign(again, {
+      Combat_AttackSpl: 'lite',
+      Combat_MaxCastCnt: 3,
+      Combat_AttMaxDmg: 1000,
+      Combat_AttackSpl2: 'dfur',
+      Combat_MaxCastCnt2: 3,
+      Combat_AttMaxDmg2: 1000
+    });
+    again.monsterMarks = [{ name: 'giant rat', flags: 0, spells: ['lite'] }];
+    const rat = monster(again, 'giant rat');
+    applyImmunity(again, rat);
+    expect(runCheck(again)).toBe(1);
+    expect(told.sent).toEqual(['dfur giant rat\r']);
+  });
+
+  /*
+   * Skinny (2026-10-21): one `intr` a fight, engaged, and a heal between
+   * rounds ended it; the main spell went out next. Broken off, it is picked
+   * up again.
+   */
+  it('picks a multi-attack a heal broke off up again, past its cast count', () => {
+    const { s, out } = fighter([spell('intr', 0x84), spell('lite', 0x64)]);
+    Object.assign(s, {
+      MegaMud_AutoNuke: 1,
+      Combat_MultAttack: 'intr',
+      Combat_MultMstrCnt: 2,
+      Combat_MultCastCnt: 1,
+      Combat_MultMaxDmg: 99999,
+      Combat_AttackSpl: 'lite',
+      Combat_MaxCastCnt: 3,
+      Combat_AttMaxDmg: 1000
+    });
+    monster(s, 'giant ogre zombie');
+    monster(s, 'unholy wraith');
+    s.castsMulti = 1;
+    s.engagedMode = State.CastMulti;
+    breakOff(s);
+    expect(s.resumeMode).toBe(State.CastMulti);
+    expect(runCheck(s)).toBe(1);
+    expect(out.sent).toEqual(['intr\r']);
+    expect(s.resumeMode).toBe(State.Nothing);
   });
 
   it('backstabs while sneaking', () => {

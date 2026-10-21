@@ -801,8 +801,22 @@ export class Session extends StateFields {
   hpFullCast = 0;
   /** 0xe230: the mana-full spell has been cast since mana last fell below `ManaFull%`. */
   manaFullCast = 0;
+  /**
+   * The spells the character's spellbook lists, by name in lower case, as our
+   * tracker last read it (`MegaEngine.knowSpellbook`): which of the spells
+   * sharing a short word is this character's (`findSpell`). Ours; MegaMUD
+   * takes the first.
+   */
+  spellbookNames = new Set<string>();
   /** 0xa444: the attack the fight is engaged in (0x11 attack, 0x12 backstab, 9–15 the casts). */
   engagedMode = 0;
+  /**
+   * The attack spell a heal or a blessing cast between rounds broke off,
+   * picked up again as though still engaged (`breakOff`, `attack`). Ours:
+   * MegaMUD takes it as spent, and Skinny's one `intr` a fight became `lite`
+   * after every heal (2026-10-21).
+   */
+  resumeMode = 0;
   /** 0xdd14: the target a weapon's no-effect was counted against. */
   noEffectTarget = '';
   /** 0xdca8: the monster being fought, 100 characters. */
@@ -948,7 +962,8 @@ export class Session extends StateFields {
   /** 0x2500: a player-shaped name already looked at again, 31 characters. */
   unknownNameAsked = '';
   /** 0x2524: marks remembered for monsters by name (up to 500). */
-  monsterMarks: { name: string; flags: number }[] = [];
+  /** `spells`: the spells it is immune to, by short (`combat/immunity.ts`). */
+  monsterMarks: { name: string; flags: number; spells?: string[] }[] = [];
   /** 0x6b78: marks remembered for players by name (up to 100). */
   playerMarks: { name: string; flags: number }[] = [];
   /** 0x71c0/0x71b8: the players online, from the last `who` and the arrivals since. */

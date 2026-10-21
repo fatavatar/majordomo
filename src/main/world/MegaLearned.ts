@@ -40,8 +40,11 @@ export interface LearnedItem {
 }
 
 /** What one realm's engine learned that is kept here. */
-/** A monster's marks as MegaMUD keeps them (`0x471060`): its name and its immunity flags. */
-export type LearnedMark = [string, number];
+/**
+ * A monster's marks as MegaMUD keeps them (`0x471060`): its name and its
+ * immunity flags, and the spells it is immune to (`combat/immunity.ts`).
+ */
+export type LearnedMark = [string, number] | [string, number, string[]];
 
 export interface MegaLearnedData {
   items: LearnedItem[];
@@ -151,7 +154,9 @@ export class MegaLearned {
     for (const [who, marks] of Object.entries(learned.marks ?? {})) {
       tables.marks.set(
         nameKey(who),
-        marks.map(([name, flags]) => [name, flags])
+        marks.map((mark): LearnedMark =>
+          mark[2] === undefined ? [mark[0], mark[1]] : [mark[0], mark[1], [...mark[2]]]
+        )
       );
     }
     this.schedule();
@@ -223,7 +228,11 @@ export class MegaLearned {
           if (!Array.isArray(list)) continue;
           const marks = list.filter(
             (pair): pair is LearnedMark =>
-              Array.isArray(pair) && typeof pair[0] === 'string' && typeof pair[1] === 'number'
+              Array.isArray(pair) &&
+              typeof pair[0] === 'string' &&
+              typeof pair[1] === 'number' &&
+              (pair[2] === undefined ||
+                (Array.isArray(pair[2]) && pair[2].every((spell) => typeof spell === 'string')))
           );
           tables.marks.set(nameKey(who), marks);
         }

@@ -27,11 +27,11 @@ import {
   resetNoMessage,
   spellTakesTarget
 } from '../combat/casts';
-import { clearCastMode, endAltHeal } from '../combat/engaged';
+import { breakOff, clearCastMode, endAltHeal } from '../combat/engaged';
 import { hitLine } from '../combat/hits';
 import { indexOf, indexOfNoCase, stricmp, strcmp } from '../cstr';
 import type { SpellRec } from '../data';
-import { markMonsters } from '../room/checkNames';
+import { markImmuneTo, spellKey } from '../combat/immunity';
 import { enemiesHere, findEntity } from '../room/entities';
 import { forgetAwaited, setState } from '../script/state';
 import type { Session } from '../Session';
@@ -139,7 +139,7 @@ function castOrAttempt(
     castStamp(s);
     s.sneaking = 0;
     s.hidden = 0;
-    s.engagedMode = State.Nothing;
+    breakOff(s);
     if (!counted) {
       const st = s.state;
       if (
@@ -239,7 +239,7 @@ function castOrAttempt(
     s.castTook += 1;
     s.sneaking = 0;
     s.hidden = 0;
-    s.engagedMode = State.Nothing;
+    breakOff(s);
     setState(s, State.Nothing);
     return 1;
   }
@@ -352,25 +352,23 @@ function refusal(s: Session, line: string, mode: number, counted: boolean): numb
 
 /**
  * `Your spell has no effect` on the fight's own spell: the target's monster
- * is marked immune to it (pre-attack 0x800, aux 0x2000, main 0x1000, the
- * heals cast as alt attacks 0x80 and 0x100), remembered by name.
+ * is marked immune to it, remembered by name. MegaMUD marks the rung (pre-
+ * attack 0x800, aux 0x2000, main 0x1000, the heals cast as alt attacks 0x80
+ * and 0x100); the mark here is the spell itself, and the rung bits follow
+ * from it (`combat/immunity.ts`, 2026-10-21).
  */
 function markImmune(s: Session, mode: number): void {
   const e = findEntity(s, s.target, 0);
-  if (!e?.mon || e.mon.name === '' || mode !== s.castMode) return;
-  let flag = 0;
-  if (mode === State.CastPre && s.Combat_PreAttack === s.castShort) flag = EntityFlag.ImmunePreCast;
-  else if (mode === State.CastAux && s.Combat_AttackSpl2 === s.castShort)
-    flag = EntityFlag.ImmuneAuxCast;
-  else if (mode === State.CastMain && s.Combat_AttackSpl === s.castShort)
-    flag = EntityFlag.ImmuneMainCast;
-  else if (mode === State.CastAlt) {
-    if (s.Spells_HealCmd === s.castShort) flag = EntityFlag.ImmuneMainDrain;
-    else if (s.Spells_HealCmd2 === s.castShort) flag = EntityFlag.ImmuneMinorDrain;
-  }
-  if (flag !== 0 && (e.flags & flag) !== flag) {
-    markMonsters(s, e.mon.name, flag);
-    s.host.show(`[${e.mon.name} now immune to ${immunityText(e.flags | flag)}]`);
+  if (!e?.mon || e.mon.name === '' || mode !== s.castMode || s.castShort === '') return;
+  const rung =
+    mode === State.CastPre ||
+    mode === State.CastAux ||
+    mode === State.CastMain ||
+    (mode === State.CastAlt &&
+      (spellKey(s, s.Spells_HealCmd) === spellKey(s, s.castShort) ||
+        spellKey(s, s.Spells_HealCmd2) === spellKey(s, s.castShort)));
+  if (rung && markImmuneTo(s, e.mon.name, s.castShort)) {
+    s.host.show(`[${e.mon.name} now immune to ${s.castName || s.castShort}]`);
   }
 }
 

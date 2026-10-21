@@ -14856,3 +14856,44 @@ ul.rm-refs li {
 .ex-mon tr[data-cls='stat-lo'] td {
   color: var(--danger);
 }
+
+/*
+ * A clicked monster's or item's Edit (2026-10-20): this character's row in
+ * the settings editor, above what the realm knows. The editor's own inset is
+ * the list's, for a row under its summary; here there is no summary.
+ */
+.reference-rule-edit {
+  border-bottom: 1px solid var(--ink-line);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 8px;
+  overflow: visible;
+  padding: 0 0 10px;
+}
+
+.reference-rule-edit .message-editor {
+  margin: 0;
+}
+
+.reference-rule-heading {
+  color: var(--text-lo);
+  font-size: var(--font-micro);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  margin: 0;
+  text-transform: uppercase;
+}
+
+.reference-rule-realm {
+  align-items: center;
+  color: var(--text-lo);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+}
+
+.reference-edit.on {
+  color: var(--pending);
+}

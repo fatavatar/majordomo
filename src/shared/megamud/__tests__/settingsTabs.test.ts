@@ -95,6 +95,7 @@ describe('settings from the window’s draft', () => {
 
   it('carries a profile switch through', () => {
     const base = defaultSettings();
+    base.profiles.Health[1] = { enabled: true, values: { ...base.profiles.Health[0]!.values } };
     let draft = switchProfile(base, 2);
     draft.live['Health']!['HpRest%'] = 30;
     draft = switchProfile(draft, 1);

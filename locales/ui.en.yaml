@@ -2915,6 +2915,17 @@ cards:
     ofYours: 'of your {hp}'
   reference:
     emptyPrompt: Type a name, or click one on a card.
+    edit:
+      button: Edit
+      clear: Clear my row
+      failed: This character's rows could not be read.
+      heading: This character's row
+      itemHint: Edit this character's rules for this item
+      loading: Reading this character's rows…
+      monsterHint: Edit this character's settings for this monster
+      realmNone: The realm's table says nothing about it.
+      realmSays: 'The realm says:'
+      saved: Saved to this character.
     item:
       armour:
         acFigure: AC {ac}

@@ -3049,6 +3049,20 @@ export default function App() {
       })),
     [character.inventory.items]
   );
+  // The Reference panel's Edit: this character's own monster and item rows.
+  const referenceRules = useMemo(
+    () => ({
+      monsters: {
+        rules: () => api.monsterRulesFor(session),
+        save: (own: MonsterRule[]) => api.setCombatMonsters(session, own)
+      },
+      items: {
+        rules: () => api.itemRulesFor(session),
+        save: (own: ItemRule[]) => api.setItemDetails(session, own)
+      }
+    }),
+    [api, session]
+  );
   const explorerLists = useMemo(
     () => ({
       pack: explorerPack,
@@ -6105,6 +6119,7 @@ export default function App() {
             chooseOnMap(map, room);
           }}
           realm={character.realm}
+          rules={referenceRules}
           supplies={suppliesBundle(session)}
         />
       )}

@@ -28,6 +28,7 @@ import {
 } from '../../shared/config';
 import { fileSlug } from '../../shared/files';
 import { itemRuleForFile, itemSaysAnything, type ItemRule } from '../../shared/itemRules';
+import { monsterRuleForFile, saysAnything, type MonsterRule } from '../../shared/monsterRules';
 import { loopFileName, type Loop, type LoopScope, type ScopedLoop } from '../../shared/loops';
 import type { Home } from '../app/home';
 import { t } from '../app/i18n';
@@ -649,6 +650,46 @@ export class SettingsEditor {
       mutate: (document) => {
         document.setIn(['automation', 'supplies', 'items'], rows);
         const list = document.getIn(['automation', 'supplies', 'items'], true);
+        if (isSeq(list)) {
+          list.flow = false;
+          for (const row of list.items) if (isMap(row)) row.flow = true;
+        }
+      }
+    });
+  }
+
+  /**
+   * The monster and item rows a character's own file states, before the
+   * options file's are merged in (`ownMonsterRules`). Empty for a file that
+   * is missing or unreadable: there is nothing of its own to show.
+   */
+  ownRules(id: string): { monsters: MonsterRule[]; items: ItemRule[] } {
+    const file = this.profilePath(id);
+    let raw: unknown;
+    try {
+      raw = parse(fs.readFileSync(file, 'utf8'));
+    } catch {
+      return { monsters: [], items: [] };
+    }
+    const record = isRecord(raw) ? raw : {};
+    return { monsters: ownMonsterRules(record), items: ownItemRules(record) };
+  }
+
+  /**
+   * A character's own monster rows (`automation.combat.monsters`), written
+   * whole, for `setItemDetails`' reason: a clicked monster's Edit
+   * (2026-10-20) changes one of them, and the rest are the character's own.
+   */
+  setCombatMonsters(id: string, rules: readonly MonsterRule[]): EditResult {
+    const file = this.profilePath(id);
+    if (!fs.existsSync(file)) {
+      return { ok: false, error: t('errors.settings.characterNotFound', { id }) };
+    }
+    const rows = rules.filter(saysAnything).map(monsterRuleForFile);
+    return editYaml(file, {
+      mutate: (document) => {
+        document.setIn(['automation', 'combat', 'monsters'], rows);
+        const list = document.getIn(['automation', 'combat', 'monsters'], true);
         if (isSeq(list)) {
           list.flow = false;
           for (const row of list.items) if (isMap(row)) row.flow = true;

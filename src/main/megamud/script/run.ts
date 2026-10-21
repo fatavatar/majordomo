@@ -394,8 +394,11 @@ function fight(s: Session, stop: number): number {
     s.engagedMode === State.CastAux ||
     s.engagedMode === State.CastMain
   ) {
-    if (attack(s, State.CastAux, e) !== 0) return 1;
+    // The main spell before the second, which waits for it to have no effect
+    // or run out of casts: MegaMUD (`0x40e190`) tries the second first, and
+    // asked for the other way round (2026-10-21).
     if (attack(s, State.CastMain, e) !== 0) return 1;
+    if (attack(s, State.CastAux, e) !== 0) return 1;
   }
   if (normalWeapon(s) !== 0) return 1;
 

@@ -84,9 +84,25 @@ export function combatEngaged(s: Session, line: string): number {
   return 1;
 }
 
+/**
+ * Another spell cast between rounds ends the attack spell the fight was
+ * engaged in, as the realm does; it is kept to be picked up again
+ * (`Session.resumeMode`).
+ */
+export function breakOff(s: Session): void {
+  if (
+    isCastState(s.engagedMode) &&
+    s.engagedMode !== State.CastAlt &&
+    s.engagedMode !== State.CastUser
+  )
+    s.resumeMode = s.engagedMode;
+  s.engagedMode = State.Nothing;
+}
+
 /** `0x42c150`: leave the fight: forget everything about it, and `break` if a multi-attack was on. */
 export function combatOff(s: Session): void {
   const multi = s.multiAttacking;
+  s.resumeMode = State.Nothing;
   if (s.debug !== 0 && s.inCombat !== 0) s.host.trace('{C6}');
   s.inCombat = 0;
   s.attackDue = 0;

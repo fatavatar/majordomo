@@ -2898,17 +2898,34 @@ function registerIpc(): void {
       return null;
     }
   });
+  /*
+   * The own rows from the character's file as written, not the resolved
+   * config: that one has the options file's rows merged in, and writing it
+   * back would pin them into this character (`ownMonsterRules`).
+   */
   handle(Invoke.itemRulesFor, (_caller, session: unknown) => {
     if (typeof session !== 'string') return { realm: [], own: [] };
-    const profile = profileFor(session as SessionId);
     return {
       realm: realmTablesFor(session as SessionId).items,
-      own: profile?.config.automation.loot.itemDetails ?? []
+      own: editor().ownRules(session).items
     };
   });
   handle(Invoke.setItemDetails, (_caller, session: unknown, rules: unknown) => {
     if (typeof session !== 'string') return t('app.profiles.noSuchCharacter');
     const result = editor().setItemDetails(session, asItemRules(rules));
+    if (result.ok) publishRosters();
+    return result.ok ? null : result.error;
+  });
+  handle(Invoke.monsterRulesFor, (_caller, session: unknown) => {
+    if (typeof session !== 'string') return { realm: [], own: [] };
+    return {
+      realm: realmTablesFor(session as SessionId).monsters,
+      own: editor().ownRules(session).monsters
+    };
+  });
+  handle(Invoke.setCombatMonsters, (_caller, session: unknown, rules: unknown) => {
+    if (typeof session !== 'string') return t('app.profiles.noSuchCharacter');
+    const result = editor().setCombatMonsters(session, asMonsterRules(rules));
     if (result.ok) publishRosters();
     return result.ok ? null : result.error;
   });

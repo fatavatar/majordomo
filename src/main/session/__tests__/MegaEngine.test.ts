@@ -1184,23 +1184,57 @@ describe('what the engine learns, kept between sessions', () => {
    * save and every restart, and learned again fight after fight (2026-10-14).
    */
   it('keeps the monsters it marked through a reload, hands them over, and starts from them', () => {
-    const { e, handed } = remembering({ marks: [['sinister dragon', 0x80]] });
-    expect(e.s.monsterMarks).toEqual([{ name: 'sinister dragon', flags: 0x80 }]);
-    e.s.monsterMarks.push({ name: 'forgotten dragon slayer', flags: 0x1000 });
+    const { e, handed } = remembering({
+      marks: [
+        ['sinister dragon', 0x200, ['ltch']],
+        // A rung's immunity from before marks named their spell is let go.
+        ['old dragon', 0x200 | 0x1000]
+      ]
+    });
+    expect(e.s.monsterMarks).toEqual([
+      { name: 'sinister dragon', flags: 0x200, spells: ['ltch'] },
+      { name: 'old dragon', flags: 0x200 }
+    ]);
+    e.s.monsterMarks.push({ name: 'forgotten dragon slayer', flags: 0, spells: ['dfur'] });
     e.reload({ settings: defaultSettings(), data: e.s.data, grants: {} });
     expect(e.s.monsterMarks.map((m) => m.name)).toEqual([
       'sinister dragon',
+      'old dragon',
       'forgotten dragon slayer'
     ]);
     vi.advanceTimersByTime(1000);
     expect(handed.at(-1)?.marks).toEqual([
-      ['sinister dragon', 0x80],
-      ['forgotten dragon slayer', 0x1000]
+      ['sinister dragon', 0x200, ['ltch']],
+      ['old dragon', 0x200],
+      ['forgotten dragon slayer', 0, ['dfur']]
     ]);
     // Said once: unchanged, nothing more is handed over for them.
     const said = handed.length;
     vi.advanceTimersByTime(1000);
     expect(handed.length).toBe(said);
+    e.dispose();
+  });
+
+  /*
+   * Skinny (2026-10-21): profile 3's `lite` had no effect on the black
+   * rosebush, and after profile 2 was chosen in the settings its `dfur` was
+   * never tried there, the rosebush still marked immune to the main spell.
+   * The mark names `lite` now, and is kept: it says nothing of `dfur`.
+   */
+  it('puts another profile on from the settings, keeping what each spell is known to do', () => {
+    const { e } = remembering({ marks: [['black rosebush', 0, ['lite']]] });
+    const settings = defaultSettings();
+    settings.live['Profiles']!['ActiveProfile'] = 2;
+    settings.live['Combat']!['AttackSpl'] = 'dfur';
+    settings.profiles.Combat[1] = {
+      enabled: true,
+      values: { ...settings.profiles.Combat[0]!.values, AttackSpl: 'dfur' }
+    };
+    e.s.castMode = State.CastMain;
+    e.reload({ settings, data: e.s.data, grants: {} });
+    expect(e.s.Profiles_ActiveProfile).toBe(2);
+    expect(e.s.castMode).toBe(State.Nothing);
+    expect(e.s.monsterMarks).toEqual([{ name: 'black rosebush', flags: 0, spells: ['lite'] }]);
     e.dispose();
   });
 
@@ -1286,6 +1320,28 @@ describe('blessings the realm says last', () => {
       }) as never;
     e.buffs([]);
     expect([npot.flags & SpellFlag.Timed, mend.flags & SpellFlag.Timed]).toEqual([2, 0]);
+    e.dispose();
+  });
+
+  /*
+   * By its number, not its name (2026-10-21): another of mudrev's spells is
+   * called divine intervention too, and lasts, which held `intr` to the
+   * round timer.
+   */
+  it('are marked lasting by their own row, where a name is another spell’s too', () => {
+    const { e } = engine();
+    const host = (e as unknown as { host: MegaEngineHost }).host;
+    const intr = { id: 1479, short: 'intr', name: 'divine intervention', flags: 0x84 } as SpellRec;
+    e.s.data.spells.push(intr);
+    const world = host.world();
+    host.world = () =>
+      ({
+        ...world,
+        spellNamed: () => ({ id: 9001, name: 'divine intervention', duration: 160 }),
+        spellById: (id: number) => (id === 1479 ? { id, name: 'divine intervention' } : null)
+      }) as never;
+    e.buffs([]);
+    expect(intr.flags & SpellFlag.Timed).toBe(0);
     e.dispose();
   });
 

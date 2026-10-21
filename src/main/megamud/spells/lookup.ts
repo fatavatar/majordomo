@@ -6,6 +6,7 @@ import { stricmp } from '../cstr';
 import type { SpellRec } from '../data';
 import { findClass } from '../data';
 import type { Session } from '../Session';
+import { SpellFlag } from '../flags';
 
 /**
  * `0x4a2410`: the spell whose short name is `short`. One with a magic class
@@ -13,6 +14,20 @@ import type { Session } from '../Session';
  */
 export function findSpell(s: Session, short: string): SpellRec | null {
   if (short === '') return null;
+  /*
+   * The one the character knows, where several share the word: mudrev's
+   * `intr` is divine intervention and demonic intervention, and Skinny, who
+   * casts the demonic, was taken for the divine (2026-10-21), its messages
+   * never seen and its lasting bit holding it to the round timer.
+   */
+  for (const spell of s.data.spells) {
+    if (
+      stricmp(short, spell.short) === 0 &&
+      ((spell.flags & SpellFlag.Known) !== 0 || s.spellbookNames.has(spell.name.toLowerCase())) &&
+      castable(s, spell) !== 0
+    )
+      return spell;
+  }
   for (const spell of s.data.spells) {
     if (spell.magic !== 0 && stricmp(short, spell.short) === 0 && castable(s, spell) !== 0)
       return spell;

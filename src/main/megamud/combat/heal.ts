@@ -19,7 +19,7 @@ import { moving, type RoomEntity, type Session } from '../Session';
 import { findSpell } from '../spells/lookup';
 import { attack } from './attack';
 import { spellTakesTarget, wantsRoomSpell } from './casts';
-import { clearCastMode } from './engaged';
+import { breakOff, clearCastMode } from './engaged';
 import { State } from '../states';
 import { EntityFlag, SpellFlag, PartyFlag, PlayerFlag, Stance, EntityType } from '../flags';
 
@@ -280,7 +280,7 @@ function drain(
   if (equipForSpell(s, spell.short) === 1) return 1;
   s.castsAlt = s.drainCasts;
   s.altCastCap = spellTakesTarget(spell) === 0 ? s.castsAlt + 1 : Math.max(s.Spells_HealCasts, 1);
-  s.engagedMode = State.Nothing;
+  breakOff(s);
   s.altSpell = spell.short.slice(0, 10);
   if (attack(s, State.CastAlt, victim) === 0) return done();
   const each = spellTakesTarget(spell) === 0;

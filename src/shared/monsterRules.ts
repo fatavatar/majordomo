@@ -174,6 +174,19 @@ export function saysAnything(rule: MonsterRule): boolean {
   return Object.keys(rule).some((key) => key !== 'mob');
 }
 
+/** A row as the file holds it: the fields in a fixed order (`itemRuleForFile`). */
+export function monsterRuleForFile(rule: MonsterRule): Record<string, unknown> {
+  const row: Record<string, unknown> = { mob: rule.mob };
+  if (rule.relationship !== undefined) row['relationship'] = rule.relationship;
+  if (rule.priority !== undefined) row['priority'] = rule.priority;
+  if (rule.notHostile !== undefined) row['notHostile'] = rule.notHostile;
+  if (rule.noBackstab !== undefined) row['noBackstab'] = rule.noBackstab;
+  if (rule.stopToKill !== undefined) row['stopToKill'] = rule.stopToKill;
+  if (rule.preAttack !== undefined) row['preAttack'] = { ...rule.preAttack };
+  if (rule.attack !== undefined) row['attack'] = { ...rule.attack };
+  return row;
+}
+
 /* ------------------------------------------------------------ merging */
 
 /**

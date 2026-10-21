@@ -3495,6 +3495,7 @@ export class SessionManager {
       this.mega.useMonsters(this.automationConfig.combat.monsters);
       this.mega.useItems(this.megaItems());
       this.mega.useFlee(this.megaFlee());
+      this.mega.knowSpellbook((this.tracker.current.spellbook ?? []).map((spell) => spell.name));
       if (this.client.connected) this.mega.connected();
     }
     if (this.configured !== null) this.configure(...this.configured);
@@ -6633,6 +6634,7 @@ export class SessionManager {
    * order, which is the half a publisher on this side cannot do.
    */
   private publishCharacter(): void {
+    this.mega?.knowSpellbook((this.tracker.current.spellbook ?? []).map((spell) => spell.name));
     this.sink.character(this.tracker.current);
     this.publishVerdict();
     this.publishAsks();

@@ -1104,6 +1104,12 @@ export const Invoke = {
   /** The Tools tab: one ask of a calculator (`shared/explorerTools.ts`). */
   explorerTool: 'explorer:tool',
   setItemDetails: 'settings:item-details',
+  /**
+   * A clicked monster's Edit (2026-10-20): the realm's monster table and the
+   * character's own rows over it, and the own rows written whole.
+   */
+  monsterRulesFor: 'settings:monster-rules',
+  setCombatMonsters: 'settings:combat-monsters',
   /** The Rooms tab: MME's map from a room, a cell's tooltip, and its finders. */
   explorerRoomView: 'explorer:room-view',
   explorerRoomTip: 'explorer:room-tip',
@@ -1716,6 +1722,10 @@ export interface IpcApi {
   itemRulesFor(session: SessionId): Promise<{ realm: ItemRule[]; own: ItemRule[] }>;
   /** The character's own item rows, written whole. Why not, or null. */
   setItemDetails(session: SessionId, rules: ItemRule[]): Promise<string | null>;
+  /** The realm's monster table and the character's own rows over it. */
+  monsterRulesFor(session: SessionId): Promise<{ realm: MonsterRule[]; own: MonsterRule[] }>;
+  /** The character's own monster rows, written whole. Why not, or null. */
+  setCombatMonsters(session: SessionId, rules: MonsterRule[]): Promise<string | null>;
   /** Puts the plan's carried items on; what it lacks, to buy and wear, or why not. */
   explorerEqWear(
     session: SessionId,

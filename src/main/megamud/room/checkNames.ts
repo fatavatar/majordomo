@@ -3,6 +3,7 @@
  * the ones MegaMUD has never seen: `CheckNames` (`0x471a10`) and the lookups
  * it uses. Read 2026-10-12.
  */
+import { applyImmunity, CAST_IMMUNITY } from '../combat/immunity';
 import { indexFrom, indexOf, strcmp, stricmp, trimSpaces } from '../cstr';
 import {
   newItem,
@@ -194,16 +195,21 @@ export function hangupAllowed(s: Session): number {
   return s.MegaMud_NoHangup === 0 ? ok : 0;
 }
 
-/** `0x471400`: marks remembered for monsters by name (`monsterMarks`, 36-byte entries) applied to those here. */
+/**
+ * `0x471400`: marks remembered for monsters by name (`monsterMarks`, 36-byte
+ * entries) applied to those here; the spell immunities for the spells cast
+ * now (`applyImmunity`).
+ */
 function applyMonsterMarks(s: Session): void {
   for (const e of s.room) {
     if (e.type !== EntityType.Monster) continue;
     for (const mark of s.monsterMarks) {
       if (stricmp(e.name, mark.name) === 0 || (e.mon && stricmp(e.mon.name, mark.name) === 0)) {
-        e.flags |= mark.flags;
+        e.flags |= mark.flags & ~CAST_IMMUNITY;
         break;
       }
     }
+    applyImmunity(s, e);
   }
 }
 

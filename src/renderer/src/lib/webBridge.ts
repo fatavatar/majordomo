@@ -321,6 +321,8 @@ export function createWebBridge(): IpcApi {
     exportLoop: (session, loop, format) => invoke(Invoke.exportLoop, session, loop, format),
     importLoopFile: (scope, owner, text) => invoke(Invoke.importLoopFile, scope, owner, text),
     setItemDetails: (session, rules) => invoke(Invoke.setItemDetails, session, rules),
+    monsterRulesFor: (session) => invoke(Invoke.monsterRulesFor, session),
+    setCombatMonsters: (session, rules) => invoke(Invoke.setCombatMonsters, session, rules),
     explorerRoomView: (session, request) => invoke(Invoke.explorerRoomView, session, request),
     explorerRoomTip: (session, map, room, options) =>
       invoke(Invoke.explorerRoomTip, session, map, room, options),

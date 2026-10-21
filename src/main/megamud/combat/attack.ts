@@ -245,13 +245,14 @@ export function attack(s: Session, mode: number, target: RoomEntity | null): num
   const plan = planFor(s, mode, e);
   if (!plan) return 0;
   plan.spell = plan.spell.slice(0, 10);
-  if (engaged) {
+  if (!engaged && !tailor(s, mode, e, plan)) return 0;
+  // Engaged, or broken off by a spell between rounds (`breakOff`) and picked
+  // up again as though it still were.
+  if (engaged || s.resumeMode === mode) {
     plan.cap = 15;
     plan.monsters = 0;
     plan.manaPct = 0;
     plan.maxDamage = UNLIMITED;
-  } else if (!tailor(s, mode, e, plan)) {
-    return 0;
   }
   if (plan.spell === '') return 0;
   if (
@@ -341,6 +342,7 @@ function cast(s: Session, mode: number, e: RoomEntity, plan: Plan): number | nul
   s.engagedHere = 1;
   s.combatChangesAtAttack = s.combatChanges;
   attackLateMark(s, e);
+  s.resumeMode = State.Nothing;
   setState(s, mode);
   return 1;
 }

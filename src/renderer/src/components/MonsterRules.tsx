@@ -151,141 +151,18 @@ export function MonsterRuleList({
     }
   };
 
-  const patch = (change: Partial<MonsterRule>): void =>
-    setEditing((was) => (was === null ? was : { ...was, draft: { ...was.draft, ...change } }));
-
-  /** Sets or clears one optional field; `undefined` removes the key outright. */
-  const setField = <K extends keyof MonsterRule>(key: K, value: MonsterRule[K] | undefined): void =>
-    setEditing((was) => {
-      if (was === null) return was;
-      const draft = { ...was.draft };
-      if (value === undefined) delete draft[key];
-      else draft[key] = value;
-      return { ...was, draft };
-    });
-
-  const spellField = (key: 'preAttack' | 'attack', label: string, hint: string) => {
-    const spell = editing?.draft[key];
-    return (
-      <div className="settings-inline">
-        <TextField
-          hint={hint}
-          label={label}
-          name={`${namePrefix}-${key}`}
-          onChange={(value) => {
-            const word = value.trim();
-            setField(key, word.length === 0 ? undefined : { spell: value, max: spell?.max ?? 0 });
-          }}
-          onSubmit={() => void commit()}
-          spellCheck={false}
-          value={spell?.spell ?? ''}
-        />
-        <NumberField
-          label={t('settings.monsters.maxLabel')}
-          name={`${namePrefix}-${key}-max`}
-          onChange={(value) => {
-            if (spell === undefined) return;
-            const max = Number.parseInt(value, 10);
-            setField(key, { ...spell, max: Number.isFinite(max) && max > 0 ? max : 0 });
-          }}
-          placeholder="0"
-          value={spell !== undefined && spell.max > 0 ? String(spell.max) : ''}
-        />
-      </div>
+  const editor =
+    editing === null ? null : (
+      <MonsterRuleEditor
+        draft={editing.draft}
+        known={known}
+        namePrefix={namePrefix}
+        onCancel={() => setEditing(null)}
+        onDraft={(draft) => setEditing((was) => (was === null ? was : { ...was, draft }))}
+        onRemove={editing.mob === null ? null : () => void remove()}
+        onSave={() => void commit()}
+      />
     );
-  };
-
-  const editor = (
-    <div className="message-editor">
-      <div className="settings-inline">
-        <FormField
-          hint={t('settings.monsters.nameHint')}
-          label={t('settings.monsters.nameLabel')}
-          name={`${namePrefix}-mob`}
-        >
-          {({ describedBy }) => (
-            <NameCombo
-              describedBy={describedBy}
-              name={`${namePrefix}-mob`}
-              onChange={(value) => patch({ mob: value })}
-              options={known}
-              placeholder={t('settings.monsters.namePlaceholder')}
-              value={editing?.draft.mob ?? ''}
-            />
-          )}
-        </FormField>
-        <SelectField
-          label={t('settings.monsters.relationshipLabel')}
-          name={`${namePrefix}-relationship`}
-          onChange={(value) =>
-            setField(
-              'relationship',
-              RELATIONSHIPS.find((relationship) => relationship === value)
-            )
-          }
-          options={[
-            { value: '', label: t('settings.monsters.unset') },
-            ...RELATIONSHIPS.map((relationship) => ({
-              value: relationship,
-              label: relationshipLabel(relationship, t)
-            }))
-          ]}
-          value={editing?.draft.relationship ?? ''}
-        />
-        <SelectField
-          label={t('settings.monsters.priorityLabel')}
-          name={`${namePrefix}-priority`}
-          onChange={(value) =>
-            setField(
-              'priority',
-              BANDS.find((band) => band === value)
-            )
-          }
-          options={[
-            { value: '', label: t('settings.monsters.unset') },
-            ...BANDS.map((band) => ({ value: band, label: bandLabel(band) }))
-          ]}
-          value={editing?.draft.priority ?? ''}
-        />
-      </div>
-      <div className="message-effects" role="group" aria-label={t('settings.monsters.flagsLabel')}>
-        <span className="message-effects-label">{t('settings.monsters.flagsLabel')}</span>
-        {FLAGS.map((flag) => {
-          const on = editing?.draft[flag] === true;
-          return (
-            <button
-              aria-pressed={on}
-              className="chip pick"
-              key={flag}
-              onClick={() => setField(flag, on ? undefined : true)}
-              type="button"
-            >
-              {flagLabel(flag)}
-            </button>
-          );
-        })}
-      </div>
-      {spellField(
-        'preAttack',
-        t('settings.monsters.preAttackLabel'),
-        t('settings.monsters.preAttackHint')
-      )}
-      {spellField('attack', t('settings.monsters.attackLabel'), t('settings.monsters.attackHint'))}
-      <div className="message-editor-actions">
-        <button className="primary" onClick={() => void commit()} type="button">
-          {t('settings.monsters.saveRow')}
-        </button>
-        <button className="quiet" onClick={() => setEditing(null)} type="button">
-          {t('settings.monsters.cancel')}
-        </button>
-        {editing?.mob !== null && editing?.mob !== undefined && (
-          <button className="danger" onClick={() => void remove()} type="button">
-            {t('settings.monsters.removeRow')}
-          </button>
-        )}
-      </div>
-    </div>
-  );
 
   return (
     <>
@@ -345,39 +222,7 @@ export function MonsterRuleList({
                     type="button"
                   >
                     <span className="message-name">{row.mob}</span>
-                    <span className="message-chips">
-                      {row.relationship !== undefined && (
-                        <span
-                          className={
-                            row.relationship === 'escape' || row.relationship === 'hangup'
-                              ? 'chip warn'
-                              : 'chip info'
-                          }
-                        >
-                          {relationshipLabel(row.relationship, t)}
-                        </span>
-                      )}
-                      {row.priority !== undefined && (
-                        <span className="chip quiet">{bandLabel(row.priority)}</span>
-                      )}
-                      {FLAGS.filter((flag) => row[flag] === true).map((flag) => (
-                        <span className="chip quiet" key={flag}>
-                          {flagLabel(flag)}
-                        </span>
-                      ))}
-                      {row.preAttack !== undefined && (
-                        <span className="chip">
-                          {t('settings.monsters.preAttackChip', {
-                            spell: spellText(row.preAttack)
-                          })}
-                        </span>
-                      )}
-                      {row.attack !== undefined && (
-                        <span className="chip">
-                          {t('settings.monsters.attackChip', { spell: spellText(row.attack) })}
-                        </span>
-                      )}
-                    </span>
+                    <MonsterRuleChips row={row} />
                   </button>
                 </div>
                 {editing?.mob === row.mob && editor}
@@ -395,5 +240,213 @@ export function MonsterRuleList({
         </>
       )}
     </>
+  );
+}
+
+export interface MonsterRuleEditorProps {
+  draft: MonsterRule;
+  onDraft(draft: MonsterRule): void;
+  onSave(): void;
+  onCancel(): void;
+  /** Removes the row being edited; null for a row not saved yet. */
+  onRemove: (() => void) | null;
+  /** What the remove button says, where it is not the list's word. */
+  removeLabel?: string;
+  /** Name prefix for the fields, so two editors on one page stay distinct. */
+  namePrefix: string;
+  /** Monster names to suggest (`MonsterRuleListProps.known`). */
+  known?: readonly string[];
+  /** Draws the monster's name field; off where the row's monster is already chosen. */
+  named?: boolean;
+}
+
+/**
+ * One monster row's fields, and save, cancel and remove: the list's editor,
+ * and a clicked monster's Edit in the Reference panel (2026-10-20).
+ */
+export function MonsterRuleEditor({
+  draft,
+  onDraft,
+  onSave,
+  onCancel,
+  onRemove,
+  removeLabel,
+  namePrefix,
+  known = [],
+  named = true
+}: MonsterRuleEditorProps): React.JSX.Element {
+  const patch = (change: Partial<MonsterRule>): void => onDraft({ ...draft, ...change });
+
+  /** Sets or clears one optional field; `undefined` removes the key outright. */
+  const setField = <K extends keyof MonsterRule>(
+    key: K,
+    value: MonsterRule[K] | undefined
+  ): void => {
+    const next = { ...draft };
+    if (value === undefined) delete next[key];
+    else next[key] = value;
+    onDraft(next);
+  };
+
+  const spellField = (key: 'preAttack' | 'attack', label: string, hint: string) => {
+    const spell = draft[key];
+    return (
+      <div className="settings-inline">
+        <TextField
+          hint={hint}
+          label={label}
+          name={`${namePrefix}-${key}`}
+          onChange={(value) => {
+            const word = value.trim();
+            setField(key, word.length === 0 ? undefined : { spell: value, max: spell?.max ?? 0 });
+          }}
+          onSubmit={onSave}
+          spellCheck={false}
+          value={spell?.spell ?? ''}
+        />
+        <NumberField
+          label={t('settings.monsters.maxLabel')}
+          name={`${namePrefix}-${key}-max`}
+          onChange={(value) => {
+            if (spell === undefined) return;
+            const max = Number.parseInt(value, 10);
+            setField(key, { ...spell, max: Number.isFinite(max) && max > 0 ? max : 0 });
+          }}
+          placeholder="0"
+          value={spell !== undefined && spell.max > 0 ? String(spell.max) : ''}
+        />
+      </div>
+    );
+  };
+
+  return (
+    <div className="message-editor">
+      <div className="settings-inline">
+        {named && (
+          <FormField
+            hint={t('settings.monsters.nameHint')}
+            label={t('settings.monsters.nameLabel')}
+            name={`${namePrefix}-mob`}
+          >
+            {({ describedBy }) => (
+              <NameCombo
+                describedBy={describedBy}
+                name={`${namePrefix}-mob`}
+                onChange={(value) => patch({ mob: value })}
+                options={known}
+                placeholder={t('settings.monsters.namePlaceholder')}
+                value={draft.mob}
+              />
+            )}
+          </FormField>
+        )}
+        <SelectField
+          label={t('settings.monsters.relationshipLabel')}
+          name={`${namePrefix}-relationship`}
+          onChange={(value) =>
+            setField(
+              'relationship',
+              RELATIONSHIPS.find((relationship) => relationship === value)
+            )
+          }
+          options={[
+            { value: '', label: t('settings.monsters.unset') },
+            ...RELATIONSHIPS.map((relationship) => ({
+              value: relationship,
+              label: relationshipLabel(relationship, t)
+            }))
+          ]}
+          value={draft.relationship ?? ''}
+        />
+        <SelectField
+          label={t('settings.monsters.priorityLabel')}
+          name={`${namePrefix}-priority`}
+          onChange={(value) =>
+            setField(
+              'priority',
+              BANDS.find((band) => band === value)
+            )
+          }
+          options={[
+            { value: '', label: t('settings.monsters.unset') },
+            ...BANDS.map((band) => ({ value: band, label: bandLabel(band) }))
+          ]}
+          value={draft.priority ?? ''}
+        />
+      </div>
+      <div className="message-effects" role="group" aria-label={t('settings.monsters.flagsLabel')}>
+        <span className="message-effects-label">{t('settings.monsters.flagsLabel')}</span>
+        {FLAGS.map((flag) => {
+          const on = draft[flag] === true;
+          return (
+            <button
+              aria-pressed={on}
+              className="chip pick"
+              key={flag}
+              onClick={() => setField(flag, on ? undefined : true)}
+              type="button"
+            >
+              {flagLabel(flag)}
+            </button>
+          );
+        })}
+      </div>
+      {spellField(
+        'preAttack',
+        t('settings.monsters.preAttackLabel'),
+        t('settings.monsters.preAttackHint')
+      )}
+      {spellField('attack', t('settings.monsters.attackLabel'), t('settings.monsters.attackHint'))}
+      <div className="message-editor-actions">
+        <button className="primary" onClick={onSave} type="button">
+          {t('settings.monsters.saveRow')}
+        </button>
+        <button className="quiet" onClick={onCancel} type="button">
+          {t('settings.monsters.cancel')}
+        </button>
+        {onRemove !== null && (
+          <button className="danger" onClick={onRemove} type="button">
+            {removeLabel ?? t('settings.monsters.removeRow')}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** What a row states, as chips: the list's summary, and the Reference panel's. */
+export function MonsterRuleChips({ row }: { row: MonsterRule }): React.JSX.Element {
+  return (
+    <span className="message-chips">
+      {row.relationship !== undefined && (
+        <span
+          className={
+            row.relationship === 'escape' || row.relationship === 'hangup'
+              ? 'chip warn'
+              : 'chip info'
+          }
+        >
+          {relationshipLabel(row.relationship, t)}
+        </span>
+      )}
+      {row.priority !== undefined && <span className="chip quiet">{bandLabel(row.priority)}</span>}
+      {FLAGS.filter((flag) => row[flag] === true).map((flag) => (
+        <span className="chip quiet" key={flag}>
+          {flagLabel(flag)}
+        </span>
+      ))}
+      {row.preAttack !== undefined && (
+        <span className="chip">
+          {t('settings.monsters.preAttackChip', {
+            spell: spellText(row.preAttack)
+          })}
+        </span>
+      )}
+      {row.attack !== undefined && (
+        <span className="chip">
+          {t('settings.monsters.attackChip', { spell: spellText(row.attack) })}
+        </span>
+      )}
+    </span>
   );
 }
