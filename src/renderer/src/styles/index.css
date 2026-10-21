@@ -14548,6 +14548,26 @@ button.ex-link:hover {
   cursor: pointer;
 }
 
+/* A chevron, portal or arrow walks the map to where it leads; its hit ring is unseen. */
+.rm-mark {
+  cursor: pointer;
+}
+
+.rm-mark-hit {
+  fill: transparent;
+  stroke: none;
+}
+
+.rm-mark:hover {
+  --mark: var(--accent);
+}
+
+/* The room a hovered mark leads to. */
+.map-room.is-lit > .map-shape {
+  fill: var(--accent);
+  stroke: var(--accent);
+}
+
 /* The room the map is drawn from, MME's start cell. */
 .rm-start {
   fill: none;

@@ -26,7 +26,7 @@ import { hangUp } from '../script/game';
 import { expandMacros, noteCommands, queue, queueCommand, send } from '../script/send';
 import { forgetAwaited, setState } from '../script/state';
 import { ARENA, type Session } from '../Session';
-import { findSpell, findSpellByName, stateSpell } from '../spells/lookup';
+import { findSpell, findSpellByName, landsAs, stateSpell } from '../spells/lookup';
 import { blessCommand } from '../player/cast';
 import { blowStruck, castForgotten } from '../combat/timer';
 import { State } from '../states';
@@ -178,18 +178,13 @@ export function messageLine(s: Session, line: string, anywhere: number): number 
       if (s.msgDamage !== 0 || s.msgTarget !== '') {
         result = 0;
         if (s.msgSource === '') {
-          if (
-            s.msgDamage !== 0 &&
-            inAttackCast(s, 1) !== 0 &&
-            s.castName !== '' &&
-            stricmp(s.castName, s.msgSpell) === 0
-          ) {
+          if (s.msgDamage !== 0 && inAttackCast(s, 1) !== 0 && landsAs(s, s.msgSpell, s.castName)) {
             if (s.debug !== 0) s.host.trace(`{${s.msgSpell}}`);
             return 0;
           }
           if (s.state >= 9 && s.state <= 0xf) {
             configured = stateSpell(s, s.state);
-            if (configured && s.msgDamage !== 0 && configured.name === s.msgSpell) {
+            if (configured && s.msgDamage !== 0 && landsAs(s, s.msgSpell, configured.name)) {
               if (s.debug !== 0) s.host.trace(`{${s.msgSpell}*}`);
               return 0;
             }

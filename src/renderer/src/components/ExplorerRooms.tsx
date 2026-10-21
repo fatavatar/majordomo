@@ -40,7 +40,10 @@ import type { Direction } from '@shared/world';
  * The map is MME's own layout (`buildMap`, worked out in main): a click walks
  * the map to a room, an up-only or down-only cell follows that exit and an
  * up-and-down one asks, shift-click re-centres the grid, and the keypad moves
- * by the compass. A cell's text is asked as it is hovered.
+ * by the compass. A chevron, a portal or an arrow walks the map to the room
+ * it leads to, on another level or in another area, as mudmaps' do, and
+ * lights that room while hovered where it is on the map. A cell's text is
+ * asked as it is hovered.
  *
  * The key under the map is the client's (`MapLegend`), and this is the one
  * map that carries it (2026-10-19).
@@ -123,9 +126,34 @@ const ALONG: Record<string, [number, number]> = {
   sw: [-1, 1]
 };
 
-/** A charted cell's ways off the plane, each saying where it leads, at the Map card's places. */
-function Away({ cell, x, y }: { cell: RoomCell; x: number; y: number }) {
+/** How far round a mark its click reaches, in units: clear of its room and of the chevron beside it. */
+const MARK_HIT = 1.8;
+
+/**
+ * A charted cell's ways off the plane, each saying where it leads, at the Map
+ * card's places. A click walks the map there, as mudmaps' arrows and
+ * chevrons link to the room on the other end (asked for 2026-10-21), and
+ * hovering one lights that room where the map holds it.
+ */
+function Away({
+  cell,
+  x,
+  y,
+  onFollow,
+  onLight
+}: {
+  cell: RoomCell;
+  x: number;
+  y: number;
+  onFollow(room: string): void;
+  onLight(room: string | null): void;
+}) {
   const slots = { up: 0, down: 0, teleport: 0 };
+  const mark = (to: string) => ({
+    onClick: () => onFollow(to),
+    onMouseEnter: () => onLight(to),
+    onMouseLeave: () => onLight(null)
+  });
   return (
     <>
       {cell.away.map((way, k) => {
@@ -136,12 +164,14 @@ function Away({ cell, x, y }: { cell: RoomCell; x: number; y: number }) {
             : chevronAt(x, y, R, way.kind === 'up', slot);
         return (
           <g
-            className="map-mark"
+            className="map-mark rm-mark"
             data-gated={way.gated ? 'true' : undefined}
             data-reach="jump"
             key={k}
+            {...mark(way.to)}
           >
             <title>{way.title}</title>
+            <circle className="rm-mark-hit" cx={at.x} cy={at.y} r={MARK_HIT} />
             {way.kind === 'teleport' ? (
               <Portal x={at.x} y={at.y} />
             ) : (
@@ -154,12 +184,14 @@ function Away({ cell, x, y }: { cell: RoomCell; x: number; y: number }) {
         const at = exitArrowAt(x, y, R, arrow.dir as Direction);
         return (
           <g
-            className="map-mark"
+            className="map-mark rm-mark"
             data-gated={arrow.gated ? 'true' : undefined}
             data-reach={arrow.local ? 'local' : 'away'}
             key={`a${k}`}
+            {...mark(arrow.to)}
           >
             <title>{arrow.title}</title>
+            <circle className="rm-mark-hit" cx={at.x} cy={at.y} r={MARK_HIT} />
             <Arrow ux={at.ux} uy={at.uy} x={at.x} y={at.y} />
           </g>
         );
@@ -229,6 +261,7 @@ export default function ExplorerRooms({
   const [said, setSaid] = useState<string | null>(null);
   const [asking, setAsking] = useState<{ x: number; y: number; cell: RoomCell } | null>(null);
   const [hover, setHover] = useState<{ x: number; y: number; text: string } | null>(null);
+  const [lit, setLit] = useState<string | null>(null);
   const tips = useRef(new Map<string, string>());
   const [goMap, setGoMap] = useState('');
   const [goRoom, setGoRoom] = useState('');
@@ -245,7 +278,9 @@ export default function ExplorerRooms({
     if (target === null) return;
     let live = true;
     void view({ ...target, size: kept.size, options: kept.options, center }).then((found) => {
-      if (live) setShown(found);
+      if (!live) return;
+      setShown(found);
+      setLit(null);
     });
     return () => {
       live = false;
@@ -520,7 +555,11 @@ export default function ExplorerRooms({
                   const isHere = key === here;
                   return (
                     <g
-                      className={'map-room rm-cell-hit' + (i === grid.center ? ' is-start' : '')}
+                      className={
+                        'map-room rm-cell-hit' +
+                        (i === grid.center ? ' is-start' : '') +
+                        (key === lit ? ' is-lit' : '')
+                      }
                       data-here={isHere ? 'true' : undefined}
                       data-kind={cell.kind}
                       key={i}
@@ -553,7 +592,9 @@ export default function ExplorerRooms({
                 {grid.cells.map((cell, i) => {
                   if (cell === null) return null;
                   const [x, y] = pos(i);
-                  return <Away cell={cell} key={i} x={x} y={y} />;
+                  return (
+                    <Away cell={cell} key={i} onFollow={walkMap} onLight={setLit} x={x} y={y} />
+                  );
                 })}
               </g>
             </svg>

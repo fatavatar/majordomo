@@ -3,7 +3,7 @@
  * character can cast it (`0x4a32b0`, `0x4a32f0`). Read 2026-10-12.
  */
 import { stricmp } from '../cstr';
-import type { SpellRec } from '../data';
+import type { MessageRec, SpellRec } from '../data';
 import { findClass } from '../data';
 import type { Session } from '../Session';
 import { SpellFlag } from '../flags';
@@ -135,4 +135,43 @@ export function stateSpell(s: Session, state: number): SpellRec | null {
   };
   const name = short[state];
   return name ? findSpell(s, name) : null;
+}
+
+/** The spells the message table files a line under, by the table: so a line is looked up once. */
+const filed = new WeakMap<readonly MessageRec[], Set<string>>();
+
+function hasOwnLine(s: Session, name: string): boolean {
+  const rows = s.data.messages ?? [];
+  let names = filed.get(rows);
+  if (names === undefined) {
+    names = new Set(rows.map((row) => row.name.toLowerCase()));
+    filed.set(rows, names);
+  }
+  return names.has(name.toLowerCase());
+}
+
+/**
+ * Whether a damage line the message table files under the spell `named` is
+ * the spell `cast` landing: by name, as megamud.exe matches it, or where
+ * `named` is a spell this character does not know and `cast` has no line of
+ * its own in the table (asked for 2026-10-21). The realm's table writes a
+ * line once, under one spell, where several spells share it: mudrev's
+ * lucifer's touch drains with deathtouch's "Dark energy drains {target} of
+ * life for {dmg} damage!", and Skinny's every `ltch` read as somebody's
+ * deathtouch, until his main attack spell was given up for the fight as
+ * never seen and the Demon Trolloc, which his weapon could not hurt, was left
+ * to Fatty.
+ */
+export function landsAs(s: Session, named: string, cast: string): boolean {
+  if (named === '' || cast === '') return false;
+  if (stricmp(named, cast) === 0) return true;
+  if (hasOwnLine(s, cast)) return false;
+  let spell = false;
+  for (const rec of s.data.spells) {
+    if (stricmp(rec.name, named) !== 0) continue;
+    spell = true;
+    if ((rec.flags & SpellFlag.Known) !== 0 || s.spellbookNames.has(rec.name.toLowerCase()))
+      return false;
+  }
+  return spell;
 }

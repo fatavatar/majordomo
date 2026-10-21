@@ -14,7 +14,7 @@ import type { SpellRec } from '../data';
 import { findItem } from '../room/checkNames';
 import { findEntity, stopToKill } from '../room/entities';
 import type { Session } from '../Session';
-import { stateSpell } from '../spells/lookup';
+import { landsAs, stateSpell } from '../spells/lookup';
 import { CAST_STATES, isCastState, State } from '../states';
 import { castSpellFor, countCast, inAttackCast, resetNoMessage, spellTakesTarget } from './casts';
 import { blowStruck, castForgotten } from './timer';
@@ -132,7 +132,13 @@ export function hitLine(s: Session, line: string): number {
   let mode = s.state;
 
   if (s.msgSpell !== '') {
-    if (inAttackCast(s, 1) !== 0 && s.castName !== '' && stricmp(s.castName, s.msgSpell) === 0) {
+    // A damage line another spell's row carries may be this one's (`landsAs`).
+    const borrowed = (cast: string): boolean => s.msgDamage !== 0 && landsAs(s, s.msgSpell, cast);
+    if (
+      inAttackCast(s, 1) !== 0 &&
+      s.castName !== '' &&
+      (stricmp(s.castName, s.msgSpell) === 0 || borrowed(s.castName))
+    ) {
       if (
         s.msgSource === '' ||
         stricmp(s.msgSource, 'you') === 0 ||
@@ -145,7 +151,7 @@ export function hitLine(s: Session, line: string): number {
     for (const st of CAST_STATES) {
       if (s.msgSource === '' && s.state === st) {
         spell = stateSpell(s, st);
-        if (spell && spell.name === s.msgSpell) s.msgSource = 'you';
+        if (spell && (spell.name === s.msgSpell || borrowed(spell.name))) s.msgSource = 'you';
       }
     }
     if (s.msgSource === '') {

@@ -156,6 +156,16 @@ export function schedule(s: Session): boolean {
   if (enemiesHere(s, s.Combat_AttackNeutral) === 0 && !fightClear(s)) combatOff(s);
   if (s.equipsPending > 0) return false;
   if (s.healthFirst !== 0 && enemiesHere(s, 0) === 0) {
+    /*
+     * The heals (D23) before the rest, where megamud.exe rests alone until HP
+     * are full (asked for 2026-10-21): after his MUD op's `sys goto`, Skinny
+     * lay in the Halls of the Dead at 143 of 1468 HP, diseased and losing ten
+     * a tick, casting only his regen spell, `pghe` never once.
+     */
+    if (s.allOff === 0 && sent === 0 && combatStep(s) !== 0) {
+      if (s.debug !== 0) s.host.trace('{D23}');
+      return true;
+    }
     step = 10;
     if (healthStep(s) !== 0) return true;
   }

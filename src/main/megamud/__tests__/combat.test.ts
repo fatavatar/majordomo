@@ -9,9 +9,10 @@ import { addEntity } from '../room/entities';
 import type { Session } from '../Session';
 import { escapeCheck } from '../script/escape';
 import { runCheck } from '../script/run';
+import { schedule } from '../script/scheduler';
 import { session } from './fixture';
 import { State } from '../states';
-import { PartyFlag, EntityType, Stance } from '../flags';
+import { PartyFlag, EntityType, LineFlag, Stance } from '../flags';
 
 /* `0x4120b0`, `0x412b10`, `0x412120` and `0x40f510`, read 2026-10-12. */
 
@@ -349,5 +350,22 @@ describe("the MUD op's escape (0x40dc20)", () => {
     s.BBS_IsMudop = 0;
     expect(escapeCheck(s, '')).toBe(0);
     expect(out.sent).toEqual([]);
+  });
+
+  /* Skinny after his `sys goto` (2026-10-21): only `rsto`, never `pghe`. */
+  it('heals before it rests, once there', () => {
+    const { s, out } = op();
+    s.Spells_HealCmd = 'ltch';
+    s.Spells_HealCmd2 = 'pghe';
+    s.Spells_RegenCmd = 'rsto';
+    s.Health_HpHealPct = 90;
+    s.data.spells = [spell('ltch', 0x4 | 0x40), spell('pghe', 0x20), spell('rsto', 0x10)];
+    escapeCheck(s, '');
+    out.sent.length = 0;
+    s.state = State.Nothing;
+    s.lookDue = 0;
+    s.lineFlags |= LineFlag.Prompted;
+    expect(schedule(s)).toBe(true);
+    expect(out.sent).toEqual(['pghe Skinny\r']);
   });
 });
