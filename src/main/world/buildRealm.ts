@@ -1,3 +1,17 @@
+/**
+ * Turning a realm database into the one normalised form the client loads.
+ *
+ * **Normalisation happens here, once, and never at runtime per line.**
+ * docs/legacy-assessment.md §5 consequence 4: the CoffeeScript engine issued
+ * synchronous SQLite queries from inside block parsing, on the main thread, per
+ * line of server output. This function is what makes that impossible — the
+ * whole realm is read, indexed and written out in one pass, and nothing
+ * downstream has a database handle to misuse.
+ *
+ * Shared by the build script and by the runtime path that converts a realm file
+ * a player has chosen. One implementation, so a client-converted realm and a
+ * shipped one cannot disagree about what a room is.
+ */
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -29,21 +43,6 @@ import {
   worstDisposition,
   type MobDisposition
 } from '../../shared/mobs';
-
-/**
- * Turning a realm database into the one normalised form the client loads.
- *
- * **Normalisation happens here, once, and never at runtime per line.**
- * docs/legacy-assessment.md §5 consequence 4: the CoffeeScript engine issued
- * synchronous SQLite queries from inside block parsing, on the main thread, per
- * line of server output. This function is what makes that impossible — the
- * whole realm is read, indexed and written out in one pass, and nothing
- * downstream has a database handle to misuse.
- *
- * Shared by the build script and by the runtime path that converts a realm file
- * a player has chosen. One implementation, so a client-converted realm and a
- * shipped one cannot disagree about what a room is.
- */
 
 /**
  * The realm file format.
@@ -79,7 +78,7 @@ import {
  * | 23 | **The levers.** A room's ten direction columns hold what it *does* as well as where it leads, in two shapes surveyed out of both databases (`Action#1 [on the S exit of this room]: pull lever, move lever` and `Action [on the N exit of room 1/1331]: …`) — 299 cells in each, and `parseExit` returns null for every one, so the converter had dropped the lot since it was written. Both ends are joined here: the room holding a lever gains it as a word it answers (`RoomCommand.opens`), and an exit stating `Hidden/Needs N Actions` gains the phrases (`Requirement.actions`) where the count matches and every lever is in the room the exit leaves. Without it the realm said *there is a concealed passage south and the lever is in this room*, the client walked into it, was refused, and struck a real corridor out of every route for the session — todo 01 |
  * | 21 | The database's own account of itself — the `Info` table, whole (`build`), and the formula family read off it (`family`). A table `buildRealm.ts` had never opened, so the client could not say which of the two lineages' arithmetic a realm runs, nor which build of which data set any derived number came from |
  * | 24 | **The quests.** No realm database has a Quests table, and both on this machine hold the same ten without one — but `TBInfo` holds 4,355 scripts, and between their gates and their rewards they state every quest completely. `indexQuests.ts` finds the counters by which abilities are both granted and demanded, walks the blocks forward from every monster's greeting and every room's script, and comes out with who to ask, where they stand, the word to say, what it costs and what it pays. The client had 1,914 monsters and no way to tell which of them wanted anything |
- * | 25 | `Items.UseCount` keeps the realm's **`-1`** instead of dropping it. Absent had meant both *the realm says nothing* and *the realm says for ever*, which are opposite answers to the one question that decides whether invoking an item costs anything — and 39 items in the shipped realm, nine of them weapons casting a bless, read as unstated. See `AutoInvoke` |
+ * | 25 | `Items.UseCount` keeps the realm's **`-1`** instead of dropping it. Absent had meant both *the realm says nothing* and *the realm says for ever*, which are opposite answers to the one question that decides whether invoking an item costs anything — and 39 items in the shipped realm, nine of them weapons casting a bless, read as unstated (the old `AutoInvoke` read it) |
  * | 29 | **Where a scripted spell lands.** A room command's `cast <spell>` step was narration to the parser, so a phrase whose only movement is a spell carrying `TeleportRoom`/`TeleportMap` had no `to`: the three holes down from Dragon's Teeth Hills into the Stone Tunnel are `cast 336` (*fall*), and the router had the climb back up (`teleport 487 2`) and not the drop — ten rooms in Paradigm, eight in stock — which is why a route from Silvermere to the Black Mountains went round through the Black House and map 7. `parseRoomScript` takes the spell table's landings and `linkPortals` walks them like any other |
  * | 28 | **The item a lever needs.** `lift up talisman (Item: 815)` ended 172 of Paradigm's lever cells and 170 of stock's, and `parseAction` split it into the phrases like any other — so the router priced a passage the server refuses without the talisman at the cost of a free lever, and the walker said the words to a wall. `RequirementAction.item` carries the number; the router walls the exit for a pack that lacks it and names the item in the refusal; the item is indexed like a key so the name is there to say — todo 13 |
  * | 27 | **Which bundled world this is, and the archive it came from.** `world` names one of the two the client ships and `archive` is that file's name, size and SHA-1, so a database a player names can be recognised as the very bytes a bundled world was built from and loaded as that world rather than converted into a second copy keyed under a second name. And `Custom: Default` — the stock v1.11p data set's own name for itself, read off `mdb/majormud-v1.11p.zip` — reads as the MajorMUD family; it read as no family at all, so every calculator declined on the one world that ships for MajorMUD realms. Bumped for the cache, like 19 and 26 |
@@ -840,10 +839,6 @@ export interface BuiltMobRow {
 }
 
 /**
- * `1/41 (Door [1000 picklocks/strength])` → destination plus raw instruction.
- * `0` means no exit at all.
- */
-/**
  * One exit as the world file writes it: where it goes, the realm's own
  * instruction, and — format 23 — the levers that open it where they are all in
  * the room it leaves from. See `RequirementAction`.
@@ -873,6 +868,10 @@ interface Lever {
   index?: number;
 }
 
+/**
+ * `1/41 (Door [1000 picklocks/strength])` → destination plus raw instruction.
+ * `0` means no exit at all.
+ */
 export function parseExit(raw: unknown): BuiltExit | null {
   if (raw === null || raw === undefined) return null;
   const text = String(raw).trim();

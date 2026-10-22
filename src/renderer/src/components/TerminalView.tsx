@@ -69,8 +69,9 @@ export interface TerminalViewProps {
    * Underlined on hover and clickable, through xterm's link provider — which
    * is asked about the row under the pointer and nothing else, so a realm of
    * three thousand names costs nothing until somebody points at one.
+   *
+   * The console's name index — the realm's names and the people this character knows — or null before the realm's names arrive.
    */
-  /** The console's name index — the realm's names and the people this character knows — or null before the realm's names arrive. */
   index?: NameIndex | null;
   /** A recognised name was clicked, and here is the cell box it occupies. */
   onInspect?(name: string, at: PopoverAnchor): void;
@@ -1083,14 +1084,6 @@ export default function TerminalView({
   );
 }
 
-/**
- * The glyph before a line, hung off its marker.
- *
- * `registerDecoration` is xterm's own overlay layer: an element positioned
- * over a cell row, tracking it through scrollback and disposed with the line.
- * Placed over the two cells the indent left empty, with the shop's name as
- * its tooltip and its accessible label — a glyph alone says nothing, per §6.
- */
 /** Cells a marked line is indented by, for the glyph to sit in. */
 const MARK_INDENT = '  ';
 
@@ -1117,6 +1110,14 @@ interface Press {
   act(action: TerminalActionName): void;
 }
 
+/**
+ * The glyph before a line, hung off its marker.
+ *
+ * `registerDecoration` is xterm's own overlay layer: an element positioned
+ * over a cell row, tracking it through scrollback and disposed with the line.
+ * Placed over the two cells the indent left empty, with the shop's name as
+ * its tooltip and its accessible label — a glyph alone says nothing, per §6.
+ */
 function decorate(
   term: Terminal,
   marker: IMarker,

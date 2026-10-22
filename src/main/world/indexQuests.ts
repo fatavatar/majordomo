@@ -277,27 +277,6 @@ export function itemsInReach(read: BlocksInReach): {
 }
 
 /**
- * Where **using an item** puts the character, where the realm's chain says so.
- *
- * Reported 2026-09-15 (todo 02): the way into the Catacombs — and so to the
- * necromancer the Phoenix quest's golden egg is taken off — is the *potion of
- * levitation*, and the client could not see it. The realm states it in three
- * hops and no column: `Items.Abil-n = CastsSp 607`, `Spells 607.Abil-0 =
- * TextBlock 1421`, and block 1421 is `roomitem 993 : message : teleport 1009
- * 9 : message`. So an item can be a *way in*, exactly as a key on a door is,
- * and the corridor table says nothing at all about it.
- *
- * Read at build time because the middle hop is `TBInfo`, which does not ship.
- * The spell half is `spellBlocks`, which already follows `TextBlock` and
- * `EndCast` for a monster's death; the block half follows `LinkTo` too, since
- * a realm routinely answers with an empty block that links to the one that
- * acts. `teleport <room> <map>` is the realm's own order (`roomScript.ts`).
- *
- * One landing per item, and the first: an item that puts you in two places is
- * a shape neither shipped realm writes, and inventing an answer for it is the
- * guess this file refuses everywhere else.
- */
-/**
  * Where an item that teleports puts you, **and where it may be used**.
  *
  * The second half is not a refinement, it is the whole of whether the first is
@@ -339,6 +318,27 @@ export interface ItemLanding {
   usableIn?: string[];
 }
 
+/**
+ * Where **using an item** puts the character, where the realm's chain says so.
+ *
+ * Reported 2026-09-15 (todo 02): the way into the Catacombs — and so to the
+ * necromancer the Phoenix quest's golden egg is taken off — is the *potion of
+ * levitation*, and the client could not see it. The realm states it in three
+ * hops and no column: `Items.Abil-n = CastsSp 607`, `Spells 607.Abil-0 =
+ * TextBlock 1421`, and block 1421 is `roomitem 993 : message : teleport 1009
+ * 9 : message`. So an item can be a *way in*, exactly as a key on a door is,
+ * and the corridor table says nothing at all about it.
+ *
+ * Read at build time because the middle hop is `TBInfo`, which does not ship.
+ * The spell half is `spellBlocks`, which already follows `TextBlock` and
+ * `EndCast` for a monster's death; the block half follows `LinkTo` too, since
+ * a realm routinely answers with an empty block that links to the one that
+ * acts. `teleport <room> <map>` is the realm's own order (`roomScript.ts`).
+ *
+ * One landing per item, and the first: an item that puts you in two places is
+ * a shape neither shipped realm writes, and inventing an answer for it is the
+ * guess this file refuses everywhere else.
+ */
 export function landingsOfItems(
   source: RealmSource,
   spells: QuestNaming['spells'],

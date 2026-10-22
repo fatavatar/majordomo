@@ -60,8 +60,8 @@ export interface CastableSpell {
  * its own callback, so a module that needed a fourth fact about the spell it
  * was about to cast had to be given a fourth lambda, and nothing could ask a
  * question the wiring had not anticipated. What crosses now is the realm's row
- * whole; a caller takes the field it wants off it. `AutoCombat` wants the word,
- * `Blessings` wants the word and the id, and anything that has to know what a
+ * whole; a caller takes the field it wants off it: the word, the id, and
+ * anything that has to know what a
  * cast will cost wants `mana` — which nothing could have asked for before.
  *
  * Both halves are optional and mean different things. `known` is **this
@@ -221,8 +221,8 @@ export function castIn(
  * so equality alone held a configured `bles` against a recorded `bless` for
  * ever. The realm's row decides where it names both, by **id**; where it does
  * not, every spelling the listing or the realm knows for either is compared.
- * One answer for every module that asks (2026-09-24): `Blessings`,
- * `AutoInvoke` and `AutoCombat` each had their own.
+ * One answer for every module that asks (2026-09-24): the old blessings,
+ * item invoking and combat each had their own.
  */
 export function sameSpell(
   a: string,

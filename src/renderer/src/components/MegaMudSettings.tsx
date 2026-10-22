@@ -1,3 +1,18 @@
+/**
+ * A character's MegaMUD settings, as MegaMUD's own settings dialog lays them
+ * out: its sixteen tabs, each control where the dialog template puts it and
+ * showing the setting MegaMUD's tab shows (`settingsTabs.ts`, read from
+ * `megamud.exe` and `MegaRes.dll`). A change is written, as it is made, to
+ * the character's `megamud:`, which is what runs it on the ported MegaMUD engine.
+ *
+ * The page is drawn in dialog units, scaled: a MegaMUD player finds every
+ * box where it always was. A control the tab fills from somewhere else (the
+ * paths, the sound files, the toolbar, the events list) is drawn but not
+ * editable yet.
+ *
+ * Drawn as rows of the Character page (`SettingsScreen`), each tab with what
+ * this client keeps for the character under it (2026-10-14).
+ */
 import { Fragment, useRef, useState, type ReactNode } from 'react';
 import { customControl, drawnHere } from './MegaMudEditors';
 import { CheckField, NumberField, TextField } from './FormField';
@@ -21,22 +36,6 @@ import {
 } from '@shared/megamud/settings';
 import { keepFocus } from '../lib/focus';
 import { t } from '../lib/i18n';
-
-/**
- * A character's MegaMUD settings, as MegaMUD's own settings dialog lays them
- * out: its sixteen tabs, each control where the dialog template puts it and
- * showing the setting MegaMUD's tab shows (`settingsTabs.ts`, read from
- * `megamud.exe` and `MegaRes.dll`). A change is written, as it is made, to
- * the character's `megamud:`, which is what runs it on the ported MegaMUD engine.
- *
- * The page is drawn in dialog units, scaled: a MegaMUD player finds every
- * box where it always was. A control the tab fills from somewhere else (the
- * paths, the sound files, the toolbar, the events list) is drawn but not
- * editable yet.
- *
- * Drawn as rows of the Character page (`SettingsScreen`), each tab with what
- * this client keeps for the character under it (2026-10-14).
- */
 
 /**
  * One character's MegaMUD settings as its tabs edit them: a part of the

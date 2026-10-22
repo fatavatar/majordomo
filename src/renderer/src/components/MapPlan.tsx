@@ -117,26 +117,6 @@ const FIND_DOT = 1.1;
 const AWAY = { over: 2.4, size: 1.5, stroke: 0.6, hit: 1.2 } as const;
 
 /**
- * The shape a room is drawn as.
- *
- * Shape carries the meaning and colour reinforces it, never the other way
- * round: §6 of the design language forbids stating a condition by hue alone,
- * and a map read at a glance in a fight is exactly where that matters. The
- * legend names all four.
- *
- * **Every one of them carries `map-shape`, and that class is load-bearing.**
- * The room's fill and edge used to be stated as `.map-room > circle` — *any*
- * child of the kind — which is a rule about position rather than about what
- * the element is, and a room's group holds marks that are not its shape: the
- * `you` ring, the route halo, the lap's ring. At `(0,1,1)` it outranked each
- * of their own single-class rules at `(0,1,0)`, so all three were painted the
- * room's grey and the shop's amber instead of their own colours — the `you`
- * ring drew as a filled grey disc behind the accent square for as long as the
- * map has existed, and the two marks added for the route inherited it whole.
- * Naming the shape is what lets a rule mean *the shape* and no longer catch
- * whatever else the group happens to hold.
- */
-/**
  * A small arrowhead at the middle of a leg, pointing the way it is walked.
  *
  * Returned as `points` for a polygon in the map's own coordinate space, so it
@@ -184,6 +164,26 @@ function round(value: number): number {
   return Math.round(value * 100) / 100;
 }
 
+/**
+ * The shape a room is drawn as.
+ *
+ * Shape carries the meaning and colour reinforces it, never the other way
+ * round: §6 of the design language forbids stating a condition by hue alone,
+ * and a map read at a glance in a fight is exactly where that matters. The
+ * legend names all four.
+ *
+ * **Every one of them carries `map-shape`, and that class is load-bearing.**
+ * The room's fill and edge used to be stated as `.map-room > circle` — *any*
+ * child of the kind — which is a rule about position rather than about what
+ * the element is, and a room's group holds marks that are not its shape: the
+ * `you` ring, the route halo, the lap's ring. At `(0,1,1)` it outranked each
+ * of their own single-class rules at `(0,1,0)`, so all three were painted the
+ * room's grey and the shop's amber instead of their own colours — the `you`
+ * ring drew as a filled grey disc behind the accent square for as long as the
+ * map has existed, and the two marks added for the route inherited it whole.
+ * Naming the shape is what lets a rule mean *the shape* and no longer catch
+ * whatever else the group happens to hold.
+ */
 function shape(node: MapNode) {
   const r = tuning().mapRoomRadius;
   return (

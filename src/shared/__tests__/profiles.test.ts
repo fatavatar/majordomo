@@ -9,7 +9,7 @@ import { overlay, resolveProfile, PROFILE_ACCENTS } from '../profiles';
  */
 const base: Record<string, unknown> = {
   servers: [{ name: 'GreaterMUD (local)', host: 'gmud-tgs', port: 2427, encoding: 'cp437' }],
-  automation: { idle: { enabled: true, afterSeconds: 300 } }
+  automation: { walk: { clearAfterSeconds: 300, minExpPerHour: 500 } }
 };
 
 /** The happy path, so each test can state only what it is about. */
@@ -231,28 +231,28 @@ describe('resolveProfile', () => {
     const profile = resolve({ server: 'GreaterMUD (local)' });
     // The whole reason a profile is an overlay: a setting added to the client
     // after this file was written still reaches the character.
-    expect(profile.config.automation.idle.afterSeconds).toBe(300);
+    expect(profile.config.automation.walk.clearAfterSeconds).toBe(300);
     expect(profile.config.terminal.font.size).toBe(DEFAULT_CONFIG.terminal.font.size);
   });
 
   it('overrides only what it states', () => {
     const profile = resolve({
       server: 'GreaterMUD (local)',
-      automation: { idle: { afterSeconds: 90 } }
+      automation: { walk: { clearAfterSeconds: 90 } }
     });
-    expect(profile.config.automation.idle.afterSeconds).toBe(90);
+    expect(profile.config.automation.walk.clearAfterSeconds).toBe(90);
     // Sibling keys in the same block survive.
-    expect(profile.config.automation.idle.enabled).toBe(true);
+    expect(profile.config.automation.walk.minExpPerHour).toBe(500);
   });
 
   it('coerces an override through the same rules as the options file', () => {
     const profile = resolve({
       server: 'GreaterMUD (local)',
-      automation: { idle: { afterSeconds: 'nonsense' } }
+      automation: { walk: { clearAfterSeconds: 'nonsense' } }
     });
     // One place decides what a valid value is, so a typo in a profile falls
     // back rather than poisoning a session.
-    expect(typeof profile.config.automation.idle.afterSeconds).toBe('number');
+    expect(typeof profile.config.automation.walk.clearAfterSeconds).toBe('number');
   });
 
   it('names itself after its file when it says nothing else', () => {

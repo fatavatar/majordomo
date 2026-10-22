@@ -74,6 +74,17 @@ function fightClear(s: Session): boolean {
   );
 }
 
+/** D22 to D26: the blessings, heals and cures this character casts, in the scheduler's order. */
+function recovery(s: Session): [number, () => number][] {
+  return [
+    [22, () => blessStep(s, 1)],
+    [23, () => combatStep(s)],
+    [24, () => selfCures(s, 1)],
+    [25, () => blessStep(s, 0)],
+    [26, () => cureStep(s, 1)]
+  ];
+}
+
 /** Look at the room again: a bare Enter, then two lines to wait for. */
 function lookAgain(s: Session, step: number, what: string, setLooking: boolean): boolean {
   s.roomLookedAt = s.now;
@@ -157,14 +168,18 @@ export function schedule(s: Session): boolean {
   if (s.equipsPending > 0) return false;
   if (s.healthFirst !== 0 && enemiesHere(s, 0) === 0) {
     /*
-     * The heals (D23) before the rest, where megamud.exe rests alone until HP
-     * are full (asked for 2026-10-21): after his MUD op's `sys goto`, Skinny
-     * lay in the Halls of the Dead at 143 of 1468 HP, diseased and losing ten
-     * a tick, casting only his regen spell, `pghe` never once.
+     * The blessings, heals and cures (D22 to D26) before the rest, where
+     * megamud.exe rests alone until HP are full (asked for 2026-10-21): after
+     * their MUD op's `sys goto`, Skinny lay in the Halls of the Dead at 143 of
+     * 1468 HP, diseased and losing ten a tick, casting only his regen spell,
+     * `pghe` never once, and Fatty, whose songs are his heals, sang none.
      */
-    if (s.allOff === 0 && sent === 0 && combatStep(s) !== 0) {
-      if (s.debug !== 0) s.host.trace('{D23}');
-      return true;
+    if (s.allOff === 0 && sent === 0) {
+      for (const [d, run] of recovery(s)) {
+        if (run() === 0) continue;
+        if (s.debug !== 0) s.host.trace(`{D${d}}`);
+        return true;
+      }
     }
     step = 10;
     if (healthStep(s) !== 0) return true;
@@ -184,11 +199,7 @@ export function schedule(s: Session): boolean {
         [19, () => collectItems(s)],
         [20, () => autoEquip(s)],
         [21, () => rulesStep(s)],
-        [22, () => blessStep(s, 1)],
-        [23, () => combatStep(s)],
-        [24, () => selfCures(s, 1)],
-        [25, () => blessStep(s, 0)],
-        [26, () => cureStep(s, 1)],
+        ...recovery(s),
         [27, () => invitePlayers(s)],
         [28, () => healStep(s)]
       );

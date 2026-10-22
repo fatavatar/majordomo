@@ -1,8 +1,3 @@
-import { dodgedFraction, hitChance } from './menace';
-import type { RealmFamily } from './realm';
-import type { StatedProwess } from './stated';
-import type { WorldItem, WorldSpell } from './world';
-
 /**
  * What this character does back — the other half of `menace.ts`.
  *
@@ -46,6 +41,10 @@ import type { WorldItem, WorldSpell } from './world';
  * nothing was computed, and the formulas answer the rest — and every *what if
  * I wore this* — as they always did.
  */
+import { dodgedFraction, hitChance } from './menace';
+import type { RealmFamily } from './realm';
+import type { StatedProwess } from './stated';
+import type { WorldItem, WorldSpell } from './world';
 
 /**
  * Where a number came from, strongest first.

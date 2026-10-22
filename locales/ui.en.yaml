@@ -188,11 +188,6 @@ notices:
         with the paragraph that explains it: {fileList}'
       many: 'Fleeing by sys goto is a setting, off by default, and was written into {count} files
         with the paragraph that explains it: {fileList}'
-    drainStated:
-      one: 'Casting a drain spell while health is low is a setting, off by default, and was written
-        into {count} file with the paragraph that explains it: {fileList}'
-      many: 'Casting a drain spell while health is low is a setting, off by default, and was written
-        into {count} files with the paragraph that explains it: {fileList}'
     monsterRowsStated:
       one: 'A character''s own monster rows are a setting now, laid over the realm''s monster table,
         and were written into {count} file with the paragraph that explains them: {fileList}'
@@ -208,17 +203,15 @@ notices:
         blank, to {count} files: {fileList}'
       one: 'Regeneration spells (MegaMUD''s HP and Mana Regen, and the when-full spells) were added,
         blank, to {fileList}.'
-    healChoiceStated:
-      many: 'Auto Choose Best Heal was added to {count} files, turned on where Auto Choose Best Spell
-        is on: {fileList}'
-      one: 'Auto Choose Best Heal was added to {fileList}, turned on where Auto Choose Best Spell is
-        on.'
     autoJoinStated:
       many: 'Join When Invited was added, off, to {count} files: {fileList}'
       one: 'Join When Invited was added, off, to {fileList}'
     oldAutomationKeys:
       many: 'Settings only the old automation read (rules, entry and party commands, drop, banking, talk, statline, events, training, the walk-while switches) were removed from {count} files: {fileList}'
       one: 'Settings only the old automation read (rules, entry and party commands, drop, banking, talk, statline, events, training, the walk-while switches) were removed from {fileList}'
+    oldAutomationFields:
+      many: 'Settings nothing read any more since the MegaMUD engine (the idle look, the kit sets, the PvP reaction, the drain and area-mana spells, the loot value and weight limits, gear recovery, the door and rank switches and others) were removed from {count} files: {fileList}'
+      one: 'Settings nothing read any more since the MegaMUD engine (the idle look, the kit sets, the PvP reaction, the drain and area-mana spells, the loot value and weight limits, gear recovery, the door and rank switches and others) were removed from {fileList}'
     mudstatsStated:
       many: 'Report to Stats Server (off, every 60 seconds) was added to {count} files: {fileList}'
       one: 'Report to Stats Server (off, every 60 seconds) was added to {fileList}'
@@ -238,15 +231,9 @@ notices:
     botCommandsStated:
       many: 'Bot Commands (your own commands other players may ask for) was added, empty, to {count} files: {fileList}'
       one: 'Bot Commands (your own commands other players may ask for) was added, empty, to {fileList}'
-    survivalFloorStated:
-      many: 'Only Open Fights Survived % was added, off, to {count} files: {fileList}'
-      one: 'Only Open Fights Survived % was added, off, to {fileList}'
     itemDetailsStated:
       many: 'Item Details (MegaMUD''s item choices, laid over the realm''s item table) were added, empty, to {count} files: {fileList}'
       one: 'Item Details (MegaMUD''s item choices, laid over the realm''s item table) were added, empty, to {fileList}'
-    partyRankStated:
-      many: 'Auto-Rank (MegaMUD''s Party Rank) was added, off and at Mid, to {count} files: {fileList}'
-      one: 'Auto-Rank (MegaMUD''s Party Rank) was added, off and at Mid, to {fileList}'
     freedomCureStated:
       one: 'A Freedom spell -- cast when the character cannot move -- is a setting, blank by
         default, and was written into the cures of {count} file: {fileList}'
@@ -286,12 +273,12 @@ notices:
       paragraph that explains them."
     entityPredicates:
       many:
-        "Two settings were added to {count} files, all off: pick up anything over a value, and never
-        pick up anything over a weight. Each asks the realm a question about a thing, which the
-        client could not do until items carried the realm's own row. {fileList}"
-      one: "Two settings were added to {count} file, all off: pick up anything over a value, and never
-        pick up anything over a weight. Each asks the realm a question about a thing, which the
-        client could not do until items carried the realm's own row. {fileList}"
+        "Settings were added to {count} files, at what the client already did: the fewest and most
+        monsters worth a fight, the most experience a monster may be worth, the heal line in a
+        fight, and which coins to pick up. {fileList}"
+      one: "Settings were added to {count} file, at what the client already did: the fewest and most
+        monsters worth a fight, the most experience a monster may be worth, the heal line in a
+        fight, and which coins to pick up. {fileList}"
     gmudRealmFailed: 'The {realm} realm could not be removed from your realms: {reason}'
     gmudRealmRemoved:
       '{realm} no longer ships with the client and was removed from your realms ({dir}); nothing
@@ -306,15 +293,6 @@ notices:
         because the realm marks which spells may be cast on whom. `healPartyWith` and a `healTo`
         ceiling were written into {count} file; a file that was already healing the party kept
         its spell. {fileList}'
-    lookNoLongerBroadcast:
-      many:
-        'The client no longer re-reads rooms with `l` — it prints the same block and tells everybody
-        in the room you are looking around. A bare Enter does it silently, so the idle command was
-        changed in {count} files. {fileList}'
-      one:
-        'The client no longer re-reads rooms with `l` — it prints the same block and tells everybody
-        in the room you are looking around. A bare Enter does it silently, so the idle command was
-        changed in {count} file. {fileList}'
     loopShelfPinned:
       'The Loops button was added to your toolbar. It opens every loop the client knows —
       Ctrl/Cmd L, or the circular arrow beside the transport controls.'
@@ -447,14 +425,6 @@ notices:
       one: '"combat.maxFightCost" was removed from {count} file: a fight is no longer declined for
         what it is expected to cost. The Room card still draws the figure; nothing refuses on it.
         {fileList}'
-    recoveryBounds:
-      many:
-        '"recoverGearTries" and "recoverGearFloor" were written into {count} files: going back for
-        the kit now stops after two journeys that did not reach it, or at two lives left.
-        {fileList}'
-      one: '"recoverGearTries" and "recoverGearFloor" were written into {count} file: going back for
-        the kit now stops after two journeys that did not reach it, or at two lives left.
-        {fileList}'
     alertRules:
       many:
         '"ui.alerts.rules" was written into {count} files with the rows a fresh client ships: your
@@ -495,17 +465,6 @@ notices:
         waterskin against the desert spell — and it shipped off one day ago, so the "false" it
         replaces was this client''s own writing rather than your answer. Turn it off under Health
         in settings; the backup beside the file has the old answer. {fileList}'
-    doorsOpened:
-      many:
-        'Opening and bashing doors on a route are now on by default, and were turned on in {count}
-        files that had them off because this client wrote that value there rather than because you
-        chose it. Picking locks is untouched, and still off. Turn either back off on the Movement
-        section in settings; the backup beside each file has the old answer. {fileList}'
-      one:
-        'Opening and bashing doors on a route are now on by default, and were turned on in {count}
-        file that had them off because this client wrote that value there rather than because you
-        chose it. Picking locks is untouched, and still off. Turn either back off on the Movement
-        section in settings; the backup beside the file has the old answer. {fileList}'
     gearButtonPinned:
       'A gear button was added to your toolbar, beside the dial. It puts back what the client
       last saw in each worn slot — the first press after a death.'
@@ -552,19 +511,6 @@ notices:
       many: '"automation.spells.autoChoose" was written into {count} files ({fileList}), off: pick
         the round spell and the cures from the spellbook each round. The spells you named are cast
         until you turn it on.'
-    restNextDoor:
-      one:
-        '"automation.health.restNextDoor" was written into {fileList}, on: a rest in a lair with a
-        short clock is taken next door, in a neighbour looked into first and found empty.'
-      many:
-        '"automation.health.restNextDoor" was written into {count} files ({fileList}), on: a rest
-        in a lair with a short clock is taken next door, in a neighbour looked into first and found
-        empty.'
-    gearRecovery:
-      one: '"automation.movement.recoverGear" was written into {fileList}, off: after a death, walk
-        back for the kit and put it on. Nothing walks until you turn it on.'
-      many: '"automation.movement.recoverGear" was written into {count} files ({fileList}), off:
-        after a death, walk back for the kit and put it on. Nothing walks until you turn it on.'
     accountTokensLostABrace: 'Login steps in {fileList} now put single braces round the username and
       password tokens, as the login script expects; the doubled form would have sent a brace too.'
     accountJoinedTheScript:
@@ -600,13 +546,6 @@ notices:
       many: '"automation.combat.avoid" and "combat.mobPriority" became one "combat.mobRules" list in
         {count} files ({fileList}). An avoided monster is now a row set to never attack; every
         ranked monster kept its band.'
-    hideForOpener:
-      one: '"automation.combat.hideForOpener" was written into {fileList}, off: hide (or sneak,
-        while a lap or route has the character) between fights, so an opening backstab lands
-        again.'
-      many: '"automation.combat.hideForOpener" was written into {count} files ({fileList}), off:
-        hide (or sneak, while a lap or route has the character) between fights, so an opening
-        backstab lands again.'
     coinsCanBeShed:
       one: '"automation.loot.discardKinds" was written into {fileList}, empty: which coins to put
         back on the floor whenever any are carried, the other end of "coinKinds". Nothing is
@@ -660,11 +599,6 @@ notices:
         '{count} character files moved into directories of their own, so each can carry loops of its
         own.'
       one: 1 character file moved into a directory of its own, so it can carry loops of its own.
-    trapRest:
-      many: 'Resting before a trap was added to {count} files, at 45%: a walk now waits until
-        health covers the trap ahead and leaves that share of the bar after it. {fileList}'
-      one: 'Resting before a trap was added to {count} file, at 45%: a walk now waits until
-        health covers the trap ahead and leaves that share of the bar after it. {fileList}'
     restCeiling:
       many: 'A resting ceiling was added to {count} files, off: keep sitting back down until health
         reaches it. Casting turns out to break a rest and standing regenerates six times slower, so

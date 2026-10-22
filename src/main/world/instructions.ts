@@ -23,12 +23,12 @@ import { asAlignment } from '../../shared/alignment';
 import { COPPER_PER } from '../../shared/coins';
 import type { Requirement, RequirementKind } from '../../shared/world';
 
-/** Ordered: the first pattern that matches wins, so specific precedes general. */
 /**
  * The figure the realm writes for "no upper limit", read off the data above.
  */
 const NO_LEVEL_CEILING = 999;
 
+/** Ordered: the first pattern that matches wins, so specific precedes general. */
 const MATCHERS: Array<{ kind: RequirementKind; test: RegExp }> = [
   { kind: 'key', test: /^Key\b/i },
   { kind: 'door', test: /^Door\b/i },

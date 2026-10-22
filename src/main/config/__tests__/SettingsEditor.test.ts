@@ -51,17 +51,9 @@ const draft = (over: Partial<ProfileDraft> = {}): ProfileDraft => ({
   accent: 'cyan',
   theme: '',
   login: [],
-  hangUp: { enabled: false, belowHealth: 0.15, onPlayerInRoom: false },
-  retreat: {
-    enabled: false,
-    belowHealth: 0.3,
-    belowMana: 0,
-    whenOutnumbered: 0,
-    strategy: 'step-back',
-    safeHavenRoom: ''
-  },
+  hangUp: { enabled: false, belowHealth: 0.15 },
+  retreat: { enabled: false, belowHealth: 0.3 },
   fleeGoto: { enabled: false, belowHealth: 0.2, destination: '' },
-  pvp: { notifyGang: false, action: 'none' },
   stats: { enabled: false, everySeconds: 60 },
   // The shipped defaults, so a draft that says nothing about combat writes no
   // `combat:` block at all -- which is the behaviour the tests below assert.
@@ -71,7 +63,6 @@ const draft = (over: Partial<ProfileDraft> = {}): ProfileDraft => ({
   health: { ...DEFAULT_CONFIG.automation.health },
   movement: { ...DEFAULT_CONFIG.automation.movement },
   quests: { ...DEFAULT_CONFIG.automation.quests },
-  gear: { ...DEFAULT_CONFIG.automation.gear },
   loot: structuredClone(DEFAULT_CONFIG.automation.loot),
   search: { ...DEFAULT_CONFIG.automation.search },
   // Empty is what OPTIONS below gives a character: the options file states no
@@ -762,13 +753,13 @@ describe('what a character plays against, and what keeps it alive', () => {
     editor.saveProfile(
       'vaelor',
       draft({
-        hangUp: { enabled: true, belowHealth: 0.2, onPlayerInRoom: false }
+        hangUp: { enabled: true, belowHealth: 0.2 }
       })
     );
     const safety = (read('vaelor')['automation'] as Record<string, Record<string, unknown>>)[
       'safety'
     ];
-    expect(safety?.['hangUp']).toEqual({ enabled: true, belowHealth: 0.2, onPlayerInRoom: false });
+    expect(safety?.['hangUp']).toEqual({ enabled: true, belowHealth: 0.2 });
   });
 
   /*
@@ -785,11 +776,7 @@ describe('what a character plays against, and what keeps it alive', () => {
       draft({
         retreat: {
           enabled: true,
-          belowHealth: 0.4,
-          belowMana: 0,
-          whenOutnumbered: 3,
-          strategy: 'step-back',
-          safeHavenRoom: ''
+          belowHealth: 0.4
         }
       })
     );
@@ -798,11 +785,7 @@ describe('what a character plays against, and what keeps it alive', () => {
       draft({
         retreat: {
           enabled: false,
-          belowHealth: 0.4,
-          belowMana: 0,
-          whenOutnumbered: 3,
-          strategy: 'step-back',
-          safeHavenRoom: ''
+          belowHealth: 0.4
         }
       })
     );
@@ -824,7 +807,7 @@ describe('what a character plays against, and what keeps it alive', () => {
     editor.saveProfile(
       'vaelor',
       draft({
-        hangUp: { enabled: true, belowHealth: 0.2, onPlayerInRoom: false }
+        hangUp: { enabled: true, belowHealth: 0.2 }
       })
     );
     const automation = read('vaelor')['automation'] as Record<string, unknown>;

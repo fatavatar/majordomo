@@ -23,7 +23,6 @@ import {
   normalizeConfig,
   type AutomationSwitch,
   type LoginStep,
-  type RetreatConfig,
   type SupplyItem
 } from '../../shared/config';
 import { fileSlug } from '../../shared/files';
@@ -350,10 +349,7 @@ export class SettingsEditor {
         ) {
           document.setIn(['automation', 'safety', 'retreat'], {
             enabled: draft.retreat.enabled,
-            belowHealth: draft.retreat.belowHealth,
-            whenOutnumbered: draft.retreat.whenOutnumbered,
-            strategy: draft.retreat.strategy,
-            safeHavenRoom: draft.retreat.safeHavenRoom
+            belowHealth: draft.retreat.belowHealth
           });
         }
 
@@ -376,20 +372,7 @@ export class SettingsEditor {
         ) {
           document.setIn(['automation', 'safety', 'hangUp'], {
             enabled: draft.hangUp.enabled,
-            belowHealth: draft.hangUp.belowHealth,
-            onPlayerInRoom: draft.hangUp.onPlayerInRoom
-          });
-        }
-
-        if (
-          creating ||
-          draft.pvp.notifyGang ||
-          draft.pvp.action !== 'none' ||
-          document.hasIn(['automation', 'safety', 'pvp'])
-        ) {
-          document.setIn(['automation', 'safety', 'pvp'], {
-            notifyGang: draft.pvp.notifyGang,
-            action: draft.pvp.action
+            belowHealth: draft.hangUp.belowHealth
           });
         }
 
@@ -430,7 +413,6 @@ export class SettingsEditor {
           [['automation', 'movement'], draft.movement, DEFAULT_CONFIG.automation.movement],
           [['automation', 'hunting'], draft.hunting, DEFAULT_CONFIG.automation.hunting],
           [['automation', 'quests'], draft.quests, DEFAULT_CONFIG.automation.quests],
-          [['automation', 'gear'], draft.gear, DEFAULT_CONFIG.automation.gear],
           [['automation', 'loot'], draft.loot, DEFAULT_CONFIG.automation.loot],
           [['automation', 'search'], draft.search, DEFAULT_CONFIG.automation.search],
           [['automation', 'spells'], draft.spells, DEFAULT_CONFIG.automation.spells],
@@ -588,15 +570,6 @@ export class SettingsEditor {
   }
 
   /**
-   * Whether this character answers `@` commands on the gangpath.
-   *
-   * On the Gang card as well as in Settings, because the card is where the
-   * consequence is visible — a gang list that grants `@exp` and a gangpath
-   * switch that is off is a grant nobody in the gang can use from the channel
-   * they would naturally use it on. A command nobody can find does not exist,
-   * and neither does one that silently cannot fire.
-   */
-  /**
    * This character's mudstats key, beside its password (`account.statsKey`),
    * or none: written by the link and the unlink, never by the form, which is
    * never told it. Without an account there is nowhere to keep one.
@@ -615,6 +588,15 @@ export class SettingsEditor {
     });
   }
 
+  /**
+   * Whether this character answers `@` commands on the gangpath.
+   *
+   * On the Gang card as well as in Settings, because the card is where the
+   * consequence is visible — a gang list that grants `@exp` and a gangpath
+   * switch that is off is a grant nobody in the gang can use from the channel
+   * they would naturally use it on. A command nobody can find does not exist,
+   * and neither does one that silently cannot fire.
+   */
   setRemoteGangpath(id: string, on: boolean): EditResult {
     const file = this.profilePath(id);
     if (!fs.existsSync(file)) {
@@ -1132,32 +1114,22 @@ export class SettingsEditor {
       },
       automation: {
         enabled: config.automation.enabled,
-        idle: { ...config.automation.idle },
         pacing: { ...config.automation.pacing },
         walk: { ...config.automation.walk },
         hunting: { ...config.automation.hunting },
         hangUp: {
           enabled: config.automation.safety.hangUp.enabled,
-          belowHealth: config.automation.safety.hangUp.belowHealth,
-          onPlayerInRoom: config.automation.safety.hangUp.onPlayerInRoom
+          belowHealth: config.automation.safety.hangUp.belowHealth
         },
-        retreat: retreatOf(config.automation.safety.retreat),
+        retreat: { ...config.automation.safety.retreat },
         fleeGoto: { ...config.automation.safety.fleeGoto },
-        pvp: { ...config.automation.safety.pvp },
         combat: { ...config.automation.combat },
         party: { ...config.automation.party },
         health: { ...config.automation.health },
         movement: { ...config.automation.movement },
         quests: { ...config.automation.quests },
-        // Deep, because the sets and their `wear` lists are the draft's
-        // own to edit: a shallow copy hands the form the config's arrays.
-        gear: {
-          ...config.automation.gear,
-          sets: config.automation.gear.sets.map((set) => ({ ...set, wear: [...set.wear] })),
-          offRound: { ...config.automation.gear.offRound }
-        },
         spells: { ...config.automation.spells },
-        loot: { ...config.automation.loot, items: [...config.automation.loot.items] },
+        loot: { ...config.automation.loot },
         search: { ...config.automation.search },
         remotes: { ...config.automation.remotes },
         afk: { ...config.automation.afk }
@@ -1240,20 +1212,17 @@ export class SettingsEditor {
         set(['logging', 'keepBytes'], draft.logging.keepBytes);
 
         set(['automation', 'enabled'], draft.automation.enabled);
-        set(['automation', 'idle'], { ...draft.automation.idle });
         set(['automation', 'pacing'], { ...draft.automation.pacing });
         set(['automation', 'walk'], { ...draft.automation.walk });
         set(['automation', 'safety', 'hangUp'], { ...draft.automation.hangUp });
         set(['automation', 'safety', 'retreat'], { ...draft.automation.retreat });
         set(['automation', 'safety', 'fleeGoto'], { ...draft.automation.fleeGoto });
-        set(['automation', 'safety', 'pvp'], { ...draft.automation.pvp });
         set(['automation', 'combat'], { ...draft.automation.combat });
         set(['automation', 'party'], { ...draft.automation.party });
         set(['automation', 'health'], { ...draft.automation.health });
         set(['automation', 'movement'], { ...draft.automation.movement });
         set(['automation', 'hunting'], { ...draft.automation.hunting });
         set(['automation', 'quests'], { ...draft.automation.quests });
-        set(['automation', 'gear'], { ...draft.automation.gear });
         set(['automation', 'spells'], { ...draft.automation.spells });
         set(['automation', 'loot'], { ...draft.automation.loot });
         set(['automation', 'remotes'], { ...draft.automation.remotes });
@@ -1376,12 +1345,9 @@ export class SettingsEditor {
          * options template already keeps: defaults live in exactly one place.
          */
         hangUp: effective?.automation.safety.hangUp ?? DEFAULT_CONFIG.automation.safety.hangUp,
-        retreat: retreatOf(
-          effective?.automation.safety.retreat ?? DEFAULT_CONFIG.automation.safety.retreat
-        ),
+        retreat: effective?.automation.safety.retreat ?? DEFAULT_CONFIG.automation.safety.retreat,
         fleeGoto:
           effective?.automation.safety.fleeGoto ?? DEFAULT_CONFIG.automation.safety.fleeGoto,
-        pvp: effective?.automation.safety.pvp ?? DEFAULT_CONFIG.automation.safety.pvp,
         stats: effective?.logging.stats ?? DEFAULT_CONFIG.logging.stats,
         statsLinked:
           isRecord(account) &&
@@ -1409,7 +1375,6 @@ export class SettingsEditor {
         movement: effective?.automation.movement ?? DEFAULT_CONFIG.automation.movement,
         hunting: effective?.automation.hunting ?? DEFAULT_CONFIG.automation.hunting,
         quests: effective?.automation.quests ?? DEFAULT_CONFIG.automation.quests,
-        gear: effective?.automation.gear ?? DEFAULT_CONFIG.automation.gear,
         // The item rows the character's own, for `monsters`' reason above.
         loot: {
           ...(effective?.automation.loot ?? DEFAULT_CONFIG.automation.loot),
@@ -1547,25 +1512,6 @@ function text(value: unknown): string {
   return typeof value === 'string' ? value : '';
 }
 
-/**
- * The retreat fields the form asks about, and not `cooldownMs`.
- *
- * That one is a floor on retrying rather than a decision about a character, so
- * it is not on the screen — and a payload carrying a field nothing renders is a
- * payload that invites somebody to render it. The way out and the haven are
- * decisions about a character, and are.
- */
-function retreatOf(retreat: RetreatConfig): ProfileEditable['retreat'] {
-  return {
-    enabled: retreat.enabled,
-    belowHealth: retreat.belowHealth,
-    belowMana: retreat.belowMana,
-    whenOutnumbered: retreat.whenOutnumbered,
-    strategy: retreat.strategy,
-    safeHavenRoom: retreat.safeHavenRoom
-  };
-}
-
 /** `ui.theme` as the file states it, or '' when it follows the options file. */
 function themeOf(ui: unknown): ThemePreference | '' {
   if (typeof ui !== 'object' || ui === null) return '';
@@ -1602,9 +1548,8 @@ function blank(id: string): ProfileEditable {
     hasPassword: false,
     login: [],
     hangUp: DEFAULT_CONFIG.automation.safety.hangUp,
-    retreat: retreatOf(DEFAULT_CONFIG.automation.safety.retreat),
+    retreat: DEFAULT_CONFIG.automation.safety.retreat,
     fleeGoto: DEFAULT_CONFIG.automation.safety.fleeGoto,
-    pvp: DEFAULT_CONFIG.automation.safety.pvp,
     stats: DEFAULT_CONFIG.logging.stats,
     statsLinked: false,
     megamud: defaultSettings(),
@@ -1615,7 +1560,6 @@ function blank(id: string): ProfileEditable {
     movement: DEFAULT_CONFIG.automation.movement,
     hunting: DEFAULT_CONFIG.automation.hunting,
     quests: DEFAULT_CONFIG.automation.quests,
-    gear: DEFAULT_CONFIG.automation.gear,
     loot: DEFAULT_CONFIG.automation.loot,
     search: DEFAULT_CONFIG.automation.search,
     remotes: DEFAULT_CONFIG.automation.remotes,

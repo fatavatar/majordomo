@@ -156,8 +156,8 @@ type Phase =
    * Its own phase because the handover is not instant: collecting is a loop,
    * and a loop steps on without waiting for the server to confirm what it
    * picked up, so at the moment the pack holds the thing there is a move of
-   * this client's own still on the wire and `Walker.start` refuses to plan
-   * across it. `why` is the last refusal, said only if the window runs out.
+   * this client's own still on the wire and no walk can be planned across
+   * it. `why` is the last refusal, said only if the window runs out.
    */
   | { kind: 'delivering'; item: Wanted; owes: Route; run: boolean; until: number; why: string };
 
@@ -183,17 +183,6 @@ export class ItemErrand {
   }
 
   /**
-   * Go and get every one of `items`, one after another, then walk `owes`.
-   *
-   * Returns a refusal for the window that asked — this is a press, so the
-   * person is looking at the answer — and null once something is under way.
-   * **The pack is asked first**: what the character already carries is not
-   * fetched again, and a way whose every item is in the pack is walked now,
-   * which is the commonest case for a key collected on an earlier trip. Each
-   * item is fetched once: the list is the way's, deduplicated by id. `run` is
-   * *Run it*, carried to the walk the errand ends in.
-   */
-  /**
    * Whether this errand is after `name`: the item it is fetching or one still
    * to come. Never when idle, nor once the pack holds what it came for and it
    * is walking on. Names as the room prints them, so case aside.
@@ -206,6 +195,17 @@ export class ItemErrand {
     return [phase.item, ...phase.rest].some((item) => item.name.trim().toLowerCase() === asked);
   }
 
+  /**
+   * Go and get every one of `items`, one after another, then walk `owes`.
+   *
+   * Returns a refusal for the window that asked — this is a press, so the
+   * person is looking at the answer — and null once something is under way.
+   * **The pack is asked first**: what the character already carries is not
+   * fetched again, and a way whose every item is in the pack is walked now,
+   * which is the commonest case for a key collected on an earlier trip. Each
+   * item is fetched once: the list is the way's, deduplicated by id. `run` is
+   * *Run it*, carried to the walk the errand ends in.
+   */
   collect(
     items: readonly Wanted[],
     owes: Route | null,
@@ -439,12 +439,6 @@ export class ItemErrand {
   }
 
   /**
-   * The player took the character somewhere else, or died: the errand is off.
-   *
-   * Said out loud, because an errand that stopped silently is a route the
-   * player thinks is still owed.
-   */
-  /**
    * What `item` needs first — what an answer takes, or what the way to its
    * source wants carried — fetched before it, in the order given, and `item`
    * fetched after. Refused where one of them is the item itself or one it is
@@ -474,6 +468,12 @@ export class ItemErrand {
     );
   }
 
+  /**
+   * The player took the character somewhere else, or died: the errand is off.
+   *
+   * Said out loud, because an errand that stopped silently is a route the
+   * player thinks is still owed.
+   */
   abandon(reason: string): void {
     if (this.phase.kind === 'idle') return;
     const { item } = this.phase;

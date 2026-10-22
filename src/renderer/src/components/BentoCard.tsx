@@ -20,6 +20,22 @@ import { THEMES, type Appearance, type ThemeId } from '@shared/themes';
 import { readable, useCopyMenu } from '../hooks/useCopyMenu';
 
 /**
+ * One toggle in a card's heading. See `BentoCardProps.filters`.
+ *
+ * `disabled` draws it in its own state and refuses the press — the shape a
+ * master toggle needs, since *All is on so this one does not decide right now*
+ * is a different fact from *this one is off*, and hiding the row under a
+ * master would lose the state the reader set.
+ */
+export interface CardFilter {
+  id: string;
+  label: string;
+  on: boolean;
+  disabled?: boolean;
+  toggle(): void;
+}
+
+/**
  * One face of a card.
  *
  * Every face names itself in the heading, and the **first face is ordinarily
@@ -36,22 +52,6 @@ import { readable, useCopyMenu } from '../hooks/useCopyMenu';
  * it sits and the convention is stated here instead: pass the card's title for
  * face 0 unless the faces are genuinely both something else.
  */
-/**
- * One toggle in a card's heading. See `BentoCardProps.filters`.
- *
- * `disabled` draws it in its own state and refuses the press — the shape a
- * master toggle needs, since *All is on so this one does not decide right now*
- * is a different fact from *this one is off*, and hiding the row under a
- * master would lose the state the reader set.
- */
-export interface CardFilter {
-  id: string;
-  label: string;
-  on: boolean;
-  disabled?: boolean;
-  toggle(): void;
-}
-
 export interface CardTab {
   id: string;
   /** The crumb. For face 0 this is ordinarily the card's own title. */
@@ -235,10 +235,6 @@ export interface BentoCardProps {
    */
   returnFocus?: () => void;
   /**
-   * Set when the card is floating over the console rather than sitting on the
-   * rail: how solid it is, and how to change it.
-   */
-  /**
    * Whether this floating card stays in view whichever character is shown,
    * and the control that says so. Only a float can be pinned: a rail is per
    * character by design, and a pinned float is the deliberate exception.
@@ -284,6 +280,10 @@ export interface BentoCardProps {
     clientTheme: ThemeId;
     onChange(change: Partial<CardSettings>): void;
   };
+  /**
+   * Set when the card is floating over the console rather than sitting on the
+   * rail: how solid it is, and how to change it.
+   */
   translucency?: {
     /** 0–1. One slider, two alphas — see `floatAlphas`. */
     solidity: number;

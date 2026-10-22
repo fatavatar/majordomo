@@ -733,14 +733,6 @@ function readFloat(value: unknown): FloatState | null {
 }
 
 /**
- * What a stored settings block actually says, field by field.
- *
- * Parsed, not trusted: this comes out of `localStorage`, which an older build,
- * a hand edit or a half-written value can all have been through. A field that
- * is not the type it should be is **absent**, which means the card's own
- * default — the one answer that is never wrong.
- */
-/**
  * The light and dark halves of a card's own palette, as far as they are still
  * real themes.
  *
@@ -765,6 +757,14 @@ function isCount(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value) && value >= 0;
 }
 
+/**
+ * What a stored settings block actually says, field by field.
+ *
+ * Parsed, not trusted: this comes out of `localStorage`, which an older build,
+ * a hand edit or a half-written value can all have been through. A field that
+ * is not the type it should be is **absent**, which means the card's own
+ * default — the one answer that is never wrong.
+ */
 function readSettings(value: unknown): Partial<Record<CardId, CardSettings>> {
   if (typeof value !== 'object' || value === null) return {};
   const out: Partial<Record<CardId, CardSettings>> = {};

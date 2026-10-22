@@ -32,7 +32,6 @@ export interface Pending {
   tag: number;
 }
 
-/** `0x42d9f0`: send `text` now. Returns 1. */
 /**
  * How long a command's echo is waited for before lines count toward its
  * answer anyway, for a realm (or a moment) that does not echo.
@@ -72,6 +71,7 @@ export function echoAwaited(s: Session, rest: string | null): boolean {
   return s.echoes.length > 0;
 }
 
+/** `0x42d9f0`: send `text` now. Returns 1. */
 export function send(s: Session, text: string): number {
   s.lastAbil.valid = 0;
   if (text !== '\r' && text !== 'par\r') {

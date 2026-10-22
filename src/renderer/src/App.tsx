@@ -280,7 +280,8 @@ interface SessionView {
    */
   notices: Notice[];
   /**
-   * What has been raised while nobody was looking at this character.
+   * The tab alerts raised while this character was not on screen
+   * (`TAB_ALERTS`), and the newest.
    *
    * The point of running four characters is that three of them are unattended,
    * and the point of a tab rail is that it reports on the ones whose terminal
@@ -292,7 +293,6 @@ interface SessionView {
    * means. Counted rather than kept: the notices themselves are already in
    * `notices`, and a tab has room for a number.
    */
-  /** The tab alerts raised while this character was not on screen (`TAB_ALERTS`), and the newest. */
   unseen: { alerts: number; latest: string | null };
   /**
    * What this character has found that the realm data does not have.
@@ -421,7 +421,6 @@ function missed(
 
 const EMPTY_UNSEEN = { alerts: 0, latest: null } as const;
 
-/** Keeps a log bounded without reallocating it on every append. */
 /**
  * Where a room's quick view hangs, from whatever named the room.
  *
@@ -444,6 +443,7 @@ function roomAnchor(at: Element): PopoverAnchor {
   };
 }
 
+/** Keeps a log bounded without reallocating it on every append. */
 function capped<T>(log: T[], entry: T, limit: number): T[] {
   const next = [...log, entry];
   return next.length > limit ? next.slice(-limit) : next;
@@ -658,7 +658,6 @@ function emptyCardHidden(chrome: CardChrome, id: CardId, hasSomethingToSay: bool
   return hidesWhenEmpty(chrome.settings?.value ?? NO_CARD_SETTINGS, id);
 }
 
-/** The card for an id, drawn from a context. Exhaustive over the vocabulary. */
 /**
  * What MMUD Explorer's answers for a character turn on: its class, race,
  * level and what it wears. The Explorer's lists and the Gear card are read
@@ -677,6 +676,7 @@ function wornKey(character: CharacterState): string {
   ].join('|');
 }
 
+/** The card for an id, drawn from a context. Exhaustive over the vocabulary. */
 function cardElement(id: CardId, ctx: CardContext): ReactNode {
   const { chrome, character, view } = ctx;
   switch (id) {
@@ -1875,11 +1875,6 @@ export default function App() {
   }, [uiFonts, config.ui.font.size, terminalFonts]);
 
   /**
-   * The terminal's handle, published once xterm has mounted. Chunks that arrive
-   * before then are buffered rather than dropped, so nothing is lost if the
-   * main process pushes during the first paint.
-   */
-  /**
    * Every mounted terminal, by character.
    *
    * They all stay mounted (see `SessionTerminal`), so this is how the window
@@ -1891,7 +1886,6 @@ export default function App() {
   const [handleTick, setHandleTick] = useState(0);
   const pendingNotices = useRef<string[]>([]);
 
-  /** The character on screen, for callbacks that must not go stale. */
   /**
    * Which characters are on screen right now.
    *
@@ -1902,6 +1896,7 @@ export default function App() {
    */
   const shownRef = useRef<Set<SessionId>>(new Set());
 
+  /** The character on screen, for callbacks that must not go stale. */
   const activeRef = useRef(session);
   useEffect(() => {
     activeRef.current = session;
@@ -2479,14 +2474,6 @@ export default function App() {
   }, [mustMakeCharacter]);
 
   /**
-   * The HUD appears on its own, without the diagnostics rail.
-   *
-   * Vitals and Room are what the player reads while playing; putting them
-   * behind a toggle labelled "diagnostics" meant they were never seen. The rail
-   * is therefore present whenever there is *either* HUD content or diagnostics
-   * to show, and each half decides for itself.
-   */
-  /**
    * Whether the Navigation card is still worth the space it takes.
    *
    * A walk or a loop in progress always is. A *finished* walk is news for a
@@ -2540,6 +2527,14 @@ export default function App() {
    * So the rail keeps its space and says what it is waiting for instead.
    */
   const hudOpen = hudPreference === 'on';
+  /**
+   * The HUD appears on its own, without the diagnostics rail.
+   *
+   * Vitals and Room are what the player reads while playing; putting them
+   * behind a toggle labelled "diagnostics" meant they were never seen. The rail
+   * is therefore present whenever there is *either* HUD content or diagnostics
+   * to show, and each half decides for itself.
+   */
   const railVisible = hudOpen || railOpen;
 
   const connected = state.phase === 'connected';
@@ -3085,10 +3080,6 @@ export default function App() {
   const toggleRail = useCallback(() => setRailOpen((open) => !open), []);
 
   /**
-   * Search is a dialog that takes typed input, so closing it hands focus back
-   * to the terminal — the same contract the palette honours.
-   */
-  /**
    * The debug view's three doors into main, bundled once.
    *
    * A bundle rather than three props threaded through, and memoised on `api`
@@ -3111,6 +3102,10 @@ export default function App() {
     returnFocus();
   }, [returnFocus]);
 
+  /**
+   * Search is a dialog that takes typed input, so closing it hands focus back
+   * to the terminal — the same contract the palette honours.
+   */
   const closeSearch = useCallback(() => {
     setSearchOpen(false);
     setSearchResult(undefined);
@@ -3130,13 +3125,6 @@ export default function App() {
     [activeTerminal]
   );
 
-  /**
-   * Stable callbacks for the settings screen.
-   *
-   * Inline arrows would be a new function on every render, and a child that
-   * keys an effect on one then runs it on every render — which is how a refused
-   * save came to flash and vanish before anybody could read it.
-   */
   /**
    * A loop handed out as a file (2026-10-19): this client's own loop file for
    * another player to import, or MegaMUD's path file for the character
@@ -3160,6 +3148,13 @@ export default function App() {
     [api]
   );
 
+  /**
+   * Stable callbacks for the settings screen.
+   *
+   * Inline arrows would be a new function on every render, and a child that
+   * keys an effect on one then runs it on every render — which is how a refused
+   * save came to flash and vanish before anybody could read it.
+   */
   const settingsApi = useMemo(
     () => ({
       load: () => api.settingsSnapshot(),
@@ -5492,19 +5487,6 @@ export default function App() {
   );
 
   /**
-   * One card, wherever it is.
-   *
-   * The rail and the float layer render from the same function on purpose:
-   * dragging a card out of the rail must not change what it *is*, and two
-   * copies of this switch would drift the moment one of them gained a prop.
-   * The chrome — close, drag handle, translucency — is assembled here too, so
-   * every card gets the same set without listing it eleven times.
-   *
-   * Returns `null` for a card with nothing honest to say yet: a map of nowhere
-   * and a walk that is not happening are cards that state nothing, which
-   * docs/ui-design.md §3.2 does not allow.
-   */
-  /**
    * The chrome for a card, cached so its identity is stable across renders.
    *
    * Every card is memoised, and memoisation is only as good as the props: a
@@ -5612,6 +5594,19 @@ export default function App() {
     [returnFocus, theme]
   );
 
+  /**
+   * One card, wherever it is.
+   *
+   * The rail and the float layer render from the same function on purpose:
+   * dragging a card out of the rail must not change what it *is*, and two
+   * copies of this switch would drift the moment one of them gained a prop.
+   * The chrome — close, drag handle, translucency — is assembled here too, so
+   * every card gets the same set without listing it eleven times.
+   *
+   * Returns `null` for a card with nothing honest to say yet: a map of nowhere
+   * and a walk that is not happening are cards that state nothing, which
+   * docs/ui-design.md §3.2 does not allow.
+   */
   const renderCard = useCallback(
     (id: CardId): ReactNode => {
       // Diagnostics are still a group, toggled together by the rail shortcut.

@@ -401,14 +401,6 @@ export function dropConnection(s: Session): void {
   }
 }
 
-/**
- * `0x4b3f70` (`@reset`, and the menu's Reset): every flag, wait and
- * condition MegaMUD keeps cleared, the room's monsters and players
- * forgotten (`0x4721d0`, `0x472240`), the Messages.md rows rested on let go,
- * the session's statistics started again (`0x4a8850`, `0x4a8640`,
- * `0x4a88f0`) and the players seen this session unseen. The terminal's
- * own reset (`0x418280`) is ours.
- */
 /** `0x4721d0`: the monsters marked in the room forgotten, and the creatures not kept dropped. */
 export function forgetRoomMonsters(s: Session): void {
   s.monsterMarks = [];
@@ -424,6 +416,14 @@ export function forgetRoomPlayers(s: Session): void {
   s.playerMarks = [];
 }
 
+/**
+ * `0x4b3f70` (`@reset`, and the menu's Reset): every flag, wait and
+ * condition MegaMUD keeps cleared, the room's monsters and players
+ * forgotten (`0x4721d0`, `0x472240`), the Messages.md rows rested on let go,
+ * the session's statistics started again (`0x4a8850`, `0x4a8640`,
+ * `0x4a88f0`) and the players seen this session unseen. The terminal's
+ * own reset (`0x418280`) is ours.
+ */
 export function resetAll(s: Session): void {
   s.stateAwaited = State.Nothing;
   forgetRoomMonsters(s);

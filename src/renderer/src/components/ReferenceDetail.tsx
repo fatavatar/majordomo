@@ -681,15 +681,6 @@ function ArmourRows({ armour }: { armour: NonNullable<WorldItem['armour']> }) {
 }
 
 /**
- * What one item is, by what kind of item it is.
- *
- * Armour is not a weapon is not a scroll, and each kind leads with its own
- * numbers: a weapon with its damage, armour with what it stops, a scroll or
- * potion with how many uses it has. The rows every item shares — price,
- * weight, where it comes from — follow. A kind the realm did not name shows
- * only those, and says so rather than inventing a heading.
- */
-/**
  * What an item *does*, from `Items.Abil-n` / `AbilVal-n` — realm format 12.
  *
  * The realm's whole effect system, and the client decoded none of it until
@@ -991,6 +982,15 @@ function GivenBy({
   );
 }
 
+/**
+ * What one item is, by what kind of item it is.
+ *
+ * Armour is not a weapon is not a scroll, and each kind leads with its own
+ * numbers: a weapon with its damage, armour with what it stops, a scroll or
+ * potion with how many uses it has. The rows every item shares — price,
+ * weight, where it comes from — follow. A kind the realm did not name shows
+ * only those, and says so rather than inventing a heading.
+ */
 function ItemDetail({
   item,
   realm,

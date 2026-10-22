@@ -39,9 +39,14 @@ import { resolveProfile } from '../../src/shared/profiles.ts';
  * *skipping cleanly*: `localProfiles()` matched no character, each script said
  * "no character configured" and exited zero. Which is the failure this module's
  * own header warns about, arriving through the one door it left open.
+ *
+ * `MUDENGINE_PROBE_HOST` and `MUDENGINE_PROBE_PORT` point the probes at
+ * another test realm (2026-10-22): `orohost` is upstream's, and not on every
+ * network these run on. The host named is the one sanctioned target for the
+ * run, so a profile's credentials go only to it.
  */
-export const HOST = 'orohost';
-export const PORT = 2427;
+export const HOST = process.env.MUDENGINE_PROBE_HOST?.trim() || 'orohost';
+export const PORT = Number(process.env.MUDENGINE_PROBE_PORT) || 2427;
 
 /**
  * The names that mean *this* realm.

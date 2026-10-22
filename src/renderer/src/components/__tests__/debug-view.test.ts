@@ -1,9 +1,3 @@
-import fs from 'node:fs';
-import path from 'node:path';
-import { describe, expect, it } from 'vitest';
-
-import type { DebugKind } from '@shared/debug';
-
 /**
  * The third half of a closed union, which is the one a compiler cannot see.
  *
@@ -18,6 +12,12 @@ import type { DebugKind } from '@shared/debug';
  * half is read out of its own source rather than restated here, because a test
  * that lists the kinds itself is a fourth half to keep in step.
  */
+import fs from 'node:fs';
+import path from 'node:path';
+import { describe, expect, it } from 'vitest';
+
+import type { DebugKind } from '@shared/debug';
+
 /** The repository root, so each half is named by the path a reader would use. */
 const root = path.resolve(__dirname, '..', '..', '..', '..', '..');
 const read = (file: string): string => fs.readFileSync(path.join(root, file), 'utf8');

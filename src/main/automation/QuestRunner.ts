@@ -4,12 +4,13 @@
  * `QuestPlan` says what each step gathers, where it happens and what is done
  * there, and nothing carried one. This does — one step at a time and one
  * thing at a time. The pack is read; each `Get` row is fetched the way its
- * source says (bought through `Supplies`, hunted through `ItemErrand`, asked
+ * source says (bought through the planner's `buy`, `SessionManager.megaBuy`,
+ * hunted through `ItemErrand`, asked
  * for or said at a script); the way to the act is walked as a leg; the act is
  * sent; and the outcome is **read**, never assumed — the counter `abil`
  * prints on GreaterMUD, the pack on a realm that prints none.
  *
- * An errand in `Supplies`' shape: it yields to a fight, a move and an escape,
+ * An errand in the item errand's shape: it yields to a fight, a move and an escape,
  * holds the lap rather than ending it, and says every refusal out loud
  * (`SafetyDecision`, action `quest`). Off under `automation.quests.enabled`.
  * See `mudengine-automation` § *A quest's plan is carried step by step, and
@@ -228,7 +229,7 @@ export class QuestRunner {
    *
    * The switch first, then whatever else has the character: a route the
    * player is walking is theirs and is not superseded, and a lap is held
-   * rather than ended, which is `Supplies`' rule.
+   * rather than ended, as every errand's is.
    */
   start(plan: QuestPlan, quest: Quest, state: CharacterState): string | null {
     if (!this.enabled || !this.config.enabled) {
@@ -355,10 +356,10 @@ export class QuestRunner {
         return;
       case 'walking':
         /*
-         * `Walker.start` raises no `ended` when it *replaces* a running walk,
-         * so a leg superseded by the player's own route would otherwise leave
-         * the run at `walking` for ever. The walker is asked instead: a leg
-         * that is no longer walking has ended one way or another.
+         * A walk raises no `ended` when another *replaces* it, so a leg
+         * superseded by the player's own route would otherwise leave the run
+         * at `walking` for ever. The planner is asked instead: a leg that is
+         * no longer walking has ended one way or another.
          */
         if (!this.planner.walking()) {
           this.onWalkEnded(false, null, state);
@@ -504,8 +505,8 @@ export class QuestRunner {
     /*
      * The character's own stock list, asked once per step. A torch that burnt
      * out three rooms ago is not in a plan drawn before the run started, and
-     * the run is the only thing holding the character — `Supplies` considers
-     * nothing at all while one is going. Whether it is worth the detour *now*
+     * the run is the only thing holding the character, and MegaMUD's own
+     * restocking waits for the release. Whether it is worth the detour *now*
      * is the planner's answer, priced against every leg the plan has left.
      */
     if (run.stocked !== run.at) {
@@ -593,7 +594,7 @@ export class QuestRunner {
         const count = item.count ?? 1;
         const at = source.at === undefined ? null : asRoomReference(source.at.room);
         /*
-         * `Supplies.fetch`'s row, addressed by room where the plan chose one
+         * The buying row, addressed by room where the plan chose one
          * — the field the shopping errand resolves without going back through
          * `shopPlace`, which refuses a name standing in several rooms.
          */
@@ -606,9 +607,9 @@ export class QuestRunner {
         };
         /*
          * And a shopping errand that would not *start* is the same kind of
-         * fact as one that came back empty: `Supplies.fetch` refuses for
-         * another errand running, an escape in flight and the walker's own
-         * `refusalMoveInFlight` — every one of them a moment.
+         * fact as one that came back empty: a purchase refuses for another
+         * errand running, an escape in flight and a move on the wire, every
+         * one of them a moment.
          */
         const refused = this.planner.buy(row);
         if (refused !== null) {

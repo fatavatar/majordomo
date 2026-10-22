@@ -124,8 +124,7 @@ export interface MessageTrigger {
   conversations: boolean;
   /**
    * Only meant while following a player through a special exit: answered
-   * for the leader this character follows, and never for anybody else
-   * (`MessageTriggers.chases`).
+   * for the leader this character follows, and never for anybody else.
    */
   chase: boolean;
   enabled: boolean;

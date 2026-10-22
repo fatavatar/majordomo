@@ -9,7 +9,6 @@ import { STOCK_COINS } from '@shared/coins';
 import { BBS_KEYS, type BbsKey } from '@shared/megamud/bbs';
 import type { StatlineFigures } from '@shared/statline';
 import type { TerminalPalette } from '@shared/themes';
-import type { GearSet } from '@shared/gear';
 import type { BankChoice, TrainerChoice, WardRule } from '@shared/world';
 import type { PotionRule, PotionWhen } from '@shared/config';
 import type { AlertRule } from '@shared/notifications';
@@ -91,13 +90,8 @@ import type { StreamEncoding } from '@shared/types';
 import {
   DEFAULT_CONFIG,
   DEFAULT_REALM_NAME,
-  RETREAT_STRATEGIES,
-  type EngagePolicy,
   type LocateMethod,
   type LootConfig,
-  type RetreatStrategy,
-  type PartyRank,
-  type PvpAction,
   type RewritesUiConfig,
   type SearchConfig
 } from '@shared/config';
@@ -301,6 +295,11 @@ function PlayerGrants({
 export interface SettingsScreenProps {
   open: boolean;
   /**
+   * The character whose tab is on screen, or null: settings opens on it and
+   * on its realm unless asked for another (2026-10-15).
+   */
+  current?: string | null;
+  /**
    * Which character to open on: a profile id, {@link SETTINGS_NEW_CHARACTER},
    * or `null` for wherever it was left.
    *
@@ -309,11 +308,6 @@ export interface SettingsScreenProps {
    * value every render — which is the trap that made a refused save flash and
    * vanish before anybody could read it.
    */
-  /**
-   * The character whose tab is on screen, or null: settings opens on it and
-   * on its realm unless asked for another (2026-10-15).
-   */
-  current?: string | null;
   openAt?: string | null;
   /**
    * What a character's percentage thresholds are percentages *of*.
@@ -526,13 +520,6 @@ function sectionLabel(section: Section): string {
   return section;
 }
 
-/**
- * Ours, under each MegaMUD tab, as the rail's jump targets (todo 02).
- *
- * Written down rather than read off the DOM, for the reason the rail gives:
- * each `id` matches the `data-fieldset` on the fieldset itself. A tab with
- * nothing of ours lists none; its own row goes to MegaMUD's page.
- */
 /** The realm page's sections (2026-10-15), each a part of its one form. */
 type RealmSection = 'realm' | 'loops' | 'messages' | 'monsters' | 'items' | 'spells' | 'megamud';
 
@@ -562,6 +549,13 @@ function realmSections(): NavSection[] {
   ];
 }
 
+/**
+ * Ours, under each MegaMUD tab, as the rail's jump targets (todo 02).
+ *
+ * Written down rather than read off the DOM, for the reason the rail gives:
+ * each `id` matches the `data-fieldset` on the fieldset itself. A tab with
+ * nothing of ours lists none; its own row goes to MegaMUD's page.
+ */
 const SECTION_FIELDSETS: Readonly<Record<Section, readonly NavFieldset[]>> = {
   login: [
     { id: 'login', label: t('settings.login.legend') },
@@ -610,19 +604,11 @@ interface CharacterForm {
   login: LoginStepDraft[];
   hangUp: boolean;
   hangUpBelow: string;
-  hangUpOnPlayer: boolean;
-  pvpNotifyGang: boolean;
-  pvpAction: PvpAction;
   /** Posting to the realm's mudstats board (`logging.stats`), and every how many seconds. */
   statsEnabled: boolean;
   statsEvery: string;
   retreat: boolean;
   retreatBelow: string;
-  /** MegaMUD's `ManaRun%`, as a percentage string like `retreatBelow`. */
-  retreatBelowMana: string;
-  retreatOutnumbered: string;
-  retreatStrategy: string;
-  retreatHaven: string;
   fleeGoto: boolean;
   fleeGotoBelow: string;
   fleeGotoDestination: string;
@@ -637,22 +623,11 @@ interface CharacterForm {
   combat: boolean;
   combatAttack: string;
   combatOpener: string;
-  /** Hide (or sneak, while moving) between fights so the opener lands again. */
-  combatHideForOpener: boolean;
-  combatEngage: EngagePolicy;
-  combatRetaliate: boolean;
-  combatDefendAfterRounds: string;
   /** Leave alone a monster a stranger is already fighting — MegaMUD's PoliteAttacks. */
   combatPoliteAttacks: boolean;
   combatMaxMobs: string;
-  /** Share of current health a fight may be expected to cost, as a percentage string. */
   /** Following somebody — `automation.party`. */
-  partyAssist: boolean;
   partyDefend: boolean;
-  partyRest: boolean;
-  /** `party.autoRank`: keep this character at `partyPreferredRank`. */
-  partyAutoRank: boolean;
-  partyPreferredRank: PartyRank;
   /** `party.askForHealBelow`, as a percentage string. */
   partyAskHeal: string;
   /** `party.waitForMembersBelow`, as a percentage string. */
@@ -663,23 +638,15 @@ interface CharacterForm {
   partyRequestHealth: boolean;
   partyParEvery: string;
   partyParAfterRound: boolean;
-  combatRefresh: string;
   /** This character's own monster rows (`combat.monsters`). */
   combatMonsters: MonsterRule[];
-  combatMaxTargetHealth: string;
   combatMinMobs: string;
   combatMaxMonsterExp: string;
-  /** `combat.minSurvival`, as a percentage string. */
-  combatMinSurvival: string;
   /** Health — resting and meditating. Percentages on screen, fractions on disk. */
   restBelow: string;
   restTo: string;
-  restBeforeTraps: string;
-  /** Rest next door to a lair rather than in it. */
-  restNextDoor: boolean;
   meditateBelow: string;
   meditateTo: string;
-  /** And where a running loop holds still and walks on again. */
   /** The player's own *use this when that* rules. See `PotionList`. */
   potionRules: PotionRule[];
   /** The realm's own half of those rules — `automation.health.useWards`. */
@@ -689,19 +656,10 @@ interface CharacterForm {
   spellAreaAttack: string;
   /** Derive the round spell and the cures from the book. */
   spellAutoChoose: boolean;
-  /** *Auto Choose Best Heal*: each heal picked from the book. See `SpellsConfig.autoChooseHeal`. */
-  spellAutoChooseHeal: boolean;
   spellAreaMinMobs: string;
-  spellAreaMinMana: string;
-  /** The fallback once the round spell has no effect, and the per-target cast caps (0 is no limit). */
-  spellAttackFallback: string;
+  /** The per-target cast caps (0 is no limit). */
   spellAttackCasts: string;
   spellAreaCasts: string;
-  /** The drain spells cast instead while health is low, and the pair that starts and stops it. */
-  spellDrain: string;
-  spellAreaDrain: string;
-  spellDrainBelow: string;
-  spellDrainTo: string;
   /**
    * The heal, per character: a spell cast on this character, a spell cast on a
    * member, and the pair of figures that start and stop the casting.
@@ -715,34 +673,20 @@ interface CharacterForm {
   spellHealBelow: string;
   spellHealBelowInCombat: string;
   spellHealTo: string;
-  spellHealParty: boolean;
   spellMinMana: string;
   /** Cures by affliction, and the blessings kept up by events. */
   spellCures: CuresDraft;
   /** MegaMUD's regen and when-full spells. */
   spellRegen: RegenDraft;
   spellBlessings: BlessingDraft[];
-  spellNotifyWearOff: boolean;
   spellAutoBless: boolean;
-  spellInvokeItems: boolean;
   /** Movement — what a route may do on the way. */
-  openDoors: boolean;
-  openTries: string;
   pickLocks: boolean;
   pickTries: string;
-  bashDoors: boolean;
   bashTries: string;
   sneak: boolean;
   provideLight: boolean;
-  /** Go back for the kit after a death. */
-  recoverGear: boolean;
-  recoverGearTries: string;
-  recoverGearFloor: string;
   lightDimRooms: boolean;
-  extinguishInLight: boolean;
-  /** Conditions as waits, inverted: off waits blindness / poison out. */
-  /** The dangerous regions route planning keeps out of unless told. */
-  fightOnArrival: boolean;
   /** Ways and places routes keep out of. See `MovementConfig`. */
   keepOutOf: string[];
   /** Bend down for a key an exit of this room needs. */
@@ -753,12 +697,6 @@ interface CharacterForm {
   huntRadius: string;
   /** Running a quest's plan — `automation.quests`. */
   questsEnabled: boolean;
-  /** Which kit to be in, and when — `automation.gear`. */
-  gearEnabled: boolean;
-  gearSets: GearSet[];
-  gearOffRoundItem: string;
-  /** As text, so a half-typed figure is not read as 0. */
-  gearOffRoundEvery: string;
   /*
    * Held whole, like `rewrites`, rather than flattened into fields.
    * They are the *same blocks the Global page edits*, and the controls
@@ -844,10 +782,6 @@ function formOf(entry: ProfileEditable): CharacterForm {
     login: entry.login,
     retreat: entry.retreat.enabled,
     retreatBelow: String(Math.round(entry.retreat.belowHealth * 100)),
-    retreatBelowMana: String(Math.round(entry.retreat.belowMana * 100)),
-    retreatOutnumbered: String(entry.retreat.whenOutnumbered),
-    retreatStrategy: entry.retreat.strategy,
-    retreatHaven: entry.retreat.safeHavenRoom,
     fleeGoto: entry.fleeGoto.enabled,
     fleeGotoBelow: String(Math.round(entry.fleeGoto.belowHealth * 100)),
     fleeGotoDestination: entry.fleeGoto.destination,
@@ -855,25 +789,14 @@ function formOf(entry: ProfileEditable): CharacterForm {
     // As a percentage, because that is how somebody thinks about health. The
     // file keeps a fraction, so the whole client holds one representation.
     hangUpBelow: String(Math.round(entry.hangUp.belowHealth * 100)),
-    hangUpOnPlayer: entry.hangUp.onPlayerInRoom,
-    pvpNotifyGang: entry.pvp.notifyGang,
-    pvpAction: entry.pvp.action,
     statsEnabled: entry.stats.enabled,
     statsEvery: String(entry.stats.everySeconds),
     combat: entry.combat.enabled,
     combatAttack: entry.combat.attack,
     combatOpener: entry.combat.opener,
-    combatHideForOpener: entry.combat.hideForOpener,
-    combatEngage: entry.combat.engage,
-    combatRetaliate: entry.combat.retaliate,
-    combatDefendAfterRounds: String(entry.combat.defendAfterRounds),
     combatPoliteAttacks: entry.combat.politeAttacks,
     combatMaxMobs: String(entry.combat.maxMobs),
-    partyAssist: entry.party.assistLeader,
     partyDefend: entry.party.defendParty,
-    partyRest: entry.party.restWithLeader,
-    partyAutoRank: entry.party.autoRank,
-    partyPreferredRank: entry.party.preferredRank,
     partyAskHeal: percent(entry.party.askForHealBelow),
     partyWaitBelow: percent(entry.party.waitForMembersBelow),
     partyWaitMinutes: String(entry.party.waitNoLongerMinutes),
@@ -882,73 +805,42 @@ function formOf(entry: ProfileEditable): CharacterForm {
     partyRequestHealth: entry.party.requestPartyHealth,
     partyParEvery: String(entry.party.parEverySeconds),
     partyParAfterRound: entry.party.parAfterRound,
-    // A percentage on screen and a fraction in the file, like every other
-    // threshold here: one representation on disk, the one people think in on
-    // the form.
-    combatRefresh: String(entry.combat.refreshRounds),
     combatMonsters: entry.combat.monsters.map((row) => ({ ...row })),
-    combatMaxTargetHealth: String(entry.combat.maxTargetHealth),
     combatMinMobs: String(entry.combat.minMobs),
     combatMaxMonsterExp: String(entry.combat.maxMonsterExperience),
-    combatMinSurvival: percent(entry.combat.minSurvival),
     restBelow: percent(entry.health.restBelow),
     restTo: percent(entry.health.restTo),
-    restBeforeTraps: percent(entry.health.restBeforeTraps),
     meditateBelow: percent(entry.health.meditateBelow),
     meditateTo: percent(entry.health.meditateTo),
-    restNextDoor: entry.health.restNextDoor,
     potionRules: entry.health.potions.map((rule) => ({ ...rule })),
     useWards: entry.health.useWards,
     spellAttack: entry.spells.attack,
     spellAutoChoose: entry.spells.autoChoose,
-    spellAutoChooseHeal: entry.spells.autoChooseHeal,
     spellAreaAttack: entry.spells.areaAttack,
     spellAreaMinMobs: String(entry.spells.areaMinMobs),
-    spellAreaMinMana: percent(entry.spells.areaMinMana),
-    spellAttackFallback: entry.spells.attackFallback,
     spellAttackCasts: String(entry.spells.attackCasts),
     spellAreaCasts: String(entry.spells.areaCasts),
-    spellDrain: entry.spells.drain,
-    spellAreaDrain: entry.spells.areaDrain,
-    spellDrainBelow: percent(entry.spells.drainBelow),
-    spellDrainTo: percent(entry.spells.drainTo),
     spellHeal: entry.spells.heal,
     spellHealPartyWith: entry.spells.healPartyWith,
     spellHealBelow: percent(entry.spells.healBelow),
     spellHealBelowInCombat: percent(entry.spells.healBelowInCombat),
     spellHealTo: percent(entry.spells.healTo),
-    spellHealParty: entry.spells.healParty,
     spellMinMana: percent(entry.spells.minMana),
     spellCures: { ...entry.spells.cures },
     spellRegen: { ...entry.spells.regen },
     spellBlessings: entry.spells.blessings.map((blessing) => ({ ...blessing })),
-    spellNotifyWearOff: entry.spells.notifyPartyOnWearOff,
     spellAutoBless: entry.spells.autoBless,
-    spellInvokeItems: entry.spells.invokeItems,
-    openDoors: entry.movement.openDoors,
-    openTries: String(entry.movement.openTries),
     pickLocks: entry.movement.pickLocks,
     pickTries: String(entry.movement.pickTries),
-    bashDoors: entry.movement.bashDoors,
     bashTries: String(entry.movement.bashTries),
     sneak: entry.movement.sneak,
     provideLight: entry.movement.provideLight,
-    recoverGear: entry.movement.recoverGear,
-    recoverGearTries: String(entry.movement.recoverGearTries),
-    recoverGearFloor: String(entry.movement.recoverGearFloor),
     lightDimRooms: entry.movement.lightDimRooms,
-    extinguishInLight: entry.movement.extinguishInLight,
-    fightOnArrival: entry.movement.fightOnArrival,
     keepOutOf: [...entry.movement.keepOutOf],
     collectKeys: entry.movement.collectKeys,
     huntAuto: entry.hunting.enabled,
     huntRadius: entry.hunting.radius > 0 ? String(entry.hunting.radius) : '',
     questsEnabled: entry.quests.enabled,
-    gearEnabled: entry.gear.enabled,
-    gearSets: entry.gear.sets.map((set) => ({ ...set, wear: [...set.wear] })),
-    gearOffRoundItem: entry.gear.offRound.item,
-    gearOffRoundEvery:
-      entry.gear.offRound.everyRounds > 0 ? String(entry.gear.offRound.everyRounds) : '',
     loot: structuredClone(entry.loot),
     search: { ...entry.search },
     // This character's *own* loops. What it inherits is shown beside them and
@@ -1047,13 +939,7 @@ function draftOf(form: CharacterForm): ProfileDraft {
     login: form.login,
     retreat: {
       enabled: form.retreat,
-      belowHealth: (Number.parseInt(form.retreatBelow, 10) || 0) / 100,
-      belowMana: (Number.parseInt(form.retreatBelowMana, 10) || 0) / 100,
-      whenOutnumbered: Number.parseInt(form.retreatOutnumbered, 10) || 0,
-      strategy: RETREAT_STRATEGIES.includes(form.retreatStrategy as RetreatStrategy)
-        ? (form.retreatStrategy as RetreatStrategy)
-        : 'step-back',
-      safeHavenRoom: form.retreatHaven.trim()
+      belowHealth: (Number.parseInt(form.retreatBelow, 10) || 0) / 100
     },
     fleeGoto: {
       enabled: form.fleeGoto,
@@ -1064,35 +950,22 @@ function draftOf(form: CharacterForm): ProfileDraft {
       enabled: form.combat,
       attack: form.combatAttack,
       opener: form.combatOpener,
-      hideForOpener: form.combatHideForOpener,
-      engage: form.combatEngage,
-      retaliate: form.combatRetaliate,
-      defendAfterRounds: Number.parseInt(form.combatDefendAfterRounds, 10) || 0,
       politeAttacks: form.combatPoliteAttacks,
       maxMobs: Number.parseInt(form.combatMaxMobs, 10) || 0,
-      refreshRounds: Number.parseInt(form.combatRefresh, 10) || 0,
       monsters: form.combatMonsters,
-      maxTargetHealth: Math.max(0, Number.parseInt(form.combatMaxTargetHealth, 10) || 0),
       minMobs: Math.max(0, Number.parseInt(form.combatMinMobs, 10) || 0),
-      maxMonsterExperience: Math.max(0, Number.parseInt(form.combatMaxMonsterExp, 10) || 0),
-      minSurvival: fractionOf(form.combatMinSurvival)
+      maxMonsterExperience: Math.max(0, Number.parseInt(form.combatMaxMonsterExp, 10) || 0)
     },
     hangUp: {
       enabled: form.hangUp,
-      belowHealth: (Number.parseInt(form.hangUpBelow, 10) || 0) / 100,
-      onPlayerInRoom: form.hangUpOnPlayer
+      belowHealth: (Number.parseInt(form.hangUpBelow, 10) || 0) / 100
     },
-    pvp: { notifyGang: form.pvpNotifyGang, action: form.pvpAction },
     stats: {
       enabled: form.statsEnabled,
       everySeconds: Math.max(15, Number.parseInt(form.statsEvery, 10) || 60)
     },
     party: {
-      assistLeader: form.partyAssist,
       defendParty: form.partyDefend,
-      restWithLeader: form.partyRest,
-      autoRank: form.partyAutoRank,
-      preferredRank: form.partyPreferredRank,
       askForHealBelow: fractionOf(form.partyAskHeal),
       waitForMembersBelow: fractionOf(form.partyWaitBelow),
       waitNoLongerMinutes: Number.parseInt(form.partyWaitMinutes, 10) || 0,
@@ -1105,10 +978,8 @@ function draftOf(form: CharacterForm): ProfileDraft {
     health: {
       restBelow: fractionOf(form.restBelow),
       restTo: fractionOf(form.restTo),
-      restBeforeTraps: fractionOf(form.restBeforeTraps),
       meditateBelow: fractionOf(form.meditateBelow),
       meditateTo: fractionOf(form.meditateTo),
-      restNextDoor: form.restNextDoor,
       // Kept whole, and a nameless row is dropped by `normalizePotionRules` the
       // way a nameless blessing is: a rule naming nothing fires on nothing.
       potions: form.potionRules.map((rule) => ({ ...rule, name: rule.name.trim() })),
@@ -1117,23 +988,15 @@ function draftOf(form: CharacterForm): ProfileDraft {
     spells: {
       attack: form.spellAttack.trim(),
       autoChoose: form.spellAutoChoose,
-      autoChooseHeal: form.spellAutoChooseHeal,
       areaAttack: form.spellAreaAttack.trim(),
       areaMinMobs: Math.max(1, Number.parseInt(form.spellAreaMinMobs, 10) || 3),
-      areaMinMana: fractionOf(form.spellAreaMinMana),
-      attackFallback: form.spellAttackFallback.trim(),
       attackCasts: Math.max(0, Number.parseInt(form.spellAttackCasts, 10) || 0),
       areaCasts: Math.max(0, Number.parseInt(form.spellAreaCasts, 10) || 0),
-      drain: form.spellDrain.trim(),
-      areaDrain: form.spellAreaDrain.trim(),
-      drainBelow: fractionOf(form.spellDrainBelow),
-      drainTo: fractionOf(form.spellDrainTo),
       heal: form.spellHeal.trim(),
       healPartyWith: form.spellHealPartyWith.trim(),
       healBelow: fractionOf(form.spellHealBelow),
       healBelowInCombat: fractionOf(form.spellHealBelowInCombat),
       healTo: fractionOf(form.spellHealTo),
-      healParty: form.spellHealParty,
       minMana: fractionOf(form.spellMinMana),
       cures: {
         blindness: form.spellCures.blindness.trim(),
@@ -1144,7 +1007,6 @@ function draftOf(form: CharacterForm): ProfileDraft {
       regen: {
         ...form.spellRegen,
         hp: form.spellRegen.hp.trim(),
-        mana: form.spellRegen.mana.trim(),
         hpFull: form.spellRegen.hpFull.trim(),
         manaFull: form.spellRegen.manaFull.trim()
       },
@@ -1152,25 +1014,15 @@ function draftOf(form: CharacterForm): ProfileDraft {
         ...blessing,
         spell: blessing.spell.trim()
       })),
-      notifyPartyOnWearOff: form.spellNotifyWearOff,
-      autoBless: form.spellAutoBless,
-      invokeItems: form.spellInvokeItems
+      autoBless: form.spellAutoBless
     },
     movement: {
-      openDoors: form.openDoors,
-      openTries: Number.parseInt(form.openTries, 10) || 0,
       pickLocks: form.pickLocks,
       pickTries: Number.parseInt(form.pickTries, 10) || 0,
-      bashDoors: form.bashDoors,
       bashTries: Number.parseInt(form.bashTries, 10) || 0,
       sneak: form.sneak,
       provideLight: form.provideLight,
-      recoverGear: form.recoverGear,
-      recoverGearTries: Number.parseInt(form.recoverGearTries, 10) || 0,
-      recoverGearFloor: Number.parseInt(form.recoverGearFloor, 10) || 0,
       lightDimRooms: form.lightDimRooms,
-      extinguishInLight: form.extinguishInLight,
-      fightOnArrival: form.fightOnArrival,
       keepOutOf: form.keepOutOf,
       collectKeys: form.collectKeys
     },
@@ -1181,21 +1033,6 @@ function draftOf(form: CharacterForm): ProfileDraft {
       radius: Number.parseInt(form.huntRadius, 10) || 0
     },
     quests: { enabled: form.questsEnabled },
-    gear: {
-      enabled: form.gearEnabled,
-      // Rows are kept as typed and dropped at the boundary, so a set being
-      // written does not vanish from under the caret on the next save.
-      sets: form.gearSets.map((set) => ({
-        ...set,
-        name: set.name.trim(),
-        mob: set.mob.trim(),
-        wear: set.wear.map((item) => item.trim()).filter((item) => item.length > 0)
-      })),
-      offRound: {
-        item: form.gearOffRoundItem.trim(),
-        everyRounds: Number.parseInt(form.gearOffRoundEvery, 10) || 0
-      }
-    },
     loot: form.loot,
     search: form.search,
     loops: form.loops,
@@ -1269,7 +1106,11 @@ function copyOf(entry: ProfileEditable): CharacterForm {
  * same split every other threshold here uses, and the reason the file keeps
  * fractions at all: a threshold means the same thing at every level only if it
  * is a fraction of maximum.
+ *
+ * This form keeps every field as the string in its box, so the percent is one too.
  */
+const percent = (fraction: number): string => String(percentOf(fraction));
+
 /**
  * A realm that does not exist yet, started from the Global defaults.
  *
@@ -1282,9 +1123,6 @@ function copyOf(entry: ProfileEditable): CharacterForm {
  * The host and the name are not carried, and that is the point rather than an
  * omission: they are what make it a different realm.
  */
-/** This form keeps every field as the string in its box, so the percent is one too. */
-const percent = (fraction: number): string => String(percentOf(fraction));
-
 function emptyServerForm(defaults: GlobalDraft | null): ServerDraft {
   return {
     name: '',
@@ -1341,7 +1179,6 @@ function emptyForm(
   const movement = defaults?.automation.movement ?? DEFAULT_MOVEMENT;
   const hunting = defaults?.automation.hunting ?? DEFAULT_CONFIG.automation.hunting;
   const quests = defaults?.automation.quests ?? DEFAULT_CONFIG.automation.quests;
-  const gear = defaults?.automation.gear ?? DEFAULT_CONFIG.automation.gear;
   const spells = defaults?.automation.spells ?? DEFAULT_SPELLS;
   const alerts = defaults?.ui.alerts ?? DEFAULT_ALERTS;
   const remotes = defaults?.automation.remotes ?? DEFAULT_CONFIG.automation.remotes;
@@ -1350,7 +1187,6 @@ function emptyForm(
   const retreat = defaults?.automation.retreat ?? DEFAULT_CONFIG.automation.safety.retreat;
   const fleeGoto = defaults?.automation.fleeGoto ?? DEFAULT_CONFIG.automation.safety.fleeGoto;
   const hangUp = defaults?.automation.hangUp ?? DEFAULT_CONFIG.automation.safety.hangUp;
-  const pvp = defaults?.automation.pvp ?? DEFAULT_CONFIG.automation.safety.pvp;
   const loot = defaults?.automation.loot ?? DEFAULT_CONFIG.automation.loot;
   const search = defaults?.automation.search ?? DEFAULT_CONFIG.automation.search;
 
@@ -1397,20 +1233,11 @@ function emptyForm(
     login: [],
     retreat: retreat.enabled,
     retreatBelow: percent(retreat.belowHealth),
-    retreatBelowMana: percent(retreat.belowMana),
-    retreatOutnumbered: String(retreat.whenOutnumbered),
-    retreatStrategy: retreat.strategy,
-    retreatHaven: retreat.safeHavenRoom,
     fleeGoto: fleeGoto.enabled,
     fleeGotoBelow: percent(fleeGoto.belowHealth),
     fleeGotoDestination: fleeGoto.destination,
     hangUp: hangUp.enabled,
     hangUpBelow: percent(hangUp.belowHealth),
-    // Not the options file's answer copied down: a copy would outrank the
-    // realm's own, and whether a realm charges is a fact about the realm.
-    hangUpOnPlayer: hangUp.onPlayerInRoom,
-    pvpNotifyGang: pvp.notifyGang,
-    pvpAction: pvp.action,
     // Off for a new character whatever the options file says: posting tells
     // the board to stop asking it, which is the player's to choose.
     statsEnabled: false,
@@ -1418,17 +1245,9 @@ function emptyForm(
     combat: combat.enabled,
     combatAttack: combat.attack,
     combatOpener: combat.opener,
-    combatHideForOpener: combat.hideForOpener,
-    combatEngage: combat.engage,
-    combatRetaliate: combat.retaliate,
-    combatDefendAfterRounds: String(combat.defendAfterRounds),
     combatPoliteAttacks: combat.politeAttacks,
     combatMaxMobs: String(combat.maxMobs),
-    partyAssist: party.assistLeader,
     partyDefend: party.defendParty,
-    partyRest: party.restWithLeader,
-    partyAutoRank: party.autoRank,
-    partyPreferredRank: party.preferredRank,
     partyAskHeal: percent(party.askForHealBelow),
     partyWaitBelow: percent(party.waitForMembersBelow),
     partyWaitMinutes: String(party.waitNoLongerMinutes),
@@ -1437,69 +1256,42 @@ function emptyForm(
     partyRequestHealth: party.requestPartyHealth,
     partyParEvery: String(party.parEverySeconds),
     partyParAfterRound: party.parAfterRound,
-    combatRefresh: String(combat.refreshRounds),
     combatMonsters: combat.monsters.map((row) => ({ ...row })),
-    combatMaxTargetHealth: String(combat.maxTargetHealth),
     combatMinMobs: String(combat.minMobs),
     combatMaxMonsterExp: String(combat.maxMonsterExperience),
-    combatMinSurvival: percent(combat.minSurvival),
     restBelow: percent(health.restBelow),
     restTo: percent(health.restTo),
-    restBeforeTraps: percent(health.restBeforeTraps),
     meditateBelow: percent(health.meditateBelow),
     meditateTo: percent(health.meditateTo),
-    restNextDoor: health.restNextDoor,
     potionRules: health.potions.map((rule) => ({ ...rule })),
     useWards: health.useWards,
     spellAttack: spells.attack,
     spellAutoChoose: spells.autoChoose,
-    spellAutoChooseHeal: spells.autoChooseHeal,
     spellAreaAttack: spells.areaAttack,
     spellAreaMinMobs: String(spells.areaMinMobs),
-    spellAreaMinMana: percent(spells.areaMinMana),
-    spellAttackFallback: spells.attackFallback,
     spellAttackCasts: String(spells.attackCasts),
     spellAreaCasts: String(spells.areaCasts),
-    spellDrain: spells.drain,
-    spellAreaDrain: spells.areaDrain,
-    spellDrainBelow: percent(spells.drainBelow),
-    spellDrainTo: percent(spells.drainTo),
     spellHeal: spells.heal,
     spellHealPartyWith: spells.healPartyWith,
     spellHealBelow: percent(spells.healBelow),
     spellHealBelowInCombat: percent(spells.healBelowInCombat),
     spellHealTo: percent(spells.healTo),
-    spellHealParty: spells.healParty,
     spellMinMana: percent(spells.minMana),
     spellCures: { ...spells.cures },
     spellRegen: { ...spells.regen },
     spellBlessings: spells.blessings.map((blessing) => ({ ...blessing })),
-    spellNotifyWearOff: spells.notifyPartyOnWearOff,
     spellAutoBless: spells.autoBless,
-    spellInvokeItems: spells.invokeItems,
-    openDoors: movement.openDoors,
-    openTries: String(movement.openTries),
     pickLocks: movement.pickLocks,
     pickTries: String(movement.pickTries),
-    bashDoors: movement.bashDoors,
     bashTries: String(movement.bashTries),
     sneak: movement.sneak,
     provideLight: movement.provideLight,
-    recoverGear: movement.recoverGear,
-    recoverGearTries: String(movement.recoverGearTries),
-    recoverGearFloor: String(movement.recoverGearFloor),
     lightDimRooms: movement.lightDimRooms,
-    extinguishInLight: movement.extinguishInLight,
-    fightOnArrival: movement.fightOnArrival,
     keepOutOf: [...movement.keepOutOf],
     collectKeys: movement.collectKeys,
     huntAuto: hunting.enabled,
     huntRadius: hunting.radius > 0 ? String(hunting.radius) : '',
     questsEnabled: quests.enabled,
-    gearEnabled: gear.enabled,
-    gearSets: gear.sets.map((set) => ({ ...set, wear: [...set.wear] })),
-    gearOffRoundItem: gear.offRound.item,
-    gearOffRoundEvery: gear.offRound.everyRounds > 0 ? String(gear.offRound.everyRounds) : '',
     loot: structuredClone(loot),
     search: { ...search },
     loops: [],
@@ -1519,60 +1311,6 @@ function emptyForm(
   };
 }
 
-/**
- * Creating and editing characters and servers, without opening a text editor.
- *
- * The command strip was removed because a host and a port describe a
- * *character* and not the client, and that information moved into
- * `profiles/*.yaml` — which is fine for somebody who edits YAML and is not fine
- * as the only way in. This is the way in.
- *
- * Deliberately **not** an editor for the whole options file. A profile is a
- * sparse overlay that may carry `automation:` and `ui:` blocks, and YAML is
- * genuinely good at those: they are lists of rules with comments explaining
- * why. What YAML is bad at is a password, a port and a menu answer, and that is
- * what this covers. The screen says where the files are so the rest stays one
- * click away.
- *
- * ## Two rules, and both have been broken here before
- *
- * **A section exists when there is a typed config block behind it, and not
- * because the nouns sort cleanly.** That is why there was no Combat section for
- * four phases: attack *rules* are `automation.rules`, and a form field for one
- * is a second representation of something the YAML already states precisely,
- * with its own comments explaining why.
- *
- * The sections are now **MegaMUD's own tabs** — Combat, Health, Spells,
- * Movement — and that is a change to the *labels*, not to the test. Each one
- * has a typed block behind it that a rule could not hold:
- *
- * - `automation.combat` — the question in the middle of it, *is the thing in
- *   front of me going to attack me, and is it a person*, is not one a guard
- *   expression can ask.
- * - `automation.health` — resting is not a condition, it is a *state the
- *   character is in* that the status line reports, that blocks nothing, and
- *   that moving or attacking ends by itself.
- * - `automation.spells` — one cast, at the mid-round tick, which is the one
- *   thing about a spell a rule genuinely cannot express: ~100 ms after the last
- *   swing, inside the round rather than after it.
- * - `automation.movement` — what a route may do on the way, which belongs to
- *   the walker's state machine rather than to a condition over character state.
- *
- * Everything else a caster or a healer wants — buffs, heals, when to loot, when
- * to give up — is still `automation.rules`, and the Spells section says so in
- * one line rather than not existing.
- *
- * **And a control is a label, a value and at most one sentence.** See
- * docs/terminology.md, which exists because this screen grew into a help
- * system one true paragraph at a time. The explanation moved to
- * `default.yaml`, where somebody editing YAML is actually asking for it; what
- * is left here is `Hint` — a mark that opens one sentence on hover, on focus
- * and on click. Two things stay in the open, both because they can cost a
- * character: opening fights unasked, and hanging up.
- *
- * A dialog that takes typed input, so it honours the focus policy: it holds the
- * caret while open and hands it back to the terminal on any exit.
- */
 /** A `BBS.INI` key's label. */
 function bbsLabel(key: BbsKey): string {
   switch (key) {
@@ -1731,6 +1469,60 @@ function StatsTest({ actions, url }: { actions: StatsActions; url: string }): Re
   );
 }
 
+/**
+ * Creating and editing characters and servers, without opening a text editor.
+ *
+ * The command strip was removed because a host and a port describe a
+ * *character* and not the client, and that information moved into
+ * `profiles/*.yaml` — which is fine for somebody who edits YAML and is not fine
+ * as the only way in. This is the way in.
+ *
+ * Deliberately **not** an editor for the whole options file. A profile is a
+ * sparse overlay that may carry `automation:` and `ui:` blocks, and YAML is
+ * genuinely good at those: they are lists of rules with comments explaining
+ * why. What YAML is bad at is a password, a port and a menu answer, and that is
+ * what this covers. The screen says where the files are so the rest stays one
+ * click away.
+ *
+ * ## Two rules, and both have been broken here before
+ *
+ * **A section exists when there is a typed config block behind it, and not
+ * because the nouns sort cleanly.** That is why there was no Combat section for
+ * four phases: attack *rules* are `automation.rules`, and a form field for one
+ * is a second representation of something the YAML already states precisely,
+ * with its own comments explaining why.
+ *
+ * The sections are now **MegaMUD's own tabs** — Combat, Health, Spells,
+ * Movement — and that is a change to the *labels*, not to the test. Each one
+ * has a typed block behind it that a rule could not hold:
+ *
+ * - `automation.combat` — the question in the middle of it, *is the thing in
+ *   front of me going to attack me, and is it a person*, is not one a guard
+ *   expression can ask.
+ * - `automation.health` — resting is not a condition, it is a *state the
+ *   character is in* that the status line reports, that blocks nothing, and
+ *   that moving or attacking ends by itself.
+ * - `automation.spells` — one cast, at the mid-round tick, which is the one
+ *   thing about a spell a rule genuinely cannot express: ~100 ms after the last
+ *   swing, inside the round rather than after it.
+ * - `automation.movement` — what a route may do on the way, which belongs to
+ *   the walker's state machine rather than to a condition over character state.
+ *
+ * Everything else a caster or a healer wants — buffs, heals, when to loot, when
+ * to give up — is still `automation.rules`, and the Spells section says so in
+ * one line rather than not existing.
+ *
+ * **And a control is a label, a value and at most one sentence.** See
+ * docs/terminology.md, which exists because this screen grew into a help
+ * system one true paragraph at a time. The explanation moved to
+ * `default.yaml`, where somebody editing YAML is actually asking for it; what
+ * is left here is `Hint` — a mark that opens one sentence on hover, on focus
+ * and on click. Two things stay in the open, both because they can cost a
+ * character: opening fights unasked, and hanging up.
+ *
+ * A dialog that takes typed input, so it honours the focus policy: it holds the
+ * caret while open and hands it back to the terminal on any exit.
+ */
 export default function SettingsScreen({
   open,
   openAt = null,
@@ -1831,14 +1623,6 @@ export default function SettingsScreen({
       live = false;
     };
   }, [selected, section, players]);
-  /**
-   * Whether the shelf of shipped loops is open, and what is on it.
-   *
-   * The catalogue is read once per visit to this screen and kept: it is four
-   * hundred loops out of a file inside the application, so it cannot change
-   * while the screen is open, and re-asking on every keystroke in the search
-   * field would be a query per character typed.
-   */
   /**
    * Which character a new one is being started from, if any.
    *

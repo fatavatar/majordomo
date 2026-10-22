@@ -86,6 +86,11 @@ docs/*
 !/docs/megamud/
 !/docs/megamud/*.md
 
+# And the guide to the codebase itself (2026-10-22): how the client is put
+# together, for whoever works on it next, kept beside the code it describes.
+!/docs/codebase/
+!/docs/codebase/*.md
+
 # The one exception, and it is deliberate: the root README is the front page
 # of the repository, so it is the one piece of prose worth keeping under
 # version control. Only the root one -- `/README.md`, anchored. It used to be

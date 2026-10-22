@@ -8,8 +8,6 @@ import { newEntity, type RoomEntity, type Session } from '../Session';
 import { EntityFlag, MonsterFlag, PartyFlag, EntityType, Stance } from '../flags';
 import { Task } from '../script/task';
 
-/** The record's `+0x24` bit for "not hostile" (Monsters.md). */
-
 /**
  * `0x472830`: how many hostile monsters are here. An entry counts when it is
  * not an item and its kind is 4, 5 or 6. Unless `alsoNeutral`, a monster

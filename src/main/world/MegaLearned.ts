@@ -39,13 +39,13 @@ export interface LearnedItem {
   weapon: boolean;
 }
 
-/** What one realm's engine learned that is kept here. */
 /**
  * A monster's marks as MegaMUD keeps them (`0x471060`): its name and its
  * immunity flags, and the spells it is immune to (`combat/immunity.ts`).
  */
 export type LearnedMark = [string, number] | [string, number, string[]];
 
+/** What one realm's engine learned that is kept here. */
 export interface MegaLearnedData {
   items: LearnedItem[];
   signatures: [RoomId, number][];

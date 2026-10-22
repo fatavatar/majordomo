@@ -65,8 +65,8 @@ export type Stealth = 'unknown' | 'sneaking' | 'seen';
  * having said, which is the state at every login and is not `no`. `yes` is the
  * onset sentence (`You are blind.`), `no` the one that ends it (`You can see
  * again!`); nothing else moves either, so a cure that the server answers with
- * nothing leaves the flag where it was — honest, and the reason `Cures` casts
- * once per onset rather than once per status line.
+ * nothing leaves the flag where it was — honest, and the reason a cure is
+ * cast once per onset rather than once per status line.
  */
 export type Affliction = 'unknown' | 'yes' | 'no';
 
@@ -102,8 +102,8 @@ export interface Afflictions {
  *
  * **Beside the afflictions, not among them.** An affliction is what this
  * client reads off the wire itself, three-state because nobody may have said;
- * this is what the *player's* table says a sentence means (`MessageTriggers`,
- * imported from MegaMUD's `Messages.md`), held until the row's own ending
+ * this is what the *player's* table says a sentence means (the realm's
+ * message table, imported from MegaMUD's `Messages.md`), held until the row's own ending
  * arrives. Where the two overlap — blind, poisoned, diseased, held — a row
  * also sets the affliction, so every reader of those flags already answers
  * it; the conditions the client had no word for (confused, losing hit points,
@@ -170,8 +170,8 @@ export const NO_AFFLICTIONS: Afflictions = {
  * **No duration is carried, because the wire never states one.** The realm's
  * own `Dur` column is in units nothing has measured, so how long a buff is
  * trusted to last is configuration (`BlessingConfig.fallbackSeconds`) — the
- * player's knowledge, exactly as a threshold is — and `Blessings` compares it
- * against `appliedAt`. A wear-off the client can read ends the buff sooner and
+ * player's knowledge, exactly as a threshold is — compared against
+ * `appliedAt`. A wear-off the client can read ends the buff sooner and
  * more honestly than any clock.
  */
 export interface ActiveBuff {
@@ -187,7 +187,7 @@ export interface ActiveBuff {
    * this buff through the learned onset map. Absent on a realm whose `st` does
    * not print a countdown (MajorMUD, GreaterMUD), where the watchdog is the
    * only clock. It is the server's own statement, not the unmeasured `Dur`
-   * column, so `Blessings` prefers it: a recast then goes out within a second
+   * column, so it is preferred: a recast then goes out within a second
    * of the real expiry rather than on a watchdog that may be minutes off.
    */
   expiresAt?: number;
@@ -212,8 +212,8 @@ export interface ActiveBuff {
   cast?: true;
   /**
    * Epoch ms of the last `st` sheet that printed it. Present means the sheet
-   * speaks for this effect, so its watchdog can ask the sheet before recasting
-   * (`Blessings`), and a sheet that still lists it past the watchdog says the
+   * speaks for this effect, so its watchdog can ask the sheet before
+   * recasting, and a sheet that still lists it past the watchdog says the
    * clock was wrong.
    */
   listedAt?: number;
@@ -494,8 +494,8 @@ export interface Room {
    *
    * Was `string[]`, and that was the shape that made the Room card ask main
    * over IPC what the realm knew about each name *after* it had already drawn
-   * once without the answer — and that left `AutoLoot` unable to ask what
-   * anything weighed or was worth.
+   * once without the answer, and left nothing able to ask what anything
+   * weighed or was worth.
    */
   items: ItemEntity[];
   /**
@@ -515,7 +515,7 @@ export interface Room {
    * would have the card claim they are lying in the open, and would replace the
    * open floor with them into the bargain. The difference is also actionable:
    * hidden coins refuse a bare `get` and want the quantity (see
-   * `room-hidden-items`), which is what `AutoLoot` reads it for.
+   * `room-hidden-items`).
    *
    * Emptied by walking out, like the rest of the room, and by
    * `Your search revealed nothing.` — a search is a listing and a listing is
@@ -562,7 +562,7 @@ export interface Room {
    * no phrase at all.
    *
    * Kept because it is the difference between "the move produced nothing" and
-   * "the move produced a room the character cannot see": `Walker` reported the
+   * "the move produced a room the character cannot see": the old walker reported the
    * first for the second and blamed the server for a silence that never
    * happened.
    */
@@ -575,7 +575,7 @@ export interface Room {
    * that can: a room is otherwise addressed by its name and the exits it
    * printed, and a maze is a maze precisely because that address is not
    * unique. Three rooms called `Secret Passage` with `east, west` in a row
-   * (bearfather, 2026-09-17) are one address, so `AutoSearch` searched the
+   * (bearfather, 2026-09-17) are one address, so the old `AutoSearch` searched the
    * first and believed it was still standing in it for the other two.
    *
    * The tracker already knows: a room block that consumed a pending move is an
@@ -619,25 +619,6 @@ export interface RoomCandidate {
   chosen: boolean;
 }
 
-/**
- * One thing the character is carrying, and where it is.
- *
- * The name and the slot are separate fields because the two sources that talk
- * about an item write it two ways: an `i` listing annotates anything worn or
- * wielded with the slot it sits in (`padded boots (Feet)`), while every
- * sentence about it — dropping it, selling it, putting it on — writes the bare
- * name. Keeping the annotation glued to the name is what made a drop match
- * nothing; keeping it as a field means both spellings are still available and
- * neither has to be reconstructed.
- *
- * `slot` is the listing's own word, never one this client invented. The realm
- * database does record a `Worn` code per item, but it is a *number* — 1, 2, 5 —
- * and the words the listing prints for each are not written down anywhere we
- * have read. Mapping the two by eye would put a made-up label under a heading
- * that looks like the server's, which is the reassuring guess this project
- * refuses everywhere else. So a slot is known once a listing has named it, and
- * is null until then.
- */
 /**
  * One thing in the pack — **the same entity as everything else**.
  *
@@ -912,22 +893,6 @@ export interface Adventurer {
 }
 
 /**
- * The fight this character is in.
- *
- * `inCombat` was a boolean, which answers "am I fighting" and nothing else —
- * and every decision worth automating needs the other half: *what*, and *what
- * is hitting me*. A rule that says "run below 30%" is a rule anybody can
- * write; a rule that says "attack what is already attacking me" needs this.
- *
- * Assembled from the combat blocks the classifier already produces. Nothing new
- * is asked of the server and no new pattern is guessed at — the shapes here are
- * the ones a live capture produced.
- *
- * **Every field is honest about absence.** A fight whose target has not been
- * named — because the character was attacked and has not swung back — has a
- * null target, not an empty string standing in for one.
- */
-/**
  * Who has worn a monster down, and by how much.
  *
  * Split rather than totalled because the two halves answer different questions.
@@ -1003,6 +968,22 @@ export interface TargetHealth {
   observed: WoundBand | null;
 }
 
+/**
+ * The fight this character is in.
+ *
+ * `inCombat` was a boolean, which answers "am I fighting" and nothing else —
+ * and every decision worth automating needs the other half: *what*, and *what
+ * is hitting me*. A rule that says "run below 30%" is a rule anybody can
+ * write; a rule that says "attack what is already attacking me" needs this.
+ *
+ * Assembled from the combat blocks the classifier already produces. Nothing new
+ * is asked of the server and no new pattern is guessed at — the shapes here are
+ * the ones a live capture produced.
+ *
+ * **Every field is honest about absence.** A fight whose target has not been
+ * named — because the character was attacked and has not swung back — has a
+ * null target, not an empty string standing in for one.
+ */
 export interface Combat {
   /** From the status line's `*Combat Engaged*`. The server's own word for it. */
   engaged: boolean;
@@ -1098,8 +1079,11 @@ export interface PartyMember {
   health: number | null;
   /** Null when the class has none at all. */
   mana: number | null;
-  /** Where they stand in the formation. */
-  /** MajorMUD's listing has a middle rank as well; GreaterMUD's has two. */
+  /**
+   * Where they stand in the formation.
+   *
+   * MajorMUD's listing has a middle rank as well; GreaterMUD's has two.
+   */
   rank: 'front' | 'mid' | 'back' | null;
   /** What they are doing, or null when nothing has said. See `PartyActivity`. */
   activity: PartyActivity | null;
@@ -1484,8 +1468,8 @@ export interface CharacterState {
   lastDeath: { map: number | null; number: number | null; name: string | null; at: number } | null;
   /**
    * The room a `look <direction>` described, read as a different room from
-   * the one the character stands in (todo 08, 2026-09-12). `RestAway` reads
-   * it before stepping into a neighbour to rest; nothing else changes on a
+   * the one the character stands in (todo 08, 2026-09-12). Nothing else
+   * changes on a
    * peek, which is `Room.coffee`'s `wasLooking` rule kept. Null until a peek
    * is answered, and the last one afterwards — `at` says how stale.
    */
@@ -1595,7 +1579,7 @@ export interface CharacterState {
    * ended with a sentence the client cannot read (the per-spell custom
    * endings — `Your skin returns to normal.` — are unenumerable realm message
    * data) stays here until the configured fallback clock or a death removes
-   * it. `Blessings` is the reader.
+   * it.
    */
   buffs: ActiveBuff[];
   /**
@@ -1779,7 +1763,7 @@ export function vitalLevel(
  * and the standing rule is that unknown is never the reassuring answer.
  *
  * Here rather than in `remotes.ts` because it is a fact about the roster, and
- * three readers want it: the permission gate in `Remotes.evidenceAbout`, the
+ * three readers want it: the permission gate (`remoteVerdict`), the
  * Gang card, and the flyout that says why somebody is getting through.
  */
 export function gangOnRoster(

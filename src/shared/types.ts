@@ -109,14 +109,6 @@ export interface NegotiatedOptions {
   remoteEcho: boolean;
 }
 
-/** A decoded chunk of server output, ready for the terminal. */
-/**
- * A glyph the console draws beside a line it recognised.
- *
- * Outside the character grid, on purpose: a decoration is an element laid
- * over the cell row, so nothing the server lays out in rows and columns moves
- * and no escape sequence that counts either ever sees it.
- */
 /**
  * The pictures the console can lay over a line: a place's kind beside a
  * room's name, and — on a line the client drew itself (`ui.rewrites`) — a
@@ -179,6 +171,13 @@ export interface TerminalNote {
   tone: string;
 }
 
+/**
+ * A glyph the console draws beside a line it recognised.
+ *
+ * Outside the character grid, on purpose: a decoration is an element laid
+ * over the cell row, so nothing the server lays out in rows and columns moves
+ * and no escape sequence that counts either ever sees it.
+ */
 export interface TerminalMark {
   /**
    * The glyph in the margin before the line, which indents it two cells.
@@ -276,6 +275,7 @@ export interface TerminalIntentAction extends TerminalActionFace {
 /** One button beside a recognised line. */
 export type TerminalAction = TerminalCommandAction | TerminalIntentAction;
 
+/** A decoded chunk of server output, ready for the terminal. */
 export interface StreamChunk {
   /** Monotonic sequence number; lets the renderer detect dropped frames. */
   seq: number;

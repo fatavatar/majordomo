@@ -74,14 +74,6 @@ export function foregroundCodes(raw: string): number[] {
 }
 
 /**
- * Guards the loosest rule in the table.
- *
- * A room name has no marker — it is a title-cased phrase on its own line — so
- * without a plausibility check it swallows any short capitalised sentence the
- * game prints. Requiring the absence of sentence punctuation and a sane length
- * is what keeps `You gain 5 experience` and prose out.
- */
-/**
  * Words a room name may leave in lower case.
  *
  * Title case is what separates a name from prose, and these are the words a
@@ -127,6 +119,13 @@ function titleCased(text: string): boolean {
 }
 
 /**
+ * Guards the loosest rule in the table.
+ *
+ * A room name has no marker — it is a title-cased phrase on its own line — so
+ * without a plausibility check it swallows any short capitalised sentence the
+ * game prints. Requiring the absence of sentence punctuation and a sane length
+ * is what keeps `You gain 5 experience` and prose out.
+ *
  * Whether a line that matched the room-name shape is plausibly a room name.
  *
  * Measured against the 3,789 distinct room names in the shipped realm data and
@@ -220,10 +219,6 @@ export interface BatchBlock extends Block {
   rows: Array<Record<string, string>>;
 }
 
-/**
- * Stateful across lines, because multi-line blocks exist. One instance per
- * session; `reset()` between connections.
- */
 /** The verdicts an emote can wear before the action table is asked. See `asAction`. */
 const EMOTE_SHAPED: ReadonlySet<BlockType> = new Set<BlockType>([
   'unknown',
@@ -232,6 +227,10 @@ const EMOTE_SHAPED: ReadonlySet<BlockType> = new Set<BlockType>([
   'player-misses'
 ]);
 
+/**
+ * Stateful across lines, because multi-line blocks exist. One instance per
+ * session; `reset()` between connections.
+ */
 export class Classifier {
   private batch: {
     rule: BatchRule;
@@ -306,7 +305,7 @@ export class Classifier {
    * makes this the same shape as `addressed` above and for the same reason.
    *
    * **Bare only.** `search <direction>` is a different question with its own
-   * answers (`You found an exit to the east!`), and `Walker` sends one at every
+   * answers (`You found an exit to the east!`), and a walk sends one at every
    * `Hidden/Searchable` edge it is refused by — so arming on those would have
    * the next room's floor listing read as a discovery.
    *
@@ -634,8 +633,8 @@ export class Classifier {
        * The name inside the frame, where anything can say what it is.
        *
        * Written into `attacker` rather than into a group of its own so that
-       * `{attacker}` in a rule, `HangUp`'s PvP evidence and the tracker all go
-       * on reading the one name they always read. `line` is kept beside it:
+       * everything that reads `attacker` goes on reading the one name it
+       * always read. `line` is kept beside it:
        * it is what the server actually said, and an unresolved one is the
        * only record of a monster nothing could name.
        */
@@ -966,7 +965,7 @@ export class Classifier {
    * sent, never the message. The command that provoked the receipt is the one
    * record of the words, and it is bound here because blocks are the fact
    * stream every consumer reads: a body only the sender's composer knew would
-   * be invisible to a telepath typed at the console or sent by `Remotes`.
+   * be invisible to a telepath typed at the console or sent by the engine's remote set.
    *
    * The recipient must extend the name as typed, because the server resolves
    * a target by prefix — `/brack hi` is answered `to Brackle` — and each
@@ -975,8 +974,8 @@ export class Classifier {
    * misquoting its own player.
    *
    * Deliberately a group of its own (`sent`), never `message`. Three
-   * consumers — the player registry's sighting, `Remotes` and the tracker's
-   * remote vitals — recognise the receipt as this character's own outbound
+   * consumers — the player registry's sighting, the remote set and the
+   * tracker's remote vitals — recognise the receipt as this character's own outbound
    * half by `message` being absent, and a receipt carrying one would file
    * this character's own words as the *recipient* speaking: an `@health`
    * answer sent by telepath would be read back as the recipient's vitals.
@@ -1026,7 +1025,7 @@ export class Classifier {
        * (`captures/006:265` and `captures/008:413`). The next room the
        * character walked into then had its **open** floor retyped as a
        * discovery — which loses it altogether, because the `room-items` case
-       * is what writes the draft, and had `AutoLoot` asking for coins lying in
+       * is what writes the draft, and had the old `AutoLoot` asking for coins lying in
        * the open by a count that would take one pile and leave the rest.
        *
        * A room's name arrives before its `You notice`, so this catches it

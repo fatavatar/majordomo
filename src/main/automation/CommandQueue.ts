@@ -1,9 +1,14 @@
 /**
- * The arbiter: the single writer for everything the client sends.
+ * The paced queue for the commands the client sends on the player's behalf:
+ * the login automator's answers, and the player's own macros and toolbar
+ * presses (all `priority: 'user'`).
  *
- * docs/legacy-assessment.md §6 argues that inbound is a broadcast and outbound
- * is one owner. This is that owner. Nothing else may write to the socket on
- * automation's behalf.
+ * It was the arbiter, the one writer for everything automation sent. Since the
+ * MegaMUD engine (2026-10-14) it is not: the engine writes through
+ * `SessionManager.megaWrite`, keystrokes through `SessionManager.send`, and the
+ * planners kept beside the engine put their commands on MegaMUD's pending list
+ * (`SessionManager.keptQueue`). See docs/codebase/pipeline.md, *A command goes
+ * out*.
  *
  * ## Why the flow control looks like this
  *
@@ -33,6 +38,9 @@ import {
   type QueueSnapshot
 } from '../../shared/automation';
 import type { AutomationConfig } from '../../shared/config';
+
+/** What the queue reads of the options: its pacing, nothing else. */
+type QueueConfig = Pick<AutomationConfig, 'pacing'>;
 import { tuning } from '../app/tuning';
 
 export { PRIORITY, type Priority, type QueueSnapshot };
@@ -100,15 +108,6 @@ export interface Intent {
    */
   secret?: boolean;
   /**
-   * The command keeps the **connection** alive rather than acting for the
-   * character, so it goes out with automation switched off as well — at its
-   * own band, unlike a login answer, which rides at `user`. The keep-alive is
-   * the one: without it a switched-off character sends nothing, and a link
-   * that dies then is noticed by nobody (`LinkWatch` only times a command that
-   * went out). Measured 2026-09-18: 23 minutes on a dead socket.
-   */
-  keepsLink?: boolean;
-  /**
    * The player's own line, paced rather than written at once: one command of
    * a talk-box line that stands for several (todo 04). Sent through
    * `SessionManager.send`, the path a keystroke takes, so it is observed and
@@ -117,13 +116,6 @@ export interface Intent {
    * spends from the same fifteen.
    */
   typed?: boolean;
-  /**
-   * Skip `pacing.minGapMs` before whichever command sends next: for a pair
-   * that must reach the server back to back. Only the party relay and the
-   * move behind it (`Walker.relayTextExit`): 676ms apart, a follower landed
-   * first and was pulled back (2026-09-28).
-   */
-  noGap?: boolean;
   /**
    * The command has just been written to the socket.
    *
@@ -207,8 +199,6 @@ export class CommandQueue {
   private inFlight = 0;
   private seq = 0;
   private lastSentAt = 0;
-  /** Whether the last command written asked for no gap before the next. See `Intent.noGap`. */
-  private skipNextGap = false;
   /**
    * What has been written to the socket lately, oldest first, so an intent can
    * be put back when the server says it threw that one away.
@@ -266,11 +256,11 @@ export class CommandQueue {
   private held: string | null = null;
 
   constructor(
-    private config: AutomationConfig,
+    private config: QueueConfig,
     private readonly events: QueueEvents
   ) {}
 
-  configure(config: AutomationConfig): void {
+  configure(config: QueueConfig): void {
     this.config = config;
   }
 
@@ -327,7 +317,7 @@ export class CommandQueue {
   }
 
   /**
-   * Offers an intent. Returns false when it was dropped — disabled, a
+   * Offers an intent. Returns false when it was dropped — held, a
    * duplicate of something already queued, or past its expiry.
    */
   enqueue(intent: Intent): boolean {
@@ -336,9 +326,6 @@ export class CommandQueue {
     // is listening.
     if (this.held !== null) return false;
     if (this.events.connected?.() === false) return false;
-    if (!this.config.enabled && intent.priority !== 'user' && intent.keepsLink !== true) {
-      return false;
-    }
     if (intent.expiresAt !== undefined && intent.expiresAt <= Date.now()) return false;
     /*
      * A word this realm does not have. Refused rather than sent, and said out
@@ -494,7 +481,6 @@ export class CommandQueue {
     this.inFlight = 0;
     this.outstanding = [];
     this.typingHeld = false;
-    this.skipNextGap = false;
     // Nothing is in flight any more, so there is nothing a fumble could be
     // about — and replaying a command from before a disconnect is the one
     // thing `resendLast` must never do.
@@ -646,7 +632,6 @@ export class CommandQueue {
     this.inFlight += 1;
     this.outstanding.push(now);
     this.lastSentAt = now;
-    this.skipNextGap = next.noGap === true;
     /*
      * Trimmed **on the way in**, which is what makes the bound real: the only
      * other trim is inside `resendLast`, and that runs on a fumble — an event
@@ -702,10 +687,6 @@ export class CommandQueue {
      * login. Waiting there is pure latency.
      */
     if (this.inFlight === 0) return 0;
-
-    // The last send asked, via `noGap`, that whatever comes next skip this
-    // floor — see `Intent.noGap`. The window cap above still applies.
-    if (this.skipNextGap) return 0;
 
     const sinceLast = now - this.lastSentAt;
     return sinceLast >= this.config.pacing.minGapMs ? 0 : this.config.pacing.minGapMs - sinceLast;

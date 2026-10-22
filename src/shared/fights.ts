@@ -1,5 +1,3 @@
-import { mobKey } from './world';
-
 /**
  * One fight, written down so a later version of this client can be argued with.
  *
@@ -35,6 +33,7 @@ import { mobKey } from './world';
  * Dependency-free, like everything in `shared/`: the tracker produces these in
  * main and nothing about the shape may need a file handle to describe.
  */
+import { mobKey } from './world';
 
 /** What a character had on when the fight happened. */
 export interface FightGear {
@@ -186,14 +185,6 @@ export type MobResolver = (printed: string) => string;
 /** The resolver for a client with no realm table: a name is itself. */
 export const AS_PRINTED: MobResolver = (printed) => printed;
 
-/**
- * Adds up every record about the asked monster. Records are keyed by the name
- * the server printed, modifier and all (`small elite guardsman`), and a card
- * asks by the table's bare name — so a record counts when its printed name
- * *resolves* to the same realm monster as the asked one. `small giant rat`
- * and `large giant rat` fold onto `giant rat`; `giant rat king` does not,
- * because the realm names it.
- */
 /**
  * The sums a summary is made of, per printed name.
  *
@@ -380,7 +371,16 @@ export function measuredPerRound(
   return { perRound: mine / rounds, fights, fromLevel };
 }
 
-/** The same answer read straight off the records, for a caller holding them. */
+/**
+ * Adds up every record about the asked monster. Records are keyed by the name
+ * the server printed, modifier and all (`small elite guardsman`), and a card
+ * asks by the table's bare name — so a record counts when its printed name
+ * *resolves* to the same realm monster as the asked one. `small giant rat`
+ * and `large giant rat` fold onto `giant rat`; `giant rat king` does not,
+ * because the realm names it.
+ *
+ * The same answer read straight off the records, for a caller holding them.
+ */
 export function summarizeFights(
   records: readonly FightRecord[],
   name: string,

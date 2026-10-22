@@ -7,7 +7,7 @@
  * runic. Note the rungs are ×10, ×10, **×100, ×100**: an even ×10 ladder once
  * made platinum ten times and runic a hundred times too cheap.
  *
- *     51 gold, 7 copper                     ->     5 107   live (probe:play)
+ *     51 gold, 7 copper                     ->     5 107   live (probe:play, since removed)
  *     12 platinum                           ->   120 000   captures/065
  *     94 platinum, 36 gold, 5 silver        ->   943 650   captures/087
  *     65 runic, 51 platinum, 118 gold       -> 65 521 800  captures/044

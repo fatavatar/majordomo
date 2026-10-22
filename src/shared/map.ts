@@ -126,22 +126,6 @@ export const STEP: Record<Direction, { dx: number; dy: number } | null> = {
   d: null
 };
 
-/**
- * Turns a laid-out map into something drawable, in map units.
- *
- * The map is drawn as vector shapes rather than as characters. That was the
- * other way round to begin with, on the argument that the game lays its own
- * maps out in character cells — but this map is not the game's. It is *derived*
- * from the realm data by the client, and nothing about it ever crosses the
- * wire, so the character-cell rule that governs the console does not reach it.
- * It is chrome, and chrome follows the design language: tonal fills, a themed
- * palette, and shapes that can say "shop" without spending a glyph on it.
- *
- * Emitted in abstract units with the origin at the top-left of the extent; the
- * card scales them with a viewBox, so nothing here needs to know how large the
- * card is.
- */
-
 /** Distance between neighbouring rooms. Rooms are drawn much smaller. */
 export const MAP_CELL = 10;
 
@@ -279,6 +263,21 @@ const SHOP_LETTER: Partial<Record<ShopKind, string>> = {
   trainer: 'G'
 };
 
+/**
+ * Turns a laid-out map into something drawable, in map units.
+ *
+ * The map is drawn as vector shapes rather than as characters. That was the
+ * other way round to begin with, on the argument that the game lays its own
+ * maps out in character cells — but this map is not the game's. It is *derived*
+ * from the realm data by the client, and nothing about it ever crosses the
+ * wire, so the character-cell rule that governs the console does not reach it.
+ * It is chrome, and chrome follows the design language: tonal fills, a themed
+ * palette, and shapes that can say "shop" without spending a glyph on it.
+ *
+ * Emitted in abstract units with the origin at the top-left of the extent; the
+ * card scales them with a viewBox, so nothing here needs to know how large the
+ * card is.
+ */
 export function layoutMap(map: LocalMap): MapDrawing {
   if (map.cells.length === 0) return { nodes: [], links: [], width: 0, height: 0 };
 
@@ -385,15 +384,6 @@ export function layoutMap(map: LocalMap): MapDrawing {
 }
 
 /**
- * A route drawn over a map: which corridors it runs along, and which rooms it
- * has still to reach.
- *
- * Everything here is *remaining* — the walker publishes only the part of the
- * route it has not walked yet (`WalkProgress.path`), so a room comes off the
- * drawing when the step into it is confirmed rather than the renderer having
- * to work out which are behind.
- */
-/**
  * One corridor of the way, oriented the way it is walked.
  *
  * `x1,y1` is where the step starts and `x2,y2` where it ends — which is **not**
@@ -415,6 +405,15 @@ export interface MapTrailLeg {
   band: number;
 }
 
+/**
+ * A route drawn over a map: which corridors it runs along, and which rooms it
+ * has still to reach.
+ *
+ * Everything here is *remaining* — the walker publishes only the part of the
+ * route it has not walked yet (`WalkProgress.path`), so a room comes off the
+ * drawing when the step into it is confirmed rather than the renderer having
+ * to work out which are behind.
+ */
 export interface MapTrail {
   /** The corridors the route runs along, in the order it walks them. */
   legs: MapTrailLeg[];

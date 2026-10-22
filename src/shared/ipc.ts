@@ -48,17 +48,14 @@ import type {
   LootConfig,
   SearchConfig,
   HuntingAutomationConfig,
-  GearConfig,
   QuestsConfig,
   RemotesConfig,
   RewritesUiConfig,
   AfkConfig,
   Server,
   SpellsConfig,
-  RetreatStrategy,
   PartyConfig,
   PotionWhen,
-  PvpAction,
   StatsReportConfig,
   SuppliesConfig,
   SupplyItem
@@ -71,7 +68,6 @@ import type { ProfileAccent } from './profiles';
 import type { MegaSettings } from './megamud/settings';
 import type { MegaToggle } from './megamud/toggles';
 
-/** A character's MegaMUD settings as the window edits them. */
 /**
  * One spell's sentences as a realm's wire taught them (`RealmLore`): what it
  * prints when it lands and when it ends, empty for one not learned. The
@@ -383,16 +379,6 @@ export interface ProfileSummary {
 }
 
 /**
- * One character as a settings screen needs it: the fields a form edits, read
- * back off disk.
- *
- * Not a `Profile`. A resolved profile carries the whole merged `AppConfig`,
- * which is the *result* of the file rather than what is in it — editing a form
- * populated from that would write every inherited global setting into the
- * character's own file and make it a copy rather than an overlay, which is
- * exactly the failure `profiles.ts` rule 1 exists to prevent.
- */
-/**
  * One spell a settings picker can offer: the name a cast command sends, the
  * realm's own casting word beside it so `mihe` finds `minor healing`, and who
  * the realm lets it be cast on.
@@ -429,6 +415,16 @@ export interface SpellOption {
   };
 }
 
+/**
+ * One character as a settings screen needs it: the fields a form edits, read
+ * back off disk.
+ *
+ * Not a `Profile`. A resolved profile carries the whole merged `AppConfig`,
+ * which is the *result* of the file rather than what is in it — editing a form
+ * populated from that would write every inherited global setting into the
+ * character's own file and make it a copy rather than an overlay, which is
+ * exactly the failure `profiles.ts` rule 1 exists to prevent.
+ */
 export interface ProfileEditable {
   id: string;
   name: string;
@@ -463,21 +459,13 @@ export interface ProfileEditable {
   hangUp: {
     enabled: boolean;
     belowHealth: number;
-    onPlayerInRoom: boolean;
   };
   retreat: {
     enabled: boolean;
     belowHealth: number;
-    /** MegaMUD's `ManaRun%`; 0 never. */
-    belowMana: number;
-    whenOutnumbered: number;
-    strategy: RetreatStrategy;
-    safeHavenRoom: string;
   };
   /** Fleeing outright — see `FleeGotoConfig`. Resolved, like the two above. */
   fleeGoto: { enabled: boolean; belowHealth: number; destination: string };
-  /** What to do when a player opens on this character. Resolved, like the two above. */
-  pvp: { notifyGang: boolean; action: PvpAction };
   /** Posting readings to the realm's mudstats board. Resolved, like the two above. */
   stats: StatsReportConfig;
   /** Whether a mudstats key is on file — never the key, for the reason `hasPassword` is not. */
@@ -508,8 +496,6 @@ export interface ProfileEditable {
   hunting: HuntingAutomationConfig;
   /** Running a quest's plan (todo 102). Resolved, like the rest. */
   quests: QuestsConfig;
-  /** Which kit to be in, and when. See `GearConfig`. */
-  gear: GearConfig;
   /*
    * What the character picks up and searches for — resolved,
    * like the rest (todo 03, 2026-09-12). They were reachable only on the
@@ -1167,7 +1153,7 @@ export const Invoke = {
   terminalAct: 'terminal:act',
   /**
    * A question for another player's client — `@health` at somebody, by name.
-   * From the palette: `Remotes.ask` was reachable only from a party
+   * From the palette: asking was reachable only from a party
    * forming, and a command nobody can find does not exist.
    */
   askRemote: 'remote:ask'
@@ -1803,4 +1789,60 @@ export interface IpcApi {
   onQuestRun(handler: (message: Addressed<QuestRunProgress>) => void): () => void;
   onConfig(handler: (snapshot: ConfigSnapshot) => void): () => void;
   onInternal(handler: (config: InternalConfig) => void): () => void;
+}
+
+/**
+ * What a bridge rides on: Electron's IPC in the preload (`src/preload/`), a
+ * WebSocket in a browser tab (`renderer/src/lib/webBridge.ts`).
+ */
+export interface BridgeCarrier {
+  invoke(channel: string, ...args: unknown[]): Promise<unknown>;
+  send(channel: string, ...args: unknown[]): void;
+  subscribe(channel: string, handler: (payload: never) => void): () => void;
+}
+
+/** The method that hears a push: `Push.character` is `onCharacter`. */
+export function pushMethod(key: string): string {
+  return `on${key.charAt(0).toUpperCase()}${key.slice(1)}`;
+}
+
+/**
+ * Every `IpcApi` method is named for its channel: an `Invoke` or `Send` key as
+ * it stands, a `Push` key as `on…`, and `host` beside them. Checked here at
+ * compile time, both ways, so a channel added without its method (or a method
+ * without its channel) does not build.
+ */
+type ChannelMethod =
+  keyof typeof Invoke | keyof typeof Send | `on${Capitalize<keyof typeof Push>}` | 'host';
+type MethodsMatchChannels = [
+  Exclude<keyof IpcApi, ChannelMethod>,
+  Exclude<ChannelMethod, keyof IpcApi>
+];
+const METHODS_MATCH_CHANNELS: MethodsMatchChannels extends [never, never] ? true : never = true;
+void METHODS_MATCH_CHANNELS;
+
+/**
+ * The bridge, built from the channel tables rather than written out per
+ * method (2026-10-22): each `Invoke` a call, each `Send` a one-way message and
+ * each `Push` a subscription, every argument passed through as given. Both
+ * bridges are this over their own carrier, so neither can miss a channel the
+ * other carries. `own` is what a bridge answers itself — its `host`, and in a
+ * browser tab the clipboard, the realm picker and raising the window.
+ */
+export function bridgeOver(
+  carrier: BridgeCarrier,
+  own: Pick<IpcApi, 'host'> & Partial<IpcApi>
+): IpcApi {
+  const api: Record<string, unknown> = {};
+  for (const [key, channel] of Object.entries(Invoke)) {
+    api[key] = (...args: unknown[]) => carrier.invoke(channel, ...args);
+  }
+  for (const [key, channel] of Object.entries(Send)) {
+    api[key] = (...args: unknown[]) => carrier.send(channel, ...args);
+  }
+  for (const [key, channel] of Object.entries(Push)) {
+    api[pushMethod(key)] = (handler: (payload: never) => void) =>
+      carrier.subscribe(channel, handler);
+  }
+  return Object.assign(api, own) as unknown as IpcApi;
 }

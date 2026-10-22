@@ -368,4 +368,20 @@ describe("the MUD op's escape (0x40dc20)", () => {
     expect(schedule(s)).toBe(true);
     expect(out.sent).toEqual(['pghe Skinny\r']);
   });
+
+  /* Fatty after his (2026-10-21): no heal spell, his songs unsung. */
+  it('blesses before it rests, once there', () => {
+    const { s, out } = op();
+    s.MegaMud_AutoBless = 1;
+    s.Other_BlessResting = 1;
+    s.Spells_BlessCmd1 = 'soot';
+    s.data.spells = [spell('soot', 0x10 | 0x2)];
+    escapeCheck(s, '');
+    out.sent.length = 0;
+    s.state = State.Nothing;
+    s.lookDue = 0;
+    s.lineFlags |= LineFlag.Prompted;
+    expect(schedule(s)).toBe(true);
+    expect(out.sent).toEqual(['soot\r']);
+  });
 });

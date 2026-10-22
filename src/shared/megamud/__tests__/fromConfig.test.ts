@@ -14,11 +14,10 @@ describe('MegaMUD settings started from the old automation', () => {
     {
       spell: 'pagan ritual',
       target: 'self',
-      minMana: 0,
       prioritizeOverHeal: true,
       inCombat: false
     },
-    { spell: 'holy shield', target: 'party', minMana: 0, prioritizeOverHeal: false, inCombat: true }
+    { spell: 'holy shield', target: 'party', prioritizeOverHeal: false, inCombat: true }
   ];
   automation.loot.coins = true;
   automation.loot.coinKinds = ['runic', 'gold'];

@@ -63,7 +63,6 @@ const session = new SessionManager(
   // routine firing mid-run would put its own lines in the capture.
   {
     ...profile.config.automation,
-    idle: { ...profile.config.automation.idle, enabled: false },
     rules: []
   },
   profile.config.connection.login

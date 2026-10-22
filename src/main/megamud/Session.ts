@@ -961,8 +961,11 @@ export class Session extends StateFields {
   roomExits: number[] = Array.from({ length: 10 }, () => 0);
   /** 0x2500: a player-shaped name already looked at again, 31 characters. */
   unknownNameAsked = '';
-  /** 0x2524: marks remembered for monsters by name (up to 500). */
-  /** `spells`: the spells it is immune to, by short (`combat/immunity.ts`). */
+  /**
+   * 0x2524: marks remembered for monsters by name (up to 500).
+   *
+   * `spells`: the spells it is immune to, by short (`combat/immunity.ts`).
+   */
   monsterMarks: { name: string; flags: number; spells?: string[] }[] = [];
   /** 0x6b78: marks remembered for players by name (up to 100). */
   playerMarks: { name: string; flags: number }[] = [];

@@ -2,10 +2,9 @@
  * `IpcApi` over a WebSocket: the bridge for a window served over HTTP.
  *
  * The preload is the desktop's bridge and this is the browser tab's, and the
- * two are the same object literal over two carriers — every `Invoke.*`,
- * `Send.*` and `Push.*` in `src/shared/ipc.ts` appears here exactly as it
- * appears there, which is what lets `ipc-wiring.test.ts` hold both to the
- * one list. The envelope is `src/shared/rpc.ts`; the server side is
+ * two are the same builder (`bridgeOver` in `src/shared/ipc.ts`) over two
+ * carriers, so every `Invoke`, `Send` and `Push` channel is on both. The
+ * envelope is `src/shared/rpc.ts`; the server side is
  * `src/main/host/WebHost.ts`.
  *
  * Three things the desktop asks main for are answered in the window here,
@@ -24,7 +23,7 @@
  * Calls made before the socket opens are queued, not dropped: `App` sends
  * `clientReady` on its first effect and the handshake is still in flight.
  */
-import { Invoke, Push, Send, type IpcApi, type Notice } from '@shared/ipc';
+import { bridgeOver, Push, type IpcApi, type Notice } from '@shared/ipc';
 import { asRpcOutbound, RPC_PATH, trimArgs, type RpcRequest } from '@shared/rpc';
 import { t } from './i18n';
 import { hasRealmPicker, pickRealm } from './pickers';
@@ -154,212 +153,51 @@ export function createWebBridge(): IpcApi {
 
   connect();
 
-  return {
-    host: 'web',
-
-    clientReady: () => send(Send.clientReady),
-    input: (session, data) => send(Send.input, session, data),
-    macro: (session, line) => send(Send.macro, session, line),
-    dropMacro: (session) => send(Send.dropMacro, session),
-    resize: (session, size) => send(Send.resize, session, size),
-    diagnostics: (on) => send(Send.diagnostics, on),
-    debugFeed: (on) => send(Send.debugFeed, on),
-    statsReset: (session) => send(Send.statsReset, session),
-    statsBase: (session, base) => send(Send.statsBase, session, base),
-
-    connect: (session, target) => invoke(Invoke.connect, session, target),
-    disconnect: (session) => invoke(Invoke.disconnect, session),
-    getState: (session) => invoke(Invoke.getState, session),
-    getTelnetLog: (session) => invoke(Invoke.getTelnetLog, session),
-    getLines: (session) => invoke(Invoke.getLines, session),
-    getDebug: (session) => invoke(Invoke.getDebug, session),
-    saveDebug: (session) => invoke(Invoke.saveDebug, session),
-    getCharacter: (session) => invoke(Invoke.getCharacter, session),
-    routeTo: (session, map, room) => invoke(Invoke.routeTo, session, map, room),
-    walkRoute: (session, route, run) => invoke(Invoke.walkRoute, session, route, run),
-    startMoving: (session, loop, confirmed) => invoke(Invoke.startMoving, session, loop, confirmed),
-    collectThenWalk: (session, items, route, run) =>
-      invoke(Invoke.collectThenWalk, session, items, route, run),
-    stopMoving: (session) => invoke(Invoke.stopMoving, session),
-    stepBack: (session, confirmed) => invoke(Invoke.stepBack, session, confirmed),
-    listLoops: (session) => invoke(Invoke.listLoops, session),
-    startLoop: (session, name) => invoke(Invoke.startLoop, session, name),
-    loopCatalogue: () => invoke(Invoke.loopCatalogue),
-    saveGlobal: (draft) => invoke(Invoke.saveGlobal, draft),
-    setRemoteGrant: (session, name, grant) => invoke(Invoke.setRemoteGrant, session, name, grant),
-    setGangRemotes: (session, remotes) => invoke(Invoke.setGangRemotes, session, remotes),
-    statsLink: (session) => invoke(Invoke.statsLink, session),
-    statsUnlink: (session) => invoke(Invoke.statsUnlink, session),
-    statsStatus: (session) => invoke(Invoke.statsStatus, session),
-    statsTest: (url) => invoke(Invoke.statsTest, url),
-    setRemoteGangpath: (session, on) => invoke(Invoke.setRemoteGangpath, session, on),
-    setAutomationSwitch: (session, name, on) =>
-      invoke(Invoke.setAutomationSwitch, session, name, on),
-    megamudToggle: (session, name) => invoke(Invoke.megamudToggle, session, name),
-    megamudAnswer: (session, question, yes) => invoke(Invoke.megamudAnswer, session, question, yes),
-    setSupplies: (session, items) => invoke(Invoke.setSupplies, session, items),
-    addLoop: (scope, owner, loop) => invoke(Invoke.addLoop, scope, owner, loop),
-    runLoop: (session, loop) => invoke(Invoke.runLoop, session, loop),
-    getWalk: (session) => invoke(Invoke.getWalk, session),
-    getAutomation: (session) => invoke(Invoke.getAutomation, session),
-
-    listSessions: () => invoke(Invoke.listSessions),
-    listProfiles: () => invoke(Invoke.listProfiles),
-    loadProfile: (id) => invoke(Invoke.loadProfile, id),
-    unloadProfile: (id, force) => invoke(Invoke.unloadProfile, id, force),
-    attach: (session) => invoke(Invoke.attach, session),
-    detach: (session) => invoke(Invoke.detach, session),
-    popOut: (session) => invoke(Invoke.popOut, session),
-    reorderSessions: (order) => invoke(Invoke.reorderSessions, order),
-    popIn: (session) => invoke(Invoke.popIn, session),
-    gatherWindows: () => invoke(Invoke.gatherWindows),
-    // The tab is on the viewer's machine and main is not, so raising *this*
-    // window means this window. The browser grants it off a notification click.
-    raiseWindow: async () => {
-      window.focus();
-    },
-
-    getConfig: () => invoke(Invoke.getConfig),
-    getInternal: () => invoke(Invoke.getInternal),
-    revealConfig: () => invoke(Invoke.revealConfig),
-    revealProfiles: () => invoke(Invoke.revealProfiles),
-    revealLogs: () => invoke(Invoke.revealLogs),
-    browseHome: (target) => invoke(Invoke.browseHome, target),
-
-    /*
-     * The window's clipboard, not main's — see the header. Writing works on
-     * the gesture that asked for it; reading is the tab's permission to
-     * grant, and a browser that will not grant it is answered with nothing
-     * and a notice saying the chord the browser handles itself still works.
-     */
-    copyText: async (text) => {
-      if (text.length === 0) return;
-      try {
-        await navigator.clipboard.writeText(text);
-      } catch {
-        notice(t('web.clipboard.writeRefused'));
+  return bridgeOver(
+    { invoke, send, subscribe },
+    {
+      host: 'web',
+      // The tab is on the viewer's machine and main is not, so raising *this*
+      // window means this window. The browser grants it off a notification click.
+      raiseWindow: async () => {
+        window.focus();
+      },
+      /*
+       * The window's clipboard, not main's — see the header. Writing works on
+       * the gesture that asked for it; reading is the tab's permission to
+       * grant, and a browser that will not grant it is answered with nothing
+       * and a notice saying the chord the browser handles itself still works.
+       */
+      copyText: async (text) => {
+        if (text.length === 0) return;
+        try {
+          await navigator.clipboard.writeText(text);
+        } catch {
+          notice(t('web.clipboard.writeRefused'));
+        }
+      },
+      pasteText: async () => {
+        try {
+          return await navigator.clipboard.readText();
+        } catch {
+          notice(t('web.clipboard.readRefused'));
+          return '';
+        }
+      },
+      /*
+       * The window's own picker over the client's disk (`lib/pickers.ts`),
+       * never the channel: main in web mode has no dialog to put up, and a
+       * `<input type="file">` would browse the wrong machine.
+       */
+      chooseRealm: () => {
+        if (!hasRealmPicker()) {
+          notice(t('web.picker.unavailable'));
+          return Promise.resolve(null);
+        }
+        return pickRealm();
       }
-    },
-    pasteText: async () => {
-      try {
-        return await navigator.clipboard.readText();
-      } catch {
-        notice(t('web.clipboard.readRefused'));
-        return '';
-      }
-    },
-
-    saveProfile: (id, draft) => invoke(Invoke.saveProfile, id, draft),
-    deleteProfile: (id) => invoke(Invoke.deleteProfile, id),
-    megamudChoices: (id) => invoke(Invoke.megamudChoices, id),
-    seenPlayers: (id) => invoke(Invoke.seenPlayers, id),
-    forgetPlayer: (id, name) => invoke(Invoke.forgetPlayer, id, name),
-    saveServer: (previousName, draft) => invoke(Invoke.saveServer, previousName, draft),
-    deleteServer: (name) => invoke(Invoke.deleteServer, name),
-    settingsSnapshot: () => invoke(Invoke.settingsSnapshot),
-    /*
-     * The window's own picker over the client's disk (`lib/pickers.ts`),
-     * never the channel: main in web mode has no dialog to put up, and a
-     * `<input type="file">` would browse the wrong machine.
-     */
-    chooseRealm: () => {
-      if (!hasRealmPicker()) {
-        notice(t('web.picker.unavailable'));
-        return Promise.resolve(null);
-      }
-      return pickRealm();
-    },
-    loadMessages: (realm) => invoke(Invoke.loadMessages, realm),
-    importMessages: (realm, fileName, text) => invoke(Invoke.importMessages, realm, fileName, text),
-    saveMessages: (realm, triggers) => invoke(Invoke.saveMessages, realm, triggers),
-    loadMonsters: (realm) => invoke(Invoke.loadMonsters, realm),
-    importMonsters: (realm, fileName, monsters) =>
-      invoke(Invoke.importMonsters, realm, fileName, monsters),
-    saveMonsters: (realm, monsters) => invoke(Invoke.saveMonsters, realm, monsters),
-    loadItems: (realm) => invoke(Invoke.loadItems, realm),
-    importItems: (realm, fileName, items) => invoke(Invoke.importItems, realm, fileName, items),
-    saveItems: (realm, items) => invoke(Invoke.saveItems, realm, items),
-    loadSpellLore: (realm) => invoke(Invoke.loadSpellLore, realm),
-    saveSpellLore: (realm, rows) => invoke(Invoke.saveSpellLore, realm, rows),
-    importLoops: (realm, paths) => invoke(Invoke.importLoops, realm, paths),
-    searchRooms: (session, query) => invoke(Invoke.searchRooms, session, query),
-    mobNames: (session) => invoke(Invoke.mobNames, session),
-    worldInfo: (session) => invoke(Invoke.worldInfo, session),
-    questBook: (session) => invoke(Invoke.questBook, session),
-    questErrand: (session, block) => invoke(Invoke.questErrand, session, block),
-    questPlan: (session, block, marked) => invoke(Invoke.questPlan, session, block, marked),
-    questRun: (session, block, marked) => invoke(Invoke.questRun, session, block, marked),
-    questStop: (session) => invoke(Invoke.questStop, session),
-    localMap: (session, map, room, radius) => invoke(Invoke.localMap, session, map, room, radius),
-    roomBrief: (session, map, room) => invoke(Invoke.roomBrief, session, map, room),
-    huntingGrounds: (session, measure) => invoke(Invoke.huntingGrounds, session, measure),
-    trainers: (session) => invoke(Invoke.trainers, session),
-    banks: (session) => invoke(Invoke.banks, session),
-    itemsServing: (session) => invoke(Invoke.itemsServing, session),
-    wards: (session) => invoke(Invoke.wards, session),
-    draftLoop: (session, rooms) => invoke(Invoke.draftLoop, session, rooms),
-    wearer: (session) => invoke(Invoke.wearer, session),
-    lookup: (session, query) => invoke(Invoke.lookup, session, query),
-    explorerList: (session, kind, options) => invoke(Invoke.explorerList, session, kind, options),
-    explorerDetail: (session, kind, item, options) =>
-      invoke(Invoke.explorerDetail, session, kind, item, options),
-    explorerBuyPlan: (session, item) => invoke(Invoke.explorerBuyPlan, session, item),
-    explorerBuy: (session, item, wear) => invoke(Invoke.explorerBuy, session, item, wear),
-    explorerLearnPlan: (session, spell) => invoke(Invoke.explorerLearnPlan, session, spell),
-    explorerLearn: (session, item) => invoke(Invoke.explorerLearn, session, item),
-    explorerGear: (session, options) => invoke(Invoke.explorerGear, session, options),
-    explorerEq: (session, plan) => invoke(Invoke.explorerEq, session, plan),
-    explorerEqBest: (session, plan, find) => invoke(Invoke.explorerEqBest, session, plan, find),
-    explorerEqWear: (session, plan) => invoke(Invoke.explorerEqWear, session, plan),
-    explorerCompare: (session, kind, numbers) =>
-      invoke(Invoke.explorerCompare, session, kind, numbers),
-    explorerFind: (session, kind, text) => invoke(Invoke.explorerFind, session, kind, text),
-    explorerItems: (session, numbers, names) =>
-      invoke(Invoke.explorerItems, session, numbers, names),
-    itemRulesFor: (session) => invoke(Invoke.itemRulesFor, session),
-    explorerTool: (session, request) => invoke(Invoke.explorerTool, session, request),
-    exportLoop: (session, loop, format) => invoke(Invoke.exportLoop, session, loop, format),
-    importLoopFile: (scope, owner, text) => invoke(Invoke.importLoopFile, scope, owner, text),
-    setItemDetails: (session, rules) => invoke(Invoke.setItemDetails, session, rules),
-    monsterRulesFor: (session) => invoke(Invoke.monsterRulesFor, session),
-    setCombatMonsters: (session, rules) => invoke(Invoke.setCombatMonsters, session, rules),
-    explorerRoomView: (session, request) => invoke(Invoke.explorerRoomView, session, request),
-    explorerRoomTip: (session, map, room, options) =>
-      invoke(Invoke.explorerRoomTip, session, map, room, options),
-    explorerRoomSearch: (session, search) => invoke(Invoke.explorerRoomSearch, session, search),
-    forget: (session, discovery) => invoke(Invoke.forget, session, discovery),
-    forgetFind: (session, find) => invoke(Invoke.forgetFind, session, find),
-    forgetCharacter: (session) => invoke(Invoke.forgetCharacter, session),
-    names: (session) => invoke(Invoke.names, session),
-    ask: (session, command) => invoke(Invoke.ask, session, command),
-    locate: (session) => invoke(Invoke.locate, session),
-    gear: (session, action, item) => invoke(Invoke.gear, session, action, item),
-    terminalAct: (session, action) => invoke(Invoke.terminalAct, session, action),
-    askRemote: (session, who, name) => invoke(Invoke.askRemote, session, who, name),
-
-    onData: (handler) => subscribe(Push.data, handler),
-    onState: (handler) => subscribe(Push.state, handler),
-    onTelnet: (handler) => subscribe(Push.telnet, handler),
-    onLine: (handler) => subscribe(Push.line, handler),
-    onDebug: (handler) => subscribe(Push.debug, handler),
-    onBlock: (handler) => subscribe(Push.block, handler),
-    onCharacter: (handler) => subscribe(Push.character, handler),
-    onWalk: (handler) => subscribe(Push.walk, handler),
-    onLoop: (handler) => subscribe(Push.loop, handler),
-    onAutomation: (handler) => subscribe(Push.automation, handler),
-    onVerdict: (handler) => subscribe(Push.verdict, handler),
-    onAsks: (handler) => subscribe(Push.asks, handler),
-    onNotice: (handler) => subscribe(Push.notice, handler),
-    onSessions: (handler) => subscribe(Push.sessions, handler),
-    onProfiles: (handler) => subscribe(Push.profiles, handler),
-    onLearned: (handler) => subscribe(Push.learned, handler),
-    onFinds: (handler) => subscribe(Push.finds, handler),
-    onCharacterReset: (handler) => subscribe(Push.characterReset, handler),
-    onQuestSaid: (handler) => subscribe(Push.questSaid, handler),
-    onQuestRun: (handler) => subscribe(Push.questRun, handler),
-    onConfig: (handler) => subscribe(Push.config, handler),
-    onInternal: (handler) => subscribe(Push.internal, handler)
-  };
+    }
+  );
 }
 
 /**

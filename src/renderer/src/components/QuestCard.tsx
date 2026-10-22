@@ -2163,15 +2163,6 @@ function placeWords(at: { room: string; place?: string } | undefined): string {
 }
 
 /**
- * What the realm says would stop a step being carried unattended, as a chip.
- *
- * A hazard is `warn`, because the router still found the way and the pack
- * may yet stop it; an unread one says so, since a spell the converter could
- * not read is one the client cannot promise to survive. No way there is `bad`
- * with the router's reason on the tooltip, and an unplaced item is the plan's
- * own admission, never a guess at where it might be.
- */
-/**
  * A snag as a chip: the words `snagWords` chose, in the tone they earn. Green
  * for a spell something in hand or on the plan stops, the accent for a
  * passage that is safe if walked without stopping, amber for a spell nothing

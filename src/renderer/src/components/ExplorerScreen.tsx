@@ -255,8 +255,9 @@ function keepSplit(split: ExplorerSplit): void {
 /** How long a typed figure waits before the list is asked again for it. */
 const RETYPE_MS = 350;
 
-/** A run of MME's text: a reference drawn as one, the rest as it is. */
 /**
+ * A run of MME's text: a reference drawn as one, the rest as it is.
+ *
  * Marked-up text: a reference a tab here shows is a link that opens it, as
  * mudtool's `a.xref` are; one no tab shows yet reads as a reference all the
  * same, and says what it names.
@@ -397,7 +398,6 @@ function Chest({
   );
 }
 
-/** MME's sub-line under an item's name: what it is, at a glance. */
 /** A copper total as the coins it makes, as the purse is shown. */
 const coins = (copper: number): string => coinText(copperSpread(copper), 1) || '0';
 
@@ -586,6 +586,7 @@ function BuyLines({
   );
 }
 
+/** MME's sub-line under an item's name: what it is, at a glance. */
 function subLine(kind: ExplorerKind, row: ExplorerRow | undefined): string {
   if (row === undefined) return '';
   const c = row.cells;

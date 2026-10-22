@@ -1082,16 +1082,6 @@ function Learned({
 }
 
 /**
- * What lives here, per the realm data.
- *
- * The room's own `Also here:` line says what is up *now*; this says what the
- * room spawns and how many at once, which is the thing to know before walking
- * in and the thing the line cannot say when the room is empty. Each name opens
- * the realm's answer, like a name on the occupant line, and the disposition is
- * said in words beside it — this is the readout a decision about whether to
- * keep walking is made off, and §6 says a condition is never a hue alone.
- */
-/**
  * What the room answers to, and what each of them wants.
  *
  * From the realm's own script table (`Rooms.CMD` → `TBInfo.Action`, see

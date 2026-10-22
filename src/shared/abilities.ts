@@ -1153,6 +1153,20 @@ export function abilityShape(id: number, table: AbilityTable): AbilityShape | un
 }
 
 /**
+ * Whether a shape's value is a *magnitude* — a number the reader compares —
+ * rather than a kind, a flag or a row id.
+ *
+ * The one place this matters is a spell that states its own power: there, a
+ * magnitude of zero is the realm saying *the amount is in my own columns*,
+ * not saying zero. `way of the owl` is `M.R.` with `AbilVal 0` and a power of
+ * 10, and the card drew `M.R. 0` about a spell that grants ten. See
+ * `WorldSpell.power` and `SpellDetail`.
+ */
+export function abilityIsMagnitude(shape: AbilityShape | undefined): boolean {
+  return shape === 'points' || shape === 'percent' || shape === 'stat';
+}
+
+/**
  * Whether a pair is one the client holds and cannot read — the honest count.
  *
  * An id with no shape is *not understood*. Every shaped pair is read, and a
@@ -1172,20 +1186,6 @@ export function abilityShape(id: number, table: AbilityTable): AbilityShape | un
  * state a flag, never to state its default, which is what the numbers were
  * saying all along. `Del@Maint 646` on `waterskin` is the same presence.
  */
-/**
- * Whether a shape's value is a *magnitude* — a number the reader compares —
- * rather than a kind, a flag or a row id.
- *
- * The one place this matters is a spell that states its own power: there, a
- * magnitude of zero is the realm saying *the amount is in my own columns*,
- * not saying zero. `way of the owl` is `M.R.` with `AbilVal 0` and a power of
- * 10, and the card drew `M.R. 0` about a spell that grants ten. See
- * `WorldSpell.power` and `SpellDetail`.
- */
-export function abilityIsMagnitude(shape: AbilityShape | undefined): boolean {
-  return shape === 'points' || shape === 'percent' || shape === 'stat';
-}
-
 export function abilityIsUnread(id: number, table: AbilityTable): boolean {
   return abilityShape(id, table) === undefined;
 }

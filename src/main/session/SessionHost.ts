@@ -116,9 +116,9 @@ export interface SessionHostOptions {
    */
   worldFor(id: SessionId): WorldGraph | undefined;
   /**
-   * The ported MegaMUD engine's set-up for a character that has a
-   * `megamud.ini`, with a key that changes when it does; null for one that
-   * has none. See `MegaEngine`.
+   * The ported MegaMUD engine's set-up for a character, from its profile, with
+   * a key that changes when it does; null for an id with no profile. See
+   * `MegaEngine`.
    */
   megamudFor?(id: SessionId): { key: string; setup: MegaEngineSetup } | null;
   /**
@@ -639,12 +639,6 @@ export class SessionHost {
     return slot.manager.connect(target);
   }
 
-  /**
-   * Re-reads every session's options after the file or a profile changed.
-   *
-   * Each session asks for its own, because two characters can now disagree
-   * about what a rule set or a vitals threshold should be.
-   */
   /** What a session is told about its realm: the imported tables and the coins' names. */
   private realmFor(id: SessionId, config: AppConfig): RealmData {
     return {
@@ -653,6 +647,12 @@ export class SessionHost {
     };
   }
 
+  /**
+   * Re-reads every session's options after the file or a profile changed.
+   *
+   * Each session asks for its own, because two characters can now disagree
+   * about what a rule set or a vitals threshold should be.
+   */
   reconfigure(): void {
     for (const slot of this.slots.values()) {
       const config = this.options.configFor(slot.id);

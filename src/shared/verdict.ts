@@ -1,21 +1,3 @@
-import {
-  rankByMenace,
-  type Menace,
-  type MenacePlayer,
-  type MenaceSubject,
-  type MenaceWeights,
-  weighRoom
-} from './menace';
-import { swing, type ProwessSheet, type ProwessWeapon, type Reckoning } from './prowess';
-import type { RealmFamily } from './realm';
-// Type only: `survival.ts` imports this module's values, and a value the other
-// way would be the cycle `module-cycle.test.ts` exists to refuse.
-import type { Survival } from './survival';
-import { DODGE_ABILITY } from './abilities';
-import { statedNow } from './stated';
-import type { CharacterState, RoomOccupant } from './character';
-import type { MobEntity } from './entities';
-
 /**
  * *Can I fight this?* — one answer, read by the card and by the engine.
  *
@@ -28,7 +10,7 @@ import type { MobEntity } from './entities';
  *
  * ## Why this is one function and not two implementations
  *
- * `AutoCombat` picks a target and the Reference card explains one. **If the
+ * The fight picks a target and the Reference card explains one. **If the
  * card says a monster is a bad fight and the engine picks it anyway, one of
  * them is lying**, and the only way that stays true is if both read the same
  * function. So the verdict is computed here, in `src/shared/`, dependency-free
@@ -50,6 +32,23 @@ import type { MobEntity } from './entities';
  * back to `menace.weight` where they are not — per monster, not per room, so
  * one unknown does not throw away what is known about the rest.
  */
+import {
+  rankByMenace,
+  type Menace,
+  type MenacePlayer,
+  type MenaceSubject,
+  type MenaceWeights,
+  weighRoom
+} from './menace';
+import { swing, type ProwessSheet, type ProwessWeapon, type Reckoning } from './prowess';
+import type { RealmFamily } from './realm';
+// Type only: `survival.ts` imports this module's values, and a value the other
+// way would be the cycle `module-cycle.test.ts` exists to refuse.
+import type { Survival } from './survival';
+import { DODGE_ABILITY } from './abilities';
+import { statedNow } from './stated';
+import type { CharacterState, RoomOccupant } from './character';
+import type { MobEntity } from './entities';
 
 /** What a monster costs, in both directions, with every figure's provenance. */
 export interface Verdict {
@@ -122,7 +121,7 @@ export type TargetEntity = Pick<MobEntity, 'armour' | 'damageResist' | 'abilitie
  * sides and the division happens here, once. Dodge is the row's `Abil-n = 34`
  * slot, in points, and there is no unit to convert.
  *
- * **`AutoCombat` used to pass `{}` here.** `hitChance` takes an unread armour
+ * **The old `AutoCombat` used to pass `{}` here.** `hitChance` takes an unread armour
  * class as none — the answer that makes every blow land — so with the entity
  * never consulted every monster was priced as unarmoured, and the rounds
  * figure, labelled *at most*, was smaller than the truth for anything in

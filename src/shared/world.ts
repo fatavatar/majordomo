@@ -391,12 +391,12 @@ export interface Requirement {
    * **`openableHere` is the gate, not this field.** A list with an `at` on any
    * member is a lever the character has to walk to, which the *router* still
    * does not plan; it is here so the client can say where it is. Everything
-   * priced or sent in place — `edgePenalty`, the chip, `Walker.pullLevers` —
+   * priced or sent in place — `edgePenalty`, the chip, `SessionHost.clearWay` —
    * asks `openableHere` first, and 150 exits answer yes. See `parseAction` for
    * where the data was hiding.
    *
-   * Walking to a lever elsewhere is `RemoteLever` and `Walker.fetchLever`,
-   * which read the *rooms'* own commands rather than this field — and have to,
+   * Walking to a lever elsewhere is `RemoteLever` and the walk's lever detour
+   * (`RouteStep.pull`), which read the *rooms'* own commands rather than this field — and have to,
    * because 25 of the 225 gated exits state no action at all.
    */
   actions?: RequirementAction[];
@@ -606,9 +606,9 @@ export interface RequirementAction {
  * Whether a hidden exit's levers can all be pulled without leaving the room.
  *
  * One reading, shared by the price (`edgePenalty`), the chip
- * (`describeObstacle`) and the walker's own rung (`pullLevers`), because three
- * copies of *can this be opened from here* agree exactly until one is edited —
- * the lesson `AutoCombat.quarry` already records.
+ * (`describeObstacle`) and the lever pulls (`SessionHost.clearWay`), because
+ * three copies of *can this be opened from here* agree exactly until one is
+ * edited.
  *
  * The second half of the test and not the whole of it: `buildRealm` writes
  * `actions` only where the realm's stated count matches the number of levers
@@ -927,14 +927,6 @@ export interface WorldShop {
 export type ShopKind = 'shop' | 'temple' | 'tavern' | 'bank' | 'trainer' | 'inn';
 
 /**
- * A trainer this character may use, and where it stands — the answer the
- * settings screen's picker and the levelling errand both read (todo 18).
- *
- * Only places the realm says will take this character at this level: a
- * trainer that refuses is a walk across two maps to be told so, and offering
- * one is offering a choice that cannot work.
- */
-/**
  * A bank counter the realm places, for the settings picker (todo 00).
  *
  * The shape `TrainerChoice` has, minus the arithmetic: a bank charges nothing
@@ -967,6 +959,14 @@ export interface CashPlace extends BankChoice {
   moves: number;
 }
 
+/**
+ * A trainer this character may use, and where it stands — the answer the
+ * settings screen's picker and the levelling errand both read (todo 18).
+ *
+ * Only places the realm says will take this character at this level: a
+ * trainer that refuses is a walk across two maps to be told so, and offering
+ * one is offering a choice that cannot work.
+ */
 export interface TrainerChoice {
   /** The shop's own row, which is what the setting stores. */
   shop: number;
@@ -1262,12 +1262,19 @@ export interface WorldNames {
 }
 
 /**
- * A spell the realm knows: the reference a player used to keep on paper.
+ * A band of character levels an effect is gated to, as the realm's own
+ * `minlevel` / `maxlevel` state it. Absent on either side is unbounded there.
  *
- * Every field but the name is optional, and absent means *the realm does not
- * say* rather than zero — a spell that costs no mana and a spell whose cost is
- * not recorded are different facts, and only one of them can be acted on.
+ * `TextBlockPart.cs` answers both from the sheet with `Succeeded` or `Failed`,
+ * so what stands behind one happens to *some* character — and which one is
+ * stated, which is what lets the router stop pricing a sandstorm that cannot
+ * catch the character it is planning for (todo 01).
  */
+export interface LevelBand {
+  min?: number;
+  max?: number;
+}
+
 /**
  * What a room's own spell does to whoever stands in it, and what stops it.
  *
@@ -1285,20 +1292,6 @@ export interface WorldNames {
  * hundred rooms of damage, and the router has to price those differently or
  * the answer is wrong for one of the two characters asking.
  */
-/**
- * A band of character levels an effect is gated to, as the realm's own
- * `minlevel` / `maxlevel` state it. Absent on either side is unbounded there.
- *
- * `TextBlockPart.cs` answers both from the sheet with `Succeeded` or `Failed`,
- * so what stands behind one happens to *some* character — and which one is
- * stated, which is what lets the router stop pricing a sandstorm that cannot
- * catch the character it is planning for (todo 01).
- */
-export interface LevelBand {
-  min?: number;
-  max?: number;
-}
-
 export interface SpellHazard {
   /**
    * Hit points a tick in the room is expected to cost. Absent where the chain
@@ -1428,6 +1421,13 @@ export function hazardAvoided(
   return spells.some((spell) => spellsUp.includes(spell));
 }
 
+/**
+ * A spell the realm knows: the reference a player used to keep on paper.
+ *
+ * Every field but the name is optional, and absent means *the realm does not
+ * say* rather than zero — a spell that costs no mana and a spell whose cost is
+ * not recorded are different facts, and only one of them can be acted on.
+ */
 export interface WorldSpell {
   id: number;
   name: string;
@@ -1774,16 +1774,6 @@ export function parseLair(descriptor: string): { max: number | null; ids: number
 }
 
 /**
- * Where the realm puts a monster, by the name of the room it puts it in.
- *
- * Grouped by *name* because that is the answer to the question being asked.
- * `snow cat` is in 236 rooms of 25 names, and a list of 236 addresses is not
- * somewhere a person can decide to go; `Snowy Plains` is. The addresses are
- * carried underneath so a group of several is something to **choose from** —
- * never a button that walks to whichever room the file listed first, which is
- * the guess `ShopPlace` already refuses for the same reason.
- */
-/**
  * Rooms of one name that something is put in — a monster's spawn group, an
  * item's placement.
  *
@@ -1812,6 +1802,16 @@ export interface ItemPlaces {
   fixed?: true;
 }
 
+/**
+ * Where the realm puts a monster, by the name of the room it puts it in.
+ *
+ * Grouped by *name* because that is the answer to the question being asked.
+ * `snow cat` is in 236 rooms of 25 names, and a list of 236 addresses is not
+ * somewhere a person can decide to go; `Snowy Plains` is. The addresses are
+ * carried underneath so a group of several is something to **choose from** —
+ * never a button that walks to whichever room the file listed first, which is
+ * the guess `ShopPlace` already refuses for the same reason.
+ */
 export interface MobSpawn extends PlaceGroup {
   /**
    * How the realm puts it there.
@@ -2237,8 +2237,7 @@ export function nameAnswersTo(name: string, typed: string): boolean {
  * `rooms` is how many the way in puts under it before the nearest exit that
  * lifts it, counting the landing; `ends` false is a passage with no such
  * exit within `ticks` moves of the landing, which the router walls. Nothing
- * carried stops one: the answer is to keep moving, which is what
- * `Walker`'s move-only rule and the session's gates do inside it.
+ * carried stops one: the answer is to keep moving.
  */
 export interface Corridor {
   /** The spell the way in casts, and its name. */
@@ -2465,7 +2464,7 @@ export interface RoomCommand {
  * levers is two levers to pull; a count smaller than the levers found, or no
  * count at all, names *alternatives* — the reported gate says `Door` and has a
  * lever in each Guardroom flanking it, and the wire settled which reading is
- * right: one pull raised it. `Walker.fetchLever` is where that is acted on.
+ * right: one pull raised it. The walk's lever detour is where that is acted on.
  */
 export interface RemoteLever {
   /** The room it is pulled in. Equal to the exit's own room for 171 of 225. */
@@ -2522,7 +2521,7 @@ export function roomAddress(room: { map: number | null; number: number | null })
  * it — a step the walker sent, a direction the player typed, a party follow,
  * a drag. Nothing else needs to be true.
  *
- * It used to be `Walker.recent` instead, appended only when the *walker*
+ * It used to be the old walker's `recent` instead, appended only when the *walker*
  * confirmed a step of its own route, and that is a strictly smaller set in the
  * one situation the fact is wanted. Measured, and this type exists because of
  * it: `logs/2026-09-02_21-04-28_festus.mudcap.jsonl` t=418517, a loop replanned
@@ -2715,7 +2714,7 @@ export interface RouteStep {
    * reaches, because that is what the rest of the plan was priced against —
    * the arithmetic behind `moves` is `WorldGraph.scatterCosts`, and it prices
    * exactly *and then the client carries on from wherever you land*. The
-   * walker reads it as permission to be surprised (`Walker.scattered`): an
+   * walker reads it as permission to be surprised: an
    * arrival anywhere in `landing` is this step working, and the answer is to
    * plan again from there rather than to stop the walk.
    */
@@ -2751,16 +2750,6 @@ export interface RoutePull {
   opensName: string;
 }
 
-/**
- * One spell a route walks through, folded across every room that casts it.
- *
- * Said at the head of the plan rather than only on the steps, for the reason
- * the trap and lair counts are: a route of a hundred and four steps has its
- * summary off the top of the panel long before the reader reaches the rooms
- * that hurt. And the half that decides what to *do* is the last one — a
- * hundred rooms of the Silver River are a corridor if you fetch a log raft
- * first, and a wall of damage if you do not.
- */
 /**
  * A step through a scatter, and what it is expected to cost.
  *
@@ -2837,6 +2826,16 @@ export interface RouteInvocation {
   uses: number | null;
 }
 
+/**
+ * One spell a route walks through, folded across every room that casts it.
+ *
+ * Said at the head of the plan rather than only on the steps, for the reason
+ * the trap and lair counts are: a route of a hundred and four steps has its
+ * summary off the top of the panel long before the reader reaches the rooms
+ * that hurt. And the half that decides what to *do* is the last one — a
+ * hundred rooms of the Silver River are a corridor if you fetch a log raft
+ * first, and a wall of damage if you do not.
+ */
 export interface RouteHazard {
   /** The spell's own row, so a reader can ask the realm what stops it. */
   id: number;
@@ -2906,8 +2905,8 @@ export function trapsAlong(steps: readonly RouteStep[]): { count: number; worst:
 
 /**
  * The trap a step walks through, or null: the one requirement on a route that
- * is neither opened nor paid nor refused, and the one the walker rests before
- * (`Walker.holdForTrap`, `automation.health.restBeforeTraps`).
+ * is neither opened nor paid nor refused, and the one a walk rests before
+ * (a trap step's `DisarmTrap`).
  *
  * A `Spell Trap:` exit counts too, and did not until its spell was read (todo
  * 00, 2026-09-06). It is a trap by the server's own reckoning —
@@ -2974,8 +2973,7 @@ export function lairsAlong(steps: readonly RouteStep[]): {
  * was the tell: a **successful** route already carries `RouteStep.requirement`
  * per step and renders it, and a failed one carried nothing.
  *
- * **Accumulated, never first-match-wins**, on the model of `HangUp`'s
- * `{safe, reasons[]}`: a route can be stopped by a level gate *and* a locked
+ * **Accumulated, never first-match-wins**: a route can be stopped by a level gate *and* a locked
  * door, and naming one hides the other — so somebody clears the first and is
  * refused again by a condition that was there all along.
  *
@@ -3223,12 +3221,6 @@ export const ROUTE_BLOCK_KINDS = [
 ] as const;
 
 /**
- * One block as a sentence, naming the condition and the number it wanted.
- *
- * *Level 12 needed, at level 9* rather than *this character cannot walk it*:
- * the number that was not met is the whole of what somebody can act on.
- */
-/**
  * A copper figure as the realm would say it, for one sentence.
  *
  * Deliberately **not** in `coins.ts`, which states outright that it converts
@@ -3253,6 +3245,12 @@ function coinWords(copper: number): string {
 /** The rung `coinWords` reads against. `coins.ts` owns the ladder itself. */
 const COPPER_PER_GOLD = 100;
 
+/**
+ * One block as a sentence, naming the condition and the number it wanted.
+ *
+ * *Level 12 needed, at level 9* rather than *this character cannot walk it*:
+ * the number that was not met is the whole of what somebody can act on.
+ */
 export function describeBlock(block: RouteBlock): string {
   switch (block.kind) {
     case 'key':

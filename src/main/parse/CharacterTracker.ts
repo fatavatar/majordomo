@@ -301,7 +301,19 @@ function leftRoom(before: Room, after: Room): boolean {
   );
 }
 
-/** The `spells` group of a spell-message block: `|`-separated spell names. */
+/**
+ * This character's own cast line: the caster's line of a spell's message row
+ * (`You begin to chant in a fierce tone!`, read as a `realm-message` of role
+ * 1), or the `You cast …` frame. See `CharacterTracker.readsAsOwnSpell`.
+ */
+function isOwnCastLine(block: Block): boolean {
+  const g = block.groups ?? {};
+  if (block.type === 'realm-message') {
+    return g['role'] === '1' && (g['kind'] === 'spell' || g['kind'] === 'cast');
+  }
+  return block.type === 'spell-cast' && /^you$/i.test(g['caster'] ?? '');
+}
+
 /**
  * A block that may sit between this character's blow and the proc it fired
  * without breaking the two apart.
@@ -319,19 +331,6 @@ function leftRoom(before: Room, after: Room): boolean {
  * captures/168's false candidate — and letting those through would give the
  * binding back the reach this exists to take away.
  */
-/**
- * This character's own cast line: the caster's line of a spell's message row
- * (`You begin to chant in a fierce tone!`, read as a `realm-message` of role
- * 1), or the `You cast …` frame. See `CharacterTracker.readsAsOwnSpell`.
- */
-function isOwnCastLine(block: Block): boolean {
-  const g = block.groups ?? {};
-  if (block.type === 'realm-message') {
-    return g['role'] === '1' && (g['kind'] === 'spell' || g['kind'] === 'cast');
-  }
-  return block.type === 'spell-cast' && /^you$/i.test(g['caster'] ?? '');
-}
-
 function isProcHousekeeping(block: Block): boolean {
   if (block.type === 'status-line') return true;
   return block.type === 'unknown' && block.text.trim().length === 0;
@@ -438,14 +437,6 @@ function readAbilityListing(rows: ReadonlyArray<Record<string, string>>): {
 }
 
 /**
- * Whether a line nothing recognised is shaped like an effect sentence: one
- * sentence, beginning with a capital and ending in a full stop or a bang,
- * carrying no figure and no speech, and short. Every start and stop in the
- * shipped table passes; a listing row, a status line, a damage line and a
- * `You say` do not. This is a gate on what may be *learned*, not a reader —
- * nothing is typed from it.
- */
-/**
  * Every affliction, taken from the zero value so the list cannot drift from
  * the type it enumerates — the two halves of a closed union, in one place.
  */
@@ -462,6 +453,14 @@ const STATED_AFFLICTIONS: ReadonlyArray<readonly [MessageEffect, keyof Afflictio
 /** A sentence about casting rather than about an effect. See the `unknown` case. */
 const ABOUT_CASTING = /\b(?:cast|casting|spells?|mana)\b/i;
 
+/**
+ * Whether a line nothing recognised is shaped like an effect sentence: one
+ * sentence, beginning with a capital and ending in a full stop or a bang,
+ * carrying no figure and no speech, and short. Every start and stop in the
+ * shipped table passes; a listing row, a status line, a damage line and a
+ * `You say` do not. This is a gate on what may be *learned*, not a reader —
+ * nothing is typed from it.
+ */
 export function looksLikeEffectSentence(text: string): boolean {
   if (!/^[A-Z][^\d"]*[.!]$/.test(text)) return false;
   return wordsOf(text).length <= 14;
@@ -630,8 +629,7 @@ export class CharacterTracker {
    * suspect left that the sheet has stopped listing is the buff the sentence
    * ended, which is then learned. Bounded, and aged out by
    * `tuning.spells.pendingStopMs`.
-   */
-  /**
+   *
    * `wearOff`: the realm's wear-off frame, so the sentence is certainly an
    * ending, and one the sheet settles replaces a learned ending it had.
    */
@@ -648,7 +646,8 @@ export class CharacterTracker {
    * Whether an `st` sheet would settle something: a sentence nothing
    * recognised has just been read as, or held as, the ending of a buff whose
    * start the sheet would print. Set here, taken by `takeSheetRequest`, and
-   * acted on by `Routines` — the tracker records and never sends.
+   * acted on by `SessionManager` (`megaAskSheet`, on the engine's pending
+   * list): the tracker records and never sends.
    */
   private sheetWanted = false;
   /**
@@ -715,13 +714,6 @@ export class CharacterTracker {
    * server-side, and the next `pro` replaces it.
    */
   private statlineMatcher: RegExp | null = null;
-  /**
-   * A prompt failed that matcher and `pro` has not been asked about it since.
-   * Set here, taken by `takeStatlineRequest`, acted on by `Routines` — and
-   * armed once per report, so a line that stays different costs one ask.
-   */
-  private statlineWanted = false;
-  private statlineAsked = false;
 
   /**
    * Where this character's own record is kept between sessions — the balances
@@ -758,9 +750,9 @@ export class CharacterTracker {
    * ending, `You are no longer sneaking.`, comes from the `break` command
    * alone. So a client that waits to be told will wait for ever, which is
    * exactly what this one did: `stealth` went to `sneaking` on the first
-   * `Sneaking...` and stayed there for the rest of the session, and
-   * `Walker.sneakFirst` — which stands down while the character is already
-   * sneaking — therefore never sent another `sn` after the first.
+   * `Sneaking...` and stayed there for the rest of the session, and the old
+   * walker's `sneakFirst`, which stood down while the character was already
+   * sneaking, therefore never sent another `sn` after the first.
    *
    * The `sn` reply cannot serve instead, and this is the part that is easy to
    * get wrong: `SneakCommand` prints `Attempting to sneak...` on success **and
@@ -861,6 +853,18 @@ export class CharacterTracker {
   }
 
   /**
+   * An affliction the MegaMUD engine turned on or off, with what turned it on:
+   * one record of them with the engine's (`MegaEngine.noteAfflictions`).
+   * Whether anything changed.
+   */
+  noteAffliction(which: keyof Afflictions, on: boolean, cause?: AfflictionCause): boolean {
+    const next = afflicted(this.state, which, on ? 'yes' : 'no', cause);
+    if (next === null) return false;
+    this.state = next;
+    return true;
+  }
+
+  /**
    * A command the server threw away before it looked at it — `You fumble in
    * confusion!`, named by the status line that echoed it.
    *
@@ -878,18 +882,6 @@ export class CharacterTracker {
    * Left stranded, the expectation poisons dead reckoning exactly as the
    * refused `go manhole` did — the only position this client has ever lost.
    */
-  /**
-   * An affliction the MegaMUD engine turned on or off, with what turned it on:
-   * one record of them with the engine's (`MegaEngine.noteAfflictions`).
-   * Whether anything changed.
-   */
-  noteAffliction(which: keyof Afflictions, on: boolean, cause?: AfflictionCause): boolean {
-    const next = afflicted(this.state, which, on ? 'yes' : 'no', cause);
-    if (next === null) return false;
-    this.state = next;
-    return true;
-  }
-
   noteFumbled(command: string | null): void {
     if (command !== null) this.expect.refused(command);
   }
@@ -957,8 +949,8 @@ export class CharacterTracker {
     /*
      * And the two that ask for it back. Neither receipt is trusted (see the
      * `user-hide-initiate` case), so the send is the only moment the answer
-     * can be marked as *not yet known* — which is where `AutoCombat.opener`
-     * spends the backstab, and where a hidden character was read as `seen`
+     * can be marked as *not yet known* (the old `AutoCombat.opener` spent the
+     * backstab there), and where a hidden character was read as `seen`
      * until 2026-09-12: 34 `hide`s in twelve minutes, every fight after them
      * opened with `a`.
      */
@@ -1011,7 +1003,7 @@ export class CharacterTracker {
    * blood ritual.`, `c undd` printed `The undead skin builds on your body as
    * you feel protected.`, and `c rsto` only the effect itself. Without a
    * confirmation nothing put the buff on the list, the effect's sentence was
-   * filed as an unnamed effect, and `Blessings` recast all five of a
+   * filed as an unnamed effect, and the old `Blessings` recast all five of a
    * character's blessings every thirty seconds with every one of them up. The
    * command is this character's own statement of what it cast, so it names
    * the spell until the server says otherwise.
@@ -1313,7 +1305,7 @@ export class CharacterTracker {
    * The last few moves the character is known to have made, oldest first.
    *
    * See `TrailStep`. This is *where we came from*, and it is here rather than
-   * in `Walker` because the tracker is the only thing that knows: it holds the
+   * in a walker because the tracker is the only thing that knows: it holds the
    * expectation queue that says a move was asked for, and it does the room
    * resolution that says where the move landed. Every move goes through this
    * one place — a walker step, a typed direction, a party follow — so the trail
@@ -1430,8 +1422,6 @@ export class CharacterTracker {
     this.sheetWanted = false;
     this.deaths.clear();
     this.statlineMatcher = null;
-    this.statlineWanted = false;
-    this.statlineAsked = false;
   }
 
   /**
@@ -1575,36 +1565,6 @@ export class CharacterTracker {
   }
 
   /**
-   * What the realm knows about a room that has just been placed.
-   *
-   * Mutates the room being built, which is what every other step of the
-   * resolution does — it is a local under construction, not published state.
-   * Every field is left alone where the realm says nothing, so an unresolved
-   * room and a derivative realm both come out as the room the server printed
-   * and nothing more, which is the honest answer.
-   */
-  /**
-   * A move landed, and both ends of it are known. Write it down.
-   *
-   * The one place *where we came from* is recorded, called from the one place a
-   * room block is committed — so a step the walker sent, a direction the player
-   * typed and a party follow all reach it the same way, which is the whole
-   * point of it living here (see `TrailStep`).
-   *
-   * Four things must hold, and each is a refusal rather than a default:
-   *
-   * - **A move was expected.** `moved` is the direction off the expectation the
-   *   arriving room consumed. A room block nobody asked for — the server's own
-   *   courtesy reprint, a look — moved nothing.
-   * - **It was a compass move.** A teleport is queued as a move with no
-   *   direction, and it arrives along no edge: there is no opposite to state.
-   * - **Both ends are placed.** An unresolved or ambiguous room is not a room
-   *   to claim a way back to. Refuse rather than guess.
-   * - **The ends differ.** A move the server refused can still be answered with
-   *   a room block for where the character already stands, and `n` recorded as
-   *   leading from a room to itself would make `s` the way out of it.
-   */
-  /**
    * A move landed. Say whether this character is still unseen, and forget.
    *
    * Called from the two places a move is committed — the described arrival and
@@ -1649,8 +1609,8 @@ export class CharacterTracker {
    * Committed here rather than returned because neither caller is answering a
    * block — one is the send path and the other has a state of its own to fold
    * in first. Nothing is pushed from here: the prompt that answers the command
-   * is a block, and it is microseconds behind. What reads this in between is
-   * `Walker.sneakFirst`, through `tracker.current`, which is the whole point.
+   * is a block, and it is microseconds behind. Whatever reads this in between
+   * reads it through `tracker.current`, which is the whole point.
    */
   private breakStealth(): void {
     this.sneakedThisMove = false;
@@ -1705,9 +1665,9 @@ export class CharacterTracker {
      * **The room listing is not the gate.** It used to be — `gone.length
      * === 0` returned early — so a monster the room had *already* dropped
      * kept its place in `attackers` for ever, and that is the state a
-     * client cannot get out of on its own: `fightIsRunning` (`Walker.ts`)
-     * reads `attackers`, so the walk stops and books a failed leg, three
-     * of which end the lap; `retaliation` re-proposes the attack on every
+     * client could not get out of on its own: the old walker's
+     * `fightIsRunning` read `attackers`, so the walk stopped and booked a
+     * failed leg, three of which ended the lap; `retaliation` re-proposes the attack on every
      * state change; and every one of them comes back here to be refused by
      * the same sentence that should have ended it. Measured 2026-09-02
      * (`2026-09-02_18-07-07_festus.mudcap.jsonl`, t=4865201): the room
@@ -1729,8 +1689,8 @@ export class CharacterTracker {
      * `nameAnswersTo` is prefix-or-word-start. The window is narrow: the
      * monster must be genuinely attacking, absent from `room.occupants`,
      * and share a name with an unrelated argument. And what it costs when
-     * it happens is that `fightIsRunning` and `Recovery.fightIsHere` both
-     * go quiet on a fight still running — one spent command, since being
+     * it happens is that whatever reads `attackers` goes quiet on a fight
+     * still running — one spent command, since being
      * attacked breaks a rest and the next blow re-files the attacker.
      * Against a deadlock nothing but a person can end, that is the cheaper
      * error, and it is the same *correction that corrects itself* argument
@@ -1804,6 +1764,27 @@ export class CharacterTracker {
     this.state = { ...this.state, stealth: 'unknown' };
   }
 
+  /**
+   * A move landed, and both ends of it are known. Write it down.
+   *
+   * The one place *where we came from* is recorded, called from the one place a
+   * room block is committed — so a step the walker sent, a direction the player
+   * typed and a party follow all reach it the same way, which is the whole
+   * point of it living here (see `TrailStep`).
+   *
+   * Four things must hold, and each is a refusal rather than a default:
+   *
+   * - **A move was expected.** `moved` is the direction off the expectation the
+   *   arriving room consumed. A room block nobody asked for — the server's own
+   *   courtesy reprint, a look — moved nothing.
+   * - **It was a compass move.** A teleport is queued as a move with no
+   *   direction, and it arrives along no edge: there is no opposite to state.
+   * - **Both ends are placed.** An unresolved or ambiguous room is not a room
+   *   to claim a way back to. Refuse rather than guess.
+   * - **The ends differ.** A move the server refused can still be answered with
+   *   a room block for where the character already stands, and `n` recorded as
+   *   leading from a room to itself would make `s` the way out of it.
+   */
   private rememberTheWayBack(s: CharacterState, room: Room, moved: Direction | null): void {
     if (moved === null) return;
     if (room.map === null || room.number === null) return;
@@ -1843,6 +1824,15 @@ export class CharacterTracker {
     }
   }
 
+  /**
+   * What the realm knows about a room that has just been placed.
+   *
+   * Mutates the room being built, which is what every other step of the
+   * resolution does — it is a local under construction, not published state.
+   * Every field is left alone where the realm says nothing, so an unresolved
+   * room and a derivative realm both come out as the room the server printed
+   * and nothing more, which is the honest answer.
+   */
   private attachRealm(room: Room): void {
     const world = this.world;
     if (world === undefined || room.map === null || room.number === null) return;
@@ -1965,9 +1955,8 @@ export class CharacterTracker {
      * `classifyOccupant` is dependency-free and takes a name-only lookup, so
      * `disposition` and `uncertain` have always come off the fold — the worst
      * of every row sharing the name, marked uncertain wherever they disagree
-     * (21 names in the shipped realm). `AutoCombat` reads `who.disposition` to
-     * decide whether to swing and `who.mob.hp` to price the swing in the same
-     * filter, so leaving one half folded is two halves of one fact
+     * (21 names in the shipped realm). The survival verdict reads
+     * `who.disposition` and `who.mob.hp` in the same breath, so leaving one half folded is two halves of one fact
      * disagreeing: a row the realm states is good reads as *uncertain* and is
      * swung at, which is exactly the refusal that is not a setting.
      *
@@ -2072,7 +2061,7 @@ export class CharacterTracker {
      * the join is idempotent: a row that already carries its realm fields is
      * rebuilt to the same thing. Doing it here means the Carrying card can
      * show a weight and a price without the `itemsKnown` round trip it used to
-     * make from a React effect, and `AutoDrop` can ask what something is worth.
+     * make from a React effect.
      */
     return items.map((item) =>
       this.itemEntity(item.name, {
@@ -2500,11 +2489,6 @@ export class CharacterTracker {
   }
 
   /**
-   * Applies one block. Returns true if anything changed, so the caller can
-   * avoid republishing state on every unremarkable line — which, during a
-   * combat burst, is most of them.
-   */
-  /**
    * The experience table, worked out from the realm data when nothing else has.
    *
    * Folded here rather than in a case, for the reason `trackPlayers` and
@@ -2550,6 +2534,11 @@ export class CharacterTracker {
     return { ...state, progress: { ...state.progress, expTable: merged } };
   }
 
+  /**
+   * Applies one block. Returns true if anything changed, so the caller can
+   * avoid republishing state on every unremarkable line — which, during a
+   * combat burst, is most of them.
+   */
   apply(block: Block, rows?: Array<Record<string, string>>, collecting = false): boolean {
     // A cast's burst that has gone quiet has said its onset.
     this.settleOnset(block.at);
@@ -2854,13 +2843,6 @@ export class CharacterTracker {
   private noteDeath(name: string): void {
     const row = rowNameOf(mobKey(name), (who) => this.world?.mob(who) !== undefined);
     if (row.length > 0) this.deaths.add(row);
-  }
-
-  /** A prompt stopped matching what `pro` reported, so `pro` is worth asking again. Cleared by the taking. */
-  takeStatlineRequest(): boolean {
-    const wanted = this.statlineWanted;
-    this.statlineWanted = false;
-    return wanted;
   }
 
   /**
@@ -3563,7 +3545,7 @@ export class CharacterTracker {
    * the pack's own entities, so this is the same join the loadout is and sits
    * beside it. Nothing before the first listing: a sight worked out from an
    * empty pack and an unnamed race would say the character sees in the dark
-   * by nothing, which is a number `AutoLight` would act on.
+   * by nothing.
    */
   private rememberSight(): void {
     const s = this.state;
@@ -3627,7 +3609,8 @@ export class CharacterTracker {
    * Note that somebody sent an `@` command. See `noteRemoteCall`.
    *
    * On the tracker because the registry lives on `CharacterState` and this is
-   * what owns it; `Remotes` proposes and never reaches into state itself.
+   * what owns it; the remote handling proposes and never reaches into state
+   * itself.
    */
   noteRemoteCall(from: string, raw: string, at: number): boolean {
     const before = this.state.players;
@@ -3642,7 +3625,7 @@ export class CharacterTracker {
    * Note which client another player answered `@version` with, or that this
    * client's extended remotes do not reach them. See `noteRemoteClient`.
    *
-   * Here rather than in `Remotes` for `noteRemoteCall`'s reason: the registry
+   * Here rather than in the remote handling for `noteRemoteCall`'s reason: the registry
    * lives on `CharacterState` and this owns it. Which replies are read at all
    * is the responder's decision — it reads one only for a question it asked —
    * and by the time this is called that has already been settled.
@@ -3686,14 +3669,6 @@ export class CharacterTracker {
   }
 
   /**
-   * What another session on this realm learned, folded in.
-   *
-   * Returns whether anything changed, so the caller can republish. Never
-   * written back: the book is where it came from, and a session that
-   * remembered what it was just told would hand it straight back to every
-   * other session, forever.
-   */
-  /**
    * The realm the next connection dials, when it is not the character's own.
    *
    * A character can be dialled at a saved realm from the palette, and what is
@@ -3725,14 +3700,6 @@ export class CharacterTracker {
     this.serverFamily = family;
   }
 
-  /**
-   * Where the next connection's own record is kept.
-   *
-   * Beside `useRealm` and for its reasons: a vault and a kit are both the
-   * *server's*, so a character dialled at a saved realm from the palette must
-   * not be shown the savings or the slots it has somewhere else. Takes effect
-   * at `reset()`, which every connection runs.
-   */
   /**
    * Re-seeds only the fields the belongings record supplies, because the
    * record has just been thrown away.
@@ -3766,12 +3733,6 @@ export class CharacterTracker {
   }
 
   /**
-   * The totals as the record last kept them, with any clock it left open
-   * closed at the moment it was written: a launch that ended without the
-   * socket closing left `onlineSince` running, and the write is the last
-   * moment the client is known to have been in the realm.
-   */
-  /**
    * The Combat Stats card's baseline taken now: its Reset, or a lap begun
    * (`SessionManager`). Kept with the tally, so the card in any window and
    * the stats board read from this moment.
@@ -3804,15 +3765,37 @@ export class CharacterTracker {
     this.belongings.rememberStats(tally);
   }
 
+  /**
+   * The totals as the record last kept them, with any clock it left open
+   * closed at the moment it was written: a launch that ended without the
+   * socket closing left `onlineSince` running, and the write is the last
+   * moment the client is known to have been in the realm.
+   */
   private recalledTally(): CombatTally {
     const kept = this.belongings.recallStats();
     return kept === null ? NO_TALLY : settleClocks(kept.tally, kept.savedAt);
   }
 
+  /**
+   * Where the next connection's own record is kept.
+   *
+   * Beside `useRealm` and for its reasons: a vault and a kit are both the
+   * *server's*, so a character dialled at a saved realm from the palette must
+   * not be shown the savings or the slots it has somewhere else. Takes effect
+   * at `reset()`, which every connection runs.
+   */
   useBelongings(belongings: BelongingsSink): void {
     this.belongings = belongings;
   }
 
+  /**
+   * What another session on this realm learned, folded in.
+   *
+   * Returns whether anything changed, so the caller can republish. Never
+   * written back: the book is where it came from, and a session that
+   * remembered what it was just told would hand it straight back to every
+   * other session, forever.
+   */
   absorbPlayers(batch: readonly PlayerFacts[]): boolean {
     const players = absorbFacts(this.state.players, batch);
     if (players === this.state.players) return false;
@@ -3905,8 +3888,8 @@ export class CharacterTracker {
    * It went wrong precisely that way (2026-08-31): a character was rerolled and
    * renamed, re-entered the realm on the same connection, and every card went
    * on naming the character before it — because nothing had been forgotten and,
-   * worse, `Routines` had already fired its realm-entry probe for this
-   * connection and would not fire it again. The two halves are one bug: the
+   * worse, the old `Routines` had already fired its realm-entry probe for
+   * this connection and would not fire it again. The two halves are one bug: the
    * client keeps stale facts *and* declines to ask for fresh ones.
    *
    * What survives is what is not about this character standing in this realm:
@@ -3940,6 +3923,29 @@ export class CharacterTracker {
       // And where it died: a reconnect after a death is when the kit is fetched.
       lastDeath: s.lastDeath === null ? null : { ...s.lastDeath }
     };
+  }
+
+  /**
+   * Whether this damage line is this character's own spell (2026-10-17).
+   *
+   * On this realm a spell's damage line is the spell's own message and names
+   * no caster — `A strange force rips into stone giant for 202 damage!`, `A
+   * horde of shrieking spirits ravages your foe for 190 damage!` — so the
+   * spell row counted only the `You cast … for N damage!` frame, which this
+   * realm does not print, and booked nothing. What says it is ours is the
+   * line before it: the caster's own line of the spell's message row (`You
+   * begin to chant in a fierce tone!`, `You scatter some ashes in a sweeping
+   * motion!`), which only the caster sees, written in the same breath as the
+   * damage. Another caster's is `Skinny begins to chant…`, and leaves the
+   * damage after it theirs. Every damage line naming nobody that follows,
+   * with nothing but the status line or a blank between, is the cast's: a
+   * room spell lands once for each monster.
+   */
+  private readsAsOwnSpell(block: Block): boolean {
+    if (!this.castLineOpen || block.type !== 'user-hits') return false;
+    const groups = block.groups ?? {};
+    if (groups['attacker'] !== undefined) return false;
+    return groups['target'] === undefined || !/^you$/i.test(groups['target']);
   }
 
   /**
@@ -3985,29 +3991,6 @@ export class CharacterTracker {
    * the index does not carry, or a pack nothing has listed all leave the blow
    * exactly where it was.
    */
-  /**
-   * Whether this damage line is this character's own spell (2026-10-17).
-   *
-   * On this realm a spell's damage line is the spell's own message and names
-   * no caster — `A strange force rips into stone giant for 202 damage!`, `A
-   * horde of shrieking spirits ravages your foe for 190 damage!` — so the
-   * spell row counted only the `You cast … for N damage!` frame, which this
-   * realm does not print, and booked nothing. What says it is ours is the
-   * line before it: the caster's own line of the spell's message row (`You
-   * begin to chant in a fierce tone!`, `You scatter some ashes in a sweeping
-   * motion!`), which only the caster sees, written in the same breath as the
-   * damage. Another caster's is `Skinny begins to chant…`, and leaves the
-   * damage after it theirs. Every damage line naming nobody that follows,
-   * with nothing but the status line or a blank between, is the cast's: a
-   * room spell lands once for each monster.
-   */
-  private readsAsOwnSpell(block: Block): boolean {
-    if (!this.castLineOpen || block.type !== 'user-hits') return false;
-    const groups = block.groups ?? {};
-    if (groups['attacker'] !== undefined) return false;
-    return groups['target'] === undefined || !/^you$/i.test(groups['target']);
-  }
-
   private readsAsProc(block: Block, state: CharacterState): boolean {
     if (block.type !== 'user-hits') return false;
     const groups = block.groups ?? {};
@@ -4143,19 +4126,12 @@ export class CharacterTracker {
         /*
          * Read by the matcher built from what `pro` reported wherever there
          * is one and the line fits it, else by the tolerant pattern the rule
-         * typed it with (`readPrompt`). A prompt the exact matcher refuses is
-         * the line having changed under the client — another client's `set`,
-         * or a suffix the template never stated — and is worth one `pro` per
-         * report to find out which; `Routines` sends it. The rule that typed
-         * this block is the tolerant pattern, so a null here would be the rule
-         * and the reader disagreeing about one line: nothing is claimed.
+         * typed it with (`readPrompt`). The rule that typed this block is the
+         * tolerant pattern, so a null here would be the rule and the reader
+         * disagreeing about one line: nothing is claimed.
          */
         const prompt = this.readPrompt(block.text);
         if (!prompt) return null;
-        if (prompt.exact === false && !this.statlineAsked) {
-          this.statlineWanted = true;
-          this.statlineAsked = true;
-        }
         const read = prompt.read;
         // A realm that puts the maximum in the prompt says it on every line;
         // one that does not leaves what the stat sheet said alone.
@@ -4234,7 +4210,6 @@ export class CharacterTracker {
         const reported = g['statline']?.trim() ?? '';
         if (reported.length === 0 || s.statline.reported === reported) return null;
         this.statlineMatcher = statlineMatcher(reported);
-        this.statlineAsked = false;
         return { ...s, statline: { reported, exact: null } };
       }
 
@@ -4321,7 +4296,7 @@ export class CharacterTracker {
           // is standing, and the status line two lines away will say so anyway.
           // Cleared here so nothing is held between the two (todo 20).
           mortallyWounded: false,
-          // Where it died, kept for the kit lying there (`GearRecovery`): the
+          // Where it died, kept for the kit lying there: the
           // room the character was standing in when the sentence arrived.
           lastDeath: {
             map: s.room.map,
@@ -4492,9 +4467,7 @@ export class CharacterTracker {
         /*
          * **And a condition nothing on it states** (2026-10-01). The sheet
          * prints every timed effect on the character (`StatCommand.cs:50`),
-         * so it is the ground truth, and `Routines.checkConditions` asks for
-         * one while a condition is on. A held message row is left to
-         * `MessageTriggers.settle`, which reads the same sheet next.
+         * so it is the ground truth while a condition is on.
          */
         const stated = this.sheetConditions(block.text, cleared.heard);
         for (const condition of AFFLICTIONS) {
@@ -4705,7 +4678,7 @@ export class CharacterTracker {
        * A search is a listing and a listing is authoritative, so this clears
        * what the last one found. Only the **bare** search: the directional
        * form (`You notice nothing different to the north`) is a question about
-       * an exit and says nothing about the floor, and `Walker` sends one at
+       * an exit and says nothing about the floor, and a walk sends one at
        * every `Hidden/Searchable` edge it is refused by.
        */
       case 'user-search-failed': {
@@ -4824,8 +4797,8 @@ export class CharacterTracker {
          * move guard asks its destination. The only fact available is the
          * room's own name, and it is enough: a block naming the room already
          * standing in — the character has not left yet — is not proof of
-         * arrival, however it was produced. `Walker.nudge` now sends behind a
-         * portal, exactly this reason, and a premature reprint of the room
+         * arrival, however it was produced. The old walker's `nudge` sent
+         * behind a portal, exactly this reason, and a premature reprint of the room
          * being left is the one shape that reason describes: named, and named
          * *the same* as before the command went out.
          *
@@ -4881,8 +4854,8 @@ export class CharacterTracker {
         if (expectation?.kind === 'peek') {
           this.room.discard();
           /*
-           * Published as *another* room, never as this one: `RestAway` reads
-           * what stands next door before stepping there (todo 08). The
+           * Published as *another* room, never as this one: what stands next
+           * door is read before stepping there (todo 08). The
            * direction is the peek's own command (`l n`), and a peek nothing
            * can direct is published with none.
            */
@@ -5033,8 +5006,8 @@ export class CharacterTracker {
          * Both trades are the one the `move` guard above already makes: a
          * `reread` that turns out to be the genuine arrival loses the
          * confident coordinate resolution and is read by name and exits
-         * instead, which is the reason `Walker.nudge` can send behind a
-         * portal at all now.
+         * instead, which is the reason a move could be sent behind a portal
+         * at all.
          */
         const teleported =
           !wasReread && !stillWaitingForPortal && this.world && room.name
@@ -5789,8 +5762,8 @@ export class CharacterTracker {
        * client had anything to read (`logs/2026-09-04_20-39-52_festus`, 1000 +
        * 1200 against a `Wealth:` that fell by exactly 2200).
        *
-       * The level half of the receipt is `Routines`' — it asks `exp`, because a
-       * level is what makes *Exp. needed* wrong. This is the other half.
+       * The level half of the receipt is the engine's, which asks `exp`,
+       * because a level is what makes *Exp. needed* wrong. This is the other half.
        */
       case 'user-trains': {
         const price = int(g['price']);
@@ -5963,7 +5936,7 @@ export class CharacterTracker {
       /*
        * The readied light burnt down. Still readied, still carried, and giving
        * nothing — the `(Readied/0)` the listing would print, stated by the
-       * sentence so `AutoLight` can ready the next one without waiting for an
+       * sentence so the next one can be readied without waiting for an
        * `i`. See `withCharges`.
        */
       case 'light-out': {
@@ -6166,8 +6139,8 @@ export class CharacterTracker {
       }
       /*
        * A door this character did not touch: the exit the room listed is
-       * re-noted in the server's own words (`closed door`), so `Walker.shutAhead`
-       * reads it as it would off a reprint. Only an exit the list printed — a
+       * re-noted in the server's own words (`closed door`), so it reads as it
+       * would off a reprint. Only an exit the list printed — a
        * room whose exits were never read proves nothing, and a door the wire
        * never listed is not invented from a sentence about it.
        */
@@ -6437,8 +6410,8 @@ export class CharacterTracker {
       /*
        * The spellcasting roll failed and nothing landed. Read so it is a fact
        * rather than silence — a failed self cast leaves the buff unregistered,
-       * which is what keeps it due — and so a listener (`Blessings`) can retry
-       * on the next round rather than waiting its retry floor out. Consumes the
+       * which is what keeps it due — and so a listener can retry on the next
+       * round rather than waiting its retry floor out. Consumes the
        * pending self-cast note: an onset is not coming for a cast that failed.
        */
       case 'spell-failed': {
@@ -6477,8 +6450,8 @@ export class CharacterTracker {
          * `buffs` matched `breathes`, so the case returned null and the flag
          * stayed `yes` for the rest of the session. Captured in the report:
          * the condition wore off, the character read three rooms in a row, and
-         * `Walker` then held a seventeen-step route with *Blind; waiting here
-         * until you can see again.*
+         * the old walker then held a seventeen-step route with *Blind;
+         * waiting here until you can see again.*
          *
          * The table already pairs the two sentences, which is the whole of the
          * user's *"start and stop spells should know what effects they are
@@ -7053,7 +7026,7 @@ export class CharacterTracker {
        * the character.
        *
        * The condition itself is restated here as well as at its onset. The
-       * server only prints this while it holds, and a `Cures` cast that the
+       * server only prints this while it holds, and a cure cast that the
        * server answered with nothing is exactly the case where the flag would
        * otherwise be stale.
        */
@@ -7137,22 +7110,6 @@ export class CharacterTracker {
   }
 }
 
-/** One affliction flag moved, or null when the server said what was already known. */
-/**
- * What a confirmed step says about being held: that the character is not.
- *
- * The one release that needs no sentence. Every hold ends in the realm's own
- * words and the client reads twenty-two of them, but a realm is free to ship a
- * twenty-third — and a `held` flag with no ending stands a route and a lap
- * still for the rest of the session, which is the failure the whole
- * three-state vocabulary exists to avoid. `Exits.Move` refuses a held
- * character before anybody moves anywhere, so a step that *landed* is proof
- * the hold was over, whoever caused the step and whatever the wire said about
- * it.
- *
- * Only `held`: a blind character walks, a poisoned one walks, and arriving
- * somewhere says nothing about either.
- */
 /**
  * The attack a command makes and the name it aims at, or null for anything
  * else — a bare verb, and `bas <direction>`, which is a door and not a
@@ -7170,11 +7127,28 @@ function attackIn(command: string): { verb: CommandName; aimed: string } | null 
   return { verb, aimed };
 }
 
+/**
+ * What a confirmed step says about being held: that the character is not.
+ *
+ * The one release that needs no sentence. Every hold ends in the realm's own
+ * words and the client reads twenty-two of them, but a realm is free to ship a
+ * twenty-third — and a `held` flag with no ending stands a route and a lap
+ * still for the rest of the session, which is the failure the whole
+ * three-state vocabulary exists to avoid. `Exits.Move` refuses a held
+ * character before anybody moves anywhere, so a step that *landed* is proof
+ * the hold was over, whoever caused the step and whatever the wire said about
+ * it.
+ *
+ * Only `held`: a blind character walks, a poisoned one walks, and arriving
+ * somewhere says nothing about either.
+ */
 function stoodUp(s: CharacterState): Afflictions {
   return s.afflictions.held === 'yes' ? { ...s.afflictions, held: 'no' } : s.afflictions;
 }
 
 /**
+ * One affliction flag moved, or null when the server said what was already known.
+ *
  * An affliction set or ended, its cause kept beside it while it is on: the
  * onset's, as a condition already on is not set again.
  */
@@ -7321,7 +7295,7 @@ function threatenedBy(
 /**
  * The room's listed exit that way, re-noted as the server now says the door
  * stands — `closed door`, `open gate` — in the words `parseExit` would have
- * read off a reprint, so `Walker.shutAhead` and the Room card need no second
+ * read off a reprint, so the Room card needs no second
  * reading. Null when the list never printed that exit, or the note already
  * says so.
  */

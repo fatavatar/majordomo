@@ -32,13 +32,13 @@ export interface RailView {
   /** The loop it is running, if any — the rail says `looping` off this. */
   loop: LoopProgress;
   /**
-   * Alerts raised while nobody was looking at this character.
+   * The tab alerts raised while nobody was looking (`TAB_ALERTS`), and the
+   * newest.
    *
    * The point of running four characters is that three of them are unattended,
    * and the point of this rail is that it reports on the ones whose terminal is
    * not on screen. Vitals and walk state already reached it; alerts did not.
    */
-  /** The tab alerts raised while nobody was looking (`TAB_ALERTS`), and the newest. */
   unseen: { alerts: number; latest: string | null };
 }
 
@@ -224,7 +224,7 @@ function attention(
    * A route's own two holds, in the words the loop's already earned. A held
    * walk is still `walking`, so without this a tab read `walking` for a
    * character standing still — for minutes under `restBelow`, and for the
-   * whole of a fight whose flag has not arrived yet, since `Walker` also holds
+   * whole of a fight whose flag has not arrived yet, since a walk also holds
    * on a blow the tracker filed a round before `*Combat Engaged*`.
    */
   if (view.walk.status === 'walking' && view.walk.hold === 'fight') {

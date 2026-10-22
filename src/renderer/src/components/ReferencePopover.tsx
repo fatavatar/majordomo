@@ -23,8 +23,7 @@ import type { ShopPlace, WorldLookup } from '@shared/world';
  * A name somebody clicked, and where: the element on a card, or the box of a
  * word in the console, which has no element of its own — xterm paints cells,
  * so a link there is a rectangle rather than a node.
- */
-/**
+ *
  * Built fresh per click on purpose: effects key on the object, so the same
  * name clicked twice still re-opens where a bare string would compare equal.
  */

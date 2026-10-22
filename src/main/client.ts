@@ -236,10 +236,10 @@ let home: Home;
  */
 let homeLock: HomeLock | null = null;
 
-/** What a session that has never been dialled reports. Keeps `attach` total. */
 /** What a card may ask to have sent: one line of printable text, as long as a command runs. */
 const ASKABLE = /^[\x20-\x7e]{1,80}$/;
 
+/** What a session that has never been dialled reports. Keeps `attach` total. */
 const IDLE_STATE = {
   phase: 'idle' as const,
   target: null,
@@ -326,13 +326,6 @@ let workspace: Workspace | null = null;
 const windows = new WindowRegistry();
 let host: SessionHost | null = null;
 
-/**
- * The realm knowledge base, loaded once.
- *
- * 55,806 rooms from a 655 KB gzipped file; the parse is well under a second and
- * happens before the window is shown. Querying it per line, which is what the
- * CoffeeScript engine did against SQLite, is the thing this exists to avoid.
- */
 /**
  * Monster health learned by fighting.
  *
@@ -773,7 +766,6 @@ function wearerIn(session: SessionId): Wearer {
   };
 }
 
-/** Where session logs go: the configured directory, or the per-user data dir. */
 /**
  * How a character should be named on screen and in a file it produces.
  *
@@ -812,6 +804,7 @@ function appVersion(): string {
   return APP_VERSION;
 }
 
+/** Where session logs go: the configured directory, or the per-user data dir. */
 function logDirectory(): string {
   const configured = config?.config.logging.directory ?? '';
   return configured.length > 0 ? configured : home.state('logs');
@@ -2067,8 +2060,8 @@ function registerIpc(): void {
    * order to start it and then deleting it would be a write into the user's
    * tree on a path that promised not to make one.
    *
-   * `LoopRunner.start` has always taken the loop itself and never a name, so
-   * this is the runner's own shape rather than a new capability. Parsed, not
+   * `SessionManager.startLoop` takes the loop itself and never a name, so this
+   * is its own shape rather than a new capability. Parsed, not
    * trusted: it crossed the wire.
    */
   handle(Invoke.runLoop, async (_caller, session: SessionId, loop: unknown) => {
@@ -3140,7 +3133,7 @@ function registerIpc(): void {
    * list — `gear:act`'s rule, and here it carries more weight than usual,
    * because the whole reason this is not a list of commands is that the
    * figure a deposit names is not knowable until the `i` it sends has been
-   * answered. `SessionManager.depositAll` owns the wait; see `AutoDeposit`.
+   * answered. The engine's deposit owns the wait (`MegaEngine.depositAll`).
    *
    * A refusal — nothing to bank, or a button pressed from the backscroll
    * beside a room the character left — reports itself as a notice, so `false`

@@ -107,11 +107,6 @@ export function shopKindLabel(kind: ShopKind | undefined): string {
 }
 
 /**
- * One line per thing, with its price, for pasting to somebody who asked — the
- * counter's words where it has spoken, the realm's figure where it has not,
- * and the counter's note, because that is the half the reader wants.
- */
-/**
  * The balance for the vault this face is about, or null where none has spoken.
  *
  * Matched on the realm's shop id first, because that is the only key both
@@ -158,6 +153,11 @@ export function bankCopyText(
       })} (${ago(held.at, now)})`;
 }
 
+/**
+ * One line per thing, with its price, for pasting to somebody who asked — the
+ * counter's words where it has spoken, the realm's figure where it has not,
+ * and the counter's note, because that is the half the reader wants.
+ */
 export function shopCopyText(shop: WorldShop | null, listing: ShopListing | null): string {
   const rows = mergeStock(shop, listing);
   return [

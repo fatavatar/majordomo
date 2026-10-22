@@ -50,8 +50,9 @@ const TUNING = DEFAULT_INTERNAL.tuning;
  * which is how the tracker learns a direction was attempted. Both go through
  * the real classifier, because what a line *is* depends on the command before
  * it.
+ *
+ * A line, a command this character typed, or a pause in the stream.
  */
-/** A line, a command this character typed, or a pause in the stream. */
 type Step = string | { send: string } | { wait: number };
 
 /**
@@ -11722,7 +11723,6 @@ describe('the status line pro reports', () => {
     expect(progress.exp).toBe(1386670);
     expect(progress.expNeeded).toBe(14402);
     expect(inventory.wealth).toBe(25);
-    expect(tracker.takeStatlineRequest()).toBe(false);
   });
 
   it('reads the same figures by the tolerant pattern before pro has said', () => {
@@ -11730,10 +11730,9 @@ describe('the status line pro reports', () => {
     expect(tracker.current.statline).toEqual({ reported: null, exact: null });
     expect(tracker.current.vitals).toMatchObject({ hp: 40, hpMax: 40, mana: 7, manaMax: 8 });
     expect(tracker.current.progress.expNeeded).toBe(2500);
-    expect(tracker.takeStatlineRequest()).toBe(false);
   });
 
-  it('falls back to the tolerant pattern when a prompt stops fitting, and asks pro once', () => {
+  it('falls back to the tolerant pattern when a prompt stops fitting', () => {
     const tracker = play([
       REPORT,
       '[HP=156/156,MA=11/28,Exp=1,Need=2,Wealth=0 ]:',
@@ -11744,8 +11743,6 @@ describe('the status line pro reports', () => {
     // Read loosely: the figure moved, and the maximum the last exact prompt stated is kept.
     expect(tracker.current.vitals.hp).toBe(130);
     expect(tracker.current.vitals.hpMax).toBe(156);
-    expect(tracker.takeStatlineRequest()).toBe(true);
-    expect(tracker.takeStatlineRequest()).toBe(false);
   });
 
   it('reads full by the tolerant pattern, with nothing for a prompt to agree with', () => {

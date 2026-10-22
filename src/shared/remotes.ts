@@ -110,9 +110,8 @@ export const REMOTE_NAMES = [
    * Not from MegaMUD's manual: mudengine's own peer extension, the one
    * addition to the vocabulary. A character whose blessing (cast by a party
    * member running this client) wears off telepaths `@bless-expired <spell>`
-   * back to the caster, whose `Blessings` then recasts on the event instead
-   * of waiting out its fallback clock. Sent only when
-   * `spells.notifyPartyOnWearOff` is on; acted on only through the same
+   * back to the caster, who can recast on the event instead of waiting out
+   * a fallback clock. Acted on only through the same
    * per-player permission gate as every other actionable remote. One
    * spelling, deliberately — an alias would be a second permission switch
    * for the same command.
@@ -157,7 +156,7 @@ export type RemoteName = (typeof REMOTE_NAMES)[number];
  * The four standing refusals, by id. The sentences themselves are UI copy and
  * live in `locales/ui.en.yaml` under `automation.remotes.refusal.*`; `shared`
  * stays dependency-free, so this file carries only the id and the responder
- * (`Remotes`) looks the sentence up with its own `t`.
+ * looks the sentence up with its own `t`.
  */
 export type RemoteRefusal = 'kill' | 'hangup' | 'relog' | 'panic';
 
@@ -397,7 +396,7 @@ export const REMOTES: Readonly<Record<RemoteName, RemoteSpec>> = {
    * MegaMUD at this end typing `mend death` — and MegaMUD's own manual says a
    * request is healed "when they are low **or** when they have requested aid".
    * So a request is one party heal whatever the listing's figure says, and
-   * `AutoHeal.request` decides it against this character's own settings.
+   * the engine decides it against this character's own settings.
    */
   heal: { name: 'heal', support: 'acted' },
   blind: {
@@ -541,6 +540,28 @@ export function parseRemoteReply(message: string): RemoteReply | null {
 }
 
 /**
+ * The standing decision about one remote for one player, as a form states it.
+ *
+ * `allow` and `deny` are what somebody clicked. `unset` is the absence of a
+ * decision and is not a third thing anybody configures — it is what every pair
+ * starts as, and what falls through to the gang list.
+ *
+ * **The one place the union is spelled.** The flyout's three buttons, the IPC
+ * payload, the editor that writes it and the handler that validates it all read
+ * `RemoteStance` from here — the alternative was the same three string literals
+ * written out in five files, each type-checking on its own while the
+ * hand-rolled validator in main silently refused a fourth.
+ */
+export const REMOTE_STANCES = ['allow', 'deny', 'unset'] as const;
+
+export type RemoteStance = (typeof REMOTE_STANCES)[number];
+
+/** Whether a value off the wire or out of a form is a remote this client knows. */
+export function isRemoteName(value: unknown): value is RemoteName {
+  return typeof value === 'string' && (REMOTE_NAMES as readonly string[]).includes(value);
+}
+
+/**
  * Which remotes one player may use, and on what grounds.
  *
  * ## Why the grounds are gone
@@ -617,7 +638,7 @@ export function parseRemoteReply(message: string): RemoteReply | null {
  * the surface cannot make. The consequence is stated rather than hidden: a
  * character that **leaves Valor and joins Doom hands Doom the same list**, so
  * the Gang card names the gang the list currently applies to on every draw, and
- * `Remotes` says the gang out loud in every notice it writes about one.
+ * every notice about one says the gang out loud.
  *
  * A member who leaves loses the grant the moment the roster says so, because
  * nothing is copied onto them: membership is evaluated per command from
@@ -646,7 +667,7 @@ export function parseRemoteReply(message: string): RemoteReply | null {
  * files across 15 gangs, and the two agree where both appear. Both land on
  * the realm roster (`Adventurer.gang`), and **this character's own row is on
  * that roster too**, which is what makes a comparison possible without a
- * self-`look`. `Remotes.evidenceAbout` compares the two rows.
+ * self-`look`. `remoteVerdict` compares the two rows.
  *
  * The gang list therefore grants only when both rows have named the same gang,
  * and evaluates to *unresolved* while either is unknown — never to a grant. The
@@ -654,31 +675,7 @@ export function parseRemoteReply(message: string): RemoteReply | null {
  * reassuring answer**, and here the reassuring answer is the one that lets a
  * stranger through. A refusal says the ground was unresolved so somebody who
  * configured the gang list is told what would settle it.
- */
-
-/**
- * The standing decision about one remote for one player, as a form states it.
  *
- * `allow` and `deny` are what somebody clicked. `unset` is the absence of a
- * decision and is not a third thing anybody configures — it is what every pair
- * starts as, and what falls through to the gang list.
- *
- * **The one place the union is spelled.** The flyout's three buttons, the IPC
- * payload, the editor that writes it and the handler that validates it all read
- * `RemoteStance` from here — the alternative was the same three string literals
- * written out in five files, each type-checking on its own while the
- * hand-rolled validator in main silently refused a fourth.
- */
-export const REMOTE_STANCES = ['allow', 'deny', 'unset'] as const;
-
-export type RemoteStance = (typeof REMOTE_STANCES)[number];
-
-/** Whether a value off the wire or out of a form is a remote this client knows. */
-export function isRemoteName(value: unknown): value is RemoteName {
-  return typeof value === 'string' && (REMOTE_NAMES as readonly string[]).includes(value);
-}
-
-/**
  * What one player may and may not ask for.
  *
  * Two lists rather than a map from remote to stance, because that is the shape
@@ -796,7 +793,7 @@ export interface RemoteAccess {
  * `inGang` is `null` rather than `false` for the reason the whole codebase
  * distinguishes null from zero — an unknown membership is *absence*, and a
  * `false` here is the client claiming to know somebody is not in its gang.
- * `Remotes.evidenceAbout` produces `false` only when both this character's row
+ * The evidence is `false` only when both this character's row
  * and the asker's were written in full by a listing and name different gangs
  * (or none); anything less said is `null`.
  */
@@ -826,7 +823,7 @@ export interface RemoteEvidence {
  * The *why* is not decoration. A refusal that says only "no" leaves somebody
  * unable to tell a deny from an unconfigured client from a gang that could not
  * be evaluated, and those need three different actions from them. Every branch
- * below therefore names its ground, and `Remotes` says it out loud.
+ * below therefore names its ground, and the refusal says it out loud.
  */
 export type RemoteVerdict =
   | { allowed: true; because: 'player' | 'gang' | 'party' }
@@ -862,8 +859,8 @@ function has(list: readonly RemoteName[], name: RemoteName): boolean {
 /**
  * May this player use this remote?
  *
- * Pure, and the single place the question is answered — `Remotes` calls it and
- * does not re-derive any part of it, so the flyout showing somebody as allowed
+ * Pure, and the single place the question is answered; its callers do not
+ * re-derive any part of it, so the flyout showing somebody as allowed
  * and the engine answering them cannot disagree.
  *
  * The order is load-bearing and is asserted by the tests: deny beats

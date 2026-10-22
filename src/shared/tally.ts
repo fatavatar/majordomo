@@ -533,14 +533,6 @@ function clockSince(now: Clock, baseline: Clock, resetAt: number | null): Clock 
 }
 
 /**
- * Engaged time including the fight still running.
- *
- * `engagedMs` closes an interval only when the server says `*Combat Off*`, so
- * during a fight it is the *previous* fights' total and stands still. Every
- * reader wants both halves, and adding them at the point of reading is what
- * keeps the stored figure a sum of settled facts.
- */
-/**
  * The tally with its experience sampled at `at`.
  *
  * The newest sample is updated in place while it is younger than `everyMs`,
@@ -632,6 +624,14 @@ export function withArrival(tally: CombatTally, at: number, keepMs: number): Com
   return { ...tally, away: spells.filter((spell) => spell.to >= at - keepMs), leftAt: null };
 }
 
+/**
+ * Engaged time including the fight still running.
+ *
+ * `engagedMs` closes an interval only when the server says `*Combat Off*`, so
+ * during a fight it is the *previous* fights' total and stands still. Every
+ * reader wants both halves, and adding them at the point of reading is what
+ * keeps the stored figure a sum of settled facts.
+ */
 export function engagedFor(tally: CombatTally, now: number): number {
   const open = tally.engagedSince === null ? 0 : Math.max(0, now - tally.engagedSince);
   return tally.engagedMs + open;

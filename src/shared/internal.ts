@@ -215,7 +215,7 @@ const TUNING_DEFAULTS = {
      * Counted only while an answer is **owed**: the clock starts when a
      * command goes on the wire and stops at the next byte in. Wire silence on
      * its own would be the wrong reading twice over — this realm repaints its
-     * status line unprompted every thirty seconds (`Routines.noteSent`), so
+     * status line unprompted every thirty seconds, so
      * fifteen seconds of it is ordinary, and a client that has asked for
      * nothing is owed nothing. Every command this family answers is answered
      * with at least a status line, and promptly.
@@ -343,8 +343,9 @@ const TUNING_DEFAULTS = {
      * The depth cap above and this are the same claim on two axes — *this
      * client has lost the thread* — and until 2026-09-03 only the depth one
      * existed. A sentence the parser cannot read answering a move leaves the
-     * claim outstanding for ever, and six things gate on it: the escape,
-     * `Walker.start`, `LoopRunner.advance`, the walk home and auto-combat.
+     * claim outstanding for ever, and six things gated on it in the old
+     * automation: the escape, the walker, the loop runner, the walk home and
+     * auto-combat.
      * Exactly one of those had a clock of its own, so a lost step cost a
      * character every one of the others for the rest of the session.
      *
@@ -484,7 +485,7 @@ const TUNING_DEFAULTS = {
     survivalSafeAbove: 0.95,
     survivalRiskyAbove: 0.6
   },
-  /** Casting on the character's behalf — `AutoHeal`, `Cures`, `Blessings`. */
+  /** Casting on the character's behalf. */
   spells: {
     /**
      * How sure one cast has to be of finishing the monster before the
@@ -678,7 +679,7 @@ const TUNING_DEFAULTS = {
      */
     moveMargin: 0.25
   },
-  /** Keeping the pack stocked — `Supplies`. */
+  /** Keeping the pack stocked: buying a row (`SessionManager.megaBuy`). */
   supplies: {
     /** A `buy` unanswered by `You just bought …` for this long is taken as refused. */
     buyTimeoutMs: 8000,
@@ -755,7 +756,7 @@ const TUNING_DEFAULTS = {
     expiresMs: 8000
   },
   /**
-   * Looking for what a room did not print — `AutoSearch`.
+   * Looking for what a room did not print.
    *
    * Short, and shorter than the loot's on purpose: a search is about the room
    * the character is *standing in*, so one still queued after the character has
@@ -765,7 +766,7 @@ const TUNING_DEFAULTS = {
   search: {
     expiresMs: 3000
   },
-  /** Walking a planned route — `Walker`. */
+  /** Walking a planned route. */
   walk: {
     /**
      * How far the character may have wandered from what it was walking before
@@ -794,8 +795,8 @@ const TUNING_DEFAULTS = {
      * (`logs/2026-09-14_16-00-21_festus.mudcap.jsonl`): `get black serpent
      * key` at t=783180, the lap's `n` at t=783182, `You took black serpent
      * key.` only at t=783262. So the instant the pack holds the thing there is
-     * a step outstanding, `Walker.start` rightly refuses to plan across it
-     * (`refusalMoveInFlight`, the room on the books is the one being left),
+     * a step outstanding, and no walk is planned across it (the room on the
+     * books is the one being left),
      * and the errand had exactly one attempt: the key was collected and the
      * journey it was collected for was never walked.
      *
@@ -824,7 +825,7 @@ const TUNING_DEFAULTS = {
      */
     trailSteps: 500
   },
-  /** Running a loop — `LoopRunner`. */
+  /** Running a loop. */
   loop: {
     /**
      * How long a lap runs before its experience rate is held against

@@ -28,8 +28,7 @@ function Flag({ on, label }: { on: boolean; label: string }) {
  * No prior attempt in this workspace implemented Telnet, so when a server
  * behaved oddly there was nothing to look at. This card exists so that "the
  * server never sent WILL SUPPRESS-GO-AHEAD" is an observation, not a guess.
- */
-/**
+ *
  * What the two ends agreed, and the exchange that got them there.
  *
  * Traffic used to be a card of its own, sitting in the rail beside this one and

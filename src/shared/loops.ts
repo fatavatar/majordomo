@@ -6,7 +6,7 @@
  * **file of hand-recorded steps** — a room code and a direction per line,
  * captured by walking it once — because it has no reliable pathfinder to
  * re-derive them (docs/mega-paramud.md). We do: `WorldGraph.route` plans
- * between any two rooms and `Walker` walks one step at a time, verified.
+ * between any two rooms and the engine walks it one step at a time, verified.
  *
  * So a loop here is a **list of places**, not a list of steps: the client
  * routes to each in turn and starts again, and a corridor that changes, a
@@ -213,8 +213,8 @@ export function mergeNamed<T extends { name: string }>(...lists: readonly (reado
 /**
  * One list of loops from several, with the later ones winning by name.
  *
- * The palette starts a loop by name, `loopNamed` finds one by name,
- * `LoopRunner` reports one by name — and the narrower scope decides: a
+ * The palette starts a loop by name, `loopNamed` finds one by name, the
+ * engine reports one by name — and the narrower scope decides: a
  * character that writes its own `Sewer loop` means *that* one, exactly as its
  * `automation:` overlay replaces a global block rather than being merged into
  * it.
@@ -518,7 +518,7 @@ export type LoopHold =
    * decided in the same tick were both right at the moment each was made, and
    * the step undid the rest a millisecond later — seven times out of seven on
    * the run that found it (todo 14). Bounded by the window itself, so it cannot
-   * deadlock: see `Recovery.restInFlight`.
+   * deadlock.
    */
   | 'resting'
   /** Waiting out a stated affliction before the next leg. */

@@ -173,19 +173,10 @@ export function parseCarried(entry: string): CarriedItem {
 }
 
 /**
- * One entry of the `i` listing, as the instances it stands for.
- *
- * The listing counts too: two of a thing arrive as `2 scroll of magic missile`
- * (captured live, 2026-08-26), and reading that as an item called "2 scroll
- * of magic missile" is the same mistake the sentences already avoid. A count
- * never carries a slot — the worn one is listed on its own — so the copies
- * are plain.
- */
-/**
  * A coin entry in the pack listing, or null for anything else.
  *
  * Coins are listed exactly as a helm is — `51 gold crowns, 7 copper farthings,
- * padded helm (Head)` (captured live, `npm run probe:play`) — so they arrive
+ * padded helm (Head)` (captured live, `npm run probe:play`, a probe since removed) — so they arrive
  * through the same list and have to be told apart here.
  *
  * They used to be *dropped*, on the reasoning that they were already stated by
@@ -212,6 +203,15 @@ export function parseCoinEntry(
   return denomination === undefined ? null : { denomination, count };
 }
 
+/**
+ * One entry of the `i` listing, as the instances it stands for.
+ *
+ * The listing counts too: two of a thing arrive as `2 scroll of magic missile`
+ * (captured live, 2026-08-26), and reading that as an item called "2 scroll
+ * of magic missile" is the same mistake the sentences already avoid. A count
+ * never carries a slot — the worn one is listed on its own — so the copies
+ * are plain.
+ */
 export function parseCarriedEntries(entry: string): CarriedItem[] {
   // Coins go to `inventory.coins`, not into the item list: `9 copper farthings`
   // among the items would land in the encumbrance count and in the paste of

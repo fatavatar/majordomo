@@ -28,8 +28,7 @@ export function keepPartyCurrent(
 /**
  * Drops a member's fight once its monster is gone from the room. Nothing on
  * the wire says a member's fight has ended, but the monster dying or walking
- * out takes it off `room.occupants`, which is what `AutoCombat` already reads
- * as no fight. A monster `Also here:` never named is kept, since somebody
+ * out takes it off `room.occupants`, which already reads as no fight. A monster `Also here:` never named is kept, since somebody
  * walking in says nothing about it; a move ends every fight, since a monster
  * in the new room says nothing about the one left behind under the same name;
  * and two monsters under one name keep the entry until neither is listed.

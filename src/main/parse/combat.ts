@@ -295,13 +295,6 @@ export class FightTracker {
   constructor(private readonly sources: FightSources) {}
 
   /**
-   * Whether this character's own last named blow landed on `name` inside the
-   * proc window, with one of its `allowance` procs still unclaimed — the round
-   * half of reading an unattributed damage line as a weapon proc. The realm
-   * half is the caller's, and `allowance` is what it found; see
-   * `CharacterTracker.readsAsProc`.
-   */
-  /**
    * A line arrived between this character's blow and any proc it might have
    * fired, so the two are no longer the one write the server composed. The
    * binding goes; the fight is otherwise untouched.
@@ -310,6 +303,13 @@ export class FightTracker {
     this.landed = null;
   }
 
+  /**
+   * Whether this character's own last named blow landed on `name` inside the
+   * proc window, with one of its `allowance` procs still unclaimed — the round
+   * half of reading an unattributed damage line as a weapon proc. The realm
+   * half is the caller's, and `allowance` is what it found; see
+   * `CharacterTracker.readsAsProc`.
+   */
   justStruck(name: string, at: number, allowance: number): boolean {
     const landed = this.landed;
     if (landed === null || landed.used >= allowance) return false;

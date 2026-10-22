@@ -56,7 +56,7 @@
  * left 2,200 copper high, and this server refuses an over-deposit in silence.
  *
  * So the deposit is a `TerminalIntentAction`: the button names the action and
- * `AutoDeposit` runs it, sending the `i` and composing the figure from the
+ * the engine's deposit runs it (`MegaEngine.depositAll`), sending the `i` and composing the figure from the
  * listing that answers it. Nothing about the amount is decided here.
  */
 import type { TerminalAction, TerminalCommandAction } from '../../shared/types';

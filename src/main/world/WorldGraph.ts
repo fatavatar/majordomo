@@ -433,43 +433,6 @@ export interface RouteOptions {
   unlocks?: boolean;
 }
 
-/**
- * Cost added by an edge's requirement, or `null` to prune it entirely.
- *
- * The numbers are relative and only have to order routes sensibly: a plain
- * corridor is 1, so a door at 12 means "worth a dozen extra rooms to avoid".
- * The original used −500 for a door, which is a *negative* cost and makes A*
- * prefer doors while breaking admissibility; that looks like a bug rather than
- * an intent, and it is not reproduced.
- */
-
-/**
- * What a door costs to force, graded against the character.
- *
- * The realm states the difficulty a barrier yields to, and in two shapes:
- * `Door [1000 picklocks/strength]` takes either skill, `Key: 2126 [or 157
- * picklocks]` takes only the lock-pick (`any` is 0 in both). Forcing one is a
- * numbers game — bash, rest, bash — and every attempt below the minimum can
- * cost the character, so the grading is deliberately lopsided: below the
- * minimum the door is priced as a wall that can still be walked through when
- * there is no other way at all (`tuning.world.wallCost`, never `null`); at the
- * minimum it is close to a plain door; and the further the skill stands above
- * it the cheaper it gets, down to `base`. A character whose sheet nobody has
- * read is priced as if it could not force anything, which is the safe reading.
- *
- * **The two channels are graded separately and the best one wins** (see
- * `forcedDoorCost`). Taking the higher of the two skills against one number
- * credited a warrior's strength against a lock the realm says only picklocks
- * open.
- */
-/**
- * How a lever is filed and looked up: the exit it opens, not the room that
- * holds it.
- *
- * One spelling, used by the index and by every question put to it, because two
- * spellings of a key agree exactly until one of them is edited — the same
- * reason `refusedEdges` keys through one expression.
- */
 /** The most rooms a lever set may span and still be planned: every order of them is tried. */
 const MAX_LEVER_ROOMS = 4;
 
@@ -489,6 +452,14 @@ function orders<T>(items: readonly T[]): T[][] {
   );
 }
 
+/**
+ * How a lever is filed and looked up: the exit it opens, not the room that
+ * holds it.
+ *
+ * One spelling, used by the index and by every question put to it, because two
+ * spellings of a key agree exactly until one of them is edited — the same
+ * reason `refusedEdges` keys through one expression.
+ */
 function leverKey(room: RoomId, direction: string): string {
   return `${room}|${direction}`;
 }
@@ -664,6 +635,25 @@ function sameLanding(a: Landing, b: Landing): boolean {
   return a.map === b.map && a.low === b.low && a.high === b.high;
 }
 
+/**
+ * What a door costs to force, graded against the character.
+ *
+ * The realm states the difficulty a barrier yields to, and in two shapes:
+ * `Door [1000 picklocks/strength]` takes either skill, `Key: 2126 [or 157
+ * picklocks]` takes only the lock-pick (`any` is 0 in both). Forcing one is a
+ * numbers game — bash, rest, bash — and every attempt below the minimum can
+ * cost the character, so the grading is deliberately lopsided: below the
+ * minimum the door is priced as a wall that can still be walked through when
+ * there is no other way at all (`tuning.world.wallCost`, never `null`); at the
+ * minimum it is close to a plain door; and the further the skill stands above
+ * it the cheaper it gets, down to `base`. A character whose sheet nobody has
+ * read is priced as if it could not force anything, which is the safe reading.
+ *
+ * **The two channels are graded separately and the best one wins** (see
+ * `forcedDoorCost`). Taking the higher of the two skills against one number
+ * credited a warrior's strength against a lock the realm says only picklocks
+ * open.
+ */
 function gradedCost(skill: number | null | undefined, difficulty: number, base: number): number {
   if (difficulty <= 0) return base;
   const ratio = (skill ?? 0) / difficulty;
@@ -1026,6 +1016,14 @@ export function dangerPenalty(share: number | null): number {
 }
 
 /**
+ * Cost added by an edge's requirement, or `null` to prune it entirely.
+ *
+ * The numbers are relative and only have to order routes sensibly: a plain
+ * corridor is 1, so a door at 12 means "worth a dozen extra rooms to avoid".
+ * The original used −500 for a door, which is a *negative* cost and makes A*
+ * prefer doors while breaking admissibility; that looks like a bug rather than
+ * an intent, and it is not reproduced.
+ *
  * What this edge costs, the conditions the client cannot read included.
  *
  * Two halves because an edge may carry conditions of two kinds at once, which
@@ -1071,13 +1069,6 @@ export function edgePenalty(requirement: Requirement | null, traveller: Travelle
 }
 
 /**
- * What a way in that puts a timed spell on the character costs (todo 104):
- * the rooms under it to the exit that lifts it, against the ticks it lasts.
- * A passage with no way out this side of the spell's end, or one whose
- * length the realm states no duration against, is a wall — unknown is never
- * the reassuring answer, and here the reassuring answer drowns somebody.
- */
-/**
  * A room's text exits, each left the commands the realm would take it for:
  * one an earlier exit of the room (north to down) also answers goes through
  * that one. Rhudaur, Massive Doors (2/2519) takes `go alley`, `go alleyway`
@@ -1100,6 +1091,13 @@ function claimCommands(exits: WorldExit[]): void {
   }
 }
 
+/**
+ * What a way in that puts a timed spell on the character costs (todo 104):
+ * the rooms under it to the exit that lifts it, against the ticks it lasts.
+ * A passage with no way out this side of the spell's end, or one whose
+ * length the realm states no duration against, is a wall — unknown is never
+ * the reassuring answer, and here the reassuring answer drowns somebody.
+ */
 function corridorCost(requirement: Requirement | null): number | null {
   const corridor = requirement?.corridor;
   if (corridor === undefined) return 0;
@@ -1181,11 +1179,11 @@ function statedPenalty(requirement: Requirement | null, traveller: Traveller): n
       if (lacking === 'missing') return null;
       if (lacking === 'unlisted') return UNEVALUATED;
       /*
-       * Searchable costs the search — `Walker.searchFor` sends it.
+       * Searchable costs the search — `SessionHost.clearWay` sends it.
        *
        * An action-gated one costs the levers where the realm puts every one of
-       * them in the room the exit leaves from, because `Walker.pullLevers`
-       * sends those: one command per lever, which the realm answers every
+       * them in the room the exit leaves from, because `SessionHost.clearWay`
+       * pulls those: one command per lever, which the realm answers every
        * time (`LEVER_COST`). 150 of the shipped realm's 217 are that shape.
        *
        * Everything else stays expensive rather than impossible, which is what
@@ -1193,8 +1191,7 @@ function statedPenalty(requirement: Requirement | null, traveller: Traveller): n
        * function cannot see the room they are in: `stepCost` asks
        * `leverErrand` for the walk there and back and prices that instead
        * where it is near enough to plan, and this is the price where it is
-       * not — `Walker.fetchLever` then makes the errand when the step is
-       * refused.
+       * not.
        */
       if (requirement.searchable) return SEARCH_COST;
       if (openableHere(requirement)) return LEVER_COST * requirement.actions!.length;
@@ -1905,27 +1902,6 @@ export class WorldGraph {
   }
 
   /**
-   * An item an exit asks for, if the realm data can name it.
-   *
-   * Undefined for anything no exit references — the index is deliberately
-   * small — and for a realm built before the index existed.
-   */
-  /**
-   * What the realm knows about items with these names, keyed by the name asked
-   * for.
-   *
-   * By *name*, because a name is all the wire ever gives: an `i` listing writes
-   * `padded boots (Feet)` and nothing in it carries the realm's item number.
-   * The stripping is the caller's — `sameItem`'s rule, which takes a trailing
-   * parenthesised group off — so this only lower-cases and trims.
-   *
-   * A name the index does not have is simply absent from the result rather than
-   * present and empty. About 1,650 of the realm's items are named here — every
-   * one some exit demands and every one a shop stocks — which covers gear and
-   * does not cover everything a monster drops. Saying nothing about a name it
-   * cannot place is the same rule the rest of the world layer follows.
-   */
-  /**
    * The `Items` row ids a pack holds, for the two exits that ask *is this
    * thing carried* — a `Key:` lock and an `Item:` gate.
    *
@@ -2016,6 +1992,21 @@ export class WorldGraph {
     );
   }
 
+  /**
+   * What the realm knows about items with these names, keyed by the name asked
+   * for.
+   *
+   * By *name*, because a name is all the wire ever gives: an `i` listing writes
+   * `padded boots (Feet)` and nothing in it carries the realm's item number.
+   * The stripping is the caller's — `sameItem`'s rule, which takes a trailing
+   * parenthesised group off — so this only lower-cases and trims.
+   *
+   * A name the index does not have is simply absent from the result rather than
+   * present and empty. About 1,650 of the realm's items are named here — every
+   * one some exit demands and every one a shop stocks — which covers gear and
+   * does not cover everything a monster drops. Saying nothing about a name it
+   * cannot place is the same rule the rest of the world layer follows.
+   */
   itemsNamed(names: readonly string[]): Record<string, WorldItem> {
     const found: Record<string, WorldItem> = {};
     for (const name of names) {
@@ -2025,6 +2016,12 @@ export class WorldGraph {
     return found;
   }
 
+  /**
+   * An item an exit asks for, if the realm data can name it.
+   *
+   * Undefined for anything no exit references — the index is deliberately
+   * small — and for a realm built before the index existed.
+   */
   item(id: number): WorldItem | undefined {
     return this.items.get(id);
   }
@@ -2255,8 +2252,7 @@ export class WorldGraph {
     /*
      * Format 20. The profiles ride along whole, and every spell they or the
      * death spell name is resolved here — the decision that reads them is
-     * made from the room's occupants in `AutoCombat`, which holds no realm
-     * and must not ask one per status line.
+     * made from the room's occupants, with no realm to ask per status line.
      */
     if (known.profiles !== undefined) entity.profiles = known.profiles;
     const named = new Set<number>();
@@ -2393,12 +2389,6 @@ export class WorldGraph {
     return undefined;
   }
 
-  /**
-   * Every room the realm says holds a shop, for walking to the nearest one.
-   *
-   * A shop is a property of a room, so "where can I buy something" is a walk
-   * the world graph can plan without asking the server anything.
-   */
   /** A monster by the realm's own number. Undefined on a realm built before v9. */
   mobById(id: number): WorldMob | undefined {
     return this.mobsById.get(id);
@@ -2938,12 +2928,6 @@ export class WorldGraph {
     );
   }
 
-  /**
-   * Item id -> the rooms whose counter stocks it, built once.
-   *
-   * By **id**, like `stockedBy` beside it and for the same reason: a shop
-   * stocks rows, and the realm repeats item names across rows.
-   */
   /** Every row some counter the realm places stocks, for a thread that cannot ask `sold`. */
   soldItems(): number[] {
     this.stockRooms(0);
@@ -2955,6 +2939,12 @@ export class WorldGraph {
     return this.stockRooms(item).length > 0;
   }
 
+  /**
+   * Item id -> the rooms whose counter stocks it, built once.
+   *
+   * By **id**, like `stockedBy` beside it and for the same reason: a shop
+   * stocks rows, and the realm repeats item names across rows.
+   */
   private stockRooms(item: number): readonly WorldRoom[] {
     if (this.stocking === null) {
       const index = new Map<number, WorldRoom[]>();
@@ -3582,8 +3572,7 @@ export class WorldGraph {
    * The room's own `Spell` column holds an id, not a word, so `spellNamed`
    * cannot answer it — a room that heals you and a room that drowns you are
    * the same column and only the row tells them apart.
-   */
-  /**
+   *
    * The spell the realm numbers this, or null.
    *
    * Indexed rather than scanned: the router asks this **once per room it
@@ -4004,35 +3993,6 @@ export class WorldGraph {
   }
 
   /**
-   * Gives the router every room-script teleport, priced by what it can read.
-   *
-   * The scripts have been on `WorldRoom.commands` since format 13, card-only,
-   * with the routing half deferred (mme.md §6). The first tranche linked only
-   * the commands whose every guard was `minlevel`/`maxlevel` and **dropped the
-   * edge entirely** for the rest, on the reasoning that a route through a
-   * guess walks a character somewhere it cannot get back from.
-   *
-   * That is the one place in this router that prunes an edge it cannot price,
-   * and it is the opposite of what `REQUIREMENT_KINDS` says about an
-   * instruction nothing recognises — *passable-but-suspect rather than
-   * silently dropped: an exit we do not understand is still an exit, and
-   * pruning it strands routes*. It stranded 19,108 of Paradigm's 57,511 rooms
-   * and 3,277 of stock's 26,694, measured from the Newhaven Common Room: 186
-   * of Paradigm's 255 scripted landings and 106 of stock's 165 were dropped,
-   * and with them the only way in to whole regions — Dragon's Fang Hills (766
-   * rooms), the Undermountain Caverns (336), the Ancient Darkwood Tree and
-   * Morukai behind it, which the realm reaches by `go portal` at 9/1291 under
-   * a `checkability 133 5` this client cannot evaluate on Paradigm.
-   *
-   * So every landing the dataset holds is an edge now, and the guards decide
-   * the price rather than whether it exists: `minlevel`/`maxlevel` become the
-   * `level` gate they already were, and everything else — `nomonsters`,
-   * `roomitem`, `testskill`, `checkability` — goes on `Requirement.unread`,
-   * which `edgePenalty` charges the unevaluable figure for. A guarded portal
-   * therefore costs about sixty steps of detour: taken when it is the only way
-   * there, never preferred while a corridor exists.
-   */
-  /**
    * An item that teleports **from a particular room** is a portal out of it.
    *
    * Which is all it ever was: the realm gates the potion of levitation's block
@@ -4083,6 +4043,35 @@ export class WorldGraph {
     }
   }
 
+  /**
+   * Gives the router every room-script teleport, priced by what it can read.
+   *
+   * The scripts have been on `WorldRoom.commands` since format 13, card-only,
+   * with the routing half deferred (mme.md §6). The first tranche linked only
+   * the commands whose every guard was `minlevel`/`maxlevel` and **dropped the
+   * edge entirely** for the rest, on the reasoning that a route through a
+   * guess walks a character somewhere it cannot get back from.
+   *
+   * That is the one place in this router that prunes an edge it cannot price,
+   * and it is the opposite of what `REQUIREMENT_KINDS` says about an
+   * instruction nothing recognises — *passable-but-suspect rather than
+   * silently dropped: an exit we do not understand is still an exit, and
+   * pruning it strands routes*. It stranded 19,108 of Paradigm's 57,511 rooms
+   * and 3,277 of stock's 26,694, measured from the Newhaven Common Room: 186
+   * of Paradigm's 255 scripted landings and 106 of stock's 165 were dropped,
+   * and with them the only way in to whole regions — Dragon's Fang Hills (766
+   * rooms), the Undermountain Caverns (336), the Ancient Darkwood Tree and
+   * Morukai behind it, which the realm reaches by `go portal` at 9/1291 under
+   * a `checkability 133 5` this client cannot evaluate on Paradigm.
+   *
+   * So every landing the dataset holds is an edge now, and the guards decide
+   * the price rather than whether it exists: `minlevel`/`maxlevel` become the
+   * `level` gate they already were, and everything else — `nomonsters`,
+   * `roomitem`, `testskill`, `checkability` — goes on `Requirement.unread`,
+   * which `edgePenalty` charges the unevaluable figure for. A guarded portal
+   * therefore costs about sixty steps of detour: taken when it is the only way
+   * there, never preferred while a corridor exists.
+   */
   private linkPortals(): void {
     for (const [id, room] of this.rooms) {
       for (const command of room.commands ?? []) {
@@ -4297,7 +4286,7 @@ export class WorldGraph {
    * Measured over the shipped realm: 225 exits have at least one lever, 171
    * with every lever in the exit's own room, 35 with every lever in one other
    * room, 14 spread over several rooms and 5 naming an exit the room does not
-   * have. `Walker` serves the first two shapes and refuses the rest out loud;
+   * have. The walk serves the first two shapes and refuses the rest out loud;
    * this index states all of them, because refusing needs the same answer as
    * acting.
    */
@@ -4391,8 +4380,8 @@ export class WorldGraph {
    * opened* agree exactly until one is edited.
    *
    * Every lever in the room the step leaves from is the same price
-   * `edgePenalty` puts on a hidden exit in that shape, because `Walker` sends
-   * both the same way — one command per lever, then the step again. Levers in
+   * `edgePenalty` puts on a hidden exit in that shape, because both are sent
+   * the same way (`SessionHost.clearWay`) — one command per lever, then the step again. Levers in
    * another room are the walk there and back as well (`leverErrand`), which
    * `buildRoute` puts on the plan.
    */
@@ -4433,8 +4422,8 @@ export class WorldGraph {
    * picklocks/strength]`, and `pull lever` in the Guard Room two rooms back
    * (7/152, behind a searchable wall off 7/148) opens it. The planner priced
    * the door a wall, so the Black House way to the Fungus Forest never
-   * appeared, although `Walker.fetchLever` would have walked it the moment
-   * the door refused. Priced here, it is a door like any other: the legs and
+   * appeared, although the walk would have taken the lever's detour the
+   * moment the door refused. Priced here, it is a door like any other: the legs and
    * the pulls, and `buildRoute` puts both legs on the plan.
    *
    * **The shapes the walker acted on.** Levers spread over several rooms
@@ -5365,16 +5354,6 @@ export class WorldGraph {
   }
 
   /**
-   * Where the realm says an item comes from: shops that stock it by id, and
-   * monsters that drop it by name (todo 07).
-   *
-   * The public half of the two indexes the quest book already joins, for the
-   * one other caller that asks the same question — a route that crosses a
-   * keyed door and wants to go and get the key. Both directions, as
-   * `joinStep` reads them: a shop's stock list and an item's own `shops`, a
-   * monster's drop list and an item's own `mobs`.
-   */
-  /**
    * One step of a plan, from the room the step before it ends in: what it
    * gathers and how, where it happens, and whether the way there exists
    * (`QuestPlan`, `mudengine-world` › *A plan is steps, and each is priced from
@@ -5980,6 +5959,16 @@ export class WorldGraph {
     return found;
   }
 
+  /**
+   * Where the realm says an item comes from: shops that stock it by id, and
+   * monsters that drop it by name (todo 07).
+   *
+   * The public half of the two indexes the quest book already joins, for the
+   * one other caller that asks the same question — a route that crosses a
+   * keyed door and wants to go and get the key. Both directions, as
+   * `joinStep` reads them: a shop's stock list and an item's own `shops`, a
+   * monster's drop list and an item's own `mobs`.
+   */
   sourcesOf(item: { id: number; name?: string }): { shops: string[]; mobs: string[] } {
     const known = this.items.get(item.id);
     const shops = new Set(known?.shops ?? []);
@@ -6083,44 +6072,6 @@ export class WorldGraph {
     return { droppers, lairs };
   }
 
-  /**
-   * What the way into a room demands be carried, or nothing where it is open.
-   *
-   * Reported 2026-09-15 (todo 02): the quest book said *golden egg — kill
-   * necromancer in Amethyst Cave* and stopped. Reaching that cave takes a
-   * potion of levitation, a titanium fork and a magical quartz rod; the realm
-   * states all three and nothing was reading any of them.
-   *
-   * **Two halves, because *what encloses this place* and *what opens it* are
-   * different questions.** `enclosing` sweeps backwards over every way in that
-   * demands no item and gives the question up the moment it reaches the open
-   * realm — so what it returns is a pocket with no free entrance, or nothing
-   * at all. Inside that pocket the question is then answered **forwards and by
-   * trial**: `opensInto` floods from whichever doors the items in hand unlock,
-   * which is what the server actually does, and a set of items is *required*
-   * when taking any one of them away puts the room out of reach.
-   *
-   * The trial matters, and the first attempt at this got it wrong by reasoning
-   * about frontiers in order instead. The Catacombs' fork doors are all
-   * *inside* the pocket, so the frontier chain read the fork as needed at the
-   * near gates and then dismissed the potion at the far one as a door the fork
-   * already opens — which is exactly backwards: the fork opens nothing from
-   * the mainland, and the potion is the only entrance there is. Measured
-   * forwards from Town Gates: nothing reaches 44,803 rooms, the fork alone
-   * adds none, the potion adds 26, the potion and the fork add 143 more, and
-   * only all three reach the Amethyst Cave.
-   *
-   * **Every item reported is necessary given the others** — that is what the
-   * minimisation leaves — and an item that could stand in for one of them is
-   * named beside it (`ApproachGate.anyOf`) rather than being picked between.
-   * Ordered by when the flood can first use each, which is the order they are
-   * fetched in. Where the items to hand do not reach the room at all the
-   * answer is nothing: an account the client cannot complete is not one to
-   * send somebody out on. Stock's Fine Mansion study is what the trial buys
-   * over counting frontiers twice: a skeleton key opens a door into that
-   * pocket and the study is not behind it, so the honest answer is the black
-   * serpent key alone, and the frontier count said *either*.
-   */
   /**
    * Every item that is a way through, as an edge the router can relax.
    *
@@ -6238,6 +6189,44 @@ export class WorldGraph {
     return seen;
   }
 
+  /**
+   * What the way into a room demands be carried, or nothing where it is open.
+   *
+   * Reported 2026-09-15 (todo 02): the quest book said *golden egg — kill
+   * necromancer in Amethyst Cave* and stopped. Reaching that cave takes a
+   * potion of levitation, a titanium fork and a magical quartz rod; the realm
+   * states all three and nothing was reading any of them.
+   *
+   * **Two halves, because *what encloses this place* and *what opens it* are
+   * different questions.** `enclosing` sweeps backwards over every way in that
+   * demands no item and gives the question up the moment it reaches the open
+   * realm — so what it returns is a pocket with no free entrance, or nothing
+   * at all. Inside that pocket the question is then answered **forwards and by
+   * trial**: `opensInto` floods from whichever doors the items in hand unlock,
+   * which is what the server actually does, and a set of items is *required*
+   * when taking any one of them away puts the room out of reach.
+   *
+   * The trial matters, and the first attempt at this got it wrong by reasoning
+   * about frontiers in order instead. The Catacombs' fork doors are all
+   * *inside* the pocket, so the frontier chain read the fork as needed at the
+   * near gates and then dismissed the potion at the far one as a door the fork
+   * already opens — which is exactly backwards: the fork opens nothing from
+   * the mainland, and the potion is the only entrance there is. Measured
+   * forwards from Town Gates: nothing reaches 44,803 rooms, the fork alone
+   * adds none, the potion adds 26, the potion and the fork add 143 more, and
+   * only all three reach the Amethyst Cave.
+   *
+   * **Every item reported is necessary given the others** — that is what the
+   * minimisation leaves — and an item that could stand in for one of them is
+   * named beside it (`ApproachGate.anyOf`) rather than being picked between.
+   * Ordered by when the flood can first use each, which is the order they are
+   * fetched in. Where the items to hand do not reach the room at all the
+   * answer is nothing: an account the client cannot complete is not one to
+   * send somebody out on. Stock's Fine Mansion study is what the trial buys
+   * over counting frontiers twice: a skeleton key opens a door into that
+   * pocket and the study is not behind it, so the honest answer is the black
+   * serpent key alone, and the frontier count said *either*.
+   */
   approachItems(room: RoomId): ApproachGate[] {
     const inside = this.enclosing(room);
     if (inside === null) return [];
@@ -6751,7 +6740,7 @@ export class WorldGraph {
        * The levers the build joined onto this exit — format 23. On the
        * requirement rather than beside it, because everything that acts on an
        * exit's condition already reads the requirement: `edgePenalty` prices
-       * it, `describeObstacle` names it and `Walker` sends it, and none of the
+       * it, `describeObstacle` names it and `SessionHost.clearWay` sends it, and none of the
        * three is handed the room.
        */
       const levers = readActions(exit.a);
@@ -7343,28 +7332,6 @@ export class WorldGraph {
   }
 
   /**
-   * The way this character would take if it carried what stops the rooms on
-   * it — the second alternative, and the one the reader asked for by name.
-   *
-   * *I know there is another way, through the Silvermere River, but it needs
-   * a log raft* (todo 01). The plan through the slums is 107 steps because
-   * the router priced eighty rooms of river against an empty pack; the way
-   * down the river is 88 with a raft. `otherWay` cannot find that route — it
-   * avoids rooms the plan priced badly, and the plan avoids the river already
-   * — so this asks the opposite question: with every item-stopped hazard
-   * switched off, where would the search go?
-   *
-   * Offered only when it is **materially** shorter, by `alternativeMinSteps`
-   * (a way two steps shorter is the same way with a corner cut, which the
-   * reader asked not to be shown), and only when it actually crosses a room
-   * an item would quieten — a route shorter for any other reason would have
-   * been the plan. Built on the *equipped* traveller so its steps are priced
-   * as the premise says, while `hazards.needs` still names what the pack
-   * lacks; never deadly, by `otherWay`'s rule and for its reason. One more
-   * A* per route, and only when asked for (`RouteOptions.alternatives`): a
-   * loop's leg is walked, not read.
-   */
-  /**
    * The way that uses an item to teleport, where it is materially shorter.
    *
    * **Off by default, which is the whole of what separates the two kinds of
@@ -7412,6 +7379,28 @@ export class WorldGraph {
     return other.steps.some((step) => step.deadly === true) ? null : other;
   }
 
+  /**
+   * The way this character would take if it carried what stops the rooms on
+   * it — the second alternative, and the one the reader asked for by name.
+   *
+   * *I know there is another way, through the Silvermere River, but it needs
+   * a log raft* (todo 01). The plan through the slums is 107 steps because
+   * the router priced eighty rooms of river against an empty pack; the way
+   * down the river is 88 with a raft. `otherWay` cannot find that route — it
+   * avoids rooms the plan priced badly, and the plan avoids the river already
+   * — so this asks the opposite question: with every item-stopped hazard
+   * switched off, where would the search go?
+   *
+   * Offered only when it is **materially** shorter, by `alternativeMinSteps`
+   * (a way two steps shorter is the same way with a corner cut, which the
+   * reader asked not to be shown), and only when it actually crosses a room
+   * an item would quieten — a route shorter for any other reason would have
+   * been the plan. Built on the *equipped* traveller so its steps are priced
+   * as the premise says, while `hazards.needs` still names what the pack
+   * lacks; never deadly, by `otherWay`'s rule and for its reason. One more
+   * A* per route, and only when asked for (`RouteOptions.alternatives`): a
+   * loop's leg is walked, not read.
+   */
   private carrying(
     from: RoomId,
     to: RoomId,
@@ -8362,8 +8351,8 @@ export class WorldGraph {
      * Asked only of an edge already priced as a wall, so the hot loop pays one
      * Map lookup on the 0.8% of exits that are walls rather than on all of
      * them; and priced exactly as `edgePenalty` prices a hidden exit whose
-     * levers are all in reach, because it is the same rung — `Walker` pulls
-     * both, one command per lever.
+     * levers are all in reach, because it is the same rung: both are pulled
+     * one command per lever.
      *
      * Read off `priced` and never off the gate `openGates` holds open: a
      * pruned edge is impassable for a reason no lever touches — a class the
@@ -8809,7 +8798,7 @@ export class WorldGraph {
           });
         }
         // Named as a wall only where nothing here opens it, the reading
-        // `stepCost` priced it by. `Walker.pullLevers` sends the phrase.
+        // `stepCost` priced it by. `SessionHost.clearWay` sends the phrase.
         if (wall !== null && this.leverPrice(prev, exit.direction, traveller) === null) {
           const item = wall.keyId === undefined ? undefined : this.item(wall.keyId);
           const off = switchedOff(wall, traveller);
@@ -8864,7 +8853,7 @@ export class WorldGraph {
        * says so in the price: it passes `into: null` and charges nothing for
        * what waits there, because nobody knows. Carrying the figures anyway
        * made the price and the step disagree about one move, and three readers
-       * acted on the step: `AutoLight` was handed the goal's darkness for a
+       * acted on the step: the old `AutoLight` was handed the goal's darkness for a
        * room it was not entering, `holdForTrap` reserved health against the
        * old man's own lair before a step that does not reach it, and
        * `lairsAlong().deadly` named a room the step never enters — which
@@ -9140,29 +9129,10 @@ export class WorldGraph {
 }
 
 /**
- * Whether a spell row is one a player could cast, and so worth linking on
- * sight. See `names()` for why the realm's spell table holds far more than
- * spells; a row stating none of these four is an engine effect, not a spell
- * anybody knows the name of.
- */
-/**
- * What the person behind a counter is called, from the kind of counter.
- *
- * The **only** sound source for an NPC's role: the realm records which shop a
- * room holds and what kind it is, so `mariana` in a room holding shop 202 is a
- * shopkeeper. Nothing else in the data says what a creature *does* —
- * `Monsters.Type` was measured and does not (see `MobEntity.realmType`) — so
- * a room with no shop leaves `npcType` undefined rather than guessing.
- *
- * There is no `guard` and no `quest` here, deliberately, for the reason the
- * Room card's faces have no healer: do not invent a kind the realm cannot
- * distinguish.
- */
-/**
  * The levers on one exit, parsed rather than cast — format 23.
  *
  * Every other field in `parseRoom` is type-checked and this one was taken
- * wholesale, while `describeObstacle` and `Walker.pullLevers` both reach
+ * wholesale, while `describeObstacle` and the lever pulls both reach
  * `act.say[0]!` behind a non-null assertion. A realm whose `Action …` cell has
  * a shape this build does not expect would put `undefined` into the obstacle
  * chip and give the walker a rung that sends nothing, returns true and spends
@@ -9215,6 +9185,19 @@ interface MobSpawnRoom {
   max: number | null;
 }
 
+/**
+ * What the person behind a counter is called, from the kind of counter.
+ *
+ * The **only** sound source for an NPC's role: the realm records which shop a
+ * room holds and what kind it is, so `mariana` in a room holding shop 202 is a
+ * shopkeeper. Nothing else in the data says what a creature *does* —
+ * `Monsters.Type` was measured and does not (see `MobEntity.realmType`) — so
+ * a room with no shop leaves `npcType` undefined rather than guessing.
+ *
+ * There is no `guard` and no `quest` here, deliberately, for the reason the
+ * Room card's faces have no healer: do not invent a kind the realm cannot
+ * distinguish.
+ */
 const NPC_ROLE_OF: Readonly<Record<ShopKind, NonNullable<NpcEntity['npcType']> | undefined>> = {
   shop: 'shopkeeper',
   bank: 'banker',
@@ -9224,6 +9207,12 @@ const NPC_ROLE_OF: Readonly<Record<ShopKind, NonNullable<NpcEntity['npcType']> |
   temple: 'priest'
 };
 
+/**
+ * Whether a spell row is one a player could cast, and so worth linking on
+ * sight. See `names()` for why the realm's spell table holds far more than
+ * spells; a row stating none of these four is an engine effect, not a spell
+ * anybody knows the name of.
+ */
 function isCastable(spell: WorldSpell): boolean {
   return (
     spell.short !== undefined ||
@@ -9233,30 +9222,6 @@ function isCastable(spell: WorldSpell): boolean {
   );
 }
 
-/**
- * What kind of thing an item is, read off a v6 header record onto the item.
- *
- * The file carries the realm's *numbers* and this turns them into words, so a
- * correction to `shared/items.ts` reaches a realm converted before it without a
- * rebuild. Every field is optional and absent means the realm does not say;
- * a zero in the file was already left out at build time, so nothing here has
- * to decide whether zero is a fact.
- */
-/**
- * The `[id, value]` effect pairs off a realm record, whatever kind it is.
- *
- * Items have carried these since format 12; monsters, spells, races and
- * classes since format 14. Kept as the realm's own numbers — `shared/abilities.ts`
- * names them where they are shown, because the *reading* is a claim from
- * another client's source and may be corrected.
- *
- * A malformed pair is dropped rather than repaired: a realm file this client
- * wrote is the only source, so a shape that is not a pair of numbers is a bug
- * here and not a derivative being different. An absent field is an empty list,
- * which is what a realm built before the format that added it produces — the
- * same answer as a row the realm states no effects for, and every consumer
- * already draws nothing for it.
- */
 /**
  * The realm format that first wrote `BuiltMob.pf`, so a name without one can
  * be told apart from a file that never had them. `buildRealm.ts` numbers the
@@ -9415,6 +9380,21 @@ function readProfiles(raw: unknown): MobProfile[] {
   return profiles;
 }
 
+/**
+ * The `[id, value]` effect pairs off a realm record, whatever kind it is.
+ *
+ * Items have carried these since format 12; monsters, spells, races and
+ * classes since format 14. Kept as the realm's own numbers — `shared/abilities.ts`
+ * names them where they are shown, because the *reading* is a claim from
+ * another client's source and may be corrected.
+ *
+ * A malformed pair is dropped rather than repaired: a realm file this client
+ * wrote is the only source, so a shape that is not a pair of numbers is a bug
+ * here and not a derivative being different. An absent field is an empty list,
+ * which is what a realm built before the format that added it produces — the
+ * same answer as a row the realm states no effects for, and every consumer
+ * already draws nothing for it.
+ */
 function readAbilities(record: Record<string, unknown>): Array<[number, number]> {
   return Array.isArray(record['ab'])
     ? record['ab'].filter(
@@ -9631,6 +9611,15 @@ function readHandovers(raw: unknown): ItemHandover[] {
   return found;
 }
 
+/**
+ * What kind of thing an item is, read off a v6 header record onto the item.
+ *
+ * The file carries the realm's *numbers* and this turns them into words, so a
+ * correction to `shared/items.ts` reaches a realm converted before it without a
+ * rebuild. Every field is optional and absent means the realm does not say;
+ * a zero in the file was already left out at build time, so nothing here has
+ * to decide whether zero is a fact.
+ */
 function readItemKind(record: Record<string, unknown>, item: WorldItem): void {
   const type = Number(record['type']);
   if (!Number.isInteger(type)) return;

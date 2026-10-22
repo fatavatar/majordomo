@@ -97,8 +97,7 @@ export interface WalkProgress {
    * Why the walk is standing still without having stopped. Null while it is
    * actually moving.
    *
-   * A **hold is not an ending**, which is the distinction `LoopRunner` already
-   * draws and for the same reason: a walk that stopped needs replanning from
+   * A **hold is not an ending**, for this reason: a walk that stopped needs replanning from
    * wherever the character is, and one that is merely waiting will go on by
    * itself. Drawing them the same way would make a character recovering look
    * like a character that had given up.
@@ -125,18 +124,16 @@ export interface WalkProgress {
  * afflictions the server has stated and the walk waits out — MegaMUD's
  * `IgnoreBlind` / `IgnorePoison` defaults, which wait. `held` is also taken for a hold the client could not
  * *name*: a step answered by a spell onset and then silence is a step
- * `CheckForHoldPerson` refused, whatever the realm says about that spell
- * (`Walker.onsetAnsweredStep`).
+ * `CheckForHoldPerson` refused, whatever the realm says about that spell.
  *
  * `trap` is the step ahead firing a trap the character is not yet fit to
- * take: the walk rests to the figure `automation.health.restBeforeTraps`
- * names and then steps through — `Walker.holdForTrap`. A health hold by
- * another floor, drawn as resting.
+ * take: the walk rests and then steps through. A health hold by another
+ * floor, drawn as resting.
  *
  * `resting` is a `rest` on the wire whose answer has not come back yet: the
  * walk waits a beat rather than breaking it. A rest and a step decided in the
  * same tick are both right at the moment they are made, and the step undid the
- * rest a millisecond later — see `Recovery.restInFlight` and todo 14. The
+ * rest a millisecond later (todo 14). The
  * window is short and ends by itself, so this can never deadlock.
  *
  * `barrier` is a shut door the ladder could not get past *this time round*:
@@ -145,7 +142,7 @@ export interface WalkProgress {
  * failed are mostly temporary — the character is too hurt to spend another
  * bash, the lock wanted one more roll, somebody else is about to walk through
  * — and a route that ends at a door has to be noticed and asked for again by
- * hand. See `Walker.holdAtBarrier`.
+ * hand.
  */
 export type WalkHold =
   | 'health'
@@ -165,7 +162,7 @@ export type WalkHold =
   | 'dark'
   /** Waiting out what the realm's message table says is on the character. */
   | 'condition'
-  /** Party members a relayed text exit left behind, not yet here. See `Walker.holdForParty`. */
+  /** Party members a relayed text exit left behind, not yet here. */
   | 'party'
   | null;
 

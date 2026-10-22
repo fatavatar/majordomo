@@ -235,10 +235,6 @@ describe('the "stand up at" health thresholds', () => {
       // changes nothing — and deliberately *not* what the stand-up thresholds
       // this test removes used to mean. See `HealthConfig`.
       restTo: 0,
-      // And by `statedTheTrapRest`, at the shipped figure.
-      restBeforeTraps: 0.45,
-      // And by `statedTheRestNextDoor`, on.
-      restNextDoor: true,
       meditateBelow: 0.3,
       // And by `statedTheMeditateTarget`, after it, at the default.
       meditateTo: 0,
@@ -373,10 +369,12 @@ describe('the combat and potion settings that went', () => {
     );
     migrate();
     const health = healthOf();
+    // Each row's threshold and verb went later in the run with the old
+    // automation (`theOldAutomationFieldsWent`); the rows stay.
     expect(health['potions']).toEqual([
-      { name: 'minor healing potion', when: 'hp', below: 0.4, verb: 'use' },
+      { name: 'minor healing potion', when: 'hp' },
       // The name was never stated, so the slot's own default is what it asked for.
-      { name: 'mana potion', when: 'mana', below: 0.2, verb: 'use' }
+      { name: 'mana potion', when: 'mana' }
     ]);
     for (const key of [
       'drinkHealingPotionBelow',
@@ -460,21 +458,13 @@ describe('the round combat macro', () => {
     migrate();
     expect(parse(fs.readFileSync(home.options, 'utf8')).automation.combat).toEqual({
       attack: 'a',
-      engage: 'hostile',
       // Written by `statedTheEntityPredicates` in the same run, after this
       // step, at the defaults that change nothing.
-      maxTargetHealth: 0,
       minMobs: 0,
       maxMonsterExperience: 0,
-      // And by `statedTheSurvivalFloor`, off.
-      minSurvival: 0,
-      // And by `statedTheHideForOpener`, off.
-      hideForOpener: false,
       // And by `statedTheMonsterRows`, empty, which is what the client already
       // does without the key (`statedTheMobRules`' list folded into it).
-      monsters: [],
-      // And by `statedTheNewAutomation`, at the shipped figure (todo 00).
-      defendAfterRounds: 2
+      monsters: []
     });
   });
 
@@ -604,105 +594,6 @@ describe('the mark in the status rail', () => {
  * in the file names the setting that decided so.
  */
 /*
- * Opening and bashing doors, turned on where the client had written them off
- * (2026-09-07, todo 06).
- *
- * The one migration here that moves an answer rather than adding a missing one,
- * and only because `statedDoorForcing` is where the answer came from: it wrote
- * both keys into every file at the shipped default, so a flipped default alone
- * would reach nobody.
- */
-describe('doors opening by default', () => {
-  const movement = (body: string): string => `automation:\n  movement:\n${body}`;
-
-  beforeEach(() => {
-    fs.mkdirSync(home.globalDir, { recursive: true });
-  });
-
-  it('moves the two the client wrote, and not the lock-pick', () => {
-    fs.writeFileSync(
-      home.options,
-      movement('    openDoors: false\n    bashDoors: false\n    pickLocks: false\n'),
-      'utf8'
-    );
-    migrate();
-    const parsed = parse(fs.readFileSync(home.options, 'utf8')) as Record<string, unknown>;
-    const after = (parsed['automation'] as Record<string, unknown>)['movement'] as Record<
-      string,
-      unknown
-    >;
-    expect(after['openDoors']).toBe(true);
-    expect(after['bashDoors']).toBe(true);
-    // The same decision made with a skill the client cannot check for.
-    expect(after['pickLocks']).toBe(false);
-  });
-
-  it("reaches a character's own file, not only the options", () => {
-    const file = path.join(home.profilesDir, 'vaelor', 'profile.yaml');
-    fs.mkdirSync(path.dirname(file), { recursive: true });
-    fs.writeFileSync(file, movement('    bashDoors: false\n'), 'utf8');
-    migrate();
-    const parsed = parse(fs.readFileSync(file, 'utf8')) as Record<string, unknown>;
-    expect(
-      ((parsed['automation'] as Record<string, unknown>)['movement'] as Record<string, unknown>)[
-        'bashDoors'
-      ]
-    ).toBe(true);
-  });
-
-  it('states nothing a file was silent about', () => {
-    /*
-     * Absence already inherits the new default; writing the key in would be
-     * this migration *stating* a setting rather than moving one. Asserted on
-     * `openDoors`, which no other migration writes — `statedDoorForcing` above
-     * legitimately states `bashDoors` and `pickLocks` where they are missing,
-     * and this one then finds the `false` it wrote and moves it, which is the
-     * same sequence a real file went through.
-     */
-    fs.writeFileSync(
-      home.options,
-      movement('    openTries: 1\n    pickLocks: false\n    pickTries: 3\n'),
-      'utf8'
-    );
-    migrate();
-    expect(fs.readFileSync(home.options, 'utf8')).not.toContain('openDoors');
-  });
-
-  it('cannot undo a later switch-off, and has nothing to say twice', () => {
-    /*
-     * Every door key stated, so `statedDoorForcing` — which runs before this
-     * and legitimately writes the two it is missing at the value it shipped —
-     * has nothing to add and cannot hand this one a `false` to move.
-     */
-    const stated = (open: boolean): string =>
-      movement(
-        `    openDoors: ${open}\n    openTries: 1\n` +
-          '    pickLocks: false\n    pickTries: 3\n    bashDoors: true\n    bashTries: 3\n'
-      );
-    fs.writeFileSync(home.options, stated(false), 'utf8');
-    migrate();
-    // What somebody does afterwards is theirs: only `false` moves, so a file
-    // switched back off by hand is left exactly as it was found.
-    fs.writeFileSync(home.options, stated(true), 'utf8');
-    migrate();
-    const parsed = parse(fs.readFileSync(home.options, 'utf8')) as Record<string, unknown>;
-    expect(
-      ((parsed['automation'] as Record<string, unknown>)['movement'] as Record<string, unknown>)[
-        'openDoors'
-      ]
-    ).toBe(true);
-    expect(said.join(' ')).not.toMatch(/were turned on in/);
-  });
-
-  it('says so, and names the file', () => {
-    fs.writeFileSync(home.options, movement('    openDoors: false\n'), 'utf8');
-    migrate();
-    expect(said.join(' ')).toMatch(/on by default/i);
-    expect(said.join(' ')).toContain(home.options);
-  });
-});
-
-/*
  * The ward switch moves to Health and comes on, 2026-09-22 (todo 02).
  *
  * `statedTheNewAutomation` wrote it into every file at the shipped `false` one
@@ -718,7 +609,7 @@ describe('the ward switch moving to health', () => {
 
   const both = (wards: boolean): string =>
     'automation:\n  health:\n    restBelow: 0.4\n' +
-    `  movement:\n    openDoors: true\n    useWards: ${wards}\n`;
+    `  movement:\n    pickLocks: true\n    useWards: ${wards}\n`;
 
   const health = (file: string): Record<string, unknown> => {
     const parsed = parse(fs.readFileSync(file, 'utf8')) as Record<string, unknown>;
@@ -735,7 +626,7 @@ describe('the ward switch moving to health', () => {
       unknown
     >;
     expect(movement['useWards']).toBeUndefined();
-    expect(movement['openDoors']).toBe(true);
+    expect(movement['pickLocks']).toBe(true);
     expect(health(home.options)['useWards']).toBe(true);
     // And it carries its own sentence in, as every key this writes does.
     expect(text).toContain('waterskin');
@@ -1304,24 +1195,6 @@ describe('owning the status line', () => {
 });
 
 /**
- * `combat.minHealth` had to go with the setting itself.
- *
- * There is no health floor on *opening* a fight any more: the goal of the game
- * is survival, and a character that will not swing at what is swinging at it
- * is not safer for the refusal (todo 13). Nothing on disk changes behaviour by
- * this — the key shipped at 0, which was already off — but a file naming a
- * setting the client no longer reads is a value somebody edits and then waits
- * to see work.
- */
-/**
- * `automation.health.potions` — the *use this when that* list (todo 19).
- *
- * Written only where the block already carries a potion section: a `health:`
- * that states a threshold and nothing about potions belongs to somebody who
- * has never asked for them, and adding an empty key to it would be a key for
- * the sake of a key.
- */
-/**
  * `ui.alerts.rules` — the player's own alert rows (todo 29).
  *
  * At the head of the block, because that is the order the client asks in: a
@@ -1399,6 +1272,14 @@ describe('the alert rules', () => {
   });
 });
 
+/**
+ * `automation.health.potions` — the *use this when that* list (todo 19).
+ *
+ * Written only where the block already carries a potion section: a `health:`
+ * that states a threshold and nothing about potions belongs to somebody who
+ * has never asked for them, and adding an empty key to it would be a key for
+ * the sake of a key.
+ */
 describe('the potion rules', () => {
   beforeEach(() => {
     fs.mkdirSync(home.globalDir, { recursive: true });
@@ -1445,7 +1326,7 @@ describe('the floor on opening a fight', () => {
   const OPTIONS_WITH = `automation:
   combat:
     # Swing at what the realm says would attack anyway.
-    engage: hostile
+    attack: a
     minHealth: 0.35
 `;
 
@@ -1460,7 +1341,7 @@ describe('the floor on opening a fight', () => {
       parse(fs.readFileSync(home.options, 'utf8')).automation as Record<string, unknown> | undefined
     )?.['combat'] as Record<string, unknown>;
     expect(combat['minHealth']).toBeUndefined();
-    expect(combat['engage']).toBe('hostile');
+    expect(combat['attack']).toBe('a');
   });
 
   /*
@@ -1516,7 +1397,7 @@ describe('the cap on what a fight may cost', () => {
   const OPTIONS_WITH = `automation:
   combat:
     # Swing at what the realm says would attack anyway.
-    engage: hostile
+    attack: a
     maxFightCost: 0.3
 `;
 
@@ -1531,7 +1412,7 @@ describe('the cap on what a fight may cost', () => {
       parse(fs.readFileSync(home.options, 'utf8')).automation as Record<string, unknown> | undefined
     )?.['combat'] as Record<string, unknown>;
     expect(combat['maxFightCost']).toBeUndefined();
-    expect(combat['engage']).toBe('hostile');
+    expect(combat['attack']).toBe('a');
   });
 
   it('goes from a character that had been given one by hand', () => {
@@ -2891,72 +2772,6 @@ describe('the anonymous connection', () => {
 });
 
 /*
- * `l` prints the room *and* tells everybody standing in it that this character
- * is looking around — a sentence the client already reads from the other side.
- * On the idle tick that is a beacon every forty-five seconds all evening. A
- * bare Enter prints the same block silently, so the two places the player's
- * own file still names a look have to move with the code, or the change
- * reaches nobody who has already run the client.
- */
-describe('the look that told the room', () => {
-  const ENTRY = `automation:
-  idle:
-    # The user's own note about the keep-alive.
-    enabled: true
-    afterSeconds: 45
-    command: l
-`;
-
-  const read = (file: string) =>
-    parse(fs.readFileSync(file, 'utf8')) as {
-      automation: { idle: { command: string } };
-    };
-
-  beforeEach(() => {
-    fs.mkdirSync(path.dirname(home.options), { recursive: true });
-    fs.writeFileSync(home.options, ENTRY, 'utf8');
-  });
-
-  it('makes the idle command a bare Enter', () => {
-    migrate();
-    expect(read(home.options).automation.idle.command).toBe('');
-  });
-
-  /* Every character's own file too: a profile overlay states its own, and one
-     left behind is a character still announcing itself every idle tick. */
-  it('reaches a character that states its own', () => {
-    const profile = home.profile('vaelor');
-    fs.mkdirSync(profile.dir, { recursive: true });
-    fs.writeFileSync(profile.file, 'automation:\n  idle:\n    command: look\n', 'utf8');
-    migrate();
-    expect(read(profile.file).automation.idle.command).toBe('');
-  });
-
-  /* Anything else there is a command somebody chose, and this is not the place
-     to have an opinion about it. */
-  it('leaves an idle command that is not a look alone', () => {
-    fs.writeFileSync(home.options, 'automation:\n  idle:\n    command: exp\n', 'utf8');
-    migrate();
-    expect(read(home.options).automation.idle.command).toBe('exp');
-  });
-
-  it('says so, naming the file and no values', () => {
-    migrate();
-    expect(said.join(' ')).toContain(home.options);
-    expect(said.join(' ')).toMatch(/bare Enter/);
-  });
-
-  /* The user's own comments are why this goes through `parseDocument`. */
-  it('keeps the notes the user wrote in it, and is safe to run again', () => {
-    migrate();
-    const after = fs.readFileSync(home.options, 'utf8');
-    expect(after).toContain("# The user's own note about the keep-alive.");
-    migrate();
-    expect(fs.readFileSync(home.options, 'utf8')).toBe(after);
-  });
-});
-
-/*
  * The world database moving off the character and onto the realm.
  *
  * It was per character because a profile is an overlay and two characters on
@@ -3390,33 +3205,9 @@ describe('the escape becomes a direction', () => {
 `);
     migrate();
     expect(safety()['flee']).toBeUndefined();
-    expect(safety()['retreat']).toEqual({
-      enabled: true,
-      belowHealth: 0.5,
-      whenOutnumbered: 3,
-      // Both retired spellings named the word; both become the one that walks.
-      strategy: 'step-back',
-      safeHavenRoom: 'Newhaven, Town Gates 1/2150'
-    });
-  });
-
-  it('carries the other retired strategy across too', () => {
-    stated('automation:\n  safety:\n    flee:\n      strategy: flee\n');
-    migrate();
-    expect(safety()['retreat']?.['strategy']).toBe('step-back');
-  });
-
-  /* `safe-haven` always walked. It is the one thing in the old block that worked. */
-  it('leaves the haven strategy exactly as it was', () => {
-    stated('automation:\n  safety:\n    flee:\n      strategy: safe-haven\n');
-    migrate();
-    expect(safety()['retreat']?.['strategy']).toBe('safe-haven');
-  });
-
-  it('renames the pvp reaction with it', () => {
-    stated('automation:\n  safety:\n    pvp:\n      action: flee\n');
-    migrate();
-    expect(safety()['pvp']?.['action']).toBe('retreat');
+    // The strategy and the rest went later in the run with the old
+    // automation (`theOldAutomationFieldsWent`).
+    expect(safety()['retreat']).toEqual({ enabled: true, belowHealth: 0.5 });
   });
 
   /* Whatever the person wrote above the block is theirs, and the block does not
@@ -3504,14 +3295,8 @@ describe('the new automation settings', () => {
     // Dropping junk and banking went with the old automation (2026-10-16).
     expect(automation['drop']).toBeUndefined();
     expect(automation['banking']).toBeUndefined();
-    expect(automation['safety']?.['pvp']).toEqual({ notifyGang: false, action: 'none' });
     expect(automation['party']?.['defendParty']).toBe(false);
-    expect(automation['spells']).toMatchObject({
-      areaAttack: '',
-      areaMinMobs: 3,
-      areaMinMana: 0.35,
-      notifyPartyOnWearOff: false
-    });
+    expect(automation['spells']).toMatchObject({ areaAttack: '', areaMinMobs: 3 });
   });
 
   it('never overwrites a key the user already stated', () => {
@@ -3577,12 +3362,16 @@ describe('the settings the entities made possible', () => {
 
   /* All off, so nothing about how the client behaves changes — what changes is
      that the file says the settings exist. */
-  it('states the two at their defaults', () => {
-    write('  loot:\n    coins: true\n');
+  it('states them at their defaults', () => {
+    write('  combat:\n    attack: a\n');
     migrate();
     const automation = read(home.options);
-    expect(automation['loot']).toMatchObject({ coins: true, minPrice: 0, maxEncumbrance: 0 });
-    expect(said.join(' ')).toContain('Two settings were added');
+    expect(automation['combat']).toMatchObject({
+      attack: 'a',
+      minMobs: 0,
+      maxMonsterExperience: 0
+    });
+    expect(said.join(' ')).toContain('Settings were added');
   });
 
   /*
@@ -3594,17 +3383,14 @@ describe('the settings the entities made possible', () => {
     migrate();
     expect(read(home.options)['loot']).toMatchObject({
       coins: true,
-      coinKinds: ['runic', 'platinum', 'gold', 'silver', 'copper'],
-      stopAtGrade: 'never',
-      convertWith: '',
-      convertAt: 'never'
+      coinKinds: ['runic', 'platinum', 'gold', 'silver', 'copper']
     });
   });
 
   it('never overwrites what the file already states, and is idempotent', () => {
-    write('  loot:\n    minPrice: 500\n');
+    write('  loot:\n    coinKinds: [gold]\n');
     migrate();
-    expect(read(home.options)['loot']).toMatchObject({ minPrice: 500 });
+    expect(read(home.options)['loot']).toMatchObject({ coinKinds: ['gold'] });
     const once = fs.readFileSync(home.options, 'utf8');
     migrate();
     expect(fs.readFileSync(home.options, 'utf8')).toBe(once);
@@ -3775,61 +3561,6 @@ describe('the resting ceiling', () => {
 });
 
 /*
- * Resting before a trap (`statedTheTrapRest`, todo 01, 2026-09-10): the same
- * gap the ceiling filled, one key along — a figure inside a block the file
- * already states reaches nobody through the template, and a setting nobody's
- * file names is one nobody finds.
- */
-describe('resting before a trap', () => {
-  const read = (file: string): Record<string, unknown> =>
-    (
-      parse(fs.readFileSync(file, 'utf8')) as {
-        automation: { health: Record<string, unknown> };
-      }
-    ).automation.health;
-
-  const write = (file: string, health: string): void => {
-    fs.mkdirSync(path.dirname(file), { recursive: true });
-    fs.writeFileSync(file, `automation:\n  health:\n${health}`, 'utf8');
-  };
-
-  it('adds it at the shipped figure, directly after the ceiling', () => {
-    write(home.options, '    restBelow: 0.5\n    restTo: 0.7\n    meditateBelow: 0.2\n');
-    migrate();
-    const health = read(home.options);
-    expect(health['restBeforeTraps']).toBe(0.45);
-    const keys = Object.keys(health);
-    expect(keys.indexOf('restBeforeTraps')).toBe(keys.indexOf('restTo') + 1);
-  });
-
-  it('never overwrites what the file already states', () => {
-    write(home.options, '    restBelow: 0.5\n    restBeforeTraps: 0.2\n');
-    migrate();
-    expect(read(home.options)['restBeforeTraps']).toBe(0.2);
-  });
-
-  it('reaches a profile, says so once, and is idempotent', () => {
-    write(home.options, '    restBelow: 0\n');
-    const profile = home.profile('festus');
-    write(profile.file, '    restBelow: 0.5\n');
-    migrate();
-    expect(read(profile.file)).toMatchObject({
-      restBelow: 0.5,
-      restBeforeTraps: 0.45,
-      restNextDoor: true,
-      // Written by `statedTheNewAutomation` in the same run, at the default.
-      useWards: true,
-      // And by `statedTheMeditateTarget`, at the default.
-      meditateTo: 0
-    });
-    const once = fs.readFileSync(profile.file, 'utf8');
-    expect(said.join(' ')).toContain('Resting before a trap');
-    migrate();
-    expect(fs.readFileSync(profile.file, 'utf8')).toBe(once);
-  });
-});
-
-/*
  * `restIsOnePair`. The loop's own health pair folds into the resting one, and
  * the user's numbers are carried across rather than discarded: a file that set
  * `loopPauseBelow` chose that figure deliberately, and dropping the key would
@@ -3854,8 +3585,6 @@ describe('the loop pause pair folded into the resting pair', () => {
     expect(read(home.options)).toEqual({
       restBelow: 0.6,
       restTo: 0.9,
-      restBeforeTraps: 0.45,
-      restNextDoor: true,
       // Written by `statedTheNewAutomation` in the same run, at the default.
       useWards: true,
       // And by `statedTheMeditateTarget`, at the default.
@@ -3876,8 +3605,6 @@ describe('the loop pause pair folded into the resting pair', () => {
     expect(read(home.options)).toEqual({
       restBelow: 0.5,
       restTo: 0.75,
-      restBeforeTraps: 0.45,
-      restNextDoor: true,
       // Written by `statedTheNewAutomation` in the same run, at the default.
       useWards: true,
       // And by `statedTheMeditateTarget`, at the default.
@@ -3891,8 +3618,6 @@ describe('the loop pause pair folded into the resting pair', () => {
     expect(read(home.options)).toEqual({
       restBelow: 0.5,
       restTo: 0.9,
-      restBeforeTraps: 0.45,
-      restNextDoor: true,
       // Written by `statedTheNewAutomation` in the same run, at the default.
       useWards: true,
       // And by `statedTheMeditateTarget`, at the default.
@@ -3908,8 +3633,6 @@ describe('the loop pause pair folded into the resting pair', () => {
     expect(read(profile.file)).toEqual({
       restBelow: 0.6,
       restTo: 0.9,
-      restBeforeTraps: 0.45,
-      restNextDoor: true,
       // Written by `statedTheNewAutomation` in the same run, at the default.
       useWards: true,
       // And by `statedTheMeditateTarget`, at the default.
@@ -3960,7 +3683,7 @@ describe('buffs and party blessings became spells.blessings', () => {
         minMana: 0.3
         intervalSeconds: 600
   party:
-    assistLeader: true
+    defendParty: true
     blessings:
       - name: bless
         spell: bless
@@ -3984,17 +3707,12 @@ describe('buffs and party blessings became spells.blessings', () => {
     // `keyedBlessingsOnSpell` runs in the same pass: the carried rows come
     // out keyed on the spell alone, and only the party row keeps a clock.
     expect(automation['spells']?.['blessings']).toEqual([
-      {
-        spell: 'protection',
-        target: 'self',
-        inCombat: false,
-        minMana: 0.3
-      },
+      { spell: 'protection', target: 'self', inCombat: false },
       { spell: 'bless', target: 'party', inCombat: false, fallbackSeconds: 300 }
     ]);
     expect(automation['spells']?.['buffs']).toBeUndefined();
     expect(automation['party']?.['blessings']).toBeUndefined();
-    expect(automation['party']?.['assistLeader']).toBe(true);
+    expect(automation['party']?.['defendParty']).toBe(true);
     expect(said.join(' ')).toContain('spells.blessings');
   });
 
@@ -4390,12 +4108,12 @@ describe('light before the dark, and the supplies list', () => {
     fs.mkdirSync(path.dirname(profile()), { recursive: true });
     fs.writeFileSync(
       profile(),
-      'server: GreaterMUD (local)\nautomation:\n  movement:\n    # doors\n    openDoors: true\n',
+      'server: GreaterMUD (local)\nautomation:\n  movement:\n    # doors\n    pickLocks: true\n',
       'utf8'
     );
   });
 
-  it('writes the three keys into a movement block that lacks them, with the paragraph', () => {
+  it('writes the two keys into a movement block that lacks them, with the paragraph', () => {
     migrate();
     const movement = (
       parse(fs.readFileSync(profile(), 'utf8'))['automation'] as Record<string, unknown>
@@ -4403,10 +4121,9 @@ describe('light before the dark, and the supplies list', () => {
     // `toMatchObject`: the door-forcing step fills its own four keys into the
     // same block on the same run.
     expect(movement).toMatchObject({
-      openDoors: true,
+      pickLocks: true,
       provideLight: true,
-      lightDimRooms: false,
-      extinguishInLight: true
+      lightDimRooms: false
     });
     const text = fs.readFileSync(profile(), 'utf8');
     expect(text).toContain('# doors');
@@ -4430,16 +4147,13 @@ describe('light before the dark, and the supplies list', () => {
   });
 
   it('writes an empty supplies block into the options file once', () => {
-    fs.writeFileSync(home.options, 'automation:\n  idle:\n    afterSeconds: 90\n', 'utf8');
+    fs.writeFileSync(home.options, 'automation:\n  pacing:\n    window: 3\n', 'utf8');
     migrate();
     expect(
       (parse(fs.readFileSync(home.options, 'utf8'))['automation'] as Record<string, unknown>)[
         'supplies'
       ]
-    ).toEqual({
-      enabled: true,
-      items: []
-    });
+    ).toEqual({ items: [] });
     expect(said.some((m) => m.includes('supplies'))).toBe(true);
     migrate();
     expect(said.some((m) => m.includes('supplies'))).toBe(false);
@@ -4623,7 +4337,7 @@ describe('bending down for the key to the way out', () => {
     fs.mkdirSync(path.dirname(profile()), { recursive: true });
     fs.writeFileSync(
       profile(),
-      'server: GreaterMUD (local)\nautomation:\n  movement:\n    # doors\n    openDoors: true\n',
+      'server: GreaterMUD (local)\nautomation:\n  movement:\n    # doors\n    pickLocks: true\n',
       'utf8'
     );
   });
@@ -4635,7 +4349,7 @@ describe('bending down for the key to the way out', () => {
     )['movement'] as Record<string, unknown>;
     // `toMatchObject`: the light and the condition waits fill their own keys
     // into the same block on the same run.
-    expect(movement).toMatchObject({ openDoors: true, collectKeys: true });
+    expect(movement).toMatchObject({ pickLocks: true, collectKeys: true });
     const text = fs.readFileSync(profile(), 'utf8');
     expect(text).toContain('# doors');
     // The half somebody deciding whether to leave it on needs: what it will
@@ -5248,91 +4962,6 @@ describe('choosing the spell is stated', () => {
   });
 });
 
-describe('resting next door to a lair is stated', () => {
-  let home: Home;
-  let dir: string;
-  const said: string[] = [];
-
-  const migrate = (): void =>
-    migrateHome({ home, legacyOptions: [], note: (message) => said.push(message) });
-
-  const health = (): Record<string, unknown> =>
-    ((parse(fs.readFileSync(home.options, 'utf8')).automation as Record<string, unknown>)[
-      'health'
-    ] ?? {}) as Record<string, unknown>;
-
-  beforeEach(() => {
-    said.length = 0;
-    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mudengine-rest-next-door-'));
-    home = homeAt(dir);
-    fs.mkdirSync(path.dirname(home.options), { recursive: true });
-  });
-
-  afterEach(() => fs.rmSync(dir, { recursive: true, force: true }));
-
-  it('writes the switch on into a health block that predates it, beside the ceiling', () => {
-    fs.writeFileSync(
-      home.options,
-      'automation:\n  health:\n    restBelow: 0.35\n    restTo: 0.7\n    meditateBelow: 0\n',
-      'utf8'
-    );
-    migrate();
-    expect(health()['restNextDoor']).toBe(true);
-    const text = fs.readFileSync(home.options, 'utf8');
-    expect(text.indexOf('restTo:')).toBeLessThan(text.indexOf('restNextDoor:'));
-    expect(text.indexOf('restNextDoor:')).toBeLessThan(text.indexOf('meditateBelow:'));
-    expect(said.join('\n')).toContain('automation.health.restNextDoor');
-    const after = text;
-    migrate();
-    expect(fs.readFileSync(home.options, 'utf8')).toBe(after);
-  });
-
-  it('leaves a switch somebody turned off alone', () => {
-    fs.writeFileSync(home.options, 'automation:\n  health:\n    restNextDoor: false\n', 'utf8');
-    migrate();
-    expect(health()['restNextDoor']).toBe(false);
-  });
-});
-
-describe('fetching the kit after a death is stated', () => {
-  let home: Home;
-  let dir: string;
-  const said: string[] = [];
-
-  const migrate = (): void =>
-    migrateHome({ home, legacyOptions: [], note: (message) => said.push(message) });
-
-  const movement = (): Record<string, unknown> =>
-    ((parse(fs.readFileSync(home.options, 'utf8')).automation as Record<string, unknown>)[
-      'movement'
-    ] ?? {}) as Record<string, unknown>;
-
-  beforeEach(() => {
-    said.length = 0;
-    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mudengine-recover-gear-'));
-    home = homeAt(dir);
-    fs.mkdirSync(path.dirname(home.options), { recursive: true });
-  });
-
-  afterEach(() => fs.rmSync(dir, { recursive: true, force: true }));
-
-  it('writes the switch off into a movement block that predates it, and is safe to run again', () => {
-    fs.writeFileSync(home.options, 'automation:\n  movement:\n    openDoors: true\n', 'utf8');
-    migrate();
-    expect(movement()['recoverGear']).toBe(false);
-    expect(said.join('\n')).toContain('automation.movement.recoverGear');
-    const after = fs.readFileSync(home.options, 'utf8');
-    migrate();
-    expect(fs.readFileSync(home.options, 'utf8')).toBe(after);
-  });
-
-  it('leaves a stated switch alone', () => {
-    fs.writeFileSync(home.options, 'automation:\n  movement:\n    recoverGear: true\n', 'utf8');
-    migrate();
-    expect(movement()['recoverGear']).toBe(true);
-  });
-});
-
 describe('alert rows name events rather than channels', () => {
   let home: Home;
   let dir: string;
@@ -5670,62 +5299,6 @@ describe('the monster rules became monster rows', () => {
   });
 });
 
-describe('hiding for the opener is stated', () => {
-  let home: Home;
-  let dir: string;
-  const said: string[] = [];
-
-  const migrate = (): void =>
-    migrateHome({ home, legacyOptions: [], note: (message) => said.push(message) });
-
-  const combat = (): Record<string, unknown> =>
-    ((parse(fs.readFileSync(home.options, 'utf8')).automation as Record<string, unknown>)[
-      'combat'
-    ] ?? {}) as Record<string, unknown>;
-
-  beforeEach(() => {
-    said.length = 0;
-    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mudengine-hide-opener-'));
-    home = homeAt(dir);
-    fs.mkdirSync(path.dirname(home.options), { recursive: true });
-  });
-
-  afterEach(() => fs.rmSync(dir, { recursive: true, force: true }));
-
-  it('writes the switch off into a block that predates it, after the opener', () => {
-    fs.writeFileSync(
-      home.options,
-      'automation:\n  combat:\n    enabled: true\n    opener: bs\n    engage: hostile\n',
-      'utf8'
-    );
-    migrate();
-    expect(combat()['hideForOpener']).toBe(false);
-    const text = fs.readFileSync(home.options, 'utf8');
-    expect(text.indexOf('opener:')).toBeLessThan(text.indexOf('hideForOpener:'));
-    expect(text.indexOf('hideForOpener:')).toBeLessThan(text.indexOf('engage:'));
-    expect(said.join('\n')).toContain('automation.combat.hideForOpener');
-  });
-
-  it('leaves a stated switch alone, and is safe to run again', () => {
-    fs.writeFileSync(
-      home.options,
-      'automation:\n  combat:\n    opener: bs\n    hideForOpener: true\n',
-      'utf8'
-    );
-    migrate();
-    expect(combat()['hideForOpener']).toBe(true);
-    const after = fs.readFileSync(home.options, 'utf8');
-    migrate();
-    expect(fs.readFileSync(home.options, 'utf8')).toBe(after);
-  });
-
-  it('writes nothing into a file that states no combat block', () => {
-    fs.writeFileSync(home.options, 'automation:\n  loot:\n    coins: true\n', 'utf8');
-    migrate();
-    expect(combat()['hideForOpener']).toBeUndefined();
-  });
-});
-
 describe('the coins can be shed', () => {
   let home: Home;
   let dir: string;
@@ -6040,57 +5613,6 @@ ${login}`,
   });
 });
 
-/* Drain when hurt (2026-09-28): four keys after `areaCasts`, off, with the paragraph, once. */
-describe('the drain spells', () => {
-  const profile = (): string => home.profile('vaelor').file;
-  const spellsOf = (): Record<string, unknown> =>
-    (parse(fs.readFileSync(profile(), 'utf8'))['automation'] as Record<string, unknown>)[
-      'spells'
-    ] as Record<string, unknown>;
-
-  beforeEach(() => {
-    fs.writeFileSync(path.join(old, 'user.yaml'), OPTIONS, 'utf8');
-    migrate();
-    fs.mkdirSync(path.dirname(profile()), { recursive: true });
-  });
-
-  it('writes them after areaCasts, with the paragraph, once', () => {
-    fs.writeFileSync(
-      profile(),
-      'server: GreaterMUD (local)\nautomation:\n  spells:\n    attack: aslt\n    areaCasts: 0\n    heal: ""\n',
-      'utf8'
-    );
-    migrate(true);
-    const spells = spellsOf();
-    // `autoChoose` heads the block, written by its own pass.
-    expect(Object.keys(spells).slice(1, 7)).toEqual([
-      'attack',
-      'areaCasts',
-      'drain',
-      'areaDrain',
-      'drainBelow',
-      'drainTo'
-    ]);
-    expect(spells['drain']).toBe('');
-    expect(spells['drainBelow']).toBe(0);
-    expect(fs.readFileSync(profile(), 'utf8')).toContain('Drain when hurt');
-    expect(said.some((m) => m.includes('drain spell while health is low'))).toBe(true);
-    migrate(true);
-    expect(said.filter((m) => m.includes('drain spell while health is low'))).toHaveLength(0);
-  });
-
-  it('leaves a stated drain alone', () => {
-    fs.writeFileSync(
-      profile(),
-      'server: GreaterMUD (local)\nautomation:\n  spells:\n    drain: vampiric assault\n',
-      'utf8'
-    );
-    migrate();
-    expect(spellsOf()['drain']).toBe('vampiric assault');
-    expect(spellsOf()['drainBelow']).toBeUndefined();
-  });
-});
-
 /* Upstream 759fc4d: Join When Invited, written off into files that predate it. */
 describe('joining when invited is stated', () => {
   let home: Home;
@@ -6137,59 +5659,6 @@ describe('joining when invited is stated', () => {
   });
 });
 
-/* Upstream 3b60de1: the heal had no switch of its own, so each file keeps what it had. */
-describe('the heal choice is stated', () => {
-  let home: Home;
-  let dir: string;
-  const said: string[] = [];
-
-  const migrate = (): void =>
-    migrateHome({ home, legacyOptions: [], note: (message) => said.push(message) });
-
-  const spells = (): Record<string, unknown> =>
-    ((parse(fs.readFileSync(home.options, 'utf8')).automation as Record<string, unknown>)[
-      'spells'
-    ] ?? {}) as Record<string, unknown>;
-
-  beforeEach(() => {
-    said.length = 0;
-    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mudengine-heal-choice-'));
-    home = homeAt(dir);
-    fs.mkdirSync(path.dirname(home.options), { recursive: true });
-  });
-
-  afterEach(() => fs.rmSync(dir, { recursive: true, force: true }));
-
-  it('gives the heal its own switch, on where the spell choice was on, after healParty', () => {
-    fs.writeFileSync(
-      home.options,
-      'automation:\n  spells:\n    autoChoose: true\n    healParty: true\n    minMana: 0.2\n',
-      'utf8'
-    );
-    migrate();
-    expect(spells()['autoChooseHeal']).toBe(true);
-    const text = fs.readFileSync(home.options, 'utf8');
-    expect(text.indexOf('autoChooseHeal:')).toBeGreaterThan(text.indexOf('healParty:'));
-    expect(text.indexOf('autoChooseHeal:')).toBeLessThan(text.indexOf('minMana:'));
-    expect(said.filter((line) => line.includes('Auto Choose Best Heal'))).toHaveLength(1);
-    migrate();
-    expect(fs.readFileSync(home.options, 'utf8')).toBe(text);
-  });
-
-  it('writes the heal switch off where the spell choice was off, and leaves a stated one', () => {
-    fs.writeFileSync(home.options, 'automation:\n  spells:\n    autoChoose: false\n', 'utf8');
-    migrate();
-    expect(spells()['autoChooseHeal']).toBe(false);
-    fs.writeFileSync(
-      home.options,
-      'automation:\n  spells:\n    autoChoose: false\n    autoChooseHeal: true\n',
-      'utf8'
-    );
-    migrate();
-    expect(spells()['autoChooseHeal']).toBe(true);
-  });
-});
-
 /* MegaMUD's regen and when-full spells (2026-09-29): written in blank, after the cures. */
 describe('the regen spells are stated', () => {
   let home: Home;
@@ -6220,13 +5689,7 @@ describe('the regen spells are stated', () => {
       'utf8'
     );
     migrate();
-    expect(spells()['regen']).toEqual({
-      hp: '',
-      mana: '',
-      manaMinTick: 0,
-      hpFull: '',
-      manaFull: ''
-    });
+    expect(spells()['regen']).toEqual({ hp: '', hpFull: '', manaFull: '' });
     const text = fs.readFileSync(home.options, 'utf8');
     expect(text.indexOf('regen:')).toBeGreaterThan(text.indexOf('cures:'));
     expect(text.indexOf('regen:')).toBeLessThan(text.indexOf('blessings:'));
@@ -6239,102 +5702,6 @@ describe('the regen spells are stated', () => {
     fs.writeFileSync(home.options, 'automation:\n  spells:\n    regen:\n      hp: lfst\n', 'utf8');
     migrate();
     expect(spells()['regen']).toEqual({ hp: 'lfst' });
-  });
-});
-
-/* MegaMUD's Party Rank (PR #41, 2026-09-30): off and mid, after restWithLeader. */
-describe('the party rank is stated', () => {
-  let home: Home;
-  let dir: string;
-  const said: string[] = [];
-
-  const migrate = (): void =>
-    migrateHome({ home, legacyOptions: [], note: (message) => said.push(message) });
-
-  const party = (): Record<string, unknown> =>
-    ((parse(fs.readFileSync(home.options, 'utf8')).automation as Record<string, unknown>)[
-      'party'
-    ] ?? {}) as Record<string, unknown>;
-
-  beforeEach(() => {
-    said.length = 0;
-    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mudengine-rank-'));
-    home = homeAt(dir);
-    fs.mkdirSync(path.dirname(home.options), { recursive: true });
-  });
-
-  afterEach(() => fs.rmSync(dir, { recursive: true, force: true }));
-
-  it('writes both after restWithLeader, once', () => {
-    fs.writeFileSync(
-      home.options,
-      'automation:\n  party:\n    restWithLeader: true\n    askForHealBelow: 0\n',
-      'utf8'
-    );
-    migrate();
-    expect(party()['autoRank']).toBe(false);
-    expect(party()['preferredRank']).toBe('mid');
-    const text = fs.readFileSync(home.options, 'utf8');
-    expect(text.indexOf('autoRank:')).toBeGreaterThan(text.indexOf('restWithLeader:'));
-    expect(text.indexOf('preferredRank:')).toBeLessThan(text.indexOf('askForHealBelow:'));
-    expect(said.filter((line) => line.includes('Party Rank'))).toHaveLength(1);
-    migrate();
-    expect(fs.readFileSync(home.options, 'utf8')).toBe(text);
-  });
-
-  it('leaves a stated rank alone', () => {
-    fs.writeFileSync(
-      home.options,
-      'automation:\n  party:\n    autoRank: true\n    preferredRank: back\n',
-      'utf8'
-    );
-    migrate();
-    expect(party()).toMatchObject({ autoRank: true, preferredRank: 'back' });
-  });
-});
-
-/* The opening check, a player's choice (2026-10-01): off, after maxMonsterExperience. */
-describe('the survival floor is stated', () => {
-  let home: Home;
-  let dir: string;
-  const said: string[] = [];
-
-  const migrate = (): void =>
-    migrateHome({ home, legacyOptions: [], note: (message) => said.push(message) });
-
-  const combat = (): Record<string, unknown> =>
-    ((parse(fs.readFileSync(home.options, 'utf8')).automation as Record<string, unknown>)[
-      'combat'
-    ] ?? {}) as Record<string, unknown>;
-
-  beforeEach(() => {
-    said.length = 0;
-    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mudengine-survival-'));
-    home = homeAt(dir);
-    fs.mkdirSync(path.dirname(home.options), { recursive: true });
-  });
-
-  afterEach(() => fs.rmSync(dir, { recursive: true, force: true }));
-
-  it('writes it off after maxMonsterExperience, once', () => {
-    fs.writeFileSync(
-      home.options,
-      'automation:\n  combat:\n    maxMonsterExperience: 0\n    monsters: []\n',
-      'utf8'
-    );
-    migrate();
-    expect(combat()['minSurvival']).toBe(0);
-    const text = fs.readFileSync(home.options, 'utf8');
-    expect(text.indexOf('minSurvival:')).toBeGreaterThan(text.indexOf('maxMonsterExperience:'));
-    expect(said.filter((line) => line.includes('Only Open Fights Survived'))).toHaveLength(1);
-    migrate();
-    expect(fs.readFileSync(home.options, 'utf8')).toBe(text);
-  });
-
-  it('leaves a stated floor alone', () => {
-    fs.writeFileSync(home.options, 'automation:\n  combat:\n    minSurvival: 0.9\n', 'utf8');
-    migrate();
-    expect(combat()['minSurvival']).toBe(0.9);
   });
 });
 
@@ -6425,17 +5792,17 @@ describe('Item Details stated', () => {
     fs.mkdirSync(path.dirname(home.options), { recursive: true });
   });
 
-  it('writes it empty after maxEncumbrance, once, with the template’s words', () => {
+  it('writes it empty after discardKinds, once, with the template’s words', () => {
     fs.writeFileSync(
       home.options,
-      'automation:\n  loot:\n    coins: true\n    maxEncumbrance: 0\n    stopAtGrade: never\n',
+      'automation:\n  loot:\n    coins: true\n    discardKinds: []\n    coinKinds: [gold]\n',
       'utf8'
     );
     migrate(true);
     expect(loot()['itemDetails']).toEqual([]);
     const text = fs.readFileSync(home.options, 'utf8');
-    expect(text.indexOf('itemDetails:')).toBeGreaterThan(text.indexOf('maxEncumbrance:'));
-    expect(text.indexOf('itemDetails:')).toBeLessThan(text.indexOf('stopAtGrade:'));
+    expect(text.indexOf('itemDetails:')).toBeGreaterThan(text.indexOf('discardKinds:'));
+    expect(text.indexOf('itemDetails:')).toBeLessThan(text.indexOf('coinKinds:'));
     expect(text).toContain("MegaMUD's Game Item");
     expect(said.filter((line) => line.includes('Item Details'))).toHaveLength(1);
     migrate(true);

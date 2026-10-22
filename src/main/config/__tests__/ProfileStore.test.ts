@@ -169,17 +169,17 @@ describe('ProfileStore', () => {
   it('reapplies every overlay when the options file underneath changes', () => {
     write('thorn.yaml', 'server: local\n');
     const store = open();
-    expect(store.profiles[0]?.config.automation.idle.afterSeconds).toBe(45); // the default
+    expect(store.profiles[0]?.config.automation.walk.clearAfterSeconds).toBe(15); // the default
 
     // A profile is an overlay, so a reloaded options file has to reach every
     // character — including settings no profile mentions.
     base = {
       servers: [{ name: 'local', host: 'gmud-tgs', port: 2427 }],
-      automation: { idle: { afterSeconds: 120 } }
+      automation: { walk: { clearAfterSeconds: 120 } }
     };
     store.refresh();
 
-    expect(store.profiles[0]?.config.automation.idle.afterSeconds).toBe(120);
+    expect(store.profiles[0]?.config.automation.walk.clearAfterSeconds).toBe(120);
   });
 
   it('survives a directory that does not exist', () => {

@@ -4,9 +4,9 @@
  * The rule: nothing parsed off the wire is passed around as a bare string.
  * `items: string[]` and `attackers: string[]` were the shape that made every
  * consumer re-derive the same facts from a name — the Room card asked main
- * over IPC what the realm knew about each floor item, `AutoLoot` matched names
- * by prefix and could not ask what anything weighed, and `AutoCombat` could
- * not say *this monster has 400 hit points* about a target it was already
+ * over IPC what the realm knew about each floor item, the old automation
+ * matched names by prefix and could not ask what anything weighed, nor say
+ * *this monster has 400 hit points* about a target it was already
  * fighting. An entity carries the answer once, resolved where the realm data
  * lives, so a card renders and an automation decides without asking anybody.
  *
@@ -294,8 +294,8 @@ export interface MobEntity {
    * cast when it dies — keyed by spell id.
    *
    * Resolved here, where the realm data lives, for the reason `drops` is: a
-   * decision about what to hit first is made from the room's occupants in
-   * `AutoCombat`, which holds no realm and must not ask one per status line.
+   * decision about what to hit first is made from the room's occupants, with
+   * no realm to ask per status line.
    * Only the ids the profiles and `deathSpell` name; a realm that cannot name
    * a spell simply has no entry for it.
    */

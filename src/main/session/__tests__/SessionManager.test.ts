@@ -20,7 +20,7 @@ import type { ResumableMovement } from '../MovementBook';
 import { pendingPump } from '../../megamud/script/send';
 import { NO_LOOP, type Loop, type LoopProgress } from '../../../shared/loops';
 import { IDLE_WALK, type WalkProgress } from '../../../shared/walk';
-import { DEFAULT_CONFIG, type AutomationConfig, type RetreatConfig } from '../../../shared/config';
+import { DEFAULT_CONFIG, type AutomationConfig } from '../../../shared/config';
 import { blankTrigger } from '../../../shared/messageTriggers';
 import { WorldGraph } from '../../world/WorldGraph';
 import { t } from '../../app/i18n';
@@ -80,19 +80,6 @@ afterEach(async () => {
 async function client(index = 0): Promise<net.Socket> {
   await until(() => accepted.length > index);
   return accepted[index]!;
-}
-
-/**
- * A route under way, as the escape reads it: only a character the client is
- * taking somewhere runs (todo 03). For the tests about which way out, where a
- * real walk would send steps of its own into the wire under test.
- */
-function underWay(session: SessionManager): void {
-  vi.spyOn(session, 'movement', 'get').mockReturnValue({
-    kind: 'route',
-    moving: true,
-    resumable: false
-  });
 }
 
 function collect(): {
@@ -1055,204 +1042,6 @@ describe('connecting twice', () => {
 });
 
 /*
- * The panic button, and why it mostly refuses.
- *
- * "Disconnect when health is low" is what every MegaMUD-era client offers, and
- * on this server family an unclean disconnect costs a percentage of *maximum*
- * HP — fatal at exactly the health that makes somebody want it. So the feature
- * exists and the interesting behaviour is the refusal.
- */
-describe('hanging up to escape', () => {
-  const safety = (
-    over: Partial<(typeof DEFAULT_CONFIG)['automation']['safety']['hangUp']> = {}
-  ) => ({
-    ...DEFAULT_CONFIG.automation,
-    enabled: true,
-    idle: { ...DEFAULT_CONFIG.automation.idle, enabled: false },
-    safety: {
-      ...DEFAULT_CONFIG.automation.safety,
-      hangUp: {
-        enabled: true,
-        belowHealth: 0.3,
-        // The charged realm, which is where the refusals below live.
-        penalties: true,
-        onPlayerInRoom: false,
-        ...over
-      }
-    }
-  });
-
-  /*
-   * A maximum, then a status line low enough to trip it.
-   *
-   * `health` is the one command that reports current and maximum together, so
-   * it is the cheapest way to give the tracker a maximum — and without one the
-   * fraction is unknown and nothing may fire, which is itself a case below.
-   */
-  const knowMaximum = (socket: net.Socket): void => {
-    socket.write('Health: 100/100 [100%]\r\n');
-  };
-  const hurt = async (socket: net.Socket): Promise<void> => {
-    knowMaximum(socket);
-    socket.write('[HP=100]:\r\n');
-    // The fall has to arrive as a *change*, so the healthy line lands first.
-    await until(() => manager!.character.vitals.hp === 100);
-    socket.write('[HP=10]:\r\n');
-  };
-
-  /* Unknown is not zero: a maximum that has not arrived must never trip this. */
-  it('does not hang up on a health figure with no maximum behind it', async () => {
-    const { sink, notices } = collect();
-    manager = new SessionManager(sink, undefined, safety());
-    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
-    const socket = await client();
-    socket.write('[HP=10]:\r\n');
-
-    await settled(10);
-    expect(notices.some((notice) => /Hanging up/.test(notice))).toBe(false);
-    expect(manager?.state.phase).toBe('connected');
-  });
-
-  it('does nothing at all while it is switched off', async () => {
-    const { sink, notices } = collect();
-    manager = new SessionManager(sink, undefined, safety({ enabled: false }));
-    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
-    await hurt(await client());
-
-    await settled(10);
-    expect(notices.some((notice) => /anging up/.test(notice))).toBe(false);
-    expect(manager?.state.phase).toBe('connected');
-  });
-
-  /* The master switch outranks it: with automation off, nothing automated acts. */
-  it('does nothing while automation as a whole is off', async () => {
-    const { sink, notices } = collect();
-    manager = new SessionManager(sink, undefined, { ...safety(), enabled: false });
-    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
-    await hurt(await client());
-
-    await settled(10);
-    expect(notices.some((notice) => /anging up/.test(notice))).toBe(false);
-  });
-});
-
-/*
- * Running away is the escape that works: walking out breaks combat and carries
- * none of the penalty an unclean disconnect does, which is exactly why the
- * hangup refusal tells you to do this instead.
- *
- * **What it sends is a direction, and these tests assert the direction.** They
- * used to assert the word `flee`, and passed for four phases while the server
- * answered every one of them `Your command had no effect.` — a test that
- * watches for a token rather than for an effect grades the client on its
- * intentions. Each of these now gives the character a room with exits in it,
- * because a room is where a way out comes from.
- */
-describe('running away', () => {
-  const escaping = (
-    over: Partial<(typeof DEFAULT_CONFIG)['automation']['safety']['retreat']> = {}
-  ) => ({
-    ...DEFAULT_CONFIG.automation,
-    enabled: true,
-    idle: { ...DEFAULT_CONFIG.automation.idle, enabled: false },
-    safety: {
-      ...DEFAULT_CONFIG.automation.safety,
-      retreat: {
-        ...DEFAULT_CONFIG.automation.safety.retreat,
-        enabled: true,
-        belowHealth: 0.3,
-        whenOutnumbered: 0,
-        cooldownMs: 3000,
-        ...over
-      } as RetreatConfig
-    }
-  });
-
-  /**
-   * Any sentence the escape says when it acts, and the one it says when it
-   * cannot. One matcher, so a test asserting *nothing happened* cannot pass
-   * because the wording moved to a different rung.
-   */
-  const RAN = /Running \w+:|Retreating \w+,|Not running:/;
-
-  /** A room with two ways out of it, which is what an escape needs. */
-  const ROOM = 'Rat Cellar\r\nObvious exits: north, south\r\n';
-
-  /* An escape out of combat is a wasted move that puts the character in a room
-     it did not choose. */
-  it('does not run when nothing is fighting it', async () => {
-    const { sink, notices } = collect();
-    manager = new SessionManager(sink, undefined, escaping());
-    underWay(manager);
-    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
-    const socket = await client();
-    socket.write('Health: 100/100 [100%]\r\n');
-    socket.write(ROOM);
-    socket.write('[HP=10]:\r\n');
-
-    await settled(10);
-    expect(notices.some((notice) => RAN.test(notice))).toBe(false);
-  });
-
-  it('does not run above the threshold', async () => {
-    const { sink, notices } = collect();
-    manager = new SessionManager(sink, undefined, escaping());
-    underWay(manager);
-    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
-    const socket = await client();
-    socket.write('Health: 100/100 [100%]\r\n');
-    socket.write(ROOM);
-    socket.write('*Combat Engaged*\r\n');
-    await until(() => manager!.character.inCombat);
-    socket.write('[HP=90]:\r\n');
-
-    await settled(90);
-    expect(notices.some((notice) => RAN.test(notice))).toBe(false);
-  });
-
-  /* MegaMUD's ManaRun%: a caster with an empty pool is losing whatever the
-     health bar says. The prompt states both figures, and the mana one is the
-     trigger here — the health stays full throughout. */
-
-  it('does not count one attacker as being outnumbered', async () => {
-    const { sink, notices } = collect();
-    manager = new SessionManager(sink, undefined, escaping({ whenOutnumbered: 2 }));
-    underWay(manager);
-    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
-    const socket = await client();
-    socket.write('Health: 100/100 [100%]\r\n');
-    socket.write(ROOM);
-    socket.write('*Combat Engaged*\r\n');
-    socket.write('The orc rogue slashes you for 1 damage!\r\n');
-    await until(() => manager!.character.combat.blows > 0);
-    socket.write('[HP=98]:\r\n');
-
-    await settled(98);
-    expect(notices.some((notice) => RAN.test(notice))).toBe(false);
-  });
-
-  /* And an escape, which does produce a command, is still recorded as a
-     decision: the command says what was sent, and this says why — and, since
-     there are four ways to know an exit, which of them answered. */
-
-  it('does nothing while it is switched off', async () => {
-    const { sink, notices } = collect();
-    manager = new SessionManager(sink, undefined, escaping({ enabled: false }));
-    underWay(manager);
-    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
-    const socket = await client();
-    socket.write('Health: 100/100 [100%]\r\n');
-    socket.write(ROOM);
-    socket.write('*Combat Engaged*\r\n');
-    await until(() => manager!.character.inCombat);
-    socket.write('[HP=10]:\r\n');
-
-    await settled(10);
-    expect(notices.some((notice) => RAN.test(notice))).toBe(false);
-  });
-});
-
-/*
  * The client's own status line in the prompt's place (`ui.statline`): read
  * off the prompt as it arrives, drawn over exactly the prompt's bytes, and
  * refused out loud when it would not fit the row.
@@ -1573,8 +1362,7 @@ describe('asking for the quest counters', () => {
 
   const walking: AutomationConfig = {
     ...DEFAULT_CONFIG.automation,
-    enabled: true,
-    idle: { ...DEFAULT_CONFIG.automation.idle, enabled: false }
+    enabled: true
   };
 
   /** In the realm at the Shore, with the world loaded. */
@@ -1717,8 +1505,7 @@ describe('the plan to a step', () => {
 
   const still: AutomationConfig = {
     ...DEFAULT_CONFIG.automation,
-    enabled: true,
-    idle: { ...DEFAULT_CONFIG.automation.idle, enabled: false }
+    enabled: true
   };
 
   /** Connects and places the character on the shore. */
@@ -1759,81 +1546,6 @@ describe('the plan to a step', () => {
 });
 
 /*
- * `flee`'s own second, more desperate escape — a fixed `sys goto` in place of
- * `retreat.strategy`'s own afterward, and only where the realm's own `locate`
- * setting says `sys goto` is a command it actually has.
- */
-describe('fleeing outright', () => {
-  const fleeing = (
-    over: Partial<(typeof DEFAULT_CONFIG)['automation']['safety']['fleeGoto']> = {}
-  ): AutomationConfig => ({
-    ...DEFAULT_CONFIG.automation,
-    enabled: true,
-    idle: { ...DEFAULT_CONFIG.automation.idle, enabled: false },
-    safety: {
-      ...DEFAULT_CONFIG.automation.safety,
-      fleeGoto: {
-        ...DEFAULT_CONFIG.automation.safety.fleeGoto,
-        enabled: true,
-        belowHealth: 0.2,
-        destination: 'sil',
-        ...over
-      }
-    }
-  });
-  const wire = (socket: net.Socket): (() => string) => {
-    const chunks: Buffer[] = [];
-    socket.on('data', (chunk) => chunks.push(chunk));
-    return () => Buffer.concat(chunks).toString('latin1');
-  };
-
-  it('never sends sys goto on a realm that has not answered sys status', async () => {
-    const { sink, notices } = collect();
-    manager = new SessionManager(sink);
-    // Locate left at its default, `rm` — the one fact `fleeGoto` checks besides
-    // its own switch and threshold, since `sys goto` is only ever a command on
-    // a `sys-status` realm.
-    manager.configure(fleeing(), DEFAULT_CONFIG.connection.login);
-    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
-    const socket = await client();
-    const seen = wire(socket);
-    socket.write('Health: 100/100 [100%]\r\n');
-    socket.write('Rat Cellar\r\nObvious exits: north, south\r\n');
-    socket.write('*Combat Engaged*\r\n');
-    await until(() => manager!.character.inCombat);
-    socket.write('[HP=15]:\r\n');
-
-    await settled(15);
-    // Neither half fired: no break-off move and certainly no `sys goto`.
-    expect(seen()).not.toMatch(/\b[nsew]\r\n/);
-    expect(notices.some((notice) => /Running \w+:|Fleeing to/.test(notice))).toBe(false);
-  });
-
-  it('never fires with no destination configured', async () => {
-    const { sink, notices } = collect();
-    manager = new SessionManager(sink);
-    manager.configure(
-      fleeing({ destination: '' }),
-      DEFAULT_CONFIG.connection.login,
-      DEFAULT_CONFIG.ui.rewrites,
-      'sys-status'
-    );
-    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
-    const socket = await client();
-    const seen = wire(socket);
-    socket.write('Health: 100/100 [100%]\r\n');
-    socket.write('Rat Cellar\r\nObvious exits: north, south\r\n');
-    socket.write('*Combat Engaged*\r\n');
-    await until(() => manager!.character.inCombat);
-    socket.write('[HP=15]:\r\n');
-
-    await settled(15);
-    expect(seen()).not.toMatch(/\b[nsew]\r\n/);
-    expect(notices.some((notice) => /Running \w+:|Fleeing to/.test(notice))).toBe(false);
-  });
-});
-
-/*
  * An escape *holds* the lap, and then the character is finally allowed to sit
  * down.
  *
@@ -1858,8 +1570,7 @@ describe('fleeing outright', () => {
 describe("answering the realm's messages", () => {
   const answering: AutomationConfig = {
     ...DEFAULT_CONFIG.automation,
-    enabled: true,
-    idle: { ...DEFAULT_CONFIG.automation.idle, enabled: false }
+    enabled: true
   };
   const wire = (socket: net.Socket): (() => string) => {
     const chunks: Buffer[] = [];
@@ -1906,8 +1617,7 @@ describe("answering the realm's messages", () => {
 describe('leaving the realm for the menu', () => {
   const probing: AutomationConfig = {
     ...DEFAULT_CONFIG.automation,
-    enabled: true,
-    idle: { ...DEFAULT_CONFIG.automation.idle, enabled: false }
+    enabled: true
   };
 
   it('says so, once', async () => {
@@ -2056,55 +1766,6 @@ describe('a party relay crossing a text exit', () => {
   });
 });
 
-/*
- * The reaction to a player opening on this character — MegaMUD's NotifyGang,
- * from the evidence the client already reads: `<Name> moves to attack you!`
- * puts the attacker in `attackers` and starts the five-minute clock, and the
- * pvp block is what acts on the same moment. The roster is what makes Vaelor
- * a player rather than a monster's realm-data name.
- */
-describe('a player opening on this character', () => {
-  const pvpConfig = (over: Partial<(typeof DEFAULT_CONFIG)['automation']['safety']['pvp']> = {}) =>
-    ({
-      ...DEFAULT_CONFIG.automation,
-      enabled: true,
-      idle: { ...DEFAULT_CONFIG.automation.idle, enabled: false },
-      safety: {
-        ...DEFAULT_CONFIG.automation.safety,
-        pvp: { notifyGang: false, action: 'none' as const, ...over }
-      }
-    }) as AutomationConfig;
-
-  async function attacked(socket: net.Socket): Promise<void> {
-    socket.write('[HP=62]:\r\n');
-    await until(() => manager!.character.phase === 'in-game');
-    // A room with a way out of it: the pvp reaction runs the same escape the
-    // health floor does, and that escape sends a direction or nothing.
-    socket.write('Town Square\r\nObvious exits: west\r\n');
-    await until(() => manager!.character.room.exits.length > 0);
-    socket.write('Vaelor just entered the Realm.\r\n');
-    await until(() => manager!.character.online.some((who) => who.name === 'Vaelor'));
-    socket.write('Vaelor moves to attack you!\r\n');
-    await until(() => manager!.character.combat.attackers.length > 0);
-  }
-
-  it('does nothing at all while both halves are off', async () => {
-    const { sink, notices } = collect();
-    manager = new SessionManager(sink, undefined, pvpConfig());
-    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
-    const socket = await client();
-    const received: Buffer[] = [];
-    socket.on('data', (chunk) => received.push(chunk));
-
-    await attacked(socket);
-    await new Promise((resolve) => setTimeout(resolve, 100));
-    const wire = Buffer.concat(received).toString('latin1');
-    expect(wire).not.toContain('bg ');
-    expect(wire).not.toMatch(/\bw\r\n/);
-    expect(notices.some((notice) => /Telling the gang|Running \w+:/.test(notice))).toBe(false);
-  });
-});
-
 /**
  * The clock behind the modules that decide on a number and own none of their
  * own.
@@ -2126,7 +1787,6 @@ describe('re-deciding with nothing new from the wire', () => {
   const health = (restBelow: number): AutomationConfig => ({
     ...DEFAULT_CONFIG.automation,
     enabled: true,
-    idle: { ...DEFAULT_CONFIG.automation.idle, enabled: false },
     health: { ...DEFAULT_CONFIG.automation.health, restBelow }
   });
 
@@ -2665,7 +2325,7 @@ describe('what this character costs to move', () => {
     manager = new SessionManager(sink, world, {
       ...DEFAULT_CONFIG.automation,
       enabled: false,
-      movement: { ...DEFAULT_CONFIG.automation.movement, pickLocks: false, bashDoors: true }
+      movement: { ...DEFAULT_CONFIG.automation.movement, pickLocks: false }
     });
     expect(manager.travellerNow(manager.character).forcing).toEqual({ pick: false, bash: true });
     expect(manager.lapTraveller(manager.character).forcing).toEqual({ pick: false, bash: true });
@@ -3001,7 +2661,6 @@ describe('the fight of 2026-09-22', () => {
   const fighting = (): AutomationConfig => ({
     ...DEFAULT_CONFIG.automation,
     enabled: true,
-    idle: { ...DEFAULT_CONFIG.automation.idle, enabled: false },
     combat: { ...DEFAULT_CONFIG.automation.combat, enabled: true }
   });
   const wire = (socket: net.Socket): (() => string) => {
@@ -3234,7 +2893,6 @@ describe('monsters the table says to run from or hang up on', () => {
   const automation = (over: Partial<(typeof DEFAULT_CONFIG)['automation']> = {}) => ({
     ...DEFAULT_CONFIG.automation,
     enabled: true,
-    idle: { ...DEFAULT_CONFIG.automation.idle, enabled: false },
     ...over
   });
 
@@ -3265,7 +2923,6 @@ describe('a talk-box line of several commands', () => {
     ...DEFAULT_CONFIG.automation,
     // Off: the player's own line goes whatever the master switch says.
     enabled: false,
-    idle: { ...DEFAULT_CONFIG.automation.idle, enabled: false },
     pacing: { window: 2, minGapMs: 10, ackTimeoutMs: 30_000 }
   };
 

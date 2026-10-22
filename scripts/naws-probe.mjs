@@ -238,12 +238,7 @@ async function phaseC(config) {
     return { skipped: `no credentials configured for ${who.id}` };
   }
 
-  // The standing routines would send commands of their own into the middle of a
-  // measurement. Login stays real; the idle poke does not.
-  const automation = {
-    ...config.automation,
-    idle: { ...config.automation.idle, enabled: false }
-  };
+  const automation = config.automation;
 
   const probe = openSession({ cols: 80, rows: 24 }, login, automation);
   await probe.session.connect({ host: HOST, port: PORT, encoding: ENCODING });

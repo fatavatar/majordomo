@@ -41,7 +41,6 @@ function shippedItems(): Array<{ n: string; ab?: Array<[number, number]> }> {
   return shipped('items');
 }
 
-/** The same, for whichever of the five indexes carries effects. */
 /** An item row as the file actually writes it, restrictions included. */
 interface ShippedItem {
   n: string;
@@ -57,6 +56,7 @@ function shippedRestrictions(): ShippedItem[] {
   return JSON.parse(header)['items'] ?? [];
 }
 
+/** The same, for whichever of the five indexes carries effects. */
 function shipped(which: 'items' | 'mobs' | 'spells' | 'races' | 'classes'): Array<{
   n: string;
   short?: string;

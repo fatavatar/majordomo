@@ -490,7 +490,7 @@ export function equipVerdict(item: ItemEntity, wearer: Wearer, t: UiLookup): Equ
  * Each is something the client can answer without guessing: `always` is the
  * kit a character is in when nothing else is happening, `moving` is a walk or
  * a lap under way, `resting` and `meditating` are a character sitting for its
- * recovery (`Recovery.seated`), and `fighting` is `fightIsRunning`.
+ * recovery, and `fighting` is a fight running.
  *
  * The two sitting bands are MegaMUD's Pre/Post Rest and Pre/Post Meditate
  * commands, whose own help gives the use: "equiping rings, etc. which may aid

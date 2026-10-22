@@ -310,7 +310,7 @@ export function simulateFight(input: SurvivalInput): Survival | null {
       leftovers.push(Math.max(0, hp));
     }
 
-    /** The character's turn spent on the heal `AutoHeal` would cast, if it would. */
+    /** The character's turn spent on the heal the settings would cast, if they would. */
     function healed(): boolean {
       const heal = input.heal;
       if (heal === null || mana === null) return false;

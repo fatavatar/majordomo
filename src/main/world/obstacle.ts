@@ -267,7 +267,7 @@ export function describeObstacle(
        * is the half somebody acts on: *the lever for this is in 1/1339* is a
        * place to walk to, where *hidden* is a shrug. The router plans that
        * detour where the lever is near (`WorldGraph.leverErrand`) and
-       * `Walker.fetchLever` walks it where it is not, so this is what a
+       * the walk's lever detour (`RouteStep.pull`) takes it where it is not, so this is what a
        * person reads either way, and it is why the exit is not written off
        * on a refusal.
        */

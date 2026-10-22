@@ -391,13 +391,13 @@ function pathLength(route: Route): number {
  */
 const LEVER_TRIES = 2;
 
-/** A short, steady name for a path MegaMUD can hold (13 characters). */
 /** A loop's area as MegaMUD names its loops, `Area: Room-map room`; null where it states none. */
 function loopArea(name: string): string | null {
   const at = name.indexOf(':');
   return at > 0 ? name.slice(0, at).trim() : null;
 }
 
+/** A short, steady name for a path MegaMUD can hold (13 characters). */
 function shortName(prefix: string, text: string): string {
   let h = 0x811c9dc5;
   for (let i = 0; i < text.length; i += 1) h = Math.imul(h ^ text.charCodeAt(i), 0x01000193);
@@ -463,10 +463,6 @@ export class MegaEngine {
   /** Waiting to redial, as last said. */
   private wasRedialing = false;
   /**
-   * The run of a loop: when it was started, and when it first stood on the
-   * loop itself rather than on the way out to it. Null with no loop taken up.
-   */
-  /**
    * The room a walk was asked for by its map and number, with its signature:
    * other rooms share a signature (a name and its exits), and the walk heads
    * for this one rather than the nearest of them (2026-10-16).
@@ -483,6 +479,10 @@ export class MegaEngine {
    * (`noteRoom`), before MegaMUD next asks whether it has arrived.
    */
   private readonly standIns = new Map<number, RoomId>();
+  /**
+   * The run of a loop: when it was started, and when it first stood on the
+   * loop itself rather than on the way out to it. Null with no loop taken up.
+   */
   private loopRun: { name: string; startedAt: number; lapBegunAt: number | null } | null = null;
   /** Runs begun and Auto-Flee's sys gotos sent, for the window's tab alerts (`noteRun`). */
   private ran = 0;
@@ -731,7 +731,7 @@ export class MegaEngine {
   }
 
   /**
-   * The settings changed (`megamud.ini` edited): put on the running session,
+   * The settings changed (the profile's `megamud:` saved): put on the running session,
    * as MegaMUD's settings dialog changes the struct in place, the path
    * walked and the loop kept.
    */
@@ -1124,11 +1124,6 @@ export class MegaEngine {
   }
 
   /**
-   * The toggles as MegaMUD's window draws them (`0x460d50`), which this
-   * character's toolbar shows, and whether it is walking: with All Off on,
-   * every other toggle reads off and Go is not to be pressed.
-   */
-  /**
    * What the engine alone knows of the character, for its realm's mudstats
    * board (`StatsReporter`): the experience meter's figures (`0x4a7250`, as
    * `@exp` gives them), the task's caption (`0x4aac80`, as `@status`), and
@@ -1159,6 +1154,11 @@ export class MegaEngine {
     return { status: caption(s), path };
   }
 
+  /**
+   * The toggles as MegaMUD's window draws them (`0x460d50`), which this
+   * character's toolbar shows, and whether it is walking: with All Off on,
+   * every other toggle reads off and Go is not to be pressed.
+   */
   get toggles(): MegaToggles {
     const s = this.s;
     const allOff = s.allOff !== 0;
@@ -1293,7 +1293,6 @@ export class MegaEngine {
     this.host.progressed?.(walk, loop);
   }
 
-  /** Says so when the toggles or the walking moved since last said: a press, a mode's defaults, a remote, a step. */
   /**
    * A run begun (`runCount` from none), whatever began it — a run percent, a
    * backstab refused, a player to flee, Auto-Flee's first step — counted for
@@ -1307,6 +1306,9 @@ export class MegaEngine {
     return begun;
   }
 
+  /**
+   * Says so when the toggles or the walking moved since last said: a press, a mode's defaults, a remote, a step.
+   */
   private noteToggles(): void {
     this.noteRun();
     this.noteProgress();

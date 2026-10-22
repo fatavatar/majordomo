@@ -247,8 +247,8 @@ export class AutoHunt {
      *
      * Too hurt is `automation.health.restBelow`, the floor a route already
      * stands still at, read here so a journey is never *started* at 12%. Said
-     * nothing: `Recovery` is already resting, and the hunt goes as soon as it
-     * is up.
+     * nothing: the engine is already resting, and the hunt goes as soon as
+     * it is up.
      */
     if (state.inCombat || state.combat.attackers.length > 0) return;
     if (this.planner.moveInFlight() || this.planner.walking() || this.planner.busy()) return;
@@ -350,9 +350,9 @@ export class AutoHunt {
     });
     /*
      * **The lap is stopped before anything walks.** One movement at a time at
-     * every door: `Walker.start` supersedes a leg silently and raises no
-     * `ended`, so a lap left running would wait for a leg that never comes and
-     * then read this journey's arrival as its own. The reason is said in the
+     * every door: a new walk supersedes a running leg without saying so, so a
+     * lap left running would wait for a leg that never comes and then read
+     * this journey's arrival as its own (the old `Walker.start`, 2026-09). The reason is said in the
      * runner's own words, as every other stop is.
      */
     this.phase = { kind: 'idle' };

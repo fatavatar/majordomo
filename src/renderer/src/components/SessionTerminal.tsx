@@ -19,7 +19,6 @@ const NO_RESULT = (): undefined => undefined;
 
 export interface SessionTerminalProps {
   session: SessionId;
-  /** Every name this character's realm knows, for the console to recognise. */
   /** The console's name index for this character — the realm's names and the people. */
   index?: NameIndex | null;
   /** A recognised name clicked in the console, and the cell box it sits in. */

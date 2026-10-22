@@ -192,12 +192,6 @@ function backName(cur: string): string {
 }
 
 /**
- * `0x43d2a0`: on to the first destination. `how` 0 from the walk, 1 the Go
- * To dialog (the app's: taken as chosen), anything else a fresh start; a
- * fresh start ends at a destination that is here. 0 on the way, 0x20
- * cancelled, else why not (`0x43fd90`'s flags).
- */
-/**
  * Standing at the destination `sig`. Ours past MegaMUD's signature match: a
  * room chosen by its map and number, where a look-alike stood for it and the
  * walk to it stopped in the wrong room (2026-10-16).
@@ -206,6 +200,12 @@ function reached(s: Session, sig: number): boolean {
   return s.roomSignature === sig && (s.host.isRoom?.(sig) ?? true);
 }
 
+/**
+ * `0x43d2a0`: on to the first destination. `how` 0 from the walk, 1 the Go
+ * To dialog (the app's: taken as chosen), anything else a fresh start; a
+ * fresh start ends at a destination that is here. 0 on the way, 0x20
+ * cancelled, else why not (`0x43fd90`'s flags).
+ */
 export function headFor(s: Session, how: number): number {
   const wasWalking = s.walking;
   if (how !== 0) {

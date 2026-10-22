@@ -1,3 +1,8 @@
+/**
+ * These run against the real realm data rather than a fixture. Room resolution
+ * is entirely about how *ambiguous* real names are, and a hand-made world with
+ * three rooms cannot express that.
+ */
 import { describe, expect, it } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -10,11 +15,6 @@ const file = path.resolve('resources/world/paradigm.jsonl.gz');
 const available = fs.existsSync(file);
 const graph = available ? WorldGraph.load(file) : null;
 
-/**
- * These run against the real realm data rather than a fixture. Room resolution
- * is entirely about how *ambiguous* real names are, and a hand-made world with
- * three rooms cannot express that.
- */
 /** The room itself and everywhere one step from it, as the ladder sees them. */
 function neighbourhood(room: WorldRoom): WorldRoom[] {
   const found = [room];

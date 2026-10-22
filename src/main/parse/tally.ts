@@ -53,6 +53,9 @@ function inCopper(count: number, noun: string | undefined): number {
   return denomination === undefined ? 0 : count * COPPER_PER[denomination];
 }
 
+/** A blow whose line names nobody, read as this character's: see `trackTally`. */
+export type OwnBlow = 'proc' | 'spell' | null;
+
 /**
  * The tally after one block.
  *
@@ -60,9 +63,6 @@ function inCopper(count: number, noun: string | undefined): number {
  * tell "this block changed nothing" by identity, exactly as it does for the
  * player registry.
  */
-/** A blow whose line names nobody, read as this character's: see `trackTally`. */
-export type OwnBlow = 'proc' | 'spell' | null;
-
 export function trackTally(
   tally: CombatTally,
   block: Block,

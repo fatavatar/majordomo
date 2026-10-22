@@ -57,7 +57,7 @@ export type MobDisposition =
  * afoot is `hates-evil` and a stationary one is `passive`, and attacking either
  * costs the same ten points.
  *
- * The client will not spend that unasked. See `AutoCombat`.
+ * The client will not spend that unasked.
  */
 export function costsAlignment(align: number): boolean {
   return align === 0 || align === 4;
@@ -488,34 +488,6 @@ function lookUpMob(name: string, sources: OccupantSources): MobFacts | undefined
 }
 
 /**
- * Where a monster's name ends and the realm's own text begins.
- *
- * The server prints `The <name> <attack message>!` and `A <name> <arrival
- * verb> into the room from the <direction>!`, and **both middles are one run of
- * words with no punctuation between the two halves**. There is no grammar to
- * split them on: the message is realm data — `Monsters.AttName-0` is literally
- * the string `bites you`, and 876 distinct ones ship in one realm — so a client
- * that anchored on a verb would work until it met a monster nobody had tested.
- * docs/greatermud/messages.md is the whole argument.
- *
- * So the split is made on **evidence**, in the order of how much each source
- * knows, and it declines rather than guessing when neither has any:
- *
- * 1. **What the room is known to hold.** `Also here:` printed the name in the
- *    spelling the server uses, and that is also the spelling an `attack` has to
- *    use. Longest match wins — two monsters called `rat` and `giant rat` in one
- *    room must not resolve the second to the first.
- * 2. **The realm's monster table.** The longest prefix of the middle that
- *    *ends* in a name the realm knows, which is what allows for the modifier
- *    `MobNameModifierType.Before` hangs off the front (`large lashworm`) while
- *    still refusing to swallow the verb: `orc rogue slashes` only resolves if
- *    something called `slashes`, `rogue slashes` or `orc rogue slashes` is a
- *    monster, and `orc rogue` is.
- *
- * Returns `null` when neither source can say. That is the honest answer and the
- * safe one — a name invented here is a name auto-combat would swing at.
- */
-/**
  * The name at the *end* of a fragment, for a line that names its target last.
  *
  * `nameInMessage` reads a monster off the front of `The <name> <verb> you`,
@@ -582,6 +554,34 @@ export function nameLeading(fragment: string, sources: NameSources): string | nu
   return best;
 }
 
+/**
+ * Where a monster's name ends and the realm's own text begins.
+ *
+ * The server prints `The <name> <attack message>!` and `A <name> <arrival
+ * verb> into the room from the <direction>!`, and **both middles are one run of
+ * words with no punctuation between the two halves**. There is no grammar to
+ * split them on: the message is realm data — `Monsters.AttName-0` is literally
+ * the string `bites you`, and 876 distinct ones ship in one realm — so a client
+ * that anchored on a verb would work until it met a monster nobody had tested.
+ * docs/greatermud/messages.md is the whole argument.
+ *
+ * So the split is made on **evidence**, in the order of how much each source
+ * knows, and it declines rather than guessing when neither has any:
+ *
+ * 1. **What the room is known to hold.** `Also here:` printed the name in the
+ *    spelling the server uses, and that is also the spelling an `attack` has to
+ *    use. Longest match wins — two monsters called `rat` and `giant rat` in one
+ *    room must not resolve the second to the first.
+ * 2. **The realm's monster table.** The longest prefix of the middle that
+ *    *ends* in a name the realm knows, which is what allows for the modifier
+ *    `MobNameModifierType.Before` hangs off the front (`large lashworm`) while
+ *    still refusing to swallow the verb: `orc rogue slashes` only resolves if
+ *    something called `slashes`, `rogue slashes` or `orc rogue slashes` is a
+ *    monster, and `orc rogue` is.
+ *
+ * Returns `null` when neither source can say. That is the honest answer and the
+ * safe one — a name invented here is a name auto-combat would swing at.
+ */
 export function nameInMessage(middle: string, sources: NameSources): string | null {
   const text = middle.trim();
   if (text.length === 0) return null;

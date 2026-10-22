@@ -31,13 +31,7 @@
  * dropping it would show a portal as free when it is not. Only the item ids are
  * resolved, because `roomitem 3389` tells nobody anything and `roomitem
  * shimmering key` does.
- */
-import type { ParsedAction } from './instructions';
-import { readKeywordTable } from './questScript';
-import { number } from './values';
-import type { RoomCommand } from '../../shared/world';
-
-/**
+ *
  * The shape is `RoomCommand` in `src/shared/world.ts`, because the renderer
  * reads it and `src/shared` is the boundary both sides import. What is worth
  * saying here is how each field is *filled*:
@@ -59,6 +53,10 @@ import type { RoomCommand } from '../../shared/world';
  *   dropping it would show a portal as free when it is not — the same rule
  *   `Requirement.raw` follows.
  */
+import type { ParsedAction } from './instructions';
+import { readKeywordTable } from './questScript';
+import { number } from './values';
+import type { RoomCommand } from '../../shared/world';
 
 /**
  * How many of a step's arguments are the **condition**, where that is not one.

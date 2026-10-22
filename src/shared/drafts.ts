@@ -13,26 +13,18 @@
  */
 import {
   DEFAULT_CONFIG,
-  ENGAGE_POLICIES,
-  RETREAT_STRATEGIES,
   normalizeRewrites,
   normalizeHuntingAutomation,
-  normalizeGear,
   normalizeQuests,
-  type GearConfig,
   normalizeParty,
   type PartyConfig,
   type RewritesUiConfig,
   type BlessingTarget,
   type DensityPreference,
-  type EngagePolicy,
-  type RetreatStrategy,
   POTION_WHENS,
   type PotionRule,
   type PotionWhen,
-  type PvpAction,
   type StatsReportConfig,
-  type EncumbranceGate,
   type LocateMethod,
   type TabsPreference
 } from './config';
@@ -48,23 +40,8 @@ import {
   type Severity
 } from './notifications';
 
-/** The words an `AlertRule.on` may be — the closed union's runtime half. */
 import { asLoops, type Loop } from './loops';
 
-/**
- * A load gate as the draft carries it: a closed union, so an unrecognised word
- * from a hand-edited file becomes `never` rather than being passed through to
- * a comparison that would silently never match.
- */
-const GATES: readonly EncumbranceGate[] = ['never', 'medium', 'heavy'];
-const asGate = (value: unknown): EncumbranceGate =>
-  GATES.find(
-    (known) =>
-      known ===
-      String(value ?? '')
-        .trim()
-        .toLowerCase()
-  ) ?? 'never';
 import { PROFILE_ACCENTS, type ProfileAccent } from './profiles';
 import {
   DEFAULT_CONSOLE_PALETTE,
@@ -235,48 +212,35 @@ export interface GlobalDraft {
   };
   automation: {
     enabled: boolean;
-    idle: { enabled: boolean; afterSeconds: number; command: string };
     pacing: { window: number; minGapMs: number; ackTimeoutMs: number };
-    walk: { stepTimeoutMs: number; clearAfterSeconds: number; minExpPerHour: number };
+    walk: { clearAfterSeconds: number; minExpPerHour: number };
     hangUp: ProfileDraft['hangUp'];
     retreat: ProfileDraft['retreat'];
     fleeGoto: ProfileDraft['fleeGoto'];
-    pvp: ProfileDraft['pvp'];
     combat: ProfileDraft['combat'];
     party: ProfileDraft['party'];
     health: ProfileDraft['health'];
     movement: ProfileDraft['movement'];
     hunting: ProfileDraft['hunting'];
     quests: ProfileDraft['quests'];
-    gear: ProfileDraft['gear'];
     spells: {
       /** Derive the round spell and the cures from the book. See `SpellsConfig`. */
       autoChoose: boolean;
-      autoChooseHeal: boolean;
       attack: string;
       areaAttack: string;
       areaMinMobs: number;
-      areaMinMana: number;
-      attackFallback: string;
       attackCasts: number;
       areaCasts: number;
-      drain: string;
-      areaDrain: string;
-      drainBelow: number;
-      drainTo: number;
       heal: string;
       healPartyWith: string;
       healBelow: number;
       healBelowInCombat: number;
       healTo: number;
-      healParty: boolean;
       minMana: number;
       cures: CuresDraft;
       regen: RegenDraft;
       blessings: BlessingDraft[];
-      notifyPartyOnWearOff: boolean;
       autoBless: boolean;
-      invokeItems: boolean;
     };
     loot: ProfileDraft['loot'];
     search: ProfileDraft['search'];
@@ -304,15 +268,6 @@ export type ServerChoice =
   | { kind: 'saved'; name: string }
   | { kind: 'inline'; host: string; port: number; encoding: StreamEncoding };
 
-/**
- * What a person fills in about a character.
- *
- * Deliberately *not* the whole profile file. A profile is a sparse overlay and
- * may carry an `automation:` or `ui:` block that this screen knows nothing
- * about; writing a draft must leave those alone rather than replacing the file
- * with the fields a form happened to have. Editing YAML is what YAML is good
- * at, and the screen exists for the parts it is not.
- */
 /** One curative spell per affliction the client can see; blank casts nothing. */
 export interface CuresDraft {
   blindness: string;
@@ -324,8 +279,6 @@ export interface CuresDraft {
 /** MegaMUD's regen and when-full spells; see `RegenConfig`. */
 export interface RegenDraft {
   hp: string;
-  mana: string;
-  manaMinTick: number;
   hpFull: string;
   manaFull: string;
 }
@@ -335,13 +288,21 @@ export interface BlessingDraft {
   /** The row's identity as well as what is cast; see `BlessingConfig.spell`. */
   spell: string;
   target: BlessingTarget;
-  minMana: number;
   prioritizeOverHeal: boolean;
   inCombat: boolean;
   /** Party rows only, as in the config; a self row carries none. */
   fallbackSeconds?: number;
 }
 
+/**
+ * What a person fills in about a character.
+ *
+ * Deliberately *not* the whole profile file. A profile is a sparse overlay and
+ * may carry an `automation:` or `ui:` block that this screen knows nothing
+ * about; writing a draft must leave those alone rather than replacing the file
+ * with the fields a form happened to have. Editing YAML is what YAML is good
+ * at, and the screen exists for the parts it is not.
+ */
 export interface ProfileDraft {
   /** Display name. The file name is the id and is passed separately. */
   name: string;
@@ -384,74 +345,38 @@ export interface ProfileDraft {
    * others on that BBS, which in practice means a different character slot.
    */
   login: LoginStepDraft[];
-  /**
-   * Hanging up to escape — see `HangUpConfig`, and read it before turning this
-   * on. On this server family a panic disconnect is one of the more reliable
-   * ways to die.
-   */
+  /** Hanging up below a health line. See `HangUpConfig`. */
   hangUp: {
     enabled: boolean;
     belowHealth: number;
-    onPlayerInRoom: boolean;
   };
-  /** Running away — the escape that works, and the one to offer first. */
+  /** Running from a fight below a health line. See `RetreatConfig`. */
   retreat: {
     enabled: boolean;
     belowHealth: number;
-    /** MegaMUD's `ManaRun%`: also run below this fraction of maximum mana. 0 never. */
-    belowMana: number;
-    whenOutnumbered: number;
-    strategy: RetreatStrategy;
-    safeHavenRoom: string;
   };
-  /**
-   * Fleeing outright — see `FleeGotoConfig`: a second, more desperate escape for
-   * the realms where `sys goto` is a real command, not a rung of `retreat`.
-   */
+  /** Fleeing by `sys goto`. See `FleeGotoConfig`. */
   fleeGoto: {
     enabled: boolean;
     belowHealth: number;
     destination: string;
   };
-  /** What to do the moment a player opens on this character — `automation.safety.pvp`. */
-  pvp: { notifyGang: boolean; action: PvpAction };
   /** Posting readings to the realm's mudstats board — `logging.stats`. */
   stats: StatsReportConfig;
-  /**
-   * Fighting on the character's behalf — see `CombatConfig`.
-   *
-   * Here rather than in `automation.rules` for the reason stated there: the
-   * question in the middle of it, *is the thing in front of me going to attack
-   * me and is it a person*, is not one a guard expression can ask. What is left
-   * is a handful of switches, two thresholds and three word lists — which is
-   * exactly the shape this screen exists for and exactly what YAML is worst at.
-   *
-   * The lists are one text field each in the form and arrive here already
-   * split; `normalizeCombat` keys them the way the wire spells a monster.
-   */
+  /** Fighting. See `CombatConfig`. */
   combat: {
     enabled: boolean;
     attack: string;
     opener: string;
-    /** Hide, or sneak while moving, between fights so the opener lands. See `CombatConfig`. */
-    hideForOpener: boolean;
-    engage: EngagePolicy;
-    retaliate: boolean;
-    /** Rounds hit without moving before auto-combat is lent. See `CombatConfig`. */
-    defendAfterRounds: number;
     /** Leave alone a monster a stranger is already fighting. See `CombatConfig`. */
     politeAttacks: boolean;
     maxMobs: number;
-    refreshRounds: number;
     /** This character's own monster rows, laid over the realm's. See `CombatConfig`. */
     monsters: MonsterRule[];
-    maxTargetHealth: number;
     minMobs: number;
     maxMonsterExperience: number;
-    /** A fraction; 0 attacks whatever the odds. See `CombatConfig.minSurvival`. */
-    minSurvival: number;
   };
-  /**
+  /*
    * The three blocks a rule cannot hold, in MegaMUD's own tabs.
    *
    * Shaped exactly like the config they patch, because they *are* what gets
@@ -464,9 +389,6 @@ export interface ProfileDraft {
   health: {
     restBelow: number;
     restTo: number;
-    /** Rest next door to a lair rather than in it. See `HealthConfig`. */
-    restNextDoor: boolean;
-    restBeforeTraps: number;
     meditateBelow: number;
     /** Meditate on, and hold a walk, until this. See `HealthConfig`. */
     meditateTo: number;
@@ -476,24 +398,12 @@ export interface ProfileDraft {
     useWards: boolean;
   };
   movement: {
-    openDoors: boolean;
-    openTries: number;
     pickLocks: boolean;
     pickTries: number;
-    bashDoors: boolean;
     bashTries: number;
     sneak: boolean;
     provideLight: boolean;
     lightDimRooms: boolean;
-    extinguishInLight: boolean;
-    /** Go back for the kit after a death. See `MovementConfig`. */
-    recoverGear: boolean;
-    /** How many journeys in a row may fail before it stops. 0 never gives up. */
-    recoverGearTries: number;
-    /** Stop once this many lives are left. 0 never stops. */
-    recoverGearFloor: number;
-    /** Conditions as waits, inverted: off waits the condition out. See `MovementConfig`. */
-    fightOnArrival: boolean;
     /** Ways and places routes keep out of. See `MovementConfig`. */
     keepOutOf: string[];
     /** Bend down for a key an exit here needs. See `MovementConfig`. */
@@ -506,8 +416,6 @@ export interface ProfileDraft {
   hunting: { enabled: boolean; radius: number };
   /** Running a quest's plan — `automation.quests`. See `QuestsConfig`. */
   quests: { enabled: boolean };
-  /** Which kit to be in, and when — `automation.gear`. See `GearConfig`. */
-  gear: GearConfig;
   /*
    * The four blocks below are a character's as much as the ones above it
    * (todo 03, 2026-09-12). They were on the Global draft alone, typed inline,
@@ -522,14 +430,8 @@ export interface ProfileDraft {
     coins: boolean;
     coinKinds: Denomination[];
     discardKinds: Denomination[];
-    items: string[];
     /** This character's own item rows, laid over the realm's. See `LootConfig`. */
     itemDetails: ItemRule[];
-    minPrice: number;
-    maxEncumbrance: number;
-    stopAtGrade: EncumbranceGate;
-    convertWith: string;
-    convertAt: EncumbranceGate;
   };
   /** Looking for what a room did not print — `automation.search`. See `SearchConfig`. */
   search: { enabled: boolean; tries: number };
@@ -552,20 +454,12 @@ export interface ProfileDraft {
   spells: {
     /** Derive the round spell and the cures from the book. See `SpellsConfig`. */
     autoChoose: boolean;
-    autoChooseHeal: boolean;
     attack: string;
     areaAttack: string;
     areaMinMobs: number;
-    areaMinMana: number;
-    /** See `SpellsConfig`: the fallback once the round spell has no effect, and the per-target cast caps. */
-    attackFallback: string;
+    /** See `SpellsConfig`: the per-target cast caps. */
     attackCasts: number;
     areaCasts: number;
-    /** See `SpellsConfig`: the drain spells cast instead while health is low. */
-    drain: string;
-    areaDrain: string;
-    drainBelow: number;
-    drainTo: number;
     /**
      * The heal, per character.
      *
@@ -580,14 +474,11 @@ export interface ProfileDraft {
     healBelow: number;
     healBelowInCombat: number;
     healTo: number;
-    healParty: boolean;
     minMana: number;
     cures: CuresDraft;
     regen: RegenDraft;
     blessings: BlessingDraft[];
-    notifyPartyOnWearOff: boolean;
     autoBless: boolean;
-    invokeItems: boolean;
   };
   /**
    * Which alerts this character raises — `ui.alerts`, not `automation.*`.
@@ -784,7 +675,6 @@ export function asProfileDraft(value: unknown): ProfileDraft | null {
   const hangUp = isRecord(value['hangUp']) ? value['hangUp'] : {};
   const retreat = isRecord(value['retreat']) ? value['retreat'] : {};
   const fleeGoto = isRecord(value['fleeGoto']) ? value['fleeGoto'] : {};
-  const pvp = isRecord(value['pvp']) ? value['pvp'] : {};
   const stats = isRecord(value['stats']) ? value['stats'] : {};
   const combat = isRecord(value['combat']) ? value['combat'] : {};
   const health = isRecord(value['health']) ? value['health'] : {};
@@ -819,30 +709,16 @@ export function asProfileDraft(value: unknown): ProfileDraft | null {
       // Clamped rather than refused: a fraction outside the range is a slider
       // that got dragged, not a decision, and refusing the whole save over it
       // would lose everything else on the form.
-      belowHealth: Math.min(1, Math.max(0, Number(hangUp['belowHealth']) || 0)),
-      onPlayerInRoom: hangUp['onPlayerInRoom'] === true
+      belowHealth: Math.min(1, Math.max(0, Number(hangUp['belowHealth']) || 0))
     },
     retreat: {
       enabled: retreat['enabled'] === true,
-      belowHealth: Math.min(1, Math.max(0, Number(retreat['belowHealth']) || 0)),
-      belowMana: Math.min(1, Math.max(0, Number(retreat['belowMana']) || 0)),
-      whenOutnumbered: Math.min(
-        20,
-        Math.max(0, Math.trunc(Number(retreat['whenOutnumbered']) || 0))
-      ),
-      strategy: RETREAT_STRATEGIES.includes(retreat['strategy'] as RetreatStrategy)
-        ? (retreat['strategy'] as RetreatStrategy)
-        : 'step-back',
-      safeHavenRoom: text(retreat['safeHavenRoom']).slice(0, 80)
+      belowHealth: Math.min(1, Math.max(0, Number(retreat['belowHealth']) || 0))
     },
     fleeGoto: {
       enabled: fleeGoto['enabled'] === true,
       belowHealth: Math.min(1, Math.max(0, Number(fleeGoto['belowHealth']) || 0)),
       destination: text(fleeGoto['destination']).slice(0, 80)
-    },
-    pvp: {
-      notifyGang: pvp['notifyGang'] === true,
-      action: pvp['action'] === 'retreat' ? 'retreat' : 'none'
     },
     stats: {
       enabled: stats['enabled'] === true,
@@ -859,36 +735,13 @@ export function asProfileDraft(value: unknown): ProfileDraft | null {
        */
       attack: word(combat['attack']) || 'a',
       opener: word(combat['opener']),
-      // Off unless said: it spends a command per fight.
-      hideForOpener: combat['hideForOpener'] === true,
-      engage: engagePolicy(combat['engage']),
-      // The one boolean here that defaults *on*, because it is the one that
-      // cannot start a fight: something is already swinging. See `CombatConfig`.
-      retaliate: combat['retaliate'] !== false,
-      // Absent is the shipped figure, not 0: 0 is a choice to stand and be hit.
-      defendAfterRounds: Math.min(
-        20,
-        Math.max(
-          0,
-          Math.trunc(
-            Number(
-              combat['defendAfterRounds'] ?? DEFAULT_CONFIG.automation.combat.defendAfterRounds
-            ) || 0
-          )
-        )
-      ),
       // Defaults off, which is MegaMUD's own `PoliteAttacks=0`: a blank field
       // must not silently make a character stand aside.
       politeAttacks: combat['politeAttacks'] === true,
       maxMobs: Math.min(20, Math.max(0, Math.trunc(Number(combat['maxMobs']) || 0))),
-      // Capped low: every round is a fraction of a second, so a client asked to
-      // look every round would spend most of a fight looking.
-      refreshRounds: Math.min(20, Math.max(0, Math.trunc(Number(combat['refreshRounds']) || 0))),
       monsters: asMonsterRules(combat['monsters']),
-      maxTargetHealth: Math.max(0, Math.round(Number(combat['maxTargetHealth']) || 0)),
       minMobs: Math.max(0, Math.min(99, Math.round(Number(combat['minMobs']) || 0))),
-      maxMonsterExperience: Math.max(0, Math.round(Number(combat['maxMonsterExperience']) || 0)),
-      minSurvival: Math.min(1, Math.max(0, Number(combat['minSurvival']) || 0))
+      maxMonsterExperience: Math.max(0, Math.round(Number(combat['maxMonsterExperience']) || 0))
     },
     /*
      * Every threshold is a fraction and every one is clamped here as well as in
@@ -911,20 +764,13 @@ export function asProfileDraft(value: unknown): ProfileDraft | null {
        */
       restBelow: unit(health['restBelow'], DEFAULT_CONFIG.automation.health.restBelow),
       restTo: unit(health['restTo'], DEFAULT_CONFIG.automation.health.restTo),
-      // On unless said off: a blank field must not sit a character down in a lair.
-      restNextDoor: health['restNextDoor'] !== false,
-      restBeforeTraps: unit(
-        health['restBeforeTraps'],
-        DEFAULT_CONFIG.automation.health.restBeforeTraps
-      ),
       meditateBelow: unit(health['meditateBelow']),
       meditateTo: unit(health['meditateTo']),
       /*
        * The rules, parsed at the boundary like everything else here: a row
        * with no name is dropped (a rule naming nothing fires on nothing), a
-       * `when` the table does not know is dropped — the closed union's runtime
-       * half — and a verb that is neither reads as `drink`. Bounded, because
-       * this crossed the network.
+       * `when` the table does not know is dropped: the closed union's runtime
+       * half. Bounded, because this crossed the network.
        */
       potions: Array.isArray(health['potions'])
         ? health['potions'].slice(0, 32).flatMap((entry): PotionRule[] => {
@@ -934,15 +780,7 @@ export function asProfileDraft(value: unknown): ProfileDraft | null {
             if (name.length === 0) return [];
             const when = text(row['when']).trim() as PotionWhen;
             if (!POTION_WHENS.includes(when)) return [];
-            const verb = text(row['verb']).trim();
-            return [
-              {
-                name,
-                when,
-                below: Math.min(1, Math.max(0, Number(row['below']) || 0)),
-                verb: verb === 'use' ? 'use' : 'drink'
-              }
-            ];
+            return [{ name, when }];
           })
         : [],
       // On by default, so an omitted field is the shipped answer rather
@@ -953,21 +791,13 @@ export function asProfileDraft(value: unknown): ProfileDraft | null {
           : health['useWards'] === true
     },
     movement: {
-      openDoors: movement['openDoors'] === true,
-      openTries: Math.min(3, Math.max(0, Math.trunc(Number(movement['openTries']) || 0))),
-      // Ten rather than three: unlike `open`, forcing is a roll rather than an
-      // answer — `captures/002` needed three picks and `captures/005` two
-      // bashes — so a budget capped at the opener's would refuse the attempts
-      // the captures show actually working.
+      // Ten: forcing is a roll rather than an answer (`captures/002` needed
+      // three picks and `captures/005` two bashes).
       pickLocks: movement['pickLocks'] === true,
       pickTries: Math.min(10, Math.max(0, Math.trunc(Number(movement['pickTries']) || 0))),
-      bashDoors: movement['bashDoors'] === true,
       bashTries: Math.min(10, Math.max(0, Math.trunc(Number(movement['bashTries']) || 0))),
       sneak: movement['sneak'] === true,
       provideLight: movement['provideLight'] === true,
-      // Off by default, MegaMUD's own: a blank field waits the condition out.
-      // `!== false`: on unless it was turned off. See the field.
-      fightOnArrival: movement['fightOnArrival'] !== false,
       // A list or nothing: a payload that failed to send it keeps the shipped
       // words, as `useWards` keeps the shipped answer — an empty list is a
       // choice, and a missing one is not.
@@ -978,19 +808,6 @@ export function asProfileDraft(value: unknown): ProfileDraft | null {
             .filter((word) => word.length > 0)
         : [...DEFAULT_CONFIG.automation.movement.keepOutOf],
       lightDimRooms: movement['lightDimRooms'] === true,
-      extinguishInLight: movement['extinguishInLight'] === true,
-      // Off unless said: it walks the character back to where it died.
-      recoverGear: movement['recoverGear'] === true,
-      // Bounded low: a recovery that has failed five times will not work on
-      // the sixth, and the figures are lives on the other end of it.
-      recoverGearTries: Math.min(
-        20,
-        Math.max(0, Math.trunc(Number(movement['recoverGearTries']) || 0))
-      ),
-      recoverGearFloor: Math.min(
-        99,
-        Math.max(0, Math.trunc(Number(movement['recoverGearFloor']) || 0))
-      ),
       // The shipped default when the payload omits it, on the health block's
       // rule above: this one is on by default, and a form that failed to send
       // the field would silently switch it off.
@@ -1001,10 +818,6 @@ export function asProfileDraft(value: unknown): ProfileDraft | null {
     },
     hunting: normalizeHuntingAutomation(value['hunting']),
     quests: normalizeQuests(value['quests']),
-    // Parsed by the config's own reader: the set list is a closed union and a
-    // bounded list, and one reading of it is what keeps the form and the file
-    // agreeing about a row nobody can save.
-    gear: normalizeGear(value['gear']),
     loot: {
       coins: loot['coins'] === true,
       coinKinds: Array.isArray(loot['coinKinds'])
@@ -1021,13 +834,7 @@ export function asProfileDraft(value: unknown): ProfileDraft | null {
               ).includes(name)
           )
         : [],
-      stopAtGrade: asGate(loot['stopAtGrade']),
-      convertWith: text(loot['convertWith']).slice(0, 40),
-      convertAt: asGate(loot['convertAt']),
-      items: words(loot['items'], 32),
-      itemDetails: asItemRules(loot['itemDetails']),
-      minPrice: Math.max(0, Math.round(Number(loot['minPrice']) || 0)),
-      maxEncumbrance: Math.max(0, Math.round(Number(loot['maxEncumbrance']) || 0))
+      itemDetails: asItemRules(loot['itemDetails'])
     },
     search: {
       enabled: search['enabled'] === true,
@@ -1047,26 +854,15 @@ export function asProfileDraft(value: unknown): ProfileDraft | null {
     spells: {
       // Off unless said: it spends mana on a reading the player did not type.
       autoChoose: spells['autoChoose'] === true,
-      autoChooseHeal: spells['autoChooseHeal'] === true,
       // The whole name, unlike a command word: the server matches a spell on a
       // prefix, so `ice` would cast whatever begins with it.
       attack: typeof spells['attack'] === 'string' ? spells['attack'].trim().slice(0, 40) : '',
       areaAttack:
         typeof spells['areaAttack'] === 'string' ? spells['areaAttack'].trim().slice(0, 40) : '',
       areaMinMobs: Math.max(1, Math.min(99, Math.round(Number(spells['areaMinMobs']) || 3))),
-      areaMinMana: unit(spells['areaMinMana']),
-      attackFallback:
-        typeof spells['attackFallback'] === 'string'
-          ? spells['attackFallback'].trim().slice(0, 40)
-          : '',
       // 0 is no limit, so a missing or unreadable figure is the unlimited one.
       attackCasts: Math.max(0, Math.min(99, Math.round(Number(spells['attackCasts']) || 0))),
       areaCasts: Math.max(0, Math.min(99, Math.round(Number(spells['areaCasts']) || 0))),
-      drain: typeof spells['drain'] === 'string' ? spells['drain'].trim().slice(0, 40) : '',
-      areaDrain:
-        typeof spells['areaDrain'] === 'string' ? spells['areaDrain'].trim().slice(0, 40) : '',
-      drainBelow: unit(spells['drainBelow']),
-      drainTo: unit(spells['drainTo']),
       heal: typeof spells['heal'] === 'string' ? spells['heal'].trim().slice(0, 40) : '',
       healPartyWith:
         typeof spells['healPartyWith'] === 'string'
@@ -1075,15 +871,12 @@ export function asProfileDraft(value: unknown): ProfileDraft | null {
       healBelow: unit(spells['healBelow']),
       healBelowInCombat: unit(spells['healBelowInCombat']),
       healTo: unit(spells['healTo']),
-      healParty: spells['healParty'] === true,
       minMana: unit(spells['minMana']),
       cures: asCures(spells['cures']),
       regen: asRegen(spells['regen']),
       blessings: asBlessings(spells['blessings']),
-      notifyPartyOnWearOff: spells['notifyPartyOnWearOff'] === true,
       // `!== false`: on unless it was turned off. See the field.
-      autoBless: spells['autoBless'] !== false,
-      invokeItems: spells['invokeItems'] === true
+      autoBless: spells['autoBless'] !== false
     },
     alerts: {
       /*
@@ -1166,7 +959,6 @@ export function asGlobalDraft(value: unknown): GlobalDraft | null {
   const consoleUi = isRecord(ui['console']) ? ui['console'] : {};
   const logging = isRecord(value['logging']) ? value['logging'] : {};
   const automation = isRecord(value['automation']) ? value['automation'] : {};
-  const idle = isRecord(automation['idle']) ? automation['idle'] : {};
   const pacing = isRecord(automation['pacing']) ? automation['pacing'] : {};
   const walk = isRecord(automation['walk']) ? automation['walk'] : {};
   const spells = isRecord(automation['spells']) ? automation['spells'] : {};
@@ -1234,20 +1026,12 @@ export function asGlobalDraft(value: unknown): GlobalDraft | null {
     },
     automation: {
       enabled: automation['enabled'] === true,
-      idle: {
-        enabled: idle['enabled'] === true,
-        // Never under five seconds: the server acknowledges one command per
-        // status line, and anything faster starves the queue.
-        afterSeconds: clamp(idle['afterSeconds'], 5, 3600, 45),
-        command: word(idle['command'])
-      },
       pacing: {
         window: clamp(pacing['window'], 1, 50, 8),
         minGapMs: clamp(pacing['minGapMs'], 0, 10_000, 120),
         ackTimeoutMs: clamp(pacing['ackTimeoutMs'], 100, 60_000, 4000)
       },
       walk: {
-        stepTimeoutMs: clamp(walk['stepTimeoutMs'], 200, 60_000, 4000),
         clearAfterSeconds: clamp(walk['clearAfterSeconds'], 0, 3600, 20),
         // Zero is off, so a missing or unreadable figure is the off one.
         minExpPerHour: clamp(walk['minExpPerHour'], 0, 100_000_000, 0)
@@ -1255,42 +1039,30 @@ export function asGlobalDraft(value: unknown): GlobalDraft | null {
       hangUp: asIf.hangUp,
       retreat: asIf.retreat,
       fleeGoto: asIf.fleeGoto,
-      pvp: asIf.pvp,
       combat: asIf.combat,
       party: asIf.party,
       health: asIf.health,
       movement: asIf.movement,
       hunting: asIf.hunting,
       quests: asIf.quests,
-      gear: asIf.gear,
       afk: asIf.afk,
       spells: {
         autoChoose: spells['autoChoose'] === true,
-        autoChooseHeal: spells['autoChooseHeal'] === true,
         attack: text(spells['attack']).slice(0, 40),
         areaAttack: text(spells['areaAttack']).slice(0, 40),
         areaMinMobs: Math.max(1, Math.min(99, Math.round(Number(spells['areaMinMobs']) || 3))),
-        areaMinMana: unit(spells['areaMinMana']),
-        attackFallback: text(spells['attackFallback']).slice(0, 40),
         attackCasts: Math.max(0, Math.min(99, Math.round(Number(spells['attackCasts']) || 0))),
         areaCasts: Math.max(0, Math.min(99, Math.round(Number(spells['areaCasts']) || 0))),
-        drain: text(spells['drain']).slice(0, 40),
-        areaDrain: text(spells['areaDrain']).slice(0, 40),
-        drainBelow: unit(spells['drainBelow']),
-        drainTo: unit(spells['drainTo']),
         heal: text(spells['heal']).slice(0, 40),
         healPartyWith: text(spells['healPartyWith']).slice(0, 40),
         healBelow: unit(spells['healBelow']),
         healBelowInCombat: unit(spells['healBelowInCombat']),
         healTo: unit(spells['healTo']),
-        healParty: spells['healParty'] === true,
         minMana: unit(spells['minMana']),
         cures: asCures(spells['cures']),
         regen: asRegen(spells['regen']),
         blessings: asBlessings(spells['blessings']),
-        notifyPartyOnWearOff: spells['notifyPartyOnWearOff'] === true,
-        autoBless: spells['autoBless'] !== false,
-        invokeItems: spells['invokeItems'] === true
+        autoBless: spells['autoBless'] !== false
       },
       // Read by the function that already knows how, like the blocks above.
       loot: asIf.loot,
@@ -1326,7 +1098,6 @@ function oneOf<T extends string>(value: unknown, allowed: readonly T[], fallback
   return allowed.includes(value as T) ? (value as T) : fallback;
 }
 
-/** One command word. A field somebody typed a sentence into is not one. */
 /**
  * A 0-1 fraction from a payload that crossed the wire.
  *
@@ -1343,19 +1114,11 @@ function unit(value: unknown, fallback = 0): number {
   return Math.min(1, Math.max(0, number));
 }
 
+/** One command word. A field somebody typed a sentence into is not one. */
 function word(value: unknown): string {
   return text(value).split(/\s+/)[0] ?? '';
 }
 
-/**
- * A list of names or verbs from the form.
- *
- * Kept as whole entries rather than split on whitespace, because a monster is
- * called `giant rat` and splitting would make it two. The command lists are
- * clamped to a single word by `normalizeCombat`, which is where the difference
- * belongs — this is the boundary parser and its job is to refuse nonsense, not
- * to decide what a round verb is.
- */
 /**
  * The remotes a form states, keeping only ones the union has.
  *
@@ -1390,21 +1153,6 @@ function playerGrants(value: unknown): Record<string, PlayerGrant> {
   return out;
 }
 
-function words(value: unknown, limit = 8): string[] {
-  if (!Array.isArray(value)) return [];
-  const out: string[] = [];
-  for (const entry of value) {
-    const one = text(entry).slice(0, 64);
-    if (one.length > 0) out.push(one);
-    if (out.length >= limit) break;
-  }
-  return out;
-}
-
-function engagePolicy(value: unknown): EngagePolicy {
-  return ENGAGE_POLICIES.includes(value as EngagePolicy) ? (value as EngagePolicy) : 'hostile';
-}
-
 /** The three cure names, trimmed and bounded like every other spell name here. */
 function asCures(value: unknown): CuresDraft {
   const raw = isRecord(value) ? value : {};
@@ -1420,8 +1168,6 @@ function asRegen(value: unknown): RegenDraft {
   const raw = isRecord(value) ? value : {};
   return {
     hp: text(raw['hp']).slice(0, 40),
-    mana: text(raw['mana']).slice(0, 40),
-    manaMinTick: Math.max(0, Math.min(9999, Math.round(Number(raw['manaMinTick']) || 0))),
     hpFull: text(raw['hpFull']).slice(0, 40),
     manaFull: text(raw['manaFull']).slice(0, 40)
   };
@@ -1454,7 +1200,6 @@ function asBlessings(value: unknown): BlessingDraft[] {
     rows.push({
       spell,
       target,
-      minMana: unit(row['minMana']),
       prioritizeOverHeal: row['prioritizeOverHeal'] === true,
       inCombat: typeof row['inCombat'] === 'boolean' ? row['inCombat'] : target === 'self',
       ...(target === 'party'

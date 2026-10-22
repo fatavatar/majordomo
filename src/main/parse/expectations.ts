@@ -442,7 +442,7 @@ export class Expectations {
      * `2026-09-02_23-03-32_festus`: the `E` at the `[PARADIGM]:` prompt queued
      * a move that nothing answered until the realm-entry room block ate it
      * **49 seconds later**, and for the whole of that time `pendingMoves` was
-     * 1 — which stands auto-combat down, refuses `Walker.start` and holds a
+     * 1, which stood the old auto-combat down and refused its walker and a
      * loop's next leg. Every login on this realm paid it.
      *
      * The entry room block then arrives with an empty queue, which is the
@@ -472,7 +472,7 @@ export class Expectations {
      * Queued as a move with no direction, for `hintTeleport`'s reason: it
      * moves them, so the walk and loop desynchronisation guards must count it,
      * and a direction here is exactly the thing that must not be believed.
-     * The walker arms it immediately before the send (`Walker.sendCurrent`),
+     * The walk arms it immediately before the send,
      * so the exact text is the match and nothing else can take it.
      */
     /*
@@ -601,7 +601,7 @@ export class Expectations {
    *
    * A named room block used to spend an armed teleport promise (`takeTeleport`)
    * before anything decided whose it was, and a re-read's own answer was no
-   * exception — so `Walker.nudge` refused to send behind a portal at all,
+   * exception — so the old walker's `nudge` refused to send behind a portal at all,
    * rather than risk a premature reprint spending the promise before the real
    * arrival could claim it. The `wasReread` guard beside `takeTeleport` in
    * `CharacterTracker` closes that for every sender of a `reread`, not the
@@ -659,8 +659,8 @@ export class Expectations {
    * Gives up on claims nothing has answered, and says which.
    *
    * **The bound belongs here, where the claim is made**, because six things
-   * read `pendingMoves` — the escape, `Walker.start`, `LoopRunner.advance`,
-   * the walk home and auto-combat — and until 2026-09-03 exactly one of them
+   * read `pendingMoves` in the old automation (the escape, the walker, the
+   * loop runner, the walk home and auto-combat), and until 2026-09-03 exactly one of them
    * had a clock. A sentence this parser cannot read answering a move therefore
    * let auto-combat recover after eight seconds and left the character unable
    * to run away, walk a route or run a loop **for the rest of the session**,
@@ -681,7 +681,7 @@ export class Expectations {
    *
    * **`moved` is on it because only a move held anything.** `pendingMoves`
    * counts moves alone, so a lapsed peek or re-read gated neither the escape,
-   * nor `Walker.start`, nor a loop's next leg — and the notice said it had. A
+   * nor the walker, nor a loop's next leg — and the notice said it had. A
    * bare Enter goes unanswered about once in three thousand, so that sentence
    * was false roughly once a session.
    */

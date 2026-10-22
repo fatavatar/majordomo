@@ -345,7 +345,7 @@ function partyLeavers(registry: PlayerRegistry, state: CharacterState): PlayerRe
  * Kept for the same reason a refusal is said out loud: a stranger repeatedly
  * trying to drive this character is a thing its owner should be able to see
  * having happened, and a count they have to catch in the notices as they scroll
- * past is one nobody sees. Called from `Remotes`, on every command that
+ * past is one nobody sees. Called for every remote command that
  * parses — refused ones included, which are the ones worth counting.
  */
 export function noteRemoteCall(

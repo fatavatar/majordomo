@@ -564,7 +564,7 @@ function walkChip(walk: WalkProgress) {
   }
   /*
    * And the same for a fight, in the same words the loop uses — a route waits
-   * one out and walks on rather than ending (`Walker.holdForFight`), and this
+   * one out and walks on rather than ending, and this
    * chip is the *only* place it is stated: the console is deliberately silent
    * about it, because a line per wandering monster is the chrome talking over
    * the `*Combat Engaged*` the server has already printed in the room.

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { Invoke, Push, Send } from '../ipc';
+import { bridgeOver, Invoke, Push, pushMethod, Send, type IpcApi } from '../ipc';
 
 /**
  * Channel names and payload types are declared together so a mismatch is a
@@ -12,9 +12,9 @@ import { Invoke, Push, Send } from '../ipc';
  * rejects at runtime, on a path somebody only reaches by pressing the thing.
  *
  * Two bridges since 2026-09-07 — the preload for the desktop and the web
- * bridge for a browser tab — and **both** are held to the one list, for the
- * closed-union reason: a channel added to one carrier and not the other
- * type-checks and then fails on whichever host nobody happened to test.
+ * bridge for a browser tab — and both are `bridgeOver` (2026-10-22), built
+ * from the channel tables, so neither can miss a channel the other carries.
+ * What is checked of them here is that the builder routes every channel.
  *
  * Read as source text, deliberately. Importing `src/main/client.ts` would
  * start the client.
@@ -51,17 +51,7 @@ describe('the IPC contract is wired at both ends', () => {
     expect(missing, `no handler in main for: ${missing.join(', ')}`).toEqual([]);
   });
 
-  it('exposes every invocable channel through the preload', () => {
-    const missing = Object.keys(Invoke).filter((key) => !mentions(preload, 'Invoke', key));
-    expect(missing, `not exposed to the renderer: ${missing.join(', ')}`).toEqual([]);
-  });
-
-  it('exposes every invocable channel through the web bridge', () => {
-    const local = new Set<string>(ANSWERED_IN_THE_WINDOW);
-    const missing = Object.keys(Invoke).filter(
-      (key) => !local.has(key) && !mentions(web, 'Invoke', key)
-    );
-    expect(missing, `the web bridge does not carry: ${missing.join(', ')}`).toEqual([]);
+  it('answers in the web bridge itself only what it says it does', () => {
     const undefinedLocally = ANSWERED_IN_THE_WINDOW.filter((key) => !defines(web, key));
     expect(
       undefinedLocally,
@@ -72,16 +62,6 @@ describe('the IPC contract is wired at both ends', () => {
   it('listens for every one-way channel', () => {
     const missing = Object.keys(Send).filter((key) => !mentions(main, 'Send', key));
     expect(missing, `nothing in main listens for: ${missing.join(', ')}`).toEqual([]);
-  });
-
-  it('sends every one-way channel from both bridges', () => {
-    for (const [name, source] of [
-      ['preload', preload],
-      ['web bridge', web]
-    ] as const) {
-      const missing = Object.keys(Send).filter((key) => !mentions(source, 'Send', key));
-      expect(missing, `the ${name} never sends: ${missing.join(', ')}`).toEqual([]);
-    }
   });
 
   /*
@@ -95,23 +75,67 @@ describe('the IPC contract is wired at both ends', () => {
     expect(missing, `nothing ever pushes: ${missing.join(', ')}`).toEqual([]);
   });
 
-  it('subscribes to every push in both bridges', () => {
-    for (const [name, source] of [
-      ['preload', preload],
-      ['web bridge', web]
-    ] as const) {
-      const missing = Object.keys(Push).filter((key) => !mentions(source, 'Push', key));
-      expect(missing, `the ${name} cannot hear: ${missing.join(', ')}`).toEqual([]);
-    }
-  });
-
   /*
    * The bridge says which host it is, and only the value that is true of it.
    * A preload claiming `web` would hide every desktop control on the desktop.
    */
   it('each bridge states its own host kind', () => {
-    expect(/^\s+host: 'electron',/m.test(preload)).toBe(true);
-    expect(/^\s+host: 'web',/m.test(web)).toBe(true);
+    expect(/host: 'electron'/.test(preload)).toBe(true);
+    expect(/host: 'web'/.test(web)).toBe(true);
+  });
+});
+
+describe('the bridge built from the channel tables', () => {
+  const heard: Array<[string, string, unknown[]]> = [];
+  const api = bridgeOver(
+    {
+      invoke: (channel, ...args) => {
+        heard.push(['invoke', channel, args]);
+        return Promise.resolve(null);
+      },
+      send: (channel, ...args) => {
+        heard.push(['send', channel, args]);
+      },
+      subscribe: (channel) => {
+        heard.push(['subscribe', channel, []]);
+        return () => {};
+      }
+    },
+    { host: 'web' }
+  ) as unknown as Record<string, (...args: unknown[]) => unknown>;
+
+  it('calls every invocable channel by its own name, arguments as given', () => {
+    for (const [key, channel] of Object.entries(Invoke)) {
+      heard.length = 0;
+      void api[key]!('s1', 2);
+      expect(heard, key).toEqual([['invoke', channel, ['s1', 2]]]);
+    }
+  });
+
+  it('sends every one-way channel by its own name', () => {
+    for (const [key, channel] of Object.entries(Send)) {
+      heard.length = 0;
+      api[key]!('s1');
+      expect(heard, key).toEqual([['send', channel, ['s1']]]);
+    }
+  });
+
+  it('subscribes to every push as on…', () => {
+    for (const [key, channel] of Object.entries(Push)) {
+      heard.length = 0;
+      const off = api[pushMethod(key)]!(() => {});
+      expect(typeof off, key).toBe('function');
+      expect(heard, key).toEqual([['subscribe', channel, []]]);
+    }
+  });
+
+  it('keeps what a bridge answers itself', () => {
+    const own = bridgeOver(
+      { invoke: () => Promise.resolve(null), send: () => {}, subscribe: () => () => {} },
+      { host: 'electron', copyText: async () => {} }
+    ) as IpcApi;
+    expect(own.host).toBe('electron');
+    expect(own.copyText.toString()).toContain('async');
   });
 });
 

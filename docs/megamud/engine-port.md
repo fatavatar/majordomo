@@ -2,10 +2,13 @@
 
 Decided 2026-10-12: mudengine's own decision engine is replaced by a port of
 `megamud.exe`'s, function by function, and the character settings are replaced
-by MegaMUD's own. Pathing (`Walker`, `LoopRunner`, the world graph), the display,
-the parsers that feed it and the connection stay. Work happens on the
-`megamud-engine` branch. `main` keeps the current engine until the port can
-hunt, and the old engine is deleted in the swap.
+by MegaMUD's own. The world graph, the display, the parsers that feed it and
+the connection stay. The work is on the `megamud-engine` branch. The swap
+happened on 2026-10-14: every character runs on the port, and the old engine's
+modules (*Deleted at the swap*, below) are gone.
+
+How the port sits inside the client is described in
+[`docs/codebase/engine.md`](../codebase/engine.md).
 
 The readings behind every step are in `megamud-exe.md`, with addresses.
 
@@ -104,20 +107,24 @@ branches in the same order, and tested with cases read off that decompile.
   the port never reads is not declared. Flag words have their bits named in
   `flags.ts`, the activity states in `states.ts` and the tasks in
   `script/task.ts` (2026-10-16).
-- `settings/`: MegaMUD's INI schema (every section and key, its type and its
-  default from `0x447f40`), reading and writing MegaMUD's own `.ini` format. A
-  character's settings are its `megamud.ini`.
-- `Scheduler.ts`: `0x40bab0`, run after each received chunk.
-- `send.ts`: `0x42d9f0` (straight to the socket) and the pending list
-  (`0x48ab60`, `0x48ad60`), through the existing `CommandQueue` so echo and
-  display are unchanged.
-- `lines/`: the line handlers that set state (`0x479630` and the handlers it
-  dispatches to). Where our tracker already reads the same fact the same way
-  it is adapted; where MegaMUD reads it differently, MegaMUD's reading is
-  ported.
-- `steps/`: the table above.
-- Data: MegaMUD's records (monsters, items, spells, messages, players) from the
-  realm imports we already have, extended where a step reads a field we drop.
+- Settings: MegaMUD's schema (every section and key, its type and its default
+  from `0x447f40`) is `src/shared/megamud/schema.ts`, generated into fields by
+  `scripts/gen-megamud-fields.mjs` (`SettingsFields.ts`). A character's
+  settings are the `megamud:` block of its `profile.yaml`, put on the session
+  by `character.ts` (`0x449aa0`).
+- `script/scheduler.ts`: `0x40bab0`, run after each received chunk, and the
+  steps it asks in `script/`, `health/`, `combat/`, `items/` and `move/`.
+- `script/send.ts`: `0x42d9f0` (straight to the socket) and the pending list
+  (`0x48ab60`, `0x48ad60`). The host's write is `SessionManager.megaWrite`.
+- `input/` (`ParseData`, `0x479630`, and its dispatcher) and the line
+  handlers it dispatches to, in `room/`, `player/`, `players/`, `party/`,
+  `talk/`, `messages/`, `stats/` and `combat/`. Where our tracker already
+  reads the same fact the same way the engine is told what it read
+  (`MegaEngine.located`, `buffs`, `afflictions`); where MegaMUD reads it
+  differently, MegaMUD's reading is ported.
+- Data: MegaMUD's records (monsters, items, spells, messages, players) built
+  from the realm's own data and tables (`fromWorld.ts`), never from its `.md`
+  files.
 
 ## Walking
 
@@ -136,14 +143,14 @@ taken up again. Two things are the host's (`SessionHost`):
 
 ## Running it
 
-A character with a `megamud.ini` beside its profile is run by the port
-(`src/main/session/MegaEngine.ts`); one without keeps the old engine until
-the swap. For such a character:
+Every character is run by the port (`src/main/session/MegaEngine.ts`). A
+character that had a `megamud.ini` beside its profile had it taken into its
+`profile.yaml` as `megamud:` once (`Migration.theMegaMudSettingsMovedIn`).
 
-- **The old automation stands down** (`SessionManager.configure`): every
-  module, the rule engine and the old `@` answers. The login, the display,
-  the map and the planners stay.
-- **Settings** are the ini's (`megamud/character.ts`, `0x449aa0`), with
+- **The old automation is gone** (2026-10-14): every module, the rule engine
+  and the old `@` answers. The login, the display, the map and the planners
+  stay.
+- **Settings** are the profile's `megamud:` block (`megamud/character.ts`, `0x449aa0`), with
   `[AbilMon]`, `[Schedule]` and `[Rules]` read by their own loaders. The
   app's per-player remote grants are turned into MegaMUD's remote bits until
   Players.md is read. A combat spell's cast limit of 0 is no limit (MegaMUD's
@@ -309,12 +316,13 @@ the swap. For such a character:
 ## Kept, outside the loop
 
 These are user-started actions that hand control to the loop as a path does:
-auto-hunt, the quest runner, item errands, wards and auto-keys. `Walker` and
-`LoopRunner` become the route and loop planners behind `route` and
-`readPath`. The login automator also stays.
+auto-hunt, the quest runner, item errands, wards and auto-keys. The world
+graph plans every route and loop the engine walks, behind `route` and
+`readPath` (`MegaEngineHost.plan`, `loopRooms`). The login automator also
+stays.
 
-They answer to the file's own `automation.enabled` rather than standing down
-with the rest (`SessionManager.configure`), and to MegaMUD's All Off. Each
+They answer to the file's own `automation.enabled`, and to MegaMUD's All
+Off. Each
 one's way of moving the character is the engine's for a character it runs:
 
 - **Auto-hunt** (2026-10-14): its walk to the lair is the engine's Go To,
@@ -414,8 +422,10 @@ The modules being deleted, with what replaces each:
 | `StatScreen` | none |
 | learned mob lore | none |
 
-The settings that belonged to the deleted modules go with them. A character's
-current settings are converted to `megamud.ini` once, wherever a key maps.
+The settings that belonged to the deleted modules went with them
+(2026-10-22, `Migration.theOldAutomationFieldsWent`). A character with no
+MegaMUD settings yet is offered them started from its old ones on Settings ->
+MegaMUD (`megamudFromConfig`), wherever a key maps.
 
 ## What is MegaMUD's window and not the engine
 
@@ -447,6 +457,8 @@ the terminal's reset (`0x418280`).
   three seconds is let go, and the count runs as MegaMUD's.
 
 ## Order of work
+
+Done: the swap was made on 2026-10-14. The order it was done in:
 
 1. **Settings.** The schema from the loader, INI read and write, import of a
    MegaMUD `.ini`, conversion of current profiles, and the settings screen as

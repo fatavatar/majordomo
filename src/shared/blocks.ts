@@ -102,7 +102,6 @@ export type BlockType =
   | 'user-encumbrance'
   /** `health`: the one command that reports current *and* maximum together. */
   | 'user-health'
-  /** `Welcome to level 2!` — the guild's answer to `train`, captured live. */
   /**
    * `You have been killed!` — this character's own death.
    *
@@ -154,7 +153,11 @@ export type BlockType =
    */
   | 'user-disconnect-penalty'
   | 'user-levels'
-  /** `You hand over N copper farthings to train to the next level!` */
+  /**
+   * `Welcome to level 2!` — the guild's answer to `train`, captured live.
+   *
+   * `You hand over N copper farthings to train to the next level!`
+   */
   | 'user-trains'
   /** `You have learned a new power way of the swan!` — what the level bought. */
   | 'user-learns'
@@ -339,7 +342,7 @@ export type BlockType =
    * Seven of seven bare `get`s at searched-up coins were refused that way
    * across the recorded sessions, and every counted one was taken. Items are
    * unaffected — `get silver` off a search took `silver ring` — so it is the
-   * **cash** that needs the quantity, which is what `AutoLoot` branches on.
+   * **cash** that needs the quantity.
    */
   | 'room-hidden-items'
   // combat
@@ -377,8 +380,7 @@ export type BlockType =
    * **The backstab refusal is the exception twice over**: it is in the corpus
    * (`You cannot backstab with this weapon.`) and it blames the *weapon* and
    * not the class, so the block carries a `weapon` group. A fact about
-   * equipment lasts as long as the equipment, which is what
-   * `AutoCombat.refused` reads it as.
+   * equipment lasts as long as the equipment.
    *
    * It matters because a verb the server will not take is a command spent out
    * of the budget the fight is being fought with, once a fight, silently. This
@@ -398,9 +400,9 @@ export type BlockType =
    * A spell that landed and did nothing — `Your spell has no effect on <name>.`,
    * `… against this monster!`, `… in this room!` (`Player.cs:5919`, `:6195`,
    * `:6249`; captures/041, 059, 078, 105). The spell is never named: what was
-   * cast is the command that provoked it, which `AutoCombat` keeps, and that
-   * is what lets it fall through to `spells.attackFallback` rather than pay
-   * for the same immune spell every round for the rest of the fight.
+   * cast is the command that provoked it, which the fight keeps, so the same
+   * immune spell is not paid for every round for the rest of the fight
+   * (MegaMUD's immunity marks, `combat/immunity.ts`).
    */
   | 'spell-ineffective'
   | 'user-gain-experience'
@@ -532,7 +534,7 @@ export type BlockType =
    * `There are no exits to the south!` — a *look* down a direction the server
    * would not describe: a wall, or a hidden, text or remote-action exit. The
    * look path's refusal and never the move path's (that one is
-   * `direction-failed`), which is why it is its own type: `Walker` acts on a
+   * `direction-failed`), which is why it is its own type: a walk acts on a
    * refused direction as its step being refused, and a player's look during a
    * walk is not. The tracker consumes the peek it answers.
    */
@@ -541,7 +543,7 @@ export type BlockType =
   | 'heard-movement'
   /**
    * `The door is now open.` / `You successfully unlocked the door.` / `You
-   * bashed the door open.` — the map's door annotations, and what `Walker`
+   * bashed the door open.` — the map's door annotations, and what a walk
    * waits on when it is forcing a barrier a route runs into.
    *
    * The two states are not interchangeable and the walker acts on the
@@ -562,7 +564,7 @@ export type BlockType =
    *
    * Deliberately not named for picking. The server spends this one sentence on
    * a failed lock-pick *and* a failed trap disarm, and the words name neither;
-   * whoever reads it supplies the context, which for `Walker` is "there is a
+   * whoever reads it supplies the context, which for a walk is "there is a
    * lock-pick in flight for the step I am standing at".
    */
   | 'skill-failed'
@@ -636,7 +638,7 @@ export type BlockType =
   | 'room-coins'
   /**
    * `You picked up 17 copper farthings` — coins off the floor, captured live
-   * (`npm run probe:play`). Coins go to wealth, not the pack, and the sentence
+   * (`npm run probe:play`, a probe since removed). Coins go to wealth, not the pack, and the sentence
    * has no full stop; a separate type from `player-gets` so nothing tries to
    * put "17 copper farthings" in the pack listing.
    */
@@ -702,7 +704,7 @@ export type BlockType =
    * refusal nobody reads strands the move it answered.** A step sent while
    * mortally wounded is refused by this and by nothing else, so its claim sat
    * outstanding — measured at 126 seconds in that same session — and
-   * `pendingMoves` gates the escape, `Walker.start`, a loop's next leg and
+   * `pendingMoves` gated the escape, the walker, a loop's next leg and
    * hitting back. The one moment a character most needs to run is the one this
    * silently took the escape away in.
    */

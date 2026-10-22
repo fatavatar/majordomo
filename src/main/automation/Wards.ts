@@ -14,7 +14,7 @@
  *
  * A `use` prints the item's sentence — *You take a swig of water from your
  * waterskin.* — and no `You feel …` frame, so the tracker records no buff and
- * `Blessings` never sees it. The spell is taken as up for the realm's stated
+ * nothing that keeps blessings up ever sees it. The spell is taken as up for the realm's stated
  * duration from the moment the use went out, a tick every three seconds —
  * `EffectSpellTickTime`, the clock `SpellEffectManager.Tick` counts
  * `DurationLeft` down on (docs/greatermud/combat.md) — so a waterskin's six

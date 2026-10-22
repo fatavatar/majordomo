@@ -301,7 +301,7 @@ export class Belongings implements BelongingsSink {
 
   /**
    * Drops a measured duration the sheet has shown to be wrong — the buff was
-   * still printed after it ran out (`Blessings.askFirst`). The shipped
+   * still printed after it ran out. The shipped
    * watchdog stands in until a cast and its checked ending measure it again.
    */
   forgetSpellDuration(spell: string): void {
