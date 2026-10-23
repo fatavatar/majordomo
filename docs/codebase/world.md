@@ -53,7 +53,10 @@ the answers built on it:
   the realm's trainers, banks and shops. A lever's detour is held to
   `tuning.world.leverDetourCost` each way, except where it is the only way
   in: a plan refused for a far lever, or walking into a wall one opens, is
-  planned again with that lever's budget lifted (`planReaching`).
+  planned again with that lever's budget lifted (`planReaching`). A set of
+  levers over several rooms is one round, any number of rooms, in the
+  cheapest order (`bestOrder`), with a lever at the door pulled on the way
+  out.
 - **Hidden exits.** `Hidden/Passable` is a plain exit the room does not
   list, priced as any other unless a lever opens it; `Hidden/Searchable`
   costs the search, and `Hidden/Needs N Actions` the levers.
