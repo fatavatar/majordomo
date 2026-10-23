@@ -304,6 +304,12 @@ export class StateFields extends SettingsFields {
    * line rather than the next round.
    */
   attackDue = 0;
+  /**
+   * Ours (2026-10-22): the opening attack (`Combat.OpenCmd`) is out, and the
+   * round it opened has not ended. At that round's end the fight goes on
+   * with `Combat.AttackCmd` and the normal weapon (`combat/opening.ts`).
+   */
+  opening = 0;
   /** 0xe2bc: sneaking was asked for, whatever `MegaMud.AutoSneak` says. */
   sneakAsked = 0;
   /** 0xe2c0: stashing at a stash point. */

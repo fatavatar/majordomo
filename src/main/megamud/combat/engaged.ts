@@ -66,6 +66,7 @@ export function combatEngaged(s: Session, line: string): number {
     return 1;
   }
   if (enemiesHere(s, 0) === 0) {
+    s.opening = 0;
     endAltHeal(s);
     clearAlignment(s);
   } else {
@@ -106,6 +107,7 @@ export function combatOff(s: Session): void {
   if (s.debug !== 0 && s.inCombat !== 0) s.host.trace('{C6}');
   s.inCombat = 0;
   s.attackDue = 0;
+  s.opening = 0;
   s.combatOffExpected = 0;
   s.probablyRoundFought = 0;
   s.roundBlowSeen = 0;

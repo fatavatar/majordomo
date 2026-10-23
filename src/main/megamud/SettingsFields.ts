@@ -547,6 +547,10 @@ export class SettingsFields {
   Combat_MaxMstrExp: number = 0;
   /** Combat.RunRooms (0xdb80) */
   Combat_RunRooms: number = 1;
+  /** Combat.OpenCmd */
+  Combat_OpenCmd: string = '';
+  /** Combat.OpenWeapon */
+  Combat_OpenWeapon: string = '';
   /** PvP.PvpAction (0x90b0) */
   PvP_PvpAction: number = 0;
   /** PvP.RedialPvp (0x90b4) */

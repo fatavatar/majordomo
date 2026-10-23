@@ -106,7 +106,11 @@ function engine(here: string | null = '1/1', ways: Record<string, Route> = {}) {
     },
     fetchFirst: (items, then) => fetches.push([items.map((item) => item.name), then]),
     loopRooms: (name) =>
-      name === 'Ring' ? { rooms: ['1/2', '1/3'], bounce: false } : 'no such loop'
+      name === 'Ring'
+        ? { rooms: ['1/2', '1/3'], bounce: false, commands: [[], []] }
+        : name === 'Hammer'
+          ? { rooms: ['1/2', '1/3'], bounce: false, commands: [[], ['touch hammer', 'look']] }
+          : 'no such loop'
   };
   const e = new MegaEngine(host, {
     settings: defaultSettings(),
@@ -262,6 +266,41 @@ describe('the engine in a session', () => {
     // What MegaMUD's own folder import reads it back as.
     const read = readMegaMudLoop(file, text);
     expect(read?.steps).toEqual(['s', 'e', 'w', 'n']);
+    e.dispose();
+  });
+
+  /* A stop's commands (2026-10-23): typed in its room before the leg out of it. */
+  it('types a stop’s commands in its room, as path steps that do not move', async () => {
+    const { e } = engine('1/1');
+    const made = await e.exportLoop('Hammer');
+    const { text } = made as { file: string; text: string };
+    const hex = (n: number): string => (n >>> 0).toString(16).toUpperCase().padStart(8, '0');
+    const shop = hex(worldSignature(SHOP)!);
+    expect(text.split('\r\n').slice(3, -1)).toEqual([
+      `${hex(worldSignature(ALLEY)!)}:0000:s`,
+      `${hex(worldSignature(SQUARE)!)}:0000:e`,
+      `${shop}:0000:touch hammer`,
+      `${shop}:0000:look`,
+      `${shop}:0000:w`,
+      `${hex(worldSignature(SQUARE)!)}:0000:n`
+    ]);
+    e.dispose();
+  });
+
+  it('makes a loop again once it is edited', async () => {
+    const { e } = engine('1/1');
+    const host = (e as unknown as { host: MegaEngineHost }).host;
+    const commands = async (): Promise<string[]> => {
+      const { text } = (await e.exportLoop('Ring')) as { file: string; text: string };
+      return text
+        .split('\r\n')
+        .slice(3, -1)
+        .map((line) => line.split(':').slice(2).join(':'));
+    };
+    expect(await commands()).toEqual(['s', 'e', 'w', 'n']);
+    host.loopRooms = () => ({ rooms: ['1/2', '1/3'], bounce: false, commands: [['look'], []] });
+    expect(await commands()).toEqual(['look', 's', 'e', 'w', 'n']);
+    expect(e.s.paths.filter((p) => p.title === 'Ring')).toHaveLength(1);
     e.dispose();
   });
 

@@ -122,7 +122,7 @@ import type {
   RoomViewRequest
 } from './explorer';
 import type { InternalConfig } from './internal';
-import type { Loop, LoopProgress, LoopScope, ScopedLoop } from './loops';
+import type { Loop, LoopAddress, LoopProgress, LoopScope, ScopedLoop } from './loops';
 import type { WalkProgress } from './walk';
 import type { MovementStart, WalkStart } from './movement';
 import type { RoomVerdict } from './verdict';
@@ -729,6 +729,8 @@ export const Invoke = {
    * handler in main.
    */
   runLoop: 'loop:run',
+  /** A loop's stops as rooms on a character's realm, for the builder to edit it on. */
+  loopStops: 'loop:stops',
   /** The loops the client ships, for the settings screen to offer. */
   loopCatalogue: 'loop:catalogue',
   /**
@@ -1366,6 +1368,11 @@ export interface IpcApi {
    * Resolves to a refusal, or null, like every other loop control.
    */
   runLoop(session: SessionId, loop: Loop): Promise<string | null>;
+  /**
+   * A loop's stops as the rooms they name on this character's realm, in
+   * order, or why one of them names none (2026-10-23).
+   */
+  loopStops(session: SessionId, loop: Loop): Promise<RoomId[] | string>;
   /** Start a named loop from `automation.loops`. Resolves to a refusal, or null. */
   startLoop(session: SessionId, name: string): Promise<string | null>;
   /**
@@ -1382,7 +1389,7 @@ export interface IpcApi {
    * The picks of a loop being built, planned. Addressed, like every world
    * query: the picks name rooms on this character's realm.
    */
-  draftLoop(session: SessionId, rooms: RoomId[]): Promise<LoopDraft>;
+  draftLoop(session: SessionId, rooms: RoomId[], keep?: RoomId[]): Promise<LoopDraft>;
   getWalk(session: SessionId): Promise<WalkProgress>;
   getAutomation(session: SessionId): Promise<AutomationSnapshot>;
 
@@ -1485,9 +1492,16 @@ export interface IpcApi {
    *
    * `owner` names the character or realm for the two narrow scopes and is
    * ignored for `global`. Resolves to a refusal, or null — the same shape
-   * every other write from a card takes.
+   * every other write from a card takes. `replaces` is the loop an edit was
+   * opened from, taken away where the loop is filed under another name or
+   * scope.
    */
-  addLoop(scope: LoopScope, owner: string | null, loop: Loop): Promise<string | null>;
+  addLoop(
+    scope: LoopScope,
+    owner: string | null,
+    loop: Loop,
+    replaces?: LoopAddress | null
+  ): Promise<string | null>;
   settingsSnapshot(): Promise<SettingsSnapshot>;
   chooseRealm(): Promise<string | null>;
   /** One realm's message table, by the realm's name. Empty when it has none. */

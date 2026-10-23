@@ -395,6 +395,13 @@ export interface Traveller {
    * planned in turn, up to `MAX_LEVER_DEPTH`. Never set by a caller.
    */
   leverDepth?: number;
+  /**
+   * The exits (`leverKey`) whose lever detours are planned however far they
+   * are, past `tuning.world.leverDetourCost` (2026-10-23): set by `route`
+   * for the levers a plan was refused for, or walked into a wall for, so a
+   * far lever that is the only way there is fetched. Never set by a caller.
+   */
+  leversUnbounded?: ReadonlySet<string>;
 }
 
 /**
@@ -1195,6 +1202,14 @@ function statedPenalty(requirement: Requirement | null, traveller: Traveller): n
        */
       if (requirement.searchable) return SEARCH_COST;
       if (openableHere(requirement)) return LEVER_COST * requirement.actions!.length;
+      /*
+       * Passable and asking nothing is a plain exit the room does not list
+       * (2026-10-23): the walk types its direction as for any other. Priced
+       * as discouraged, the Concealed Chamber's way in put the painting that
+       * opens the Hidden Bookroom (3/640) out of a lever's reach. A lever
+       * that opens one is the restriction it states (`stepCost`).
+       */
+      if (requirement.passable === true && requirement.actionsNeeded === undefined) return 0;
       return 200;
     }
 
@@ -4474,7 +4489,8 @@ export class WorldGraph {
      * lairs, went through it. The legs are found by the walk; what waits on
      * them is added to the price after (`riskAlong`), as the plan would.
      */
-    const limit = tuning().world.leverDetourCost;
+    const limit =
+      traveller.leversUnbounded?.has(key) === true ? Infinity : tuning().world.leverDetourCost;
     /** The round through `order` from the door's room and back, priced, or null where a leg is too far. */
     const round = (order: RoomId[]): LeverErrand | null => {
       const stops: LeverErrand['stops'] = [];
@@ -6973,7 +6989,7 @@ export class WorldGraph {
         const words = traveller.keepOut!.words;
         // Through them, with its alternatives kept out: those are offered
         // without the two cards, so none of them may cross a word unasked.
-        const through = this.plan(
+        const through = this.planReaching(
           from,
           to,
           goal,
@@ -6996,7 +7012,7 @@ export class WorldGraph {
          * way round once it is fetched: the Dark-Elf Castle's four-key way by
          * the moat, against two vortexes and the Plane.
          */
-        const round = this.plan(from, to, goal, traveller, {}, traveller);
+        const round = this.planReaching(from, to, goal, traveller, {}, traveller);
         const unlocks = round.blocked
           ? this.keyedWay(from, to, goal, null, traveller, false)
           : null;
@@ -7006,7 +7022,81 @@ export class WorldGraph {
         };
       }
     }
-    return this.plan(from, to, goal, traveller, options, traveller);
+    return this.planReaching(from, to, goal, traveller, options, traveller);
+  }
+
+  /**
+   * `plan`, and where a lever too far to fetch refused it, or a wall such a
+   * lever opens is on it, `plan` again with those levers' detours planned
+   * however far they are (2026-10-23). The first plan found no other way,
+   * so the far lever is the only way in: the budget
+   * (`tuning.world.leverDetourCost`) is for choosing between ways, not for
+   * refusing the one there is. The Hidden Bookroom's door at 3/638 opens to
+   * `move painting` in the Concealed Chamber, two rooms off but behind a
+   * hidden exit each way, and the beholder there could not be routed to.
+   *
+   * Only the levers named are lifted, a few rounds deep for a lever behind
+   * another: lifting every lever made each one the search met a walk over
+   * the whole realm, five seconds a plan.
+   */
+  private planReaching(
+    from: RoomId,
+    to: RoomId,
+    goal: WorldRoom,
+    traveller: Traveller,
+    options: RouteOptions,
+    others: Traveller
+  ): Route {
+    let best = this.plan(from, to, goal, traveller, options, others);
+    let lifted = new Set<string>();
+    for (let round = 0; round < MAX_LEVER_DEPTH; round += 1) {
+      const named = best.blocked
+        ? (best.blocks ?? []).filter(
+            (block) => block.kind === 'lever' && block.itemId === undefined
+          )
+        : (best.walls ?? []);
+      const far = named.flatMap((block) => this.farLever(block) ?? []);
+      const more = far.filter((key) => !lifted.has(key));
+      if (more.length === 0) return best;
+      lifted = new Set([...lifted, ...more]);
+      const lift = (who: Traveller): Traveller => ({ ...who, leversUnbounded: lifted });
+      const reaching = lift(traveller);
+      const again = this.plan(
+        from,
+        to,
+        goal,
+        reaching,
+        options,
+        others === traveller ? reaching : lift(others)
+      );
+      if (again.blocked) continue;
+      if (best.blocked || again.cost < best.cost) best = again;
+    }
+    return best;
+  }
+
+  /**
+   * A passable hidden exit some lever opens: priced as the lever, not as the
+   * plain exit `edgePenalty` takes it for, since what opens it is a
+   * restriction on it.
+   */
+  private leveredPassage(from: RoomId, exit: WorldExit | PortalExit): boolean {
+    return (
+      exit.requirement?.kind === 'hidden' &&
+      exit.requirement.passable === true &&
+      this.leversFor(from, exit.direction).length > 0
+    );
+  }
+
+  /** The lever key of the exit a block or wall stands in, where a lever elsewhere opens it. */
+  private farLever(block: RouteBlock): string | null {
+    if (!('at' in block) || !('to' in block)) return null;
+    const exit = this.rooms.get(block.at)?.exits.find((x) => roomId(x.map, x.room) === block.to);
+    if (exit === undefined) return null;
+    const levers = this.leversFor(block.at, exit.direction);
+    return levers.some((lever) => lever.at !== block.at)
+      ? leverKey(block.at, exit.direction)
+      : null;
   }
 
   /**
@@ -8372,13 +8462,16 @@ export class WorldGraph {
      * MegaMUD engine nothing does, and a plan through it walked into the wall
      * and pushed at it.
      */
-    const unreached = leveredElsewhere(exit.requirement)
-      ? openGates
-        ? tuning().world.wallCost
-        : null
-      : walled;
+    const levered = this.leveredPassage(from, exit);
+    const unreached =
+      leveredElsewhere(exit.requirement) || levered
+        ? openGates
+          ? tuning().world.wallCost
+          : null
+        : walled;
     const penalty =
-      priced !== null && (priced >= tuning().world.wallCost || leveredElsewhere(exit.requirement))
+      priced !== null &&
+      (priced >= tuning().world.wallCost || leveredElsewhere(exit.requirement) || levered)
         ? (this.leverPrice(from, exit.direction, traveller) ?? unreached)
         : walled;
     if (penalty === null) return null;

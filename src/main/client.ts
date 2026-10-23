@@ -164,7 +164,14 @@ import type { EngineMemory, MegaEngineSetup } from './session/MegaEngine';
 import type { LearnedSpellTable, SessionSummary } from '../shared/ipc';
 import { EMPTY_CHARACTER } from '../shared/character';
 import { IDLE_WALK } from '../shared/walk';
-import { asLoops, isLoopScope, loopFileName, mergeLoops, NO_LOOP } from '../shared/loops';
+import {
+  asLoopAddress,
+  asLoops,
+  isLoopScope,
+  loopFileName,
+  mergeLoops,
+  NO_LOOP
+} from '../shared/loops';
 
 /** The most a shared loop file may hold: far over any loop, far under a socket's message. */
 const LOOP_FILE_MAX = 256 * 1024;
@@ -1920,17 +1927,20 @@ function registerIpc(): void {
    * corridors it prefers — so the way drawn is the way the reduction
    * reproduces and the way the lap walks; see the header of `loopDraft.ts`.
    */
-  handle(Invoke.draftLoop, (_caller, session: SessionId, rooms: unknown) => {
+  handle(Invoke.draftLoop, (_caller, session: SessionId, rooms: unknown, keep: unknown) => {
     const world = worldFor(session);
     if (!world || world.size === 0) return EMPTY_LOOP_DRAFT;
     const picks = asRoomIds(rooms, LOOP_LIMITS.stops);
     if (picks === null) throw new Error(t('app.loop.invalidPicks', { max: LOOP_LIMITS.stops }));
+    // The rooms to keep as stops: those the builder has commands for (2026-10-23).
+    const kept = keep === undefined ? [] : asRoomIds(keep, LOOP_LIMITS.stops);
+    if (kept === null) throw new Error(t('app.loop.invalidPicks', { max: LOOP_LIMITS.stops }));
     let cache = drafts.get(session);
     if (cache === undefined) {
       cache = new LoopDraftCache();
       drafts.set(session, cache);
     }
-    return cache.draft(world, picks, travellerOf(session, 'lap'));
+    return cache.draft(world, picks, travellerOf(session, 'lap'), new Set(kept));
   });
 
   /*
@@ -2073,6 +2083,18 @@ function registerIpc(): void {
     if (slot.manager.character.room.map === null) await slot.manager.ensureLocated();
     const answer = slot.manager.startLoop(parsed);
     return 'refused' in answer ? answer.refused : null;
+  });
+  /*
+   * A loop's stops as the rooms they name on this character's realm, for the
+   * builder to open it on (2026-10-23): resolved as a lap resolves them, so
+   * the loop drawn is the loop walked.
+   */
+  handle(Invoke.loopStops, (_caller, session: SessionId, loop: unknown) => {
+    const slot = host?.get(session);
+    if (!slot) return t('app.session.notConnected');
+    const parsed = asLoop(loop);
+    if (parsed === null) return t('app.loop.invalidLoop');
+    return slot.manager.loopStops(parsed);
   });
   /*
    * The shelf, not a character's list — so it takes no session, unlike every
@@ -3714,20 +3736,28 @@ function registerIpc(): void {
    * rather than interpolated into a path — the failure a wire-built path
    * causes here is a write into somebody's YAML at a key nothing reads.
    */
-  handle(Invoke.addLoop, (_caller, scope: unknown, owner: unknown, loop: unknown) => {
-    if (!isLoopScope(scope)) return t('app.loop.unknownScope');
-    const parsed = asLoop(loop);
-    if (parsed === null) return t('app.loop.invalidLoop');
-    const result = editor().addLoop(
-      scope,
-      typeof owner === 'string' && owner.trim().length > 0 ? owner.trim() : null,
-      parsed
-    );
-    // The store's poll would find it within the tick; refreshing now is what
-    // makes the modal's own list show it before the player looks away.
-    if (result.ok) loops?.refresh();
-    return result.ok ? null : result.error;
-  });
+  handle(
+    Invoke.addLoop,
+    (_caller, scope: unknown, owner: unknown, loop: unknown, replaces: unknown) => {
+      if (!isLoopScope(scope)) return t('app.loop.unknownScope');
+      const parsed = asLoop(loop);
+      if (parsed === null) return t('app.loop.invalidLoop');
+      // The loop an edit was opened from, which a save under another name replaces.
+      const replaced = replaces === undefined || replaces === null ? null : asLoopAddress(replaces);
+      if (replaces !== undefined && replaces !== null && replaced === null)
+        return t('app.loop.invalidLoop');
+      const result = editor().addLoop(
+        scope,
+        typeof owner === 'string' && owner.trim().length > 0 ? owner.trim() : null,
+        parsed,
+        replaced
+      );
+      // The store's poll would find it within the tick; refreshing now is what
+      // makes the modal's own list show it before the player looks away.
+      if (result.ok) loops?.refresh();
+      return result.ok ? null : result.error;
+    }
+  );
 
   handle(Invoke.deleteServer, (_caller, name: unknown) => {
     if (typeof name !== 'string' || name.trim().length === 0) return t('app.servers.noSuchServer');

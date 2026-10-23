@@ -46,6 +46,7 @@ import {
 } from '@shared/megamud/settings';
 import type { TabControl } from '@shared/megamud/settingsTabs';
 import { keepFocus } from '../lib/focus';
+import { t } from '../lib/i18n';
 
 /**
  * What is not drawn, per tab: controls by id, and the labels and frames that
@@ -62,6 +63,10 @@ import { keepFocus } from '../lib/focus';
  * - **Loot:** the runic coin's name, which is the realm's (`coins: runic`).
  * - **Sounds:** the sound file and its buttons: an alert is said here, so it
  *   is on or off (the list).
+ * - **Combat:** the four marks beside the Spell Combat rows, a symbol font's
+ *   glyph the template spells `u`, which read as a stray letter here. What
+ *   the tab's procedure (`0x424540`, not in the decompile) shows by them is
+ *   not known (2026-10-22).
  */
 const NOT_HERE: Readonly<Record<string, { ids: readonly number[]; texts: readonly string[] }>> = {
   General: { ids: [1115, 1524, 1977, 1667], texts: ['Directories', 'Data Files'] },
@@ -81,7 +86,8 @@ const NOT_HERE: Readonly<Record<string, { ids: readonly number[]; texts: readonl
     texts: ['Back-scroll buffer ', 'bytes', 'Command splitter character']
   },
   Loot: { ids: [1650], texts: ['Name of runic currency'] },
-  Sounds: { ids: [1146, 1524, 1525, 1452], texts: ['Sound file'] }
+  Sounds: { ids: [1146, 1524, 1525, 1452], texts: ['Sound file'] },
+  Combat: { ids: [5105, 5106, 5107, 5108], texts: [] }
 };
 
 /** Whether a tab's control is drawn here. */
@@ -271,8 +277,33 @@ const CUSTOM: Readonly<Record<string, Make>> = {
   'Combat:5101': (ctx) => <Carried ctx={ctx} pick="backstab" setting="BsWeapon" />,
   'Combat:5102': (ctx) => <Carried ctx={ctx} pick="weapons" setting="NrmWeapon" />,
   'Combat:5103': (ctx) => <Carried ctx={ctx} pick="weapons" setting="AltWeapon" />,
-  'Combat:5104': (ctx) => <Carried ctx={ctx} pick="shields" setting="Shield" />
+  'Combat:5104': (ctx) => <Carried ctx={ctx} pick="shields" setting="Shield" />,
+  // This client's own rows (`shared/megamud/layout.ts`), in its own words.
+  'Combat:9001': (ctx) => (
+    <OwnLabel
+      ctx={ctx}
+      text={t('settings.megamud.openingAttack')}
+      title={t('settings.megamud.openingAttackTitle')}
+    />
+  ),
+  'Combat:9003': (ctx) => (
+    <OwnLabel
+      ctx={ctx}
+      text={t('settings.megamud.openingWeapon')}
+      title={t('settings.megamud.openingWeaponTitle')}
+    />
+  ),
+  'Combat:9005': (ctx) => <Carried ctx={ctx} pick="weapons" setting="OpenWeapon" />
 };
+
+/** A label of this client's own on a MegaMUD tab, with what the setting does on hover. */
+function OwnLabel({ ctx, text, title }: { ctx: EditorContext; text: string; title: string }) {
+  return (
+    <span className="megamud-control megamud-label" style={ctx.style} title={title}>
+      {text}
+    </span>
+  );
+}
 
 /* ------------------------------------------------------------ small parts */
 

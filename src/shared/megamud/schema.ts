@@ -9,6 +9,8 @@
  * `offset` is the key's slot in the session struct, so a reading of the exe
  * can be matched to the key it tests. Keys read in a loop (`FavRoom%d`,
  * `AutoRoom%d`, `Custom%d`, the colours) were added by hand from the loops.
+ * A few keys are this client's own, not megamud.exe's; each says so, with
+ * the date it was asked for, and has no `offset`.
  *
  * Kinds: `int` is a number; `bool` is a number the profile tables mark as a
  * switch; `str` is text the loader truncates to `size - 1` characters;
@@ -913,6 +915,29 @@ export const SETTINGS: readonly SettingDef[] = [
     offset: 0xa3d8
   },
   { section: 'Combat', key: 'RunRooms', kind: 'int', default: 1, offset: 0xdb80 },
+  /*
+   * Ours, not megamud.exe's (asked for 2026-10-22): the first attack sent at
+   * each monster, and the weapon it is made with, before the fight goes on
+   * with `AttackCmd` and the normal weapon. MegaMUD sends one attack command
+   * for the whole fight. Blank leaves it so. No `offset`, as the session
+   * struct has no slot for them; MegaMUD ignores the keys in an INI.
+   */
+  {
+    section: 'Combat',
+    key: 'OpenCmd',
+    kind: 'str',
+    default: '',
+    size: 10,
+    profiled: true
+  },
+  {
+    section: 'Combat',
+    key: 'OpenWeapon',
+    kind: 'str',
+    default: '',
+    size: 30,
+    profiled: true
+  },
   { section: 'PvP', key: 'PvpAction', kind: 'int', default: 0, offset: 0x90b0 },
   { section: 'PvP', key: 'RedialPvp', kind: 'int', default: 0, offset: 0x90b4 },
   { section: 'PvP', key: 'PvpSafePeriod', kind: 'int', default: 30, offset: 0x30df8 },

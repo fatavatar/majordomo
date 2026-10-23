@@ -268,7 +268,13 @@ character that had a `megamud.ini` beside its profile had it taken into its
 - **Its alerts** (`0x4c0640`) are said in the console where MegaMUD would
   play the sound `[Alerts]` names for one: with sound on, a sound named, and
   with `AlertWhenAfk` only while AFK.
-- **Paths**: our loops and routes are made MegaMUD paths. A room's
+- **Paths**: our loops and routes are made MegaMUD paths. A stop's own
+  commands (`LoopStop.commands`, typed in the Loop Builder, 2026-10-23:
+  `touch hammer` where the frost giant is summoned) are path steps that do
+  not move, before the leg out of the stop, as a MegaMUD path writes them;
+  the room is looked at after each, so what one brings is fought first. A
+  loop edited since its path was made is made again when it is next
+  started. A room's
   signature is learned whenever the engine and our tracker stand in it
   together, else worked out from the realm data (`worldSignature`); a room
   whose exits the realm data cannot say how the game lists is given the
@@ -455,6 +461,17 @@ the terminal's reset (`0x418280`).
   echoes it (`send.ts`, `echoAwaited`); lines before the echo neither count
   toward `waitLines` nor make the prompt ready. A command not echoed within
   three seconds is let go, and the count runs as MegaMUD's.
+- **An opening attack, with a weapon of its own** (asked for 2026-10-22).
+  MegaMUD sends one attack command, `Combat.AttackCmd`, for the whole of a
+  fight, and the realm repeats it every round. Two settings of ours on the
+  Combat tab, per profile, change the first: `Combat.OpenCmd` is sent as
+  the first attack at each monster, and `Combat.OpenWeapon` is wielded for
+  it. When the round it opened ends, `AttackCmd` goes out with the normal
+  weapon, as after a backstab (`combat/opening.ts`). Both blank, the fight is
+  MegaMUD's. The keys are not in megamud.exe's loader, so they have no slot
+  in the session struct, and an INI written for MegaMUD carries them unread.
+  The Combat tab draws them as rows of ours among MegaMUD's
+  (`shared/megamud/layout.ts`).
 
 ## Order of work
 

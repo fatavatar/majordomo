@@ -20,12 +20,14 @@ import { castForgotten } from './timer';
 import { State } from '../states';
 import { EntityFlag, EntityType } from '../flags';
 import { castTook, roundDealt } from '../stats/window';
+import { openingRoundEnded } from './opening';
 
 /**
  * `0x425c40`: a round's damage is shown (`Display.ShowRounds`) and cleared,
  * and with `Party.ParAfterRound` the next party status is due.
  */
 export function combatRoundEnd(s: Session): void {
+  openingRoundEnded(s, s.roundBlowSeen);
   if (s.probablyRoundFought === 0 || s.roundBlowSeen === 0 || s.probablyRoundCounted === 0) {
     s.roundDamage = 0;
     if (s.Party_ParAfterRound === 0 || s.roundBlowSeen === 0) return;

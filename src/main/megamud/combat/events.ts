@@ -49,6 +49,7 @@ import { newMonster, newPlayer } from '../data';
 import { castForgotten, roundEvent, RoundEvent } from './timer';
 import { goTo, headFor, roomByName } from '../move/destinations';
 import { stamp } from '../script/events';
+import { openingCommand } from './opening';
 import {
   MonsterFlag,
   PartyFlag,
@@ -74,7 +75,9 @@ export function combatEventLine(s: Session, line: string): number {
   } else if (s.target === '') {
     echo = '\x01\x01';
   } else {
-    echo = `You say "${s.Combat_AttackCmd} ${s.target}`;
+    // Ours: the opening attack's own command while its round is on (`opening.ts`).
+    const command = s.opening !== 0 ? openingCommand(s) : s.Combat_AttackCmd;
+    echo = `You say "${command} ${s.target}`;
   }
   const refused =
     indexOf(line, 'Your command had no effect') !== -1 ||

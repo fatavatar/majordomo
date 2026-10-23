@@ -28,7 +28,13 @@ import {
 import { fileSlug } from '../../shared/files';
 import { itemRuleForFile, itemSaysAnything, type ItemRule } from '../../shared/itemRules';
 import { monsterRuleForFile, saysAnything, type MonsterRule } from '../../shared/monsterRules';
-import { loopFileName, type Loop, type LoopScope, type ScopedLoop } from '../../shared/loops';
+import {
+  loopFileName,
+  type Loop,
+  type LoopAddress,
+  type LoopScope,
+  type ScopedLoop
+} from '../../shared/loops';
 import type { Home } from '../app/home';
 import { t } from '../app/i18n';
 import {
@@ -748,9 +754,35 @@ export class SettingsEditor {
    * The scope is the directory, as always — nothing inside the file says where
    * it is, so this is the only thing that decides.
    */
-  addLoop(scope: LoopScope, owner: string | null, loop: Loop): EditResult {
+  addLoop(
+    scope: LoopScope,
+    owner: string | null,
+    loop: Loop,
+    replaces: LoopAddress | null = null
+  ): EditResult {
     const added = this.addLoops(scope, owner, [loop]);
-    return added.ok ? { ok: true } : added;
+    if (!added.ok) return added;
+    /*
+     * A loop edited in the builder (2026-10-23) and saved under another name
+     * or into another scope: the one it was opened from goes, so an edit is
+     * an edit and not a copy. Under the same name in the same scope it was
+     * just rewritten, and nothing goes.
+     */
+    if (replaces === null) return { ok: true };
+    const same =
+      replaces.scope === scope &&
+      (replaces.owner ?? null) === owner &&
+      replaces.name.toLowerCase() === loop.name.toLowerCase();
+    return same ? { ok: true } : this.removeLoop(replaces);
+  }
+
+  /** One loop's file taken out of its scope, by name; a loop not there is no error. */
+  removeLoop(address: LoopAddress): EditResult {
+    const dir = this.loopsDirectory(address.scope, address.owner);
+    if (dir === null) return { ok: false, error: t('errors.settings.loopScopeUnknown') };
+    const name = address.name.toLowerCase();
+    const found = readLoopFiles(dir).find((entry) => entry.name.toLowerCase() === name);
+    return found === undefined ? { ok: true } : removeYaml(found.file);
   }
 
   /**
@@ -1590,12 +1622,13 @@ function loopNode(loop: Loop): Record<string, unknown> {
     ...(loop.bounce === true ? { bounce: true } : {}),
     ...(loop.prefer === true ? { prefer: true } : {}),
     stops: loop.stops.map((stop) =>
-      stop.linger === undefined && stop.every === undefined
+      stop.linger === undefined && stop.every === undefined && stop.commands === undefined
         ? quoted(stop.room)
         : {
             room: quoted(stop.room),
             ...(stop.linger === undefined ? {} : { linger: stop.linger }),
-            ...(stop.every === undefined ? {} : { every: stop.every })
+            ...(stop.every === undefined ? {} : { every: stop.every }),
+            ...(stop.commands === undefined ? {} : { commands: stop.commands })
           }
     )
   };
@@ -1678,8 +1711,9 @@ function writeLoopFile(file: string, loop: Loop): EditResult {
     mutate: (document) => {
       const node = loopNode(loop);
       for (const [key, value] of Object.entries(node)) document.setIn([key], value);
-      if (node['bounce'] === undefined && document.hasIn(['bounce'])) {
-        document.deleteIn(['bounce']);
+      // A switch turned off in the builder goes from the file with it.
+      for (const key of ['bounce', 'prefer']) {
+        if (node[key] === undefined && document.hasIn([key])) document.deleteIn([key]);
       }
     }
   });

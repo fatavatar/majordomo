@@ -951,8 +951,8 @@ tuning:
     # The most the walk to a lever in another room may cost each way, for the
     # router to plan it: a plain room is 1 and a searched wall 26. The Grand
     # Stair door (7/150) opens to a lever two rooms and a searched wall away,
-    # 28 each way. Past this the lever is left to the walk, which fetches it
-    # when the door refuses.
+    # 28 each way. Past this a lever is fetched only where it is the only way
+    # in, however far it is.
     leverDetourCost: 60
     # How many times the walk to the nearest place a key is had is counted when
     # a way through its door is weighed against the way round: 2 is there and

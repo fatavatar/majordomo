@@ -42,6 +42,8 @@ export interface RoomEntity {
   f40: number;
   /** +0x44. */
   f44: number;
+  /** Ours: the opening attack (`Combat.OpenCmd`) has gone at it (2026-10-22). */
+  opened?: true;
 }
 
 /**

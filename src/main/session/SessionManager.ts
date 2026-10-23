@@ -3388,13 +3388,13 @@ export class SessionManager {
           loopRooms: (name) => {
             const loop = this.loopNamed(name) ?? this.megaLoops.get(name);
             if (loop === undefined) return t('session.move.noSuchLoop', { name });
-            const rooms: RoomId[] = [];
-            for (const stop of loop.stops) {
-              const found = this.findStop(splitStop(stop));
-              if (typeof found === 'string') return found;
-              rooms.push(roomId(found.map, found.room));
-            }
-            return { rooms, bounce: loop.bounce === true };
+            const rooms = this.loopStops(loop);
+            if (typeof rooms === 'string') return rooms;
+            return {
+              rooms,
+              bounce: loop.bounce === true,
+              commands: loop.stops.map((stop) => stop.commands ?? [])
+            };
           }
         },
         { ...setup, learned: setup.learned ?? learned }
@@ -5408,6 +5408,17 @@ export class SessionManager {
     }
     this.preferred = found.edges;
     return found.edges;
+  }
+
+  /** A loop's stops as rooms on this realm, or why one of them is not found. */
+  loopStops(loop: Loop): RoomId[] | string {
+    const rooms: RoomId[] = [];
+    for (const stop of loop.stops) {
+      const found = this.findStop(splitStop(stop));
+      if (typeof found === 'string') return found;
+      rooms.push(roomId(found.map, found.room));
+    }
+    return rooms;
   }
 
   /** Where a loop's stop is, by name and optional coordinates. */

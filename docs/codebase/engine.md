@@ -83,7 +83,7 @@ as `engine` records.
 |---|---|
 | `here()`, `locate()` | where our tracker places the character, and asking the realm where it is |
 | `world()`, `plan(from, to)` | the world graph, and a planned route (A* on the route worker) in place of MegaMUD's search over its path files |
-| `loopRooms(name)` | a loop's stops, which become a MegaMUD path |
+| `loopRooms(name)` | a loop's stops and the commands typed at each, which become a MegaMUD path (the commands as steps that do not move, before the leg out of their stop) |
 | `beforeStep(to)` | wards and doors before each step of a path (`SessionHost`) |
 | `fetchFirst(items, then)` | an item errand for a key or item a walk needs, then the walk again |
 | `opensAWay`, `leaveFor` | whether an item opens a way on the realm, or is left for a party member's errand |

@@ -6,8 +6,8 @@ or leftover, and what was done about each. Most came from one event: on
 `megamud.exe`, and its modules were deleted, but much of what surrounded them
 was not.
 
-Items 1 to 7, 9 and 10 were fixed on 2026-10-22. Item 8 was fixed in part.
-Item 11 is open.
+Items 1 to 7, 9, 10 and 12 were fixed on 2026-10-22. Item 8 was fixed in
+part. Item 11 is open.
 
 ## 1. Two settings trees per character, one mostly dead (fixed)
 
@@ -141,6 +141,18 @@ with the old automation. The MegaMUD engine has its own handling of
 silence (`quietTick`), so putting a timer back could send our probe beside
 the engine's. Whether it should be put back is a question of play, not of
 tidying.
+
+## 12. The MegaMUD settings generator could not run (fixed)
+
+**Was.** `scripts/gen-megamud-fields.mjs`, which writes `SettingsFields.ts`
+from the schema, imported `renderSettingsFields` from `fieldNames.ts`. The
+2026-10-16 sweep for unreachable code removed that function, since nothing in
+the TypeScript projects called it, so the script failed on its first line.
+Found when the opening attack added two settings.
+
+**Done.** The function lives in the script now, where a sweep of the
+TypeScript projects does not see it, and reproduces the committed file
+exactly.
 
 ## Worth knowing, not wrong
 

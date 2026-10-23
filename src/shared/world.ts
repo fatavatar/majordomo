@@ -368,6 +368,12 @@ export interface Requirement {
   /** `Hidden/Searchable` — must be searched for before it can be used. */
   searchable?: boolean;
   /**
+   * `Hidden/Passable` — not among the exits the room lists, and walked by its
+   * direction like any other: a plain exit where nothing else restricts it
+   * (2026-10-23). 997 of MudRev's 1,405 hidden exits.
+   */
+  passable?: boolean;
+  /**
    * `Hidden/Needs 2 Actions` — how many levers the realm says open it.
    *
    * Kept beside `actions` rather than derived from it, because the two can
@@ -3141,9 +3147,10 @@ export type RouteBlock =
   | {
       /**
        * A way only a word said in another room opens — a lever, a boulder —
-       * where the plan cannot fetch it: further than a route goes for one
-       * (`tuning.world.leverDetourCost`), or wanting an item a listed pack
-       * lacks. Before this a refusal over one said *the realm data joins no
+       * where the plan cannot fetch it: no way reaches the room it is said
+       * in (however far: past `tuning.world.leverDetourCost` a lever is still
+       * fetched where it is the only way, 2026-10-23), or it wants an item a
+       * listed pack lacks. Before this a refusal over one said *the realm data joins no
        * path*: the Lava Tube's only door opens to `move boulder` in 7/1000
        * (2026-10-19), and the realm data joins it perfectly well.
        */
@@ -3403,7 +3410,7 @@ export function describeBlock(block: RouteBlock): string {
     case 'lever': {
       const where = `${block.leverName} (${block.leverAt})`;
       return block.itemName === undefined
-        ? `${block.name} opens only to "${block.say}" said in ${where}, further than a route goes to fetch it`
+        ? `${block.name} opens only to "${block.say}" said in ${where}, which no way from here reaches`
         : `${block.name} opens only to "${block.say}" said in ${where}, carrying ${block.itemName}`;
     }
     case 'keptOut':

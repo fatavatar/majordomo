@@ -2,7 +2,11 @@ import { describe, expect, it } from 'vitest';
 
 import { attack } from '../combat/attack';
 import { applyImmunity } from '../combat/immunity';
-import { breakOff } from '../combat/engaged';
+import { breakOff, combatEngaged } from '../combat/engaged';
+import { combatRoundEnd } from '../combat/rounds';
+import { blowStruck } from '../combat/timer';
+import { newItem } from '../data';
+import { setState } from '../script/state';
 import { combatStep, partyHeal, selfHeal } from '../combat/heal';
 import type { SpellRec } from '../data';
 import { addEntity } from '../room/entities';
@@ -273,6 +277,95 @@ describe('running and attacking (0x40e190)', () => {
     expect(runCheck(s)).toBe(1);
     expect(out.sent).toEqual(['intr\r']);
     expect(s.resumeMode).toBe(State.Nothing);
+  });
+
+  /*
+   * Ours (asked for 2026-10-22): the first attack at a monster made with
+   * `Combat.OpenCmd` and `Combat.OpenWeapon`, the fight going on with
+   * `AttackCmd` and the normal weapon once the round it opened ends.
+   */
+  it('opens on a monster with the opening attack, and bashes once its round ends', () => {
+    const { s, out } = fighter([]);
+    s.Combat_AttackCmd = 'bash';
+    s.Combat_OpenCmd = 'a';
+    monster(s, 'giant rat');
+    expect(runCheck(s)).toBe(1);
+    expect(out.sent).toEqual(['a giant rat\r']);
+    combatEngaged(s, '*Combat Engaged*');
+    blowStruck(s);
+    combatRoundEnd(s);
+    expect(s.attackDue).toBe(1);
+    expect(runCheck(s)).toBe(1);
+    expect(out.sent).toEqual(['a giant rat\r', 'bash giant rat\r']);
+  });
+
+  it('waits for the opening round to be fought before going on', () => {
+    const { s, out } = fighter([]);
+    s.Combat_AttackCmd = 'bash';
+    s.Combat_OpenCmd = 'a';
+    monster(s, 'giant rat');
+    runCheck(s);
+    combatEngaged(s, '*Combat Engaged*');
+    combatRoundEnd(s);
+    expect(s.opening).toBe(1);
+    expect(runCheck(s)).toBe(1);
+    expect(out.sent).toEqual(['a giant rat\r']);
+  });
+
+  it('opens each monster in turn', () => {
+    const { s, out } = fighter([]);
+    s.Combat_AttackCmd = 'bash';
+    s.Combat_OpenCmd = 'a';
+    const rat = monster(s, 'giant rat');
+    monster(s, 'cave bear');
+    runCheck(s);
+    combatEngaged(s, '*Combat Engaged*');
+    blowStruck(s);
+    combatRoundEnd(s);
+    runCheck(s);
+    s.room.splice(s.room.indexOf(rat), 1);
+    s.target = '';
+    combatEngaged(s, '*Combat Off*');
+    expect(runCheck(s)).toBe(1);
+    expect(out.sent).toEqual(['a giant rat\r', 'bash giant rat\r', 'a cave bear\r']);
+  });
+
+  it('wields the opening weapon to open, and the normal weapon after', () => {
+    const { s, out } = fighter([]);
+    s.Combat_OpenWeapon = 'rusty dagger';
+    s.Combat_NrmWeapon = 'broadsword';
+    const dagger = newItem(s.data);
+    dagger.name = 'rusty dagger';
+    const sword = newItem(s.data);
+    sword.name = 'broadsword';
+    s.inventory = [
+      { count: 1, flags: 0, item: dagger },
+      { count: 1, flags: 0, item: sword }
+    ];
+    s.weaponWielded = 'broadsword';
+    monster(s, 'giant rat');
+    expect(runCheck(s)).toBe(1);
+    expect(out.sent).toEqual(['equip rusty dagger\r']);
+    setState(s, State.Nothing);
+    expect(runCheck(s)).toBe(1);
+    expect(out.sent.at(-1)).toBe('a giant rat\r');
+    combatEngaged(s, '*Combat Engaged*');
+    blowStruck(s);
+    combatRoundEnd(s);
+    expect(runCheck(s)).toBe(1);
+    expect(out.sent.at(-1)).toBe('equip broadsword\r');
+  });
+
+  it('is MegaMUD’s own fight with no opening set', () => {
+    const { s, out } = fighter([]);
+    s.Combat_AttackCmd = 'bash';
+    monster(s, 'giant rat');
+    runCheck(s);
+    combatEngaged(s, '*Combat Engaged*');
+    blowStruck(s);
+    combatRoundEnd(s);
+    expect(s.attackDue).toBe(0);
+    expect(out.sent).toEqual(['bash giant rat\r']);
   });
 
   it('backstabs while sneaking', () => {

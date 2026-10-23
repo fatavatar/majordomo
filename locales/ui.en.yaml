@@ -2643,6 +2643,17 @@ cards:
     stepAt: step {at}
     title: Loop Builder
     undo: Undo (Ctrl/⌘ Z)
+    # Commands typed at a waypoint, and a saved loop opened to be edited (2026-10-23).
+    addCommandsAria: 'Commands to type at {roomName}'
+    addCommandsTitle: Commands to type in this room each time the loop reaches it, such as touch hammer
+    commandsAria: 'Commands typed at {roomName}'
+    commandsPlaceholder: 'Commands, separated by ;'
+    commandsTitle:
+      Typed in this room each time the loop reaches it, before it moves on. The room is looked at
+      after each, so what a command brings is fought first. Separate several with a semicolon.
+    editing: 'Editing {name}. Saving replaces it.'
+    editingDetach: Save as a new loop instead
+    cannotEdit: 'The loop cannot be opened in the builder: {reason}'
   # Where the character is going, in the two ways it can be going anywhere: a
   # route somebody chose and walks once, or a loop walked round and round. One
   # card and one face, named for whichever is happening — routing, looping or
@@ -3882,6 +3893,11 @@ settings:
     importUnreadable: "{fileName} could not be read."
     # On a control MegaMUD 2.1 draws and saves but never acts on (2026-10-16).
     inertTitle: MegaMUD 2.1 keeps this setting but never acts on it, so it does nothing here either.
+    # The Combat tab's opening attack and weapon, settings of this client's own (2026-10-22).
+    openingAttack: Opening attack
+    openingAttackTitle: The first attack sent at each monster, before the normal attack takes over for the rest of the fight. Blank opens with the normal attack. Not one of MegaMUD's settings.
+    openingWeapon: Opening weapon
+    openingWeaponTitle: The weapon wielded for the opening attack's round, before the normal weapon. Blank keeps the normal weapon. Not one of MegaMUD's settings.
     passwordKept: (unchanged)
   dialog:
     closeAria: Close settings
@@ -3994,6 +4010,9 @@ settings:
     searchPlaceholderLoading: Search the shipped loops
   loopSection:
     addLoop: Add a loop
+    # Opening a loop in the builder to change it (2026-10-23).
+    editAriaLabel: 'Edit {loopName}'
+    editTitle: Edit in the Loop Builder, with commands at its stops
     # A loop file another player exported (2026-10-19), and handing one out.
     exportAriaLabel: 'Export {loopName}'
     exportTitle: Export as a loop file another player can import

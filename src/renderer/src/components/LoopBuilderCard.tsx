@@ -53,7 +53,18 @@ import Icon from './Icon';
 import { type BuilderMarks } from './MapPlan';
 import MapView from './MapView';
 import { useListNavigation } from '../hooks/useListNavigation';
-import { loopFor, notableSteps, pickRoom, shapeOf, stopParts, suggestedName } from '../lib/builder';
+import {
+  commandsText,
+  keptRooms,
+  loopFor,
+  notableSteps,
+  pickRoom,
+  shapeOf,
+  stopParts,
+  suggestedName,
+  withCommands,
+  type StopExtras
+} from '../lib/builder';
 import { keepFocus } from '../lib/focus';
 import {
   begin,
@@ -71,7 +82,7 @@ import { tuning } from '../lib/tuning';
 import type { CharacterState } from '@shared/character';
 import { LOOP_LIMITS } from '@shared/drafts';
 import { roomsWithFinds, type Find } from '@shared/finds';
-import type { Loop, LoopScope } from '@shared/loops';
+import type { Loop, LoopAddress, LoopScope } from '@shared/loops';
 import { EMPTY_MAP, type LocalMap, type MapAway } from '@shared/map';
 import { errorMessage } from '@shared/values';
 import {
@@ -105,6 +116,11 @@ export interface BuilderSeed {
   picks: RoomId[];
   name: string;
   stamp: number;
+  /**
+   * A saved loop opened to be edited (2026-10-23): what its stops carry, its
+   * preference, and where it is filed, which a save replaces.
+   */
+  edit?: { extras: StopExtras; prefer: boolean; at: LoopAddress };
 }
 
 export interface LoopBuilderCardProps extends CardChrome {
@@ -129,10 +145,17 @@ export interface LoopBuilderCardProps extends CardChrome {
    */
   onPeek: ((room: RoomId, at: SVGGElement, settled: boolean) => void) | null;
   onPeekEnd: (() => void) | null;
-  /** The picks, planned by main against this character's realm. */
-  draft(rooms: RoomId[]): Promise<LoopDraft>;
-  /** Files the loop. Resolves to why it could not, or null. */
-  save(loop: Loop, destination: BuilderDestination): Promise<string | null>;
+  /** The picks planned, `keep` staying waypoints whatever the way. */
+  draft(rooms: RoomId[], keep: RoomId[]): Promise<LoopDraft>;
+  /**
+   * Files the loop, in place of `replaces` where it is an edit. Resolves to
+   * why it could not, or to where it was filed.
+   */
+  save(
+    loop: Loop,
+    destination: BuilderDestination,
+    replaces: LoopAddress | null
+  ): Promise<string | LoopAddress>;
   /** A loop to open on, drawn; null opens empty. */
   seed?: BuilderSeed | null;
 }
@@ -177,6 +200,16 @@ function LoopBuilderCard({
    */
   const [prefer, setPrefer] = useState(true);
   const [status, setStatus] = useState<{ text: string; failed: boolean } | null>(null);
+  /*
+   * What the stops carry besides their rooms (2026-10-23), by room: the
+   * commands typed there, as the fields under the waypoints say them, and
+   * the field's own text while it is typed, so a `;` typed before the next
+   * command is not read away under the caret.
+   */
+  const [extras, setExtras] = useState<StopExtras>({});
+  const [typed, setTyped] = useState<Readonly<Record<RoomId, string>>>({});
+  /** The saved loop being edited, which a save replaces; null for a new one. */
+  const [editing, setEditing] = useState<LoopAddress | null>(null);
   const finder = useRef<HTMLInputElement>(null);
 
   const { map: area, number } = character.room;
@@ -201,6 +234,13 @@ function LoopBuilderCard({
     if (seed === null) return;
     setHistory(begin([...seed.picks]));
     setTypedName(seed.name);
+    setExtras(seed.edit?.extras ?? {});
+    setTyped({});
+    setEditing(seed.edit?.at ?? null);
+    if (seed.edit !== undefined) {
+      setPrefer(seed.edit.prefer);
+      setDestination(seed.edit.at.scope);
+    }
     const first = seed.picks[0];
     if (first !== undefined) setCentre(first);
     setStatus(null);
@@ -211,10 +251,11 @@ function LoopBuilderCard({
    * quick succession are two asks, and the first answer arriving second
    * would draw the shorter way under the longer list.
    */
+  const keptKey = keptRooms(extras).join(',');
   useEffect(() => {
     let live = true;
     setPlanFailed(null);
-    void draft([...picks])
+    void draft([...picks], keptKey === '' ? [] : (keptKey.split(',') as RoomId[]))
       .then((next) => {
         if (live) setPlan(next);
       })
@@ -226,7 +267,7 @@ function LoopBuilderCard({
     return () => {
       live = false;
     };
-  }, [draft, picks]);
+  }, [draft, picks, keptKey]);
 
   /* The finder, debounced like the route panel's and searching the same index. */
   useEffect(() => {
@@ -339,6 +380,8 @@ function LoopBuilderCard({
     const start = picks[0];
     if (start === undefined || picks.length < 2) return;
     commit([start]);
+    // Starting over is a new loop: saving it no longer replaces the one opened.
+    setEditing(null);
   }, [commit, picks]);
 
   const stepBack = useCallback((): void => {
@@ -413,8 +456,20 @@ function LoopBuilderCard({
     (place) => t('cards.builder.loopName', { place })
   );
   const name = typedName ?? offered;
-  const loop = loopFor(plan, picks, name, prefer);
+  const loop = loopFor(plan, picks, name, prefer, extras);
   const blocked = plan.legs.find((leg) => leg.route.blocked);
+
+  /** Whether a waypoint row is a loop's close, the start again. */
+  const closes = (index: number): boolean =>
+    shape === 'loop' && index > 0 && index === plan.waypoints.length - 1;
+  /** The commands field's text for a room, or null where it has none open. */
+  const commandsAt = (room: RoomId): string | null =>
+    typed[room] ?? (extras[room]?.commands ? commandsText(extras[room]?.commands) : null);
+  const typeCommands = (room: RoomId, text: string): void => {
+    setTyped((current) => ({ ...current, [room]: text }));
+    setExtras((current) => withCommands(current, room, text));
+    setStatus(null);
+  };
 
   /* The legs between consecutive waypoints, read off the planned steps. */
   const legs = useMemo(() => legsBetweenWaypoints(plan), [plan]);
@@ -427,13 +482,15 @@ function LoopBuilderCard({
         : destination === 'global'
           ? t('cards.builder.destinationGlobal')
           : t('loops.destination.character', { name: characterName });
-    void save(loop, destination)
-      .then((refused) => {
-        setStatus(
-          refused === null
-            ? { text: t('cards.builder.saved', { name: loop.name, where }), failed: false }
-            : { text: refused, failed: true }
-        );
+    void save(loop, destination, editing)
+      .then((filed) => {
+        if (typeof filed === 'string') {
+          setStatus({ text: filed, failed: true });
+          return;
+        }
+        // Saved again, it is this one that is replaced.
+        if (editing !== null) setEditing(filed);
+        setStatus({ text: t('cards.builder.saved', { name: loop.name, where }), failed: false });
       })
       .catch((error) => setStatus({ text: errorMessage(error), failed: true }));
   };
@@ -609,7 +666,37 @@ function LoopBuilderCard({
                     <span className="chip off">
                       {stopParts({ room: `${stop.name} ${stop.id}` }).at}
                     </span>
+                    {/* The closing row is the start again, whose commands are its own row's. */}
+                    {!closes(index) && commandsAt(stop.id) === null && (
+                      <button
+                        aria-label={t('cards.builder.addCommandsAria', { roomName: stop.name })}
+                        className="quiet builder-key"
+                        onClick={() => setTyped((current) => ({ ...current, [stop.id]: '' }))}
+                        title={t('cards.builder.addCommandsTitle')}
+                        type="button"
+                      >
+                        <Icon name="terminal" />
+                      </button>
+                    )}
                   </div>
+                  {!closes(index) && commandsAt(stop.id) !== null && (
+                    <input
+                      aria-label={t('cards.builder.commandsAria', { roomName: stop.name })}
+                      autoFocus={typed[stop.id] === ''}
+                      className="builder-commands"
+                      onChange={(event) => typeCommands(stop.id, event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Escape') {
+                          event.stopPropagation();
+                          chrome.returnFocus?.();
+                        }
+                      }}
+                      placeholder={t('cards.builder.commandsPlaceholder')}
+                      spellCheck={false}
+                      title={t('cards.builder.commandsTitle')}
+                      value={commandsAt(stop.id) ?? ''}
+                    />
+                  )}
                 </li>
               );
             })}
@@ -632,6 +719,21 @@ function LoopBuilderCard({
       </div>
 
       <div className="builder-foot">
+        {editing !== null && (
+          <div className="builder-editing">
+            <span>{t('cards.builder.editing', { name: editing.name })}</span>
+            <button
+              aria-label={t('cards.builder.editingDetach')}
+              className="quiet builder-key"
+              onClick={() => setEditing(null)}
+              onMouseDown={keepFocus}
+              title={t('cards.builder.editingDetach')}
+              type="button"
+            >
+              <Icon name="close" />
+            </button>
+          </div>
+        )}
         <input
           aria-label={t('cards.builder.nameAria')}
           onChange={(event) => setTypedName(event.target.value)}

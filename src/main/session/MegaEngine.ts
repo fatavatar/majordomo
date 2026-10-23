@@ -171,8 +171,10 @@ export interface MegaEngineHost {
    * loop was drawn (2026-10-18).
    */
   plan(from: RoomId, to: RoomId, walking: PlanFor): Promise<Route> | string;
-  /** A loop's stops as rooms, or why not. */
-  loopRooms(name: string): { rooms: RoomId[]; bounce: boolean } | string;
+  /** A loop's stops as rooms, with the commands typed at each, or why not. */
+  loopRooms(
+    name: string
+  ): { rooms: RoomId[]; bounce: boolean; commands: (readonly string[])[] } | string;
   /** MegaMUD's yes-or-no questions; no when absent. */
   ask?(text: string): boolean;
   /** One of MegaMUD's alerts, where it would play its sound. See `MegaEngine.alert`. */
@@ -234,6 +236,12 @@ interface MadeLoop {
   bounce: boolean;
   /** `begins[i]`: the step the leg out of stop `i` begins at. */
   begins: number[];
+  /**
+   * The loop as it stood when its path was made — its stops, their
+   * commands and its bounce — so a loop edited since is made again
+   * (2026-10-23).
+   */
+  drawn: string;
 }
 
 /** A path the engine made from one of our routes or loops, with the room each step is taken from. */
@@ -390,6 +398,11 @@ function pathLength(route: Route): number {
  * hidden exit the realm says a search reveals has none: see `clearWay`.
  */
 const LEVER_TRIES = 2;
+
+/** A loop's stops walked out and back where it bounces: the far end once, the start not again. */
+function bounced<T>(stops: readonly T[], bounce: boolean): T[] {
+  return bounce ? [...stops, ...stops.slice(1, -1).reverse()] : [...stops];
+}
 
 /** A loop's area as MegaMUD names its loops, `Area: Room-map room`; null where it states none. */
 function loopArea(name: string): string | null {
@@ -1945,12 +1958,17 @@ export class MegaEngine {
     return name === undefined ? '' : `[use ${name} ${st.command}]`;
   }
 
+  /**
+   * `legs` walked one after another as one path; `said[i]`, where given, the
+   * commands typed in its room before leg `i` sets out (a loop's stop's own).
+   */
   private makePath(
     name: string,
     title: string,
     legs: Route[],
     start: number,
-    end: number
+    end: number,
+    said: readonly ({ at: RoomId; say: readonly string[] } | null)[] = []
   ): PathRec {
     const p = newPath();
     p.name = name;
@@ -1959,7 +1977,18 @@ export class MegaEngine {
     const rooms: (RoomId | null)[] = [];
     const walked: (RouteStep | null)[] = [];
     const steps: PathStep[] = [];
-    for (const leg of legs) {
+    for (const [i, leg] of legs.entries()) {
+      /*
+       * Ours (2026-10-23): a stop's commands (`LoopStop.commands`, `touch
+       * hammer` where the frost giant is summoned), as path steps that do not
+       * move, like the levers below: MegaMUD types each and looks at the room
+       * again, so what it brings is fought before the leg sets out.
+       */
+      for (const say of said[i]?.say ?? []) {
+        rooms.push(said[i]!.at);
+        walked.push(null);
+        steps.push(this.stepFrom(said[i]!.at, say));
+      }
       for (const st of leg.steps) {
         /*
          * The levers of a detour the planner put on the way (`RouteStep.pull`,
@@ -2145,16 +2174,17 @@ export class MegaEngine {
 
   /** One of our loops as a MegaMUD loop: start and end its first stop. */
   private loopPath(name: string): PathRec | string | 'pending' {
-    const known = this.made.get(shortName('L', name).toLowerCase());
-    if (known) return known.path;
     const stops = this.host.loopRooms(name);
     if (typeof stops === 'string') return stops;
-    const rooms = stops.bounce
-      ? [...stops.rooms, ...stops.rooms.slice(1, -1).reverse()]
-      : stops.rooms;
+    const drawn = JSON.stringify(stops);
+    const known = this.made.get(shortName('L', name).toLowerCase());
+    if (known?.loop?.drawn === drawn) return known.path;
+    const rooms = bounced(stops.rooms, stops.bounce);
+    const commands = bounced(stops.commands, stops.bounce);
     if (rooms.length < 2) return `The loop "${name}" has fewer than two stops.`;
     const start = this.signatureOf(rooms[0]!) ?? this.standInFor(rooms[0]!);
     const legs: Route[] = [];
+    const said: ({ at: RoomId; say: readonly string[] } | null)[] = [];
     const begins: number[] = [];
     let steps = 0;
     // Every leg asked for at once, so the planner's thread works on them together.
@@ -2167,26 +2197,32 @@ export class MegaEngine {
       begins.push(steps);
       const from = rooms[i]!;
       const to = rooms[(i + 1) % rooms.length]!;
-      // A stop listed twice in a row: no leg.
-      if (plan === null || plan === 'pending') continue;
+      const say = commands[i] ?? [];
+      if (plan === 'pending') continue;
       if (typeof plan === 'string') return plan;
-      if (plan.blocked) {
+      if (plan !== null && plan.blocked) {
         if (this.fetchFor(plan.unlocks?.needs, { loop: name }))
           return `The loop "${name}" starts once the pack holds what its way needs.`;
         return plan.reason ?? `No way from ${from} to ${to}.`;
       }
-      legs.push(plan);
-      steps += pathLength(plan);
+      // A stop listed twice in a row: no leg, but its commands are still typed.
+      if (plan === null && say.length === 0) continue;
+      const leg = plan ?? { steps: [], cost: 0, blocked: false };
+      legs.push(leg);
+      said.push(say.length > 0 ? { at: from, say } : null);
+      steps += say.length + pathLength(leg);
     }
-    const p = this.makePath(shortName('L', name), name, legs, start, start);
+    const p = this.makePath(shortName('L', name), name, legs, start, start, said);
     this.madeFor(p)!.loop = {
       name,
       stops: rooms,
       listed: stops.rooms.length,
       bounce: stops.bounce,
-      begins
+      begins,
+      drawn
     };
-    if (!this.s.paths.includes(p)) this.s.paths.push(p);
+    // The path made before an edit gives way to this one.
+    this.s.paths = [...this.s.paths.filter((other) => other.name !== p.name), p];
     return p;
   }
 
@@ -2205,9 +2241,7 @@ export class MegaEngine {
   async exportLoop(name: string): Promise<{ file: string; text: string } | string> {
     const stops = this.host.loopRooms(name);
     if (typeof stops === 'string') return stops;
-    const rooms = stops.bounce
-      ? [...stops.rooms, ...stops.rooms.slice(1, -1).reverse()]
-      : stops.rooms;
+    const rooms = bounced(stops.rooms, stops.bounce);
     if (rooms.length < 2) return `The loop "${name}" has fewer than two stops.`;
     const start = this.signatureOf(rooms[0]!);
     if (start === null) return `MegaMUD has no way to know the loop's first room, ${rooms[0]}.`;

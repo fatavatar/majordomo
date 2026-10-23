@@ -14,6 +14,7 @@ import { send } from '../script/send';
 import { setState } from '../script/state';
 import type { RoomEntity, Session } from '../Session';
 import { maybeImmunityOf, weaponKinds } from './hits';
+import { openingWeapon } from './opening';
 import { State } from '../states';
 import { LineFlag, CarriedFlag, EntityFlag, WeaponKind } from '../flags';
 
@@ -50,6 +51,12 @@ export function normalWeapon(s: Session): number {
       send(s, `remove ${shield}\r`);
       return 1;
     }
+  }
+  // Ours: the opening weapon for the round the opening attack begins (`opening.ts`).
+  const opener = openingWeapon(s);
+  if (opener !== null) {
+    if (s.weaponWielded !== opener) return wield(s, opener, `Equiping opening weapon ${opener}`);
+    return shieldOn(s);
   }
   const bareHands = (): number => {
     if (s.weaponWielded !== '') {
@@ -92,7 +99,8 @@ export function normalWeapon(s: Session): number {
     held !== '' &&
     !(s.Combat_NrmWeapon !== '' && held === s.Combat_NrmWeapon) &&
     !(s.Combat_AltWeapon !== '' && held === s.Combat_AltWeapon) &&
-    !(s.Combat_BsWeapon !== '' && held === s.Combat_BsWeapon);
+    !(s.Combat_BsWeapon !== '' && held === s.Combat_BsWeapon) &&
+    !(s.Combat_OpenWeapon !== '' && held === s.Combat_OpenWeapon);
 
   let want = held;
   if (s.weaponNoEffect === 0) {
@@ -154,15 +162,20 @@ export function normalWeapon(s: Session): number {
         const tag = `${probe & 1 ? 'N' : ''}${probe & 2 ? 'A' : ''}${probe & 4 ? 'B' : ''}`;
         s.host.trace(`{W-probe:${tag}}`);
       }
-      s.weaponWielded = want.slice(0, 30);
-      s.equipping = want.slice(0, 30);
-      s.equipsPending += 1;
-      changing(s, State.Equipping, `Equiping normal attack weapon ${want}`);
-      send(s, `equip ${want}\r`);
-      return 1;
+      return wield(s, want, `Equiping normal attack weapon ${want}`);
     }
   }
   return shieldOn(s);
+}
+
+/** `equip` a weapon for the fight, its name taken as the one in hand. */
+function wield(s: Session, weapon: string, what: string): number {
+  s.weaponWielded = weapon.slice(0, 30);
+  s.equipping = weapon.slice(0, 30);
+  s.equipsPending += 1;
+  changing(s, State.Equipping, what);
+  send(s, `equip ${weapon}\r`);
+  return 1;
 }
 
 /** The shield on for normal combat (`0x4117f7`), when it is not only for backstabs. */

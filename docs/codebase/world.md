@@ -50,7 +50,13 @@ the answers built on it:
   stand still for it; the answer is the same.
 - **Errands.** Where an item is bought (`buyingPlaces`, `priceAt`) or
   dropped, which lever opens a hidden way and where it is (`leverErrand`),
-  the realm's trainers, banks and shops.
+  the realm's trainers, banks and shops. A lever's detour is held to
+  `tuning.world.leverDetourCost` each way, except where it is the only way
+  in: a plan refused for a far lever, or walking into a wall one opens, is
+  planned again with that lever's budget lifted (`planReaching`).
+- **Hidden exits.** `Hidden/Passable` is a plain exit the room does not
+  list, priced as any other unless a lever opens it; `Hidden/Searchable`
+  costs the search, and `Hidden/Needs N Actions` the levers.
 - **Lairs and hunting.** The Hunting card's survey: which lairs the exits
   reach and what they pay.
 

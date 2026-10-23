@@ -25,6 +25,13 @@ export interface LoopSectionProps {
   children?: React.ReactNode;
   /** A loop handed out as a file for another player to import (2026-10-19). */
   onExport?(loop: Loop): void;
+  /**
+   * What Edit on a row does (2026-10-23): opens the loop in the builder, or
+   * null where it cannot be, a loop of a realm or character other than the
+   * one on screen. `from` is where an inherited row lives; null for this
+   * scope's own.
+   */
+  editFor?(loop: Loop, from: ScopedLoop | null): (() => void) | null;
 }
 
 /**
@@ -53,7 +60,8 @@ export default function LoopSection({
   onOpenPicker,
   onDonePicking,
   children,
-  onExport
+  onExport,
+  editFor
 }: LoopSectionProps): React.JSX.Element {
   const chosen = new Set(loops.map((loop) => loop.name));
   const exportButton = (loop: Loop): React.JSX.Element | null =>
@@ -68,6 +76,20 @@ export default function LoopSection({
         <Icon name="download" />
       </button>
     );
+  const editButton = (loop: Loop, from: ScopedLoop | null): React.JSX.Element | null => {
+    const edit = editFor?.(loop, from) ?? null;
+    return edit === null ? null : (
+      <button
+        aria-label={t('settings.loopSection.editAriaLabel', { loopName: loop.name })}
+        className="quiet"
+        onClick={edit}
+        title={t('settings.loopSection.editTitle')}
+        type="button"
+      >
+        <Icon name="edit" />
+      </button>
+    );
+  };
 
   return (
     <fieldset className="settings-menus">
@@ -87,6 +109,7 @@ export default function LoopSection({
                   ? t('settings.loopPicker.stopsCount.one', { count: loop.stops.length })
                   : t('settings.loopPicker.stopsCount.many', { count: loop.stops.length })}
               </span>
+              {editButton(loop, null)}
               {exportButton(loop)}
               <button
                 aria-label={t('settings.loopSection.removeAriaLabel', { loopName: loop.name })}
@@ -139,18 +162,22 @@ export default function LoopSection({
             })}
           </summary>
           <ul className="settings-loops inherited">
-            {inherited.map(({ loop, scope, owner }) => (
-              <li key={`${scope}:${loop.name}`}>
-                <Icon name="route" />
-                <span className="loop-name">{loop.name}</span>
-                <span className="hint">
-                  {scope === 'global'
-                    ? t('settings.loopSection.scopeGlobal')
-                    : (owner ?? t('settings.loopSection.scopeRealm'))}
-                </span>
-                {exportButton(loop)}
-              </li>
-            ))}
+            {inherited.map((entry) => {
+              const { loop, scope, owner } = entry;
+              return (
+                <li key={`${scope}:${loop.name}`}>
+                  <Icon name="route" />
+                  <span className="loop-name">{loop.name}</span>
+                  <span className="hint">
+                    {scope === 'global'
+                      ? t('settings.loopSection.scopeGlobal')
+                      : (owner ?? t('settings.loopSection.scopeRealm'))}
+                  </span>
+                  {editButton(loop, entry)}
+                  {exportButton(loop)}
+                </li>
+              );
+            })}
           </ul>
         </details>
       )}

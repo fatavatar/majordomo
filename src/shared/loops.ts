@@ -26,6 +26,11 @@
  * or an edge, and the realm data already carries them — the route planner
  * grades a door against the character (CLAUDE.md), the walker opens what it
  * can. A flag on a step would be a second copy of the realm, kept by hand.
+ *
+ * What *is* here, since 2026-10-23: the commands typed at a stop
+ * (`LoopStop.commands`), which no realm data states — `touch hammer` where
+ * the frost giant is summoned. MegaMUD's paths carry them as steps that do not
+ * move, and that is what the engine makes of them.
  */
 
 import { fileSlug } from './files';
@@ -62,7 +67,21 @@ export interface LoopStop {
    * really happened — a fight that ran long, a retreat, a rest.
    */
   every?: number;
+  /**
+   * Commands typed in this room each time the loop reaches it, before it
+   * moves on (asked for 2026-10-23): `touch hammer` where the frost giant is
+   * summoned. Sent as MegaMUD sends a path step that does not move
+   * (`script/path.ts`, `typeCommand`): the room is looked at again after each,
+   * so what it brings is fought before the walk goes on.
+   */
+  commands?: string[];
 }
+
+/**
+ * How many commands one stop may carry, and how long each may be: MegaMUD's
+ * own ceiling on a path step's text (`MEGAMUD_PATH_LIMITS.text`).
+ */
+export const STOP_COMMAND_LIMITS = { commands: 20, text: 200 } as const;
 
 export interface Loop {
   /** How the player names it: shown in the palette and on the card. */
@@ -176,6 +195,23 @@ export const LOOP_SCOPES: readonly LoopScope[] = ['global', 'server', 'profile']
 
 export function isLoopScope(value: unknown): value is LoopScope {
   return typeof value === 'string' && (LOOP_SCOPES as readonly string[]).includes(value);
+}
+
+/** Where one loop is filed: its scope, its owner (null for a global one) and its name. */
+export interface LoopAddress {
+  scope: LoopScope;
+  owner: string | null;
+  name: string;
+}
+
+/** A `LoopAddress` that crossed the IPC boundary, or null. */
+export function asLoopAddress(value: unknown): LoopAddress | null {
+  if (typeof value !== 'object' || value === null) return null;
+  const record = value as Record<string, unknown>;
+  const name = typeof record['name'] === 'string' ? record['name'].trim() : '';
+  const owner = typeof record['owner'] === 'string' ? record['owner'].trim() : '';
+  if (!isLoopScope(record['scope']) || name.length === 0) return null;
+  return { scope: record['scope'], owner: owner.length > 0 ? owner : null, name };
 }
 
 /** A loop and where it came from, for a screen that has to say so. */
@@ -327,7 +363,8 @@ export function sameLoops(a: readonly Loop[], b: readonly Loop[]): boolean {
         !!twin &&
         stop.room === twin.room &&
         (stop.linger ?? 0) === (twin.linger ?? 0) &&
-        (stop.every ?? 0) === (twin.every ?? 0)
+        (stop.every ?? 0) === (twin.every ?? 0) &&
+        (stop.commands ?? []).join('\n') === (twin.commands ?? []).join('\n')
       );
     });
   });
@@ -364,10 +401,22 @@ function asStops(value: unknown, limit?: number): LoopStop[] {
        */
       ...(typeof every === 'number' && Number.isFinite(every) && every > 0
         ? { every: Math.round(every) }
-        : {})
+        : {}),
+      ...stopCommands(record['commands'])
     });
   }
   return stops;
+}
+
+/** A stop's `commands`, blank ones dropped, or nothing where it states none. */
+function stopCommands(value: unknown): { commands?: string[] } {
+  const listed = typeof value === 'string' ? [value] : Array.isArray(value) ? value : [];
+  const commands = listed
+    .filter((entry): entry is string => typeof entry === 'string')
+    .map((entry) => entry.trim().slice(0, STOP_COMMAND_LIMITS.text))
+    .filter((entry) => entry.length > 0)
+    .slice(0, STOP_COMMAND_LIMITS.commands);
+  return commands.length > 0 ? { commands } : {};
 }
 
 /**

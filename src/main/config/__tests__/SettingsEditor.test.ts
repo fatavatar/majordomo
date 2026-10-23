@@ -1111,6 +1111,43 @@ describe('filing one loop from the Loops modal', () => {
     );
     expect(written).not.toContain('category');
   });
+
+  /* A stop's commands (2026-10-23), in the file and read back. */
+  it('writes the commands typed at a stop, and reads them back', () => {
+    const hammer: Loop = {
+      ...sewers,
+      stops: [sewers.stops[0]!, { room: 'Sewer Tunnel 1/604', commands: ['touch hammer'] }]
+    };
+    expect(editor.addLoop('profile', 'vaelor', hammer)).toEqual({ ok: true });
+    expect(owned('vaelor')[0]!.stops).toEqual(hammer.stops);
+  });
+
+  /* A loop edited in the builder and saved (2026-10-23). */
+  it('replaces the loop an edit was opened from, renamed or moved', () => {
+    editor.addLoop('profile', 'vaelor', sewers);
+    editor.addLoop('profile', 'vaelor', arena);
+    const at = { scope: 'profile' as const, owner: 'vaelor', name: 'Sewer loop' };
+    expect(editor.addLoop('profile', 'vaelor', { ...sewers, name: 'Sewer ring' }, at)).toEqual({
+      ok: true
+    });
+    expect(
+      owned('vaelor')
+        .map((loop) => loop.name)
+        .sort()
+    ).toEqual(['Newhaven arena', 'Sewer ring']);
+    // Saved again under its own name, it is rewritten and kept.
+    const again = { ...at, name: 'Sewer ring' };
+    expect(editor.addLoop('profile', 'vaelor', { ...sewers, name: 'Sewer ring' }, again)).toEqual({
+      ok: true
+    });
+    expect(owned('vaelor')).toHaveLength(2);
+  });
+
+  it('takes a preference off the file when the edit turns it off', () => {
+    editor.addLoop('profile', 'vaelor', { ...sewers, prefer: true });
+    editor.addLoop('profile', 'vaelor', sewers);
+    expect(owned('vaelor')[0]!.prefer).toBeUndefined();
+  });
 });
 
 /*

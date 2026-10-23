@@ -1214,8 +1214,9 @@ const TUNING_DEFAULTS = {
      * The most the walk to a lever in another room may cost each way, for
      * the router to plan it (`WorldGraph.leverErrand`). The Grand Stair's
      * lever is two rooms and a searched wall from its door, 28 each way; a
-     * plain room is 1 and a search 26. Past this the lever is left to the
-     * walker, which fetches it when the door refuses.
+     * plain room is 1 and a search 26. Past this a lever is fetched only
+     * where it is the only way in, however far it is (2026-10-23,
+     * `WorldGraph.planReaching`).
      */
     leverDetourCost: 60,
     /**

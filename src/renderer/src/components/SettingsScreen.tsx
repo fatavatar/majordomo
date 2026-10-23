@@ -77,7 +77,7 @@ import type {
   CuresDraft,
   RegenDraft
 } from '@shared/drafts';
-import type { Loop, ScopedLoop } from '@shared/loops';
+import type { Loop, LoopAddress, ScopedLoop } from '@shared/loops';
 import type {
   LearnedSpellRow,
   LearnedSpellTable,
@@ -378,6 +378,8 @@ export interface SettingsScreenProps {
   importLoops(realm: string, paths: MegaMudPath[]): Promise<LoopImport>;
   /** A loop handed out as a mudengine loop file (2026-10-19). See `LoopFileImport`. */
   exportLoop(loop: Loop): void;
+  /** A loop opened in the builder to be edited, filed where `at` says (2026-10-23). */
+  editLoop(loop: Loop, at: LoopAddress): void;
   /** A shared loop file onto a realm. */
   importLoopFile(
     realm: string,
@@ -1557,6 +1559,7 @@ export default function SettingsScreen({
   saveSpellLore,
   importLoops,
   exportLoop,
+  editLoop,
   importLoopFile,
   loadLoops,
   loadTrainers,
@@ -2115,6 +2118,30 @@ export default function SettingsScreen({
   };
 
   /*
+   * Edit on a loop's row (2026-10-23): the screen closed, what was typed
+   * saved first, and the loop opened in the builder. Only a loop the
+   * character on screen can plan and file — its own, its realm's or
+   * everybody's — since the builder plans on that character's realm.
+   */
+  const currentRealm = snapshot?.characters.find((entry) => entry.id === current)?.serverName;
+  const loopEditor =
+    (here: LoopAddress['scope'], owner: string | null) =>
+    (loop: Loop, from: ScopedLoop | null): (() => void) | null => {
+      const at: LoopAddress =
+        from === null
+          ? { scope: here, owner, name: loop.name }
+          : { scope: from.scope, owner: from.owner ?? null, name: loop.name };
+      const reachable =
+        at.scope === 'global' ||
+        (at.scope === 'profile' ? at.owner === current : at.owner === currentRealm);
+      if (current === null || required || !reachable) return null;
+      return () => {
+        close();
+        editLoop(loop, at);
+      };
+    };
+
+  /*
    * The monsters this character's realm names, for the priority list's picker.
    * Empty where no realm is loaded, which draws no suggestions and leaves the
    * field typable — the same rule the potion picker follows.
@@ -2502,6 +2529,7 @@ export default function SettingsScreen({
               <GlobalSettings
                 catalogue={catalogue}
                 onExportLoop={exportLoop}
+                editLoopFor={loopEditor('global', null)}
                 draft={globalForm}
                 palette={palette}
                 scope={tab}
@@ -3009,6 +3037,7 @@ export default function SettingsScreen({
                         onDonePicking={() => setPicking(false)}
                         onOpenPicker={openPicker}
                         onExport={exportLoop}
+                        editFor={loopEditor('profile', selected)}
                         onToggle={toggleLoop}
                         picking={picking}
                         /*
@@ -3559,6 +3588,10 @@ export default function SettingsScreen({
                         onDonePicking={() => setPicking(false)}
                         onOpenPicker={openPicker}
                         onExport={exportLoop}
+                        editFor={loopEditor(
+                          'server',
+                          serverPick === NEW_SERVER ? null : serverPick
+                        )}
                         onToggle={toggleServerLoop}
                         picking={picking}
                       >

@@ -11,7 +11,7 @@ import RewritesDesigner from './RewriteDesigner';
 import { t } from '../lib/i18n';
 import type { GlobalDraft } from '@shared/drafts';
 import type { SpellOption } from '@shared/ipc';
-import type { Loop } from '@shared/loops';
+import type { Loop, ScopedLoop } from '@shared/loops';
 import {
   TERMINAL_THEME_IDS,
   TERMINAL_THEMES,
@@ -71,6 +71,8 @@ export interface GlobalSettingsProps {
   onToggleLoop(loop: Loop): void;
   /** A loop handed out as a file for another player to import. */
   onExportLoop(loop: Loop): void;
+  /** Edit on a loop row: see `LoopSectionProps.editFor`. */
+  editLoopFor?(loop: Loop, from: ScopedLoop | null): (() => void) | null;
   firstFieldRef: React.RefObject<HTMLInputElement>;
   /**
    * What the spell pickers offer here: the shipped realm's castable spells.
@@ -183,6 +185,7 @@ export default function GlobalSettings({
   onDonePicking,
   onToggleLoop,
   onExportLoop,
+  editLoopFor,
   firstFieldRef,
   realmSpells,
   palette,
@@ -718,6 +721,7 @@ export default function GlobalSettings({
               note={t('settings.global.movement.loopsNote')}
               onDonePicking={onDonePicking}
               onExport={onExportLoop}
+              editFor={editLoopFor}
               onOpenPicker={onOpenPicker}
               onToggle={onToggleLoop}
               picking={picking}

@@ -24,6 +24,7 @@ import {
   type ControlBind,
   type TabControl
 } from '@shared/megamud/settingsTabs';
+import { tabAsDrawn } from '@shared/megamud/layout';
 import {
   parseIni,
   sections,
@@ -141,8 +142,9 @@ export function MegaMudPanel({
   /** The loops the character can walk, for a timed event's loop. */
   loops?: readonly string[];
 }) {
-  const page = SETTINGS_TABS.find((p) => p.title === tab);
-  if (page === undefined || NO_PAGE.includes(tab)) return null;
+  const found = SETTINGS_TABS.find((p) => p.title === tab);
+  if (found === undefined || NO_PAGE.includes(tab)) return null;
+  const page = tabAsDrawn(found);
   const { draft } = mega;
   return (
     <div className="megamud-settings">

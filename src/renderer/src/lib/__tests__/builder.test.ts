@@ -1,6 +1,17 @@
 import { describe, expect, it } from 'vitest';
 
-import { loopFor, notableSteps, pickRoom, shapeOf, suggestedName } from '../builder';
+import {
+  commandsOf,
+  commandsText,
+  editedLoop,
+  keptRooms,
+  loopFor,
+  notableSteps,
+  pickRoom,
+  shapeOf,
+  suggestedName,
+  withCommands
+} from '../builder';
 import type { LoopDraft, RouteStep } from '@shared/world';
 
 const step = (over: Partial<RouteStep> = {}): RouteStep => ({
@@ -188,5 +199,61 @@ describe('the steps worth listing', () => {
       { at: 3, step: phrase },
       { at: 4, step: portal }
     ]);
+  });
+});
+
+describe('commands at a waypoint (2026-10-23)', () => {
+  it('reads a field of commands separated by semicolons', () => {
+    expect(commandsOf(' touch hammer ;; look; ')).toEqual(['touch hammer', 'look']);
+    expect(commandsText(['touch hammer', 'look'])).toBe('touch hammer; look');
+    expect(commandsOf('')).toEqual([]);
+  });
+
+  it('keeps a room with commands, and lets it go when the field is cleared', () => {
+    const one = withCommands({}, '1/3', 'touch hammer');
+    expect(one).toEqual({ '1/3': { commands: ['touch hammer'] } });
+    expect(keptRooms(one)).toEqual(['1/3']);
+    expect(withCommands(one, '1/3', ' ; ')).toEqual({});
+    // A clock the loop came with stays when its commands go.
+    expect(withCommands({ '1/3': { every: 60, commands: ['x'] } }, '1/3', '')).toEqual({
+      '1/3': { every: 60 }
+    });
+  });
+
+  it('saves what a room carries on its stop', () => {
+    const draft = draftOf(
+      [
+        ['1/1', 'Gate'],
+        ['1/3', 'Hammer Room'],
+        ['1/1', 'Gate']
+      ],
+      [
+        { from: '1/1', to: '1/3' },
+        { from: '1/3', to: '1/1' }
+      ]
+    );
+    const loop = loopFor(draft, ['1/1', '1/3', '1/1'], 'Giant', false, {
+      '1/3': { commands: ['touch hammer'] }
+    });
+    expect(loop?.stops).toEqual([
+      { room: 'Gate 1/1' },
+      { room: 'Hammer Room 1/3', commands: ['touch hammer'] }
+    ]);
+  });
+
+  it('opens a saved loop as the picks it was drawn with', () => {
+    const ring = editedLoop(
+      { name: 'Ring', stops: [{ room: 'A 1/1' }, { room: 'B 1/2', commands: ['touch hammer'] }] },
+      ['1/1', '1/2']
+    );
+    expect(ring).toEqual({
+      picks: ['1/1', '1/2', '1/1'],
+      extras: { '1/2': { commands: ['touch hammer'] } }
+    });
+    const there = editedLoop(
+      { name: 'Out', bounce: true, stops: [{ room: 'A 1/1', every: 30 }, { room: 'B 1/2' }] },
+      ['1/1', '1/2']
+    );
+    expect(there).toEqual({ picks: ['1/1', '1/2'], extras: { '1/1': { every: 30 } } });
   });
 });

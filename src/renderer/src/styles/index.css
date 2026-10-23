@@ -4169,6 +4169,14 @@ button.quest-plan-back {
   white-space: nowrap;
 }
 
+/* The commands typed at a waypoint (2026-10-23), under its name, in the console's face. */
+.builder-commands {
+  font-family: var(--font-mono);
+  font-size: var(--font-micro);
+  margin: 0 0 2px 26px;
+  width: calc(100% - 26px);
+}
+
 /* What a leg needs, indented under the waypoint it leads to. */
 .builder-leg {
   display: flex;
@@ -4211,6 +4219,16 @@ button.quest-plan-back {
 .builder-destination {
   display: flex;
   flex: 0 0 auto;
+  gap: 4px;
+}
+
+/* The saved loop being edited, which the save replaces: a line of its own. */
+.builder-editing {
+  align-items: center;
+  color: var(--text-lo);
+  display: flex;
+  flex-basis: 100%;
+  font-size: var(--font-micro);
   gap: 4px;
 }
 

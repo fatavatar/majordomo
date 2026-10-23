@@ -16,6 +16,7 @@ import { forgetAwaited, setState } from '../script/state';
 import type { Session } from '../Session';
 import { remoteCommand } from './remote';
 import { State } from '../states';
+import { openingCommand } from '../combat/opening';
 
 /** The social verbs that mark an emote (the table at `0x564610`). */
 const EMOTES = [
@@ -152,7 +153,9 @@ function ownSpeech(s: Session, line: string): number {
   s.hidden = 0;
   s.sneaking = 0;
   if (s.inGame === 0) return 0;
-  const attack = `You say "${s.Combat_AttackCmd} `;
+  // Ours: the opening attack's own command while its round is on (`opening.ts`).
+  const command = s.opening !== 0 ? openingCommand(s) : s.Combat_AttackCmd;
+  const attack = `You say "${command} `;
   const at = line.indexOf(attack);
   if (at !== -1) {
     const rest = line.slice(at + attack.length);

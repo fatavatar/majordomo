@@ -321,6 +321,8 @@ export function parseInstruction(raw: string | undefined): Requirement | null {
   if (kind === 'hidden') {
     // `Hidden/Searchable` can be revealed with `search <direction>`.
     requirement.searchable = /searchable/i.test(text);
+    // `Hidden/Passable`: not listed among the exits, and walked like any other.
+    if (/passable/i.test(text)) requirement.passable = true;
     /*
      * `Hidden/Needs 2 Actions, specific order` — how many levers, and whether
      * they have to be pulled in the realm's own numbering. **What** those

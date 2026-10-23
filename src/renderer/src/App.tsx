@@ -136,6 +136,7 @@ import { useTheme } from './hooks/useTheme';
 import { useStreamPressure, ZERO_METER, type StreamMeter } from './hooks/useStreamPressure';
 import { t } from './lib/i18n';
 import { loopRows, type LoopChoice, type LoopDestination, type LoopHere } from './lib/loops';
+import { editedLoop } from './lib/builder';
 import { chord } from './lib/platform';
 import type { PopoverAnchor } from './lib/popover';
 import { playerKey } from '@shared/players';
@@ -156,7 +157,7 @@ import { figuresOf, type StatlineFigures } from '@shared/statline';
 import { IDLE_WALK, type WalkProgress } from '@shared/walk';
 import { DEFAULT_INTERNAL, type InternalConfig } from '@shared/internal';
 import type { HuntingRoom } from '@shared/hunting';
-import { NO_LOOP, type Loop, type LoopProgress } from '@shared/loops';
+import { NO_LOOP, type Loop, type LoopAddress, type LoopProgress } from '@shared/loops';
 import { saveText } from './lib/download';
 import { movementOf, type Movement, type MovementConfirm } from '@shared/movement';
 import { megaMovement } from '@shared/megamud/toggles';
@@ -598,8 +599,12 @@ interface BuilderApi {
   realmName: string;
   search(query: string): Promise<WorldRoom[]>;
   loadMap(map: number, room: number, radius: number): Promise<LocalMap>;
-  draft(rooms: RoomId[]): Promise<LoopDraft>;
-  save(loop: Loop, destination: BuilderDestination): Promise<string | null>;
+  draft(rooms: RoomId[], keep: RoomId[]): Promise<LoopDraft>;
+  save(
+    loop: Loop,
+    destination: BuilderDestination,
+    replaces: LoopAddress | null
+  ): Promise<string | LoopAddress>;
   /** A loop to open drawn — the Hunting card's — or null for an empty map. */
   seed: BuilderSeed | null;
 }
@@ -4070,7 +4075,10 @@ export default function App() {
    * The picks of a loop being built, planned on this character's realm.
    * Addressed like every world query.
    */
-  const draftLoop = useCallback((rooms: RoomId[]) => api.draftLoop(session, rooms), [api, session]);
+  const draftLoop = useCallback(
+    (rooms: RoomId[], keep: RoomId[]) => api.draftLoop(session, rooms, keep),
+    [api, session]
+  );
 
   /**
    * File a built loop where the builder's chip says, and say so in the
@@ -4080,22 +4088,52 @@ export default function App() {
    * or a loop filed from one surface is invisible to the other.
    */
   const saveDraftLoop = useCallback(
-    async (loop: Loop, destination: BuilderDestination): Promise<string | null> => {
+    async (
+      loop: Loop,
+      destination: BuilderDestination,
+      replaces: LoopAddress | null
+    ): Promise<string | LoopAddress> => {
       const owner =
         destination === 'server'
           ? (profiles.find((profile) => profile.id === session)?.serverName ?? null)
           : destination === 'global'
             ? null
             : session;
-      const refused = await api.addLoop(destination, owner, loop);
-      if (refused === null) {
-        terminals.current
-          .get(session)
-          ?.notice(t('cards.builder.savedNotice', { loopName: loop.name }));
-      }
-      return refused;
+      const refused = await api.addLoop(destination, owner, loop, replaces);
+      if (refused !== null) return refused;
+      terminals.current
+        .get(session)
+        ?.notice(t('cards.builder.savedNotice', { loopName: loop.name }));
+      return { scope: destination, owner, name: loop.name };
     },
     [api, profiles, session]
+  );
+
+  /**
+   * A saved loop opened in the builder to be edited (2026-10-23), from its
+   * row in Settings: its stops placed on this character's realm and drawn as
+   * picks, what each carries kept, and where it is filed, so the save
+   * replaces it. A stop the realm cannot place is said, and nothing opens.
+   */
+  const editLoop = useCallback(
+    (loop: Loop, at: LoopAddress) => {
+      if (session === NO_SESSION) return;
+      void api.loopStops(session, loop).then((rooms) => {
+        if (typeof rooms === 'string') {
+          terminals.current.get(session)?.notice(t('cards.builder.cannotEdit', { reason: rooms }));
+          return;
+        }
+        const { picks, extras } = editedLoop(loop, rooms);
+        setBuilderSeed({
+          picks,
+          name: loop.name,
+          stamp: Date.now(),
+          edit: { extras, prefer: loop.prefer === true, at }
+        });
+        openBuilder();
+      });
+    },
+    [api, openBuilder, session]
   );
 
   const builderRealmName = profiles.find((profile) => profile.id === session)?.serverName ?? '';
@@ -6363,6 +6401,7 @@ export default function App() {
         importMonsters={settingsApi.importMonsters}
         importLoops={settingsApi.importLoops}
         exportLoop={settingsApi.exportLoop}
+        editLoop={editLoop}
         importLoopFile={settingsApi.importLoopFile}
         saveMonsters={settingsApi.saveMonsters}
         loadItems={settingsApi.loadItems}

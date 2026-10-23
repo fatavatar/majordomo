@@ -12,6 +12,7 @@ import { normalWeapon } from '../combat/weapons';
 import { inAttackCast, wantsRoomSpell } from '../combat/casts';
 import { attackLateMark, clearCastMode, rememberTarget, targetChanged } from '../combat/engaged';
 import { combatRoundEnd } from '../combat/rounds';
+import { openingCommand, openingSent, opensOn } from '../combat/opening';
 import { abbrev, idiv } from '../cstr';
 import { postBackstab, postMeditate, postRest } from '../health/prepost';
 import { healthStep } from '../health/rest';
@@ -444,7 +445,11 @@ function fight(s: Session, stop: number): number {
   rememberTarget(s);
   setState(s, State.Attacking);
   s.host.activity(`Attacking ${e.name}`);
-  const cmd = s.Combat_AttackCmd;
+  // Ours: the first attack at a monster may be another command (`opening.ts`).
+  const opening = opensOn(s, e);
+  const cmd = opening ? openingCommand(s) : s.Combat_AttackCmd;
+  if (opening) openingSent(s, e);
+  else s.opening = 0;
   if (s.sneaking !== 0) {
     if (
       abbrev(cmd, 'punch', 2) !== 0 ||

@@ -55,7 +55,8 @@ function reduceMore(
   graph: WorldGraph,
   path: readonly RoomId[],
   traveller: Traveller,
-  state: Reduction
+  state: Reduction,
+  kept: ReadonlySet<number> = new Set()
 ): Reduction {
   const stops = [...state.stops];
   let anchor = state.anchor;
@@ -68,7 +69,8 @@ function reduceMore(
       walked !== null &&
       walked.length === recorded.length &&
       walked.every((id, at) => id === recorded[at]);
-    if (!same) {
+    // A place on the way that must stay a stop (`kept`) is one, walked through or not.
+    if (!same || kept.has(index - 1)) {
       stops.push(path[index - 1]!);
       anchor = index - 1;
     }
@@ -113,6 +115,8 @@ interface Built {
   picks: RoomId[];
   legs: LoopDraftLeg[];
   path: RoomId[];
+  /** Where in `path` each pick planned so far stands, for the picks that stay stops. */
+  ends: number[];
   reduction: Reduction;
   /** True once a leg was blocked: nothing after it was planned, and nothing extends it. */
   blocked: boolean;
@@ -132,10 +136,12 @@ function extend(
   graph: WorldGraph,
   base: Built,
   picks: readonly RoomId[],
-  traveller: Traveller
+  traveller: Traveller,
+  keep: ReadonlySet<RoomId>
 ): Built {
   const legs = [...base.legs];
   const path = [...base.path];
+  const ends = [...base.ends];
   let blocked = base.blocked;
   for (let index = base.picks.length; index < picks.length && !blocked; index += 1) {
     const from = picks[index - 1]!;
@@ -143,37 +149,61 @@ function extend(
     const route = graph.route(from, to, traveller);
     legs.push({ from, to, route });
     if (route.blocked) blocked = true;
-    else for (const step of route.steps) path.push(step.to);
+    else {
+      for (const step of route.steps) path.push(step.to);
+      ends.push(path.length - 1);
+    }
   }
-  const reduction = reduceMore(graph, path, traveller, base.reduction);
+  // Ours (2026-10-23): a pick with commands to type there stays a stop.
+  const kept = new Set(ends.filter((at) => keep.has(path[at]!)));
+  const reduction = reduceMore(graph, path, traveller, base.reduction, kept);
   const waypoints = waypointsOf(reduction, path).map((id) => ({
     id,
     name: graph.byId(id)?.name ?? id
   }));
-  return { picks: [...picks], legs, path, reduction, blocked, draft: { legs, path, waypoints } };
+  return {
+    picks: [...picks],
+    legs,
+    path,
+    ends,
+    reduction,
+    blocked,
+    draft: { legs, path, waypoints }
+  };
 }
 
-function fresh(graph: WorldGraph, picks: readonly RoomId[], traveller: Traveller): Built | null {
+function fresh(
+  graph: WorldGraph,
+  picks: readonly RoomId[],
+  traveller: Traveller,
+  keep: ReadonlySet<RoomId>
+): Built | null {
   const first = picks[0];
   if (first === undefined) return null;
   const seed: Built = {
     picks: [first],
     legs: [],
     path: [first],
+    ends: [0],
     reduction: seedReduction(first),
     blocked: false,
     draft: { legs: [], path: [first], waypoints: [] }
   };
-  return extend(graph, seed, picks, traveller);
+  return extend(graph, seed, picks, traveller, keep);
 }
 
-/** The picks, planned as far as they go — from scratch. See {@link LoopDraftCache}. */
+/**
+ * The picks, planned as far as they go — from scratch. See {@link LoopDraftCache}.
+ * A pick whose room is in `keep` stays a waypoint, though the way runs through
+ * it anyway: the builder keeps there a stop with commands to type.
+ */
 export function draftLoop(
   graph: WorldGraph,
   picks: readonly RoomId[],
-  traveller: Traveller = {}
+  traveller: Traveller = {},
+  keep: ReadonlySet<RoomId> = new Set()
 ): LoopDraft {
-  return fresh(graph, picks, traveller)?.draft ?? EMPTY_LOOP_DRAFT;
+  return fresh(graph, picks, traveller, keep)?.draft ?? EMPTY_LOOP_DRAFT;
 }
 
 /**
@@ -198,9 +228,15 @@ export class LoopDraftCache {
 
   constructor(private readonly limit = 64) {}
 
-  draft(graph: WorldGraph, picks: readonly RoomId[], traveller: Traveller = {}): LoopDraft {
+  draft(
+    graph: WorldGraph,
+    picks: readonly RoomId[],
+    traveller: Traveller = {},
+    keep: ReadonlySet<RoomId> = new Set()
+  ): LoopDraft {
     if (picks.length === 0) return EMPTY_LOOP_DRAFT;
-    const stamp = fingerprint(traveller);
+    // The rooms kept are part of what a remembered draft answers for.
+    const stamp = `${fingerprint(traveller)}|${[...keep].sort().join(',')}`;
     const hit = this.get(graph, stamp, picks);
     if (hit !== null) return hit.draft;
 
@@ -210,7 +246,9 @@ export class LoopDraftCache {
       if (found !== null && !found.blocked) base = found;
     }
     const built =
-      base === null ? fresh(graph, picks, traveller) : extend(graph, base, picks, traveller);
+      base === null
+        ? fresh(graph, picks, traveller, keep)
+        : extend(graph, base, picks, traveller, keep);
     if (built === null) return EMPTY_LOOP_DRAFT;
     this.put(graph, stamp, built);
     return built.draft;

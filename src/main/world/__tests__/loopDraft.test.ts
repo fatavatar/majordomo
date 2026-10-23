@@ -48,6 +48,34 @@ function square(): Array<Record<string, unknown>> {
   ];
 }
 
+describe('a pick with commands to type there (2026-10-23)', () => {
+  it('stays a waypoint the way would otherwise walk through', () => {
+    const world = makeWorld(corridor(5));
+    expect(draftLoop(world, ['1/1', '1/3', '1/5']).waypoints.map((w) => w.id)).toEqual([
+      '1/1',
+      '1/5'
+    ]);
+    expect(
+      draftLoop(world, ['1/1', '1/3', '1/5'], {}, new Set(['1/3'])).waypoints.map((w) => w.id)
+    ).toEqual(['1/1', '1/3', '1/5']);
+  });
+
+  it('is remembered apart from the same picks with none', () => {
+    const world = makeWorld(corridor(5));
+    const cache = new LoopDraftCache();
+    const ids = (keep: string[]) =>
+      cache.draft(world, ['1/1', '1/3', '1/5'], {}, new Set(keep)).waypoints.map((w) => w.id);
+    expect(ids([])).toEqual(['1/1', '1/5']);
+    expect(ids(['1/3'])).toEqual(['1/1', '1/3', '1/5']);
+    expect(ids([])).toEqual(['1/1', '1/5']);
+    // Grown by one pick from a remembered draft, the kept room still stands.
+    cache.draft(world, ['1/1', '1/3'], {}, new Set(['1/3']));
+    expect(
+      cache.draft(world, ['1/1', '1/3', '1/5'], {}, new Set(['1/3'])).waypoints.map((w) => w.id)
+    ).toEqual(['1/1', '1/3', '1/5']);
+  });
+});
+
 describe('planning a hand-built loop', () => {
   it('is empty for no picks', () => {
     expect(draftLoop(makeWorld(corridor(3)), [])).toEqual({ legs: [], path: [], waypoints: [] });
