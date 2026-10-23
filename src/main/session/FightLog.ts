@@ -93,18 +93,35 @@ export class FightLog implements FightSink {
    * is this instance's own, already in `recorded`, and is not read back.
    */
   private readonly priorBytes: number;
+  /** The rolled file beside it (`olderFights`), and how long it was. */
+  private readonly older: string;
+  private readonly olderBytes: number;
   private timer: NodeJS.Timeout | null = null;
   /** Reported once. A file that will not open will not open again either. */
   private complained = false;
 
   /**
    * @param file Where to append. Created with its directory on first write.
+   * @param maxBytes Past this on opening, the file is rolled to the one beside
+   *   it (`olderFights`), replacing the one rolled before (`logging.maxBytes`).
+   *   Rolled on opening only, so what is folded is two whole files: Skinny's
+   *   had reached 40 MB with no limit (2026-10-18).
    */
   constructor(
     private readonly file: string,
-    private readonly events: FightLogEvents = {}
+    private readonly events: FightLogEvents = {},
+    maxBytes = Number.POSITIVE_INFINITY
   ) {
+    this.older = olderFights(file);
+    if (lengthOf(file) > maxBytes) {
+      try {
+        fs.renameSync(file, this.older);
+      } catch (error) {
+        this.events.notice?.(`Fight statistics could not be rolled: ${errorMessage(error)}`);
+      }
+    }
     this.priorBytes = lengthOf(file);
+    this.olderBytes = lengthOf(this.older);
   }
 
   record(fight: FightRecord): void {
@@ -219,7 +236,9 @@ export class FightLog implements FightSink {
    * are still counted.
    */
   private pastRecord(): Promise<FoldedRecord> {
-    this.before ??= foldFile(this.file, this.priorBytes)
+    this.before ??= foldFile(this.older, this.olderBytes)
+      // The rolled file's fold is `foldFile`'s own new maps, so continued in place.
+      .then((older) => foldFile(this.file, this.priorBytes, older as Folding))
       .catch((error: unknown) => {
         this.events.notice?.(
           `Fight statistics could not be read from ${this.file}: ${errorMessage(error)}`
@@ -229,6 +248,19 @@ export class FightLog implements FightSink {
       .then((folded) => (this.past = folded));
     return this.before;
   }
+}
+
+/** A fold being added to. */
+interface Folding {
+  folds: FightFolds;
+  outputs: FightOutputs;
+}
+
+/** The file a fight log is rolled to: `skinny.jsonl.gz` to `skinny.1.jsonl.gz`. */
+export function olderFights(file: string): string {
+  return file.endsWith('.jsonl.gz')
+    ? `${file.slice(0, -'.jsonl.gz'.length)}.1.jsonl.gz`
+    : `${file}.1`;
 }
 
 /** The file's length, or zero for one not there yet. */
@@ -241,7 +273,8 @@ function lengthOf(file: string): number {
 }
 
 /**
- * Folds the first `bytes` of a log, asynchronously and in slices.
+ * Folds the first `bytes` of a log, asynchronously and in slices, onto
+ * `into` where given (the rolled file's fold, which this one continues).
  *
  * A prefix of a gzip-member file that ends on a member boundary is itself a
  * valid stream, and the prefix an instance measured on opening ends on one:
@@ -250,9 +283,12 @@ function lengthOf(file: string): number {
  * `records.fightsFoldSlice` fights, so a socket read is never behind more
  * than one slice of it.
  */
-async function foldFile(file: string, bytes: number): Promise<FoldedRecord> {
-  const folds: FightFolds = new Map();
-  const outputs: FightOutputs = new Map();
+async function foldFile(
+  file: string,
+  bytes: number,
+  into: Folding = { folds: new Map(), outputs: new Map() }
+): Promise<FoldedRecord> {
+  const { folds, outputs } = into;
   if (bytes === 0) return { folds, outputs };
   const raw = Buffer.alloc(bytes);
   const handle = await fs.promises.open(file, 'r');

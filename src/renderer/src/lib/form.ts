@@ -7,31 +7,6 @@
  * the forgiving variants.
  */
 import { vitalLevel, type VitalLevel, type VitalThresholds } from '@shared/character';
-import type { EncumbranceGate, PartyRank } from '@shared/config';
-import { t } from './i18n';
-
-/**
- * The three load gates, in order.
- *
- * One list, so the four selects that offer them — two on each settings page
- * since the character form gained the same fieldsets (todo 03) — cannot come
- * to disagree about the words or their order.
- */
-export const GRADE_OPTIONS = (): Array<{ value: EncumbranceGate; label: string }> => [
-  { value: 'never', label: t('settings.movement.lootGradeNever') },
-  { value: 'medium', label: t('settings.movement.lootGradeMedium') },
-  { value: 'heavy', label: t('settings.movement.lootGradeHeavy') }
-];
-
-/**
- * The three party ranks, in the roster's own order — front to back — so
- * the one select offering them agrees with the party card's own layout.
- */
-export const RANK_OPTIONS = (): Array<{ value: PartyRank; label: string }> => [
-  { value: 'front', label: t('settings.party.preferredRankFront') },
-  { value: 'mid', label: t('settings.party.preferredRankMid') },
-  { value: 'back', label: t('settings.party.preferredRankBack') }
-];
 
 /** A stored fraction as the whole percent a person types. */
 export function percentOf(fraction: number): number {

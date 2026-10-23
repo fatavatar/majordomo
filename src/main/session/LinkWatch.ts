@@ -15,7 +15,7 @@
  * - **Only while an answer is owed.** The clock starts when a command reaches
  *   the wire and stops at the next byte in. Wire silence on its own is the
  *   wrong reading twice over: this realm repaints its status line unprompted
- *   every thirty seconds (measured — `Routines.noteSent`), so fifteen seconds
+ *   every thirty seconds (measured by the old `Routines`), so fifteen seconds
  *   of quiet is ordinary, and a client that has asked for nothing is owed
  *   nothing. Every command this server family takes is answered with at least
  *   a status line, and promptly, so an unanswered one is a real signal.

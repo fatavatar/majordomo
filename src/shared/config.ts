@@ -16,10 +16,7 @@
  *    every ASCII map, box-drawn frame and column-aligned stat block the game
  *    emits, so it is not a matter of taste.
  */
-import { PRIORITY } from './automation';
 import { bool, int, isRecord, str } from './values';
-import { asEvents, type ScheduledEvent } from './events';
-import { GEAR_WHENS, type GearSet, type GearWhen } from './gear';
 import { asLoops, mergeNamed, type Loop } from './loops';
 /*
  * `DENOMINATIONS` is the one *value* this module takes from `character.ts`, and
@@ -27,13 +24,9 @@ import { asLoops, mergeNamed, type Loop } from './loops';
  * edge is one-way and the module-cycle rule is untouched. See
  * `src/shared/__tests__/module-cycle.test.ts`.
  */
-import {
-  DENOMINATIONS,
-  type Denomination,
-  type PartyMember,
-  type VitalThresholds
-} from './character';
+import { DENOMINATIONS, type Denomination, type VitalThresholds } from './character';
 import { asCoinNames, type CoinNames } from './coins';
+import { asBbsSettings, type BbsSettings } from './megamud/bbs';
 import {
   DEFAULT_CONSOLE_PALETTE,
   DEFAULT_THEME,
@@ -44,7 +37,6 @@ import {
   type ThemeId,
   type ThemePreference
 } from './themes';
-import type { Comparison, Guard, GuardField, Rule, RuleAction, Trigger } from './rules';
 import {
   ALERT_SIDES,
   DEFAULT_ALERT_DEBOUNCE_SECONDS,
@@ -54,14 +46,17 @@ import {
   type AlertRule,
   type Severity
 } from './notifications';
-import { isRemoteName, type PlayerGrant, type RemoteName } from './remotes';
+import {
+  asBotCommands,
+  isRemoteName,
+  type BotCommand,
+  type PlayerGrant,
+  type RemoteName
+} from './remotes';
 import type { ConnectionTarget, StreamEncoding } from './types';
 import { mobKey } from './world';
 import { asMonsterRules, type MonsterRule } from './monsterRules';
-// A value import, and safe: `commands.ts` imports nothing from `shared/`, so
-// there is no cycle for a bundler to resolve the wrong way round.
-import { REREAD_ROOM } from './commands';
-import { TRAINED_ATTRIBUTES, type TrainedAttribute } from './training';
+import { asItemRules, type ItemRule } from './itemRules';
 import { isAnsiColour, type ColourBand } from './template';
 import { DEFAULT_REWRITES, isRewriteEntity, type RewriteDesign, type VitalBands } from './rewrites';
 
@@ -179,6 +174,20 @@ export interface ConnectionConfig {
   locate: LocateMethod;
   /** The realm's names for its coins. Resolved from the server's own; see `Server.coins`. */
   coins: CoinNames;
+  /** The realm's MegaMUD BBS set-up. Resolved from the server's own; see `Server.bbs`. */
+  bbs: BbsSettings;
+  /**
+   * Where this character's readings are posted, and the key that may post
+   * them: the realm's `statsUrl` and the character's own `account.statsKey`.
+   * Either empty is nothing posted. See `LoggingConfig.stats`.
+   */
+  stats: StatsTarget;
+}
+
+/** A mudstats board and this character's key to it (`/api/ingest`). */
+export interface StatsTarget {
+  url: string;
+  key: string;
 }
 
 /**
@@ -248,18 +257,27 @@ export interface Server {
    */
   database: string;
   /**
-   * Whether a hang-up here is charged, for every character playing here that
-   * does not say for itself; null leaves it to the options file. See
-   * `HangUpConfig.penalties`.
-   */
-  hangPenalties: boolean | null;
-  /**
    * What this realm calls its coins, where it renames them. See `CoinNames`.
    *
    * **On the realm, for the reason `locate` is.** Every character here reads
    * the same pack and the same floor, so the name is a fact about the place.
    */
   coins: CoinNames;
+  /**
+   * What MegaMUD's `BBS.INI` would say about this realm, for the MegaMUD
+   * engine: only the keys it states, MegaMUD's defaults for the rest. See
+   * `shared/megamud/bbs.ts`.
+   */
+  bbs: BbsSettings;
+  /**
+   * The mudstats board this realm's characters may post their readings to
+   * (`http://<host>:8099`), or empty for none.
+   *
+   * **On the realm, for the reason `coins` is.** A board watches one realm's
+   * characters, so every character here posts to the same one; whether one
+   * does, and how often, is the character's (`logging.stats`).
+   */
+  statsUrl: string;
 }
 
 export interface FontConfig {
@@ -514,38 +532,46 @@ export interface LoggingConfig {
    * reliably writable location on all three platforms.
    */
   directory: string;
-  /** Stop appending past this size, rather than filling a disk unattended. */
+  /**
+   * A session log, a capture or a fight log goes on in a new file past this
+   * size. It used to stop, which lost the rest of a long session.
+   */
   maxBytes: number;
+  /**
+   * What the logs directory may hold in all: the oldest logs and captures are
+   * deleted past it, never one a session has open (2026-10-18: it had grown to
+   * 3.6 GB). 2 GiB by default.
+   */
+  keepBytes: number;
+  /** Posting this character's readings to its realm's mudstats board. See `StatsReportConfig`. */
+  stats: StatsReportConfig;
 }
 
 /**
- * How the client paces itself.
+ * Whether this character posts its readings to the realm's mudstats board
+ * (`Server.statsUrl`), and how often.
  *
- * The numbers come from measurement, not taste. The server accepts about twenty
- * commands in flight and then **silently discards** the rest — twenty-five sent,
- * two answered — with no complaint and no disconnect. Since the loss is
- * undetectable, the only safe posture is to stay far below the cliff and let
- * the game's own prompt release the next send.
+ * Off until switched on: posting tells the board to stop asking the
+ * character by telepath, so this client becomes its only source there. Each
+ * post is a whole snapshot, so the board's figures never go stale between
+ * them; the board's own floor (`min_interval`) is never undercut, whatever
+ * this says.
  */
-/**
- * How long the walker waits for a room before giving up on a step.
- *
- * This is *client-side patience*, not a claim about the server: some commands
- * produce nothing at all, and a walk with no deadline sits reporting progress
- * it is not making, which is a worse lie than stopping. Nothing here is a
- * pacing constant -- pacing comes from the prompt, in `PacingConfig`.
- */
+export interface StatsReportConfig {
+  enabled: boolean;
+  /** Seconds between posts. */
+  everySeconds: number;
+}
+
 /**
  * Away from keyboard — MegaMUD's `AutoAfk`, `AfkTimeout` and `AfkReply`.
  *
  * The whole point of running a character unattended is that nobody is there,
  * and the one thing the realm's other players cannot see is that. A telepath
  * to a character that never answers reads as rude, or as a bot to report; a
- * reply saying the player is away is what a person would leave. `Afk`
- * (`src/main/automation/Afk.ts`) answers an incoming telepath with `reply`
- * once nothing has been typed into this session for `afterMinutes`, once per
- * sender per `tuning.afk.replyEveryMs`, and never for an `@` command, which
- * `Remotes` answers. Off by default, unlike MegaMUD's (`AutoAfk=1`,
+ * reply saying the player is away is what a person would leave. Since the
+ * MegaMUD engine these are what Settings -> MegaMUD carries to its AFK
+ * settings (`megamudFromConfig`). Off by default, unlike MegaMUD's (`AutoAfk=1`,
  * `AfkTimeout=5`, `AfkReply={AFK}`): a client that telepaths strangers unasked
  * is a behaviour to opt into. The reply defaults to MegaMUD's own frame, which
  * other MegaMUD clients recognise.
@@ -558,8 +584,15 @@ export interface AfkConfig {
   reply: string;
 }
 
+/**
+ * How long the walker waits for a room before giving up on a step.
+ *
+ * This is *client-side patience*, not a claim about the server: some commands
+ * produce nothing at all, and a walk with no deadline sits reporting progress
+ * it is not making, which is a worse lie than stopping. Nothing here is a
+ * pacing constant -- pacing comes from the prompt, in `PacingConfig`.
+ */
 export interface WalkConfig {
-  stepTimeoutMs: number;
   /**
    * Experience per hour below which a running loop is stopped — MegaMUD's
    * `MinExpRate` with `LogoffLowExp`, both `0` (off) in its own defaults and
@@ -585,6 +618,15 @@ export interface WalkConfig {
   clearAfterSeconds: number;
 }
 
+/**
+ * How the client paces itself.
+ *
+ * The numbers come from measurement, not taste. The server accepts about twenty
+ * commands in flight and then **silently discards** the rest — twenty-five sent,
+ * two answered — with no complaint and no disconnect. Since the loss is
+ * undetectable, the only safe posture is to stay far below the cliff and let
+ * the game's own prompt release the next send.
+ */
 export interface PacingConfig {
   /** Commands allowed on the wire without an acknowledging prompt. */
   window: number;
@@ -594,232 +636,60 @@ export interface PacingConfig {
   ackTimeoutMs: number;
 }
 
-export interface IdleConfig {
-  enabled: boolean;
-  /** Quiet seconds before the idle command is sent. */
-  afterSeconds: number;
-  /**
-   * What to send. Empty is a bare Enter, which re-reads the room silently and
-   * is also a keep-alive — see `REREAD_ROOM` in `shared/commands.ts`.
-   *
-   * It used to be `l`, which prints the same block and *also* tells everybody
-   * standing there that this character is looking around the room. Every
-   * forty-five seconds, for as long as the client is connected, that is a
-   * beacon: spam in company, and on a PvP realm a standing announcement of
-   * where a character is and that something is watching. A look the player
-   * asks for is still a look; this one is the client's own housekeeping.
-   */
-  command: string;
-}
-
 /**
- * Hanging up to save a character, and why it is not the simple option.
+ * Hanging up below a health line: MegaMUD's `Health.HpLogoff%`, which
+ * Settings -> MegaMUD carries this to when a character starts its MegaMUD
+ * settings from these (`megamudFromConfig`). The engine's own hang-up decides
+ * from there on.
  *
- * Every MegaMUD-era client offers "disconnect when health is low". On this
- * server family that is one of the more reliable ways to *die*: an unclean
- * disconnect costs a percentage of **maximum** HP — fatal at low health, and
- * recorded as `DisconnectPenalty` — or drops random items. Five conditions make
- * it unclean, and they are precisely the ones that co-occur with wanting to
- * press the button. See docs/greatermud/combat.md.
- *
- * So this exists, and it defaults to refusing. Walking out is the escape that
- * works; hanging up is the escape that works *afterwards*.
+ * Off by default: on this server family an unclean disconnect costs a
+ * percentage of **maximum** HP or drops items, and the conditions that make it
+ * unclean are the ones that come with wanting to press the button.
  */
 export interface HangUpConfig {
   /** Off unless somebody asks for it, and it says what it will and will not do. */
   enabled: boolean;
   /** Fraction of maximum health below which hanging up is considered. */
   belowHealth: number;
-  /**
-   * Whether this realm charges for a hang-up at all (todo 01).
-   *
-   * Where it does, hanging up is refused while the client can see a reason it
-   * would be charged; where it does not, it hangs up below `belowHealth`.
-   * **Off by default**: a PvE realm charges nothing. Paradigm's realm menu
-   * states it (`Hang Penalties 25%`), and what it said outranks this; a
-   * realm's own `server.yaml` (`hangPenalties`) outranks the options file,
-   * and a character's own file outranks its realm.
-   */
-  penalties: boolean;
-  /**
-   * Also hang up when a player is in the room, at any health.
-   *
-   * Off by default. It is the PvP panic button, and it is also the one most
-   * likely to fire during the five-minute window, which is where a realm's
-   * penalty bites.
-   */
-  onPlayerInRoom: boolean;
 }
 
 /**
- * Running away, which is the escape that actually works.
- *
- * **It walks. There is no command for running away** — see `NOT_COMMANDS` in
- * `src/shared/commands.ts` for the eleven refusals that settled that — so
- * every escape this client makes is a **direction**, chosen from what it knows
- * about the room it is standing in, and it is never sent unless there is one.
- * Moving out carries none of the penalty an unclean disconnect does, which is
- * why `HangUpConfig` tells you to do this instead.
- *
- * Off by default like everything automated: a client that starts running away
- * on its own the first time somebody opens it is a client that decides when a
- * fight is lost, and that is the player's call until they say otherwise.
+ * Running from a fight below a health line: MegaMUD's `Health.HpRun%`, carried
+ * across the same way as `HangUpConfig`. The run itself is the engine's
+ * (`Combat.RunRooms`).
  */
 export interface RetreatConfig {
   enabled: boolean;
   /** Fraction of maximum health below which the character runs. */
   belowHealth: number;
-  /**
-   * Also run below this fraction of maximum mana — MegaMUD's `ManaRun%`. A
-   * caster out of mana is losing whatever the health bar says: its next round
-   * lands nothing, and the round after that is the monster's. 0 (MegaMUD's own
-   * default) never runs for mana; a class with no pool has a null maximum and
-   * is never judged by it, as everywhere.
-   */
-  belowMana: number;
-  /**
-   * Also run when this many things are hitting it at once.
-   *
-   * Zero disables it. Being fought by three things is the situation a health
-   * threshold notices too late — by the time the bar is low the next round has
-   * already been rolled.
-   */
-  whenOutnumbered: number;
-  /**
-   * The shortest gap between attempts.
-   *
-   * An escape can fail — the exit is blocked, the move is refused — and
-   * retrying every status line would fill the queue with them. This is a floor
-   * on retrying, not a rate limit: the emergency band is not paced.
-   */
-  cooldownMs: number;
-  /**
-   * How far to go, **not** how to choose the exit.
-   *
-   * Choosing the exit is `SessionManager.escape`'s ladder and is not
-   * configurable, because every rung of it is strictly better than the one
-   * below and nobody would knowingly pick a worse one: retrace the trail
-   * first, then an exit the realm data says leads back onto it, then any exit
-   * the realm can place, then any exit the server just printed. Only the last
-   * rung is a room the character has never seen, and all four beat standing
-   * still.
-   *
-   * `step-back` is that one move and then nothing more. `safe-haven` takes the
-   * same move and then, once the fight is over and the character is placed,
-   * plans a route to `safeHavenRoom` — the walker refuses to walk into a
-   * fight, so a route can never be the escape itself.
-   */
-  strategy: RetreatStrategy;
-  /**
-   * Where `safe-haven` runs to, as a loop stop names a room: `Newhaven, Town
-   * Gates 1/2150`. A bare name shared by several rooms is refused, with the
-   * candidates, exactly as a loop stop is. Empty is none.
-   */
-  safeHavenRoom: string;
 }
 
 /**
- * Two, where there were three.
- *
- * The third was `flee`, and it did not describe a way out — it described
- * sending the word `flee` and letting the realm pick the exit, which the realm
- * never did because the word is not a command. `reverse-step` was the same
- * thing with one attempt in front of it, and its documented fallback was that
- * word again. Both are gone: what is left is *one move* against *one move and
- * then walk home*, which is the only axis a person was ever choosing on.
- */
-export const RETREAT_STRATEGIES = ['step-back', 'safe-haven'] as const;
-export type RetreatStrategy = (typeof RETREAT_STRATEGIES)[number];
-
-/**
- * A second way out, for the realms where one actually exists.
- *
- * `RetreatConfig` above is deliberately down to one axis — a direction, sent
- * because there is no working command for running away (see the note above
- * `RETREAT_STRATEGIES`). `sys goto` breaks that rule for exactly the realms
- * `SessionManager.locateWord` already knows answer to `sys status`: there, it
- * is a real command that relocates the character in one round, not a word the
- * parser drops. That makes it a *different* tool rather than a third rung on
- * the same ladder, and it belongs at its own, more desperate fraction of
- * health — the same relationship `HangUpConfig` has to `RetreatConfig`, an
- * independent and harsher fallback, not a setting on the first one.
- *
- * The break-off move is still `RetreatConfig`'s own — `wayOut` and `escape`
- * are shared by every trigger, flee included, because choosing an exit does
- * not change with the reason — and `sys goto` is refused mid-round the same
- * as any other command would be. This is only what runs once `*Combat Off*`
- * lands: a fixed destination instead of `retreat.strategy`'s own afterward.
+ * Fleeing by `sys goto`, on a realm that answers `sys status`: ours, inside the
+ * engine's loop, since MegaMUD has no such toggle (`MegaEngine.useFlee`). Below
+ * `belowHealth` the engine runs from the fight with MegaMUD's own run, then
+ * sends `sys goto <destination>` once combat is off, once until health is back
+ * above the line. Flipped from the toolbar (`AUTOMATION_SWITCHES.fleeGoto`).
  */
 export interface FleeGotoConfig {
   enabled: boolean;
   /** Fraction of maximum health below which the character flees outright. */
   belowHealth: number;
   /**
-   * The keyword `sys goto` is sent with, e.g. `sil`. Empty is none — refused,
-   * not guessed, the same as an empty `safeHavenRoom`.
+   * The keyword `sys goto` is sent with, e.g. `sil`. Empty is none: refused,
+   * not guessed.
    */
   destination: string;
 }
 
 /**
- * Which monsters auto-combat will open a fight with.
- *
- * `hostile` is the one this exists for, and it means what the realm data says
- * rather than what a name looks like: `Monsters.Align` and `Monsters.Type`
- * decide it, read out of `Mob.ShouldMobAttackTarget` (see `shared/mobs.ts`).
- * A monster that was going to attack anyway costs nothing to hit first, and
- * that is the whole argument for doing it unasked.
- *
- * `likely` adds the names the realm data **disagrees with itself about**, which
- * is 21 of the shipped realm's 1,451 — and `giant rat` is one of them, so this
- * is not a corner. Two rows of that name are ChaoticEvil and one is Good, and a
- * name cannot tell you which one is standing in front of you. The cost of
- * guessing wrong is not the fight: `Mob.GetEPCostForAttacking` charges **ten
- * evil points** for hitting a Good or LawfulGood monster, which is cumulative,
- * moves a Neutral character towards Outlaw, and changes who attacks them
- * afterwards. That is why it is a setting rather than the default.
- *
- * `all` includes the ones that would have left you alone — a shopkeeper, a
- * guard dog, the town priest. It is what MegaMUD calls *attack all monsters*
- * and it is a decision about how a character is being played, not a default.
- *
- * Two things no setting includes:
- *
- * - **A player.** On a PvP realm the first blow starts a five-minute window
- *   that makes a disconnect fatal (docs/greatermud/combat.md), and the person
- *   on the other end is somebody's evening. Type it, or write a rule saying so
- *   in as many words.
- * - **A monster the realm calls good**, because attacking one spends the
- *   character's standing rather than its health, permanently and cumulatively.
- */
-export type EngagePolicy = 'none' | 'hostile' | 'likely' | 'all';
-
-/**
- * In order of how much they will start, so a form can offer them as a scale.
- *
- * Derived from here rather than restated in the parser and the settings screen,
- * which is the two-halves trap the guard-field list already fell into once.
- */
-export const ENGAGE_POLICIES: readonly EngagePolicy[] = ['none', 'hostile', 'likely', 'all'];
-
-/**
- * Fighting on the character's behalf: what to swing with, and what at.
- *
- * The thing MegaMUD was actually for, and the reason it is *here* rather than
- * in `automation.rules`: a rule is a sentence about one situation, and this is
- * a standing policy with a target-selection question in the middle of it that
- * no guard expression can ask. `hp.percent < 0.3` is a rule; *"is the thing in
- * front of me going to attack me, and is it a person"* is not.
- *
- * Off by default, like everything automated. A client that starts swinging at
- * things the first time somebody opens it is a client picking their fights.
- *
- * Ordering against the two safety nets is settled and not configurable:
- * **running away outranks fighting.** The retreat is proposed in the
- * `emergency` band and this in `combat`, and nothing here opens a fight while
- * an escape is in
- * flight — a client that ran from a room and swung on the way out would have
- * spent the escape and stayed in the fight.
+ * Fighting: since the MegaMUD engine (2026-10-14) the fight is MegaMUD's, by
+ * its `Combat` settings. What is left here is what Settings -> MegaMUD carries
+ * across when a character starts its MegaMUD settings from these
+ * (`megamudFromConfig`: the attack verb, the monster counts and experience
+ * cap, polite attacks, the switch), the opener a survival estimate opens
+ * with, and `monsters`, the character's own rows over the realm's monster
+ * table, which the engine fights by.
  */
 export interface CombatConfig {
   /** Off unless somebody asks for it. */
@@ -850,39 +720,6 @@ export interface CombatConfig {
    */
   opener: string;
   /**
-   * Get back into the shadows between fights, so the opener lands again.
-   *
-   * A backstab is granted by `sn` and `hide` alone, both refused while a
-   * monster is in the room, and spent by the first blow — so a character
-   * hunting in a lair opens every fight after the first in plain sight
-   * (measured 2026-09-12: 4.1× the ordinary swing thrown away each time). On,
-   * `AutoStealth` sends `hide` when the character is seen in an empty room
-   * standing still, and `sn` when a lap or route has it — the walker's own
-   * verb, since the step ahead is what the stealth is for. Only for an
-   * opener the command table calls `BackStab`; `ju` has nothing to hide for.
-   */
-  hideForOpener: boolean;
-  /** Which monsters to start on. See {@link EngagePolicy}. */
-  engage: EngagePolicy;
-  /**
-   * Hit back at whatever hits this character, whatever `engage` says.
-   *
-   * On by default *within* auto-combat, because it is the one part of this that
-   * cannot start a fight: something is already hitting the character, and the
-   * alternative is standing there. The CoffeeScript engine did exactly and only
-   * this (`user.coffee`, `onMobAttacking`).
-   */
-  retaliate: boolean;
-  /**
-   * Lend auto-combat to a character hit for this many rounds without moving,
-   * while it is off or the journey declined it. 0 never does.
-   *
-   * *Off* means do not open fights; it never meant stand there and be killed.
-   * `CombatLease` turns the switch on in the character's file and hands it
-   * back on the next arrival in another room (todo 00, 2026-09-23).
-   */
-  defendAfterRounds: number;
-  /**
    * Leave alone a monster somebody **outside the party** is already fighting.
    *
    * MegaMUD's *PoliteAttacks*, in MegaMUD's own direction and under its own
@@ -906,21 +743,6 @@ export interface CombatConfig {
    * before the first swing.
    */
   maxMobs: number;
-  /**
-   * Re-read the room every this many rounds of a fight. 0 never does.
-   *
-   * MegaMUD's *rescan room*. A fight is the one situation where the room list
-   * goes stale fastest and matters most: monsters die out of it, monsters walk
-   * into it, and the list is what decides whether to keep swinging, what to
-   * swing at next, and whether the room has become too crowded to stay in.
-   *
-   * The server volunteers most of that — an arrival is a sentence, a death is
-   * an experience line — so this is the correction rather than the source, and
-   * three rounds is roughly a second and a half of a fight. It goes out in the
-   * `probe` band, below walking and below the player: a look that arrives a
-   * round late has lost nothing, and one that displaced an attack would have.
-   */
-  refreshRounds: number;
   /**
    * What this character says about particular monsters — MegaMUD's *Monster
    * Details*: relationship, band, rest and backstab flags, and a spell to
@@ -947,18 +769,6 @@ export interface CombatConfig {
    */
   monsters: MonsterRule[];
   /**
-   * Do not open on anything the realm says has more health than this.
-   * 0 never refuses.
-   *
-   * The cheap approximation of *is this out of my league*, from the one number
-   * the realm states about every monster. **An unknown health is not refused**,
-   * which is deliberate and worth stating: `engage: hostile` already declines
-   * a monster the realm cannot place, so the unknown case is covered by a gate
-   * that exists — and refusing here as well would make `engage: all` do
-   * nothing at all on a derivative realm.
-   */
-  maxTargetHealth: number;
-  /**
    * Do not open a fight unless at least this many monsters are here.
    * 0 never refuses.
    *
@@ -971,94 +781,9 @@ export interface CombatConfig {
    * Do not open on a monster the realm says is worth more than this in
    * experience. 0 never refuses.
    *
-   * MegaMUD's `MaxMstrExp` — its difficulty cap, and the one it actually
-   * ships. `maxTargetHealth` is the same idea off a different column, and the
-   * two are kept apart because the realm states them separately and they
-   * disagree: a high-experience monster is not always a high-health one.
-   *
-   * An experience the realm does not state is **not** refused, for
-   * `maxTargetHealth`'s reason: the disposition gate already declines a monster
-   * the realm cannot place, and refusing here as well would make `engage: all`
-   * do nothing on a derivative realm.
+   * MegaMUD's `MaxMstrExp`, its difficulty cap.
    */
   maxMonsterExperience: number;
-  /**
-   * Open a fight only where the room's simulated fight, from the health the
-   * character has now, is survived more than this share of the time; and
-   * never one it would have to run from at once (`openingRefusal`, upstream
-   * 5ffdf91). Declined, the character rests towards the health that would
-   * change the answer. 0, the default, attacks whatever the odds: the player
-   * chooses to have fights turned down (2026-10-01). A fight the realm's data
-   * cannot work out is never refused for it.
-   */
-  minSurvival: number;
-}
-
-/**
- * What to pick up, unasked.
- *
- * MegaMUD's *auto-get cash* and its item list, the two things every script in
- * the capture corpus did first after a kill (`.@get-all`). Coins are the safe
- * half: they land on the floor only when something dies (`18 gold drop to the
- * ground.`) and weigh nothing worth refusing. Items are named, and matched by
- * the prefix the server itself uses, because `get` is answered by prefix.
- */
-/**
- * Answering the `@` commands another player's client sends this one.
- *
- * MegaMUD's remote-control vocabulary — `/Vaelor @health` telepaths a question
- * and the client on the other end answers `{HP=62/62,MA=10/10}` — which is what
- * makes running several characters at once workable. The vocabulary and the two
- * reply shapes captures actually show are in `src/shared/remotes.ts`.
- *
- * **Off by default, and this one is not merely convention.** What it turns on
- * is a channel by which somebody else's typing moves this character: `@do` runs
- * a command as though it were typed. `@kill` and `@hangup` are refused outright
- * and always will be, but the switch is what somebody chooses when they decide
- * to be reachable at all.
- *
- * **`enabled` is the switch; the two lists are the gate.** Until 2026-08-28
- * there was only the switch, so turning it on answered *everybody*; until
- * 2026-08-29 the gate was three *grounds* — `named`, `party`, `gang` — and a
- * ground allowed somebody **every** command. Both shapes could not express the
- * thing people actually want, which is per command: *"my gang may ask where I
- * am; nobody runs a command on me"*.
- *
- * So permission is stated per remote, per player, with one list behind it for
- * the gang. The switch and the gate stay separate questions because they are:
- * turning the feature off entirely and being reachable by nobody in particular
- * are different states, and a client that conflated them could not tell
- * somebody why their gang was being refused.
- *
- * The decision itself is `judgeRemote` in `src/shared/remotes.ts` — one pure
- * function, so the card showing somebody as allowed and the engine answering
- * them read the same rule rather than two copies of it.
- */
-/**
- * What this character learns about the other people in the room.
- *
- * One option today and its own block rather than a loose key, because the
- * question it answers — how much this character finds out about somebody
- * standing next to it — is a category with more than one member waiting
- * (whether to greet, whether to record a conversation) and a flat key would
- * have to move when the second arrives.
- */
-export interface TalkConfig {
-  /**
-   * Look at a player the first time this character sees them, to learn what
-   * they are wearing.
-   *
-   * **Off by default, and it must stay that way.** A look is a command from
-   * the same budget walking and fighting spend from, and it is *visible*: the
-   * server tells the person they were looked at. A client that automatically
-   * inspected every stranger would announce this character to every player it
-   * passed, which on a PvP realm is a way to be noticed by exactly the people
-   * worth not being noticed by.
-   *
-   * Once per person rather than per sighting: what somebody is wearing changes
-   * rarely, and the Player card stamps the answer with when it was true.
-   */
-  lookAtPlayers: boolean;
 }
 
 export interface RemotesConfig {
@@ -1078,7 +803,8 @@ export interface RemotesConfig {
   /**
    * Join a party when its leader invites this character, without waiting for
    * the `@join` that would follow. Only a leader granted `join` is joined, and
-   * never while this character is already in a party (`Remotes.autoJoinOn`).
+   * never while this character is already in a party (the engine's
+   * `joinWhenInvited`).
    */
   autoJoin: boolean;
   /**
@@ -1098,17 +824,13 @@ export interface RemotesConfig {
    * they do nothing to this character.**
    *
    * - `@health` is the absolute figures behind the percentage the listing
-   *   already shows — the same fact, to more decimal places, and the one
-   *   `automation.spells.healParty` needs to decide whether a cast will cover
-   *   the gap.
+   *   already shows: the same fact, to more decimal places, and the one a
+   *   party heal needs to decide whether a cast will cover the gap.
    * - `@bless-expired` is a member telling this character their blessing ran
-   *   out. It sends nothing; what to do about it is `Blessings`' decision,
-   *   made against this character's own configuration.
+   *   out. It sends nothing; what to do about it is this character's own
+   *   engine's decision.
    * - `@heal` (2026-09-19) does do something: one party heal, for a member the
-   *   thresholds had not reached. Nothing while `healParty` or `healBelow` is
-   *   off; while on, what it adds is that a member — the uninvited follower
-   *   below included — can spend this character's mana down to `minMana`, one
-   *   cast per `healCooldownMs`, by asking. A `deny` by name takes it back.
+   *   thresholds had not reached, by asking. A `deny` by name takes it back.
    *
    * **Four more were on this list and were taken off** (2026-09-02, review),
    * because the sentence that justified them was false:
@@ -1155,29 +877,9 @@ export interface RemotesConfig {
    * Absent is `NO_GRANT`: nothing granted, nothing automatic.
    */
   players: Record<string, PlayerGrant>;
+  /** The player's own commands others may ask for. See `BotCommand`. */
+  commands: BotCommand[];
 }
-
-/**
- * How loaded the character has to be before a coin setting acts —
- * MegaMUD's *Don't collect if it will make you medium / heavy*, as one choice
- * rather than two boxes that can both be ticked.
- *
- * The words are the **server's own grading** (`Encumbrance: 840/2400 - Medium
- * [35%]`), and only two of them have ever been seen: `None` in four captures
- * and `Medium` in one. MegaMUD names `medium` and `heavy`, which is where the
- * second comes from — so this union is the intersection of what the wire has
- * shown and what a MegaMUD-trained player already expects, and nothing beyond
- * it is invented.
- *
- * A grade word this client cannot rank leaves the gate **closed**, which is the
- * rule `drop.whenEncumbered` already follows: unknown is not encumbered, and
- * refusing to loot on a word nobody has sampled would be the client's ignorance
- * stopping an automation that works.
- */
-export type EncumbranceGate = 'never' | 'medium' | 'heavy';
-
-/** Where a party member stands: the roster's own field, so the two cannot drift. */
-export type PartyRank = NonNullable<PartyMember['rank']>;
 
 export interface LootConfig {
   /** Pick up coins the moment they land, and any a look lists. */
@@ -1216,81 +918,22 @@ export interface LootConfig {
    */
   discardKinds: Denomination[];
   /**
-   * Stop collecting coins once the server grades the load this heavily.
-   * `never` never refuses.
-   *
-   * MegaMUD predicts — *don't collect if it **will** make you heavy* — and this
-   * reacts, because the prediction needs a weight per coin that the realm data
-   * does not state. The cost of the difference is one lot of coins: the grade
-   * is re-read from the next listing, and the setting holds from then on.
+   * What this character says about particular items — MegaMUD's *Game Item
+   * Details* (`shared/itemRules.ts`, 2026-10-13), for the MegaMUD engine.
+   * Laid field by field over the realm's own table
+   * (`servers/<id>/items.yaml`), as `combat.monsters` is over the realm's
+   * monster table, and the options file's rows under a character's own.
    */
-  stopAtGrade: EncumbranceGate;
-  /**
-   * An item that turns small coin into large — GreaterMUD's `coin bag`, which
-   * Daeron Darksong drops. Blank never converts.
-   *
-   * **The client cannot tell which item does this**, and does not pretend to.
-   * The realm marks the coin bag no differently from the other 454 items that
-   * cast a spell; the only thing that distinguishes it is that its spell is
-   * *named* `coin bag convert`, which is not a fact any rule should turn on. So
-   * the field is the player's to fill, with the pack behind it as suggestions —
-   * the same shape the potion fields have, and for the same reason.
-   *
-   * MajorMUD has no such item, which is why this is blank by default and why
-   * nothing goes looking for one.
-   */
-  convertWith: string;
-  /** How loaded to be before using it. `never` never uses it. */
-  convertAt: EncumbranceGate;
-  /** Item names to pick up whenever a look lists them. Prefixes, as `get` reads them. */
-  items: string[];
-  /**
-   * Also pick up anything the realm prices at or above this, in copper.
-   * 0 never does.
-   *
-   * The named list above is an *instruction* and always wins; this is a
-   * standing question — "is this worth bending down for" — that only became
-   * askable when a floor item started arriving as an entity with the realm's
-   * price on it. Before that the client could not have answered it without a
-   * round trip per name.
-   *
-   * **An item the realm cannot price is never taken by this**, and the naming
-   * is deliberate: `minPrice` is a claim about value, and an unknown value is
-   * not a high one. Somebody on a derivative realm who wants everything says
-   * so with a name on the list, which is the instruction that does not depend
-   * on data the realm does not have.
-   */
-  minPrice: number;
-  /**
-   * Never pick anything heavier than this up, whatever else says to. 0 never
-   * refuses.
-   *
-   * A ceiling rather than a floor, and it outranks the named list: the failure
-   * it exists for is an unattended character looting itself over the
-   * encumbrance the walker then stalls under. An item the realm cannot weigh
-   * is **not** refused — unknown is not heavy, and refusing on absence would
-   * stop a derivative realm looting anything at all.
-   */
-  maxEncumbrance: number;
+  itemDetails: ItemRule[];
 }
 
-/**
- * Dropping named junk, unasked — the other half of MegaMUD's drop list, and
- * what keeps auto-loot from hoarding a pack over the encumbrance the walker
- * then stalls under.
- *
- * Only what the player named is ever dropped: the realm data does not mark
- * quest items, so the list is the one authority on what is junk — refusing to
- * guess is what makes acting unasked safe here. An equipped item is never
- * dropped whatever the list says.
- */
 /**
  * Searching every room the character arrives in, unasked.
  *
  * The realm hides exits — 249 of them in the shipped data are
  * `Hidden/Searchable` — and `WorldGraph.edgePenalty` already prices one at
  * "costs the search", so a route may be planned through a corridor nobody has
- * looked for yet. `Walker` searches *reactively*, when a step it planned is
+ * looked for yet. A walk searches *reactively*, when a step it planned is
  * refused; this is the other half, and it is the half that finds an exit
  * nothing planned a route through in the first place.
  *
@@ -1314,46 +957,6 @@ export interface SearchConfig {
   tries: number;
 }
 
-export interface DropConfig {
-  enabled: boolean;
-  /** Item names to drop whenever the pack lists them. Prefixes, as `drop` reads them. */
-  items: string[];
-  /**
-   * Only shed junk while the server itself grades the load as anything but
-   * `None` (`Encumbrance: 840/2400 - Medium [35%]`). The server's own word,
-   * because the thresholds behind the grades are unsampled — MegaMUD's "67%
-   * is Heavy" is folklore this client has never seen on the wire. An unread
-   * grade drops nothing: unknown is not encumbered, and a drop is not a thing
-   * to do on a guess.
-   */
-  whenEncumbered: boolean;
-  /**
-   * Also drop anything the realm prices at **zero**, without naming it.
-   *
-   * The one entity predicate safe to act on unasked here, and only because it
-   * is the realm's own explicit zero rather than an absence: a price the realm
-   * does not state leaves the item alone, because "worth nothing" and "nobody
-   * has said" are different claims and only one of them is a reason to throw
-   * something away.
-   *
-   * Nothing the realm marks `Not Droppable` is ever dropped by it, nothing
-   * equipped is, and the named list above stays the authority on everything
-   * else — the realm does not mark quest items, which is why this is bounded
-   * to a column it does mark.
-   */
-  worthless: boolean;
-}
-
-/**
- * Banking the purse, unasked — MegaMUD's StashCoin.
- *
- * Coins carried are coins a death can scatter and an encumbrance the walker
- * carries; coins on deposit are neither. The deposit itself follows the
- * Deposit All button's own settled shape: the figure sent is the maintained
- * purse, the sampled verb (`deposit <n>`, in copper — `depo 10000` captured
- * live), and a `bank` behind it so the vault's own figure is established the
- * first time and maintained for free afterwards.
- */
 /**
  * One thing the character keeps a stock of — MegaMUD's *Must Have Minimum* /
  * *Minimum To Keep* / *Maximum To Get* on an item, with the shop it is bought
@@ -1385,39 +988,7 @@ export interface SupplyItem {
  * recorded as a safety decision, refusals included.
  */
 export interface SuppliesConfig {
-  enabled: boolean;
   items: SupplyItem[];
-}
-
-export interface BankingConfig {
-  autoDeposit: boolean;
-  /**
-   * Deposit only once the purse exceeds this, in copper. Walking to a counter
-   * for pocket change spends the budget the loop walks on, so the threshold
-   * is deliberately well above `keepCopper`.
-   */
-  depositThresholdCopper: number;
-  /** What stays in the purse for tolls and shops, in copper. */
-  keepCopper: number;
-  /**
-   * The bank this character banks at — a `Shops` row id, or 0 for *whichever
-   * counter it is standing at* (todo 00).
-   *
-   * The threshold has always fired at any counter the realm grades `bank`,
-   * which is right for a character that passes several and wrong for one
-   * whose vault is somewhere particular: a balance spread across four vaults
-   * is four figures nobody can add up, and the realm states each separately.
-   *
-   * Keyed by the row, not the shop's name, for `trainersTaking`'s reason: two
-   * rows can share a name and be different counters. A row the realm no
-   * longer places, or one on another realm, deposits nowhere and says so —
-   * never silently at the nearest one instead, which would be the client
-   * choosing a vault the player did not.
-   *
-   * **It does not walk anywhere.** Which bank is the question this answers;
-   * going to one is `automation.loops` and the player's own route.
-   */
-  bank: number;
 }
 
 /**
@@ -1515,40 +1086,6 @@ export interface HealthConfig {
    */
   restTo: number;
   /**
-   * Rest next door to a lair rather than in it (todo 08, 2026-09-12).
-   *
-   * A lair is dangerous for what it is *about* to contain: measured twice, a
-   * character sat down at 20% in a room whose clock makes three wererats
-   * every twenty seconds and met them at 2%. On, a rest proposed in a room
-   * the realm marks as a lair with a clock under `tuning.rest.lairClockMaxSeconds`
-   * is refused there, out loud with the figure; a neighbour the realm holds
-   * no lair in is peeked (`l <direction>`), entered only if empty, rested in,
-   * and stepped back from when nothing else has the character. Where no
-   * neighbour is safe the rest goes ahead where it is, said once. On by
-   * default: it acts only when resting was going to act, and the other
-   * default is the one that killed the character.
-   */
-  restNextDoor: boolean;
-  /**
-   * Rest before stepping through a trap until health covers the trap and
-   * still leaves this fraction of maximum after it. 0 walks into any trap at
-   * any health.
-   *
-   * A sliding scale rather than a threshold (2026-09-10, todo 01): a 36-damage
-   * trap in front of a 165-HP character is fine at 110 and a 75-damage one
-   * wants 150, and both of those are *this share of the bar left over once
-   * the trap has fired* — 45% in the two figures the player gave. Where the
-   * router priced the room beyond the trap as a lair (`RouteStep.danger`),
-   * the larger of the two shares is kept, so a character does not step
-   * through a trap into a fight on the health the trap left it. Capped at the
-   * maximum: a trap that takes more than the bar holds is walked at full
-   * health, which is the most anything here can do about it. Read by
-   * `Walker.holdForTrap`; `Recovery` sits the character down to the figure
-   * the walk names, on this switch alone — `restBelow: 0` does not turn it
-   * off, since the two are two decisions.
-   */
-  restBeforeTraps: number;
-  /**
    * Meditate when mana falls below this fraction. 0 never meditates.
    *
    * Ignored outright for a class with no mana — a warrior's status line carries
@@ -1597,7 +1134,7 @@ export interface HealthConfig {
    * lapses while standing in one, the item is used. One rule in each shipped
    * realm — the waterskin against the desert spell, 945 rooms of it.
    *
-   * **On by default, which is `AutoLight`'s argument and not a new one**: a
+   * **On by default**: a
    * rule cannot see the step ahead, the desert takes 13 a tick from a
    * character who has the answer in the pack, and the charge it spends costs
    * 25 copper. It was off and under Movement until a player crossed the
@@ -1618,14 +1155,6 @@ export interface PotionRule {
   name: string;
   /** What makes it worth using. See `PotionWhen`. */
   when: PotionWhen;
-  /**
-   * The share of maximum below which `hp` and `mana` fire. Ignored by the
-   * condition rules, which have no threshold — being poisoned is not a
-   * percentage.
-   */
-  below: number;
-  /** `drink` or `use`, per item: a scroll is read where a potion is drunk. */
-  verb: PotionVerb;
 }
 
 /**
@@ -1637,9 +1166,6 @@ export interface PotionRule {
  */
 export const POTION_WHENS = ['hp', 'mana', 'poisoned', 'blind', 'diseased', 'held'] as const;
 export type PotionWhen = (typeof POTION_WHENS)[number];
-
-export const POTION_VERBS = ['drink', 'use'] as const;
-export type PotionVerb = (typeof POTION_VERBS)[number];
 
 /**
  * One monster, and how the automation treats it.
@@ -1675,7 +1201,7 @@ export type MobPriorityBand = (typeof MOB_PRIORITIES)[number];
  * because they are answers to one question a player asks about one monster,
  * and because holding them apart is what made *never attack* a second list
  * that merged by different rules. `never` is first because it is read first:
- * `AutoCombat.choose` declines on it before anything is ranked at all. It is
+ * a monster marked `never` is declined before anything is ranked at all. It is
  * **not** in `MOB_PRIORITIES`, so no ranking can ever sort on it.
  */
 export const MOB_TREATMENTS = ['never', ...MOB_PRIORITIES] as const;
@@ -1691,51 +1217,6 @@ export const DEFAULT_MOB_PRIORITY: MobPriorityBand = 'default';
  * this is what the walker is allowed to do on the way.
  */
 export interface MovementConfig {
-  /**
-   * Open a closed door a route step ran into, instead of stopping the route.
-   *
-   * `Walker`'s own comment is the argument for this being a setting at all:
-   * *"a shut door is shut until something opens it"* — and `open` is the thing
-   * that opens it.
-   *
-   * **On by default** (2026-09-07). It was off, on the reasoning that a door
-   * somebody shut deliberately is a door somebody shut deliberately — which is
-   * true of a player's door and false of the realm's, and the realm's is what a
-   * route runs into. A shut door on a planned way is the ordinary state of a
-   * corridor here, and a walk that stops at one is a walk that stops for no
-   * reason a player would recognise. `openTries` is 1, so a locked door costs
-   * exactly one command to find out, and forcing is a separate decision below.
-   *
-   * Only for a door or a gate. `There is no exit in that direction!` is a
-   * different fact — the realm data was wrong — and no amount of opening helps.
-   */
-  openDoors: boolean;
-  /** How many times, before the route stops anyway. */
-  openTries: number;
-  /**
-   * Bash a *locked* barrier open with brute strength.
-   *
-   * The step after `openDoors`, and a different fact: `open` answers `The door
-   * is locked.` however many times it is sent (captured live, the sewers under
-   * Newhaven), so a locked door is where opening stops and forcing begins.
-   * `bas <direction>` is the realm's own verb for it — `You bashed the door
-   * open.` on success, `Your attempts to bash through fail!` otherwise, and
-   * **a bashed door opens by itself**, so nothing has to be opened afterwards.
-   *
-   * Gated on the realm's own number: a barrier records what strength has to
-   * reach (`Door [41 picklocks/strength]`), and this is attempted only when
-   * the character's strength is within `BASH_MARGIN` of it.
-   *
-   * **On by default** (2026-09-07), which is the one automated thing here that
-   * costs health — `You take 3 damage for bashing the door!` — and is on
-   * anyway for the same reason `openDoors` is: the gate is the realm's own
-   * number, so this is never attempted against a barrier the character cannot
-   * beat, `bashTries` caps it at three, and the alternative is a route that
-   * stops dead at a lock the character was strong enough to walk through.
-   * `pickLocks` stays **off**: it is the same decision made with a skill this
-   * client cannot check the character has.
-   */
-  bashDoors: boolean;
   /** How many bashes, before the route gives up on the barrier. */
   bashTries: number;
   /**
@@ -1747,11 +1228,9 @@ export interface MovementConfig {
    * door is unlocked and **still shut**, so an `open` follows. Both sentences
    * and the whole sequence are in `captures/002`.
    *
-   * Gated on the realm's picklocks number within `PICK_MARGIN`. Tried before
-   * bashing when both are available, because a failed pick costs a command and
-   * a failed bash costs a command and some health. The router reads this and
-   * `bashDoors` too (`Traveller.forcing`): a lock only a switched-off skill
-   * opens is planned round, never into.
+   * Carried to MegaMUD's `Other.CanPickLocks` by `megamudFromConfig`. The
+   * router reads that MegaMUD setting (`Traveller.forcing`): a lock only a
+   * switched-off skill opens is planned round, never into.
    */
   pickLocks: boolean;
   /** How many picks, before the route gives up on the barrier. */
@@ -1778,9 +1257,7 @@ export interface MovementConfig {
    * is the server's own arithmetic (`src/shared/light.ts`): the room's level
    * plus the race's night vision plus what is worn, and a light is readied
    * only where that sum leaves the room unreadable and the light would fix
-   * it. `Walker` used to warn and deliberately not act, pointing at
-   * `automation.rules`; a rule cannot see the step about to be taken, which
-   * is the moment this is worth anything.
+   * it.
    */
   provideLight: boolean;
   /**
@@ -1791,71 +1268,6 @@ export interface MovementConfig {
    */
   lightDimRooms: boolean;
   /**
-   * Go back for the kit after a death (todo 07, 2026-09-12).
-   *
-   * A death drops everything where the character stood; `GearRecovery`
-   * notices the strip (the loadout remembers items the pack read since no
-   * longer holds, and the armour class has fallen to zero), walks back to the
-   * room it died in as a leg — holding when hurt, fighting nothing on the way
-   * — takes what is still lying there and the coins, and puts the kit back
-   * on. Off, like everything that walks a character somewhere unasked; every
-   * refusal is said out loud, since a recovery that quietly gave up is a
-   * character believing it is dressed.
-   */
-  recoverGear: boolean;
-  /**
-   * How many deaths in a row the recovery may answer before it stops trying
-   * (todo 21, 2026-09-12). 0 is *no limit*.
-   *
-   * **The bound is the point.** A recovery walks a freshly dead, stripped
-   * character back to the room that killed it; where that room is still
-   * dangerous the attempt is itself a way to die, and the client would walk
-   * back again, and again — each trip costing a life. Measured on a soak run:
-   * two deaths on one journey, fifty minutes, zero laps.
-   *
-   * Counted in a **row**: a recovery that reached the kit resets it, because a
-   * run of failures is what says the trip is not working, where one failure
-   * among successes says only that something went wrong once.
-   */
-  recoverGearTries: number;
-  /**
-   * Stop recovering once this many lives are left. 0 never stops.
-   *
-   * The other half of the bound, and the one a player actually reasons in:
-   * lives are finite and unrecoverable, and *do not spend my last two getting
-   * a cloak back* is the sentence somebody wants to write. Above the try
-   * count, since it holds whatever the counter says.
-   */
-  recoverGearFloor: number;
-  /**
-   * Put a burning light out again in a room that does not need it, so a torch
-   * lasts the sewer rather than the walk to it. MegaMUD does the same at every
-   * step flagged as naturally lit. Only while nothing is walking the
-   * character — mid-route the next step may be dark again — and only where
-   * the realm records the room's level, because a room whose light the data
-   * does not state is one the client cannot promise is lit.
-   */
-  extinguishInLight: boolean;
-  /**
-   * Walk on while the server says this character is blind. Off, a route or a
-   * loop stands still until sight returns — MegaMUD's `IgnoreBlind`, whose
-   * default (`0`) waits, and inverted here so that off means wait. A blind
-   * character cannot read the room it walks into and misses every swing, so
-   * a step taken blind is a step into a lair it will not see. `held`
-   * (paralysis) always holds and has no switch: a step while held is a
-   * command spent to be refused. See `afflictionHolding` in `walk.ts`.
-   */
-  walkWhileBlind: boolean;
-  /**
-   * Turn auto-combat back on when a route the player asked for arrives (todo
-   * 11). The ordinary reason to walk with it off is to get somewhere without
-   * fighting on the way; on arrival the reason is gone. Only a route the
-   * player asked for — a loop's leg and an errand are not journeys with an
-   * arrival in them. The switch flips the character's own file, so the
-   * toolbar shows it.
-   */
-  fightOnArrival: boolean;
-  /**
    * Ways and places routes keep out of, in the realm's own words (todo 806):
    * a word a way's script phrase says (`go vortex`), or a room's name does
    * (the Negative Power Plane). Configuration, not code: which places a
@@ -1865,24 +1277,6 @@ export interface MovementConfig {
    * (`Traveller.keepOut`) unless it starts or ends inside one.
    */
   keepOutOf: string[];
-  /**
-   * Walk on while poisoned. Off, the walk waits the poison out — MegaMUD's
-   * `IgnorePoison` default. A cure under `spells.cures` ends the wait sooner.
-   * Disease is not a movement matter and has no switch.
-   */
-  walkWhilePoisoned: boolean;
-  /**
-   * Walk on while the realm's message table says the character is confused —
-   * MegaMUD's *Ignore Confusion*. Off by default, as MegaMUD's is: a confused
-   * character's commands misfire, and a walk spends them. See `afflictionHolding`.
-   */
-  walkWhileConfused: boolean;
-  /**
-   * Walk on while the realm's message table says the character is losing hit
-   * points — burning, bleeding, acid, plague. Off by default: MegaMUD rests
-   * until such a row's ending. See `afflictionHolding`.
-   */
-  walkWhileLosingHp: boolean;
   /**
    * Pick up a key an exit of this room needs, when it is lying on the floor of
    * it — and only then.
@@ -1933,50 +1327,6 @@ export interface HuntingAutomationConfig {
 }
 
 /**
- * Spending character points on the `train stats` screen — `StatScreen`.
- *
- * Off by default, and inert while every wanted figure is at or under the
- * sheet's: the reviewer's rule (todo 10). `wanted` is where each stat should
- * end up; 0 leaves it alone. The screen replaces the whole terminal and
- * anything typed lands in a field, which is why the queue stands down for it
- * and only this one driver, which reads the screen, is let through.
- */
-export interface TrainConfig {
-  /** Auto Train Stats. */
-  stats: boolean;
-  wanted: Record<TrainedAttribute, number>;
-  /**
-   * Go and collect a level when the experience is there (todo 18).
-   *
-   * Off, because a player banking levels for a reroll exists and a client
-   * that levelled them anyway would have spent their money and their choice.
-   *
-   * Experience past the threshold does nothing at all until a trainer is
-   * paid: no hit points, no skills, no character points. So a client left to
-   * play overnight without this comes back with a night's experience and the
-   * same character it started with — which is the one thing it is for.
-   */
-  levels: boolean;
-  /**
-   * Where to go and level: the trainer's own shop row, or 0 for *the cheapest
-   * that will take me*.
-   *
-   * **A row, not a room name.** Two rows may share a name and they are
-   * different trainers with different bands; and a row placed in several
-   * rooms is one choice, not several.
-   *
-   * The settings screen offers only the rows the realm says will take this
-   * character at this level (`trainersTaking`), because a trainer that
-   * refuses is a walk across two maps to be told so. A stated row that stops
-   * taking this character — every class room does at level 10, every band
-   * does at its ceiling — is **not** silently replaced: the errand refuses
-   * and says so, which is the reviewer's rule and the standing one about
-   * never guessing a location.
-   */
-  trainer: number;
-}
-
-/**
  * Casting — MegaMUD's **Spells** tab.
  *
  * MegaMUD's spell handling is a table per spell with a condition each, and
@@ -1995,8 +1345,8 @@ export interface SpellsConfig {
    * realm's own figures — a spell the target resists is not cast, the
    * cheapest whose least roll finishes what is left of the monster is, and
    * otherwise the hardest hitter the pool can pay for — and the cures come
-   * from the book the same way where their boxes are blank. `attack` and
-   * `attackFallback` are what is cast with it off. Off, because it spends
+   * from the book the same way where their boxes are blank. `attack` is what
+   * is cast with it off. Off, because it spends
    * mana on a reading the player did not type; the choice is said out loud
    * each time it changes.
    */
@@ -2034,25 +1384,6 @@ export interface SpellsConfig {
    */
   areaMinMobs: number;
   /**
-   * Do not cast the area spell below this fraction of maximum mana. An area
-   * spell is the expensive one, so its floor is the higher of this and
-   * `minMana`; under it the single-target spell and the round verbs carry
-   * the fight. An unknown maximum never blocks it, as everywhere.
-   */
-  areaMinMana: number;
-  /**
-   * The spell cast instead of `attack` for the rest of a fight once the server
-   * has said `attack` has no effect on the target — MegaMUD's `AttackSpl2`
-   * with `FailoverSpellAttacks`. Blank means none: the round attacks carry
-   * the fight, and the refusal is said once.
-   *
-   * `Your spell has no effect on <name>.` is the server saying the monster is
-   * immune (`spell-ineffective`), and without this a caster on a loop paid
-   * for the same spell every round of every fight with that monster, all
-   * night, for nothing. The whole name, as `attack` is.
-   */
-  attackFallback: string;
-  /**
    * How many times the round spell (or its fallback) is cast per target —
    * MegaMUD's `MaxCastCnt`, whose own default is **1**: open with the spell,
    * then let the melee round carry it. **0 is no limit here**, which is what
@@ -2070,35 +1401,6 @@ export interface SpellsConfig {
    */
   areaCasts: number;
   /**
-   * The spell that stands in for `attack` while health is low: one that hurts
-   * the target and heals the caster by it (`vampiric assault`, the realm's
-   * `DrainLife`). Blank keeps `attack`; with `autoChoose` on, blank derives it
-   * from the book's drains. Its picker offers only the spells the realm says
-   * drain (`spellServes`).
-   */
-  drain: string;
-  /**
-   * The same for the room spell: cast instead of `areaAttack`, under the area
-   * spell's own crowd and mana tests, while health is low. `necromantic storm`
-   * drains by its `EndCast`, a heal on the caster, and counts. Blank keeps
-   * `areaAttack`.
-   */
-  areaDrain: string;
-  /**
-   * The fraction of maximum health below which the drain spells replace the
-   * attack spells in a fight. 0 never drains.
-   */
-  drainBelow: number;
-  /**
-   * Keep draining until health is back to this fraction; 0 goes back to the
-   * attack spell the moment it is over `drainBelow`. The pair `healBelow` /
-   * `healTo` is, and for a sharper reason: every change of spell mid-fight
-   * re-engages it and restarts the character's round (`combatAction`), so a
-   * drain that lifts health one point over the line must not flip the fight
-   * back and forth. Clamped up to `drainBelow`, as `healTo` is.
-   */
-  drainTo: number;
-  /**
    * The spell to heal **this character** with. Blank heals nobody.
    *
    * MegaMUD's *Heal if below* on the Health tab, moved beside the attack
@@ -2113,7 +1415,7 @@ export interface SpellsConfig {
   heal: string;
   /**
    * The spell to heal a **party member** with. Blank heals nobody but this
-   * character, whatever `healParty` says.
+   * character.
    *
    * A second field rather than a second use of `heal`, because the realm
    * distinguishes the two and a great many heals are one or the other: `way of
@@ -2165,35 +1467,6 @@ export interface SpellsConfig {
    */
   healTo: number;
   /**
-   * *Auto Choose Best Heal* (upstream 3b60de1, 2026-09-27). On, the heal is
-   * chosen per cast from the spellbook and the realm's figures rather than
-   * read from `heal` and `healPartyWith`: the cheapest spell expected to cover
-   * what is missing, and, with more than one person hurt, a party-wide heal
-   * where it is worth more than one heal on the worst of them (`planHeal`). A
-   * choice that cannot be made falls back to the configured spell and says so.
-   * Its own switch rather than `autoChoose`'s, because a player may want the
-   * heals chosen and the attack spell typed, or the other way round.
-   */
-  autoChooseHeal: boolean;
-  /** Whether party members are healed at all. The toolbar's own toggle. */
-  healParty: boolean;
-  /**
-   * Ask a carried item for the blessing it can cast, when that blessing is not
-   * up — MegaMUD's `AutoBless`, for the half of it this client had no answer
-   * to: a *weapon* that blesses.
-   *
-   * The realm states the whole of it. An item's `CastsSp` names a spell, and
-   * where `UseCount` is `-1` the server lets it be used for ever — nine
-   * weapons in the shipped realm cast a sixty-tick bless that way, costing no
-   * mana and no charge, and nothing in this client ever asked for one.
-   *
-   * Off by default, like everything automated. **Only unlimited items**: one
-   * with three charges spent on a buff is three charges somebody was saving,
-   * and the realm has to say `-1` — silence is not unlimited. See
-   * `AutoInvoke`.
-   */
-  invokeItems: boolean;
-  /**
    * Do not cast below this fraction of maximum mana. 0 always casts.
    *
    * MegaMUD's min-mana on the attack spell, and the setting its own
@@ -2214,7 +1487,7 @@ export interface SpellsConfig {
   /**
    * The spells that speed a recovery and the ones a full one earns: MegaMUD's
    * *HP Regen*, *Mana Regen*, *Min Flux Rate*, *When HP Full* and *When Mana
-   * Full*, done as `megamud.exe` does them. See `Regen`.
+   * Full*, carried to MegaMUD's own by `megamudFromConfig`.
    */
   regen: RegenConfig;
   /**
@@ -2230,19 +1503,12 @@ export interface SpellsConfig {
    */
   blessings: BlessingConfig[];
   /**
-   * Tell the party member who blessed this character when their spell wears
-   * off — `/<caster> @bless-expired <spell>`, mudengine's own peer remote —
-   * so their client recasts on the event instead of its clock. Opt-in: it
-   * speaks on another player's telepath channel unasked.
-   */
-  notifyPartyOnWearOff: boolean;
-  /**
    * Whether the blessings below are cast unasked at all.
    *
    * The toolbar's *Auto-Bless* switch (todo 04): somebody who wants the
    * mana for healing turns it off for the fight and back on after, without
-   * emptying the list. Off, `Blessings` proposes nothing; the list, the
-   * cures and the heal are untouched.
+   * emptying the list. Off, no blessing is cast; the list, the cures and
+   * the heal are untouched.
    */
   autoBless: boolean;
 }
@@ -2250,13 +1516,6 @@ export interface SpellsConfig {
 export interface RegenConfig {
   /** Cast before a rest while health is short and nothing says it is already regenerating. */
   hp: string;
-  /** Cast out of meditation while mana is short and nothing says it is already regenerating. */
-  mana: string;
-  /**
-   * The least mana a tick should bring while `mana` is up: a slower tick, or
-   * none for half a minute, casts it again. 0 never does.
-   */
-  manaMinTick: number;
   /** Cast once each time health reaches `health.restTo`. */
   hpFull: string;
   /** Cast once each time mana reaches `health.meditateTo`. */
@@ -2279,8 +1538,6 @@ export interface BlessingConfig {
    */
   spell: string;
   target: BlessingTarget;
-  /** Fraction of maximum mana below which this blessing waits. 0 never waits. */
-  minMana: number;
   /**
    * Recast this before healing when both are due — for the shield a caster
    * dies without. Default off: a heal answers a number that is already bad.
@@ -2309,38 +1566,6 @@ export interface SafetyConfig {
   hangUp: HangUpConfig;
   retreat: RetreatConfig;
   fleeGoto: FleeGotoConfig;
-  pvp: PvpConfig;
-}
-
-/** What a PvP reaction may do about the fight itself. */
-export const PVP_ACTIONS = ['none', 'retreat'] as const;
-
-export type PvpAction = (typeof PVP_ACTIONS)[number];
-
-/**
- * What to do the moment a player opens on this character — MegaMUD's
- * NotifyGang, on the wire this client has already read: `<Name> moves to
- * attack you!` and a player's blow both put the attacker in
- * `combat.attackers` and start `HangUpWatch`'s five-minute clock, and this is
- * the reaction to that same evidence.
- *
- * Both halves off, like everything automated — and this one reaches other
- * people twice over: the broadcast speaks to the whole gang, and a retreat is
- * the client deciding a fight is lost.
- */
-export interface PvpConfig {
-  /**
-   * Say so on the gangpath — `bg`, the realm's own verb — once per attacker
-   * per five-minute window: the room and the health ride along, because the
-   * gang deciding whether to come needs where and how bad.
-   */
-  notifyGang: boolean;
-  /**
-   * `retreat` runs the moment the attack is seen, whatever `retreat.enabled`
-   * says — this is its own trigger, not a health threshold. `none` leaves the
-   * fight to the player and the other settings.
-   */
-  action: PvpAction;
 }
 
 /**
@@ -2356,14 +1581,6 @@ export interface PvpConfig {
  */
 export interface PartyConfig {
   /**
-   * Swing at what the leader is fighting. The leader is whoever this character
-   * follows (`party.following`); their target is what the server last said
-   * they hit (`party.engaged`), taken only while that monster is still in the
-   * room and the sighting is under a minute old. Never a player, whatever the
-   * leader is doing — the three refusals stand.
-   */
-  assistLeader: boolean;
-  /**
    * Swing at a monster seen attacking any party member — MegaMUD's
    * DefendParty. The sighting is `party.threatened`, kept from the sentences
    * the server volunteers about blows on other people, taken only while that
@@ -2373,19 +1590,6 @@ export interface PartyConfig {
    * either end: a person attacking a member is that member's PvP fight.
    */
   defendParty: boolean;
-  /**
-   * Sit down when the leader does. The party listing and `stops to rest` say
-   * who is resting; a follower that keeps walking while its leader mends is a
-   * follower a lair finds alone. Out of combat only, like every rest.
-   */
-  restWithLeader: boolean;
-  /**
-   * Keep this character at `preferredRank`: MegaMUD's Party Rank, sent when
-   * the roster says it stands somewhere else (`Routines.checkPartyRank`). Off.
-   */
-  autoRank: boolean;
-  /** Where `autoRank` keeps this character. Mid, where a character nobody has moved stands. */
-  preferredRank: PartyRank;
   /**
    * Say `@heal` in the room below this share of maximum health, while in a
    * party — MegaMUD's *Ask For Healing* (`PartyAskHeal%`). 0 never asks. Said
@@ -2426,66 +1630,20 @@ export interface PartyConfig {
    * Ask for the party listing every this many seconds while in a party, twice
    * that out of combat — MegaMUD's *Par Frequency* (15 in MegaMUD). The
    * listing is the only place another member's health shows. 0 asks only when
-   * the party changes (`onPartyChange`).
+   * the party changes.
    */
   parEverySeconds: number;
   /** Ask for the listing after every combat round too — MegaMUD's *Send PAR after combat round*. */
   parAfterRound: boolean;
 }
 
-/**
- * Whether the client owns the prompt's shape.
- *
- * `set statline full custom <template>` puts the maximum health and mana, the
- * experience, what the next level still costs and the purse on every prompt,
- * on both families (`src/shared/statline.ts` composes it; measured live,
- * 2026-09-09). Off by default: the line is a setting on the character, kept
- * server-side, and the client does not change one unasked. Whatever the line
- * is, the client reads it — `pro` says which, and the matcher is built from
- * that rather than from what was sent.
- */
-export interface StatlineConfig {
-  control: boolean;
-}
-
 export interface AutomationConfig {
   /**
-   * Rules, evaluated over character state. Written against this project's own
-   * vocabulary — see `./rules.ts` for why it is not `tproxy`'s DSL.
-   */
-  rules: Rule[];
-  /**
-   * Master switch. With this off, only what the player types is ever sent, bar
-   * the keep-alive (`idle`), which keeps the connection rather than acting.
+   * Master switch for the planners kept beside the MegaMUD engine (auto-hunt,
+   * quests, item errands, wards, auto-keys). MegaMUD's own All Off is the
+   * engine's switch.
    */
   enabled: boolean;
-  /**
-   * Sent once on entering the realm, to populate the HUD from an otherwise
-   * silent server. `exp` and `st` fill in maxima and progress, `i` the
-   * inventory, `who` the roster.
-   *
-   * `rm` is first and is the one that matters: it answers `Location: 1,2147`,
-   * the only exact statement of position this server ever makes, and everything
-   * else the client believes about where it is standing is inference.
-   *
-   * It replaced `pro`, measured rather than reasoned (`npm run probe:tour`):
-   * both carry the location, and `pro` spends **thirty lines** of settings,
-   * evil points and death records saying it — none of which anything here
-   * reads, and all of which lands in the terminal on every connection. `rm`
-   * answers in one line.
-   */
-  onEnterRealm: string[];
-  /**
-   * Asked when the party changes, so the roster is not empty at the moment it
-   * became worth having.
-   *
-   * The party listing is the only place another character's health is visible.
-   * One command on a transition, not periodically — how often to spend one on
-   * it is a judgement about how the character is being played, and a rule with
-   * `partySize` is where that belongs. Empty never asks.
-   */
-  onPartyChange: string;
-  idle: IdleConfig;
   pacing: PacingConfig;
   walk: WalkConfig;
   /** Actions taken to keep a character alive, rather than to play it. */
@@ -2497,22 +1655,14 @@ export interface AutomationConfig {
   health: HealthConfig;
   /** Picking things up off the floor — MegaMUD's auto-get. */
   loot: LootConfig;
-  /** Dropping named junk back onto it — the other half of MegaMUD's drop list. */
-  drop: DropConfig;
   /** Looking for what the room does not print — see `SearchConfig`. */
   search: SearchConfig;
-  /** Banking the purse at a counter — MegaMUD's StashCoin. */
-  banking: BankingConfig;
   /** Answering for a player who is not at the keyboard — MegaMUD's AutoAfk. */
   afk: AfkConfig;
   /** Keeping the pack stocked. See `SuppliesConfig`. */
   supplies: SuppliesConfig;
   /** Answering another player's `@` commands — MegaMUD's remote control. */
   remotes: RemotesConfig;
-  /** What this character does about other people, short of talking to them. */
-  talk: TalkConfig;
-  /** Whether the client sets the prompt's shape on the way in. See `StatlineConfig`. */
-  statline: StatlineConfig;
   /**
    * The loops a character walks to gain levels — MegaMUD's loops.
    *
@@ -2521,24 +1671,13 @@ export interface AutomationConfig {
    * `resources/loops/megamud.yaml` to copy from.
    */
   loops: Loop[];
-  /**
-   * Commands on a clock — MegaMUD's Events tab.
-   *
-   * `routines` reacts to state; this reacts to *time*. Through the arbiter in
-   * the `probe` band like everything else, so an event never displaces an escape.
-   */
-  events: ScheduledEvent[];
   /** What a planned route is allowed to do on the way. */
   movement: MovementConfig;
   /** Casting, at the one moment a rule cannot express. */
   spells: SpellsConfig;
-  /** Spending character points on the stat screen. */
   hunting: HuntingAutomationConfig;
-  train: TrainConfig;
   /** Carrying a quest's plan through the arbiter. See `QuestsConfig`. */
   quests: QuestsConfig;
-  /** Which kit to be in, and when. See `GearConfig`. */
-  gear: GearConfig;
 }
 
 /**
@@ -2551,43 +1690,6 @@ export interface AutomationConfig {
  */
 export interface QuestsConfig {
   enabled: boolean;
-}
-
-/**
- * The equipment manager — which kit to be in, and when (todo 00).
- *
- * The gear buttons this sits beside are presses: *put back what was on*,
- * *wear everything*. What they cannot say is *these boots while walking and
- * those while fighting*, which is a decision rather than an action, and one
- * the client is in a position to make because it already knows which of the
- * two is happening.
- *
- * Off, like everything automated: a set the player has not finished writing
- * would otherwise start swapping kit mid-fight. Empty by default for the
- * same reason `health.potions` is — nothing is worn unasked.
- */
-export interface GearConfig {
-  enabled: boolean;
-  /** The kits, most general first. See `GearSet`. */
-  sets: GearSet[];
-  /** The off-round weapon invocation. See `OffRoundConfig`. */
-  offRound: OffRoundConfig;
-}
-
-/**
- * `use <item> <target>` between rounds — todo 00's nexus spear.
- *
- * **It costs the round.** The item has to be in hand before `use` will take
- * it (`UseCommand` answers *You do not have <item> equipped.*), so a
- * two-handed one is six commands — off-hand off, spear on, use, weapon
- * back, off-hand back — against a window of three. `everyRounds` is the
- * floor under that, and 0 is off, which is where it ships.
- */
-export interface OffRoundConfig {
-  /** The item to invoke. Blank is off, whatever `everyRounds` says. */
-  item: string;
-  /** At most one invocation this many rounds. 0 never invokes. */
-  everyRounds: number;
 }
 
 export interface AppConfig {
@@ -2703,7 +1805,11 @@ export const DEFAULT_CONFIG: AppConfig = {
     // Paradigm's word. A realm without it says so in its own `locate:`.
     locate: 'rm',
     // The stock names. A realm that renames a coin says so in its own `coins:`.
-    coins: {}
+    coins: {},
+    // MegaMUD's defaults. A realm that differs says so in its own `bbs:`.
+    bbs: {},
+    // No board; a realm states its own `statsUrl:`, a character its key.
+    stats: { url: '', key: '' }
   },
   /*
    * None. A realm is a directory under `realms/`, and the client seeds one
@@ -2765,81 +1871,26 @@ export const DEFAULT_CONFIG: AppConfig = {
     conversations: true,
     conversationDays: 365,
     directory: '',
-    maxBytes: 64 * 1024 * 1024
+    maxBytes: 64 * 1024 * 1024,
+    keepBytes: 2 * 1024 ** 3,
+    stats: { enabled: false, everySeconds: 60 }
   },
   automation: {
     enabled: true,
-    // No rules by default. Automation that acts without being asked to is not
-    // a sensible default for a game where a wrong action costs a character.
-    rules: [],
-    // `pro` first, and it is the important one: it answers `Location: 1,2147`,
-    // which is the *only* exact statement of where the character is standing.
-    // Everything else the client does about position -- unique names, exit
-    // signatures, movement -- is inference from evidence, and the pathfinder is
-    // only as good as its starting point. The legacy engine asked for this on
-    // entering the realm (`user.coffee` `onGameEnter`) and dropping it was an
-    // omission, not a decision.
-    // `gb` last of the listings: it is the only statement of gang membership
-    // that includes the members who are offline, and gang membership is a
-    // permission -- `automation.remotes` answers `@` commands for whoever
-    // shares this character's gang, so the gate starts the session knowing who
-    // that is rather than learning it when somebody first asks. A gangless
-    // character gets one line back saying so, which the classifier reads.
-    // `bank` before the closing look, because the vault a character logs in
-    // standing in is the only one it can read without walking there: `bank`
-    // answers for *this* counter and says nothing about the others. The
-    // balances are kept between sessions (`Belongings`), so this is a refresh
-    // rather than the only way the card is ever filled -- and it costs one
-    // command answered with a refusal for a character that logged out
-    // somewhere else, which is why it is a list the player owns.
-    //
-    // It used to end in `l`. The server prints the whole room block on entering
-    // the realm anyway -- name, description, the floor, `Also here:`, exits and
-    // light -- so the closing look was a second copy of a block already read,
-    // bought at the price of announcing to everybody standing there that this
-    // character had arrived and was looking about. Measured across the recorded
-    // sessions in `logs/`: every one whose entry room had somebody in it printed
-    // `Also here:` before the probe sent anything (`2026-08-27_23-07-19`,
-    // `2026-08-28_10-18-29`, and eight more).
-    //
-    // Dropped rather than replaced: `stringList` filters an empty entry out, so
-    // a list of command words has no spelling for the bare Enter that replaced
-    // `l` everywhere else. Nothing here needs one -- the block already arrived.
-    onEnterRealm: ['rm', 'st', 'i', 'exp', 'sc', 'gb', 'bank'],
-    onPartyChange: 'party',
-    // Off: a look is a spent command and the server tells the person they were
-    // looked at. See `TalkConfig.lookAtPlayers`.
-    talk: { lookAtPlayers: false },
-    // Off: the status line is a setting kept on the character server-side,
-    // and the client does not change one unasked. See `StatlineConfig`.
-    statline: { control: false },
-    // Empty is a bare Enter: the room, re-read without telling the room. See
-    // `IdleConfig.command` and `REREAD_ROOM`.
-    idle: { enabled: true, afterSeconds: 45, command: REREAD_ROOM },
     // Window of 3 against a measured cliff of ~20: deliberately conservative,
     // because exceeding it loses commands with no way to know.
     pacing: { window: 3, minGapMs: 350, ackTimeoutMs: 3000 },
-    // Comfortably longer than the queue's own acknowledgement timeout, so a
-    // step is not abandoned while the arbiter is still waiting its turn to
-    // send it.
-    walk: { clearAfterSeconds: 15, stepTimeoutMs: 8000, minExpPerHour: 0 },
+    walk: { clearAfterSeconds: 15, minExpPerHour: 0 },
     safety: {
       // Off, and refusing when on. See `HangUpConfig`: the panic button every
       // MegaMUD-era client offers is, here, a way to die.
       hangUp: {
         enabled: false,
-        belowHealth: 0.15,
-        penalties: false,
-        onPlayerInRoom: false
+        belowHealth: 0.15
       },
       retreat: {
         enabled: false,
-        belowHealth: 0.3,
-        belowMana: 0,
-        whenOutnumbered: 0,
-        cooldownMs: 3000,
-        strategy: 'step-back',
-        safeHavenRoom: ''
+        belowHealth: 0.3
       },
       // Off, and more desperate than `retreat` when it is on — see
       // `FleeGotoConfig`. Between `retreat`'s 0.3 and `hangUp`'s 0.15: a fallback
@@ -2848,8 +1899,7 @@ export const DEFAULT_CONFIG: AppConfig = {
         enabled: false,
         belowHealth: 0.2,
         destination: ''
-      },
-      pvp: { notifyGang: false, action: 'none' }
+      }
     },
     // Off, like every other thing the client would do without being asked. The
     // shape it defaults to is the minimal one that still works: open on what
@@ -2859,27 +1909,16 @@ export const DEFAULT_CONFIG: AppConfig = {
       enabled: false,
       attack: 'a',
       opener: '',
-      hideForOpener: false,
-      engage: 'hostile',
-      retaliate: true,
-      defendAfterRounds: 2,
       politeAttacks: false,
       maxMobs: 0,
-      refreshRounds: 3,
       monsters: [],
-      maxTargetHealth: 0,
       minMobs: 0,
-      maxMonsterExperience: 0,
-      minSurvival: 0
+      maxMonsterExperience: 0
     },
     // Off, like everything automated. A client that sits down on its own is one
     // deciding when a fight is over.
     party: {
-      assistLeader: false,
       defendParty: false,
-      restWithLeader: false,
-      autoRank: false,
-      preferredRank: 'mid',
       askForHealBelow: 0,
       waitForMembersBelow: 0,
       waitNoLongerMinutes: 0,
@@ -2897,17 +1936,13 @@ export const DEFAULT_CONFIG: AppConfig = {
        * They are not 0 — the number every other automated threshold here
        * ships at — and the reason is that these two were never off. A loop
        * marching a 6% character through lairs that attack on sight was
-       * measured live, and 35/70 is what was chosen to stop it. Resting itself
-       * is still off until somebody turns it on: `Recovery` refuses on
-       * `automation.enabled` before it reads a threshold at all, so an
-       * unconfigured client sits nobody down. What these figures decide
-       * unasked is only ever whether a lap the *player started* keeps marching
-       * while its character is hurt.
+       * measured live, and 35/70 is what was chosen to stop it. Since the
+       * MegaMUD engine (2026-10-14) they are what Settings -> MegaMUD offers
+       * a character starting its MegaMUD settings from these
+       * (`megamudFromConfig`), and the rest line auto-hunt holds a lap to.
        */
       restBelow: 0.35,
       restTo: 0.7,
-      restNextDoor: true,
-      restBeforeTraps: 0.45,
       meditateBelow: 0,
       meditateTo: 0,
       potions: [],
@@ -2919,21 +1954,12 @@ export const DEFAULT_CONFIG: AppConfig = {
       // default changes nothing about how the client behaves.
       coinKinds: [...DENOMINATIONS],
       discardKinds: [],
-      items: [],
-      minPrice: 0,
-      maxEncumbrance: 0,
-      stopAtGrade: 'never',
-      convertWith: '',
-      convertAt: 'never'
+      itemDetails: []
     },
-    drop: { enabled: false, items: [], whenEncumbered: false, worthless: false },
     search: { enabled: false, tries: 1 },
-    // 500 gold and 5 gold, on the measured ladder: 100 copper to the gold.
-    banking: { autoDeposit: false, depositThresholdCopper: 50_000, keepCopper: 500, bank: 0 },
-    // On, with nothing listed: the switch is what the toolbar flips, and the
-    // list is what the Self card and the item panel fill. An empty list does
-    // nothing, so the default is safe and the first item added starts working.
-    supplies: { enabled: true, items: [] },
+    // What the Self card and the item panel fill: the rows an errand or a
+    // quest buys toward.
+    supplies: { items: [] },
     remotes: {
       enabled: false,
       gangpath: false,
@@ -2945,30 +1971,18 @@ export const DEFAULT_CONFIG: AppConfig = {
        * and are not.
        */
       party: ['health', 'bless-expired', 'heal'],
-      players: {}
+      players: {},
+      commands: []
     },
     loops: [],
-    events: [],
     afk: { enabled: false, afterMinutes: 5, reply: '{AFK}' },
     movement: {
-      openDoors: true,
-      openTries: 1,
-      bashDoors: true,
       bashTries: 3,
       pickLocks: false,
       pickTries: 3,
       sneak: false,
       provideLight: true,
       lightDimRooms: false,
-      extinguishInLight: true,
-      recoverGear: false,
-      recoverGearTries: 2,
-      recoverGearFloor: 2,
-      walkWhileBlind: false,
-      walkWhilePoisoned: false,
-      walkWhileConfused: false,
-      walkWhileLosingHp: false,
-      fightOnArrival: true,
       keepOutOf: ['vortex', 'Negative Power Plane'],
       collectKeys: true
     },
@@ -2976,40 +1990,23 @@ export const DEFAULT_CONFIG: AppConfig = {
       enabled: false,
       radius: 0
     },
-    train: {
-      stats: false,
-      wanted: { strength: 0, intellect: 0, willpower: 0, agility: 0, health: 0, charm: 0 },
-      levels: false,
-      trainer: 0
-    },
     quests: { enabled: false },
-    gear: { enabled: false, sets: [], offRound: { item: '', everyRounds: 0 } },
     spells: {
       autoChoose: false,
       attack: '',
       areaAttack: '',
       areaMinMobs: 3,
-      areaMinMana: 0.35,
-      attackFallback: '',
       attackCasts: 0,
       areaCasts: 0,
-      drain: '',
-      areaDrain: '',
-      drainBelow: 0,
-      drainTo: 0,
       heal: '',
       healPartyWith: '',
       healBelow: 0,
       healBelowInCombat: 0,
       healTo: 0,
-      autoChooseHeal: false,
-      healParty: false,
-      invokeItems: false,
       minMana: 0.15,
       cures: { blindness: '', poison: '', disease: '', freedom: '' },
-      regen: { hp: '', mana: '', manaMinTick: 0, hpFull: '', manaFull: '' },
+      regen: { hp: '', hpFull: '', manaFull: '' },
       blessings: [],
-      notifyPartyOnWearOff: false,
       autoBless: true
     }
   }
@@ -3034,43 +2031,19 @@ export const DEFAULT_CONFIG: AppConfig = {
  * and the array is where the value lives under `automation:`; a switch added
  * to one and not the other does not compile. `src/shared/__tests__` walks
  * every path against `DEFAULT_CONFIG` and fails for one that leads nowhere or
- * to something that is not a boolean, which is the failure `GUARD_FIELDS`
- * already records: a field in the type and not the list type-checks, then
- * silently does nothing.
+ * to something that is not a boolean: a field in the type and not the list
+ * type-checks, then silently does nothing.
  *
  * Only booleans, and only ones worth flipping mid-play. A threshold is a
  * number and belongs on the settings screen; a list is a list.
+ *
+ * One left: our flee, drawn beside MegaMUD's toggles because MegaMUD has no
+ * toggle of its own for it. The rest went with the old automation
+ * (2026-10-16): a character the engine runs draws MegaMUD's toggles in their
+ * place, and every character runs on the engine.
  */
 export const AUTOMATION_SWITCHES = {
-  /** The master switch. Off, only what the player types is sent, bar the keep-alive. */
-  automation: ['enabled'],
-  combat: ['combat', 'enabled'],
-  retaliate: ['combat', 'retaliate'],
-  autoBless: ['spells', 'autoBless'],
-  retreat: ['safety', 'retreat', 'enabled'],
-  fleeGoto: ['safety', 'fleeGoto', 'enabled'],
-  hangUp: ['safety', 'hangUp', 'enabled'],
-  loot: ['loot', 'coins'],
-  drop: ['drop', 'enabled'],
-  search: ['search', 'enabled'],
-  autoDeposit: ['banking', 'autoDeposit'],
-  supplies: ['supplies', 'enabled'],
-  openDoors: ['movement', 'openDoors'],
-  pickLocks: ['movement', 'pickLocks'],
-  bashDoors: ['movement', 'bashDoors'],
-  sneak: ['movement', 'sneak'],
-  provideLight: ['movement', 'provideLight'],
-  healParty: ['spells', 'healParty'],
-  invokeItems: ['spells', 'invokeItems'],
-  assistLeader: ['party', 'assistLeader'],
-  defendParty: ['party', 'defendParty'],
-  restWithLeader: ['party', 'restWithLeader'],
-  autoRank: ['party', 'autoRank'],
-  remotes: ['remotes', 'enabled'],
-  gangpath: ['remotes', 'gangpath'],
-  lookAtPlayers: ['talk', 'lookAtPlayers'],
-  quests: ['quests', 'enabled'],
-  gear: ['gear', 'enabled']
+  fleeGoto: ['safety', 'fleeGoto', 'enabled']
 } as const satisfies Record<string, readonly string[]>;
 
 export type AutomationSwitch = keyof typeof AUTOMATION_SWITCHES;
@@ -3274,7 +2247,9 @@ export function normalizeConfig(input: unknown): AppConfig {
         ['rm', 'sys-status', 'none'],
         DEFAULT_CONFIG.connection.locate
       ),
-      coins: asCoinNames(connection['coins'])
+      coins: asCoinNames(connection['coins']),
+      bbs: asBbsSettings(connection['bbs']),
+      stats: normalizeStatsTarget(connection['stats'])
     },
     // Both keys, oldest last: `profiles:` was this block's name before a
     // profile came to mean a character.
@@ -3587,8 +2562,9 @@ function normalizeServer(value: unknown): Server | null {
      * reported.
      */
     database: str(value['database'], ''),
-    hangPenalties: typeof value['hangPenalties'] === 'boolean' ? value['hangPenalties'] : null,
-    coins: asCoinNames(value['coins'])
+    coins: asCoinNames(value['coins']),
+    bbs: asBbsSettings(value['bbs']),
+    statsUrl: str(value['statsUrl'], '').trim()
   };
 }
 
@@ -3668,203 +2644,14 @@ function stringList(value: unknown, fallback: string[]): string[] {
   return Array.isArray(value) ? items : fallback;
 }
 
-/**
- * Every field a guard may name.
- *
- * **This is one half of a pair and both halves have to move together.** The
- * other is `readField` in `RuleEngine`. A field added to the `GuardField` union
- * and to the reader but not to this list is a field the type system accepts and
- * the *parser* refuses — so a rule using it fails to load, silently, and the
- * documented example in `default.yaml` does not work. That is exactly what
- * happened to `target`, `attackers`, `players`, `hostiles` and `hangUpClean`
- * when they were added.
- *
- * Ordered as the field union is, so the two read alongside each other.
- */
-export const GUARD_FIELDS: readonly GuardField[] = [
-  'hp.percent',
-  'hp',
-  'mana.percent',
-  'mana',
-  'level',
-  'inCombat',
-  'resting',
-  'meditating',
-  'occupants',
-  'threats',
-  'mobs',
-  'players',
-  'hostiles',
-  'hangUpClean',
-  'target',
-  'attackers',
-  'partySize',
-  'stealth',
-  'wealth',
-  'phase',
-  'realm',
-  'shopHere',
-  'lairHere',
-  'undeadHere',
-  'toughestHere',
-  'deathSpellHere',
-  'dark',
-  'light'
-];
-
-const COMPARISONS: readonly Comparison[] = ['<', '<=', '>', '>=', '==', '!='];
-
-/** Derived, not restated: a band added to `PRIORITY` is accepted here at once. */
-const PRIORITIES = Object.keys(PRIORITY) as readonly RuleAction['priority'][];
-
-/**
- * `"hp.percent < 0.5"` -> a guard.
- *
- * Written as one string because that is how a person thinks about a condition,
- * but validated field by field: an unknown field or operator is *dropped and
- * reported*, never silently accepted. A guard that quietly never matches is a
- * rule that quietly never fires, which is the failure mode of a stringly-typed
- * DSL.
- */
-export function parseGuard(text: string): Guard | null {
-  const match = /^\s*([\w.]+)\s*(<=|>=|==|!=|<|>)\s*(.+?)\s*$/.exec(text);
-  if (!match) return null;
-
-  const field = match[1] as GuardField;
-  const op = match[2] as Comparison;
-  if (!GUARD_FIELDS.includes(field)) return null;
-  if (!COMPARISONS.includes(op)) return null;
-
-  /*
-   * Surrounding quotes are stripped.
-   *
-   * A guard is one string in the options file — `- target == 'orc rogue'` — so
-   * YAML hands the inner quotes straight through. Without this, that guard
-   * compares against the four-quote-and-space *literal* and can never match,
-   * and there is no way at all to name anything with a space in it.
-   */
-  let raw = match[3] ?? '';
-  const quoted = /^(['"])(.*)\1$/.exec(raw);
-  if (quoted) raw = quoted[2] ?? '';
-
-  let value: number | string | boolean = raw;
-  if (raw === 'true') value = true;
-  else if (raw === 'false') value = false;
-  // Quoted digits stay a string: `target == '1'` is a name, not a number.
-  else if (!quoted && raw !== '' && Number.isFinite(Number(raw))) value = Number(raw);
-
-  return { field, op, value };
-}
-
-function parseTrigger(value: unknown): Trigger | null {
-  if (typeof value !== 'string') return null;
-  const text = value.trim();
-
-  if (text === 'state') return { kind: 'state' };
-  if (text === 'mid-round') return { kind: 'mid-round' };
-
-  const timer = /^every\s+(\d+)(ms|s)?$/.exec(text);
-  if (timer) {
-    const amount = Number(timer[1]);
-    return { kind: 'timer', everyMs: timer[2] === 'ms' ? amount : amount * 1000 };
-  }
-
-  // Anything else is a block type. Not checked against the vocabulary here:
-  // `shared/config.ts` must stay free of the parser, and a rule naming a block
-  // that never occurs simply never fires, which is visible in the trace.
-  return { kind: 'block', type: text };
-}
-
-function parseAction(value: unknown): RuleAction | null {
-  if (typeof value === 'string') {
-    return value.trim() ? { command: value.trim(), priority: 'combat' } : null;
-  }
-  if (!isRecord(value)) return null;
-
-  const command = str(value['command'], '');
-  if (command.length === 0) return null;
-
-  const priority = PRIORITIES.includes(value['priority'] as RuleAction['priority'])
-    ? (value['priority'] as RuleAction['priority'])
-    : 'combat';
-
-  const action: RuleAction = { command, priority };
-  const coalesce = str(value['coalesce'], '');
-  if (coalesce) action.coalesce = coalesce;
-  if (value['expiresMs'] !== undefined) {
-    action.expiresMs = int(value['expiresMs'], 5000, 100, 600_000);
-  }
-  return action;
-}
-
-/**
- * Coerces the `rules:` list.
- *
- * A malformed rule is dropped rather than defaulted: a half-understood rule
- * that fires is far worse than one that does not exist, because it acts on the
- * character's behalf.
- */
-export function normalizeRules(value: unknown): Rule[] {
-  if (!Array.isArray(value)) return [];
-
-  const rules: Rule[] = [];
-  const seen = new Set<string>();
-
-  for (const [index, entry] of value.entries()) {
-    if (!isRecord(entry)) continue;
-
-    const name = str(entry['name'], `rule ${index + 1}`);
-    if (seen.has(name.toLowerCase())) continue;
-
-    const when = parseTrigger(entry['when']);
-    if (!when) continue;
-
-    const rawThen = Array.isArray(entry['then']) ? entry['then'] : [entry['then']];
-    const then = rawThen.map(parseAction).filter((action): action is RuleAction => action !== null);
-    if (then.length === 0) continue;
-
-    const rawIf = Array.isArray(entry['if']) ? entry['if'] : entry['if'] ? [entry['if']] : [];
-    const guards = rawIf
-      .map((guard) => (typeof guard === 'string' ? parseGuard(guard) : null))
-      .filter((guard): guard is Guard => guard !== null);
-    // A guard that failed to parse is dropped, and dropping a guard *widens*
-    // the rule. Refuse the whole rule instead.
-    if (guards.length !== rawIf.length) continue;
-
-    seen.add(name.toLowerCase());
-    rules.push({
-      name,
-      enabled: bool(entry['enabled'], true),
-      when,
-      if: guards,
-      then,
-      cooldownMs: int(entry['cooldownMs'], 1000, 0, 3_600_000)
-    });
-  }
-
-  return rules;
-}
-
 function normalizeAutomation(value: unknown): AutomationConfig {
   const raw = isRecord(value) ? value : {};
-  const idle = isRecord(raw['idle']) ? raw['idle'] : {};
   const pacing = isRecord(raw['pacing']) ? raw['pacing'] : {};
   const walk = isRecord(raw['walk']) ? raw['walk'] : {};
   const d = DEFAULT_CONFIG.automation;
 
   return {
     enabled: bool(raw['enabled'], d.enabled),
-    rules: normalizeRules(raw['rules']),
-    onEnterRealm: stringList(raw['onEnterRealm'], d.onEnterRealm),
-    // Trimmed rather than defaulted when empty: `onPartyChange: ''` is somebody
-    // saying "never ask", which is a legitimate answer.
-    onPartyChange:
-      typeof raw['onPartyChange'] === 'string' ? raw['onPartyChange'].trim() : d.onPartyChange,
-    idle: {
-      enabled: bool(idle['enabled'], d.idle.enabled),
-      afterSeconds: int(idle['afterSeconds'], d.idle.afterSeconds, 5, 3600),
-      command: str(idle['command'], d.idle.command)
-    },
     pacing: {
       // Capped at 10 against a measured cliff of ~20. A config cannot opt into
       // silently losing commands.
@@ -3873,9 +2660,6 @@ function normalizeAutomation(value: unknown): AutomationConfig {
       ackTimeoutMs: int(pacing['ackTimeoutMs'], d.pacing.ackTimeoutMs, 250, 30_000)
     },
     walk: {
-      // Floored at a second: anything shorter abandons steps the server was
-      // about to answer, which looks exactly like a broken route.
-      stepTimeoutMs: int(walk['stepTimeoutMs'], d.walk.stepTimeoutMs, 1000, 120_000),
       // Zero is meaningful: keep it until something else happens.
       clearAfterSeconds: int(walk['clearAfterSeconds'], d.walk.clearAfterSeconds, 0, 3600),
       // Zero is off. Capped where no realm's experience curve reaches in an hour.
@@ -3886,9 +2670,7 @@ function normalizeAutomation(value: unknown): AutomationConfig {
     party: normalizeParty(raw['party']),
     health: normalizeHealth(raw['health']),
     loot: normalizeLoot(raw['loot']),
-    drop: normalizeDrop(raw['drop']),
     search: normalizeSearch(raw['search']),
-    banking: normalizeBanking(raw['banking']),
     supplies: normalizeSupplies(raw['supplies']),
     remotes: normalizeRemotes(raw['remotes'], d.remotes),
     afk: {
@@ -3905,57 +2687,11 @@ function normalizeAutomation(value: unknown): AutomationConfig {
         .trim()
         .slice(0, 120)
     },
-    talk: {
-      lookAtPlayers: bool(
-        isRecord(raw['talk']) ? raw['talk']['lookAtPlayers'] : undefined,
-        d.talk.lookAtPlayers
-      )
-    },
-    statline: {
-      control: bool(
-        isRecord(raw['statline']) ? raw['statline']['control'] : undefined,
-        d.statline.control
-      )
-    },
     loops: asLoops(raw['loops']),
-    events: asEvents(raw['events']),
     movement: normalizeMovement(raw['movement']),
     spells: normalizeSpells(raw['spells']),
     hunting: normalizeHuntingAutomation(raw['hunting']),
-    train: normalizeTrain(raw['train']),
-    quests: normalizeQuests(raw['quests']),
-    gear: normalizeGear(raw['gear'])
-  };
-}
-
-/**
- * The kits, parsed at the boundary like every other list here: a set with no
- * name or nothing to wear is dropped (a kit naming nothing dresses nobody), a
- * `when` the table does not know is dropped — the closed union's runtime
- * half — and a blank `mob` is *any monster* rather than a refusal.
- */
-export function normalizeGear(value: unknown): GearConfig {
-  const raw = isRecord(value) ? value : {};
-  const d = DEFAULT_CONFIG.automation.gear;
-  const offRound = isRecord(raw['offRound']) ? raw['offRound'] : {};
-  return {
-    enabled: bool(raw['enabled'], d.enabled),
-    sets: (Array.isArray(raw['sets']) ? raw['sets'] : []).flatMap((entry): GearSet[] => {
-      if (!isRecord(entry)) return [];
-      const name = str(entry['name'], '');
-      const when = str(entry['when'], '') as GearWhen;
-      if (name.length === 0 || !GEAR_WHENS.includes(when)) return [];
-      const wear = (Array.isArray(entry['wear']) ? entry['wear'] : [])
-        .map((each) => str(each, ''))
-        .filter((each) => each.length > 0);
-      if (wear.length === 0) return [];
-      return [{ name, when, mob: str(entry['mob'], ''), wear }];
-    }),
-    offRound: {
-      item: str(offRound['item'], ''),
-      // Bounded low: a floor of twenty rounds is a fight that has ended.
-      everyRounds: int(offRound['everyRounds'], d.offRound.everyRounds, 0, 20)
-    }
+    quests: normalizeQuests(raw['quests'])
   };
 }
 
@@ -3999,8 +2735,6 @@ function normalizeHealth(value: unknown): HealthConfig {
       const to = fraction(raw['restTo'], d.restTo);
       return to === 0 ? 0 : Math.max(to, restBelow);
     })(),
-    restNextDoor: bool(raw['restNextDoor'], d.restNextDoor),
-    restBeforeTraps: fraction(raw['restBeforeTraps'], d.restBeforeTraps),
     meditateBelow,
     // Clamped up to `meditateBelow`, as `restTo` is to `restBelow`; 0 stays 0.
     meditateTo: (() => {
@@ -4039,7 +2773,8 @@ function normalizeRemotes(value: unknown, d: RemotesConfig): RemotesConfig {
     autoJoin: bool(raw['autoJoin'], d.autoJoin),
     gang: remoteNames(raw['gang'], d.gang),
     party: remoteNames(raw['party'], d.party),
-    players: playerGrants(raw['players'], d.players)
+    players: playerGrants(raw['players'], d.players),
+    commands: raw['commands'] === undefined ? d.commands : asBotCommands(raw['commands'])
   };
 }
 
@@ -4082,12 +2817,6 @@ function playerGrants(
 function normalizeLoot(value: unknown): LootConfig {
   const raw = isRecord(value) ? value : {};
   const d = DEFAULT_CONFIG.automation.loot;
-  const items = Array.isArray(raw['items'])
-    ? raw['items']
-        .filter((entry): entry is string => typeof entry === 'string')
-        .map((entry) => entry.trim())
-        .filter((entry) => entry.length > 0)
-    : d.items;
   /*
    * An unrecognised denomination is dropped rather than defaulting the list:
    * a typo that silently meant "all five" would be a setting that reads as
@@ -4113,47 +2842,7 @@ function normalizeLoot(value: unknown): LootConfig {
     coins: bool(raw['coins'], d.coins),
     coinKinds,
     discardKinds,
-    stopAtGrade: gate(raw['stopAtGrade'], d.stopAtGrade),
-    convertWith: str(raw['convertWith'], d.convertWith).trim(),
-    convertAt: gate(raw['convertAt'], d.convertAt),
-    items,
-    // Capped well above any price the shipped realm states, so a typo cannot
-    // make the field mean "never", and floored at 0, which is what off means.
-    minPrice: int(raw['minPrice'], d.minPrice, 0, 100_000_000),
-    maxEncumbrance: int(raw['maxEncumbrance'], d.maxEncumbrance, 0, 1_000_000)
-  };
-}
-
-/** A closed union, so an unrecognised word is the safe answer rather than passed through. */
-const GATES: readonly EncumbranceGate[] = ['never', 'medium', 'heavy'];
-
-function gate(value: unknown, fallback: EncumbranceGate): EncumbranceGate {
-  const word = typeof value === 'string' ? value.trim().toLowerCase() : '';
-  return GATES.find((known) => known === word) ?? fallback;
-}
-
-/** The roster's own three ranks — an unrecognised word falls back rather than passing through. */
-const PARTY_RANKS: readonly PartyRank[] = ['front', 'mid', 'back'];
-
-function partyRank(value: unknown, fallback: PartyRank): PartyRank {
-  const word = typeof value === 'string' ? value.trim().toLowerCase() : '';
-  return PARTY_RANKS.find((known) => known === word) ?? fallback;
-}
-
-function normalizeDrop(value: unknown): DropConfig {
-  const raw = isRecord(value) ? value : {};
-  const d = DEFAULT_CONFIG.automation.drop;
-  const items = Array.isArray(raw['items'])
-    ? raw['items']
-        .filter((entry): entry is string => typeof entry === 'string')
-        .map((entry) => entry.trim())
-        .filter((entry) => entry.length > 0)
-    : d.items;
-  return {
-    enabled: bool(raw['enabled'], d.enabled),
-    items,
-    whenEncumbered: bool(raw['whenEncumbered'], d.whenEncumbered),
-    worthless: bool(raw['worthless'], d.worthless)
+    itemDetails: asItemRules(raw['itemDetails'])
   };
 }
 
@@ -4174,60 +2863,22 @@ function normalizeSearch(value: unknown): SearchConfig {
   };
 }
 
-function normalizeBanking(value: unknown): BankingConfig {
-  const raw = isRecord(value) ? value : {};
-  const d = DEFAULT_CONFIG.automation.banking;
-  return {
-    autoDeposit: bool(raw['autoDeposit'], d.autoDeposit),
-    depositThresholdCopper: int(
-      raw['depositThresholdCopper'],
-      d.depositThresholdCopper,
-      0,
-      1_000_000_000
-    ),
-    keepCopper: int(raw['keepCopper'], d.keepCopper, 0, 1_000_000_000),
-    // A shop row id. 0 is *whichever counter it is standing at*, which is what
-    // a file predating the setting was doing.
-    bank: int(raw['bank'], d.bank, 0, 1_000_000)
-  };
-}
-
 function normalizeMovement(value: unknown): MovementConfig {
   const raw = isRecord(value) ? value : {};
   const d = DEFAULT_CONFIG.automation.movement;
   return {
-    openDoors: bool(raw['openDoors'], d.openDoors),
-    // Capped low: a door that did not open on the third try is locked, and
-    // every further attempt is a command spent to be told so again.
-    openTries: int(raw['openTries'], d.openTries, 0, 3),
     /*
-     * Forcing is capped higher than opening, because unlike `open` it is a
-     * roll rather than an answer: `captures/002` shows three `pi w` before the
-     * lock gave, and `captures/005` two `bas n`. A door that will not open is
-     * telling you something; a pick that failed is telling you nothing.
-     *
-     * Still bounded — each attempt is a command out of the same budget the
-     * fight in the next room will be fought with, and a bash is paid for in
-     * health as well.
+     * Forcing is a roll rather than an answer: `captures/002` shows three
+     * `pi w` before the lock gave, and `captures/005` two `bas n`. Still
+     * bounded: each attempt is a command out of the same budget the fight in
+     * the next room will be fought with, and a bash is paid for in health.
      */
-    bashDoors: bool(raw['bashDoors'], d.bashDoors),
     bashTries: int(raw['bashTries'], d.bashTries, 0, 10),
     pickLocks: bool(raw['pickLocks'], d.pickLocks),
     pickTries: int(raw['pickTries'], d.pickTries, 0, 10),
     sneak: bool(raw['sneak'], d.sneak),
     provideLight: bool(raw['provideLight'], d.provideLight),
     lightDimRooms: bool(raw['lightDimRooms'], d.lightDimRooms),
-    extinguishInLight: bool(raw['extinguishInLight'], d.extinguishInLight),
-    recoverGear: bool(raw['recoverGear'], d.recoverGear),
-    // Bounded low: a recovery that has failed five times is not going to work
-    // on the sixth, and the figures are lives on the other end of it.
-    recoverGearTries: int(raw['recoverGearTries'], d.recoverGearTries, 0, 20),
-    recoverGearFloor: int(raw['recoverGearFloor'], d.recoverGearFloor, 0, 99),
-    walkWhileBlind: bool(raw['walkWhileBlind'], d.walkWhileBlind),
-    walkWhilePoisoned: bool(raw['walkWhilePoisoned'], d.walkWhilePoisoned),
-    walkWhileConfused: bool(raw['walkWhileConfused'], d.walkWhileConfused),
-    walkWhileLosingHp: bool(raw['walkWhileLosingHp'], d.walkWhileLosingHp),
-    fightOnArrival: bool(raw['fightOnArrival'], d.fightOnArrival),
     // One word once, however it was spelt: two spellings of one word are one
     // place kept out of.
     keepOutOf: uniqueWords(stringList(raw['keepOutOf'], d.keepOutOf)),
@@ -4245,23 +2896,27 @@ export function normalizeHuntingAutomation(value: unknown): HuntingAutomationCon
   };
 }
 
-/** A wanted figure is a whole number; the race's ceiling is applied at the screen, not here. */
-export function normalizeTrain(value: unknown): TrainConfig {
-  const raw = isRecord(value) ? value : {};
-  const d = DEFAULT_CONFIG.automation.train;
-  const wanted = isRecord(raw['wanted']) ? raw['wanted'] : {};
-  const figures = {} as Record<TrainedAttribute, number>;
-  for (const attribute of TRAINED_ATTRIBUTES) {
-    figures[attribute] = int(wanted[attribute], d.wanted[attribute], 0, 999);
+/**
+ * The *use this when that* list — `automation.health.potions`.
+ *
+ * A row with no name is dropped rather than defaulted, as a supply row and a
+ * buff row are: a rule naming nothing could only ever fire on nothing, and
+ * defaulting the name would invent an item the player never asked for. A
+ * `when` the table does not know is dropped for the same reason: a closed
+ * union's runtime half.
+ */
+function normalizePotionRules(value: unknown): PotionRule[] {
+  const rules: PotionRule[] = [];
+  if (!Array.isArray(value)) return rules;
+  for (const entry of value) {
+    if (!isRecord(entry)) continue;
+    const name = str(entry['name'], '').trim();
+    if (name.length === 0) continue;
+    const when = str(entry['when'], 'hp').trim() as PotionWhen;
+    if (!POTION_WHENS.includes(when)) continue;
+    rules.push({ name, when });
   }
-  return {
-    stats: bool(raw['stats'], d.stats),
-    wanted: figures,
-    levels: bool(raw['levels'], d.levels),
-    // A shop row number. 0 is *the cheapest that will take me*, which is also
-    // what a negative or unreadable figure means: never a guess at a room.
-    trainer: int(raw['trainer'], d.trainer, 0, 999_999)
-  };
+  return rules;
 }
 
 /**
@@ -4274,39 +2929,8 @@ export function normalizeTrain(value: unknown): TrainConfig {
  * name was settled to, kept beside it for the reason a loop stop carries
  * coordinates: six rooms are called General Store.
  */
-/**
- * The *use this when that* list — `automation.health.potions`.
- *
- * A row with no name is dropped rather than defaulted, as a supply row and a
- * buff row are: a rule naming nothing could only ever fire on nothing, and
- * defaulting the name would invent an item the player never asked for. A
- * `when` the table does not know is dropped for the same reason — a closed
- * union's runtime half — and a `verb` that is not one of the two normalises
- * to `drink`, which is what an unreadable verb means.
- */
-function normalizePotionRules(value: unknown): PotionRule[] {
-  const rules: PotionRule[] = [];
-  if (!Array.isArray(value)) return rules;
-  for (const entry of value) {
-    if (!isRecord(entry)) continue;
-    const name = str(entry['name'], '').trim();
-    if (name.length === 0) continue;
-    const when = str(entry['when'], 'hp').trim() as PotionWhen;
-    if (!POTION_WHENS.includes(when)) continue;
-    const verb = str(entry['verb'], 'drink').trim() as PotionVerb;
-    rules.push({
-      name,
-      when,
-      below: fraction(entry['below'], 0),
-      verb: POTION_VERBS.includes(verb) ? verb : 'drink'
-    });
-  }
-  return rules;
-}
-
 function normalizeSupplies(value: unknown): SuppliesConfig {
   const raw = isRecord(value) ? value : {};
-  const d = DEFAULT_CONFIG.automation.supplies;
   const items: SupplyItem[] = [];
   if (Array.isArray(raw['items'])) {
     for (const entry of raw['items']) {
@@ -4328,7 +2952,7 @@ function normalizeSupplies(value: unknown): SuppliesConfig {
       });
     }
   }
-  return { enabled: bool(raw['enabled'], d.enabled), items };
+  return { items };
 }
 
 function normalizeSpells(value: unknown): SpellsConfig {
@@ -4344,19 +2968,8 @@ function normalizeSpells(value: unknown): SpellsConfig {
     attack: str(raw['attack'], d.attack).trim(),
     areaAttack: str(raw['areaAttack'], d.areaAttack).trim(),
     areaMinMobs: int(raw['areaMinMobs'], d.areaMinMobs, 1, 99),
-    areaMinMana: fraction(raw['areaMinMana'], d.areaMinMana),
-    attackFallback: str(raw['attackFallback'], d.attackFallback).trim(),
     attackCasts: int(raw['attackCasts'], d.attackCasts, 0, 99),
     areaCasts: int(raw['areaCasts'], d.areaCasts, 0, 99),
-    drain: str(raw['drain'], d.drain).trim(),
-    areaDrain: str(raw['areaDrain'], d.areaDrain).trim(),
-    drainBelow: fraction(raw['drainBelow'], d.drainBelow),
-    // Clamped as `healTo` is below, and for its reason.
-    drainTo: (() => {
-      const to = fraction(raw['drainTo'], d.drainTo);
-      const below = fraction(raw['drainBelow'], d.drainBelow);
-      return to === 0 ? 0 : Math.max(to, below);
-    })(),
     heal: str(raw['heal'], d.heal).trim(),
     healPartyWith: str(raw['healPartyWith'], d.healPartyWith).trim(),
     healBelow: fraction(raw['healBelow'], d.healBelow),
@@ -4372,14 +2985,10 @@ function normalizeSpells(value: unknown): SpellsConfig {
       const below = fraction(raw['healBelow'], d.healBelow);
       return to === 0 ? 0 : Math.max(to, below);
     })(),
-    autoChooseHeal: bool(raw['autoChooseHeal'], d.autoChooseHeal),
-    healParty: bool(raw['healParty'], d.healParty),
-    invokeItems: bool(raw['invokeItems'], d.invokeItems),
     minMana: fraction(raw['minMana'], d.minMana),
     cures: normalizeCures(raw['cures']),
     regen: normalizeRegen(raw['regen']),
     blessings: normalizeBlessings(raw['blessings']),
-    notifyPartyOnWearOff: bool(raw['notifyPartyOnWearOff'], d.notifyPartyOnWearOff),
     autoBless: bool(raw['autoBless'], d.autoBless)
   };
 }
@@ -4398,8 +3007,6 @@ function normalizeRegen(value: unknown): RegenConfig {
   const raw = isRecord(value) ? value : {};
   return {
     hp: str(raw['hp'], '').trim(),
-    mana: str(raw['mana'], '').trim(),
-    manaMinTick: int(raw['manaMinTick'], 0, 0, 9999),
     hpFull: str(raw['hpFull'], '').trim(),
     manaFull: str(raw['manaFull'], '').trim()
   };
@@ -4414,11 +3021,7 @@ export function normalizeParty(value: unknown): PartyConfig {
   const raw = isRecord(value) ? value : {};
   const d = DEFAULT_CONFIG.automation.party;
   return {
-    assistLeader: bool(raw['assistLeader'], d.assistLeader),
     defendParty: bool(raw['defendParty'], d.defendParty),
-    restWithLeader: bool(raw['restWithLeader'], d.restWithLeader),
-    autoRank: bool(raw['autoRank'], d.autoRank),
-    preferredRank: partyRank(raw['preferredRank'], d.preferredRank),
     askForHealBelow: fraction(raw['askForHealBelow'], d.askForHealBelow),
     waitForMembersBelow: fraction(raw['waitForMembersBelow'], d.waitForMembersBelow),
     waitNoLongerMinutes: int(raw['waitNoLongerMinutes'], d.waitNoLongerMinutes, 0, 240),
@@ -4464,7 +3067,6 @@ export function normalizeBlessings(value: unknown): BlessingConfig[] {
     blessings.push({
       spell,
       target,
-      minMana: fraction(entry['minMana'], 0),
       prioritizeOverHeal: bool(entry['prioritizeOverHeal'], false),
       inCombat: bool(entry['inCombat'], target === 'self'),
       ...(target === 'party'
@@ -4486,7 +3088,6 @@ export function normalizeBlessings(value: unknown): BlessingConfig[] {
 function normalizeCombat(value: unknown): CombatConfig {
   const raw = isRecord(value) ? value : {};
   const d = DEFAULT_CONFIG.automation.combat;
-  const engage = String(raw['engage'] ?? d.engage);
   return {
     enabled: bool(raw['enabled'], d.enabled),
     // A blank attack verb would send a bare newline at everything in the room,
@@ -4494,24 +3095,13 @@ function normalizeCombat(value: unknown): CombatConfig {
     attack: str(raw['attack'], d.attack).split(/\s+/)[0] ?? d.attack,
     // Blank is meaningful here and means "no opener", so it is *not* defaulted.
     opener: typeof raw['opener'] === 'string' ? raw['opener'].trim().split(/\s+/)[0] || '' : '',
-    hideForOpener: bool(raw['hideForOpener'], d.hideForOpener),
-    engage: ENGAGE_POLICIES.includes(engage as EngagePolicy) ? (engage as EngagePolicy) : d.engage,
-    retaliate: bool(raw['retaliate'], d.retaliate),
-    defendAfterRounds: int(raw['defendAfterRounds'], d.defendAfterRounds, 0, 20),
     politeAttacks: bool(raw['politeAttacks'], d.politeAttacks),
     // Capped where the retreat guard is, for the same reason: a room holding more
     // than twenty things is not a number anybody is tuning against.
     maxMobs: int(raw['maxMobs'], d.maxMobs, 0, 20),
-    // Capped low on purpose: every round is a fraction of a second, so a client
-    // asked to look every round would spend most of a fight looking.
-    refreshRounds: int(raw['refreshRounds'], d.refreshRounds, 0, 20),
     monsters: asMonsterRules(raw['monsters']),
     minMobs: int(raw['minMobs'], d.minMobs, 0, 99),
-    maxMonsterExperience: int(raw['maxMonsterExperience'], d.maxMonsterExperience, 0, 100_000_000),
-    minSurvival: fraction(raw['minSurvival'], d.minSurvival),
-    // Capped far above any health the shipped realm states, so a typo cannot
-    // silently mean "never fight anything".
-    maxTargetHealth: int(raw['maxTargetHealth'], d.maxTargetHealth, 0, 1_000_000)
+    maxMonsterExperience: int(raw['maxMonsterExperience'], d.maxMonsterExperience, 0, 100_000_000)
   };
 }
 
@@ -4556,23 +3146,13 @@ function normalizeSafety(value: unknown): SafetyConfig {
   const hangUp = isRecord(raw['hangUp']) ? raw['hangUp'] : {};
   const retreat = isRecord(raw['retreat']) ? raw['retreat'] : {};
   const fleeGoto = isRecord(raw['fleeGoto']) ? raw['fleeGoto'] : {};
-  const pvp = isRecord(raw['pvp']) ? raw['pvp'] : {};
   const f = DEFAULT_CONFIG.automation.safety.retreat;
   const d = DEFAULT_CONFIG.automation.safety.hangUp;
   const fg = DEFAULT_CONFIG.automation.safety.fleeGoto;
-  const p = DEFAULT_CONFIG.automation.safety.pvp;
   return {
     retreat: {
       enabled: bool(retreat['enabled'], f.enabled),
-      belowHealth: fraction(retreat['belowHealth'], f.belowHealth),
-      belowMana: fraction(retreat['belowMana'], f.belowMana),
-      // Zero is meaningful: never run merely because there are several.
-      whenOutnumbered: int(retreat['whenOutnumbered'], f.whenOutnumbered, 0, 20),
-      // Floored at a second. Anything shorter retries before the server has
-      // had a chance to answer the first attempt.
-      cooldownMs: int(retreat['cooldownMs'], f.cooldownMs, 1000, 60_000),
-      strategy: oneOf<RetreatStrategy>(retreat['strategy'], RETREAT_STRATEGIES, f.strategy),
-      safeHavenRoom: str(retreat['safeHavenRoom'], f.safeHavenRoom).trim()
+      belowHealth: fraction(retreat['belowHealth'], f.belowHealth)
     },
     fleeGoto: {
       enabled: bool(fleeGoto['enabled'], fg.enabled),
@@ -4581,13 +3161,7 @@ function normalizeSafety(value: unknown): SafetyConfig {
     },
     hangUp: {
       enabled: bool(hangUp['enabled'], d.enabled),
-      belowHealth: fraction(hangUp['belowHealth'], d.belowHealth),
-      penalties: bool(hangUp['penalties'], d.penalties),
-      onPlayerInRoom: bool(hangUp['onPlayerInRoom'], d.onPlayerInRoom)
-    },
-    pvp: {
-      notifyGang: bool(pvp['notifyGang'], p.notifyGang),
-      action: oneOf<PvpAction>(pvp['action'], PVP_ACTIONS, p.action)
+      belowHealth: fraction(hangUp['belowHealth'], d.belowHealth)
     }
   };
 }
@@ -4610,34 +3184,26 @@ function normalizeLogging(value: unknown): LoggingConfig {
     directory: str(raw['directory'], DEFAULT_CONFIG.logging.directory),
     // Floor of 64 KiB: a cap smaller than one screenful of combat is a
     // misconfiguration rather than a preference.
-    maxBytes: int(raw['maxBytes'], DEFAULT_CONFIG.logging.maxBytes, 64 * 1024, 4 * 1024 ** 3)
+    maxBytes: int(raw['maxBytes'], DEFAULT_CONFIG.logging.maxBytes, 64 * 1024, 4 * 1024 ** 3),
+    // Floor of 64 MiB, room for a session's files; at most a terabyte.
+    keepBytes: int(raw['keepBytes'], DEFAULT_CONFIG.logging.keepBytes, 64 * 1024 ** 2, 1024 ** 4),
+    stats: normalizeStatsReport(raw['stats'])
   };
 }
 
-/**
- * The health a held journey walks on again at.
- *
- * One statement of it, because **two things travel** — a loop between its
- * stops and a plain route the player asked for — and both stop for the same
- * pair of thresholds. Two copies of this arithmetic in two files is the shape
- * `AutoCombat.quarry` was pulled together to stop: they agree until one of
- * them is edited.
- *
- * `restTo` is the ceiling where the player set one. Where they did not, `0`
- * means *the single sit-down* to `Recovery` — and read literally by something
- * that travels it is a **zero-width band**: the journey resumes at exactly the
- * health it stopped at, the next blow puts it back, at status-line cadence.
- * So an uncapped rest resumes a margin above the floor instead. Absolute
- * rather than proportional, because a proportional margin vanishes under a low
- * floor, which is the character that most needs the gap; clamped to 1 so a
- * floor at 95% still lets the journey go again.
- *
- * The margin is passed in rather than read here: `src/shared/` is
- * dependency-free by rule, so nothing in it can reach `tuning()`.
- */
-export function resumeAtHealth(health: HealthConfig, marginWhenUncapped: number): number {
-  if (health.restTo > 0) return health.restTo;
-  return Math.min(1, health.restBelow + marginWhenUncapped);
+function normalizeStatsReport(value: unknown): StatsReportConfig {
+  const raw = isRecord(value) ? value : {};
+  const d = DEFAULT_CONFIG.logging.stats;
+  // A floor of fifteen seconds, the board's own; a day at most.
+  return {
+    enabled: bool(raw['enabled'], d.enabled),
+    everySeconds: int(raw['everySeconds'], d.everySeconds, 15, 86400)
+  };
+}
+
+function normalizeStatsTarget(value: unknown): StatsTarget {
+  const raw = isRecord(value) ? value : {};
+  return { url: str(raw['url'], '').trim(), key: str(raw['key'], '').trim() };
 }
 
 /**
@@ -4654,65 +3220,4 @@ export function resumeAtMana(health: HealthConfig, marginWhenUncapped: number): 
   if (health.meditateBelow <= 0) return 0;
   if (health.meditateTo > 0) return Math.max(health.meditateTo, health.meditateBelow);
   return Math.min(1, health.meditateBelow + marginWhenUncapped);
-}
-
-/**
- * Whether health is under the figure a walk may travel at — `restBelow` going
- * down, `resumeAtHealth` while already held. Unknown is not low. The walker,
- * the loop and a follower's `@wait` read it, so none of them stops or goes on
- * at a figure the others do not (2026-09-25).
- */
-export function healthHolding(
-  health: HealthConfig,
-  hp: number | null,
-  hpMax: number | null,
-  held: boolean,
-  marginWhenUncapped: number
-): boolean {
-  if (health.restBelow <= 0) return false;
-  if (hp === null || hpMax === null || hpMax <= 0) return false;
-  const floor = held ? resumeAtHealth(health, marginWhenUncapped) : health.restBelow;
-  return hp / hpMax < floor;
-}
-
-/**
- * Whether mana is under the figure a walk may travel at — `meditateBelow`
- * going down, `resumeAtMana` while already held. Unknown is not low.
- */
-export function manaHolding(
-  health: HealthConfig,
-  mana: number | null,
-  manaMax: number | null,
-  held: boolean,
-  marginWhenUncapped: number
-): boolean {
-  if (health.meditateBelow <= 0) return false;
-  if (mana === null || manaMax === null || manaMax <= 0) return false;
-  const floor = held ? resumeAtMana(health, marginWhenUncapped) : health.meditateBelow;
-  return mana / manaMax < floor;
-}
-
-/**
- * Whether a fight should be draining — `drainBelow` going down, `drainTo`
- * (or `drainBelow` where it is 0) while already draining. Unknown is not low.
- */
-export function drainHolding(
-  spells: SpellsConfig,
-  hp: number | null,
-  hpMax: number | null,
-  held: boolean
-): boolean {
-  if (spells.drainBelow <= 0) return false;
-  if (hp === null || hpMax === null || hpMax <= 0) return false;
-  const floor = held ? Math.max(spells.drainTo, spells.drainBelow) : spells.drainBelow;
-  return hp / hpMax < floor;
-}
-
-/** The connection target implied by the config, for the command strip. */
-export function targetFromConfig(config: AppConfig): ConnectionTarget {
-  return {
-    host: config.connection.host,
-    port: config.connection.port,
-    encoding: config.connection.encoding
-  };
 }

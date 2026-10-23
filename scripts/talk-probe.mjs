@@ -39,7 +39,6 @@ function open(profile) {
     undefined,
     {
       ...profile.config.automation,
-      idle: { ...profile.config.automation.idle, enabled: false },
       rules: []
     },
     profile.config.connection.login

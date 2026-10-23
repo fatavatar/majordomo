@@ -404,56 +404,6 @@ export function holdsAbility(capabilities: Capabilities, id: number): boolean | 
 
 /** `ImmuPoison` — a Kang's, and what makes `rest` work where it otherwise would not. */
 export const IMMUNE_TO_POISON_ABILITY = 21;
-/** `GrantPicklocks` — a Ninja's and a Thief's by class, a Gnome's by race. */
-export const PICKLOCKS_ABILITY = 1003;
-/** `GrantTraps` — the same two classes, and a Gnome and a Dwarf by race. */
-export const TRAPS_ABILITY = 1002;
-/**
- * `ClassStealth` — what the class row grants, and the test for *can this
- * character get into the shadows at all*. A Thief carries `Stealth` (27)
- * beside it; `RaceStealth` (102) is the race's own and several races have it,
- * so this is deliberately the class's.
- */
-export const CLASS_STEALTH_ABILITY = 103;
-
-/**
- * `ShadowHome` (the server's spelling; `ShadowRest` above is this client's).
- *
- * Three commands read it and all three read it the same way — as an
- * *exemption* from standing the character up:
- *
- * - `RestCommand.cs:31` — `rest` does not `BreakStealth()`.
- * - `HideCommand.cs:20`, `SneakCommand.cs:28` — `hide` and `sneak` do not
- *   clear `Resting`.
- *
- * So it is symmetric: with it, resting and hiding do not undo each other in
- * either direction, and a character can sit down hidden and stay that way.
- */
-export const SHADOW_HOME_ABILITY = 1103;
-
-/**
- * Whether a class may rest and hide without one ending the other.
- *
- * **Read from the realm's own `Classes.Abil-n`, never from a class name.**
- * The shipped data is why: Paradigm grants it to seven classes — Missionary,
- * Ninja, Thief, Bard, Gypsy, Ranger, Mystic — and **MajorMUD's own realm
- * grants it to nobody at all**. So the realm data is already the gate the
- * reviewer asked for, and a check on the realm's *name* would be a second,
- * weaker statement of the same thing that could disagree with the file loaded.
- *
- * The family still gates it, because the *behaviour* is GreaterMUD's engine
- * rather than the data's: a MajorMUD server running a converted Paradigm
- * database would carry the column and not honour it. `null` family is not
- * `greatermud` — unknown is never the permissive answer.
- */
-export function restsInTheShadows(
-  abilities: ReadonlyArray<readonly [number, number]> | undefined,
-  family: 'greatermud' | 'majormud' | null
-): boolean {
-  if (family !== 'greatermud') return false;
-  return (abilities ?? []).some(([id]) => id === SHADOW_HOME_ABILITY);
-}
-
 /**
  * Whether the server will refuse `rest` because this character is poisoned.
  *
@@ -1203,6 +1153,20 @@ export function abilityShape(id: number, table: AbilityTable): AbilityShape | un
 }
 
 /**
+ * Whether a shape's value is a *magnitude* — a number the reader compares —
+ * rather than a kind, a flag or a row id.
+ *
+ * The one place this matters is a spell that states its own power: there, a
+ * magnitude of zero is the realm saying *the amount is in my own columns*,
+ * not saying zero. `way of the owl` is `M.R.` with `AbilVal 0` and a power of
+ * 10, and the card drew `M.R. 0` about a spell that grants ten. See
+ * `WorldSpell.power` and `SpellDetail`.
+ */
+export function abilityIsMagnitude(shape: AbilityShape | undefined): boolean {
+  return shape === 'points' || shape === 'percent' || shape === 'stat';
+}
+
+/**
  * Whether a pair is one the client holds and cannot read — the honest count.
  *
  * An id with no shape is *not understood*. Every shaped pair is read, and a
@@ -1222,20 +1186,6 @@ export function abilityShape(id: number, table: AbilityTable): AbilityShape | un
  * state a flag, never to state its default, which is what the numbers were
  * saying all along. `Del@Maint 646` on `waterskin` is the same presence.
  */
-/**
- * Whether a shape's value is a *magnitude* — a number the reader compares —
- * rather than a kind, a flag or a row id.
- *
- * The one place this matters is a spell that states its own power: there, a
- * magnitude of zero is the realm saying *the amount is in my own columns*,
- * not saying zero. `way of the owl` is `M.R.` with `AbilVal 0` and a power of
- * 10, and the card drew `M.R. 0` about a spell that grants ten. See
- * `WorldSpell.power` and `SpellDetail`.
- */
-export function abilityIsMagnitude(shape: AbilityShape | undefined): boolean {
-  return shape === 'points' || shape === 'percent' || shape === 'stat';
-}
-
 export function abilityIsUnread(id: number, table: AbilityTable): boolean {
   return abilityShape(id, table) === undefined;
 }

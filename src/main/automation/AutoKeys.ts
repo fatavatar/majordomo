@@ -16,7 +16,7 @@
  *
  * A keyed edge with nothing that substitutes for the key is **pruned by the
  * router** (`edgePenalty`'s `key` case returns null once a listing has landed),
- * so there is no step for `Walker`'s barrier ladder to be refused at and no
+ * so there is no step for the engine's door handling to be refused at and no
  * route for the panel's Walk button to enable — the refusal happens before
  * either exists. The one moment the client can act is while it is standing in
  * the room, which is also the only moment the floor is a fact.
@@ -28,13 +28,14 @@
  *
  * **It also fires for a keyed door the realm says can be picked**, which the
  * pruning argument above does not cover: `edgePenalty` prices that one rather
- * than pruning it, so a route does exist and `Walker`'s pick rung would be
- * asked. Deliberate, and the reason is `pickLocks` — off by default, so on an
- * ordinary configuration the route is planned through a door nothing will
- * open, and the character walks to it and stops. A key on the floor is one
- * command against a rung that is switched off and a skill roll that can fail.
+ * than pruning it, so a route does exist and the engine would try to pick it.
+ * Deliberate, and the reason is that picking is off by default (MegaMUD's
+ * `Other.CanPickLocks`), so on an ordinary configuration the route is planned
+ * through a door nothing will open, and the character walks to it and stops.
+ * A key on the floor is one command against a skill that is switched off and
+ * a roll that can fail.
  *
- * **No weight gate**, where `AutoLoot` has one that overrides even a name on
+ * **No weight gate**, where the old `AutoLoot` had one that overrode even a name on
  * the player's own list. The bound here is the realm's rather than a
  * threshold: one row per room, only for rooms whose exits are gated, and the
  * shipped realm gates its exits on **twenty-six items in total** — so the
@@ -53,12 +54,12 @@
  *   `WorldGraph.itemIdNamed`, which refuses a name several rows share — the
  *   realm has three `iron key`s — so a door is never opened on a coin toss.
  * - **Ask twice in one room.** A look reprints the floor; the memory is per
- *   room and per item, exactly as `AutoLoot`'s is.
- * - **Reach for one while the character is resting**, which is `AutoLoot`'s
- *   unmeasured refusal and costs only a delay.
+ *   room and per item, exactly as the old `AutoLoot`'s was.
+ * - **Reach for one while the character is resting**, which was the old
+ *   `AutoLoot`'s unmeasured refusal and costs only a delay.
  *
- * `Items.Gettable` is deliberately **not** consulted, which is `AutoLoot`'s
- * position too: the realm records the refusal for 45 of its 2,639 items, and
+ * `Items.Gettable` is deliberately **not** consulted, which was the old
+ * `AutoLoot`'s position too: the realm records the refusal for 45 of its 2,639 items, and
  * the server's own answer to a `get` is both more current and bounded to one
  * command — the memory below stops it being asked twice in the same room.
  *
@@ -103,6 +104,11 @@ export interface KeyEvents {
    * marching. See `onCharacter`.
    */
   busy?(): boolean;
+  /**
+   * Whether the MegaMUD engine picks the key up itself, off any floor
+   * (`MegaEngineHost.opensAWay`): this then only says the refusal it cannot.
+   */
+  engineTakes?(): boolean;
 }
 
 export interface KeySources {
@@ -135,7 +141,7 @@ export class AutoKeys {
   constructor(
     private config: MovementConfig,
     private enabled: boolean,
-    private readonly queue: CommandQueue,
+    private readonly queue: Pick<CommandQueue, 'enqueue'>,
     private readonly sources: KeySources,
     private readonly events: KeyEvents = {}
   ) {}
@@ -156,25 +162,22 @@ export class AutoKeys {
    *
    * **Standing still is a correctness gate, not a courtesy.** With a move on
    * the wire the room on the books is the one being *left*, so `room.items` is
-   * another room's floor — the refusal `Walker.start`, `LoopRunner.advance`
-   * and `considerRetreat` all make from the same fact. And a walk marching
-   * sends its step from the `movement` band while this proposes in `probe`, so
-   * a `get` queued behind it would be spent in the next room, refused out loud
-   * — and the per-room memory would already have been re-armed by the room
-   * change, so the same key would be walked past every lap. The feature would
-   * have worked standing still, which is how it was reported, and misfired on
-   * every route.
+   * another room's floor. A `get` asked for then would be spent in the next
+   * room, refused out loud, and the per-room memory would already have been
+   * re-armed by the room change, so the same key would be walked past every
+   * lap. The feature would have worked standing still, which is how it was
+   * reported, and misfired on every route.
    *
    * Not marked as asked when it is held: the character has not left, and the
    * next line after the walk is where this belongs.
    */
   onCharacter(state: CharacterState): void {
     if (!this.enabled || !this.config.collectKeys || state.phase !== 'in-game') return;
-    // `AutoLoot`'s refusal, for its reason: whether `get` breaks a rest has
+    // The old `AutoLoot`'s refusal, for its reason: whether `get` breaks a rest has
     // never been asked of the wire, and waiting costs only the wait.
     if (state.vitals.resting || state.vitals.meditating) return;
-    // And an escape has the character. `AutoLight` stands down on the same
-    // fact: a command queued in that window lands after the character has fled.
+    // And an escape has the character: a command queued in that window lands
+    // after the character has fled.
     if (this.events.escaping?.() === true) return;
     if (this.events.busy?.() === true) return;
 
@@ -206,6 +209,7 @@ export class AutoKeys {
         this.sayIfAmbiguous(way, state);
         continue;
       }
+      if (this.events.engineTakes?.() === true) continue;
       this.asked.add(way.keyId);
       this.queue.enqueue({
         command: `get ${lying.name}`,

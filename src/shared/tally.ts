@@ -93,6 +93,131 @@ export interface AwaySpell {
   to: number;
 }
 
+/**
+ * MegaMUD's own attack rungs, as its statistics window counts them
+ * (2026-10-19): the pre-attack (`Pre:`), the pre-multi (`PreM:`), the
+ * multi-attack (`Multi:`), the main attack spell (`Main:`, or `Cast1:` once
+ * one is set) and the second (`Cast2:`). The states `0x426ef0` and
+ * `0x426f70` switch on: 0xb, 9, 10, 0xd and 0xc.
+ */
+export const MEGA_MODES = ['pre', 'preMulti', 'multi', 'main', 'second'] as const;
+export type MegaMode = (typeof MEGA_MODES)[number];
+
+/** One rung: the casts that took and those given up, and what landed. */
+export interface MegaModeTally {
+  /** Casts the realm answered (`0x426ef0` with 1). */
+  took: number;
+  /** Casts that never answered and were given up for the fight (`0x426ef0` with 0). */
+  failed: number;
+  /** The damage each landed for (`0x426f70`). */
+  blows: BlowTally;
+  /** What the window names the row by: the rung's command as last counted, '' where none is set. */
+  command: string;
+}
+
+/**
+ * What only the MegaMUD engine counts (2026-10-19), for the rows of its
+ * statistics window the wire cannot tell apart: which rung a blow was, a
+ * round's damage, and what was done with the items and copper the engine
+ * handled. Absent from a tally the engine never ran for.
+ *
+ * - **`rounds`**: `0x425c40`, a round's damage at the prompt that ends it,
+ *   one blow a round.
+ * - **`items.collected`**: `0x4532d0`, every item put in the pack that is
+ *   not a coin — picked up, given or bought.
+ * - **`items.sold`** and **`items.stashed`**: `0x453900` with the state
+ *   selling (0x29) or stashing (0x1e).
+ * - **`copper.deposited`**: `0x406d90` and `0x4bc190`, what was deposited;
+ *   the window's `Deposit/Sold:` copper.
+ * - **`copper.stashed`**: `0x453900`, coins hidden.
+ */
+export interface MegaTally {
+  modes: Record<MegaMode, MegaModeTally>;
+  rounds: BlowTally;
+  items: { collected: number; sold: number; stashed: number };
+  copper: { deposited: number; stashed: number };
+}
+
+const NO_MODE: MegaModeTally = { took: 0, failed: 0, blows: NO_BLOWS, command: '' };
+
+export const NO_MEGA_TALLY: MegaTally = {
+  modes: { pre: NO_MODE, preMulti: NO_MODE, multi: NO_MODE, main: NO_MODE, second: NO_MODE },
+  rounds: NO_BLOWS,
+  items: { collected: 0, sold: 0, stashed: 0 },
+  copper: { deposited: 0, stashed: 0 }
+};
+
+/** One thing the engine counted, as it is counted. */
+export type MegaCount =
+  | { kind: 'cast'; mode: MegaMode; took: boolean; command: string }
+  | { kind: 'blow'; mode: MegaMode; damage: number; command: string }
+  | { kind: 'round'; damage: number }
+  | { kind: 'items'; how: keyof MegaTally['items']; count: number }
+  | { kind: 'copper'; how: keyof MegaTally['copper']; copper: number };
+
+/** The engine's count folded in. */
+export function withMegaCount(tally: CombatTally, count: MegaCount, at: number): CombatTally {
+  const mega = tally.mega ?? NO_MEGA_TALLY;
+  const next = ((): MegaTally => {
+    switch (count.kind) {
+      case 'cast': {
+        const was = mega.modes[count.mode];
+        const mode = count.took
+          ? { ...was, took: was.took + 1, command: count.command }
+          : { ...was, failed: was.failed + 1, command: count.command };
+        return { ...mega, modes: { ...mega.modes, [count.mode]: mode } };
+      }
+      case 'blow': {
+        const was = mega.modes[count.mode];
+        const mode = { ...was, blows: withBlow(was.blows, count.damage), command: count.command };
+        return { ...mega, modes: { ...mega.modes, [count.mode]: mode } };
+      }
+      case 'round':
+        return { ...mega, rounds: withBlow(mega.rounds, count.damage) };
+      case 'items':
+        return {
+          ...mega,
+          items: { ...mega.items, [count.how]: mega.items[count.how] + count.count }
+        };
+      case 'copper':
+        return {
+          ...mega,
+          copper: { ...mega.copper, [count.how]: mega.copper[count.how] + count.copper }
+        };
+    }
+  })();
+  return { ...tally, since: tally.since ?? at, at, mega: next };
+}
+
+/** The engine's counts between two readings, the rows' commands as they are now. */
+function megaBetween(now: MegaTally, then: MegaTally): MegaTally {
+  const mode = (which: MegaMode): MegaModeTally => ({
+    took: now.modes[which].took - then.modes[which].took,
+    failed: now.modes[which].failed - then.modes[which].failed,
+    blows: blowsBetween(now.modes[which].blows, then.modes[which].blows),
+    command: now.modes[which].command
+  });
+  return {
+    modes: {
+      pre: mode('pre'),
+      preMulti: mode('preMulti'),
+      multi: mode('multi'),
+      main: mode('main'),
+      second: mode('second')
+    },
+    rounds: blowsBetween(now.rounds, then.rounds),
+    items: {
+      collected: now.items.collected - then.items.collected,
+      sold: now.items.sold - then.items.sold,
+      stashed: now.items.stashed - then.items.stashed
+    },
+    copper: {
+      deposited: now.copper.deposited - then.copper.deposited,
+      stashed: now.copper.stashed - then.copper.stashed
+    }
+  };
+}
+
 export interface CombatTally {
   /**
    * Epoch ms the scope began — the first thing counted, or the first arrival
@@ -207,6 +332,8 @@ export interface CombatTally {
   away: readonly AwaySpell[];
   /** When the character left the realm, or null while in it and before the first visit. */
   leftAt: number | null;
+  /** What the MegaMUD engine counted, where it ran (`MegaTally`). */
+  mega?: MegaTally;
 }
 
 export const NO_TALLY: CombatTally = {
@@ -355,8 +482,27 @@ export function sinceBaseline(now: CombatTally, baseline: CombatTally | null): C
         : now.away
             .filter((spell) => spell.to > since)
             .map((spell) => ({ from: Math.max(spell.from, since), to: spell.to })),
-    leftAt: now.leftAt
+    leftAt: now.leftAt,
+    ...(now.mega === undefined
+      ? {}
+      : { mega: megaBetween(now.mega, baseline.mega ?? NO_MEGA_TALLY) })
   };
+}
+
+/**
+ * The Combat Stats card's figures: the totals since its baseline, or the
+ * whole series where the baseline is from another one. The totals are kept
+ * per character *and realm* and outlive the launch, while the baseline is
+ * kept per character; `since` is set once per series, so a baseline taken on
+ * another realm's record — or on one since thrown away — carries a different
+ * one, and subtracting it would draw the totals negative. One place, so the
+ * card and what is posted to the stats board (2026-10-16) read the same.
+ */
+export function sinceCardBaseline(now: CombatTally, baseline: CombatTally | null): CombatTally {
+  const stale =
+    baseline !== null &&
+    (now.since === null || baseline.at === null || baseline.since !== now.since);
+  return sinceBaseline(now, stale ? null : baseline);
 }
 
 /** A running total of intervals: the settled ones, and when the open one began. */
@@ -386,14 +532,6 @@ function clockSince(now: Clock, baseline: Clock, resetAt: number | null): Clock 
   };
 }
 
-/**
- * Engaged time including the fight still running.
- *
- * `engagedMs` closes an interval only when the server says `*Combat Off*`, so
- * during a fight it is the *previous* fights' total and stands still. Every
- * reader wants both halves, and adding them at the point of reading is what
- * keeps the stored figure a sum of settled facts.
- */
 /**
  * The tally with its experience sampled at `at`.
  *
@@ -486,6 +624,14 @@ export function withArrival(tally: CombatTally, at: number, keepMs: number): Com
   return { ...tally, away: spells.filter((spell) => spell.to >= at - keepMs), leftAt: null };
 }
 
+/**
+ * Engaged time including the fight still running.
+ *
+ * `engagedMs` closes an interval only when the server says `*Combat Off*`, so
+ * during a fight it is the *previous* fights' total and stands still. Every
+ * reader wants both halves, and adding them at the point of reading is what
+ * keeps the stored figure a sum of settled facts.
+ */
 export function engagedFor(tally: CombatTally, now: number): number {
   const open = tally.engagedSince === null ? 0 : Math.max(0, now - tally.engagedSince);
   return tally.engagedMs + open;
@@ -545,7 +691,29 @@ export function isCombatTally(value: unknown): value is CombatTally {
   if (!isBlowTally(tally['taken'])) return false;
   const dealt = tally['dealt'];
   if (typeof dealt !== 'object' || dealt === null) return false;
+  if (tally['mega'] !== undefined && !isMegaTally(tally['mega'])) return false;
   return BLOW_KINDS.every((kind) => isBlowTally((dealt as Record<string, unknown>)[kind]));
+}
+
+function isMegaTally(value: unknown): value is MegaTally {
+  if (typeof value !== 'object' || value === null) return false;
+  const mega = value as Partial<MegaTally>;
+  const counts = (record: unknown, keys: readonly string[]): boolean =>
+    typeof record === 'object' &&
+    record !== null &&
+    keys.every((key) => isCount((record as Record<string, unknown>)[key]));
+  const isMode = (mode: unknown): boolean =>
+    counts(mode, ['took', 'failed']) &&
+    isBlowTally((mode as MegaModeTally).blows) &&
+    typeof (mode as MegaModeTally).command === 'string';
+  return (
+    typeof mega.modes === 'object' &&
+    mega.modes !== null &&
+    MEGA_MODES.every((mode) => isMode(mega.modes![mode])) &&
+    isBlowTally(mega.rounds) &&
+    counts(mega.items, ['collected', 'sold', 'stashed']) &&
+    counts(mega.copper, ['deposited', 'stashed'])
+  );
 }
 
 function isCount(value: unknown): value is number {
@@ -615,6 +783,31 @@ function isBlowTally(value: unknown): value is BlowTally {
 export function ratePerHour(total: number, elapsedMs: number, floorMs = 0): number | null {
   if (elapsedMs <= 0 || elapsedMs < floorMs) return null;
   return (total / elapsedMs) * 3_600_000;
+}
+
+/**
+ * How long the experience still owed will take at the rate being made.
+ *
+ * MegaMUD's `Will level in`, and the two halves it needs are the two this card
+ * already draws. Null the moment either is missing or the rate is not positive:
+ * a character making no experience never levels, and `∞` is not a time.
+ */
+export function levelIn(needed: number | null, perHour: number | null): number | null {
+  if (needed === null || perHour === null || perHour <= 0) return null;
+  return (needed / perHour) * 3_600_000;
+}
+
+/**
+ * A stretch of time on the clock, `h:mm:ss` — MegaMUD's own `Duration:` shape.
+ *
+ * It was `3m` / `51s`, and the badge these go in is uppercased, so a three
+ * minute count read `3M`. One unbroken format also means the badge and the
+ * Attacking row cannot disagree about what counts as a long time.
+ */
+export function clock(ms: number): string {
+  const total = Math.max(0, Math.round(ms / 1000));
+  const pad = (n: number): string => String(n).padStart(2, '0');
+  return `${Math.floor(total / 3600)}:${pad(Math.floor(total / 60) % 60)}:${pad(total % 60)}`;
 }
 
 /** Every swing this character made, landed or not — the denominator MegaMUD used. */

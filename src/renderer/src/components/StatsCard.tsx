@@ -8,6 +8,8 @@ import { experienceOwed, experienceStanding } from '@shared/experience';
 import {
   BLOW_KINDS,
   DEFAULT_STATS_GRAPH,
+  MEGA_MODES,
+  NO_MEGA_TALLY,
   DEFAULT_STATS_HOURS,
   damageDealt,
   engagedFor,
@@ -19,7 +21,9 @@ import {
   ratePerHour,
   rateSeries,
   share,
-  sinceBaseline,
+  clock,
+  levelIn,
+  sinceCardBaseline,
   swings,
   turnedAside,
   type BlowKind,
@@ -27,6 +31,7 @@ import {
   type CombatTally,
   type AwaySpell,
   type ExperienceSample,
+  type MegaMode,
   type StatsGraph
 } from '@shared/tally';
 import type { SessionId } from '@shared/ipc';
@@ -81,35 +86,10 @@ function span(blows: BlowTally): string {
     : t('cards.stats.span', { least: blows.least, most: blows.most });
 }
 
-/**
- * A stretch of time on the clock, `h:mm:ss` — MegaMUD's own `Duration:` shape.
- *
- * It was `3m` / `51s`, and the badge these go in is uppercased, so a three
- * minute count read `3M`. One unbroken format also means the badge and the
- * Attacking row cannot disagree about what counts as a long time.
- */
-function clock(ms: number): string {
-  const total = Math.max(0, Math.round(ms / 1000));
-  const pad = (n: number): string => String(n).padStart(2, '0');
-  return `${Math.floor(total / 3600)}:${pad(Math.floor(total / 60) % 60)}:${pad(total % 60)}`;
-}
-
 /** A quiet `avg 4.4`, or nothing where nothing has landed. */
 function average(damage: number, hits: number): string | null {
   const value = mean(damage, hits);
   return value === null ? null : t('cards.stats.avg', { mean: figure(value, 1) });
-}
-
-/**
- * How long the experience still owed will take at the rate being made.
- *
- * MegaMUD's `Will level in`, and the two halves it needs are the two this card
- * already draws. Null the moment either is missing or the rate is not positive:
- * a character making no experience never levels, and `∞` is not a time.
- */
-function levelIn(needed: number | null, perHour: number | null): number | null {
-  if (needed === null || perHour === null || perHour <= 0) return null;
-  return (needed / perHour) * 3_600_000;
 }
 
 /** One row of the accuracy table: a kind of blow, or the summary under them. */
@@ -135,6 +115,18 @@ const KIND_LABEL: Record<BlowKind, string> = {
   backstab: t('cards.stats.kind.backstab'),
   spell: t('cards.stats.kind.cast'),
   proc: t('cards.stats.kind.proc')
+};
+
+/**
+ * MegaMUD's own rows for its attack rungs (2026-10-19), named as its window
+ * names them where the rung's command is unset; set, the row is the command.
+ */
+const MODE_LABEL: Record<MegaMode, string> = {
+  pre: t('cards.stats.kind.pre'),
+  preMulti: t('cards.stats.kind.preMulti'),
+  multi: t('cards.stats.kind.multi'),
+  main: t('cards.stats.kind.main'),
+  second: t('cards.stats.kind.second')
 };
 
 /**
@@ -164,9 +156,11 @@ const KIND_LABEL: Record<BlowKind, string> = {
  *
  * What is still deliberately **not** here:
  *
- * - **No proc, off-hand, Pre / Main / Aux / Multi row.** Those are names
- *   MegaMUD gave to *its own* attack script's rungs, not things the server
- *   says. The wire says a spell landed and for how much, and that is one row.
+ * - **Pre / PreM / Multi / Main / Cast2 only where the MegaMUD engine ran**
+ *   (2026-10-19). Those are *its own* attack script's rungs, not things the
+ *   server says, so the stream counts a spell as one row; the engine knows
+ *   which rung it cast and counts them as its window does (`tally.mega`), as
+ *   it does a round's damage and what it collected, sold and stashed.
  * - **"Deflected", not "dodged", for the rest.** The server prints `The
  *   lashworm lunges at you!` and says nothing about why it did no damage.
  *   Calling *that* a dodge would be a claim read off a sentence that makes
@@ -175,9 +169,9 @@ const KIND_LABEL: Record<BlowKind, string> = {
  *   announces nothing that could add up resting, walking or idling the same
  *   way. `Attacking 41%` is true; a pie of four slices where three were
  *   guessed is not.
- * - **No coin banked or sold, and no item count.** MegaMUD's `Deposit/Sold`
- *   and `Stashed` are totals of what *it* did, and this client is not the only
- *   thing spending a purse. Its `Items` column has no frame at all: the server
+ * - **Coin banked or sold and items only from the engine.** MegaMUD's
+ *   `Deposit/Sold` and `Stashed` are totals of what *it* did, so they are
+ *   counted where it does them (`tally.mega`). Off the wire alone: the server
  *   confirms a coin pick-up (`You picked up 17 copper farthings`) and says
  *   **nothing** when an item is taken — grepped across all 220 captures,
  *   2026-09-02, and the only `You get …` line in any of them is `You get back
@@ -196,9 +190,11 @@ const KIND_LABEL: Record<BlowKind, string> = {
 const FACE_IDS = ['stats', 'more'] as const;
 const MORE_ROWS: ReadonlySet<string> = new Set([
   'deflected',
-  'dodged',
   'sneak',
   'coins',
+  'items',
+  'deposited',
+  'stashed',
   'income',
   'attacking'
 ]);
@@ -384,18 +380,8 @@ function StatsCard({ baseline, character, onReset, session, ...chrome }: StatsCa
    * still exactly **one** baseline, written by the button and by the lap alike,
    * so neither has to be compared against the other.
    */
-  /*
-   * A baseline from another series cannot be subtracted from this one. The
-   * totals are kept per character *and realm* and outlive the launch, while
-   * the baseline is kept per character; `since` is set once per series, so a
-   * baseline taken on another realm's record — or on one since thrown away —
-   * carries a different one, and subtracting it would draw the totals
-   * negative.
-   */
-  const stale =
-    baseline !== null &&
-    (tally.since === null || baseline.at === null || baseline.since !== tally.since);
-  const shown = sinceBaseline(tally, stale ? null : baseline);
+  // A baseline from another series is not subtracted: see `sinceCardBaseline`.
+  const shown = sinceCardBaseline(tally, baseline);
 
   // Read once per render rather than per figure, so every number on the card
   // is taken at the same instant — two clocks in one readout disagree.
@@ -440,6 +426,7 @@ function StatsCard({ baseline, character, onReset, session, ...chrome }: StatsCa
    * reading zero, for as long as the session lasts.
    */
   const everHappened = (count: number): boolean => count > 0;
+  const mega = shown.mega ?? NO_MEGA_TALLY;
 
   const rows: Row[] = [
     ...BLOW_KINDS.filter((kind) => everHappened(tally.dealt[kind].hits)).map((kind) => ({
@@ -458,6 +445,23 @@ function StatsCard({ baseline, character, onReset, session, ...chrome }: StatsCa
       accuracy: kind === 'spell' || kind === 'proc' ? null : share(shown.dealt[kind].hits, total),
       blows: shown.dealt[kind]
     })),
+    /*
+     * The engine's rungs, by its window's reckoning: a share of the casts
+     * that took (`0x4a8a10`), and the damage they landed for.
+     */
+    ...MEGA_MODES.filter((mode) => {
+      const ever = tally.mega?.modes[mode];
+      return ever !== undefined && everHappened(ever.took + ever.failed + ever.blows.hits);
+    }).map((mode) => {
+      const rung = (shown.mega ?? NO_MEGA_TALLY).modes[mode];
+      return {
+        key: `mega-${mode}`,
+        label: rung.command === '' ? MODE_LABEL[mode] : rung.command,
+        hits: rung.blows.hits,
+        accuracy: share(rung.took, rung.took + rung.failed),
+        blows: rung.blows
+      };
+    }),
     ...(everHappened(tally.missed)
       ? [
           {
@@ -466,6 +470,18 @@ function StatsCard({ baseline, character, onReset, session, ...chrome }: StatsCa
             hits: shown.missed,
             accuracy: share(shown.missed, total),
             blows: { hits: shown.missed, damage: 0, least: null, most: null }
+          }
+        ]
+      : []),
+    // A round's damage, its least and most and the average, as the window's `Round:`.
+    ...(everHappened(tally.mega?.rounds.hits ?? 0)
+      ? [
+          {
+            key: 'mega-round',
+            label: t('cards.stats.kind.round'),
+            hits: (shown.mega ?? NO_MEGA_TALLY).rounds.hits,
+            accuracy: null,
+            blows: (shown.mega ?? NO_MEGA_TALLY).rounds
           }
         ]
       : [])
@@ -549,6 +565,37 @@ function StatsCard({ baseline, character, onReset, session, ...chrome }: StatsCa
         label: t('cards.stats.killRateLabel'),
         value: rate(ratePerHour(shown.kills, elapsed, tuning().rateFloorMs))
       },
+      /*
+       * The character's hit, miss and dodge, measured since the scope began
+       * (2026-10-17): a swing landed or missed, of every swing it made, and
+       * an attack on it dodged, of every attack made on it. Spells and procs
+       * are not swings, and are left out of the first two as MegaMUD's own
+       * window left them.
+       */
+      {
+        key: 'hit',
+        label: t('cards.stats.hitLabel'),
+        value: percent(share(total - shown.missed, total)),
+        second: t('cards.stats.ofCount', {
+          part: figure(total - shown.missed),
+          whole: figure(total)
+        }),
+        when: everHappened(swings(tally))
+      },
+      {
+        key: 'miss',
+        label: t('cards.stats.missLabel'),
+        value: percent(share(shown.missed, total)),
+        second: t('cards.stats.ofCount', { part: figure(shown.missed), whole: figure(total) }),
+        when: everHappened(swings(tally))
+      },
+      {
+        key: 'dodge',
+        label: t('cards.stats.dodgeLabel'),
+        value: percent(share(shown.dodged, incoming)),
+        second: t('cards.stats.ofCount', { part: figure(shown.dodged), whole: figure(incoming) }),
+        when: everHappened(tally.taken.hits + turnedAside(tally))
+      },
       {
         key: 'dealt',
         label: t('cards.stats.dealtLabel'),
@@ -577,13 +624,6 @@ function StatsCard({ baseline, character, onReset, session, ...chrome }: StatsCa
         when: everHappened(tally.turned)
       },
       {
-        key: 'dodged',
-        label: t('cards.stats.dodgedLabel'),
-        value: figure(shown.dodged),
-        second: percent(share(shown.dodged, incoming)),
-        when: everHappened(tally.dodged)
-      },
-      {
         key: 'sneak',
         label: t('cards.stats.sneakLabel'),
         value: figure(shown.sneakTried),
@@ -597,6 +637,30 @@ function StatsCard({ baseline, character, onReset, session, ...chrome }: StatsCa
         label: t('cards.stats.coinsLabel'),
         value: figure(shown.coins),
         when: everHappened(tally.coins)
+      },
+      /*
+       * What the engine collected, banked or sold and stashed: its window's
+       * `Items` column, and its copper beside the coins picked up.
+       */
+      {
+        key: 'items',
+        label: t('cards.stats.itemsLabel'),
+        value: figure(mega.items.collected),
+        when: everHappened(tally.mega?.items.collected ?? 0)
+      },
+      {
+        key: 'deposited',
+        label: t('cards.stats.depositedLabel'),
+        value: figure(mega.copper.deposited),
+        second: t('cards.stats.itemsFigure', { count: figure(mega.items.sold) }),
+        when: everHappened((tally.mega?.copper.deposited ?? 0) + (tally.mega?.items.sold ?? 0))
+      },
+      {
+        key: 'stashed',
+        label: t('cards.stats.stashedLabel'),
+        value: figure(mega.copper.stashed),
+        second: t('cards.stats.itemsFigure', { count: figure(mega.items.stashed) }),
+        when: everHappened((tally.mega?.copper.stashed ?? 0) + (tally.mega?.items.stashed ?? 0))
       },
       {
         key: 'income',

@@ -26,7 +26,7 @@ import { resolveProfile, type Profile } from '../../shared/profiles';
 import { errorMessage } from '../../shared/values';
 import { PROFILE_FILE } from '../app/home';
 import { directoryNames } from './dirs';
-import { Poller } from './Poller';
+import { fileStamp, Poller } from './Poller';
 
 export interface ProfileSnapshot {
   directory: string;
@@ -86,7 +86,7 @@ export class ProfileStore extends EventEmitter {
     super();
     this.dir = options.directory;
     this.poller = new Poller({
-      signature: () => this.listing(),
+      signature: (settledAt) => this.listing(settledAt),
       reload: () => {
         this.read();
         this.emit('change', this.snapshot);
@@ -162,16 +162,18 @@ export class ProfileStore extends EventEmitter {
    * stats: dropping a YAML file in is the entire gesture for adding a
    * character, and it has to be noticed.
    */
-  private listing(): Listing {
+  private listing(settledAt: number): Listing {
     try {
       return this.ids()
         .map((id) => {
-          try {
-            const stat = fs.statSync(path.join(this.dir, id, PROFILE_FILE));
-            return `${id}:${stat.mtimeMs}:${stat.size}`;
-          } catch {
-            return `${id}:gone`;
-          }
+          const stamp = (file: string): string => {
+            try {
+              return fileStamp(path.join(this.dir, id, file), settledAt);
+            } catch {
+              return 'gone';
+            }
+          };
+          return `${id}:${stamp(PROFILE_FILE)}`;
         })
         .join('|');
     } catch {

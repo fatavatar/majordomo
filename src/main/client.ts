@@ -24,13 +24,15 @@ import { ProfileStore, type ProfileSnapshot } from './config/ProfileStore';
 import { ServerStore } from './config/ServerStore';
 import {
   MESSAGE_TABLE,
+  ITEM_TABLE,
   MONSTER_TABLE,
   RealmTableStore,
   type RealmTable,
   type TableKind
 } from './config/RealmTableStore';
 import { LoopStore } from './config/LoopStore';
-import { SettingsEditor, type SettingsEditorOptions } from './config/SettingsEditor';
+import { detailOf, MudStatsApi } from './stats/MudStatsApi';
+import { loopFileText, SettingsEditor, type SettingsEditorOptions } from './config/SettingsEditor';
 import { LoopCatalogue } from './config/LoopCatalogue';
 import { migrateHome } from './config/Migration';
 import { homeAt, homeRoot, type Home } from './app/home';
@@ -43,10 +45,13 @@ import { FindBook } from './world/FindBook';
 import { WorldBook } from './world/WorldBook';
 import { SplitMemory } from './world/SplitMemory';
 import { NO_REALM_TABLES, type RealmMemory, type RealmTables } from './session/SessionManager';
+import { MegaLearned } from './world/MegaLearned';
 import { RealmLore, realmKey } from './world/RealmLore';
 import { PlayerBook, realmAddress } from './world/PlayerBook';
+import { isCombatTally } from '../shared/tally';
 import { cureGates, spellServes, spellTargeting } from '../shared/spellcraft';
 import { DestinationBook, type RealmDestinations } from './world/DestinationBook';
+import { MovementBook } from './session/MovementBook';
 import { bareName } from '../shared/items';
 import { nameAnswersTo } from '../shared/world';
 import {
@@ -126,11 +131,50 @@ import {
   type MonsterImport,
   type MonsterTable
 } from '../shared/monsterRules';
+import {
+  asItemRules,
+  itemSaysAnything,
+  mergeItemRules,
+  type ItemImport,
+  type ItemTable
+} from '../shared/itemRules';
 import { asMegaMudPaths, type LoopImport } from '../shared/megamudPaths';
-import type { SessionSummary } from '../shared/ipc';
+import type { MegaSettings } from '../shared/megamud/settings';
+import { megamudFromConfig } from '../shared/megamud/fromConfig';
+import { asMegaToggle } from '../shared/megamud/toggles';
+import type { MegaData } from './megamud/data';
+import { megaDataFrom } from './megamud/fromWorld';
+import { explorerAsk } from './mme/ExplorerThread';
+import { asToolRequest } from '../shared/explorerTools';
+import {
+  asExplorerOptions,
+  asGearOptions,
+  asEqPlan,
+  COMPARE_KINDS,
+  type CompareKind,
+  NO_EQ_VIEW,
+  asRoomViewRequest,
+  EXPLORER_KINDS,
+  type ExplorerBuyPlan,
+  type ExplorerKind,
+  type RoomSearch
+} from '../shared/explorer';
+import { planRoute } from './world/RoutePlanner';
+import type { EngineMemory, MegaEngineSetup } from './session/MegaEngine';
+import type { LearnedSpellTable, SessionSummary } from '../shared/ipc';
 import { EMPTY_CHARACTER } from '../shared/character';
 import { IDLE_WALK } from '../shared/walk';
-import { isLoopScope, mergeLoops, NO_LOOP } from '../shared/loops';
+import {
+  asLoopAddress,
+  asLoops,
+  isLoopScope,
+  loopFileName,
+  mergeLoops,
+  NO_LOOP
+} from '../shared/loops';
+
+/** The most a shared loop file may hold: far over any loop, far under a socket's message. */
+const LOOP_FILE_MAX = 256 * 1024;
 import { EMPTY_AUTOMATION } from '../shared/automation';
 import { IDLE_QUEST_RUN } from '../shared/quests';
 import { EMPTY_ROOM_VERDICT } from '../shared/verdict';
@@ -199,6 +243,9 @@ let home: Home;
  */
 let homeLock: HomeLock | null = null;
 
+/** What a card may ask to have sent: one line of printable text, as long as a command runs. */
+const ASKABLE = /^[\x20-\x7e]{1,80}$/;
+
 /** What a session that has never been dialled reports. Keeps `attach` total. */
 const IDLE_STATE = {
   phase: 'idle' as const,
@@ -223,9 +270,10 @@ let profiles: ProfileStore | null = null;
 let servers: ServerStore | null = null;
 /** The loops on disk, at all three scopes. See `LoopStore`. */
 let loops: LoopStore | null = null;
-/** Each realm's imported tables: `servers/<id>/messages.yaml` and `monsters.yaml`. See `RealmTableStore`. */
+/** Each realm's imported tables: `servers/<id>/messages.yaml`, `monsters.yaml` and `items.yaml`. See `RealmTableStore`. */
 let realmMessages: RealmTableStore<MessageTable> | null = null;
 let realmMonsters: RealmTableStore<MonsterTable> | null = null;
+let realmItems: RealmTableStore<ItemTable> | null = null;
 /**
  * Every realm the client has been asked for.
  *
@@ -259,6 +307,12 @@ let shippedSentences: ShippedSentences | null = null;
  */
 let playerBook: PlayerBook | null = null;
 /**
+ * What the MegaMUD engine learns in play — monsters, items and players met,
+ * room signatures — per realm, as MegaMUD keeps them in its data files. See
+ * `MegaLearned`.
+ */
+let megaLearned: MegaLearned | null = null;
+/**
  * Where characters on this machine have walked, per realm.
  *
  * One store, keyed on the realm *file* rather than on the address dialled — the
@@ -268,6 +322,7 @@ let playerBook: PlayerBook | null = null;
  * swapped underneath it does not. See `DestinationBook`.
  */
 let destinations: DestinationBook | null = null;
+let movements: MovementBook | null = null;
 /** Which window shows which characters. See `Workspace`. */
 let workspace: Workspace | null = null;
 
@@ -278,13 +333,6 @@ let workspace: Workspace | null = null;
 const windows = new WindowRegistry();
 let host: SessionHost | null = null;
 
-/**
- * The realm knowledge base, loaded once.
- *
- * 55,806 rooms from a 655 KB gzipped file; the parse is well under a second and
- * happens before the window is shown. Querying it per line, which is what the
- * CoffeeScript engine did against SQLite, is the thing this exists to avoid.
- */
 /**
  * Monster health learned by fighting.
  *
@@ -300,6 +348,15 @@ function createLore(): RealmLore {
   });
 }
 
+/** The realm data a saved realm's lore is kept under, as `loreFor` keys it; null for no such realm. */
+function loreSourceOf(realm: unknown): string | null {
+  const stored =
+    typeof realm === 'string' ? servers?.all.find((entry) => entry.server.name === realm) : null;
+  if (!stored) return null;
+  const learned = worldBook?.at(realmAddress(stored.server)) ?? null;
+  return realms?.load(stored.server.database, learned).graph?.info.source ?? 'none';
+}
+
 /** Beside the lore, for the same reasons `createLore` gives. */
 function createDestinations(): DestinationBook {
   return new DestinationBook({
@@ -309,10 +366,26 @@ function createDestinations(): DestinationBook {
 }
 
 /** Beside the lore, for the same reasons `createLore` gives. */
+function createMovements(): MovementBook {
+  return new MovementBook({
+    file: home.state('movement.json'),
+    notify: (message) => announce('movement', message)
+  });
+}
+
+/** Beside the lore, for the same reasons `createLore` gives. */
 function createPlayerBook(): PlayerBook {
   return new PlayerBook({
     file: home.state('players.json'),
     notify: (message) => announce('players', message)
+  });
+}
+
+/** Beside the lore, for the same reasons `createLore` gives. */
+function createMegaLearned(): MegaLearned {
+  return new MegaLearned({
+    file: home.state('megamud-learned.json'),
+    notify: (message) => announce('world', message)
   });
 }
 
@@ -583,9 +656,11 @@ function fightsFor(id: SessionId): FightSink {
   if (!(config?.config.logging.fights ?? DEFAULT_CONFIG.logging.fights)) return NO_FIGHTS;
   const existing = fightLogs.get(id);
   if (existing) return existing;
-  const log = new FightLog(home.state('fights', `${id}.jsonl.gz`), {
-    notice: (message) => announce('fights', message)
-  });
+  const log = new FightLog(
+    home.state('fights', `${id}.jsonl.gz`),
+    { notice: (message) => announce('fights', message) },
+    config?.config.logging.maxBytes ?? DEFAULT_CONFIG.logging.maxBytes
+  );
   fightLogs.set(id, log);
   // Folded now, off the thread: the hunting survey asks synchronously, and
   // automatic hunting's first survey would otherwise price nothing and keep
@@ -698,7 +773,6 @@ function wearerIn(session: SessionId): Wearer {
   };
 }
 
-/** Where session logs go: the configured directory, or the per-user data dir. */
 /**
  * How a character should be named on screen and in a file it produces.
  *
@@ -737,6 +811,7 @@ function appVersion(): string {
   return APP_VERSION;
 }
 
+/** Where session logs go: the configured directory, or the per-user data dir. */
 function logDirectory(): string {
   const configured = config?.config.logging.directory ?? '';
   return configured.length > 0 ? configured : home.state('logs');
@@ -842,6 +917,125 @@ let catalogue: LoopCatalogue | null = null;
 function loopCatalogue(): LoopCatalogue {
   catalogue ??= new LoopCatalogue(path.join(resourcesDir(), 'loops', 'megamud.yaml'));
   return catalogue;
+}
+
+/** MegaMUD's databases as last built, by character: rebuilt when what they are built from changes. */
+const megaDataBuilt = new Map<SessionId, { from: readonly unknown[]; data: MegaData }>();
+
+/**
+ * A character's MegaMUD settings: its file's, or, where it has none yet,
+ * started from what it did under the old automation (`megamudFromConfig`),
+ * written to the file at its first edit. Every character runs on the engine
+ * (2026-10-14).
+ */
+function megamudSettingsOf(id: SessionId, profile: Profile): MegaSettings {
+  if (profile.megamudOn) return profile.megamud;
+  const world = worldFor(id);
+  return megamudFromConfig(
+    profile.config.automation,
+    (spell) => world?.spellNamed(spell)?.short ?? spell
+  );
+}
+
+/**
+ * The ported MegaMUD engine's set-up: the character's settings, its
+ * databases built from the realm's data and tables (`megamud/fromWorld.ts`)
+ * and its per-player remote grants.
+ */
+function megamudFor(id: SessionId): { key: string; setup: MegaEngineSetup } | null {
+  const profile = profileFor(id);
+  if (profile === undefined) return null;
+  const grants = profile.config.automation.remotes.players;
+  const joinWhenInvited = profile.config.automation.remotes.autoJoin;
+  const botCommands = profile.config.automation.remotes.commands;
+  // The realm's name for its runic coin (BBS.INI's `RunicName`, ours per realm).
+  const runic = profile.config.connection.coins.runic;
+  const world = worldFor(id);
+  const tables = realmTablesFor(id);
+  const own = profile.config.automation.loot.itemDetails;
+  // The character's rows by what they say: its file is read again on every
+  // save (its MegaMUD settings save as they are changed), and a fresh array
+  // saying the same thing is no reason to build the databases again.
+  const from = [world, tables.items, JSON.stringify(own), tables.messages, runic] as const;
+  let built = megaDataBuilt.get(id);
+  if (built === undefined || built.from.some((part, i) => part !== from[i])) {
+    // The realm's item table with the character's own rows laid over it.
+    const items = mergeItemRules(tables.items, own);
+    built = {
+      from,
+      data: megaDataFrom(world, { items, messages: tables.messages }, runic)
+    };
+    megaDataBuilt.set(id, built);
+    // Said once a build, so what a character's engine was given is on record.
+    announce(
+      'world',
+      t('notices.world.megamudData', {
+        name: profile.name,
+        realm: world?.info.source || '-',
+        monsters: built.data.monsters.length,
+        items: built.data.items.length,
+        spells: built.data.spells.length,
+        messages: built.data.messages?.length ?? 0
+      }),
+      'log'
+    );
+  }
+  const data = built.data;
+  const dataKey = `${world?.info.source ?? ''}|${runic ?? ''}`;
+  // What it knows from before on this realm, out of our stores, and where
+  // what it learns goes: stances to the lore, the rest to `MegaLearned`.
+  // Players our tracker keeps in `PlayerBook` already.
+  const realm = worldFor(id)?.info.source ?? '';
+  const store = megaLearned;
+  const realmLore = lore;
+  let memory: EngineMemory | undefined;
+  if (store !== null && realmLore !== null && realm !== '') {
+    const kept = store.forRealm(realm);
+    memory = {
+      stances: realmLore.stancesFor(realm),
+      players: playersAt(profile.target).recall(),
+      items: kept.items,
+      signatures: kept.signatures,
+      marks: kept.marks[profile.name.toLowerCase()] ?? [],
+      keep: (lessons) => {
+        const at = Date.now();
+        for (const [mob, relationship] of lessons.stances) {
+          realmLore.learnStance(realm, mob, relationship, at);
+        }
+        if (lessons.items.length > 0 || lessons.signatures.length > 0 || lessons.marks !== null) {
+          store.keep(realm, {
+            items: lessons.items,
+            signatures: lessons.signatures,
+            ...(lessons.marks !== null ? { marks: { [profile.name]: lessons.marks } } : {})
+          });
+        }
+      }
+    };
+  }
+  // The BBS set-up MegaMUD reads from BBS.INI, from the realm's own settings:
+  // its `bbs:`, and its runic coin's name (`coins: runic`).
+  const bbs: Record<string, string> = {
+    ...profile.config.connection.bbs,
+    ...(runic !== undefined ? { RunicName: runic } : {})
+  };
+  // The account MegaMUD's BBS tab keeps (its `{userid}` and `{pswd}`) is the
+  // character's own login, which the Character page edits (2026-10-14).
+  const { username, password } = profile.config.connection.login;
+  const settings = structuredClone(megamudSettingsOf(id, profile));
+  if (username !== '') settings.live['BBS']!['UserID'] = username;
+  if (password !== '') settings.live['BBS']!['Password'] = password;
+  return {
+    key: `${dataKey}\n${JSON.stringify([settings, grants, joinWhenInvited, botCommands, bbs])}`,
+    setup: {
+      settings,
+      data,
+      grants,
+      joinWhenInvited,
+      botCommands,
+      ...(memory ? { memory } : {}),
+      bbs
+    }
+  };
 }
 
 /** The character with this id, if a profile file defines one. */
@@ -1100,6 +1294,17 @@ function asGrant(value: unknown): PlayerGrant | null {
     : { allow, deny };
 }
 
+/**
+ * What the character rests its HP to: MegaMUD's *HP Full %* (`Health.HpFull%`),
+ * which the engine rests to (`0x414300`), as a fraction. The tab said the old
+ * automation's `health.restTo`, which nothing reads since the engine took over
+ * (2026-10-17: every rest read "resting to 70%").
+ */
+function restCeilingOf(profile: Profile): number {
+  const full = Number(megamudSettingsOf(profile.id, profile).live['Health']?.['HpFull%']);
+  return Number.isFinite(full) && full > 0 ? Math.min(full, 100) / 100 : 0;
+}
+
 /** Every character on disk, and whether a session is open for it. */
 function profileSummaries(): ProfileSummary[] {
   return (profiles?.profiles ?? []).map((profile) => ({
@@ -1112,7 +1317,7 @@ function profileSummaries(): ProfileSummary[] {
     serverName: profile.serverName,
     remotes: profile.config.automation.remotes,
     switches: automationSwitches(profile.config.automation),
-    restTo: profile.config.automation.health.restTo,
+    restTo: restCeilingOf(profile),
     supplies: profile.config.automation.supplies
   }));
 }
@@ -1204,7 +1409,7 @@ function createServers(): ServerStore {
 
 function createRealmTable<T extends RealmTable>(
   kind: TableKind<T>,
-  channel: 'messages' | 'monsters'
+  channel: 'messages' | 'monsters' | 'items'
 ): RealmTableStore<T> {
   const store = new RealmTableStore(home, kind, (message) => announce(channel, message));
   // A table imported, edited on the settings page or by hand reaches the
@@ -1227,7 +1432,8 @@ function realmTablesFor(id: SessionId): RealmTables {
   if (serverId === undefined) return NO_REALM_TABLES;
   return {
     messages: realmMessages?.forServer(serverId).triggers ?? [],
-    monsters: realmMonsters?.forServer(serverId).monsters ?? []
+    monsters: realmMonsters?.forServer(serverId).monsters ?? [],
+    items: realmItems?.forServer(serverId).items ?? []
   };
 }
 
@@ -1347,8 +1553,6 @@ function createInternal(): InternalStore {
 function createHost(): SessionHost {
   return new SessionHost({
     worldFor,
-    // The same write the toolbar's press makes, so the toggle shows it.
-    flipSwitch: (id, name, on) => new SettingsEditor({ home }).setAutomationSwitch(id, name, on).ok,
     internal: () => internal?.config ?? DEFAULT_INTERNAL,
     loreFor,
     spellLoreFor,
@@ -1377,6 +1581,11 @@ function createHost(): SessionHost {
     // the values it started with.
     configFor,
     realmTablesFor,
+    megamudFor,
+    movement: {
+      get: (id) => movements?.get(id) ?? null,
+      set: (id, movement) => movements?.set(id, movement)
+    },
     /*
      * Whether a lost connection is dialled back, per character, read through
      * for the reason `configFor` is: profiles are watched, so switching it off
@@ -1492,13 +1701,25 @@ function registerIpc(): void {
     }
   });
 
+  // The Combat Stats card's Reset, and a baseline a window kept from before
+  // main kept them, taken while main has none (2026-10-17).
+  on(Send.statsReset, (_caller, session: SessionId) => {
+    host?.get(session)?.manager.resetStats();
+  });
+  on(Send.statsBase, (_caller, session: SessionId, base: unknown) => {
+    if (isCombatTally(base)) host?.get(session)?.manager.adoptStatsBase(base);
+  });
+
   on(Send.input, (_caller, session: SessionId, data: string) => {
-    host?.get(session)?.manager.send(data);
+    host?.get(session)?.manager.typedInput(data);
   });
 
   // Parsed again in main; a payload that is not a string is not a line.
   on(Send.macro, (_caller, session: SessionId, line: unknown) => {
-    if (typeof line === 'string') host?.get(session)?.manager.sendMacro(line);
+    if (typeof line !== 'string') return;
+    const manager = host?.get(session)?.manager;
+    manager?.keyPressed();
+    manager?.sendMacro(line);
   });
 
   on(Send.dropMacro, (_caller, session: SessionId) => {
@@ -1629,7 +1850,7 @@ function registerIpc(): void {
   );
   handle(
     Invoke.getWalk,
-    (_caller, session: SessionId) => host?.get(session)?.manager.walker.progress ?? IDLE_WALK
+    (_caller, session: SessionId) => host?.get(session)?.manager.walkProgress ?? IDLE_WALK
   );
   handle(
     Invoke.getAutomation,
@@ -1687,7 +1908,8 @@ function registerIpc(): void {
     }
     // With the alternatives a reader chooses between: this is the one route
     // planned to be read rather than walked.
-    return world.route(
+    return planRoute(
+      world,
       roomId(here.map, here.number),
       roomId(map, room),
       travellerOf(session, 'route'),
@@ -1705,17 +1927,20 @@ function registerIpc(): void {
    * corridors it prefers — so the way drawn is the way the reduction
    * reproduces and the way the lap walks; see the header of `loopDraft.ts`.
    */
-  handle(Invoke.draftLoop, (_caller, session: SessionId, rooms: unknown) => {
+  handle(Invoke.draftLoop, (_caller, session: SessionId, rooms: unknown, keep: unknown) => {
     const world = worldFor(session);
     if (!world || world.size === 0) return EMPTY_LOOP_DRAFT;
     const picks = asRoomIds(rooms, LOOP_LIMITS.stops);
     if (picks === null) throw new Error(t('app.loop.invalidPicks', { max: LOOP_LIMITS.stops }));
+    // The rooms to keep as stops: those the builder has commands for (2026-10-23).
+    const kept = keep === undefined ? [] : asRoomIds(keep, LOOP_LIMITS.stops);
+    if (kept === null) throw new Error(t('app.loop.invalidPicks', { max: LOOP_LIMITS.stops }));
     let cache = drafts.get(session);
     if (cache === undefined) {
       cache = new LoopDraftCache();
       drafts.set(session, cache);
     }
-    return cache.draft(world, picks, travellerOf(session, 'lap'));
+    return cache.draft(world, picks, travellerOf(session, 'lap'), new Set(kept));
   });
 
   /*
@@ -1792,42 +2017,25 @@ function registerIpc(): void {
    */
   handle(
     Invoke.startMoving,
-    async (
-      _caller,
-      session: SessionId,
-      loop: unknown,
-      confirmed: unknown
-    ): Promise<MovementStart> => {
+    async (_caller, session: SessionId, loop: unknown): Promise<MovementStart> => {
       const slot = host?.get(session);
       if (!slot) return { refused: t('app.session.notConnected') };
       if (loop !== null && typeof loop !== 'string') return { refused: t('app.loop.invalidName') };
-      /*
-       * `confirmed` is the **figure** the window was shown and the player
-       * agreed to, never a flag: main measures again and asks afresh if the
-       * journey has grown since. Anything that is not a finite number is *not
-       * agreed to*, which is the safe reading of a malformed payload.
-       */
-      const agreed = typeof confirmed === 'number' && Number.isFinite(confirmed) ? confirmed : null;
       // See `Invoke.routeTo` — the same wait, so a route resumed or a loop
       // started from an ambiguous room gets one chance at the real answer
       // before `planFromHere` refuses it.
       if (slot.manager.character.room.map === null) await slot.manager.ensureLocated();
-      return slot.manager.startMoving(loop, agreed);
+      return slot.manager.startMoving(loop);
     }
   );
   handle(Invoke.stopMoving, (_caller, session: SessionId) => {
     host?.get(session)?.manager.stopMoving();
   });
-  /*
-   * Back: one room the way the character came. `confirmed` is read exactly as
-   * `move:start` reads it — the figure the window was shown, never a flag —
-   * because this asks the same question back when the way is not one step.
-   */
-  handle(Invoke.stepBack, (_caller, session: SessionId, confirmed: unknown): MovementStart => {
+  // Back: one room the way the character came, MegaMUD's Step Back.
+  handle(Invoke.stepBack, (_caller, session: SessionId): MovementStart => {
     const slot = host?.get(session);
     if (!slot) return { refused: t('app.session.notConnected') };
-    const agreed = typeof confirmed === 'number' && Number.isFinite(confirmed) ? confirmed : null;
-    return slot.manager.stepBack(agreed);
+    return slot.manager.stepBack();
   });
   /*
    * A loop is named rather than passed: unlike a route, nothing has been shown
@@ -1862,8 +2070,8 @@ function registerIpc(): void {
    * order to start it and then deleting it would be a write into the user's
    * tree on a path that promised not to make one.
    *
-   * `LoopRunner.start` has always taken the loop itself and never a name, so
-   * this is the runner's own shape rather than a new capability. Parsed, not
+   * `SessionManager.startLoop` takes the loop itself and never a name, so this
+   * is its own shape rather than a new capability. Parsed, not
    * trusted: it crossed the wire.
    */
   handle(Invoke.runLoop, async (_caller, session: SessionId, loop: unknown) => {
@@ -1877,23 +2085,16 @@ function registerIpc(): void {
     return 'refused' in answer ? answer.refused : null;
   });
   /*
-   * The loop's own two controls, from its card — the ones that mean nothing
-   * for a route. Skipping ends the leg being walked for the reason stopping
-   * does: the runner never touches the walker, and a leg left walking would
-   * arrive and dwell under a loop that had been told to move on.
+   * A loop's stops as the rooms they name on this character's realm, for the
+   * builder to open it on (2026-10-23): resolved as a lap resolves them, so
+   * the loop drawn is the loop walked.
    */
-  handle(Invoke.skipLoopStop, (_caller, session: SessionId) => {
+  handle(Invoke.loopStops, (_caller, session: SessionId, loop: unknown) => {
     const slot = host?.get(session);
     if (!slot) return t('app.session.notConnected');
-    if (slot.manager.loops.progress.status === 'running') {
-      slot.manager.walker.stop(t('session.walk.stoppedByPlayer'));
-    }
-    return slot.manager.loops.skip();
-  });
-  handle(Invoke.reverseLoop, (_caller, session: SessionId) => {
-    const slot = host?.get(session);
-    if (!slot) return t('app.session.notConnected');
-    return slot.manager.loops.reverse();
+    const parsed = asLoop(loop);
+    if (parsed === null) return t('app.loop.invalidLoop');
+    return slot.manager.loopStops(parsed);
   });
   /*
    * The shelf, not a character's list — so it takes no session, unlike every
@@ -2053,8 +2254,8 @@ function registerIpc(): void {
       lines: manager?.lines ?? [],
       state: manager?.state ?? IDLE_STATE,
       character: manager?.character ?? EMPTY_CHARACTER,
-      walk: manager?.walker.progress ?? IDLE_WALK,
-      loop: manager?.loops.progress ?? NO_LOOP,
+      walk: manager?.walkProgress ?? IDLE_WALK,
+      loop: manager?.loopProgress ?? NO_LOOP,
       automation: manager?.automation ?? EMPTY_AUTOMATION,
       verdict: manager?.verdict ?? EMPTY_ROOM_VERDICT,
       asks: [...(manager?.asks ?? [])],
@@ -2370,6 +2571,380 @@ function registerIpc(): void {
    * click on a card. One handler across the three indexes because the caller
    * has a *name* and should not need to know which table answers it.
    */
+  /*
+   * MMUD Explorer for one character (2026-10-18): its realm's own database
+   * file, read with MME's logic, and the character as it is now.
+   */
+  /** A finder's question off the wire, or null for one that does not parse. */
+  const asRoomSearch = (value: unknown): RoomSearch | null => {
+    const o = (typeof value === 'object' && value !== null ? value : {}) as Record<string, unknown>;
+    const text = (key: string): string | null =>
+      typeof o[key] === 'string' ? (o[key] as string).slice(0, 200) : null;
+    const find = text('find');
+    if (find !== null) return { find, after: text('after') };
+    const list = text('list');
+    if (list !== null) return { list };
+    const leads = text('leads');
+    return leads !== null && /^\d+\/\d+$/.test(leads) ? { leads } : null;
+  };
+  /** A list's name off the wire; anything else is the Weapons list. */
+  const explorerKindOf = (kind: unknown): ExplorerKind =>
+    EXPLORER_KINDS.includes(kind as ExplorerKind) ? (kind as ExplorerKind) : 'weapons';
+  /*
+   * The realm's database file, which the Explorer's thread reads
+   * (`ExplorerThread`), or why there is none to read.
+   */
+  const explorerRealm = (session: SessionId): { file: string } | string => {
+    const file = realms?.databaseFile(profileFor(session)?.database ?? '') ?? null;
+    if (file === null || !existsSync(file)) return t('app.explorer.noDatabase');
+    return { file };
+  };
+  handle(
+    Invoke.explorerList,
+    async (_caller, session: SessionId, kind: unknown, options: unknown) => {
+      const none = { supported: false, columns: [], rows: [], abilities: [] };
+      const realm = explorerRealm(session);
+      const manager = host?.get(session)?.manager;
+      if (typeof realm === 'string' || manager === undefined)
+        return { ...none, reason: typeof realm === 'string' ? realm : '' };
+      const which = explorerKindOf(kind);
+      try {
+        const list = await explorerAsk(
+          'list',
+          realm.file,
+          manager.character,
+          which,
+          asExplorerOptions(options)
+        );
+        return list.supported ? list : { ...list, reason: t('app.explorer.unsupported') };
+      } catch (error) {
+        return { ...none, reason: t('app.explorer.unreadable', { reason: errorMessage(error) }) };
+      }
+    }
+  );
+  handle(
+    Invoke.explorerDetail,
+    async (_caller, session: SessionId, kind: unknown, item: unknown, options: unknown) => {
+      const realm = explorerRealm(session);
+      const manager = host?.get(session)?.manager;
+      if (typeof realm === 'string' || manager === undefined || typeof item !== 'number')
+        return null;
+      try {
+        return await explorerAsk(
+          'detail',
+          realm.file,
+          manager.character,
+          explorerKindOf(kind),
+          item,
+          asExplorerOptions(options)
+        );
+      } catch {
+        return null;
+      }
+    }
+  );
+  /*
+   * Buy and Buy + Wear: the counter, the price and the vault off the session
+   * (`purchaseFor`, which the press acts on too), and what comes off for it
+   * off MME's slot rule. The item is the realm's, by number.
+   */
+  const explorerWearing = async (
+    session: SessionId,
+    item: number
+  ): Promise<ExplorerBuyPlan['wear']> => {
+    const realm = explorerRealm(session);
+    const manager = host?.get(session)?.manager;
+    if (typeof realm === 'string' || manager === undefined) return { wearable: false, remove: [] };
+    try {
+      return await explorerAsk('wear', realm.file, manager.character, item);
+    } catch {
+      return { wearable: false, remove: [] };
+    }
+  };
+  handle(Invoke.explorerBuyPlan, async (_caller, session: SessionId, item: unknown) => {
+    const manager = host?.get(session)?.manager;
+    const row = typeof item === 'number' ? worldFor(session)?.item(item) : undefined;
+    if (manager === undefined || row === undefined) return null;
+    // Unplaced, the realm is asked first, as a route is (`ensureLocated`).
+    if (manager.character.room.map === null) await manager.ensureLocated();
+    const wear = await explorerWearing(session, row.id);
+    return { ...manager.purchaseFor({ id: row.id, name: row.name }), wear };
+  });
+  handle(Invoke.explorerBuy, async (_caller, session: SessionId, item: unknown, wear: unknown) => {
+    const manager = host?.get(session)?.manager;
+    const row = typeof item === 'number' ? worldFor(session)?.item(item) : undefined;
+    if (manager === undefined || row === undefined) return t('app.explorer.noSuchItem');
+    if (manager.character.room.map === null) await manager.ensureLocated();
+    let remove: string[] | null = null;
+    if (wear === true) {
+      const wearing = await explorerWearing(session, row.id);
+      if (!wearing.wearable) return t('app.explorer.notWorn', { item: row.name });
+      remove = wearing.remove;
+    }
+    return manager.buyNow({ id: row.id, name: row.name }, remove);
+  });
+  /*
+   * Buy + Learn: the scroll that teaches a spell, as Buy plans it, and the
+   * press, which buys it and reads it. The spell and the item are the
+   * realm's, by number.
+   */
+  handle(Invoke.explorerLearnPlan, async (_caller, session: SessionId, spell: unknown) => {
+    const manager = host?.get(session)?.manager;
+    if (manager === undefined || typeof spell !== 'number') return null;
+    if (manager.character.room.map === null) await manager.ensureLocated();
+    const plan = manager.learnPlanFor(spell);
+    return plan === null ? null : { ...plan, wear: { wearable: false, remove: [] } };
+  });
+  handle(Invoke.explorerLearn, async (_caller, session: SessionId, item: unknown) => {
+    const manager = host?.get(session)?.manager;
+    const row = typeof item === 'number' ? worldFor(session)?.item(item) : undefined;
+    if (manager === undefined || row === undefined) return t('app.explorer.noSuchItem');
+    if (manager.character.room.map === null) await manager.ensureLocated();
+    return manager.buyNow({ id: row.id, name: row.name }, null, true);
+  });
+  /*
+   * The Rooms tab: MME's map and finders on the realm's own rooms, the
+   * character's room marked. A request that does not parse is answered as
+   * no such room rather than a throw.
+   */
+  handle(Invoke.explorerRoomView, async (_caller, session: SessionId, request: unknown) => {
+    const realm = explorerRealm(session);
+    const manager = host?.get(session)?.manager;
+    const asked = asRoomViewRequest(request);
+    const none = {
+      supported: false,
+      found: false,
+      map: asked?.map ?? 0,
+      room: asked?.room ?? 0,
+      name: '',
+      grid: null,
+      compass: [],
+      refs: [],
+      info: '',
+      here: null
+    };
+    if (typeof realm === 'string' || manager === undefined || asked === null)
+      return { ...none, reason: typeof realm === 'string' ? realm : '' };
+    try {
+      const view = await explorerAsk('roomView', realm.file, manager.character, asked);
+      return view.supported ? view : { ...view, reason: t('app.explorer.unsupported') };
+    } catch (error) {
+      return { ...none, reason: t('app.explorer.unreadable', { reason: errorMessage(error) }) };
+    }
+  });
+  handle(
+    Invoke.explorerRoomTip,
+    async (_caller, session: SessionId, map: unknown, room: unknown, options: unknown) => {
+      const realm = explorerRealm(session);
+      const manager = host?.get(session)?.manager;
+      const asked = asRoomViewRequest({ map, room, options });
+      if (typeof realm === 'string' || manager === undefined || asked === null) return '';
+      try {
+        return await explorerAsk(
+          'roomTip',
+          realm.file,
+          manager.character,
+          asked.map,
+          asked.room,
+          asked.options
+        );
+      } catch {
+        return '';
+      }
+    }
+  );
+  handle(Invoke.explorerRoomSearch, async (_caller, session: SessionId, search: unknown) => {
+    const realm = explorerRealm(session);
+    const manager = host?.get(session)?.manager;
+    const asked = asRoomSearch(search);
+    if (typeof realm === 'string' || manager === undefined || asked === null) return {};
+    try {
+      return await explorerAsk('roomSearch', realm.file, manager.character, asked);
+    } catch {
+      return {};
+    }
+  });
+  handle(Invoke.explorerGear, async (_caller, session: SessionId, options: unknown) => {
+    const none = { supported: false, criteria: [], slots: [] };
+    const realm = explorerRealm(session);
+    const manager = host?.get(session)?.manager;
+    if (typeof realm === 'string' || manager === undefined)
+      return { ...none, reason: typeof realm === 'string' ? realm : '' };
+    const world = worldFor(session);
+    try {
+      const board = await explorerAsk(
+        'gear',
+        realm.file,
+        manager.character,
+        asGearOptions(options),
+        world?.soldItems() ?? null
+      );
+      return board.supported ? board : { ...board, reason: t('app.explorer.unsupported') };
+    } catch (error) {
+      return { ...none, reason: t('app.explorer.unreadable', { reason: errorMessage(error) }) };
+    }
+  });
+
+  /*
+   * The EQ tab: MME's page for the plan, Find Best over it, and the plan put
+   * on. A plan or a search that does not parse is the default.
+   */
+  handle(Invoke.explorerEq, async (_caller, session: SessionId, plan: unknown) => {
+    const realm = explorerRealm(session);
+    const manager = host?.get(session)?.manager;
+    if (typeof realm === 'string' || manager === undefined)
+      return { ...NO_EQ_VIEW, reason: typeof realm === 'string' ? realm : '' };
+    try {
+      const view = await explorerAsk('eq', realm.file, manager.character, asEqPlan(plan));
+      return view.supported ? view : { ...view, reason: t('app.explorer.unsupported') };
+    } catch (error) {
+      return {
+        ...NO_EQ_VIEW,
+        reason: t('app.explorer.unreadable', { reason: errorMessage(error) })
+      };
+    }
+  });
+  handle(
+    Invoke.explorerEqBest,
+    async (_caller, session: SessionId, plan: unknown, find: unknown) => {
+      const realm = explorerRealm(session);
+      const manager = host?.get(session)?.manager;
+      const asked = asEqPlan(plan);
+      if (typeof realm === 'string' || manager === undefined)
+        return { equipped: asked.equipped ?? [], found: false };
+      const f = (typeof find === 'object' && find !== null ? find : {}) as Record<string, unknown>;
+      try {
+        return await explorerAsk('eqBest', realm.file, manager.character, asked, {
+          criterion:
+            typeof f['criterion'] === 'number' ? Math.max(0, Math.trunc(f['criterion'])) : 0,
+          next: f['next'] === true,
+          noLimited: f['noLimited'] === true
+        });
+      } catch {
+        return { equipped: asked.equipped ?? [], found: false };
+      }
+    }
+  );
+  handle(Invoke.explorerEqWear, async (_caller, session: SessionId, plan: unknown) => {
+    const realm = explorerRealm(session);
+    const manager = host?.get(session)?.manager;
+    if (typeof realm === 'string' || manager === undefined)
+      return { refusal: t('app.explorer.noCharacter'), buy: [] };
+    try {
+      const wear = await explorerAsk('eqWear', realm.file, manager.character, asEqPlan(plan));
+      return { refusal: manager.wearLoadout(wear.commands), buy: wear.buy };
+    } catch (error) {
+      return { refusal: t('app.explorer.unreadable', { reason: errorMessage(error) }), buy: [] };
+    }
+  });
+
+  /*
+   * The Lists tab: a compare list, a picker's matches and the Item Manager's
+   * columns, numbers and words parsed at the door.
+   */
+  const numbersOf = (value: unknown): number[] =>
+    Array.isArray(value)
+      ? value
+          .filter((n): n is number => typeof n === 'number' && Number.isInteger(n) && n > 0)
+          .slice(0, 500)
+      : [];
+  const compareKindOf = (value: unknown): CompareKind =>
+    COMPARE_KINDS.includes(value as CompareKind) ? (value as CompareKind) : 'weapons';
+  handle(
+    Invoke.explorerCompare,
+    async (_caller, session: SessionId, kind: unknown, numbers: unknown) => {
+      const realm = explorerRealm(session);
+      const manager = host?.get(session)?.manager;
+      const none = { supported: false, columns: [], rows: [] };
+      if (typeof realm === 'string' || manager === undefined)
+        return { ...none, reason: typeof realm === 'string' ? realm : '' };
+      try {
+        const list = await explorerAsk(
+          'compare',
+          realm.file,
+          manager.character,
+          compareKindOf(kind),
+          numbersOf(numbers)
+        );
+        return list.supported ? list : { ...list, reason: t('app.explorer.unsupported') };
+      } catch (error) {
+        return { ...none, reason: t('app.explorer.unreadable', { reason: errorMessage(error) }) };
+      }
+    }
+  );
+  handle(Invoke.explorerFind, async (_caller, session: SessionId, kind: unknown, text: unknown) => {
+    const realm = explorerRealm(session);
+    if (typeof realm === 'string' || typeof text !== 'string') return [];
+    try {
+      return await explorerAsk(
+        'find',
+        realm.file,
+        kind === 'items' ? 'items' : compareKindOf(kind),
+        text.slice(0, 64)
+      );
+    } catch {
+      return [];
+    }
+  });
+  handle(
+    Invoke.explorerItems,
+    async (_caller, session: SessionId, numbers: unknown, names: unknown) => {
+      const realm = explorerRealm(session);
+      const manager = host?.get(session)?.manager;
+      if (typeof realm === 'string' || manager === undefined) return [];
+      const words = Array.isArray(names)
+        ? names.filter((name): name is string => typeof name === 'string').slice(0, 500)
+        : [];
+      try {
+        return await explorerAsk('items', realm.file, manager.character, numbersOf(numbers), words);
+      } catch {
+        return [];
+      }
+    }
+  );
+  handle(Invoke.explorerTool, async (_caller, session: SessionId, request: unknown) => {
+    const realm = explorerRealm(session);
+    const manager = host?.get(session)?.manager;
+    const asked = asToolRequest(request);
+    if (typeof realm === 'string' || manager === undefined || asked === null) return null;
+    try {
+      return await explorerAsk('tool', realm.file, manager.character, asked);
+    } catch {
+      return null;
+    }
+  });
+  /*
+   * The own rows from the character's file as written, not the resolved
+   * config: that one has the options file's rows merged in, and writing it
+   * back would pin them into this character (`ownMonsterRules`).
+   */
+  handle(Invoke.itemRulesFor, (_caller, session: unknown) => {
+    if (typeof session !== 'string') return { realm: [], own: [] };
+    return {
+      realm: realmTablesFor(session as SessionId).items,
+      own: editor().ownRules(session).items
+    };
+  });
+  handle(Invoke.setItemDetails, (_caller, session: unknown, rules: unknown) => {
+    if (typeof session !== 'string') return t('app.profiles.noSuchCharacter');
+    const result = editor().setItemDetails(session, asItemRules(rules));
+    if (result.ok) publishRosters();
+    return result.ok ? null : result.error;
+  });
+  handle(Invoke.monsterRulesFor, (_caller, session: unknown) => {
+    if (typeof session !== 'string') return { realm: [], own: [] };
+    return {
+      realm: realmTablesFor(session as SessionId).monsters,
+      own: editor().ownRules(session).monsters
+    };
+  });
+  handle(Invoke.setCombatMonsters, (_caller, session: unknown, rules: unknown) => {
+    if (typeof session !== 'string') return t('app.profiles.noSuchCharacter');
+    const result = editor().setCombatMonsters(session, asMonsterRules(rules));
+    if (result.ok) publishRosters();
+    return result.ok ? null : result.error;
+  });
+
   handle(Invoke.lookup, async (_caller, session: SessionId, query: unknown) => {
     const world = worldFor(session);
     if (!world) return { mobs: [], items: [], spells: [], races: [], classes: [] };
@@ -2455,21 +3030,24 @@ function registerIpc(): void {
    * player owns, so a malformed one is refused rather than matched loosely.
    */
   /*
-   * A command asked for from a card, sent through the arbiter like every
-   * automated command — which is what makes it quiet when `internal.yaml`
-   * says so. Parsed: one word, from a short allowlist, because this is a
-   * window handing main a string that becomes bytes on a socket.
+   * A command asked for from a card, sent through the engine's pending list
+   * like every automated command — which is what makes it quiet when
+   * `internal.yaml` says so. Parsed: one line of printable text, no longer
+   * than a command, because this is a window handing main a string that
+   * becomes bytes on a socket. It was one bare word, which refused the Party
+   * card's `follow <name>` and the Room card's phrases outright; a window can
+   * already type any line (`Send.input`), so a line is no wider a door.
    */
   handle(Invoke.ask, (_caller, session: SessionId, command: unknown) => {
-    if (typeof command !== 'string' || !/^[a-z]{1,8}$/.test(command)) return false;
+    if (typeof command !== 'string' || !ASKABLE.test(command) || command.trim() !== command) {
+      return false;
+    }
     return host?.get(session)?.manager.ask(command) ?? false;
   });
 
   /*
    * *Where am I standing*, in whichever word the realm's own `locate` setting
-   * names. No argument crosses from the window — `ask`'s gate is a bare verb
-   * because that is what lets a window's own string reach the socket at all,
-   * and `sys status` would fail it outright; here main reads the setting and
+   * names. No argument crosses from the window: main reads the setting and
    * picks the word itself, exactly as the gear button decides its own.
    */
   handle(Invoke.locate, (_caller, session: SessionId) => {
@@ -2577,7 +3155,7 @@ function registerIpc(): void {
    * list — `gear:act`'s rule, and here it carries more weight than usual,
    * because the whole reason this is not a list of commands is that the
    * figure a deposit names is not knowable until the `i` it sends has been
-   * answered. `SessionManager.depositAll` owns the wait; see `AutoDeposit`.
+   * answered. The engine's deposit owns the wait (`MegaEngine.depositAll`).
    *
    * A refusal — nothing to bank, or a button pressed from the backscroll
    * beside a room the character left — reports itself as a notice, so `false`
@@ -2729,7 +3307,8 @@ function registerIpc(): void {
     realm: () => realms?.shippedGraph().castableSpells() ?? []
   };
 
-  const editor = (): SettingsEditor => new SettingsEditor({ home, spells: settingsSpells });
+  const editor = (): SettingsEditor =>
+    new SettingsEditor({ home, spells: settingsSpells, megamud: megamudSettingsOf });
 
   handle(Invoke.settingsSnapshot, () => editor().snapshot());
 
@@ -2839,6 +3418,66 @@ function registerIpc(): void {
     return result.ok ? null : result.error;
   });
 
+  /* A realm's item table, the same way: the window decodes `Items.md`. */
+  handle(Invoke.loadItems, (_caller, realm: unknown) => {
+    const at = tableAt(realmItems, realm);
+    return at === null ? ITEM_TABLE.empty : at.store.forServer(at.serverId);
+  });
+
+  handle(Invoke.importItems, (_caller, realm: unknown, fileName: unknown, rows: unknown) => {
+    const at = tableAt(realmItems, realm);
+    if (at === null)
+      return { ok: false, error: t('app.servers.noSuchServer') } satisfies ItemImport;
+    const items = asItemRules(rows).filter(itemSaysAnything);
+    // Refused rather than written, for `importMessages`' reason.
+    if (items.length === 0) {
+      return { ok: false, error: t('app.items.noRows') } satisfies ItemImport;
+    }
+    const result = at.store.write(at.serverId, {
+      source: importedFrom(fileName, 'Items.md'),
+      items
+    });
+    if (!result.ok) return { ok: false, error: result.error } satisfies ItemImport;
+    return { ok: true, count: items.length } satisfies ItemImport;
+  });
+
+  handle(Invoke.saveItems, (_caller, realm: unknown, rows: unknown) => {
+    const at = tableAt(realmItems, realm);
+    if (at === null) return t('app.servers.noSuchServer');
+    const result = at.store.write(at.serverId, {
+      source: at.store.forServer(at.serverId).source,
+      items: asItemRules(rows)
+    });
+    return result.ok ? null : result.error;
+  });
+
+  /*
+   * A realm's learned spell sentences, by the realm's name: kept under the
+   * realm's data, as `spellLoreFor` keys them, so a realm with none has
+   * nothing to list.
+   */
+  handle(Invoke.loadSpellLore, (_caller, realm: unknown) => {
+    const source = loreSourceOf(realm);
+    if (source === null || lore === null)
+      return { known: false, rows: [] } satisfies LearnedSpellTable;
+    return { known: true, rows: lore.learnedSpells(source) } satisfies LearnedSpellTable;
+  });
+
+  handle(Invoke.saveSpellLore, (_caller, realm: unknown, rows: unknown) => {
+    const source = loreSourceOf(realm);
+    if (source === null || lore === null) return t('session.loop.noRealmData');
+    // Parsed, not trusted: the rows crossed the wire like any other payload.
+    const parsed = (Array.isArray(rows) ? rows : []).flatMap((row: unknown) => {
+      if (typeof row !== 'object' || row === null) return [];
+      const { spell, start, stop } = row as Record<string, unknown>;
+      if (typeof spell !== 'string' || typeof start !== 'string' || typeof stop !== 'string')
+        return [];
+      return [{ spell: spell.slice(0, 80), start: start.slice(0, 200), stop: stop.slice(0, 200) }];
+    });
+    lore.setLearnedSpells(source, parsed);
+    return null;
+  });
+
   /*
    * A MegaMUD folder's loops onto a realm, converted against **that realm's**
    * data: a loop is a walk through rooms, and the rooms are the realm's. The
@@ -2875,6 +3514,34 @@ function registerIpc(): void {
     } satisfies LoopImport;
   });
 
+  /*
+   * A loop as a file to hand on. The loop crossed the wire, so it is parsed;
+   * a name is the character's own, found as its laps find it.
+   */
+  handle(Invoke.exportLoop, async (_caller, session: unknown, given: unknown, format: unknown) => {
+    const manager =
+      typeof session === 'string' ? host?.get(session as SessionId)?.manager : undefined;
+    const loop =
+      typeof given === 'string' ? manager?.loopNamed(given) : asLoops([given], LOOP_LIMITS)[0];
+    if (loop === undefined) return { error: t('app.loop.noSuchLoop') };
+    if (format !== 'megamud') {
+      return { file: `${loopFileName(loop.name)}.yaml`, text: loopFileText(loop) };
+    }
+    if (manager === undefined) return { error: t('app.session.notConnected') };
+    const made = await manager.exportMegaLoop(loop);
+    return typeof made === 'string' ? { error: made } : made;
+  });
+  handle(Invoke.importLoopFile, (_caller, scope: unknown, owner: unknown, text: unknown) => {
+    if (!isLoopScope(scope) || typeof text !== 'string')
+      return { ok: false, error: t('errors.settings.loopFileEmpty') };
+    if (text.length > LOOP_FILE_MAX)
+      return { ok: false, error: t('errors.settings.loopFileTooBig') };
+    const result = editor().importLoopText(scope, typeof owner === 'string' ? owner : null, text);
+    // Live now rather than on the store's next poll, for `addLoop`'s reason.
+    if (result.ok) loops?.refresh();
+    return result;
+  });
+
   handle(Invoke.saveProfile, (_caller, rawId: unknown, rawDraft: unknown) => {
     const id = asProfileId(rawId);
     if (id === null) return t('app.profiles.invalidId');
@@ -2885,6 +3552,29 @@ function registerIpc(): void {
     // The store polls, so the new character appears without being told; saying
     // so here as well would report it twice.
     return result.ok ? null : result.error;
+  });
+
+  handle(Invoke.megamudChoices, (_caller, rawId: unknown) => {
+    const id = asProfileId(rawId);
+    return id === null ? null : (host?.get(id)?.manager.megaChoices() ?? null);
+  });
+
+  handle(Invoke.seenPlayers, (_caller, rawId: unknown) => {
+    const id = asProfileId(rawId);
+    if (id === null) return [];
+    return playersFor(id)
+      .recall()
+      .map((facts) => facts.name);
+  });
+
+  handle(Invoke.forgetPlayer, (_caller, rawId: unknown, rawName: unknown) => {
+    const id = asProfileId(rawId);
+    const target = id === null ? undefined : profileFor(id)?.target;
+    if (target === undefined || typeof rawName !== 'string') {
+      return t('app.profiles.noSuchCharacter');
+    }
+    playerBook?.forget(realmAddress(target), rawName);
+    return null;
   });
 
   handle(Invoke.deleteProfile, (_caller, rawId: unknown) => {
@@ -2942,6 +3632,44 @@ function registerIpc(): void {
     return result.ok ? null : result.error;
   });
 
+  /*
+   * The realm's mudstats board. The link runs on the character's own session,
+   * which is what reads the code off the telepath the board sends; the key it
+   * gets is written beside the password, and the profile's reload hands it to
+   * the session's reporter. Nothing here ever returns the key.
+   */
+  const keepStatsKey =
+    (session: string) =>
+    (key: string): string | null => {
+      const result = editor().setStatsKey(session, key);
+      return result.ok ? null : result.error;
+    };
+  handle(Invoke.statsLink, async (_caller, session: unknown) => {
+    if (typeof session !== 'string') return t('app.profiles.noSuchCharacter');
+    const manager = host?.get(session)?.manager;
+    if (!manager) return t('mudstats.link.notConnected');
+    return manager.statsLink(keepStatsKey(session));
+  });
+  handle(Invoke.statsUnlink, async (_caller, session: unknown) => {
+    if (typeof session !== 'string') return t('app.profiles.noSuchCharacter');
+    const manager = host?.get(session)?.manager;
+    if (!manager) return t('mudstats.link.notConnected');
+    return manager.statsUnlink(keepStatsKey(session));
+  });
+  handle(Invoke.statsStatus, async (_caller, session: unknown) => {
+    if (typeof session !== 'string') return t('app.profiles.noSuchCharacter');
+    const manager = host?.get(session)?.manager;
+    if (!manager) return t('mudstats.link.notConnected');
+    return manager.statsStatus();
+  });
+  handle(Invoke.statsTest, async (_caller, url: unknown) => {
+    if (typeof url !== 'string' || url.trim() === '') return t('mudstats.test.noUrl');
+    const answer = await new MudStatsApi(url.trim()).fields();
+    if (answer.status !== 200) return t('mudstats.test.failed', { detail: detailOf(answer) });
+    const floor = Number(answer.body['min_interval']);
+    return t('mudstats.test.ok', { seconds: Number.isFinite(floor) ? floor : '?' });
+  });
+
   /* Whether the gang's own channel is answered on at all. Same card, same push. */
   handle(Invoke.setRemoteGangpath, (_caller, session: unknown, on: unknown) => {
     if (typeof session !== 'string') return t('app.profiles.noSuchCharacter');
@@ -2972,6 +3700,20 @@ function registerIpc(): void {
    * `ProfileSummary`, which is pushed rather than polled — without it the
    * button would stay where it was until something else moved.
    */
+  handle(Invoke.megamudToggle, (_caller, session: unknown, name: unknown) => {
+    const slot = typeof session === 'string' ? host?.get(session as SessionId) : undefined;
+    if (!slot) return t('app.session.notConnected');
+    // Parsed rather than trusted: this crossed the wire.
+    const parsed = asMegaToggle(name);
+    if (parsed === null) return t('app.automation.unknownSwitch');
+    return slot.manager.megaToggle(parsed);
+  });
+
+  handle(Invoke.megamudAnswer, (_caller, session: unknown, question: unknown, yes: unknown) => {
+    if (typeof session !== 'string' || typeof question !== 'string') return;
+    host?.get(session as SessionId)?.manager.megaAnswer(question, yes === true);
+  });
+
   handle(Invoke.setAutomationSwitch, (_caller, session: unknown, name: unknown, on: unknown) => {
     if (typeof session !== 'string') return t('app.profiles.noSuchCharacter');
     // Parsed rather than checked: this crossed the wire, and a path built
@@ -2994,20 +3736,28 @@ function registerIpc(): void {
    * rather than interpolated into a path — the failure a wire-built path
    * causes here is a write into somebody's YAML at a key nothing reads.
    */
-  handle(Invoke.addLoop, (_caller, scope: unknown, owner: unknown, loop: unknown) => {
-    if (!isLoopScope(scope)) return t('app.loop.unknownScope');
-    const parsed = asLoop(loop);
-    if (parsed === null) return t('app.loop.invalidLoop');
-    const result = editor().addLoop(
-      scope,
-      typeof owner === 'string' && owner.trim().length > 0 ? owner.trim() : null,
-      parsed
-    );
-    // The store's poll would find it within the tick; refreshing now is what
-    // makes the modal's own list show it before the player looks away.
-    if (result.ok) loops?.refresh();
-    return result.ok ? null : result.error;
-  });
+  handle(
+    Invoke.addLoop,
+    (_caller, scope: unknown, owner: unknown, loop: unknown, replaces: unknown) => {
+      if (!isLoopScope(scope)) return t('app.loop.unknownScope');
+      const parsed = asLoop(loop);
+      if (parsed === null) return t('app.loop.invalidLoop');
+      // The loop an edit was opened from, which a save under another name replaces.
+      const replaced = replaces === undefined || replaces === null ? null : asLoopAddress(replaces);
+      if (replaces !== undefined && replaces !== null && replaced === null)
+        return t('app.loop.invalidLoop');
+      const result = editor().addLoop(
+        scope,
+        typeof owner === 'string' && owner.trim().length > 0 ? owner.trim() : null,
+        parsed,
+        replaced
+      );
+      // The store's poll would find it within the tick; refreshing now is what
+      // makes the modal's own list show it before the player looks away.
+      if (result.ok) loops?.refresh();
+      return result.ok ? null : result.error;
+    }
+  );
 
   handle(Invoke.deleteServer, (_caller, name: unknown) => {
     if (typeof name !== 'string' || name.trim().length === 0) return t('app.servers.noSuchServer');
@@ -3228,11 +3978,18 @@ function build(): void {
   loops = createLoops();
   realmMessages = createRealmTable(MESSAGE_TABLE, 'messages');
   realmMonsters = createRealmTable(MONSTER_TABLE, 'monsters');
+  realmItems = createRealmTable(ITEM_TABLE, 'items');
   publishTree();
   internal = createInternal();
   lore = createLore();
   playerBook = createPlayerBook();
+  megaLearned = createMegaLearned();
+  // What the first version of that file held of monsters belongs to the lore now.
+  for (const { realm, mob, relationship } of megaLearned.takeStances()) {
+    lore.learnStance(realm, mob, relationship, Date.now());
+  }
   destinations = createDestinations();
+  movements = createMovements();
   worldBook = createWorldBook();
   realms = createRealms();
   /*
@@ -3353,6 +4110,8 @@ function teardown(): void {
     host?.disposeAll();
     host = null;
   });
+  // After the sessions: each MegaMUD engine hands over what it learned as it goes.
+  settle('megamud learned', () => megaLearned?.flush());
   settle('profiles', () => {
     profiles?.dispose();
     profiles = null;
@@ -3362,6 +4121,8 @@ function teardown(): void {
     realmMessages = null;
     realmMonsters?.dispose();
     realmMonsters = null;
+    realmItems?.dispose();
+    realmItems = null;
   });
   settle('options', () => {
     config?.dispose();

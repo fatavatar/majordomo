@@ -12,9 +12,10 @@
  *   propagating into the socket path.
  * - **Writes never block the stream.** Appends go through a write stream and
  *   are fire-and-forget; a slow disk delays the log, not the terminal.
- * - **It stops rather than filling the disk.** A client left connected
- *   overnight must not be able to consume a partition unattended, so the log
- *   closes itself at `maxBytes` and says so.
+ * - **It never fills the disk.** At `maxBytes` the log goes on in a new
+ *   part, and the logs directory is kept under `keepBytes` by deleting its
+ *   oldest files (`logBudget.ts`). It stopped at the cap until 2026-10-18,
+ *   which lost the rest of a long session.
  *
  * ANSI is stripped on the way in. The raw stream is reproducible from the wire
  * and unreadable in a text editor; what makes a log worth keeping is being able
@@ -24,6 +25,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import { slug, stamp } from './filename';
+import { holding, partName, pruneLogs, released } from './logBudget';
 import { stripAnsi } from '../net/LineTokenizer';
 import type { ConnectionTarget } from '../../shared/types';
 import { errorMessage } from '../../shared/values';
@@ -31,8 +33,10 @@ import { errorMessage } from '../../shared/values';
 export interface SessionLogOptions {
   /** Directory to write into. Created if missing. */
   directory: string;
-  /** Stop appending past this many bytes. */
+  /** Go on in a new part past this many bytes. */
   maxBytes: number;
+  /** What the logs directory may hold in all; the oldest files go past it. */
+  keepBytes?: number | undefined;
   /** Reports the first failure, and the cap being reached. */
   onProblem?: ((message: string) => void) | undefined;
 }
@@ -44,6 +48,11 @@ export class SessionLog {
   private written = 0;
   private stopped = false;
   private file = '';
+  /** The first part's name, and which part is being written. */
+  private first = '';
+  private part = 1;
+  /** Whether this part holds anything past its heading. */
+  private filled = false;
 
   constructor(private readonly options: SessionLogOptions) {}
 
@@ -76,6 +85,7 @@ export class SessionLog {
     void this.close();
     this.stopped = false;
     this.written = 0;
+    this.filled = false;
 
     const label = slug(session.length > 0 ? session : `${target.host}_${target.port}`);
     /*
@@ -90,6 +100,8 @@ export class SessionLog {
      * the header it was opened with is a file with nothing in it.
      */
     this.file = path.join(this.options.directory, `${stamp(at)}_${label}.log`);
+    this.first = this.file;
+    this.part = 1;
     this.header = `--- session ${target.host}:${target.port} (${target.encoding}) ---\n`;
   }
 
@@ -104,6 +116,9 @@ export class SessionLog {
     if (this.stopped || this.file.length === 0) return false;
     try {
       fs.mkdirSync(this.options.directory, { recursive: true });
+      holding(this.file);
+      if (this.options.keepBytes !== undefined)
+        pruneLogs(this.options.directory, this.options.keepBytes);
       this.stream = fs.createWriteStream(this.file, { flags: 'a' });
       // A stream error after open — disk full, media removed — arrives here
       // rather than as an unhandled 'error' event that would take the process
@@ -141,6 +156,7 @@ export class SessionLog {
   close(): Promise<void> {
     const stream = this.stream;
     this.stream = null;
+    if (this.file !== '') released(this.file);
     this.file = '';
     if (!stream) return Promise.resolve();
     return new Promise((resolve) => {
@@ -152,16 +168,27 @@ export class SessionLog {
     if (!this.ensureStream() || !this.stream) return;
 
     const size = Buffer.byteLength(text, 'utf8');
-    if (this.written + size > this.options.maxBytes) {
-      this.fail(
-        `Session log reached its ${Math.round(this.options.maxBytes / 1024 / 1024)} MB limit; ` +
-          'no longer recording.'
-      );
-      return;
+    // A part holds at least one write, so a long one never leaves a part of only its heading.
+    if (this.filled && this.written + size > this.options.maxBytes) {
+      this.nextPart();
+      if (!this.ensureStream() || !this.stream) return;
     }
 
     this.written += size;
+    this.filled = true;
     this.stream.write(text);
+  }
+
+  /** The current part full: the next one, begun on what is written next. */
+  private nextPart(): void {
+    this.stream?.end();
+    this.stream = null;
+    released(this.file);
+    this.part += 1;
+    this.file = partName(this.first, this.part);
+    this.written = 0;
+    this.filled = false;
+    this.header = `--- continued, part ${this.part} ---\n`;
   }
 
   /** Disables logging for the rest of the session and reports why, once. */
@@ -170,6 +197,7 @@ export class SessionLog {
     this.stopped = true;
     this.stream?.end();
     this.stream = null;
+    if (this.file !== '') released(this.file);
     this.options.onProblem?.(message);
   }
 }

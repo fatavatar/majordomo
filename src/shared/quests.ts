@@ -344,6 +344,15 @@ export function itemsBrought(step: QuestStep): Array<{ id: number; name?: string
 }
 
 /**
+ * The words a realm's NPC title is built out of, which name nobody.
+ *
+ * Short and closed on purpose: this is not a stopword list for prose, it is the
+ * handful of connectives that appear in `Annora the Healer` and its like. A
+ * genuine three-letter name is still a name.
+ */
+const TITLE_WORDS = new Set(['the', 'and', 'for']);
+
+/**
  * The quest step a typed command reaches, if any — so the book can move as the
  * player plays rather than only when they spend an `abil`.
  *
@@ -365,15 +374,6 @@ export function itemsBrought(step: QuestStep): Array<{ id: number; name?: string
  * ranks it under the realm's own count and beside the mark a player sets by
  * hand.
  */
-/**
- * The words a realm's NPC title is built out of, which name nobody.
- *
- * Short and closed on purpose: this is not a stopword list for prose, it is the
- * handful of connectives that appear in `Annora the Healer` and its like. A
- * genuine three-letter name is still a name.
- */
-const TITLE_WORDS = new Set(['the', 'and', 'for']);
-
 export function stepSaid(
   quests: readonly Quest[],
   command: string,
@@ -1268,7 +1268,7 @@ export interface QuestPlan {
 /**
  * What the plan spends at its counters, against the purse and the vaults the
  * character's record names (todo 00). The run draws cash one purchase at a
- * time (`Supplies`); this is the same question asked of the whole plan, so the
+ * time (`SessionManager.megaBuy`); this is the same question asked of the whole plan, so the
  * card can say before the press that a run would stand at a counter. Read by
  * the card alone: the run's own refusal is each purchase's.
  */
@@ -1279,8 +1279,11 @@ export interface PlanCash {
   unpriced: number;
   /** The purse in copper, or null where no listing has counted it. */
   purse: number | null;
-  /** The vault nearest the first counter that holds what the purse lacks, where one is on record. */
-  bank?: { name: string; room: string; place: string; copper: number };
+  /**
+   * The vault nearest the first counter that holds what the purse lacks by
+   * the record, else the nearest never asked (`copper` null), asked there.
+   */
+  bank?: { name: string; room: string; place: string; copper: number | null };
   /** The purse is short and no vault on record holds the rest. */
   short: boolean;
 }

@@ -27,7 +27,7 @@ export interface CombatCardProps extends CardChrome {
  * What is swinging at this character is the thing on this card most worth a
  * second look, and it used to be plain text. A person — on the roster or in
  * the registry — opens the Player flyout, because a player attacking you is
- * the fact `HangUp`'s clock runs on; anything else opens the realm's answer,
+ * a different matter; anything else opens the realm's answer,
  * which is where a monster's real health and temper are.
  */
 function Combatant({
@@ -175,23 +175,6 @@ function Provenance({ health }: { health: TargetHealth }) {
 }
 
 /**
- * What fight this character is in, and how it is going.
- *
- * `inCombat` was a boolean, which answers "am I fighting" and nothing else —
- * and the two things anybody wants under pressure are *what am I hitting* and
- * *what is hitting me*. Those differ the moment a second monster joins in, and
- * the difference is what decides whether to keep swinging or run.
- *
- * Assembled from blocks the classifier already produces. Nothing here asks the
- * server for anything, and nothing here sends.
- *
- * **Absence is shown as absence.** A fight whose target has not been named —
- * because the character was attacked and has not swung back — says so, rather
- * than showing the first thing that hit it as though that were the target. A
- * monster nothing can put a number on gets a damage tally and no bar, rather
- * than a bar drawn against a maximum somebody made up.
- */
-/**
  * *Will I walk out of this room?* — the fight run rather than added up
  * (`simulateFight`), drawn the moment the room is read and before anything
  * has swung. One meter: the share of fights survived is its fill, the level
@@ -252,6 +235,23 @@ function SurvivalMeter({ verdict, hp }: { verdict: RoomVerdict; hp: number | nul
   );
 }
 
+/**
+ * What fight this character is in, and how it is going.
+ *
+ * `inCombat` was a boolean, which answers "am I fighting" and nothing else —
+ * and the two things anybody wants under pressure are *what am I hitting* and
+ * *what is hitting me*. Those differ the moment a second monster joins in, and
+ * the difference is what decides whether to keep swinging or run.
+ *
+ * Assembled from blocks the classifier already produces. Nothing here asks the
+ * server for anything, and nothing here sends.
+ *
+ * **Absence is shown as absence.** A fight whose target has not been named —
+ * because the character was attacked and has not swung back — says so, rather
+ * than showing the first thing that hit it as though that were the target. A
+ * monster nothing can put a number on gets a damage tally and no bar, rather
+ * than a bar drawn against a maximum somebody made up.
+ */
 function CombatCard({ character, verdict, inspect, onSelect, ...chrome }: CombatCardProps) {
   const { combat } = character;
   const outnumbered = combat.attackers.length > 1;

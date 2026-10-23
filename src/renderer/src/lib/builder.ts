@@ -8,7 +8,7 @@
  * steps of a leg are worth listing — and a decision inside a component can
  * only be tested by rendering it, which this suite has no DOM for.
  */
-import { splitStop, type Loop, type LoopStop } from '@shared/loops';
+import { splitStop, STOP_COMMAND_LIMITS, type Loop, type LoopStop } from '@shared/loops';
 import { DIRECTIONS, type LoopDraft, type RoomId, type RouteStep } from '@shared/world';
 
 /**
@@ -72,7 +72,8 @@ export function loopFor(
   draft: LoopDraft,
   picks: readonly RoomId[],
   name: string,
-  prefer: boolean
+  prefer: boolean,
+  extras: StopExtras = {}
 ): Loop | null {
   const shape = shapeOf(picks);
   if (shape === 'empty' || shape === 'start') return null;
@@ -81,7 +82,12 @@ export function loopFor(
   const trimmed = name.trim();
   if (trimmed.length === 0) return null;
 
-  const stops: LoopStop[] = draft.waypoints.map((stop) => ({ room: `${stop.name} ${stop.id}` }));
+  // What the builder holds for a room beyond its name — its commands, and a
+  // linger or clock an edited loop came with — goes on every stop there.
+  const stops: LoopStop[] = draft.waypoints.map((stop) => ({
+    room: `${stop.name} ${stop.id}`,
+    ...extras[stop.id]
+  }));
   if (shape === 'loop' && stops.length > 1) stops.pop();
   if (stops.length < 2) return null;
   return {
@@ -152,4 +158,75 @@ function isBareDirection(command: string): boolean {
 export function stopParts(stop: LoopStop): { name: string; at: string | null } {
   const { name, at } = splitStop(stop);
   return { name, at: at === null ? null : `${at.map}/${at.room}` };
+}
+
+/**
+ * What a stop carries besides its room, by the room it is in (2026-10-23):
+ * the commands typed there, and the linger or clock a loop opened for editing
+ * came with, kept so that saving it again does not lose them. By room rather
+ * than by pick, so an undo of the picks never takes the commands with it.
+ */
+export type StopExtras = Readonly<Record<RoomId, Omit<LoopStop, 'room'>>>;
+
+/**
+ * The rooms that must stay waypoints however the way runs: every one the
+ * builder holds something for, since a room the reduction drops is a stop
+ * nobody can type a command at.
+ */
+export function keptRooms(extras: StopExtras): RoomId[] {
+  return Object.entries(extras)
+    .filter(([, extra]) => Object.keys(extra).length > 0)
+    .map(([room]) => room as RoomId)
+    .sort();
+}
+
+/**
+ * The commands a field states: separated by `;`, as a MUD client's command
+ * line separates them, blanks dropped, at most as many and as long as a loop
+ * file keeps.
+ */
+export function commandsOf(text: string): string[] {
+  return text
+    .split(';')
+    .map((command) => command.trim().slice(0, STOP_COMMAND_LIMITS.text))
+    .filter((command) => command.length > 0)
+    .slice(0, STOP_COMMAND_LIMITS.commands);
+}
+
+/** Commands as the field shows them: `commandsOf` read back. */
+export function commandsText(commands: readonly string[] | undefined): string {
+  return (commands ?? []).join('; ');
+}
+
+/** `extras` with the commands at `room` the field now says, and nothing kept for none. */
+export function withCommands(extras: StopExtras, room: RoomId, text: string): StopExtras {
+  const commands = commandsOf(text);
+  const { commands: _gone, ...rest } = extras[room] ?? {};
+  const next = commands.length > 0 ? { ...rest, commands } : rest;
+  const out: Record<RoomId, Omit<LoopStop, 'room'>> = { ...extras };
+  if (Object.keys(next).length > 0) out[room] = next;
+  else delete out[room];
+  return out;
+}
+
+/**
+ * A saved loop as the builder opens it to be edited: its stops as picks —
+ * closed on the first for a ring, as drawn, and walked out to the far end
+ * for a there-and-back — and what each stop carries, by its room. `rooms`
+ * are its stops as the realm places them (`loopStops`), in order.
+ */
+export function editedLoop(
+  loop: Loop,
+  rooms: readonly RoomId[]
+): { picks: RoomId[]; extras: StopExtras } {
+  const extras: Record<RoomId, Omit<LoopStop, 'room'>> = {};
+  loop.stops.forEach(({ room: _room, ...extra }, at) => {
+    const room = rooms[at];
+    if (room === undefined || Object.keys(extra).length === 0) return;
+    // A room stopped at twice is one room here: the first stop's word on it stands.
+    extras[room] ??= extra;
+  });
+  const first = rooms[0];
+  const ring = loop.bounce !== true && rooms.length > 1 && first !== undefined;
+  return { picks: ring ? [...rooms, first] : [...rooms], extras };
 }

@@ -174,6 +174,12 @@ export const CARDS = [
    * and the rail is short on purpose.
    */
   { id: 'stats', label: t('cards.stats.title') },
+  /*
+   * What this character could wear instead, by MMUD Explorer's Find Best,
+   * with Buy beside each upgrade (2026-10-18). Put away by default for the
+   * Stats card's reason: a question asked between evenings, not watched.
+   */
+  { id: 'gear', label: t('cards.gear.title') },
   // The diagnostics half. Toggled as a group by the rail shortcut, and each one
   // can still be put away on its own — "all cards" means all of them.
   { id: 'session', label: t('cards.session.title') },
@@ -205,6 +211,7 @@ const DEFAULT_AWAY: readonly CardId[] = [
   'gang',
   'banks',
   'stats',
+  'gear',
   'builder',
   'quests',
   'hunting'
@@ -726,14 +733,6 @@ function readFloat(value: unknown): FloatState | null {
 }
 
 /**
- * What a stored settings block actually says, field by field.
- *
- * Parsed, not trusted: this comes out of `localStorage`, which an older build,
- * a hand edit or a half-written value can all have been through. A field that
- * is not the type it should be is **absent**, which means the card's own
- * default — the one answer that is never wrong.
- */
-/**
  * The light and dark halves of a card's own palette, as far as they are still
  * real themes.
  *
@@ -758,6 +757,14 @@ function isCount(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value) && value >= 0;
 }
 
+/**
+ * What a stored settings block actually says, field by field.
+ *
+ * Parsed, not trusted: this comes out of `localStorage`, which an older build,
+ * a hand edit or a half-written value can all have been through. A field that
+ * is not the type it should be is **absent**, which means the card's own
+ * default — the one answer that is never wrong.
+ */
 function readSettings(value: unknown): Partial<Record<CardId, CardSettings>> {
   if (typeof value !== 'object' || value === null) return {};
   const out: Partial<Record<CardId, CardSettings>> = {};

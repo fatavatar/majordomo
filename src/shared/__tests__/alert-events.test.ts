@@ -3,11 +3,9 @@ import { describe, expect, it } from 'vitest';
 import {
   ALERT_EVENTS,
   ALERT_EVENT_NAMES,
-  ALERT_WATCHES,
   NOTABLE,
   alertEvent,
   eventOfBlock,
-  eventOfWatch,
   isAlertEvent
 } from '../notifications';
 import type { BlockType } from '../blocks';
@@ -49,11 +47,6 @@ describe('the alert events, against the table that ranks them', () => {
       return spec.types.some((type) => NOTABLE[type]?.channel !== spec.channel);
     });
     expect(wrong).toEqual([]);
-  });
-
-  it('covers every watch, so nothing the client watches is unaskable', () => {
-    const uncovered = ALERT_WATCHES.filter((watch) => eventOfWatch(watch) === null);
-    expect(uncovered).toEqual([]);
   });
 
   /* A watched event reads off a hook rather than a block, so it must not claim

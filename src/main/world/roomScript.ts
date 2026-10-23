@@ -31,13 +31,7 @@
  * dropping it would show a portal as free when it is not. Only the item ids are
  * resolved, because `roomitem 3389` tells nobody anything and `roomitem
  * shimmering key` does.
- */
-import type { ParsedAction } from './instructions';
-import { readKeywordTable } from './questScript';
-import { number } from './values';
-import type { RoomCommand } from '../../shared/world';
-
-/**
+ *
  * The shape is `RoomCommand` in `src/shared/world.ts`, because the renderer
  * reads it and `src/shared` is the boundary both sides import. What is worth
  * saying here is how each field is *filled*:
@@ -59,6 +53,10 @@ import type { RoomCommand } from '../../shared/world';
  *   dropping it would show a portal as free when it is not — the same rule
  *   `Requirement.raw` follows.
  */
+import type { ParsedAction } from './instructions';
+import { readKeywordTable } from './questScript';
+import { number } from './values';
+import type { RoomCommand } from '../../shared/world';
 
 /**
  * How many of a step's arguments are the **condition**, where that is not one.
@@ -351,6 +349,66 @@ export function leversAsked(
         here.action.split('\n').map((line) => ({ say: phrases[0]!, steps: line.split(':') }))
       )) {
         found.push({ ...lever, say: phrases });
+      }
+    }
+    if (here.linkTo > 0) queue.push({ id: here.linkTo, words: next.words });
+    for (const [target, words] of readKeywordTable(here.action)) {
+      queue.push({ id: target, words });
+    }
+  }
+  return found;
+}
+
+/**
+ * The ways a **monster** moves you when it is asked, as lines of a room's
+ * script — `ask <monster> <word>:<steps>` — so `parseRoomScript` reads their
+ * gates and landing exactly as it reads a room's own, and the router walks
+ * them like any other portal.
+ *
+ * The realm's way to the Lady of the Dark (2026-10-19, mudrev): Dhelvanen,
+ * placed in the Luxurious Room 7/1008, greets with block 177, whose keyword
+ * table answers `ready:9028`; 9028 holds no action and links to 9049,
+ * `teleport 1530 7` — the White Corridor and map 15, where she is summoned
+ * (15/290). No exit or room command reaches 7/1530, so with the conversation
+ * unread the router had no way there at all, and the crystal in the corridor
+ * (`touch crystal:teleport 1008 7`) was the way back from a place nobody
+ * could reach.
+ *
+ * **Each line on its own**, as `leversAsked` reads them: a reached block's
+ * lines are steps, and a gate governs the rest of its own line and nothing
+ * else (`ExecuteOnMatch` breaks the line on `Failed`, `TextBlockPart.cs:1358`;
+ * `spellHazard.ts` reads it the same way). The barmaid's `adventure` is
+ * fifteen lines, one a class, each ending in the same teleport — read as one
+ * chain it was fifteen gates nobody passes. A `LinkTo` runs on with the same
+ * words and none of the lines before it.
+ *
+ * Only lines that move somebody (a `teleport`, or a `cast` the caller can
+ * land) are worth returning; the caller keeps those `parseRoomScript` gives a
+ * landing.
+ */
+export function teleportsAsked(
+  greet: number,
+  who: string,
+  block: (id: number) => { action: string; linkTo: number } | undefined
+): string[] {
+  const found: string[] = [];
+  const seen = new Set<number>();
+  const queue: Array<{ id: number; words: string[] }> = [{ id: greet, words: [] }];
+
+  while (queue.length > 0) {
+    const next = queue.shift()!;
+    if (seen.has(next.id)) continue;
+    seen.add(next.id);
+    const here = block(next.id);
+    if (here === undefined) continue;
+
+    // A move nothing said reaches is one nobody can ask for on purpose.
+    if (next.words.length > 0) {
+      for (const line of here.action.split('\n')) {
+        const steps = line.split(':').map((step) => step.trim());
+        if (readKeywordTable(line).size > 0) continue;
+        if (!steps.some((step) => /^(teleport|cast)\s/.test(step))) continue;
+        for (const word of next.words) found.push(`ask ${who} ${word}:${steps.join(':')}`);
       }
     }
     if (here.linkTo > 0) queue.push({ id: here.linkTo, words: next.words });

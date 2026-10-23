@@ -12,9 +12,15 @@ import {
   SessionManager,
   type RealmData,
   type RealmFinds,
+  type SessionAct,
   type SessionSink
 } from '../SessionManager';
-import { DEFAULT_CONFIG, type AutomationConfig, type RetreatConfig } from '../../../shared/config';
+import type { MegaEngine, MegaEngineHost } from '../MegaEngine';
+import type { ResumableMovement } from '../MovementBook';
+import { pendingPump } from '../../megamud/script/send';
+import { NO_LOOP, type Loop, type LoopProgress } from '../../../shared/loops';
+import { IDLE_WALK, type WalkProgress } from '../../../shared/walk';
+import { DEFAULT_CONFIG, type AutomationConfig } from '../../../shared/config';
 import { blankTrigger } from '../../../shared/messageTriggers';
 import { WorldGraph } from '../../world/WorldGraph';
 import { t } from '../../app/i18n';
@@ -25,17 +31,15 @@ import type { StreamLine, StreamChunk } from '../../../shared/types';
 import type { AutomationSnapshot } from '../../../shared/automation';
 import type { CharacterState } from '../../../shared/character';
 import type { StandDown } from '../../automation/LoginAutomator';
-import { NO_REALM_PLAYERS } from '../../../shared/players';
 import type { Find, Sighting } from '../../../shared/finds';
 import type { FightSink, MeasureAsk, MeasuredOutput } from '../../../shared/fights';
-import type { FledEntry } from '../../../shared/fled';
-import type { Belongings } from '../Belongings';
-import type { Survival } from '../../../shared/survival';
 import { DEFAULT_INTERNAL } from '../../../shared/internal';
+import { defaultSettings } from '../../../shared/megamud/settings';
 import { setTuning, tuning } from '../../app/tuning';
 import type { RewriteDesign } from '../../../shared/rewrites';
 import type { RewritesUiConfig } from '../../../shared/config';
 import type { Route } from '../../../shared/world';
+import { MonsterFlag } from '../../megamud/flags';
 
 /**
  * These drive a real socket rather than a mocked client: framing sits directly
@@ -76,19 +80,6 @@ afterEach(async () => {
 async function client(index = 0): Promise<net.Socket> {
   await until(() => accepted.length > index);
   return accepted[index]!;
-}
-
-/**
- * A route under way, as the escape reads it: only a character the client is
- * taking somewhere runs (todo 03). For the tests about which way out, where a
- * real walk would send steps of its own into the wire under test.
- */
-function underWay(session: SessionManager): void {
-  vi.spyOn(session, 'movement', 'get').mockReturnValue({
-    kind: 'route',
-    moving: true,
-    resumable: false
-  });
 }
 
 function collect(): {
@@ -155,7 +146,7 @@ async function settled(hp: number): Promise<void> {
 }
 
 /** A realm with nothing imported and no coins renamed, for `configureRealm`. */
-const NO_REALM: RealmData = { messages: [], monsters: [], coins: {} };
+const NO_REALM: RealmData = { messages: [], monsters: [], items: [], coins: {} };
 
 describe('the raw byte record', () => {
   /*
@@ -809,240 +800,11 @@ describe("the shadow of the server's input line", () => {
   });
 });
 
-describe('a person at the keyboard', () => {
-  /*
-   * Typing is a state, not an event, and it begins at the first keystroke.
-   *
-   * The grace used to be started only where a *committed* command is handled —
-   * inside the newline loop — so automation stood down for the moment after
-   * somebody finished typing and competed with them for every moment before
-   * it. `pu small lashworm` is a second and a half of keystrokes, and a
-   * command the client interleaves into that is what turns it into
-   * `lpu small lashworm`, which this server answers by saying out loud in the
-   * room.
-   */
-  it('stands automation down from the first keystroke, not from the Enter', async () => {
-    const { sink } = collect();
-    manager = new SessionManager(sink);
-    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
-    const socket = await client();
-
-    // One keystroke, no terminator: nothing is committed and nothing can be.
-    manager.send('p');
-
-    // The entry probe fires on reaching the realm, so there is something real
-    // wanting to send. It must not, while a half-typed word is on the line.
-    const chunks: Buffer[] = [];
-    socket.on('data', (chunk) => chunks.push(chunk));
-    socket.write('[HP=100/MA=50]:' + PROMPT_REPAINT);
-    /*
-     * Both halves of the situation, rather than a sleep long enough that one
-     * would surely have happened: the probe really did queue something, and
-     * the queue really is standing down. A sleep asserted neither, so a probe
-     * that had stopped firing at all passed this as though the hold worked.
-     */
-    await until(() => manager!.automation.queue.depth > 0 && manager!.automation.queue.suppressed);
-    await new Promise((resolve) => setTimeout(resolve, 25));
-    // The keystroke itself reaches the socket -- it is the player's -- so what
-    // is asserted is that no *command* was committed behind it.
-    expect(Buffer.concat(chunks).toString('latin1')).toBe('p');
-  });
-
-  /*
-   * The other half of the hold, and it is about *byte order on the wire*.
-   *
-   * `noteTyping(false)` releases held commands synchronously, and when it ran
-   * before the Enter keystroke had been written to the socket, the released
-   * command overtook the very terminator that released it: the server read
-   * `dance` + `pu thin carrion beast` as one line and said
-   * `dancepu thin carrion beast` out loud in the room. Captured live,
-   * 2026-08-26, 14:22 session.
-   */
-  it('puts the Enter on the wire before the command it releases', async () => {
-    const { sink } = collect();
-    manager = new SessionManager(sink);
-    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
-    const socket = await client();
-
-    // In the realm, so the entry probe queues real commands...
-    const chunks: Buffer[] = [];
-    socket.on('data', (chunk) => chunks.push(chunk));
-    // ...while a half-typed word holds them.
-    for (const key of 'dance') manager.send(key);
-    socket.write('[HP=100/MA=50]:' + PROMPT_REPAINT);
-    await until(() => manager!.automation.queue.depth > 0 && manager!.automation.queue.suppressed);
-    await new Promise((resolve) => setTimeout(resolve, 25));
-    expect(Buffer.concat(chunks).toString('latin1')).toBe('dance');
-
-    // Enter. Everything held may now go — behind the terminator, never past it.
-    manager.send('\r');
-    await until(() => Buffer.concat(chunks).toString('latin1').includes('\r\n'));
-    const wire = Buffer.concat(chunks).toString('latin1');
-    expect(wire.startsWith('dance\r')).toBe(true);
-    // The released command begins only after the player's terminator.
-    const released = wire.slice('dance\r'.length);
-    expect(released.length).toBeGreaterThan(0);
-    expect(released.startsWith('\r')).toBe(false);
-  });
-
-  /*
-   * And the failure that made `editorInput` necessary, end to end.
-   *
-   * Escape leaves no character in the server's line, so it is not a half-typed
-   * command and must not stand automation down. It did: every keystroke went
-   * into the shadow buffer, `outbound` never emptied, and the hold ran to its
-   * twenty-second ceiling — re-armed by each further key. A hostile walked
-   * into a room, the attack was decided in the same millisecond and sat in the
-   * queue for twenty-two seconds while the monster hit the character sixteen
-   * times (`logs/2026-08-30_20-57-36_main.mudcap.jsonl`, t=43603 to t=66056).
-   *
-   * The positive control is the assertion itself: what is checked is that a
-   * real command *arrived*, not that a sleep passed without one.
-   */
-  it('is not held down by keys the server keeps no text of', async () => {
-    const { sink } = collect();
-    manager = new SessionManager(sink);
-    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
-    const socket = await client();
-
-    const chunks: Buffer[] = [];
-    socket.on('data', (chunk) => chunks.push(chunk));
-    // Escape, then an arrow key: two keystrokes and no line.
-    manager.send('\x1b');
-    manager.send('\x1b[A');
-    // In the realm, so the entry probe has something real it wants to send.
-    socket.write('[HP=100/MA=50]:' + PROMPT_REPAINT);
-
-    await until(() => Buffer.concat(chunks).toString('latin1').includes('rm\r\n'));
-    expect(manager.automation.queue.suppressed).toBe(false);
-  });
-
-  /*
-   * The stat screen, which is not a half-typed line and not a menu.
-   *
-   * `train stats` is answered with `Player.Exits()` and a telnet field form,
-   * and with **no prompt** — so the acknowledgement window the queue paces on
-   * never closes, `reclaimStalled` hands the credit back, and everything
-   * automation proposes is typed into whichever field has focus. The first one
-   * is the character's family name: the report this is from is a character
-   * called `Festus CPREV`.
-   */
-  it('stands automation down for the stat screen and picks it back up at a prompt', async () => {
-    const { sink } = collect();
-    manager = new SessionManager(sink);
-    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
-    const socket = await client();
-
-    const chunks: Buffer[] = [];
-    socket.on('data', (chunk) => chunks.push(chunk));
-    /*
-     * The positive control on the way in, in both halves: the entry probe has
-     * really sent, and it still has more queued behind the pacing gap. So an
-     * absence below is this hold, and not a client that had gone quiet.
-     */
-    socket.write('[HP=100/MA=50]:' + PROMPT_REPAINT);
-    await until(
-      () =>
-        Buffer.concat(chunks).toString('latin1').includes('rm\r\n') &&
-        manager!.automation.queue.depth > 0
-    );
-
-    const before = Buffer.concat(chunks).toString('latin1');
-    manager.send('train stats\r');
-    expect(manager.automation.queue.suppressed).toBe(true);
-    // Emptied, not paused: what was queued was decided for a character who was
-    // standing in a room, and the server has already taken them out of it.
-    expect(manager.automation.queue.depth).toBe(0);
-
-    // The client has had its chance: the rest of the entry probe was due
-    // several times over inside this.
-    await new Promise((resolve) => setTimeout(resolve, 200));
-    expect(Buffer.concat(chunks).toString('latin1')).toBe(before + 'train stats\r\n');
-
-    // Back at a prompt, whichever way the screen was left.
-    socket.write('[HP=100/MA=50]:' + PROMPT_REPAINT);
-    await until(() => !manager!.automation.queue.suppressed);
-  });
-
-  /*
-   * Todo 115: `SAVE` prints the suicide-password paragraph and the room
-   * **before** the prompt, and the sheet refresh that sentence triggers went to
-   * a queue still held and was dropped — the client kept the old figures for
-   * the session. The exit sentence is a release too.
-   */
-  it('lets the sheet be asked for again the moment the form has saved', async () => {
-    const { sink } = collect();
-    // The entry probe (`rm st i exp …`) is the shipped `onEnterRealm`, kept.
-    manager = new SessionManager(sink, undefined, {
-      ...DEFAULT_CONFIG.automation,
-      enabled: true,
-      idle: { ...DEFAULT_CONFIG.automation.idle, enabled: false },
-      rules: []
-    });
-    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
-    const socket = await client();
-    const chunks: Buffer[] = [];
-    socket.on('data', (chunk) => chunks.push(chunk));
-    const seen = (): string => Buffer.concat(chunks).toString('latin1');
-    const asks = (): number => seen().split('st\r\n').length - 1;
-    socket.write('[HP=100/MA=50]:' + PROMPT_REPAINT);
-    // The positive control: the entry probe is really sending.
-    await until(() => seen().includes('rm\r\n'), 5000);
-
-    // The hold empties whatever the entry probe still had queued, so a later
-    // `st` is unmistakably the refresh.
-    manager.send('train stats\r');
-    expect(manager.automation.queue.suppressed).toBe(true);
-    expect(manager.automation.queue.depth).toBe(0);
-    const before = asks();
-    socket.write(
-      'To prevent accidental suicide or reroll, these commands\r\n' +
-        'have been password protected. You have not yet entered\r\n' +
-        'your suicide password, so please do so soon using the\r\n' +
-        'SET SUICIDE command.\r\n'
-    );
-    await until(() => !manager!.automation.queue.suppressed);
-    // Behind the entry probe's unanswered commands the window is full; the
-    // stall reclaim (`ackTimeoutMs`) is what lets the refresh out here.
-    await until(() => asks() > before, 8000);
-  }, 15_000);
-});
-
 describe('the decision trace', () => {
   /** Drives the fixture to the realm, which is what makes the probe fire. */
   async function reachTheRealm(socket: net.Socket): Promise<void> {
     socket.write('[HP=100/MA=50]:' + PROMPT_REPAINT);
   }
-
-  it('records what the arbiter sent, and why', async () => {
-    // A rule firing is not a command sent -- an intent can be coalesced away,
-    // expire, or be cancelled in between -- so the send is recorded separately.
-    const { sink } = collect();
-    manager = new SessionManager(sink);
-    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
-
-    const socket = await client();
-    await reachTheRealm(socket);
-
-    await until(() => manager!.automation.sent.length > 0);
-    const trace = manager!.automation;
-    expect(trace.enabled).toBe(true);
-    expect(trace.sent[0]?.reason).toBe('entering the realm');
-    expect(DEFAULT_CONFIG.automation.onEnterRealm).toContain(trace.sent[0]?.command);
-  });
-
-  it('reads newest first, because a trace is read backwards', async () => {
-    const { sink } = collect();
-    manager = new SessionManager(sink);
-    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
-
-    const socket = await client();
-    await reachTheRealm(socket);
-
-    await until(() => manager!.automation.sent.length >= 2);
-    const sent = manager!.automation.sent;
-    expect(sent[0]!.at).toBeGreaterThanOrEqual(sent[1]!.at);
-  });
 
   it('publishes the first change immediately rather than after the interval', async () => {
     // A trace you have to wait a beat for is a worse trace.
@@ -1055,19 +817,6 @@ describe('the decision trace', () => {
 
     await until(() => traces.length > 0);
     expect(traces.length).toBeGreaterThan(0);
-  });
-
-  it('forgets the trace on a new connection', async () => {
-    const { sink } = collect();
-    manager = new SessionManager(sink);
-    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
-
-    const socket = await client();
-    await reachTheRealm(socket);
-    await until(() => manager!.automation.sent.length > 0);
-
-    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
-    expect(manager.automation.sent).toEqual([]);
   });
 });
 
@@ -1275,45 +1024,6 @@ describe('credentials in the record', () => {
   });
 });
 
-describe('losing the connection', () => {
-  it('stops a walk rather than reporting progress nothing is making', async () => {
-    const { sink } = collect();
-    manager = new SessionManager(sink);
-    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
-
-    const socket = await client();
-    socket.write('[HP=100/MA=50]:' + PROMPT_REPAINT);
-    await until(() => manager!.character.phase === 'in-game');
-
-    // A route that has already started; the room it expects never arrives
-    // because the socket goes away underneath it.
-    const started = manager.walker.start(
-      {
-        cost: 1,
-        blocked: false,
-        steps: [
-          {
-            from: '1/1',
-            to: '1/2',
-            direction: 'e',
-            command: 'e',
-            name: 'Next',
-            requirement: null,
-            dark: false
-          }
-        ]
-      },
-      { ...manager.character, room: { ...manager.character.room, map: 1, number: 1 } }
-    );
-    expect(started).toBeNull();
-    expect(manager.walker.progress.status).toBe('walking');
-
-    socket.destroy();
-    await until(() => manager!.walker.progress.status === 'stopped');
-    expect(manager.walker.progress.reason).toMatch(/connection closed/i);
-  });
-});
-
 describe('connecting twice', () => {
   it('refuses a second attempt while the first is still in flight', async () => {
     // `connect` tears down whatever is open before it dials, so a second call
@@ -1328,783 +1038,6 @@ describe('connecting twice', () => {
     // Dialling while connected is how you switch servers, and the palette
     // offers it.
     expect(BUSY_PHASES.has('connected')).toBe(false);
-  });
-});
-
-/*
- * The panic button, and why it mostly refuses.
- *
- * "Disconnect when health is low" is what every MegaMUD-era client offers, and
- * on this server family an unclean disconnect costs a percentage of *maximum*
- * HP — fatal at exactly the health that makes somebody want it. So the feature
- * exists and the interesting behaviour is the refusal.
- */
-describe('hanging up to escape', () => {
-  const safety = (
-    over: Partial<(typeof DEFAULT_CONFIG)['automation']['safety']['hangUp']> = {}
-  ) => ({
-    ...DEFAULT_CONFIG.automation,
-    enabled: true,
-    idle: { ...DEFAULT_CONFIG.automation.idle, enabled: false },
-    onEnterRealm: [],
-    rules: [],
-    safety: {
-      ...DEFAULT_CONFIG.automation.safety,
-      hangUp: {
-        enabled: true,
-        belowHealth: 0.3,
-        // The charged realm, which is where the refusals below live.
-        penalties: true,
-        onPlayerInRoom: false,
-        ...over
-      }
-    }
-  });
-
-  /*
-   * A maximum, then a status line low enough to trip it.
-   *
-   * `health` is the one command that reports current and maximum together, so
-   * it is the cheapest way to give the tracker a maximum — and without one the
-   * fraction is unknown and nothing may fire, which is itself a case below.
-   */
-  const knowMaximum = (socket: net.Socket): void => {
-    socket.write('Health: 100/100 [100%]\r\n');
-  };
-  const hurt = async (socket: net.Socket): Promise<void> => {
-    knowMaximum(socket);
-    socket.write('[HP=100]:\r\n');
-    // The fall has to arrive as a *change*, so the healthy line lands first.
-    await until(() => manager!.character.vitals.hp === 100);
-    socket.write('[HP=10]:\r\n');
-  };
-
-  it('hangs up when health falls and nothing says it would be penalised', async () => {
-    const { sink, notices } = collect();
-    manager = new SessionManager(sink, undefined, safety());
-    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
-    await hurt(await client());
-
-    await until(() => notices.some((notice) => /Hanging up/.test(notice)));
-    await until(() => manager?.state.phase === 'closing' || manager?.state.phase === 'closed');
-  });
-
-  /* Unknown is not zero: a maximum that has not arrived must never trip this. */
-  it('does not hang up on a health figure with no maximum behind it', async () => {
-    const { sink, notices } = collect();
-    manager = new SessionManager(sink, undefined, safety());
-    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
-    const socket = await client();
-    socket.write('[HP=10]:\r\n');
-
-    await settled(10);
-    expect(notices.some((notice) => /Hanging up/.test(notice))).toBe(false);
-    expect(manager?.state.phase).toBe('connected');
-  });
-
-  /*
-   * The whole point. A hangup in combat is penalised, and refusing is said out
-   * loud — somebody who turned this on is relying on it, and a safety feature
-   * that silently declines is worse than one that was never offered.
-   */
-  it('refuses in combat, and says why', async () => {
-    const { sink, notices } = collect();
-    manager = new SessionManager(sink, undefined, safety());
-    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
-    const socket = await client();
-    knowMaximum(socket);
-    socket.write('The orc rogue slashes you for 5 damage!\r\n');
-    await until(() => manager!.character.combat.blows > 0);
-    socket.write('[HP=10]:\r\n');
-
-    await until(() => notices.some((notice) => /Not hanging up/.test(notice)));
-    const refusal = notices.find((notice) => /Not hanging up/.test(notice)) ?? '';
-    expect(refusal).toMatch(/attacking you|combat/);
-    // And it stays connected, which is the part that matters.
-    expect(manager?.state.phase).toBe('connected');
-  });
-
-  /*
-   * "Why did the bot run?" has to be answerable from a trace, and hanging up
-   * is the one decision with a consequence nothing can undo. A refusal has to
-   * be there too: somebody who turned a safety feature on and saw nothing
-   * happen needs to see that it *decided* not to.
-   */
-  it('records the refusal where somebody can read it', async () => {
-    const { sink, traces } = collect();
-    manager = new SessionManager(sink, undefined, safety());
-    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
-    const socket = await client();
-    knowMaximum(socket);
-    socket.write('The orc rogue slashes you for 5 damage!\r\n');
-    /*
-     * The blow is what makes the hangup unclean, so it has to land before the
-     * status line that would otherwise trip it. `blows` and not `attackers`:
-     * a monster's attack text is realm data, so nothing in the line says where
-     * the name stops, and with no room block to name the occupants the roster
-     * of attackers stays empty. The blow was still counted.
-     */
-    await until(() => manager!.character.combat.blows > 0);
-    socket.write('[HP=10]:\r\n');
-
-    await until(() => traces.some((trace) => trace.safety.length > 0));
-    const decision = traces.at(-1)?.safety[0];
-    expect(decision?.action).toBe('hang up');
-    expect(decision?.acted).toBe(false);
-    expect(decision?.refused).toMatch(/attacking you|combat/);
-    expect(decision?.because).toMatch(/health/);
-  });
-
-  it('records the hangup itself, which produces no command to record', async () => {
-    const { sink, traces } = collect();
-    manager = new SessionManager(sink, undefined, safety());
-    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
-    await hurt(await client());
-
-    await until(() => traces.some((trace) => trace.safety.some((entry) => entry.acted)));
-    const decision = traces.at(-1)?.safety.find((entry) => entry.acted);
-    expect(decision?.action).toBe('hang up');
-  });
-
-  it('says it once rather than on every status line', async () => {
-    const { sink, notices } = collect();
-    manager = new SessionManager(sink, undefined, safety());
-    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
-    const socket = await client();
-    knowMaximum(socket);
-    socket.write('The orc rogue slashes you for 5 damage!\r\n');
-    await until(() => manager!.character.combat.blows > 0);
-    for (const hp of [12, 11, 10, 9, 8]) {
-      socket.write(`[HP=${hp}]:\r\n`);
-      await until(() => manager!.character.vitals.hp === hp);
-    }
-    await until(() => notices.some((notice) => /Not hanging up/.test(notice)));
-    expect(notices.filter((notice) => /Not hanging up/.test(notice))).toHaveLength(1);
-  });
-
-  /* A realm that charges nothing: below the floor it hangs up, whatever it can see (todo 01). */
-  it('hangs up whatever it can see where the settings say the realm charges nothing', async () => {
-    const { sink, notices } = collect();
-    manager = new SessionManager(sink, undefined, safety({ penalties: false }));
-    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
-    const socket = await client();
-    knowMaximum(socket);
-    socket.write('The orc rogue slashes you for 5 damage!\r\n');
-    /*
-     * The blow is what makes the hangup unclean, so it has to land before the
-     * status line that would otherwise trip it. `blows` and not `attackers`:
-     * a monster's attack text is realm data, so nothing in the line says where
-     * the name stops, and with no room block to name the occupants the roster
-     * of attackers stays empty. The blow was still counted.
-     */
-    await until(() => manager!.character.combat.blows > 0);
-    socket.write('[HP=10]:\r\n');
-
-    await until(() => notices.some((notice) => /Hanging up/.test(notice)));
-    expect(notices.find((notice) => /Hanging up/.test(notice))).toMatch(
-      /Your settings say this realm charges nothing/
-    );
-  });
-
-  /*
-   * Paradigm's realm menu says what a hang-up costs, and what it said outranks
-   * the setting both ways (todo 01): the wire's own menu, then the player's `2`.
-   */
-  const PARADIGM_MENU = [
-    '[1] . Paradigm PVE (v1.9.1) [ PvE ]',
-    '    . . Character Limit 2',
-    '[2] . Paradigm PVP (v1.9.1) [ PvP Enabled ]',
-    '    . . PvP Level Range 12',
-    '    . . Hang Penalties 25%',
-    '',
-    'Please select a realm: '
-  ].join('\r\n');
-  const chooseRealm = async (socket: net.Socket, choice: string): Promise<void> => {
-    socket.write(PARADIGM_MENU);
-    await until(() => manager!.character.phase === 'authenticating');
-    manager!.send(`${choice}\r`);
-  };
-
-  it('refuses on the realm the menu says charges, whatever the setting says', async () => {
-    const { sink, notices } = collect();
-    manager = new SessionManager(sink, undefined, safety({ penalties: false }));
-    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
-    const socket = await client();
-    await chooseRealm(socket, '2');
-    await until(() => notices.some((notice) => /Paradigm PVP charges 25%/.test(notice)));
-    knowMaximum(socket);
-    socket.write('The orc rogue slashes you for 5 damage!\r\n');
-    await until(() => manager!.character.combat.blows > 0);
-    socket.write('[HP=10]:\r\n');
-    await until(() => notices.some((notice) => /Not hanging up/.test(notice)));
-    expect(manager.state.phase).toBe('connected');
-  });
-
-  it('hangs up on the realm the menu says charges nothing, whatever the setting says', async () => {
-    const { sink, notices } = collect();
-    manager = new SessionManager(sink, undefined, safety({ penalties: true }));
-    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
-    const socket = await client();
-    await chooseRealm(socket, '1');
-    await until(() => notices.some((notice) => /Paradigm PVE charges nothing/.test(notice)));
-    knowMaximum(socket);
-    socket.write('The orc rogue slashes you for 5 damage!\r\n');
-    await until(() => manager!.character.combat.blows > 0);
-    socket.write('[HP=10]:\r\n');
-    await until(() => notices.some((notice) => /Hanging up/.test(notice)));
-    expect(notices.find((notice) => /Hanging up/.test(notice))).toMatch(/by its own realm menu/);
-  });
-
-  /*
-   * The condition nothing on screen shows. Combat is over, nothing in the room
-   * is swinging, the status line looks like any other — and a hangup is still
-   * penalised for five minutes after a player's blow either way. The roster is
-   * what makes Vaelor a player rather than a monster's realm-data name.
-   */
-  it('refuses inside the five-minute PvP window after combat has ended', async () => {
-    const { sink, notices } = collect();
-    manager = new SessionManager(sink, undefined, safety());
-    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
-    const socket = await client();
-    knowMaximum(socket);
-    socket.write('Vaelor just entered the Realm.\r\n');
-    await until(() => manager!.character.online.some((who) => who.name === 'Vaelor'));
-    socket.write('Vaelor moves to attack you!\r\n');
-    await until(() => manager!.character.combat.attackers.length > 0);
-    socket.write('*Combat Off*\r\n');
-    await until(() => !manager!.character.inCombat);
-    socket.write('[HP=10]:\r\n');
-
-    await until(() => notices.some((notice) => /Not hanging up/.test(notice)));
-    const refusal = notices.find((notice) => /Not hanging up/.test(notice)) ?? '';
-    expect(refusal).toMatch(/PvP with Vaelor/);
-    expect(refusal).toMatch(/walk out instead/);
-    expect(manager?.state.phase).toBe('connected');
-  });
-
-  it('does nothing at all while it is switched off', async () => {
-    const { sink, notices } = collect();
-    manager = new SessionManager(sink, undefined, safety({ enabled: false }));
-    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
-    await hurt(await client());
-
-    await settled(10);
-    expect(notices.some((notice) => /anging up/.test(notice))).toBe(false);
-    expect(manager?.state.phase).toBe('connected');
-  });
-
-  /* The master switch outranks it: with automation off, nothing automated acts. */
-  it('does nothing while automation as a whole is off', async () => {
-    const { sink, notices } = collect();
-    manager = new SessionManager(sink, undefined, { ...safety(), enabled: false });
-    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
-    await hurt(await client());
-
-    await settled(10);
-    expect(notices.some((notice) => /anging up/.test(notice))).toBe(false);
-  });
-});
-
-/*
- * Running away is the escape that works: walking out breaks combat and carries
- * none of the penalty an unclean disconnect does, which is exactly why the
- * hangup refusal tells you to do this instead.
- *
- * **What it sends is a direction, and these tests assert the direction.** They
- * used to assert the word `flee`, and passed for four phases while the server
- * answered every one of them `Your command had no effect.` — a test that
- * watches for a token rather than for an effect grades the client on its
- * intentions. Each of these now gives the character a room with exits in it,
- * because a room is where a way out comes from.
- */
-describe('running away', () => {
-  const escaping = (
-    over: Partial<(typeof DEFAULT_CONFIG)['automation']['safety']['retreat']> = {}
-  ) => ({
-    ...DEFAULT_CONFIG.automation,
-    enabled: true,
-    idle: { ...DEFAULT_CONFIG.automation.idle, enabled: false },
-    onEnterRealm: [],
-    rules: [],
-    safety: {
-      ...DEFAULT_CONFIG.automation.safety,
-      retreat: {
-        ...DEFAULT_CONFIG.automation.safety.retreat,
-        enabled: true,
-        belowHealth: 0.3,
-        whenOutnumbered: 0,
-        cooldownMs: 3000,
-        ...over
-      } as RetreatConfig
-    }
-  });
-
-  /**
-   * Any sentence the escape says when it acts, and the one it says when it
-   * cannot. One matcher, so a test asserting *nothing happened* cannot pass
-   * because the wording moved to a different rung.
-   */
-  const RAN = /Running \w+:|Retreating \w+,|Not running:/;
-
-  /** A room with two ways out of it, which is what an escape needs. */
-  const ROOM = 'Rat Cellar\r\nObvious exits: north, south\r\n';
-
-  /**
-   * Everything the client committed to the wire, polled for the command under
-   * test rather than read after a fixed sleep. The queue paces a send behind
-   * `minGapMs` and the escape is proposed in the `emergency` band, so a wait
-   * sized for the nominal case is a test being impatient rather than the
-   * feature being slow — and one sized to never be impatient is 600ms every
-   * run.
-   */
-  const sent = (socket: net.Socket, pattern: RegExp): Promise<string> => {
-    const chunks: Buffer[] = [];
-    socket.on('data', (chunk) => chunks.push(chunk));
-    const wire = (): string => Buffer.concat(chunks).toString('latin1');
-    return until(() => pattern.test(wire())).then(wire);
-  };
-
-  it('runs when health falls, in a fight — and it is a move that goes out', async () => {
-    const { sink, notices } = collect();
-    manager = new SessionManager(sink, undefined, escaping());
-    underWay(manager);
-    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
-    const socket = await client();
-    const seen = sent(socket, /\bn\r\n/);
-    socket.write('Health: 100/100 [100%]\r\n');
-    socket.write(ROOM);
-    socket.write('*Combat Engaged*\r\n');
-    // The drop has to arrive as a *change*, so the lines that set the maximum
-    // and open the fight have to land first. Waiting for the fight itself
-    // proves both did — it is the later of the two.
-    await until(() => manager!.character.inCombat);
-    socket.write('[HP=10]:\r\n');
-
-    await until(() => notices.some((notice) => RAN.test(notice)));
-    // North, because it is the first exit the room printed and nothing here is
-    // placed — the bottom rung of the ladder, which is still an exit.
-    expect(await seen).toMatch(/\bn\r\n/);
-    expect(notices.find((notice) => RAN.test(notice))).toMatch(/Running n:/);
-  });
-
-  /*
-   * The room said nothing, and there is nothing behind us on the trail. So
-   * nothing is sent — and the point is that it *says so*: a refusal reported
-   * as an action is how a word that did nothing survived four phases.
-   */
-  it('refuses out loud rather than inventing a way out', async () => {
-    const { sink, notices, traces } = collect();
-    manager = new SessionManager(sink, undefined, escaping());
-    underWay(manager);
-    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
-    const socket = await client();
-    const chunks: Buffer[] = [];
-    socket.on('data', (chunk) => chunks.push(chunk));
-    socket.write('Health: 100/100 [100%]\r\n');
-    socket.write('*Combat Engaged*\r\n');
-    await until(() => manager!.character.inCombat);
-    socket.write('[HP=10]:\r\n');
-
-    await until(() => notices.some((notice) => /Not running:/.test(notice)));
-    /*
-     * No move reached the wire — not a direction, and certainly not a word
-     * invented for the purpose.
-     *
-     * Not *nothing*, which is what this asserted first and is a stronger claim
-     * than the feature makes: a refused escape leaves nothing in flight, so
-     * everything else that keeps a character alive is free to act, and here
-     * `Recovery` sits it down. That is the point of the refusal being a
-     * refusal — it used to arm the in-flight window and switch resting,
-     * healing and fighting all off while printing *standing and fighting*.
-     */
-    expect(Buffer.concat(chunks).toString('latin1')).not.toMatch(/\b[nsewud]\r\n/);
-    // The trace is published on its own throttle, so it is waited for rather
-    // than read off whatever had been pushed when the notice landed.
-    await until(() => traces.some((trace) => trace.safety.length > 0));
-    const decision = traces.at(-1)?.safety[0];
-    expect(decision).toMatchObject({ action: 'retreat', acted: false });
-    expect(decision?.refused).toMatch(/no exit known/);
-  });
-
-  /* An escape out of combat is a wasted move that puts the character in a room
-     it did not choose. */
-  it('does not run when nothing is fighting it', async () => {
-    const { sink, notices } = collect();
-    manager = new SessionManager(sink, undefined, escaping());
-    underWay(manager);
-    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
-    const socket = await client();
-    socket.write('Health: 100/100 [100%]\r\n');
-    socket.write(ROOM);
-    socket.write('[HP=10]:\r\n');
-
-    await settled(10);
-    expect(notices.some((notice) => RAN.test(notice))).toBe(false);
-  });
-
-  it('does not run above the threshold', async () => {
-    const { sink, notices } = collect();
-    manager = new SessionManager(sink, undefined, escaping());
-    underWay(manager);
-    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
-    const socket = await client();
-    socket.write('Health: 100/100 [100%]\r\n');
-    socket.write(ROOM);
-    socket.write('*Combat Engaged*\r\n');
-    await until(() => manager!.character.inCombat);
-    socket.write('[HP=90]:\r\n');
-
-    await settled(90);
-    expect(notices.some((notice) => RAN.test(notice))).toBe(false);
-  });
-
-  /*
-   * Being swarmed at full health. A health threshold notices too late — by the
-   * time the bar is low the next round has already been rolled.
-   */
-  it('runs when outnumbered, whatever the health says', async () => {
-    const { sink, notices } = collect();
-    manager = new SessionManager(sink, undefined, escaping({ whenOutnumbered: 2 }));
-    underWay(manager);
-    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
-    const socket = await client();
-    socket.write('Health: 100/100 [100%]\r\n');
-    /*
-     * The room, which is two facts at once here. It is where the way out comes
-     * from — and it is also the only thing that can say a monster's name ends
-     * at `rogue`, because there is nothing in `The orc rogue slashes you for 1
-     * damage!` that says where the name stops. Either the room or the realm's
-     * monster table has to; this session has no realm, so the room does. That
-     * is exactly what the client does on a realm it has no data for.
-     */
-    socket.write('Rat Cellar\r\n');
-    socket.write('Also here: orc rogue, cave rat.\r\n');
-    socket.write('Obvious exits: north\r\n');
-    socket.write('*Combat Engaged*\r\n');
-    socket.write('The orc rogue slashes you for 1 damage!\r\n');
-    socket.write('The cave rat bites you for 1 damage!\r\n');
-    // Both blows, not just the first: the count is what is under test.
-    await until(() => manager!.character.combat.attackers.length >= 2);
-    socket.write('[HP=98]:\r\n');
-
-    await until(() => notices.some((notice) => RAN.test(notice)));
-    expect(notices.find((notice) => RAN.test(notice))).toMatch(/^Running \w+: 2 attackers/);
-  });
-
-  /* MegaMUD's ManaRun%: a caster with an empty pool is losing whatever the
-     health bar says. The prompt states both figures, and the mana one is the
-     trigger here — the health stays full throughout. */
-  it('runs when mana falls under its floor, whatever the health says', async () => {
-    const { sink, notices } = collect();
-    manager = new SessionManager(sink, undefined, escaping({ belowMana: 0.2 }));
-    underWay(manager);
-    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
-    const socket = await client();
-    socket.write('Health: 100/100 [100%]\r\n');
-    socket.write(ROOM);
-    socket.write('*Combat Engaged*\r\n');
-    await until(() => manager!.character.inCombat);
-    socket.write('[HP=100/100,MA=5/50]:\r\n');
-
-    await until(() => notices.some((notice) => RAN.test(notice)));
-    expect(notices.find((notice) => RAN.test(notice))).toMatch(/^Running \w+: mana at 10%/);
-  });
-
-  it('does not count one attacker as being outnumbered', async () => {
-    const { sink, notices } = collect();
-    manager = new SessionManager(sink, undefined, escaping({ whenOutnumbered: 2 }));
-    underWay(manager);
-    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
-    const socket = await client();
-    socket.write('Health: 100/100 [100%]\r\n');
-    socket.write(ROOM);
-    socket.write('*Combat Engaged*\r\n');
-    socket.write('The orc rogue slashes you for 1 damage!\r\n');
-    await until(() => manager!.character.combat.blows > 0);
-    socket.write('[HP=98]:\r\n');
-
-    await settled(98);
-    expect(notices.some((notice) => RAN.test(notice))).toBe(false);
-  });
-
-  /*
-   * A status line arrives every few hundred milliseconds under pressure. One
-   * queued move, not a queue full of them — coalesced by *intent*, which is the
-   * rule the queue exists for. Never by command text: a second `n` is a
-   * different move, and a second escape is the same intent.
-   */
-  it('queues one escape however many status lines arrive', async () => {
-    const { sink, notices } = collect();
-    manager = new SessionManager(sink, undefined, escaping());
-    underWay(manager);
-    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
-    const socket = await client();
-    socket.write('Health: 100/100 [100%]\r\n');
-    socket.write(ROOM);
-    socket.write('*Combat Engaged*\r\n');
-    await until(() => manager!.character.inCombat);
-    for (const hp of [12, 11, 10, 9, 8]) {
-      socket.write(`[HP=${hp}]:\r\n`);
-      await until(() => manager!.character.vitals.hp === hp);
-    }
-    await until(() => notices.some((notice) => RAN.test(notice)));
-    expect(notices.filter((notice) => RAN.test(notice))).toHaveLength(1);
-  });
-
-  /* And an escape, which does produce a command, is still recorded as a
-     decision: the command says what was sent, and this says why — and, since
-     there are four ways to know an exit, which of them answered. */
-  it('records why it ran, which way, and how it knew that way', async () => {
-    const { sink, notices, traces } = collect();
-    manager = new SessionManager(sink, undefined, escaping());
-    underWay(manager);
-    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
-    const socket = await client();
-    socket.write('Health: 100/100 [100%]\r\n');
-    socket.write(ROOM);
-    socket.write('*Combat Engaged*\r\n');
-    await until(() => manager!.character.inCombat);
-    socket.write('[HP=10]:\r\n');
-    // The decision is written on the outcome, not the send (todo 06): the
-    // room the move reached is what says the escape acted.
-    await until(() => notices.some((notice) => RAN.test(notice)));
-    socket.write('Rat Warren\r\nObvious exits: south\r\n');
-
-    await until(() => traces.some((trace) => trace.safety.length > 0));
-    const decision = traces.at(-1)?.safety[0];
-    expect(decision).toMatchObject({ action: 'retreat', acted: true });
-    expect(decision?.because).toMatch(/health at \d+%/);
-    expect(decision?.because).toMatch(/— n \(printed\)$/);
-  });
-
-  /*
-   * The escape reads what the server said back (todo 06, 2026-09-12). Live,
-   * `s` was answered `The door is closed!`, the trace said `acted: true`, and
-   * the character rested in the lair it believed it had left. A shut door is
-   * the walker's own rung: open it and run again.
-   */
-  it('opens a shut door on the way out and runs again', async () => {
-    const { sink, notices, traces } = collect();
-    manager = new SessionManager(sink, undefined, escaping());
-    underWay(manager);
-    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
-    const socket = await client();
-    const seen = sent(socket, /open n\r\nn\r\n/);
-    /*
-     * The move itself, on the wire — not the notice it was decided on. A
-     * server cannot refuse a command it has not been sent, and the decision is
-     * taken whole prompts before the byte leaves whenever anything else is in
-     * flight, which on a real session the entry probes always are.
-     */
-    const went = sent(socket, /\bn\r\n/);
-    socket.write('Health: 100/100 [100%]\r\n');
-    socket.write(ROOM);
-    socket.write('*Combat Engaged*\r\n');
-    await until(() => manager!.character.inCombat);
-    socket.write('[HP=10]:\r\n');
-    await until(() => notices.some((notice) => RAN.test(notice)));
-    await went;
-    socket.write('The door is closed!\r\n');
-    // And the prompt behind it: the ladder is two commands, and the second
-    // waits on the credit the server's own answer carries.
-    socket.write('[HP=10]:\r\n');
-
-    expect(await seen).toMatch(/\bn\r\nopen n\r\nn\r\n/);
-    expect(notices.some((notice) => /door n is shut/.test(notice))).toBe(true);
-    // Not an escape yet: nothing has been recorded as acted.
-    expect(traces.flatMap((trace) => trace.safety).some((d) => d.acted)).toBe(false);
-  });
-
-  it('falls to the next rung the moment a direction is refused, and records the refusal', async () => {
-    const { sink, notices, traces } = collect();
-    manager = new SessionManager(sink, undefined, escaping());
-    underWay(manager);
-    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
-    const socket = await client();
-    const seen = sent(socket, /\bs\r\n/);
-    // The refused move on the wire, for the reason above: the refusal is the
-    // server's answer to it, and it cannot answer what it has not received.
-    const went = sent(socket, /\bn\r\n/);
-    socket.write('Health: 100/100 [100%]\r\n');
-    socket.write(ROOM);
-    socket.write('*Combat Engaged*\r\n');
-    await until(() => manager!.character.inCombat);
-    socket.write('[HP=10]:\r\n');
-    await until(() => notices.some((notice) => /Running n:/.test(notice)));
-    await went;
-    socket.write('There is no exit in that direction!\r\n');
-
-    // South, the other printed exit — inside the cooldown, not after it.
-    expect(await seen).toMatch(/\bn\r\ns\r\n/);
-    const refused = traces.flatMap((trace) => trace.safety).find((d) => d.acted === false);
-    expect(refused).toMatchObject({ action: 'retreat', acted: false });
-    expect(refused?.refused).toMatch(/no exit in that direction/);
-    expect(notices.some((notice) => /Running s:/.test(notice))).toBe(true);
-  });
-
-  it('does nothing while it is switched off', async () => {
-    const { sink, notices } = collect();
-    manager = new SessionManager(sink, undefined, escaping({ enabled: false }));
-    underWay(manager);
-    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
-    const socket = await client();
-    socket.write('Health: 100/100 [100%]\r\n');
-    socket.write(ROOM);
-    socket.write('*Combat Engaged*\r\n');
-    await until(() => manager!.character.inCombat);
-    socket.write('[HP=10]:\r\n');
-
-    await settled(10);
-    expect(notices.some((notice) => RAN.test(notice))).toBe(false);
-  });
-});
-
-/*
- * The realm roster is maintained for free from what the server volunteers --
- * `player-enters` and `player-arrives-room` -- but neither carries an
- * alignment, so a name that arrives this way is unconfirmed until a `who`
- * says otherwise. That `who` is queued rather than sent on the spot: firing
- * one per arrival would be one per adventurer in a busy room, and the idle
- * tick that already exists coalesces a whole burst into the single `who` that
- * answers all of it.
- */
-describe('the roster catch-up', () => {
-  /*
-   * Three tests, and they are here for the *wiring* — that a line on the wire
-   * reaches `Routines`, and that the `who` it decides on reaches the socket.
-   *
-   * What the routine decides is settled in `Routines.test.ts`, on fake timers:
-   * asks on the arrival itself, coalesces a whole room of arrivals into one
-   * `who`, holds off for a minute afterwards, asks nothing when nobody
-   * unlisted has arrived, forgets on a new connection. Those ran here too,
-   * through a real socket and a real clock, at two and a half seconds each for
-   * an assertion the unit test makes in under a millisecond. The one that only
-   * restated the unit test — asking nothing when nobody has arrived — is gone;
-   * these three each prove a hookup no unit test can see.
-   */
-  const catchingUp = () => ({
-    ...DEFAULT_CONFIG.automation,
-    enabled: true,
-    /*
-     * A quarter-second quiet period. Shorter than any options file may hold —
-     * `normalizeConfig` clamps this to 5 — because what is under test is the
-     * hookup either side of the tick, not the length of the wait, and the real
-     * value would make each of these cost six seconds.
-     */
-    idle: { enabled: true, afterSeconds: 0.25, command: 'l' },
-    onEnterRealm: [],
-    onPartyChange: '',
-    rules: []
-  });
-
-  /**
-   * Everything the client has committed to the wire, polled rather than read
-   * after one fixed sleep.
-   *
-   * `who` is not the first thing this tick sends -- the keep-alive goes out
-   * first, and `who` follows once `CommandQueue`'s own `minGapMs` pacing gap
-   * has passed. A tick's *own* firing time drifts against real timers besides,
-   * so a wait sized for the nominal schedule can end a few hundred
-   * milliseconds before the pacing gap actually clears it -- which is a test
-   * being impatient, not the feature being slow. Polling for the pattern (or
-   * giving up at the deadline) is what `until()` already does for a notice;
-   * this is the same idea against the raw bytes, because nothing here emits
-   * one.
-   */
-  const untilSent = async (
-    socket: net.Socket,
-    pattern: RegExp,
-    timeoutMs = 4000
-  ): Promise<string> => {
-    const chunks: Buffer[] = [];
-    socket.on('data', (chunk) => chunks.push(chunk));
-    const deadline = Date.now() + timeoutMs;
-    for (;;) {
-      const text = Buffer.concat(chunks).toString('latin1');
-      if (pattern.test(text) || Date.now() > deadline) return text;
-      await new Promise((resolve) => setTimeout(resolve, 10));
-    }
-  };
-
-  /** In the realm, which is what arms the idle clock, and quiet since. */
-  const inTheRealm = async (socket: net.Socket): Promise<void> => {
-    socket.write('[HP=10]:\r\n');
-    await until(() => manager!.character.phase === 'in-game');
-  };
-
-  it('queues `who` for the next idle tick once somebody unlisted is noticed', async () => {
-    const { sink } = collect();
-    manager = new SessionManager(sink, undefined, catchingUp());
-    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
-    const socket = await client();
-    await inTheRealm(socket);
-
-    const seen = untilSent(socket, /\bwho\b/);
-    socket.write('Vaelor just entered the Realm.\r\n');
-    expect(await seen).toMatch(/\bwho\b/);
-  });
-
-  it('does the same for somebody unlisted walking into the room', async () => {
-    const { sink } = collect();
-    manager = new SessionManager(sink, undefined, catchingUp());
-    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
-    const socket = await client();
-    await inTheRealm(socket);
-
-    const seen = untilSent(socket, /\bwho\b/);
-    socket.write('Vaelor walks into the room from the north.\r\n');
-    expect(await seen).toMatch(/\bwho\b/);
-  });
-
-  it('does not ask a second time inside the debounce window', async () => {
-    const { sink } = collect();
-    manager = new SessionManager(sink, undefined, catchingUp());
-    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
-    const socket = await client();
-    await inTheRealm(socket);
-
-    /*
-     * One collector for the whole exchange, unlike the two tests above:
-     * `untilSent` attaches its own listener and sees only what arrives after
-     * it, so counting across two waits needs a single running record.
-     */
-    const chunks: Buffer[] = [];
-    socket.on('data', (chunk) => chunks.push(chunk));
-    const wire = (): string => Buffer.concat(chunks).toString('latin1');
-    const settle = async (pattern: RegExp, timeoutMs = 4000): Promise<string> => {
-      const deadline = Date.now() + timeoutMs;
-      for (;;) {
-        if (pattern.test(wire()) || Date.now() > deadline) return wire();
-        await new Promise((resolve) => setTimeout(resolve, 10));
-      }
-    };
-
-    socket.write('Vaelor just entered the Realm.\r\n');
-    expect(await settle(/\bwho\b/)).toMatch(/\bwho\b/);
-
-    /*
-     * The listing that answers it. A batch completes on the status line that
-     * follows it, same as a real `who` reply, so the row alone would never
-     * close the batch and `onWhoListing` would never fire.
-     */
-    socket.write('             Current Adventurers\r\n');
-    socket.write('             ===================\r\n');
-    socket.write('             Vaelor                -  Apprentice\r\n');
-    socket.write('[HP=10]:\r\n');
-    await until(() => manager!.character.online.some((entry) => entry.name === 'Vaelor'));
-
-    // A second arrival, seconds later. Real news, and still not worth a second
-    // command: the debounce is a minute and the listing just stamped it.
-    socket.write('Soul just entered the Realm.\r\n');
-
-    /*
-     * Two keep-alives, which is the proof the idle tick fired at all — the
-     * catch-up drains on that tick too, so a run where no tick happened would
-     * satisfy "no second `who`" without testing anything.
-     */
-    const seen = await settle(/(^|\n)l\r\n[\s\S]*\nl\r\n/);
-    expect(seen).toMatch(/l\r\n/);
-    expect(seen.match(/\bwho\b/g) ?? []).toHaveLength(1);
   });
 });
 
@@ -2230,178 +1163,127 @@ describe('a listing the player has the client draw', () => {
   });
 });
 
-describe('a quiet command asked from a card', () => {
-  /*
-   * The smoke run's sequence, at the process boundary the harness reads: the
-   * entry probes go out and only `rm` is answered; the player pastes half a
-   * line and then types a `look` the host never answers; seconds pass; the
-   * Room card asks `rm`. The answer must reach the line record — that is the
-   * positive control — and never the console. Written while the harness's
-   * version of this check was failing on a clean tree and this replica was
-   * not, so that whichever half moves next is caught by name.
-   */
-  it('reaches the record and never the console, even behind an unanswered look', async () => {
-    const painted: string[] = [];
-    const { sink, lines } = collect();
-    manager = new SessionManager({ ...sink, data: (chunk) => painted.push(chunk.text) });
-    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
-    const socket = await client();
-    const received: Buffer[] = [];
-    socket.on('data', (chunk) => {
-      received.push(chunk);
-      // The one command this host answers, the way the realm answers it.
-      if (/(^|\n)rm\r?\n/.test(chunk.toString('latin1'))) {
-        socket.write(
-          Buffer.from(
-            'rm\r\nLocation: 1,2140\r\n\r\n\x1b[1;32m[HP=98/MA=50]:\x1b[0m' + PROMPT_REPAINT,
-            'latin1'
-          )
-        );
-      }
-    });
-    socket.write(
-      '\x1b[1;36mNewhaven, Village Entrance\x1b[0m\r\n' +
-        '\x1b[0;32mObvious exits: \x1b[1;33mnorth\x1b[0m\r\n' +
-        '\x1b[1;32m[HP=100/MA=50]:\x1b[0m' +
-        PROMPT_REPAINT
+describe('the second stop of a hunt the realm gives one lair', () => {
+  function worldOf(rooms: Array<Record<string, unknown>>): WorldGraph {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mudengine-world-'));
+    const file = path.join(dir, 'rooms.jsonl.gz');
+    fs.writeFileSync(
+      file,
+      zlib.gzipSync(
+        [
+          JSON.stringify({ v: 1, source: 'test', rooms: rooms.length, generatedAt: 'x' }),
+          ...rooms.map((room) => JSON.stringify(room))
+        ].join('\n') + '\n'
+      )
     );
-    await until(() => manager!.character.phase === 'in-game');
-    const sentRm = (): number =>
-      (
-        Buffer.concat(received)
-          .toString('latin1')
-          .match(/rm\r\n/g) ?? []
-      ).length;
-    await until(() => sentRm() === 1);
-    // Acknowledge the other probes, then end on an unterminated prompt and GA.
-    socket.write(
-      ('\x1b[1;32m[HP=98/MA=50]:\x1b[0m\r\n'.repeat(5) +
-        '\x1b[1;32m[HP=98/MA=50]:\x1b[0m ') as string
-    );
-    socket.write(Buffer.from([0xff, 0xf9]));
-    await until(() => lines.some((line) => line.plain === 'Location: 1,2140'));
-    expect(painted.join('')).not.toContain('Location: 1,2140');
-
-    manager.send('smoke-paste-123');
-    manager.send('look\r');
-    await until(() => Buffer.concat(received).toString('latin1').includes('look\r\n'));
-    // Longer than the feed writes an unacknowledged command off after.
-    await new Promise((resolve) => setTimeout(resolve, ABANDON_MS + 200));
-
-    expect(manager.ask('rm')).toBe(true);
-    await until(() => sentRm() === 2, 6000);
-    await until(() => lines.filter((line) => line.plain === 'Location: 1,2140').length === 2);
-    await new Promise((resolve) => setTimeout(resolve, 200));
-
-    const fed = painted.join('');
-    expect(fed).not.toContain('Location: 1,2140');
-    expect(fed).not.toMatch(/(?:\n|\[K)rm\r\n/);
-    expect(fed).toContain('Obvious exits: ');
-  }, 15000);
-});
-
-/*
- * The queue's credit is the prompt (todo 07). The `session` domain also holds
- * `command-echo` — the server repeating a command it has *not* finished with —
- * and crediting the whole domain made every command pay for the next one:
- * fifteen went out between two prompts and GreaterMUD answered *Why don't you
- * slow down for a few seconds?*, which `GMUDInGameState.Process` sends at
- * exactly fifteen queued.
- */
-describe('what counts as the server being ready for the next command', () => {
-  it('spends one credit per prompt, and an echo of our own command is not one', async () => {
-    const { sink, lines } = collect();
-    manager = new SessionManager(sink);
-    /*
-     * Automation on — `ask` is refused without it — but with nothing asked on
-     * the way in, so the entry batch is not competing for the window with what
-     * this case sends. A window of one makes every credit visible, and a long
-     * acknowledgement timeout keeps the stall reclaim out of the measurement:
-     * what is being asserted is which *line* releases a command.
-     */
-    manager.configure(
-      {
-        ...DEFAULT_CONFIG.automation,
-        enabled: true,
-        onEnterRealm: [],
-        pacing: { window: 1, minGapMs: 10, ackTimeoutMs: 30_000 }
-      },
-      DEFAULT_CONFIG.connection.login
-    );
-    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
-    const socket = await client();
-    const chunks: Buffer[] = [];
-    socket.on('data', (chunk) => chunks.push(chunk));
-    socket.write('[HP=98/MA=50]:' + PROMPT_REPAINT);
-    await until(() => manager!.character.vitals.hp === 98);
-
-    const typed = (): string[] =>
-      Buffer.concat(chunks)
-        .toString('latin1')
-        .split('\r\n')
-        .filter((line) => line.length > 0);
-    /*
-     * Three more asked for behind whatever the realm-entry routines want. Which
-     * of them goes first is those modules' business and not this case's: what
-     * is asserted is that the wire holds **one** until the server answers.
-     */
-    for (const command of ['rm', 'exp', 'gb']) expect(manager.ask(command)).toBe(true);
-    await until(() => typed().length === 1);
-    const first = typed()[0]!;
-
-    /*
-     * The server echoing what it was given, on its own line. This is the line
-     * that used to hand the credit straight back — with it counted, every
-     * command paid for the next and fifteen went out between two prompts.
-     *
-     * A positive control on the negative: the echo really was read (it reaches
-     * the classifier, which types it `command-echo`), and the queue still did
-     * not send. Without the control, a framing regression that swallowed the
-     * line would pass this as though the rule worked.
-     */
-    socket.write(`${first}\r\n`);
-    await until(() => lines.some((line) => line.plain.trim() === first));
-    expect(typed()).toEqual([first]);
-
-    // A prompt is the credit, and it releases exactly one.
-    socket.write('[HP=98/MA=50]:' + PROMPT_REPAINT);
-    await until(() => typed().length === 2);
-    await new Promise((resolve) => setTimeout(resolve, 200));
-    expect(typed()).toHaveLength(2);
-  }, 15000);
-});
-
-describe('asking another player from the palette', () => {
-  it('telepaths the question at them, once in the realm, and refuses at a menu', async () => {
+    const graph = WorldGraph.load(file);
+    fs.rmSync(dir, { recursive: true, force: true });
+    return graph;
+  }
+  const beside = (world: WorldGraph, room: string): string | null => {
     const { sink } = collect();
-    manager = new SessionManager(sink);
-    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
-    const socket = await client();
-    const received: Buffer[] = [];
-    socket.on('data', (chunk) => received.push(chunk));
+    manager = new SessionManager(sink, world);
+    return (manager as unknown as { besideLair(room: string): string | null }).besideLair(room);
+  };
 
-    // Not in the realm yet: a telepath typed at a menu is a menu answer.
-    expect(manager.askRemote('Soul', 'health')).toBe(false);
-
-    socket.write('[HP=100/MA=50]:' + PROMPT_REPAINT);
-    await until(() => manager!.character.phase === 'in-game');
-    expect(manager.askRemote('Soul', 'health')).toBe(true);
-    await until(() => Buffer.concat(received).toString('latin1').includes('/Soul @health\r\n'));
+  /* The dark-elf archmage's Ritual Chamber (8/558): one way out, a door (2026-10-19). */
+  it('steps through the one door where that is the only way out', () => {
+    const world = worldOf([
+      {
+        m: 8,
+        r: 558,
+        n: 'Ritual Chamber',
+        x: { n: { m: 8, r: 557, i: 'Door [51 picklocks/strength]' } }
+      },
+      { m: 8, r: 557, n: 'Spiral Stairway', x: { s: { m: 8, r: 558 } } }
+    ]);
+    expect(beside(world, '8/558')).toBe('Spiral Stairway 8/557');
   });
 
-  /* The arbiter's answer, not the session's: a repeat of a question still
-     waiting is coalesced into it, and the palette is told nothing went out. */
+  it('prefers a way out that asks nothing, and says none where there is no way out', () => {
+    const world = worldOf([
+      {
+        m: 1,
+        r: 1,
+        n: 'Den',
+        x: { n: { m: 1, r: 2, i: 'Door [51 picklocks/strength]' }, e: { m: 1, r: 3 } }
+      },
+      { m: 1, r: 2, n: 'Hall', x: {} },
+      { m: 1, r: 3, n: 'Yard', x: {} }
+    ]);
+    expect(beside(world, '1/1')).toBe('Yard 1/3');
+    expect(beside(world, '1/3')).toBeNull();
+  });
+});
+
+describe('the item errand walking by the engine', () => {
+  /*
+   * Archer, 2026-10-19: *Collect it first* walked off for the bloodstone orb
+   * and the panel said *not run by the MegaMUD engine*. The errand's walk
+   * answered `walkTo(…) ?? noEngine`, and a walk begun answers null.
+   */
+  it('says nothing when the walk to an item begins, and refuses only without an engine', () => {
+    const { sink } = collect();
+    manager = new SessionManager(sink);
+    const errand = (
+      manager as unknown as {
+        itemErrand: { planner: { walkTo(room: string): string | null } };
+      }
+    ).itemErrand;
+    expect(errand.planner.walkTo('1/2')).toContain('MegaMUD engine');
+    manager.useMegaMud({
+      settings: defaultSettings(),
+      data: { monsters: [], items: [], spells: [] },
+      grants: {}
+    });
+    const mega = (manager as unknown as { mega: MegaEngine }).mega;
+    const walkTo = vi.spyOn(mega, 'walkTo').mockReturnValue(null);
+    expect(errand.planner.walkTo('1/2')).toBeNull();
+    expect(walkTo).toHaveBeenCalledWith('1/2', false, true);
+  });
+});
+
+describe('a quiet command asked from a card', () => {
+  /* The engine's pending list takes a command once (`0x48ab80`): a repeat of a
+     question still waiting is not sent, and the palette is told so. */
   it('reports a repeat of a question still waiting as not sent', async () => {
     const { sink } = collect();
     manager = new SessionManager(sink);
+    manager.useMegaMud({
+      settings: defaultSettings(),
+      data: { monsters: [], items: [], spells: [] },
+      grants: {}
+    });
     await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
     const socket = await client();
     socket.write('[HP=100/MA=50]:' + PROMPT_REPAINT);
     await until(() => manager!.character.phase === 'in-game');
-    // Hold the queue the way a half-typed line does, so the first ask waits.
-    manager.send('l');
+    // In the game, so what is queued waits on the engine's pending list.
+    (manager as unknown as { mega: MegaEngine }).mega.s.inGame = 1;
     expect(manager.askRemote('Soul', 'health')).toBe(true);
     expect(manager.askRemote('Soul', 'health')).toBe(false);
+  });
+
+  /* A card's own probe goes the same way: our queue refused it while the
+     engine ran the character, so the Gang card's refresh, the Party card's
+     Leave and the pack's Put on were all dropped unsaid (2026-10-16). */
+  it('puts a card probe on the engine pending list, once', async () => {
+    const { sink } = collect();
+    manager = new SessionManager(sink);
+    manager.useMegaMud({
+      settings: defaultSettings(),
+      data: { monsters: [], items: [], spells: [] },
+      grants: {}
+    });
+    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
+    const socket = await client();
+    socket.write('[HP=100/MA=50]:' + PROMPT_REPAINT);
+    await until(() => manager!.character.phase === 'in-game');
+    const mega = (manager as unknown as { mega: MegaEngine }).mega;
+    mega.s.inGame = 1;
+    expect(manager.ask('follow Soul')).toBe(true);
+    expect(mega.s.pending.some((p) => p.text === 'follow Soul\r')).toBe(true);
+    expect(manager.ask('follow Soul')).toBe(false);
   });
 });
 
@@ -2480,14 +1362,18 @@ describe('asking for the quest counters', () => {
 
   const walking: AutomationConfig = {
     ...DEFAULT_CONFIG.automation,
-    enabled: true,
-    idle: { ...DEFAULT_CONFIG.automation.idle, enabled: false }
+    enabled: true
   };
 
   /** In the realm at the Shore, with the world loaded. */
   async function ashore(world: WorldGraph): Promise<{ socket: net.Socket; wire: () => string }> {
     const { sink } = collect();
     manager = new SessionManager(sink, world, walking);
+    manager.useMegaMud({
+      settings: defaultSettings(),
+      data: { monsters: [], items: [], spells: [] },
+      grants: {}
+    });
     await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
     const socket = await client();
     const chunks: Buffer[] = [];
@@ -2495,17 +1381,48 @@ describe('asking for the quest counters', () => {
     socket.write('[HP=100/MA=50]:' + PROMPT_REPAINT);
     socket.write('Location:            1,1\r\nShore\r\nObvious exits: east\r\n');
     await until(() => manager!.character.room.number === 1);
+    // In the game, so what is queued waits on the engine's pending list.
+    (manager as unknown as { mega: MegaEngine }).mega.s.inGame = 1;
     return { socket, wire: () => Buffer.concat(chunks).toString('latin1') };
   }
 
-  /*
-   * The queue rather than the wire: the entry batch is ahead of it and this
-   * host prints one prompt, so what the arbiter has *accepted* is the claim
-   * here — that the plan raised the question. Which command reaches the socket
-   * when is `CommandQueue`'s, and it is asserted where the pacing is.
-   */
+  /* What a capture replays from: the engine's settings, never its login (2026-10-17). */
+  it('records the engine’s settings as it connects, without the login', async () => {
+    const acts: SessionAct[] = [];
+    const { sink } = collect();
+    manager = new SessionManager({ ...sink, acted: (act) => acts.push(act) });
+    const settings = defaultSettings();
+    settings.live['BBS']!['UserID'] = 'archer';
+    settings.live['BBS']!['Password'] = 'hunter2';
+    manager.useMegaMud({ settings, data: { monsters: [], items: [], spells: [] }, grants: {} });
+    expect(acts).toEqual([]);
+    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
+    const recorded = acts.find((act) => act.act === 'megamud');
+    expect(recorded).toBeDefined();
+    expect(JSON.stringify(recorded)).not.toContain('hunter2');
+    expect(
+      recorded?.act === 'megamud' && recorded.settings.live['BBS']?.['UserID']
+    ).toBeUndefined();
+    manager.stopMoving();
+    expect(acts.at(-1)).toEqual({ act: 'stopMoving' });
+  });
+
+  /* Fatty's typed `u` read as a step sent the post-rest ahead of its Enter (2026-10-16). */
+  it('sends what the engine writes on reading a typed line behind that line', async () => {
+    const { wire } = await ashore(gatedWorld());
+    const s = (manager as unknown as { mega: MegaEngine }).mega.s;
+    s.Health_PostRestCmd = 'eq firestone pendant';
+    s.Health_PrePostRest = 1;
+    s.owedPostRest = 1;
+    manager!.send('e');
+    manager!.send('\r');
+    await until(() => wire().includes('pendant'));
+    expect(wire()).toContain('e\r\neq firestone pendant\r\n');
+  });
+
+  /* The engine's pending list rather than the wire: the plan raised the question. */
   const asked = (): boolean =>
-    manager!.automation.queue.pending.some((intent) => intent.command === 'abil');
+    (manager as unknown as { mega: MegaEngine }).mega.s.pending.some((p) => p.text === 'abil\r');
 
   it('asks when a plan crosses a gate written on one', async () => {
     const world = gatedWorld();
@@ -2588,8 +1505,7 @@ describe('the plan to a step', () => {
 
   const still: AutomationConfig = {
     ...DEFAULT_CONFIG.automation,
-    enabled: true,
-    idle: { ...DEFAULT_CONFIG.automation.idle, enabled: false }
+    enabled: true
   };
 
   /** Connects and places the character on the shore. */
@@ -2630,792 +1546,6 @@ describe('the plan to a step', () => {
 });
 
 /*
- * Which way out, and how the client knew it.
- *
- * Four rungs, and each is strictly better than the one under it, which is why
- * none of them is a setting: retrace the trail, then an exit that doubles back
- * onto it, then an exit the realm can place, then an exit the room printed.
- * `SessionManager.wayOut` has the argument; these are the rungs.
- *
- * The suite exists because the thing it replaced could not be tested: the old
- * `flee` strategy sent a word, and a word reaching the socket looks identical
- * whether the server has that command or not.
- */
-describe('which way out', () => {
-  const escaping = (over: Partial<RetreatConfig> = {}): AutomationConfig => ({
-    ...DEFAULT_CONFIG.automation,
-    enabled: true,
-    idle: { ...DEFAULT_CONFIG.automation.idle, enabled: false },
-    onEnterRealm: [],
-    rules: [],
-    safety: {
-      ...DEFAULT_CONFIG.automation.safety,
-      retreat: {
-        ...DEFAULT_CONFIG.automation.safety.retreat,
-        enabled: true,
-        belowHealth: 0.3,
-        cooldownMs: 3000,
-        ...over
-      } as RetreatConfig
-    }
-  });
-  const wire = (socket: net.Socket): (() => string) => {
-    const chunks: Buffer[] = [];
-    socket.on('data', (chunk) => chunks.push(chunk));
-    return () => Buffer.concat(chunks).toString('latin1');
-  };
-
-  /**
-   * The strongest rung, and the one the whole change is for.
-   *
-   * The character walks north into the lair and is then attacked. The escape
-   * has to send `s` — the reverse of the move it is *known* to have made,
-   * which is the only exit here that names a room this character was standing
-   * in, alive, a moment ago.
-   *
-   * Measured against the failure it fixes
-   * (`logs/2026-09-02_21-04-28_festus.mudcap.jsonl` t=418517): a loop sent `n`,
-   * combat re-opened 2ms later and stopped the walk, and the room arrived
-   * 1,244ms after that. The walker never confirmed that step, so the history it
-   * kept still pointed at the room behind — and the escape said *no confirmed
-   * step to retrace* while standing in a room it had walked into itself. The
-   * trail is the tracker's now and records the move whoever sent it, so this
-   * case is answered whether a walker was involved or not: nothing here starts
-   * a walk.
-   */
-  it('retraces the move the character is known to have made', async () => {
-    const { sink, notices } = collect();
-    manager = new SessionManager(sink, haven(), escaping());
-    underWay(manager);
-    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
-    const socket = await client();
-    const seen = wire(socket);
-    socket.write('Health: 100/100 [100%]\r\n');
-    socket.write('Location:            1,2\r\nMiddle Road\r\nObvious exits: north, south\r\n');
-    await until(() => manager!.character.room.number === 2);
-
-    // The player types it. Nothing about the trail is the walker's.
-    manager.send('n\r\n');
-    socket.write('Rat Lair\r\nObvious exits: south\r\n');
-    await until(() => manager!.character.room.number === 3);
-
-    socket.write('*Combat Engaged*\r\n');
-    await until(() => manager!.character.inCombat);
-    socket.write('[HP=10]:\r\n');
-
-    await until(() => notices.some((notice) => /Retreating s, the way we came/.test(notice)));
-    await until(() => /\bs\r\n/.test(seen()));
-  });
-
-  /** At Haven Hall with a two-step route north to the Rat Lair under way. */
-  async function walkingToTheLair(): Promise<{ socket: net.Socket; seen: () => string }> {
-    const world = haven();
-    manager = new SessionManager(collected.sink, world, escaping());
-    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
-    const socket = await client();
-    const seen = wire(socket);
-    socket.write('Health: 100/100 [100%]\r\n');
-    socket.write('[HP=100]:' + PROMPT_REPAINT);
-    socket.write('Location:            1,1\r\nHaven Hall\r\nObvious exits: north\r\n');
-    await until(() => manager!.character.room.number === 1);
-    expect(manager.walker.start(world.route('1/1', '1/3'), manager.character)).toBeNull();
-    await until(() => /\bn\r\n/.test(seen()));
-    return { socket, seen };
-  }
-  let collected: ReturnType<typeof collect>;
-  beforeEach(() => {
-    collected = collect();
-  });
-
-  /*
-   * Todo 03, verbatim in shape: Festus arrived at the Shimmering Pool to dive
-   * it, a scorpion opened, and at 39% the escape stepped him back the way he
-   * came. A route that has arrived is where the player wanted to be.
-   */
-  it('stays where a route arrived, and says so once', async () => {
-    const { socket, seen } = await walkingToTheLair();
-    socket.write('Middle Road\r\nObvious exits: south, north\r\n');
-    await until(() => (seen().match(/\bn\r\n/g) ?? []).length === 2);
-    socket.write('Rat Lair\r\nObvious exits: south\r\n');
-    await until(() => manager!.walker.progress.status === 'arrived');
-
-    socket.write('*Combat Engaged*\r\n');
-    await until(() => manager!.character.inCombat);
-    socket.write('[HP=10]:\r\n');
-    await until(() =>
-      collected.notices.some((n) => /nothing is taking this character anywhere/.test(n))
-    );
-    expect(seen()).not.toMatch(/\bs\r\n/);
-    socket.write('[HP=9]:\r\n');
-    await until(() => manager!.character.vitals.hp === 9);
-    expect(
-      collected.notices.filter((n) => /nothing is taking this character anywhere/.test(n))
-    ).toHaveLength(1);
-    await until(() => collected.traces.some((trace) => trace.safety.length > 0));
-    expect(collected.traces.at(-1)?.safety[0]).toMatchObject({ action: 'retreat', acted: false });
-  });
-
-  /*
-   * A follower leaves running to its leader, even with a route of its own under
-   * way (upstream f01f986): MegaMUD skips its run check while following
-   * (`e2e8` at `0x40e4aa`, megamud.exe, 2026-10-01).
-   */
-  it('leaves running to the leader it follows, and says so once', async () => {
-    const { socket, seen } = await walkingToTheLair();
-    socket.write('Middle Road\r\nObvious exits: south, north\r\n');
-    await until(() => manager!.character.room.number === 2);
-    socket.write('You are now following Fatty.\r\n');
-    await until(() => manager!.character.party.following === 'Fatty');
-    socket.write('*Combat Engaged*\r\n');
-    await until(() => manager!.character.inCombat);
-    socket.write('[HP=10]:\r\n');
-    const leaves = (): string[] =>
-      collected.notices.filter((n) => /Fatty is leading the party and decides/.test(n));
-    await until(() => leaves().length === 1);
-    socket.write('[HP=9]:\r\n');
-    await until(() => manager!.character.vitals.hp === 9);
-    expect(leaves()).toHaveLength(1);
-    expect(seen()).not.toMatch(/\bs\r\n/);
-  });
-
-  /*
-   * Avoiding death (upstream 5ffdf91), on a fight stubbed rather than
-   * simulated: what is read off it is what these are about. `standing` is the
-   * share of fights still standing at each read.
-   */
-  const odds = (standing: { 1: number; 3: number }): Survival =>
-    ({
-      survives: standing[3],
-      worstRound: 0,
-      horizons: [
-        { rounds: 1, standing: standing[1], won: 0, lost: { least: 0, mean: 0, most: 0 } },
-        { rounds: 3, standing: standing[3], won: 0, lost: { least: 0, mean: 0, most: 0 } }
-      ]
-    }) as unknown as Survival;
-
-  it('runs on the fight’s own risk with health well above the floor, and keeps the monster off', async () => {
-    const { socket, seen } = await walkingToTheLair();
-    socket.write('Middle Road\r\nObvious exits: south, north\r\n');
-    await until(() => manager!.character.room.number === 2);
-    vi.spyOn(manager!, 'fight').mockReturnValue(odds({ 1: 1, 3: 0.5 }));
-    const belongings = (manager as unknown as { belongings: Belongings }).belongings;
-    const kept = vi.spyOn(belongings, 'rememberFled');
-    socket.write('Middle Road\r\nAlso here: thug.\r\nObvious exits: south, north\r\n');
-    await until(() => manager!.character.room.occupants.length === 1);
-    socket.write('The thug hits you for 2 damage!\r\n');
-    await until(() => manager!.character.combat.attackers.length === 1);
-    socket.write('*Combat Engaged*\r\n[HP=90]:\r\n');
-    await until(() =>
-      collected.notices.some((n) => /this fight kills you 50% of the time within 3 rounds/.test(n))
-    );
-    await until(() => /\bs\r\n/.test(seen()));
-    const fled: readonly FledEntry[] = kept.mock.calls.at(-1)?.[0] ?? [];
-    expect(fled.map((entry) => entry.name)).toEqual(['thug']);
-  });
-
-  it('hangs up before a round that kills too often, and says why', async () => {
-    const { socket } = await walkingToTheLair();
-    socket.write('Middle Road\r\nObvious exits: south, north\r\n');
-    await until(() => manager!.character.room.number === 2);
-    vi.spyOn(manager!, 'fight').mockReturnValue(odds({ 1: 0.5, 3: 0.2 }));
-    socket.write('*Combat Engaged*\r\n');
-    socket.write('[HP=10]:\r\n');
-    await until(() =>
-      collected.notices.some((n) =>
-        /^Hanging up: at \d+ HP the next round kills you 50% of the time/.test(n)
-      )
-    );
-    await until(() => manager!.state.phase !== 'connected');
-  });
-
-  it('stays connected while the next round is survived often enough', async () => {
-    const { socket } = await walkingToTheLair();
-    socket.write('Middle Road\r\nObvious exits: south, north\r\n');
-    await until(() => manager!.character.room.number === 2);
-    vi.spyOn(manager!, 'fight').mockReturnValue(odds({ 1: 0.9, 3: 0.97 }));
-    socket.write('*Combat Engaged*\r\n');
-    await until(() => manager!.character.inCombat);
-    socket.write('[HP=10]:\r\n');
-    await until(() => manager!.character.vitals.hp === 10);
-    expect(manager!.state.phase).toBe('connected');
-    expect(collected.notices.some((n) => /^Hanging up/.test(n))).toBe(false);
-  });
-
-  /* The other half: a route a fight is holding is still going somewhere. */
-  it('runs while a route is still under way', async () => {
-    const { socket, seen } = await walkingToTheLair();
-    socket.write('*Combat Engaged*\r\n');
-    await until(() => manager!.walker.progress.hold === 'fight');
-    socket.write('Middle Road\r\nObvious exits: south, north\r\n');
-    await until(() => manager!.character.room.number === 2);
-    socket.write('[HP=10]:\r\n');
-    await until(() => /\bs\r\n/.test(seen()));
-    expect(collected.notices.some((n) => /Retreating s, the way we came/.test(n))).toBe(true);
-  });
-
-  /*
-   * The retrace rung answers only for a compass exit. Vaelor climbed `u` out
-   * of the sewer into Dark Alley 1/383, whose `d` is `Text: go manhole`, and at
-   * 18% the escape sent `d` — *There is no exit in that direction!* — before
-   * the next rung ran `w` (2026-09-13, todo 105). The realm knew: a text edge
-   * is walked by its own words, so the direction is not an exit there.
-   */
-  it('does not retrace through a text exit, and takes the next rung at once', async () => {
-    const { sink, notices } = collect();
-    manager = new SessionManager(sink, haven(), escaping());
-    underWay(manager);
-    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
-    const socket = await client();
-    const seen = wire(socket);
-    socket.write('Health: 100/100 [100%]\r\n');
-    socket.write('Location:            1,4\r\nSewer\r\nObvious exits: up\r\n');
-    await until(() => manager!.character.room.number === 4);
-
-    manager.send('u\r\n');
-    socket.write('Rat Lair\r\nObvious exits: south\r\n');
-    await until(() => manager!.character.room.number === 3);
-
-    socket.write('*Combat Engaged*\r\n');
-    await until(() => manager!.character.inCombat);
-    socket.write('[HP=10]:\r\n');
-
-    await until(() => notices.some((notice) => /Running s/.test(notice)));
-    await until(() => /\bs\r\n/.test(seen()));
-    expect(seen()).not.toMatch(/\bd\r\n/);
-    expect(notices.some((notice) => /Retreating d/.test(notice))).toBe(false);
-  });
-
-  /*
-   * The rung under it, and the reason it exists: a retreat that has already run
-   * once is standing where the *escape* put it, not where the last recorded
-   * move ended, so the newest step no longer answers. The room before it still
-   * does, through the realm data.
-   */
-  it('doubles back onto the trail when the newest step no longer ends here', async () => {
-    const { sink, notices } = collect();
-    manager = new SessionManager(sink, haven(), escaping({ cooldownMs: 1000 }));
-    underWay(manager);
-    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
-    const socket = await client();
-    socket.write('Health: 100/100 [100%]\r\n');
-    // Walked home to lair: 1/1 → 1/2 → 1/3, both moves confirmed.
-    socket.write('Location:            1,1\r\nHaven Hall\r\nObvious exits: north\r\n');
-    await until(() => manager!.character.room.number === 1);
-    manager.send('n\r\n');
-    socket.write('Middle Road\r\nObvious exits: north, south\r\n');
-    await until(() => manager!.character.room.number === 2);
-    manager.send('n\r\n');
-    socket.write('Rat Lair\r\nObvious exits: south\r\n');
-    await until(() => manager!.character.room.number === 3);
-
-    /*
-     * And now the character is somewhere the trail never recorded arriving at
-     * — dragged, teleported, or moved by a step the client did not see land.
-     * `wayBackFrom` goes quiet; the middle road is still behind us, and `s`
-     * still reaches it.
-     */
-    socket.write('Location:            1,2\r\nMiddle Road\r\nObvious exits: north, south\r\n');
-    await until(() => manager!.character.room.number === 2);
-    socket.write('*Combat Engaged*\r\n');
-    await until(() => manager!.character.inCombat);
-    socket.write('[HP=10]:\r\n');
-
-    await until(() =>
-      notices.some((notice) => /It doubles back onto the way we came/.test(notice))
-    );
-  });
-
-  /* Nothing behind us at all, but the realm knows where the room's exit goes. */
-  it('takes an exit the realm can place when there is no trail', async () => {
-    const { sink, notices } = collect();
-    manager = new SessionManager(sink, haven(), escaping());
-    underWay(manager);
-    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
-    const socket = await client();
-    const seen = wire(socket);
-    socket.write('Health: 100/100 [100%]\r\n');
-    socket.write('Location:            1,3\r\nRat Lair\r\nObvious exits: south\r\n');
-    await until(() => manager!.character.room.number === 3);
-    socket.write('*Combat Engaged*\r\n');
-    await until(() => manager!.character.inCombat);
-    socket.write('[HP=10]:\r\n');
-
-    await until(() =>
-      notices.some((notice) => /The realm knows where that exit goes/.test(notice))
-    );
-    await until(() => /\bs\r\n/.test(seen()));
-  });
-
-  /*
-   * The bottom rung, and it is still an exit: the server printed it. This is
-   * the case the old `flee` strategy claimed to cover by asking the realm to
-   * choose — except the realm was never asked, because the word was not a
-   * command.
-   */
-  it('takes an exit the room printed when nothing is placed', async () => {
-    const { sink, notices } = collect();
-    manager = new SessionManager(sink, undefined, escaping());
-    underWay(manager);
-    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
-    const socket = await client();
-    const seen = wire(socket);
-    socket.write('Health: 100/100 [100%]\r\n');
-    socket.write('Rat Cellar\r\nObvious exits: east\r\n');
-    socket.write('*Combat Engaged*\r\n');
-    await until(() => manager!.character.inCombat);
-    socket.write('[HP=10]:\r\n');
-
-    await until(() => notices.some((notice) => /It is the exit the room listed/.test(notice)));
-    await until(() => /\be\r\n/.test(seen()));
-  });
-
-  /*
-   * A three-room world the character can be placed in: the lair at 1/3, the
-   * road at 1/2 and the haven at 1/1, in a line. The escape steps south onto
-   * the road; the haven walk then plans the one step home.
-   */
-  it('safe-haven steps out, then walks home once the fight is over', async () => {
-    const { sink, notices } = collect();
-    manager = new SessionManager(
-      sink,
-      haven(),
-      escaping({ strategy: 'safe-haven', safeHavenRoom: 'Haven Hall 1/1' })
-    );
-    underWay(manager);
-    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
-    const socket = await client();
-    const seen = wire(socket);
-    socket.write('Health: 100/100 [100%]\r\n');
-    socket.write('Location:            1,3\r\nRat Lair\r\nObvious exits: south\r\n');
-    await until(() => manager!.character.room.number === 3);
-    socket.write('*Combat Engaged*\r\n');
-    await until(() => manager!.character.inCombat);
-    socket.write('[HP=10]:\r\n');
-    await until(() => /\bs\r\n/.test(seen()));
-
-    /*
-     * The fight ends before the new room prints, which is the order the server
-     * has: a walk home planned at `*Combat Off*` would be a route from the lair
-     * the character has just left. It waits for the room to change, then plans
-     * the one step home from the road.
-     */
-    socket.write('*Combat Off*\r\n');
-    await until(() => !manager!.character.inCombat);
-    expect(notices.some((notice) => /Retreating to Haven Hall/.test(notice))).toBe(false);
-    /*
-     * The room that answers the step out, resolved the way the client resolves
-     * one: by dead reckoning from the lair through the move it just made. No
-     * `Location:` line in front of it — the server prints those in a `pro`
-     * listing, not ahead of every room, and one here would place the character
-     * before the block and leave the reckoning starting from where it landed.
-     */
-    socket.write('Middle Road\r\nObvious exits: north, south\r\n');
-    await until(() => notices.some((notice) => /Retreating to Haven Hall/.test(notice)));
-    // Two souths: the one that got out, and the one that walks home.
-    await until(() => /\bs\r\n[\s\S]*\bs\r\n/.test(seen()));
-    expect(notices.find((notice) => /Retreating to Haven Hall/.test(notice))).toMatch(/: 1 step/);
-  });
-
-  /*
-   * The walk home ends in a fight (`resumeAfterFight: false`) and nothing else
-   * is taking the character anywhere. The journey home is re-armed there, so
-   * the character still runs from that fight: the reviewer's find on todo 03.
-   * No stub for this half; only the first escape is taken on trust.
-   */
-  it('still runs from a fight that ends the walk home short', async () => {
-    const { sink, notices } = collect();
-    manager = new SessionManager(
-      sink,
-      haven(),
-      escaping({ strategy: 'safe-haven', safeHavenRoom: 'Haven Hall 1/1', cooldownMs: 1 })
-    );
-    underWay(manager);
-    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
-    const socket = await client();
-    const seen = wire(socket);
-    socket.write('Health: 100/100 [100%]\r\n');
-    socket.write('Location:            1,3\r\nRat Lair\r\nObvious exits: south\r\n');
-    await until(() => manager!.character.room.number === 3);
-    socket.write('*Combat Engaged*\r\n');
-    await until(() => manager!.character.inCombat);
-    socket.write('[HP=10]:\r\n');
-    await until(() => /\bs\r\n/.test(seen()));
-    socket.write('*Combat Off*\r\n');
-    await until(() => !manager!.character.inCombat);
-    socket.write('Middle Road\r\nObvious exits: north, south\r\n');
-    await until(() => /\bs\r\n[\s\S]*\bs\r\n/.test(seen()));
-    vi.restoreAllMocks();
-
-    // Met on the step home, which ends the walk; the step lands anyway.
-    socket.write('*Combat Engaged*\r\n');
-    await until(() => manager!.walker.progress.status !== 'walking');
-    socket.write('Haven Hall\r\nObvious exits: north\r\n');
-    await until(() => manager!.character.room.number === 1);
-    socket.write('[HP=9]:\r\n');
-    await until(() => /\bs\r\n[\s\S]*\bs\r\n[\s\S]*\bn\r\n/.test(seen()));
-    expect(notices.some((notice) => /nothing is taking this character/.test(notice))).toBe(false);
-  });
-
-  /**
-   * The escape must not retrace its own escape.
-   *
-   * `CharacterTracker.trail` records every confirmed move whoever sent it —
-   * which is the whole point of it, and includes the escape's own. So one
-   * cooldown after running `s` out of a lair, the newest step on the trail *is*
-   * that escape, its reverse is `n`, and the client walks back through the door
-   * it just came out of. Out, in, out, in, at cooldown speed, with no
-   * `escapeSettleMs` hold to stop it and a 100%-follower monster to guarantee
-   * the fight is still there.
-   *
-   * Two escapes, which is what no other test here runs.
-   */
-  it('never runs back into a room it has just run out of', async () => {
-    const { sink, notices } = collect();
-    manager = new SessionManager(sink, haven(), escaping({ cooldownMs: 1 }));
-    underWay(manager);
-    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
-    const socket = await client();
-    const seen = wire(socket);
-    socket.write('Health: 100/100 [100%]\r\n');
-    socket.write('Location:            1,3\r\nRat Lair\r\nObvious exits: south\r\n');
-    await until(() => manager!.character.room.number === 3);
-    socket.write('*Combat Engaged*\r\n');
-    await until(() => manager!.character.inCombat);
-    socket.write('[HP=10]:\r\n');
-
-    // Out of the lair, southward, and the room that answers it.
-    await until(() => /\bs\r\n/.test(seen()));
-    socket.write('Middle Road\r\nObvious exits: north, south\r\n');
-    await until(() => manager!.character.room.number === 2);
-
-    /*
-     * Still in the fight — the server's own flag outlives an escape by a
-     * measured median of 3,493ms — and still hurt, so the escape fires again.
-     * `n` is the reverse of the move that got out and it is the one direction
-     * that must not be sent; `s` to the haven is the answer.
-     */
-    socket.write('[HP=9]:\r\n');
-    await until(() => /\bs\r\n[\s\S]*\bs\r\n/.test(seen()));
-    expect(seen()).not.toMatch(/\bn\r\n/);
-    expect(notices.filter((notice) => /Running |Retreating \w+,/.test(notice))).toHaveLength(2);
-  });
-
-  /**
-   * And nothing is sent at all once the character is on the ground.
-   *
-   * `You drop to the ground!` is the server saying every command from here is
-   * refused. The client went on proposing — *Retreating ne, the way we came:
-   * health at -8%*, sent, refused — because every threshold is a share of
-   * maximum and they all keep saying *act, urgently* the further past zero the
-   * figure goes (todo 20).
-   *
-   * The positive control is the first escape: without it an empty wire would
-   * pass for the wrong reason.
-   */
-  it('sends nothing once the character is on the ground', async () => {
-    const { sink, notices } = collect();
-    manager = new SessionManager(sink, haven(), escaping({ cooldownMs: 1 }));
-    underWay(manager);
-    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
-    const socket = await client();
-    const seen = wire(socket);
-    socket.write('Health: 100/100 [100%]\r\n');
-    socket.write('Location:            1,3\r\nRat Lair\r\nObvious exits: south\r\n');
-    await until(() => manager!.character.room.number === 3);
-    socket.write('*Combat Engaged*\r\n');
-    await until(() => manager!.character.inCombat);
-
-    // Positive control: hurt and standing, the escape fires.
-    socket.write('[HP=10]:\r\n');
-    await until(() => /\bs\r\n/.test(seen()));
-    const before = seen();
-
-    // And then it goes down. Health past zero, which every threshold reads as
-    // *more* urgent, and the realm refusing everything.
-    socket.write('You drop to the ground!\r\n');
-    await until(() => manager!.character.mortallyWounded);
-    socket.write('[HP=-8]:\r\n');
-    await until(() => notices.some((notice) => /[Mm]ortally wounded/.test(notice)));
-
-    expect(seen()).toBe(before);
-  });
-
-  /*
-   * The same on MajorMUD, which tells the fallen character the room's sentence:
-   * bearfather, 2026-09-18, `Soul drops to the ground!` at `[HP=-1/KAI=0]`,
-   * then `swan` and `s` sent and refused until the character died.
-   */
-  it('reads the realm naming this character as it going down', async () => {
-    const { sink, notices } = collect();
-    manager = new SessionManager(sink, haven(), escaping({ cooldownMs: 1 }));
-    underWay(manager);
-    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
-    const socket = await client();
-    const seen = wire(socket);
-    socket.write('Welcome back, Soul!\r\n');
-    socket.write('Health: 100/100 [100%]\r\n');
-    socket.write('Location:            1,3\r\nRat Lair\r\nObvious exits: south\r\n');
-    await until(() => manager!.character.room.number === 3);
-    expect(manager!.character.name).toBe('Soul');
-    socket.write('*Combat Engaged*\r\n');
-    await until(() => manager!.character.inCombat);
-
-    socket.write('[HP=10]:\r\n');
-    await until(() => /\bs\r\n/.test(seen()));
-    const before = seen();
-
-    socket.write('Soul drops to the ground!\r\n');
-    await until(() => manager!.character.mortallyWounded);
-    socket.write('[HP=-8]:\r\n');
-    await until(() => notices.some((notice) => /[Mm]ortally wounded/.test(notice)));
-
-    expect(seen()).toBe(before);
-  });
-
-  /**
-   * A refused escape is a refusal, not an escape in flight.
-   *
-   * Everything that could keep a character alive is gated on *is an escape
-   * running* — auto-combat, retaliation, the heal, the potion, the cures, the
-   * blessings and `mayRest`. Arming that window when nothing was sent would
-   * switch all of them off and print *Standing and fighting* while doing it,
-   * which is the notice saying the opposite of what the code does.
-   */
-  it('lets the character rest when it decided it could not run', async () => {
-    const { sink, notices } = collect();
-    manager = new SessionManager(sink, undefined, {
-      ...escaping(),
-      health: { ...DEFAULT_CONFIG.automation.health, restBelow: 0.5, restTo: 0.9 }
-    });
-    underWay(manager);
-    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
-    const socket = await client();
-    const seen = wire(socket);
-    // A room that named no exit at all, so there is nothing to send.
-    socket.write('Health: 100/100 [100%]\r\n');
-    socket.write('*Combat Engaged*\r\n');
-    await until(() => manager!.character.inCombat);
-    socket.write('[HP=10]:\r\n');
-
-    await until(() => notices.some((notice) => /Not running:/.test(notice)));
-    await until(() => /\brest\r\n/.test(seen()));
-  });
-
-  /*
-   * Festus's dead end (todo 00): the room printed `northeast`, and the escape
-   * refused it for leading back to the bandit — then said the room named no
-   * exit, and that it was standing and fighting with auto-combat off, five
-   * times in twenty-five seconds.
-   */
-  it('names the exit it refused for leading back, says it is not fighting, and says it once', async () => {
-    const { sink, notices } = collect();
-    manager = new SessionManager(sink, haven(), escaping({ cooldownMs: 1 }));
-    underWay(manager);
-    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
-    const socket = await client();
-    const seen = wire(socket);
-    socket.write('Health: 100/100 [100%]\r\n');
-    socket.write('Location:            1,2\r\nMiddle Road\r\nObvious exits: south\r\n');
-    await until(() => manager!.character.room.number === 2);
-    socket.write('*Combat Engaged*\r\n');
-    await until(() => manager!.character.inCombat);
-    socket.write('[HP=10]:\r\n');
-    await until(() => /\bs\r\n/.test(seen()));
-
-    // Into the dead end, and the fight follows.
-    socket.write('Haven Hall\r\nObvious exits: north\r\n');
-    await until(() => manager!.character.room.name === 'Haven Hall');
-    socket.write('*Combat Engaged*\r\n[HP=9]:\r\n');
-    await until(() => notices.some((notice) => notice.includes('leads back')));
-    // Said on the arrival itself or the prompt after it: the figure is either.
-    const refusal = notices.filter((notice) => notice.startsWith('Not running:'));
-    expect(refusal).toHaveLength(1);
-    expect(refusal[0]).toContain('the only way out, north, leads back');
-    expect(refusal[0]!.endsWith(t('session.safety.escapeNotFighting'))).toBe(true);
-
-    // Two more prompts under the floor: nothing said again.
-    socket.write('[HP=8]:\r\n');
-    await settled(8);
-    socket.write('[HP=7]:\r\n');
-    await settled(7);
-    expect(notices.filter((notice) => notice.startsWith('Not running:'))).toHaveLength(1);
-  });
-
-  /* A haven the realm cannot place is refused out loud, and nothing is walked. */
-  it('safe-haven refuses a room it cannot place, and says so', async () => {
-    const { sink, notices } = collect();
-    manager = new SessionManager(
-      sink,
-      haven(),
-      escaping({ strategy: 'safe-haven', safeHavenRoom: 'Nowhere Hall 9/9' })
-    );
-    underWay(manager);
-    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
-    const socket = await client();
-    const seen = wire(socket);
-    socket.write('Health: 100/100 [100%]\r\n');
-    socket.write('Location:            1,3\r\nRat Lair\r\nObvious exits: south\r\n');
-    await until(() => manager!.character.room.number === 3);
-    socket.write('*Combat Engaged*\r\n');
-    await until(() => manager!.character.inCombat);
-    socket.write('[HP=10]:\r\n');
-    await until(() => /\bs\r\n/.test(seen()));
-    socket.write('*Combat Off*\r\n');
-    socket.write('Middle Road\r\nObvious exits: north, south\r\n');
-    await until(() => notices.some((notice) => /Could not retreat to Nowhere Hall/.test(notice)));
-    // The one step out went; no second step followed it.
-    expect(seen().replace(/s\r\n/, '')).not.toMatch(/\b[nsew]\r\n/);
-  });
-});
-
-/*
- * `flee`'s own second, more desperate escape — a fixed `sys goto` in place of
- * `retreat.strategy`'s own afterward, and only where the realm's own `locate`
- * setting says `sys goto` is a command it actually has.
- */
-describe('fleeing outright', () => {
-  const fleeing = (
-    over: Partial<(typeof DEFAULT_CONFIG)['automation']['safety']['fleeGoto']> = {}
-  ): AutomationConfig => ({
-    ...DEFAULT_CONFIG.automation,
-    enabled: true,
-    idle: { ...DEFAULT_CONFIG.automation.idle, enabled: false },
-    onEnterRealm: [],
-    rules: [],
-    safety: {
-      ...DEFAULT_CONFIG.automation.safety,
-      fleeGoto: {
-        ...DEFAULT_CONFIG.automation.safety.fleeGoto,
-        enabled: true,
-        belowHealth: 0.2,
-        destination: 'sil',
-        ...over
-      }
-    }
-  });
-  const wire = (socket: net.Socket): (() => string) => {
-    const chunks: Buffer[] = [];
-    socket.on('data', (chunk) => chunks.push(chunk));
-    return () => Buffer.concat(chunks).toString('latin1');
-  };
-
-  it("breaks off combat the way retreat does, then sys goto's the destination once the fight is over", async () => {
-    const { sink, notices } = collect();
-    manager = new SessionManager(sink);
-    manager.configure(
-      fleeing(),
-      DEFAULT_CONFIG.connection.login,
-      DEFAULT_CONFIG.ui.rewrites,
-      'sys-status'
-    );
-    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
-    const socket = await client();
-    const seen = wire(socket);
-    socket.write('Health: 100/100 [100%]\r\n');
-    socket.write('Rat Cellar\r\nObvious exits: north, south\r\n');
-    socket.write('*Combat Engaged*\r\n');
-    await until(() => manager!.character.inCombat);
-    socket.write('[HP=15]:\r\n');
-
-    // The break-off move: the same escape ladder `retreat` uses.
-    await until(() => /\bn\r\n/.test(seen()));
-    expect(notices.some((notice) => /Running n:/.test(notice))).toBe(true);
-
-    /*
-     * The fight ends before the new room prints, the order the server has —
-     * `sysGotoIfDue` waits for both, the same way `walkHomeIfDue` does.
-     */
-    socket.write('*Combat Off*\r\n');
-    await until(() => !manager!.character.inCombat);
-    expect(seen()).not.toMatch(/sys goto/);
-    socket.write('Open Field\r\nObvious exits: south\r\n');
-
-    await until(() => /(^|\n)sys goto sil\r\n/.test(seen()));
-    expect(notices.some((notice) => /Fleeing to sil/.test(notice))).toBe(true);
-
-    // And a bare Enter once the goto is answered: `sys goto` prints no room of
-    // its own, only its prompt.
-    socket.write('[HP=15]:\r\n');
-    await until(() => /(^|\n)sys goto sil\r\n\r\n/.test(seen()));
-  });
-
-  it('never sends sys goto on a realm that has not answered sys status', async () => {
-    const { sink, notices } = collect();
-    manager = new SessionManager(sink);
-    // Locate left at its default, `rm` — the one fact `fleeGoto` checks besides
-    // its own switch and threshold, since `sys goto` is only ever a command on
-    // a `sys-status` realm.
-    manager.configure(fleeing(), DEFAULT_CONFIG.connection.login);
-    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
-    const socket = await client();
-    const seen = wire(socket);
-    socket.write('Health: 100/100 [100%]\r\n');
-    socket.write('Rat Cellar\r\nObvious exits: north, south\r\n');
-    socket.write('*Combat Engaged*\r\n');
-    await until(() => manager!.character.inCombat);
-    socket.write('[HP=15]:\r\n');
-
-    await settled(15);
-    // Neither half fired: no break-off move and certainly no `sys goto`.
-    expect(seen()).not.toMatch(/\b[nsew]\r\n/);
-    expect(notices.some((notice) => /Running \w+:|Fleeing to/.test(notice))).toBe(false);
-  });
-
-  /*
-   * The player, 2026-10-02: a follower never runs from the party for its
-   * health. Skinny, following Fatty, walked out at 52/825 and sys goto'd.
-   */
-  it('never flees from the leader it follows', async () => {
-    const { sink, notices } = collect();
-    manager = new SessionManager(sink);
-    manager.configure(
-      fleeing(),
-      DEFAULT_CONFIG.connection.login,
-      DEFAULT_CONFIG.ui.rewrites,
-      'sys-status'
-    );
-    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
-    const socket = await client();
-    const seen = wire(socket);
-    socket.write('Health: 100/100 [100%]\r\n');
-    socket.write('You are following Fatty.\r\n');
-    await until(() => manager!.character.party.following === 'Fatty');
-    socket.write('Rat Cellar\r\nObvious exits: north, south\r\n');
-    socket.write('*Combat Engaged*\r\n');
-    await until(() => manager!.character.inCombat);
-    socket.write('[HP=15]:\r\n');
-
-    await until(() =>
-      notices.some((notice) => /Fatty is leading the party and decides/.test(notice))
-    );
-    expect(seen()).not.toMatch(/\b[nsew]\r\n|sys goto/);
-  });
-
-  it('never fires with no destination configured', async () => {
-    const { sink, notices } = collect();
-    manager = new SessionManager(sink);
-    manager.configure(
-      fleeing({ destination: '' }),
-      DEFAULT_CONFIG.connection.login,
-      DEFAULT_CONFIG.ui.rewrites,
-      'sys-status'
-    );
-    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
-    const socket = await client();
-    const seen = wire(socket);
-    socket.write('Health: 100/100 [100%]\r\n');
-    socket.write('Rat Cellar\r\nObvious exits: north, south\r\n');
-    socket.write('*Combat Engaged*\r\n');
-    await until(() => manager!.character.inCombat);
-    socket.write('[HP=15]:\r\n');
-
-    await settled(15);
-    expect(seen()).not.toMatch(/\b[nsew]\r\n/);
-    expect(notices.some((notice) => /Running \w+:|Fleeing to/.test(notice))).toBe(false);
-  });
-});
-
-/*
  * An escape *holds* the lap, and then the character is finally allowed to sit
  * down.
  *
@@ -3440,45 +1570,13 @@ describe('fleeing outright', () => {
 describe("answering the realm's messages", () => {
   const answering: AutomationConfig = {
     ...DEFAULT_CONFIG.automation,
-    enabled: true,
-    idle: { ...DEFAULT_CONFIG.automation.idle, enabled: false },
-    onEnterRealm: [],
-    rules: []
+    enabled: true
   };
   const wire = (socket: net.Socket): (() => string) => {
     const chunks: Buffer[] = [];
     socket.on('data', (chunk) => chunks.push(chunk));
     return () => Buffer.concat(chunks).toString('latin1');
   };
-
-  it("sends a row's reply when the realm prints its sentence, and traces it", async () => {
-    const { sink } = collect();
-    manager = new SessionManager(sink);
-    manager.configure(answering, DEFAULT_CONFIG.connection.login);
-    manager.configureRealm({
-      ...NO_REALM,
-      messages: [
-        {
-          ...blankTrigger(),
-          name: 'desert damage',
-          match: 'You suffer in the desert heat...',
-          response: 'drink water',
-          action: 'run'
-        }
-      ]
-    });
-    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
-    const socket = await client();
-    const seen = wire(socket);
-    socket.write('Health: 100/100 [100%]\r\n');
-    socket.write('You suffer in the desert heat...\r\n');
-
-    await until(() => /(^|\n)drink water\r\n/.test(seen()));
-    expect(manager.automation.firings[0]).toMatchObject({
-      rule: 'Message: desert damage',
-      commands: ['drink water']
-    });
-  });
 
   it('does not answer the same sentence when somebody gossips it', async () => {
     const { sink } = collect();
@@ -3504,902 +1602,9 @@ describe("answering the realm's messages", () => {
 });
 
 /*
- * 2026-10-01: skinny's `mahe` (healBelow 0.9) went out ahead of every rest
- * and spent the round, and the HP regen was passed over rather than waited
- * for, so he sat down without `rsto` every time. The regen is part of the
- * rest decision, as MegaMUD's is (0x41518a), and goes first.
- */
-describe('the HP regen ahead of the heal, on a line that rests', () => {
-  it('casts the regen before the heal, and the rest after it', async () => {
-    const { sink } = collect();
-    manager = new SessionManager(sink);
-    manager.configure(
-      {
-        ...DEFAULT_CONFIG.automation,
-        enabled: true,
-        idle: { ...DEFAULT_CONFIG.automation.idle, enabled: false },
-        onEnterRealm: [],
-        rules: [],
-        health: { ...DEFAULT_CONFIG.automation.health, restBelow: 0.8, restTo: 0.9 },
-        spells: {
-          ...DEFAULT_CONFIG.automation.spells,
-          heal: 'mahe',
-          healBelow: 0.9,
-          healTo: 0.9,
-          minMana: 0.15,
-          regen: { ...DEFAULT_CONFIG.automation.spells.regen, hp: 'rsto' }
-        }
-      },
-      DEFAULT_CONFIG.connection.login
-    );
-    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
-    const socket = await client();
-    const chunks: Buffer[] = [];
-    socket.on('data', (chunk) => chunks.push(chunk));
-    const sent = (): string[] =>
-      Buffer.concat(chunks)
-        .toString('latin1')
-        .split(/\r?\n/)
-        .map((line) => line.trim())
-        .filter((line) => line.length > 0);
-    socket.write('[HP=588/805,MA=412/772]:\r\n');
-    await until(() => sent().includes('rsto'));
-    socket.write('[HP=588/805,MA=362/772]:\r\n');
-    await until(() => sent().includes('rest'));
-    const commands = sent().filter((line) => ['rsto', 'mahe', 'rest'].includes(line));
-    expect(commands[0]).toBe('rsto');
-    expect(commands.indexOf('rest')).toBeGreaterThan(0);
-  });
-});
-
-/*
- * 2026-10-03, skinny: sitting in his meditating kit when a guard captain came
- * in. The fight's kit went on, `dfur guard captain` went out, and the status
- * line before `*Combat Engaged*` read as no fight and still seated — so the
- * sitting kit went back on, and the fight's again after it.
- */
-describe('the kit for a fight about to open', () => {
-  it('stays on from the attack to the fight, not swapped back for the seat', async () => {
-    const { sink } = collect();
-    manager = new SessionManager(sink, undefined, {
-      ...DEFAULT_CONFIG.automation,
-      enabled: true,
-      idle: { ...DEFAULT_CONFIG.automation.idle, enabled: false },
-      onEnterRealm: [],
-      rules: [],
-      combat: { ...DEFAULT_CONFIG.automation.combat, enabled: true, engage: 'all' },
-      gear: {
-        ...DEFAULT_CONFIG.automation.gear,
-        enabled: true,
-        sets: [
-          { name: 'Fighting', when: 'always', mob: '', wear: ['firestone pendant'] },
-          { name: 'Meditating', when: 'meditating', mob: '', wear: ['jeweled moonstone medallion'] }
-        ]
-      }
-    });
-    // Both on the neck, as the realm's item table has them.
-    vi.spyOn(manager as unknown as { gearSlotOf: () => string }, 'gearSlotOf').mockReturnValue(
-      'Neck'
-    );
-    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
-    const socket = await client();
-    const chunks: Buffer[] = [];
-    socket.on('data', (chunk) => chunks.push(chunk));
-    const wire = (): string => Buffer.concat(chunks).toString('latin1');
-    const medallion = (): number => wire().split('wear jeweled moonstone medallion').length - 1;
-
-    socket.write(
-      '[HP=900/MA=700]:i\r\n' +
-        'You are carrying jeweled moonstone medallion (Neck), firestone pendant.\r\n' +
-        'Wealth: 0 copper farthings\r\n' +
-        'Encumbrance: 100/4128 - None [2%]\r\n' +
-        '[HP=900/MA=700]: (Meditating) \r\n'
-    );
-    await until(() => manager!.character.inventory.listedAt !== null);
-    socket.write(
-      'Black Fortress\r\nAlso here: guard captain.\r\nObvious exits: north\r\n' +
-        '[HP=900/MA=700]: (Meditating) \r\n'
-    );
-    await until(() => wire().includes('wear firestone pendant'));
-    socket.write(
-      'You have removed jeweled moonstone medallion.\r\nYou are now wearing firestone pendant.\r\n' +
-        '[HP=900/MA=700]: (Meditating) \r\n'
-    );
-    await until(() => /guard captain\r\n/.test(wire()));
-    const before = medallion();
-    // The line between the attack and its answer.
-    socket.write('[HP=900/MA=700]: (Meditating) \r\n');
-    await settled(900);
-    await new Promise((resolve) => setTimeout(resolve, 100));
-    expect(medallion()).toBe(before);
-    expect(wire().split('wear firestone pendant')).toHaveLength(2);
-  });
-});
-
-/* MegaMUD's rest decision is not reached beside a monster it would attack (`0x472830`). */
-describe('resting beside a fight', () => {
-  it('does not sit down beside a monster it is about to attack', async () => {
-    const { sink } = collect();
-    manager = new SessionManager(sink, undefined, {
-      ...DEFAULT_CONFIG.automation,
-      enabled: true,
-      idle: { ...DEFAULT_CONFIG.automation.idle, enabled: false },
-      onEnterRealm: [],
-      rules: [],
-      health: { ...DEFAULT_CONFIG.automation.health, restBelow: 0.8, restTo: 0.9 },
-      combat: { ...DEFAULT_CONFIG.automation.combat, enabled: true, engage: 'all' },
-      // A kit to wait for, as skinny's fight waited for his: the rest got in
-      // while it did.
-      gear: {
-        ...DEFAULT_CONFIG.automation.gear,
-        enabled: true,
-        sets: [{ name: 'Fighting', when: 'always', mob: '', wear: ['firestone pendant'] }]
-      }
-    });
-    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
-    const socket = await client();
-    const chunks: Buffer[] = [];
-    socket.on('data', (chunk) => chunks.push(chunk));
-    const wire = (): string => Buffer.concat(chunks).toString('latin1');
-
-    socket.write(
-      '[HP=1000/1000,MA=700/700]:i\r\n' +
-        'You are carrying firestone pendant.\r\n' +
-        'Wealth: 0 copper farthings\r\n' +
-        'Encumbrance: 100/4128 - None [2%]\r\n' +
-        '[HP=1000/1000,MA=700/700]:\r\n'
-    );
-    await until(() => manager!.character.inventory.listedAt !== null);
-    socket.write(
-      'Black Fortress\r\nAlso here: guard captain.\r\nObvious exits: north\r\n' +
-        '[HP=500/1000,MA=700/700]:\r\n'
-    );
-    await until(() => wire().includes('wear firestone pendant'));
-    socket.write('[HP=500/1000,MA=700/700]:\r\n');
-    await settled(500);
-    await new Promise((resolve) => setTimeout(resolve, 100));
-    expect(wire()).not.toMatch(/(^|\n)rest\r\n/);
-    socket.write('You are now wearing firestone pendant.\r\n[HP=500/1000,MA=700/700]:\r\n');
-    await until(() => /guard captain\r\n/.test(wire()));
-  });
-});
-
-describe("acting on the realm's messages", () => {
-  const acting: AutomationConfig = {
-    ...DEFAULT_CONFIG.automation,
-    enabled: true,
-    idle: { ...DEFAULT_CONFIG.automation.idle, enabled: false },
-    onEnterRealm: [],
-    rules: []
-  };
-  const wire = (socket: net.Socket): (() => string) => {
-    const chunks: Buffer[] = [];
-    socket.on('data', (chunk) => chunks.push(chunk));
-    return () => Buffer.concat(chunks).toString('latin1');
-  };
-
-  it('puts what a row starts onto the character, and takes it off at its ending', async () => {
-    const { sink } = collect();
-    manager = new SessionManager(sink);
-    manager.configure(acting, DEFAULT_CONFIG.connection.login);
-    manager.configureRealm({
-      ...NO_REALM,
-      messages: [
-        {
-          ...blankTrigger(),
-          name: 'net',
-          match: 'You are entangled in a net!',
-          endsWith: 'You work yourself free.',
-          effects: ['held'],
-          action: 'wait'
-        }
-      ]
-    });
-    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
-    const socket = await client();
-    socket.write('Health: 100/100 [100%]\r\n');
-    socket.write('You are entangled in a net!\r\n');
-    await until(() => manager!.character.heard.length === 1);
-    expect(manager.character.afflictions.held).toBe('yes');
-    expect(manager.character.heard[0]).toMatchObject({ name: 'net', action: 'wait' });
-
-    socket.write('You work yourself free.\r\n');
-    await until(() => manager!.character.heard.length === 0);
-    expect(manager.character.afflictions.held).toBe('no');
-  });
-
-  /*
-   * 2026-10-01: an altar left skinny blind and dizzy, his next command came
-   * back *You fumble in confusion!*, and the `fumble` row held the lap for a
-   * confusion wear-off that blindness never sends. The sheet is the ground
-   * truth: what it reprints is still on, and a fumble is not an effect.
-   */
-  it('takes off at a stat sheet what the sheet no longer lists, and keeps what it does', async () => {
-    const { sink } = collect();
-    manager = new SessionManager(sink);
-    manager.configure(acting, DEFAULT_CONFIG.connection.login);
-    manager.configureRealm({
-      ...NO_REALM,
-      messages: [
-        {
-          ...blankTrigger(),
-          name: 'fumble',
-          match: 'You fumble in confusion',
-          endsWith: 'The effects of confusion wear off',
-          effects: ['confused', 'action-failed'],
-          action: 'wait'
-        },
-        {
-          ...blankTrigger(),
-          name: 'net',
-          match: 'You are entangled in a net!',
-          endsWith: 'You work yourself free.',
-          effects: ['held'],
-          action: 'wait'
-        }
-      ]
-    });
-    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
-    const socket = await client();
-    socket.write('[HP=805/MA=772]:You fumble in confusion!\r\nYou are entangled in a net!\r\n');
-    await until(() => manager!.character.heard.length === 2);
-
-    socket.write(
-      [
-        '[HP=805/MA=772]:',
-        'Name: Skinny Fatterson                 Lives/CP:      9/0',
-        'Race: Wood-Elf    Exp: 4273359714      Perception:    239',
-        'Class: Necrolyte  Level: 66            Stealth:       136',
-        'Hits:   805/805   Armour Class: 122/4  Thievery:        0',
-        'Mana: * 772/772   Spellcasting: 425    Traps:           0',
-        '                                       Picklocks:       0',
-        'Strength:  100    Agility: 100         Tracking:        0',
-        'Intellect: 90     Health:  130         Martial Arts:   68',
-        'Willpower: 150    Charm:   85          MagicRes:      145',
-        'You are entangled in a net!',
-        '[HP=805/MA=772]:'
-      ].join('\r\n') + '\r\n'
-    );
-    await until(() => manager!.character.heard.length === 1);
-    expect(manager.character.heard[0]).toMatchObject({ name: 'net' });
-    expect(manager.character.afflictions.held).toBe('yes');
-  });
-
-  it('ends the fight when a row says the realm has', async () => {
-    const { sink } = collect();
-    manager = new SessionManager(sink);
-    manager.configure(acting, DEFAULT_CONFIG.connection.login);
-    manager.configureRealm({
-      ...NO_REALM,
-      messages: [
-        {
-          ...blankTrigger(),
-          name: 'Rakshasha',
-          match: 'The illusion vanishes in a flash!',
-          effects: ['ends-combat']
-        }
-      ]
-    });
-    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
-    const socket = await client();
-    socket.write('Health: 100/100 [100%]\r\n');
-    // In the realm first: a message acts only on a character standing in it.
-    socket.write('[HP=100]:\r\n');
-    await settled(100);
-    socket.write('*Combat Engaged*\r\n');
-    await until(() => manager!.character.inCombat);
-    socket.write('The illusion vanishes in a flash!\r\n');
-    await until(() => !manager!.character.inCombat);
-  });
-
-  it('looks again, silently, when a row says to check who is here', async () => {
-    const { sink } = collect();
-    manager = new SessionManager(sink);
-    manager.configure(acting, DEFAULT_CONFIG.connection.login);
-    manager.configureRealm({
-      ...NO_REALM,
-      messages: [
-        {
-          ...blankTrigger(),
-          name: 'monster entry',
-          match: 'A skeleton arises from its place of rest',
-          action: 'look'
-        }
-      ]
-    });
-    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
-    const socket = await client();
-    const seen = wire(socket);
-    socket.write('Health: 100/100 [100%]\r\n');
-    socket.write('[HP=100]:\r\n');
-    await settled(100);
-    const before = seen().length;
-    socket.write('A skeleton arises from its place of rest.\r\n');
-    // A bare Enter: MajorMUD prints the room again, and says nothing to the room.
-    await until(() => /(^|\n)\r\n/.test(seen().slice(before)));
-  });
-});
-
-describe('the lap after an escape', () => {
-  const escaping = (): AutomationConfig => ({
-    ...DEFAULT_CONFIG.automation,
-    enabled: true,
-    idle: { ...DEFAULT_CONFIG.automation.idle, enabled: false },
-    onEnterRealm: [],
-    rules: [],
-    health: {
-      ...DEFAULT_CONFIG.automation.health,
-      // The floor the character is under for the whole of this test, and the
-      // ceiling that keeps it sitting until it is well again.
-      restBelow: 0.7,
-      restTo: 0.75
-    },
-    safety: {
-      ...DEFAULT_CONFIG.automation.safety,
-      retreat: {
-        ...DEFAULT_CONFIG.automation.safety.retreat,
-        enabled: true,
-        belowHealth: 0.5,
-        // The window an escape has to work in. Short, because what is being
-        // asserted after it is the *rest*, which waits for the escape to be
-        // over.
-        cooldownMs: 1,
-        strategy: 'step-back'
-      }
-    }
-  });
-
-  /** Into the realm, placed, with a maximum known and a one-stop loop running. */
-  async function looping(socket: net.Socket): Promise<void> {
-    socket.write('[HP=100/MA=50]:' + PROMPT_REPAINT);
-    await until(() => manager!.character.phase === 'in-game');
-    // The maximum, so a fraction exists at all — an unknown one runs from
-    // nothing and rests nothing.
-    socket.write('Health: 100/100 [100%]\r\n');
-    await until(() => manager!.character.vitals.hpMax === 100);
-    /*
-     * And a room with exits in it, because the escape sends a **direction** and
-     * a direction has to come from somewhere. The room block first and the
-     * coordinates after: `user-profile` merges into the room on record, so the
-     * exits survive it, where a room block arriving second on a session with no
-     * realm would take the placement away again.
-     */
-    socket.write('Home\r\nObvious exits: north, south\r\n');
-    socket.write('Location: 1,2140\r\n[HP=100/MA=50]:' + PROMPT_REPAINT);
-    await until(() => manager!.character.room.number === 2140);
-    expect(
-      manager!.loops.start({ name: 'lap', stops: [{ room: 'Home 1/2140' }] }, manager!.character)
-    ).toBeNull();
-    expect(manager!.loops.progress.status).toBe('running');
-  }
-
-  it('holds the loop, whichever way out was taken, and never ends it', async () => {
-    const { sink } = collect();
-    manager = new SessionManager(sink, undefined, escaping());
-    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
-    const socket = await client();
-    await looping(socket);
-
-    socket.write('*Combat Engaged*\r\n');
-    await until(() => manager!.character.inCombat);
-    socket.write('[HP=40/MA=50]:' + PROMPT_REPAINT);
-    // The move goes out mid-fight, so `fight` is the hold the card shows
-    // first; `retreated` is what is left of it once the fight is over.
-    await until(() => manager!.loops.progress.hold === 'fight');
-    socket.write('*Combat Off*\r\n[HP=40/MA=50]:' + PROMPT_REPAINT);
-    /*
-     * Two holds stand now and the card shows one word. Under the 0.7 floor
-     * `health` outranks `retreated`: it is the reason that will still be true
-     * longest. (Until todo 106 the runner here held the *default* floor,
-     * 0.35, so 40% was not hurt and this read `retreated` — a session built
-     * with a config and never configured.) The escape's own hold is what is
-     * left once the health is back, which is the positive control below.
-     */
-    await until(() => manager!.loops.progress.hold === 'health');
-    socket.write('[HP=80/MA=50]:' + PROMPT_REPAINT);
-    await until(() => manager!.loops.progress.hold === 'retreated');
-    // Still the same lap, on the same stop: running away is not one of the
-    // three things that end one.
-    expect(manager.loops.progress).toMatchObject({ status: 'running', name: 'lap', stop: 1 });
-  });
-
-  /*
-   * And the point of holding it: `mayRest` refuses while a loop is running
-   * without a hold, so until the loop holds the character cannot sit down
-   * however far under `restBelow` it is.
-   */
-  it('and then rests, which a marching loop had been forbidding', async () => {
-    const { sink } = collect();
-    manager = new SessionManager(sink, undefined, escaping());
-    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
-    const socket = await client();
-    const chunks: Buffer[] = [];
-    socket.on('data', (chunk) => chunks.push(chunk));
-    const seen = (): string => Buffer.concat(chunks).toString('latin1');
-    await looping(socket);
-
-    socket.write('*Combat Engaged*\r\n');
-    await until(() => manager!.character.inCombat);
-    socket.write('[HP=40/MA=50]:' + PROMPT_REPAINT);
-    await until(() => /\bn\r\n/.test(seen()));
-    // The fight ends and the escape lands — a room the move was not sent
-    // from. Until it lands nothing rests in the room the character just tried
-    // to leave (todo 06); until the fight ends, a hurt character runs again.
-    socket.write('*Combat Off*\r\n');
-    socket.write('Rat Warren\r\nObvious exits: south\r\n');
-    // 40 of 100 is under the resting floor.
-    socket.write('[HP=40/MA=50]:' + PROMPT_REPAINT);
-    await until(() => /\brest\b/.test(seen()));
-  });
-});
-
-/*
- * A death is a teleport, and the realm chooses the destination.
- *
- * Everything that was on its way somewhere was planned from a room the
- * character is no longer in, several maps away — so carrying on with any of it
- * walks a one-life-lighter character back towards whatever killed it. Nothing
- * here is a setting: the loop is stopped, not unconfigured.
- */
-describe('a death stops everything that was going somewhere', () => {
-  /*
-   * Without this the loop does not merely continue — it books the walk the
-   * death ended as a *failed leg*, skips the stop it could not reach, and
-   * plans the next one out of the temple, with nothing on screen saying a
-   * death was what happened.
-   */
-  it('stops a running loop, and says the death was why', async () => {
-    const { sink } = collect();
-    manager = new SessionManager(sink, undefined, {
-      ...DEFAULT_CONFIG.automation,
-      enabled: true
-    });
-    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
-    const socket = await client();
-    socket.write('[HP=100/MA=50]:' + PROMPT_REPAINT);
-    await until(() => manager!.character.phase === 'in-game');
-    // The one exact statement of position this server makes, so a stop can be
-    // held without realm data.
-    socket.write('Location: 1,2140\r\n[HP=100/MA=50]:' + PROMPT_REPAINT);
-    await until(() => manager!.character.room.number === 2140);
-    expect(
-      manager.loops.start({ name: 'lap', stops: [{ room: 'Home 1/2140' }] }, manager.character)
-    ).toBeNull();
-    expect(manager.loops.progress.status).toBe('running');
-
-    socket.write('You have been killed!\r\n');
-    await until(() => manager!.loops.progress.status === 'stopped');
-    expect(manager.loops.progress.reason).toMatch(/killed/i);
-  });
-
-  /*
-   * A lap already stopped is left stopped, with its place: a stop keeps what it
-   * stopped, and a death does not make that a lie. What it must not do is walk
-   * — the character is in a temple nobody chose, and the only thing that walks
-   * it out is somebody pressing play, which asks first because the temple is a
-   * long way from the lap (`startMoving`).
-   */
-  it('leaves a lap that was already stopped stopped, and walks nothing', async () => {
-    const { sink } = collect();
-    manager = new SessionManager(sink, undefined, {
-      ...DEFAULT_CONFIG.automation,
-      enabled: true
-    });
-    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
-    const socket = await client();
-    socket.write('[HP=100/MA=50]:' + PROMPT_REPAINT);
-    await until(() => manager!.character.phase === 'in-game');
-    socket.write('Location: 1,2140\r\n[HP=100/MA=50]:' + PROMPT_REPAINT);
-    await until(() => manager!.character.room.number === 2140);
-    manager.loops.start({ name: 'lap', stops: [{ room: 'Home 1/2140' }] }, manager.character);
-    manager.stopMoving();
-    expect(manager.loops.progress).toMatchObject({ status: 'stopped', name: 'lap' });
-
-    /*
-     * The temple placing the character is the positive control: the death line
-     * demonstrably went through the parser and the room after it landed, so
-     * the lap standing untouched a moment later is a decision rather than a
-     * test that got there first.
-     */
-    socket.write('You have been killed!\r\n');
-    socket.write('Location: 1,2999\r\n[HP=10/MA=50]:' + PROMPT_REPAINT);
-    await until(() => manager!.character.room.number === 2999);
-    expect(manager.loops.progress).toMatchObject({ status: 'stopped', name: 'lap' });
-    expect(manager.walker.progress.status).not.toBe('walking');
-  });
-
-  /*
-   * A `safe-haven` retreat is armed by the escape and spent when the fight ends
-   * — and a death *is* the fight ending. Without this the first status line
-   * after the temple plans a route to a haven chosen for a fight that is over,
-   * which is the client walking a dead character's replacement out of the one
-   * room it is safe in.
-   */
-  it('drops an armed safe-haven retreat, out loud', async () => {
-    const { sink, notices } = collect();
-    manager = new SessionManager(sink, haven(), {
-      ...DEFAULT_CONFIG.automation,
-      enabled: true,
-      idle: { ...DEFAULT_CONFIG.automation.idle, enabled: false },
-      onEnterRealm: [],
-      rules: [],
-      safety: {
-        ...DEFAULT_CONFIG.automation.safety,
-        retreat: {
-          ...DEFAULT_CONFIG.automation.safety.retreat,
-          enabled: true,
-          belowHealth: 0.3,
-          cooldownMs: 3000,
-          strategy: 'safe-haven',
-          safeHavenRoom: 'Haven Hall 1/1'
-        }
-      }
-    });
-    underWay(manager);
-    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
-    const socket = await client();
-    const chunks: Buffer[] = [];
-    socket.on('data', (chunk) => chunks.push(chunk));
-    const seen = (): string => Buffer.concat(chunks).toString('latin1');
-
-    socket.write('Health: 100/100 [100%]\r\n');
-    socket.write('Location:            1,3\r\nRat Lair\r\nObvious exits: south\r\n');
-    await until(() => manager!.character.room.number === 3);
-    socket.write('*Combat Engaged*\r\n');
-    await until(() => manager!.character.inCombat);
-    socket.write('[HP=10]:\r\n');
-    // The step out goes, which is what arms the retreat: the assertion below is
-    // about a retreat that genuinely existed to be dropped.
-    await until(() => /\bs\r\n/.test(seen()));
-
-    socket.write('You have been killed!\r\n');
-    await until(() => notices.some((notice) => /Not retreating to Haven Hall/.test(notice)));
-
-    /*
-     * And the room the realm moved the character into resolves without the
-     * retreat waking up. Asserted after the refusal has been *observed*, so
-     * this is the absence of a decision rather than the absence of a chance to
-     * make one.
-     */
-    socket.write('Location:            1,2\r\nMiddle Road\r\nObvious exits: north, south\r\n');
-    await until(() => manager!.character.room.number === 2);
-    expect(notices.some((notice) => /Retreating to Haven Hall/.test(notice))).toBe(false);
-    // The one step out went; nothing followed it.
-    expect(seen().replace(/s\r\n/, '')).not.toMatch(/\b[nsew]\r\n/);
-  });
-});
-
-/*
  * Two characters on one realm, in one client. What one sees somebody wearing
  * is what the other's flyout shows — live, with no restart and no second look.
  */
-/*
- * The walk's own nudge, end to end through the real arbiter.
- *
- * `Walker` answers a step that has gone unanswered for a second with a bare
- * Enter, and the server then answers the step and the nudge together — two
- * identical room blocks in one packet. The client read the second as the
- * arrival of the step it had just sent off the first, so it ran a room ahead
- * of the character for the rest of the lap (`2026-09-02_18-07-07_festus`,
- * t=4862445: `e` twice inside three milliseconds, then a fight opened out of a
- * room the character was already leaving).
- *
- * **This test exists because the unit tests could not see it.** An empty line
- * is deliberately not a command, so `SessionManager` skips all three observers
- * for one — which meant the expectation the fix adds was never filed by
- * anything the client actually does, and a harness of its own that called the
- * tracker directly passed anyway. That is `CLAUDE.md`'s "do not let a test
- * harness do something the client should be doing", and the only cure is
- * driving the real session.
- */
-describe('the walk’s own nudge, in a corridor of namesakes', () => {
-  /* Four rooms of one name, each printing exits the next also has — the sewer,
-     where nothing in a room block can say whether it is a reprint. */
-  const corridor = (): WorldGraph => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mudengine-nudge-'));
-    const file = path.join(dir, 'rooms.jsonl.gz');
-    const rooms = [
-      { m: 1, r: 1, n: 'Sewer Tunnel', x: { n: { m: 1, r: 2 } } },
-      { m: 1, r: 2, n: 'Sewer Tunnel', x: { n: { m: 1, r: 3 }, s: { m: 1, r: 1 } } },
-      { m: 1, r: 3, n: 'Sewer Tunnel', x: { n: { m: 1, r: 4 }, s: { m: 1, r: 2 } } },
-      { m: 1, r: 4, n: 'Sewer Tunnel', x: { s: { m: 1, r: 3 } } }
-    ];
-    fs.writeFileSync(
-      file,
-      zlib.gzipSync(
-        [
-          JSON.stringify({ v: 1, source: 'test', rooms: 4, generatedAt: 'x' }),
-          ...rooms.map((room) => JSON.stringify(room))
-        ].join('\n') + '\n'
-      )
-    );
-    const world = WorldGraph.load(file);
-    fs.rmSync(dir, { recursive: true, force: true });
-    return world;
-  };
-
-  /*
-   * The three silences are **load-bearing, not tidiness**: the control below
-   * asserts the exact bytes that followed the step, and the idle keep-alive,
-   * the entry probe and the rules all send through the same arbiter. Turning
-   * one on to test something adjacent will read as a nudge regression.
-   */
-  const quiet: AutomationConfig = {
-    ...DEFAULT_CONFIG.automation,
-    enabled: true,
-    idle: { ...DEFAULT_CONFIG.automation.idle, enabled: false },
-    onEnterRealm: [],
-    rules: []
-  };
-
-  const MIDDLE = 'Sewer Tunnel\r\nObvious exits: north, south\r\n';
-
-  it('does not let the reprint it asked for answer the step behind it', async () => {
-    const world = corridor();
-    const { sink } = collect();
-    manager = new SessionManager(sink, world, quiet);
-    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
-    const socket = await client();
-    const chunks: Buffer[] = [];
-    socket.on('data', (chunk) => chunks.push(chunk));
-    const wire = (): string => Buffer.concat(chunks).toString('latin1');
-
-    socket.write('[HP=34]:' + PROMPT_REPAINT);
-    socket.write('Location:            1,4\r\nSewer Tunnel\r\nObvious exits: south\r\n');
-    await until(() => manager!.character.room.number === 4);
-
-    const route = world.route('1/4', '1/1');
-    expect(route.steps).toHaveLength(3);
-    expect(manager!.walker.start(route, manager!.character)).toBeNull();
-
-    // The first step goes out and the server says nothing, so the walk nudges.
-    await until(() => wire().includes('s\r\n'));
-    const afterStep = wire().length;
-    await until(() => wire().length > afterStep, 4000);
-    // The positive control: the bare Enter really did reach the wire, so what
-    // follows is a test of how its answer is read rather than of a nudge that
-    // never fired.
-    expect(wire().slice(afterStep)).toBe('\r\n');
-
-    // And the server answers both at once: the arrival, then the reprint.
-    socket.write(MIDDLE);
-    await until(() => manager!.character.room.number === 3);
-    // Which confirms the step, so the walk sends the next one.
-    await until(() => wire().split('s\r\n').length === 3);
-
-    /*
-     * The nudge's reprint, identical to the block before it — and a changed
-     * status line behind it, because the whole claim here is that the reprint
-     * changes *nothing*. The server writes in order, so waiting for the health
-     * to move is what proves the reprint was read before the assertion; a
-     * fixed sleep would pass just as well against a client that never framed
-     * either.
-     */
-    socket.write(MIDDLE);
-    socket.write('[HP=33]:' + PROMPT_REPAINT);
-    await until(() => manager!.character.vitals.hp === 33);
-
-    /*
-     * Standing where the arrival put it. Before this, the reprint answered the
-     * step and the client moved itself to 1/2 with nothing on the wire having
-     * said so — and every command it sent from then on was aimed a room ahead
-     * of the character.
-     */
-    expect(manager!.character.room.number).toBe(3);
-    expect(manager!.walker.progress.status).toBe('walking');
-    /*
-     * And the half the room number alone does not cover: the walk did not
-     * *confirm* a second arrival, so it did not send a third step. That is the
-     * reported symptom in its own terms — `e` twice inside three milliseconds
-     * — and asserting it here also rules out the client having reached 1/3 by
-     * some route other than the one under test.
-     */
-    expect(wire().split('s\r\n')).toHaveLength(3);
-  });
-
-  /*
-   * The same interleaving, with the player's own Enter instead of the walker's
-   * nudge — and it is the *likelier* one, because somebody watching a walk
-   * stall for a second is exactly the person who presses Return. Two call
-   * sites file the re-read (`SessionManager`'s arbiter and its committed-line
-   * path) and deleting either must fail something; before this test, deleting
-   * the player's half broke nothing in 1,520 tests.
-   */
-  it('files the player’s own bare Enter the same way', async () => {
-    const world = corridor();
-    const { sink } = collect();
-    manager = new SessionManager(sink, world, quiet);
-    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
-    const socket = await client();
-    const chunks: Buffer[] = [];
-    socket.on('data', (chunk) => chunks.push(chunk));
-    const wire = (): string => Buffer.concat(chunks).toString('latin1');
-
-    socket.write('[HP=34]:' + PROMPT_REPAINT);
-    socket.write('Location:            1,4\r\nSewer Tunnel\r\nObvious exits: south\r\n');
-    await until(() => manager!.character.room.number === 4);
-
-    const route = world.route('1/4', '1/1');
-    expect(manager!.walker.start(route, manager!.character)).toBeNull();
-    await until(() => wire().includes('s\r\n'));
-
-    // The player presses Return while the step is still out.
-    manager!.send('\r');
-    await until(() => wire().includes('s\r\n\r\n'));
-
-    // The step's arrival, which confirms it and releases the next step — waited
-    // for, because a reprint that lands before the walk has sent that step
-    // finds an empty queue and cannot answer anything, which is a test that
-    // passes whatever the client does.
-    socket.write(MIDDLE);
-    await until(() => manager!.character.room.number === 3);
-    await until(() => wire().split('s\r\n').length === 3);
-
-    // And then the answer to the Enter.
-    socket.write(MIDDLE);
-    socket.write('[HP=33]:' + PROMPT_REPAINT);
-    await until(() => manager!.character.vitals.hp === 33);
-
-    expect(manager!.character.room.number).toBe(3);
-  });
-});
-
-/*
- * Typing is not taking the wheel.
- *
- * A walk and a loop stand down when the *player* moves the character — two
- * drivers with one wheel — and for as long as that fired on any committed
- * command, checking a stat sheet mid-lap ended the lap. Captured from the
- * user's own console, 2026-08-31: `st` during a fight, and
- * `Loop stopped: Manually stopped`.
- */
-describe('typing while a route is being walked', () => {
-  /** Three rooms in a line: 1/3 north end, 1/2 middle, 1/1 south end. */
-  const line = (): WorldGraph => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mudengine-typing-'));
-    const file = path.join(dir, 'rooms.jsonl.gz');
-    const rooms = [
-      { m: 1, r: 1, n: 'South End', x: { n: { m: 1, r: 2 } } },
-      { m: 1, r: 2, n: 'Middle Road', x: { s: { m: 1, r: 1 }, n: { m: 1, r: 3 } } },
-      { m: 1, r: 3, n: 'North End', x: { s: { m: 1, r: 2 } } }
-    ];
-    fs.writeFileSync(
-      file,
-      zlib.gzipSync(
-        [
-          JSON.stringify({ v: 1, source: 'test', rooms: 4, generatedAt: 'x' }),
-          ...rooms.map((room) => JSON.stringify(room))
-        ].join('\n') + '\n'
-      )
-    );
-    const world = WorldGraph.load(file);
-    fs.rmSync(dir, { recursive: true, force: true });
-    return world;
-  };
-
-  const quiet: AutomationConfig = {
-    ...DEFAULT_CONFIG.automation,
-    enabled: true,
-    idle: { ...DEFAULT_CONFIG.automation.idle, enabled: false },
-    onEnterRealm: [],
-    rules: []
-  };
-
-  /** In the realm at the north end, with a reader for what reached the wire. */
-  async function atTheNorthEnd(): Promise<{
-    socket: net.Socket;
-    world: WorldGraph;
-    wire: () => string;
-  }> {
-    const world = line();
-    const { sink } = collect();
-    manager = new SessionManager(sink, world, quiet);
-    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
-    const socket = await client();
-    const chunks: Buffer[] = [];
-    socket.on('data', (chunk) => chunks.push(chunk));
-    socket.write('[HP=34]:' + PROMPT_REPAINT);
-    socket.write('Location:            1,3\r\nNorth End\r\nObvious exits: south\r\n');
-    await until(() => manager!.character.room.number === 3);
-    return { socket, world, wire: () => Buffer.concat(chunks).toString('latin1') };
-  }
-
-  /** ...and walking the two steps south from it. */
-  function walkSouth(world: WorldGraph): void {
-    const route = world.route('1/3', '1/1');
-    expect(route.steps).toHaveLength(2);
-    expect(manager!.walker.start(route, manager!.character)).toBeNull();
-    expect(manager!.walker.progress.status).toBe('walking');
-  }
-
-  it('keeps walking when the player types something that is not a move', async () => {
-    const { world, wire } = await atTheNorthEnd();
-    walkSouth(world);
-    manager!.send('st\r');
-    /*
-     * The command really was committed and really did reach the wire — the
-     * positive control, without which a walk that is still walking could be
-     * one this test never reached.
-     */
-    await until(() => wire().includes('st\r\n'));
-    expect(manager!.walker.progress.status).toBe('walking');
-  });
-
-  /* The one case that does stand it down: the move landed. */
-  it('stops when the player’s own direction lands them somewhere else', async () => {
-    const { socket, world } = await atTheNorthEnd();
-    walkSouth(world);
-    manager!.send('s\r');
-    socket.write('Location:            1,2\r\nMiddle Road\r\nObvious exits: south, north\r\n');
-    await until(() => manager!.walker.progress.status !== 'walking');
-    expect(manager!.walker.progress.reason).toBe(t('automation.walk.reasonPlayerTookOver'));
-  });
-
-  /*
-   * The end-to-end of `Walker.holdForFight` and the `replan` this session
-   * answers it with. The unit tests prove the walker holds and asks; this is
-   * the one that proves somebody is listening — a route that asks for a plan
-   * nothing answers stops as off-path, which is the old behaviour wearing a
-   * new reason.
-   *
-   * The reported shape exactly (`logs/2026-09-02_16-54-23_festus.mudcap.jsonl`
-   * scaled to three rooms): walking, a monster, a fight, and then a client
-   * that sent nothing at all until a person pressed Enter.
-   */
-  it('waits a fight out and then walks on, from wherever the fight left it', async () => {
-    const { socket, world } = await atTheNorthEnd();
-    walkSouth(world);
-    await until(() => manager!.walker.progress.status === 'walking');
-
-    // Something wandered in and opened on the character mid-step.
-    socket.write('*Combat Engaged*\r\n');
-    await until(() => manager!.walker.progress.hold === 'fight');
-    // Held, not ended: the destination and the journey both survive it.
-    expect(manager!.walker.progress.status).toBe('walking');
-    expect(manager!.walker.progress.destination).toBe('South End');
-
-    /*
-     * The step the fight interrupted landed after all, so the fight is being
-     * fought a room further on than the route was drawn from. Written as the
-     * server writes an arrival — no `Location:` line, which is the `rm` answer
-     * and not what a move produces — because the arriving room is also what
-     * answers the move this walk has outstanding, and the resume deliberately
-     * refuses to plan while one is.
-     */
-    socket.write('Middle Road\r\nObvious exits: south, north\r\n');
-    await until(() => manager!.character.room.number === 2);
-    expect(manager!.walker.progress.hold).toBe('fight');
-
-    socket.write('*Combat Off*\r\n');
-    socket.write('[HP=34]:' + PROMPT_REPAINT);
-
-    // Planned again from 1/2 rather than resumed from 1/3, and walking.
-    await until(() => manager!.walker.progress.hold === null);
-    expect(manager!.walker.progress.status).toBe('walking');
-    expect(manager!.walker.progress.total).toBe(1);
-    expect(manager!.walker.progress.destination).toBe('South End');
-  });
-
-  /*
-   * A direction the realm refuses moves nobody, so it must not be left armed
-   * to be answered by somebody else's arrival. Without the disarm the walk
-   * below — started afterwards, and confirming its own first step — stopped
-   * blaming a player who had walked into a wall a moment earlier.
-   */
-  it('does not blame the player for a walk step after their direction hit a wall', async () => {
-    const { socket, world } = await atTheNorthEnd();
-    manager!.send('e\r');
-    socket.write('There is no exit in that direction!\r\n');
-    socket.write('[HP=33]:' + PROMPT_REPAINT);
-    await settled(33);
-
-    walkSouth(world);
-    socket.write('Location:            1,2\r\nMiddle Road\r\nObvious exits: south, north\r\n');
-    // The first of two steps confirmed, and the walk carries on to the second.
-    await until(() => manager!.walker.progress.done === 1);
-    expect(manager!.walker.progress.status).toBe('walking');
-  });
-});
 
 /*
  * Walking out to the character menu is a character *leaving*, and what comes
@@ -4412,44 +1617,8 @@ describe('typing while a route is being walked', () => {
 describe('leaving the realm for the menu', () => {
   const probing: AutomationConfig = {
     ...DEFAULT_CONFIG.automation,
-    enabled: true,
-    idle: { ...DEFAULT_CONFIG.automation.idle, enabled: false },
-    onEnterRealm: ['st'],
-    rules: []
+    enabled: true
   };
-
-  async function inAndOut(): Promise<{ socket: net.Socket; wire: () => string }> {
-    const { sink } = collect();
-    manager = new SessionManager(sink, undefined, probing);
-    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
-    const socket = await client();
-    const chunks: Buffer[] = [];
-    socket.on('data', (chunk) => chunks.push(chunk));
-    const wire = (): string => Buffer.concat(chunks).toString('latin1');
-
-    socket.write('Welcome back, Claude!\r\n');
-    socket.write('[HP=34]:' + PROMPT_REPAINT);
-    await until(() => manager!.character.phase === 'in-game');
-    await until(() => wire().includes('st\r\n'));
-    expect(manager!.character.name).toBe('Claude');
-    return { socket, wire };
-  }
-
-  it('forgets the character and asks again on the way back in', async () => {
-    const { socket, wire } = await inAndOut();
-    const before = wire().split('st\r\n').length - 1;
-
-    // Out to the menu, the way the server actually reports it.
-    socket.write('You will exit after a period of silent meditation.\r\n');
-    socket.write('[PARADIGM]:');
-    await until(() => manager!.character.phase !== 'in-game');
-    expect(manager!.character.name).toBeNull();
-
-    // And back in as somebody else. The entry probe fires a second time,
-    // which is what puts the new name on the card.
-    socket.write('[HP=40]:' + PROMPT_REPAINT);
-    await until(() => wire().split('st\r\n').length - 1 > before);
-  });
 
   it('says so, once', async () => {
     const { sink, notices } = collect();
@@ -4542,425 +1711,6 @@ describe('what the realm knows about a player, between characters', () => {
  * away — `just left upwards` was read as a monster, so Fatty stayed resting
  * too. A follower asks its leader to stop for what would stop its own walk.
  */
-/*
- * skinny entered the realm on the ground (2026-09-25), the entry probe's `st`
- * was never answered, and with no maximum every health figure read "unknown,
- * so not low" while he walked a route at 17%. The sheet is asked for again.
- */
-describe('a stat sheet that never came back', () => {
-  afterEach(() => setTuning(DEFAULT_INTERNAL.tuning));
-
-  it('is asked for again until the maximum is read', async () => {
-    setTuning({
-      ...DEFAULT_INTERNAL.tuning,
-      queue: { ...DEFAULT_INTERNAL.tuning.queue, unreadRetryMs: 150 }
-    });
-    const { sink } = collect();
-    manager = new SessionManager(sink, undefined, { ...DEFAULT_CONFIG.automation, enabled: true });
-    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
-    const socket = await client();
-    const wire: string[] = [];
-    let hp = -11;
-    // A realm that answers every command with a status line and nothing else:
-    // the sheet is asked for and never comes back.
-    socket.on('data', (chunk) => {
-      for (const line of chunk.toString('latin1').split('\r\n').filter(Boolean)) {
-        wire.push(line);
-        socket.write(`[HP=${hp}/MA=500]:` + PROMPT_REPAINT);
-      }
-    });
-    const sheets = (): number => wire.filter((line) => line === 'st').length;
-
-    socket.write(
-      'Dark Temple\r\nAlso here: Champion of Blood.\r\nObvious exits: east\r\n[HP=-11/MA=500]:' +
-        PROMPT_REPAINT
-    );
-    await until(() => sheets() === 1);
-    // Past the retry, the next status line asks again.
-    await new Promise((resolve) => setTimeout(resolve, 200));
-    hp = -10;
-    socket.write('[HP=-10/MA=500]:' + PROMPT_REPAINT);
-    await until(() => sheets() === 2);
-
-    hp = 109;
-    socket.write(
-      'Name: Skinny Fatterson                 Lives/CP:      9/6\r\n' +
-        'Hits:   109/649   Armour Class: 112/4  Thievery:        0\r\n' +
-        '[HP=109/MA=500]:' +
-        PROMPT_REPAINT
-    );
-    await until(() => manager!.character.vitals.hpMax === 649);
-    await new Promise((resolve) => setTimeout(resolve, 200));
-    socket.write('[HP=110/MA=500]:' + PROMPT_REPAINT);
-    await new Promise((resolve) => setTimeout(resolve, 100));
-    expect(sheets()).toBe(2);
-  });
-});
-
-describe('a follower asking its leader to wait', () => {
-  it('asks for being held, and never for a rest kept with the leader', async () => {
-    const { sink } = collect();
-    manager = new SessionManager(sink, undefined, {
-      ...DEFAULT_CONFIG.automation,
-      enabled: true,
-      party: { ...DEFAULT_CONFIG.automation.party, restWithLeader: true },
-      remotes: { ...DEFAULT_CONFIG.automation.remotes, enabled: true }
-    });
-    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
-    const socket = await client();
-    const chunks: Buffer[] = [];
-    socket.on('data', (chunk) => chunks.push(chunk));
-    const wire = (): string => Buffer.concat(chunks).toString('latin1');
-
-    socket.write('[HP=100/MA=50]:' + PROMPT_REPAINT);
-    await until(() => manager!.character.phase === 'in-game');
-    socket.write('You are now following Soul.\r\n[HP=100/MA=50]:' + PROMPT_REPAINT);
-    await until(() => manager!.character.party.following === 'Soul');
-    socket.write('Soul stops to rest.\r\n[HP=100/MA=50]: (Resting) ' + PROMPT_REPAINT);
-    await until(() => manager!.character.vitals.resting);
-    socket.write('Soul just left upwards.\r\n[HP=100/MA=50]: (Resting) ' + PROMPT_REPAINT);
-    await new Promise((resolve) => setTimeout(resolve, 100));
-    expect(wire()).not.toContain('@wait');
-
-    socket.write('Your legs are paralyzed!\r\n[HP=100/MA=50]:' + PROMPT_REPAINT);
-    await until(() => wire().includes('/Soul @wait'));
-    socket.write('You can move again!\r\n[HP=100/MA=50]:' + PROMPT_REPAINT);
-    await until(() => wire().includes('/Soul @ok'));
-  });
-});
-
-/* Skinny, 2026-10-06: `med` at full mana, refused 131 times, toward a maximum a buff had taken. */
-describe('meditating toward a stale maximum', () => {
-  it('stops at the first refusal, and reads the sheet', async () => {
-    const { sink } = collect();
-    manager = new SessionManager(sink, undefined, {
-      ...DEFAULT_CONFIG.automation,
-      enabled: true,
-      idle: { ...DEFAULT_CONFIG.automation.idle, enabled: false },
-      onEnterRealm: [],
-      rules: [],
-      health: { ...DEFAULT_CONFIG.automation.health, meditateBelow: 0.95 }
-    });
-    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
-    const socket = await client();
-    const chunks: Buffer[] = [];
-    socket.on('data', (chunk) => chunks.push(chunk));
-    const lines = (): string[] => Buffer.concat(chunks).toString('latin1').split('\r\n');
-    const count = (command: string): number => lines().filter((line) => line === command).length;
-
-    socket.write(
-      'Name: Skinny Fatterson                 Lives/CP:      9/6\r\n' +
-        'Hits:   998/998   Armour Class: 112/4  Thievery:        0\r\n' +
-        'Mana: * 792/810   Spellcasting: 407    Traps:           0\r\n' +
-        '[HP=998/MA=792]:' +
-        PROMPT_REPAINT
-    );
-    await until(() => manager!.character.vitals.manaMax === 810);
-    socket.write('[HP=998/MA=760]:' + PROMPT_REPAINT);
-    await until(() => count('med') === 1);
-    const sheets = count('st');
-    socket.write('Meditation will not help at this time.\r\n[HP=998/MA=760]:' + PROMPT_REPAINT);
-    await until(() => manager!.character.vitals.manaMax === 760);
-    await until(() => count('st') > sheets);
-    socket.write('[HP=998/MA=760]:' + PROMPT_REPAINT);
-    await settled(998);
-    await new Promise((resolve) => setTimeout(resolve, 200));
-    socket.write('[HP=998/MA=760]:' + PROMPT_REPAINT);
-    await new Promise((resolve) => setTimeout(resolve, 100));
-    expect(count('med')).toBe(1);
-  });
-});
-
-/* Skinny, 2026-10-04: `{HP=936/916,…}` to Fatty, who could not read it, fifty-two times. */
-describe('answering @health over a stale maximum', () => {
-  it('reads the stat sheet first, and answers with its maximum', async () => {
-    const { sink } = collect();
-    manager = new SessionManager(sink, undefined, {
-      ...DEFAULT_CONFIG.automation,
-      enabled: true,
-      remotes: {
-        ...DEFAULT_CONFIG.automation.remotes,
-        enabled: true,
-        players: { soul: { allow: ['health'], deny: [] } }
-      }
-    });
-    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
-    const socket = await client();
-    const chunks: Buffer[] = [];
-    socket.on('data', (chunk) => chunks.push(chunk));
-    const wire = (): string => Buffer.concat(chunks).toString('latin1');
-
-    socket.write(
-      'Name: Skinny Fatterson                 Lives/CP:      9/6\r\n' +
-        'Hits:   900/916   Armour Class: 112/4  Thievery:        0\r\n' +
-        '[HP=900/MA=500]:' +
-        PROMPT_REPAINT
-    );
-    await until(() => manager!.character.vitals.hpMax === 916);
-    await new Promise((resolve) => setTimeout(resolve, 100));
-    const before = wire()
-      .split('\r\n')
-      .filter((line) => line === 'st').length;
-    socket.write('[HP=936/MA=500]:' + PROMPT_REPAINT);
-    await until(() => manager!.character.vitals.hp === 936);
-    socket.write('Soul telepaths: @health\r\n[HP=936/MA=500]:' + PROMPT_REPAINT);
-    await until(
-      () =>
-        wire()
-          .split('\r\n')
-          .filter((line) => line === 'st').length > before
-    );
-    expect(wire()).not.toContain('/Soul {');
-
-    socket.write(
-      'Name: Skinny Fatterson                 Lives/CP:      9/6\r\n' +
-        'Hits:   936/956   Armour Class: 112/4  Thievery:        0\r\n' +
-        '[HP=936/MA=500]:' +
-        PROMPT_REPAINT
-    );
-    await until(() => wire().includes('/Soul {HP=936/956'));
-  });
-});
-
-describe('a follower pacing the loop', () => {
-  /** A manager whose remotes answer Soul and Yang the pacing pair. */
-  function pacedManager(
-    sink: SessionSink,
-    party: Partial<AutomationConfig['party']> = {}
-  ): SessionManager {
-    return new SessionManager(sink, undefined, {
-      ...DEFAULT_CONFIG.automation,
-      enabled: true,
-      party: { ...DEFAULT_CONFIG.automation.party, ...party },
-      remotes: {
-        enabled: true,
-        gangpath: false,
-        autoJoin: false,
-        gang: [],
-        // Named rather than left to the shipped party list: this case is about
-        // the pacing pair reaching the loop, not about who was granted it.
-        party: [],
-        players: {
-          soul: { allow: ['wait', 'ok'], deny: [] },
-          yang: { allow: ['wait', 'ok'], deny: [] }
-        }
-      }
-    });
-  }
-
-  /** Into the realm, placed, and running a one-stop loop held where it stands. */
-  async function looping(socket: net.Socket): Promise<void> {
-    socket.write('[HP=100/MA=50]:' + PROMPT_REPAINT);
-    await until(() => manager!.character.phase === 'in-game');
-    // The one exact statement of position this server makes, so the loop can
-    // hold a stop the character is already standing in without realm data.
-    socket.write('Location: 1,2140\r\n[HP=100/MA=50]:' + PROMPT_REPAINT);
-    await until(() => manager!.character.room.number === 2140);
-    expect(
-      manager!.loops.start({ name: 'pace', stops: [{ room: 'Home 1/2140' }] }, manager!.character)
-    ).toBeNull();
-    expect(manager!.loops.progress.status).toBe('running');
-  }
-
-  /*
-   * `@wait` used to end the lap — the `@ok` callback read `if (ready)
-   * return;` — so one fallen-behind follower ended it for good and the leader
-   * stood at a stop until somebody noticed. It is a stop and a resume now,
-   * and a stop keeps the lap's place; the resume waits for the last of several
-   * waiting followers, because the loop walks away from whoever is behind.
-   */
-  it('stops on @wait and resumes when the last waiting follower says @ok', async () => {
-    const { sink } = collect();
-    manager = pacedManager(sink);
-    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
-    const socket = await client();
-    await looping(socket);
-
-    socket.write('Soul telepaths: @wait\r\n');
-    await until(() => manager!.loops.progress.status === 'stopped');
-    socket.write('Yang telepaths: @wait\r\n');
-
-    // The first @ok is not enough: Yang is still catching up. The stop has
-    // been observed, so the absence a moment later is a real decision.
-    socket.write('Soul telepaths: @ok\r\n');
-    await new Promise((resolve) => setTimeout(resolve, 50));
-    expect(manager.loops.progress.status).toBe('stopped');
-
-    socket.write('Yang telepaths: @ok\r\n');
-    await until(() => manager!.loops.progress.status === 'running');
-  });
-
-  /* MegaMUD's Ignore @wait If Leading: read, said, and the lap walks on. */
-  it('walks on through @wait when told to ignore it', async () => {
-    const { sink, notices } = collect();
-    manager = pacedManager(sink, { ignoreWaitWhenLeading: true });
-    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
-    const socket = await client();
-    await looping(socket);
-
-    socket.write('Soul telepaths: @wait\r\n');
-    await until(() => notices.some((notice) => /Ignore @wait If Leading/.test(notice)));
-    expect(manager.loops.progress.status).toBe('running');
-  });
-
-  /*
-   * MegaMUD's If Leading Wait No Longer Than: a `@wait` whose `@ok` never came
-   * does not hold the party all evening. The clock is minutes, so its callback
-   * is taken off `setTimeout` and run rather than waited for.
-   */
-  it('walks on once it has waited as long as it was told to for an @ok', async () => {
-    const { sink, notices } = collect();
-    manager = pacedManager(sink, { waitNoLongerMinutes: 2 });
-    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
-    const socket = await client();
-    await looping(socket);
-
-    const timers = vi.spyOn(globalThis, 'setTimeout');
-    socket.write('Soul telepaths: @wait\r\n');
-    await until(() => manager!.loops.progress.status === 'stopped');
-    const giveUp = timers.mock.calls.find(([, delay]) => delay === 120_000)?.[0];
-    timers.mockRestore();
-    expect(giveUp).toBeTypeOf('function');
-    (giveUp as () => void)();
-    expect(notices.some((notice) => /Waited 2 min for soul/.test(notice))).toBe(true);
-    await until(() => manager!.loops.progress.status === 'running');
-  });
-
-  /** The party listing, with Soul at the health given. */
-  const listing = (percent: number): string =>
-    [
-      'The following people are in your travel party:',
-      '  Vaelor                        (Mystic)     [M:100%] [H:100%]  - Frontrank',
-      `  Soul Guardian                 (Warrior)             [H:${String(percent).padStart(3)}%]  - Frontrank`,
-      '[HP=100/MA=50]:'
-    ].join('\r\n') + PROMPT_REPAINT;
-
-  /*
-   * MegaMUD's Wait For Party Members (2026-09-24): a member under the line on
-   * the listing pauses the lap as a `@wait` would, and the listing putting
-   * them back over it is their `@ok`.
-   */
-  it('pauses the lap for a member under the line, and walks on when they are over it', async () => {
-    const { sink } = collect();
-    manager = pacedManager(sink, { waitForMembersBelow: 0.5 });
-    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
-    const socket = await client();
-    await looping(socket);
-
-    socket.write(listing(30));
-    await until(() => manager!.loops.progress.status === 'stopped');
-    expect(manager.loops.progress.reason).toMatch(/Soul is at 30%/);
-
-    socket.write(listing(80));
-    await until(() => manager!.loops.progress.status === 'running');
-  });
-
-  /* A `@wait` and a hurt member are two reasons; the lap waits for both. */
-  it('walks on only once the hurt member is up and the follower has said @ok', async () => {
-    const { sink } = collect();
-    manager = pacedManager(sink, { waitForMembersBelow: 0.5 });
-    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
-    const socket = await client();
-    await looping(socket);
-
-    socket.write('Yang telepaths: @wait\r\n');
-    await until(() => manager!.loops.progress.status === 'stopped');
-    socket.write(listing(30));
-    socket.write('Yang telepaths: @ok\r\n');
-    await new Promise((resolve) => setTimeout(resolve, 50));
-    expect(manager.loops.progress.status).toBe('stopped');
-
-    socket.write(listing(90));
-    await until(() => manager!.loops.progress.status === 'running');
-  });
-
-  /*
-   * If Leading Wait No Longer Than, for a member who never heals: the lap
-   * walks on, and does not stop for them again until they are over the line.
-   */
-  it('walks on past a member who never heals once the limit is spent', async () => {
-    const { sink, notices } = collect();
-    manager = pacedManager(sink, { waitForMembersBelow: 0.5, waitNoLongerMinutes: 1 });
-    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
-    const socket = await client();
-    await looping(socket);
-
-    const timers = vi.spyOn(globalThis, 'setTimeout');
-    socket.write(listing(30));
-    await until(() => manager!.loops.progress.status === 'stopped');
-    const giveUp = timers.mock.calls.find(([, delay]) => delay === 60_000)?.[0];
-    timers.mockRestore();
-    (giveUp as () => void)();
-    expect(notices.some((notice) => /Waited 1 min for soul/.test(notice))).toBe(true);
-    await until(() => manager!.loops.progress.status === 'running');
-
-    socket.write(listing(25));
-    await new Promise((resolve) => setTimeout(resolve, 50));
-    expect(manager.loops.progress.status).toBe('running');
-  });
-
-  /*
-   * `@ok` may only resume what `@wait` stopped. A stop the player chose from
-   * the Navigation card is theirs to end, and a follower's `@ok` walking a
-   * hand-stopped loop away would be somebody else's typing moving this
-   * character.
-   */
-  it('leaves a stop the player chose alone', async () => {
-    const { sink, notices } = collect();
-    manager = pacedManager(sink);
-    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
-    const socket = await client();
-    await looping(socket);
-
-    // The player stops from the card (the IPC handler's own call)...
-    manager.stopMoving();
-    expect(manager.loops.progress.status).toBe('stopped');
-
-    // ...and a follower's @ok is read, reported, and resumes nothing. The
-    // follower-ready notice is the positive control: the line demonstrably
-    // reached the remotes, and the stop still stood.
-    const said = notices.length;
-    socket.write('Soul telepaths: @ok\r\n');
-    await until(() => notices.length > said);
-    await new Promise((resolve) => setTimeout(resolve, 25));
-    expect(manager.loops.progress.status).toBe('stopped');
-  });
-
-  /*
-   * A death spends the claim, and it says so.
-   *
-   * Folding `pause` into `stop` made this the one path that still meant "ended
-   * for good": `stopGoingAnywhere` skipped a lap that was not running, so
-   * nothing published, so `pausedForFollowers` was never cleared — and a
-   * follower's `@ok` then walked the character out of the temple past both
-   * guards and past the wander check, which `startMoving` owns and
-   * `LoopRunner.resume` does not.
-   */
-  it('spends the wait claim on a death, and restates why the lap is not moving', async () => {
-    const { sink, notices } = collect();
-    manager = pacedManager(sink);
-    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
-    const socket = await client();
-    await looping(socket);
-
-    socket.write('Soul telepaths: @wait\r\n');
-    await until(() => manager!.loops.progress.status === 'stopped');
-
-    socket.write('You have been killed!\r\n');
-    socket.write('Location: 1,2999\r\n[HP=10/MA=50]:' + PROMPT_REPAINT);
-    await until(() => manager!.character.room.number === 2999);
-    // The card's one sentence about the lap is about the death, not about a
-    // follower who asked the party to wait ten minutes ago.
-    expect(manager.loops.progress.reason).toBe(t('session.loop.stoppedDied'));
-
-    const said = notices.length;
-    socket.write('Soul telepaths: @ok\r\n');
-    await until(() => notices.length > said);
-    await new Promise((resolve) => setTimeout(resolve, 25));
-    expect(manager.loops.progress.status).toBe('stopped');
-    expect(manager.walker.progress.status).not.toBe('walking');
-  });
-});
 
 /*
  * A leader's crossing of a `Text:` exit end to end, over a real socket (PR #35).
@@ -5005,30 +1755,6 @@ describe('a party relay crossing a text exit', () => {
     return socket;
   }
 
-  it('says @party before the move, and the move follows', async () => {
-    const world = haven();
-    const socket = await atTheCrossing(world, relayConfig());
-    const lines = wire(socket);
-
-    expect(manager!.walkRoute(world.route('1/3', '1/4'))).toBeNull();
-    await until(() => lines().includes('go manhole'));
-    expect(lines().indexOf('.@party go manhole')).toBeGreaterThanOrEqual(0);
-    expect(lines().indexOf('.@party go manhole')).toBeLessThan(lines().indexOf('go manhole'));
-  });
-
-  /* The realm drops the party through a text exit even for a follower who crossed (2026-09-29). */
-  it('invites whoever stood with the leader once it lands, and says no @join', async () => {
-    const world = haven();
-    const socket = await atTheCrossing(world, relayConfig());
-    const lines = wire(socket);
-
-    expect(manager!.walkRoute(world.route('1/3', '1/4'))).toBeNull();
-    await until(() => lines().includes('go manhole'));
-    socket.write('Sewer\r\nAlso here: Pip.\r\nObvious exits: up\r\n');
-    await until(() => lines().includes('invite Pip'));
-    expect(lines().some((line) => line.includes('@join'))).toBe(false);
-  });
-
   it('does not relay or invite for a hand-typed crossing', async () => {
     const world = haven();
     const socket = await atTheCrossing(world, relayConfig());
@@ -5037,160 +1763,6 @@ describe('a party relay crossing a text exit', () => {
     manager!.send('go manhole\r\n');
     await until(() => lines().includes('go manhole'));
     expect(lines().some((line) => line.includes('@party'))).toBe(false);
-  });
-});
-
-/*
- * MegaMUD's chase rows, from its Messages.md: a follower sees its leader leave
- * through a special exit and follows (`{target} enters a manhole in the
- * ground!` → `go manhole`, Skinny Inc's table, 2026-09-29).
- */
-describe('a follower chasing its leader through a special exit', () => {
-  const lines = (socket: net.Socket): (() => string[]) => {
-    const chunks: Buffer[] = [];
-    socket.on('data', (chunk) => chunks.push(chunk));
-    return () => Buffer.concat(chunks).toString('latin1').split('\r\n');
-  };
-
-  const chasing = (over: Partial<AutomationConfig['remotes']> = {}): AutomationConfig => ({
-    ...DEFAULT_CONFIG.automation,
-    enabled: true,
-    pacing: { window: 20, minGapMs: 0, ackTimeoutMs: 3000 },
-    remotes: { ...DEFAULT_CONFIG.automation.remotes, ...over }
-  });
-
-  async function following(config: AutomationConfig): Promise<net.Socket> {
-    manager = new SessionManager(collect().sink, undefined, config);
-    manager.configureRealm({
-      ...NO_REALM,
-      messages: [
-        {
-          ...blankTrigger(),
-          name: 'chase (manhole)',
-          match: '{target} enters a manhole in the ground!',
-          response: 'go manhole',
-          chase: true
-        }
-      ]
-    });
-    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
-    const socket = await client();
-    socket.write('Welcome back, Vaelor!\r\n');
-    socket.write('Health: 100/100 [100%]\r\n');
-    socket.write('You are following Pip.\r\n');
-    await until(() => manager!.character.party.following === 'Pip');
-    return socket;
-  }
-
-  it('follows the leader it is following, and nobody else', async () => {
-    const socket = await following(chasing());
-    const seen = lines(socket);
-    socket.write('Bob enters a manhole in the ground!\r\n');
-    socket.write('Pip enters a manhole in the ground!\r\n');
-    await until(() => seen().includes('go manhole'));
-    expect(seen().filter((line) => line === 'go manhole')).toHaveLength(1);
-    expect(manager!.automation.firings.at(-1)).toMatchObject({ commands: ['go manhole'] });
-  });
-
-  it('does not go twice when the leader’s @party already sent it', async () => {
-    const socket = await following(
-      chasing({ enabled: true, players: { pip: { allow: ['party'], deny: [] } } })
-    );
-    const seen = lines(socket);
-    socket.write('Pip says "@party go manhole"\r\n');
-    socket.write('Pip enters a manhole in the ground!\r\n');
-    await until(() => seen().includes('go manhole'));
-    await new Promise((resolve) => setTimeout(resolve, 100));
-    expect(seen().filter((line) => line === 'go manhole')).toHaveLength(1);
-    // The @party moved it; the chase row stood down.
-    expect(manager!.automation.firings.some((firing) => firing.rule.includes('chase'))).toBe(false);
-  });
-});
-
-/*
- * The reaction to a player opening on this character — MegaMUD's NotifyGang,
- * from the evidence the client already reads: `<Name> moves to attack you!`
- * puts the attacker in `attackers` and starts the five-minute clock, and the
- * pvp block is what acts on the same moment. The roster is what makes Vaelor
- * a player rather than a monster's realm-data name.
- */
-describe('a player opening on this character', () => {
-  const pvpConfig = (over: Partial<(typeof DEFAULT_CONFIG)['automation']['safety']['pvp']> = {}) =>
-    ({
-      ...DEFAULT_CONFIG.automation,
-      enabled: true,
-      idle: { ...DEFAULT_CONFIG.automation.idle, enabled: false },
-      onEnterRealm: [],
-      rules: [],
-      safety: {
-        ...DEFAULT_CONFIG.automation.safety,
-        pvp: { notifyGang: false, action: 'none' as const, ...over }
-      }
-    }) as AutomationConfig;
-
-  async function attacked(socket: net.Socket): Promise<void> {
-    socket.write('[HP=62]:\r\n');
-    await until(() => manager!.character.phase === 'in-game');
-    // A room with a way out of it: the pvp reaction runs the same escape the
-    // health floor does, and that escape sends a direction or nothing.
-    socket.write('Town Square\r\nObvious exits: west\r\n');
-    await until(() => manager!.character.room.exits.length > 0);
-    socket.write('Vaelor just entered the Realm.\r\n');
-    await until(() => manager!.character.online.some((who) => who.name === 'Vaelor'));
-    socket.write('Vaelor moves to attack you!\r\n');
-    await until(() => manager!.character.combat.attackers.length > 0);
-  }
-
-  it('tells the gang once per attacker, with the health riding along', async () => {
-    const { sink, notices } = collect();
-    manager = new SessionManager(sink, undefined, pvpConfig({ notifyGang: true }));
-    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
-    const socket = await client();
-    const received: Buffer[] = [];
-    socket.on('data', (chunk) => received.push(chunk));
-
-    await attacked(socket);
-    await until(() => Buffer.concat(received).toString('latin1').includes('bg attacked by Vaelor'));
-    const wire = Buffer.concat(received).toString('latin1');
-    expect(wire).toContain('[HP=62]');
-    expect(notices.some((notice) => /Telling the gang/.test(notice))).toBe(true);
-
-    // A blow line per round is one broadcast per window, not one per line.
-    socket.write('Vaelor moves to attack you!\r\n');
-    await new Promise((resolve) => setTimeout(resolve, 100));
-    const sends = Buffer.concat(received)
-      .toString('latin1')
-      .match(/bg attacked by Vaelor/g);
-    expect(sends?.length).toBe(1);
-  });
-
-  it('runs when told to, whatever the retreat threshold says', async () => {
-    const { sink, notices } = collect();
-    manager = new SessionManager(sink, undefined, pvpConfig({ action: 'retreat' }));
-    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
-    const socket = await client();
-    const received: Buffer[] = [];
-    socket.on('data', (chunk) => received.push(chunk));
-
-    await attacked(socket);
-    await until(() => Buffer.concat(received).toString('latin1').includes('w\r\n'));
-    expect(notices.some((notice) => /Running w:/.test(notice))).toBe(true);
-  });
-
-  it('does nothing at all while both halves are off', async () => {
-    const { sink, notices } = collect();
-    manager = new SessionManager(sink, undefined, pvpConfig());
-    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
-    const socket = await client();
-    const received: Buffer[] = [];
-    socket.on('data', (chunk) => received.push(chunk));
-
-    await attacked(socket);
-    await new Promise((resolve) => setTimeout(resolve, 100));
-    const wire = Buffer.concat(received).toString('latin1');
-    expect(wire).not.toContain('bg ');
-    expect(wire).not.toMatch(/\bw\r\n/);
-    expect(notices.some((notice) => /Telling the gang|Running \w+:/.test(notice))).toBe(false);
   });
 });
 
@@ -5215,38 +1787,7 @@ describe('re-deciding with nothing new from the wire', () => {
   const health = (restBelow: number): AutomationConfig => ({
     ...DEFAULT_CONFIG.automation,
     enabled: true,
-    idle: { ...DEFAULT_CONFIG.automation.idle, enabled: false },
-    onEnterRealm: [],
-    rules: [],
     health: { ...DEFAULT_CONFIG.automation.health, restBelow }
-  });
-
-  /** In the realm, hurt, with the rest threshold off and a reader for the wire. */
-  async function hurtAndStanding(): Promise<{ wire: () => string }> {
-    const { sink } = collect();
-    manager = new SessionManager(sink, undefined, health(0));
-    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
-    const socket = await client();
-    const chunks: Buffer[] = [];
-    socket.on('data', (chunk) => chunks.push(chunk));
-    socket.write('Health: 80/80 [100%]\r\n');
-    await until(() => manager!.character.vitals.hpMax === 80);
-    socket.write('[HP=30]:' + PROMPT_REPAINT);
-    // The trigger really was read: the figure and its maximum both reached the
-    // tracker, so what follows is a decision rather than a line nobody saw.
-    await until(
-      () => manager!.character.vitals.hp === 30 && manager!.character.vitals.hpMax === 80
-    );
-    return { wire: () => Buffer.concat(chunks).toString('latin1') };
-  }
-
-  it('acts on a threshold that arrives while the server is silent', async () => {
-    const { wire } = await hurtAndStanding();
-    expect(wire()).not.toContain('rest\r\n');
-    // No further server output from here: the only thing that changed is the
-    // setting, and the tick is the only thing that can notice it.
-    manager!.configure(health(0.5), DEFAULT_CONFIG.connection.login);
-    await until(() => wire().includes('rest\r\n'));
   });
 
   /*
@@ -5275,33 +1816,6 @@ describe('re-deciding with nothing new from the wire', () => {
     await until(() => manager!.character.phase === 'authenticating');
     await new Promise((resolve) => setTimeout(resolve, 1200));
     expect(Buffer.concat(chunks).toString('latin1')).not.toContain('rest\r\n');
-  });
-
-  /*
-   * One clock for the life of the session, whatever the host does.
-   *
-   * `useRealm` is called from the constructor *and* again on every dial, so a
-   * timer armed there left one live interval per connection with only the last
-   * handle kept — and `dispose` then cleared one of them. An unref'd timer
-   * still fires, into a queue whose own `enqueue` re-arms its timer, so a
-   * closed tab went on deciding once a second and held its whole object graph
-   * open.
-   */
-  it('arms one clock however many realms it is handed, and drops it on dispose', () => {
-    vi.useFakeTimers();
-    try {
-      const { sink } = collect();
-      const session = new SessionManager(sink);
-      const armed = vi.getTimerCount();
-      expect(armed).toBeGreaterThan(0);
-      session.useRealm(NO_REALM_PLAYERS);
-      session.useRealm(NO_REALM_PLAYERS);
-      expect(vi.getTimerCount()).toBe(armed);
-      session.dispose();
-      expect(vi.getTimerCount()).toBe(0);
-    } finally {
-      vi.useRealTimers();
-    }
   });
 });
 
@@ -5351,90 +1865,6 @@ describe('a step the server never answers', () => {
     return { socket, notices };
   }
 
-  /*
-   * And the probe goes out on its own clock, not on the next line.
-   *
-   * Asked only when something arrived, a step followed by silence was probed
-   * at the first line after it — a room answering a *later* command, arriving
-   * past the write-off — and the probe then kept the stale step alive long
-   * enough to be credited with that room: the smoke's `climb cliff` was filed
-   * as the way `n` went. Here nothing at all arrives after the move, and the
-   * `rm` has to reach the wire anyway.
-   */
-  it('probes a step on time through a silence, with nothing arriving', async () => {
-    setTuning({
-      ...DEFAULT_INTERNAL.tuning,
-      parse: { ...DEFAULT_INTERNAL.tuning.parse, staleProbeMs: 100, staleMoveMs: 2000 },
-      session: { ...DEFAULT_INTERNAL.tuning.session, reconsiderMs: 25 }
-    });
-    const { sink, notices } = collect();
-    // On, because the probe is automation's: the queue refuses it otherwise.
-    manager = new SessionManager(sink, undefined, {
-      ...DEFAULT_CONFIG.automation,
-      enabled: true,
-      idle: { ...DEFAULT_CONFIG.automation.idle, enabled: false },
-      onEnterRealm: [],
-      rules: []
-    });
-    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
-    const socket = await client();
-    const sent: Buffer[] = [];
-    socket.on('data', (chunk: Buffer) => sent.push(chunk));
-    const wire = (): string => Buffer.concat(sent).toString('latin1');
-    socket.write('Guild Street\r\nObvious exits: north, south\r\n[HP=56/MA=12]:' + PROMPT_REPAINT);
-    await until(() => manager!.character.room.name === 'Guild Street');
-
-    manager.send('n\r');
-    await until(() => wire().includes('n\r\n'));
-    // Nothing is written back from here on: the positive control for the
-    // silence is that the move itself reached the wire.
-    await until(() => wire().includes('rm\r\n'));
-    expect(notices.some((notice) => notice.includes('“n”'))).toBe(true);
-    // Probed once: one `rm` answers the question, and a second only spends.
-    await new Promise((resolve) => setTimeout(resolve, 150));
-    expect(wire().split('rm\r\n')).toHaveLength(2);
-  });
-
-  /*
-   * The server backlogs its answers behind the player's half-typed line
-   * (`TGSSocket.Send`), so a step taken just before a gossip is answered at
-   * the Enter. Probed mid-line, the player read that the step was lost.
-   */
-  it('does not probe a step while the player is typing, and does after the commit', async () => {
-    setTuning({
-      ...DEFAULT_INTERNAL.tuning,
-      parse: { ...DEFAULT_INTERNAL.tuning.parse, staleProbeMs: 100, staleMoveMs: 2000 },
-      session: { ...DEFAULT_INTERNAL.tuning.session, reconsiderMs: 25 }
-    });
-    const { sink, notices } = collect();
-    manager = new SessionManager(sink, undefined, {
-      ...DEFAULT_CONFIG.automation,
-      enabled: true,
-      idle: { ...DEFAULT_CONFIG.automation.idle, enabled: false },
-      onEnterRealm: [],
-      rules: []
-    });
-    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
-    const socket = await client();
-    const sent: Buffer[] = [];
-    socket.on('data', (chunk: Buffer) => sent.push(chunk));
-    const wire = (): string => Buffer.concat(sent).toString('latin1');
-    socket.write('Guild Street\r\nObvious exits: north, south\r\n[HP=56/MA=12]:' + PROMPT_REPAINT);
-    await until(() => manager!.character.room.name === 'Guild Street');
-
-    manager.send('n\r');
-    manager.send('-need');
-    await until(() => wire().includes('-need'));
-    await new Promise((resolve) => setTimeout(resolve, 400));
-    expect(wire()).not.toContain('rm\r\n');
-    expect(notices.some((notice) => notice.includes('“n”'))).toBe(false);
-
-    // Positive control: the same silence, the line committed, and the probe.
-    manager.send(' gear\r');
-    await until(() => wire().includes('rm\r\n'));
-    expect(notices.some((notice) => notice.includes('“n”'))).toBe(true);
-  });
-
   it('gives up on it, and says which step, once', async () => {
     const { socket, notices } = await lostAStep();
 
@@ -5448,56 +1878,6 @@ describe('a step the server never answers', () => {
     expect(said).toHaveLength(1);
     // Said in whole seconds off the tuning key rather than as a bare number.
     expect(said[0]).toMatch(/0s/);
-  });
-
-  /*
-   * The half the report was about: everything that was waiting on the claim
-   * starts working again.
-   *
-   * Auto-combat is the one of the six that sends a command, so it is what can
-   * be *seen* from here — and its refusal while a step is outstanding is right
-   * (a fight opened now lands in the room being left). What was wrong is that
-   * the refusal was permanent. The two assertions are each other's control:
-   * silence before the bound and a swing after it, from one unchanged stream
-   * of blows.
-   */
-  it('lets what was waiting on it work again', async () => {
-    const { sink } = collect();
-    manager = new SessionManager(sink, undefined, {
-      ...DEFAULT_CONFIG.automation,
-      enabled: true,
-      idle: { ...DEFAULT_CONFIG.automation.idle, enabled: false },
-      onEnterRealm: [],
-      rules: [],
-      combat: { ...DEFAULT_CONFIG.automation.combat, enabled: true, retaliate: true }
-    });
-    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
-    const socket = await client();
-    const chunks: Buffer[] = [];
-    socket.on('data', (chunk) => chunks.push(chunk));
-    const wire = (): string => Buffer.concat(chunks).toString('latin1');
-
-    socket.write(
-      'Guild Street\r\nAlso here: slime beast.\r\nObvious exits: north, south\r\n[HP=56/MA=12]:' +
-        PROMPT_REPAINT
-    );
-    await until(() => manager!.character.room.occupants.length === 1);
-
-    manager.send('n\r');
-    await until(() => wire().includes('n\r\n'));
-
-    // It opens on the character while the step is still outstanding. Nothing
-    // is swung back: a fight opened now would land in the room being left.
-    socket.write('The slime beast slashes you for 3 damage!\r\n');
-    socket.write('[HP=53/MA=12]:' + PROMPT_REPAINT);
-    await until(() => manager!.character.combat.attackers.includes('slime beast'));
-    expect(wire()).not.toContain('slime beast');
-
-    // Nothing ever answers the step. Past the bound, the same blow is hit back.
-    await new Promise((resolve) => setTimeout(resolve, life + 50));
-    socket.write('The slime beast slashes you for 3 damage!\r\n');
-    socket.write('[HP=50/MA=12]:' + PROMPT_REPAINT);
-    await until(() => wire().includes('slime beast'));
   });
 
   /* And a step that *is* answered costs nothing: the claim goes when the room
@@ -5516,355 +1896,6 @@ describe('a step the server never answers', () => {
 });
 
 /*
- * Hit and not moving with auto-combat off (todo 00, 2026-09-23). The switch
- * is the character's file, so the harness stands in for it: a flip asked for
- * is a reload of the same configuration with the switch the other way.
- */
-describe('auto-combat lent to a character hit and not moving', () => {
-  const config = (combat: boolean): AutomationConfig => ({
-    ...DEFAULT_CONFIG.automation,
-    enabled: true,
-    idle: { ...DEFAULT_CONFIG.automation.idle, enabled: false },
-    onEnterRealm: [],
-    rules: [],
-    combat: { ...DEFAULT_CONFIG.automation.combat, enabled: combat, defendAfterRounds: 2 }
-  });
-
-  it('turns it on after two rounds, swings back, and hands it back on the next arrival', async () => {
-    const collected = collect();
-    const flips: boolean[] = [];
-    const sink: SessionSink = {
-      ...collected.sink,
-      switchAutomation: (_name, on) => {
-        flips.push(on);
-        setTimeout(() => manager?.configure(config(on), DEFAULT_CONFIG.connection.login), 0);
-        return true;
-      }
-    };
-    manager = new SessionManager(sink, undefined, config(false));
-    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
-    const socket = await client();
-    const chunks: Buffer[] = [];
-    socket.on('data', (chunk) => chunks.push(chunk));
-    const wire = (): string => Buffer.concat(chunks).toString('latin1');
-
-    socket.write(
-      'Guild Street\r\nAlso here: slime beast.\r\nObvious exits: north, south\r\n[HP=56/MA=12]:' +
-        PROMPT_REPAINT
-    );
-    await until(() => manager!.character.room.occupants.length === 1);
-
-    // One round: below the setting. Positive control for the silence.
-    socket.write('The slime beast slashes you for 3 damage!\r\n[HP=53/MA=12]:' + PROMPT_REPAINT);
-    await settled(53);
-    expect(flips).toEqual([]);
-    expect(wire()).not.toContain('slime beast');
-
-    // A second round, well past the round beat: lent, and the next blow is hit back.
-    await new Promise((resolve) => setTimeout(resolve, 150));
-    socket.write('The slime beast slashes you for 3 damage!\r\n[HP=50/MA=12]:' + PROMPT_REPAINT);
-    await until(() => flips.length === 1);
-    expect(flips).toEqual([true]);
-    expect(collected.notices.some((n) => n.includes('turning it on until you move'))).toBe(true);
-    await new Promise((resolve) => setTimeout(resolve, 20));
-    socket.write('The slime beast slashes you for 3 damage!\r\n[HP=47/MA=12]:' + PROMPT_REPAINT);
-    await until(() => wire().includes('slime beast'));
-
-    // Moved: handed back. An arrival is a room answering a move, never a reprint.
-    const before = wire().length;
-    manager.send('n\r');
-    await until(() => wire().slice(before).includes('n\r\n'));
-    socket.write('Guild Hall\r\nObvious exits: south\r\n[HP=47/MA=12]:' + PROMPT_REPAINT);
-    await until(() => flips.length === 2);
-    expect(flips).toEqual([true, false]);
-  });
-});
-
-/*
- * A lost socket is not the character leaving: it stands wherever the link
- * went, with whatever was in the room, and `Reconnect` dials it back. What it
- * was doing has to still be there when it is — before this, the loop was left
- * nominally running on the closed socket with the leg booked as a failed stop,
- * and the next dial reset it to nothing.
- */
-describe('picking up after a lost connection', () => {
-  const dial = () => ({ host: '127.0.0.1', port, encoding: 'cp437' as const });
-  const automation = (): AutomationConfig => ({
-    ...DEFAULT_CONFIG.automation,
-    enabled: true,
-    idle: { ...DEFAULT_CONFIG.automation.idle, enabled: false },
-    onEnterRealm: [],
-    rules: []
-  });
-
-  /** Into the realm and placed at Home, on this socket. */
-  async function placed(socket: net.Socket): Promise<void> {
-    socket.write('[HP=100/MA=50]:' + PROMPT_REPAINT);
-    await until(() => manager!.character.phase === 'in-game');
-    socket.write('Location: 1,2140\r\n[HP=100/MA=50]:' + PROMPT_REPAINT);
-    await until(() => manager!.character.room.number === 2140);
-  }
-
-  it('holds a running loop through the loss, and walks it on once the character is back and placed', async () => {
-    const { sink, notices, drops } = collect();
-    manager = new SessionManager(sink, undefined, automation());
-    await manager.connect(dial());
-    const first = await client();
-    await placed(first);
-    expect(
-      manager.loops.start({ name: 'lap', stops: [{ room: 'Home 1/2140' }] }, manager.character)
-    ).toBeNull();
-
-    first.destroy();
-    await until(() => manager!.loops.progress.hold === 'offline');
-    expect(manager.loops.progress).toMatchObject({ status: 'running', name: 'lap', stop: 1 });
-    // And it is still reported as a loss, so `Reconnect` dials it back.
-    expect(drops).toEqual([null]);
-
-    // Dialled back to the same address: the loop is carried, still held.
-    await manager.connect(dial());
-    const second = await client(1);
-    expect(manager.loops.progress).toMatchObject({ status: 'running', hold: 'offline' });
-    second.write('[HP=100/MA=50]:' + PROMPT_REPAINT);
-    await until(() => manager!.character.phase === 'in-game');
-    // In the realm is not enough: nothing is planned from an unknown room.
-    expect(manager.loops.progress.hold).toBe('offline');
-    await until(() => notices.includes(t('session.reconnect.waitingToBePlaced')));
-
-    second.write('Location: 1,2140\r\n[HP=100/MA=50]:' + PROMPT_REPAINT);
-    await until(() => manager!.loops.progress.hold === null);
-    expect(manager.loops.progress).toMatchObject({ status: 'running', name: 'lap', stop: 1 });
-    expect(notices).toContain(t('automation.loops.walkingOnAfterReconnect'));
-  });
-
-  it('ends the loop when this client asked for the disconnect, and says why', async () => {
-    const { sink, notices } = collect();
-    manager = new SessionManager(sink, undefined, automation());
-    await manager.connect(dial());
-    await placed(await client());
-    manager.loops.start({ name: 'lap', stops: [{ room: 'Home 1/2140' }] }, manager.character);
-
-    manager.disconnect();
-    await until(() => manager!.state.phase === 'closed');
-    expect(manager.loops.progress).toMatchObject({
-      status: 'stopped',
-      reason: t('session.loop.stoppedDisconnected')
-    });
-    expect(manager.loops.carried).toBe(false);
-    expect(notices).toContain(
-      t('automation.loops.stopped', { reason: t('session.loop.stoppedDisconnected') })
-    );
-  });
-
-  /* A loop is a list of rooms in one realm. */
-  it('puts the loop down when the next dial is to a different realm, and says so', async () => {
-    const { sink, notices } = collect();
-    manager = new SessionManager(sink, undefined, automation());
-    await manager.connect(dial());
-    const first = await client();
-    await placed(first);
-    manager.loops.start({ name: 'lap', stops: [{ room: 'Home 1/2140' }] }, manager.character);
-    first.destroy();
-    await until(() => manager!.loops.progress.hold === 'offline');
-
-    const other = net.createServer((socket) => socket.on('error', () => {}));
-    await new Promise<void>((resolve) => other.listen(0, '127.0.0.1', resolve));
-    const otherPort = (other.address() as net.AddressInfo).port;
-    try {
-      await manager.connect({ host: '127.0.0.1', port: otherPort, encoding: 'cp437' });
-      expect(manager.loops.progress.status).toBe('idle');
-      expect(notices).toContain(
-        t('automation.loops.stopped', { reason: t('session.loop.stoppedRealmChanged') })
-      );
-    } finally {
-      manager.disconnect();
-      await new Promise<void>((resolve) => other.close(() => resolve()));
-    }
-  });
-
-  /*
-   * And a lap that was **stopped** when the link went, which is the case a
-   * stop keeping its place created.
-   *
-   * The guard read `if (carried) stop(...)`, which worked while a stopped lap
-   * was one nothing carried. Since a stop is a pause the lap is carried too,
-   * and `stop()` early-returns on one — so nothing was said, `offline` was
-   * never cleared, `carried` stayed true and the reset below it was skipped:
-   * the old realm's lap survived into the new one with the old world's room
-   * ids in it, and the card offered play on it.
-   */
-  it('puts a stopped lap down too, rather than carrying it into another realm', async () => {
-    const { sink, notices } = collect();
-    manager = new SessionManager(sink, undefined, automation());
-    await manager.connect(dial());
-    const first = await client();
-    await placed(first);
-    manager.loops.start({ name: 'lap', stops: [{ room: 'Home 1/2140' }] }, manager.character);
-    manager.stopMoving();
-    first.destroy();
-    // The positive control: it really was carried, so the drop below is a
-    // decision rather than a lap that was never there.
-    await until(() => manager!.loops.carried);
-
-    const other = net.createServer((socket) => socket.on('error', () => {}));
-    await new Promise<void>((resolve) => other.listen(0, '127.0.0.1', resolve));
-    const otherPort = (other.address() as net.AddressInfo).port;
-    try {
-      await manager.connect({ host: '127.0.0.1', port: otherPort, encoding: 'cp437' });
-      expect(manager.loops.progress).toMatchObject({ status: 'idle', name: null });
-      expect(manager.loops.carried).toBe(false);
-      expect(manager.movement).toEqual({ kind: null, moving: false, resumable: false });
-      expect(notices).toContain(
-        t('automation.loops.stopped', { reason: t('session.loop.stoppedRealmChanged') })
-      );
-    } finally {
-      manager.disconnect();
-      await new Promise<void>((resolve) => other.close(() => resolve()));
-    }
-  });
-
-  /* Four rooms in a line, each with its own name so nothing is ambiguous. */
-  const line = (): WorldGraph => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mudengine-pickup-'));
-    const file = path.join(dir, 'rooms.jsonl.gz');
-    const rooms = [
-      { m: 1, r: 1, n: 'Gate', x: { n: { m: 1, r: 2 } } },
-      { m: 1, r: 2, n: 'Road', x: { n: { m: 1, r: 3 }, s: { m: 1, r: 1 } } },
-      { m: 1, r: 3, n: 'Bridge', x: { n: { m: 1, r: 4 }, s: { m: 1, r: 2 } } },
-      { m: 1, r: 4, n: 'Square', x: { s: { m: 1, r: 3 } } }
-    ];
-    fs.writeFileSync(
-      file,
-      zlib.gzipSync(
-        [
-          JSON.stringify({ v: 1, source: 'test', rooms: 4, generatedAt: 'x' }),
-          ...rooms.map((room) => JSON.stringify(room))
-        ].join('\n') + '\n'
-      )
-    );
-    const world = WorldGraph.load(file);
-    fs.rmSync(dir, { recursive: true, force: true });
-    return world;
-  };
-
-  it('plans the route the player was walking again, from wherever the character is now', async () => {
-    const world = line();
-    const { sink, notices } = collect();
-    manager = new SessionManager(sink, world, automation());
-    await manager.connect(dial());
-    const first = await client();
-    const before: Buffer[] = [];
-    first.on('data', (chunk) => before.push(chunk));
-    first.write('[HP=34]:' + PROMPT_REPAINT);
-    first.write('Location:            1,4\r\nSquare\r\nObvious exits: south\r\n');
-    await until(() => manager!.character.room.number === 4);
-    const route = world.route('1/4', '1/1');
-    expect(route.steps).toHaveLength(3);
-    expect(manager.walker.start(route, manager.character)).toBeNull();
-    await until(() => Buffer.concat(before).toString('latin1').includes('s\r\n'));
-
-    first.destroy();
-    await until(() => manager!.walker.progress.status === 'stopped');
-
-    await manager.connect(dial());
-    const second = await client(1);
-    const after: Buffer[] = [];
-    second.on('data', (chunk) => after.push(chunk));
-    // The step had landed before the link went, so the character is a room on.
-    second.write('[HP=34]:' + PROMPT_REPAINT);
-    second.write('Location:            1,3\r\nBridge\r\nObvious exits: north, south\r\n');
-    await until(() => manager!.walker.progress.status === 'walking');
-    // Two steps left, not three: planned from Bridge, not from the old route.
-    expect(manager.walker.progress).toMatchObject({ total: 2, destination: 'Gate' });
-    await until(() => Buffer.concat(after).toString('latin1').includes('s\r\n'));
-    expect(notices).toContain(t('session.walk.resumed', { destination: 'Gate' }));
-  });
-
-  /* Dialled back into the lair it was standing in and killed before the entry
-     probe placed it: the temple is where it is now, and the route it was
-     walking would lead back out. */
-  it('drops the route when the character dies before it is placed', async () => {
-    const world = line();
-    const { sink, notices } = collect();
-    manager = new SessionManager(sink, world, automation());
-    await manager.connect(dial());
-    const first = await client();
-    first.write('[HP=34]:' + PROMPT_REPAINT);
-    first.write('Location:            1,4\r\nSquare\r\nObvious exits: south\r\n');
-    await until(() => manager!.character.room.number === 4);
-    expect(manager.walker.start(world.route('1/4', '1/1'), manager.character)).toBeNull();
-    first.destroy();
-    await until(() => manager!.walker.progress.status === 'stopped');
-
-    await manager.connect(dial());
-    const second = await client(1);
-    second.write('[HP=34]:' + PROMPT_REPAINT);
-    await until(() => manager!.character.phase === 'in-game');
-    second.write('You have been killed!\r\n');
-    await until(() =>
-      notices.includes(
-        t('session.walk.notResumed', {
-          destination: 'Gate',
-          reason: t('session.loop.stoppedDied')
-        })
-      )
-    );
-    // The temple places the character; nothing is picked up from it.
-    second.write('Location:            1,3\r\nBridge\r\nObvious exits: north, south\r\n');
-    await until(() => manager!.character.room.number === 3);
-    await new Promise((resolve) => setTimeout(resolve, 25));
-    expect(manager.walker.progress.status).not.toBe('walking');
-  });
-
-  /* A stopped lap is carried stopped, so nothing walks on when the room
-     arrives and the client must not say that something will. The placement
-     letting the carry go is the positive control. */
-  it('carries a stopped lap stopped, without promising that it walks on', async () => {
-    const { sink, notices } = collect();
-    manager = new SessionManager(sink, undefined, automation());
-    await manager.connect(dial());
-    const first = await client();
-    await placed(first);
-    manager.loops.start({ name: 'lap', stops: [{ room: 'Home 1/2140' }] }, manager.character);
-    manager.stopMoving();
-    first.destroy();
-    await until(() => manager!.loops.carried);
-
-    await manager.connect(dial());
-    const second = await client(1);
-    second.write('[HP=100/MA=50]:' + PROMPT_REPAINT);
-    await until(() => manager!.character.phase === 'in-game');
-    second.write('Location: 1,2140\r\n[HP=100/MA=50]:' + PROMPT_REPAINT);
-    await until(() => !manager!.loops.carried);
-    expect(manager.loops.progress).toMatchObject({ status: 'stopped', name: 'lap' });
-    expect(notices).not.toContain(t('session.reconnect.waitingToBePlaced'));
-    expect(notices).not.toContain(t('automation.loops.walkingOnAfterReconnect'));
-  });
-
-  it('forgets the route when this client asked for the disconnect', async () => {
-    const world = line();
-    const { sink } = collect();
-    manager = new SessionManager(sink, world, automation());
-    await manager.connect(dial());
-    const first = await client();
-    first.write('[HP=34]:' + PROMPT_REPAINT);
-    first.write('Location:            1,4\r\nSquare\r\nObvious exits: south\r\n');
-    await until(() => manager!.character.room.number === 4);
-    expect(manager.walker.start(world.route('1/4', '1/1'), manager.character)).toBeNull();
-
-    manager.disconnect();
-    await until(() => manager!.state.phase === 'closed');
-    await manager.connect(dial());
-    const second = await client(1);
-    second.write('[HP=34]:' + PROMPT_REPAINT);
-    second.write('Location:            1,3\r\nBridge\r\nObvious exits: north, south\r\n');
-    await until(() => manager!.character.room.number === 3);
-    await new Promise((resolve) => setTimeout(resolve, 25));
-    expect(manager.walker.progress.status).not.toBe('walking');
-  });
-});
-
-/*
  * A word this realm does not have, learned from the realm saying it out loud.
  *
  * `You say "<command>"` is this server family's answer to a word its dispatch
@@ -5874,46 +1905,6 @@ describe('picking up after a lost connection', () => {
  */
 describe('a command this realm has no word for', () => {
   const dial = () => ({ host: '127.0.0.1', port, encoding: 'cp437' as const });
-
-  it('is said once, and only for words the realm’s own table names', async () => {
-    const { sink, notices } = collect();
-    manager = new SessionManager(sink);
-    await manager.connect(dial());
-    const socket = await client();
-    socket.write('[HP=100/MA=50]:' + PROMPT_REPAINT);
-    await until(() => manager!.character.phase === 'in-game');
-
-    // The locate keeps its own sentence: a realm with no `rm` is one where
-    // knowing where the character stands is dead reckoning and nothing else.
-    const retired = t('session.loop.locateUnavailable', { command: 'rm' });
-    socket.write('You say "rm"\r\n');
-    await until(() => notices.includes(retired));
-    expect(notices.filter((line) => line === retired)).toHaveLength(1);
-
-    /*
-     * Again under another spelling, and it is the same fact — not a second
-     * line about it. The server does no prefix matching and `rm`, `roo` and
-     * `room` are one command to it, which is why the set holds command names.
-     */
-    socket.write('You say "room"\r\n');
-    await new Promise((resolve) => setTimeout(resolve, 25));
-    expect(notices.filter((line) => line === retired)).toHaveLength(1);
-    expect(
-      notices.some((line) => line === t('session.realm.commandUnavailable', { command: 'room' }))
-    ).toBe(false);
-
-    /*
-     * And a word the command table does not name says nothing. A text exit is
-     * room data — `go manhole` is missing from every realm's table by
-     * construction — so refusing one here is not a fact about this realm's
-     * vocabulary, and retiring it would take a real way through the realm
-     * away from every room that has one.
-     */
-    const before = notices.length;
-    socket.write('You say "go manhole"\r\n');
-    await new Promise((resolve) => setTimeout(resolve, 25));
-    expect(notices).toHaveLength(before);
-  });
 
   /*
    * How the MajorMUD lineage actually refuses it — measured on
@@ -6010,36 +2001,6 @@ describe('a command this realm has no word for', () => {
 
     expect(notices.some((line) => line.includes('threw away'))).toBe(false);
   });
-
-  /*
-   * The lineage answers the question the first try would have answered, and
-   * the first try is the broadcast. Once a tell has said MajorMUD, every
-   * GreaterMUD-only command is refused without ever being sent.
-   */
-  it('refuses a GreaterMUD-only command outright once the lineage is known', async () => {
-    const { sink, notices } = collect();
-    manager = new SessionManager(sink);
-    await manager.connect(dial());
-    const socket = await client();
-    socket.write('[HP=100/MA=50]:' + PROMPT_REPAINT);
-    await until(() => manager!.character.phase === 'in-game');
-
-    /*
-     * `rm` spoken aloud is both facts at once: this realm has no `rm`, and a
-     * realm with no `rm` is the MajorMUD lineage. The second is the one under
-     * test — `ab` is never sent at all, so the refusal that would have taught
-     * it is never spent.
-     */
-    socket.write('You say "rm"\r\n');
-    await until(() => notices.includes(t('session.loop.locateUnavailable', { command: 'rm' })));
-
-    expect(manager.queue.enqueue({ command: 'ab', priority: 'probe' })).toBe(false);
-    expect(notices).toContain(t('session.realm.commandUnavailable', { command: 'ab' }));
-    // A command both lineages have is untouched, and so is `pro` — measured
-    // present on MajorMUD, carrying no coordinates rather than no answer.
-    expect(manager.queue.enqueue({ command: 'st', priority: 'probe' })).toBe(true);
-    expect(manager.queue.enqueue({ command: 'pro', priority: 'probe' })).toBe(true);
-  });
 });
 
 /*
@@ -6053,59 +2014,16 @@ describe('a command this realm has no word for', () => {
 describe('the locate setting', () => {
   const dial = () => ({ host: '127.0.0.1', port, encoding: 'cp437' as const });
 
-  it('sends sys status on arrival instead of rm, once configured', async () => {
-    const { sink } = collect();
-    manager = new SessionManager(sink);
-    manager.configure(
-      DEFAULT_CONFIG.automation,
-      DEFAULT_CONFIG.connection.login,
-      DEFAULT_CONFIG.ui.rewrites,
-      'sys-status'
-    );
-    await manager.connect(dial());
-    const socket = await client();
-    const received: Buffer[] = [];
-    socket.on('data', (chunk) => received.push(chunk));
-    socket.write('[HP=100/MA=50]:' + PROMPT_REPAINT);
-    await until(() => manager!.character.phase === 'in-game');
-
-    const typed = (): string => Buffer.concat(received).toString('latin1');
-    await until(() => /(^|\n)sys status\r\n/.test(typed()));
-    expect(typed()).not.toMatch(/(^|\n)rm\r\n/);
-  });
-
-  it('asks nothing at all when configured to none', async () => {
-    const { sink } = collect();
-    manager = new SessionManager(sink);
-    manager.configure(
-      DEFAULT_CONFIG.automation,
-      DEFAULT_CONFIG.connection.login,
-      DEFAULT_CONFIG.ui.rewrites,
-      'none'
-    );
-    await manager.connect(dial());
-    const socket = await client();
-    const received: Buffer[] = [];
-    socket.on('data', (chunk) => received.push(chunk));
-    socket.write('[HP=100/MA=50]:' + PROMPT_REPAINT);
-    await until(() => manager!.character.phase === 'in-game');
-    // `st` is next in the shipped list, so its arrival proves the entry probes
-    // ran at all — the absence being asserted is `rm`'s alone.
-    await until(() => /(^|\n)st\r\n/.test(Buffer.concat(received).toString('latin1')));
-    expect(Buffer.concat(received).toString('latin1')).not.toMatch(/(^|\n)rm\r\n/);
-  });
-
   /*
    * The Room card's own locate button, addressed by `Invoke.locate` rather
-   * than the generic `ask` — see `ipc.ts`: `ask` is gated to a bare word of
-   * at most eight lowercase letters, which `sys status` would fail outright,
+   * than the generic `ask` — see `ipc.ts`: which word is the realm's setting,
    * so the card asks main to send *a* locate word rather than naming one.
    */
   it("sends the button's own probe in whichever word is configured", async () => {
     const { sink } = collect();
     manager = new SessionManager(sink);
     manager.configure(
-      { ...DEFAULT_CONFIG.automation, onEnterRealm: [] },
+      { ...DEFAULT_CONFIG.automation },
       DEFAULT_CONFIG.connection.login,
       DEFAULT_CONFIG.ui.rewrites,
       'sys-status'
@@ -6125,7 +2043,7 @@ describe('the locate setting', () => {
     const { sink } = collect();
     manager = new SessionManager(sink);
     manager.configure(
-      { ...DEFAULT_CONFIG.automation, onEnterRealm: [] },
+      { ...DEFAULT_CONFIG.automation },
       DEFAULT_CONFIG.connection.login,
       DEFAULT_CONFIG.ui.rewrites,
       'none'
@@ -6147,7 +2065,7 @@ describe('the locate setting', () => {
       const { sink } = collect();
       manager = new SessionManager(sink);
       manager.configure(
-        { ...DEFAULT_CONFIG.automation, onEnterRealm: [] },
+        { ...DEFAULT_CONFIG.automation },
         DEFAULT_CONFIG.connection.login,
         DEFAULT_CONFIG.ui.rewrites,
         'sys-status'
@@ -6167,7 +2085,7 @@ describe('the locate setting', () => {
       const { sink } = collect();
       manager = new SessionManager(sink);
       manager.configure(
-        { ...DEFAULT_CONFIG.automation, onEnterRealm: [] },
+        { ...DEFAULT_CONFIG.automation },
         DEFAULT_CONFIG.connection.login,
         DEFAULT_CONFIG.ui.rewrites,
         'sys-status'
@@ -6191,7 +2109,7 @@ describe('the locate setting', () => {
       const { sink } = collect();
       manager = new SessionManager(sink);
       manager.configure(
-        { ...DEFAULT_CONFIG.automation, onEnterRealm: [] },
+        { ...DEFAULT_CONFIG.automation },
         DEFAULT_CONFIG.connection.login,
         DEFAULT_CONFIG.ui.rewrites,
         'sys-status'
@@ -6204,11 +2122,50 @@ describe('the locate setting', () => {
       expect(await manager.ensureLocated(300)).toBe(false);
     });
 
+    /*
+     * Archer's `sys goto sil` landed in one of the realm's two
+     * `Temple, Halls of the Dead` (2026-10-18), and nothing asked until a
+     * plan wanted a way: unplaced, the realm is asked at once.
+     */
+    it('asks the realm the moment a room it walked into cannot be placed', async () => {
+      const { sink } = collect();
+      manager = new SessionManager(sink);
+      manager.configure(
+        { ...DEFAULT_CONFIG.automation },
+        DEFAULT_CONFIG.connection.login,
+        DEFAULT_CONFIG.ui.rewrites,
+        'sys-status'
+      );
+      await manager.connect(dial());
+      const socket = await client();
+      const received: Buffer[] = [];
+      socket.on('data', (chunk) => received.push(chunk));
+      const asks = () =>
+        Buffer.concat(received).toString('latin1').split('sys status\r\n').length - 1;
+      socket.write('[HP=100/MA=50]:' + PROMPT_REPAINT + 'Room 796  Map: 16\r\n');
+      await until(() => manager!.character.room.map === 16);
+      const before = asks();
+
+      socket.write(
+        '[HP=100/MA=50]:sys goto sil\r\n\r\nTemple, Halls of the Dead\r\n' +
+          'Obvious exits: up\r\n[HP=100/MA=50]:'
+      );
+      await until(() => manager!.character.room.name === 'Temple, Halls of the Dead');
+      expect(manager.character.room.map).toBeNull();
+      await until(() => asks() === before + 1);
+
+      // The same room again, before the answer: asked once, not per block.
+      socket.write('\r\nTemple, Halls of the Dead\r\nObvious exits: up\r\n[HP=100/MA=50]:');
+      socket.write('Room 2189  Map: 1\r\n');
+      await until(() => manager!.character.room.map === 1);
+      expect(asks()).toBe(before + 1);
+    });
+
     it('returns false at once when there is nothing to ask', async () => {
       const { sink } = collect();
       manager = new SessionManager(sink);
       manager.configure(
-        { ...DEFAULT_CONFIG.automation, onEnterRealm: [] },
+        { ...DEFAULT_CONFIG.automation },
         DEFAULT_CONFIG.connection.login,
         DEFAULT_CONFIG.ui.rewrites,
         'none'
@@ -6223,174 +2180,6 @@ describe('the locate setting', () => {
       // The realm has nothing to ask, so this must not spend the timeout.
       expect(Date.now() - started).toBeLessThan(150);
     });
-  });
-});
-
-/*
- * A locked door the pack holds the key for, in bbs.thelucks.org's own words
- * (2026-09-23). The refusal was not read, so the walk resent `e` at the door
- * for as long as it was left, with the key in the pack. The unlock and the
- * open are the player's own paste of the same door.
- */
-describe('a locked door the pack has the key for', () => {
-  /** Standing at the door with the key listed, and a reader of whole command lines. */
-  const standing = async (exits: string) => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mudengine-keyed-'));
-    const file = path.join(dir, 'rooms.jsonl.gz');
-    fs.writeFileSync(
-      file,
-      zlib.gzipSync(
-        [
-          JSON.stringify({
-            v: 23,
-            source: 'test',
-            rooms: 2,
-            generatedAt: 'x',
-            items: [{ id: 172, n: 'black star key' }]
-          }),
-          JSON.stringify({
-            m: 1,
-            r: 1,
-            n: 'Slum Street',
-            x: { e: { m: 1, r: 2, i: 'Key: 172 [or 100 picklocks]' } }
-          }),
-          JSON.stringify({ m: 1, r: 2, n: 'Cult Hall', x: { w: { m: 1, r: 1 } } })
-        ].join('\n') + '\n'
-      )
-    );
-    const world = WorldGraph.load(file);
-    fs.rmSync(dir, { recursive: true, force: true });
-
-    const { sink } = collect();
-    manager = new SessionManager(sink, world, {
-      ...DEFAULT_CONFIG.automation,
-      enabled: true,
-      idle: { ...DEFAULT_CONFIG.automation.idle, enabled: false },
-      onEnterRealm: [],
-      rules: []
-    });
-    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
-    const socket = await client();
-    // Whole command lines, in order: a substring would read `open e` as `e`.
-    let wire = '';
-    socket.on('data', (chunk) => (wire += chunk.toString('latin1')));
-    let read = 0;
-    const lines = (): string[] => wire.split('\r\n').slice(0, -1);
-    const answered = async (command: string, reply: string): Promise<void> => {
-      await until(() => lines().slice(read).includes(command));
-      read = read + lines().slice(read).indexOf(command) + 1;
-      socket.write(reply);
-    };
-    const sent = async (command: string): Promise<void> =>
-      until(() => lines().slice(read).includes(command));
-
-    socket.write(`Location:            1,1\r\nSlum Street\r\n${exits}\r\n`);
-    socket.write(
-      'You are carrying nothing.\r\nYou have the following keys: black star key.\r\n' +
-        'Wealth: 0 copper farthings\r\n[HP=240/MA=306]:'
-    );
-    await until(
-      () => manager!.character.room.number === 1 && manager!.character.inventory.listedAt !== null
-    );
-    const route = world.route('1/1', '1/2', manager.travellerNow(manager.character));
-    expect(manager.walker.start(route, manager.character)).toBeNull();
-    return { answered, sent };
-  };
-
-  it('opens it with the key and walks through', async () => {
-    // The room says the door is shut, so the walk opens it before stepping.
-    const { answered, sent } = await standing('Obvious exits: closed door east');
-    await answered('open e', 'The door is locked.\r\n[HP=240/MA=306]:');
-    await answered(
-      'use black star key e',
-      'You successfully unlocked the door.\r\n[HP=240/MA=306]:'
-    );
-    await answered('open e', 'The door is now open.\r\n[HP=240/MA=306]:');
-    await sent('e');
-  });
-
-  it('reads the refusal where the room did not say, glued to the prompt', async () => {
-    const { answered } = await standing('Obvious exits: east');
-    await answered(
-      'e',
-      '[HP=240/MA=306]:There is a closed door in that direction!\r\n[HP=240/MA=306]:'
-    );
-    await answered('open e', 'The door is locked.\r\n[HP=240/MA=306]:');
-    await answered(
-      'use black star key e',
-      'You successfully unlocked the door.\r\n[HP=240/MA=306]:'
-    );
-  });
-});
-
-describe('a corridor the server refused', () => {
-  const shut = (): WorldGraph => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mudengine-shut-'));
-    const file = path.join(dir, 'rooms.jsonl.gz');
-    const rooms = [
-      { m: 1, r: 1, n: 'Stone Hallway', x: { n: { m: 1, r: 2, i: 'Hidden/Passable' } } },
-      { m: 1, r: 2, n: 'Beyond', x: { s: { m: 1, r: 1 } } }
-    ];
-    fs.writeFileSync(
-      file,
-      zlib.gzipSync(
-        [
-          JSON.stringify({ v: 1, source: 'test', rooms: 2, generatedAt: 'x' }),
-          ...rooms.map((room) => JSON.stringify(room))
-        ].join('\n') + '\n'
-      )
-    );
-    const world = WorldGraph.load(file);
-    fs.rmSync(dir, { recursive: true, force: true });
-    return world;
-  };
-
-  it('says the way is shut rather than absent, and uses it again once the room lists it', async () => {
-    const world = shut();
-    const { sink, notices } = collect();
-    manager = new SessionManager(sink, world, {
-      ...DEFAULT_CONFIG.automation,
-      enabled: true,
-      idle: { ...DEFAULT_CONFIG.automation.idle, enabled: false },
-      onEnterRealm: [],
-      rules: []
-    });
-    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
-    const socket = await client();
-    socket.write('Health: 100/100 [100%]\r\n');
-    socket.write('Location:            1,1\r\nStone Hallway\r\nObvious exits: south\r\n');
-    await until(() => manager!.character.room.number === 1);
-    let wire = '';
-    socket.on('data', (chunk) => (wire += chunk.toString('latin1')));
-
-    const route = world.route('1/1', '1/2');
-    expect(route.steps).toHaveLength(1);
-    expect(manager!.walker.start(route, manager!.character)).toBeNull();
-    await until(() => wire.includes('n\r\n'));
-
-    socket.write('There is no exit in that direction!\r\n[HP=100]:');
-    // The walker looks at the room before blaming anything — one bare Enter —
-    // and the reprint places the character where the step began.
-    await until(() => wire.endsWith('n\r\n\r\n'));
-    socket.write('Stone Hallway\r\nObvious exits: south\r\n');
-    /*
-     * **Shut, not invented.** The realm data records this exit as hidden, so
-     * the refusal is the data being right; the other sentence would accuse it
-     * of the one thing it got correct.
-     */
-    await until(() => notices.some((notice) => /shut rather than absent/.test(notice)));
-    expect(notices.some((notice) => /realm data promised/.test(notice))).toBe(false);
-
-    /*
-     * And now somebody pulls the levers by hand and the room lists the way.
-     * A fact the server printed outranks a guess this client made — the same
-     * source `Walker.mustSearchFirst` reads to decide a hidden exit has been
-     * found.
-     */
-    socket.write('Stone Hallway\r\nObvious exits: north, south\r\n');
-    // Canonical short, as every direction on screen is — it is what the realm
-    // database uses and what the refusal above named.
-    await until(() => notices.some((notice) => /The room lists n again/.test(notice)));
   });
 });
 
@@ -6447,9 +2236,7 @@ describe('what this character costs to move', () => {
     const { sink } = collect();
     manager = new SessionManager(sink, world, {
       ...DEFAULT_CONFIG.automation,
-      enabled: false,
-      onEnterRealm: [],
-      rules: []
+      enabled: false
     });
     await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
     const socket = await client();
@@ -6510,9 +2297,7 @@ describe('what this character costs to move', () => {
     const { sink } = collect();
     manager = new SessionManager(sink, world, {
       ...DEFAULT_CONFIG.automation,
-      enabled: false,
-      onEnterRealm: [],
-      rules: []
+      enabled: false
     });
     const traveller = manager.travellerNow(manager.character);
     expect(traveller.classId).toBeNull();
@@ -6540,9 +2325,7 @@ describe('what this character costs to move', () => {
     manager = new SessionManager(sink, world, {
       ...DEFAULT_CONFIG.automation,
       enabled: false,
-      onEnterRealm: [],
-      rules: [],
-      movement: { ...DEFAULT_CONFIG.automation.movement, pickLocks: false, bashDoors: true }
+      movement: { ...DEFAULT_CONFIG.automation.movement, pickLocks: false }
     });
     expect(manager.travellerNow(manager.character).forcing).toEqual({ pick: false, bash: true });
     expect(manager.lapTraveller(manager.character).forcing).toEqual({ pick: false, bash: true });
@@ -6564,9 +2347,7 @@ describe('what this character costs to move', () => {
     const { sink } = collect();
     manager = new SessionManager(sink, world, {
       ...DEFAULT_CONFIG.automation,
-      enabled: false,
-      onEnterRealm: [],
-      rules: []
+      enabled: false
     });
     const round: Route = { steps: [], cost: 0, blocked: true };
     const through: Route = {
@@ -6596,8 +2377,6 @@ describe('what this character costs to move', () => {
     manager = new SessionManager(sink, world, {
       ...DEFAULT_CONFIG.automation,
       enabled: false,
-      onEnterRealm: [],
-      rules: [],
       movement: { ...DEFAULT_CONFIG.automation.movement, keepOutOf: ['vortex'] }
     });
     expect(manager.travellerNow(manager.character).keepOut).toEqual({
@@ -6608,141 +2387,6 @@ describe('what this character costs to move', () => {
       words: ['vortex'],
       allowed: []
     });
-  });
-});
-
-/*
- * A lap walks the shortest way to its next stop, whatever waits on it
- * (2026-09-18). On bearfather a four-step leg to Dark Alley 1/1167 was planned
- * as 146 steps round a lair priced past half the health left — down a manhole
- * and through the Crumbling Tunnels, which nothing priced — and the lap died
- * there. The monsters on a loop are what it is walked for.
- */
-describe('a lap walks the shortest way', () => {
-  /** North through the den is two steps; round by the tunnels is four. */
-  const den = (): WorldGraph => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mudengine-lap-'));
-    const file = path.join(dir, 'rooms.jsonl.gz');
-    const rooms = [
-      { m: 1, r: 1, n: 'Cave Mouth', x: { n: { m: 1, r: 2 }, e: { m: 1, r: 4 } } },
-      {
-        m: 1,
-        r: 2,
-        n: 'Troll Den',
-        x: { s: { m: 1, r: 1 }, n: { m: 1, r: 3 } },
-        lair: '(Max 2): 7,'
-      },
-      { m: 1, r: 3, n: 'Far Gallery', x: { s: { m: 1, r: 2 }, e: { m: 1, r: 6 } } },
-      { m: 1, r: 4, n: 'Side Tunnel', x: { w: { m: 1, r: 1 }, n: { m: 1, r: 5 } } },
-      { m: 1, r: 5, n: 'Damp Tunnel', x: { s: { m: 1, r: 4 }, n: { m: 1, r: 6 } } },
-      { m: 1, r: 6, n: 'Upper Tunnel', x: { s: { m: 1, r: 5 }, w: { m: 1, r: 3 } } }
-    ];
-    const header = {
-      v: 32,
-      source: 'test',
-      rooms: rooms.length,
-      generatedAt: 'x',
-      mobs: [
-        {
-          n: 'cave troll',
-          hp: 500,
-          i: [7],
-          d: 'h',
-          ac: 50,
-          xp: 1000,
-          pf: [{ a: [[1, 1, 200, 40, 80, 250, 0]], c: [] }]
-        }
-      ]
-    };
-    fs.writeFileSync(
-      file,
-      zlib.gzipSync(
-        [JSON.stringify(header), ...rooms.map((room) => JSON.stringify(room))].join('\n') + '\n'
-      )
-    );
-    const world = WorldGraph.load(file);
-    fs.rmSync(dir, { recursive: true, force: true });
-    return world;
-  };
-
-  /** In the realm, placed by `rm`'s answer, with a reader for what reached the wire. */
-  async function standingIn(
-    location: string
-  ): Promise<{ world: WorldGraph; socket: net.Socket; wire: () => string }> {
-    const world = den();
-    const { sink } = collect();
-    manager = new SessionManager(sink, world, {
-      ...DEFAULT_CONFIG.automation,
-      enabled: true,
-      idle: { ...DEFAULT_CONFIG.automation.idle, enabled: false },
-      onEnterRealm: [],
-      rules: []
-    });
-    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
-    const socket = await client();
-    const chunks: Buffer[] = [];
-    socket.on('data', (chunk) => chunks.push(chunk));
-    socket.write('Health: 20/20 [100%]\r\n');
-    socket.write('[HP=20]:' + PROMPT_REPAINT);
-    socket.write(location);
-    await until(() => manager!.character.room.number !== null);
-    return { world, socket, wire: () => Buffer.concat(chunks).toString('latin1') };
-  }
-
-  it('goes through the lair a route the player asked for would go round', async () => {
-    const { world, wire } = await standingIn(
-      'Location:            1,1\r\nCave Mouth\r\nObvious exits: north, east\r\n'
-    );
-
-    // Positive control: priced as a person's route is, the den is walked round.
-    const priced = world.route('1/1', '1/3', manager!.travellerNow(manager!.character));
-    expect(priced.steps.map((step) => step.command)).toEqual(['e', 'n', 'n', 'w']);
-
-    expect(
-      manager!.loops.start(
-        { name: 'lap', stops: [{ room: 'Far Gallery' }, { room: 'Cave Mouth' }] },
-        manager!.character
-      )
-    ).toBeNull();
-    await until(() => /\b[ne]\r\n/.test(wire()));
-    expect(wire()).toMatch(/\bn\r\n/);
-    expect(wire()).not.toMatch(/\be\r\n/);
-  });
-
-  /*
-   * And the resume measures the wander the same way, or it quotes a detour the
-   * leg will never take: from Far Gallery the lap's way to Cave Mouth is two
-   * steps, one fewer than from the room it stopped in; priced, it is four.
-   */
-  it('measures a stopped lap’s wander by the way it will walk', async () => {
-    setTuning({
-      ...DEFAULT_INTERNAL.tuning,
-      walk: { ...DEFAULT_INTERNAL.tuning.walk, resumeAskSteps: 0 }
-    });
-    const { socket, wire } = await standingIn(
-      'Location:            1,6\r\nUpper Tunnel\r\nObvious exits: south, west\r\n'
-    );
-    // Started mid-fight, so the lap waits and sends nothing: stopped in Upper
-    // Tunnel, heading for Cave Mouth.
-    socket.write('*Combat Engaged*\r\n');
-    await until(() => manager!.character.inCombat);
-    expect(
-      manager!.loops.start(
-        { name: 'lap', stops: [{ room: 'Cave Mouth' }, { room: 'Far Gallery' }] },
-        manager!.character
-      )
-    ).toBeNull();
-    manager!.stopMoving();
-    socket.write('*Combat Off*\r\n');
-    await until(() => !manager!.character.inCombat);
-
-    manager!.send('w\r');
-    await until(() => /\bw\r\n/.test(wire()));
-    socket.write('Far Gallery\r\nObvious exits: south, east\r\n');
-    await until(() => manager!.character.room.number === 3);
-
-    expect(manager!.startMoving(null, null)).toEqual({ started: true });
-    await until(() => /\bs\r\n/.test(wire()));
   });
 });
 
@@ -6794,15 +2438,11 @@ describe('SessionManager dead link', () => {
     await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
     await client();
 
-    // The arbiter takes a card's ask while the socket is up…
-    expect(manager.ask('rm')).toBe(true);
     manager.send('who\r\n');
     await until(() => drops.length > 0);
     const dead = (): number =>
       notices.filter((notice) => /treating the connection as lost/.test(notice)).length;
     expect(dead()).toBe(1);
-    // …and refuses one once it has gone, rather than filing it as sent.
-    expect(manager.ask('rm')).toBe(false);
 
     manager.send('\r');
     await new Promise((resolve) => setTimeout(resolve, 180));
@@ -6894,7 +2534,7 @@ describe('SessionManager finds', () => {
     manager = new SessionManager(
       sink,
       undefined,
-      { ...DEFAULT_CONFIG.automation, enabled: false, onEnterRealm: [], rules: [] },
+      { ...DEFAULT_CONFIG.automation, enabled: false },
       undefined,
       undefined,
       undefined,
@@ -6972,7 +2612,7 @@ describe('SessionManager finds', () => {
     manager = new SessionManager(
       sink,
       undefined,
-      { ...DEFAULT_CONFIG.automation, enabled: false, onEnterRealm: [], rules: [] },
+      { ...DEFAULT_CONFIG.automation, enabled: false },
       undefined,
       undefined,
       undefined,
@@ -7002,517 +2642,6 @@ describe('SessionManager finds', () => {
   });
 });
 
-/**
- * One play button and one stop button.
- *
- * A character is routing, looping or stopped (`src/shared/movement.ts`), and
- * the three things this asserts are the three the shape was changed for: stop
- * keeps what it stopped, play picks it back up from wherever the character now
- * is, and play asks first when "wherever it now is" is a long way off.
- */
-describe('starting and stopping a movement', () => {
-  /** Forty rooms in a line, `1/1` at the south end and `1/40` at the north. */
-  const corridor = (): WorldGraph => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mudengine-moving-'));
-    const file = path.join(dir, 'rooms.jsonl.gz');
-    const rooms = Array.from({ length: 40 }, (_unused, index) => {
-      const r = index + 1;
-      return {
-        m: 1,
-        r,
-        n: `Room ${r}`,
-        x: {
-          ...(r < 40 ? { n: { m: 1, r: r + 1 } } : {}),
-          ...(r > 1 ? { s: { m: 1, r: r - 1 } } : {})
-        }
-      };
-    });
-    fs.writeFileSync(
-      file,
-      zlib.gzipSync(
-        [
-          JSON.stringify({ v: 1, source: 'test', rooms: rooms.length, generatedAt: 'x' }),
-          ...rooms.map((room) => JSON.stringify(room))
-        ].join('\n') + '\n'
-      )
-    );
-    const world = WorldGraph.load(file);
-    fs.rmSync(dir, { recursive: true, force: true });
-    return world;
-  };
-
-  const quiet: AutomationConfig = {
-    ...DEFAULT_CONFIG.automation,
-    enabled: true,
-    idle: { ...DEFAULT_CONFIG.automation.idle, enabled: false },
-    onEnterRealm: [],
-    rules: []
-  };
-
-  /** In the realm at the north end of the corridor. */
-  async function atTheNorthEnd(): Promise<{
-    socket: net.Socket;
-    world: WorldGraph;
-    notices: string[];
-  }> {
-    const world = corridor();
-    const { sink, notices } = collect();
-    manager = new SessionManager(sink, world, quiet);
-    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
-    const socket = await client();
-    socket.write('[HP=100/MA=50]:' + PROMPT_REPAINT);
-    socket.write('Location:            1,40\r\nRoom 40\r\nObvious exits: south\r\n');
-    await until(() => manager!.character.room.number === 40);
-    return { socket, world, notices };
-  }
-
-  /** Puts the character somewhere else without walking it there. */
-  async function standIn(socket: net.Socket, room: number): Promise<void> {
-    socket.write(
-      `Location:            1,${room}\r\nRoom ${room}\r\nObvious exits: south, north\r\n`
-    );
-    await until(() => manager!.character.room.number === room);
-  }
-
-  it('picks a stopped route back up from where the character is standing', async () => {
-    const { socket, world } = await atTheNorthEnd();
-    expect(manager!.walkRoute(world.route('1/40', '1/38'))).toBeNull();
-    manager!.stopMoving();
-    expect(manager!.walker.progress.status).toBe('stopped');
-
-    // One step of it was walked by hand, so the route it picks back up is one
-    // step shorter than the one it stopped: planned afresh, never replayed.
-    await standIn(socket, 39);
-    expect(manager!.startMoving(null, null)).toEqual({ started: true });
-    expect(manager!.walker.progress).toMatchObject({ status: 'walking', total: 1 });
-  });
-
-  /*
-   * The length of the route is not the question — how much *further away* the
-   * character is than when it stopped is. A route somebody stopped at the top
-   * of and never left must never ask, however long it is.
-   */
-  it('asks nothing about a long route the character has not wandered off', async () => {
-    const { world } = await atTheNorthEnd();
-    expect(manager!.walkRoute(world.route('1/40', '1/1'))).toBeNull();
-    expect(manager!.walker.progress.total).toBe(39);
-    manager!.stopMoving();
-    expect(manager!.startMoving(null, null)).toEqual({ started: true });
-  });
-
-  it('asks before walking a wandered character back to its route', async () => {
-    const { socket, world } = await atTheNorthEnd();
-    expect(manager!.walkRoute(world.route('1/40', '1/38'))).toBeNull();
-    manager!.stopMoving();
-    // Thirty-seven steps from the two it still owed: thirty-five further away
-    // than it was, over the thirty `resumeAskSteps` allows.
-    await standIn(socket, 1);
-    expect(manager!.startMoving(null, null)).toEqual({
-      confirm: { kind: 'route', name: 'Room 38', steps: 35 }
-    });
-    // Nothing was sent on the strength of a question.
-    expect(manager!.walker.progress.status).toBe('stopped');
-
-    expect(manager!.startMoving(null, 35)).toEqual({ started: true });
-    expect(manager!.walker.progress).toMatchObject({ status: 'walking', total: 37 });
-  });
-
-  /*
-   * A plan is drawn from where the character stood when it was drawn, and a
-   * lap, a party leader or a retreat moves it between the drawing and the
-   * press. `Walker.start` refuses such a plan — its first step leaves a room
-   * the character is not in — and that refusal used to be the whole answer,
-   * which left the panel's only button having just failed and no way forward
-   * but drawing the same plan again by hand. It is drawn again here instead.
-   */
-  it('redraws a plan the character strayed a few rooms from, and walks it', async () => {
-    const { socket, world, notices } = await atTheNorthEnd();
-    const plan = world.route('1/40', '1/30');
-    expect(plan.steps).toHaveLength(10);
-
-    // Five rooms down the corridor: inside the ten `replanDriftSteps` allows,
-    // and the way on from here asks for nothing the old way did not.
-    await standIn(socket, 35);
-    expect(manager!.walkPlan(plan)).toEqual({ started: true });
-    expect(manager!.walker.progress).toMatchObject({ status: 'walking', total: 5 });
-    // Said out loud: the steps walked are not the steps that were read.
-    expect(notices.some((line) => line.includes('drawn again from here'))).toBe(true);
-  });
-
-  /*
-   * And a character that has gone a long way is asked about rather than walked:
-   * the way from twenty rooms along is another journey, and what the reader
-   * gets back is the plan itself, to read and press again.
-   */
-  it('answers with the new plan when the character has strayed a long way', async () => {
-    const { socket, world } = await atTheNorthEnd();
-    const plan = world.route('1/40', '1/30');
-    await standIn(socket, 20);
-
-    const answer = manager!.walkPlan(plan);
-    expect(answer).toMatchObject({ replanned: { wandered: 20, demands: [] } });
-    // Nothing was sent on the strength of a question.
-    expect(manager!.walker.progress.status).toBe('idle');
-
-    expect('replanned' in answer).toBe(true);
-    const redrawn = (answer as { replanned: { route: Route } }).replanned.route;
-    expect(manager!.walkPlan(redrawn)).toEqual({ started: true });
-    expect(manager!.walker.progress).toMatchObject({ status: 'walking', total: 10 });
-  });
-
-  /* A plan drawn from where the character is standing is walked untouched. */
-  it('leaves a plan that still starts here alone', async () => {
-    const { world, notices } = await atTheNorthEnd();
-    expect(manager!.walkPlan(world.route('1/40', '1/38'))).toEqual({ started: true });
-    expect(manager!.walker.progress).toMatchObject({ status: 'walking', total: 2 });
-    expect(notices.some((line) => line.includes('drawn again'))).toBe(false);
-  });
-
-  /*
-   * A lap's leg is short only once the lap is being walked: the first leg of a
-   * lap across the realm is a journey. So the lap measures what the route
-   * measures — how much further away the character is than when it stopped —
-   * and a lap stopped for a breath and started again from the same room asks
-   * nothing, however far its leg still had to go (todo 03).
-   */
-  it('asks nothing about a long leg the character has not wandered off', async () => {
-    await atTheNorthEnd();
-    expect(
-      manager!.loops.start(
-        { name: 'lap', stops: [{ room: 'Room 1' }, { room: 'Room 2' }] },
-        manager!.character
-      )
-    ).toBeNull();
-    // Thirty-nine steps to the first stop, well past the thirty `resumeAskSteps`
-    // allows, and every one of them the lap's own business.
-    expect(manager!.walker.progress).toMatchObject({ status: 'walking', total: 39 });
-
-    manager!.stopMoving();
-    expect(manager!.startMoving('lap', null)).toEqual({ started: true });
-    expect(manager!.loops.progress.status).toBe('running');
-  });
-
-  it('asks before walking a wandered character back to its lap', async () => {
-    const { socket } = await atTheNorthEnd();
-    expect(
-      manager!.loops.start(
-        { name: 'lap', stops: [{ room: 'Room 38' }, { room: 'Room 36' }] },
-        manager!.character
-      )
-    ).toBeNull();
-    manager!.stopMoving();
-    // Two steps from the stop it was heading for when it stopped, thirty-seven
-    // from where the character has since been put: thirty-five further away.
-    await standIn(socket, 1);
-    expect(manager!.startMoving('lap', null)).toEqual({
-      confirm: { kind: 'loop', name: 'lap', steps: 35 }
-    });
-    expect(manager!.loops.progress.status).toBe('stopped');
-
-    expect(manager!.startMoving('lap', 35)).toEqual({ started: true });
-    expect(manager!.loops.progress.status).toBe('running');
-  });
-
-  /*
-   * A lap keeps its place through a stop, and the same play resumes it. The
-   * name the picker holds is the lap already stopped, which is what makes it a
-   * resume rather than a fresh start — a different name would start that one.
-   */
-  it('stops a lap and its leg together, and resumes the same lap', async () => {
-    await atTheNorthEnd();
-    expect(
-      manager!.loops.start(
-        { name: 'lap', stops: [{ room: 'Room 38' }, { room: 'Room 36' }] },
-        manager!.character
-      )
-    ).toBeNull();
-    expect(manager!.walker.progress.status).toBe('walking');
-
-    manager!.stopMoving();
-    expect(manager!.loops.progress).toMatchObject({ status: 'stopped', name: 'lap', stop: 1 });
-    expect(manager!.walker.progress.status).toBe('stopped');
-
-    expect(manager!.startMoving('lap', null)).toEqual({ started: true });
-    expect(manager!.loops.progress).toMatchObject({ status: 'running', name: 'lap', stop: 1 });
-  });
-
-  /*
-   * One movement at a time. A route asked for while a lap runs used to start
-   * both: `Walker.start` supersedes the leg silently, so the lap sat waiting
-   * for a leg that was never coming and then read the route's arrival as its
-   * own.
-   */
-  it('stops a running lap when the player asks for a route', async () => {
-    const { world } = await atTheNorthEnd();
-    manager!.loops.start(
-      { name: 'lap', stops: [{ room: 'Room 38' }, { room: 'Room 36' }] },
-      manager!.character
-    );
-    expect(manager!.loops.progress.status).toBe('running');
-
-    expect(manager!.walkRoute(world.route('1/40', '1/30'))).toBeNull();
-    expect(manager!.loops.progress).toMatchObject({
-      status: 'stopped',
-      reason: t('session.loop.stoppedForRoute')
-    });
-    // And the lap is left where it was, for the play that picks it back up.
-    expect(manager!.loops.progress.name).toBe('lap');
-    expect(manager!.movement).toEqual({ kind: 'route', moving: true, resumable: false });
-  });
-
-  it('refuses play while the character is already moving', async () => {
-    const { world } = await atTheNorthEnd();
-    expect(manager!.walkRoute(world.route('1/40', '1/30'))).toBeNull();
-    expect(manager!.startMoving(null, null)).toEqual({
-      refused: t('session.move.alreadyMoving')
-    });
-  });
-
-  it('refuses play when nothing has been walked at all', async () => {
-    await atTheNorthEnd();
-    expect(manager!.startMoving(null, null)).toEqual({
-      refused: t('session.move.nothingToResume')
-    });
-  });
-
-  /*
-   * Agreeing to a journey is agreeing to *that* journey.
-   *
-   * `confirmed` is the figure the player was shown, not a flag: the prompt
-   * sits open, the character is killed and reborn somewhere else, and *walk it
-   * back* would otherwise be a blank cheque for a walk across the realm — the
-   * exact sequence the prompt's own words describe.
-   */
-  it('asks again when the journey has grown since it was agreed to', async () => {
-    const { socket, world } = await atTheNorthEnd();
-    expect(manager!.walkRoute(world.route('1/40', '1/38'))).toBeNull();
-    manager!.stopMoving();
-    await standIn(socket, 5);
-    const asked = manager!.startMoving(null, null);
-    expect(asked).toMatchObject({ confirm: { steps: 31 } });
-
-    // Further away than the figure that was agreed to: asked afresh, and
-    // nothing walked on the strength of the old answer.
-    await standIn(socket, 1);
-    expect(manager!.startMoving(null, 31)).toEqual({
-      confirm: { kind: 'route', name: 'Room 38', steps: 35 }
-    });
-    expect(manager!.walker.progress.status).toBe('stopped');
-    // The figure it was actually shown walks it.
-    expect(manager!.startMoving(null, 35)).toEqual({ started: true });
-  });
-
-  /*
-   * A lap that was stopped keeps its place, so the walker is left holding the
-   * leg it was walking — and that stopped route is the lap's own footwork.
-   * Reported as a route it would take the card, and play would walk the leg
-   * rather than resume the lap.
-   */
-  it('picks the lap back up rather than the leg it left stopped', async () => {
-    await atTheNorthEnd();
-    manager!.loops.start(
-      { name: 'lap', stops: [{ room: 'Room 38' }, { room: 'Room 36' }] },
-      manager!.character
-    );
-    manager!.stopMoving();
-    expect(manager!.walker.progress).toMatchObject({ status: 'stopped', asked: false });
-    expect(manager!.movement).toEqual({ kind: 'loop', moving: false, resumable: true });
-    expect(manager!.startMoving(null, null)).toEqual({ started: true });
-    expect(manager!.loops.progress).toMatchObject({ status: 'running', name: 'lap' });
-  });
-
-  /*
-   * And the other way round: a route the player asked for stopped the lap, so
-   * when *it* stops the card has to go on reporting it. Drawn as the lap it
-   * displaced, the route's reason would be unreadable and play would walk away
-   * from where the player was going.
-   */
-  it('keeps reporting a route that displaced a lap, once it stops too', async () => {
-    const { world } = await atTheNorthEnd();
-    manager!.loops.start(
-      { name: 'lap', stops: [{ room: 'Room 38' }, { room: 'Room 36' }] },
-      manager!.character
-    );
-    expect(manager!.walkRoute(world.route('1/40', '1/30'))).toBeNull();
-    manager!.stopMoving();
-    expect(manager!.movement).toEqual({ kind: 'route', moving: false, resumable: true });
-    expect(manager!.walker.progress.asked).toBe(true);
-  });
-
-  /* One movement at a time from every door, not only from a route: a lap
-     started from the palette takes the character off the route it was walking,
-     out loud, rather than being superseded silently by its own first leg. */
-  it('stops a route the player was walking when a lap is started', async () => {
-    const { world } = await atTheNorthEnd();
-    expect(manager!.walkRoute(world.route('1/40', '1/30'))).toBeNull();
-    expect(
-      manager!.startLoop({ name: 'lap', stops: [{ room: 'Room 38' }, { room: 'Room 36' }] })
-    ).toEqual({ started: true });
-    expect(manager!.loops.progress.status).toBe('running');
-  });
-});
-
-/**
- * Back: one room the way the character came, per press.
- *
- * The trail is a list of rooms and the move that joined each pair, so going
- * back is a **route to the previous room** and never the opposite of the last
- * direction — the one-way corridor below is the whole reason. And the entry is
- * given up when the character arrives, so the second press goes one further
- * back rather than returning to where the first press started (todo 04).
- */
-describe('stepping back the way the character came', () => {
-  /**
-   * Shore —n→ Cliff Path —e→ Lookout —w→ Shore: a ring walked one way only.
-   * The step out of Shore has no opposite, which is what makes going back two
-   * steps instead of one.
-   */
-  const ring = (): WorldGraph => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mudengine-back-'));
-    const file = path.join(dir, 'rooms.jsonl.gz');
-    const rooms = [
-      { m: 1, r: 1, n: 'Shore', x: { n: { m: 1, r: 2 } } },
-      { m: 1, r: 2, n: 'Cliff Path', x: { e: { m: 1, r: 3 } } },
-      { m: 1, r: 3, n: 'Lookout', x: { w: { m: 1, r: 1 } } }
-    ];
-    fs.writeFileSync(
-      file,
-      zlib.gzipSync(
-        [
-          JSON.stringify({ v: 1, source: 'test', rooms: rooms.length, generatedAt: 'x' }),
-          ...rooms.map((room) => JSON.stringify(room))
-        ].join('\n') + '\n'
-      )
-    );
-    const world = WorldGraph.load(file);
-    fs.rmSync(dir, { recursive: true, force: true });
-    return world;
-  };
-
-  /** Shore —n⇄s— Beach —n⇄s— Dunes: an ordinary corridor, walkable both ways. */
-  const beach = (): WorldGraph => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mudengine-back-line-'));
-    const file = path.join(dir, 'rooms.jsonl.gz');
-    const rooms = [
-      { m: 1, r: 1, n: 'Shore', x: { n: { m: 1, r: 2 } } },
-      { m: 1, r: 2, n: 'Beach', x: { n: { m: 1, r: 3 }, s: { m: 1, r: 1 } } },
-      { m: 1, r: 3, n: 'Dunes', x: { s: { m: 1, r: 2 } } }
-    ];
-    fs.writeFileSync(
-      file,
-      zlib.gzipSync(
-        [
-          JSON.stringify({ v: 1, source: 'test', rooms: rooms.length, generatedAt: 'x' }),
-          ...rooms.map((room) => JSON.stringify(room))
-        ].join('\n') + '\n'
-      )
-    );
-    const world = WorldGraph.load(file);
-    fs.rmSync(dir, { recursive: true, force: true });
-    return world;
-  };
-
-  const quiet: AutomationConfig = {
-    ...DEFAULT_CONFIG.automation,
-    enabled: true,
-    idle: { ...DEFAULT_CONFIG.automation.idle, enabled: false },
-    onEnterRealm: [],
-    rules: []
-  };
-
-  /** On the shore, in the realm, with a prompt's credit to spend. */
-  async function onTheShore(world = ring()): Promise<{
-    socket: net.Socket;
-    world: WorldGraph;
-    wire: () => string;
-  }> {
-    const { sink } = collect();
-    manager = new SessionManager(sink, world, quiet);
-    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
-    const socket = await client();
-    const chunks: Buffer[] = [];
-    socket.on('data', (chunk) => chunks.push(chunk));
-    socket.write('[HP=100/MA=50]:' + PROMPT_REPAINT);
-    socket.write('Location:            1,1\r\nShore\r\nObvious exits: north\r\n');
-    await until(() => manager!.character.room.number === 1);
-    return { socket, world, wire: () => Buffer.concat(chunks).toString('latin1') };
-  }
-
-  /**
-   * The step reaches the wire, and the room it lands in comes back.
-   *
-   * **Waiting for the command first is load-bearing**: the arriving room is
-   * what *answers the expectation the step queued*, and a room block written
-   * before the step is sent resolves off the map instead — which places the
-   * character correctly and records no move, so nothing reaches the trail.
-   *
-   * The block is the name and its exits with no `Location:` line, for the same
-   * reason: a stated location is a placement, and this is an arrival.
-   */
-  async function lands(
-    socket: net.Socket,
-    wire: () => string,
-    command: string,
-    name: string,
-    exits: string
-  ): Promise<void> {
-    const before = wire().length;
-    await until(() => wire().slice(before).includes(`${command}\r\n`));
-    socket.write(`${name}\r\nObvious exits: ${exits}\r\n`);
-    /*
-     * And the prompt behind it, which every room block on the wire carries.
-     * It is the credit the queue's *next* command waits on — without it a
-     * fake host of three rooms is a session where the fourth command never
-     * goes out, which is the harness's budget and not the client's.
-     */
-    socket.write('[HP=100/MA=50]:' + PROMPT_REPAINT);
-    await until(() => manager!.character.room.name === name);
-  }
-
-  it('asks before a back press becomes a journey, and walks it when agreed', async () => {
-    const { socket, world, wire } = await onTheShore();
-    expect(manager!.walkRoute(world.route('1/1', '1/2'))).toBeNull();
-    await lands(socket, wire, 'n', 'Cliff Path', 'east');
-
-    // No way back west: the ring is walked round, which is two steps.
-    expect(manager!.stepBack(null)).toEqual({ confirm: { kind: 'back', name: 'Shore', steps: 2 } });
-    // Nothing was sent on the strength of a question.
-    expect(manager!.walker.progress.status).not.toBe('walking');
-
-    expect(manager!.stepBack(2)).toEqual({ started: true });
-    expect(manager!.walker.progress).toMatchObject({ status: 'walking', total: 2 });
-  });
-
-  /*
-   * And the entry is given up on arrival. Without that, the walk back records
-   * itself and the next press walks back over *that* — two rooms oscillating
-   * for ever, which is the naive reverse under another name.
-   */
-  it('gives the step up on arrival, so the next press goes one further back', async () => {
-    const { socket, world, wire } = await onTheShore(beach());
-    expect(manager!.walkRoute(world.route('1/1', '1/3'))).toBeNull();
-    await lands(socket, wire, 'n', 'Beach', 'north, south');
-    await lands(socket, wire, 'n', 'Dunes', 'south');
-
-    // One step south, the way the trail says it came.
-    expect(manager!.stepBack(null)).toEqual({ started: true });
-    expect(manager!.walker.progress).toMatchObject({
-      status: 'walking',
-      destinationRoom: { map: 1, room: 2 }
-    });
-    await lands(socket, wire, 's', 'Beach', 'north, south');
-
-    // Not back to the Dunes it has just come from: one further back.
-    expect(manager!.stepBack(null)).toEqual({ started: true });
-    expect(manager!.walker.progress.destinationRoom).toEqual({ map: 1, room: 1 });
-  });
-
-  it('refuses a back press with nothing behind the character', async () => {
-    await onTheShore();
-    expect(manager!.stepBack(null)).toEqual({ refused: t('session.back.nothingBehind') });
-  });
-});
-
 /*
  * Healbot against three dark goblins, 2026-09-22
  * (`2026-09-22_22-34-44_healbot.mudcap.jsonl`), played back a round at a time.
@@ -7529,16 +2658,9 @@ describe('the fight of 2026-09-22', () => {
   const ROOM =
     'Darkwood Forest\r\nAlso here: nasty dark goblin, dark goblin, short dark goblin.\r\n' +
     'Obvious exits: north, west, southeast\r\n';
-  const ROUND =
-    'The nasty dark goblin smashes you for 11 damage!\r\n[HP=229/MA=214]:\r\n' +
-    'The dark goblin smashes you for 8 damage!\r\n[HP=221/MA=214]:\r\n' +
-    'The short dark goblin smashes you for 6 damage!\r\n[HP=215/MA=214]:\r\n';
   const fighting = (): AutomationConfig => ({
     ...DEFAULT_CONFIG.automation,
     enabled: true,
-    idle: { ...DEFAULT_CONFIG.automation.idle, enabled: false },
-    onEnterRealm: [],
-    rules: [],
     combat: { ...DEFAULT_CONFIG.automation.combat, enabled: true }
   });
   const wire = (socket: net.Socket): (() => string) => {
@@ -7546,16 +2668,6 @@ describe('the fight of 2026-09-22', () => {
     socket.on('data', (chunk) => chunks.push(chunk));
     return () => Buffer.concat(chunks).toString('latin1');
   };
-  const attacks = (seen: string): string[] => seen.match(/(^|\n)a [^\r]+/g) ?? [];
-
-  beforeEach(() => {
-    // A cooldown shorter than the gap between rounds, as the real one (4s)
-    // is shorter than the realm's (5s), so a round is always past it.
-    setTuning({
-      ...DEFAULT_INTERNAL.tuning,
-      combat: { ...DEFAULT_INTERNAL.tuning.combat, engageCooldownMs: 150 }
-    });
-  });
 
   async function inTheForest(): Promise<{
     socket: net.Socket;
@@ -7572,52 +2684,6 @@ describe('the fight of 2026-09-22', () => {
     return { socket, seen, notices };
   }
 
-  it('hits back at one goblin, not at each as it swings', async () => {
-    const { socket, seen } = await inTheForest();
-    socket.write(ROUND);
-    await settled(215);
-    await new Promise((resolve) => setTimeout(resolve, 100));
-    expect(attacks(seen())).toHaveLength(1);
-  });
-
-  it('keeps the target the engagement answered, and does not re-attack next round', async () => {
-    const { socket, seen } = await inTheForest();
-    socket.write(ROUND);
-    await until(() => attacks(seen()).length === 1);
-    socket.write('*Combat Engaged*\r\n[HP=215/MA=214]:\r\n');
-    await until(() => manager!.character.combat.target !== null);
-    // Past the cooldown, as the next round always is.
-    await new Promise((resolve) => setTimeout(resolve, 300));
-    socket.write(ROUND.replace(/HP=2(\d\d)/g, 'HP=1$1'));
-    await settled(115);
-    await new Promise((resolve) => setTimeout(resolve, 100));
-    expect(attacks(seen())).toHaveLength(1);
-  });
-
-  /*
-   * A drop is rarely announced — only a look's `You notice … here.` shows a
-   * key on the floor — so a death is followed by one Enter (2026-09-23). The
-   * death sentence and the experience line are one kill, and one read.
-   */
-  it('reads the room once after a kill, to see what was dropped', async () => {
-    const { socket, seen } = await inTheForest();
-    // Everything the client wrote, one command per entry.
-    const sent = (): string[] =>
-      seen()
-        .split(/\r\n?|\n/)
-        .slice(0, -1);
-    socket.write(ROUND);
-    await until(() => attacks(seen()).length === 1);
-    const before = sent().filter((line) => line === '').length;
-    socket.write(
-      'The dark goblin spits up blood and dies!\r\n[HP=215/MA=214]:\r\n' +
-        'You gain 735 experience.\r\n[HP=215/MA=214]:\r\n'
-    );
-    await until(() => sent().filter((line) => line === '').length > before);
-    await new Promise((resolve) => setTimeout(resolve, tuning().combat.lookAfterKillMs + 200));
-    expect(sent().filter((line) => line === '').length).toBe(before + 1);
-  });
-
   /*
    * The player (2026-09-23): *ALWAYS be sending enter after a monster dies,
    * leaves the room, or enters the room*. Fifteen dogs walked in on skinny,
@@ -7625,59 +2691,20 @@ describe('the fight of 2026-09-22', () => {
    * first kill. A burst of arrivals is every one of them on the list, and one
    * Enter once the burst is in.
    */
-  it('counts every monster that walks in, and reads the room once after the burst', async () => {
-    const { socket, seen } = await inTheForest();
-    const sent = (): string[] =>
-      seen()
-        .split(/\r\n?|\n/)
-        .slice(0, -1);
+  it('counts every monster that walks in', async () => {
+    const { socket } = await inTheForest();
     const before = manager!.character.room.occupants.length;
-    const enters = sent().filter((line) => line === '').length;
     socket.write(
       'A dark goblin moves into the room from the north.\r\n'.repeat(3) + '[HP=240/MA=214]:\r\n'
     );
     await until(() => manager!.character.room.occupants.length === before + 3);
-    await until(() => sent().filter((line) => line === '').length > enters);
-    await new Promise((resolve) => setTimeout(resolve, tuning().combat.lookAfterKillMs + 200));
-    expect(sent().filter((line) => line === '').length).toBe(enters + 1);
   });
 
-  it('reads the room after a monster walks out', async () => {
-    const { socket, seen } = await inTheForest();
-    const sent = (): string[] =>
-      seen()
-        .split(/\r\n?|\n/)
-        .slice(0, -1);
+  it('counts a monster that walks out', async () => {
+    const { socket } = await inTheForest();
     const before = manager!.character.room.occupants.length;
-    const enters = sent().filter((line) => line === '').length;
     socket.write('The dark goblin leaves to the north.\r\n[HP=240/MA=214]:\r\n');
     await until(() => manager!.character.room.occupants.length === before - 1);
-    await until(() => sent().filter((line) => line === '').length > enters);
-  });
-
-  it('goes on fighting after an attack on a goblin that has already died is said out loud', async () => {
-    const { socket, seen, notices } = await inTheForest();
-    socket.write(ROUND);
-    await until(() => attacks(seen()).length === 1);
-    socket.write('*Combat Engaged*\r\n[HP=215/MA=214]:\r\n');
-    await until(() => manager!.character.combat.target !== null);
-
-    // The short one dies; an attack on it was already on its way.
-    manager!.send('a short dark goblin\r');
-    socket.write(
-      'You critically whap short dark goblin for 23 damage!\r\n[HP=215/MA=214]:\r\n' +
-        'The dark goblin spits up blood and dies!\r\n[HP=215/MA=214]:\r\n' +
-        'You gain 735 experience.\r\n[HP=215/MA=214]:\r\n*Combat Off*\r\n[HP=215/MA=214]:\r\n' +
-        'You say "a short dark goblin"\r\n[HP=215/MA=214]:\r\n'
-    );
-    await until(() => !manager!.character.inCombat);
-    await new Promise((resolve) => setTimeout(resolve, 300));
-    expect(notices.some((notice) => /has no .*command/.test(notice))).toBe(false);
-
-    // And the next goblin to swing is hit back.
-    const before = attacks(seen()).length;
-    socket.write('The nasty dark goblin smashes you for 7 damage!\r\n[HP=208/MA=214]:\r\n');
-    await until(() => attacks(seen()).length > before);
   });
 });
 
@@ -7753,7 +2780,7 @@ describe('the hunting survey prices a kill off the fight record', () => {
     manager = new SessionManager(
       sink,
       lairs(),
-      { ...DEFAULT_CONFIG.automation, enabled: false, onEnterRealm: [], rules: [] },
+      { ...DEFAULT_CONFIG.automation, enabled: false },
       DEFAULT_CONFIG.connection.login,
       undefined,
       undefined,
@@ -7866,43 +2893,7 @@ describe('monsters the table says to run from or hang up on', () => {
   const automation = (over: Partial<(typeof DEFAULT_CONFIG)['automation']> = {}) => ({
     ...DEFAULT_CONFIG.automation,
     enabled: true,
-    idle: { ...DEFAULT_CONFIG.automation.idle, enabled: false },
-    onEnterRealm: [],
-    rules: [],
     ...over
-  });
-
-  const wire = (socket: net.Socket): (() => string) => {
-    const chunks: Buffer[] = [];
-    socket.on('data', (chunk) => chunks.push(chunk));
-    return () => Buffer.concat(chunks).toString('latin1');
-  };
-
-  it('runs from a monster the realm marks Flee, before any fight and with retreat off', async () => {
-    const { sink, notices } = collect();
-    manager = new SessionManager(
-      sink,
-      undefined,
-      automation({
-        // The character's own row names only a spell; the realm's Flee holds.
-        combat: {
-          ...DEFAULT_CONFIG.automation.combat,
-          monsters: [{ mob: 'gigantic black ooze', attack: { spell: 'mmis', max: 0 } }]
-        }
-      })
-    );
-    manager.configureRealm({
-      ...NO_REALM,
-      monsters: [{ mob: 'gigantic black ooze', relationship: 'escape' }]
-    });
-    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
-    const socket = await client();
-    const seen = wire(socket);
-    socket.write(OOZE_ROOM);
-
-    await until(() => notices.some((notice) => /Running n:/.test(notice)));
-    expect(notices.find((notice) => /Running n:/.test(notice))).toMatch(/gigantic black ooze/);
-    await until(() => /\bn\r\n/.test(seen()));
   });
 
   it('does nothing about a monster the table does not name', async () => {
@@ -7919,35 +2910,6 @@ describe('monsters the table says to run from or hang up on', () => {
     await new Promise((resolve) => setTimeout(resolve, 100));
     expect(notices.some((notice) => /Running/.test(notice))).toBe(false);
   });
-
-  it('hangs up on a monster the table says to, with the health switch off', async () => {
-    const { sink, notices } = collect();
-    manager = new SessionManager(
-      sink,
-      undefined,
-      automation({
-        safety: {
-          ...DEFAULT_CONFIG.automation.safety,
-          hangUp: {
-            ...DEFAULT_CONFIG.automation.safety.hangUp,
-            enabled: false,
-            penalties: false
-          }
-        }
-      })
-    );
-    manager.configureRealm({
-      ...NO_REALM,
-      monsters: [{ mob: 'gigantic black ooze', relationship: 'hangup' }]
-    });
-    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
-    const socket = await client();
-    socket.write(OOZE_ROOM);
-
-    await until(() => notices.some((notice) => /Hanging up/.test(notice)));
-    expect(notices.find((notice) => /Hanging up/.test(notice))).toMatch(/gigantic black ooze/);
-    await until(() => manager?.state.phase === 'closing' || manager?.state.phase === 'closed');
-  });
 });
 
 /*
@@ -7961,9 +2923,6 @@ describe('a talk-box line of several commands', () => {
     ...DEFAULT_CONFIG.automation,
     // Off: the player's own line goes whatever the master switch says.
     enabled: false,
-    idle: { ...DEFAULT_CONFIG.automation.idle, enabled: false },
-    onEnterRealm: [],
-    rules: [],
     pacing: { window: 2, minGapMs: 10, ackTimeoutMs: 30_000 }
   };
 
@@ -8021,57 +2980,702 @@ describe('a talk-box line of several commands', () => {
     expect(manager!.queue.snapshot.depth).toBe(0);
     expect(sent).toEqual([]);
   });
-
-  it('drops what is still waiting at the box’s press, and at a death, and says so', async () => {
-    const { socket, sent, notices } = await inTheRealm();
-    manager!.sendMacro('4s');
-    await until(() => sent.length === 2);
-    manager!.dropTyped();
-    expect(notices).toContain(t('session.macro.dropped.many', { count: 2 }));
-    expect(manager!.queue.snapshot.depth).toBe(0);
-
-    // Two still in flight, so all three of these wait.
-    manager!.sendMacro('3n');
-    expect(manager!.queue.snapshot.depth).toBe(3);
-    socket.write('You have been killed!\r\n');
-    await until(() => notices.includes(t('session.macro.droppedDied.many', { count: 3 })));
-    expect(manager!.queue.snapshot.depth).toBe(0);
-  });
 });
 
-/*
- * Skinny Inc prints its runic coin as `Krabby Patties` in the pack, on the
- * floor and in a drop line (2026-09-24). The realm says so once, in its
- * `coins:`, and every reader goes on reading the stock coin.
- */
-describe('a realm that renames a coin', () => {
-  it('counts it in the purse and picks it up by the realm’s word', async () => {
+describe('the MegaMUD engine’s monsters', () => {
+  /* Skinny's Flee for the forgotten dragon slayer never reached the engine, which fought it (2026-10-13). */
+  it('are our monster table: the realm’s rows under the character’s, then and on a change', () => {
     const { sink } = collect();
     manager = new SessionManager(sink, undefined, {
       ...DEFAULT_CONFIG.automation,
-      enabled: true,
-      onEnterRealm: [],
-      idle: { ...DEFAULT_CONFIG.automation.idle, enabled: false },
-      rules: [],
-      loot: { ...DEFAULT_CONFIG.automation.loot, coins: true }
+      combat: {
+        ...DEFAULT_CONFIG.automation.combat,
+        monsters: [{ mob: 'forgotten dragon slayer', relationship: 'escape' }]
+      }
     });
-    manager.configureRealm({ ...NO_REALM, coins: { runic: 'Krabby Patties' } });
-    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
-    const socket = await client();
-    let wire = '';
-    socket.on('data', (chunk) => (wire += chunk.toString('latin1')));
+    manager.configureRealm({
+      ...NO_REALM,
+      monsters: [{ mob: 'forgotten dragon slayer', relationship: 'friend', notHostile: true }]
+    });
+    manager.useMegaMud({
+      settings: defaultSettings(),
+      data: { monsters: [], items: [], spells: [] },
+      grants: {}
+    });
+    const mega = (manager as unknown as { mega: MegaEngine }).mega;
+    const slayer = () => mega.s.data.monsters.find((m) => m.name === 'forgotten dragon slayer');
+    expect(slayer()).toMatchObject({ relationship: 5 });
+    expect(slayer()!.flags & MonsterFlag.NotHostile).toBe(0x200);
 
-    socket.write(
-      '[HP=100/MA=50]:You are carrying 14 Krabby Patties, 65 platinum pieces, waterskin\r\n' +
-        'Wealth: 14650000 copper farthings\r\n' +
-        'Encumbrance: 1955/4560 - Medium [42%]\r\n[HP=100/MA=50]:'
+    manager.configureRealm({
+      ...NO_REALM,
+      monsters: [{ mob: 'lost soul', relationship: 'friend' }]
+    });
+    expect(mega.s.data.monsters.find((m) => m.name === 'lost soul')).toMatchObject({
+      relationship: 2
+    });
+  });
+});
+
+describe('the MegaMUD engine’s progress', () => {
+  /* The cards drew the old loop runner's idle progress while the engine looped (2026-10-13). */
+  it('reaches the cards in place of the walker’s, with the experience at the run’s start', () => {
+    const { sink } = collect();
+    const loops: LoopProgress[] = [];
+    const walks: WalkProgress[] = [];
+    sink.loop = (progress) => loops.push(progress);
+    sink.walk = (progress) => walks.push(progress);
+    manager = new SessionManager(sink);
+    manager.useMegaMud({
+      settings: defaultSettings(),
+      data: { monsters: [], items: [], spells: [] },
+      grants: {}
+    });
+    const host = (manager as unknown as { mega: { host: MegaEngineHost } }).mega.host;
+    const running = { ...NO_LOOP, status: 'running' as const, name: 'Ring', startedAt: 1000 };
+    host.progressed!(IDLE_WALK, running);
+    expect(loops.at(-1)).toMatchObject({ name: 'Ring', expAtStart: null });
+    expect(walks.at(-1)).toBe(IDLE_WALK);
+
+    manager.useMegaMud(null);
+    expect(loops.at(-1)!.status).toBe('idle');
+  });
+});
+
+describe('what the MegaMUD engine was walking, taken up again', () => {
+  /*
+   * A server restarted, a Disconnect and a Connect: the loop or the route that
+   * was going is taken up again in the game (2026-10-14).
+   */
+  const ring: Loop = { name: 'Ring', stops: [{ room: 'Shore' }, { room: 'Pool Edge' }] };
+  const running = { ...NO_LOOP, status: 'running' as const, name: 'Ring', startedAt: 1000 };
+  const stopped = { ...running, status: 'stopped' as const };
+
+  /** The session's own loop start, which a resume takes: not the player's `startLoop`. */
+  const resumer = () => manager as unknown as { beginLoop: (loop: Loop) => { started: true } };
+
+  function engine(kept: ResumableMovement | null = null) {
+    const collected = collect();
+    manager = new SessionManager(collected.sink);
+    manager.useMegaMud({
+      settings: defaultSettings(),
+      data: { monsters: [], items: [], spells: [] },
+      grants: {}
+    });
+    const written: (ResumableMovement | null)[] = [];
+    manager.useMovementBook(kept, (m) => written.push(m));
+    const inside = manager as unknown as { mega: MegaEngine; megaLoops: Map<string, Loop> };
+    const host = (inside.mega as unknown as { host: MegaEngineHost }).host;
+    return { inside, host, written, notices: collected.notices };
+  }
+
+  it('keeps a running loop, and lets it go when it stops in the game', () => {
+    const { inside, host, written } = engine();
+    inside.mega.s.inGame = 1;
+    host.progressed!(IDLE_WALK, running);
+    expect(written).toEqual([{ loop: 'Ring' }]);
+    host.progressed!(IDLE_WALK, stopped);
+    expect(written).toEqual([{ loop: 'Ring' }, null]);
+  });
+
+  it('keeps it when it stops out of the game: a Disconnect, a hang-up, a dropped line', () => {
+    const { inside, host, written } = engine();
+    inside.mega.s.inGame = 1;
+    host.progressed!(IDLE_WALK, running);
+    inside.mega.s.inGame = 0;
+    host.progressed!(IDLE_WALK, stopped);
+    expect(written).toEqual([{ loop: 'Ring' }]);
+  });
+
+  it('takes the loop up again once in the game', async () => {
+    const { inside, host, notices } = engine({ loop: 'Ring' });
+    inside.megaLoops.set('Ring', ring);
+    const start = vi.spyOn(resumer(), 'beginLoop').mockReturnValue({ started: true });
+    host.enteredGame!();
+    await Promise.resolve();
+    expect(start).toHaveBeenCalledWith(ring);
+    expect(notices).toContain(t('session.move.resumingLoop', { loopName: 'Ring' }));
+  });
+
+  it('walks on to where a route was going', async () => {
+    const { inside, host } = engine({ to: '1/2', run: true });
+    const walk = vi.spyOn(inside.mega, 'walkTo').mockReturnValue(null);
+    host.enteredGame!();
+    await Promise.resolve();
+    expect(walk).toHaveBeenCalledWith('1/2', true, true);
+  });
+
+  /*
+   * A route the player walks is walked alone: MegaMUD takes up whatever loop
+   * path it still holds on arriving, and Stop leaves it loaded, so a route
+   * after a lap walked back into the lap (2026-10-16). Only a restart or a
+   * lost line takes a loop up again.
+   */
+  it('walks a route the player asks for alone, so no stopped lap follows it', () => {
+    const { inside, written } = engine();
+    inside.mega.s.inGame = 1;
+    const walk = vi.spyOn(inside.mega, 'walkTo').mockReturnValue(null);
+    const route = { steps: [{ to: '1/2' }] } as unknown as Parameters<
+      SessionManager['walkRoute']
+    >[0];
+    expect(manager!.walkRoute(route)).toBeNull();
+    // The route itself, which the engine walks as planned.
+    expect(walk).toHaveBeenCalledWith('1/2', false, true, route);
+    expect(written).toEqual([{ to: '1/2', run: false }]);
+  });
+
+  it('leaves be what MegaMUD’s own On entry started, and lets a loop filed nowhere go', async () => {
+    const walking = engine({ loop: 'Ring' });
+    walking.inside.mega.s.walking = 1;
+    const start = vi.spyOn(resumer(), 'beginLoop');
+    walking.host.enteredGame!();
+    await Promise.resolve();
+    expect(start).not.toHaveBeenCalled();
+
+    const gone = engine({ loop: 'Hunt 3' });
+    gone.host.enteredGame!();
+    await Promise.resolve();
+    expect(gone.written).toEqual([null]);
+    expect(gone.notices).toContain(t('session.move.resumeGone', { loopName: 'Hunt 3' }));
+  });
+});
+
+describe('the actions kept beside the MegaMUD engine', () => {
+  /*
+   * Auto-hunt walks to its lair and runs a loop it sized and filed nowhere:
+   * the engine's Go To and loop for a character it runs (2026-10-14).
+   */
+  let notices: string[] = [];
+  const engine = () => {
+    const collected = collect();
+    notices = collected.notices;
+    manager = new SessionManager(collected.sink);
+    manager.useMegaMud({
+      settings: defaultSettings(),
+      data: { monsters: [], items: [], spells: [] },
+      grants: {}
+    });
+    return (manager as unknown as { mega: { host: MegaEngineHost } }).mega.host;
+  };
+
+  /* A ward or a key off the floor: MegaMUD's pending list, which holds its walk (2026-10-14). */
+  it('put their commands on the engine’s pending list, said sent when it sends them', () => {
+    engine();
+    type Probe = { command: string; priority: 'probe'; coalesceKey?: string; onSent?: () => void };
+    const inside = manager as unknown as {
+      keptQueue: {
+        enqueue(intent: Probe): boolean;
+        cancel(match: (intent: Probe) => boolean): number;
+        queued(match: (intent: Probe) => boolean): boolean;
+      };
+      mega: MegaEngine;
+    };
+    // In the game: out of it, MegaMUD sends a queued command at once.
+    inside.mega.s.inGame = 1;
+    const sent = vi.fn();
+    const ours = (intent: Probe) => intent.coalesceKey === 'ward';
+    inside.keptQueue.enqueue({
+      command: 'use amulet',
+      priority: 'probe',
+      coalesceKey: 'ward',
+      onSent: sent
+    });
+    expect(inside.mega.s.pending.map((p) => p.text)).toEqual(['use amulet\r']);
+    expect([sent.mock.calls.length, inside.keptQueue.queued(ours)]).toEqual([0, true]);
+
+    pendingPump(inside.mega.s);
+    expect([sent.mock.calls.length, inside.keptQueue.queued(ours)]).toEqual([1, false]);
+
+    inside.keptQueue.enqueue({ command: 'say hi', priority: 'probe', coalesceKey: 'ward' });
+    expect(inside.keptQueue.cancel(ours)).toBe(1);
+    expect(inside.mega.s.pending).toEqual([]);
+  });
+
+  /* MegaMUD buys only on its loop's start detour: an errand's purchase is ours (2026-10-14). */
+  it('buy at the counter a buy at a time, done when the pack holds it, given up when nothing came', () => {
+    vi.useFakeTimers();
+    engine();
+    const inside = manager as unknown as {
+      mega: MegaEngine;
+      megaBuying: unknown;
+      megaBuyTick(state: CharacterState): void;
+    };
+    inside.mega.s.inGame = 1;
+    const row = { name: 'torch', min: 1, max: 1, shop: 'General Store', at: null };
+    const holding = (names: string[]) =>
+      ({
+        ...manager!.character,
+        inventory: { ...manager!.character.inventory, items: names.map((name) => ({ name })) }
+      }) as unknown as CharacterState;
+    const counter = () => ({ row, room: '1/1', shop: 'General Store', at: true, asked: null });
+
+    inside.megaBuying = counter();
+    inside.megaBuyTick(holding([]));
+    expect(inside.mega.s.pending.map((p) => p.text)).toEqual(['buy torch\r']);
+    inside.megaBuyTick(holding([]));
+    expect(inside.mega.s.pending).toHaveLength(1);
+    pendingPump(inside.mega.s);
+    inside.megaBuyTick(holding(['torch']));
+    expect(inside.megaBuying).toBeNull();
+
+    inside.megaBuying = counter();
+    inside.megaBuyTick(holding([]));
+    pendingPump(inside.mega.s);
+    vi.advanceTimersByTime(tuning().supplies.buyTimeoutMs + 1);
+    inside.megaBuyTick(holding([]));
+    expect(inside.megaBuying).toBeNull();
+    expect(notices.at(-1)).toBe(
+      t('automation.collect.megaNotBought', {
+        item: 'torch',
+        shop: 'General Store',
+        why: t('automation.collect.whyNotSold', { shop: 'General Store' })
+      })
     );
-    await until(() => manager!.character.inventory.listedAt !== null);
-    expect(manager.character.inventory.coins.runic).toBe(14);
-    expect(manager.character.inventory.items.map((item) => item.name)).toEqual(['waterskin']);
+  });
 
-    socket.write('1 Krabby Patties drop to the ground.\r\n[HP=100/MA=50]:');
-    await until(() => wire.includes('get krabby\r\n'));
-    expect(wire).not.toContain('get runic');
+  /*
+   * The Explorer's Buy and an errand's purchase alike (2026-10-18): what the
+   * counter charges this character against the purse, and the vault the
+   * record says covers a shortfall, drawn from first; refused, and said why,
+   * where none is known to.
+   */
+  describe('paying for a purchase', () => {
+    const vault = {
+      shop: 7,
+      name: 'Bank of Silvermere',
+      map: 1,
+      room: 5,
+      roomName: 'Town Bank',
+      copper: 900,
+      detour: 2,
+      moves: 4
+    };
+    const setUp = (wealth: number | null, banks: Array<{ name: string; copper: number }>) => {
+      engine();
+      const inside = manager as unknown as {
+        mega: MegaEngine;
+        megaBuying: { cash?: unknown } | null;
+        tracker: object;
+        world: unknown;
+        priceAt(name: string, shop: string): number | null;
+        fundsFor(
+          name: string,
+          counter: string,
+          count: number
+        ): { price: number | null; withdraw: number; bank?: unknown; refusal?: string };
+        megaBuyTick(state: CharacterState): void;
+        wearBought(name: string, remove: readonly string[]): void;
+        learnBought(name: string): void;
+        purchaseFor(item: { id: number; name: string }): { item: number; price: number | null };
+      };
+      inside.mega.s.inGame = 1;
+      let state = {
+        ...manager!.character,
+        room: { ...manager!.character.room, map: 1, number: 1 },
+        progress: { ...manager!.character.progress, charm: 50 },
+        inventory: { ...manager!.character.inventory, wealth, items: [] },
+        banks: banks.map((bank) => ({ shop: 7, at: 0, ...bank }))
+      } as unknown as CharacterState;
+      Object.defineProperty(inside.tracker, 'current', { get: () => state });
+      const cashPlaces = vi.fn((balances: ReadonlyArray<{ copper: number }>, need: number) =>
+        balances.some((bank) => bank.copper >= need) ? [vault] : []
+      );
+      inside.world = { cashPlaces };
+      inside.priceAt = () => 500;
+      const set = (change: Partial<CharacterState>) => (state = { ...state, ...change });
+      return { inside, cashPlaces, set, state: () => state };
+    };
+
+    it('goes straight to the counter with the price on hand', () => {
+      const { inside, cashPlaces } = setUp(600, []);
+      expect(inside.fundsFor('broadsword', '1/9', 1)).toEqual({
+        price: 500,
+        purse: 600,
+        withdraw: 0,
+        need: 500,
+        shortfall: 0
+      });
+      expect(cashPlaces).not.toHaveBeenCalled();
+    });
+
+    it('draws the shortfall from a vault the record says holds it', () => {
+      const { inside, cashPlaces } = setUp(200, [{ name: 'Bank of Silvermere', copper: 900 }]);
+      const funds = inside.fundsFor('broadsword', '1/9', 1);
+      expect([funds.withdraw, funds.bank, funds.refusal]).toEqual([300, vault, undefined]);
+      expect(cashPlaces).toHaveBeenCalledWith(
+        expect.anything(),
+        300,
+        '1/1',
+        '1/9',
+        expect.anything()
+      );
+    });
+
+    /*
+     * The Cash tab's minimum cash on hand kept after buying (2026-10-19), as
+     * MegaMUD's own withdrawal adds it (D41): topped up where the purse pays
+     * and would fall under it, and the price alone where no vault covers both.
+     */
+    it('withdraws enough to keep the minimum cash on hand after buying', () => {
+      const covered = setUp(600, [{ name: 'Bank of Silvermere', copper: 900 }]);
+      covered.inside.mega.s.Cash_MinWealth = 300;
+      expect(covered.inside.fundsFor('broadsword', '1/9', 1)).toMatchObject({
+        withdraw: 200,
+        need: 800,
+        shortfall: 0,
+        bank: vault
+      });
+      const short = setUp(200, [{ name: 'Bank of Silvermere', copper: 900 }]);
+      short.inside.mega.s.Cash_MinWealth = 300;
+      expect(short.inside.fundsFor('broadsword', '1/9', 1)).toMatchObject({
+        withdraw: 600,
+        need: 800,
+        shortfall: 300
+      });
+      // A vault that holds the price's shortfall and not the minimum besides.
+      const lean = setUp(200, [{ name: 'Bank of Silvermere', copper: 400 }]);
+      lean.inside.mega.s.Cash_MinWealth = 300;
+      expect(lean.inside.fundsFor('broadsword', '1/9', 1)).toMatchObject({
+        withdraw: 300,
+        need: 500
+      });
+      // Nothing to top up from, and the purse pays: bought from the purse.
+      const purse = setUp(600, []);
+      purse.inside.mega.s.Cash_MinWealth = 300;
+      purse.inside.world = { cashPlaces: () => [] };
+      expect(purse.inside.fundsFor('broadsword', '1/9', 1)).toMatchObject({
+        withdraw: 0,
+        need: 500
+      });
+    });
+
+    it('goes by a vault nobody has asked, to ask it there', () => {
+      const { inside } = setUp(200, []);
+      const unread = { ...vault, copper: null };
+      inside.world = { cashPlaces: () => [unread] };
+      expect(inside.fundsFor('broadsword', '1/9', 1).bank).toEqual(unread);
+    });
+
+    it('refuses a short purse only where no vault can be reached or every one is short', () => {
+      const words = { item: 'broadsword', short: '3 gold' };
+      const none = setUp(200, []);
+      none.inside.world = { cashPlaces: () => [] };
+      expect(none.inside.fundsFor('broadsword', '1/9', 1).refusal).toBe(
+        t('automation.collect.refusalNoVault', words)
+      );
+      expect(
+        setUp(200, [{ name: 'Bank of Silvermere', copper: 100 }]).inside.fundsFor(
+          'broadsword',
+          '1/9',
+          1
+        ).refusal
+      ).toBe(t('automation.collect.refusalVaultsShort', words));
+    });
+
+    /** At the vault, nothing asked of it yet. */
+    const atVault = (then?: () => void) =>
+      ({
+        row: { name: 'broadsword', min: 1, max: 1, shop: 'Weaponsmith', at: null },
+        room: '1/9',
+        shop: 'Weaponsmith',
+        at: false,
+        asked: null,
+        cash: {
+          room: '1/5',
+          shop: 7,
+          name: vault.name,
+          withdraw: 300,
+          need: 500,
+          walking: false,
+          balanceAsked: null,
+          asked: null
+        },
+        ...(then === undefined ? {} : { then })
+      }) as unknown as { cash?: unknown };
+    let pendingNow: () => Array<{ text: string }> = () => [];
+    const said = () => pendingNow().map((p) => p.text);
+
+    it('says bank at the vault, then withdraws, reads the purse back and walks on', () => {
+      vi.useFakeTimers();
+      const { inside, set, state } = setUp(200, []);
+      pendingNow = () => inside.mega.s.pending;
+      const walk = vi.spyOn(inside.mega, 'walkTo').mockReturnValue(null);
+      const then = vi.fn();
+      inside.megaBuying = atVault(then);
+      inside.megaBuyTick(state());
+      expect(said()).toEqual(['bank\r']);
+      pendingPump(inside.mega.s);
+      inside.megaBuyTick(state());
+      expect(said()).toEqual([]);
+
+      vi.advanceTimersByTime(100);
+      set({ banks: [{ shop: 7, name: vault.name, copper: 900, at: Date.now() }] });
+      inside.megaBuyTick(state());
+      expect(said()).toEqual(['withdraw 300\r', 'i\r']);
+      inside.megaBuyTick(state());
+      expect(said()).toHaveLength(2);
+
+      set({ inventory: { ...state().inventory, wealth: 500 } });
+      inside.megaBuyTick(state());
+      expect(walk).toHaveBeenCalledWith('1/9', false, true);
+      expect(inside.megaBuying?.cash).toBeUndefined();
+      expect(then).not.toHaveBeenCalled();
+    });
+
+    /* The realm's balance holds the price and not the minimum besides: the price alone. */
+    it('withdraws the price alone where the vault holds less than the minimum as well', () => {
+      vi.useFakeTimers();
+      const { inside, set, state } = setUp(200, []);
+      pendingNow = () => inside.mega.s.pending;
+      const buying = atVault() as unknown as {
+        cash: { withdraw: number; need: number; shortfall: number };
+      };
+      Object.assign(buying.cash, { withdraw: 600, need: 800, shortfall: 300 });
+      inside.megaBuying = buying;
+      inside.megaBuyTick(state());
+      pendingPump(inside.mega.s);
+      vi.advanceTimersByTime(100);
+      set({ banks: [{ shop: 7, name: vault.name, copper: 400, at: Date.now() }] });
+      inside.megaBuyTick(state());
+      expect(said()).toEqual(['withdraw 300\r', 'i\r']);
+      expect(buying.cash.need).toBe(500);
+    });
+
+    /* Only the minimum to top up, and the vault cannot: bought from the purse. */
+    it('goes on to the counter where only the minimum was to be topped up and cannot be', () => {
+      vi.useFakeTimers();
+      const { inside, set, state } = setUp(600, []);
+      pendingNow = () => inside.mega.s.pending;
+      const walk = vi.spyOn(inside.mega, 'walkTo').mockReturnValue(null);
+      const buying = atVault() as unknown as {
+        cash?: { withdraw: number; need: number; shortfall: number };
+      };
+      Object.assign(buying.cash!, { withdraw: 200, need: 800, shortfall: 0 });
+      inside.megaBuying = buying;
+      inside.megaBuyTick(state());
+      pendingPump(inside.mega.s);
+      vi.advanceTimersByTime(100);
+      set({ banks: [{ shop: 7, name: vault.name, copper: 50, at: Date.now() }] });
+      inside.megaBuyTick(state());
+      inside.megaBuyTick(state());
+      expect(said().some((line) => line.startsWith('withdraw'))).toBe(false);
+      expect(walk).toHaveBeenCalledWith('1/9', false, true);
+      expect(inside.megaBuying).not.toBeNull();
+    });
+
+    it('takes the balance the realm says over the record, and gives up where it is short', () => {
+      vi.useFakeTimers();
+      const { inside, set, state } = setUp(200, [{ name: vault.name, copper: 900 }]);
+      pendingNow = () => inside.mega.s.pending;
+      inside.megaBuying = atVault();
+      inside.megaBuyTick(state());
+      pendingPump(inside.mega.s);
+      // The record's 900, read before the ask, is not the answer.
+      inside.megaBuyTick(state());
+      expect(said()).toEqual([]);
+      vi.advanceTimersByTime(100);
+      set({ banks: [{ shop: 7, name: vault.name, copper: 120, at: Date.now() }] });
+      inside.megaBuyTick(state());
+      expect(inside.megaBuying).toBeNull();
+      expect(notices.at(-1)).toBe(
+        t('automation.collect.megaNotBought', {
+          item: 'broadsword',
+          shop: 'Weaponsmith',
+          why: t('automation.collect.whyVaultShort', {
+            bank: vault.name,
+            held: '1 gold, 2 silver',
+            amount: '3 gold'
+          })
+        })
+      );
+    });
+
+    it('gives the purchase up when the vault says no balance', () => {
+      vi.useFakeTimers();
+      const { inside, state } = setUp(200, []);
+      inside.megaBuying = atVault();
+      inside.megaBuyTick(state());
+      pendingPump(inside.mega.s);
+      vi.advanceTimersByTime(tuning().supplies.buyTimeoutMs + 1);
+      inside.megaBuyTick(state());
+      expect(inside.megaBuying).toBeNull();
+      expect(notices.at(-1)).toBe(
+        t('automation.collect.megaNotBought', {
+          item: 'broadsword',
+          shop: 'Weaponsmith',
+          why: t('automation.collect.whyNoBalance', { bank: vault.name })
+        })
+      );
+    });
+
+    it('gives the purchase up when the vault pays nothing out', () => {
+      vi.useFakeTimers();
+      const { inside, set, state } = setUp(200, []);
+      inside.megaBuying = atVault();
+      inside.megaBuyTick(state());
+      pendingPump(inside.mega.s);
+      vi.advanceTimersByTime(100);
+      set({ banks: [{ shop: 7, name: vault.name, copper: 900, at: Date.now() }] });
+      inside.megaBuyTick(state());
+      vi.advanceTimersByTime(tuning().supplies.buyTimeoutMs + 1);
+      inside.megaBuyTick(state());
+      expect(inside.megaBuying).toBeNull();
+      expect(notices.at(-1)).toBe(
+        t('automation.collect.megaNotBought', {
+          item: 'broadsword',
+          shop: 'Weaponsmith',
+          why: t('automation.collect.whyNotPaid', { bank: vault.name })
+        })
+      );
+    });
+
+    it('wears what Buy + Wear bought, what the slot held taken off first', () => {
+      const { inside } = setUp(600, []);
+      inside.wearBought('broadsword', ['shortsword', 'buckler']);
+      expect(inside.mega.s.pending.map((p) => p.text)).toEqual([
+        'remove shortsword\r',
+        'remove buckler\r',
+        'eq broadsword\r'
+      ]);
+      expect(notices.at(-1)).toBe(
+        t('automation.collect.wearingInstead', {
+          item: 'broadsword',
+          removed: 'shortsword, buckler'
+        })
+      );
+    });
+    /* Buy + Learn (2026-10-20): the cheapest scroll that teaches the spell, and read once bought. */
+    it('reads what Buy + Learn bought', () => {
+      const { inside } = setUp(600, []);
+      inside.learnBought('scroll of minor healing');
+      expect(inside.mega.s.pending.map((p) => p.text)).toEqual(['read scroll of minor healing\r']);
+      expect(notices.at(-1)).toBe(
+        t('automation.collect.learningIt', { item: 'scroll of minor healing' })
+      );
+    });
+
+    it('plans the cheapest scroll that teaches the spell, and refuses one already known', () => {
+      const { inside, set } = setUp(600, []);
+      const scrolls = [
+        { id: 1, name: 'scroll of minor healing', abilities: [[42, 13]] },
+        { id: 2, name: 'tome of minor healing', abilities: [[42, 13]] },
+        { id: 3, name: 'scroll of harm', abilities: [[42, 12]] }
+      ];
+      inside.world = {
+        allItems: () => scrolls,
+        spellById: (id: number) => (id === 13 ? { name: 'minor healing' } : null)
+      };
+      inside.purchaseFor = (item) => ({ item: item.id, price: item.id === 2 ? 100 : 300 });
+      expect(manager!.learnPlanFor(13)).toMatchObject({ item: 2, price: 100 });
+      expect(manager!.learnPlanFor(99)).toBeNull();
+      set({ spellbook: [{ name: 'Minor Healing' }] as unknown as CharacterState['spellbook'] });
+      expect(manager!.learnPlanFor(13)?.refusal).toBe(
+        t('automation.collect.refusalKnown', { spell: 'minor healing' })
+      );
+    });
+  });
+
+  /* A quest's legs let the stopped loop go: it is taken up again by name (2026-10-14). */
+  it('hold the engine’s lap for a quest run and take it up again by name', () => {
+    engine();
+    const inside = manager as unknown as {
+      mega: MegaEngine;
+      runningLoopName(): string | null;
+      megaHold(): void;
+      megaRelease(): void;
+    };
+    inside.runningLoopName = () => 'Ring';
+    const button = vi.spyOn(inside.mega, 'button').mockImplementation(() => {});
+    const start = vi.spyOn(inside.mega, 'startLoop').mockReturnValue(null);
+    inside.megaHold();
+    expect(button).toHaveBeenCalledWith(0x803);
+    inside.megaRelease();
+    expect(start).toHaveBeenCalledWith('Ring');
+    inside.megaRelease();
+    expect(start).toHaveBeenCalledTimes(1);
+  });
+
+  it('hand the engine a loop filed nowhere, which it then finds by name', () => {
+    const host = engine();
+    const loop = { name: 'Hunt: Orc Den', stops: [{ room: 'Orc Den' }, { room: 'Orc Pit' }] };
+    expect(host.loopRooms('Hunt: Orc Den')).toBe(
+      t('session.move.noSuchLoop', { name: 'Hunt: Orc Den' })
+    );
+    manager!.startLoop(loop);
+    expect(host.loopRooms('Hunt: Orc Den')).not.toBe(
+      t('session.move.noSuchLoop', { name: 'Hunt: Orc Den' })
+    );
+  });
+
+  it('are told when the engine’s own walk ends, and not when a lap’s leg does', () => {
+    const host = engine();
+    const ended = vi.fn();
+    (manager as unknown as { hunt: { onWalkEnded: typeof ended } }).hunt.onWalkEnded = ended;
+    const walking = { ...IDLE_WALK, status: 'walking' as const };
+    const running = { ...NO_LOOP, status: 'running' as const, name: 'Ring', startedAt: 1000 };
+    host.progressed!(walking, running);
+    host.progressed!({ ...IDLE_WALK, status: 'arrived' }, running);
+    expect(ended).not.toHaveBeenCalled();
+
+    host.progressed!(walking, NO_LOOP);
+    host.progressed!({ ...IDLE_WALK, status: 'arrived' }, NO_LOOP);
+    expect(ended).toHaveBeenCalledWith(true, null, expect.anything());
+    host.progressed!(walking, NO_LOOP);
+    host.progressed!({ ...IDLE_WALK, status: 'stopped', reason: 'Stopped.' }, NO_LOOP);
+    expect(ended).toHaveBeenLastCalledWith(false, 'Stopped.', expect.anything());
+  });
+});
+
+describe('the MegaMUD engine’s questions', () => {
+  /*
+   * MegaMUD waits on its message boxes; this client answers no where it asks,
+   * holds the question for the player, and on a yes runs the player's action
+   * again for MegaMUD to be told yes (2026-10-13).
+   */
+  it('answers no and holds the question, then a yes runs the action again to a yes', () => {
+    const { sink } = collect();
+    manager = new SessionManager(sink);
+    manager.useMegaMud({
+      settings: defaultSettings(),
+      data: { monsters: [], items: [], spells: [] },
+      grants: {}
+    });
+    const inside = manager as unknown as {
+      megaAsk(text: string): boolean;
+      megaAct<T>(act: () => T): T;
+    };
+    const answers: boolean[] = [];
+    inside.megaAct(() => answers.push(inside.megaAsk('You need a key to go here.')));
+    expect(answers).toEqual([false]);
+    expect(manager.automation.megaQuestion).toBe('You need a key to go here.');
+
+    manager.megaAnswer('Something else?', true);
+    expect(answers).toEqual([false]);
+
+    manager.megaAnswer('You need a key to go here.', true);
+    expect(answers).toEqual([false, true]);
+    expect(manager.automation.megaQuestion).toBeUndefined();
+  });
+
+  it('leaves it at no on a no', () => {
+    const { sink } = collect();
+    manager = new SessionManager(sink);
+    manager.useMegaMud({
+      settings: defaultSettings(),
+      data: { monsters: [], items: [], spells: [] },
+      grants: {}
+    });
+    const inside = manager as unknown as {
+      megaAsk(text: string): boolean;
+      megaAct<T>(act: () => T): T;
+    };
+    let asked = 0;
+    inside.megaAct(() => {
+      asked += 1;
+      return inside.megaAsk('Update it now?');
+    });
+    manager.megaAnswer('Update it now?', false);
+    expect(asked).toBe(1);
+    expect(manager.automation.megaQuestion).toBeUndefined();
   });
 });

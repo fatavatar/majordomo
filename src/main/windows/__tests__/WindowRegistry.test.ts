@@ -92,7 +92,6 @@ describe('WindowRegistry', () => {
     registry.toAttached('session:data', { session: 'thorn', payload: 'bytes' });
 
     expect(window.sent).toHaveLength(0);
-    expect(registry.viewers('thorn')).toEqual([]);
   });
 
   it('drops a destroyed window rather than sending to it', () => {
@@ -109,18 +108,5 @@ describe('WindowRegistry', () => {
 
     expect(window.sent).toHaveLength(0);
     expect(registry.size).toBe(0);
-  });
-
-  it('reports every window showing a session', () => {
-    const registry = new WindowRegistry();
-    const a = fakeWindow(1);
-    const b = fakeWindow(2);
-    registry.add(a);
-    registry.add(b);
-    registry.attach(a.id, 'thorn');
-    registry.attach(b.id, 'thorn');
-
-    expect(registry.viewers('thorn').sort()).toEqual([1, 2]);
-    expect(registry.attachments(a.id)).toEqual(['thorn']);
   });
 });

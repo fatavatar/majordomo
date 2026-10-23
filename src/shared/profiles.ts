@@ -32,6 +32,9 @@ import {
   type Server
 } from './config';
 import { asCoinNames, type CoinNames } from './coins';
+import { asBbsSettings, type BbsSettings } from './megamud/bbs';
+import { defaultSettings, settingsFromStored, type MegaSettings } from './megamud/settings';
+import { asItemRules, mergeItemRules, type ItemRule } from './itemRules';
 import { asMonsterRules, mergeMonsterRules, type MonsterRule } from './monsterRules';
 import type { ConnectionTarget } from './types';
 import { isRecord, str } from './values';
@@ -105,6 +108,17 @@ export interface Profile {
   autoReconnect: boolean;
   accent: ProfileAccent;
   /**
+   * MegaMUD's own settings for this character, the `megamud:` mapping of its
+   * file (2026-10-13; `megamud.ini` beside it until then): what the ported
+   * engine runs on. Defaults when it has none. See `megamud/settings`.
+   */
+  megamud: MegaSettings;
+  /**
+   * It has MegaMUD settings, so the ported MegaMUD engine runs it, its data
+   * folder (`Monsters.md` and the rest) `MegaMud.DataDir` or its own directory.
+   */
+  megamudOn: boolean;
+  /**
    * The complete options this character runs under: the global file with this
    * profile's overlay applied. Never a partial.
    */
@@ -153,8 +167,9 @@ function resolveServer(
   login: LoginStep[];
   locate: LocateMethod;
   database: string;
-  hangPenalties: boolean | null;
   coins: CoinNames;
+  bbs: BbsSettings;
+  statsUrl: string;
 } | null {
   if (typeof value === 'string') {
     const found = byName(servers, value);
@@ -165,8 +180,9 @@ function resolveServer(
           login: found.login,
           locate: found.locate,
           database: found.database,
-          hangPenalties: found.hangPenalties,
-          coins: found.coins
+          coins: found.coins,
+          bbs: found.bbs,
+          statsUrl: found.statsUrl
         }
       : null;
   }
@@ -196,10 +212,11 @@ function resolveServer(
        * its map at all.
        */
       database: str(value['database'], ''),
-      hangPenalties: null,
       // What an inline realm calls its coins, which it may state for the
       // reason it may state its database: there is nowhere else to say it.
       coins: asCoinNames(value['coins']),
+      bbs: asBbsSettings(value['bbs']),
+      statsUrl: str(value['statsUrl'], '').trim(),
       target: {
         host,
         port,
@@ -249,6 +266,36 @@ function withGlobalMonsters(
 }
 
 /**
+ * `loot.itemDetails` across the two scopes, as `withGlobalMonsters` merges
+ * `combat.monsters` and for its reason: a row is addressed by item, and the
+ * realm's imported table goes under both when the engine's data is built.
+ */
+function withGlobalItems(
+  config: AppConfig,
+  global: ItemRule[],
+  raw: Record<string, unknown>
+): AppConfig {
+  const own = ownItemRules(raw);
+  if (global.length === 0 || own.length === 0) return config;
+  return {
+    ...config,
+    automation: {
+      ...config.automation,
+      loot: { ...config.automation.loot, itemDetails: mergeItemRules(global, own) }
+    }
+  };
+}
+
+/** The item rows a character's own file states, for `ownMonsterRules`' reason. */
+export function ownItemRules(raw: Record<string, unknown>): ItemRule[] {
+  const automation = raw['automation'];
+  if (!isRecord(automation)) return [];
+  const loot = automation['loot'];
+  if (!isRecord(loot)) return [];
+  return asItemRules(loot['itemDetails']);
+}
+
+/**
  * The monster rows a character's own file states, before `overlay` flattened
  * them.
  *
@@ -265,50 +312,24 @@ export function ownMonsterRules(raw: Record<string, unknown>): MonsterRule[] {
 }
 
 /**
- * The realm's answer to whether a hang-up is charged, under a character that
- * gives none (todo 01). A character's own file is read raw for the reason
- * `ownMonsterRules` is: after `overlay` an inherited value and a stated one look
- * alike.
- */
-function withRealmHangPenalties(
-  config: AppConfig,
-  realm: boolean | null,
-  raw: Record<string, unknown>
-): AppConfig {
-  if (realm === null || ownHangPenalties(raw) !== null) return config;
-  const safety = config.automation.safety;
-  return {
-    ...config,
-    automation: {
-      ...config.automation,
-      safety: { ...safety, hangUp: { ...safety.hangUp, penalties: realm } }
-    }
-  };
-}
-
-/** A character's own `penalties`, or null where its file leaves it to the realm. */
-export function ownHangPenalties(raw: Record<string, unknown>): boolean | null {
-  const automation = raw['automation'];
-  if (!isRecord(automation)) return null;
-  const safety = automation['safety'];
-  if (!isRecord(safety)) return null;
-  const hangUp = safety['hangUp'];
-  if (!isRecord(hangUp)) return null;
-  const penalties = hangUp['penalties'];
-  return typeof penalties === 'boolean' ? penalties : null;
-}
-
-/**
  * The account a profile states, inline. Every character carries its own
  * username and password rather than naming a shared one — two characters on
  * the same BBS account simply state the same username twice, and if their
  * passwords drift apart that is theirs to notice, not the client's to prevent.
  */
-function resolveAccount(value: unknown): { username: string; password: string } | null {
+function resolveAccount(
+  value: unknown
+): { username: string; password: string; statsKey: string } | null {
   if (!isRecord(value)) return null;
   const username = str(value['username'], '');
   if (username.length === 0) return null;
-  return { username, password: str(value['password'], '') };
+  return {
+    username,
+    password: str(value['password'], ''),
+    // The key the realm's mudstats board gave this character, beside the
+    // password and kept as one: it may write the character's record there.
+    statsKey: str(value['statsKey'], '')
+  };
 }
 
 /**
@@ -370,7 +391,7 @@ export function resolveProfile(id: string, raw: unknown, baseSource: unknown): P
    * holds unchanged: a rejected password is never retried, a repeated prompt
    * stops the sequence, a missing answer leaves the prompt alone.
    */
-  const credentials = account ?? { username: '', password: '' };
+  const credentials = account ?? { username: '', password: '', statsKey: '' };
   const patch = overlay(
     // Anything the profile says about the client generally — automation, ui,
     // logging — is the overlay. The connection block is assembled from the
@@ -388,6 +409,10 @@ export function resolveProfile(id: string, raw: unknown, baseSource: unknown): P
         locate: server.locate,
         // And what it calls its coins, for the same reason.
         coins: server.coins,
+        // And its MegaMUD BBS set-up.
+        bbs: server.bbs,
+        // And its mudstats board, with this character's own key to it.
+        stats: { url: server.statsUrl, key: credentials.statsKey },
         login: {
           enabled: credentials.username.length > 0,
           /*
@@ -422,16 +447,18 @@ export function resolveProfile(id: string, raw: unknown, baseSource: unknown): P
       // otherwise. See the field.
       autoReconnect: raw['autoReconnect'] !== false,
       accent: isProfileAccent(accent) ? accent : accentFor(id),
+      megamud: isRecord(raw['megamud']) ? settingsFromStored(raw['megamud']) : defaultSettings(),
+      megamudOn: isRecord(raw['megamud']),
       // Merged onto the file as written, then coerced by the same function the
       // options file goes through: one place decides what a valid value is, and
       // it runs exactly once.
-      config: withRealmHangPenalties(
+      config: withGlobalItems(
         withGlobalMonsters(
           normalizeConfig(overlay(baseSource, patch)),
           base.automation.combat.monsters,
           raw
         ),
-        server.hangPenalties,
+        base.automation.loot.itemDetails,
         raw
       )
     }
@@ -448,7 +475,9 @@ export function resolveProfile(id: string, raw: unknown, baseSource: unknown): P
  * misleading to read.
  */
 function withoutProfileKeys(raw: Record<string, unknown>): Record<string, unknown> {
-  const { server, account, login, name, accent, autoConnect, autoReconnect, ...rest } = raw;
+  const { server, account, login, name, accent, autoConnect, autoReconnect, megamud, ...rest } =
+    raw;
+  void megamud;
   void server;
   void account;
   void login;

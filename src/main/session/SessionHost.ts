@@ -25,6 +25,8 @@ import { Backscroll } from './Backscroll';
 import { SessionCapture } from './SessionCapture';
 import { SessionLog } from './SessionLog';
 import { Reconnect } from './Reconnect';
+import type { MegaEngineSetup } from './MegaEngine';
+import type { ResumableMovement } from './MovementBook';
 import {
   BUSY_PHASES,
   NO_REALM_TABLES,
@@ -47,7 +49,7 @@ import {
   type SessionId,
   type SessionSummary
 } from '../../shared/ipc';
-import type { AppConfig, AutomationSwitch } from '../../shared/config';
+import type { AppConfig } from '../../shared/config';
 import type { ConnectionState, ConnectionTarget } from '../../shared/types';
 import type { RealmFamily as RealmWord } from '../../shared/character';
 import type { RealmPlayers } from '../../shared/players';
@@ -72,6 +74,8 @@ export interface SessionSlot {
   readonly reconnect: Reconnect;
   log: SessionLog | null;
   capture: SessionCapture | null;
+  /** The MegaMUD engine's set-up as last applied (`megamudFor`'s key), null without one. */
+  megaKey: string | null;
   /**
    * The debug ring, for the debug window and for a bug report.
    *
@@ -111,8 +115,21 @@ export interface SessionHostOptions {
    * exist.
    */
   worldFor(id: SessionId): WorldGraph | undefined;
-  /** Write one automation switch into a character's file; whether it was written. See `CombatLease`. */
-  flipSwitch?(id: SessionId, name: AutomationSwitch, on: boolean): boolean;
+  /**
+   * The ported MegaMUD engine's set-up for a character, from its profile, with
+   * a key that changes when it does; null for an id with no profile. See
+   * `MegaEngine`.
+   */
+  megamudFor?(id: SessionId): { key: string; setup: MegaEngineSetup } | null;
+  /**
+   * Where what each character is walking is kept, so a server restarted or a
+   * session ended takes it up again in the game (`MovementBook`). Optional:
+   * a test and the anonymous case keep nothing.
+   */
+  movement?: {
+    get(id: SessionId): ResumableMovement | null;
+    set(id: SessionId, movement: ResumableMovement | null): void;
+  };
   /**
    * What is known about the monsters on *this character's* realm.
    *
@@ -320,7 +337,7 @@ export class SessionHost {
         server,
         accent,
         state: slot.manager.state,
-        retrying: slot.reconnect.pending
+        retrying: slot.reconnect.pending || slot.manager.megaRedialing
       };
     });
   }
@@ -338,7 +355,9 @@ export class SessionHost {
      * point of use, so nothing here pins a value the player can still change.
      */
     const reconnect = new Reconnect({
-      enabled: () => this.options.autoReconnect(id),
+      // A character the MegaMUD engine runs is dialled back by MegaMUD's own
+      // rules (`Comms.Redial…`, `SessionSink.redial`), never by both.
+      enabled: () => this.options.autoReconnect(id) && this.slots.get(id)?.manager.megaMud !== true,
       // `dial` rather than `connect`, deliberately: `connect` calls a scheduled
       // retry off, and a retry calling itself off is a ladder with one rung.
       dial: (target) => this.dial(this.ensure(id), target),
@@ -441,7 +460,6 @@ export class SessionHost {
         verdict: (appraisal) =>
           this.options.toAll(Push.verdict, { session: id, payload: appraisal }),
         asks: (offers) => this.options.toAll(Push.asks, { session: id, payload: [...offers] }),
-        switchAutomation: (name, on) => this.options.flipSwitch?.(id, name, on) ?? false,
         realmTold: (realm) => {
           // The address this connection actually went to, which the manager
           // holds from `connect`; a word with no address is a word about nowhere.
@@ -463,6 +481,8 @@ export class SessionHost {
         // A socket that went without this client asking. Only these are ever
         // dialled again — see `Reconnect` for what the other closes are.
         dropped: (why) => reconnect.lost(why),
+        redial: (target) => void this.dial(slot, target),
+        retrying: () => this.options.publishRoster(),
         telnet: (event) => {
           debug.telnet(event);
           this.options.toAll(Push.telnet, { session: id, payload: event });
@@ -485,7 +505,9 @@ export class SessionHost {
           // this client redacts a password. Both records take the same value.
           slot.capture?.out(command, source);
           debug.out(command, source);
-        }
+        },
+        acted: (act) => slot.capture?.act(act),
+        engineLog: (kind, text) => slot.capture?.engine(kind, text)
       },
       this.options.worldFor(id),
       config.automation,
@@ -502,6 +524,12 @@ export class SessionHost {
 
     manager.configureInternal(this.options.internal());
     manager.configureRealm(this.realmFor(id, config));
+    manager.configureStats(config.connection.stats, config.logging.stats);
+    const mega = this.options.megamudFor?.(id) ?? null;
+    manager.useMegaMud(mega?.setup ?? null);
+    const movement = this.options.movement;
+    if (movement) manager.useMovementBook(movement.get(id), (m) => movement.set(id, m));
+    manager.useParty((item) => this.partyFetching(manager, item));
     const slot: SessionSlot = {
       id,
       manager,
@@ -514,7 +542,8 @@ export class SessionHost {
       log: null,
       capture: null,
       debug,
-      named: null
+      named: null,
+      megaKey: mega?.key ?? null
     };
     this.slots.set(id, slot);
     /*
@@ -545,6 +574,7 @@ export class SessionHost {
      * the player just made.
      */
     slot.reconnect.cancel();
+    slot.manager.stopRedial();
     return this.dial(slot, target);
   }
 
@@ -576,6 +606,7 @@ export class SessionHost {
       slot.capture ??= new SessionCapture({
         directory,
         maxBytes: config.logging.maxBytes,
+        keepBytes: config.logging.keepBytes,
         onProblem: problem,
         // Said when the file exists, not when the dial went out: a retry that
         // never connects creates no capture and should announce none.
@@ -593,6 +624,7 @@ export class SessionHost {
       slot.log ??= new SessionLog({
         directory,
         maxBytes: config.logging.maxBytes,
+        keepBytes: config.logging.keepBytes,
         onProblem: problem
       });
       slot.log.open(target, undefined, id);
@@ -607,12 +639,6 @@ export class SessionHost {
     return slot.manager.connect(target);
   }
 
-  /**
-   * Re-reads every session's options after the file or a profile changed.
-   *
-   * Each session asks for its own, because two characters can now disagree
-   * about what a rule set or a vitals threshold should be.
-   */
   /** What a session is told about its realm: the imported tables and the coins' names. */
   private realmFor(id: SessionId, config: AppConfig): RealmData {
     return {
@@ -621,6 +647,12 @@ export class SessionHost {
     };
   }
 
+  /**
+   * Re-reads every session's options after the file or a profile changed.
+   *
+   * Each session asks for its own, because two characters can now disagree
+   * about what a rule set or a vitals threshold should be.
+   */
   reconfigure(): void {
     for (const slot of this.slots.values()) {
       const config = this.options.configFor(slot.id);
@@ -632,6 +664,12 @@ export class SessionHost {
       );
       slot.manager.configureInternal(this.options.internal());
       slot.manager.configureRealm(this.realmFor(slot.id, config));
+      slot.manager.configureStats(config.connection.stats, config.logging.stats);
+      const mega = this.options.megamudFor?.(slot.id) ?? null;
+      if ((mega?.key ?? null) !== slot.megaKey) {
+        slot.megaKey = mega?.key ?? null;
+        slot.manager.useMegaMud(mega?.setup ?? null);
+      }
       slot.backscroll.setLimit(config.terminal.scrollback);
     }
   }
@@ -650,6 +688,7 @@ export class SessionHost {
     const slot = this.slots.get(id);
     if (!slot) return null;
     slot.reconnect.cancel();
+    slot.manager.stopRedial();
     return slot.manager.disconnect();
   }
 
@@ -668,6 +707,29 @@ export class SessionHost {
     slot.backscroll.close();
     this.slots.delete(id);
     this.options.publishRoster();
+  }
+
+  /**
+   * Whether a party member of `manager`'s character, played here too, has an
+   * errand fetching `item` (2026-10-19): Bowel's collect-keys took the gate
+   * key Archer's *Collect it first* had come for. In one party as both of
+   * them list it — each the other's member — so a stranger's errand, or one
+   * across two realms that share a name, leaves nothing on the floor.
+   */
+  private partyFetching(manager: SessionManager, item: string): boolean {
+    const me = manager.character;
+    const mine = new Set(me.party.members.map((member) => member.name.toLowerCase()));
+    if (me.name === null || mine.size < 2) return false;
+    const name = me.name.toLowerCase();
+    for (const slot of this.slots.values()) {
+      const other = slot.manager;
+      if (other === manager || other.character.name === null) continue;
+      if (!mine.has(other.character.name.toLowerCase())) continue;
+      if (!other.character.party.members.some((member) => member.name.toLowerCase() === name))
+        continue;
+      if (other.errandWants(item)) return true;
+    }
+    return false;
   }
 
   /** Quitting. The only thing that ends a session other than an explicit unload. */

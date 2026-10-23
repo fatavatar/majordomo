@@ -1,6 +1,14 @@
 import fs from 'node:fs';
+import {
+  defaultSettings,
+  settingsFromDraft,
+  settingsFromStored,
+  settingsToStored,
+  type MegaSettings
+} from '../../shared/megamud/settings';
+import { megamudFromConfig } from '../../shared/megamud/fromConfig';
 import path from 'node:path';
-import { isMap, isSeq, parse, Scalar } from 'yaml';
+import { Document, isMap, isSeq, parse, Scalar } from 'yaml';
 
 import { editYaml, removeYaml, type EditResult } from './YamlFile';
 import type { PlayerGrant, RemoteName } from '../../shared/remotes';
@@ -15,18 +23,26 @@ import {
   normalizeConfig,
   type AutomationSwitch,
   type LoginStep,
-  type RetreatConfig,
   type SupplyItem
 } from '../../shared/config';
 import { fileSlug } from '../../shared/files';
-import { loopFileName, type Loop, type LoopScope, type ScopedLoop } from '../../shared/loops';
+import { itemRuleForFile, itemSaysAnything, type ItemRule } from '../../shared/itemRules';
+import { monsterRuleForFile, saysAnything, type MonsterRule } from '../../shared/monsterRules';
+import {
+  loopFileName,
+  type Loop,
+  type LoopAddress,
+  type LoopScope,
+  type ScopedLoop
+} from '../../shared/loops';
 import type { Home } from '../app/home';
 import { t } from '../app/i18n';
 import {
-  ownHangPenalties,
+  ownItemRules,
   ownMonsterRules,
   PROFILE_ACCENTS,
   resolveProfile,
+  type Profile,
   type ProfileAccent
 } from '../../shared/profiles';
 import { isThemePreference, type ThemePreference } from '../../shared/themes';
@@ -84,6 +100,13 @@ export interface SettingsEditorOptions {
     };
     realm(): SpellOption[];
   };
+  /**
+   * The MegaMUD settings a character runs on (`megamudSettingsOf`): its
+   * file's, or, with none there, started from its old automation with the
+   * realm's spell words, which are the realm layer's to answer. Without it,
+   * the file's or MegaMUD's defaults.
+   */
+  megamud?: (id: string, profile: Profile) => MegaSettings;
 }
 
 /**
@@ -130,10 +153,12 @@ function differs(mine: unknown, value: unknown): boolean {
 export class SettingsEditor {
   private readonly home: Home;
   private readonly spells: SettingsEditorOptions['spells'];
+  private readonly megamud: SettingsEditorOptions['megamud'];
 
   constructor(options: SettingsEditorOptions) {
     this.home = options.home;
     this.spells = options.spells;
+    this.megamud = options.megamud;
   }
 
   private profilePath(id: string): string {
@@ -204,10 +229,25 @@ export class SettingsEditor {
      * not this one. That is the whole of "Global is just defaults".
      */
     const creating = !fs.existsSync(file);
+    /*
+     * Its MegaMUD settings, with the rest of it (2026-10-18), over the file's
+     * own so the sections the window does not edit are kept. The password
+     * never crossed: an empty one leaves the stored one alone.
+     */
+    let megamud: MegaSettings | null = null;
+    if (draft.megamud !== undefined) {
+      const onFile = creating ? defaultSettings() : storedMegamud(file);
+      megamud = settingsFromDraft(draft.megamud, onFile);
+      if (megamud === null) return { ok: false, error: t('app.megamud.invalidSettings') };
+      if (megamud.live['BBS']!['Password'] === '') {
+        megamud.live['BBS']!['Password'] = onFile.live['BBS']?.['Password'] ?? '';
+      }
+    }
 
     const written = editYaml(file, {
       mutate: (document) => {
         document.setIn(['name'], draft.name.length > 0 ? draft.name : id);
+        if (megamud !== null) document.setIn(['megamud'], settingsToStored(megamud));
         document.setIn(['accent'], draft.accent);
         document.setIn(['autoConnect'], draft.autoConnect);
         document.setIn(['autoReconnect'], draft.autoReconnect);
@@ -262,13 +302,17 @@ export class SettingsEditor {
            * credentials every time somebody changed its colour.
            */
           const existing = document.getIn(['account', 'password']);
+          // And the mudstats key beside it, which the form never holds: it
+          // is written by the link (`setStatsKey`), and only kept here.
+          const statsKey = document.getIn(['account', 'statsKey']);
           document.setIn(['account'], {
             username: draft.username,
             password: draft.changePassword
               ? draft.password
               : typeof existing === 'string'
                 ? existing
-                : ''
+                : '',
+            ...(typeof statsKey === 'string' && statsKey.length > 0 ? { statsKey } : {})
           });
         } else if (document.hasIn(['account'])) {
           // No username is a character that has not been given an account
@@ -311,10 +355,7 @@ export class SettingsEditor {
         ) {
           document.setIn(['automation', 'safety', 'retreat'], {
             enabled: draft.retreat.enabled,
-            belowHealth: draft.retreat.belowHealth,
-            whenOutnumbered: draft.retreat.whenOutnumbered,
-            strategy: draft.retreat.strategy,
-            safeHavenRoom: draft.retreat.safeHavenRoom
+            belowHealth: draft.retreat.belowHealth
           });
         }
 
@@ -337,23 +378,15 @@ export class SettingsEditor {
         ) {
           document.setIn(['automation', 'safety', 'hangUp'], {
             enabled: draft.hangUp.enabled,
-            belowHealth: draft.hangUp.belowHealth,
-            // Absent leaves it to the realm and then the options file, so null
-            // writes no key rather than a copy of what is inherited.
-            ...(draft.hangUp.penalties === null ? {} : { penalties: draft.hangUp.penalties }),
-            onPlayerInRoom: draft.hangUp.onPlayerInRoom
+            belowHealth: draft.hangUp.belowHealth
           });
         }
 
-        if (
-          creating ||
-          draft.pvp.notifyGang ||
-          draft.pvp.action !== 'none' ||
-          document.hasIn(['automation', 'safety', 'pvp'])
-        ) {
-          document.setIn(['automation', 'safety', 'pvp'], {
-            notifyGang: draft.pvp.notifyGang,
-            action: draft.pvp.action
+        // Posting to the realm's mudstats board, written once it is said.
+        if (creating || draft.stats.enabled || document.hasIn(['logging', 'stats'])) {
+          document.setIn(['logging', 'stats'], {
+            enabled: draft.stats.enabled,
+            everySeconds: draft.stats.everySeconds
           });
         }
 
@@ -385,17 +418,12 @@ export class SettingsEditor {
           [['automation', 'health'], draft.health, DEFAULT_CONFIG.automation.health],
           [['automation', 'movement'], draft.movement, DEFAULT_CONFIG.automation.movement],
           [['automation', 'hunting'], draft.hunting, DEFAULT_CONFIG.automation.hunting],
-          [['automation', 'train'], draft.train, DEFAULT_CONFIG.automation.train],
           [['automation', 'quests'], draft.quests, DEFAULT_CONFIG.automation.quests],
-          [['automation', 'gear'], draft.gear, DEFAULT_CONFIG.automation.gear],
           [['automation', 'loot'], draft.loot, DEFAULT_CONFIG.automation.loot],
-          [['automation', 'drop'], draft.drop, DEFAULT_CONFIG.automation.drop],
           [['automation', 'search'], draft.search, DEFAULT_CONFIG.automation.search],
-          [['automation', 'banking'], draft.banking, DEFAULT_CONFIG.automation.banking],
           [['automation', 'spells'], draft.spells, DEFAULT_CONFIG.automation.spells],
           [['automation', 'remotes'], draft.remotes, DEFAULT_CONFIG.automation.remotes],
           [['automation', 'afk'], draft.afk, DEFAULT_CONFIG.automation.afk],
-          [['automation', 'statline'], draft.statline, DEFAULT_CONFIG.automation.statline],
           // Not under `automation:`, because it is not something the client
           // *does* — it is what this player wants to hear about this character.
           [['ui', 'alerts'], draft.alerts, DEFAULT_CONFIG.ui.alerts],
@@ -548,6 +576,25 @@ export class SettingsEditor {
   }
 
   /**
+   * This character's mudstats key, beside its password (`account.statsKey`),
+   * or none: written by the link and the unlink, never by the form, which is
+   * never told it. Without an account there is nowhere to keep one.
+   */
+  setStatsKey(id: string, key: string): EditResult {
+    const file = this.profilePath(id);
+    if (!fs.existsSync(file)) {
+      return { ok: false, error: t('errors.settings.characterNotFound', { id }) };
+    }
+    return editYaml(file, {
+      mutate: (document) => {
+        if (key.length > 0) document.setIn(['account', 'statsKey'], key);
+        else if (document.hasIn(['account', 'statsKey']))
+          document.deleteIn(['account', 'statsKey']);
+      }
+    });
+  }
+
+  /**
    * Whether this character answers `@` commands on the gangpath.
    *
    * On the Gang card as well as in Settings, because the card is where the
@@ -600,6 +647,70 @@ export class SettingsEditor {
   }
 
   /**
+   * The monster and item rows a character's own file states, before the
+   * options file's are merged in (`ownMonsterRules`). Empty for a file that
+   * is missing or unreadable: there is nothing of its own to show.
+   */
+  ownRules(id: string): { monsters: MonsterRule[]; items: ItemRule[] } {
+    const file = this.profilePath(id);
+    let raw: unknown;
+    try {
+      raw = parse(fs.readFileSync(file, 'utf8'));
+    } catch {
+      return { monsters: [], items: [] };
+    }
+    const record = isRecord(raw) ? raw : {};
+    return { monsters: ownMonsterRules(record), items: ownItemRules(record) };
+  }
+
+  /**
+   * A character's own monster rows (`automation.combat.monsters`), written
+   * whole, for `setItemDetails`' reason: a clicked monster's Edit
+   * (2026-10-20) changes one of them, and the rest are the character's own.
+   */
+  setCombatMonsters(id: string, rules: readonly MonsterRule[]): EditResult {
+    const file = this.profilePath(id);
+    if (!fs.existsSync(file)) {
+      return { ok: false, error: t('errors.settings.characterNotFound', { id }) };
+    }
+    const rows = rules.filter(saysAnything).map(monsterRuleForFile);
+    return editYaml(file, {
+      mutate: (document) => {
+        document.setIn(['automation', 'combat', 'monsters'], rows);
+        const list = document.getIn(['automation', 'combat', 'monsters'], true);
+        if (isSeq(list)) {
+          list.flow = false;
+          for (const row of list.items) if (isMap(row)) row.flow = true;
+        }
+      }
+    });
+  }
+
+  /**
+   * A character's own item rows (`automation.loot.itemDetails`), written
+   * whole: the Explorer's Item Manager (2026-10-19) changes some of them, and
+   * the rows are the character's own, laid over the realm's table, never the
+   * resolved list — the reason `setSupplies` writes its list whole.
+   */
+  setItemDetails(id: string, rules: readonly ItemRule[]): EditResult {
+    const file = this.profilePath(id);
+    if (!fs.existsSync(file)) {
+      return { ok: false, error: t('errors.settings.characterNotFound', { id }) };
+    }
+    const rows = rules.filter(itemSaysAnything).map(itemRuleForFile);
+    return editYaml(file, {
+      mutate: (document) => {
+        document.setIn(['automation', 'loot', 'itemDetails'], rows);
+        const list = document.getIn(['automation', 'loot', 'itemDetails'], true);
+        if (isSeq(list)) {
+          list.flow = false;
+          for (const row of list.items) if (isMap(row)) row.flow = true;
+        }
+      }
+    });
+  }
+
+  /**
    * Flips one `automation:` boolean in a character's own file.
    *
    * The toolbar's write, and the narrowest one here: the control shows one
@@ -643,9 +754,35 @@ export class SettingsEditor {
    * The scope is the directory, as always — nothing inside the file says where
    * it is, so this is the only thing that decides.
    */
-  addLoop(scope: LoopScope, owner: string | null, loop: Loop): EditResult {
+  addLoop(
+    scope: LoopScope,
+    owner: string | null,
+    loop: Loop,
+    replaces: LoopAddress | null = null
+  ): EditResult {
     const added = this.addLoops(scope, owner, [loop]);
-    return added.ok ? { ok: true } : added;
+    if (!added.ok) return added;
+    /*
+     * A loop edited in the builder (2026-10-23) and saved under another name
+     * or into another scope: the one it was opened from goes, so an edit is
+     * an edit and not a copy. Under the same name in the same scope it was
+     * just rewritten, and nothing goes.
+     */
+    if (replaces === null) return { ok: true };
+    const same =
+      replaces.scope === scope &&
+      (replaces.owner ?? null) === owner &&
+      replaces.name.toLowerCase() === loop.name.toLowerCase();
+    return same ? { ok: true } : this.removeLoop(replaces);
+  }
+
+  /** One loop's file taken out of its scope, by name; a loop not there is no error. */
+  removeLoop(address: LoopAddress): EditResult {
+    const dir = this.loopsDirectory(address.scope, address.owner);
+    if (dir === null) return { ok: false, error: t('errors.settings.loopScopeUnknown') };
+    const name = address.name.toLowerCase();
+    const found = readLoopFiles(dir).find((entry) => entry.name.toLowerCase() === name);
+    return found === undefined ? { ok: true } : removeYaml(found.file);
   }
 
   /**
@@ -702,6 +839,30 @@ export class SettingsEditor {
       if (!written.ok) return written;
     }
     return { ok: true, replaced };
+  }
+
+  /**
+   * Loops from a file another player shared (`loopFileText`, or any loop
+   * file written by hand): read as a loops directory reads one, filed in
+   * this scope beside its own, one of the same name replaced.
+   */
+  importLoopText(
+    scope: LoopScope,
+    owner: string | null,
+    text: string
+  ): { ok: true; count: number; replaced: number } | { ok: false; error: string } {
+    let loops: Loop[];
+    try {
+      loops = readLoops(parse(text), t('settings.loopSection.importedName'));
+    } catch (error) {
+      return {
+        ok: false,
+        error: t('errors.settings.loopFileUnreadable', { reason: errorMessage(error) })
+      };
+    }
+    if (loops.length === 0) return { ok: false, error: t('errors.settings.loopFileEmpty') };
+    const result = this.addLoops(scope, owner, loops);
+    return result.ok ? { ok: true, count: loops.length, replaced: result.replaced } : result;
   }
 
   /**
@@ -802,16 +963,20 @@ export class SettingsEditor {
         if (draft.database.length > 0) document.setIn(['database'], draft.database);
         else if (document.hasIn(['database'])) document.deleteIn(['database']);
 
-        // And whether a hang-up here is charged: absent leaves it to the
-        // options file, so null removes the key rather than writing one.
-        if (draft.hangPenalties !== null) document.setIn(['hangPenalties'], draft.hangPenalties);
-        else if (document.hasIn(['hangPenalties'])) document.deleteIn(['hangPenalties']);
-
         // And what it calls its coins: only the ones it renames, and no key at
         // all for a realm that renames none, as with `locate` above.
         const coins = Object.entries(draft.coins).filter(([, name]) => name.length > 0);
         if (coins.length > 0) document.setIn(['coins'], Object.fromEntries(coins));
         else if (document.hasIn(['coins'])) document.deleteIn(['coins']);
+
+        // And its MegaMUD BBS set-up: only the keys it states, for the same reason.
+        const bbs = Object.entries(draft.bbs).filter(([, value]) => value.length > 0);
+        if (bbs.length > 0) document.setIn(['bbs'], Object.fromEntries(bbs));
+        else if (document.hasIn(['bbs'])) document.deleteIn(['bbs']);
+
+        // And its mudstats board, written only when it has one.
+        if (draft.statsUrl.length > 0) document.setIn(['statsUrl'], draft.statsUrl);
+        else if (document.hasIn(['statsUrl'])) document.deleteIn(['statsUrl']);
       },
       verify: (value) => {
         const server = asServer(value, id);
@@ -976,47 +1141,30 @@ export class SettingsEditor {
         fights: config.logging.fights,
         conversations: config.logging.conversations,
         conversationDays: config.logging.conversationDays,
-        maxBytes: config.logging.maxBytes
+        maxBytes: config.logging.maxBytes,
+        keepBytes: config.logging.keepBytes
       },
       automation: {
         enabled: config.automation.enabled,
-        onEnterRealm: [...config.automation.onEnterRealm],
-        onPartyChange: config.automation.onPartyChange,
-        idle: { ...config.automation.idle },
         pacing: { ...config.automation.pacing },
         walk: { ...config.automation.walk },
         hunting: { ...config.automation.hunting },
         hangUp: {
           enabled: config.automation.safety.hangUp.enabled,
-          belowHealth: config.automation.safety.hangUp.belowHealth,
-          penalties: config.automation.safety.hangUp.penalties,
-          onPlayerInRoom: config.automation.safety.hangUp.onPlayerInRoom
+          belowHealth: config.automation.safety.hangUp.belowHealth
         },
-        retreat: retreatOf(config.automation.safety.retreat),
+        retreat: { ...config.automation.safety.retreat },
         fleeGoto: { ...config.automation.safety.fleeGoto },
-        pvp: { ...config.automation.safety.pvp },
         combat: { ...config.automation.combat },
         party: { ...config.automation.party },
         health: { ...config.automation.health },
         movement: { ...config.automation.movement },
-        train: { ...config.automation.train, wanted: { ...config.automation.train.wanted } },
         quests: { ...config.automation.quests },
-        // Deep, because the sets and their `wear` lists are the draft's
-        // own to edit: a shallow copy hands the form the config's arrays.
-        gear: {
-          ...config.automation.gear,
-          sets: config.automation.gear.sets.map((set) => ({ ...set, wear: [...set.wear] })),
-          offRound: { ...config.automation.gear.offRound }
-        },
         spells: { ...config.automation.spells },
-        loot: { ...config.automation.loot, items: [...config.automation.loot.items] },
-        drop: { ...config.automation.drop, items: [...config.automation.drop.items] },
+        loot: { ...config.automation.loot },
         search: { ...config.automation.search },
-        banking: { ...config.automation.banking },
         remotes: { ...config.automation.remotes },
-        afk: { ...config.automation.afk },
-        talk: { ...config.automation.talk },
-        statline: { ...config.automation.statline }
+        afk: { ...config.automation.afk }
       },
       loops
     };
@@ -1093,35 +1241,24 @@ export class SettingsEditor {
         set(['logging', 'conversations'], draft.logging.conversations);
         set(['logging', 'conversationDays'], draft.logging.conversationDays);
         set(['logging', 'maxBytes'], draft.logging.maxBytes);
+        set(['logging', 'keepBytes'], draft.logging.keepBytes);
 
         set(['automation', 'enabled'], draft.automation.enabled);
-        set(['automation', 'onEnterRealm'], [...draft.automation.onEnterRealm]);
-        set(['automation', 'onPartyChange'], draft.automation.onPartyChange);
-        set(['automation', 'idle'], { ...draft.automation.idle });
         set(['automation', 'pacing'], { ...draft.automation.pacing });
         set(['automation', 'walk'], { ...draft.automation.walk });
         set(['automation', 'safety', 'hangUp'], { ...draft.automation.hangUp });
         set(['automation', 'safety', 'retreat'], { ...draft.automation.retreat });
         set(['automation', 'safety', 'fleeGoto'], { ...draft.automation.fleeGoto });
-        set(['automation', 'safety', 'pvp'], { ...draft.automation.pvp });
         set(['automation', 'combat'], { ...draft.automation.combat });
         set(['automation', 'party'], { ...draft.automation.party });
         set(['automation', 'health'], { ...draft.automation.health });
         set(['automation', 'movement'], { ...draft.automation.movement });
         set(['automation', 'hunting'], { ...draft.automation.hunting });
-        set(['automation', 'train'], {
-          ...draft.automation.train,
-          wanted: { ...draft.automation.train.wanted }
-        });
         set(['automation', 'quests'], { ...draft.automation.quests });
-        set(['automation', 'gear'], { ...draft.automation.gear });
         set(['automation', 'spells'], { ...draft.automation.spells });
         set(['automation', 'loot'], { ...draft.automation.loot });
-        set(['automation', 'drop'], { ...draft.automation.drop });
-        set(['automation', 'banking'], { ...draft.automation.banking });
         set(['automation', 'remotes'], { ...draft.automation.remotes });
         set(['automation', 'afk'], { ...draft.automation.afk });
-        set(['automation', 'statline'], { ...draft.automation.statline });
       },
       verify: (value) => {
         /*
@@ -1239,18 +1376,16 @@ export class SettingsEditor {
          * stale the first time the first one changes, which is the rule the
          * options template already keeps: defaults live in exactly one place.
          */
-        // The character's own answer about penalties, read raw as `monsters`
-        // is below: the resolved one may be the realm's or the options file's.
-        hangUp: {
-          ...(effective?.automation.safety.hangUp ?? DEFAULT_CONFIG.automation.safety.hangUp),
-          penalties: ownHangPenalties(record)
-        },
-        retreat: retreatOf(
-          effective?.automation.safety.retreat ?? DEFAULT_CONFIG.automation.safety.retreat
-        ),
+        hangUp: effective?.automation.safety.hangUp ?? DEFAULT_CONFIG.automation.safety.hangUp,
+        retreat: effective?.automation.safety.retreat ?? DEFAULT_CONFIG.automation.safety.retreat,
         fleeGoto:
           effective?.automation.safety.fleeGoto ?? DEFAULT_CONFIG.automation.safety.fleeGoto,
-        pvp: effective?.automation.safety.pvp ?? DEFAULT_CONFIG.automation.safety.pvp,
+        stats: effective?.logging.stats ?? DEFAULT_CONFIG.logging.stats,
+        statsLinked:
+          isRecord(account) &&
+          typeof account['statsKey'] === 'string' &&
+          account['statsKey'].length > 0,
+        ...this.megamudOf(id, resolved.error === undefined ? resolved.profile : null, record),
         /*
          * The resolved combat block, except for the monster rows, which are
          * the character's **own** from the file as written (todo 01).
@@ -1271,17 +1406,15 @@ export class SettingsEditor {
         health: effective?.automation.health ?? DEFAULT_CONFIG.automation.health,
         movement: effective?.automation.movement ?? DEFAULT_CONFIG.automation.movement,
         hunting: effective?.automation.hunting ?? DEFAULT_CONFIG.automation.hunting,
-        train: effective?.automation.train ?? DEFAULT_CONFIG.automation.train,
         quests: effective?.automation.quests ?? DEFAULT_CONFIG.automation.quests,
-        gear: effective?.automation.gear ?? DEFAULT_CONFIG.automation.gear,
-        loot: effective?.automation.loot ?? DEFAULT_CONFIG.automation.loot,
-        drop: effective?.automation.drop ?? DEFAULT_CONFIG.automation.drop,
+        // The item rows the character's own, for `monsters`' reason above.
+        loot: {
+          ...(effective?.automation.loot ?? DEFAULT_CONFIG.automation.loot),
+          itemDetails: ownItemRules(record)
+        },
         search: effective?.automation.search ?? DEFAULT_CONFIG.automation.search,
-        banking: effective?.automation.banking ?? DEFAULT_CONFIG.automation.banking,
         remotes: effective?.automation.remotes ?? DEFAULT_CONFIG.automation.remotes,
         afk: effective?.automation.afk ?? DEFAULT_CONFIG.automation.afk,
-        talk: effective?.automation.talk ?? DEFAULT_CONFIG.automation.talk,
-        statline: effective?.automation.statline ?? DEFAULT_CONFIG.automation.statline,
         rewrites: effective?.ui.rewrites ?? DEFAULT_CONFIG.ui.rewrites,
         /*
          * This character's *own* loops, from its own directory — not the
@@ -1321,10 +1454,31 @@ export class SettingsEditor {
       },
       global: this.globalDraft(),
       realmSpells: this.spells?.realm() ?? [],
+      newMegamud: megamudFromConfig(config.automation, (spell) => spell),
       home: this.home.root,
       configPath: this.home.options,
       profilesDir: this.home.profilesDir
     };
+  }
+
+  /**
+   * A character's MegaMUD settings for the form, the password kept back: what
+   * it runs on, or, for one that will not resolve, what its file states, so a
+   * save from the form never writes MegaMUD's defaults over them.
+   */
+  private megamudOf(
+    id: string,
+    profile: Profile | null,
+    file: Record<string, unknown>
+  ): Pick<ProfileEditable, 'megamud' | 'megamudHasPassword'> {
+    const settings = structuredClone(
+      profile === null
+        ? settingsFromStored(file['megamud'])
+        : (this.megamud?.(id, profile) ?? profile.megamud)
+    );
+    const password = String(settings.live['BBS']?.['Password'] ?? '');
+    settings.live['BBS']!['Password'] = '';
+    return { megamud: settings, megamudHasPassword: password !== '' };
   }
 
   /** The character directories, sorted, so the list does not reshuffle. */
@@ -1390,30 +1544,21 @@ function text(value: unknown): string {
   return typeof value === 'string' ? value : '';
 }
 
-/**
- * The retreat fields the form asks about, and not `cooldownMs`.
- *
- * That one is a floor on retrying rather than a decision about a character, so
- * it is not on the screen — and a payload carrying a field nothing renders is a
- * payload that invites somebody to render it. The way out and the haven are
- * decisions about a character, and are.
- */
-function retreatOf(retreat: RetreatConfig): ProfileEditable['retreat'] {
-  return {
-    enabled: retreat.enabled,
-    belowHealth: retreat.belowHealth,
-    belowMana: retreat.belowMana,
-    whenOutnumbered: retreat.whenOutnumbered,
-    strategy: retreat.strategy,
-    safeHavenRoom: retreat.safeHavenRoom
-  };
-}
-
 /** `ui.theme` as the file states it, or '' when it follows the options file. */
 function themeOf(ui: unknown): ThemePreference | '' {
   if (typeof ui !== 'object' || ui === null) return '';
   const theme = (ui as Record<string, unknown>)['theme'];
   return isThemePreference(theme) ? theme : '';
+}
+
+/** The MegaMUD settings a character's file states, or MegaMUD's defaults. */
+function storedMegamud(file: string): MegaSettings {
+  try {
+    const raw: unknown = parse(fs.readFileSync(file, 'utf8'));
+    return settingsFromStored(isRecord(raw) ? raw['megamud'] : undefined);
+  } catch {
+    return defaultSettings();
+  }
 }
 
 function accentOf(value: unknown, fallback: ProfileAccent): ProfileAccent {
@@ -1434,26 +1579,23 @@ function blank(id: string): ProfileEditable {
     username: '',
     hasPassword: false,
     login: [],
-    hangUp: { ...DEFAULT_CONFIG.automation.safety.hangUp, penalties: null },
-    retreat: retreatOf(DEFAULT_CONFIG.automation.safety.retreat),
+    hangUp: DEFAULT_CONFIG.automation.safety.hangUp,
+    retreat: DEFAULT_CONFIG.automation.safety.retreat,
     fleeGoto: DEFAULT_CONFIG.automation.safety.fleeGoto,
-    pvp: DEFAULT_CONFIG.automation.safety.pvp,
+    stats: DEFAULT_CONFIG.logging.stats,
+    statsLinked: false,
+    megamud: defaultSettings(),
+    megamudHasPassword: false,
     combat: DEFAULT_CONFIG.automation.combat,
     party: DEFAULT_CONFIG.automation.party,
     health: DEFAULT_CONFIG.automation.health,
     movement: DEFAULT_CONFIG.automation.movement,
     hunting: DEFAULT_CONFIG.automation.hunting,
-    train: DEFAULT_CONFIG.automation.train,
     quests: DEFAULT_CONFIG.automation.quests,
-    gear: DEFAULT_CONFIG.automation.gear,
     loot: DEFAULT_CONFIG.automation.loot,
-    drop: DEFAULT_CONFIG.automation.drop,
     search: DEFAULT_CONFIG.automation.search,
-    banking: DEFAULT_CONFIG.automation.banking,
     remotes: DEFAULT_CONFIG.automation.remotes,
     afk: DEFAULT_CONFIG.automation.afk,
-    talk: DEFAULT_CONFIG.automation.talk,
-    statline: DEFAULT_CONFIG.automation.statline,
     rewrites: DEFAULT_CONFIG.ui.rewrites,
     loops: [],
     inherited: [],
@@ -1480,15 +1622,26 @@ function loopNode(loop: Loop): Record<string, unknown> {
     ...(loop.bounce === true ? { bounce: true } : {}),
     ...(loop.prefer === true ? { prefer: true } : {}),
     stops: loop.stops.map((stop) =>
-      stop.linger === undefined && stop.every === undefined
+      stop.linger === undefined && stop.every === undefined && stop.commands === undefined
         ? quoted(stop.room)
         : {
             room: quoted(stop.room),
             ...(stop.linger === undefined ? {} : { linger: stop.linger }),
-            ...(stop.every === undefined ? {} : { every: stop.every })
+            ...(stop.every === undefined ? {} : { every: stop.every }),
+            ...(stop.commands === undefined ? {} : { commands: stop.commands })
           }
     )
   };
+}
+
+/**
+ * A loop as a file another player's client reads (2026-10-19): the file this
+ * client writes for it (`loopNode`), with a line saying what it is.
+ */
+export function loopFileText(loop: Loop): string {
+  const document = new Document(loopNode(loop));
+  document.commentBefore = ' A mudengine loop. Import it from a loop list in Settings.';
+  return document.toString();
 }
 
 /**
@@ -1558,8 +1711,9 @@ function writeLoopFile(file: string, loop: Loop): EditResult {
     mutate: (document) => {
       const node = loopNode(loop);
       for (const [key, value] of Object.entries(node)) document.setIn([key], value);
-      if (node['bounce'] === undefined && document.hasIn(['bounce'])) {
-        document.deleteIn(['bounce']);
+      // A switch turned off in the builder goes from the file with it.
+      for (const key of ['bounce', 'prefer']) {
+        if (node[key] === undefined && document.hasIn([key])) document.deleteIn([key]);
       }
     }
   });

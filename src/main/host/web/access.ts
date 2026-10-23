@@ -114,10 +114,6 @@ export class AccessTokens {
   has(token: string | null | undefined): boolean {
     return typeof token === 'string' && this.issued.has(token);
   }
-
-  revoke(token: string): void {
-    this.issued.delete(token);
-  }
 }
 
 /** The session token out of a `Cookie` header, or null. */

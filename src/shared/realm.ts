@@ -256,8 +256,7 @@ export interface FamilyReading {
  *   lineage answers, measured on `bbs.bearfather.net` 2026-09-05 (majorMUD
  *   v1.11p-WG3NT): `rm` at the prompt, that sentence back, twice, privately.
  *   The sentence **names nothing**, so the command comes from the status
- *   line's own echo — `SessionManager.answering`, the slot
- *   `Recovery.noteNoEffect` already reads — and is passed in.
+ *   line's own echo — `SessionManager.answering` — and is passed in.
  *
  *   `You say "rm"` (`command-not-understood`) is the *GreaterMUD* family's
  *   answer, measured on `orohost` (`exits`, `time`, `stats`, `gold` all came

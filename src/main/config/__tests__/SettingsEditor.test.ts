@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { parse } from 'yaml';
 
-import { SettingsEditor } from '../SettingsEditor';
+import { loopFileText, SettingsEditor } from '../SettingsEditor';
 import { homeAt, type Home } from '../../app/home';
 import { resolveProfile } from '../../../shared/profiles';
 import {
@@ -14,7 +14,9 @@ import {
   type ServerDraft
 } from '../../../shared/drafts';
 import { ServerStore } from '../ServerStore';
-import { LoopStore } from '../LoopStore';
+import { defaultSettings, type MegaSettings } from '../../../shared/megamud/settings';
+import { megamudFromConfig } from '../../../shared/megamud/fromConfig';
+import { LoopStore, readLoops } from '../LoopStore';
 import { DEFAULT_CONFIG, normalizeConfig } from '../../../shared/config';
 import { UNCATEGORISED, type Loop } from '../../../shared/loops';
 
@@ -49,17 +51,10 @@ const draft = (over: Partial<ProfileDraft> = {}): ProfileDraft => ({
   accent: 'cyan',
   theme: '',
   login: [],
-  hangUp: { enabled: false, belowHealth: 0.15, penalties: null, onPlayerInRoom: false },
-  retreat: {
-    enabled: false,
-    belowHealth: 0.3,
-    belowMana: 0,
-    whenOutnumbered: 0,
-    strategy: 'step-back',
-    safeHavenRoom: ''
-  },
+  hangUp: { enabled: false, belowHealth: 0.15 },
+  retreat: { enabled: false, belowHealth: 0.3 },
   fleeGoto: { enabled: false, belowHealth: 0.2, destination: '' },
-  pvp: { notifyGang: false, action: 'none' },
+  stats: { enabled: false, everySeconds: 60 },
   // The shipped defaults, so a draft that says nothing about combat writes no
   // `combat:` block at all -- which is the behaviour the tests below assert.
   combat: { ...DEFAULT_CONFIG.automation.combat },
@@ -67,24 +62,15 @@ const draft = (over: Partial<ProfileDraft> = {}): ProfileDraft => ({
   party: { ...DEFAULT_CONFIG.automation.party },
   health: { ...DEFAULT_CONFIG.automation.health },
   movement: { ...DEFAULT_CONFIG.automation.movement },
-  train: {
-    ...DEFAULT_CONFIG.automation.train,
-    wanted: { ...DEFAULT_CONFIG.automation.train.wanted }
-  },
   quests: { ...DEFAULT_CONFIG.automation.quests },
-  gear: { ...DEFAULT_CONFIG.automation.gear },
   loot: structuredClone(DEFAULT_CONFIG.automation.loot),
-  drop: structuredClone(DEFAULT_CONFIG.automation.drop),
   search: { ...DEFAULT_CONFIG.automation.search },
-  banking: { ...DEFAULT_CONFIG.automation.banking },
   // Empty is what OPTIONS below gives a character: the options file states no
   // loops, so a draft matching it writes no `loops:` key.
   loops: [],
   spells: { ...DEFAULT_CONFIG.automation.spells },
   alerts: { ...DEFAULT_CONFIG.ui.alerts },
   remotes: { ...DEFAULT_CONFIG.automation.remotes },
-  talk: { ...DEFAULT_CONFIG.automation.talk },
-  statline: { ...DEFAULT_CONFIG.automation.statline },
   rewrites: structuredClone(DEFAULT_CONFIG.ui.rewrites),
   ...over
 });
@@ -308,6 +294,21 @@ ui:
     expect(read('vaelor')['account']).toEqual({ username: 'someone', password: 'secret-value' });
   });
 
+  /* The mudstats key is written by the link, never by the form (2026-10-16). */
+  it('keeps the stats key through a save, and writes and forgets it on its own', () => {
+    editor.saveProfile('vaelor', draft());
+    expect(editor.setStatsKey('vaelor', 'mudk_1_secret').ok).toBe(true);
+    editor.saveProfile('vaelor', draft({ name: 'Vaelor the Second' }));
+    expect(read('vaelor')['account']).toEqual({
+      username: 'someone',
+      password: 'secret-value',
+      statsKey: 'mudk_1_secret'
+    });
+    expect(editor.snapshot().characters.find((c) => c.id === 'vaelor')?.statsLinked).toBe(true);
+    editor.setStatsKey('vaelor', '');
+    expect(read('vaelor')['account']).toEqual({ username: 'someone', password: 'secret-value' });
+  });
+
   it('refuses to touch a file that does not parse', () => {
     const file = home.profile('broken').file;
     fs.mkdirSync(path.dirname(file), { recursive: true });
@@ -363,8 +364,9 @@ describe('servers, one directory each', () => {
     locate: 'rm',
     loops: [],
     database: '',
-    hangPenalties: null,
     coins: {},
+    bbs: {},
+    statsUrl: '',
     ...draft
   });
 
@@ -384,15 +386,6 @@ describe('servers, one directory each', () => {
     expect(fs.existsSync(home.server('bearfather').file)).toBe(true);
   });
 
-  /* Whether a hang-up here is charged: stated when chosen, and no key when left to Global (todo 01). */
-  it('writes the realm\u2019s hang penalty only when it states one', () => {
-    editor.saveServer(null, server({ hangPenalties: true }));
-    expect(new ServerStore(home).all[0]!.server.hangPenalties).toBe(true);
-    editor.saveServer('Bearfather', server({ hangPenalties: null }));
-    expect(new ServerStore(home).all[0]!.server.hangPenalties).toBeNull();
-    expect(fs.readFileSync(home.server('bearfather').file, 'utf8')).not.toContain('hangPenalties');
-  });
-
   /* What the realm calls its coins: only the ones it renames, and no key for none. */
   it('writes the realm’s coin names only where it renames one', () => {
     editor.saveServer(null, server({ coins: { runic: 'Krabby Patties', gold: '' } }));
@@ -400,6 +393,15 @@ describe('servers, one directory each', () => {
     editor.saveServer('Bearfather', server({ coins: {} }));
     expect(new ServerStore(home).all[0]!.server.coins).toEqual({});
     expect(fs.readFileSync(home.server('bearfather').file, 'utf8')).not.toContain('coins');
+  });
+
+  /* MegaMUD's BBS set-up for the realm: only the keys it states, and no key for none. */
+  it('writes the realm’s BBS set-up only where it states a key', () => {
+    editor.saveServer(null, server({ bbs: { LogoffCmd: 'x', RelogCmd: '' } }));
+    expect(new ServerStore(home).all[0]!.server.bbs).toEqual({ LogoffCmd: 'x' });
+    editor.saveServer('Bearfather', server({ bbs: {} }));
+    expect(new ServerStore(home).all[0]!.server.bbs).toEqual({});
+    expect(fs.readFileSync(home.server('bearfather').file, 'utf8')).not.toMatch(/^bbs:/m);
   });
 
   it('updates one in place rather than adding a second', () => {
@@ -493,8 +495,9 @@ describe('servers, one directory each', () => {
       locate: 'rm',
       loops: [],
       database: '',
-      hangPenalties: null,
-      coins: {}
+      coins: {},
+      bbs: {},
+      statsUrl: ''
     });
     expect(servers()).toEqual([
       { id: 'greatermud-local', name: 'GreaterMUD (local)', host: '127.0.0.1' }
@@ -568,8 +571,9 @@ describe('credentials in the messages', () => {
       locate: 'rm',
       loops: [],
       database: '',
-      hangPenalties: null,
-      coins: {}
+      coins: {},
+      bbs: {},
+      statsUrl: ''
     });
     for (const file of fs.readdirSync(dir)) {
       if (!fs.statSync(path.join(dir, file)).isFile()) continue;
@@ -602,7 +606,8 @@ describe('what a character plays against, and what keeps it alive', () => {
           autoJoin: false,
           gang: [],
           party: [],
-          players: {}
+          players: {},
+          commands: []
         }
       })
     );
@@ -613,7 +618,8 @@ describe('what a character plays against, and what keeps it alive', () => {
       autoJoin: false,
       gang: [],
       party: [],
-      players: {}
+      players: {},
+      commands: []
     });
   });
 
@@ -624,7 +630,7 @@ describe('what a character plays against, and what keeps it alive', () => {
    * write one — reported as *"i do not see auto collect or discard cash on the
    * players ui"*.
    */
-  it('writes a character’s own answer to what it picks up and what it sheds', () => {
+  it('writes a character’s own answer to what it picks up', () => {
     editor.saveProfile(
       'vaelor',
       draft({
@@ -633,8 +639,7 @@ describe('what a character plays against, and what keeps it alive', () => {
           coins: true,
           coinKinds: ['runic', 'platinum', 'gold', 'silver'],
           discardKinds: ['copper']
-        },
-        banking: { autoDeposit: true, depositThresholdCopper: 100_000, keepCopper: 500, bank: 0 }
+        }
       })
     );
     const automation = read('vaelor')['automation'] as Record<string, unknown>;
@@ -643,16 +648,8 @@ describe('what a character plays against, and what keeps it alive', () => {
       coinKinds: ['runic', 'platinum', 'gold', 'silver'],
       discardKinds: ['copper']
     });
-    expect(automation['banking']).toEqual({
-      autoDeposit: true,
-      depositThresholdCopper: 100_000,
-      keepCopper: 500,
-      // Whichever counter it stands at, which is what the draft said.
-      bank: 0
-    });
-    // And the two that were not touched are still stated, like every other
+    // And the one that was not touched is still stated, like every other
     // block a character owns: creating takes the copy whole.
-    expect(automation['drop']).toEqual({ ...DEFAULT_CONFIG.automation.drop });
     expect(automation['search']).toEqual({ ...DEFAULT_CONFIG.automation.search });
   });
 
@@ -674,7 +671,8 @@ describe('what a character plays against, and what keeps it alive', () => {
       // switch is off, so it grants nobody anything until somebody turns
       // answering on -- which is the point of stating it either way.
       party: [...DEFAULT_CONFIG.automation.remotes.party],
-      players: {}
+      players: {},
+      commands: []
     });
   });
 
@@ -694,7 +692,8 @@ describe('what a character plays against, and what keeps it alive', () => {
           autoJoin: false,
           gang: [],
           party: [],
-          players: {}
+          players: {},
+          commands: []
         }
       })
     );
@@ -707,7 +706,8 @@ describe('what a character plays against, and what keeps it alive', () => {
           autoJoin: false,
           gang: [],
           party: [],
-          players: {}
+          players: {},
+          commands: []
         }
       })
     );
@@ -718,7 +718,8 @@ describe('what a character plays against, and what keeps it alive', () => {
       autoJoin: false,
       gang: [],
       party: [],
-      players: {}
+      players: {},
+      commands: []
     });
   });
 
@@ -752,30 +753,13 @@ describe('what a character plays against, and what keeps it alive', () => {
     editor.saveProfile(
       'vaelor',
       draft({
-        hangUp: { enabled: true, belowHealth: 0.2, penalties: true, onPlayerInRoom: false }
+        hangUp: { enabled: true, belowHealth: 0.2 }
       })
     );
     const safety = (read('vaelor')['automation'] as Record<string, Record<string, unknown>>)[
       'safety'
     ];
-    expect(safety?.['hangUp']).toEqual({
-      enabled: true,
-      belowHealth: 0.2,
-      penalties: true,
-      onPlayerInRoom: false
-    });
-
-    // Left to the realm: no key, so the realm's own answer reaches it (todo 01).
-    editor.saveProfile(
-      'vaelor',
-      draft({
-        hangUp: { enabled: true, belowHealth: 0.2, penalties: null, onPlayerInRoom: false }
-      })
-    );
-    const again = (read('vaelor')['automation'] as Record<string, Record<string, unknown>>)[
-      'safety'
-    ];
-    expect(again?.['hangUp']).toEqual({ enabled: true, belowHealth: 0.2, onPlayerInRoom: false });
+    expect(safety?.['hangUp']).toEqual({ enabled: true, belowHealth: 0.2 });
   });
 
   /*
@@ -792,11 +776,7 @@ describe('what a character plays against, and what keeps it alive', () => {
       draft({
         retreat: {
           enabled: true,
-          belowHealth: 0.4,
-          belowMana: 0,
-          whenOutnumbered: 3,
-          strategy: 'step-back',
-          safeHavenRoom: ''
+          belowHealth: 0.4
         }
       })
     );
@@ -805,11 +785,7 @@ describe('what a character plays against, and what keeps it alive', () => {
       draft({
         retreat: {
           enabled: false,
-          belowHealth: 0.4,
-          belowMana: 0,
-          whenOutnumbered: 3,
-          strategy: 'step-back',
-          safeHavenRoom: ''
+          belowHealth: 0.4
         }
       })
     );
@@ -831,7 +807,7 @@ describe('what a character plays against, and what keeps it alive', () => {
     editor.saveProfile(
       'vaelor',
       draft({
-        hangUp: { enabled: true, belowHealth: 0.2, penalties: null, onPlayerInRoom: false }
+        hangUp: { enabled: true, belowHealth: 0.2 }
       })
     );
     const automation = read('vaelor')['automation'] as Record<string, unknown>;
@@ -1008,8 +984,9 @@ describe('the loops a character owns', () => {
       locate: 'rm',
       loops: [arena],
       database: '',
-      hangPenalties: null,
-      coins: {}
+      coins: {},
+      bbs: {},
+      statsUrl: ''
     });
     editor.saveProfile('vaelor', draft());
 
@@ -1090,8 +1067,9 @@ describe('filing one loop from the Loops modal', () => {
       locate: 'rm',
       loops: [],
       database: '',
-      hangPenalties: null,
-      coins: {}
+      coins: {},
+      bbs: {},
+      statsUrl: ''
     });
     expect(editor.addLoop('server', 'GreaterMUD (local)', sewers)).toEqual({ ok: true });
     const store = new LoopStore(home);
@@ -1133,6 +1111,43 @@ describe('filing one loop from the Loops modal', () => {
     );
     expect(written).not.toContain('category');
   });
+
+  /* A stop's commands (2026-10-23), in the file and read back. */
+  it('writes the commands typed at a stop, and reads them back', () => {
+    const hammer: Loop = {
+      ...sewers,
+      stops: [sewers.stops[0]!, { room: 'Sewer Tunnel 1/604', commands: ['touch hammer'] }]
+    };
+    expect(editor.addLoop('profile', 'vaelor', hammer)).toEqual({ ok: true });
+    expect(owned('vaelor')[0]!.stops).toEqual(hammer.stops);
+  });
+
+  /* A loop edited in the builder and saved (2026-10-23). */
+  it('replaces the loop an edit was opened from, renamed or moved', () => {
+    editor.addLoop('profile', 'vaelor', sewers);
+    editor.addLoop('profile', 'vaelor', arena);
+    const at = { scope: 'profile' as const, owner: 'vaelor', name: 'Sewer loop' };
+    expect(editor.addLoop('profile', 'vaelor', { ...sewers, name: 'Sewer ring' }, at)).toEqual({
+      ok: true
+    });
+    expect(
+      owned('vaelor')
+        .map((loop) => loop.name)
+        .sort()
+    ).toEqual(['Newhaven arena', 'Sewer ring']);
+    // Saved again under its own name, it is rewritten and kept.
+    const again = { ...at, name: 'Sewer ring' };
+    expect(editor.addLoop('profile', 'vaelor', { ...sewers, name: 'Sewer ring' }, again)).toEqual({
+      ok: true
+    });
+    expect(owned('vaelor')).toHaveLength(2);
+  });
+
+  it('takes a preference off the file when the edit turns it off', () => {
+    editor.addLoop('profile', 'vaelor', { ...sewers, prefer: true });
+    editor.addLoop('profile', 'vaelor', sewers);
+    expect(owned('vaelor')[0]!.prefer).toBeUndefined();
+  });
 });
 
 /*
@@ -1149,8 +1164,9 @@ describe('filing a MegaMUD folder of loops on a realm', () => {
     locate: 'rm',
     loops,
     database: '',
-    hangPenalties: null,
-    coins: {}
+    coins: {},
+    bbs: {},
+    statsUrl: ''
   });
   const loop = (name: string): Loop => ({
     name,
@@ -1387,7 +1403,8 @@ describe('one player’s @ command permissions', () => {
           autoJoin: false,
           gang: [],
           party: [],
-          players: {}
+          players: {},
+          commands: []
         }
       })
     );
@@ -1543,7 +1560,8 @@ describe('the gang list and the gangpath switch', () => {
           autoJoin: false,
           gang: [],
           party: [],
-          players: {}
+          players: {},
+          commands: []
         }
       })
     );
@@ -1637,6 +1655,100 @@ describe('what the spell pickers are offered', () => {
   });
 });
 
+/* A loop handed to another player as a file, and taken in from one (2026-10-19). */
+describe('a shared loop file', () => {
+  it('reads back as the loop it was written from, filed in the realm', () => {
+    const loop = {
+      name: 'Sewer circuit',
+      bounce: true,
+      stops: [{ room: 'Sewer Tunnel 1/606' }, { room: 'Sewer Junction 1/610', linger: 30 }]
+    };
+    const text = loopFileText(loop);
+    expect(text).toContain('A mudengine loop');
+    const result = editor.importLoopText('global', null, text);
+    expect(result).toEqual({ ok: true, count: 1, replaced: 0 });
+    expect(editor.importLoopText('global', null, text)).toEqual({
+      ok: true,
+      count: 1,
+      replaced: 1
+    });
+    const kept = readLoops(parse(text), 'x')[0];
+    expect(kept).toMatchObject(loop);
+  });
+
+  it('refuses a file that holds no loop, or is not YAML', () => {
+    expect(editor.importLoopText('global', null, 'just: words').ok).toBe(false);
+    expect(editor.importLoopText('global', null, '{ unclosed').ok).toBe(false);
+  });
+});
+
+/* The Explorer's Item Manager writes the character's own item rows (2026-10-19). */
+describe("a character's own item rows", () => {
+  const rowsOf = (id: string): unknown =>
+    (
+      (read(id)['automation'] as Record<string, unknown> | undefined)?.['loot'] as
+        Record<string, unknown> | undefined
+    )?.['itemDetails'];
+
+  it('writes the rows whole, a flag switched off kept as said', () => {
+    editor.saveProfile('vaelor', draft());
+    expect(
+      editor.setItemDetails('vaelor', [
+        { item: 'torch', buy: true, keep: 3 },
+        { item: 'rat tail', sell: false },
+        { item: 'nothing said' }
+      ]).ok
+    ).toBe(true);
+    expect(rowsOf('vaelor')).toEqual([
+      { item: 'torch', buy: true, keep: 3 },
+      { item: 'rat tail', sell: false }
+    ]);
+    expect(resolveProfile('vaelor', read('vaelor'), parse(OPTIONS)).error).toBeUndefined();
+    editor.setItemDetails('vaelor', []);
+    expect(rowsOf('vaelor')).toEqual([]);
+  });
+
+  it('refuses a character that does not exist', () => {
+    expect(editor.setItemDetails('nobody-at-all', []).ok).toBe(false);
+  });
+});
+
+/* A clicked monster's Edit writes the character's own monster rows (2026-10-20). */
+describe("a character's own monster rows", () => {
+  const rowsOf = (id: string): unknown =>
+    (
+      (read(id)['automation'] as Record<string, unknown> | undefined)?.['combat'] as
+        Record<string, unknown> | undefined
+    )?.['monsters'];
+
+  it('writes the rows whole, and reads back only what the file states', () => {
+    editor.saveProfile('vaelor', draft());
+    expect(
+      editor.setCombatMonsters('vaelor', [
+        { mob: 'grey lord', relationship: 'avoid', attack: { spell: 'mmis', max: 2 } },
+        { mob: 'gnome inventor', priority: 'first', noBackstab: true },
+        { mob: 'nothing said' }
+      ]).ok
+    ).toBe(true);
+    expect(rowsOf('vaelor')).toEqual([
+      { mob: 'grey lord', relationship: 'avoid', attack: { spell: 'mmis', max: 2 } },
+      { mob: 'gnome inventor', priority: 'first', noBackstab: true }
+    ]);
+    expect(resolveProfile('vaelor', read('vaelor'), parse(OPTIONS)).error).toBeUndefined();
+    expect(editor.ownRules('vaelor').monsters.map((row) => row.mob)).toEqual([
+      'grey lord',
+      'gnome inventor'
+    ]);
+    editor.setCombatMonsters('vaelor', []);
+    expect(rowsOf('vaelor')).toEqual([]);
+  });
+
+  it('refuses a character that does not exist, and reads it as no rows', () => {
+    expect(editor.setCombatMonsters('nobody-at-all', []).ok).toBe(false);
+    expect(editor.ownRules('nobody-at-all')).toEqual({ monsters: [], items: [] });
+  });
+});
+
 describe('the supplies list', () => {
   const suppliesOf = (id: string): unknown =>
     (read(id)['automation'] as Record<string, unknown> | undefined)?.['supplies'];
@@ -1672,5 +1784,95 @@ describe('the supplies list', () => {
 
   it('refuses a character that does not exist', () => {
     expect(editor.setSupplies('nobody-at-all', []).ok).toBe(false);
+  });
+});
+
+describe('a character’s MegaMUD settings, saved with the rest of it', () => {
+  const stated = (id: string): Record<string, Record<string, unknown>> =>
+    read(id)['megamud'] as Record<string, Record<string, unknown>>;
+  const withFile = (megamud: string): void => {
+    const file = home.profile('vaelor').file;
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, `server: GreaterMUD (local)\n${megamud}`, 'utf8');
+  };
+  const shown = (id: string) => {
+    const entry = editor.snapshot().characters.find((c) => c.id === id);
+    if (entry === undefined) throw new Error(`no ${id}`);
+    return entry;
+  };
+
+  it('writes what the draft says, with the rest of the character', () => {
+    const megamud = defaultSettings();
+    megamud.live['Health']!['HpRest%'] = 61;
+    expect(editor.saveProfile('vaelor', draft({ megamud }))).toEqual({ ok: true });
+    expect(stated('vaelor')['Health']).toMatchObject({ 'HpRest%': 61 });
+  });
+
+  it('leaves the file’s alone when the draft carries none', () => {
+    withFile('megamud:\n  Health:\n    HpRest%: 44\n');
+    expect(editor.saveProfile('vaelor', draft({ accent: 'violet' }))).toEqual({ ok: true });
+    expect(stated('vaelor')['Health']).toEqual({ 'HpRest%': 44 });
+  });
+
+  it('keeps the password on file when the draft’s is empty, and never shows it', () => {
+    withFile('megamud:\n  BBS:\n    Password: hunter2\n  Health:\n    HpRest%: 44\n');
+    const entry = shown('vaelor');
+    expect(entry.megamud.live['BBS']!['Password']).toBe('');
+    expect(entry.megamudHasPassword).toBe(true);
+    expect(entry.megamud.live['Health']!['HpRest%']).toBe(44);
+
+    const megamud = structuredClone(entry.megamud);
+    megamud.live['Health']!['HpRest%'] = 50;
+    expect(editor.saveProfile('vaelor', draft({ megamud }))).toEqual({ ok: true });
+    expect(stated('vaelor')['BBS']).toMatchObject({ Password: 'hunter2' });
+    expect(stated('vaelor')['Health']).toEqual({ 'HpRest%': 50 });
+  });
+
+  it('keeps the sections the window does not edit', () => {
+    withFile('megamud:\n  Custom:\n    Thing: kept\n');
+    expect(editor.saveProfile('vaelor', draft({ megamud: shown('vaelor').megamud }))).toEqual({
+      ok: true
+    });
+    expect(stated('vaelor')['Custom']).toEqual({ Thing: 'kept' });
+  });
+
+  it('refuses a draft that is not settings at all, writing nothing', () => {
+    withFile('megamud:\n  Health:\n    HpRest%: 44\n');
+    const before = fs.readFileSync(home.profile('vaelor').file, 'utf8');
+    const result = editor.saveProfile('vaelor', {
+      ...draft(),
+      megamud: { nonsense: true } as unknown as MegaSettings
+    });
+    expect(result.ok).toBe(false);
+    expect(fs.readFileSync(home.profile('vaelor').file, 'utf8')).toBe(before);
+  });
+
+  it('shows a character that will not resolve its file’s settings, not MegaMUD’s defaults', () => {
+    const file = home.profile('vaelor').file;
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, 'server: Nowhere\nmegamud:\n  Health:\n    HpRest%: 44\n', 'utf8');
+    const entry = shown('vaelor');
+    expect(entry.error).toBeDefined();
+    expect(entry.megamud.live['Health']!['HpRest%']).toBe(44);
+  });
+
+  it('shows what the engine runs a character on, as the client works it out', () => {
+    withFile('');
+    const provided = new SettingsEditor({
+      home,
+      megamud: () => {
+        const settings = defaultSettings();
+        settings.live['Health']!['HpRest%'] = 33;
+        return settings;
+      }
+    });
+    const entry = provided.snapshot().characters.find((c) => c.id === 'vaelor');
+    expect(entry?.megamud.live['Health']!['HpRest%']).toBe(33);
+  });
+
+  it('offers a new character the options file’s automation carried across', () => {
+    expect(editor.snapshot().newMegamud).toEqual(
+      megamudFromConfig(normalizeConfig(parse(OPTIONS)).automation, (spell) => spell)
+    );
   });
 });

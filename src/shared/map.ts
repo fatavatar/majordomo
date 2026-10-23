@@ -77,6 +77,15 @@ export interface MapCell {
   vertical: Vertical;
   shop: boolean;
   /**
+   * Where each way out on the plane leads (2026-10-18), so a corridor is
+   * drawn only to the room it reaches: a MUD is not Euclidean, and the room
+   * in the next square is often not the one the exit leads to.
+   */
+  exitsTo?: Partial<Record<Direction, RoomId>>;
+  /** Somebody lives here (`NPC`), and the room answers a command (`CMD`). */
+  npc?: boolean;
+  commands?: boolean;
+  /**
    * What kind of place the shop is, when the realm says. A bank is drawn
    * differently from a shop — it is where the money is, not where it goes —
    * and the map is read for exactly that at a glance.
@@ -116,22 +125,6 @@ export const STEP: Record<Direction, { dx: number; dy: number } | null> = {
   u: null,
   d: null
 };
-
-/**
- * Turns a laid-out map into something drawable, in map units.
- *
- * The map is drawn as vector shapes rather than as characters. That was the
- * other way round to begin with, on the argument that the game lays its own
- * maps out in character cells — but this map is not the game's. It is *derived*
- * from the realm data by the client, and nothing about it ever crosses the
- * wire, so the character-cell rule that governs the console does not reach it.
- * It is chrome, and chrome follows the design language: tonal fills, a themed
- * palette, and shapes that can say "shop" without spending a glyph on it.
- *
- * Emitted in abstract units with the origin at the top-left of the extent; the
- * card scales them with a viewBox, so nothing here needs to know how large the
- * card is.
- */
 
 /** Distance between neighbouring rooms. Rooms are drawn much smaller. */
 export const MAP_CELL = 10;
@@ -173,8 +166,12 @@ export function roomPixelsFor(density: number, sparse: number, dense: number): n
   return sparse + at * (dense - sparse);
 }
 
-/** What a room is, for choosing its shape and colour. First match wins. */
-export type RoomKind = 'here' | 'lair' | 'bank' | 'shop' | 'stairs' | 'room';
+/**
+ * What a room is, for choosing its shape and colour (mudmaps' kinds,
+ * 2026-10-18): `stairs` is its way up or down, `npc` and `cmd` somebody
+ * living there and a room that answers a command. First match wins.
+ */
+export type RoomKind = 'lair' | 'bank' | 'shop' | 'npc' | 'cmd' | 'stairs' | 'room';
 
 export interface MapNode {
   id: RoomId;
@@ -188,6 +185,25 @@ export interface MapNode {
   vertical: Vertical;
   /** The off-plane ways out, for a picture that lets a reader take one. */
   away?: MapAway[];
+  /** A temple's, tavern's, inn's or trainer's letter on its shop circle (mudmaps' `T P I G`). */
+  letter?: string;
+  /** A lettered room that is a lair as well: the lair's diamond on its corner. */
+  lairBadge?: boolean;
+  /**
+   * The ways out a straight corridor cannot draw (2026-10-18): the room an
+   * exit reaches is not the one in the square it points at, so it is an
+   * arrow that way, `local` where the room is elsewhere on this picture.
+   */
+  arrows?: MapArrow[];
+}
+
+/** A way out drawn as an arrow, mudmaps' own mark for an exit a line would get wrong. */
+export interface MapArrow {
+  direction: Direction;
+  to: RoomId;
+  /** The room it reaches is on this picture. */
+  local: boolean;
+  obstacle?: MapObstacle;
 }
 
 /** A corridor between two rooms the map is showing. */
@@ -223,15 +239,45 @@ export interface MapDrawing {
   height: number;
 }
 
-function kindOf(cell: MapCell, here: boolean): RoomKind {
-  if (here) return 'here';
-  if (cell.lair) return 'lair';
+/**
+ * What a room is, mudmaps' order (`room_kind`, 2026-10-18): a shop or bank
+ * first, then somebody living there, a room that answers a command, a lair,
+ * a way up or down, and a room. The character's own room keeps its kind;
+ * `here` is said apart.
+ */
+function kindOf(cell: MapCell): RoomKind {
   if (cell.place === 'bank') return 'bank';
   if (cell.shop) return 'shop';
+  if (cell.npc === true) return 'npc';
+  if (cell.commands === true) return 'cmd';
+  if (cell.lair) return 'lair';
   if (cell.vertical !== null) return 'stairs';
   return 'room';
 }
 
+/** A shop's letter by its kind, mudmaps' `ROOM_LETTER`; a plain shop is the bare circle. */
+const SHOP_LETTER: Partial<Record<ShopKind, string>> = {
+  temple: 'T',
+  tavern: 'P',
+  inn: 'I',
+  trainer: 'G'
+};
+
+/**
+ * Turns a laid-out map into something drawable, in map units.
+ *
+ * The map is drawn as vector shapes rather than as characters. That was the
+ * other way round to begin with, on the argument that the game lays its own
+ * maps out in character cells — but this map is not the game's. It is *derived*
+ * from the realm data by the client, and nothing about it ever crosses the
+ * wire, so the character-cell rule that governs the console does not reach it.
+ * It is chrome, and chrome follows the design language: tonal fills, a themed
+ * palette, and shapes that can say "shop" without spending a glyph on it.
+ *
+ * Emitted in abstract units with the origin at the top-left of the extent; the
+ * card scales them with a viewBox, so nothing here needs to know how large the
+ * card is.
+ */
 export function layoutMap(map: LocalMap): MapDrawing {
   if (map.cells.length === 0) return { nodes: [], links: [], width: 0, height: 0 };
 
@@ -246,8 +292,10 @@ export function layoutMap(map: LocalMap): MapDrawing {
   });
 
   const placed = new Map(map.cells.map((cell) => [`${cell.gx},${cell.gy}`, cell]));
+  const shown = new Set(map.cells.map((cell) => cell.id));
   const links: MapLink[] = [];
   const seen = new Set<string>();
+  const arrows = new Map<RoomId, MapArrow[]>();
 
   for (const cell of map.cells) {
     for (const direction of cell.exits) {
@@ -255,6 +303,31 @@ export function layoutMap(map: LocalMap): MapDrawing {
       // Up and down are not on this plane; the room's own mark says so instead.
       if (!step) continue;
       const neighbour = placed.get(`${cell.gx + step.dx},${cell.gy + step.dy}`);
+      const reaches = cell.exitsTo?.[direction as Direction];
+      /*
+       * A way out to a room that is not the one in that square is an arrow,
+       * not a corridor (mudmaps, 2026-10-18): drawn as a line it joined the
+       * wrong two rooms. `local` where the room it reaches is elsewhere on
+       * this picture. An exit into an empty square to a room the picture
+       * does not hold is only past its edge, and stays undrawn, as it was:
+       * an arrow there called every exit at the rim a way somewhere else.
+       */
+      const elsewhere =
+        reaches !== undefined &&
+        neighbour?.id !== reaches &&
+        (neighbour !== undefined || shown.has(reaches));
+      if (elsewhere) {
+        const obstacle = cell.blocked?.[direction as Direction];
+        const list = arrows.get(cell.id) ?? [];
+        list.push({
+          direction: direction as Direction,
+          to: reaches,
+          local: shown.has(reaches),
+          ...(obstacle ? { obstacle } : {})
+        });
+        arrows.set(cell.id, list);
+        continue;
+      }
       // Only join rooms the map actually shows. An exit into the dark would
       // otherwise read as a corridor to a room that is not there.
       if (!neighbour) continue;
@@ -283,16 +356,22 @@ export function layoutMap(map: LocalMap): MapDrawing {
     }
   }
 
-  const nodes = map.cells.map((cell) => {
+  const nodes = map.cells.map((cell): MapNode => {
     const here = cell.id === map.centre;
+    const kind = kindOf(cell);
+    const letter = cell.place === undefined ? undefined : SHOP_LETTER[cell.place];
+    const out = arrows.get(cell.id);
     return {
       id: cell.id,
       name: cell.name,
       ...at(cell),
-      kind: kindOf(cell, here),
+      kind,
       here,
       vertical: cell.vertical,
-      ...(cell.away && cell.away.length > 0 ? { away: cell.away } : {})
+      ...(cell.away && cell.away.length > 0 ? { away: cell.away } : {}),
+      ...(letter !== undefined && kind === 'shop' ? { letter } : {}),
+      ...(cell.lair && kind !== 'lair' ? { lairBadge: true } : {}),
+      ...(out !== undefined ? { arrows: out } : {})
     };
   });
 
@@ -304,15 +383,6 @@ export function layoutMap(map: LocalMap): MapDrawing {
   };
 }
 
-/**
- * A route drawn over a map: which corridors it runs along, and which rooms it
- * has still to reach.
- *
- * Everything here is *remaining* — the walker publishes only the part of the
- * route it has not walked yet (`WalkProgress.path`), so a room comes off the
- * drawing when the step into it is confirmed rather than the renderer having
- * to work out which are behind.
- */
 /**
  * One corridor of the way, oriented the way it is walked.
  *
@@ -335,6 +405,15 @@ export interface MapTrailLeg {
   band: number;
 }
 
+/**
+ * A route drawn over a map: which corridors it runs along, and which rooms it
+ * has still to reach.
+ *
+ * Everything here is *remaining* — the walker publishes only the part of the
+ * route it has not walked yet (`WalkProgress.path`), so a room comes off the
+ * drawing when the step into it is confirmed rather than the renderer having
+ * to work out which are behind.
+ */
 export interface MapTrail {
   /** The corridors the route runs along, in the order it walks them. */
   legs: MapTrailLeg[];

@@ -209,16 +209,21 @@ describe('every fact the parser produces reaches something', () => {
     // A setting the player toggled. Nothing here decides anything evil, so
     // nothing reads it; it is parsed so the line is not unread.
     'user-warnings': 'a toggle the player made; the client acts on nothing evil',
+    // Read by the old routines' spellbook ask, deleted with the old engine (2026-10-14).
+    'spellbook-refused':
+      'the spellbook is the MegaMUD engine’s to ask for, and its reply its own to read',
     'user-takes-damage': 'no attacker to record; the status line carries the number',
     // The death's own second line (`Player.cs:1467`), printed with `You have
     // been killed!` on every death but a suicide or a reroll: the life is
     // spent and `user-dies` already acted; this is read so the line every
     // death prints is not one the client cannot explain (todo 110).
-    'user-saved': "the death's second line; user-dies already acted on the death",
-    // A line the server composed from a row of its message table and no frame
-    // reads: explained and attributed (`message`, `role`), decided on by
-    // nothing yet — the row's kind says what would (todo 109).
-    'realm-message': "the server's own words for a line no frame reads; nothing decides on it yet"
+    'user-saved': "the death's second line; user-dies already acted on the death"
+    /*
+     * `realm-message` was here — *nothing decides on it yet* — and the
+     * exemption dissolved on 2026-10-17: the caster's line of a spell's row
+     * is this character's cast, and the damage after it its spell
+     * (`CharacterTracker.readsAsOwnSpell`).
+     */
     /*
      * `user-trains` was here — *"the price of a level; wealth is re-read from
      * the next listing"* — and the exemption dissolved on 2026-09-03. An

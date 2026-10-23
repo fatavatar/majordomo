@@ -91,7 +91,6 @@ const session = new SessionManager(
   // and its own answers inside the capture.
   {
     ...profile.config.automation,
-    idle: { ...profile.config.automation.idle, enabled: false },
     rules: []
   },
   profile.config.connection.login

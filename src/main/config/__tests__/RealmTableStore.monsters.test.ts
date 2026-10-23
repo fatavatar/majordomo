@@ -53,6 +53,18 @@ describe('RealmTableStore, the monster table', () => {
     expect(text).toMatch(/spell: dspl/);
   });
 
+  /* A same-length edit in the mtime tick the table was cached in is still an edit (2026-10-18). */
+  it('reads a hand edit of the same length made in the tick the table was read in', () => {
+    const tick = Math.floor(Date.now() / 1000);
+    const file = store.file('paradigm');
+    fs.writeFileSync(file, 'monsters:\n  - mob: lich\n    relationship: escape\n');
+    fs.utimesSync(file, tick, tick);
+    expect(store.forServer('paradigm').monsters[0]?.mob).toBe('lich');
+    fs.writeFileSync(file, 'monsters:\n  - mob: orcs\n    relationship: escape\n');
+    fs.utimesSync(file, tick, tick);
+    expect(store.forServer('paradigm').monsters[0]?.mob).toBe('orcs');
+  });
+
   it('says so, once, when the file does not parse, and reads as empty', () => {
     fs.writeFileSync(store.file('paradigm'), 'monsters: [unclosed\n');
     expect(store.forServer('paradigm').monsters).toEqual([]);

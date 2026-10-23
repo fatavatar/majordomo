@@ -3,13 +3,8 @@ import { describe, expect, it } from 'vitest';
 import {
   ACTIONABLE_REMOTES,
   isActionable,
-  isRemoteName,
-  isRemoteStance,
   judgeRemote,
-  reachableBy,
   REMOTE_NAMES,
-  REMOTE_STANCES,
-  stanceFor,
   type RemoteAccess,
   type RemoteName
 } from '../remotes';
@@ -218,70 +213,6 @@ describe('a deny is about one person and outranks everything', () => {
       players: { rend: { allow: [], deny: ['health'] } }
     });
     expect(judgeRemote('Rend', 'where', settings, inGang).allowed).toBe(true);
-  });
-});
-
-describe('reachability is a different question from permission', () => {
-  /*
-   * Its one caller decides whether a command on a channel this client never
-   * answers on is worth *reporting*. A stranger gossiping `@health` must not
-   * produce a notice on every mudengine character in the realm, once per line.
-   */
-  it('is false for somebody with no relationship to this character', () => {
-    expect(reachableBy('Rend', access({ gang: ['health'] }), stranger)).toBe(false);
-    expect(reachableBy('Rend', access({ gang: ['health'] }), notInGang)).toBe(false);
-  });
-
-  it('is true for a gang member when the gang grants anything at all', () => {
-    expect(reachableBy('Spike', access({ gang: ['health'] }), inGang)).toBe(true);
-    expect(reachableBy('Spike', access(), inGang)).toBe(false);
-  });
-
-  it('is true for somebody who has joined the party when the party grants anything', () => {
-    expect(reachableBy('Soul', access({ party: ['health'] }), inParty)).toBe(true);
-    expect(reachableBy('Soul', access(), inParty)).toBe(false);
-    expect(reachableBy('Soul', access({ party: ['health'] }), stranger)).toBe(false);
-  });
-
-  it('is true for somebody named, and a deny does not subtract from it', () => {
-    // Somebody with one remote allowed and one denied is still somebody this
-    // character has a relationship with, and their attempts are worth seeing.
-    const settings = access({ players: { soul: { allow: ['health'], deny: ['do'] } } });
-    expect(reachableBy('Soul', settings, stranger)).toBe(true);
-  });
-
-  it('is false for somebody who is only denied things', () => {
-    const settings = access({ players: { rend: { allow: [], deny: ['do'] } } });
-    expect(reachableBy('Rend', settings, stranger)).toBe(false);
-  });
-});
-
-describe('the stance a form shows is the decision, not the verdict', () => {
-  /*
-   * Conflating them is how somebody clicks Allow on a person the gang already
-   * covered and sees nothing change — the button would already have been lit.
-   */
-  it('reads unset for a remote only the gang grants', () => {
-    const settings = access({ gang: ['health'] });
-    expect(stanceFor(settings, 'Spike', 'health')).toBe('unset');
-    expect(judgeRemote('Spike', 'health', settings, inGang).allowed).toBe(true);
-  });
-
-  it('reads what the player’s own entry says otherwise', () => {
-    const settings = access({ players: { soul: { allow: ['health'], deny: ['do'] } } });
-    expect(stanceFor(settings, 'Soul', 'health')).toBe('allow');
-    expect(stanceFor(settings, 'Soul', 'do')).toBe('deny');
-    expect(stanceFor(settings, 'Soul', 'where')).toBe('unset');
-  });
-
-  it('knows a stance and a remote off the wire, and refuses what it does not', () => {
-    expect(REMOTE_STANCES).toEqual(['allow', 'deny', 'unset']);
-    expect(isRemoteStance('deny')).toBe(true);
-    expect(isRemoteStance('block')).toBe(false);
-    expect(isRemoteStance(null)).toBe(false);
-    expect(isRemoteName('health')).toBe(true);
-    expect(isRemoteName('healthy')).toBe(false);
-    expect(isRemoteName(7)).toBe(false);
   });
 });
 

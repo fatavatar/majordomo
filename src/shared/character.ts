@@ -65,8 +65,8 @@ export type Stealth = 'unknown' | 'sneaking' | 'seen';
  * having said, which is the state at every login and is not `no`. `yes` is the
  * onset sentence (`You are blind.`), `no` the one that ends it (`You can see
  * again!`); nothing else moves either, so a cure that the server answers with
- * nothing leaves the flag where it was — honest, and the reason `Cures` casts
- * once per onset rather than once per status line.
+ * nothing leaves the flag where it was — honest, and the reason a cure is
+ * cast once per onset rather than once per status line.
  */
 export type Affliction = 'unknown' | 'yes' | 'no';
 
@@ -102,8 +102,8 @@ export interface Afflictions {
  *
  * **Beside the afflictions, not among them.** An affliction is what this
  * client reads off the wire itself, three-state because nobody may have said;
- * this is what the *player's* table says a sentence means (`MessageTriggers`,
- * imported from MegaMUD's `Messages.md`), held until the row's own ending
+ * this is what the *player's* table says a sentence means (the realm's
+ * message table, imported from MegaMUD's `Messages.md`), held until the row's own ending
  * arrives. Where the two overlap — blind, poisoned, diseased, held — a row
  * also sets the affliction, so every reader of those flags already answers
  * it; the conditions the client had no word for (confused, losing hit points,
@@ -121,6 +121,32 @@ export interface StatedEffect {
 /** Whether the realm's messages say this is on the character now. */
 export function isStated(state: Pick<CharacterState, 'heard'>, effect: MessageEffect): boolean {
   return state.heard.some((entry) => entry.effects.includes(effect));
+}
+
+/**
+ * Why the tracker took an affliction as on (2026-10-18): the line that said
+ * so, when, and how it was read, so a flag that is wrong can be traced to
+ * the sentence that set it.
+ */
+export interface AfflictionCause {
+  /** The line, as the realm printed it. */
+  line: string;
+  at: number;
+  /**
+   * How it was read: the realm's own sentence for the condition (`said`), a
+   * spell of the realm's whose message it is (`spell`), a command the realm
+   * threw away (`fumble`), or a room the character could not see (`unseen`);
+   * or by the MegaMUD engine, a row of its Messages.md (`message`) or its own
+   * reading of the line (`engine`).
+   */
+  how: 'said' | 'spell' | 'fumble' | 'unseen' | 'message' | 'engine';
+  /** For `spell`, the realm's spell whose message it is; for `message`, the row. */
+  spell?: string;
+}
+
+/** Whether the MegaMUD engine set an affliction on, rather than our tracker. */
+export function byEngine(cause: AfflictionCause | undefined): boolean {
+  return cause?.how === 'message' || cause?.how === 'engine';
 }
 
 export const NO_AFFLICTIONS: Afflictions = {
@@ -144,8 +170,8 @@ export const NO_AFFLICTIONS: Afflictions = {
  * **No duration is carried, because the wire never states one.** The realm's
  * own `Dur` column is in units nothing has measured, so how long a buff is
  * trusted to last is configuration (`BlessingConfig.fallbackSeconds`) — the
- * player's knowledge, exactly as a threshold is — and `Blessings` compares it
- * against `appliedAt`. A wear-off the client can read ends the buff sooner and
+ * player's knowledge, exactly as a threshold is — compared against
+ * `appliedAt`. A wear-off the client can read ends the buff sooner and
  * more honestly than any clock.
  */
 export interface ActiveBuff {
@@ -161,7 +187,7 @@ export interface ActiveBuff {
    * this buff through the learned onset map. Absent on a realm whose `st` does
    * not print a countdown (MajorMUD, GreaterMUD), where the watchdog is the
    * only clock. It is the server's own statement, not the unmeasured `Dur`
-   * column, so `Blessings` prefers it: a recast then goes out within a second
+   * column, so it is preferred: a recast then goes out within a second
    * of the real expiry rather than on a watchdog that may be minutes off.
    */
   expiresAt?: number;
@@ -186,8 +212,8 @@ export interface ActiveBuff {
   cast?: true;
   /**
    * Epoch ms of the last `st` sheet that printed it. Present means the sheet
-   * speaks for this effect, so its watchdog can ask the sheet before recasting
-   * (`Blessings`), and a sheet that still lists it past the watchdog says the
+   * speaks for this effect, so its watchdog can ask the sheet before
+   * recasting, and a sheet that still lists it past the watchdog says the
    * clock was wrong.
    */
   listedAt?: number;
@@ -468,8 +494,8 @@ export interface Room {
    *
    * Was `string[]`, and that was the shape that made the Room card ask main
    * over IPC what the realm knew about each name *after* it had already drawn
-   * once without the answer — and that left `AutoLoot` unable to ask what
-   * anything weighed or was worth.
+   * once without the answer, and left nothing able to ask what anything
+   * weighed or was worth.
    */
   items: ItemEntity[];
   /**
@@ -489,7 +515,7 @@ export interface Room {
    * would have the card claim they are lying in the open, and would replace the
    * open floor with them into the bargain. The difference is also actionable:
    * hidden coins refuse a bare `get` and want the quantity (see
-   * `room-hidden-items`), which is what `AutoLoot` reads it for.
+   * `room-hidden-items`).
    *
    * Emptied by walking out, like the rest of the room, and by
    * `Your search revealed nothing.` — a search is a listing and a listing is
@@ -536,7 +562,7 @@ export interface Room {
    * no phrase at all.
    *
    * Kept because it is the difference between "the move produced nothing" and
-   * "the move produced a room the character cannot see": `Walker` reported the
+   * "the move produced a room the character cannot see": the old walker reported the
    * first for the second and blamed the server for a silence that never
    * happened.
    */
@@ -549,7 +575,7 @@ export interface Room {
    * that can: a room is otherwise addressed by its name and the exits it
    * printed, and a maze is a maze precisely because that address is not
    * unique. Three rooms called `Secret Passage` with `east, west` in a row
-   * (bearfather, 2026-09-17) are one address, so `AutoSearch` searched the
+   * (bearfather, 2026-09-17) are one address, so the old `AutoSearch` searched the
    * first and believed it was still standing in it for the other two.
    *
    * The tracker already knows: a room block that consumed a pending move is an
@@ -593,25 +619,6 @@ export interface RoomCandidate {
   chosen: boolean;
 }
 
-/**
- * One thing the character is carrying, and where it is.
- *
- * The name and the slot are separate fields because the two sources that talk
- * about an item write it two ways: an `i` listing annotates anything worn or
- * wielded with the slot it sits in (`padded boots (Feet)`), while every
- * sentence about it — dropping it, selling it, putting it on — writes the bare
- * name. Keeping the annotation glued to the name is what made a drop match
- * nothing; keeping it as a field means both spellings are still available and
- * neither has to be reconstructed.
- *
- * `slot` is the listing's own word, never one this client invented. The realm
- * database does record a `Worn` code per item, but it is a *number* — 1, 2, 5 —
- * and the words the listing prints for each are not written down anywhere we
- * have read. Mapping the two by eye would put a made-up label under a heading
- * that looks like the server's, which is the reassuring guess this project
- * refuses everywhere else. So a slot is known once a listing has named it, and
- * is null until then.
- */
 /**
  * One thing in the pack — **the same entity as everything else**.
  *
@@ -715,10 +722,9 @@ export interface Inventory {
    * zero, here as everywhere.
    *
    * A *time* rather than a flag, because the same fact answers the next
-   * question after it: how old the pack is. `i` is in the default
-   * `onEnterRealm`, so it is set within a second of entering the realm — but
-   * the probe list is the player's, and a character configured never to ask on
-   * the way in is a legitimate choice that must not silently become a
+   * question after it: how old the pack is. MegaMUD asks `i` while it does not
+   * know the pack, so it is set soon after entering the realm — but until then
+   * an unread pack must not silently become a
    * character that cannot route.
    */
   listedAt: number | null;
@@ -887,22 +893,6 @@ export interface Adventurer {
 }
 
 /**
- * The fight this character is in.
- *
- * `inCombat` was a boolean, which answers "am I fighting" and nothing else —
- * and every decision worth automating needs the other half: *what*, and *what
- * is hitting me*. A rule that says "run below 30%" is a rule anybody can
- * write; a rule that says "attack what is already attacking me" needs this.
- *
- * Assembled from the combat blocks the classifier already produces. Nothing new
- * is asked of the server and no new pattern is guessed at — the shapes here are
- * the ones a live capture produced.
- *
- * **Every field is honest about absence.** A fight whose target has not been
- * named — because the character was attacked and has not swung back — has a
- * null target, not an empty string standing in for one.
- */
-/**
  * Who has worn a monster down, and by how much.
  *
  * Split rather than totalled because the two halves answer different questions.
@@ -978,6 +968,22 @@ export interface TargetHealth {
   observed: WoundBand | null;
 }
 
+/**
+ * The fight this character is in.
+ *
+ * `inCombat` was a boolean, which answers "am I fighting" and nothing else —
+ * and every decision worth automating needs the other half: *what*, and *what
+ * is hitting me*. A rule that says "run below 30%" is a rule anybody can
+ * write; a rule that says "attack what is already attacking me" needs this.
+ *
+ * Assembled from the combat blocks the classifier already produces. Nothing new
+ * is asked of the server and no new pattern is guessed at — the shapes here are
+ * the ones a live capture produced.
+ *
+ * **Every field is honest about absence.** A fight whose target has not been
+ * named — because the character was attacked and has not swung back — has a
+ * null target, not an empty string standing in for one.
+ */
 export interface Combat {
   /** From the status line's `*Combat Engaged*`. The server's own word for it. */
   engaged: boolean;
@@ -1073,8 +1079,11 @@ export interface PartyMember {
   health: number | null;
   /** Null when the class has none at all. */
   mana: number | null;
-  /** Where they stand in the formation. */
-  /** MajorMUD's listing has a middle rank as well; GreaterMUD's has two. */
+  /**
+   * Where they stand in the formation.
+   *
+   * MajorMUD's listing has a middle rank as well; GreaterMUD's has two.
+   */
   rank: 'front' | 'mid' | 'back' | null;
   /** What they are doing, or null when nothing has said. See `PartyActivity`. */
   activity: PartyActivity | null;
@@ -1181,26 +1190,6 @@ export interface Party {
 }
 
 export const NO_PARTY: Party = { following: null, members: [], engaged: {}, threatened: {} };
-
-/**
- * The members of the party this character leads whose listed health is under
- * `below`, lowest first — MegaMUD's *Wait For Party Members*. A real member
- * (not an invitation, not this character) with a figure the listing stated.
- * Following, none: the leader decides when the party moves.
- */
-export function membersBelow(state: CharacterState, below: number): PartyMember[] {
-  if (below <= 0 || state.party.following !== null) return [];
-  const me = state.name?.toLowerCase() ?? null;
-  return state.party.members
-    .filter(
-      (member) =>
-        !member.invited &&
-        member.health !== null &&
-        member.health < below &&
-        member.name.toLowerCase() !== me
-    )
-    .sort((a, b) => (a.health ?? 0) - (b.health ?? 0));
-}
 
 /**
  * A room nobody has read yet.
@@ -1479,8 +1468,8 @@ export interface CharacterState {
   lastDeath: { map: number | null; number: number | null; name: string | null; at: number } | null;
   /**
    * The room a `look <direction>` described, read as a different room from
-   * the one the character stands in (todo 08, 2026-09-12). `RestAway` reads
-   * it before stepping into a neighbour to rest; nothing else changes on a
+   * the one the character stands in (todo 08, 2026-09-12). Nothing else
+   * changes on a
    * peek, which is `Room.coffee`'s `wasLooking` rule kept. Null until a peek
    * is answered, and the last one afterwards — `at` says how stale.
    */
@@ -1540,6 +1529,13 @@ export interface CharacterState {
    * when a character is no longer in the realm.
    */
   tally: CombatTally;
+  /**
+   * The Combat Stats card's baseline: the tally as it stood at the card's
+   * last Reset or a lap begun, which the card and the stats board both read
+   * from (`sinceCardBaseline`), or null for the whole series. Main's, kept
+   * with the tally (2026-10-17), so every window and the board agree.
+   */
+  statsBase: CombatTally | null;
   party: Party;
   /** Whether this character is moving unseen. See `Stealth`. */
   stealth: Stealth;
@@ -1567,6 +1563,11 @@ export interface CharacterState {
   /** What the server has said is wrong with this character. See `Affliction`. */
   afflictions: Afflictions;
   /**
+   * What set each affliction that is on (`AfflictionCause`): the onset, kept
+   * while it lasts. One that is not `yes` says nothing.
+   */
+  afflictionCauses: Readonly<Partial<Record<keyof Afflictions, AfflictionCause>>>;
+  /**
    * What the realm's message table says is on this character. See
    * `StatedEffect`. Not `stated`, which is the `stat all` sheet.
    */
@@ -1578,7 +1579,7 @@ export interface CharacterState {
    * ended with a sentence the client cannot read (the per-spell custom
    * endings — `Your skin returns to normal.` — are unenumerable realm message
    * data) stays here until the configured fallback clock or a death removes
-   * it. `Blessings` is the reader.
+   * it.
    */
   buffs: ActiveBuff[];
   /**
@@ -1679,9 +1680,11 @@ export const EMPTY_CHARACTER: CharacterState = {
   inCombat: false,
   combat: NO_COMBAT,
   tally: NO_TALLY,
+  statsBase: null,
   party: NO_PARTY,
   stealth: 'unknown',
   afflictions: NO_AFFLICTIONS,
+  afflictionCauses: {},
   heard: [],
   buffs: [],
   spellbook: null,
@@ -1760,7 +1763,7 @@ export function vitalLevel(
  * and the standing rule is that unknown is never the reassuring answer.
  *
  * Here rather than in `remotes.ts` because it is a fact about the roster, and
- * three readers want it: the permission gate in `Remotes.evidenceAbout`, the
+ * three readers want it: the permission gate (`remoteVerdict`), the
  * Gang card, and the flyout that says why somebody is getting through.
  */
 export function gangOnRoster(
@@ -1783,45 +1786,6 @@ export function gangOnRoster(
  */
 export function ownGang(state: CharacterState): string | null | undefined {
   return gangOnRoster(state, state.name);
-}
-
-/**
- * Has this name **joined** this character's party?
- *
- * Here rather than in either caller because it is the party half of one
- * permission gate, and the gate has two readers: `Remotes.evidenceAbout`, which
- * answers the `@` command, and the Player flyout's Access face, which tells the
- * player whether it will be answered. `AutoCombat.quarry`'s lesson is that two
- * halves of one gate in two files agree exactly until one of them is edited.
- *
- * **An invitation is not membership.** `invited` marks an offer nobody has
- * accepted — the listing prints `[Invited]` where the health and the flag would
- * be — so a row carrying it is not counted. That closes half of the objection
- * that retired the old `party` permission *ground*: if an offer counted,
- * `invite` would be the gesture by which anybody handed themselves this
- * character's party remotes.
- *
- * **It does not close the other half, and that is stated rather than glossed.**
- * `withJoined` puts a full member on the roster for `<name> started to follow
- * you.` without asking whether this character ever invited them, and on this
- * realm following somebody is how a party is joined — so if the server honours
- * an uninvited `follow`, that verb is the same gesture one word along. Nobody
- * has asked the wire; `npm run probe:party -- --pair soul,yang` is where to.
- * What bounds the cost meanwhile is the shipped grant, which is two facts
- * about this character's own body (`RemotesConfig.party`).
- *
- * Two-state, unlike `gangOnRoster`. A gang is learned from a `who` row that may
- * never have been read, so *nobody has said* is a real state there; the party
- * roster is this client's own listing, established by `party` and kept true by
- * the sentences the server volunteers, so a name not on it is a name not in the
- * party.
- */
-/** Everybody besides this character who has joined its party: an invitation is not membership. */
-export function joinedMembers(state: CharacterState): PartyMember[] {
-  const self = state.name?.toLowerCase() ?? null;
-  return state.party.members.filter(
-    (member) => !member.invited && member.name.toLowerCase() !== self
-  );
 }
 
 export function joinedTheParty(state: CharacterState, name: string | null): boolean {

@@ -9,7 +9,7 @@ import { overlay, resolveProfile, PROFILE_ACCENTS } from '../profiles';
  */
 const base: Record<string, unknown> = {
   servers: [{ name: 'GreaterMUD (local)', host: 'gmud-tgs', port: 2427, encoding: 'cp437' }],
-  automation: { idle: { enabled: true, afterSeconds: 300 } }
+  automation: { walk: { clearAfterSeconds: 300, minExpPerHour: 500 } }
 };
 
 /** The happy path, so each test can state only what it is about. */
@@ -90,40 +90,29 @@ describe('the realm a character walks', () => {
   });
 });
 
-/* Whether a hang-up is charged: the character, then its realm, then the options file (todo 01). */
-describe('who says a hang-up is charged', () => {
-  const realm = (hangPenalties?: boolean) => ({
-    servers: [
+/* The realm's mudstats board, with the character's own key to it (2026-10-16). */
+describe('a realm’s stats board', () => {
+  it('is the character’s connection’s, with the key beside its password', () => {
+    const config = {
+      servers: [
+        { name: 'Skinny Inc', host: 'bbs.thelucks.org', port: 2424, statsUrl: 'http://b:8099' }
+      ]
+    };
+    const profile = resolve(
       {
-        name: 'Bearfather',
-        host: 'bbs.bearfather.net',
-        port: 23,
-        ...(hangPenalties === undefined ? {} : { hangPenalties })
-      }
-    ],
-    automation: { safety: { hangUp: { penalties: false } } }
-  });
-  const penalties = (raw: Record<string, unknown>, config: unknown): boolean =>
-    resolve({ server: 'Bearfather', ...raw }, config).config.automation.safety.hangUp.penalties;
-  const own = (value: boolean) => ({ automation: { safety: { hangUp: { penalties: value } } } });
-
-  it('takes the realm over the options file where the character says nothing', () => {
-    expect(penalties({}, realm(true))).toBe(true);
-    expect(penalties({ automation: { safety: { hangUp: { enabled: true } } } }, realm(true))).toBe(
-      true
+        server: 'Skinny Inc',
+        account: { username: 'fatty', password: 'pw', statsKey: 'mudk_1_s' },
+        logging: { stats: { enabled: true, everySeconds: 5 } }
+      },
+      config
     );
-  });
-
-  it('takes the character over its realm', () => {
-    expect(penalties(own(false), realm(true))).toBe(false);
-    expect(penalties(own(true), realm(false))).toBe(true);
-  });
-
-  it('falls to the options file where the realm says nothing, and that is off', () => {
-    expect(penalties({}, realm())).toBe(false);
-    expect(
-      resolve({ server: 'GreaterMUD (local)' }).config.automation.safety.hangUp.penalties
-    ).toBe(false);
+    expect(profile.config.connection.stats).toEqual({ url: 'http://b:8099', key: 'mudk_1_s' });
+    // Never under the board's own floor.
+    expect(profile.config.logging.stats).toEqual({ enabled: true, everySeconds: 15 });
+    expect(resolve({ server: 'GreaterMUD (local)' }).config.connection.stats).toEqual({
+      url: '',
+      key: ''
+    });
   });
 });
 
@@ -242,28 +231,28 @@ describe('resolveProfile', () => {
     const profile = resolve({ server: 'GreaterMUD (local)' });
     // The whole reason a profile is an overlay: a setting added to the client
     // after this file was written still reaches the character.
-    expect(profile.config.automation.idle.afterSeconds).toBe(300);
+    expect(profile.config.automation.walk.clearAfterSeconds).toBe(300);
     expect(profile.config.terminal.font.size).toBe(DEFAULT_CONFIG.terminal.font.size);
   });
 
   it('overrides only what it states', () => {
     const profile = resolve({
       server: 'GreaterMUD (local)',
-      automation: { idle: { afterSeconds: 90 } }
+      automation: { walk: { clearAfterSeconds: 90 } }
     });
-    expect(profile.config.automation.idle.afterSeconds).toBe(90);
+    expect(profile.config.automation.walk.clearAfterSeconds).toBe(90);
     // Sibling keys in the same block survive.
-    expect(profile.config.automation.idle.enabled).toBe(true);
+    expect(profile.config.automation.walk.minExpPerHour).toBe(500);
   });
 
   it('coerces an override through the same rules as the options file', () => {
     const profile = resolve({
       server: 'GreaterMUD (local)',
-      automation: { idle: { afterSeconds: 'nonsense' } }
+      automation: { walk: { clearAfterSeconds: 'nonsense' } }
     });
     // One place decides what a valid value is, so a typo in a profile falls
     // back rather than poisoning a session.
-    expect(typeof profile.config.automation.idle.afterSeconds).toBe('number');
+    expect(typeof profile.config.automation.walk.clearAfterSeconds).toBe('number');
   });
 
   it('names itself after its file when it says nothing else', () => {
@@ -284,31 +273,6 @@ describe('resolveProfile', () => {
     expect(PROFILE_ACCENTS).toContain(
       resolve({ server: 'GreaterMUD (local)', accent: '#ff0000' }).accent
     );
-  });
-
-  it('keeps a rule the options file declares', () => {
-    /*
-     * The regression that cost a live-check run. `normalizeConfig` is not
-     * idempotent: a rule's `when` and `if` are parsed into structures that the
-     * parser cannot read back, so overlaying onto an already-coerced config
-     * silently emptied every character's rule list. A profile overlays the file
-     * and the sum is coerced exactly once.
-     */
-    const withRule = {
-      ...base,
-      automation: {
-        rules: [
-          {
-            name: 'run when hurt',
-            when: 'every 3s',
-            if: ['inCombat == false'],
-            then: [{ command: 'pro', priority: 'idle' }]
-          }
-        ]
-      }
-    };
-    const profile = resolve({ server: 'GreaterMUD (local)' }, withRule);
-    expect(profile.config.automation.rules.map((rule) => rule.name)).toEqual(['run when hurt']);
   });
 
   it('rejects a file that is not a mapping', () => {
@@ -370,6 +334,37 @@ describe('the monster rows, across global and character', () => {
     );
     expect(rows(profile)).toEqual([
       { mob: 'red dragon', priority: 'first', relationship: 'avoid' }
+    ]);
+  });
+});
+
+/* The item rows (MegaMUD's item details) merge across the two scopes as the monster rows do. */
+describe('the item rows, across global and character', () => {
+  const realm = { name: 'GreaterMUD (local)', host: 'gmud-tgs', port: 2427, encoding: 'cp437' };
+  const withGlobal: Record<string, unknown> = {
+    servers: [realm],
+    automation: { loot: { itemDetails: [{ item: 'rope', buy: true, keep: 1 }] } }
+  };
+
+  it('lays a character’s row over the global one, field by field', () => {
+    const profile = resolve(
+      {
+        name: 'Thorn',
+        server: 'GreaterMUD (local)',
+        automation: {
+          loot: {
+            itemDetails: [
+              { item: 'rope', keep: 3 },
+              { item: 'torch', collect: true }
+            ]
+          }
+        }
+      },
+      withGlobal
+    );
+    expect(profile.config.automation.loot.itemDetails).toEqual([
+      { item: 'rope', buy: true, keep: 3 },
+      { item: 'torch', collect: true }
     ]);
   });
 });

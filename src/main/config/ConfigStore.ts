@@ -21,7 +21,7 @@ import {
 } from '../../shared/config';
 import { mergeLoops, sameLoops, type Loop } from '../../shared/loops';
 import { errorMessage } from '../../shared/values';
-import { Poller } from './Poller';
+import { fileStamp, Poller } from './Poller';
 
 export interface ConfigStoreEvents {
   /** A reload completed, successfully or otherwise. */
@@ -114,7 +114,7 @@ export class ConfigStore extends EventEmitter {
     super();
     this.file = ConfigStore.locate(options);
     this.poller = new Poller({
-      signature: () => this.signature(),
+      signature: (settledAt) => this.signature(settledAt),
       reload: () => {
         this.read();
         this.emit('change', this.snapshot);
@@ -254,9 +254,8 @@ export class ConfigStore extends EventEmitter {
   }
 
   /** One file's revision. A throw — no file yet — is `Poller`'s to absorb. */
-  private signature(): string {
-    const stat = fs.statSync(this.file);
-    return `${stat.mtimeMs}:${stat.size}`;
+  private signature(settledAt: number): string {
+    return fileStamp(this.file, settledAt);
   }
 
   /**

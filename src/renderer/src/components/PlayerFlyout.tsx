@@ -95,7 +95,7 @@ export interface PlayerFlyoutProps {
    * behind it must not draw a control bound to nowhere. A pinned float leaves
    * it out, as it leaves out the loop picker.
    *
-   * Which *wording* goes out is main's (`Remotes.ask`): a peer running this
+   * Which *wording* goes out is main's (`SessionManager.askRemote`): a peer running this
    * client is asked in its own words and everybody else in MegaMUD's. So this
    * names the question, never the spelling.
    */
@@ -326,27 +326,6 @@ export default function PlayerFlyout({
 }
 
 /**
- * Race, class and level: what is known, and what the rank title gives away.
- *
- * `bg` states all three and is the only listing that does, so for anybody
- * outside this character's gang they were `null` forever — three rows the card
- * could never draw. Two things now fill them in. A look at somebody prints
- * their race and class in prose (`player-described`), and the rank title every
- * `who` row already carries names the class and pins the level to a band
- * (`titleReading`).
- *
- * **A read title is never as good as a stated fact, and it says so.** The
- * stated level and class win outright where they exist; a derived one is drawn
- * with *from their title* beside it and the level wears a `~`, because a band
- * is a range and a card that printed `Level 27` from `Kai Warrior` would be
- * stating a number the client was never told. A title several classes share —
- * `Apprentice` is level 1 of all fifteen — names no class at all and still
- * gives the level away.
- *
- * Nothing is drawn for a person nothing is known about: three rows of *unknown*
- * is the reassuring answer to a question nobody asked.
- */
-/**
  * The three questions a person actually asks another player, as controls.
  *
  * These were one palette command *per person per question* — three rows for
@@ -397,6 +376,27 @@ function PlayerAsks({
   );
 }
 
+/**
+ * Race, class and level: what is known, and what the rank title gives away.
+ *
+ * `bg` states all three and is the only listing that does, so for anybody
+ * outside this character's gang they were `null` forever — three rows the card
+ * could never draw. Two things now fill them in. A look at somebody prints
+ * their race and class in prose (`player-described`), and the rank title every
+ * `who` row already carries names the class and pins the level to a band
+ * (`titleReading`).
+ *
+ * **A read title is never as good as a stated fact, and it says so.** The
+ * stated level and class win outright where they exist; a derived one is drawn
+ * with *from their title* beside it and the level wears a `~`, because a band
+ * is a range and a card that printed `Level 27` from `Kai Warrior` would be
+ * stating a number the client was never told. A title several classes share —
+ * `Apprentice` is level 1 of all fifteen — names no class at all and still
+ * gives the level away.
+ *
+ * Nothing is drawn for a person nothing is known about: three rows of *unknown*
+ * is the reassuring answer to a question nobody asked.
+ */
 function PlayerStanding({ record }: { record: PlayerRecord }) {
   const reading = titleReading(record.title);
   const readClass = reading !== null && reading.classes.length === 1 ? reading.classes[0]! : null;

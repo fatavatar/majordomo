@@ -1,5 +1,3 @@
-import { useEffect, useRef } from 'react';
-
 /**
  * Window-level keyboard accelerators for the chrome.
  *
@@ -21,6 +19,7 @@ import { useEffect, useRef } from 'react';
  * because it *is* the game: a bare Escape there is for the server, and the
  * hotkeys that fire over it are the reason this listens in capture.
  */
+import { useEffect, useRef } from 'react';
 
 /**
  * True when something in the chrome has deliberately taken the caret.

@@ -72,6 +72,7 @@ function errand(over: Partial<ItemPlanner> = {}, now?: () => number): ItemErrand
       return null;
     },
     looping: () => looping,
+    besideLair: (room) => (room === '8/770' ? 'Dark Hallway 8/771' : null),
     stopLoop: () => {
       looping = false;
     },
@@ -197,6 +198,21 @@ describe('collecting what a route needs', () => {
     expect(decisions.at(-1)).toMatchObject({ action: 'collect', acted: true });
   });
 
+  /*
+   * What it is after, for the party around it (2026-10-19): the item it is
+   * fetching and those still to come, and nothing once the pack holds them.
+   */
+  it('says which items it is after, until the pack holds them', () => {
+    sources = { shops: [counter()], ...dropped([]) };
+    const auto = errand();
+    expect(auto.wants('black star key')).toBe(false);
+    expect(auto.collect([KEY, ROPE], OWED, ready())).toBeNull();
+    expect([auto.wants('Black Star Key'), auto.wants('rope and grapple')]).toEqual([true, true]);
+    expect(auto.wants('amber talisman')).toBe(false);
+    auto.onCharacter(carrying('black star key', 'rope and grapple'));
+    expect(auto.wants('black star key')).toBe(false);
+  });
+
   /* *Run it* rides through the errand to the walk it ends in (todo 06). */
   it('carries a run through to the walk it ends in', () => {
     const runs: boolean[] = [];
@@ -239,6 +255,24 @@ describe('collecting what a route needs', () => {
     expect(taking).toEqual([]);
     expect(looping).toBe(false);
     expect(walked).toEqual([OWED]);
+  });
+
+  /*
+   * One lair is a stop out and back (2026-10-19): the dark-elf archmage, the
+   * only dropper of the dark blue orb, has one, and a one-stop loop was
+   * refused as *fewer than two stops*.
+   */
+  it('hunts a lone lair as a step out and back', () => {
+    sources = {
+      shops: [],
+      ...dropped([{ id: '8/770', name: 'Archmage Study', mob: 'dark-elf archmage', steps: 9 }])
+    };
+    const auto = errand();
+    expect(auto.collect([KEY], OWED, ready())).toBeNull();
+    expect(loops[0]!.stops).toEqual([
+      { room: 'Archmage Study 8/770' },
+      { room: 'Dark Hallway 8/771' }
+    ]);
   });
 
   /*
@@ -500,6 +534,138 @@ describe('collecting what saying something gets', () => {
     at = '1/1';
   });
 
+  /*
+   * What the answer takes, first (format 53): the shopkeeper's `orb` takes a
+   * dark blue orb, so the orb is fetched before he is asked (2026-10-19).
+   */
+  it('fetches what the answer takes before going to ask', () => {
+    const ORB = { id: 810, name: 'dark blue orb' };
+    const priced = { ...SHOPKEEPER, takes: [ORB] };
+    const auto = asking({
+      sourcesOf: (item) =>
+        item.id === ORB.id
+          ? { shops: [counter({ shop: 'Curio Shop' })], ...dropped([]) }
+          : { shops: [], ...dropped([]), asks: [priced] }
+    });
+    expect(auto.collect([MOLDY], OWED, ready())).toBeNull();
+    expect(notices[0]).toContain('takes dark blue orb for moldy key');
+    expect(bought.map((row) => row.name)).toEqual(['dark blue orb']);
+    expect(walkedTo).toEqual([]);
+    expect(auto.wants('moldy key')).toBe(true);
+
+    // The orb in the pack: now he is asked.
+    buying = false;
+    auto.onCharacter(carrying('dark blue orb'));
+    expect(walkedTo).toEqual(['8/486']);
+    at = '8/486';
+    auto.onCharacter(carrying('dark blue orb'));
+    expect(said).toEqual(['ask sleazy shopkeeper orb']);
+  });
+
+  /*
+   * A source the way to which is locked (2026-10-19): the archmage, the dark
+   * blue orb's only dropper, is behind the Dark Tower's glowing key. The key
+   * is fetched first, and the orb asked for again once it is carried.
+   */
+  it('fetches what the way to a locked source needs, then the item', () => {
+    const ORB = { id: 810, name: 'dark blue orb' };
+    const GLOWING = { id: 808, name: 'glowing key' };
+    let haveKey = false;
+    const auto = asking({
+      sourcesOf: (item) => {
+        if (item.id === GLOWING.id)
+          return { shops: [counter({ shop: 'Keysmith' })], ...dropped([]) };
+        return haveKey
+          ? {
+              shops: [],
+              ...dropped([
+                { id: '8/558', name: 'Ritual Chamber', mob: 'dark-elf archmage', steps: 30 },
+                { id: '8/557', name: 'Spiral Stairway', mob: 'dark-elf archmage', steps: 29 }
+              ])
+            }
+          : {
+              shops: [],
+              ...dropped([]),
+              locked: { room: '8/558', roomName: 'Ritual Chamber', needs: [GLOWING] }
+            };
+      }
+    });
+    expect(auto.collect([ORB], OWED, ready())).toBeNull();
+    expect(notices[0]).toContain('the way there needs glowing key');
+    expect(bought.map((row) => row.name)).toEqual(['glowing key']);
+    expect(loops).toHaveLength(0);
+
+    // The key in the pack: now the archmage's room is a lap.
+    haveKey = true;
+    buying = false;
+    auto.onCharacter(carrying('glowing key'));
+    expect(loops).toHaveLength(1);
+    expect(loops[0]!.stops.map((stop) => stop.room)).toEqual([
+      'Ritual Chamber 8/558',
+      'Spiral Stairway 8/557'
+    ]);
+  });
+
+  /* And a way that needs the item itself is refused, not chased. */
+  it('refuses a locked source whose way needs the item itself', () => {
+    const ORB = { id: 810, name: 'dark blue orb' };
+    const auto = asking({
+      sourcesOf: () => ({
+        shops: [],
+        ...dropped([]),
+        locked: { room: '8/558', roomName: 'Ritual Chamber', needs: [ORB] }
+      })
+    });
+    expect(auto.collect([ORB], OWED, ready())).toContain('comes only by way of dark blue orb');
+  });
+
+  /* A price that leads back to the item it is paid for is refused, not chased. */
+  it('refuses an answer whose price comes only by way of the item itself', () => {
+    const ORB = { id: 810, name: 'dark blue orb' };
+    const auto = asking({
+      sourcesOf: (item) =>
+        item.id === ORB.id
+          ? {
+              shops: [],
+              ...dropped([]),
+              asks: [{ ...SHOPKEEPER, say: 'ask x orb', takes: [MOLDY] }]
+            }
+          : { shops: [], ...dropped([]), asks: [{ ...SHOPKEEPER, takes: [ORB] }] }
+    });
+    expect(auto.collect([MOLDY], OWED, ready())).toContain('comes only by way of dark blue orb');
+    expect(walkedTo).toEqual([]);
+  });
+
+  /*
+   * Not yet begun is not ended (2026-10-19): the engine plans on the planner's
+   * thread, and the errand said *the walk ended somewhere else* in the second
+   * it set off for the shopkeeper.
+   */
+  it('waits for the walk to begin before calling it ended somewhere else', () => {
+    let clock = 1_000;
+    sources = { shops: [], ...dropped([]), asks: [SHOPKEEPER] };
+    const auto = asking({}, () => clock);
+    expect(auto.collect([MOLDY], OWED, ready())).toBeNull();
+    // Still planning: neither walking nor there.
+    auto.onCharacter(ready());
+    expect(notices.at(-1)).not.toContain('ended somewhere else');
+    // Under way, and arrived.
+    walkingNow = true;
+    auto.onCharacter(ready());
+    walkingNow = false;
+    at = '8/486';
+    auto.onCharacter(ready());
+    expect(said).toEqual(['ask sleazy shopkeeper orb']);
+    // A walk that never begins is given up once the window passes.
+    const late = asking({}, () => clock);
+    at = '1/1';
+    said.length = 0;
+    expect(late.collect([MOLDY], OWED, ready())).toBeNull();
+    clock += tuning().walk.errandHandoverMs + 1;
+    late.onCharacter(ready());
+    expect(notices.at(-1)).toContain('ended somewhere else');
+  });
+
   it('walks there, says it, and walks the way once the listing after it shows the item', () => {
     sources = { shops: [], ...dropped([]), asks: [SHOPKEEPER] };
     const auto = asking();
@@ -585,6 +751,10 @@ describe('collecting what saying something gets', () => {
     sources = { shops: [], ...dropped([]), asks: [SHOPKEEPER] };
     const auto = asking();
     auto.collect([MOLDY], OWED, ready());
+    // Under way, then stopped short of the shop.
+    walkingNow = true;
+    auto.onCharacter(ready());
+    walkingNow = false;
     auto.onCharacter(ready());
     expect(said).toEqual([]);
     expect(notices.at(-1)).toContain('Musty Store');

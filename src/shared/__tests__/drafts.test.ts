@@ -56,10 +56,10 @@ describe('a saved server', () => {
       locate: 'rm',
       loops: [],
       database: '',
-      // Absent above: a realm rules nothing until somebody playing it says so.
-      hangPenalties: null,
       // And renames no coin until it says so.
-      coins: {}
+      coins: {},
+      bbs: {},
+      statsUrl: ''
     });
   });
 
@@ -158,14 +158,12 @@ describe('a character', () => {
       {
         spell: 'protection',
         target: 'self',
-        minMana: 0,
         prioritizeOverHeal: false,
         inCombat: true
       },
       {
         spell: 'Protection',
         target: 'party',
-        minMana: 0,
         prioritizeOverHeal: false,
         inCombat: false,
         fallbackSeconds: 300
@@ -173,7 +171,6 @@ describe('a character', () => {
       {
         spell: 'bless',
         target: 'party',
-        minMana: 0,
         prioritizeOverHeal: false,
         inCombat: false,
         fallbackSeconds: 300
@@ -263,9 +260,6 @@ describe('a character', () => {
         // The shipped ceiling, not 0: an omitted key falls back rather than
         // turning off the loop's health hold, which this pair now carries.
         restTo: 0.7,
-        restBeforeTraps: 0.45,
-        // Absent above, and on: a blank field must not sit a character down in a lair.
-        restNextDoor: true,
         meditateBelow: 0.25,
         // Absent, and 0: the margin above the floor, as before it was a setting.
         meditateTo: 0,
@@ -276,29 +270,14 @@ describe('a character', () => {
         useWards: true
       });
       expect(draft?.movement).toEqual({
-        openDoors: true,
-        openTries: 2,
         pickLocks: false,
         pickTries: 0,
-        bashDoors: false,
         bashTries: 0,
         sneak: true,
         // A draft states what the form showed; absent is off, and the
         // template's `true` for the light is the file's, not the payload's.
         provideLight: false,
         lightDimRooms: false,
-        extinguishInLight: false,
-        // Absent above, and off: it walks the character back to where it died.
-        recoverGear: false,
-        // The bounds on trying again; absent in the payload, so zero.
-        recoverGearTries: 0,
-        recoverGearFloor: 0,
-        walkWhileBlind: false,
-        walkWhilePoisoned: false,
-        walkWhileConfused: false,
-        walkWhileLosingHp: false,
-        // Off unless said: the dangerous regions stay out of planning.
-        fightOnArrival: true,
         // A list the payload did not send keeps the shipped words, since an
         // empty one is a choice and a missing one is not.
         keepOutOf: ['vortex', 'Negative Power Plane'],
@@ -313,29 +292,19 @@ describe('a character', () => {
         attack: 'ice blade',
         areaAttack: '',
         areaMinMobs: 3,
-        areaMinMana: 0,
         heal: '',
         healPartyWith: '',
-        attackFallback: '',
         autoChoose: false,
-        autoChooseHeal: false,
         attackCasts: 0,
         areaCasts: 0,
-        drain: '',
-        areaDrain: '',
-        drainBelow: 0,
-        drainTo: 0,
         healBelow: 0,
         healBelowInCombat: 0,
         healTo: 0,
-        healParty: false,
         minMana: 0.2,
         cures: { blindness: '', poison: '', disease: '', freedom: '' },
-        regen: { hp: '', mana: '', manaMinTick: 0, hpFull: '', manaFull: '' },
+        regen: { hp: '', hpFull: '', manaFull: '' },
         blessings: [],
-        notifyPartyOnWearOff: false,
-        autoBless: true,
-        invokeItems: false
+        autoBless: true
       });
     });
 
@@ -351,9 +320,6 @@ describe('a character', () => {
         // nonsense block must not silently set a lap marching at any health.
         restBelow: 0.35,
         restTo: 0.7,
-        restBeforeTraps: 0.45,
-        // Absent above, and on: a blank field must not sit a character down in a lair.
-        restNextDoor: true,
         meditateBelow: 0,
         meditateTo: 0,
         // The rules list, empty where the payload states none.
@@ -361,27 +327,12 @@ describe('a character', () => {
         useWards: true
       });
       expect(draft?.movement).toEqual({
-        openDoors: false,
-        openTries: 0,
         pickLocks: false,
         pickTries: 0,
-        bashDoors: false,
         bashTries: 0,
         sneak: false,
         provideLight: false,
         lightDimRooms: false,
-        extinguishInLight: false,
-        // Absent above, and off: it walks the character back to where it died.
-        recoverGear: false,
-        // The bounds on trying again; absent in the payload, so zero.
-        recoverGearTries: 0,
-        recoverGearFloor: 0,
-        walkWhileBlind: false,
-        walkWhilePoisoned: false,
-        walkWhileConfused: false,
-        walkWhileLosingHp: false,
-        // Off unless said: the dangerous regions stay out of planning.
-        fightOnArrival: true,
         keepOutOf: ['vortex', 'Negative Power Plane'],
         // The shipped default, for the same reason `restBelow` keeps 0.35
         // here: a nonsense block must not silently switch off something that
@@ -392,35 +343,20 @@ describe('a character', () => {
         attack: '',
         areaAttack: '',
         areaMinMobs: 3,
-        areaMinMana: 0,
         heal: '',
         healPartyWith: '',
         healBelow: 0,
         healBelowInCombat: 0,
         healTo: 0,
-        healParty: false,
         minMana: 0,
-        attackFallback: '',
         autoChoose: false,
-        autoChooseHeal: false,
         attackCasts: 0,
         areaCasts: 0,
-        drain: '',
-        areaDrain: '',
-        drainBelow: 0,
-        drainTo: 0,
         cures: { blindness: '', poison: '', disease: '', freedom: '' },
-        regen: { hp: '', mana: '', manaMinTick: 0, hpFull: '', manaFull: '' },
+        regen: { hp: '', hpFull: '', manaFull: '' },
         blessings: [],
-        notifyPartyOnWearOff: false,
-        autoBless: true,
-        invokeItems: false
+        autoBless: true
       });
-    });
-
-    /* A door that did not open on the third try is locked. */
-    it('caps the door tries', () => {
-      expect(asProfileDraft({ ...good, movement: { openTries: 99 } })?.movement.openTries).toBe(3);
     });
 
     /*
@@ -505,10 +441,7 @@ describe('a character', () => {
           enabled: true,
           attack: 'a',
           opener: 'bs',
-          engage: 'all',
-          retaliate: false,
           maxMobs: 3,
-          refreshRounds: 3,
           monsters: [{ mob: 'town guard', relationship: 'friend' }],
           politeAttacks: true
         }
@@ -517,40 +450,20 @@ describe('a character', () => {
         enabled: true,
         attack: 'a',
         opener: 'bs',
-        // Absent from the block above, so they take their defaults: each is a
-        // refusal, and a refusal nobody asked for is off.
-        maxTargetHealth: 0,
         minMobs: 0,
         maxMonsterExperience: 0,
-        minSurvival: 0,
         // Stated above, keyed the way the wire spells it.
         monsters: [{ mob: 'town guard', relationship: 'friend' }],
-        engage: 'all',
-        retaliate: false,
-        // Absent above, and off: it spends a command per fight.
-        hideForOpener: false,
         // Stated above, and the one direction MegaMUD's own default is not.
         politeAttacks: true,
-        // Absent above: the shipped figure, since 0 would mean never defend.
-        defendAfterRounds: 2,
-        maxMobs: 3,
-        refreshRounds: 3
+        maxMobs: 3
       });
     });
 
-    /* Off, with the one switch that cannot start a fight left on. */
-    it('defaults a missing block to off, and to hitting back', () => {
+    it('defaults a missing block to off', () => {
       const draft = asProfileDraft({ ...good, combat: undefined });
       expect(draft?.combat.enabled).toBe(false);
-      expect(draft?.combat.retaliate).toBe(true);
-      expect(draft?.combat.engage).toBe('hostile');
       expect(draft?.combat.attack).toBe('a');
-    });
-
-    it('refuses an engage policy it has never heard of', () => {
-      expect(asProfileDraft({ ...good, combat: { engage: 'players' } })?.combat.engage).toBe(
-        'hostile'
-      );
     });
 
     /*
@@ -587,19 +500,18 @@ describe('a character', () => {
         ...good,
         health: {
           potions: [
-            { name: 'cure poison potion', when: 'poisoned', below: 0, verb: 'drink' },
+            { name: 'cure poison potion', when: 'poisoned' },
             // No name: a rule naming nothing fires on nothing.
-            { name: '   ', when: 'hp', below: 0.5, verb: 'drink' },
+            { name: '   ', when: 'hp' },
             // A condition the closed union does not hold.
-            { name: 'mystery flask', when: 'cursed', below: 0.5, verb: 'drink' },
-            // An unreadable verb reads as `drink`, and the share is clamped.
-            { name: 'scroll of major healing', when: 'hp', below: 4, verb: 'chug' }
+            { name: 'mystery flask', when: 'cursed' },
+            { name: 'scroll of major healing', when: 'hp' }
           ]
         }
       });
       expect(draft?.health.potions).toEqual([
-        { name: 'cure poison potion', when: 'poisoned', below: 0, verb: 'drink' },
-        { name: 'scroll of major healing', when: 'hp', below: 1, verb: 'drink' }
+        { name: 'cure poison potion', when: 'poisoned' },
+        { name: 'scroll of major healing', when: 'hp' }
       ]);
     });
 

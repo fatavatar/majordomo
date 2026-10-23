@@ -4,12 +4,13 @@
  * `QuestPlan` says what each step gathers, where it happens and what is done
  * there, and nothing carried one. This does — one step at a time and one
  * thing at a time. The pack is read; each `Get` row is fetched the way its
- * source says (bought through `Supplies`, hunted through `ItemErrand`, asked
+ * source says (bought through the planner's `buy`, `SessionManager.megaBuy`,
+ * hunted through `ItemErrand`, asked
  * for or said at a script); the way to the act is walked as a leg; the act is
  * sent; and the outcome is **read**, never assumed — the counter `abil`
  * prints on GreaterMUD, the pack on a realm that prints none.
  *
- * An errand in `Supplies`' shape: it yields to a fight, a move and an escape,
+ * An errand in the item errand's shape: it yields to a fight, a move and an escape,
  * holds the lap rather than ending it, and says every refusal out loud
  * (`SafetyDecision`, action `quest`). Off under `automation.quests.enabled`.
  * See `mudengine-automation` § *A quest's plan is carried step by step, and
@@ -23,7 +24,6 @@ import {
   packCheck,
   type PackCheck
 } from './PackAfter';
-import { fightIsRunning } from './Walker';
 import { t } from '../app/i18n';
 import { tuning } from '../app/tuning';
 import type { SafetyDecision } from '../../shared/automation';
@@ -92,8 +92,6 @@ export interface QuestRunPlanner {
   /** Fight this monster by name whatever the combat policy says, and stop. */
   fightFor(mob: string): void;
   stopFighting(mob: string): void;
-  /** Auto-combat on for the run, as it is for a route. */
-  questing(on: boolean): void;
   /** Wards on for the run: the plan's supplies are bought to be used. */
   warding(on: boolean): void;
   /** A line this run sent at an asker or a room, so the book watches it. */
@@ -199,7 +197,7 @@ export class QuestRunner {
   constructor(
     private config: QuestsConfig,
     private enabled: boolean,
-    private readonly queue: CommandQueue,
+    private readonly queue: Pick<CommandQueue, 'enqueue' | 'cancel' | 'queued'>,
     private readonly planner: QuestRunPlanner,
     private readonly events: QuestRunEvents = {},
     private readonly now: () => number = () => Date.now()
@@ -231,7 +229,7 @@ export class QuestRunner {
    *
    * The switch first, then whatever else has the character: a route the
    * player is walking is theirs and is not superseded, and a lap is held
-   * rather than ended, which is `Supplies`' rule.
+   * rather than ended, as every errand's is.
    */
   start(plan: QuestPlan, quest: Quest, state: CharacterState): string | null {
     if (!this.enabled || !this.config.enabled) {
@@ -261,7 +259,6 @@ export class QuestRunner {
     };
     this.heldLap = this.planner.looping();
     if (this.heldLap) this.planner.hold();
-    this.planner.questing(true);
     // Only a plan that bought a ward has one to use; the release below is
     // unconditional, so a run never leaves the lend standing.
     if (plan.steps.some((step) => step.items.some((item) => item.stops !== undefined))) {
@@ -309,11 +306,6 @@ export class QuestRunner {
   abandon(reason: string): void {
     if (this.run === null) return;
     this.end('stopped', t('automation.quests.abandoned', { why: reason }));
-  }
-
-  /** The player typed a direction: the one thing an errand never argues with. */
-  notePlayerMoved(): void {
-    this.abandon(t('automation.quests.whyPlayerMoved'));
   }
 
   /** Every state change, and the session's own tick between them. */
@@ -364,10 +356,10 @@ export class QuestRunner {
         return;
       case 'walking':
         /*
-         * `Walker.start` raises no `ended` when it *replaces* a running walk,
-         * so a leg superseded by the player's own route would otherwise leave
-         * the run at `walking` for ever. The walker is asked instead: a leg
-         * that is no longer walking has ended one way or another.
+         * A walk raises no `ended` when another *replaces* it, so a leg
+         * superseded by the player's own route would otherwise leave the run
+         * at `walking` for ever. The planner is asked instead: a leg that is
+         * no longer walking has ended one way or another.
          */
         if (!this.planner.walking()) {
           this.onWalkEnded(false, null, state);
@@ -513,8 +505,8 @@ export class QuestRunner {
     /*
      * The character's own stock list, asked once per step. A torch that burnt
      * out three rooms ago is not in a plan drawn before the run started, and
-     * the run is the only thing holding the character — `Supplies` considers
-     * nothing at all while one is going. Whether it is worth the detour *now*
+     * the run is the only thing holding the character, and MegaMUD's own
+     * restocking waits for the release. Whether it is worth the detour *now*
      * is the planner's answer, priced against every leg the plan has left.
      */
     if (run.stocked !== run.at) {
@@ -602,7 +594,7 @@ export class QuestRunner {
         const count = item.count ?? 1;
         const at = source.at === undefined ? null : asRoomReference(source.at.room);
         /*
-         * `Supplies.fetch`'s row, addressed by room where the plan chose one
+         * The buying row, addressed by room where the plan chose one
          * — the field the shopping errand resolves without going back through
          * `shopPlace`, which refuses a name standing in several rooms.
          */
@@ -615,9 +607,9 @@ export class QuestRunner {
         };
         /*
          * And a shopping errand that would not *start* is the same kind of
-         * fact as one that came back empty: `Supplies.fetch` refuses for
-         * another errand running, an escape in flight and the walker's own
-         * `refusalMoveInFlight` — every one of them a moment.
+         * fact as one that came back empty: a purchase refuses for another
+         * errand running, an escape in flight and a move on the wire, every
+         * one of them a moment.
          */
         const refused = this.planner.buy(row);
         if (refused !== null) {
@@ -800,11 +792,19 @@ export class QuestRunner {
       this.setback(t('automation.quests.refusalEscaping'));
       return;
     }
-    const route = this.planner.routeTo(to);
-    if (typeof route === 'string') {
-      this.setback(t('automation.quests.refusalNoRoute', { room: this.placeName(to), why: route }));
+    const planned = this.planner.routeTo(to);
+    if (typeof planned === 'string') {
+      this.setback(
+        t('automation.quests.refusalNoRoute', { room: this.placeName(to), why: planned })
+      );
       return;
     }
+    // Shut for what the pack lacks: the way it opens, which the walk fetches
+    // for first, as a person's Go To does (2026-10-18).
+    const route =
+      planned.blocked && planned.unlocks !== undefined && (planned.unlocks.needs?.length ?? 0) > 0
+        ? planned.unlocks
+        : planned;
     if (route.blocked) {
       this.setback(
         t('automation.quests.refusalNoRoute', {
@@ -1287,7 +1287,6 @@ export class QuestRunner {
     const step = run.plan.steps[run.at];
     if (step?.act?.verb === 'kill') this.planner.stopFighting(step.act.mob);
     if (run.phase.kind === 'fetching') this.planner.abandonErrands(reason);
-    this.planner.questing(false);
     this.planner.warding(false);
     if (this.heldLap) this.planner.release();
     this.heldLap = false;
@@ -1401,4 +1400,15 @@ export class QuestRunner {
         return t('automation.quests.detailConfirming');
     }
   }
+}
+
+/**
+ * A fight is under way in the room: the flag, an attacker, or a target. The
+ * flag outlives an escape by a median 3,493ms and `attackers`/`target` are
+ * cleared by a confirmed move, so a character that got away reads as fighting
+ * for about three seconds and then walks on. (Kept from the walker, deleted
+ * at the swap, 2026-10-14.)
+ */
+function fightIsRunning(state: CharacterState): boolean {
+  return state.inCombat || state.combat.attackers.length > 0 || state.combat.target !== null;
 }

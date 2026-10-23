@@ -331,6 +331,47 @@ describe('where a script hands an item over', () => {
 });
 
 /*
+ * The sleazy shopkeeper (mudrev, 8/486, 2026-10-19): `orb` takes a dark blue
+ * orb for two keys and `brooch` an opal brooch for another. Asked empty-handed
+ * he gives nothing, so what he takes is part of where the keys come from.
+ */
+describe('what an answer takes before it hands anything over', () => {
+  const SHOP = {
+    Monsters: [
+      {
+        Number: 348,
+        Name: 'sleazy shopkeeper',
+        GreetTXT: 838,
+        DeathSpell: 0,
+        'Summoned By': 'Room 8/486'
+      }
+    ],
+    Rooms: [],
+    TBInfo: [
+      { Number: 838, Action: 'help:840\nbrooch:841\norb:844', LinkTo: 839 },
+      { Number: 839, Action: '', LinkTo: 0 },
+      { Number: 840, Action: '', LinkTo: 0 },
+      { Number: 841, Action: '', LinkTo: 842 },
+      { Number: 844, Action: '', LinkTo: 845 },
+      { Number: 842, Action: 'takeitem 811 1368:giveitem 808:text 843', LinkTo: 0 },
+      {
+        Number: 845,
+        Action: 'takeitem 810 1369:giveitem 809:giveitem 820:text 846:checkitem 999',
+        LinkTo: 0
+      }
+    ]
+  };
+  const read = (): ReturnType<typeof itemsInReach> => itemsInReach(blocksInReach(fake(SHOP), []));
+
+  it('records the price of each answer, up to its first handover', () => {
+    const shop = { k: 'npc', w: 'sleazy shopkeeper', at: '8/486' };
+    expect(read().from.get(809)).toEqual([{ ...shop, say: ['orb'], tk: [810] }]);
+    expect(read().from.get(820)).toEqual([{ ...shop, say: ['orb'], tk: [810] }]);
+    expect(read().from.get(808)).toEqual([{ ...shop, say: ['brooch'], tk: [811] }]);
+  });
+});
+
+/*
  * The roll and the delay the runner needs (todo 106): the red book's own
  * shape, a step that rolls after the server holds the block ten seconds.
  */

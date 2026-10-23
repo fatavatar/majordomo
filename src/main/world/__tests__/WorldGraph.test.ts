@@ -138,6 +138,12 @@ describe('edgePenalty', () => {
     expect(edgePenalty({ kind: 'door', raw: 'Door' }, {})).toBeGreaterThan(0);
   });
 
+  /* `Hidden/Passable` asks nothing (2026-10-23); an unknown hidden exit stays discouraged. */
+  it('charges nothing for a passable hidden exit, and still charges an unknown one', () => {
+    expect(edgePenalty({ kind: 'hidden', raw: 'Hidden/Passable', passable: true }, {})).toBe(0);
+    expect(edgePenalty({ kind: 'hidden', raw: 'Hidden/Unknown' }, {})).toBeGreaterThan(0);
+  });
+
   /*
    * The ability gates are the one guard on a room script the client holds a
    * matching fact for — `abil` states the counters outright — so a portal this
@@ -355,12 +361,13 @@ describe('edgePenalty', () => {
   /*
    * The other kind of hidden exit, once the levers are read — todo 01.
    *
-   * A passage this room can open costs the commands, exactly as a searchable
-   * one costs the search: `Walker.pullLevers` sends them, so the route is
-   * priced through it rather than around it. 150 of the shipped realm's gated
-   * exits are that shape.
+   * A passage this room can open costs the commands: `Walker.pullLevers`
+   * sends them, so the route is priced through it rather than around it. 150
+   * of the shipped realm's gated exits are that shape. **A command, not a
+   * search** (2026-10-19): the realm answers a lever every time, and priced
+   * as a search the Black House's three sent Archer 120 rooms round.
    */
-  it('prices a hidden exit this room can open like a search', () => {
+  it('prices a hidden exit this room can open as its commands, under a search', () => {
     const here = {
       kind: 'hidden' as const,
       raw: 'Hidden/Needs 1 Actions, any order',
@@ -369,8 +376,10 @@ describe('edgePenalty', () => {
       actions: [{ say: ['pull lever'] }]
     };
     const opaque = { kind: 'hidden' as const, raw: 'Hidden/Needs 2 Actions', searchable: false };
+    const searched = { kind: 'hidden' as const, raw: 'Hidden/Searchable', searchable: true };
     expect(edgePenalty(here, {})!).toBeLessThan(edgePenalty(opaque, {})!);
-    expect(edgePenalty(here, {})!).toBeGreaterThanOrEqual(25);
+    expect(edgePenalty(here, {})!).toBeGreaterThan(0);
+    expect(edgePenalty(here, {})!).toBeLessThan(edgePenalty(searched, {})!);
   });
 
   /* A lever two rooms away is a room this function cannot see, so the flat
@@ -472,6 +481,49 @@ describe('routing', () => {
     const route = graph.route('11/1', '11/35');
     expect(route.steps[0]?.command).toBe('go crimson');
     expect(route.steps[0]?.direction).toBe('w');
+  });
+
+  /*
+   * Rhudaur, Massive Doors takes `go alley` east and west, and the realm puts
+   * a character in the east alley: Archer, routed to the west one, went round
+   * nine times (2026-10-18).
+   */
+  it('goes through the first exit of a room for a Text command two exits take', () => {
+    const graph = makeWorld([
+      {
+        m: 2,
+        r: 1,
+        n: 'Massive Doors',
+        x: {
+          e: { m: 2, r: 2, i: 'Text: go alley, enter alley' },
+          w: { m: 2, r: 3, i: 'Text: go alley, enter alley, go west alley' },
+          s: { m: 2, r: 4 }
+        }
+      },
+      { m: 2, r: 2, n: 'Dark Alley', x: { w: { m: 2, r: 1 } } },
+      { m: 2, r: 3, n: 'Dark Alley', x: { e: { m: 2, r: 1 } } },
+      { m: 2, r: 4, n: 'Street', x: { n: { m: 2, r: 1 } } }
+    ]);
+    expect(graph.route('2/1', '2/2').steps.map((step) => step.command)).toEqual(['go alley']);
+    // Left only the words no exit before it takes.
+    expect(graph.route('2/1', '2/3').steps.map((step) => step.command)).toEqual(['go west alley']);
+    const shut = makeWorld([
+      {
+        m: 2,
+        r: 1,
+        n: 'Massive Doors',
+        x: {
+          e: { m: 2, r: 2, i: 'Text: go alley, enter alley' },
+          w: { m: 2, r: 3, i: 'Text: go alley, enter alley' }
+        }
+      },
+      { m: 2, r: 2, n: 'Dark Alley', x: { w: { m: 2, r: 1 } } },
+      { m: 2, r: 3, n: 'Dark Alley', x: { e: { m: 2, r: 1 } } }
+    ]);
+    expect(
+      shut.byId('2/1')?.exits.find((exit) => exit.direction === 'w')?.requirement
+    ).toMatchObject({ answeredBy: 'e' });
+    expect(shut.route('2/1', '2/3').blocked).toBe(true);
   });
 
   /**
@@ -1507,7 +1559,8 @@ describe('what a counter charges, and which vault pays for it', () => {
     expect(places[0]).toMatchObject({ copper: 9_000_000, moves: 10 });
   });
 
-  it('leaves out a vault short of the need, and one nobody has asked', () => {
+  /* Asked there, by the `bank` said before every withdrawal (2026-10-18). */
+  it('leaves out a vault short of the need, and offers one nobody has asked', () => {
     const places = town().cashPlaces(
       [said(2, 'Silvermere Bank', 100)],
       1650,
@@ -1515,7 +1568,21 @@ describe('what a counter charges, and which vault pays for it', () => {
       ends.to,
       {}
     );
-    expect(places).toEqual([]);
+    expect(places.map((place) => [place.name, place.copper])).toEqual([['Bank of Godfrey', null]]);
+  });
+
+  it('puts a vault the record says holds it before a nearer one never asked', () => {
+    const places = town().cashPlaces(
+      [said(2, 'Silvermere Bank', 9_000_000)],
+      1650,
+      ends.from,
+      ends.to,
+      {}
+    );
+    expect(places.map((place) => [place.name, place.copper])).toEqual([
+      ['Silvermere Bank', 9_000_000],
+      ['Bank of Godfrey', null]
+    ]);
   });
 
   it('matches a balance the header gave no id by the name, article and all', () => {
@@ -1526,7 +1593,10 @@ describe('what a counter charges, and which vault pays for it', () => {
       ends.to,
       {}
     );
-    expect(places.map((place) => place.name)).toEqual(['Bank of Godfrey']);
+    expect(places.map((place) => [place.name, place.copper])).toEqual([
+      ['Bank of Godfrey', 5000],
+      ['Silvermere Bank', null]
+    ]);
   });
 });
 
@@ -1602,13 +1672,31 @@ describe('the shipped realm data', () => {
     }
     // The cheapest to reach first: the Entrance Hall before the quarters behind it.
     expect(found.lairs[0]).toMatchObject({ id: roomId(12, 2099), name: 'Entrance Hall' });
-    // A room nothing leads out of: placed all the same, and nowhere to go.
-    const shut = realm!.droppingPlaces(head, roomId(17, 2020), festus, ring);
+    // A room nothing leads out of: placed all the same, and nowhere to go. The
+    // Jail Cell; the old man's cell (17/2020) was this until format 52 read
+    // his `ask old man portal`.
+    const shut = realm!.droppingPlaces(head, roomId(1, 44), festus, ring);
     expect(shut).toEqual({ droppers: [{ mob: 'saracen raider', placed: 16 }], lairs: [] });
     // Nothing drops a thing nobody drops, and it is said as that.
     expect(
       realm!.droppingPlaces({ id: 9, name: 'grey robes' }, roomId(12, 59), festus, ring)
     ).toEqual({ droppers: [], lairs: [] });
+  });
+
+  /*
+   * PhoenixQuest's acid gland (2026-10-18): on no drop list, the white
+   * jelly's death spell hands it over (`ItemHandover` `killed`), and a quest
+   * run sent for it was told the realm named nowhere it comes from.
+   */
+  it.runIf(has)('finds where to kill for an item a death hands over', () => {
+    const ring = { rooms: 8, radius: tuning().hunting.clusterRadius };
+    const gland = { id: 966, name: 'acid gland' };
+    expect(realm!.sourcesOf(gland).mobs).toEqual([]);
+    const found = realm!.droppingPlaces(gland, roomId(1, 1), { level: 30 }, ring);
+    expect(found.droppers).toEqual([{ mob: 'white jelly', placed: 1 }]);
+    expect(found.lairs).toEqual([
+      expect.objectContaining({ id: roomId(9, 146), mob: 'white jelly' })
+    ]);
   });
 
   /*
@@ -1709,7 +1797,6 @@ describe('the shipped realm data', () => {
    * only show up as every bar in the game reading "unknown monster".
    */
   it.runIf(has)('names what the realm’s monsters are worth', () => {
-    expect(realm!.mobCount).toBeGreaterThan(1_000);
     expect(realm!.mob('giant rat')?.hp).toBe(12);
     expect(realm!.mob('The Orc Rogue')?.hp).toBe(30);
   });
@@ -1828,6 +1915,25 @@ describe('the shipped realm data', () => {
     expect(realm!.route(roomId(1, 1056), '1/1038', traveller).blocked).toBe(false);
     expect(realm!.route('1/1038', '1/1044', traveller).blocked).toBe(false);
     expect(realm!.route('1/1044', roomId(1, 1056), traveller).blocked).toBe(false);
+
+    /*
+     * And the plan walks that round (2026-10-17): Archer's loop sent `n` at
+     * the wall for as long as he was let, the set being left to the old
+     * walker's `runLeverSet`, which went with it. Both rooms, a pull on the
+     * way out of each, back at the gate, then north.
+     */
+    const through = realm!.route(roomId(1, 1056), roomId(1, 1063), traveller);
+    expect(through.blocked).toBe(false);
+    const pulls = through.steps.filter((step) => step.pull !== undefined);
+    expect(pulls.map((step) => [step.from, step.pull!.say])).toEqual(
+      expect.arrayContaining([
+        ['1/1038', ['pull lever']],
+        ['1/1044', ['pull lever']]
+      ])
+    );
+    expect(pulls).toHaveLength(2);
+    const last = through.steps.at(-1)!;
+    expect([last.from, last.to, last.direction]).toEqual(['1/1056', '1/1063', 'n']);
   });
 });
 
@@ -1944,7 +2050,6 @@ describe('what the realm says a monster is worth', () => {
   it('loads a realm from before this index existed', () => {
     const old = makeWorld(corridor(2));
     expect(old.size).toBe(2);
-    expect(old.mobCount).toBe(0);
     expect(old.mob('giant rat')).toBeUndefined();
   });
 });
@@ -2131,7 +2236,6 @@ describe('the shop and spell indexes', () => {
   it('degrades to knowing nothing on a realm built before either existed', () => {
     const old = makeWorld(corridor(2));
     expect(old.shop(4)).toBeUndefined();
-    expect(old.spellCount).toBe(0);
     expect(old.searchSpells('heal')).toEqual([]);
   });
 });
@@ -2744,6 +2848,24 @@ describe('the levers that open an exit', () => {
     });
 
     /*
+     * How far the lever is goes by the walk, and what waits on the way is
+     * priced on top (2026-10-19). Measured with the lairs in, a guardroom
+     * worth a few hundred to a character at part health was further than
+     * `leverDetourCost`, and the only door into the Lava Tube — `move
+     * boulder` in 7/1000 — a wall: Archer's walk from the Lady of the Dark
+     * to the Red Dragons loop was refused as *no way there at all*.
+     */
+    it('reaches a lever past a lair, and prices the lair on the errand', () => {
+      const plain = barred('1/9').route('1/1', '1/2', { packKnown: true });
+      const lair = (room: WorldRoom): number | null => (room.room === 9 ? 0.5 : null);
+      const route = barred('1/9').route('1/1', '1/2', { packKnown: true, danger: lair });
+      expect(route.blocked).toBe(false);
+      expect(route.steps[1]!.pull?.say).toEqual(['lift portcullis']);
+      expect(route.cost).toBeGreaterThan(plain.cost + tuning().world.leverDetourCost);
+      expect(route.cost).toBeLessThan(tuning().world.wallCost);
+    });
+
+    /*
      * Planned from the door's room, the first leg retraces the way in when
      * the lever is off a room the plan already crossed — the Grand Stair's is
      * off 7/148, two rooms before the door. Those steps are taken out: the
@@ -2780,45 +2902,157 @@ describe('the levers that open an exit', () => {
     });
 
     /*
-     * Past `leverDetourCost` the lever is too far to plan: the wall stands,
-     * and the walker's errand is what finds it, as it always was.
+     * Past `leverDetourCost` a lever is fetched only where it is the only way
+     * (2026-10-23): the budget chooses between ways, and never refuses the
+     * one there is. The Hidden Bookroom's door at 3/638 opens to `move
+     * painting` two rooms off, behind a hidden exit each way, and the
+     * beholder there could not be routed to.
      */
-    it('leaves it a wall when the lever is further than the router reaches', () => {
+    const farLever = (say: string, door: Record<string, unknown>, round = false) => {
       const far = tuning().world.leverDetourCost + 5;
       const corridor = Array.from({ length: far }, (_, index) => ({
         m: 1,
         r: 100 + index,
-        n: 'Long Corridor',
+        n: index + 1 === far ? 'Boulder Cave' : 'Long Corridor',
         x: {
           w: index === 0 ? { m: 1, r: 1 } : { m: 1, r: 99 + index },
           ...(index + 1 < far ? { e: { m: 1, r: 101 + index } } : {})
         },
         ...(index + 1 === far
-          ? { cmd: [{ say: ['pull lever'], opens: { room: '1/1', direction: 'w' } }] }
+          ? { cmd: [{ say: [say], opens: { room: '1/1', direction: 'w' } }] }
           : {})
       }));
+      return makeWorld([
+        {
+          m: 1,
+          r: 1,
+          n: 'Lava Tube',
+          x: {
+            w: { m: 1, r: 2, ...door },
+            e: { m: 1, r: 100 },
+            ...(round ? { s: { m: 1, r: 3 } } : {})
+          }
+        },
+        { m: 1, r: 2, n: 'Dead End', x: round ? { e: { m: 1, r: 3 } } : {} },
+        // The way round, where there is one: a few rooms, and no lever.
+        ...(round
+          ? [{ m: 1, r: 3, n: 'Side Passage', x: { n: { m: 1, r: 1 }, w: { m: 1, r: 2 } } }]
+          : []),
+        ...corridor
+      ]);
+    };
+    const pulled = (route: Route) => route.steps.flatMap((step) => step.pull?.say ?? []);
+
+    it('fetches a far lever when it is the only way', () => {
+      const far = tuning().world.leverDetourCost + 5;
+      const graph = farLever('move boulder', {
+        i: 'Hidden/Needs 1 Actions, any order',
+        a: [{ say: ['move boulder'], at: { map: 1, room: 100 + far - 1 } }]
+      });
+      const route = graph.route('1/1', '1/2', { packKnown: true });
+      expect(route.blocked).toBe(false);
+      expect(pulled(route)).toEqual(['move boulder']);
+      expect(route.steps.at(-1)).toMatchObject({ from: '1/1', to: '1/2' });
+    });
+
+    it('walks a passable hidden exit as a plain one, unless a lever opens it', () => {
+      const rooms = (lever: boolean) =>
+        makeWorld([
+          {
+            m: 1,
+            r: 1,
+            n: 'Grand Library',
+            x: { e: { m: 1, r: 2, i: 'Hidden/Passable' }, n: { m: 1, r: 3 } },
+            ...(lever
+              ? { cmd: [{ say: ['move painting'], opens: { room: '1/1', direction: 'e' } }] }
+              : {})
+          },
+          { m: 1, r: 2, n: 'Concealed Chamber', x: { w: { m: 1, r: 1 } } },
+          { m: 1, r: 3, n: 'Hall', x: { s: { m: 1, r: 1 } } }
+        ]);
+      const plain = rooms(false).route('1/1', '1/2', { packKnown: true });
+      expect(plain.cost).toBe(1);
+      const levered = rooms(true).route('1/1', '1/2', { packKnown: true });
+      expect(levered.cost).toBeGreaterThan(1);
+      expect(levered.steps[0]!.pull?.say ?? []).toEqual([]);
+    });
+
+    it('fetches a far lever for a door the character cannot force', () => {
+      const graph = farLever('pull lever', { i: 'Door [1000 picklocks/strength]' });
+      const route = graph.route('1/1', '1/2', { packKnown: true });
+      expect(route.walls ?? []).toEqual([]);
+      expect(pulled(route)).toEqual(['pull lever']);
+    });
+
+    it('takes the way round rather than a far lever', () => {
+      const far = tuning().world.leverDetourCost + 5;
+      const graph = farLever(
+        'move boulder',
+        {
+          i: 'Hidden/Needs 1 Actions, any order',
+          a: [{ say: ['move boulder'], at: { map: 1, room: 100 + far - 1 } }]
+        },
+        true
+      );
+      const route = graph.route('1/1', '1/2', { packKnown: true });
+      expect(pulled(route)).toEqual([]);
+      expect(route.steps.map((step) => step.to)).toEqual(['1/3', '1/2']);
+    });
+
+    /*
+     * A hidden way only a word opens, where no way reaches the room it is
+     * said in, is named, the word and where it is said, rather than *the
+     * realm data joins no path* (2026-10-19).
+     */
+    it('names the word and its room when no way reaches the lever', () => {
       const graph = makeWorld([
         {
           m: 1,
           r: 1,
-          n: 'Pathway',
-          x: { w: { m: 1, r: 2, i: 'Door [1000 picklocks/strength]' }, e: { m: 1, r: 100 } }
+          n: 'Lava Tube',
+          x: {
+            w: {
+              m: 1,
+              r: 2,
+              i: 'Hidden/Needs 1 Actions, any order',
+              a: [{ say: ['move boulder'], at: { map: 1, room: 9 } }]
+            }
+          }
         },
-        { m: 1, r: 2, n: 'Beyond', x: {} },
-        ...corridor
+        { m: 1, r: 2, n: 'Dead End', x: {} },
+        {
+          m: 1,
+          r: 9,
+          n: 'Boulder Cave',
+          x: {},
+          cmd: [{ say: ['move boulder'], opens: { room: '1/1', direction: 'w' } }]
+        }
       ]);
       const route = graph.route('1/1', '1/2', { packKnown: true });
-      expect(route.cost).toBeGreaterThan(tuning().world.wallCost);
-      expect(route.walls?.length).toBe(1);
-      expect(route.steps.some((step) => step.pull !== undefined)).toBe(false);
+      expect(route.blocked).toBe(true);
+      expect(route.blocks).toEqual([
+        expect.objectContaining({
+          kind: 'lever',
+          name: 'Dead End',
+          say: 'move boulder',
+          leverAt: '1/9',
+          leverName: 'Boulder Cave'
+        })
+      ]);
+      expect(describeBlock(route.blocks![0]!)).toBe(
+        'Dead End opens only to "move boulder" said in Boulder Cave (1/9), which no way from here reaches'
+      );
     });
 
     /*
      * A set spread over rooms — `Needs 2 Actions` with a lever in each of two
-     * — is a round of them, which `Walker.runLeverSet` walks on the wire and
-     * this does not plan: one room's lever opens nothing on its own.
+     * — is a round of them: one room's lever opens nothing on its own. It
+     * was left to `Walker.runLeverSet` on the wire, which went with the old
+     * walker, and the MegaMUD engine walked into the wall (2026-10-17). So it
+     * is planned: to each room in turn, a pull on the way out of each, back,
+     * and through.
      */
-    it('does not plan a set of levers spread over several rooms', () => {
+    it('plans a set of levers spread over several rooms as one round', () => {
       const graph = makeWorld([
         {
           m: 1,
@@ -2855,8 +3089,14 @@ describe('the levers that open an exit', () => {
         }
       ]);
       const route = graph.route('1/1', '1/2', { packKnown: true });
-      expect(route.steps.map((step) => step.to)).toEqual(['1/2']);
-      expect(route.steps[0]!.pull).toBeUndefined();
+      expect(route.blocked).toBe(false);
+      expect(route.steps.map((step) => [step.from, step.to, step.pull?.say ?? null])).toEqual([
+        ['1/1', '1/8', null],
+        ['1/8', '1/1', ['pull lever']],
+        ['1/1', '1/9', null],
+        ['1/9', '1/1', ['push lever']],
+        ['1/1', '1/2', null]
+      ]);
     });
   });
 
@@ -3128,8 +3368,10 @@ describe('lairs', () => {
   it('resolves a lair descriptor to monsters by the realm’s own numbers', () => {
     const world = withLairs();
     expect(world.mobById(109)?.name).toBe('giant rat');
-    expect(world.lairOf(world.byId('1/1')!).map((mob) => mob.name)).toEqual(['giant rat']);
-    expect(world.lairOf(world.byId('1/2')!).map((mob) => mob.hp)).toEqual([50]);
+    expect((world.lair(world.byId('1/1')!, null)?.mobs ?? []).map((mob) => mob.name)).toEqual([
+      'giant rat'
+    ]);
+    expect((world.lair(world.byId('1/2')!, null)?.mobs ?? []).map((mob) => mob.hp)).toEqual([50]);
   });
 
   /* The face's question: how many at once, how often, and what. */
@@ -3541,7 +3783,9 @@ describe('lairs', () => {
   it('reads the Max count as a count, never as a monster', () => {
     const world = withLairs();
     // `(Max 1): 80,` — the 1 is not monster #1.
-    expect(world.lairOf(world.byId('1/2')!).map((mob) => mob.name)).toEqual(['cave bear']);
+    expect((world.lair(world.byId('1/2')!, null)?.mobs ?? []).map((mob) => mob.name)).toEqual([
+      'cave bear'
+    ]);
   });
 
   /*
@@ -3552,7 +3796,7 @@ describe('lairs', () => {
   it('reads the exporter’s bracketed parameters as parameters, not monsters', () => {
     const world = withLairs();
     const spelled = { ...world.byId('1/1')!, lair: '(Max 3): 1,109,[6-30-31-2]' };
-    expect(world.lairOf(spelled).map((mob) => mob.name)).toEqual(['giant rat']);
+    expect((world.lair(spelled, null)?.mobs ?? []).map((mob) => mob.name)).toEqual(['giant rat']);
     expect(world.lair(spelled, null)?.max).toBe(3);
   });
 
@@ -6158,7 +6402,7 @@ describe('a lever that needs an item', () => {
     const graph = makeWorld(passage());
     const carrying = graph.route(roomId(1, 1), roomId(1, 2), { packKnown: true, keys: [815] });
     expect(carrying.blocked).toBe(false);
-    expect(carrying.cost).toBe(1 + 25 + 5);
+    expect(carrying.cost).toBe(1 + 3);
     expect(carrying.steps[0]?.requirement?.actions?.[0]?.item).toBe(815);
 
     const unlisted = graph.route(roomId(1, 1), roomId(1, 2), { keys: [] });
@@ -7275,7 +7519,94 @@ describe('an item that teleports is an edge the router may walk', () => {
     expect(right.blocked).toBe(false);
   });
 
-  it("names the walk's wall and the token's level together, on the shipped realm", () => {
+  /*
+   * Reported 2026-10-19: Archer, level 33 with the black star key, was walked
+   * from Silvermere to the Lava Fields by the Dragon's Teeth Hills — 289
+   * moves — where the Black House's are 169. Its three hidden ways open to a
+   * word said in the room, and a word was priced as a search.
+   */
+  /*
+   * Archer's *Collect it first* for the sleazy shopkeeper's keys (2026-10-19):
+   * the dark blue orb he takes is dropped only by the dark-elf archmage, in
+   * the Ritual Chamber behind the Dark Tower's glowing key, which he gives for
+   * an opal brooch the captains drop behind the gate key and bloodstone orb.
+   * Asked of each link in turn, with what the errand has brought back by then,
+   * the realm answers the order to fetch them in.
+   */
+  it('names what the way to a locked source needs, link by link, on the shipped realm', () => {
+    const graph = WorldGraph.load('resources/world/majormud.jsonl.gz');
+    const archer: Traveller = {
+      level: 38,
+      strength: 120,
+      pickSkill: 0,
+      forcing: { pick: false, bash: true },
+      packKnown: true,
+      keys: []
+    };
+    const carrying = (...keys: number[]): Traveller => ({ ...archer, keys });
+    const needs = (item: number, traveller: Traveller) =>
+      graph.lockedSource(item, roomId(1, 1), traveller)?.needs.map((need) => need.name) ?? null;
+    const ORB = 810;
+    expect(needs(ORB, archer)).toEqual(['bloodstone orb', 'gate key', 'glowing key']);
+    // Through the gate with the orb: only the tower's key between him and the archmage.
+    expect(needs(ORB, carrying(807, 806))).toEqual(['glowing key']);
+    // The archmage's room is no lair until the tower is open, and one after.
+    const ring = { rooms: 8, radius: 3 };
+    expect(graph.droppingPlaces({ id: ORB }, roomId(1, 1), carrying(807, 806), ring).lairs).toEqual(
+      []
+    );
+    expect(
+      graph
+        .droppingPlaces({ id: ORB }, roomId(1, 1), carrying(807, 806, 808), ring)
+        .lairs.map((lair) => lair.id)
+    ).toEqual([roomId(8, 558)]);
+    // The brooch for the key, and the key for the brooch, are reachable then.
+    expect(needs(811, carrying(807, 806))).toBeNull();
+    expect(graph.itemAsks(808, roomId(1, 1), carrying(807, 806)).map((ask) => ask.room)).toEqual([
+      roomId(8, 486)
+    ]);
+  });
+
+  /*
+   * Reported 2026-10-19: Skinny's walk to the Rakshasha Lord was refused,
+   * *Treetops opens only to "tear bark" said in Treetops (16/569), further
+   * than a route goes to fetch it*. The way north from 16/551 is the last of
+   * five levers, each behind the door the one before opens, and a detour was
+   * planned one lever deep.
+   */
+  it('pulls a chain of levers each behind the last, in order, on the shipped realm', () => {
+    const graph = WorldGraph.load('resources/world/majormud.jsonl.gz');
+    const route = graph.route(roomId(16, 545), roomId(16, 640), { level: 50 });
+    expect(route.blocked).toBe(false);
+    expect(route.steps.flatMap((step) => step.pull?.say ?? [])).toEqual([
+      'turn knot',
+      'move branch',
+      'pull vine',
+      'push knot',
+      'tear bark'
+    ]);
+    expect(route.steps.some((step) => step.from === roomId(16, 551) && step.command === 'n')).toBe(
+      true
+    );
+  });
+
+  it('goes through the Black House to the Lava Fields with the black star key, on the shipped realm', () => {
+    const graph = WorldGraph.load('resources/world/majormud.jsonl.gz');
+    const key = graph.itemIdNamed('black star key')!;
+    const route = graph.route(roomId(1, 1), roomId(7, 1288), {
+      level: 33,
+      packKnown: true,
+      keys: [key],
+      keepOut: { words: ['vortex'], allowed: [] }
+    });
+    expect(route.blocked).toBe(false);
+    expect(route.steps.some((step) => step.from === roomId(1, 1224) && step.command === 'e')).toBe(
+      true
+    );
+    expect(route.steps.length).toBeLessThan(200);
+  });
+
+  it('names the wall on the cheapest way out, and walks it once that is carried, on the shipped realm', () => {
     /*
      * The report this was written for: *going from 16 273 to 1 297 is trying
      * to use token of silvermere but it is level 25 restricted*. The Sandbar's
@@ -7292,15 +7623,24 @@ describe('an item that teleports is an edge the router may walk', () => {
       { alternatives: true }
     );
     expect(route.blocked).toBe(true);
+    /*
+     * Since format 52 the cheapest way is neither: the king crab claw opens
+     * the Sandstone Stair (16/287 d), and Seher'Sahham, at its foot, answers
+     * `ask Seher'Sahham home` with Silvermere (1/140) — the half a person can
+     * fetch, named alone.
+     */
     expect(route.blocks).toEqual([
-      expect.objectContaining({ kind: 'carry', itemName: 'rope and grapple' }),
-      expect.objectContaining({
-        kind: 'level',
-        name: 'token of Silvermere',
-        minLevel: 25,
-        level: 21
-      })
+      expect.objectContaining({ kind: 'carry', itemName: 'king crab claw' })
     ]);
+    const claw = graph.itemIdNamed('king crab claw')!;
+    const asked = graph.route(
+      roomId(16, 273),
+      roomId(1, 297),
+      { keys: [token, claw], packKnown: true, level: 21 },
+      { alternatives: true }
+    );
+    expect(asked.blocked).toBe(false);
+    expect(asked.steps.map((step) => step.command)).toContain("ask Seher'Sahham home");
     // With the rope, the walk is the plan and the token is not offered.
     const rope = graph.itemIdNamed('rope and grapple')!;
     const walked = graph.route(

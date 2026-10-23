@@ -64,7 +64,7 @@
  * time to kill is health alone; a factor equal for every monster in a room
  * changes no order.
  *
- * Dependency-free, like everything here: `AutoCombat` hands it the room and
+ * Dependency-free, like everything here: its caller hands it the room and
  * the sheet, and the trace prints what came back.
  */
 import { HAZARD_ABILITY, PROTECTION_ABILITY } from './abilities';

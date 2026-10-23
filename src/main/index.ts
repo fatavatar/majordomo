@@ -20,6 +20,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { startClient } from './client';
+import { setRouteWorkerFile } from './world/RoutePlanner';
+import { setExplorerWorkerFile } from './mme/ExplorerThread';
 
 /*
  * Where the built halves are, stated from the entry and handed to the host.
@@ -37,6 +39,10 @@ const layout = {
   // `out/main` is two levels below the project root.
   resources: path.join(outMain, '../../resources')
 };
+
+// The route planner's thread, built beside this entry, and MMUD Explorer's.
+setRouteWorkerFile(path.join(outMain, 'routeWorker.js'));
+setExplorerWorkerFile(path.join(outMain, 'explorerWorker.js'));
 
 const web = (process.env['MUDENGINE_WEB'] ?? '').trim() === '1';
 

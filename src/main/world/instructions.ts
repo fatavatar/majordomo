@@ -23,12 +23,12 @@ import { asAlignment } from '../../shared/alignment';
 import { COPPER_PER } from '../../shared/coins';
 import type { Requirement, RequirementKind } from '../../shared/world';
 
-/** Ordered: the first pattern that matches wins, so specific precedes general. */
 /**
  * The figure the realm writes for "no upper limit", read off the data above.
  */
 const NO_LEVEL_CEILING = 999;
 
+/** Ordered: the first pattern that matches wins, so specific precedes general. */
 const MATCHERS: Array<{ kind: RequirementKind; test: RegExp }> = [
   { kind: 'key', test: /^Key\b/i },
   { kind: 'door', test: /^Door\b/i },
@@ -321,6 +321,8 @@ export function parseInstruction(raw: string | undefined): Requirement | null {
   if (kind === 'hidden') {
     // `Hidden/Searchable` can be revealed with `search <direction>`.
     requirement.searchable = /searchable/i.test(text);
+    // `Hidden/Passable`: not listed among the exits, and walked like any other.
+    if (/passable/i.test(text)) requirement.passable = true;
     /*
      * `Hidden/Needs 2 Actions, specific order` — how many levers, and whether
      * they have to be pulled in the realm's own numbering. **What** those

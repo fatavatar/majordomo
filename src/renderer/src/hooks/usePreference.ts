@@ -1,5 +1,3 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-
 /**
  * A setting with two sources: the options file and a quick in-app control.
  *
@@ -32,6 +30,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
  * @param configured The current value from the options file.
  * @param isValid Guard for stored text, which is untrusted input.
  */
+import { useCallback, useEffect, useRef, useState } from 'react';
+
 /**
  * What a stored override is worth, given what the file currently says.
  *

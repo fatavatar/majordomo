@@ -215,10 +215,9 @@ export interface QuestCardProps extends CardChrome {
    * over is a shopping list, and a list you cannot tick is one the player
    * keeps in their head beside the card.
    *
-   * Null ticks nothing and crosses nothing off. An `i` is in the default
-   * `onEnterRealm`, so this is an answer within a second of entering the realm
-   * on any ordinary configuration — but the probe list is the player's, and a
-   * character told never to ask must not have its empty pack drawn as a
+   * Null ticks nothing and crosses nothing off. MegaMUD asks `i` while it does
+   * not know the pack, so this is an answer soon after entering the realm —
+   * but until then a character must not have its empty pack drawn as a
    * statement that it is carrying none of them.
    */
   carrying?: readonly number[] | null;
@@ -2164,15 +2163,6 @@ function placeWords(at: { room: string; place?: string } | undefined): string {
 }
 
 /**
- * What the realm says would stop a step being carried unattended, as a chip.
- *
- * A hazard is `warn`, because the router still found the way and the pack
- * may yet stop it; an unread one says so, since a spell the converter could
- * not read is one the client cannot promise to survive. No way there is `bad`
- * with the router's reason on the tooltip, and an unplaced item is the plan's
- * own admission, never a guess at where it might be.
- */
-/**
  * A snag as a chip: the words `snagWords` chose, in the tone they earn. Green
  * for a spell something in hand or on the plan stops, the accent for a
  * passage that is safe if walked without stopping, amber for a spell nothing
@@ -2396,11 +2386,17 @@ function cashWords(cash: PlanCash): Array<{ words: string; tone: string; title?:
         bank: cash.bank.name
       }),
       tone: 'info',
-      title: t('cards.quests.plan.cash.fromBankTitle', {
-        purse: cash.purse.toLocaleString(),
-        held: cash.bank.copper.toLocaleString(),
-        place: cash.bank.place
-      })
+      title:
+        cash.bank.copper === null
+          ? t('cards.quests.plan.cash.fromBankUnreadTitle', {
+              purse: cash.purse.toLocaleString(),
+              place: cash.bank.place
+            })
+          : t('cards.quests.plan.cash.fromBankTitle', {
+              purse: cash.purse.toLocaleString(),
+              held: cash.bank.copper.toLocaleString(),
+              place: cash.bank.place
+            })
     });
   } else if (cash.short) {
     parts.push({

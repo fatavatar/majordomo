@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
 import {
-  alertsFor,
   byNewest,
   byRarest,
   findKey,
@@ -105,34 +104,5 @@ describe('the rooms a log names', () => {
   it('is a set, so the map asks once per drawn room', () => {
     const rooms = roomsWithFinds([find({ room: '1/1' }), find({ room: '1/1', name: 'ring' })]);
     expect([...rooms]).toEqual(['1/1']);
-  });
-});
-
-describe('what is worth interrupting for', () => {
-  it('matches a word anywhere in the name, whatever the case', () => {
-    expect(alertsFor(find({ name: 'a rusty key' }), ['key'], 0)).toBe('item');
-    expect(alertsFor(find({ name: 'Bone Keys' }), ['KEY'], 0)).toBe('item');
-  });
-
-  it('says nothing about a thing nobody asked about', () => {
-    expect(alertsFor(find({ name: 'a rusty key' }), ['ring'], 0)).toBeNull();
-    expect(alertsFor(find({ name: 'a rusty key' }), [], 0)).toBeNull();
-  });
-
-  it('ignores an empty word, which would otherwise match everything', () => {
-    expect(alertsFor(find(), ['   '], 0)).toBeNull();
-  });
-
-  it('answers about money with the figure, never with the words', () => {
-    const cash = find({ name: '4 copper farthings', copper: 4 });
-    // The watch list is about things; money has its own question.
-    expect(alertsFor(cash, ['copper'], 0)).toBeNull();
-    expect(alertsFor(cash, [], 4)).toBe('cash');
-    expect(alertsFor(cash, [], 5)).toBeNull();
-  });
-
-  it('never alerts on money at zero, which is the off position', () => {
-    expect(alertsFor(find({ copper: 0 }), [], 0)).toBeNull();
-    expect(alertsFor(find({ copper: 1_000_000 }), [], 0)).toBeNull();
   });
 });

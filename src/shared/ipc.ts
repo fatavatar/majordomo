@@ -15,6 +15,8 @@
  * no session, because they belong to the client rather than to a character.
  */
 import type { MessageImport, MessageTable, MessageTrigger } from './messageTriggers';
+import type { ItemImport, ItemRule, ItemTable } from './itemRules';
+import type { ToolAnswer, ToolRequest } from './explorerTools';
 import type { MonsterImport, MonsterRule, MonsterTable } from './monsterRules';
 import type { LoopImport, MegaMudPath } from './megamudPaths';
 import type { AutomationSnapshot } from './automation';
@@ -44,24 +46,17 @@ import type {
   HealthConfig,
   MovementConfig,
   LootConfig,
-  DropConfig,
   SearchConfig,
-  BankingConfig,
   HuntingAutomationConfig,
-  GearConfig,
   QuestsConfig,
-  TrainConfig,
   RemotesConfig,
-  StatlineConfig,
   RewritesUiConfig,
-  TalkConfig,
   AfkConfig,
   Server,
   SpellsConfig,
-  RetreatStrategy,
   PartyConfig,
   PotionWhen,
-  PvpAction,
+  StatsReportConfig,
   SuppliesConfig,
   SupplyItem
 } from './config';
@@ -70,8 +65,64 @@ import type { PlayerGrant, RemoteName } from './remotes';
 import type { CureGates, SpellTargeting } from './spellcraft';
 import type { ThemePreference } from './themes';
 import type { ProfileAccent } from './profiles';
+import type { MegaSettings } from './megamud/settings';
+import type { MegaToggle } from './megamud/toggles';
+
+/**
+ * One spell's sentences as a realm's wire taught them (`RealmLore`): what it
+ * prints when it lands and when it ends, empty for one not learned. The
+ * shipped table's sentences come first and are not listed.
+ */
+export interface LearnedSpellRow {
+  spell: string;
+  start: string;
+  stop: string;
+}
+
+/** A realm's learned spell sentences; `known` false when the realm has no data to key them by. */
+export interface LearnedSpellTable {
+  known: boolean;
+  rows: LearnedSpellRow[];
+}
+
+/**
+ * What MegaMUD's settings dialogs pick from, out of a running engine: the
+ * rooms its room list names (Special Rooms, `roomByName`), and the weapons,
+ * backstab weapons and shields carried (the Combat tab's pickers,
+ * `0x42afc0`), each null while the inventory is not known.
+ */
+export interface MegaChoices {
+  rooms: string[];
+  weapons: string[] | null;
+  backstab: string[] | null;
+  shields: string[] | null;
+  /** The figures the Statline tab shows its line with (`0x4a6920`). */
+  statline: StatlineSample;
+}
+import type { StatlineSample } from './megamud/lists';
+import type {
+  ExplorerBuyPlan,
+  ExplorerDetail,
+  ExplorerKind,
+  ExplorerList,
+  ExplorerOptions,
+  ExplorerRoomView,
+  GearBoard,
+  GearOptions,
+  EqFind,
+  EqFound,
+  EqPlan,
+  EqView,
+  CompareKind,
+  CompareList,
+  ItemFacts,
+  RoomMapOptions,
+  RoomSearch,
+  RoomSearchResult,
+  RoomViewRequest
+} from './explorer';
 import type { InternalConfig } from './internal';
-import type { Loop, LoopProgress, LoopScope, ScopedLoop } from './loops';
+import type { Loop, LoopAddress, LoopProgress, LoopScope, ScopedLoop } from './loops';
 import type { WalkProgress } from './walk';
 import type { MovementStart, WalkStart } from './movement';
 import type { RoomVerdict } from './verdict';
@@ -88,6 +139,7 @@ import type {
   WorldRoom
 } from './world';
 import type { Visited } from './destinations';
+import type { CombatTally } from './tally';
 import type {
   ConnectionState,
   ConnectionTarget,
@@ -304,9 +356,10 @@ export interface ProfileSummary {
    */
   switches: AutomationSwitches;
   /**
-   * The ceiling a stretch of resting is carried on to — `automation.health`'s
-   * `restTo`, resolved, as a fraction; 0 where the character rests only at the
-   * floor.
+   * The ceiling a stretch of resting is carried on to — the character's
+   * MegaMUD *HP Full %* (`Health.HpFull%`), which the engine rests to, as a
+   * fraction (2026-10-17; it was the old automation's `restTo`, which nothing
+   * reads now); 0 where it is not stated.
    *
    * Beside `remotes` and `switches` for their reason exactly: it is a
    * *resolved* value, and the tab rail reporting `resting to 90%` off the
@@ -325,16 +378,6 @@ export interface ProfileSummary {
   supplies: SuppliesConfig;
 }
 
-/**
- * One character as a settings screen needs it: the fields a form edits, read
- * back off disk.
- *
- * Not a `Profile`. A resolved profile carries the whole merged `AppConfig`,
- * which is the *result* of the file rather than what is in it — editing a form
- * populated from that would write every inherited global setting into the
- * character's own file and make it a copy rather than an overlay, which is
- * exactly the failure `profiles.ts` rule 1 exists to prevent.
- */
 /**
  * One spell a settings picker can offer: the name a cast command sends, the
  * realm's own casting word beside it so `mihe` finds `minor healing`, and who
@@ -372,6 +415,16 @@ export interface SpellOption {
   };
 }
 
+/**
+ * One character as a settings screen needs it: the fields a form edits, read
+ * back off disk.
+ *
+ * Not a `Profile`. A resolved profile carries the whole merged `AppConfig`,
+ * which is the *result* of the file rather than what is in it — editing a form
+ * populated from that would write every inherited global setting into the
+ * character's own file and make it a copy rather than an overlay, which is
+ * exactly the failure `profiles.ts` rule 1 exists to prevent.
+ */
 export interface ProfileEditable {
   id: string;
   name: string;
@@ -402,26 +455,30 @@ export interface ProfileEditable {
    * vocabulary. See `LoginConfig.steps`.
    */
   login: LoginStepDraft[];
-  /** Resolved, so inherited values show; `penalties` alone is this character's own, null where it inherits. */
+  /** Resolved, so inherited values show. */
   hangUp: {
     enabled: boolean;
     belowHealth: number;
-    penalties: boolean | null;
-    onPlayerInRoom: boolean;
   };
   retreat: {
     enabled: boolean;
     belowHealth: number;
-    /** MegaMUD's `ManaRun%`; 0 never. */
-    belowMana: number;
-    whenOutnumbered: number;
-    strategy: RetreatStrategy;
-    safeHavenRoom: string;
   };
   /** Fleeing outright — see `FleeGotoConfig`. Resolved, like the two above. */
   fleeGoto: { enabled: boolean; belowHealth: number; destination: string };
-  /** What to do when a player opens on this character. Resolved, like the two above. */
-  pvp: { notifyGang: boolean; action: PvpAction };
+  /** Posting readings to the realm's mudstats board. Resolved, like the two above. */
+  stats: StatsReportConfig;
+  /** Whether a mudstats key is on file — never the key, for the reason `hasPassword` is not. */
+  statsLinked: boolean;
+  /**
+   * Its MegaMUD settings (`megamud:`), edited and saved with the rest of the
+   * character (2026-10-18): what its file states, or, with none there yet,
+   * what the engine runs it on, started from its old automation. `BBS.Password`
+   * always empty, for the reason `hasPassword` is not the password.
+   */
+  megamud: MegaSettings;
+  /** Whether `megamud`'s `BBS.Password` is set on file. */
+  megamudHasPassword: boolean;
   /**
    * Fighting on this character's behalf. Resolved, like the two above.
    *
@@ -437,22 +494,16 @@ export interface ProfileEditable {
   movement: MovementConfig;
   /** Going hunting on its own — where this character should be. Resolved. */
   hunting: HuntingAutomationConfig;
-  /** Spending character points on the stat screen. Resolved, like the rest. */
-  train: TrainConfig;
   /** Running a quest's plan (todo 102). Resolved, like the rest. */
   quests: QuestsConfig;
-  /** Which kit to be in, and when. See `GearConfig`. */
-  gear: GearConfig;
   /*
-   * What the character picks up, puts down, searches for and banks — resolved,
+   * What the character picks up and searches for — resolved,
    * like the rest (todo 03, 2026-09-12). They were reachable only on the
    * Global page, so `automation.loot` was a client-wide answer to a question
    * two characters on one realm rarely answer the same way.
    */
   loot: LootConfig;
-  drop: DropConfig;
   search: SearchConfig;
-  banking: BankingConfig;
   /**
    * Whether this character answers another player's `@` commands. Resolved.
    *
@@ -463,10 +514,6 @@ export interface ProfileEditable {
   remotes: RemotesConfig;
   /** Answering for an absent player. Resolved, like the rest. */
   afk: AfkConfig;
-  /** What this character learns about other people. Resolved, like the rest. */
-  talk: TalkConfig;
-  /** Whether the client sets the prompt's shape on the way in. Resolved, like the rest. */
-  statline: StatlineConfig;
   /** The status line and listings this player designed for this character. Resolved, like the rest. */
   rewrites: RewritesUiConfig;
   /**
@@ -531,6 +578,12 @@ export interface SettingsSnapshot {
    * character whose own book could narrow the list.
    */
   realmSpells: SpellOption[];
+  /**
+   * The MegaMUD settings a new character starts from: the options file's
+   * automation carried across (`megamudFromConfig`), as a character with none
+   * on file runs.
+   */
+  newMegamud: MegaSettings;
   /** Where the files are, so the screen can offer to reveal them. */
   home: string;
   configPath: string;
@@ -601,7 +654,16 @@ export const Send = {
    * three or four extra serialisations per line of output for a window that
    * discarded every one of them on arrival.
    */
-  debugFeed: 'client:debug-feed'
+  debugFeed: 'client:debug-feed',
+  /**
+   * A character's Combat Stats Reset. Main keeps the baseline with the tally
+   * (`CharacterState.statsBase`) and re-bases it at a lap begun itself, so
+   * every window and the realm's stats board read from one moment
+   * (2026-10-17).
+   */
+  statsReset: 'session:stats-reset',
+  /** A baseline this window kept from before main kept one, taken once while main has none. */
+  statsBase: 'session:stats-base'
 } as const;
 
 /** Renderer -> main, request/response. */
@@ -667,10 +729,8 @@ export const Invoke = {
    * handler in main.
    */
   runLoop: 'loop:run',
-  /** Give up on the current stop and head for the next. */
-  skipLoopStop: 'loop:skip',
-  /** Turn a bounce loop round. Refused for a plain loop. */
-  reverseLoop: 'loop:reverse',
+  /** A loop's stops as rooms on a character's realm, for the builder to edit it on. */
+  loopStops: 'loop:stops',
   /** The loops the client ships, for the settings screen to offer. */
   loopCatalogue: 'loop:catalogue',
   /**
@@ -801,6 +861,18 @@ export const Invoke = {
    */
   saveProfile: 'settings:save-profile',
   deleteProfile: 'settings:delete-profile',
+  /**
+   * What a character's running engine offers its MegaMUD tabs to choose from
+   * (`MegaChoices`). Its settings themselves are the character's, in the
+   * snapshot and `saveProfile` (2026-10-18).
+   */
+  megamudChoices: 'settings:megamud-choices',
+  /**
+   * The players a character's realm has seen (`PlayerBook`), by name, for the
+   * Players row's list; and one of them forgotten from it, until seen again.
+   */
+  seenPlayers: 'settings:seen-players',
+  forgetPlayer: 'settings:forget-player',
   saveServer: 'settings:save-server',
   /** Write the options file everything is inherited from. */
   saveGlobal: 'settings:save-global',
@@ -825,6 +897,16 @@ export const Invoke = {
    * `saveProfile`.
    */
   setGangRemotes: 'settings:gang-remotes',
+  /**
+   * The realm's mudstats board (`Server.statsUrl`): link this character (the
+   * handshake, its code read off the telepath the board sends), unlink it
+   * (its key retired there), what the board says of it, and whether a board
+   * answers at an address at all. Each resolves to a sentence for the screen.
+   */
+  statsLink: 'stats:link',
+  statsUnlink: 'stats:unlink',
+  statsStatus: 'stats:status',
+  statsTest: 'stats:test',
   /** Whether this character answers `@` commands on the gangpath at all. */
   setRemoteGangpath: 'settings:remote-gangpath',
   /**
@@ -837,6 +919,18 @@ export const Invoke = {
    * character's own file and turn an overlay into a copy.
    */
   setAutomationSwitch: 'settings:automation-switch',
+  /**
+   * One of the MegaMUD engine's toolbar toggles pressed (`MEGA_TOGGLES`):
+   * its window command, run on the character's engine. Nothing is written —
+   * MegaMUD's toggles are the session's, and its modes change them as it goes.
+   */
+  megamudToggle: 'megamud:toggle',
+  /**
+   * The player's answer to a question the MegaMUD engine asked
+   * (`AutomationSnapshot.megaQuestion`). The question goes back with it, so an
+   * answer to one that has since gone is no answer to the next.
+   */
+  megamudAnswer: 'megamud:answer',
   /**
    * This character's whole supplies list, from the Self card or the item
    * panel — `automation.supplies.items`, written whole for the reason the
@@ -890,6 +984,20 @@ export const Invoke = {
   importMonsters: 'settings:import-monsters',
   /** Writes one realm's whole monster table, after an edit on its page. */
   saveMonsters: 'settings:save-monsters',
+  /** One realm's item table (`servers/<id>/items.yaml`), by the realm's name. */
+  loadItems: 'settings:items',
+  /** Replaces one realm's item table with what a MegaMUD `Items.md` says, decoded in the window for `importMonsters`' reason. */
+  importItems: 'settings:import-items',
+  /** Writes one realm's whole item table, after an edit on its page. */
+  saveItems: 'settings:save-items',
+  /**
+   * The spell sentences one realm's wire taught (`RealmLore`), for its page:
+   * read, corrected and forgotten there (2026-10-14), since a sentence paired
+   * with the wrong spell keeps a blessing up that has worn off.
+   */
+  loadSpellLore: 'settings:spell-lore',
+  /** Replaces one realm's learned spell sentences, after an edit on its page. */
+  saveSpellLore: 'settings:save-spell-lore',
   /**
    * Adds the loops in a MegaMUD folder to one realm's own
    * (`servers/<id>/loops/`), converted against that realm's data. The window
@@ -897,6 +1005,14 @@ export const Invoke = {
    * for `importMonsters`' reason (`shared/megamudPaths.ts`).
    */
   importLoops: 'settings:import-loops',
+  /**
+   * A loop as a file to hand to somebody (2026-10-19): this client's own
+   * loop file, for another player to import (`importLoopFile`), or MegaMUD's
+   * path file for this character, its legs planned (`MegaEngine.exportLoop`).
+   */
+  exportLoop: 'loop:export',
+  /** Loops from a shared loop file, filed in a scope beside its own. */
+  importLoopFile: 'settings:import-loop-file',
   /** Where to hunt from here: the lairs within reach, priced for this character. */
   huntingGrounds: 'world:hunt',
   trainers: 'world:trainers',
@@ -935,6 +1051,58 @@ export const Invoke = {
    */
   lookup: 'world:lookup',
   /**
+   * MMUD Explorer's Weapons and Armour lists for a character on its realm,
+   * and one item's detail (`src/main/mme/Explorer.ts`, 2026-10-18).
+   */
+  explorerList: 'explorer:list',
+  explorerDetail: 'explorer:detail',
+  /**
+   * The Explorer's Buy (2026-10-18): what pressing it would do now, and the
+   * press, Buy or Buy + Wear, which sends the character to the counter, by the
+   * bank first where the purse is short (`SessionManager.buyNow`).
+   */
+  explorerBuyPlan: 'explorer:buy-plan',
+  explorerBuy: 'explorer:buy',
+  /**
+   * Buy + Learn (2026-10-20): what buying a spell's scroll would do now, the
+   * cheapest that teaches it, and the press, which buys it and reads it.
+   */
+  explorerLearnPlan: 'explorer:learn-plan',
+  explorerLearn: 'explorer:learn',
+  /** The Gear card: MME's Find Best for the character as it is (`explorerGear`). */
+  explorerGear: 'explorer:gear',
+  /**
+   * The EQ tab (2026-10-19): MME's equipment page for the loadout planned,
+   * Find Best over it, and the plan put on — what the pack holds by MME's
+   * commands, the rest named for Buy + Wear.
+   */
+  explorerEq: 'explorer:eq',
+  explorerEqBest: 'explorer:eq-best',
+  explorerEqWear: 'explorer:eq-wear',
+  /**
+   * The Lists tab (2026-10-19): a compare list's rows, a picker's matches,
+   * the Item Manager's columns for items, and the character's item rules —
+   * the realm's table and its own rows over it — which the Item Manager's
+   * flags are, and writes (`setItemDetails`).
+   */
+  explorerCompare: 'explorer:compare',
+  explorerFind: 'explorer:find',
+  explorerItems: 'explorer:items',
+  itemRulesFor: 'settings:item-rules',
+  /** The Tools tab: one ask of a calculator (`shared/explorerTools.ts`). */
+  explorerTool: 'explorer:tool',
+  setItemDetails: 'settings:item-details',
+  /**
+   * A clicked monster's Edit (2026-10-20): the realm's monster table and the
+   * character's own rows over it, and the own rows written whole.
+   */
+  monsterRulesFor: 'settings:monster-rules',
+  setCombatMonsters: 'settings:combat-monsters',
+  /** The Rooms tab: MME's map from a room, a cell's tooltip, and its finders. */
+  explorerRoomView: 'explorer:room-view',
+  explorerRoomTip: 'explorer:room-tip',
+  explorerRoomSearch: 'explorer:room-search',
+  /**
    * Strike an observation out of what this character has learned about the
    * realm. The player's call — an observation is one sample of one walk, and
    * a mistyped direction the server accepted looks exactly like a discovery.
@@ -956,10 +1124,8 @@ export const Invoke = {
    * A gear button: put the kit back on, put it all on, take it all off, or one
    * item.
    *
-   * Its own channel rather than `ask`, which takes a bare verb of at most eight
-   * lowercase letters and no argument — deliberately, because that is what lets
-   * it accept a string from a renderer at all. These need an *item name*, and
-   * the answer is not to widen that gate but to make main decide: it holds the
+   * Its own channel rather than `ask`: these need an *item name*, and the
+   * answer is to make main decide: it holds the
    * pack, the remembered loadout and the realm's own word on what can be worn,
    * so what crosses is an action from a closed list and, for one item, a name
    * that is checked against the pack before it becomes a command.
@@ -989,7 +1155,7 @@ export const Invoke = {
   terminalAct: 'terminal:act',
   /**
    * A question for another player's client — `@health` at somebody, by name.
-   * From the palette: `Remotes.ask` was reachable only from a party
+   * From the palette: asking was reachable only from a party
    * forming, and a command nobody can find does not exist.
    */
   askRemote: 'remote:ask'
@@ -1117,6 +1283,10 @@ export interface IpcApi {
   diagnostics(on: boolean): void;
   /** This window started or stopped showing the debug view. */
   debugFeed(on: boolean): void;
+  /** A character's Combat Stats Reset. See `Send.statsReset`. */
+  statsReset(session: SessionId): void;
+  /** A baseline this window kept from before main kept one. See `Send.statsBase`. */
+  statsBase(session: SessionId, base: CombatTally): void;
 
   /**
    * Dial a character.
@@ -1198,12 +1368,13 @@ export interface IpcApi {
    * Resolves to a refusal, or null, like every other loop control.
    */
   runLoop(session: SessionId, loop: Loop): Promise<string | null>;
+  /**
+   * A loop's stops as the rooms they name on this character's realm, in
+   * order, or why one of them names none (2026-10-23).
+   */
+  loopStops(session: SessionId, loop: Loop): Promise<RoomId[] | string>;
   /** Start a named loop from `automation.loops`. Resolves to a refusal, or null. */
   startLoop(session: SessionId, name: string): Promise<string | null>;
-  /** Resolves to a refusal — nothing looping — or null. */
-  skipLoopStop(session: SessionId): Promise<string | null>;
-  /** Resolves to a refusal — nothing looping, or not a bounce loop — or null. */
-  reverseLoop(session: SessionId): Promise<string | null>;
   /**
    * Every loop the client ships, for the settings screen to choose from.
    *
@@ -1218,7 +1389,7 @@ export interface IpcApi {
    * The picks of a loop being built, planned. Addressed, like every world
    * query: the picks name rooms on this character's realm.
    */
-  draftLoop(session: SessionId, rooms: RoomId[]): Promise<LoopDraft>;
+  draftLoop(session: SessionId, rooms: RoomId[], keep?: RoomId[]): Promise<LoopDraft>;
   getWalk(session: SessionId): Promise<WalkProgress>;
   getAutomation(session: SessionId): Promise<AutomationSnapshot>;
 
@@ -1261,6 +1432,12 @@ export interface IpcApi {
   deleteProfile(id: string): Promise<string | null>;
   saveServer(previousName: string | null, draft: ServerDraft): Promise<string | null>;
   deleteServer(name: string): Promise<string | null>;
+  /** What a character's running engine offers its MegaMUD tabs; null with none running. */
+  megamudChoices(id: string): Promise<MegaChoices | null>;
+  /** The names a character's realm has seen, as the realm spells them. */
+  seenPlayers(id: string): Promise<string[]>;
+  /** One forgotten from the realm's record of players; why it could not be, or null. */
+  forgetPlayer(id: string, name: string): Promise<string | null>;
   /**
    * Writes the options file everything is inherited from.
    *
@@ -1283,6 +1460,14 @@ export interface IpcApi {
   setRemoteGrant(session: SessionId, name: string, grant: PlayerGrant): Promise<string | null>;
   /** Writes this character's whole gang list, for the same reason. */
   setGangRemotes(session: SessionId, remotes: RemoteName[]): Promise<string | null>;
+  /** Links this character to its realm's mudstats board, in the game. What happened. */
+  statsLink(session: SessionId): Promise<string>;
+  /** Retires this character's mudstats key and forgets it. What happened. */
+  statsUnlink(session: SessionId): Promise<string>;
+  /** What the board says of this character's key. */
+  statsStatus(session: SessionId): Promise<string>;
+  /** Whether a mudstats board answers at `url`, and its floor between posts. */
+  statsTest(url: string): Promise<string>;
   /** Turns gangpath answering on or off for one character. */
   setRemoteGangpath(session: SessionId, on: boolean): Promise<string | null>;
   /**
@@ -1296,6 +1481,10 @@ export interface IpcApi {
     name: AutomationSwitch,
     on: boolean
   ): Promise<string | null>;
+  /** Presses one MegaMUD toggle on a character's engine. See `Invoke.megamudToggle`. */
+  megamudToggle(session: SessionId, name: MegaToggle): Promise<string | null>;
+  /** Answers the MegaMUD engine's question. See `Invoke.megamudAnswer`. */
+  megamudAnswer(session: SessionId, question: string, yes: boolean): Promise<void>;
   /** Writes this character's whole supplies list. See `Invoke.setSupplies`. */
   setSupplies(session: SessionId, items: SupplyItem[]): Promise<string | null>;
   /**
@@ -1303,9 +1492,16 @@ export interface IpcApi {
    *
    * `owner` names the character or realm for the two narrow scopes and is
    * ignored for `global`. Resolves to a refusal, or null — the same shape
-   * every other write from a card takes.
+   * every other write from a card takes. `replaces` is the loop an edit was
+   * opened from, taken away where the loop is filed under another name or
+   * scope.
    */
-  addLoop(scope: LoopScope, owner: string | null, loop: Loop): Promise<string | null>;
+  addLoop(
+    scope: LoopScope,
+    owner: string | null,
+    loop: Loop,
+    replaces?: LoopAddress | null
+  ): Promise<string | null>;
   settingsSnapshot(): Promise<SettingsSnapshot>;
   chooseRealm(): Promise<string | null>;
   /** One realm's message table, by the realm's name. Empty when it has none. */
@@ -1320,8 +1516,30 @@ export interface IpcApi {
   importMonsters(realm: string, fileName: string, monsters: MonsterRule[]): Promise<MonsterImport>;
   /** Resolves to why it refused, or null. */
   saveMonsters(realm: string, monsters: MonsterRule[]): Promise<string | null>;
+  /** One realm's item table, by the realm's name. Empty when it has none. */
+  loadItems(realm: string): Promise<ItemTable>;
+  /** Replaces a realm's table with the rows an `Items.md` decoded to. */
+  importItems(realm: string, fileName: string, items: ItemRule[]): Promise<ItemImport>;
+  /** Resolves to why it refused, or null. */
+  saveItems(realm: string, items: ItemRule[]): Promise<string | null>;
+  /** One realm's learned spell sentences, by the realm's name. */
+  loadSpellLore(realm: string): Promise<LearnedSpellTable>;
+  /** Resolves to why it refused, or null. */
+  saveSpellLore(realm: string, rows: LearnedSpellRow[]): Promise<string | null>;
   /** Adds a MegaMUD folder's loops to a realm's, and says how many came across. */
   importLoops(realm: string, paths: MegaMudPath[]): Promise<LoopImport>;
+  /** A loop as a file, by the loop or by a name the character holds. The file, or why not. */
+  exportLoop(
+    session: SessionId | null,
+    loop: Loop | string,
+    format: 'mudengine' | 'megamud'
+  ): Promise<{ file: string; text: string } | { error: string }>;
+  /** Loops from a shared loop file's text, into a scope. How many, or why not. */
+  importLoopFile(
+    scope: LoopScope,
+    owner: string | null,
+    text: string
+  ): Promise<{ ok: true; count: number; replaced: number } | { ok: false; error: string }>;
   /*
    * Addressed, like every push: with a realm per character, an unaddressed
    * query would answer from whichever realm happened to be the client's — and a
@@ -1462,6 +1680,67 @@ export interface IpcApi {
    */
   wearer(session: SessionId): Promise<Wearer>;
   lookup(session: SessionId, query: string): Promise<WorldLookup>;
+  /** MMUD Explorer's list of a kind for this character. See `Invoke.explorerList`. */
+  explorerList(
+    session: SessionId,
+    kind: ExplorerKind,
+    options: ExplorerOptions
+  ): Promise<ExplorerList>;
+  /** One item's or spell's detail in MMUD Explorer's words; null where there is none. */
+  explorerDetail(
+    session: SessionId,
+    kind: ExplorerKind,
+    item: number,
+    options: ExplorerOptions
+  ): Promise<ExplorerDetail | null>;
+  /** What Buy would do for this item now; null where the realm has no such item. */
+  explorerBuyPlan(session: SessionId, item: number): Promise<ExplorerBuyPlan | null>;
+  /** Buy it, and wear it where `wear`; why not, or null where it is on its way. */
+  explorerBuy(session: SessionId, item: number, wear: boolean): Promise<string | null>;
+  /** The scroll that teaches a spell, as Buy plans it; null where nothing teaches it. */
+  explorerLearnPlan(session: SessionId, spell: number): Promise<ExplorerBuyPlan | null>;
+  /** Buys the item and reads it. Why not, or null. */
+  explorerLearn(session: SessionId, item: number): Promise<string | null>;
+  /** MME's Find Best for this character, slot by slot. See `Invoke.explorerGear`. */
+  explorerGear(session: SessionId, options: GearOptions): Promise<GearBoard>;
+  /** MME's EQ page for this character and the plan. See `Invoke.explorerEq`. */
+  explorerEq(session: SessionId, plan: EqPlan): Promise<EqView>;
+  explorerEqBest(session: SessionId, plan: EqPlan, find: EqFind): Promise<EqFound>;
+  explorerCompare(session: SessionId, kind: CompareKind, numbers: number[]): Promise<CompareList>;
+  explorerFind(
+    session: SessionId,
+    kind: CompareKind | 'items',
+    text: string
+  ): Promise<Array<[number, string]>>;
+  explorerItems(session: SessionId, numbers: number[], names: string[]): Promise<ItemFacts[]>;
+  /** One ask of the Tools tab's calculators; null where it cannot be answered. */
+  explorerTool<R extends ToolRequest>(
+    session: SessionId,
+    request: R
+  ): Promise<ToolAnswer<R> | null>;
+  /** The realm's item table and the character's own rows over it. */
+  itemRulesFor(session: SessionId): Promise<{ realm: ItemRule[]; own: ItemRule[] }>;
+  /** The character's own item rows, written whole. Why not, or null. */
+  setItemDetails(session: SessionId, rules: ItemRule[]): Promise<string | null>;
+  /** The realm's monster table and the character's own rows over it. */
+  monsterRulesFor(session: SessionId): Promise<{ realm: MonsterRule[]; own: MonsterRule[] }>;
+  /** The character's own monster rows, written whole. Why not, or null. */
+  setCombatMonsters(session: SessionId, rules: MonsterRule[]): Promise<string | null>;
+  /** Puts the plan's carried items on; what it lacks, to buy and wear, or why not. */
+  explorerEqWear(
+    session: SessionId,
+    plan: EqPlan
+  ): Promise<{ refusal: string | null; buy: Array<{ number: number; name: string }> }>;
+  /** MME's map from a room, with its references and the character's room. */
+  explorerRoomView(session: SessionId, request: RoomViewRequest): Promise<ExplorerRoomView>;
+  /** One cell's tooltip, asked as it is hovered. */
+  explorerRoomTip(
+    session: SessionId,
+    map: number,
+    room: number,
+    options: RoomMapOptions
+  ): Promise<string>;
+  explorerRoomSearch(session: SessionId, search: RoomSearch): Promise<RoomSearchResult>;
   /** Whether there was such an observation to strike. The push that follows carries the rest. */
   forget(session: SessionId, discovery: Pick<Discovery, 'from' | 'command'>): Promise<boolean>;
   /** Whether there was such a find to strike. The push that follows carries the rest. */
@@ -1475,17 +1754,17 @@ export interface IpcApi {
    */
   forgetCharacter(session: SessionId): Promise<boolean>;
   names(session: SessionId): Promise<WorldNames>;
-  /** Whether the arbiter took it. */
+  /**
+   * A command a card asks to have sent, one printable line: on the engine's
+   * pending list. Whether it was taken — false for one already waiting there.
+   */
   ask(session: SessionId, command: string): Promise<boolean>;
   /**
    * *Where am I standing*, asked in whichever word this realm's own `locate`
    * setting names — `rm`, `sys status`, or nothing at all.
    *
-   * Its own channel rather than `ask`, which is gated to a bare verb of at
-   * most eight lowercase letters: `sys status` has a space in it and is
-   * eleven characters, so that gate would refuse it outright, and the answer
-   * is the same one the gear button found — main decides which word this is,
-   * not the window. Resolves to whether anything was actually asked: a realm
+   * Its own channel rather than `ask`, for the reason the gear button has
+   * one: main decides which word this is, not the window. Resolves to whether anything was actually asked: a realm
    * configured for `'none'`, or one whose configured word the wire has
    * already refused this connection, asks nothing and says so by returning
    * `false`.
@@ -1524,4 +1803,60 @@ export interface IpcApi {
   onQuestRun(handler: (message: Addressed<QuestRunProgress>) => void): () => void;
   onConfig(handler: (snapshot: ConfigSnapshot) => void): () => void;
   onInternal(handler: (config: InternalConfig) => void): () => void;
+}
+
+/**
+ * What a bridge rides on: Electron's IPC in the preload (`src/preload/`), a
+ * WebSocket in a browser tab (`renderer/src/lib/webBridge.ts`).
+ */
+export interface BridgeCarrier {
+  invoke(channel: string, ...args: unknown[]): Promise<unknown>;
+  send(channel: string, ...args: unknown[]): void;
+  subscribe(channel: string, handler: (payload: never) => void): () => void;
+}
+
+/** The method that hears a push: `Push.character` is `onCharacter`. */
+export function pushMethod(key: string): string {
+  return `on${key.charAt(0).toUpperCase()}${key.slice(1)}`;
+}
+
+/**
+ * Every `IpcApi` method is named for its channel: an `Invoke` or `Send` key as
+ * it stands, a `Push` key as `on…`, and `host` beside them. Checked here at
+ * compile time, both ways, so a channel added without its method (or a method
+ * without its channel) does not build.
+ */
+type ChannelMethod =
+  keyof typeof Invoke | keyof typeof Send | `on${Capitalize<keyof typeof Push>}` | 'host';
+type MethodsMatchChannels = [
+  Exclude<keyof IpcApi, ChannelMethod>,
+  Exclude<ChannelMethod, keyof IpcApi>
+];
+const METHODS_MATCH_CHANNELS: MethodsMatchChannels extends [never, never] ? true : never = true;
+void METHODS_MATCH_CHANNELS;
+
+/**
+ * The bridge, built from the channel tables rather than written out per
+ * method (2026-10-22): each `Invoke` a call, each `Send` a one-way message and
+ * each `Push` a subscription, every argument passed through as given. Both
+ * bridges are this over their own carrier, so neither can miss a channel the
+ * other carries. `own` is what a bridge answers itself — its `host`, and in a
+ * browser tab the clipboard, the realm picker and raising the window.
+ */
+export function bridgeOver(
+  carrier: BridgeCarrier,
+  own: Pick<IpcApi, 'host'> & Partial<IpcApi>
+): IpcApi {
+  const api: Record<string, unknown> = {};
+  for (const [key, channel] of Object.entries(Invoke)) {
+    api[key] = (...args: unknown[]) => carrier.invoke(channel, ...args);
+  }
+  for (const [key, channel] of Object.entries(Send)) {
+    api[key] = (...args: unknown[]) => carrier.send(channel, ...args);
+  }
+  for (const [key, channel] of Object.entries(Push)) {
+    api[pushMethod(key)] = (handler: (payload: never) => void) =>
+      carrier.subscribe(channel, handler);
+  }
+  return Object.assign(api, own) as unknown as IpcApi;
 }

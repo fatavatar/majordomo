@@ -22,6 +22,7 @@ import {
 import type { Discovery } from '../../../shared/memory';
 import type { RoomOccupant } from '../../../shared/character';
 import type { ShippedSentences } from '../../../shared/sentences';
+import { MessageBook } from '../../../shared/messages';
 import { ActionBook, parseActionsCsv } from '../../../shared/actions';
 import { DeathBook, parseDeathMessagesCsv } from '../../../shared/death-messages';
 import { NO_MESSAGES } from '../../../shared/messages';
@@ -49,8 +50,9 @@ const TUNING = DEFAULT_INTERNAL.tuning;
  * which is how the tracker learns a direction was attempted. Both go through
  * the real classifier, because what a line *is* depends on the command before
  * it.
+ *
+ * A line, a command this character typed, or a pause in the stream.
  */
-/** A line, a command this character typed, or a pause in the stream. */
 type Step = string | { send: string } | { wait: number };
 
 /**
@@ -126,7 +128,9 @@ function play(
       return learned.length === 0 ? shipped : [...new Set([...learned, ...shipped])];
     },
     // And the realm's emotes, where a test ships them.
-    sentences ? (text) => sentences.actions.match(text) : undefined
+    sentences ? (text) => sentences.actions.match(text) : undefined,
+    // And the server's message table: a spell's cast and damage lines.
+    sentences ? (text) => sentences.messages.match(text) : undefined
   );
   let seq = 0;
   // Lines are a millisecond apart unless a step says otherwise, so a test
@@ -1500,6 +1504,44 @@ describe('leaving the realm', () => {
     // expectation has not been applied yet.
     expect(tracker.nextRoomIsPeek).toBe(true);
     expect(tracker.pendingCount).toBe(1);
+  });
+
+  /*
+   * Which room a room block is about to be, for the tags beside its name
+   * (2026-10-18): a name 108 rooms share is answered for the one the step
+   * leads to, read off the realm before the block is applied.
+   */
+  const SHIPPED = path.resolve('resources/world/paradigm.jsonl.gz');
+  it.runIf(fs.existsSync(SHIPPED))('says which room the next room block is about to be', () => {
+    const world = WorldGraph.load(SHIPPED);
+    const classifier = new Classifier();
+    const tracker = new CharacterTracker(world);
+    let seq = 0;
+    const feed = (text: string): void => {
+      seq += 1;
+      const { block, batch } = classifier.classify({
+        seq,
+        at: 1_700_000_000_000 + seq,
+        text,
+        plain: text,
+        terminator: 'newline'
+      });
+      tracker.apply(block);
+      if (batch) tracker.apply(batch);
+    };
+    feed('[HP=98/MA=50]:');
+    feed('Room 1442  Map: 1');
+    expect([tracker.current.room.map, tracker.current.room.number]).toEqual([1, 1442]);
+    // Nothing pending: a reprint of where it stands, by that room's own name.
+    expect(tracker.roomAboutToPrint('Black House, Kitchen')).toBe('1/1442');
+    // A step down: the room it leads to, only by its own name.
+    tracker.observeCommand('d');
+    expect(tracker.roomAboutToPrint('Black House, Basement')).toBe('1/1450');
+    expect(tracker.roomAboutToPrint('Slum Street')).toBeNull();
+    // A peek shows somewhere the character is not going.
+    const peeking = new CharacterTracker(world);
+    peeking.observeCommand('l n');
+    expect(peeking.roomAboutToPrint('Black House, Kitchen')).toBeNull();
   });
 
   it('reads a step as a step, and answers the queue in order', () => {
@@ -4347,6 +4389,88 @@ describe('how the target is holding up', () => {
  * forty-per-cent chance of `silvery mace`, whose power of 1–3 is the 1, 2 and
  * 3 that spark line carries.
  */
+/*
+ * A spell's damage line on this realm is the spell's own message and names no
+ * caster (2026-10-17): the spell row counted nothing. The caster's own line of
+ * the spell's message row, before it, says whose it is.
+ */
+describe('this character’s own spells', () => {
+  const sentences = (): ShippedSentences => ({
+    ...shipped(),
+    messages: MessageBook.fromRows([
+      {
+        number: 3086,
+        kind: 'spell',
+        lines: [
+          'You begin to chant in a fierce tone!',
+          '%s begins to chant in a fierce tone!',
+          '%s begins to chant in a fierce tone!'
+        ]
+      },
+      {
+        number: 3087,
+        kind: 'other',
+        lines: [
+          'A strange force rips into %s for %d damage!',
+          'A strange force rips into you for %d damage!',
+          'A strange force rips into %s for %s damage!'
+        ]
+      }
+    ])
+  });
+  const HALL = [
+    'Giant Hall',
+    'Also here: stone giant, Skinny.',
+    'Obvious exits: east',
+    '*Combat Engaged*'
+  ];
+
+  it('books the damage after its own cast line as a spell, and another caster’s as theirs', () => {
+    const tracker = play(
+      [
+        ...HALL,
+        'You begin to chant in a fierce tone!',
+        'A strange force rips into stone giant for 202 damage!',
+        'Skinny begins to chant in a fierce tone!',
+        'A strange force rips into stone giant for 150 damage!'
+      ],
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      sentences()
+    );
+    expect(tracker.current.tally.dealt.spell).toEqual({
+      hits: 1,
+      damage: 202,
+      least: 202,
+      most: 202
+    });
+    expect(tracker.current.combat.health?.damage).toEqual({ mine: 202, others: 150 });
+  });
+
+  it('takes every monster a room spell lands on, and nothing once something else is said', () => {
+    const tally = play(
+      [
+        ...HALL,
+        'You begin to chant in a fierce tone!',
+        'A strange force rips into stone giant for 120 damage!',
+        'A strange force rips into Skinny for 90 damage!',
+        'The stone giant swipes at you!',
+        'A strange force rips into stone giant for 60 damage!'
+      ],
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      sentences()
+    ).current.tally;
+    expect([tally.dealt.spell.hits, tally.dealt.spell.damage]).toEqual([2, 210]);
+  });
+});
+
 describe('a blow the sentence attributes to nobody', () => {
   /** The abilities the shipped realm gives item 347, `shimmering longsword`. */
   const PROC_WEAPON: Array<[number, number]> = [
@@ -7496,6 +7620,33 @@ describe('lives, and the word for the load', () => {
   });
 
   /*
+   * Fatty's sheet, 2026-10-19: a raised stat starred, hard against the colon.
+   * Unread, his agility was nobody's and the Explorer swung his hammer at 0.
+   */
+  it('reads the stats the sheet marks with a star', () => {
+    const tracker = play([
+      'Name: Fatty Fatterson                  Lives/CP:      9/0    ',
+      'Race: Serpentkin  Exp: 34405449823     Perception:    218',
+      'Class: Skald      Level: 87            Stealth:         0',
+      'Hits:  1378/1455  Armour Class: 167/54 Thievery:        0',
+      'Mana: * 256/290   Spellcasting: 378    Traps:         274',
+      '                                       Picklocks:     218',
+      'Strength: *205    Agility:*150         Tracking:      313',
+      'Intellect:*105    Health:  146         Martial Arts:   67',
+      'Willpower:*130    Charm:   120         MagicRes:      118',
+      '[HP=1378/MA=256]:'
+    ]);
+    expect(tracker.current.progress).toMatchObject({
+      strength: 205,
+      agility: 150,
+      intellect: 105,
+      health: 146,
+      willpower: 130,
+      charm: 120
+    });
+  });
+
+  /*
    * Skinny, 2026-10-06: the last sheet said 810, a buff wore off, and `med`
    * at `MA=760` was refused 131 times until the next sheet said 760.
    */
@@ -8374,6 +8525,41 @@ describe('what the server has said is wrong with the character', () => {
     });
   });
 
+  /* So a flag that is wrong can be traced to the line that set it (2026-10-18). */
+  it('keeps the line that set each one on, and forgets it when it ends', () => {
+    const tracker = play([
+      '[HP=34]:',
+      'Poison burns through your veins!',
+      'Your legs are paralyzed!'
+    ]);
+    expect(tracker.current.afflictionCauses.poisoned).toMatchObject({
+      line: 'Poison burns through your veins!',
+      how: 'said'
+    });
+    expect(tracker.current.afflictionCauses.held).toMatchObject({
+      line: 'Your legs are paralyzed!',
+      how: 'said'
+    });
+    const ended = play([
+      '[HP=34]:',
+      'Poison burns through your veins!',
+      'The dizzying poison runs its course.'
+    ]);
+    expect(ended.current.afflictionCauses.poisoned).toBeUndefined();
+  });
+
+  it('keeps the onset, not a later sentence saying it again', () => {
+    const tracker = play([
+      '[HP=34]:',
+      'Poison burns through your veins!',
+      '[HP=33]:',
+      'Poison burns through your veins!'
+    ]);
+    const cause = tracker.current.afflictionCauses.poisoned;
+    expect(cause?.line).toBe('Poison burns through your veins!');
+    expect(tracker.current.afflictions.poisoned).toBe('yes');
+  });
+
   /*
    * The hold family, reported live 2026-09-11: `ne`, and the server answered
    * `You are flat on your back!` and nothing else. Eight seconds later the
@@ -8434,6 +8620,12 @@ describe('what the server has said is wrong with the character', () => {
         knockdownLore()
       );
       expect(down.current.afflictions.held).toBe('yes');
+      // Set by the realm's knockdown, as its message.
+      expect(down.current.afflictionCauses.held).toMatchObject({
+        line: 'You are flat on your back!',
+        how: 'spell',
+        spell: 'knockdown'
+      });
 
       const up = play(
         ['[HP=143/MA=29]:', 'You are flat on your back!', 'You get back on your feet.'],
@@ -8479,6 +8671,58 @@ describe('what the server has said is wrong with the character', () => {
         undefined,
         undefined,
         knockdownLore()
+      );
+      expect(tracker.current.afflictions.held).toBe('unknown');
+      expect(tracker.pendingMoves).toBe(1);
+    });
+
+    /*
+     * Reported live 2026-10-19: Bowel showed held, from a wrathful curse,
+     * after `You feel unlucky!`. Record 8540 is curse's and wrathful curse's
+     * both, and only wrathful curse holds, so the sentence is no hold.
+     */
+    it('holds on a shared sentence only where its spells agree', () => {
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mudengine-holds-'));
+      const file = path.join(dir, 'rooms.jsonl.gz');
+      const header = {
+        v: 32,
+        source: 'test',
+        rooms: 0,
+        generatedAt: 'x',
+        spells: [
+          { id: 15, n: 'curse', dur: 60, ab: [[13, -5]] },
+          {
+            id: 853,
+            n: 'wrathful curse',
+            dur: 7,
+            ab: [
+              [74, 0],
+              [13, -999]
+            ]
+          }
+        ]
+      };
+      fs.writeFileSync(file, zlib.gzipSync(JSON.stringify(header) + '\n'));
+      const realm = WorldGraph.load(file);
+      fs.rmSync(dir, { recursive: true, force: true });
+      const lore = spellLoreOf(
+        SpellMessageBook.fromRows([
+          { spell: 'curse', start: 'You feel unlucky!', stop: 'The effects of curse wear off!' },
+          {
+            spell: 'wrathful curse',
+            start: 'You feel unlucky!',
+            stop: 'The effects of curse wear off!'
+          }
+        ]),
+        new SpellMessageBook()
+      );
+      const tracker = play(
+        ['[HP=143/MA=29]:', { send: 'ne' }, 'You feel unlucky!'],
+        realm,
+        undefined,
+        undefined,
+        undefined,
+        lore
       );
       expect(tracker.current.afflictions.held).toBe('unknown');
       expect(tracker.pendingMoves).toBe(1);
@@ -10743,7 +10987,8 @@ describe('the spellbook and the belongings record', () => {
       }> | null,
       durations: {} as Record<string, number>,
       abilities: null as AbilitySums | null,
-      stats: null as StatsRecord | null
+      stats: null as StatsRecord | null,
+      statsBase: null as CombatTally | null
     };
     return {
       state,
@@ -10774,6 +11019,10 @@ describe('the spellbook and the belongings record', () => {
         recallStats: () => state.stats,
         rememberStats: (tally: CombatTally) => {
           state.stats = { savedAt: state.stats?.savedAt ?? 0, tally: { ...tally } };
+        },
+        recallStatsBase: () => state.statsBase,
+        rememberStatsBase: (base: CombatTally | null) => {
+          state.statsBase = base;
         },
         forget: () => false
       }
@@ -10910,6 +11159,34 @@ describe('the spellbook and the belongings record', () => {
       expect(tally.onlineMs).toBe(3_000);
       expect(tally.engagedSince).toBeNull();
       expect(tally.engagedMs).toBe(2_000);
+    });
+
+    /*
+     * The Combat Stats card's baseline is main's, kept with the tally
+     * (2026-10-17): Fatty's board posted the whole series, the container
+     * never having been told the Reset a window held.
+     */
+    it('keeps the card’s baseline with the tally, through a launch, and adopts a window’s once', () => {
+      const { sink, state } = fakeBelongings();
+      const tracker = new CharacterTracker();
+      tracker.useBelongings(sink);
+      feedThrough(tracker, [...ARRIVE, 'You gain 66 experience.']);
+      tracker.rebaseStats();
+      expect(tracker.current.statsBase).toBe(tracker.current.tally);
+      expect(state.statsBase).toBe(tracker.current.tally);
+      // A window's older baseline is refused while main has one.
+      expect(tracker.adoptStatsBase({ ...NO_TALLY, since: T0 })).toBe(false);
+
+      const next = new CharacterTracker();
+      next.useBelongings(sink);
+      next.reset();
+      expect(next.current.statsBase?.experience).toBe(66);
+
+      const fresh = new CharacterTracker();
+      fresh.useBelongings(fakeBelongings().sink);
+      fresh.reset();
+      expect(fresh.adoptStatsBase({ ...NO_TALLY, since: T0, experience: 10 })).toBe(true);
+      expect(fresh.current.statsBase?.experience).toBe(10);
     });
 
     it('seeds nothing kept as nothing counted', () => {
@@ -11374,6 +11651,15 @@ describe('what a stranger was last seen fighting', () => {
  * fact `command-not-understood` carries, in a sentence that names nothing.
  */
 describe('a command confusion threw away', () => {
+  it('sets confusion on, with the fumble as its cause', () => {
+    const tracker = play(['[HP=134/MA=24]:', 'You fumble in confusion!']);
+    expect(tracker.current.afflictions.confused).toBe('yes');
+    expect(tracker.current.afflictionCauses.confused).toMatchObject({
+      line: 'You fumble in confusion!',
+      how: 'fumble'
+    });
+  });
+
   it('drops the move it queued, so the next room answers the right one', () => {
     const tracker = play([
       '[HP=134/MA=24]:',
@@ -11437,7 +11723,6 @@ describe('the status line pro reports', () => {
     expect(progress.exp).toBe(1386670);
     expect(progress.expNeeded).toBe(14402);
     expect(inventory.wealth).toBe(25);
-    expect(tracker.takeStatlineRequest()).toBe(false);
   });
 
   it('reads the same figures by the tolerant pattern before pro has said', () => {
@@ -11445,10 +11730,9 @@ describe('the status line pro reports', () => {
     expect(tracker.current.statline).toEqual({ reported: null, exact: null });
     expect(tracker.current.vitals).toMatchObject({ hp: 40, hpMax: 40, mana: 7, manaMax: 8 });
     expect(tracker.current.progress.expNeeded).toBe(2500);
-    expect(tracker.takeStatlineRequest()).toBe(false);
   });
 
-  it('falls back to the tolerant pattern when a prompt stops fitting, and asks pro once', () => {
+  it('falls back to the tolerant pattern when a prompt stops fitting', () => {
     const tracker = play([
       REPORT,
       '[HP=156/156,MA=11/28,Exp=1,Need=2,Wealth=0 ]:',
@@ -11459,8 +11743,6 @@ describe('the status line pro reports', () => {
     // Read loosely: the figure moved, and the maximum the last exact prompt stated is kept.
     expect(tracker.current.vitals.hp).toBe(130);
     expect(tracker.current.vitals.hpMax).toBe(156);
-    expect(tracker.takeStatlineRequest()).toBe(true);
-    expect(tracker.takeStatlineRequest()).toBe(false);
   });
 
   it('reads full by the tolerant pattern, with nothing for a prompt to agree with', () => {
@@ -11716,55 +11998,6 @@ describe('a step that hands the character to a draw', () => {
     tracker.observeCommand('w');
     feed(['Cell', 'Obvious exits: east']);
     expect(tracker.current.room.resolvedBy).not.toBe('scattered');
-  });
-});
-
-/*
- * What the realm's message table says is on the character (`noteStated`),
- * and the fight a message says is over (`endFightStated`).
- */
-describe("the realm's messages on the character", () => {
-  const confusion = {
-    name: 'confusion',
-    effects: ['confused'] as const,
-    action: 'wait' as const,
-    since: 1
-  };
-  const net = { name: 'net', effects: ['held'] as const, action: 'wait' as const, since: 2 };
-
-  it('publishes what is held, and reports whether anything changed', () => {
-    const tracker = new CharacterTracker();
-    expect(tracker.noteStated([confusion], ['confused'], [])).toBe(true);
-    expect(tracker.current.heard).toEqual([confusion]);
-    // The same list again is no change.
-    expect(tracker.noteStated([confusion], [], [])).toBe(false);
-  });
-
-  it('moves the affliction it shares on the edges only', () => {
-    const tracker = new CharacterTracker();
-    tracker.noteStated([net], ['held'], []);
-    expect(tracker.current.afflictions.held).toBe('yes');
-    tracker.noteStated([], [], ['held']);
-    expect(tracker.current.afflictions.held).toBe('no');
-    // A later list that merely lacks it leaves the flag to the wire.
-    tracker.noteStated([confusion], ['confused'], []);
-    expect(tracker.current.afflictions.held).toBe('no');
-  });
-
-  it('keeps an affliction another row still holds when one of them ends', () => {
-    const tracker = new CharacterTracker();
-    const web = { ...net, name: 'web', since: 3 };
-    tracker.noteStated([net, web], ['held'], []);
-    tracker.noteStated([web], [], ['held']);
-    expect(tracker.current.afflictions.held).toBe('yes');
-  });
-
-  it('ends a fight a message says is over, as *Combat Off* would', () => {
-    const tracker = play(['*Combat Engaged*']);
-    expect(tracker.current.inCombat).toBe(true);
-    expect(tracker.endFightStated(Date.now())).toBe(true);
-    expect(tracker.current.inCombat).toBe(false);
-    expect(tracker.endFightStated(Date.now())).toBe(false);
   });
 });
 

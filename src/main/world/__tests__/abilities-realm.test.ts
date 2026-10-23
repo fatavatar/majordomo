@@ -41,7 +41,6 @@ function shippedItems(): Array<{ n: string; ab?: Array<[number, number]> }> {
   return shipped('items');
 }
 
-/** The same, for whichever of the five indexes carries effects. */
 /** An item row as the file actually writes it, restrictions included. */
 interface ShippedItem {
   n: string;
@@ -57,6 +56,7 @@ function shippedRestrictions(): ShippedItem[] {
   return JSON.parse(header)['items'] ?? [];
 }
 
+/** The same, for whichever of the five indexes carries effects. */
 function shipped(which: 'items' | 'mobs' | 'spells' | 'races' | 'classes'): Array<{
   n: string;
   short?: string;
@@ -162,7 +162,13 @@ describe.runIf(available)('the shipped realm reads its own effects', () => {
      * `ABILITY` and has no entry in `ABILITY_SHAPE`, which is what makes it
      * unread — and a shape is not being guessed at from seven zeroes.
      */
-    expect([...remaining].sort((a, b) => a - b)).toEqual([137, 178, 1117]);
+    /*
+     * Format 50 (2026-10-14) gave every item the realm names a detail row, so
+     * items nothing refers to arrived carrying five more: `AlterEnergyLevel`
+     * (11), `Smash` (32), `DeathText` (155), `Meditate` (187) and GreaterMUD's
+     * `BSDR` (1110). Named, with no shape, and none guessed at.
+     */
+    expect([...remaining].sort((a, b) => a - b)).toEqual([11, 32, 137, 155, 178, 187, 1110, 1117]);
   });
 
   /*
@@ -396,7 +402,10 @@ describe.runIf(available)('the shipped realm reads its own effects', () => {
      * here: a wrong shape draws a confident sentence about an item somebody
      * decides to buy with, where an unread id draws an honest "1 more".
      */
-    expect([...remaining].sort((a, b) => a - b)).toEqual([137, 178, 1115, 1117, 1174]);
+    // And format 50's five (above).
+    expect([...remaining].sort((a, b) => a - b)).toEqual([
+      11, 32, 137, 155, 178, 187, 1110, 1115, 1117, 1174
+    ]);
   });
 
   /*

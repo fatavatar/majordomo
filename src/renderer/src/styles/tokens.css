@@ -146,10 +146,14 @@
   --focus-ring: 2px;
 
   /* ------------------------------------------------------------ shape */
-  --r-card: 14px;
-  --r-control: 10px;
-  --r-chip: 6px;
-  --r-pill: 999px;
+  /* Near-square, as MegaMUD's own dialogs are: a field or a panel rounded
+   * like a phone's reads as another program beside the MegaMUD pages
+   * (2026-10-14). The toolbar's keys alone keep their softer corner. */
+  --r-card: 4px;
+  --r-control: 3px;
+  --r-chip: 2px;
+  --r-pill: 3px;
+  --r-key: 6px;
 
   /* ----------------------------------------------------------- motion */
   /* The one gold in the chrome: the glyph beside a bank's name in the console. */
@@ -221,6 +225,13 @@
   --map-room: color-mix(in srgb, var(--text-lo) 26%, transparent);
   --map-room-edge: color-mix(in srgb, var(--text-lo) 55%, transparent);
   --map-link: color-mix(in srgb, var(--text-lo) 45%, transparent);
+  /* mudmaps' kinds (2026-10-18), from the same accents: a way up or down, a
+     room that answers a command, and the marks for a way out a line cannot
+     draw, cyan where it lands on the picture and green where it leaves it. */
+  --map-stairs: color-mix(in srgb, var(--accent) 50%, var(--marker));
+  --map-cmd: color-mix(in srgb, var(--accent) 60%, var(--ok));
+  --map-jump: var(--accent);
+  --map-away: var(--ok);
 
   /* Glass: the card fill, and the stronger one for a surface over a surface. */
   --glass-fill: color-mix(in srgb, var(--ink-card) 74%, transparent);

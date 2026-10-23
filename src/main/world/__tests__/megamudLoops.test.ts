@@ -7,6 +7,17 @@ import zlib from 'node:zlib';
 import { WorldGraph } from '../WorldGraph';
 import { loopsFromMegaMud } from '../megamudLoops';
 import type { MegaMudPath } from '../../../shared/megamudPaths';
+import { Exit } from '../../megamud/flags';
+import { roomSignatureOf } from '../../megamud/move/exits';
+import { roomNameHash } from '../../megamud/room/roomName';
+
+/** MegaMUD's signature for a room of `world()`, its open exits by direction (n s e w … u d). */
+function signature(name: string, ...open: string[]): number {
+  const exits = ['n', 's', 'e', 'w', 'ne', 'nw', 'se', 'sw', 'u', 'd'].map((dir) =>
+    open.includes(dir) ? Exit.Open : Exit.None
+  );
+  return roomSignatureOf(roomNameHash(name), exits) >>> 0;
+}
 
 function makeWorld(rooms: Array<Record<string, unknown>>): WorldGraph {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mudengine-megaloops-'));
@@ -115,6 +126,40 @@ describe("MegaMUD's loops, placed on a realm", () => {
     ]);
     expect(loops).toEqual([]);
     expect(dropped).toEqual({ start: 1, steps: 1, short: 0 });
+  });
+
+  /*
+   * Starts named in the recorder's own words (`Rocky Trail - Dragon Start`)
+   * are placed by the signatures MegaMUD recorded on the way (2026-10-18).
+   * The two squares are alike but for 1/14's way east to the Crypt, so only
+   * the second agrees with a recording made round it.
+   */
+  it('places a start the realm has no name for by the signatures recorded on the way', async () => {
+    const codes = [
+      signature('Forest', 'e', 's'),
+      signature('Forest', 'w', 's'),
+      signature('Forest', 'n', 'w', 'e'),
+      signature('Forest', 'n', 'e')
+    ];
+    const { loops, dropped } = await loopsFromMegaMud(world(), [
+      path1({ start: 'Forest (Loop Begin)', codes })
+    ]);
+    expect(dropped).toEqual({ start: 0, steps: 0, short: 0 });
+    expect(loops[0]?.stops[0]).toEqual({ room: 'Forest 1/11' });
+  });
+
+  it('drops a start whose rooms agree with too few of the signatures recorded', async () => {
+    const codes = [
+      signature('Forest', 'e', 's'),
+      signature('Forest', 'w', 's'),
+      // A room with a way down, which neither square has: three of four agree
+      // on either, under nine in ten.
+      signature('Forest', 'n', 'w', 'd'),
+      signature('Forest', 'n', 'e')
+    ];
+    expect(
+      (await loopsFromMegaMud(world(), [path1({ start: 'Forest (Loop Begin)', codes })])).dropped
+    ).toEqual({ start: 1, steps: 0, short: 0 });
   });
 
   /* A name is a loop's address, and MegaMUD reuses its labels across files. */

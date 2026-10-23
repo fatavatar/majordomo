@@ -27,24 +27,6 @@ export interface StatlineReading {
   state: 'resting' | 'meditating' | null;
 }
 
-/**
- * The template the client sends: every figure something here reads, and
- * nothing else.
- *
- * `Wealth=` rather than `$=`, because `Wealth=` is the label the tolerant
- * reader already knows; `%r` last so the rest marker lands where the tolerant
- * pattern expects it; `%w` (warn on evil) dropped because nothing reads it.
- */
-export const STATLINE_TEMPLATE = '[HP=%h/%H,MA=%m/%M,Exp=%x,Need=%X,Wealth=%c%r]:';
-
-/**
- * The command that sets it. `full custom`, not `custom`: on the running
- * builds of both families the short form answered `Done.` and changed nothing
- * (2026-09-09), though the on-disk `SetCommand.cs` stores both the same way —
- * the wire outranks the source snapshot, which is older than the servers.
- */
-export const SET_STATLINE = `set statline full custom ${STATLINE_TEMPLATE}`;
-
 /** What `pro` reports for the class-default line. */
 export const FULL_STATLINE = 'full';
 
@@ -141,12 +123,6 @@ function figure(value: string | undefined): number | null {
   if (value === undefined) return null;
   const n = Number.parseInt(value, 10);
   return Number.isFinite(n) ? n : null;
-}
-
-/** The figures off a prompt, by the matcher its template built; null when it does not match. */
-export function readStatline(matcher: RegExp, plain: string): StatlineReading | null {
-  const match = matcher.exec(plain);
-  return match ? readingOf(match.groups ?? {}) : null;
 }
 
 /** The figures off a matcher's own groups, for a caller that already ran it. */

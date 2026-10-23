@@ -444,6 +444,8 @@ const EVENT_WORD: Record<AlertEvent, () => string> = {
   'hostile-in-realm': () => t('settings.alerts.event.hostileInRealm'),
   'party-hurt': () => t('settings.alerts.event.partyHurt'),
   'vitals-crossing': () => t('settings.alerts.event.vitalsCrossing'),
+  ran: () => t('settings.alerts.event.ran'),
+  fled: () => t('settings.alerts.event.fled'),
   levelled: () => t('settings.alerts.event.levelled'),
   learned: () => t('settings.alerts.event.learned'),
   'left-realm': () => t('settings.alerts.event.leftRealm'),

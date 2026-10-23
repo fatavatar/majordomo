@@ -135,7 +135,7 @@ export function withArrival(s: CharacterState, name: string | undefined): Charac
 /**
  * `look <player>` names their gang, or prints none. The roster is where the
  * fact lives, because that is where the `who` listing puts it and where
- * `Remotes` reads it. Somebody the roster has not listed is added
+ * the remote commands' gang grants read it. Somebody the roster has not listed is added
  * provisionally — they are standing here, which is more than an arrival
  * broadcast says, and less than a listing.
  */
@@ -369,7 +369,7 @@ export function withGangListing(
  * outlives the thing it was granted for.
  *
  * Written to **both** places membership is read from, because they are read by
- * different consumers: `Remotes` and the Gang card go through the roster and
+ * different consumers: the remote grants and the Gang card go through the roster and
  * the registry respectively, and updating one would leave the card and the gate
  * disagreeing about who is in the gang.
  */

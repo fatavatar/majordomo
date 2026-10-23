@@ -35,6 +35,14 @@ function writeStored(key: string, value: string): void {
   }
 }
 
+function forgetStored(key: string): void {
+  try {
+    window.localStorage.removeItem(key);
+  } catch {
+    // Nothing kept to forget, or nowhere to forget it from.
+  }
+}
+
 /** State that re-reads when its key changes: switching character switches instrument. */
 function useStored<T>(read: () => T): [T, Dispatch<SetStateAction<T>>] {
   const [value, setValue] = useState<T>(read);
@@ -247,6 +255,7 @@ export function recallStatsBase(session: SessionId): CombatTally | null {
   );
 }
 
-export function rememberStatsBase(session: SessionId, base: CombatTally): void {
-  writeStored(`mudengine.stats-base.${session}`, JSON.stringify(base));
+/** The baseline this browser kept before main kept them, spent once handed over. */
+export function forgetStatsBase(session: SessionId): void {
+  forgetStored(`mudengine.stats-base.${session}`);
 }

@@ -6,8 +6,6 @@
  * import. Dependency-free, like everything else here.
  */
 import type { RoomId } from './world';
-import type { Afflictions, CharacterState, StatedEffect } from './character';
-import { healthHolding, manaHolding, type HealthConfig, type MovementConfig } from './config';
 
 export type WalkStatus =
   /** Nothing planned. */
@@ -99,8 +97,7 @@ export interface WalkProgress {
    * Why the walk is standing still without having stopped. Null while it is
    * actually moving.
    *
-   * A **hold is not an ending**, which is the distinction `LoopRunner` already
-   * draws and for the same reason: a walk that stopped needs replanning from
+   * A **hold is not an ending**, for this reason: a walk that stopped needs replanning from
    * wherever the character is, and one that is merely waiting will go on by
    * itself. Drawing them the same way would make a character recovering look
    * like a character that had given up.
@@ -125,21 +122,18 @@ export interface WalkProgress {
 /**
  * Why a walk is standing still. `blind`, `held` and `poisoned` are the
  * afflictions the server has stated and the walk waits out — MegaMUD's
- * `IgnoreBlind` / `IgnorePoison` defaults, which wait — see
- * `afflictionHolding`. `held` is also taken for a hold the client could not
+ * `IgnoreBlind` / `IgnorePoison` defaults, which wait. `held` is also taken for a hold the client could not
  * *name*: a step answered by a spell onset and then silence is a step
- * `CheckForHoldPerson` refused, whatever the realm says about that spell
- * (`Walker.onsetAnsweredStep`).
+ * `CheckForHoldPerson` refused, whatever the realm says about that spell.
  *
  * `trap` is the step ahead firing a trap the character is not yet fit to
- * take: the walk rests to the figure `automation.health.restBeforeTraps`
- * names and then steps through — `Walker.holdForTrap`. A health hold by
- * another floor, drawn as resting.
+ * take: the walk rests and then steps through. A health hold by another
+ * floor, drawn as resting.
  *
  * `resting` is a `rest` on the wire whose answer has not come back yet: the
  * walk waits a beat rather than breaking it. A rest and a step decided in the
  * same tick are both right at the moment they are made, and the step undid the
- * rest a millisecond later — see `Recovery.restInFlight` and todo 14. The
+ * rest a millisecond later (todo 14). The
  * window is short and ends by itself, so this can never deadlock.
  *
  * `barrier` is a shut door the ladder could not get past *this time round*:
@@ -148,7 +142,7 @@ export interface WalkProgress {
  * failed are mostly temporary — the character is too hurt to spend another
  * bash, the lock wanted one more roll, somebody else is about to walk through
  * — and a route that ends at a door has to be noticed and asked for again by
- * hand. See `Walker.holdAtBarrier`.
+ * hand.
  */
 export type WalkHold =
   | 'health'
@@ -168,127 +162,9 @@ export type WalkHold =
   | 'dark'
   /** Waiting out what the realm's message table says is on the character. */
   | 'condition'
-  /** Party members a relayed text exit left behind, not yet here. See `Walker.holdForParty`. */
+  /** Party members a relayed text exit left behind, not yet here. */
   | 'party'
   | null;
-
-/**
- * Which stated affliction stands a walk still, or null.
- *
- * **One predicate for the walker and the loop**, because two halves of one
- * gate in two files agree until one is edited (`fightIsRunning`'s own lesson).
- * Being held always holds, and there is no switch: a step while held is a
- * command spent to be refused, and nothing in the options can make that a
- * good idea. It is the whole family and not only paralysis — a knockdown,
- * webbing, a net, a freeze, a roar — because the server keeps one flag for
- * all of them (`CheckForHoldPerson`); see `CharacterState.afflictions.held`.
- * How long the hold may stand before one step is spent finding out whether
- * it is over is `tuning.walk.heldFallbackMs`, taken by both readers.
- * Blindness and poison hold unless the player says otherwise — `walkWhileBlind`,
- * `walkWhilePoisoned` — because a blind character walking into a lair cannot
- * read the room it arrives in and misses every swing, and MegaMUD's own
- * defaults wait both out. Disease is not a movement matter and is left to the
- * cure. `unknown` never holds: nobody having said is not *yes*.
- */
-export function afflictionHolding(
-  afflictions: Afflictions,
-  movement: ConditionSwitches,
-  stated: readonly StatedEffect[] = []
-): 'blind' | 'held' | 'poisoned' | 'condition' | null {
-  if (afflictions.held === 'yes') return 'held';
-  if (afflictions.blind === 'yes' && !movement.walkWhileBlind) return 'blind';
-  if (afflictions.poisoned === 'yes' && !movement.walkWhilePoisoned) return 'poisoned';
-  return stated.some((entry) => statedHolds(entry, movement)) ? 'condition' : null;
-}
-
-/**
- * Whether one row of the realm's message table stands a walk still.
- *
- * MegaMUD's own readings of its boxes: a confused character waits the
- * confusion out unless the player said to ignore it (`walkWhileConfused`, its
- * *Ignore Confusion*); one losing hit points to fire, acid or a wound rests
- * until it stops, unless the player said to walk on (`walkWhileLosingHp`); and a row whose action is *wait until it wears off* or
- * *rest until full* means exactly that. The rest of what a row can mean is
- * not a movement matter — blind, poisoned and held reach the walk as the
- * afflictions above, which a row sets too.
- */
-function statedHolds(entry: StatedEffect, movement: ConditionSwitches): boolean {
-  if (entry.effects.includes('confused') && !movement.walkWhileConfused) return true;
-  if (entry.effects.includes('losing-hp') && !movement.walkWhileLosingHp) return true;
-  return entry.action === 'wait' || entry.action === 'rest-hp' || entry.action === 'rest-mana';
-}
-
-/** The movement switches that say which conditions a walk goes on through. */
-export type ConditionSwitches = Pick<
-  MovementConfig,
-  'walkWhileBlind' | 'walkWhilePoisoned' | 'walkWhileConfused' | 'walkWhileLosingHp'
->;
-
-/** Why a character would stand still rather than travel. */
-export type StillReason = NonNullable<ReturnType<typeof afflictionHolding>> | 'health' | 'mana';
-
-/**
- * Why this character would stand still rather than travel, or null: the
- * predicates the walker and the loop hold on, in the order they read them — a
- * condition the server stated, then health, then mana. They keep their own
- * hold per reason, with its notices and bounds; this is for a reader that
- * wants only the answer. `holding` is the reason already
- * being waited on, so that one alone is read at the figure that ends it
- * (`resumeAtHealth`, `resumeAtMana`), as the walker's one hold slot does;
- * `margin` is `tuning.loop.resumeMarginWhenUncapped`, which `shared/` cannot
- * reach.
- *
- * A follower's `@wait` is this question asked of itself (2026-09-25): it asks
- * the leader to stop exactly when its own walk would, and sitting down is not
- * a reason — skinny said `@wait` on the step out of a rest kept with Fatty.
- */
-export function stillFor(
-  state: Pick<CharacterState, 'afflictions' | 'heard' | 'vitals'>,
-  config: {
-    health: HealthConfig;
-    movement: ConditionSwitches;
-  },
-  holding: StillReason | null,
-  margin: number
-): StillReason | null {
-  const stated = afflictionHolding(state.afflictions, config.movement, state.heard);
-  if (stated !== null) return stated;
-  const { hp, hpMax, mana, manaMax } = state.vitals;
-  if (healthHolding(config.health, hp, hpMax, holding === 'health', margin)) return 'health';
-  return manaHolding(config.health, mana, manaMax, holding === 'mana', margin) ? 'mana' : null;
-}
-
-/** A room this character ran out of, and the moment it did. See `stillFled`. */
-export interface FledRoom {
-  room: RoomId;
-  at: number;
-}
-
-/**
- * The rooms still too recently fled to run back into.
- *
- * **The escape must not retrace its own escape**, and the list that enforces
- * that used to be emptied the first instant the client saw no fight. A fight
- * against two monsters manufactures that instant for free: `*Combat Off*`
- * names the death of the current **target**, not the end of the fight, and the
- * dead leave the attacker list with the kill — so between one monster dying
- * and the second swinging again, the client sees nothing fighting at all. The
- * list emptied there, the next escape picked the room fled three seconds
- * earlier, and the character died in it. Four reproductions across three areas
- * and two monster families, implicated in every death recorded (todo 12).
- *
- * So the second test is a clock. A room fled within `forgetMs` stays forbidden
- * through that gap whatever the combat flag momentarily says; past it, the
- * fight it was fled from cannot still be the fight in progress.
- *
- * A clock rather than *the room is clear of what was hitting you* because the
- * client cannot see the room it left: the occupant list describes the room the
- * character is standing in now. The follower it is guarding against is in that
- * list, not the old one.
- */
-export function stillFled(fled: readonly FledRoom[], now: number, forgetMs: number): FledRoom[] {
-  return fled.filter((entry) => now - entry.at < forgetMs);
-}
 
 export const IDLE_WALK: WalkProgress = {
   status: 'idle',

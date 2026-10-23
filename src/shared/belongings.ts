@@ -151,6 +151,15 @@ export interface BelongingsSink {
   /** The tally moved; keep the whole of it, since every change is the newest fact. */
   rememberStats(tally: CombatTally): void;
   /**
+   * The Combat Stats card's baseline: the totals at its last Reset or the lap
+   * begun, which every figure on the card and on the stats board is read
+   * from (2026-10-17). Kept here rather than in a window, so a window opened
+   * on another device, or none at all, reads from the same moment. Null is
+   * the whole series.
+   */
+  recallStatsBase(): CombatTally | null;
+  rememberStatsBase(base: CombatTally | null): void;
+  /**
    * Throws the whole record away, because the player says this is not the same
    * character.
    *
@@ -185,5 +194,7 @@ export const NO_BELONGINGS: BelongingsSink = {
   rememberIdentity: () => {},
   recallStats: () => null,
   rememberStats: () => {},
+  recallStatsBase: () => null,
+  rememberStatsBase: () => {},
   forget: () => false
 };

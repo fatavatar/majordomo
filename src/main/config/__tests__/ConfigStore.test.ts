@@ -107,6 +107,28 @@ describe('ConfigStore', () => {
     expect(store.config.terminal.font.size).toBe(20);
   });
 
+  /*
+   * The case the test above failed on whenever its two writes shared an
+   * mtime tick (2026-10-18): the same length, the same mtime, other contents.
+   * Pinned here by putting the mtime back, so it is the case every run.
+   */
+  it('notices a save of the same length in the mtime tick it was read in', async () => {
+    const file = path.join(dir, 'user.yaml');
+    // A whole second, which a restored stamp keeps exactly where a read one
+    // loses its nanoseconds.
+    const tick = Math.floor(Date.now() / 1000);
+    fs.writeFileSync(file, 'terminal:\n  font:\n    size: 14\n');
+    fs.utimesSync(file, tick, tick);
+
+    const store = open({ searchPaths: [file] });
+    store.watch();
+    const changed = nextChange(store);
+    fs.writeFileSync(file, 'terminal:\n  font:\n    size: 20\n');
+    fs.utimesSync(file, tick, tick);
+
+    expect((await changed).config.terminal.font.size).toBe(20);
+  });
+
   it('survives an editor that saves by rename', async () => {
     const file = path.join(dir, 'user.yaml');
     fs.writeFileSync(file, 'ui:\n  density: comfortable\n');

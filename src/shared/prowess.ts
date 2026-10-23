@@ -1,8 +1,3 @@
-import { dodgedFraction, hitChance } from './menace';
-import type { RealmFamily } from './realm';
-import type { StatedProwess } from './stated';
-import type { WorldItem, WorldSpell } from './world';
-
 /**
  * What this character does back — the other half of `menace.ts`.
  *
@@ -46,6 +41,10 @@ import type { WorldItem, WorldSpell } from './world';
  * nothing was computed, and the formulas answer the rest — and every *what if
  * I wore this* — as they always did.
  */
+import { dodgedFraction, hitChance } from './menace';
+import type { RealmFamily } from './realm';
+import type { StatedProwess } from './stated';
+import type { WorldItem, WorldSpell } from './world';
 
 /**
  * Where a number came from, strongest first.
@@ -64,8 +63,6 @@ export type Provenance =
   | 'measured'
   /** A limit rather than an estimate — an upper or lower bound, and labelled as one. */
   | 'bound';
-
-export const PROVENANCES: readonly Provenance[] = ['stated', 'source', 'measured', 'bound'];
 
 /**
  * A number with its provenance, or nothing at all.
@@ -106,12 +103,6 @@ export interface ProwessSheet {
    * outranks every formula here. Absent or null is *not stated*.
    */
   stated?: StatedProwess | null;
-}
-
-/** What of a class the sheet cannot state. See `ProwessSheet.combatLevel`. */
-export interface ProwessClass {
-  combat?: number;
-  magery?: number;
 }
 
 /** What of a weapon the arithmetic reads — `Items.Min/Max/Accy/Speed/StrReq`. */

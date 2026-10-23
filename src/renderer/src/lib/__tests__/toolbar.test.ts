@@ -1,12 +1,13 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { AUTOMATION_SWITCH_NAMES, automationSwitches, DEFAULT_CONFIG } from '@shared/config';
+import { automationSwitches, DEFAULT_CONFIG } from '@shared/config';
 import { DEFAULT_INTERNAL } from '@shared/internal';
 
 import { NOT_MOVING, type Movement } from '@shared/movement';
+import { MEGA_TOGGLES, megaMovement } from '@shared/megamud/toggles';
 
 import { shippedToolbar } from '../../hooks/useToolbarPins';
-import { TOOLBAR_ACTIONS, toolbarButtons, type ToolbarSubject } from '../toolbar';
+import { TOOLBAR_ACTIONS, TOOLBAR_IDS, toolbarButtons, type ToolbarSubject } from '../toolbar';
 
 const subject = (over: Partial<ToolbarSubject> = {}): ToolbarSubject => ({
   switches: automationSwitches(DEFAULT_CONFIG.automation),
@@ -18,6 +19,8 @@ const subject = (over: Partial<ToolbarSubject> = {}): ToolbarSubject => ({
   movement: NOT_MOVING,
   canRestoreGear: false,
   setSwitch: vi.fn(),
+  mega: null,
+  setMegaToggle: vi.fn(),
   restoreGear: vi.fn(),
   connect: vi.fn(),
   disconnect: vi.fn(),
@@ -25,6 +28,7 @@ const subject = (over: Partial<ToolbarSubject> = {}): ToolbarSubject => ({
   stopMoving: vi.fn(),
   stepBack: vi.fn(),
   openLoops: vi.fn(),
+  openExplorer: vi.fn(),
   openBuilder: vi.fn(),
   ...over
 });
@@ -48,10 +52,9 @@ describe('the toolbar vocabulary', () => {
     expect(ids).toContain('move:toggle');
   });
 
-  it('offers every automation switch and every action, exactly once', () => {
+  it('offers every action, exactly once', () => {
     const ids = toolbarButtons(subject()).map((button) => button.id);
     expect(new Set(ids).size).toBe(ids.length);
-    for (const name of AUTOMATION_SWITCH_NAMES) expect(ids).toContain(name);
     for (const action of TOOLBAR_ACTIONS) expect(ids).toContain(action);
   });
 
@@ -90,17 +93,6 @@ describe('the toolbar vocabulary', () => {
       toolbarButtons(subject({ dialling: true })).find((button) => button.id === 'connect')!
         .disabled
     ).toBe(true);
-  });
-
-  it('flips a switch to the opposite of what the character says', () => {
-    const setSwitch = vi.fn();
-    const on = automationSwitches(DEFAULT_CONFIG.automation);
-    on.combat = true;
-    const buttons = toolbarButtons(subject({ switches: on, setSwitch }));
-    buttons.find((button) => button.id === 'combat')!.run();
-    expect(setSwitch).toHaveBeenCalledWith('combat', false);
-    buttons.find((button) => button.id === 'retreat')!.run();
-    expect(setSwitch).toHaveBeenCalledWith('retreat', true);
   });
 
   /*
@@ -173,17 +165,6 @@ describe('a toolbar drawn out of the realm', () => {
     expect(key('connect', { dialling: true }).disabled).toBe(true);
   });
 
-  /* A switch writes that character's own file, which wants no connection at
-     all — turning automation off before dialling is the ordinary use. */
-  it('leaves every switch pressable, and pressing one still writes', () => {
-    const setSwitch = vi.fn();
-    for (const name of AUTOMATION_SWITCH_NAMES) {
-      expect(key(name).disabled, `${name} was greyed`).toBeUndefined();
-    }
-    key('combat', { setSwitch }).run();
-    expect(setSwitch).toHaveBeenCalledWith('combat', true);
-  });
-
   /* The shelf and the builder are where a loop is found and drawn, neither of
      which needs a room. */
   it('leaves the shelf and the builder pressable', () => {
@@ -201,15 +182,15 @@ describe('a toolbar drawn out of the realm', () => {
 });
 
 describe('the shipped toolbar row', () => {
-  const ids = [...AUTOMATION_SWITCH_NAMES, ...TOOLBAR_ACTIONS];
+  const ids = TOOLBAR_IDS;
 
   it('names only buttons this build actually has', () => {
     const shipped = shippedToolbar(
-      ['connect', 'automation', 'combat', 'retaliate', 'loot', 'move:toggle', 'loop:stop'],
+      ['connect', 'fleeGoto', 'mega:combat', 'combat', 'move:toggle', 'loop:stop'],
       ids
     );
     expect([...shipped].sort()).toEqual(
-      ['automation', 'combat', 'connect', 'move:toggle', 'loot', 'retaliate'].sort()
+      ['connect', 'fleeGoto', 'mega:combat', 'move:toggle'].sort()
     );
   });
 
@@ -246,5 +227,92 @@ describe('the loop builder on the toolbar', () => {
       .find((button) => button.id === 'loop:build')
       ?.run();
     expect(openBuilder).toHaveBeenCalledTimes(1);
+  });
+});
+
+/*
+ * A character the MegaMUD engine runs has the old automation standing down,
+ * so its switches would turn nothing on or off; the toolbar offers MegaMUD's
+ * own toggles in their place, every one, pinned as the rest are (2026-10-14).
+ */
+describe('the MegaMUD engine’s toggles', () => {
+  const mega = {
+    on: {
+      noHangup: false,
+      allOff: false,
+      combat: true,
+      preAttack: true,
+      melee: false,
+      nuke: false,
+      heal: true,
+      bless: true,
+      light: true,
+      get: true,
+      cash: true,
+      sneak: false,
+      hide: false,
+      search: false,
+      afk: false
+    },
+    walking: false,
+    looping: false,
+    canGo: true,
+    ran: 0,
+    fled: 0
+  };
+
+  it('stand where the switches would, every one of them, for the pins to choose from', () => {
+    const buttons = toolbarButtons(subject({ mega }));
+    const toggles = buttons.filter((b) => b.id.startsWith('mega:'));
+    expect(toggles.map((b) => b.id)).toEqual(MEGA_TOGGLES.map((t) => `mega:${t.name}`));
+    expect(toggles.find((b) => b.id === 'mega:combat')?.on).toBe(true);
+  });
+
+  /* Our flee beside them, the one switch left, writing the character's file. */
+  it('draw our flee beside them, and pressing it writes', () => {
+    const setSwitch = vi.fn();
+    const buttons = toolbarButtons(subject({ mega, setSwitch }));
+    expect(buttons.some((b) => (b.id as string) === 'combat')).toBe(false);
+    buttons.find((b) => b.id === 'fleeGoto')!.run();
+    expect(setSwitch).toHaveBeenCalledWith('fleeGoto', true);
+  });
+
+  /* `0x460d50`: All Off greys every toggle but itself, and Go/Stop; No Hangup is Connect's. */
+  it('are greyed under All Off, all but All Off itself, and the transport with them', () => {
+    const off = { ...mega, on: { ...mega.on, allOff: true, combat: false } };
+    const buttons = toolbarButtons(subject({ mega: off, movement: megaMovement(off) }));
+    const greyed = (id: string) => buttons.find((b) => b.id === id)?.disabled === true;
+    expect([greyed('mega:combat'), greyed('mega:nuke'), greyed('mega:allOff')]).toEqual([
+      true,
+      true,
+      false
+    ]);
+    expect(greyed('move:toggle')).toBe(true);
+    expect(greyed('mega:noHangup')).toBe(false);
+  });
+
+  /* Looping, the transport showed a greyed play, not a stop (2026-10-13). */
+  it('make the transport a stop while the engine walks', () => {
+    const walking = { ...mega, walking: true, looping: true };
+    const move = toolbarButtons(subject({ mega: walking, movement: megaMovement(walking) })).find(
+      (b) => b.id === 'move:toggle'
+    );
+    expect([move!.icon, move!.disabled]).toEqual(['stop', false]);
+  });
+
+  /* MegaMUD has no flee toggle; ours stands beside its own (2026-10-14). */
+  it('keep our flee switch beside them, writing the switch', () => {
+    const setSwitch = vi.fn();
+    const flee = toolbarButtons(subject({ mega, setSwitch })).find((b) => b.id === 'fleeGoto');
+    expect(flee?.on).toBe(false);
+    flee!.run();
+    expect(setSwitch).toHaveBeenCalledWith('fleeGoto', true);
+  });
+
+  it('press the engine’s toggle', () => {
+    const setMegaToggle = vi.fn();
+    const nuke = toolbarButtons(subject({ mega, setMegaToggle })).find((b) => b.id === 'mega:nuke');
+    nuke!.run();
+    expect(setMegaToggle).toHaveBeenCalledWith('nuke');
   });
 });

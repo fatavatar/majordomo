@@ -1629,7 +1629,7 @@ button.quiet:hover:not(:disabled) {
 kbd {
   background: var(--ink-raised);
   border: var(--rule) solid var(--ink-line);
-  border-radius: 4px;
+  border-radius: var(--r-control);
   color: var(--text);
   font-family: var(--font-mono);
   font-size: var(--font-micro);
@@ -2428,7 +2428,7 @@ kbd {
 .loop-card-picker {
   background: color-mix(in srgb, var(--ink-line) 40%, transparent);
   border: var(--rule) solid transparent;
-  border-radius: calc(var(--r-card) - 6px);
+  border-radius: var(--r-chip);
   color: var(--text-hi);
   cursor: pointer;
   font: inherit;
@@ -2822,32 +2822,47 @@ kbd {
   cursor: help;
 }
 
-.map-blocks line {
+/*
+ * The bar across a corridor, in the tone of what stands there (mudmaps'
+ * `REQ_TONE`, 2026-10-18). Hue reinforces and never carries it alone (§6): a
+ * key's bar is heavier, a spell's dotted, a trap's the hazard triangle — a
+ * trap is not shut, the route walks through and takes the hit — and every one
+ * has a `<title>` naming it.
+ */
+.map-bar {
+  fill: none;
   pointer-events: none;
   stroke: var(--pending);
   stroke-linecap: round;
   stroke-width: 1.1;
 }
 
-/*
- * A trap is not an obstacle you open; it is one you regret. A bar says *shut*
- * and a trap is not shut — the route walks straight through it and takes the
- * hit — so it is its own shape, the hazard triangle, upright whichever way the
- * corridor runs (`MapPlan`). The lair's red at the lair's tone, because both
- * are where the damage is, and the shape says which (§6): it was a bar in a
- * second hue for as long as the map existed, with no entry in the legend.
- */
-.map-trap {
+.map-bar[data-tone='key'] {
+  stroke-width: 1.6;
+}
+
+.map-bar[data-tone='hidden'] {
+  stroke: var(--marker);
+}
+
+.map-bar[data-tone='toll'] {
+  stroke: var(--mark-bank);
+}
+
+.map-bar[data-tone='gate'] {
+  stroke: var(--danger);
+}
+
+.map-bar[data-tone='cast'] {
+  stroke: var(--accent);
+  stroke-dasharray: 0.6 0.5;
+}
+
+.map-bar[data-tone='trap'] {
   fill: color-mix(in srgb, var(--danger) 55%, transparent);
-  pointer-events: none;
   stroke: var(--danger);
   stroke-linejoin: round;
   stroke-width: 0.5;
-}
-
-.map-blocks line[data-kind='hidden'],
-.map-blocks line[data-kind='text'] {
-  stroke: var(--marker);
 }
 
 /*
@@ -2880,9 +2895,25 @@ kbd {
     stroke var(--dur-tint) var(--ease-out);
 }
 
+/* mudmaps' kinds: one colour each, the shape saying it first (§6). */
+.map-room[data-kind='stairs'] > .map-shape {
+  fill: color-mix(in srgb, var(--map-stairs) 40%, transparent);
+  stroke: var(--map-stairs);
+}
+
 .map-room[data-kind='shop'] > .map-shape {
-  fill: color-mix(in srgb, var(--pending) 55%, transparent);
+  fill: color-mix(in srgb, var(--pending) 45%, transparent);
   stroke: var(--pending);
+}
+
+.map-room[data-kind='npc'] > .map-shape {
+  fill: color-mix(in srgb, var(--marker) 40%, transparent);
+  stroke: var(--marker);
+}
+
+.map-room[data-kind='cmd'] > .map-shape {
+  fill: color-mix(in srgb, var(--map-cmd) 40%, transparent);
+  stroke: var(--map-cmd);
 }
 
 .map-room[data-kind='lair'] > .map-shape {
@@ -2896,17 +2927,43 @@ kbd {
   stroke: var(--mark-bank);
 }
 
-.map-bank {
-  fill: var(--mark-bank);
+/* A shop's letter and the bank's dollar. */
+.map-sym {
+  fill: var(--text-hi);
   font-family: var(--font-mono);
   font-size: 3.2px;
   font-weight: 700;
-  paint-order: stroke;
   pointer-events: none;
   stroke: none;
 }
 
-.map-room[data-kind='here'] > .map-shape {
+.map-bank {
+  fill: var(--mark-bank);
+}
+
+/* Somebody lives here; the room answers a command. */
+.map-pip {
+  fill: var(--marker);
+  pointer-events: none;
+}
+
+.map-ring {
+  fill: none;
+  pointer-events: none;
+  stroke: var(--map-cmd);
+  stroke-width: 0.5;
+}
+
+/* A lettered room that is a lair as well. */
+.map-lairbadge {
+  fill: var(--danger);
+  pointer-events: none;
+  stroke: var(--ink-void);
+  stroke-width: 0.3;
+}
+
+/* The character's own room keeps its kind's shape, in the accent. */
+.map-room[data-here='true'] > .map-shape {
   fill: var(--accent);
   stroke: var(--accent);
 }
@@ -2917,17 +2974,54 @@ kbd {
   stroke: var(--accent);
 }
 
-/* Leads up or down, which the plane cannot show. */
-.map-vertical {
-  fill: none;
-  stroke: var(--marker);
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  stroke-width: 0.7;
+/*
+ * The ways out the plane cannot draw, beside the room (mudmaps' `vmark`):
+ * chevrons up and down, a portal, an arrow; cyan where the room it reaches is
+ * on the picture, green where it is not, edged amber where something stands
+ * in the way.
+ */
+.map-mark {
+  --mark: var(--map-jump);
+  cursor: help;
 }
 
-.map-room[data-kind='here'] .map-vertical {
-  stroke: var(--on-accent);
+.map-mark[data-reach='away'] {
+  --mark: var(--map-away);
+}
+
+.map-glyph {
+  fill: var(--mark, var(--map-jump));
+  stroke: none;
+}
+
+.map-chev {
+  fill: none;
+  stroke: var(--mark, var(--map-jump));
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 0.8;
+}
+
+.map-portal {
+  fill: none;
+  stroke: var(--mark, var(--map-jump));
+  stroke-dasharray: 1 0.6;
+  stroke-width: 0.6;
+}
+
+.map-portal-dot {
+  fill: var(--mark, var(--map-jump));
+}
+
+.map-mark[data-gated] .map-glyph:not(.map-chev, .map-portal) {
+  stroke: var(--pending);
+  stroke-linejoin: round;
+  stroke-width: 0.5;
+}
+
+.map-mark[data-gated] .map-chev,
+.map-mark[data-gated] .map-portal {
+  filter: drop-shadow(0 0.6px 0 var(--pending));
 }
 
 .map-room:hover > .map-shape {
@@ -2970,43 +3064,13 @@ kbd {
   width: 12px;
 }
 
-.map-legend .key .map-shape {
-  fill: var(--map-room);
-  stroke: var(--map-room-edge);
-  stroke-width: 0.5;
+/* A key is a map room, so the room's own rules colour it: one look for both. */
+.map-legend .key .map-room {
+  cursor: default;
 }
 
-/* The key has to look like the thing it names, or it is a second legend. */
-.map-legend [data-kind='here'] .key .map-shape {
-  fill: var(--accent);
-  stroke: var(--accent);
-}
-
-.map-legend [data-kind='shop'] .key .map-shape {
-  fill: color-mix(in srgb, var(--pending) 55%, transparent);
-  stroke: var(--pending);
-}
-
-.map-legend [data-kind='lair'] .key .map-shape {
-  fill: color-mix(in srgb, var(--danger) 55%, transparent);
-  stroke: var(--danger);
-}
-
-.map-legend [data-kind='bank'] .key .map-shape {
-  fill: color-mix(in srgb, var(--mark-bank) 30%, transparent);
-  stroke: var(--mark-bank);
-}
-
-.map-legend [data-kind='bank'] .key .map-bank {
+.map-legend .key .map-sym {
   font-size: 4.2px;
-}
-
-/*
- * The route in the legend, at the weight the map draws it — a corridor stroke
- * is a hairline at 12px, and the key has to look like the thing it names.
- */
-.map-legend [data-kind='route'] .key .map-trail line {
-  stroke-width: 1.6;
 }
 
 /* ========================================================== the quest book */
@@ -4105,6 +4169,14 @@ button.quest-plan-back {
   white-space: nowrap;
 }
 
+/* The commands typed at a waypoint (2026-10-23), under its name, in the console's face. */
+.builder-commands {
+  font-family: var(--font-mono);
+  font-size: var(--font-micro);
+  margin: 0 0 2px 26px;
+  width: calc(100% - 26px);
+}
+
 /* What a leg needs, indented under the waypoint it leads to. */
 .builder-leg {
   display: flex;
@@ -4147,6 +4219,16 @@ button.quest-plan-back {
 .builder-destination {
   display: flex;
   flex: 0 0 auto;
+  gap: 4px;
+}
+
+/* The saved loop being edited, which the save replaces: a line of its own. */
+.builder-editing {
+  align-items: center;
+  color: var(--text-lo);
+  display: flex;
+  flex-basis: 100%;
+  font-size: var(--font-micro);
   gap: 4px;
 }
 
@@ -4206,46 +4288,25 @@ button.quest-plan-back {
   fill: transparent;
 }
 
-.map-away-glyph {
-  fill: none;
-  stroke: var(--marker);
-  stroke-linecap: round;
-  stroke-linejoin: round;
+.map-away {
+  --mark: var(--marker);
 }
 
-.map-away-dot {
-  fill: var(--marker);
-}
-
-.map-away:hover .map-away-glyph,
-.map-away:focus-visible .map-away-glyph {
-  stroke: var(--accent);
+.map-away:hover,
+.map-away:focus-visible {
+  --mark: var(--accent);
 }
 
 /* A way out with something in it — a door on the stairs, a level a portal
    wants — wears a bar across its glyph, the corridor's own mark for a shut
-   passage, in the obstacle bar's hue; the title says what with. The hue
-   alone was the first cut, and the legend then had nothing to key. */
-.map-away[data-gated] .map-away-glyph {
-  stroke: var(--pending);
-}
-
-.map-away[data-gated] .map-away-dot {
-  fill: var(--pending);
+   passage, in the obstacle bar's hue; the title says what with. */
+.map-away[data-gated] {
+  --mark: var(--pending);
 }
 
 .map-away-bar {
   stroke: var(--pending);
   stroke-linecap: round;
-}
-
-.map-away:hover .map-away-dot,
-.map-away:focus-visible .map-away-dot {
-  fill: var(--accent);
-}
-
-.map-legend [data-kind='teleport'] .key .map-away-glyph {
-  stroke-width: 1;
 }
 
 /* ========================================================= automation card */
@@ -4428,7 +4489,7 @@ button.quest-plan-back {
  */
 .dot {
   background: var(--text-lo);
-  border-radius: var(--r-pill);
+  border-radius: 50%;
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--text-lo) var(--tone-weak), transparent);
   display: inline-block;
   height: 8px;
@@ -4780,6 +4841,1117 @@ button.quest-plan-back {
 }
 
 /*
+ * MMUD Explorer (2026-10-18), laid out as mudtool lays it out (`../mudtool`,
+ * `style.css` and `styles/explorers.css`), in this client's own tokens so the
+ * themes still hold: mudtool's amber is `--pending`, its green `--ok`, its
+ * red `--danger`, its violet `--marker`, and its three greys of ground and two
+ * of line are the `--ink-*` steps. The data is dense and told apart by colour
+ * and weight, not by boxes: an amber heading and chance, the accent for a
+ * reference, faint for what the character cannot use.
+ */
+.palette-scrim:has(> .explorer-screen) {
+  padding-top: 3vh;
+}
+
+.explorer-screen {
+  --ex-sel: color-mix(in srgb, var(--accent) var(--tone-weak), var(--ink-raised));
+  /* One height for every box and dropdown on the bars, which a checkbox's line takes too. */
+  --ex-control: 25px;
+  background: var(--ink-void);
+  border: 1px solid var(--ink-line);
+  border-radius: var(--r-card);
+  box-shadow: var(--glass-shadow);
+  color: var(--text-hi);
+  display: flex;
+  flex-direction: column;
+  font: 13px/1.45 var(--font-mono);
+  height: 92vh;
+  overflow: hidden;
+  width: min(1440px, 97vw);
+}
+
+.ex-top {
+  align-items: flex-end;
+  background: linear-gradient(180deg, var(--ink-card), var(--ink-void));
+  border-bottom: 1px solid var(--ink-line);
+  display: flex;
+  flex: 0 0 auto;
+  gap: 12px;
+  padding: 10px 14px 0;
+}
+
+.ex-tabs {
+  display: flex;
+  gap: 2px;
+  margin-inline-end: auto;
+}
+
+.ex-tab {
+  background: none;
+  border: 1px solid transparent;
+  border-bottom: none;
+  border-radius: 5px 5px 0 0;
+  color: var(--text);
+  cursor: pointer;
+  font: inherit;
+  padding: 7px 14px;
+}
+
+.ex-tab:hover {
+  background: var(--ink-card);
+  color: var(--text-hi);
+}
+
+.ex-tab[aria-selected='true'] {
+  background: var(--ink-void);
+  border-color: var(--ink-line);
+  box-shadow: 0 1px 0 var(--ink-void);
+  color: var(--pending);
+}
+
+/* mudtool's global filter: amber while it holds the list to the character. */
+.ex-global {
+  align-items: center;
+  align-self: center;
+  border: 1px solid var(--ink-line);
+  border-radius: 5px;
+  color: var(--text);
+  cursor: pointer;
+  display: flex;
+  font-size: 12px;
+  gap: 8px;
+  margin-bottom: 8px;
+  padding: 4px 10px;
+}
+
+.ex-global[data-on='true'] {
+  border-color: var(--pending);
+  color: var(--pending);
+}
+
+.explorer-screen input,
+.explorer-screen select {
+  background: var(--ink-void);
+  border: 1px solid var(--ink-edge);
+  border-radius: 4px;
+  box-sizing: border-box;
+  color: var(--text-hi);
+  font: inherit;
+  height: var(--ex-control);
+  padding: 0 7px;
+}
+
+.explorer-screen input:focus,
+.explorer-screen select:focus {
+  border-color: var(--pending);
+  outline: none;
+}
+
+.explorer-screen input[type='checkbox'] {
+  accent-color: var(--pending);
+  height: auto;
+  margin: 0;
+  padding: 0;
+}
+
+.ex-btn {
+  align-self: center;
+  background: var(--ink-raised);
+  border: 1px solid var(--ink-edge);
+  border-radius: 4px;
+  color: var(--text-hi);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  margin-bottom: 8px;
+  padding: 4px 11px;
+}
+
+.ex-btn:hover {
+  border-color: var(--pending);
+  color: var(--pending);
+}
+
+.ex-toolbar {
+  align-items: flex-end;
+  background: var(--ink-card);
+  border-bottom: 1px solid var(--ink-line);
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  padding: 10px 14px;
+}
+
+.ex-search {
+  width: 16em;
+}
+
+.ex-field {
+  display: flex;
+  flex-direction: column;
+  font-size: 12px;
+  gap: 3px;
+}
+
+.ex-field-label {
+  color: var(--text-lo-quiet);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+}
+
+.ex-field-row {
+  display: flex;
+  gap: 4px;
+}
+
+/* Calc. Combat and what it opens, on one line of the bar. */
+.ex-calc {
+  align-items: flex-end;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+}
+
+/*
+ * A checkbox's line is a control's height, centred, so on a bar aligned to
+ * its bottom edge it sits level with the dropdowns and boxes beside it.
+ */
+.ex-checks {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+}
+
+.ex-check {
+  align-items: center;
+  color: var(--text);
+  cursor: pointer;
+  display: flex;
+  font-size: 12px;
+  gap: 5px;
+  height: var(--ex-control);
+}
+
+.ex-count {
+  align-self: center;
+  color: var(--text-lo-quiet);
+  font-size: 12px;
+  margin-inline-start: auto;
+}
+
+/*
+ * The list across the whole width, and under it MMUD Explorer's own two
+ * panels: the detail and its comparison with what is worn, then the
+ * references. Each handle (`Splitter`) sizes the panel past it.
+ */
+.ex-body {
+  display: grid;
+  flex: 1 1 auto;
+  grid-template-rows: minmax(0, 1fr) 6px var(--ex-lower);
+  min-height: 0;
+}
+
+.ex-list {
+  min-height: 0;
+  min-width: 0;
+}
+
+.ex-lower {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 6px var(--ex-refs);
+  min-height: 0;
+}
+
+.explorer-screen .splitter {
+  background: var(--ink-line);
+}
+
+.explorer-screen .splitter:hover {
+  background: var(--pending);
+}
+
+.explorer-screen .splitter[data-edge='bottom'] {
+  cursor: row-resize;
+}
+
+.explorer-screen .splitter[data-edge='bottom']::before {
+  inset: -4px 0;
+}
+
+.explorer-screen .splitter::after {
+  display: none;
+}
+
+.ex-references {
+  min-height: 0;
+  overflow: auto;
+  padding: 10px 14px;
+}
+
+.ex-empty {
+  color: var(--text-lo-quiet);
+  padding: 14px 16px;
+}
+
+/* mudtool's virtual table: a header band, then compact rows on thin rules. */
+.ex-table {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+/*
+ * Twenty columns are wider than the pane, so the head scrolls sideways with
+ * the rows (it is inside their scroller) and stays put going down (sticky).
+ * The head, the rows and the box holding them share one width (`--ex-width`,
+ * worked out from the columns), so every column lines up down the list.
+ */
+.ex-head,
+.ex-row {
+  column-gap: 10px;
+  display: grid;
+  grid-template-columns: var(--ex-cols);
+  padding: 0 10px;
+  width: var(--ex-width);
+}
+
+.ex-spacer {
+  width: var(--ex-width);
+}
+
+.ex-head {
+  background: var(--ink-raised);
+  border-bottom: 1px solid var(--ink-line);
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.ex-th {
+  background: none;
+  border: 0;
+  color: var(--text);
+  cursor: pointer;
+  font: inherit;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  overflow: hidden;
+  padding: 5px 0;
+  text-align: start;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ex-th:hover {
+  color: var(--text-hi);
+}
+
+.ex-th[aria-sort='ascending']::after {
+  color: var(--pending);
+  content: ' ▲';
+}
+
+.ex-th[aria-sort='descending']::after {
+  color: var(--pending);
+  content: ' ▼';
+}
+
+.ex-rows {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+}
+
+.ex-spacer {
+  position: relative;
+}
+
+/* mudtool's scrollbars on the dark ground: the list scrolls both ways. */
+.explorer-screen * {
+  scrollbar-color: var(--ink-edge) var(--ink-card);
+}
+
+.explorer-screen ::-webkit-scrollbar {
+  height: 11px;
+  width: 11px;
+}
+
+.explorer-screen ::-webkit-scrollbar-track,
+.explorer-screen ::-webkit-scrollbar-corner {
+  background: var(--ink-card);
+}
+
+.explorer-screen ::-webkit-scrollbar-thumb {
+  background: var(--ink-edge);
+  border: 2px solid var(--ink-card);
+  border-radius: 6px;
+}
+
+.ex-row {
+  align-items: center;
+  border-bottom: 1px solid color-mix(in srgb, var(--ink-line) 55%, transparent);
+  cursor: default;
+  height: 22px;
+  left: 0;
+  position: absolute;
+}
+
+.ex-row:hover {
+  background: var(--ink-card);
+}
+
+.ex-row[aria-selected='true'] {
+  background: var(--ex-sel);
+  box-shadow: inset 2px 0 0 var(--pending);
+  color: var(--text-hi);
+}
+
+/* What this character cannot use, faint; what it wears, in the accent. */
+.ex-row[data-unusable='true'] {
+  color: var(--text-lo-quiet);
+}
+
+.ex-row[data-worn='true'] {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.ex-td {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ex-td[data-numeric='true'],
+.ex-th[data-numeric='true'] {
+  font-variant-numeric: tabular-nums;
+  text-align: end;
+}
+
+/* The realm's own number, quieter than the name it stands beside. */
+.ex-row .ex-td:first-child {
+  color: var(--text-lo-quiet);
+}
+
+.ex-detail {
+  min-height: 0;
+  overflow: auto;
+  padding: 10px 16px;
+}
+
+.ex-name {
+  color: var(--pending);
+  font-size: 14px;
+  letter-spacing: 0.04em;
+  margin: 0 0 2px;
+}
+
+.ex-sub {
+  color: var(--text-lo-quiet);
+  font-size: 12px;
+  margin-bottom: 10px;
+}
+
+/* Buy and Buy + Wear: where, how much, the bank first, and the press. */
+.ex-buy {
+  background: var(--ink-card);
+  border: 1px solid var(--ink-line);
+  border-radius: 5px;
+  margin: 0 0 10px;
+  padding: 8px 10px;
+}
+
+.ex-buy .ex-heading {
+  margin-bottom: 4px;
+}
+
+.ex-buy-line {
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.ex-buy [data-tone='ok'] {
+  color: var(--ok);
+}
+
+.ex-buy [data-tone='pending'] {
+  color: var(--pending);
+}
+
+.ex-buy [data-tone='danger'] {
+  color: var(--danger);
+}
+
+.ex-buy-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.ex-buy-button {
+  background: var(--ink-void);
+  border: 1px solid var(--ink-line);
+  border-radius: 4px;
+  color: var(--pending);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  padding: 3px 12px;
+}
+
+.ex-buy-button:hover:not(:disabled) {
+  border-color: var(--pending);
+  color: var(--text-hi);
+}
+
+.ex-buy-button:disabled {
+  color: var(--text-lo-quiet);
+  cursor: default;
+}
+
+.ex-buy-said {
+  font-size: 12px;
+}
+
+/*
+ * The EQ tab (2026-10-19), mudtool's `styles/eq.css`: the slots and Find
+ * Best beside MME's black stat picture, its green labels and yellow figures,
+ * white for a bonus, red for a loss, bright for the figures MME marks.
+ */
+.eq-page {
+  align-content: start;
+  display: grid;
+  flex: 1 1 auto;
+  gap: 16px;
+  grid-template-columns: minmax(380px, 1fr) minmax(420px, 1.2fr);
+  min-height: 0;
+  overflow: auto;
+  padding: 16px;
+}
+
+@media (max-width: 980px) {
+  .eq-page {
+    grid-template-columns: 1fr;
+  }
+}
+
+.eq-col {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+.eq-card {
+  border: 1px solid var(--ink-line);
+  border-radius: 6px;
+  padding: 10px 12px;
+}
+
+.eq-card h3 {
+  color: var(--pending);
+  font-size: 13px;
+  margin: 0 0 8px;
+}
+
+.eq-slots {
+  align-items: center;
+  display: grid;
+  gap: 4px 8px;
+  grid-template-columns: max-content minmax(14em, 1fr) max-content;
+}
+
+.eq-slot {
+  align-items: center;
+  display: contents;
+}
+
+.eq-slot-name {
+  align-items: center;
+  color: var(--ok);
+  display: flex;
+  font-size: 12px;
+  gap: 4px;
+}
+
+.eq-slot select {
+  min-width: 0;
+  width: 100%;
+}
+
+.eq-slot[data-warn] select {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.eq-slot[data-held] select {
+  border-color: var(--pending);
+}
+
+.eq-go {
+  align-items: center;
+  display: flex;
+  font-size: 11px;
+  gap: 6px;
+}
+
+.eq-was {
+  color: var(--text-lo);
+  font-size: 11px;
+  grid-column: 2 / -1;
+  margin-top: -3px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.eq-find {
+  align-items: flex-end;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.eq-hint {
+  color: var(--text-lo);
+  font-size: 12px;
+  margin: 6px 0 0;
+}
+
+.eq-panel {
+  background: #06070a;
+  border: 1px solid var(--ink-line);
+  border-radius: 6px;
+  padding: 12px 14px;
+}
+
+.eq-head {
+  color: #3fbf3f;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.eq-head b {
+  color: #c0c000;
+}
+
+.eq-grid {
+  display: grid;
+  gap: 1px 22px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.eq-stat {
+  background: none;
+  border: 0;
+  color: inherit;
+  cursor: pointer;
+  display: flex;
+  font: inherit;
+  gap: 8px;
+  justify-content: space-between;
+  padding: 1px 0;
+  text-align: left;
+  width: 100%;
+}
+
+.eq-stat:hover {
+  background: #11141b;
+}
+
+.eq-lbl {
+  color: #3fbf3f;
+}
+
+.eq-stat[data-adjusted] .eq-lbl {
+  color: #7dff7d;
+}
+
+.eq-val {
+  color: #c0c000;
+  font-weight: 600;
+}
+
+.eq-val[data-tone='pos'] {
+  color: #fff;
+}
+
+.eq-val[data-tone='neg'] {
+  color: #ff5050;
+}
+
+.eq-val[data-tone='hi'] {
+  color: #ffff00;
+}
+
+.eq-val[data-tone='zero'] {
+  color: #555;
+}
+
+.eq-val[data-tone='orange'] {
+  color: #ff9d00;
+}
+
+.eq-val[data-tone='yellow'] {
+  color: #e3eb0e;
+}
+
+.eq-martial {
+  display: grid;
+  gap: 1px 18px;
+  grid-template-columns: max-content repeat(3, minmax(3em, max-content));
+  margin: 8px 0;
+}
+
+.eq-ma {
+  background: none;
+  border: 0;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 600;
+  padding: 0;
+  text-align: right;
+}
+
+.eq-attack {
+  margin-top: 8px;
+}
+
+.eq-attack summary {
+  display: inline-flex;
+  list-style: none;
+}
+
+.eq-attack-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 0;
+}
+
+.eq-tip {
+  border-top: 1px solid var(--ink-line);
+  color: var(--text-lo);
+  font-size: 12px;
+  margin-top: 12px;
+  min-height: 6em;
+  padding-top: 8px;
+  white-space: pre-wrap;
+}
+
+.eq-tip b {
+  color: var(--text-hi);
+}
+
+.eq-adjust {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  white-space: normal;
+}
+
+.eq-adjust-row {
+  display: flex;
+  gap: 6px;
+}
+
+.eq-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* The bars' buttons sit on a baseline; here they sit in a row. */
+.eq-page .ex-btn {
+  margin-bottom: 0;
+}
+
+.eq-page .ex-btn[data-primary] {
+  border-color: var(--pending);
+  color: var(--pending);
+}
+
+.eq-page .ex-btn:disabled {
+  border-color: var(--ink-line);
+  color: var(--text-lo);
+  cursor: default;
+}
+
+.eq-buy {
+  padding: 1px 6px;
+}
+
+/*
+ * The Lists tab (2026-10-19), mudtool's `styles/lists.css`: a compare list
+ * or the Item Manager under a row of section tabs, the flag in amber.
+ */
+.lists-page {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+  overflow: auto;
+  padding: 10px 16px 16px;
+}
+
+.lists-nav {
+  border-bottom: 1px solid var(--ink-line);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+}
+
+.lists-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-top: 10px;
+}
+
+.lists-add,
+.lists-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 8px;
+}
+
+.lists-add input[type='search'] {
+  width: 22em;
+}
+
+.lists-page .ex-btn {
+  margin-bottom: 0;
+}
+
+.lists-page .ex-btn[data-danger] {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.lists-table {
+  border-collapse: collapse;
+  font-size: 12px;
+  width: 100%;
+}
+
+.lists-table th {
+  border-bottom: 1px solid var(--ink-line);
+  color: var(--text-lo);
+  font-weight: normal;
+  padding: 4px 8px;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.lists-table td {
+  border-bottom: 1px solid var(--ink-card);
+  padding: 3px 8px;
+  white-space: nowrap;
+}
+
+.lists-table [data-numeric] {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.lists-table tr[data-unusable] td {
+  color: var(--text-lo);
+}
+
+.lists-table tr[data-selected] td {
+  background: var(--ex-sel);
+}
+
+.lists-table td[data-worked] {
+  color: var(--pending);
+}
+
+.lists-flag {
+  color: var(--pending);
+  font-weight: 600;
+}
+
+.lists-own {
+  color: var(--text-lo);
+  font-size: 11px;
+  margin-left: 6px;
+}
+
+.lists-remove {
+  background: none;
+  border: 0;
+  color: var(--text-lo);
+  cursor: pointer;
+  font: inherit;
+}
+
+.lists-remove:hover {
+  color: var(--danger);
+}
+
+.ex-compare {
+  margin: 4px 0 8px;
+}
+
+/*
+ * The Tools tab (2026-10-19), mudtool's `styles/combat-tools.css` and
+ * `styles/tools-misc.css`: cards that wrap, a grid of figures, the result in
+ * amber, the spell book's learned spells in green.
+ */
+.tl-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-top: 10px;
+}
+
+.tl-row {
+  align-items: flex-end;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+}
+
+.tl-cols {
+  align-items: flex-start;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+}
+
+.tl-card {
+  border: 1px solid var(--ink-line);
+  border-radius: 6px;
+  flex: 1 1 300px;
+  max-width: 560px;
+  padding: 10px 12px;
+}
+
+.tl-card[data-wide] {
+  max-width: none;
+}
+
+.tl-card h3 {
+  color: var(--pending);
+  font-size: 13px;
+  margin: 12px 0 6px;
+}
+
+.tl-card h3:first-child {
+  margin-top: 0;
+}
+
+.tl-grid {
+  display: grid;
+  gap: 6px 10px;
+  grid-template-columns: repeat(auto-fill, minmax(8em, 1fr));
+}
+
+.tl-field {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.tl-field[data-off],
+.ex-check[data-off] {
+  opacity: 0.45;
+}
+
+.tl-field input {
+  box-sizing: border-box;
+  width: 100%;
+}
+
+.tl-label {
+  color: var(--text-lo);
+  font-size: 11px;
+}
+
+.tl-pick {
+  max-width: 100%;
+  width: 26em;
+}
+
+.tl-radios,
+.tl-btns {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  margin: 4px 0 8px;
+}
+
+.tl-page .ex-btn,
+.tl-body .ex-btn {
+  margin-bottom: 0;
+}
+
+.tl-body .ex-btn[data-primary] {
+  border-color: var(--pending);
+  color: var(--pending);
+}
+
+.tl-big {
+  color: var(--pending);
+  font-size: 18px;
+  line-height: 1.5;
+  margin: 4px 0;
+}
+
+.tl-lines {
+  line-height: 1.7;
+  margin-top: 10px;
+}
+
+.tl-warn {
+  color: var(--danger);
+}
+
+.tl-swings {
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+  width: 100%;
+}
+
+.tl-swings th,
+.tl-swings td {
+  border: 1px solid var(--ink-line);
+  padding: 2px 6px;
+  text-align: center;
+}
+
+.tl-swings th {
+  color: var(--text-lo);
+  font-weight: normal;
+}
+
+.tl-log {
+  color: var(--text-lo);
+  font-size: 12px;
+  margin: 0;
+  max-height: 420px;
+  overflow: auto;
+  white-space: pre;
+}
+
+.tl-exp {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.tl-exp-table {
+  max-width: 44em;
+}
+
+.lists-table tr[data-learned] td {
+  color: var(--ok);
+  font-weight: 600;
+}
+
+.tl-detail {
+  white-space: normal;
+}
+
+.tl-coin {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-width: 40em;
+}
+
+.tl-coin-row {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+}
+
+.tl-coin-amt {
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  width: 12em;
+}
+
+.tl-coin-mid {
+  color: var(--pending);
+  font-weight: 600;
+  padding-left: 3em;
+}
+
+.tl-rates {
+  color: var(--text-lo);
+  font: inherit;
+  margin: 8px 0 0;
+  white-space: pre-wrap;
+}
+
+.tl-notepad {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.tl-notepad textarea {
+  font: inherit;
+  line-height: 1.5;
+  min-height: 50vh;
+  resize: vertical;
+  width: 100%;
+}
+
+/* MME's own text, its line breaks kept. */
+.ex-text {
+  line-height: 1.5;
+  margin: 6px 0 10px;
+  white-space: pre-wrap;
+}
+
+.ex-heading {
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  margin: 0 0 8px;
+  text-transform: uppercase;
+}
+
+.ex-refs {
+  border-collapse: collapse;
+  font-size: 12px;
+  width: 100%;
+}
+
+.ex-refs td {
+  border-bottom: 1px solid color-mix(in srgb, var(--ink-line) 55%, transparent);
+  padding: 2px 8px 2px 0;
+  vertical-align: top;
+}
+
+.ex-pct {
+  color: var(--pending);
+  padding-inline-end: 10px;
+  text-align: end;
+  width: 4em;
+}
+
+.ex-ref {
+  color: var(--accent);
+}
+
+/*
  * The find field, held off the surface's own rounded corners.
  *
  * `.palette input` is a full-bleed field with square corners, which is right
@@ -4877,6 +6049,23 @@ button.quest-plan-back {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/*
+ * A row handed out as a file (2026-10-19): quiet until the row is pointed
+ * at, so a column of four hundred loops is not a column of buttons.
+ */
+.loops-modal .loops-export {
+  flex: 0 0 auto;
+  font-size: 11px;
+  opacity: 0;
+  padding: 0 4px;
+}
+
+.loops-modal li:hover .loops-export,
+.loops-modal li[data-active='true'] .loops-export,
+.loops-modal .loops-export:focus-visible {
+  opacity: 1;
 }
 
 /* A row already walked states so; the count still reads last in the row. */
@@ -5166,32 +6355,14 @@ button.quest-plan-back {
 }
 
 /*
- * On top, a tab is one line: name, attention, and a short health bar.
- *
- * The bar sits beside the name rather than under it because the bottom edge
- * belongs to the active-tab marker. Stacked, the two are both thin horizontal
- * lines a few pixels apart and read as one muddled rule -- which is worse than
- * either alone, and exactly the kind of emphasis §9 says to spend rather than
- * spray.
- */
-/*
- * Wide enough for a name and a realm in the chrome's monospace face, which is
- * wider than it looks: "Vaelor" and "GreaterMUD (local)" together need most of
- * this. It still shrinks -- four characters on a narrow window fall back to
- * `min-width` and truncate the realm first.
+ * On top, the tab a side rail draws, at the side rail's width: its name and
+ * realm, its health in figures as well as a bar, and where it is or what it is
+ * doing. A one-line tab across the top read as squashed, and dropped the
+ * figures and the room a player looks across for (2026-10-14). The row
+ * scrolls when the characters outrun the window.
  */
 .tab-rail[data-side='top'] .tab {
-  flex: 0 1 300px;
-  min-width: 150px;
-  grid-auto-flow: column;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 8px;
-}
-
-.tab-rail[data-side='top'] .hp {
-  flex: 0 0 auto;
-  width: 34px;
+  flex: 0 0 var(--tab-rail-w);
 }
 
 .tab:hover {
@@ -7568,10 +8739,15 @@ button.quest-plan-back {
   list-style: none;
 }
 
+/* The loops a character walks but does not own, closed until asked for. */
+.settings-inherited > summary {
+  cursor: pointer;
+}
+
 .settings-loops li {
   align-items: center;
   background: var(--ink-raised);
-  border-radius: calc(var(--r-card) - 8px);
+  border-radius: var(--r-chip);
   display: flex;
   gap: 8px;
   padding: 5px 6px 5px 9px;
@@ -7609,7 +8785,7 @@ button.quest-plan-back {
  */
 .loop-picker {
   border: 1px solid var(--ink-line);
-  border-radius: calc(var(--r-card) - 6px);
+  border-radius: var(--r-chip);
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -7656,7 +8832,7 @@ button.quest-plan-back {
   align-items: center;
   background: transparent;
   border: 0;
-  border-radius: calc(var(--r-card) - 8px);
+  border-radius: var(--r-chip);
   color: var(--text-hi);
   cursor: pointer;
   display: flex;
@@ -9487,7 +10663,7 @@ tr:hover .row-action.worn,
 .conversation-say select {
   background: color-mix(in srgb, var(--accent) var(--tone-weak), transparent);
   border: 1px solid transparent;
-  border-radius: calc(var(--r-card) - 6px);
+  border-radius: var(--r-chip);
   color: color-mix(in srgb, var(--accent) 80%, var(--text-hi));
   cursor: pointer;
   flex: 0 0 auto;
@@ -9511,7 +10687,7 @@ tr:hover .row-action.worn,
 .conversation-say input {
   background: color-mix(in srgb, var(--ink-line) 40%, transparent);
   border: 1px solid transparent;
-  border-radius: calc(var(--r-card) - 6px);
+  border-radius: var(--r-chip);
   color: var(--text-hi);
   font-family: var(--font-mono);
   font-size: var(--font-micro);
@@ -9541,7 +10717,7 @@ tr:hover .row-action.worn,
 .conversation-queued {
   background: color-mix(in srgb, var(--accent) var(--tone-weak), transparent);
   border: 1px solid transparent;
-  border-radius: calc(var(--r-card) - 6px);
+  border-radius: var(--r-chip);
   color: color-mix(in srgb, var(--accent) 80%, var(--text-hi));
   cursor: pointer;
   flex: 0 0 auto;
@@ -9754,10 +10930,42 @@ tr:hover .row-action.worn,
   gap: 4px;
 }
 
+/* The player's own commands (BotCommandList): one card a command, who may ask in one row. */
+.bot-commands {
+  display: flex;
+  flex-direction: column;
+  gap: var(--field-gap);
+}
+
+.bot-command {
+  border: 1px solid var(--ink-line);
+  border-radius: var(--r-card);
+  display: flex;
+  flex-direction: column;
+  gap: var(--field-gap);
+  padding: 8px 10px;
+}
+
+.bot-command-who {
+  align-items: end;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+}
+
+.bot-command-who > :nth-last-child(2) {
+  flex: 1 1 200px;
+}
+
 .remote-players {
   display: flex;
   flex-direction: column;
   gap: 6px;
+}
+
+/* Somebody with a grant, among everyone the realm has seen: listed first, and marked. */
+.remote-players .chip.toggle[data-granted='true'][data-on='false'] {
+  font-weight: 600;
 }
 
 /* The gang's own head: which gang this character is in. */
@@ -10108,7 +11316,7 @@ tr:hover .row-action.worn,
 .settings-nav-section {
   background: transparent;
   border: 0;
-  border-radius: calc(var(--r-card) - 6px);
+  border-radius: var(--r-chip);
   color: var(--text-lo);
   cursor: pointer;
   font: inherit;
@@ -10161,7 +11369,7 @@ tr:hover .row-action.worn,
 .settings-nav-fieldset {
   background: transparent;
   border: 0;
-  border-radius: calc(var(--r-card) - 8px);
+  border-radius: var(--r-chip);
   color: var(--text-lo-quiet);
   cursor: pointer;
   font: inherit;
@@ -10192,7 +11400,7 @@ tr:hover .row-action.worn,
   align-items: center;
   background: color-mix(in srgb, var(--text-hi) 5%, transparent);
   border: 1px solid var(--ink-line);
-  border-radius: calc(var(--r-card) - 6px);
+  border-radius: var(--r-chip);
   color: var(--text-hi);
   cursor: pointer;
   display: flex;
@@ -10245,7 +11453,7 @@ tr:hover .row-action.worn,
   align-items: center;
   background: transparent;
   border: 0;
-  border-radius: calc(var(--r-card) - 6px);
+  border-radius: var(--r-chip);
   color: var(--text-hi);
   cursor: pointer;
   display: flex;
@@ -10405,27 +11613,45 @@ tr:hover .row-action.worn,
   pointer-events: none;
 }
 
+/*
+ * MMUD Explorer's field (`.explorer-screen input`), asked for here 2026-10-20:
+ * a box sunk to the void with an edge you can see, rather than a tint with no
+ * edge that read as a label until it was clicked. `background-color` and not
+ * the shorthand, so `.has-bar`'s strip above keeps its image. The search
+ * boxes were the browser's own and are boxed with the rest; the template
+ * (`.rewrite-template`) takes the same ground and edge in its console face.
+ */
 .settings-form input[type='text'],
 .settings-form input:not([type]),
 .settings-form input[type='password'],
+.settings-form input[type='search'],
 .settings-form select {
-  background: color-mix(in srgb, var(--ink-line) 40%, transparent);
-  border: 1px solid transparent;
-  border-radius: calc(var(--r-card) - 6px);
+  background-color: var(--ink-void);
+  border: 1px solid var(--ink-edge);
+  border-radius: 4px;
   color: var(--text-hi);
   font: inherit;
   min-width: 0;
-  padding: 6px 9px;
-  transition:
-    border-color var(--dur-control) var(--ease-out),
-    background var(--dur-control) var(--ease-out);
+  padding: 3px 7px;
+  transition: border-color var(--dur-control) var(--ease-out);
 }
 
 .settings-form input:focus,
-.settings-form select:focus {
-  background: color-mix(in srgb, var(--ink-line) 60%, transparent);
+.settings-form select:focus,
+.settings-form textarea:focus {
   border-color: color-mix(in srgb, var(--accent) var(--tone-strong), transparent);
   outline: none;
+}
+
+.settings-form :is(input[type='checkbox'], input[type='radio']) {
+  accent-color: var(--pending);
+}
+
+/* A table's find pill is already the box; its field inside is not boxed again. */
+.settings-form .table-find input {
+  background-color: transparent;
+  border: 0;
+  padding: 0;
 }
 
 .settings-form em.hint {
@@ -10649,7 +11875,7 @@ tr:hover .row-action.worn,
    variable was declared to guarantee. */
 .settings-menus {
   border: 1px solid var(--ink-line);
-  border-radius: calc(var(--r-card) - 4px);
+  border-radius: var(--r-control);
   margin: 0;
   padding: 10px;
 }
@@ -10837,7 +12063,8 @@ tr:hover .row-action.worn,
  * purpose -- it is the same ring, told where it is.
  */
 .settings-form input:focus,
-.settings-form select:focus {
+.settings-form select:focus,
+.settings-form textarea:focus {
   border-color: color-mix(in srgb, var(--group-hue) var(--tone-strong), transparent);
 }
 
@@ -10915,7 +12142,7 @@ tr:hover .row-action.worn,
 .reset-actions .danger {
   background: color-mix(in srgb, var(--danger) var(--tone-strong), transparent);
   border: 0;
-  border-radius: calc(var(--r-card) - 6px);
+  border-radius: var(--r-chip);
   color: var(--danger);
   cursor: pointer;
   font: inherit;
@@ -11294,7 +12521,7 @@ tr:hover .row-action.worn,
 /* The row the flyout is about, in the listings' own recipe (`tr[data-selected]`). */
 .party-list li[data-selected] {
   background: color-mix(in srgb, var(--accent) var(--tone-weak), transparent);
-  border-radius: 4px;
+  border-radius: var(--r-control);
 }
 
 .party-name[data-leader='true']::after {
@@ -11511,7 +12738,7 @@ tr:hover .row-action.worn,
   background: var(--glass-fill-strong);
   backdrop-filter: var(--glass-blur);
   border: var(--rule) solid var(--ink-line);
-  border-radius: calc(var(--r-card) - 4px);
+  border-radius: var(--r-control);
   box-shadow: var(--elev-2);
   color: var(--text-hi);
   font-size: 0.86em;
@@ -11573,7 +12800,7 @@ tr:hover .row-action.worn,
 .settings-form .settings-warn,
 .popover .settings-warn {
   background: color-mix(in srgb, var(--danger) var(--tone-weak), transparent);
-  border-radius: calc(var(--r-card) - 6px);
+  border-radius: var(--r-chip);
   color: color-mix(in srgb, var(--danger) 85%, var(--text-hi));
   font-size: 0.88em;
   line-height: 1.45;
@@ -11600,7 +12827,7 @@ tr:hover .row-action.worn,
  * them — the same pictures the console lays over those cells.
  */
 .rewrite-preview {
-  border-radius: 4px;
+  border-radius: var(--r-control);
   display: block;
   font-family: var(--font-terminal, var(--font-dos));
   line-height: 1.4;
@@ -11820,7 +13047,7 @@ tr:hover .row-action.worn,
 
 .rewrite-swatch {
   border: 1px solid var(--ink-line);
-  border-radius: 4px;
+  border-radius: var(--r-control);
   cursor: pointer;
   height: 18px;
   padding: 0;
@@ -11845,7 +13072,7 @@ tr:hover .row-action.worn,
 .rewrite-pick input[type='color'] {
   block-size: 18px;
   border: 1px solid var(--ink-line);
-  border-radius: 4px;
+  border-radius: var(--r-control);
   cursor: pointer;
   inline-size: 28px;
   padding: 0;
@@ -11874,9 +13101,9 @@ tr:hover .row-action.worn,
 
 /* The template, in the console's face: what is typed here is drawn there. */
 .rewrite-template {
-  background: var(--ink-raised);
-  border: 1px solid var(--ink-line);
-  border-radius: var(--r-control);
+  background: var(--ink-void);
+  border: 1px solid var(--ink-edge);
+  border-radius: 4px;
   color: var(--text-hi);
   flex: 0 0 auto;
   font-family: var(--font-terminal, var(--font-dos));
@@ -11921,6 +13148,11 @@ tr:hover .row-action.worn,
 
 /* A band is a floor, a colour and a remove beside them: a control row, in
    which the two fields still stack label over control and share the width. */
+/* A band is a percent and a colour: a short row, not the page's width. */
+.statline-band {
+  max-width: 520px;
+}
+
 .statline-band > .settings-field {
   display: grid;
   flex: 1 1 0;
@@ -12097,6 +13329,45 @@ tr:hover .row-action.worn,
     background var(--dur-tint) linear,
     border-color var(--dur-tint) linear;
   white-space: nowrap;
+}
+
+/*
+ * What a room asks of whoever would leave it (2026-10-18): tags beside its
+ * buttons, in the tone the map's bars wear for the same thing — a door amber,
+ * a hidden way violet, a toll gold, a trap and a gate red, a spell the accent.
+ * Not buttons: no fill, a hairline edge, and the title says the whole of it.
+ */
+.terminal-note {
+  --note: var(--marker);
+  border: var(--rule) solid color-mix(in srgb, var(--note) 55%, transparent);
+  border-radius: var(--r-chip);
+  color: var(--note);
+  cursor: help;
+  font-family: var(--font-mono);
+  font-size: var(--font-micro);
+  line-height: 1;
+  max-height: 100%;
+  padding: 0 5px;
+  pointer-events: auto;
+  white-space: nowrap;
+}
+
+.terminal-note[data-tone='door'],
+.terminal-note[data-tone='key'] {
+  --note: var(--pending);
+}
+
+.terminal-note[data-tone='toll'] {
+  --note: var(--mark-bank);
+}
+
+.terminal-note[data-tone='trap'],
+.terminal-note[data-tone='gate'] {
+  --note: var(--danger);
+}
+
+.terminal-note[data-tone='cast'] {
+  --note: var(--accent);
 }
 
 .terminal-action:hover {
@@ -12303,7 +13574,7 @@ tr:hover .row-action.worn,
 
 .crash-panel {
   background: var(--glass-fill-strong);
-  border-radius: 12px;
+  border-radius: var(--r-card);
   box-shadow: var(--glass-shadow), var(--glass-rim);
   max-width: 34rem;
   padding: 24px 28px;
@@ -12429,7 +13700,7 @@ tr:hover .row-action.worn,
   align-items: center;
   background: transparent;
   border: 0;
-  border-radius: var(--r-chip);
+  border-radius: var(--r-key);
   color: var(--text-lo-quiet);
   cursor: pointer;
   display: flex;
@@ -12579,7 +13850,7 @@ tr:hover .row-action.worn,
   text-align: right;
   padding: 0 0.3em;
   border: 1px solid color-mix(in oklab, currentColor 18%, transparent);
-  border-radius: 6px;
+  border-radius: var(--r-control);
   background: color-mix(in oklab, currentColor 6%, transparent);
   color: inherit;
 }
@@ -12669,7 +13940,7 @@ tr:hover .row-action.worn,
   align-items: center;
   background: transparent;
   border: 0;
-  border-radius: 8px;
+  border-radius: var(--r-control);
   color: var(--text-hi);
   display: flex;
   font: inherit;
@@ -12731,4 +14002,936 @@ tr:hover .row-action.worn,
   color: var(--text-hi);
   max-width: 34rem;
   padding: 20px 26px;
+}
+
+/*
+ * MegaMUD's settings tabs (`MegaMudSettings`): each control placed where
+ * MegaMUD's dialog template puts it, in scaled dialog units, so the page reads
+ * as the dialog a MegaMUD player knows. The page scrolls sideways inside the
+ * form rather than reflowing, because the positions are the point.
+ */
+.megamud-settings {
+  /*
+   * A block of the Character page's form now, not the form: across the whole
+   * of its grid, as every fieldset is (alone in its first column, it sat in a
+   * track of no height and the fieldsets under it were drawn over the dialog),
+   * and scrolled with the form rather than by itself (2026-10-14).
+   */
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+.megamud-page {
+  position: relative;
+  flex: none;
+}
+/*
+ * Proportional, as MegaMUD's MS Sans Serif 8 is: its labels are sized to
+ * that face, and the console's monospace runs them off their boxes. And the
+ * rest of a MegaMUD tab's row, ours under its page, in the same face
+ * (2026-10-14).
+ */
+.megamud-page,
+.settings-form[data-megamud='true'] {
+  font-family: Tahoma, Verdana, 'Segoe UI', system-ui, sans-serif;
+  font-size: 11px;
+  color: var(--text);
+}
+/*
+ * Ours under a MegaMUD tab, drawn as the tab is: a group a plain title with
+ * no box or wash, labels in the dialog's case, and small boxed controls.
+ */
+.settings-form[data-megamud='true'] {
+  --control-h: 22px;
+  --font-ui: 11px;
+  --font-micro: 11px;
+}
+.settings-form[data-megamud='true'] .settings-menus {
+  background: none;
+  border: 0;
+  border-top: 1px solid var(--ink-edge);
+  border-radius: 0;
+  padding: 6px 0 0;
+}
+.settings-form[data-megamud='true'] .settings-menus legend {
+  padding: 0 4px 0 0;
+  color: var(--text-hi);
+  letter-spacing: normal;
+  text-transform: none;
+}
+.settings-form[data-megamud='true'] .settings-field > span {
+  letter-spacing: normal;
+  text-transform: none;
+}
+/* A heading inside a group, as the group's own title reads (2026-10-16). */
+.settings-form[data-megamud='true'] .settings-subhead {
+  font-size: inherit;
+  letter-spacing: normal;
+  text-transform: none;
+  color: var(--text-hi);
+}
+.settings-form[data-megamud='true']
+  :is(input:not([type='checkbox'], [type='radio']), select, textarea) {
+  padding: 2px 6px;
+  font: inherit;
+  color: var(--text-hi);
+  background: var(--ink-void);
+  border: 1px solid var(--ink-edge);
+  border-radius: 4px;
+}
+/* A search box is already the box; its field inside is not boxed again. */
+.settings-form[data-megamud='true'] .table-find input {
+  padding: 0;
+  background: none;
+  border: 0;
+}
+.settings-form[data-megamud='true'] .chip {
+  font-family: inherit;
+  letter-spacing: normal;
+  text-transform: none;
+}
+.settings-form[data-megamud='true'] button {
+  font-size: 11px;
+  padding: 0 6px;
+}
+.megamud-control {
+  position: absolute;
+  box-sizing: border-box;
+  margin: 0;
+}
+.megamud-label {
+  display: flex;
+  align-items: flex-start;
+  color: var(--text-lo);
+  /*
+   * As written, its line breaks kept (`^min^` over `exp`), and let run past
+   * its box rather than cut: this face is wider than MS Sans Serif 8, and a
+   * label cut to `^ Max ^ O` reads as nothing (2026-10-14).
+   */
+  white-space: pre;
+  overflow: visible;
+  /* A point under the page's, nearer MS Sans Serif 8's width, so a caption
+     under a box ends before the column beside it. */
+  font-size: 10px;
+}
+.megamud-group {
+  border: 1px solid var(--rule);
+  border-radius: var(--r-chip);
+  padding: 0;
+  pointer-events: none;
+}
+.megamud-group legend {
+  padding: 0 4px;
+  margin-left: 6px;
+  color: var(--text-hi);
+  font-size: 11px;
+}
+.megamud-check {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+  overflow: visible;
+  cursor: pointer;
+}
+.megamud-check[data-wraps='true'] {
+  align-items: flex-start;
+  white-space: normal;
+}
+.megamud-check input {
+  margin: 0;
+  flex: none;
+}
+.megamud-edit,
+.megamud-combo {
+  /* Room off the frame for the text, short of cutting a five-figure
+     number in MegaMUD's narrowest boxes (2026-10-14). */
+  padding: 1px 4px 1px 5px;
+  font: inherit;
+  min-height: 0;
+  color: var(--text-hi);
+  background: var(--ink-raised);
+  border: 1px solid var(--ink-edge);
+  border-radius: var(--r-control);
+}
+.megamud-edit:disabled {
+  opacity: 0.5;
+}
+/* A setting MegaMUD 2.1 keeps but never acts on: drawn, and drawn as idle. */
+.megamud-control[data-inert='true'] {
+  opacity: 0.5;
+  cursor: help;
+}
+.megamud-button {
+  font-size: 11px;
+  padding: 0 4px;
+  min-height: 0;
+}
+.megamud-button[data-active='true'] {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+.megamud-list {
+  overflow-y: auto;
+  border: 1px solid var(--ink-edge);
+  border-radius: var(--r-control);
+  background: var(--ink-raised);
+  padding: 2px 4px;
+}
+.megamud-list label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+/* The MegaMUD connection on the Character row, in its three rows. */
+.megamud-account-row {
+  display: grid;
+  gap: var(--field-gap, 10px) 16px;
+  align-items: end;
+}
+.megamud-account-row[data-row='0'] {
+  grid-template-columns: max-content minmax(0, 220px);
+}
+.megamud-account-row[data-row='1'] {
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+}
+.megamud-account-row[data-row='2'] {
+  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+}
+
+.megamud-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: flex-end;
+  padding-block: 12px;
+}
+.megamud-rows {
+  display: flex;
+  flex-direction: column;
+  padding: 2px;
+}
+.megamud-rows button {
+  justify-content: flex-start;
+  min-height: 0;
+  padding: 1px 4px;
+  font: inherit;
+  text-align: left;
+  white-space: nowrap;
+  color: var(--text-hi);
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+}
+.megamud-rows button[aria-selected='true'] {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+.megamud-picker {
+  padding: 0;
+}
+/* An event's or a monitor's dialog, over the tab it was opened from. */
+.megamud-dialog {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  overflow-y: auto;
+  padding: 8px 12px;
+  background: var(--ink-raised);
+  border: 1px solid var(--ink-edge);
+  border-radius: var(--r-control);
+}
+.megamud-dialog fieldset {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 4px 8px 8px;
+  border: 1px solid var(--ink-edge);
+  border-radius: var(--r-control);
+}
+.megamud-dialog label,
+.megamud-dialog-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.megamud-dialog .megamud-edit,
+.megamud-dialog .megamud-combo {
+  min-height: 22px;
+}
+.megamud-dialog-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.megamud-list-head {
+  display: block;
+  color: var(--text-hi);
+  font-weight: 600;
+}
+.megamud-list label[data-choice='true'] {
+  padding-left: 12px;
+}
+
+/* The Gear card: MME's Find Best beside what is worn, an upgrade in amber with Buy beside it. */
+.gear-controls {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  margin-bottom: 6px;
+}
+
+.gear-picker {
+  background: color-mix(in srgb, var(--ink-line) 40%, transparent);
+  border: var(--rule) solid transparent;
+  border-radius: var(--r-chip);
+  color: var(--text-hi);
+  cursor: pointer;
+  font: inherit;
+  max-width: 100%;
+  min-width: 0;
+  padding: 2px 4px;
+}
+
+.gear-picker:hover {
+  background: color-mix(in srgb, var(--ink-line) 60%, transparent);
+}
+
+.gear-check {
+  align-items: center;
+  color: var(--text-lo);
+  cursor: pointer;
+  display: inline-flex;
+  font-size: var(--font-micro);
+  gap: 4px;
+}
+
+.gear-list {
+  display: grid;
+  gap: 0;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+/* Slot, best and its buttons on one line; what is worn under the best, quieter. */
+.gear-row {
+  align-items: baseline;
+  column-gap: 8px;
+  display: grid;
+  font-variant-numeric: tabular-nums;
+  grid-template-areas:
+    'slot best best'
+    '. worn actions';
+  grid-template-columns: 4.5em minmax(0, 1fr) auto;
+  padding: 3px 0;
+}
+
+.gear-row + .gear-row {
+  border-top: var(--rule) solid color-mix(in srgb, var(--ink-line) 50%, transparent);
+}
+
+.gear-slot {
+  color: var(--text-lo);
+  grid-area: slot;
+}
+
+.gear-best {
+  grid-area: best;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.gear-row[data-upgrade='true'] .gear-best {
+  color: var(--pending);
+}
+
+.gear-worn {
+  color: var(--text-lo-quiet);
+  font-size: var(--font-micro);
+  grid-area: worn;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.gear-value {
+  color: var(--text-lo-quiet);
+  font-size: var(--font-micro);
+}
+
+.gear-gain {
+  color: var(--ok);
+  font-size: var(--font-micro);
+  font-weight: 600;
+}
+
+/* The item's name, a link into the Explorer: none of a button's chrome. */
+button.gear-item {
+  background: none;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  color: inherit;
+  font: inherit;
+  height: auto;
+  padding: 0;
+  text-align: left;
+}
+
+button.gear-item:hover {
+  text-decoration: underline;
+}
+
+.gear-actions {
+  align-self: center;
+  display: flex;
+  gap: 4px;
+  grid-area: actions;
+}
+
+button.gear-buy {
+  background: color-mix(in srgb, var(--accent) var(--tone-weak), transparent);
+  border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+  box-shadow: none;
+  color: var(--accent);
+  font-size: var(--font-micro);
+  font-weight: 600;
+  height: 20px;
+  padding: 0 6px;
+}
+
+button.gear-buy:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--accent) var(--tone), transparent);
+  border-color: var(--accent);
+}
+
+.gear-card .aside[data-tone='ok'] {
+  color: var(--ok);
+}
+
+.gear-card .aside[data-tone='danger'] {
+  color: var(--danger);
+}
+
+/*
+ * The Explorer's links (2026-10-18): a reference a tab here shows opens it,
+ * as mudtool's `a.xref` do, drawn as text and not as a button.
+ */
+button.ex-link {
+  background: none;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  color: var(--accent);
+  cursor: pointer;
+  font: inherit;
+  height: auto;
+  padding: 0;
+  text-align: left;
+}
+
+button.ex-link:hover {
+  text-decoration: underline;
+}
+
+.ex-back {
+  margin-left: auto;
+}
+
+.ex-back + .ex-global {
+  margin-left: 0;
+}
+
+.ex-note {
+  color: var(--text-lo-quiet);
+  font-size: 12px;
+  margin: 0 0 8px;
+}
+
+/* A shop's shelf or a trainer's table. */
+.ex-stock {
+  border-collapse: collapse;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  margin-bottom: 10px;
+  width: 100%;
+}
+
+.ex-stock th {
+  color: var(--text-lo-quiet);
+  font-weight: 600;
+  text-align: left;
+}
+
+.ex-stock th,
+.ex-stock td {
+  border-bottom: 1px solid var(--ink-line);
+  padding: 2px 8px 2px 0;
+}
+
+.ex-stock .ex-num {
+  text-align: right;
+}
+
+/* The Rooms tab: mudtool's `styles/rooms.css`, on this client's tokens. */
+.rm {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.rm-goto,
+.rm-find {
+  align-items: center;
+  display: flex;
+  gap: 6px;
+}
+
+.rm-num {
+  width: 5em;
+}
+
+.rm-said {
+  align-self: center;
+  color: var(--danger);
+  font-size: 12px;
+}
+
+.rm-options {
+  position: relative;
+}
+
+.rm-options > summary {
+  align-items: center;
+  display: inline-flex;
+  list-style: none;
+}
+
+.rm-options-menu {
+  background: var(--ink-raised);
+  border: 1px solid var(--ink-edge);
+  border-radius: 6px;
+  box-shadow: var(--glass-shadow);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 10px;
+  position: absolute;
+  right: 0;
+  top: calc(100% + 4px);
+  white-space: nowrap;
+  z-index: 5;
+}
+
+.rm-body {
+  display: grid;
+  flex: 1 1 auto;
+  grid-template-columns: minmax(0, 1fr) 340px;
+  min-height: 0;
+}
+
+.rm-map {
+  background: var(--ink-void);
+  border-right: 1px solid var(--ink-line);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+  position: relative;
+}
+
+.rm-svg {
+  display: block;
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
+}
+
+/* The key under the map, kept off its edge. */
+.rm-map > .map-legend {
+  margin: 0;
+  padding: 8px 12px 10px;
+}
+
+/* The client's map drawing (`MapGlyphs`), on MME's layout: a room is the Map card's. */
+.rm-cell-hit {
+  cursor: pointer;
+}
+
+/* A chevron, portal or arrow walks the map to where it leads; its hit ring is unseen. */
+.rm-mark {
+  cursor: pointer;
+}
+
+.rm-mark-hit {
+  fill: transparent;
+  stroke: none;
+}
+
+.rm-mark:hover {
+  --mark: var(--accent);
+}
+
+/* The room a hovered mark leads to. */
+.map-room.is-lit > .map-shape {
+  fill: var(--accent);
+  stroke: var(--accent);
+}
+
+/* The room the map is drawn from, MME's start cell. */
+.rm-start {
+  fill: none;
+  pointer-events: none;
+  stroke: var(--pending);
+}
+
+.rm-side {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-height: 0;
+  overflow: auto;
+  padding: 12px 14px;
+}
+
+.rm-here-head {
+  align-items: baseline;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.rm-sec-head {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  justify-content: space-between;
+}
+
+.rm-compass {
+  display: grid;
+  gap: 3px;
+  grid-template-columns: repeat(3, 2.6em) auto;
+  grid-template-rows: repeat(3, 1.9em);
+  margin: 8px 0;
+}
+
+.rm-dir {
+  align-items: center;
+  background: none;
+  border: 1px solid var(--ink-edge);
+  border-radius: 4px;
+  box-shadow: none;
+  color: var(--text-hi);
+  display: flex;
+  font: inherit;
+  font-size: 11px;
+  height: auto;
+  justify-content: center;
+  padding: 0;
+  text-transform: uppercase;
+}
+
+button.rm-dir {
+  cursor: pointer;
+}
+
+button.rm-dir:hover {
+  border-color: var(--pending);
+  color: var(--pending);
+}
+
+button.rm-dir.is-mapchange {
+  border-color: var(--marker);
+  color: var(--marker);
+}
+
+.rm-dir.is-off {
+  border-color: var(--ink-line);
+  color: var(--text-lo-quiet);
+  opacity: 0.5;
+}
+
+.rm-mid {
+  border: none;
+}
+
+.rm-ud {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  grid-column: 4;
+  grid-row: 1 / 4;
+  margin-left: 10px;
+}
+
+.rm-ud .rm-dir {
+  height: 1.9em;
+  width: 2.6em;
+}
+
+.rm-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.rm-walk:not(:disabled) {
+  border-color: var(--pending);
+  color: var(--pending);
+}
+
+ul.rm-refs {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+ul.rm-refs li {
+  border-bottom: 1px solid var(--ink-line);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+  padding: 2px 0;
+}
+
+.rm-none {
+  padding: 4px 0;
+}
+
+.rm-info {
+  background: var(--ink-card);
+  border: 1px solid var(--ink-line);
+  border-radius: 5px;
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  margin: 10px 0 0;
+  padding: 8px 10px;
+  white-space: pre-wrap;
+}
+
+.rm-x {
+  padding: 0 8px;
+}
+
+/* A cell's text, MME's yellow tooltip as mudtool draws it. */
+.rm-tip {
+  background: #fffbd6;
+  border: 1px solid #a89a3a;
+  border-radius: 6px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
+  color: #111;
+  font-size: 12px;
+  max-width: 460px;
+  padding: 7px 10px;
+  pointer-events: none;
+  position: fixed;
+  white-space: pre-wrap;
+  z-index: 50;
+}
+
+/* Up or down, where a cell has both. */
+.rm-menu {
+  background: var(--ink-raised);
+  border: 1px solid var(--ink-edge);
+  border-radius: 6px;
+  box-shadow: var(--glass-shadow);
+  display: flex;
+  gap: 6px;
+  padding: 6px;
+  position: fixed;
+  z-index: 60;
+}
+
+/* The Monsters bar (2026-10-18): By Mob / By Lair, and the extra filters' panel. */
+.ex-seg {
+  display: flex;
+  gap: 0;
+}
+
+.ex-seg .ex-btn {
+  border-radius: 0;
+}
+
+.ex-seg .ex-btn:first-child {
+  border-radius: 4px 0 0 4px;
+}
+
+.ex-seg .ex-btn:last-child {
+  border-radius: 0 4px 4px 0;
+}
+
+.ex-seg .ex-btn[aria-pressed='true'] {
+  border-color: var(--pending);
+  color: var(--pending);
+}
+
+.ex-extra {
+  position: relative;
+}
+
+.ex-extra > summary {
+  align-items: center;
+  display: inline-flex;
+  height: var(--ex-control);
+  list-style: none;
+}
+
+.ex-extra > summary[data-on] {
+  border-color: var(--pending);
+  color: var(--pending);
+}
+
+.ex-extra-panel {
+  background: var(--ink-raised);
+  border: 1px solid var(--ink-edge);
+  border-radius: 6px;
+  box-shadow: var(--glass-shadow);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: 90vw;
+  padding: 10px 12px;
+  position: absolute;
+  right: 0;
+  top: calc(100% + 4px);
+  width: max-content;
+  z-index: 6;
+}
+
+.ex-extra-grid {
+  display: grid;
+  gap: 6px 12px;
+  grid-template-columns: repeat(4, auto);
+}
+
+/* A monster's detail, `PullMonsterDetail`'s labelled rows. */
+.ex-mon {
+  border-collapse: collapse;
+  font-size: 12px;
+  width: 100%;
+}
+
+.ex-mon th {
+  color: var(--text-lo-quiet);
+  font-weight: normal;
+  padding: 2px 10px 2px 0;
+  text-align: left;
+  vertical-align: top;
+  white-space: nowrap;
+}
+
+.ex-mon td {
+  overflow-wrap: anywhere;
+  padding: 2px 0;
+  white-space: pre-wrap;
+}
+
+/* mudtool's row classes, on this client's tokens. */
+.ex-mon tr[data-cls='b'] th,
+.ex-mon tr[data-cls='b'] td,
+.ex-mon tr[data-cls='bh'] th {
+  color: var(--text-hi);
+  font-weight: 600;
+}
+
+.ex-mon tr[data-cls='bh'] th {
+  color: var(--pending);
+  padding-top: 4px;
+}
+
+.ex-mon tr[data-cls='red'] > *,
+.ex-mon tr[data-cls='fear'] td,
+.ex-mon tr[data-cls='slay'] td {
+  color: var(--danger);
+}
+
+.ex-mon tr[data-cls='blue'] > * {
+  color: var(--map-stairs);
+}
+
+.ex-mon tr[data-cls='purple'] > * {
+  color: var(--marker);
+}
+
+.ex-mon tr[data-cls='green'] > *,
+.ex-mon tr[data-cls='poison'] td {
+  color: var(--ok);
+}
+
+.ex-mon tr[data-cls='confusion'] td {
+  color: var(--pending);
+}
+
+.ex-mon tr[data-cls='fear'] td,
+.ex-mon tr[data-cls='poison'] td,
+.ex-mon tr[data-cls='confusion'] td,
+.ex-mon tr[data-cls='slay'] td {
+  font-weight: 700;
+}
+
+.ex-mon tr + tr th,
+.ex-mon tr + tr td {
+  border-top: 1px solid color-mix(in srgb, var(--ink-line) 50%, transparent);
+}
+
+/* A race's stat twenty off the average, as MME's `RaceColorCode` colours it. */
+.ex-td[data-tone='hi'],
+.ex-mon tr[data-cls='stat-hi'] td {
+  color: var(--ok);
+}
+
+.ex-td[data-tone='lo'],
+.ex-mon tr[data-cls='stat-lo'] td {
+  color: var(--danger);
+}
+
+/*
+ * A clicked monster's or item's Edit (2026-10-20): this character's row in
+ * the settings editor, above what the realm knows. The editor's own inset is
+ * the list's, for a row under its summary; here there is no summary.
+ */
+.reference-rule-edit {
+  border-bottom: 1px solid var(--ink-line);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 8px;
+  overflow: visible;
+  padding: 0 0 10px;
+}
+
+.reference-rule-edit .message-editor {
+  margin: 0;
+}
+
+.reference-rule-heading {
+  color: var(--text-lo);
+  font-size: var(--font-micro);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  margin: 0;
+  text-transform: uppercase;
+}
+
+.reference-rule-realm {
+  align-items: center;
+  color: var(--text-lo);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+}
+
+.reference-edit.on {
+  color: var(--pending);
 }

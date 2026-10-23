@@ -22,6 +22,7 @@ import {
   turnedAside,
   withArrival,
   withBlow,
+  withMegaCount,
   type CombatTally
 } from '../tally';
 
@@ -511,5 +512,59 @@ describe('experience sampled for the rate graph', () => {
     };
     const baseline = { ...now, at: 100, experience: 20, samples: [at(20, 50)] };
     expect(sinceBaseline(now, baseline).samples).toEqual([at(0, 100), at(30, 150)]);
+  });
+});
+
+/*
+ * What only the MegaMUD engine counts (2026-10-19): its window's rungs, a
+ * round's damage, and the items and copper it collected, sold and stashed.
+ */
+describe("the MegaMUD engine's counts", () => {
+  const counted = (): CombatTally =>
+    [
+      { kind: 'cast', mode: 'pre', took: true, command: 'stun' },
+      { kind: 'cast', mode: 'pre', took: false, command: 'stun' },
+      { kind: 'blow', mode: 'pre', damage: 9, command: 'stun' },
+      { kind: 'round', damage: 30 },
+      { kind: 'items', how: 'collected', count: 2 },
+      { kind: 'copper', how: 'deposited', copper: 4000 }
+    ].reduce<CombatTally>(
+      (tally, count, i) =>
+        withMegaCount(tally, count as Parameters<typeof withMegaCount>[1], 1000 + i),
+      NO_TALLY
+    );
+
+  it('folds each in, and opens the scope', () => {
+    const tally = counted();
+    expect(tally.since).toBe(1000);
+    expect(tally.mega?.modes.pre).toEqual({
+      took: 1,
+      failed: 1,
+      blows: { hits: 1, damage: 9, least: 9, most: 9 },
+      command: 'stun'
+    });
+    expect(tally.mega?.rounds).toEqual({ hits: 1, damage: 30, least: 30, most: 30 });
+    expect(tally.mega?.items.collected).toBe(2);
+    expect(tally.mega?.copper.deposited).toBe(4000);
+  });
+
+  it('reads from a baseline like every other count', () => {
+    const base = counted();
+    const later = withMegaCount(base, { kind: 'round', damage: 50 }, 2000);
+    const since = sinceBaseline(later, base);
+    expect(since.mega?.rounds.hits).toBe(1);
+    expect(since.mega?.rounds.damage).toBe(50);
+    expect(since.mega?.modes.pre.took).toBe(0);
+    expect(since.mega?.modes.pre.command).toBe('stun');
+    expect(since.mega?.copper.deposited).toBe(0);
+  });
+
+  it('is absent where the engine never ran, and read back from disk', () => {
+    expect(NO_TALLY.mega).toBeUndefined();
+    expect(sinceBaseline(NO_TALLY, NO_TALLY).mega).toBeUndefined();
+    expect(isCombatTally(JSON.parse(JSON.stringify(counted())))).toBe(true);
+    const broken = JSON.parse(JSON.stringify(counted()));
+    broken.mega.modes.multi = null;
+    expect(isCombatTally(broken)).toBe(false);
   });
 });

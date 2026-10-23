@@ -1,9 +1,3 @@
-import { flyoutAnchor, isSelf } from './players';
-import { t } from './i18n';
-import type { PopoverAnchor } from './popover';
-import { ownGang, type CharacterState } from '@shared/character';
-import { playerKey, type PlayerRecord } from '@shared/players';
-
 /**
  * A gang is an entity, and this is what the client knows about one.
  *
@@ -21,6 +15,11 @@ import { playerKey, type PlayerRecord } from '@shared/players';
  * delicate is the merge: two sources that each know half of the answer, one of
  * which does not file this character at all.
  */
+import { flyoutAnchor, isSelf } from './players';
+import { t } from './i18n';
+import type { PopoverAnchor } from './popover';
+import { ownGang, type CharacterState } from '@shared/character';
+import { playerKey, type PlayerRecord } from '@shared/players';
 
 /**
  * One row of a gang's membership: what a listing said, plus who is here.

@@ -273,4 +273,33 @@ describe('the ways out that leave the plane', () => {
     ]);
     expect(at(localMap(graph, '1/1'), '1/1')?.away).toBeUndefined();
   });
+
+  /*
+   * One mark a landing (2026-10-19): the Grey Lord answers `code` and
+   * `teleport` with the same room, and a ring each crowded his room's side.
+   * The way with nothing in it is the one kept; a way with conditions the
+   * client cannot read is marked as wanting something.
+   */
+  it('marks one teleport a landing, the unguarded kept, and a guarded one as wanting something', () => {
+    const graph = makeWorld([
+      {
+        m: 1,
+        r: 1,
+        n: 'Throne Room',
+        x: {},
+        cmd: [
+          { say: ['ask lord code'], to: '1/2', need: ['checkability 127 2'] },
+          { say: ['ask lord teleport'], to: '1/2' },
+          { say: ['ask lord threat'], to: '1/3', need: ['class 9'] }
+        ]
+      },
+      { m: 1, r: 2, n: 'Hall', x: {} },
+      { m: 1, r: 3, n: 'Plains', x: {} }
+    ]);
+    const away = at(localMap(graph, '1/1'), '1/1')?.away ?? [];
+    expect(away.map((way) => [way.to, way.command, way.obstacle !== undefined])).toEqual([
+      ['1/2', 'ask lord teleport', false],
+      ['1/3', 'ask lord threat', true]
+    ]);
+  });
 });

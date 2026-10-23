@@ -9,6 +9,9 @@ import ReferenceDetail, {
   type ReferenceEntry
 } from './ReferenceDetail';
 import EntityNumber from './EntityNumber';
+import Icon from './Icon';
+import { ItemRuleEdit, MonsterRuleEdit, type ReferenceRules } from './ReferenceRuleEdit';
+import { keepFocus } from '../lib/focus';
 import PopoverHead, { PopoverSizer } from './PopoverHead';
 import type { RealmFamily } from '@shared/character';
 import { type PopoverAnchor } from '../lib/popover';
@@ -20,8 +23,7 @@ import type { ShopPlace, WorldLookup } from '@shared/world';
  * A name somebody clicked, and where: the element on a card, or the box of a
  * word in the console, which has no element of its own — xterm paints cells,
  * so a link there is a rectangle rather than a node.
- */
-/**
+ *
  * Built fresh per click on purpose: effects key on the object, so the same
  * name clicked twice still re-opens where a bare string would compare equal.
  */
@@ -61,6 +63,11 @@ export interface ReferencePopoverProps {
   onName?: ((name: string, anchor: HTMLElement) => void) | null;
   /** This character's supplies list and the write. See `ReferenceDetailProps`. */
   supplies?: SupplyList | null;
+  /**
+   * This character's own monster and item rows, for the heading's Edit
+   * (2026-10-20). Null draws no Edit.
+   */
+  rules?: ReferenceRules | null;
   onDismiss(): void;
 }
 
@@ -88,9 +95,16 @@ export default function ReferencePopover({
   onRoom = null,
   onName = null,
   onDismiss,
-  supplies = null
+  supplies = null,
+  rules = null
 }: ReferencePopoverProps) {
   const [entry, setEntry] = useState<ReferenceEntry | null | 'pending'>('pending');
+  /*
+   * The Edit open under the heading. Closed again by the next name asked
+   * about, which is a different row.
+   */
+  const [editing, setEditing] = useState(false);
+  const [saved, setSaved] = useState(false);
   /*
    * Kept beside the entry, from the same answer: `ClassOk` names a class by row
    * id and the table is the realm's, so the panel would otherwise draw `#12`
@@ -123,7 +137,7 @@ export default function ReferencePopover({
    */
   const frame = usePopoverFrame({
     anchor: asked.anchor,
-    measure: [entry, resized],
+    measure: [entry, resized, editing],
     onDismiss,
     whenAnchorGone: 'hold'
   });
@@ -137,6 +151,8 @@ export default function ReferencePopover({
   useEffect(() => {
     let live = true;
     setEntry('pending');
+    setEditing(false);
+    setSaved(false);
     void lookup(asked.name)
       .then((answer) => {
         if (!live) return;
@@ -187,6 +203,28 @@ export default function ReferencePopover({
                   without it the panel a clicked name opens would be the one
                   surface that could not say which row it was about. */}
               <EntityNumber of={entryNumber(entry)} />
+              {rules !== null && (entry.kind === 'mob' || entry.kind === 'item') && (
+                <button
+                  aria-pressed={editing}
+                  className={`card-action reference-edit${editing ? ' on' : ''}`}
+                  onClick={() => {
+                    // An editor open is kept, not lost to the next stray click.
+                    if (!editing && !frame.pinned) frame.togglePin();
+                    setEditing(!editing);
+                    setSaved(false);
+                  }}
+                  onMouseDown={keepFocus}
+                  title={
+                    entry.kind === 'mob'
+                      ? t('cards.reference.edit.monsterHint')
+                      : t('cards.reference.edit.itemHint')
+                  }
+                  type="button"
+                >
+                  <Icon name="edit" />
+                  <span className="sr-only">{t('cards.reference.edit.button')}</span>
+                </button>
+              )}
             </>
           ) : null
         }
@@ -204,18 +242,45 @@ export default function ReferencePopover({
         ) : entry === null ? (
           <div className="empty">{t('cards.reference.notFound')}</div>
         ) : (
-          <ReferenceDetail
-            classNames={classNames}
-            entry={entry}
-            heading={false}
-            level={level}
-            onName={onName}
-            onResize={onResize}
-            onRoom={onRoom}
-            realm={realm}
-            shopPlaces={shopPlaces}
-            supplies={supplies}
-          />
+          <>
+            {editing && rules !== null && entry.kind === 'mob' && (
+              <MonsterRuleEdit
+                name={entry.name}
+                onDone={(wrote) => {
+                  setEditing(false);
+                  setSaved(wrote);
+                }}
+                store={rules.monsters}
+              />
+            )}
+            {editing && rules !== null && entry.kind === 'item' && (
+              <ItemRuleEdit
+                name={entry.name}
+                onDone={(wrote) => {
+                  setEditing(false);
+                  setSaved(wrote);
+                }}
+                store={rules.items}
+              />
+            )}
+            {saved && (
+              <p className="messages-status ok" role="status">
+                {t('cards.reference.edit.saved')}
+              </p>
+            )}
+            <ReferenceDetail
+              classNames={classNames}
+              entry={entry}
+              heading={false}
+              level={level}
+              onName={onName}
+              onResize={onResize}
+              onRoom={onRoom}
+              realm={realm}
+              shopPlaces={shopPlaces}
+              supplies={supplies}
+            />
+          </>
         )}
       </div>
       <PopoverSizer onReset={frame.onSizeReset} onSize={frame.onSize} />

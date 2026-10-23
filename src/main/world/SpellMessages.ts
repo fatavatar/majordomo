@@ -16,19 +16,8 @@
  */
 import fs from 'node:fs';
 
-import {
-  parseSpellMessagesCsv,
-  SpellMessageBook,
-  type SpellMessageRow
-} from '../../shared/spell-messages';
+import { parseSpellMessagesCsv, type SpellMessageRow } from '../../shared/spell-messages';
 import { t } from '../app/i18n';
-
-export function loadSpellMessages(
-  file: string,
-  notify?: (message: string) => void
-): SpellMessageBook {
-  return SpellMessageBook.fromRows(loadSpellMessageRows(file, notify));
-}
 
 /**
  * The file's rows rather than a book of them, for a caller that lays a

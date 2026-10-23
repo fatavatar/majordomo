@@ -68,6 +68,16 @@ export function localMap(graph: WorldGraph, centre: RoomId, radius = DEFAULT_RAD
       shop: room.shop !== undefined,
       lair: room.lair !== undefined
     };
+    // Where each way out on the plane leads, so the picture joins only the rooms it does.
+    const exitsTo: Partial<Record<Direction, RoomId>> = {};
+    for (const exit of room.exits) {
+      if (STEP[exit.direction as Direction] === null) continue;
+      if (exit.requirement?.spellEffect === 'scatters') continue;
+      exitsTo[exit.direction as Direction] = graph.beyond(exit);
+    }
+    if (Object.keys(exitsTo).length > 0) cell.exitsTo = exitsTo;
+    if ((room.npcId ?? 0) > 0) cell.npc = true;
+    if ((room.commands?.length ?? 0) > 0) cell.commands = true;
     const place = room.shop === undefined ? undefined : graph.shop(room.shop)?.kind;
     if (place !== undefined) cell.place = place;
 
@@ -122,6 +132,23 @@ export function localMap(graph: WorldGraph, centre: RoomId, radius = DEFAULT_RAD
       const to = roomId(portal.map, portal.room);
       const destination = graph.byId(to);
       if (!destination) continue;
+      /*
+       * One mark a landing: the Grey Lord answers `code` and `teleport` both
+       * with 1/224 (2026-10-19), and two rings for one place crowd the room's
+       * side. The way with nothing in it is the one kept.
+       */
+      /*
+       * Guarded where it wants anything: a gate the router reads, or a
+       * condition it cannot (`unread`) — the barmaid's `adventure` is class 9
+       * and charm, which a ring with no bar said nothing about.
+       */
+      const guarded =
+        portal.requirement.kind !== 'text' || (portal.requirement.unread?.length ?? 0) > 0;
+      const held = away.findIndex((each) => each.kind === 'teleport' && each.to === to);
+      if (held !== -1) {
+        if (away[held]!.obstacle !== undefined && !guarded) away.splice(held, 1);
+        else continue;
+      }
       away.push({
         kind: 'teleport',
         to,
@@ -129,9 +156,7 @@ export function localMap(graph: WorldGraph, centre: RoomId, radius = DEFAULT_RAD
         command: portal.requirement.commands?.[0] ?? portal.requirement.raw,
         // An unguarded portal's requirement is only its phrase — the command
         // above says that — so it is an obstacle only when it wants something.
-        ...(portal.requirement.kind !== 'text'
-          ? { obstacle: describeObstacle(portal.requirement, graph) }
-          : {})
+        ...(guarded ? { obstacle: describeObstacle(portal.requirement, graph) } : {})
       });
     }
     if (away.length > 0) cell.away = away;

@@ -63,8 +63,7 @@ export interface Rule {
  * verbatim in `fields` for the tracker to read what it recognises and skip
  * the rest. `HP=n/n` is current *of maximum* — the number this client
  * otherwise waits on a stat sheet for, printed on every line.
- */
-/**
+ *
  * The prompt, and the one thing that says the character is in the realm.
  *
  * **Health may be negative and the pattern used to refuse it.** A character on
@@ -88,7 +87,7 @@ export const STATUS_LINE =
  * One statement of each pattern, read twice: by the rules below that type the
  * line, and by `afflictionOnset`, which answers *what does this sentence turn
  * on* for a caller holding a sentence rather than a line. Two copies of a
- * regex agree until one is edited, which is the lesson `GUARD_FIELDS` records.
+ * regex agree until one is edited.
  *
  * `afflictionOnset` exists because the **ending** of a condition is not always
  * one of the four sentences below it: the spell message table pairs `You are
@@ -192,8 +191,7 @@ export const PLAYER_STATUS_HEADER = /^Name:\s+[\w\s]+\s+Lives\/CP:\s+\d+\/\d+/;
 
 /**
  * The `st` sheet's lines, each without the countdown Paramud prints after an
- * active effect (`(42s)`). Read by `CharacterTracker.readSheet` and by
- * `MessageTriggers.settle`, which must strip it the same way.
+ * active effect (`(42s)`). Read by `CharacterTracker.readSheet`.
  */
 export function sheetLines(text: string): Array<{ sentence: string; seconds: number | null }> {
   const lines: Array<{ sentence: string; seconds: number | null }> = [];
@@ -241,11 +239,6 @@ export const RULES: Rule[] = [
   },
   { type: 'prompt-selection', pattern: /^Please enter your selection:/ },
   { type: 'prompt-realm', pattern: /^Please select a realm:/ },
-  {
-    type: 'realm-listed',
-    pattern: /^\[(?<number>\d+)\] \. (?<name>.+?) \([^)]*\) \[ (?<mode>PvE|PvP Enabled) \]\s*$/
-  },
-  { type: 'realm-hang-penalty', pattern: /^\s*\. \. Hang Penalties (?<percent>\d+)%\s*$/ },
   { type: 'prompt-character', pattern: /^Please select a character:/ },
   { type: 'prompt-menu', pattern: /^\[(?<realm>MAJORMUD|PARADIGM)\]:/ },
   { type: 'login-failed', pattern: /^Invalid username\/password!/ },
@@ -340,7 +333,7 @@ export const RULES: Rule[] = [
       /^Encumbe?rance:\s+(?<carried>\d+)\/(?<max>\d+)(?:\s+-\s+(?<encumbranceWord>[A-Za-z][A-Za-z ]*?))?(?:\s+\[|\s*$)/
   },
   /*
-   * `train` at the guild, captured live (`npm run probe:play`, 2026-08-26):
+   * `train` at the guild, captured live (`npm run probe:play`, a probe since removed, 2026-08-26):
    *
    *     You hand over 0 copper farthings to train to the next level!
    *     Welcome to level 2!
@@ -805,8 +798,7 @@ export const RULES: Rule[] = [
    * refuses on the **weapon in hand** rather than on the class
    * (`AttackCommand.cs:115` reads `WeaponSlot.EquippedItem.CanBackstab`,
    * where every other arm of that switch reads `GetAbility`). A refusal about
-   * equipment lasts exactly as long as the equipment — see
-   * `AutoCombat.refused` — and the group is what lets the reader tell the two
+   * equipment lasts exactly as long as the equipment, and the group is what lets the reader tell the two
    * apart without matching the sentence a second time.
    *
    * Two wordings, and **the wire's comes first**: `You cannot backstab with
@@ -832,7 +824,7 @@ export const RULES: Rule[] = [
    * `Your spell has no effect on adult red dragon.` (captures/078, 105) and
    * `Your spell has no effect in this room!` (captures/041, 059). The sentence
    * names the target where it has one and never the spell; the spell is the
-   * command that provoked it, which is `AutoCombat`'s to remember.
+   * command that provoked it, which is the fight's to remember.
    */
   {
     type: 'spell-ineffective',
@@ -926,7 +918,7 @@ export const RULES: Rule[] = [
    * knowledge of pressure points!` (corpus, and live on the sanctioned realm
    * 2026-09-04). Both are the same fact as `You cast X, and …` — a self cast
    * that landed — and were classified as `unknown`, so neither power ever
-   * reached `CharacterState.buffs` and `Blessings` recast both on its 30s
+   * reached `CharacterState.buffs` and the old `Blessings` recast both on its 30s
    * retry floor all evening (`logs/2026-09-04_12-28-42_main.mudcap.jsonl`).
    * The onset that follows (`You feel ferocious!`, `You are using pressure
    * points!`) is per-power realm message data and is not the signal.
@@ -980,7 +972,7 @@ export const RULES: Rule[] = [
    * Monsters, Races, Rooms, Shops, Spells, TBInfo and nothing else — so they
    * cannot be enumerated, and a pattern per remembered phrasing would be a
    * pattern from memory. A buff whose ending the client cannot read is
-   * expired by its configured fallback clock instead (`Blessings`).
+   * expired by its configured fallback clock instead.
    */
   {
     type: 'user-buff-expired',
@@ -1542,7 +1534,7 @@ export const RULES: Rule[] = [
    * the corpus. Unread, the peek it answers stayed at the head of the
    * expectation queue and every room block after it answered one claim late;
    * see `Expectations.shiftPeekRefused`. Its own type rather than a fourth
-   * `direction-failed` shape because `Walker` acts on that one as its step
+   * `direction-failed` shape because a walk acts on that one as its step
    * being refused, and a player's look during a walk is not. The direction is
    * the server's own word and is kept as printed.
    */
@@ -1561,8 +1553,8 @@ export const RULES: Rule[] = [
    * The barrier is captured because the two `direction-failed` shapes are not
    * the same fact. `There is no exit in that direction!` means the realm data
    * was wrong and no retry helps; a closed door is closed until something opens
-   * it, and `open` is the thing that opens it. `Walker` reads the difference —
-   * see `automation.movement.openDoors`.
+   * it, and `open` is the thing that opens it. The engine's door code reads
+   * the difference.
    */
   {
     type: 'direction-failed',
@@ -1614,8 +1606,7 @@ export const RULES: Rule[] = [
    *
    * A toll refusal consumes the move like every other `direction-failed`, and
    * that is the whole point: `pendingMoves` only falls when a room or a refusal
-   * answers the step, `AutoCombat.noteMovePending` suppresses retaliation while
-   * one is outstanding, and nothing ever times it out. So an unread refusal
+   * answers the step, retaliation was held while one was outstanding, and nothing ever times it out. So an unread refusal
    * does not merely lose a fact — it stops the character hitting back **for the
    * rest of the session**, which is what the three unanswered dog attacks above
    * are. The character stood there because a line went unread.
@@ -1666,7 +1657,7 @@ export const RULES: Rule[] = [
    * `door`, `gate` and `portcullis` for one frame. Anchoring on the word
    * `door` was harmless while the step went out behind every `open` anyway —
    * the direction's own refusal took the next rung — and stopped being so when
-   * `Walker.sendOpen` started waiting for this sentence, because a *gate*'s
+   * the old walker's `sendOpen` started waiting for this sentence, because a *gate*'s
    * success would then have matched nothing. The player's own transcript is
    * the wire's word on the substitution (`The gate is closed!`, `The gate is
    * locked.`, `You bashed the gate open.`, live 2026-09-05); only `door` has
@@ -1757,8 +1748,8 @@ export const RULES: Rule[] = [
    * failed `disarm` says (docs/greatermud/movement.md, *Searching, traps and
    * discovery*), and the words name neither skill. So the block type says only
    * what the wire says — a skill was tried and did not work — and the reader
-   * supplies the context. `Walker` reads it only while it has a lock-pick in
-   * flight for the step it is on.
+   * supplies the context: it is read only while a lock-pick is in flight for
+   * the step under way.
    */
   { type: 'skill-failed', pattern: /^Your skill fails you this time\.$/ },
   /*
@@ -1821,7 +1812,7 @@ export const RULES: Rule[] = [
    */
   { type: 'target-ambiguous', pattern: /^Please be more specific\./ },
   { type: 'open-failed', pattern: /^That is not a door or a gate!/ },
-  // `open` at a locked door, captured live in the arena (`npm run probe:play`).
+  // `open` at a locked door, captured live in the arena (`npm run probe:play`, a probe since removed).
   {
     type: 'open-failed',
     pattern: /^The (?<barrier>door|gate|portcullis) is (?<reason>locked)\.$/
@@ -1937,8 +1928,8 @@ export const RULES: Rule[] = [
    * flickers and goes out.` (live, 2026-09-03, festus) and `Your lamp runs out
    * of oil, and goes out.` (the corpus). The torch stays readied and in the
    * pack — the listing would print `(Readied/0)` — so this is the charge
-   * reaching zero and nothing else; `AutoLight` removes it before lighting the
-   * next one, because the server refuses to light over an occupied slot.
+   * reaching zero and nothing else; it has to be removed before the next one
+   * is lit, because the server refuses to light over an occupied slot.
    */
   {
     type: 'light-out',
@@ -3001,10 +2992,18 @@ export const BATCH_RULES: BatchRule[] = [
        */
       /^(?:(?<resourceWord>Mana|Kai):\s+(?:\*\s*)?(?<mana>\d+)\/(?<manaMax>\d+))?\s*(?:Spellcasting:\s+(?<spellcasting>\d+)\s+)?Traps:\s+(?<traps>\d+)/,
       /^\s*Picklocks:\s+(?<picklocks>\d+)/,
-      /^Strength:\s+(?<strength>\d+)\s+Agility:\s+(?<agility>\d+)\s+Tracking:\s+(?<tracking>\d+)/,
+      /*
+       * A stat may carry the `*` the mana figures do, and hard against the
+       * colon: `Strength: *205    Agility:*150` and `Intellect:*105` on
+       * Fatty's sheet (2026-10-19), a stat items or spells have raised. Without
+       * it each line failed whole, the strength and agility stayed unknown,
+       * and MMUD Explorer swung his Mithril Hammer at agility 0 — fewer than
+       * the five swings he gets.
+       */
+      /^Strength:\s*(?:\*\s*)?(?<strength>\d+)\s+Agility:\s*(?:\*\s*)?(?<agility>\d+)\s+Tracking:\s*(?:\*\s*)?(?<tracking>\d+)/,
       // Captured from the live server; the ported qualifiers did not have these.
-      /^Intellect:\s+(?<intellect>\d+)\s+Health:\s+(?<health>\d+)\s+Martial Arts:\s+(?<martialArts>\d+)/,
-      /^Willpower:\s+(?<willpower>\d+)\s+Charm:\s+(?<charm>\d+)\s+MagicRes:\s+(?<magicRes>\d+)/
+      /^Intellect:\s*(?:\*\s*)?(?<intellect>\d+)\s+Health:\s*(?:\*\s*)?(?<health>\d+)\s+Martial Arts:\s*(?:\*\s*)?(?<martialArts>\d+)/,
+      /^Willpower:\s*(?:\*\s*)?(?<willpower>\d+)\s+Charm:\s*(?:\*\s*)?(?<charm>\d+)\s+MagicRes:\s*(?:\*\s*)?(?<magicRes>\d+)/
     ]
   }
 ];

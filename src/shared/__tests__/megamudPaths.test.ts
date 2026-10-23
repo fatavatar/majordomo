@@ -41,7 +41,8 @@ describe("reading MegaMUD's recorded paths", () => {
       area: 'Island',
       start: 'Ancient Crypt',
       startRow: null,
-      steps: ['w', 's', 'hide 500 gold']
+      steps: ['w', 's', 'hide 500 gold'],
+      codes: [0x3c900060, 0x3c900015, 0x3c900011]
     });
   });
 
@@ -82,6 +83,16 @@ describe('MegaMUD paths that crossed the wire', () => {
       asMegaMudPaths([good, null, 'x', { ...good, start: '' }, { ...good, steps: [] }])
     ).toEqual([good]);
     expect(asMegaMudPaths('not a list')).toEqual([]);
+  });
+
+  /* A code out of step with its steps names the wrong room for every one after it. */
+  it('keeps each step’s code beside it, or none at all', () => {
+    const good = readMegaMudLoop('Acryloop.mp', LOOP)!;
+    expect(asMegaMudPaths([{ ...good, steps: ['w', '', 's'], codes: [1, 2, 3] }])[0]).toMatchObject(
+      { steps: ['w', 's'], codes: [1, 3] }
+    );
+    expect(asMegaMudPaths([{ ...good, codes: [1, 2] }])[0]?.codes).toBeUndefined();
+    expect(asMegaMudPaths([{ ...good, codes: [1, 2, -3] }])[0]?.codes).toBeUndefined();
   });
 
   it('holds a payload to its ceilings', () => {

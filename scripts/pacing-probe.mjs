@@ -56,7 +56,6 @@ function open(profile) {
     // Nothing standing may send commands of its own into a measurement.
     {
       ...profile.config.automation,
-      idle: { ...profile.config.automation.idle, enabled: false },
       onEnterRealm: [],
       rules: []
     },

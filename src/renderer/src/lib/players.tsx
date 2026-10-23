@@ -1,9 +1,3 @@
-import { keepFocus } from './focus';
-import { t } from './i18n';
-import type { PopoverAnchor } from './popover';
-import { playerKey, type PlayerRecord } from '@shared/players';
-import type { CharacterState } from '@shared/character';
-
 /**
  * How the cards about other people phrase a sighting.
  *
@@ -17,6 +11,11 @@ import type { CharacterState } from '@shared/character';
  * count of minutes falls, and what a room this client could not resolve is
  * allowed to claim.
  */
+import { keepFocus } from './focus';
+import { t } from './i18n';
+import type { PopoverAnchor } from './popover';
+import { playerKey, type PlayerRecord } from '@shared/players';
+import type { CharacterState } from '@shared/character';
 
 /**
  * How long ago, in the coarsest unit that is still true.

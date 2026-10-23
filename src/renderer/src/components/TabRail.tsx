@@ -4,7 +4,7 @@ import { createPortal } from 'react-dom';
 import Icon from './Icon';
 import { reordered } from '../lib/reorder';
 
-import { ratio, vitalLevel, type CharacterState, type VitalThresholds } from '@shared/character';
+import { ratio, vitalLevel, type CharacterState } from '@shared/character';
 import type { VitalsUiConfig } from '@shared/config';
 import type { SessionId, SessionSummary } from '@shared/ipc';
 import type { WalkProgress } from '@shared/walk';
@@ -32,13 +32,14 @@ export interface RailView {
   /** The loop it is running, if any — the rail says `looping` off this. */
   loop: LoopProgress;
   /**
-   * Alerts raised while nobody was looking at this character.
+   * The tab alerts raised while nobody was looking (`TAB_ALERTS`), and the
+   * newest.
    *
    * The point of running four characters is that three of them are unattended,
    * and the point of this rail is that it reports on the ones whose terminal is
    * not on screen. Vitals and walk state already reached it; alerts did not.
    */
-  unseen: { critical: number; warning: number; latest: string | null };
+  unseen: { alerts: number; latest: string | null };
 }
 
 export interface TabRailProps {
@@ -107,30 +108,15 @@ function alertLabel(count: number): string {
 }
 
 /**
- * Whether somebody the roster lists as a person is among the attackers.
- *
- * The alert channel's own rule (`pvpNotice`): a name with no listing behind it
- * is as likely to be a quest NPC as a person, and crying wolf here is how the
- * mark stops being read. The chip covers the blows themselves — `attackers`
- * empties at `*Combat Off*` and on a move — not the five-minute hang-up
- * window a player's blow opens, which outlives it and is `HangUpWatch`'s to
- * judge.
- */
-function underPlayerAttack(character: CharacterState): boolean {
-  return character.combat.attackers.some((name) => {
-    const key = name.toLowerCase();
-    return character.online.some((entry) => entry.name.toLowerCase() === key);
-  });
-}
-
-/**
  * The tab's one chip: trouble first, then what the character is doing.
  *
  * Deliberately one word (`offline`, `fighting`, `resting`, `meditating`,
- * `recovering`, `walking`, `looping`, `stopped`) plus the marks that want a
- * person's eye — an alert raised while
- * nobody was looking, a vital in the red, a person attacking. Chat is not on
- * the list: a tab that lights up for every gossip line is a tab nobody reads.
+ * `recovering`, `walking`, `looping`, `stopped`) plus the one mark that wants
+ * a person's eye: a tab alert (`TAB_ALERTS`: hung up, the link dropped, fled,
+ * ran) raised while nobody was looking. Only those light a tab (2026-10-17);
+ * a red bar, a person's blow and a warning are on the character's own cards.
+ * Chat is not on the list: a tab that lights up for every gossip line is a
+ * tab nobody reads.
  *
  * Trouble outranks activity, and among the activities a fight outranks the
  * rest it interrupted, which outranks the walk that was holding for it, which
@@ -144,21 +130,20 @@ function underPlayerAttack(character: CharacterState): boolean {
  */
 function attention(
   view: RailView | undefined,
-  hpThresholds: VitalThresholds,
   restTo: number
 ): { level: 'critical' | 'warn' | 'info'; label: string; detail?: string } | null {
   if (!view) return null;
 
   /*
-   * Something was raised while nobody was looking. Above the connection and
-   * vital checks deliberately: those describe a *standing* condition that is
+   * Something was raised while nobody was looking. Above the connection's
+   * state deliberately: those describe a *standing* condition that is
    * still true and can be read off the tab at any time, and this describes
    * something that happened once and will otherwise be missed.
    */
-  if (view.unseen.critical > 0) {
+  if (view.unseen.alerts > 0) {
     return {
       level: 'critical',
-      label: alertLabel(view.unseen.critical),
+      label: alertLabel(view.unseen.alerts),
       ...(view.unseen.latest !== null ? { detail: view.unseen.latest } : {})
     };
   }
@@ -167,15 +152,6 @@ function attention(
   // Only after it had been up: a character nobody has connected yet is idle,
   // not in trouble.
   if (view.state.phase === 'closed') return { level: 'warn', label: t('tabs.tab.markOffline') };
-
-  // A person's blow, above the number it moves: the window it opens is the
-  // thing nothing else on screen shows.
-  if (underPlayerAttack(view.character)) {
-    return { level: 'critical', label: t('tabs.tab.markPvp') };
-  }
-
-  const hp = vitalLevel(view.character.vitals.hp, view.character.vitals.hpMax, hpThresholds);
-  if (hp === 'critical') return { level: 'critical', label: t('tabs.tab.markHurt') };
 
   if (view.character.inCombat) return { level: 'info', label: t('tabs.tab.markFighting') };
 
@@ -192,8 +168,7 @@ function attention(
    * Above the walk and the loop because it is the more specific fact: a loop
    * holding for health is *resting*, and `looping` there describes the lap
    * rather than the thing the lap is waiting for. Below the fight, because a
-   * fight interrupts a rest rather than the other way round, and below `hurt`,
-   * because a character resting at 12% is still in trouble.
+   * fight interrupts a rest rather than the other way round.
    *
    * `resting` and `meditating` are the server's own flag, read off the status
    * line -- never a guess from a threshold, which would report a rest the
@@ -249,7 +224,7 @@ function attention(
    * A route's own two holds, in the words the loop's already earned. A held
    * walk is still `walking`, so without this a tab read `walking` for a
    * character standing still — for minutes under `restBelow`, and for the
-   * whole of a fight whose flag has not arrived yet, since `Walker` also holds
+   * whole of a fight whose flag has not arrived yet, since a walk also holds
    * on a blow the tracker filed a round before `*Combat Engaged*`.
    */
   if (view.walk.status === 'walking' && view.walk.hold === 'fight') {
@@ -329,15 +304,6 @@ function attention(
     return { level: 'warn', label: t('tabs.tab.markStopped') };
   }
 
-  // Warnings come last: a failed command on an unattended character is worth
-  // knowing about, and worth knowing about less than a red health bar.
-  if (view.unseen.warning > 0) {
-    return {
-      level: 'warn',
-      label: alertLabel(view.unseen.warning),
-      ...(view.unseen.latest !== null ? { detail: view.unseen.latest } : {})
-    };
-  }
   return null;
 }
 
@@ -376,8 +342,10 @@ function activity(view: RailView | undefined): string | null {
  * its walk stopped. So the rail carries that, and the two orientations are not
  * one control at two angles: `left` costs horizontal space, which is the
  * expensive axis, and buys room for vitals in numbers, the room name and the
- * current action. `top` costs rows, which are cheap, and collapses to a name, a
- * state dot and a vitals bar. See docs/ui-design.md §3.8.
+ * current action. `top` costs rows, which are cheap, and draws the same tab —
+ * a one-line tab across the top read as squashed, its health a bar with no
+ * figures and nothing of where the character was or what it was doing
+ * (2026-10-14). See docs/ui-design.md §3.8.
  */
 function TabRail({
   sessions,
@@ -399,8 +367,9 @@ function TabRail({
    * Stacked down an edge, rather than which edge.
    *
    * Everything below that used to ask for `left` was asking *is there room for
-   * words* — the health in figures, the room name, and the label on the
-   * `+` button. `right` is the same rail mirrored and has exactly as much room,
+   * words* — now only the label on the `+` button, the tabs themselves being
+   * the same tab whichever way the rail runs (2026-10-14). `right` is the same
+   * rail mirrored and has exactly as much room,
    * so testing for one side would have silently stripped a mirrored rail back
    * to the across-the-top shape it never asked for.
    */
@@ -525,7 +494,7 @@ function TabRail({
           const vitals = view?.character.vitals;
           const hp = ratio(vitals?.hp ?? null, vitals?.hpMax ?? null);
           const hpLevel = vitalLevel(vitals?.hp ?? null, vitals?.hpMax ?? null, thresholds.hp);
-          const mark = attention(view, thresholds.hp, restToFor(session.id));
+          const mark = attention(view, restToFor(session.id));
           const doing = activity(view);
           const room = view?.character.room.name ?? null;
           const isActive = session.id === active;
@@ -713,14 +682,12 @@ function TabRail({
                     <span className="track">
                       <span className="fill" style={{ width: hp === null ? 0 : `${hp * 100}%` }} />
                     </span>
-                    {stacked && (
-                      <span className="figures">
-                        {vitals?.hp ?? '—'}
-                        {vitals?.hpMax === null || vitals?.hpMax === undefined
-                          ? ''
-                          : `/${vitals.hpMax}`}
-                      </span>
-                    )}
+                    <span className="figures">
+                      {vitals?.hp ?? '—'}
+                      {vitals?.hpMax === null || vitals?.hpMax === undefined
+                        ? ''
+                        : `/${vitals.hpMax}`}
+                    </span>
                   </span>
 
                   {/*
@@ -772,7 +739,7 @@ function TabRail({
                   </button>
                 </span>
 
-                {stacked && (room || doing) && <span className="where">{doing ?? room}</span>}
+                {(room || doing) && <span className="where">{doing ?? room}</span>}
               </div>
             </Fragment>
           );

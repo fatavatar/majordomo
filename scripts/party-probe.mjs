@@ -74,7 +74,6 @@ function open(profile) {
     world,
     {
       ...profile.config.automation,
-      idle: { ...profile.config.automation.idle, enabled: false },
       rules: []
     },
     profile.config.connection.login
@@ -200,7 +199,8 @@ async function main() {
     if (exit) {
       await say(one, exit.direction, 3000);
       await say(one, OPPOSITE[exit.direction], 3000);
-    } else console.log(`  no open step for the leader to take: ${JSON.stringify(roomOf(one).exits)}`);
+    } else
+      console.log(`  no open step for the leader to take: ${JSON.stringify(roomOf(one).exits)}`);
   }
   await say(two, 'backrank'); //         a rank change, which the roster shows
   await say(one, 'party');

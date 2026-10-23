@@ -216,25 +216,6 @@ console.log(
 );
 
 /*
- * The rule engine is the one part of Phase 5 a fixture cannot settle: it fires
- * on parsed state, and parsed state comes from a real server. So this check
- * runs with one rule loaded — through the *configuration*, which is how rules
- * are meant to arrive. A renderer-facing "load these rules now" call would be a
- * backdoor around the only path that matters.
- *
- * `pro` is the safe command to prove it with: read-only, understood by this
- * server (an unrecognised one would be *said out loud* to the room), and it
- * happens to be the command that answers where the character is.
- */
-const PROBE_RULE = {
-  name: 'live check: confirm position while idle',
-  when: 'every 3s',
-  if: ['inCombat == false'],
-  then: [{ command: 'pro', priority: 'idle', coalesce: 'live-check' }],
-  cooldownMs: 3000
-};
-
-/*
  * The copy gets its own directory, and the characters come with it.
  *
  * Characters live in `profiles/` *beside the resolved options file*, so a copy
@@ -249,7 +230,6 @@ const RUN_CONFIG = path.join(RUN_DIR, 'global', 'default.yaml');
 let runHome = home.root;
 try {
   const parsed = YAML.parse(optionsText) ?? {};
-  parsed.automation = { ...(parsed.automation ?? {}), rules: [PROBE_RULE] };
   fs.rmSync(RUN_DIR, { recursive: true, force: true });
   fs.mkdirSync(path.dirname(RUN_CONFIG), { recursive: true });
   fs.writeFileSync(RUN_CONFIG, YAML.stringify(parsed), 'utf8');
@@ -642,44 +622,6 @@ if (plan === null) {
       home?.room?.name
     );
   }
-}
-
-// -------------------------------------------------------- assert: the rules
-
-if (runHome === home.root) {
-  console.log('   SKIP  no rule was loaded, so nothing to check');
-} else {
-  let fired = null;
-  for (let i = 0; i < 40; i += 1) {
-    const trace = await evaluate(`window.mudengine.getAutomation('${SESSION}')`);
-    fired = (trace?.firings ?? []).find((entry) => entry.rule === PROBE_RULE.name) ?? null;
-    if (fired) break;
-    await sleep(500);
-  }
-  check(fired !== null, 'a rule loaded from configuration fires against live state');
-  check(
-    fired !== null && fired.commands.includes('pro'),
-    'and proposes the command it was written to propose',
-    JSON.stringify(fired)
-  );
-
-  /*
-   * Waited for, not read once.
-   *
-   * A firing is recorded when the *decision* is made and `sent` when the bytes
-   * go out, and between them is the arbiter -- which paces on the status line,
-   * because the server accepts about twenty commands in flight and silently
-   * discards the rest. Reading `sent` in the same breath as `firings` is
-   * therefore a race the queue is designed to lose, and it did: one run failed
-   * here and the next passed, with nothing changed.
-   */
-  let reached = false;
-  for (let i = 0; i < 20 && !reached; i += 1) {
-    const pending = await evaluate(`window.mudengine.getAutomation('${SESSION}')`);
-    reached = (pending?.sent ?? []).some((entry) => entry.command === 'pro');
-    if (!reached) await sleep(500);
-  }
-  check(reached, 'and the arbiter puts it on the wire');
 }
 
 // ------------------------------------------------------ assert: the password

@@ -33,19 +33,6 @@ export const DIRECTIONS: readonly Direction[] = [
   'd'
 ];
 
-/**
- * A word read as one of the ten, or null.
- *
- * Parse rather than validate, the way `asRoute` does: an exit's `direction` is
- * a `string` because it also carries a text exit's own word (`crimson portal`),
- * so the places that need *a move they can send as one word* narrow it here
- * instead of casting.
- */
-export function asDirection(input: string): Direction | null {
-  const word = input.trim().toLowerCase();
-  return (DIRECTIONS as readonly string[]).includes(word) ? (word as Direction) : null;
-}
-
 /** What the player types to go that way. */
 export const DIRECTION_COMMAND: Record<Direction, string> = {
   n: 'n',
@@ -83,47 +70,6 @@ export const OPPOSITE: Record<Direction, Direction> = {
   u: 'd',
   d: 'u'
 };
-
-/**
- * A direction as the *server* words it, or null.
- *
- * `DIRECTION_NAME` is the other direction — what this client calls each code —
- * and it is not enough to read the server with, because the server has more
- * than one word for the same way. Every entry here is a word a capture shows:
- *
- * | Word | Where |
- * |---|---|
- * | `north` … `down` | everywhere; `parseExit`'s own list |
- * | `below`, `above` | `Obvious exits: north, open trap door below` — 20 lines across the corpus |
- * | `downwards` | `You found an exit downwards!` (`captures/005:187`) |
- *
- * `upwards` is the one entry no capture shows, and it is here deliberately: it
- * is the unmirrored half of a captured pair, a word that costs nothing if no
- * realm ever prints it, and whose absence leaves a hidden **up** exit searched
- * for forever by a walk that cannot tell it has been found. That is a different
- * trade from inventing a *pattern*, which would claim a sentence exists.
- */
-const SPOKEN_DIRECTION: Readonly<Record<string, Direction>> = {
-  north: 'n',
-  south: 's',
-  east: 'e',
-  west: 'w',
-  northeast: 'ne',
-  northwest: 'nw',
-  southeast: 'se',
-  southwest: 'sw',
-  up: 'u',
-  down: 'd',
-  above: 'u',
-  below: 'd',
-  upwards: 'u',
-  downwards: 'd'
-};
-
-export function asSpokenDirection(input: string): Direction | null {
-  const word = input.trim().toLowerCase();
-  return SPOKEN_DIRECTION[word] ?? asDirection(word);
-}
 
 export const DIRECTION_NAME: Record<Direction, string> = {
   n: 'north',
@@ -235,6 +181,12 @@ export interface Requirement {
    * `Text: go crimson, enter crimson` yields both, first one preferred.
    */
   commands?: string[];
+  /**
+   * An earlier exit of this room that answers every command this one names
+   * (`Text: go alley` east and west of one room): the realm takes that one, so
+   * this exit is never reached by them. See `WorldGraph.toRoom`.
+   */
+  answeredBy?: Direction;
   /**
    * The item this exit demands, as an `Items` row id.
    *
@@ -416,6 +368,12 @@ export interface Requirement {
   /** `Hidden/Searchable` — must be searched for before it can be used. */
   searchable?: boolean;
   /**
+   * `Hidden/Passable` — not among the exits the room lists, and walked by its
+   * direction like any other: a plain exit where nothing else restricts it
+   * (2026-10-23). 997 of MudRev's 1,405 hidden exits.
+   */
+  passable?: boolean;
+  /**
    * `Hidden/Needs 2 Actions` — how many levers the realm says open it.
    *
    * Kept beside `actions` rather than derived from it, because the two can
@@ -439,12 +397,12 @@ export interface Requirement {
    * **`openableHere` is the gate, not this field.** A list with an `at` on any
    * member is a lever the character has to walk to, which the *router* still
    * does not plan; it is here so the client can say where it is. Everything
-   * priced or sent in place — `edgePenalty`, the chip, `Walker.pullLevers` —
+   * priced or sent in place — `edgePenalty`, the chip, `SessionHost.clearWay` —
    * asks `openableHere` first, and 150 exits answer yes. See `parseAction` for
    * where the data was hiding.
    *
-   * Walking to a lever elsewhere is `RemoteLever` and `Walker.fetchLever`,
-   * which read the *rooms'* own commands rather than this field — and have to,
+   * Walking to a lever elsewhere is `RemoteLever` and the walk's lever detour
+   * (`RouteStep.pull`), which read the *rooms'* own commands rather than this field — and have to,
    * because 25 of the 225 gated exits state no action at all.
    */
   actions?: RequirementAction[];
@@ -654,9 +612,9 @@ export interface RequirementAction {
  * Whether a hidden exit's levers can all be pulled without leaving the room.
  *
  * One reading, shared by the price (`edgePenalty`), the chip
- * (`describeObstacle`) and the walker's own rung (`pullLevers`), because three
- * copies of *can this be opened from here* agree exactly until one is edited —
- * the lesson `AutoCombat.quarry` already records.
+ * (`describeObstacle`) and the lever pulls (`SessionHost.clearWay`), because
+ * three copies of *can this be opened from here* agree exactly until one is
+ * edited.
  *
  * The second half of the test and not the whole of it: `buildRealm` writes
  * `actions` only where the realm's stated count matches the number of levers
@@ -666,6 +624,34 @@ export function openableHere(requirement: Requirement | null): boolean {
   if (requirement?.kind !== 'hidden') return false;
   const acts = requirement.actions;
   return acts !== undefined && acts.length > 0 && acts.every((act) => act.at === undefined);
+}
+
+/**
+ * Which skills can open a locked exit, by what the realm states of it: a
+ * `Key:` lock gives to a pick or a bash only where its bracket names that
+ * skill (`[or 157 picklocks]`, `[301 picklocks/strength]`), a `Door` with no
+ * bracket to either, and a stated difficulty above the character's skill is
+ * a wall, as the router prices it (`forcedDoorCost`). A skill not known
+ * (`null`) is not held against it. Anything else, or no requirement, says
+ * nothing and leaves both.
+ *
+ * Read by the MegaMUD engine's door code, which picked and bashed a gate
+ * that only its key opens (Fatty, 2026-10-16).
+ */
+export function forcibleBy(
+  requirement: Requirement | null,
+  picklocks: number | null,
+  strength: number | null
+): { pick: boolean; bash: boolean } {
+  const kind = requirement?.kind;
+  if (requirement === null || (kind !== 'key' && kind !== 'door'))
+    return { pick: true, bash: true };
+  const { pickDifficulty, bashDifficulty } = requirement;
+  if (kind === 'door' && pickDifficulty === undefined && bashDifficulty === undefined)
+    return { pick: true, bash: true };
+  const meets = (need: number | undefined, skill: number | null): boolean =>
+    need !== undefined && (need <= 0 || skill === null || skill >= need);
+  return { pick: meets(pickDifficulty, picklocks), bash: meets(bashDifficulty, strength) };
 }
 
 /**
@@ -947,14 +933,6 @@ export interface WorldShop {
 export type ShopKind = 'shop' | 'temple' | 'tavern' | 'bank' | 'trainer' | 'inn';
 
 /**
- * A trainer this character may use, and where it stands — the answer the
- * settings screen's picker and the levelling errand both read (todo 18).
- *
- * Only places the realm says will take this character at this level: a
- * trainer that refuses is a walk across two maps to be told so, and offering
- * one is offering a choice that cannot work.
- */
-/**
  * A bank counter the realm places, for the settings picker (todo 00).
  *
  * The shape `TrainerChoice` has, minus the arithmetic: a bank charges nothing
@@ -976,13 +954,25 @@ export interface BankChoice {
  * ranked by the detour as `BuyingPlace` is.
  */
 export interface CashPlace extends BankChoice {
-  /** What the character's own record says is on deposit there, in copper. */
-  copper: number;
+  /**
+   * What the character's own record says is on deposit there, in copper;
+   * null for a vault never asked, whose `bank` is said there before it is
+   * drawn from (2026-10-18).
+   */
+  copper: number | null;
   /** What stopping here adds to the way to the counter, in plain steps. */
   detour: number;
   moves: number;
 }
 
+/**
+ * A trainer this character may use, and where it stands — the answer the
+ * settings screen's picker and the levelling errand both read (todo 18).
+ *
+ * Only places the realm says will take this character at this level: a
+ * trainer that refuses is a walk across two maps to be told so, and offering
+ * one is offering a choice that cannot work.
+ */
 export interface TrainerChoice {
   /** The shop's own row, which is what the setting stores. */
   shop: number;
@@ -1025,6 +1015,12 @@ export type ItemHandover = {
   place?: string;
   /** The words that reach it. A death has none: nothing is said. */
   say?: string[];
+  /**
+   * What the answer takes, or wants carried, before it hands this over, by
+   * the realm's item id (format 53): the sleazy shopkeeper's `orb` takes a
+   * dark blue orb for the adamantite and moldy keys.
+   */
+  takes?: number[];
   /**
    * What the way to that room demands be carried, outermost frontier first.
    *
@@ -1180,6 +1176,8 @@ export interface ItemAsk {
   say: string;
   /** The dropper the phrase summons, where it is a summons rather than a handover. */
   summons?: string;
+  /** What the answer takes, or wants carried, first — fetched before it is asked (format 53). */
+  takes?: Array<{ id: number; name: string }>;
   /** How many moves from where the character stood, for the sentence. */
   steps: number;
 }
@@ -1270,12 +1268,19 @@ export interface WorldNames {
 }
 
 /**
- * A spell the realm knows: the reference a player used to keep on paper.
+ * A band of character levels an effect is gated to, as the realm's own
+ * `minlevel` / `maxlevel` state it. Absent on either side is unbounded there.
  *
- * Every field but the name is optional, and absent means *the realm does not
- * say* rather than zero — a spell that costs no mana and a spell whose cost is
- * not recorded are different facts, and only one of them can be acted on.
+ * `TextBlockPart.cs` answers both from the sheet with `Succeeded` or `Failed`,
+ * so what stands behind one happens to *some* character — and which one is
+ * stated, which is what lets the router stop pricing a sandstorm that cannot
+ * catch the character it is planning for (todo 01).
  */
+export interface LevelBand {
+  min?: number;
+  max?: number;
+}
+
 /**
  * What a room's own spell does to whoever stands in it, and what stops it.
  *
@@ -1293,20 +1298,6 @@ export interface WorldNames {
  * hundred rooms of damage, and the router has to price those differently or
  * the answer is wrong for one of the two characters asking.
  */
-/**
- * A band of character levels an effect is gated to, as the realm's own
- * `minlevel` / `maxlevel` state it. Absent on either side is unbounded there.
- *
- * `TextBlockPart.cs` answers both from the sheet with `Succeeded` or `Failed`,
- * so what stands behind one happens to *some* character — and which one is
- * stated, which is what lets the router stop pricing a sandstorm that cannot
- * catch the character it is planning for (todo 01).
- */
-export interface LevelBand {
-  min?: number;
-  max?: number;
-}
-
 export interface SpellHazard {
   /**
    * Hit points a tick in the room is expected to cost. Absent where the chain
@@ -1436,12 +1427,22 @@ export function hazardAvoided(
   return spells.some((spell) => spellsUp.includes(spell));
 }
 
+/**
+ * A spell the realm knows: the reference a player used to keep on paper.
+ *
+ * Every field but the name is optional, and absent means *the realm does not
+ * say* rather than zero — a spell that costs no mana and a spell whose cost is
+ * not recorded are different facts, and only one of them can be acted on.
+ */
 export interface WorldSpell {
   id: number;
   name: string;
   /** The abbreviation the realm accepts in place of the name. */
   short?: string;
   level?: number;
+  /** `Spells.Magery` and `MageryLVL` (format 49), as stated: which magic it is, and its level. */
+  magery?: number;
+  mageryLevel?: number;
   mana?: number;
   energy?: number;
   duration?: number;
@@ -1550,6 +1551,31 @@ export interface WorldSpell {
 }
 
 /**
+ * Whether a spell lasts: a `Dur`, or a duration that grows with level from
+ * none (`scaledDuration`). MudRev's necropotence is `Dur` 0 with `DurInc` 1
+ * per 5 levels, and was read as instant (2026-10-13).
+ *
+ * Or, given the realm's spells by id, a spell it casts that lasts: MudRev's
+ * songs are a spell with no `Dur` that casts the one that lasts, under the
+ * same name (song of agility, 48, casts 2156 at `Dur` 40), and Fatty's
+ * might, agility, great power and wisdom were never kept up (2026-10-14).
+ * One step only: what those cast in turn is not the song.
+ */
+export function spellLasts(spell: WorldSpell, byId?: (id: number) => WorldSpell | null): boolean {
+  const own = (one: WorldSpell): boolean => {
+    if (one.duration !== undefined) return true;
+    const growth = one.durationGrowth;
+    return growth !== undefined && growth[0] !== 0 && growth[1] !== 0;
+  };
+  if (own(spell)) return true;
+  if (byId === undefined) return false;
+  return (spell.casts ?? []).some((id) => {
+    const cast = byId(id);
+    return cast !== null && own(cast);
+  });
+}
+
+/**
  * A race the realm offers.
  *
  * The stat pair is `[minimum, maximum]` — where the race starts and the ceiling
@@ -1586,8 +1612,8 @@ export interface WorldRace {
  * A class the realm offers.
  *
  * Deliberately narrower than the table behind it: see `BuiltClass`. A hit-dice
- * pair whose order nothing has settled and a magery *type* whose numbering only
- * speaks for zero are both left out rather than published as facts.
+ * pair whose order nothing has settled is left out rather than published as a
+ * fact.
  */
 export interface WorldClass {
   id: number;
@@ -1596,6 +1622,10 @@ export interface WorldClass {
   expTable?: number;
   /** Magery level, 1-3. Absent for a class that casts nothing. */
   magery?: number;
+  /** `MageryType` (format 49): 1 mage, 2 priest, 3 druid, 4 bard, 5 kai. */
+  mageryType?: number;
+  /** `WeaponType` (format 49), as stated: 9 is a kai class's martial arts. */
+  weaponType?: number;
   /** How well it fights, on the realm's own 1-7 scale. */
   combat?: number;
   /**
@@ -1750,16 +1780,6 @@ export function parseLair(descriptor: string): { max: number | null; ids: number
 }
 
 /**
- * Where the realm puts a monster, by the name of the room it puts it in.
- *
- * Grouped by *name* because that is the answer to the question being asked.
- * `snow cat` is in 236 rooms of 25 names, and a list of 236 addresses is not
- * somewhere a person can decide to go; `Snowy Plains` is. The addresses are
- * carried underneath so a group of several is something to **choose from** —
- * never a button that walks to whichever room the file listed first, which is
- * the guess `ShopPlace` already refuses for the same reason.
- */
-/**
  * Rooms of one name that something is put in — a monster's spawn group, an
  * item's placement.
  *
@@ -1788,6 +1808,16 @@ export interface ItemPlaces {
   fixed?: true;
 }
 
+/**
+ * Where the realm puts a monster, by the name of the room it puts it in.
+ *
+ * Grouped by *name* because that is the answer to the question being asked.
+ * `snow cat` is in 236 rooms of 25 names, and a list of 236 addresses is not
+ * somewhere a person can decide to go; `Snowy Plains` is. The addresses are
+ * carried underneath so a group of several is something to **choose from** —
+ * never a button that walks to whichever room the file listed first, which is
+ * the guess `ShopPlace` already refuses for the same reason.
+ */
 export interface MobSpawn extends PlaceGroup {
   /**
    * How the realm puts it there.
@@ -1935,6 +1965,8 @@ export interface WorldMobRow {
    * a uniquely named boss, having no `rw`, carried no clock at all.
    */
   regenHours?: number;
+  /** `Monsters.ExpMulti` (format 49): what `experience` is multiplied by. */
+  expMulti?: number;
   follows?: number;
   averageDamage?: number;
   charmLevel?: number;
@@ -1991,6 +2023,11 @@ export interface MobRowChoice {
  */
 export interface WorldMob {
   name: string;
+  /**
+   * The name as the realm spells it, where that is not `name`'s lowercase
+   * (format 51): `Demon Trolloc`. What MegaMUD's monster records are named.
+   */
+  spelled?: string;
   /** Maximum health to work from: the high end when the realm data disagrees. */
   hp: number;
   /** Present only when several rows share the name and disagree. */
@@ -2067,6 +2104,8 @@ export interface WorldMob {
   regen?: number;
   /** Hours a placed one stays dead — `Monsters.RegenTime` (format 33). */
   regenHours?: number;
+  /** What `experience` is multiplied by for what it gives — `Monsters.ExpMulti` (format 49). */
+  expMulti?: number;
   /**
    * The chance it follows when this character leaves the room, as a percentage.
    *
@@ -2204,8 +2243,7 @@ export function nameAnswersTo(name: string, typed: string): boolean {
  * `rooms` is how many the way in puts under it before the nearest exit that
  * lifts it, counting the landing; `ends` false is a passage with no such
  * exit within `ticks` moves of the landing, which the router walls. Nothing
- * carried stops one: the answer is to keep moving, which is what
- * `Walker`'s move-only rule and the session's gates do inside it.
+ * carried stops one: the answer is to keep moving.
  */
 export interface Corridor {
   /** The spell the way in casts, and its name. */
@@ -2432,7 +2470,7 @@ export interface RoomCommand {
  * levers is two levers to pull; a count smaller than the levers found, or no
  * count at all, names *alternatives* — the reported gate says `Door` and has a
  * lever in each Guardroom flanking it, and the wire settled which reading is
- * right: one pull raised it. `Walker.fetchLever` is where that is acted on.
+ * right: one pull raised it. The walk's lever detour is where that is acted on.
  */
 export interface RemoteLever {
   /** The room it is pulled in. Equal to the exit's own room for 171 of 225. */
@@ -2489,7 +2527,7 @@ export function roomAddress(room: { map: number | null; number: number | null })
  * it — a step the walker sent, a direction the player typed, a party follow,
  * a drag. Nothing else needs to be true.
  *
- * It used to be `Walker.recent` instead, appended only when the *walker*
+ * It used to be the old walker's `recent` instead, appended only when the *walker*
  * confirmed a step of its own route, and that is a strictly smaller set in the
  * one situation the fact is wanted. Measured, and this type exists because of
  * it: `logs/2026-09-02_21-04-28_festus.mudcap.jsonl` t=418517, a loop replanned
@@ -2682,7 +2720,7 @@ export interface RouteStep {
    * reaches, because that is what the rest of the plan was priced against —
    * the arithmetic behind `moves` is `WorldGraph.scatterCosts`, and it prices
    * exactly *and then the client carries on from wherever you land*. The
-   * walker reads it as permission to be surprised (`Walker.scattered`): an
+   * walker reads it as permission to be surprised: an
    * arrival anywhere in `landing` is this step working, and the answer is to
    * plan again from there rather than to stop the walk.
    */
@@ -2718,16 +2756,6 @@ export interface RoutePull {
   opensName: string;
 }
 
-/**
- * One spell a route walks through, folded across every room that casts it.
- *
- * Said at the head of the plan rather than only on the steps, for the reason
- * the trap and lair counts are: a route of a hundred and four steps has its
- * summary off the top of the panel long before the reader reaches the rooms
- * that hurt. And the half that decides what to *do* is the last one — a
- * hundred rooms of the Silver River are a corridor if you fetch a log raft
- * first, and a wall of damage if you do not.
- */
 /**
  * A step through a scatter, and what it is expected to cost.
  *
@@ -2804,6 +2832,16 @@ export interface RouteInvocation {
   uses: number | null;
 }
 
+/**
+ * One spell a route walks through, folded across every room that casts it.
+ *
+ * Said at the head of the plan rather than only on the steps, for the reason
+ * the trap and lair counts are: a route of a hundred and four steps has its
+ * summary off the top of the panel long before the reader reaches the rooms
+ * that hurt. And the half that decides what to *do* is the last one — a
+ * hundred rooms of the Silver River are a corridor if you fetch a log raft
+ * first, and a wall of damage if you do not.
+ */
 export interface RouteHazard {
   /** The spell's own row, so a reader can ask the realm what stops it. */
   id: number;
@@ -2873,8 +2911,8 @@ export function trapsAlong(steps: readonly RouteStep[]): { count: number; worst:
 
 /**
  * The trap a step walks through, or null: the one requirement on a route that
- * is neither opened nor paid nor refused, and the one the walker rests before
- * (`Walker.holdForTrap`, `automation.health.restBeforeTraps`).
+ * is neither opened nor paid nor refused, and the one a walk rests before
+ * (a trap step's `DisarmTrap`).
  *
  * A `Spell Trap:` exit counts too, and did not until its spell was read (todo
  * 00, 2026-09-06). It is a trap by the server's own reckoning —
@@ -2941,8 +2979,7 @@ export function lairsAlong(steps: readonly RouteStep[]): {
  * was the tell: a **successful** route already carries `RouteStep.requirement`
  * per step and renders it, and a failed one carried nothing.
  *
- * **Accumulated, never first-match-wins**, on the model of `HangUp`'s
- * `{safe, reasons[]}`: a route can be stopped by a level gate *and* a locked
+ * **Accumulated, never first-match-wins**: a route can be stopped by a level gate *and* a locked
  * door, and naming one hides the other — so somebody clears the first and is
  * refused again by a condition that was there all along.
  *
@@ -3109,6 +3146,28 @@ export type RouteBlock =
     }
   | {
       /**
+       * A way only a word said in another room opens — a lever, a boulder —
+       * where the plan cannot fetch it: no way reaches the room it is said
+       * in (however far: past `tuning.world.leverDetourCost` a lever is still
+       * fetched where it is the only way, 2026-10-23), or it wants an item a
+       * listed pack lacks. Before this a refusal over one said *the realm data joins no
+       * path*: the Lava Tube's only door opens to `move boulder` in 7/1000
+       * (2026-10-19), and the realm data joins it perfectly well.
+       */
+      kind: 'lever';
+      at: RoomId;
+      to: RoomId;
+      name: string;
+      /** The realm's phrase, and the room it is said in. */
+      say: string;
+      leverAt: RoomId;
+      leverName: string;
+      /** The item the word wants, where the listed pack lacks it. */
+      itemId?: number;
+      itemName?: string;
+    }
+  | {
+      /**
        * A quest counter the exit wants, against what `abil` said this
        * character holds.
        *
@@ -3169,12 +3228,6 @@ export const ROUTE_BLOCK_KINDS = [
 ] as const;
 
 /**
- * One block as a sentence, naming the condition and the number it wanted.
- *
- * *Level 12 needed, at level 9* rather than *this character cannot walk it*:
- * the number that was not met is the whole of what somebody can act on.
- */
-/**
  * A copper figure as the realm would say it, for one sentence.
  *
  * Deliberately **not** in `coins.ts`, which states outright that it converts
@@ -3199,6 +3252,12 @@ function coinWords(copper: number): string {
 /** The rung `coinWords` reads against. `coins.ts` owns the ladder itself. */
 const COPPER_PER_GOLD = 100;
 
+/**
+ * One block as a sentence, naming the condition and the number it wanted.
+ *
+ * *Level 12 needed, at level 9* rather than *this character cannot walk it*:
+ * the number that was not met is the whole of what somebody can act on.
+ */
 export function describeBlock(block: RouteBlock): string {
   switch (block.kind) {
     case 'key':
@@ -3348,6 +3407,12 @@ export function describeBlock(block: RouteBlock): string {
         .join(', ');
       return `${block.name} is locked — needs ${opens.join(' or ')}; ${mine}`;
     }
+    case 'lever': {
+      const where = `${block.leverName} (${block.leverAt})`;
+      return block.itemName === undefined
+        ? `${block.name} opens only to "${block.say}" said in ${where}, which no way from here reaches`
+        : `${block.name} opens only to "${block.say}" said in ${where}, carrying ${block.itemName}`;
+    }
     case 'keptOut':
       return `${block.name} is kept out of — "${block.word}" is on your Keep Out Of list`;
     case 'unreachable':
@@ -3373,6 +3438,7 @@ export function blockItem(block: RouteBlock): { id: number; name: string } | nul
         ? null
         : { id: block.keyId, name: block.itemName };
     case 'carry':
+    case 'lever':
       return block.itemId === undefined || block.itemName === undefined
         ? null
         : { id: block.itemId, name: block.itemName };
@@ -3621,16 +3687,6 @@ export function chosenWay(route: Route): Route {
   const way = { ...route };
   delete way.keptOut;
   return way;
-}
-
-/**
- * The `movement.keepOutOf` words this way crosses, each once (todo 806) —
- * what a walk the player chose may cross again when it is planned afresh.
- */
-export function crossedWords(route: Route): string[] {
-  return [
-    ...new Set(route.steps.flatMap((step) => (step.keptOut === undefined ? [] : [step.keptOut])))
-  ];
 }
 
 /**

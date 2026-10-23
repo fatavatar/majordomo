@@ -1,7 +1,6 @@
 /**
  * A window on the realm: the neighbourhood around a room, fetched for what
- * the window can see, zoomed by the wheel and dragged by the hand, with the
- * legend under it.
+ * the window can see, zoomed by the wheel and dragged by the hand.
  *
  * The Map card and the loop builder each carried their own copy of this —
  * measure the box, turn the size into a radius, fetch, drop a late answer —
@@ -17,11 +16,9 @@
  * pointer. A surface hands in what is *its* (where the eye starts, what marks
  * are on the rooms, what a click means) and nothing about how a map behaves.
  *
- * The legend belongs here for the same reason: it is the key to what this
- * component draws, so a map drawn without one was a picture with a private
- * vocabulary. Which keys it lists follows the marks — a builder's rings are
- * keyed on a builder's map and nowhere else, because a key to a mark the
- * picture never makes is a key to nothing.
+ * It carried the legend too, until the user asked for it on the Explorer's
+ * Rooms map alone (2026-10-19): these maps are read at a glance, or beside a
+ * panel that says what they show (`MapLegend`).
  *
  * Five decisions:
  *
@@ -76,7 +73,7 @@ import {
   type ReactNode
 } from 'react';
 
-import MapPlan, { MapLegend, type MapPlanProps } from './MapPlan';
+import MapPlan, { type MapPlanProps } from './MapPlan';
 import { keepFocus } from '../lib/focus';
 import {
   dragged,
@@ -307,8 +304,7 @@ function MapView({ centre, load, zoom, onZoom, onLoaded, empty, name, ...picture
 
   return (
     /*
-     * The box the legend is measured *out* of: the view inside takes what the
-     * legend leaves, which is what makes a map dragged bigger show more rooms
+     * The box the view is measured in: a map dragged bigger shows more rooms
      * rather than the same rooms drawn larger. The surface around it places
      * this element; it never sizes it.
      */
@@ -325,10 +321,6 @@ function MapView({ centre, load, zoom, onZoom, onLoaded, empty, name, ...picture
       >
         {drawn ? <MapPlan {...picture} map={map} viewport={viewport} /> : empty}
       </div>
-      {/* The builder's own keys where the builder's own marks are, which is
-          the one thing the legend asks of the surface — and it asks the
-          picture's props rather than the surface, so the two cannot disagree. */}
-      <MapLegend builder={picture.marks !== undefined} />
     </div>
   );
 }

@@ -76,6 +76,8 @@ export interface Scope {
 export const SERVER_FILE = 'server.yaml';
 /** What a character's file is called inside its directory. */
 export const PROFILE_FILE = 'profile.yaml';
+/** A character's MegaMUD settings, in MegaMUD's own INI format, beside its file. */
+export const MEGAMUD_FILE = 'megamud.ini';
 /** What the options file is called inside `global/`. */
 export const OPTIONS_FILE = 'default.yaml';
 /** The directory a scope keeps its loops in, at every one of the three. */

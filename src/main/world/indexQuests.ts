@@ -169,6 +169,13 @@ export interface BuiltItemFrom {
   w?: string;
   at?: string;
   say?: string[];
+  /**
+   * What the answer takes, or wants carried, before it hands anything over:
+   * the line's `takeitem` and `checkitem` items (format 53). The sleazy
+   * shopkeeper's `orb` is `takeitem 810` — a dark blue orb — then the
+   * adamantite and moldy keys, and asked empty-handed it gives nothing.
+   */
+  tk?: number[];
 }
 
 /**
@@ -229,11 +236,13 @@ export function itemsInReach(read: BlocksInReach): {
           : owner.kind === 'room' && phrase.length > 0
             ? [phrase]
             : [];
+      const takes = itemsTakenInLine(line);
       const place: BuiltItemFrom = {
         k: owner.kind,
         ...maybe('w', owner.kind === 'room' ? undefined : owner.who),
         ...maybe('at', owner.room),
-        ...maybe('say', say.length > 0 ? say : undefined)
+        ...maybe('say', say.length > 0 ? say : undefined),
+        ...maybe('tk', takes.length > 0 ? takes : undefined)
       };
       for (const item of given) {
         const held = from.get(item);
@@ -244,8 +253,14 @@ export function itemsInReach(read: BlocksInReach): {
         // One owner is one place, however many of its lines hand the thing
         // over: block 1446 says `get roots`, `pick roots`, `pull roots`, `cut
         // roots` and `grab roots`, and they are one errand with five spellings.
+        // And one price: a word that wants the brooch is not the word that
+        // wants the orb, whoever says both.
         const twin = held.find(
-          (entry) => entry.k === place.k && entry.w === place.w && entry.at === place.at
+          (entry) =>
+            entry.k === place.k &&
+            entry.w === place.w &&
+            entry.at === place.at &&
+            (entry.tk ?? []).join(',') === (place.tk ?? []).join(',')
         );
         if (twin === undefined) {
           held.push(place);
@@ -261,27 +276,6 @@ export function itemsInReach(read: BlocksInReach): {
   return { named: itemsInScripts(reachedActions), from };
 }
 
-/**
- * Where **using an item** puts the character, where the realm's chain says so.
- *
- * Reported 2026-09-15 (todo 02): the way into the Catacombs — and so to the
- * necromancer the Phoenix quest's golden egg is taken off — is the *potion of
- * levitation*, and the client could not see it. The realm states it in three
- * hops and no column: `Items.Abil-n = CastsSp 607`, `Spells 607.Abil-0 =
- * TextBlock 1421`, and block 1421 is `roomitem 993 : message : teleport 1009
- * 9 : message`. So an item can be a *way in*, exactly as a key on a door is,
- * and the corridor table says nothing at all about it.
- *
- * Read at build time because the middle hop is `TBInfo`, which does not ship.
- * The spell half is `spellBlocks`, which already follows `TextBlock` and
- * `EndCast` for a monster's death; the block half follows `LinkTo` too, since
- * a realm routinely answers with an empty block that links to the one that
- * acts. `teleport <room> <map>` is the realm's own order (`roomScript.ts`).
- *
- * One landing per item, and the first: an item that puts you in two places is
- * a shape neither shipped realm writes, and inventing an answer for it is the
- * guess this file refuses everywhere else.
- */
 /**
  * Where an item that teleports puts you, **and where it may be used**.
  *
@@ -324,6 +318,27 @@ export interface ItemLanding {
   usableIn?: string[];
 }
 
+/**
+ * Where **using an item** puts the character, where the realm's chain says so.
+ *
+ * Reported 2026-09-15 (todo 02): the way into the Catacombs — and so to the
+ * necromancer the Phoenix quest's golden egg is taken off — is the *potion of
+ * levitation*, and the client could not see it. The realm states it in three
+ * hops and no column: `Items.Abil-n = CastsSp 607`, `Spells 607.Abil-0 =
+ * TextBlock 1421`, and block 1421 is `roomitem 993 : message : teleport 1009
+ * 9 : message`. So an item can be a *way in*, exactly as a key on a door is,
+ * and the corridor table says nothing at all about it.
+ *
+ * Read at build time because the middle hop is `TBInfo`, which does not ship.
+ * The spell half is `spellBlocks`, which already follows `TextBlock` and
+ * `EndCast` for a monster's death; the block half follows `LinkTo` too, since
+ * a realm routinely answers with an empty block that links to the one that
+ * acts. `teleport <room> <map>` is the realm's own order (`roomScript.ts`).
+ *
+ * One landing per item, and the first: an item that puts you in two places is
+ * a shape neither shipped realm writes, and inventing an answer for it is the
+ * guess this file refuses everywhere else.
+ */
 export function landingsOfItems(
   source: RealmSource,
   spells: QuestNaming['spells'],
@@ -431,6 +446,24 @@ function teleportInChain(
     at = block.linkTo;
   }
   return null;
+}
+
+/**
+ * What one script line takes, or wants carried, before it hands anything
+ * over: its `takeitem` and `checkitem` items up to the first `giveitem`
+ * (format 53). A block stops at the first step that fails, so these are the
+ * price of what follows them, and one after the handover is not.
+ */
+function itemsTakenInLine(line: string): number[] {
+  const taken: number[] = [];
+  for (const step of line.split(':')) {
+    const [verb, first] = step.trim().split(/\s+/);
+    if (verb === 'giveitem') break;
+    if (verb !== 'takeitem' && verb !== 'checkitem') continue;
+    const id = number(first);
+    if (id !== null && id > 0 && !taken.includes(id)) taken.push(id);
+  }
+  return taken;
 }
 
 /**

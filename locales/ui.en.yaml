@@ -55,6 +55,7 @@ app:
     noneFit: None of the {count} loops fit this realm's map, so nothing was added. Choose the
       MegaMUD folder recorded on this realm.
     notFound: No loop named {name} in this character's options.
+    noSuchLoop: There is no such loop to export.
     unknownScope: Invalid loop scope.
   onboarding:
     noCharactersYet:
@@ -69,6 +70,16 @@ app:
     loadFailed: Character not loaded — {error}
     noSuchCharacter: No such character.
     stillConnected: '{name} is still connected.'
+  megamud:
+    invalidSettings: Those MegaMUD settings could not be read.
+  # MMUD Explorer's lists, which read the realm's own database file.
+  explorer:
+    noDatabase: This realm names no database file to read, so the Explorer has nothing to show.
+    noCharacter: There is no character to put it on.
+    noSuchItem: The realm has no such item.
+    notWorn: '{item} is not something to wear.'
+    unreadable: 'The realm''s database could not be read: {reason}'
+    unsupported: The Explorer computes stock MajorMUD only, and this realm's database is GreaterMUD.
   quit:
     cancelButton: Cancel
     confirmButton: Quit and disconnect
@@ -90,6 +101,8 @@ app:
       That file has no MegaMUD messages in it, so the realm's table was left as it was. Choose
       the Messages.md from a MegaMUD data folder.
     unreadable: The file could not be read.
+  items:
+    noRows: There were no item rows to import, so the realm's table was left as it was.
   monsters:
     noRows: There were no monster rows to import, so the realm's table was left as it was.
   servers:
@@ -119,6 +132,9 @@ notices:
     messages:
       lostRows: 'The message table would have saved {wrote} rows and read back {read}, so it was not saved.'
       readError: '{file} could not be read, so this realm answers no messages until it is fixed: {message}'
+    items:
+      lostRows: 'The item table would have saved {wrote} rows and read back {read}, so it was not saved.'
+      readError: '{file} could not be read, so this realm has no item table until it is fixed: {message}'
     monsters:
       lostRows: 'The monster table would have saved {wrote} rows and read back {read}, so it was not saved.'
       readError: '{file} could not be read, so this realm has no monster table until it is fixed: {message}'
@@ -141,6 +157,10 @@ notices:
     hunting:
       'Going hunting on its own is a setting now, off, and {file} was given the block with the
       paragraph that explains it.'
+    megaTogglesPinned:
+      "MegaMUD's toggles are pinned on the toolbar like its other buttons, and the Character page's
+      Toolbar row is gone. {file} was migrated to pin the ones MegaMUD's own toolbar shows; the
+      toolbar's ... menu pins or unpins any of them."
     toolbarGainedBack:
       'The toolbar has a back button — one room back the way the character came, per press — and
       {file} was migrated to put it on the row, with the length of trail it walks.'
@@ -158,11 +178,6 @@ notices:
     suppliesStated:
       'A supplies block was written into {file} — the things a character keeps in stock and where
       it buys them. Empty, so nothing changes until an item is added.'
-    conditionWaitsStated:
-      one: 'Walking on while blind or poisoned is a setting, off by default, and was written into
-        {count} file with the paragraph that explains it: {fileList}'
-      many: 'Walking on while blind or poisoned is a setting, off by default, and was written into
-        {count} files with the paragraph that explains it: {fileList}'
     meditateTargetStated:
       one: 'How far up to meditate before walking on is a setting, meditateTo, and was written
         into {count} file at 0 with the paragraph that explains it: {fileList}'
@@ -173,16 +188,6 @@ notices:
         with the paragraph that explains it: {fileList}'
       many: 'Fleeing by sys goto is a setting, off by default, and was written into {count} files
         with the paragraph that explains it: {fileList}'
-    drainStated:
-      one: 'Casting a drain spell while health is low is a setting, off by default, and was written
-        into {count} file with the paragraph that explains it: {fileList}'
-      many: 'Casting a drain spell while health is low is a setting, off by default, and was written
-        into {count} files with the paragraph that explains it: {fileList}'
-    confusionWaitStated:
-      one: 'Walking on while confused is a setting, off by default, and was written into {count}
-        file with the paragraph that explains it: {fileList}'
-      many: 'Walking on while confused is a setting, off by default, and was written into {count}
-        files with the paragraph that explains it: {fileList}'
     monsterRowsStated:
       one: 'A character''s own monster rows are a setting now, laid over the realm''s monster table,
         and were written into {count} file with the paragraph that explains them: {fileList}'
@@ -198,23 +203,37 @@ notices:
         blank, to {count} files: {fileList}'
       one: 'Regeneration spells (MegaMUD''s HP and Mana Regen, and the when-full spells) were added,
         blank, to {fileList}.'
-    healChoiceStated:
-      many: 'Auto Choose Best Heal was added to {count} files, turned on where Auto Choose Best Spell
-        is on: {fileList}'
-      one: 'Auto Choose Best Heal was added to {fileList}, turned on where Auto Choose Best Spell is
-        on.'
     autoJoinStated:
       many: 'Join When Invited was added, off, to {count} files: {fileList}'
       one: 'Join When Invited was added, off, to {fileList}'
-    survivalFloorStated:
-      many: 'Only Open Fights Survived % was added, off, to {count} files: {fileList}'
-      one: 'Only Open Fights Survived % was added, off, to {fileList}'
-    losingHpWaitStated:
-      many: 'Walk While Losing HP was added, off, to {count} files: {fileList}'
-      one: 'Walk While Losing HP was added, off, to {fileList}'
-    partyRankStated:
-      many: 'Auto-Rank (MegaMUD''s Party Rank) was added, off and at Mid, to {count} files: {fileList}'
-      one: 'Auto-Rank (MegaMUD''s Party Rank) was added, off and at Mid, to {fileList}'
+    oldAutomationKeys:
+      many: 'Settings only the old automation read (rules, entry and party commands, drop, banking, talk, statline, events, training, the walk-while switches) were removed from {count} files: {fileList}'
+      one: 'Settings only the old automation read (rules, entry and party commands, drop, banking, talk, statline, events, training, the walk-while switches) were removed from {fileList}'
+    oldAutomationFields:
+      many: 'Settings nothing read any more since the MegaMUD engine (the idle look, the kit sets, the PvP reaction, the drain and area-mana spells, the loot value and weight limits, gear recovery, the door and rank switches and others) were removed from {count} files: {fileList}'
+      one: 'Settings nothing read any more since the MegaMUD engine (the idle look, the kit sets, the PvP reaction, the drain and area-mana spells, the loot value and weight limits, gear recovery, the door and rank switches and others) were removed from {fileList}'
+    mudstatsStated:
+      many: 'Report to Stats Server (off, every 60 seconds) was added to {count} files: {fileList}'
+      one: 'Report to Stats Server (off, every 60 seconds) was added to {fileList}'
+    waitLimitWaits:
+      many: 'MegaMUD''s "If leading, wait only" was 0 minutes, which gives up on a @wait at once,
+        and is now {minutes} in {count} files: {fileList}'
+      one: 'MegaMUD''s "If leading, wait only" was 0 minutes, which gives up on a @wait at once,
+        and is now {minutes} in {fileList}'
+    logsKept:
+      many: 'Keep logs up to (2 GiB in all; the oldest go past it) was added to {count} files: {fileList}'
+      one: 'Keep logs up to (2 GiB in all; the oldest go past it) was added to {fileList}'
+    criticalAlertsLowered:
+      many: 'Alert rows at critical were lowered to warning in {count} files, as only hung up,
+        dropped, ran and fled are critical now and light a character''s tab: {fileList}'
+      one: 'Alert rows at critical were lowered to warning in {fileList}, as only hung up,
+        dropped, ran and fled are critical now and light a character''s tab'
+    botCommandsStated:
+      many: 'Bot Commands (your own commands other players may ask for) was added, empty, to {count} files: {fileList}'
+      one: 'Bot Commands (your own commands other players may ask for) was added, empty, to {fileList}'
+    itemDetailsStated:
+      many: 'Item Details (MegaMUD''s item choices, laid over the realm''s item table) were added, empty, to {count} files: {fileList}'
+      one: 'Item Details (MegaMUD''s item choices, laid over the realm''s item table) were added, empty, to {fileList}'
     freedomCureStated:
       one: 'A Freedom spell -- cast when the character cannot move -- is a setting, blank by
         default, and was written into the cures of {count} file: {fileList}'
@@ -232,14 +251,6 @@ notices:
     anonymousConnectionDropped:
       'The account and "connect on launch" under connection: were removed from {file}. The client no
       longer connects without a character; each character''s own file carries its account.'
-    bankAskedOnEntry:
-      many:
-        '`bank` was added to the entry probe in {count} files, before the closing look. A balance
-        is now kept between sessions; this refreshes the one vault you can reach on the way in.
-        {fileList}'
-      one: '`bank` was added to the entry probe in {count} file, before the closing look. A balance
-        is now kept between sessions; this refreshes the one vault you can reach on the way in.
-        {fileList}'
     blessingsKeyedOnSpell:
       many:
         'A blessing row is now named by its spell alone, and only party rows carry a recast clock
@@ -262,14 +273,12 @@ notices:
       paragraph that explains them."
     entityPredicates:
       many:
-        "Three settings were added to {count} files, all off: pick up anything over a value, never
-        pick up anything over a weight, and drop what the realm itself prices at nothing. Each asks
-        the realm a question about a thing, which the client could not do until items carried the
-        realm's own row. {fileList}"
-      one: "Three settings were added to {count} file, all off: pick up anything over a value, never
-        pick up anything over a weight, and drop what the realm itself prices at nothing. Each asks
-        the realm a question about a thing, which the client could not do until items carried the
-        realm's own row. {fileList}"
+        "Settings were added to {count} files, at what the client already did: the fewest and most
+        monsters worth a fight, the most experience a monster may be worth, the heal line in a
+        fight, and which coins to pick up. {fileList}"
+      one: "Settings were added to {count} file, at what the client already did: the fewest and most
+        monsters worth a fight, the most experience a monster may be worth, the heal line in a
+        fight, and which coins to pick up. {fileList}"
     gmudRealmFailed: 'The {realm} realm could not be removed from your realms: {reason}'
     gmudRealmRemoved:
       '{realm} no longer ships with the client and was removed from your realms ({dir}); nothing
@@ -284,15 +293,6 @@ notices:
         because the realm marks which spells may be cast on whom. `healPartyWith` and a `healTo`
         ceiling were written into {count} file; a file that was already healing the party kept
         its spell. {fileList}'
-    lookNoLongerBroadcast:
-      many:
-        'The client no longer re-reads rooms with `l` — it prints the same block and tells everybody
-        in the room you are looking around. A bare Enter does it silently, so the idle command and
-        the closing look on entering the realm were changed in {count} files. {fileList}'
-      one:
-        'The client no longer re-reads rooms with `l` — it prints the same block and tells everybody
-        in the room you are looking around. A bare Enter does it silently, so the idle command and
-        the closing look on entering the realm were changed in {count} file. {fileList}'
     loopShelfPinned:
       'The Loops button was added to your toolbar. It opens every loop the client knows —
       Ctrl/Cmd L, or the circular arrow beside the transport controls.'
@@ -302,6 +302,23 @@ notices:
       you edit. {file}'
     tuningNothingAdded: nothing
     tuningNothingRemoved: nothing
+    megamudDataMovedIn:
+      many:
+        'The MegaMUD databases of {count} characters (Items.md, Monsters.md, Messages.md) were taken
+        into their realms'' item, monster and message tables wherever a realm had none, and each
+        folder was renamed Default.imported. {fileList}'
+      one:
+        'A character''s MegaMUD databases (Items.md, Monsters.md, Messages.md) were taken into its
+        realm''s item, monster and message tables wherever the realm had none, and the folder was
+        renamed Default.imported. {fileList}'
+    megamudSettingsMovedIn:
+      many:
+        'The MegaMUD settings of {count} characters were moved from their megamud.ini into their
+        character files, under megamud:, and each megamud.ini was renamed megamud.ini.imported.
+        {fileList}'
+      one:
+        'The MegaMUD settings were moved from megamud.ini into {fileList}, under megamud:, and the
+        megamud.ini was renamed megamud.ini.imported.'
     autoReconnectStated:
       many:
         '"Reconnect if the connection drops" was written into {count} character files, on, with the
@@ -311,13 +328,13 @@ notices:
         paragraph that explains it. It is what it was already doing. {fileList}'
     newAutomationStated:
       many:
-        'New settings — dropping junk, banking the purse, defending the party, the crowd spell and
-        the reaction to a player attacking — were written into {count} files with the paragraphs
-        that explain them. All off, which is what the client was already doing. {fileList}'
+        'New settings — defending the party, the crowd spell and the reaction to a player
+        attacking — were written into {count} files with the paragraphs that explain them. All
+        off, which is what the client was already doing. {fileList}'
       one:
-        'New settings — dropping junk, banking the purse, defending the party, the crowd spell and
-        the reaction to a player attacking — were written into {count} file with the paragraphs
-        that explain them. All off, which is what the client was already doing. {fileList}'
+        'New settings — defending the party, the crowd spell and the reaction to a player
+        attacking — were written into {count} file with the paragraphs that explain them. All
+        off, which is what the client was already doing. {fileList}'
     markStated:
       '"ui.showLogo" was written into {file}, on: the client draws its own mark at the left of the
       status rail. Turn it off there or on the MudEngine page in settings.'
@@ -355,10 +372,8 @@ notices:
       have. Seven palettes repaint what the realm sends — four dark, three light — and naming one
       there or on the MudEngine page in settings outranks the two keys beside it.'
     statusLineStated:
-      '"automation.statline" and "ui.rewrites" were written into {file}, all off: whether the
-      client sets the prompt''s shape on the way in, so every prompt carries the maxima, the
-      experience and the purse, and the status line and listings you can design to draw in the
-      realm''s place. Turn any on there or on the Rewrites section in settings.'
+      '"ui.rewrites" was written into {file}, all off: the status line and listings you can design
+      to draw in the realm''s place. Turn any on there or on the Rewrites section in settings.'
     rewritesGathered:
       '"ui.statline" in {file} became the Status line design under "ui.rewrites", beside the
       listings the console can draw in the realm''s place — the pack, the roster, a shop''s
@@ -410,14 +425,6 @@ notices:
       one: '"combat.maxFightCost" was removed from {count} file: a fight is no longer declined for
         what it is expected to cost. The Room card still draws the figure; nothing refuses on it.
         {fileList}'
-    recoveryBounds:
-      many:
-        '"recoverGearTries" and "recoverGearFloor" were written into {count} files: going back for
-        the kit now stops after two journeys that did not reach it, or at two lives left.
-        {fileList}'
-      one: '"recoverGearTries" and "recoverGearFloor" were written into {count} file: going back for
-        the kit now stops after two journeys that did not reach it, or at two lives left.
-        {fileList}'
     alertRules:
       many:
         '"ui.alerts.rules" was written into {count} files with the rows a fresh client ships: your
@@ -429,12 +436,6 @@ notices:
         condition under Health to have it used. {fileList}'
       one: '"automation.health.potions" was written into {count} file, empty: name an item and a
         condition under Health to have it used. {fileList}'
-    levelling:
-      many:
-        '"automation.train.levels" and "trainer" were written into {count} files, off: the client
-        will not walk a character to a trainer and level it until you turn that on. {fileList}'
-      one: '"automation.train.levels" and "trainer" were written into {count} file, off: the client
-        will not walk a character to a trainer and level it until you turn that on. {fileList}'
     doorForcingStated:
       many:
         'Picking and bashing locked doors are now settings, and were written into {count} files with
@@ -444,17 +445,13 @@ notices:
         'Picking and bashing locked doors are now settings, and were written into {count} file with
         the paragraph that explains them. Both are off, which is what the client was already doing.
         {fileList}'
-    hangPenalties:
+    hangPenaltiesWent:
       one:
-        '"hangUp.onlyWhenClean" became "hangUp.penalties" in {count} file: whether the realm
-        charges for a hang-up. The options file says no (a PvE realm), a character inherits its
-        realm, and Paradigm''s realm menu answers for itself. Set it under Health › Auto-Hangup, or
-        per realm; the backup beside each file has the old answer. {fileList}'
+        'Hang penalties (whether a realm charges for a hang-up) were removed from {count} file:
+        MegaMUD''s own Hang if below and Relog instead of hanging decide now. {fileList}'
       many:
-        '"hangUp.onlyWhenClean" became "hangUp.penalties" in {count} files: whether the realm
-        charges for a hang-up. The options file says no (a PvE realm), a character inherits its
-        realm, and Paradigm''s realm menu answers for itself. Set it under Health › Auto-Hangup, or
-        per realm; the backup beside each file has the old answer. {fileList}'
+        'Hang penalties (whether a realm charges for a hang-up) were removed from {count} files:
+        MegaMUD''s own Hang if below and Relog instead of hanging decide now. {fileList}'
     wardsMoved:
       many:
         '"automation.movement.useWards" moved to "automation.health.useWards" in {count} files and
@@ -468,23 +465,12 @@ notices:
         waterskin against the desert spell — and it shipped off one day ago, so the "false" it
         replaces was this client''s own writing rather than your answer. Turn it off under Health
         in settings; the backup beside the file has the old answer. {fileList}'
-    doorsOpened:
-      many:
-        'Opening and bashing doors on a route are now on by default, and were turned on in {count}
-        files that had them off because this client wrote that value there rather than because you
-        chose it. Picking locks is untouched, and still off. Turn either back off on the Movement
-        section in settings; the backup beside each file has the old answer. {fileList}'
-      one:
-        'Opening and bashing doors on a route are now on by default, and were turned on in {count}
-        file that had them off because this client wrote that value there rather than because you
-        chose it. Picking locks is untouched, and still off. Turn either back off on the Movement
-        section in settings; the backup beside the file has the old answer. {fileList}'
     gearButtonPinned:
       'A gear button was added to your toolbar, beside the dial. It puts back what the client
       last saw in each worn slot — the first press after a death.'
-    blessSwitchPinned:
-      'An Auto-Bless switch was added to your toolbar, beside retaliate. Off, the blessings you
-      listed are not cast for you until it is on again.'
+    oldSwitchesUnpinned:
+      'The old automation''s switches were taken off the toolbar in {file}: MegaMUD''s own
+      toggles stand in their place.'
     loopsRenamed:
       one:
         'The shipped loops are named the way whoever recorded them named them, rather than after the
@@ -525,22 +511,6 @@ notices:
       many: '"automation.spells.autoChoose" was written into {count} files ({fileList}), off: pick
         the round spell and the cures from the spellbook each round. The spells you named are cast
         until you turn it on.'
-    training: '"automation.train" was written into {file}, off: at a trainer with character points
-      unspent, open the stat screen and buy the figures set under Training, cheapest point first.
-      Nothing is spent until you turn it on and raise a figure.'
-    restNextDoor:
-      one:
-        '"automation.health.restNextDoor" was written into {fileList}, on: a rest in a lair with a
-        short clock is taken next door, in a neighbour looked into first and found empty.'
-      many:
-        '"automation.health.restNextDoor" was written into {count} files ({fileList}), on: a rest
-        in a lair with a short clock is taken next door, in a neighbour looked into first and found
-        empty.'
-    gearRecovery:
-      one: '"automation.movement.recoverGear" was written into {fileList}, off: after a death, walk
-        back for the kit and put it on. Nothing walks until you turn it on.'
-      many: '"automation.movement.recoverGear" was written into {count} files ({fileList}), off:
-        after a death, walk back for the kit and put it on. Nothing walks until you turn it on.'
     accountTokensLostABrace: 'Login steps in {fileList} now put single braces round the username and
       password tokens, as the login script expects; the doubled form would have sent a brace too.'
     accountJoinedTheScript:
@@ -576,13 +546,6 @@ notices:
       many: '"automation.combat.avoid" and "combat.mobPriority" became one "combat.mobRules" list in
         {count} files ({fileList}). An avoided monster is now a row set to never attack; every
         ranked monster kept its band.'
-    hideForOpener:
-      one: '"automation.combat.hideForOpener" was written into {fileList}, off: hide (or sneak,
-        while a lap or route has the character) between fights, so an opening backstab lands
-        again.'
-      many: '"automation.combat.hideForOpener" was written into {count} files ({fileList}), off:
-        hide (or sneak, while a lap or route has the character) between fights, so an opening
-        backstab lands again.'
     coinsCanBeShed:
       one: '"automation.loot.discardKinds" was written into {fileList}, empty: which coins to put
         back on the floor whenever any are carried, the other end of "coinKinds". Nothing is
@@ -627,38 +590,15 @@ notices:
       '"tuning.parse.rosterLines" was added to your tuning file. The `who` listing''s cap was 60
       lines beside the pattern, so a realm with more adventurers than that lost everybody past
       the sixtieth row — including from the record that says who is online.'
-    nudgeWindowStated:
-      'A walk now measures how long your realm takes to answer a move and waits that long before
-      asking for a prompt, instead of assuming a second. Paradigm takes 1.24s, so the old figure
-      made every ordinary step look late and printed every room twice.
-      "tuning.walk.nudgeSamples" was added to your tuning file beside it.'
     actionsFamilied:
       'What can be done with a carried thing is a family of controls now, not one: {file} had a
       rewrite naming "{action}", which since the change draws nothing at all, and it now names
       "{action.toggleEquip}". "{action.drop}" puts the thing down beside it.'
-    lightWaitStated:
-      'A walk into a room too dark to see in now waits for auto-light to ready a torch and read the
-      room again, instead of stopping because it cannot tell where the character is standing.
-      "tuning.walk.lightWaitMs" was added to your tuning file: how long it waits before giving up.'
-    replanDriftStated:
-      'Pressing Walk on a plan you drew before the character moved now redraws the plan from where
-      it is standing and walks it, instead of refusing because the route does not start here. Past
-      ten rooms of drift, or where the new way asks for something the old one did not, the new plan
-      comes back for you to read. "tuning.walk.replanDriftSteps" was added to your tuning file.'
-    stepNudgeStated:
-      "A walk that has sent a step and heard nothing now asks the realm for a prompt after a
-      second rather than waiting out the whole deadline. The interval was written into your
-      tuning file, beside the walk's other figures."
     profilesFolded:
       many:
         '{count} character files moved into directories of their own, so each can carry loops of its
         own.'
       one: 1 character file moved into a directory of its own, so it can carry loops of its own.
-    trapRest:
-      many: 'Resting before a trap was added to {count} files, at 45%: a walk now waits until
-        health covers the trap ahead and leaves that share of the bar after it. {fileList}'
-      one: 'Resting before a trap was added to {count} file, at 45%: a walk now waits until
-        health covers the trap ahead and leaves that share of the bar after it. {fileList}'
     restCeiling:
       many: 'A resting ceiling was added to {count} files, off: keep sitting back down until health
         reaches it. Casting turns out to break a rest and standing regenerates six times slower, so
@@ -747,7 +687,14 @@ notices:
         'Could not write {fileName}: {message}. The console keeps working; nothing more is kept
         for the next launch.'
     closeRefused: '{refusalReason} Disconnect it before closing the tab.'
+    # What each character was walking, taken up again when it is next in the game.
+    movement:
+      readError:
+        'Could not read {file} ({message}). Nothing walked before is taken up again, and nothing
+        is written over the file; fix or remove it before the next launch.'
+      writeError: 'Could not write {file}: {message}. What is being walked is not kept for the next launch.'
   world:
+    megamudData: 'MegaMUD data for {name} from {realm}: {monsters} monsters, {items} items, {spells} spells, {messages} messages.'
     converted: 'Realm {file}: {rooms} rooms in {seconds}s.'
     converting: Converting the realm database {file}…
     destinations:
@@ -779,6 +726,12 @@ notices:
       effectCauseSuspected: '"{text}" is suspected of causing {condition} — nothing else up explains it.'
       effectCauseConfirmed: '"{text}" causes {condition} — the condition ended with the effect.'
       effectCauseDropped: '"{text}" does not cause {condition} after all — the condition arrived without it.'
+    megaLearned:
+      parseSuspended:
+        '{fileName} will not parse ({message}). What the MegaMUD engine learns in play is not
+        kept on disk until it is fixed or removed.'
+      readError: 'could not read {file}: {message}'
+      writeError: 'could not write {file}: {message}'
     spellMessages:
       readError: 'could not read the spell message table {file}: {message}'
       empty: 'the spell message table {file} holds no rows; buff endings fall back to the frames'
@@ -827,6 +780,567 @@ notices:
     shippedLoaded: '{rooms} rooms from {source} in {ms}ms'
     shippedMissing: no realm data at {path}. Routing and the map will not work; run `npm run build:world`.
     shippedRealmLabel: shipped realm
+# MMUD Explorer's Weapons and Armour lists, for the character on screen,
+# worked out with MME's own logic on the realm's database (2026-10-18).
+explorer:
+  ability: Ability
+  anyType: Any
+  anywhere: Anywhere
+  armourType: Armour type
+  attack: Attack
+  back: Back
+  backTitle: Back to what was open before
+  backstabs: BS-able
+  calcCombat: Calc. Combat
+  choose: Choose an item to read what MMUD Explorer says of it.
+  close: Close
+  count: '{shown} of {of}'
+  dialogLabel: MMUD Explorer for {characterName}
+  empty: Nothing here matches.
+  fast: 85% speed
+  find: Search…
+  inGameOnly: In the game
+  limiteds: Limiteds
+  loading: Reading the realm…
+  lowerHeight: Height of the detail and references
+  maxSpeed: Speed <=
+  maxStrength: Str <=
+  minDamage: Dmg >=
+  minMagic: Magic >=
+  negates: Negates (= Spell#)
+  noLimit: No limit
+  noReferences: Nothing in the realm refers to it.
+  nonMagic: Non-magic
+  paletteLabel: 'Explorer: weapons and armour'
+  references: References
+  referencesWidth: Width of the references
+  unsupported: The Explorer has nothing for this realm.
+  usableOnly: Usable by {characterName}
+  vsAC: vs AC
+  vsDR: DR
+  vsDodge: Dodge
+  weaponType: Weapon type
+  worn: Worn
+  # Calc. Combat's attacks, as MME names them.
+  attacks:
+    bash: Bash
+    normal: Normal
+    smash: Smash
+    surprise: Backstab
+  # Buy and Buy + Wear: where it goes, what it pays, the bank first (2026-10-18).
+  buy:
+    bankFirst: Withdraws {amount} from {bank} ({room}) first; the record has {balance} there.
+    bankUnread: Asks {bank} ({room}) for its balance and withdraws {amount} there first.
+    buy: Buy
+    buyLearn: Buy + Learn
+    buyLearnTitle: 'Buy {item} and read it, which adds the spell to the spellbook'
+    buyWear: Buy + Wear
+    heading: Buy
+    learnFrom: 'Learned from {item}'
+    learnHeading: Learn
+    noScroll: No item in the realm teaches this spell.
+    notLearnable: '{characterName} cannot learn this spell.'
+    notWorn: Not something to wear.
+    onHand: 'On hand: {purse}.'
+    sent: On the way.
+    takesOff: Takes off {items} first.
+    unpriced: price unknown
+    where: '{shop}, {room} — {moves} moves, {price}'
+  columns:
+    abilities: Abilities
+    ac: AC/DR
+    accuracy: Acc
+    accy: Accy
+    acPerEncumbrance: AC/Enc
+    agi: Agi
+    armour: Armour
+    armourType: Armr Type
+    attackAcc: Acc (Maj/Mx)
+    backstab: BS Acc
+    bsDefense: BS Defense
+    cast: Cast
+    cha: Cha
+    combat: Cmbt
+    crits: Crits
+    damage: Damage
+    detail: Detail
+    dmg: Dmg
+    dodge: Dodge
+    duration: Dur
+    encumbrance: Enc
+    exp: Exp
+    expPct: Exp%
+    expPerDamage: Exp/(Dmg+HP)
+    hea: Hea
+    heal: Heal
+    hp: HP
+    int: Int
+    itemType: Type
+    lairExp: Lair Exp
+    lairs: Lairs
+    level: Level
+    limit: Limit
+    magery: Magery
+    magic: Mag.
+    mana: Mana
+    max: Max
+    min: Min
+    minMax: Min-Max
+    mobs: '#Mobs'
+    mobsSpawn: Mobs/Spwn
+    mr: MR
+    name: Name
+    regen: RGN
+    roundDamage: Dmg/Rnd
+    shopType: Type
+    short: Short
+    slot: Worn
+    speed: Speed
+    spellAttack: Spell Atk.
+    str: Str
+    strength: Str
+    swings: '#Swings'
+    undead: Undead
+    weapon: Weapon
+    weaponType: Wepn Type
+    wis: Wis
+  kinds:
+    armour: Armour
+    classRace: Class/Race
+    eq: EQ
+    lists: Lists
+    tools: Tools
+    monsters: Monsters
+    rooms: Rooms
+    shops: Shops
+    spells: Spells
+    sundry: Sundry
+    weapons: Weapons
+  # The Tools tab (mudtool's tabs/tools.js and js/tools/*.js), 2026-10-19.
+  tools:
+    ac: AC
+    agility: Agility
+    align: Align
+    antiMagic: Anti-Magic
+    attack: Attack
+    attacker: Attacker
+    attackerAccuracy: Attacker accuracy
+    attacksim: Monster Attack Sim
+    averageNote: 'Avg damage vs 0 AC/DR, with the character''s other stats'
+    averageRound: Average round
+    backstab: Backstab Calc
+    backstabAttack: Backstab
+    bashing: Bashing
+    bsDamage: Backstab damage
+    bsForChar: BS accuracy worked out for the character.
+    bsHint: 'Max damage from strength is not added for you: put all of it in Max Damage. +Min damage from strength is. The weapon''s own stats are added; with a different weapon in the hand, its stats are taken off.'
+    bsMax: BS Max DMG
+    bsMin: BS Min DMG
+    bsRange: '{min} - {max} (AVG: {avg})'
+    calc: Calc.
+    charLevel: Char LVL
+    charm: Charm
+    chartIs: 'Chart {chart}%'
+    chooseMonster: Choose monster
+    class: Class
+    classStealth: Class Stealth
+    coin: Coin Converter
+    combat: Combat
+    combat1: 1 (Poor)
+    combat2: 2 (Fair)
+    combat3: 3 (Average)
+    combat4: 4 (Good)
+    combat5: 5 (Excellent)
+    combatLog: Combat log
+    convert: '\/ Convert /\'
+    copper: Copper
+    copy: Copy to clipboard
+    copySwings: Copy only swings
+    copyTrue: Copy only true avg
+    critAvg: Crit AVG
+    critPct: 'Crit %'
+    currentChar: Current char.
+    custom: Custom
+    customChart: custom
+    defender: Defender
+    defenses: 'The character''s defences'
+    diff: Diff
+    dmgPerMana: Dmg/M
+    dodgeCap: 'Dodge cap: {cap}%'
+    dodgeIs: 'Dodge: {dodge}%'
+    dodgePct: 'Dodge %'
+    dodgeSoftCap: 'Dodge DR-cap: {soft}% - {cap}%'
+    dr: DR
+    dynamic: or Dynamic
+    encum: Encum.
+    encumbrance: 'Encumbrance: {percent}%'
+    energyPerSwing: 'Energy per swing: {energy}'
+    euLeft: EU left
+    exp: Exp Calc
+    experience: Experience
+    expTable: 'Exp Table %'
+    extraAvg: Extra AVG
+    extraPct: 'Extra %'
+    fast: Fast (85)
+    fromLevel: From level
+    fromStats: From Combat Stats
+    fromStatsTitle: 'Hit, Crit and Weapon (MegaMUD''s Extra) from this character''s Combat Stats card'
+    fromWeapon: 'From the weapon: {bits}'
+    gold: Gold
+    goMonster: go to monster ›
+    goWeapon: go to weapon ›
+    healPerMana: Heal/M
+    hideEnergy: Hide energy info
+    hit: Hit Calc
+    hitAvg: Hit AVG
+    hitHint: 'Current char. and vs Char. fill in the character''s figures; vs Player and Manual keep what is typed.'
+    hitIs: 'Hit: {hit}%'
+    hitMinCap: 'Hit min-cap:'
+    hitPct: 'Hit %'
+    hitRate: Hit rate
+    learnedKey: 'Spells this character''s book holds are marked.'
+    level: Level
+    listSpells: List Spells
+    lvl: LVL
+    manual: Manual
+    maxDamage: Max Damage
+    maxEncum: Max Enc.
+    maxRoundOnly: Show the combat log only for the max round seen
+    megaDodge: MegaMUD Dodge
+    mobNotEvil: The monster is not evil.
+    monster: Monster
+    needed: Needed
+    noBS: No BS
+    noClass: none
+    none: None
+    normal: Normal (100)
+    normalAttack: Normal
+    notApplicable: N/A
+    notepad: Notepad
+    nothingToSim: Nothing to simulate.
+    overallIs: 'Overall hit: {overall}%'
+    platinum: Platinum
+    protEvil: Pr. Evil
+    qnd: 'QnD crits: {crits}'
+    qndEncum: '(under 67% for QnD)'
+    race: Race
+    rates: |
+      The currency conversion rates are:
+      100 platinum pieces == 1 runic coin
+      100 gold crowns == 1 platinum piece
+      10 silver nobles == 1 gold crown
+      10 copper farthings == 1 silver noble
+    rawSwing: 'Raw swing: {swings}'
+    reload: Reload
+    resCold: R-Cold
+    reset: Reset
+    resFire: R-Fire
+    resLightning: R-Litng
+    resStone: R-Stone
+    results: Results
+    resWater: R-Water
+    round: Round
+    runic: Runic
+    running: Running…
+    runSim: Run Simulator
+    seeHidden: See Hidden
+    shadow: Shadow
+    silver: Silver
+    simAttack: Attack
+    simAverage: 'AVG Dmg/Rnd: {average}'
+    simAvgHit: Avg Hit
+    simDodged: '%resist /dodge'
+    simHint: 'MR below 50 takes extra damage from spells MR reduces. MegaMUD Dodge checks dodge before AC, so the dodge % is what MegaMUD reports.'
+    simHitPct: '% Hit'
+    simMax: 'Max/Seen: {max}/{seen}'
+    simResisted: '%dmg Resist'
+    simRounds: '# Rounds to Sim'
+    simRoundsRun: '{rounds} rounds'
+    simSplit: '(Physical/Spell: {physical}/{spell})'
+    simTrueChance: 'True Attk%'
+    slow: Slow (125)
+    slowness: Slowness ability
+    speed: Speed
+    spellbook: Spell Book
+    spellCount: '{count} spells'
+    stats: Stats
+    stealth: Stealth
+    strength: Strength
+    strengthShort: 'Strength below the weapon''s {strength}'
+    swing: Swing Calc
+    swings: Swings
+    swingsLeft: Swings / EU remaining
+    toLevel: To level
+    trueAverage: True average
+    trueAverageIs: 'True average: {average}'
+    typeToSearch: Type to search…
+    vsAC: vs AC
+    vsBsDefense: vs BS Defense
+    vsChar: vs Char.
+    vsDodge: vs Dodge
+    vsMob: vs Mob
+    vsPerception: vs Perception
+    vsPlayer: vs Player
+    vsProtEvil: vs Prot. Evil
+    weapon: Weapon
+    weight: 'Weight: {weight}'
+  # The Lists tab (mudtool's tabs/lists.js): the compare lists and the Item
+  # Manager, whose flags are the character's own item rules (2026-10-19).
+  lists:
+    add: Add
+    addCompare: Add to compare
+    clear: Clear list
+    clearFlags: Clear flags
+    clearSure: Clear it?
+    compared: In the compare list
+    compareEmpty: Empty. Add records here, or with Add to compare on a record or the EQ tab.
+    copied: 'Copied {count} commands.'
+    copyCommands: Copy commands
+    drop: Drop
+    dropTitle: 'Drop: Auto-discard, dropped when carried'
+    enc: Enc
+    flag: Flag
+    imEmpty: Nothing carried, and no item rules of this character's own. Add an item to set a rule for it.
+    imHint:
+      The flags are this character's item rules, over the realm's table. Sell / Buy, Drop and Pick up / Equip
+      change them, and + and − its Min. to keep or Max to get.
+    itemManager: Item Manager
+    minusTitle: One fewer to keep, or to get
+    no: 'No'
+    noCommands: No flagged rows to make commands from.
+    noMatch: 'No match for "{typed}".'
+    noShop: none
+    own: own
+    pickPlaceholder: name or number…
+    pickupEquip: Pick up / Equip
+    pickupTitle: 'Cycle Pick up (Auto-collect) → Equip (Auto-equip) → neither'
+    plusTitle: One more to keep, or to get
+    qty: QTY
+    remove: Remove
+    removeRows: Remove
+    removeTitle: Take the rows off, and this character's own rules for them
+    saved: 'Item rules changed for {count}.'
+    selectAll: Select all
+    selectFirst: Select some rows first.
+    sellBuy: Sell / Buy
+    sellTitle: 'Cycle Sell (Auto-sell) → Buy (Auto-buy, up to Min. to keep) → neither'
+    shop: Shop
+    source: Source
+    sourceAdded: Added
+    sourceEquipped: Equipped
+    sourceInventory: Inventory
+    sourceRule: Rule
+    summary: '{rows} rows · carried weight {weight}'
+    type: Type
+    usable: Usable
+    value: Value
+    worn: Worn
+    'yes': 'Yes'
+  # The EQ tab (frmMain's equipment page, mudtool's tabs/eq.js), 2026-10-19.
+  eq:
+    addCompare: Add all to compare
+    adjust: 'Adjust {stat}'
+    adjustHint: Added to the figure worked out. AC and DR in whole points.
+    armourClass: 'AC:'
+    adjustAccuracy:
+      Only the largest +Accuracy from ability 22 on a single slot, across items, class, race and auras, counts.
+    attack: 'Attack: {name}'
+    attackAccuracy: 'Accuracy with this attack: {accuracy}'
+    attackApply: Apply
+    attackBackstab: Backstab first
+    attackBash: Bash
+    attackMartial: Martial arts
+    attackNoSpells: No attack spell in the spellbook.
+    attackOneshot: One-shot everything
+    attackSmash: Smash
+    attackSpell: Learned spell
+    attackWeapon: The weapon in the plan
+    buyWear: Buy + Wear
+    buyWearTitle: 'Buy {item} and put it on'
+    clearAdjustments: Clear adjustments
+    copyCommands: Copy the commands
+    copyStats: Copy EQ/Stats
+    critEffective: 'Effective crit {crit}% (diminishing returns over 40)'
+    encumbrance: Encumbrance
+    equipped: 'Equipped: {who}'
+    findBest: Find Best
+    findBestHint: Searches each slot not held, among what this character can use.
+    holdAll: Hold all
+    holdTitle: 'Hold: Find Best leaves this slot alone'
+    itemsOnly: Items only (no class, race or blessings)
+    jumpkick: JmpKck
+    kick: Kick
+    level: 'level {level}'
+    maAccuracy: Accy
+    maDamage: DMG
+    maSkill: Skill
+    nextBest: Next Best
+    none: (none)
+    nothingFound: Nothing found.
+    packWeight: 'The pack beyond the plan: {weight}, from the reported encumbrance.'
+    packUnreported: The pack's weight is unreported until an inventory is read.
+    pointAt: Point at a figure to see what adds to it. Click one to adjust it.
+    punch: Punch
+    releaseAll: Release all
+    resetWorn: Back to what is worn
+    skipLimited: Skip limited items
+    title: Find Best
+    toBuy: 'Not in the pack, so Buy + Wear: {items}.'
+    unequipAll: Unequip all
+    wear: Wear the plan
+    wearTitle: Put on what the pack holds, and take off what the plan leaves out
+    weight: Weight
+    worn: 'worn: {item}'
+  # The Class/Race tab (PullClassDetail, PullRaceDetail, the builder), 2026-10-18.
+  classes:
+    abilities: Abilities
+    armour: Armour
+    baseCP: Base CP
+    builder: Builder
+    builderOf: '{name} builder'
+    builderSub: exp, HP and sample weapon swings at five levels
+    chooseRace: '(choose a race)'
+    classSub: 'class #{number}'
+    classes: Classes
+    combat: Combat
+    exp: Exp
+    hpBonus: HP bonus
+    hpPerLevel: HP/level
+    magic: Magic
+    none: '(none)'
+    race: Race
+    raceSub: 'race #{number}'
+    races: Races
+    weapon: Weapon
+  # The Monsters tab (FilterMonsters, frmMonsterFilters), 2026-10-18.
+  monsters:
+    abilities: Ability filters (all AND'ed)
+    ac: AC <=
+    accMaj: Majority attack ACCY <=
+    accMax: MAX attack ACCY <=
+    bsDef: BS Def <=
+    byLair: By Lair
+    byMob: By Mob
+    dodge: Dodge <=
+    dr: DR <=
+    drops: Drops coin
+    dropsCopper: Copper+
+    dropsGold: Gold+
+    dropsNone: No filter
+    dropsPlatinum: Platinum+
+    dropsRunic: Runic
+    dropsSilver: Silver+
+    enabled: Enabled
+    extra: Extra filters
+    gameLimit: Game Limit <=
+    lairExp: Lair EXP >=
+    magic: Magic
+    maxDamage: Damage <=
+    maxHP: HP <=
+    maxMagic: Magic <=
+    minExp: Exp >=
+    mobsGTE: Mobs/Lair >=
+    mobsLTE: Mobs/Lair <=
+    mr: Magic Res <=
+    noAbility: (none)
+    noConfusion: No Confusion
+    noFear: No Fear
+    noPoison: No Poison
+    nonHostileEvil: Non-Hostile VS Evil
+    nonHostileNG: Non-Hostile VS Neutral/Good
+    numLairs: '# Lairs >='
+    regen: Regen (hrs)
+    reset: Reset
+    showAll: Show all monsters, greying those that don't match
+    undead: Is Undead
+  # The Rooms tab, MME's room walker (frmMap), 2026-10-18.
+  rooms:
+    findLabel: Room name…
+    go: Go
+    goDown: Down
+    goUp: Up
+    leadsHere: Leads here
+    leadsHereTitle: 'Room {room} can be gotten to via:'
+    list: List
+    listed: 'Rooms named like “{text}”:'
+    listedCapped: 'Rooms named like “{text}” (first 500):'
+    map: Map
+    mapRoom: Map/Room
+    missing: Room {room} was not found.
+    next: Next
+    nextTitle: Walk the map to the next room with this name (Find Next)
+    notFound: Name not found.
+    nothing: Nothing.
+    nothingHere: Nothing here.
+    options:
+      alsoMark: Also mark
+      dupes: Allow a room drawn twice
+      followMap: Follow map changes
+      markNothing: Nothing more
+      markShops: Shops
+      markSpells: Room spells
+      noCMD: Don't mark room commands
+      noHidden: Don't follow hidden exits
+      noLairs: Don't mark lairs
+      noNPC: Don't mark NPCs
+      noRestricted: Don't follow restricted exits
+      overwrite: Allow cells to be overwritten
+    optionsButton: Options
+    refsTitle: Refs [{name} ({room})]
+    room: Room
+    size: Map size
+    standingHere: '{characterName} is here'
+    thisRoom: This room
+    walkHere: Walk here
+    walkHereTitle: Plan the way here for {characterName} on the route panel
+    whereAmI: Where am I
+    whereAmITitle: Draw the map from {characterName}'s room
+  # The Sundry tab (lvOtherItems), 2026-10-18.
+  sundry:
+    chest: Chest contents
+  # The Shops tab (LoadShops, PullShopDetail), 2026-10-18.
+  shops:
+    charm: Charm
+    charmValue: Charm
+    cost: Cost
+    level: LVL
+    locatedIn: Located in
+    max: Max
+    regen: Regen
+    sell: Sell
+    showAll: Show All
+    showTrainers: Show Trainers
+  # The Spells bar, MME's FilterSpells and chkSpellOptions (2026-10-18).
+  spells:
+    antiMagic: Anti-Magic
+    attack: Attack
+    bard: Bard
+    cold: Cold/Ice
+    druid: Druid
+    fire: Hot/Fire
+    hasAbility: Has ability
+    kai: Kai
+    learnableOnly: Learnable Only
+    level: level {level}
+    lightning: Lightning
+    mage: Mage
+    magery: Magery
+    mageryLevel: Level
+    mana: '{mana} mana'
+    monster: Monster
+    mr: MR
+    normal: Normal
+    party: Party
+    poison: Poison
+    priest: Priest
+    room: Room
+    self: Self
+    stone: Stone
+    target: Target
+    user: User
+    vsMR: Calc vs MR
+    water: Water
+
 # The Loops modal: the shelf of every loop, grouped by area, opened from
 # anywhere. The Loop card drives the loop that is running; this is where one
 # is found.
@@ -858,6 +1372,15 @@ loops:
   startedKept: 'Started {loopName}, and kept it.'
   startedOnly: 'Started {loopName}.'
   paletteLabel: 'Loops: find one to walk'
+  # A loop handed out as a file (2026-10-19): mudengine's own loop file for
+  # another player to import, or a MegaMUD path file for this character.
+  exportAriaLabel: 'Export {loopName} as a loop file'
+  exportTitle: Export as a loop file another player can import
+  exportMega: .mp
+  exportMegaAriaLabel: 'Export {loopName} as a MegaMUD path'
+  exportMegaTitle: Export as a MegaMUD loop path (.mp), its way planned for this character
+  exporting: 'Exporting {loopName}…'
+  exported: 'Exported {loopName}.'
 # Command palette: entries, groups, hints and chrome.
 palette:
   character:
@@ -1012,6 +1535,27 @@ terminal:
     noMatches: none
     placeholder: Find in backscroll…
     previousLabel: Previous match
+  # What a room asks of whoever would leave it, the tags beside its name (2026-10-18).
+  tags:
+    command: '{command}'
+    commandNeeding: '{command} — {detail}'
+    exit: '{direction}: {label}'
+    exitHere: '{direction}: {detail}'
+    exitTitle: '{direction} to {room}: {detail}'
+    keyCarried: '{direction}: {key}, carried'
+    keyMissing: '{direction}: needs {key}'
+    keyUnknown: a key
+    lever: 'Opens the way {direction}: {opens}'
+    leverElsewhere: '{direction}: lever in {room}'
+    leverItem: 'Opens the way {direction}: {opens}. Needs {item} carried.'
+    leads: '{command}: to {room}'
+    leadsNeeding: '{command}: to {room} — {detail}'
+    roomSpell: casts {spell}
+    roomSpellDamage: About {damage} damage a tick.
+    roomSpellStopped: 'Stopped by: {items}.'
+    roomSpellTitle: This room casts {spell} on whoever is in it.
+    search: 'Search {direction} for the hidden way to {room}.'
+    searchHere: Search {direction} for the hidden way out.
   backscrollRestoreFailed:
     Could not restore this character's backscroll ({message}) — showing new output
     only.
@@ -1019,39 +1563,37 @@ terminal:
 # What each toolbar button is called. The row shows only a glyph, so this is
 # the tooltip, the accessible name and the row in the button picker — the
 # words follow the settings screen's, because the two edit the same key.
+megamud:
+  # One of MegaMUD's own message boxes, its question in its own words below.
+  question:
+    title: '{name}: MegaMUD asks'
+    yes: 'Yes'
+    no: 'No'
 toolbar:
-  invokeItems: Bless from an item
-  provideLight: Auto-Light (Light Dark Rooms)
-  supplies: Auto-Buy Supplies
-  quests: Auto-Quest (Run a Plan)
-  gear: Auto-Gear (Equipment Sets)
-  assistLeader: Auto-Assist Leader
-  autoRank: Auto-Rank (Preferred Rank)
-  autoDeposit: Auto-Deposit (Bank Coins)
-  automation: Auto (On/Off)
-  autoBless: Auto-Bless (Buff Spells)
-  bashDoors: Auto-Bash Doors
-  combat: Auto-Combat
+  # MegaMUD's own toolbar toggles, for a character the MegaMUD engine runs,
+  # in MegaMUD's words.
+  mega:
+    noHangup: Don't Hang Up
+    allOff: All Off
+    combat: Auto-Combat
+    preAttack: Auto-Pre-Attack
+    melee: Prefer Melee
+    nuke: Auto-Nuke (Attack Spells)
+    heal: Auto-Heal
+    bless: Auto-Bless
+    light: Auto-Light
+    get: Auto-Get (Items)
+    cash: Auto-Cash (Coins)
+    sneak: Auto-Sneak
+    hide: Auto-Hide
+    search: Auto-Search
+    afk: AFK
   connect: Connect
-  defendParty: Auto-Defend Party
   disconnect: Disconnect
-  drop: Auto-Drop Junk
-  retreat: Auto-Retreat (Combat)
   flee: Auto-Flee (Sys Goto)
-  gangpath: Allow Remotes on Gangpath
-  hangUp: Auto-Hangup (Panic Disconnect)
-  healParty: Auto-Heal Party Members
-  lookAtPlayers: Auto-Inspect New Players
-  loot: Auto-Get Cash
-  openDoors: Auto-Open Doors
-  pickLocks: Auto-Pick Locks
-  remotes: Remote Control (@ commands)
   restoreGear: Re-equip Gear / Auto-Equip
-  restWithLeader: Follower Auto-Rest
-  search: Auto-Search Rooms
-  retaliate: Retaliate When Attacked
-  sneak: Auto-Sneak on Move
   openLoops: Path Library / Select Loop
+  openExplorer: Weapons & Armour (MMUD Explorer)
   buildLoop: Build a Loop / Path Editor
   startMoving: Start Moving / Resume
   stopMoving: Stop Moving
@@ -1078,11 +1620,9 @@ tabs:
     editAria: Edit {characterName}…
     markError: error
     markFighting: fighting
-    markHurt: hurt
     markLooping: looping
     markMeditating: meditating
     markOffline: offline
-    markPvp: attacked! (PvP)
     markRecovering: recovering
     markSearching: searching
     markBlocked: blocked
@@ -1433,6 +1973,9 @@ cards:
       mobArrived: '{name} is in the room — {dispositionWord}'
       mobArrivedUncertainSuffix: ', by the worst of what the realm says'
       playerArrived: '{name} is in the room — {alignment}'
+    escape:
+      fled: Fled the fight by sys goto
+      ran: Ran from the fight
     session:
       dropped: The link dropped — you are out of the realm
       hungUp: Hung up for you — you are out of the realm
@@ -1696,6 +2239,8 @@ cards:
         fromBank: '{short} from {bank}'
         fromBankTitle:
           'The purse holds {purse}; the run withdraws the rest at {place}, which last said {held}.'
+        fromBankUnreadTitle:
+          'The purse holds {purse}; the run asks {place} for its balance and withdraws the rest there.'
         short: the purse and the banks on record hold too little
         shortTitle:
           'The purse holds {purse} and no bank on record holds the rest. Ask a bank for its balance
@@ -1823,20 +2368,13 @@ cards:
     total: '{copper} copper coins (cc) in all'
   automation:
     badge:
-      off: off
       queueStatus: '{depth} queued · {inFlight} in flight'
       standingDown: standing down
-    emptyDisabled: Automation disabled.
     emptySent: No automated commands sent.
     headings:
-      engagements: Active Engagements
       queued: Queued
-      rules: Rules
       safety: Safety
       sent: Sent
-    ruleBlockedPrefix: 'Blocked: {guard}'
-    engagedPrefix: Engaged target
-    engagedBecause: 'Engaged: {reason}'
     safetyRefusedPrefix: 'Refused: {reason}'
     title: Automation
   chrome:
@@ -1887,6 +2425,28 @@ cards:
     copyLink: Copy link
   float:
     resizeTooltip: Resize
+  # MMUD Explorer's Find Best for the character as it is (2026-10-18).
+  gear:
+    already: worn already
+    badge:
+      many: '{count} upgrades'
+      one: '{count} upgrade'
+    buy: Buy
+    buyTitle: Buy {item}
+    buyWearTitle: 'Buy + Wear: buy {item} and put it on'
+    criterion: Find the best by
+    explore: Open {item} in the Explorer
+    leaveEmpty: best left empty
+    loading: Reading the realm…
+    noLimited: No limiteds
+    none: Nothing this character can use fits any slot.
+    sent: On the way.
+    soldOnly: Sold in shops
+    title: Gear
+    unsupported: The Explorer has nothing for this realm.
+    wear: Wear
+    wornNothing: nothing worn there now
+    wornNow: 'now: {item} ({value})'
   header:
     dragHint: Drag to rearrange, or onto the console to float
     resizeHint: Drag to change the card's height; double-click to reset it
@@ -2017,22 +2577,24 @@ cards:
     buildAction: Build a loop or route
     centreFallback: the centre
     legendBank: bank
-    legendGated: gated
     legendLair: lair
-    legendLook: look up/down
-    legendPick: clicked
-    legendRoute: route
-    legendFind: found by searching
     legendShop: shop
     legendShut: shut
     legendStart: start
-    legendStop: stop
     legendTeleport: teleport
-    legendAgain: covered again
-    legendThrough: on the way
     legendTrap: trap
-    legendVertical: up/down
+    legendVertical: way up or down
     legendYou: you
+    # mudmaps' marks and kinds (2026-10-18).
+    arrowAway: '{direction}: to a room off this map'
+    arrowLocal: '{direction}: to a room elsewhere on this map'
+    legendArrow: exit elsewhere here
+    legendArrowAway: exit off the map
+    legendCommand: answers a command
+    legendHidden: hidden / needs a word
+    legendLettered: temple T, tavern P, inn I, trainer G
+    legendNpc: somebody lives here
+    legendUpDown: up / down
     svgAriaLabel: '{roomCount} rooms around {roomName}'
     svgAriaLabelDestination: '{roomCount} rooms around the destination, {roomName}'
     title: Map
@@ -2081,6 +2643,17 @@ cards:
     stepAt: step {at}
     title: Loop Builder
     undo: Undo (Ctrl/⌘ Z)
+    # Commands typed at a waypoint, and a saved loop opened to be edited (2026-10-23).
+    addCommandsAria: 'Commands to type at {roomName}'
+    addCommandsTitle: Commands to type in this room each time the loop reaches it, such as touch hammer
+    commandsAria: 'Commands typed at {roomName}'
+    commandsPlaceholder: 'Commands, separated by ;'
+    commandsTitle:
+      Typed in this room each time the loop reaches it, before it moves on. The room is looked at
+      after each, so what a command brings is fought first. Separate several with a semicolon.
+    editing: 'Editing {name}. Saving replaces it.'
+    editingDetach: Save as a new loop instead
+    cannotEdit: 'The loop cannot be opened in the builder: {reason}'
   # Where the character is going, in the two ways it can be going anywhere: a
   # route somebody chose and walks once, or a loop walked round and round. One
   # card and one face, named for whichever is happening — routing, looping or
@@ -2097,9 +2670,6 @@ cards:
     resumeLoopOption: 'Resume: {loopName}'
     resumeRouteOption: 'Resume route to {destination}'
     loop:
-      actions:
-        reverse: Reverse Path Direction
-        skip: Skip Waypoint
       directionBackward: backward
       directionForward: forward
       directionLabel: Direction
@@ -2290,6 +2860,17 @@ cards:
     ofYours: 'of your {hp}'
   reference:
     emptyPrompt: Type a name, or click one on a card.
+    edit:
+      button: Edit
+      clear: Clear my row
+      failed: This character's rows could not be read.
+      heading: This character's row
+      itemHint: Edit this character's rules for this item
+      loading: Reading this character's rows…
+      monsterHint: Edit this character's settings for this monster
+      realmNone: The realm's table says nothing about it.
+      realmSays: 'The realm says:'
+      saved: Saved to this character.
     item:
       armour:
         acFigure: AC {ac}
@@ -2832,7 +3413,6 @@ cards:
       tableCaption: Items kept in stock
       empty: Nothing kept in stock yet.
       howToAdd: To keep an item, click its name in the pack and set a minimum on its panel. An item sold nowhere needs no shop — set a maximum and it is collected when found.
-      switchedOff: Auto-buy is switched off on the toolbar; the list is kept but nothing is bought.
       copyRow: '{item}: {have} carried, keep {min}–{max}, from {shop}'
   stats:
     attackingLabel: Attacking
@@ -2840,6 +3420,11 @@ cards:
     badge:
       nothingYet: nothing yet
     coinsLabel: Coins collected
+    # The MegaMUD engine's own counts, in its statistics window's words (2026-10-19).
+    depositedLabel: Deposit/Sold
+    itemsFigure: '{count} items'
+    itemsLabel: Items collected
+    stashedLabel: Stashed
     column:
       count: Count
       kind: Attack Type
@@ -2848,7 +3433,10 @@ cards:
       span: Min-Max
     dealtLabel: Damage dealt
     deflectedLabel: Deflected
-    dodgedLabel: Dodged
+    dodgeLabel: Dodge
+    hitLabel: Hit
+    missLabel: Miss
+    ofCount: '{part} of {whole}'
     empty: Nothing has been fought yet.
     expMadeLabel: Exp. made
     expNeededLabel: Exp. needed
@@ -2872,8 +3460,16 @@ cards:
       backstab: Backstab
       cast: Cast
       crit: Crit
+      # MegaMUD's attack rungs, named as its window names them while the
+      # rung's command is unset; with one set, the row is the command.
+      main: Main
       melee: Melee
       miss: Miss
+      multi: Multi
+      pre: Pre
+      preMulti: PreM
+      round: Round
+      second: Cast2
       # A weapon's chance-on-hit. The realm's own word for the pair is
       # `PercentSpell`; `Weapon` is what a player calls it, and the row sits
       # apart from Melee because it lands off a swing rather than being one.
@@ -3004,6 +3600,14 @@ cards:
       diseased: diseased
       held: held
       poisoned: poisoned
+    # An affliction's tooltip: how the line under it was read, and when.
+    cause:
+      engine: 'MegaMUD read it so at {at}:'
+      fumble: 'A command the realm threw away, at {at}:'
+      message: 'MegaMUD''s message {row}, at {at}:'
+      said: 'The realm said so at {at}:'
+      spell: 'The message of the realm''s {spell}, at {at}:'
+      unseen: 'A room the character could not see, at {at}:'
     # And the ones only a realm's message table states (`CharacterState.stated`).
     stated:
       confused: confused
@@ -3082,16 +3686,6 @@ settings:
     toggle: 'Advanced: {label}'
     togglePlain: Advanced
   advancedWire: the wire
-  afk:
-    legend: Away From Keyboard
-    enabled: Auto-Reply to Telepaths When Away
-    enabledHint:
-      Once nothing has been typed into this character for the minutes below, an incoming telepath is
-      answered with the reply — once per sender every ten minutes, never for an @ command.
-    afterLabel: Away After, min
-    afterHint: Minutes without a keystroke into this character before it counts as unattended.
-    replyLabel: Away Reply
-    replyHint: "MegaMUD's own {AFK} is what other MegaMUD clients recognise; say anything you like."
   alerts:
     channel:
       combat: combat
@@ -3183,6 +3777,8 @@ settings:
       throttled: the realm tells you to slow down
       arrived: you arrive where you were going
       connectionLost: the connection drops
+      fled: you flee by sys goto
+      ran: you run from a fight
       hostileArrives: a hostile player walks in
       monsterArrives: a monster that attacks on sight walks in
       hostileInRealm: a hostile player is in the realm
@@ -3206,19 +3802,19 @@ settings:
     appearance:
       advancedConsole: the console
       consoleFontHint: A monospace fallback and the bundled CP437 face are always appended.
-      consoleFontLabel: Console Font
+      consoleFontLabel: Console font
       consoleFontPlaceholder: LucidaProgrammer Nerd Font Mono
-      consoleDarkThemeLabel: Dark Theme For The Console
+      consoleDarkThemeLabel: Dark theme for the console
       consolePaletteDark: '{paletteLabel} (dark)'
       consolePaletteFollow: Follow the theme
       consolePaletteHint: The sixteen colours the realm's own codes are painted with. Follow the theme and the console wears whatever palette the theme brings, which is how the client has always looked. Name one instead and it settles the console outright, whichever way the chrome reads.
-      consolePaletteLabel: Console Colours
+      consolePaletteLabel: Console colours
       consolePaletteLight: '{paletteLabel} (light)'
       consoleKeepDarkHint: A light theme has to make the realm's black its paper, so colour-coded output arrives inverted. This keeps the console on a dark palette while everything around it stays light; a dark theme ignores it.
-      consoleKeepDarkLabel: Keep The Console Dark
+      consoleKeepDarkLabel: Keep the console dark
       consoleKeepDarkOutranked: Not consulted while Console Colours names a palette — that choice settles the console on its own. Set it back to "Follow the theme" for this to decide again.
       cursorBar: Bar
-      cursorBlink: Blink Cursor
+      cursorBlink: Blink cursor
       cursorBlock: Block
       cursorStyleLabel: Cursor
       cursorUnderline: Underline
@@ -3227,19 +3823,19 @@ settings:
       densityCompact: Compact
       densityLabel: Density
       fontSizeLabel: Size, px
-      scrollbackLabel: Scrollback, Lines
-      showHud: Show Cards Beside Console
-      showLogo: Show The MudEngine Mark
-      tabPlacementLabel: Character Tabs
+      scrollbackLabel: Scrollback, lines
+      showHud: Show cards beside console
+      showLogo: Show the MudEngine mark
+      tabPlacementLabel: Character tabs
       tabsLeft: Down the left, cards right
       tabsRight: Down the right, cards left
       tabsTop: Across the top
       uiFontHint: Everything except the console, which is always fixed-pitch. Blank uses the console face.
-      uiFontLabel: Interface Font
+      uiFontLabel: Interface font
       uiFontPlaceholder: the same face as the console
       vitalCautionPercent: '{vitalName} Caution, %'
       vitalCriticalPercent: Critical, %
-      vitalsLegend: Vital Bar Thresholds
+      vitalsLegend: Vital bar thresholds
       vitalsNote: Fractions of maximum, never points, so one number holds at every level. A maximum
         nothing has stated yet reads as unknown rather than critical.
       vitalHealth: Health
@@ -3247,23 +3843,24 @@ settings:
     records:
       advancedLogSize: how big a log gets
       captureHint: A raw transcript, kept so a line the client could not read can be looked at later.
-      captureLabel: Record Raw Transcript
+      captureLabel: Record raw transcript
       conversationDaysHint:
         Anything older is dropped when the client starts. A year by default, and at least one
         day — to keep nothing, turn the switch above off instead.
-      conversationDaysLabel: Keep Conversations, Days
+      conversationDaysLabel: Keep conversations, days
       conversationsHint:
         The Talk card starts where it left off instead of empty. Only the conversation channels
         are kept, so the file cannot hold a password.
-      conversationsLabel: Persist Conversations
-      enabled: Keep Session Log
+      conversationsLabel: Persist conversations
+      enabled: Keep session log
       fightsHint:
         'Nothing reads it, which is the point: every question worth asking about how a character
         fights needs a record that predates the question.'
-      fightsLabel: Write Fight Log
+      fightsLabel: Write fight log
       folderLabel: Folder
       folderPlaceholder: beside the options file
-      maxBytesLabel: New Log After, Bytes
+      keepBytesLabel: Keep logs up to, bytes in all
+      maxBytesLabel: New log after, bytes
       note: What the client writes down. Every one of these is a file beside the options, and the
         recordings hold everything the realm sent and every command sent back — including, on a
         hand-typed login, a password.
@@ -3271,16 +3868,7 @@ settings:
       appearance: Appearance
       records: Records
   combat:
-    attackForMe: Auto-Attack
-    attackLegend: Attack
-    attacksLegend: Attacks
-    attackVerbHint:
-      The realm’s own word. A verb this class cannot use is dropped the first time the realm
-      says so.
-    attackVerbLabel: Attack Command
-    attackVerbPlaceholder: a
-    attackWithPlaceholder: a
-    monsterRowsLegend: Monster Details
+    monsterRowsLegend: Monster details
     monsterRowsNone: No monster rows of this character's own. The realm's table applies as it is.
     monsterRowsNote:
       What this character does differently about particular monsters, laid over the realm's
@@ -3288,64 +3876,29 @@ settings:
       Friend is never attacked, even when it swings first; where a monster with a band is in the
       room the band decides outright and the usual weighing is skipped. A field left blank keeps
       what the realm says.
-    maxMonsterExpHint: Will not attack anything worth more experience than this. 0 is off,
-      unknown monsters will be attacked.
-    maxMonsterExpLabel: Max Monster Experience
-    minSurvivalHint: Before attacking, the room's fight is simulated from your health now. Under
-      this share of fights survived, or where you would have to run at once, the fight is turned
-      down and you rest first. 0 is off and attacks whatever the odds.
-    minSurvivalLabel: Only Open Fights Survived %
-    minMobsLabel: Min Monsters in Room
-    minMobsHint:
-      Will not open a fight in a room holding fewer than this — for a character whose value is an
-      area spell. 0 is off.
-    maxTargetHealthHint:
-      Will not attack anything the realm gives more health than this. 0 is off, and a monster the
-      realm cannot place is not refused by it.
-    maxTargetHealthLabel: Max Target Health
-    engageAll: Attack All Monsters
-    engageHint:
-      What the world data says about a monster, never its name — one it calls good is attacked only
-      if named below.
-    engageHostile: Hostile / Aggressive Only
-    engageLabel: Attack Target Selection
-    engageLikely: Suspected Hostiles Only
-    engageNone: Retaliate Only
-    hitBack: Retaliate When Attacked
-    hitBackHint: Swings at whatever is already swinging at this character. Cannot open a fight.
-    defendAfterRounds: Defend After Rounds
-    defendAfterRoundsHint:
-      With auto-combat off, rounds of being hit without moving before it is turned on until you
-      next arrive in another room. 0 never does.
-    politeAttacks: Polite Attacks
-    politeAttacksHint:
-      MegaMUD's Polite Attacks. On, a monster somebody outside your party is already fighting is
-      left to them, and the trace says whose it was. Retaliation is unaffected.
-    masterSwitch: Enable Auto-Combat
-    masterSwitchHint: The master switch. With this off nothing below sends anything, whatever it says.
-    maxMobsHint: Will not open a fight in a room holding more than this. 0 never refuses.
-    maxMobsLabel: Max Monsters in Room
-    monstersLegend: Monsters
-    openerHint: Sent for the first blow of a fight only. Blank for none.
-    openerLabel: Opening Attack
-    openerPlaceholder: bs
-    hideForOpener: Hide Between Fights
-    hideForOpenerHint:
-      Sends hide when this character is seen in an empty room, and sneak instead while a lap or
-      route has it, so the opening backstab lands again. Only for an opener of bs.
-    openingFightsWarning: Opening fights unasked can cost a character; the default only retaliates.
-    openWarning: With this on, the client opens fights by itself — never on a player.
-    refreshHint: Rounds between looks, so a monster that died or walked in is noticed. 0 never looks.
-    refreshLabel: Room Look Interval (Rounds)
-    rulesPointerNote:
-      When to cast, when to buff and when to loot are automation.rules in the options
-      file — guard expressions with comments explaining why, which is what YAML is good at and this
-      screen is not.
   crumbs:
-    characters: Characters
+    characters: Character
     global: Global
     mudEngine: MudEngine
     realms: Realms
+  megamud:
+    # The BBS tab's settings kept with the character: MudOp access, sys goto and the redials.
+    accountLegend: MegaMUD connection
+    # A character's MegaMUD settings file read in: for a new character, its name and login too.
+    importNew: Start from a MegaMUD character file (.ini)…
+    importOver: Replace MegaMUD settings from a character file (.ini)…
+    importedNew: Read {fileName}. Check the name and realm, then create the character; its MegaMUD settings are written with it.
+    importedOver: MegaMUD settings replaced from {fileName}. The login and password are left as they were; Undo puts the old settings back.
+    importNotMegamud: "{fileName} is not a MegaMUD settings file: it has none of MegaMUD's sections."
+    importUnreadable: "{fileName} could not be read."
+    # On a control MegaMUD 2.1 draws and saves but never acts on (2026-10-16).
+    inertTitle: MegaMUD 2.1 keeps this setting but never acts on it, so it does nothing here either.
+    # The Combat tab's opening attack and weapon, settings of this client's own (2026-10-22).
+    openingAttack: Opening attack
+    openingAttackTitle: The first attack sent at each monster, before the normal attack takes over for the rest of the fight. Blank opens with the normal attack. Not one of MegaMUD's settings.
+    openingWeapon: Opening weapon
+    openingWeaponTitle: The weapon wielded for the opening attack's round, before the normal weapon. Blank keeps the normal weapon. Not one of MegaMUD's settings.
+    passwordKept: (unchanged)
   dialog:
     closeAria: Close settings
     # The corner of the panel. Drag to resize, double-click to put it back.
@@ -3371,42 +3924,22 @@ settings:
         character's own rows, one field at a time. A Friend is never attacked, even when it swings
         first; a band puts a monster first or last.
       advancedPacing: looking around and how fast to send
-      pacingMinGapLabel: Least Gap, ms
+      pacingMinGapLabel: Least gap, ms
       pacingNote:
         'How fast commands may go out is measured from the status line, not guessed: the realm
         accepts about twenty in flight and silently discards the rest.'
-      pacingTimeoutLabel: Give Up After, ms
-      pacingWindowLabel: In Flight
+      pacingTimeoutLabel: Give up after, ms
+      pacingWindowLabel: In flight
     loading: Reading the options file…
     movement:
-      advancedWalking: walking, and staying connected
-      clearRouteLabel: Route Timeout (sec)
-      idleAfterLabel: Anti-Idle Interval (sec)
-      idleCommandLabel: Anti-Idle Command
-      idleCommandPlaceholder: l
-      idleEnabled: Enable Anti-Idle (Prevent Disconnect)
       loopsNote:
         Every character can walk these, whatever realm it plays on. A realm’s own loops go on its
         page, and a character’s on its own.
-      onEnterHint:
-        What the client asks the realm once, on the way in. Every one of these is a command
-        spent, so the list is short on purpose. On GreaterMUD, `abil` is what fills the quest
-        book in with the realm's own count of each quest — no other realm has that command,
-        and one that does not will say the word out loud in the room.
-      onEnterLabel: Post-Login / Entry Commands
-      onEnterPlaceholder: rm, st, i, exp, sc, l
-      onPartyChangeLabel: Party Change Commands
-      onPartyChangePlaceholder: party
-      stepTimeoutHint:
-        Spent twice per step — once waiting for the command to reach the wire, once waiting for
-        the realm to answer it — with one forced prompt between them. The wait before a step is
-        given up on is about twice this.
-      stepTimeoutLabel: Wait Per Step, ms
       minExpRateHint:
         Stops a running loop whose experience per hour has fallen under this, once it has run a
         quarter of an hour — a lap that has stopped working looks like one that is working until
         somebody checks. 0 never stops.
-      minExpRateLabel: Stop Loop Under Exp/Hour
+      minExpRateLabel: Stop loop under exp/hour
     realm:
       hostPlaceholder: paramud.mudinfo.net
       loginMenuSendPlaceholder: '1'
@@ -3423,70 +3956,19 @@ settings:
     tabs:
       realm: Realm
   health:
-    belowHealthLabel: Below Health %
-    belowManaLabel: Below Mana %
-    belowManaHint:
-      Also run under this share of mana — MegaMUD's ManaRun%. A caster with an empty pool is losing
-      whatever the health bar says. 0 never runs for mana.
-    retreatHint:
-      Walking out of the fight breaks combat and carries none of the penalty a disconnect does.
-      There is no flee command on this server family, so the way out is always a direction — the
-      one you came in by where that is known, and an exit of this room otherwise. Only while
-      something is taking the character somewhere (a route, a loop, an errand, a quest run);
-      once a route has arrived, it stays where it is.
-    retreatLabel: Auto-Retreat
-    retreatLegend: Auto-Retreat
-    retreatStrategyHint:
-      How far to go. step-back is the one move out. safe-haven takes the same move and then walks
-      to the room below once the fight is over. Which exit is chosen is not a setting — the way you
-      came is always preferred over one you have never used.
-    retreatStrategyLabel: Retreat Strategy
-    safeHavenHint: Named as a loop stop is, with the map/room so a shared name is not guessed at.
-    safeHavenLabel: Safe Room / Retreat Room
-    safeHavenPlaceholder: Newhaven, Town Gates 1/2150
+    belowHealthLabel: Below health %
     fleeHint: A second, more desperate escape for realms that answer sys status — sys goto is a real
       command there, not a direction. Breaks off combat the same way Auto-Retreat does, then once
       the fight is over sends sys goto to the destination below instead of walking. Set this lower
       than Auto-Retreat's own threshold, or it never gets the chance to fire first.
     fleeLabel: Auto-Flee
     fleeLegend: Auto-Flee
+    # The realm's ward rules, kept beside the MegaMUD engine (2026-10-14).
+    wardsLegend: Room wards
     fleeDestinationHint: The keyword sys goto is sent with, e.g. sil. Empty means never send it.
-    fleeDestinationLabel: Sys Goto Destination
+    fleeDestinationLabel: Sys goto destination
     fleeDestinationPlaceholder: sil
-    hangPenaltiesHint: Whether this realm charges for a hang-up; Paradigm's realm menu says so itself, and that outranks this.
-    hangPenaltiesLabel: Hang Penalties
-    hangPenaltiesGlobal: As Global says
-    hangPenaltiesRealm: As the realm says
-    hangPenaltiesYes: Charged
-    hangPenaltiesNo: Not charged
-    hangUpLabel: Auto-Hangup / Emergency Disconnect
-    hangUpLegend: Auto-Hangup
-    hangUpOnPlayer: Hangup on Player Sighting
-    hangUpWarning:
-      On a realm with hang penalties, an unclean disconnect costs a share of maximum health, and
-      at low health it kills — use Auto-Retreat.
-    meditateBelowHint: Sends med below this. Ignored for a class with no mana.
-    meditateBelowLabel: Meditate If Below Mana %
-    meditateToHint:
-      Meditates again after something breaks it, and keeps a walk or loop standing still, until mana
-      reaches this. 0 walks on 10% above Meditate If Below. Lifted to Meditate If Below if set under it.
-    meditateToLabel: Keep Meditating To Mana %
-    outnumberedHint: A health threshold notices being swarmed too late. 0 never.
-    outnumberedLabel: Retreat If Attackers Exceed
-    pvpActionHint:
-      What to do about the fight itself. Retreat runs the moment the attack is seen, whatever
-      Auto-Retreat says — a player opening on you is not a health threshold.
-    pvpActionLabel: PvP Reaction
-    pvpLegend: Attacked by a Player
-    pvpNotifyHint: Says so on the gangpath (bg), once per attacker per five-minute window, with the
-      room and your health riding along. It speaks to your whole gang.
-    pvpNotifyLabel: Broadcast PvP Alert to Gang (bg)
-    # The player's own *use this when that* list (todo 19), and since todo 00
-    # the only one. The name field is filtered by the condition from the
-    # realm's own data, so a rule for poison offers the antidotes and not the
-    # healing potions.
-    potionRuleLegend: When to use an item
-    useWards: Follow the realm's own rules too
+    useWards: Keep a room’s ward up
     useWardsHint:
       The realm writes rules of this shape itself, and this is whether they are obeyed. Where it
       says a spell stops a room's effect and a carried item's use casts that spell, the item is
@@ -3495,57 +3977,11 @@ settings:
     wardRow:
       one: against {hazard}, cast in {rooms} room
       many: against {hazard}, cast in {rooms} rooms
-    potionRuleNote:
-      Name an item and say what makes it worth using. The list is what this realm says would
-      serve the condition; anything else can still be typed, and only an item the pack lists is
-      ever asked for.
-    potionRuleAdd: Add a rule
-    potionRuleNamePlaceholder: item, as the pack lists it
-    potionRuleNameAria: 'Item for rule {number}'
-    potionRuleWhenAria: 'When rule {number} fires'
-    potionRuleBelow: below
-    potionRuleBelowAria: 'Threshold for rule {number}, as a percentage'
-    potionRuleVerbAria: 'Verb for rule {number}'
-    potionRuleRemoveAria: 'Remove rule {number}'
-    potionRuleRemoveTitle: Remove this rule
-    potionRuleDuplicate: An earlier rule already says this item at this condition and depth.
-    potionWhenHp: health below
-    potionWhenMana: mana below
-    potionWhenPoisoned: poisoned
-    potionWhenBlind: blinded
-    potionWhenDiseased: diseased
-    potionWhenHeld: held
-    recoverLegend: Recover
-    restBelowHint: Sends rest out of combat below this, and holds a running loop still at the same
-      figure. 0 never rests and never pauses a loop.
-    restBelowLabel: Rest If Below HP %
-    restToHint:
-      Sits back down after something breaks the rest, and walks a held loop on again, once health
-      reaches this. Casting breaks a rest and standing regenerates six times slower, so this is
-      what gives you rest, heal, rest, heal. 0 rests once and resumes at the floor. Lifted to Rest
-      If Below if it is under it.
-    restToLabel: Keep Resting To HP %
-    restBeforeTrapsHint:
-      Before stepping through a trap, waits until health covers the trap's damage and still
-      leaves this share of maximum after it — or what the lair beyond is expected to take, if
-      more. Its own switch, so it rests before a trap even with Rest If Below at 0. 0 walks into
-      any trap at any health.
-    restBeforeTrapsLabel: Keep After a Trap HP %
-    restNextDoor: Rest Next Door to a Lair
-    restNextDoorHint:
-      A room that makes monsters on a short clock is not a resting place. Looks into a neighbour the
-      realm holds no lair in, steps there only if it is empty, rests, and steps back. Never while
-      following, since a follower rests where the party is.
-    restingNote: One pair for both, because nothing rests while a loop is marching — a separate
-      pause figure under the resting floor left the character walking while it was too hurt to sit
-      down. Resting is a state the character is in, and only moving, attacking and casting break
-      it, so nothing is sent while the status line already says (Resting), and nothing is ever
-      spent standing up, because the next command you wanted does that for free.
   hint:
     ariaLabel: What this does
   login:
     addStep: Add a menu
-    legend: Login Menus, This Character
+    legend: Login menus, this character
     note: "Usually empty: the menus are from {realmOrAddress}. Anything here replaces that script
       rather than being added to it, the rows that send {user} and {password} included — so the
       first one you add starts as a copy of the realm's."
@@ -3574,6 +4010,20 @@ settings:
     searchPlaceholderLoading: Search the shipped loops
   loopSection:
     addLoop: Add a loop
+    # Opening a loop in the builder to change it (2026-10-23).
+    editAriaLabel: 'Edit {loopName}'
+    editTitle: Edit in the Loop Builder, with commands at its stops
+    # A loop file another player exported (2026-10-19), and handing one out.
+    exportAriaLabel: 'Export {loopName}'
+    exportTitle: Export as a loop file another player can import
+    fileImportLabel: Import a loop file…
+    fileImportNote:
+      A loop file another player exported from their loop list. It is added to this realm, replacing
+      one of the same name.
+    fileImported:
+      one: 'Imported 1 loop ({replaced} replaced one of the same name).'
+      many: 'Imported {count} loops ({replaced} replaced one of the same name).'
+    importedName: Imported loop
     importDropped: 'Left out: {start} whose first room this realm''s map does not have, {steps} whose
       steps do not fit it, {short} too short to walk.'
     importLabel: Import MegaMUD loops…
@@ -3598,55 +4048,15 @@ settings:
   # Going hunting on its own -- `automation.hunting` (todo 05). Under Movement
   # beside the loops: what it decides is a place.
   hunting:
-    auto: Auto-Hunt (Find the Best Spot)
+    auto: Auto-hunt (find the best spot)
     autoHint:
       With nothing else to do, ask where the best hunting is within reach, walk there, and run a
       loop round it. The loop is built from the survey each time and is never saved.
     legend: Hunting
     note: The Hunting card ranks every lair the map reaches and prices it for this character. This
       is the same answer, walked to without a click.
-    radius: Look Within (Steps)
+    radius: Look within (steps)
     radiusHint: How far to look for a lair, in steps. Blank is everywhere the exits reach.
-  train:
-    legend: Training
-    warning: A point bought here is permanent, and the form it is bought on renames the character if
-      anything else is typed into it. The client types only figures, only into the six stat
-      fields, and saves.
-    stats: Auto Train Stats
-    # Going to collect the level. Experience past the threshold does nothing
-    # at all until a trainer is paid, so a client left overnight without this
-    # comes back with a night's experience and the same character.
-    levels: Go and train levels
-    levelsHint:
-      'When the experience is there, walk to a trainer and level. Off by default: a character
-      banking levels for a reroll should not be levelled behind your back.'
-    trainerLabel: Trainer
-    trainerHint:
-      Only the trainers the realm says will take this character at this level. The class training
-      rooms stop at level 10 and every trainer has a band, so this list shrinks as the character
-      grows.
-    trainerCheapest: The cheapest that will take me
-    trainerOption: '{name} — {room} ({cost} copper)'
-    trainerNowhere:
-      The realm names no trainer that will take this character at its level. Nothing will be
-      walked to until one does.
-    trainerStale:
-      The trainer chosen here no longer takes this character. Pick another, or leave it on the
-      cheapest; nothing will be walked to meanwhile.
-    statsHint:
-      At a trainer with character points unspent, opens the stat screen, buys the wanted figures
-      below as far as the points go — cheapest point first — and saves. Off, the client stands
-      down from that screen and touches nothing.
-    wantedNote:
-      Where each stat should end up. 0, or a figure at or under the current one, leaves that stat
-      alone; the race's ceiling caps a figure above it. The first ten points above the race's base
-      cost 1 CP each, the next ten 2 each, and so on.
-    strength: Strength
-    intellect: Intellect
-    willpower: Willpower
-    agility: Agility
-    health: Health
-    charm: Charm
   # A realm's message table (`RealmMessages`): MegaMUD's Messages.md, imported
   # onto the realm and edited there.
   messages:
@@ -3670,7 +4080,7 @@ settings:
     endsWithHint:
       The sentence that ends what this one started, such as "The effects of confusion wear off".
       Leave it blank when nothing lasts.
-    endsWithLabel: Ends With
+    endsWithLabel: Ends with
     import: Import Messages.md…
     imported:
       many: 'Imported {count} messages.'
@@ -3714,13 +4124,101 @@ settings:
     switchedOff: Message switched off.
     switchedOn: Message switched on.
     unreadable: That file could not be read.
+  items:
+    add: Add an item
+    cancel: Cancel
+    confirmReplace: Replace this realm's {count} item rows with the ones in {file}? Edits made here are lost.
+    count:
+      many: '{count} items'
+      one: '1 item'
+    duplicate: '{item} already has a row; edit that one.'
+    flags:
+      backstab: Can use to backstab
+      buy: Auto-buy
+      cannotTake: Cannot be taken
+      collect: Auto-collect
+      discard: Auto-discard
+      equip: Auto-equip
+      find: Auto-find
+      mustHaveMin: Must have minimum
+      open: Auto-open
+      sell: Auto-sell (or stash)
+    flagsLabel: Options
+    ifNeededHint: The path walked to get it when there is too little — a MegaMUD path's file name.
+    ifNeededLabel: If needed, do
+    import: Import Items.md…
+    imported: 'Imported {count} items with something to say, of the {read} the file names.'
+    keepChip: 'keep {count}'
+    keepLabel: Min. to keep
+    legend: Items
+    loading: Reading this realm's items…
+    more: 'Showing {shown} of {count}. Search to find the rest.'
+    mostChip: 'max {count}'
+    mostLabel: Max to get
+    nameLabel: Item
+    namePlaceholder: healing potion
+    needsName: A row needs an item.
+    noMatch: No item matches that search.
+    none: No items yet. Import the Items.md from a MegaMUD data folder, or add one.
+    note:
+      What to do about particular items here — MegaMUD's item details, used by every character that
+      plays this realm. Weight, price, type and where it is worn come from the realm's own data.
+      A character's own item rows change only what they state. Importing replaces the table.
+    nothingSaid: '{file} names {count} items but says nothing particular about any of them, so the realm''s table was left as it was.'
+    notItems: '{file} is not a MegaMUD item database. Choose the Items.md from a MegaMUD data folder.'
+    removedRow: Item removed.
+    removeRow: Remove
+    replace: Replace
+    saveFirst: Add the realm first; its items are kept with it.
+    savedRow: Item saved.
+    saveRow: Save item
+    searchLabel: Search items
+    searchPlaceholder: Search items…
+    shopHint: The shop it is bought at or sold to.
+    shopLabel: Bought/Sold
+    source: 'from {file}, {date}'
+    unreadable: That file could not be read.
+  # A realm's learned spell sentences: what a spell prints when it lands and ends, as the wire taught it.
+  spellLore:
+    legend: Learned spell sentences
+    note:
+      What this client worked out each spell prints when it lands and when it wears off, where the
+      shipped table has nothing for it. A blessing is cast again when its ending is seen, so a
+      sentence paired with the wrong spell keeps one up that has worn off. Put it right or forget it
+      here; a sentence forgotten is learned again the next time the spell is cast.
+    add: Add a spell
+    cancel: Cancel
+    count:
+      many: '{count} spells learned'
+      one: 1 spell learned
+    endsChip: 'ends: {stop}'
+    forget: Forget
+    forgot: Forgot what was learned for {spell}.
+    loading: Loading what was learned…
+    more: Showing {shown} of {count}; search to find the rest.
+    nameNeeded: Name the spell, as the realm's spell table spells it.
+    noData: This realm has no realm data, so nothing about its spells is learned.
+    noMatch: No learned spell matches that.
+    none: Nothing learned yet.
+    notLearned: (not learned)
+    saveFirst: Save the realm first; what its spells say is learned once a character plays on it.
+    saveRow: Save
+    saved: Saved what {spell} prints.
+    searchLabel: Search the learned spells
+    searchPlaceholder: Search by spell or sentence
+    spellLabel: Spell
+    spellPlaceholder: song of great power
+    startHint: What the realm prints when it lands on you, as one line.
+    startLabel: When it lands
+    stopHint: What the realm prints when it wears off.
+    stopLabel: When it ends
   monsters:
     add: Add a monster
     attackChip: 'attack: {spell}'
     attackHint:
       The spell to fight this monster with instead of the usual attack spell — say a turn-undead
       spell for something that is not alive. It opens the fight too. Leave blank for the usual one.
-    attackLabel: Attack Spell
+    attackLabel: Attack spell
     bands:
       default: Default
       first: First
@@ -3742,7 +4240,7 @@ settings:
     imported: 'Imported {count} monsters with something to say, of the {read} the file names.'
     legend: Monsters
     loading: Reading this realm's monsters…
-    maxLabel: Max Casts
+    maxLabel: Max casts
     more: 'Showing {shown} of {count}. Search to find the rest.'
     nameHint: Part of a name matches too — "guardsman" covers "nasty guardsman".
     nameLabel: Monster
@@ -3760,7 +4258,7 @@ settings:
     notMonsters: '{file} is not a MegaMUD monster database. Choose the Monsters.md from a MegaMUD data folder.'
     preAttackChip: 'first: {spell}'
     preAttackHint: Cast on this monster before the fight is opened; it does not open the fight itself. Leave blank for none.
-    preAttackLabel: Pre-attack Spell
+    preAttackLabel: Pre-attack spell
     priorityLabel: Priority
     relationshipLabel: Relationship
     removedRow: Monster removed.
@@ -3775,168 +4273,57 @@ settings:
     unreadable: That file could not be read.
     unset: '—'
   movement:
-    provideLight: Auto-Light (Light Dark Rooms)
-    provideLightHint:
-      Readies a carried light — a torch, a lantern, a glowing pearl, anything the realm files as
-      one — before a step into a room the character could not read, and on arriving in one, worked
-      out from the room's level, the race's night vision and what is worn. On by default.
-    lightDimRooms: Light Dim Rooms Too
-    lightDimRoomsHint:
-      Also in rooms the server describes anyway (dimly lit, barely visible). Spends the torch on a
-      preference rather than a need.
-    walkWhileBlind: Walk While Blind
-    walkWhileBlindHint:
-      Off, a route or a loop stands still until sight returns — MegaMUD's IgnoreBlind default. A blind
-      character cannot read the room it walks into.
-    walkWhileConfused: Walk While Confused
-    walkWhileConfusedHint:
-      Off, a route or a loop stands still while this realm's messages say the character is
-      confused — MegaMUD's Ignore Confusion default. A confused character's commands misfire.
-    walkWhilePoisoned: Walk While Poisoned
-    walkWhilePoisonedHint:
-      Off, a route or a loop stands still until the poison runs its course — MegaMUD's IgnorePoison
-      default. Paralysis always holds; a step while held is refused.
-    walkWhileLosingHp: Walk While Losing HP
-    walkWhileLosingHpHint:
-      Off, a route or a loop stands still while this realm's messages say the character is losing
-      hit points — burning, bleeding, acid, plague — until the row's ending, as MegaMUD rests it out.
-    fightOnArrival: Auto-Combat On at Arrival
-    fightOnArrivalHint:
-      Turns auto-combat back on when a route you asked for arrives, since walking with it off is how
-      you get somewhere without fighting on the way. Loops and errands are left alone.
-    extinguishInLight: Put the Light Out in Lit Rooms
-    extinguishInLightHint:
-      Removes the lit torch in a room that does not need it, while nothing is walking the character,
-      so a torch lasts the sewer rather than the walk there.
-    recoverGear: Recover Your Gear After Death
-    recoverGearFloorLabel: Keep at least (lives)
-    recoverGearFloorHint:
-      Stop going back once this many lives are left. Lives are finite and a recovery walks a
-      stripped character back to whatever killed it. 0 never stops.
-    recoverGearTriesLabel: Give up after (tries)
-    recoverGearTriesHint:
-      How many journeys in a row may fail to reach the kit before it stops trying. A journey that
-      gets there clears the run. 0 never gives up.
-    recoverGearHint:
-      Walks back to the room the character died in, takes the kit and coins still lying there, and
-      puts the kit back on. Holds when hurt and fights nothing on the way; every refusal is said.
-    collectKeys: Pick Up a Key the Way Out Needs
+    collectKeys: Pick up a key the route needs
     collectKeysHint:
-      Only when the realm says an exit of the room needs it, no listing has shown it in the pack,
-      and it is lying on this floor. A keyed door with no key is a wall the router plans around, so
-      this is the one moment bending down is worth anything. On by default.
-    doorsLegend: Doors
-    stealthLegend: Stealth
-    lightLegend: Light
-    afflictionsLegend: Afflictions
-    keepOutLegend: Keeping Out
-    keepOutOf: Keep Out Of
+      Only for the route or loop being walked, and only what one of its doors or exits needs, when
+      no listing has shown it in the pack and it is lying on this floor. Nothing is taken while
+      walking by hand. On by default.
+    keepOutLegend: Keeping out
+    keepOutOf: Keep out of
     keepOutOfHint:
       Words for a way or a place, as the realm writes them — a route you ask for that crosses one
       is shown beside the way round and you choose; loops, errands and quest runs go round.
     keepOutOfPlaceholder: 'vortex, Negative Power Plane'
-    carryLegend: What It Carries
+    carryLegend: What it carries
     loopsNote: These belong to this character alone. Loops for everyone who plays a realm go on that
       realm’s page; loops for every character go on the Global page.
     loopsWarning: These loops name rooms in the world that ships with the client, and this character
       uses its own.
-    bankWhichLabel: Bank At
-    bankWhichHint:
-      Which counter this character's vault is at. A balance is per counter and the realm states
-      each separately, so depositing at whichever bank you walk past leaves several figures that
-      cannot be added up. Any counter deposits wherever you happen to be standing.
-    bankWhichAny: Any counter
-    bankWhichOption: '{name} — {room}'
-    bankWhichStale: This realm does not place that counter, so nothing is deposited. Pick one from the list.
-    bankDepositHint:
-      At a bank counter with cash on hand over the threshold, deposits everything above the
-      retained amount and asks the vault its figure. Never on an unread balance.
-    bankDepositLabel: Auto-Deposit Coins
-    bankKeepHint: What stays on hand for tolls and shops. 100 copper is a gold crown.
-    bankKeepLabel: Retain Cash on Hand
-    bankLegend: Banking
-    bankThresholdHint:
-      Deposits only once cash on hand exceeds this, so a lap is not spent on small change.
-      100 copper is a gold crown.
-    bankThresholdLabel: Minimum Deposit Threshold
-    dropEnabledHint: Only what you name below is ever dropped, and never anything worn, wielded or
-      lit. The realm data does not mark quest items, so this list is the one authority on junk.
-    dropEnabledLabel: Auto-Drop Junk Items
-    dropItemsHint: Matched by prefix, because that is how the realm reads drop.
-    dropItemsLabel: Junk Item Names
-    dropItemsPlaceholder: rusty sword, torch
-    dropLegend: Dropping Junk
-    dropWhenEncumberedHint: Waits for the realm itself to grade the load as anything but None on the
-      inventory listing. Off, junk is dropped as soon as it turns up in the pack.
-    dropWhenEncumberedLabel: Drop Only When Encumbered
-    lootCoins: Auto-Get Cash
-    lootCoinKindsHint:
-      Which coins are worth bending down for. The cheap ones are most of what drops and every get
-      is a command; unticking them all takes none.
-    lootCoinKindsLabel: Coins to Collect
-    lootDiscardKindsHint:
-      Which coins to put back on the floor whenever you are carrying any. A coin on neither row is
-      kept — that is how you stop collecting copper without throwing away the copper you have.
-    lootDiscardKindsLabel: Coins to Discard
-    lootConvertAtLabel: Convert When
-    lootConvertWithHint:
-      An item that turns small coin into large — GreaterMUD's coin bag. The client cannot tell
-      which item does this, so name it yourself. MajorMUD has none.
-    lootConvertWithLabel: Convert Cash With
-    lootGradeHeavy: Heavy
-    lootGradeMedium: Medium
-    lootGradeNever: Never
-    lootStopAtGradeHint:
-      Stop collecting coins once the server grades the load this heavily. The grade is the
-      server's own word, read off the inventory listing.
-    lootStopAtGradeLabel: Stop Collecting At
-    lootMinPriceHint:
-      Also takes anything the realm prices at or above this, in copper. 0 never does, and an item
-      the realm cannot price is never taken by it.
-    lootMinPriceLabel: Auto-Get Over Value
-    lootMaxEncumbranceHint:
-      Never picks anything heavier up, whatever the list says. 0 never refuses; an item the realm
-      cannot weigh is not refused.
-    lootMaxEncumbranceLabel: Max Item Weight
-    dropWorthlessHint:
-      Drops anything the realm prices at zero. Only its explicit zero, never an item it says
-      nothing about, and never one it marks Not Droppable.
-    dropWorthlessLabel: Auto-Drop Worthless Items
-    searchEnabledHint:
-      The realm hides exits, and a route may be planned through one nobody has looked
-      for. Never in combat, never while resting, and once per room rather than once per status line.
-    searchEnabledLabel: Auto-Search Rooms
-    searchLegend: Searching
-    searchTriesHint: Each try is a command out of the same budget the fighting is done from. Whether
-      one look is enough has never been measured.
-    searchTriesLabel: Searches Per Room
-    lootItemsHint:
-      Matched by prefix, because that is how the realm reads get. Nothing here weighs, values or
-      sells.
-    lootItemsLabel: Auto-Get Items List
-    lootItemsPlaceholder: gem, scroll
-    lootLegend: Auto-Looting
-    bashDoors: Auto-Bash Doors
-    bashDoorsHint:
-      Brute force, when your strength is close to what the realm records for the door. It
-      costs health, and a bashed door is open already.
-    bashTries: Bashes Per Door
-    openDoors: Auto-Open Doors
-    openDoorsHint: A route stops at a shut door unless this is on. A locked one costs a command per try.
-    openTries: Tries Per Door
-    pickLocks: Auto-Pick Locks
-    pickLocksHint: Tried before bashing, because it costs no health. Needs picklocks near what the
-      realm records for the lock; the door is opened for you afterwards.
-    pickTries: Picks Per Door
-    sneak: Auto-Sneak on Move
-    sneakHint: Decides whether the next room notices you arrive. Sneaking can fail.
+    itemRowsLegend: Item details
+    itemRowsNone: No item rows here. The realm's item table applies as it is.
+    itemRowsNote:
+      'What the MegaMUD engine does differently about particular items here — MegaMUD''s item
+      details, laid over the realm''s item table one field at a time: collect, discard, equip, buy
+      or sell, the least to keep and the most to get. A field left blank keeps the realm''s answer;
+      a character''s own rows are laid over the ones on the Global page.'
+  # The player's own commands other players may ask this character for (BotCommand).
+  botCommands:
+    legend: Bot commands
+    note:
+      Your own commands other players may ask this character for, like a healer's @heal. Each is
+      answered after MegaMUD's own commands, so a party member's @heal is still MegaMUD's party
+      heal, and only for who you name below. Not at all while MegaMUD's Talk tab refuses remote
+      commands.
+    none: No bot commands yet.
+    add: Add a command
+    remove: Remove
+    wordLabel: Asked with
+    sendLabel: Sends
+    sendHint: In MegaMUD's macros; {source} is whoever asked, ^M is Enter, ~ a pause.
+    replyLabel: Answers with
+    replyHint: Told back to whoever asked, the way they asked; empty for nothing.
+    party: Party
+    gang: Gang
+    anyone: Anyone
+    anyoneHint: Anybody at all who asks, strangers included.
+    playersLabel: Players
+    playersHint: Names, separated by commas.
   remotes:
-    addPlayerLabel: Grant Player Permissions
+    addPlayerLabel: Find or add a player
     addPlayerPlaceholder: Ardren
-    addPlayerHint: As the realm spells it. Clicking a name on the Realm or Players card opens the
-      same permissions beside the listing.
-    answerHint: Off, an @ command is read and ignored — answering needs the other character to run
-      mudengine too.
+    addPlayerHint: Narrows the list as you type. Enter adds a name nobody has seen yet, to set them
+      up before they log in. Clicking a name on the Realm or Players card opens the same
+      permissions beside the listing.
     autoInviteHint: Invites them the moment they're seen in the room, whichever of you walks in —
       nobody has to ask. Not the same as granting @invite below, which only answers their own
       @invite request. Works even with Enable Remote Control off above.
@@ -3944,109 +4331,19 @@ settings:
     channelWarning:
       A channel by which another player’s typing moves the character — it answers nobody
       until something below is granted, and @kill and @hangup are always refused.
-    enabledLabel: Enable Remote Control
-    gangLegend: Gang Permissions
-    gangWarning: Membership is read from the who listing — this character's row and the asker's must
-      both name the same gang. Until a listing has shown both, the gang grants nobody anything.
-    gangpathHint: 'A gangpath answer is spoken to the whole gang — “gb @exp” is answered “gb
-      {Made…}” where every member sees both halves.'
-    gangpathLabel: Allow Remotes on Gangpath
-    autoJoinHint: Joins a party as soon as its leader invites this character, without waiting for
-      @join. Only a leader allowed @join is joined, and never while already in a party.
-    autoJoinLabel: Join When Invited
-    legend: Answering Other Players
+    engineNote: Who may send this character remote commands, and which. Everyone your characters
+      have seen on this realm is listed; choose one to set theirs. Whether it answers them at all
+      is MegaMUD's own setting, on the Talk tab.
+    legend: Answering other players
     playerLegend: Permissions for {name}
-    partyListNote:
-      There is a third list on the Party page — what anybody who has joined this character's
-      party may ask for. It ships with @health, @bless-expired and @heal on it, and nothing else.
     removePlayer: Remove
-    removePlayerTitle: Take every permission back off {name}
-    remoteControlNote:
-      Answers or acts on the @ commands that can be ticked below, for whoever they are granted to;
-      every other @ command is read and reported, never answered.
-    replyRoutingNote: The answer goes back the way the question came — ask by telepath to be answered.
-  party:
-    askHealHint:
-      Say @heal in the room below this while in a party; a member running MegaMUD or this client
-      answers with a heal. 0 never asks.
-    askHealLabel: Ask for Healing Below %
-    assistHint:
-      Swing at what the leader — whoever this character follows — was last seen hitting, while it
-      is still in the room. Never a player; still under the combat health floor.
-    assistLabel: Auto-Assist Leader
-    autoRankHint:
-      Keep this character at Preferred Rank below, sending frontrank/midrank/backrank once
-      whenever the party listing says it is standing somewhere else. No retry, and no error if the
-      realm refuses it — exactly like typing the command by hand.
-    autoRankLabel: Auto-Rank (Keep Preferred Rank)
-    preferredRankHint:
-      Where Auto-Rank tries to keep this character standing. Mid until set, the same rank MegaMUD
-      leaves a character at that nobody has moved.
-    preferredRankLabel: Preferred Rank
-    preferredRankFront: Front
-    preferredRankMid: Mid
-    preferredRankBack: Back
-    blessingsMoved:
-      Blessing the party lives on the Spells tab now — one list for self and party, in priority
-      order, recast on wear-off events with a clock behind them.
-    defendHint:
-      Swing at a monster seen attacking any party member, while it is still in the room. The fight came to the
-      party, so it fires whatever Attack Target Selection says. Never a player.
-    defendLabel: Auto-Defend Party
-    healLegend: Healing
-    healNote:
-      A member's own @heal is answered by Auto-Heal Party Members on the Spells page, when @heal is
-      ticked under Party @ commands below.
-    legend: Following
-    ignorePartyHint:
-      Refuse the leader's @party <command> — for a leader trusted to help, not to type for you.
-    ignorePartyLabel: Ignore @party If Following
-    ignoreWaitHint:
-      Walk on through a follower's @wait. Wait For Party Members still stops for a member's health.
-    ignoreWaitLabel: Ignore @wait If Leading
-    leadLegend: Leading
-    leadNote:
-      What this character does when others follow it. Every figure here comes from the party
-      listing, so how fresh it is depends on how often the listing is asked for.
-    parAfterRoundHint: Ask for the party listing after every combat round as well.
-    parAfterRoundLabel: Send par After Each Combat Round
-    parEveryHint:
-      While in a party, ask for the listing this often in combat and twice as long out of it. 0 asks
-      only when the party changes. MegaMUD uses 15.
-    parEveryLabel: Par Every (seconds)
-    remotesLegend: Party @ commands
-    remotesNote:
-      What anybody who has **joined** this party may ask this character for. An invitation
-      nobody accepted is not membership, and a Deny on somebody by name still beats this.
-    remotesOffWarning:
-      Answering @ commands is off for this character, so nothing here is answered yet. The
-      switch is on the Remotes page.
-    requestHealthHint:
-      Telepath @health to whoever joins, for their real health and mana rather than the
-      listing's percentage.
-    requestHealthLabel: Request Party Health
-    restHint: Out of combat only, like every rest. Meditates only for a class with mana.
-    restLabel: Rest With Leader
-    waitBelowHint:
-      Leading, pause the loop while any member's health is under this, as a @wait would. 0 never
-      waits.
-    waitBelowLabel: Wait For Party Members Below %
-    waitMinutesHint:
-      Leading, the longest to wait — for a @wait whose @ok never came, or a member whose health
-      never rose — before walking on. 0 waits as long as it takes.
-    waitMinutesLabel: Wait No Longer Than (minutes)
-    warning:
-      Whether the realm's command window is per connection or per host is unmeasured. These make
-      a second automated character useful; turning them on is choosing to run that experiment.
+    removePlayerTitle: Take every permission back off {name} and take them off this list, until
+      they're seen again
   profile:
     accentLabel: Colour
-    autoConnectLabel: Connect on Start
-    autoReconnectHint:
-      Only for a connection that was lost. Pressing Disconnect, hanging up on low health or
-      leaving the realm yourself all stop it. Waits 0s, 5s, 10s, then 15s.
-    autoReconnectLabel: Reconnect if the Connection Drops
+    autoConnectLabel: Connect on start
     copyFromHint: Everything but the name and password — a starting point, not a link to later changes.
-    copyFromLabel: Copy From
+    copyFromLabel: Copy from
     copyFromNone: Nothing — start empty
     encodingHint:
       CP437 unless you know the realm has moved on — its banners are block glyphs that are
@@ -4057,7 +4354,7 @@ settings:
     idHint:
       Letters, numbers, - and _ — names the file, the log and the tab, separate from the display
       name.
-    idLabel: File Name
+    idLabel: File name
     idPlaceholder: thorn
     manageRealms: Manage realms…
     namePlaceholder: Thorn the Unready
@@ -4075,8 +4372,68 @@ settings:
     themeLabel: Theme
     themeSystem: Follow the system
     usernameLabel: Username
+  mudstats:
+    legend: Stats Server
+    note:
+      Post this character's readings to the realm's stats board at {url}, a whole snapshot each
+      time. While it posts, the board stops asking it by telepath, so this client becomes its only
+      source there.
+    noBoard: This character's realm names no stats board. Set one on the realm's page first.
+    enabledLabel: Report to the stats server
+    everyLabel: Every (seconds)
+    everyHint: Never sooner than the board allows, whatever this says.
+    linked: Linked — a key from the board is kept beside this character's password.
+    notLinked:
+      Not linked. Link asks the board to telepath this character a code, reads it off the telepath
+      and keeps the key it gives. The character must be in the game.
+    link: Link
+    check: Check
+    unlink: Unlink
+    linking: Asking the board for a code, then waiting for its telepath…
+    asking: Asking the board…
+    unlinking: Retiring the key…
   realms:
-    coinsLegend: Coin Names
+    statsLegend: Stats Server
+    statsNote:
+      The mudstats board this realm's characters may post their readings to. Each character says
+      whether it does, and how often, on its Login page. Blank is none.
+    statsUrlLabel: Board address
+    statsTest: Test
+    bbsLegend: MegaMUD BBS set-up
+    bbsNote:
+      What MegaMUD's BBS.INI would say about this realm, for a character the MegaMUD engine runs.
+      A key left blank is MegaMUD's own default, shown in the field. The runic coin's name is the
+      Coin Names above.
+    # The realm page's sections, down its left side.
+    sections:
+      realm: Realm
+      loops: Loops
+      messages: Messages
+      monsters: Monsters
+      items: Items
+      spells: Spell sentences
+      megamud: MegaMUD
+    bbs:
+      MenuPrompt: Game menu prompt
+      LogoffCmd: Log-off command
+      RelogCmd: Relog command
+      AnsiCmd: ANSI command
+      SpeechPrefix: Speech prefix
+      BroadcastPrefix: Broadcast prefix
+      LogonMsg: Log-on message
+      LogoffMsg: Log-off message
+      ShutDownMsg: Shutdown message
+      BroadcastMsg: Broadcast message
+      Global1Msg: Global message 1
+      Global1Two: Global 1 is two lines
+      Global2Msg: Global message 2
+      Global2Two: Global 2 is two lines
+      Global3Msg: Global message 3
+      Global3Two: Global 3 is two lines
+      MaxInputSize: Longest line typed
+      PvpLevel: PvP level
+      MaxHrsPerDay: Hours allowed a day
+    coinsLegend: Coin names
     coinsNote:
       What this realm calls its coins, where it renames them — one realm prints its runic coins as
       Krabby Patties. Write the name as the realm prints it; either singular or plural will do.
@@ -4096,7 +4453,7 @@ settings:
       none: None — guess from name and exits only
       rm: 'rm (GreaterMUD/Paradigm: Location: map,room)'
       sysStatus: 'sys status (MajorMUD: Room n  Map: n)'
-    loginLegend: Login Menus
+    loginLegend: Login menus
     loginNote:
       When the realm prints the text on the left, the client sends what is on the right. Leave
       the answer blank to send a bare Enter, which several menus want. Write {user} or {password}
@@ -4114,220 +4471,19 @@ settings:
     stepSendPlaceholder: '1'
     stepWhenPlaceholder: Please select a realm
     submit: Add realm
-  gear:
-    legend: Equipment Sets
-    note:
-      A set names only the slots it cares about. What the character has on is the "always" set with
-      whichever other set applies laid over it — so "Moving" is one line about boots rather than a
-      second copy of the whole kit.
-    enabled: Swap kit to suit
-    enabledHint:
-      With this on, the sets below are put on and taken off as the situation changes — walking,
-      resting, meditating, fighting, or fighting one named monster. The off-hand comes off before
-      a two-handed weapon goes on, and the weapon hand is sent first, so coming back the other way
-      frees the hand before the shield is asked for.
-    setAdd: Add a set
-    setNamePlaceholder: What to call it
-    setNameAria: Set {number} name
-    setWhenAria: When set {number} applies
-    setMobPlaceholder: Any monster
-    setMobAria: Set {number} monster
-    setRemoveTitle: Remove this set
-    setRemoveAria: Remove set {number}
-    setShadowed: An earlier set already claims this situation, so this one never applies.
-    itemAdd: Add an item
-    itemPlaceholder: The item, as the pack lists it
-    itemAria: Set {number}, item {item}
-    itemRemoveTitle: Remove this item
-    itemRemoveAria: Remove item {item} from set {number}
-    whenAlways: always
-    whenMoving: while moving
-    whenResting: while resting
-    whenMeditating: while meditating
-    whenFighting: while fighting
-    offRoundLegend: Between rounds
-    offRoundNote:
-      Using an item on what is being fought, between swings. The server will not use a weapon that
-      is not in hand, so a two-handed one costs six commands a round — off-hand off, weapon on,
-      use, weapon back, off-hand back — against a window of three. 0 rounds never uses it.
-    offRoundItem: Item to use
-    offRoundItemHint:
-      The item, as the pack lists it. It is put in hand, used on whatever is being fought, and the
-      kit put back afterwards.
-    offRoundEvery: Every (rounds)
-    offRoundEveryHint:
-      At most one use this many rounds. 0 never uses it. Every use is a round this character is not
-      swinging in, so a low figure on a long fight is a fight fought with fewer blows.
   sections:
     character: Character
     login: Login
+    players: Players
+  players:
+    none: Nobody seen on this realm yet. Type a name above to set someone up before they're seen.
+    grantedTitle: '{name} has permissions here'
   nav:
     character: Which character
     label: Settings sections
     realm: Which realm
-  spells:
-    addBlessing: Add a blessing
-    blessingDownAria: Move blessing {number} down
-    blessingDuplicate:
-      An earlier row already casts this spell at this target — only that one is kept when this
-      saves.
-    blessingDownTitle: Lower priority
-    blessingFallback: Recast After, s
-    blessingFallbackAria: Blessing {number} fallback seconds
-    blessingInCombat: In Combat
-    blessingMinMana: Not Below Mana %
-    blessingMinManaAria: Blessing {number} mana floor %
-    blessingOverHeal: Before Healing
-    blessingSpellAria: Blessing {number} spell
-    blessingTargetAria: Blessing {number} target
-    blessingTargetParty: Party
-    blessingTargetSelf: Self
-    blessingUpAria: Move blessing {number} up
-    blessingUpTitle: Higher priority
-    blessingsLegend: Auto-Buff / Blessings
-    blessingsNote:
-      Spells the client keeps active for you. When the game says one has worn off, it is cast
-      again straight away. The top of the list is cast first, and blessings on yourself always
-      come before ones on the party. A blessing on a party member recasts on its own timer,
-      because its wear-off shows on their screen, not yours.
-    notifyWearOffLabel: Notify Caster on Buff Wear-Off
-    autoBlessLabel: Auto-Bless
-    autoBlessHint:
-      Cast the blessings below unasked. Off keeps the mana for healing through a fight without
-      emptying the list; the toolbar has the same switch.
-    invokeItemsLabel: Bless from an item
-    invokeItemsHint:
-      Ask a carried item for the blessing it casts, when that blessing is not up. Only items the
-      realm says can be used without limit — nine weapons in the shipped realm bless this way,
-      for no mana and no charge. An item with a fixed number of charges is left alone.
-    notifyWearOffHint:
-      When a party member's blessing on this character wears off, telepath them @bless-expired so
-      their client recasts at once instead of on its clock. Both ends must run mudengine.
-    cureBlindnessLabel: Cure Blindness Spell
-    cureDiseaseLabel: Cure Disease Spell
-    cureFreedomLabel: Freedom Spell
-    cureLegend: Cures
-    cureNote: Cast the moment the game says you are blinded, poisoned or diseased, and again after
-      thirty seconds if it still shows. A blank field does nothing. A field is greyed out when
-      your spellbook has nothing that cures it.
-    curePoisonLabel: Cure Poison Spell
-    cureHint: The spell to cast when this lands on you. Blank does nothing.
-    cureClosedHint: Your spellbook has no spell that cures this, so there is nothing to cast.
-    bookUnreadNote:
-      This character's spellbook hasn't been read yet. The client reads it automatically the
-      next time the character logs in; until then these fields can't suggest anything.
-    pickerPlaceholder: search spells
-    removeBlessingAria: Remove blessing {number}
-    removeBlessingTitle: Remove
-    areaCastHint:
-      Cast bare — c <spell>, no target — when the fight is crowded enough. Refused while a monster the realm
-      calls good stands in the room, because an AE spell hits everything there.
-    areaCastLabel: Area Effect (AE) / Room Spell
-    areaMinManaHint:
-      The AE spell is the expensive one, so its floor is the higher of this and the ordinary mana floor. 0
-      defers to that floor alone.
-    areaMinManaLabel: AE Spell Min Mana %
-    areaMinMobsHint:
-      Targets at or above which the AE spell is chosen — what is in this fight or would join
-      it, never a shopkeeper.
-    areaMinMobsLabel: AE Min Targets
-    castHint:
-      Sent as c <spell> <target> on the mid-round tick. The whole name — the realm matches on a
-      prefix.
-    castLabel: Combat Spell (Round Spell)
-    autoChoose: Auto Choose Best Spell
-    autoChooseHint:
-      Picks the round spell each round from your spellbook and the realm's figures — never one the
-      monster resists, the cheapest that would finish it, else the hardest hitter. The cures are
-      picked where their boxes are blank. The spells below are cast with this off, and with it on
-      wherever the spellbook cannot answer.
-    autoChooseHeal: Auto Choose Best Heal
-    autoChooseHealHint:
-      Picks each heal from your spellbook and the realm's figures against the hit points actually
-      missing, so a scratch is not mended with a major heal, and casts a party heal like healing
-      rain when it does more than one heal on the worst hurt. The healing spells below are cast
-      with this off, or wherever it cannot choose.
-    fallbackCastHint:
-      Cast instead for the rest of the fight once the game says the combat spell has no effect on
-      the target. Blank leaves the fight to the round attacks.
-    fallbackCastLabel: Fallback Spell
-    attackCastsHint:
-      Casts of the combat spell per target, then the round attacks carry it. 0 is no limit;
-      MegaMUD's own default is 1.
-    attackCastsLabel: Casts Per Target
-    areaCastsHint: Casts of the AE spell per fight. 0 is no limit.
-    areaCastsLabel: AE Casts Per Fight
-    drainLegend: Drain When Hurt
-    drainNote:
-      A drain hurts the target and heals you by it. Below the threshold the drain spells stand in
-      for the combat and AE spells, under their own caps, crowd and mana tests, until health is
-      back up. Only spells the realm says drain are offered.
-    drainHint: Stands in for the combat spell while hurt. Blank keeps it, or picks from the spellbook with Auto Choose on.
-    drainLabel: Drain Spell
-    areaDrainHint: Stands in for the AE spell while hurt, when the room earns one. Blank keeps the AE spell.
-    areaDrainLabel: AE Drain Spell
-    drainBelowHint: Switch to the drain spells below this share of health. 0 never drains.
-    drainBelowLabel: Drain If Below HP %
-    drainToHint:
-      Keep draining until health is back to this. 0 switches back as soon as it is over the
-      threshold — and every switch restarts your combat round.
-    drainToLabel: Drain Up To HP %
-    healBelowInCombatHint:
-      A separate floor while fighting. 0 uses the one beside it for both; set it lower so a scratch
-      does not cost a round.
-    healBelowInCombatLabel: Heal In Combat Below %
-    healBelowLabel: Heal If Below HP %
-    healHint: Cast on this character, bare. Only spells the realm lets you cast on yourself are offered.
-    healLabel: Self Healing Spell
-    healLegend: Healing
-    healNoSelfCast: The realm says this spell cannot be cast on yourself.
-    healNoPartyCast: The realm says this spell cannot be cast on another character.
-    healParty: Auto-Heal Party Members
-    healPartyHint: A member the roster has not listed has no health to read, and is never healed on a guess.
-    healPartyWithHint:
-      Cast on the member who is hurt. Only spells the realm lets you cast on another character
-      are offered.
-    healPartyWithLabel: Party Healing Spell
-    healToHint: Keep healing that target until it is back to this. 0 casts once at the threshold.
-    healToLabel: Heal Up To HP %
-    regenLegend: Regeneration
-    regenNote:
-      MegaMUD's regen and when-full spells, timed as it times them. Each is skipped while a message
-      from the realm's table says it is already working.
-    regenHpLabel: HP Regen
-    regenHpHint:
-      Cast before resting while health is short, above the heal's mana floor. The rest follows on
-      the next line.
-    regenManaLabel: Mana Regen
-    regenManaHint: Cast out of meditation whenever mana is 20 or more short of its maximum.
-    regenMinTickLabel: Min Mana Tick
-    regenMinTickHint:
-      While Mana Regen is up, a tick bringing less mana than this casts it again — so does no gain
-      in 34 seconds. 0 never recasts on the tick.
-    regenHpFullLabel: When HP Full
-    regenHpFullHint: Cast once each time health reaches Keep Resting To HP %.
-    regenManaFullLabel: When Mana Full
-    regenManaFullHint: Cast once each time mana reaches Keep Meditating To Mana %.
-    legend: Attack Spell
-    minManaHint: Falls through to the round attacks below this. 0 always casts.
-    minManaLabel: Not Below Mana %
-    note: Buffs, heals and everything conditional are automation.rules in the options file.
-    rulesPointerNote:
-      One cast, chosen by a number, on the mid-round tick — which is the one thing about
-      a spell a rule cannot express. Everything else a caster wants is automation.rules.
-  statline:
-    legend: The Prompt
-    controlLabel: Own the Status Line
-    controlHint:
-      Sends the client's own template on the way in, so every prompt carries maximum health and
-      mana, experience, what the next level still costs and the purse; then asks pro once for
-      what the realm holds, which is what the prompt is read by.
-    templateNote:
-      'The template sent is set statline full custom [HP=%h/%H,MA=%m/%M,Exp=%x,Need=%X,Wealth=%c%r]:
-      — the realm keeps it on the character, so it stays set after the client is closed. Off or
-      on, the client reads whatever the line turns out to be and says which pattern it reads it by.'
   rewrites:
-    listLegend: Your Designs
+    listLegend: Your designs
     note: Each design draws in place of what the realm printed, with what the client knows laid
       beside it, the moment the listing completes; what was drawn stays drawn in the scrollback.
       One design draws each listing, and turning one on turns off the others for it.
@@ -4345,13 +4501,13 @@ settings:
       shop: a shop's shelf
       party: the party
       experience: the experience line
-    bandsLegend: Vital Colours
+    bandsLegend: Vital colours
     bandsNote:
       On every line the client draws, a health or mana figure wears a colour by its share of
       maximum; the first band whose floor it reaches wins. No bands, the line's own colour.
       Unknown maximum, no colour.
-    bandsHp: Health Colours
-    bandsMana: Mana Colours
+    bandsHp: Health colours
+    bandsMana: Mana colours
     bandFromLabel: From, %
     bandColourLabel: Colour
     bandRemove: Remove
@@ -4361,7 +4517,7 @@ settings:
       ariaLabel: Design a rewrite
       nameLabel: Name
       entityLabel: Draws
-      enabledLabel: Draw It Myself
+      enabledLabel: Draw it myself
       enabledHint:
         The lines the realm prints for this are withheld until it completes, and this drawing
         goes in their place; off, the realm's own lines are painted.
@@ -4413,18 +4569,7 @@ settings:
         kindList: a list
         kindRecord: figures
   tabs:
-    alerts: Alerts
-    combat: Combat
-    health: Health
-    movement: Movement
-    party: Party
-    remotes: Remotes
-    spells: Spells
     rewrites: Rewrites
-    talk: Talk
-    train: Training
-    gear: Gear
-    quests: Quests
   # Running a quest's plan -- `automation.quests` (todo 102). One switch,
   # and the warning in the open: a run walks, buys, hunts and fights unattended.
   quests:
@@ -4436,19 +4581,11 @@ settings:
     enabledHint:
       Lets the Quest card's Run it carry a plan step by step, through the walker, the shopping
       errand and auto-combat. Off, the press refuses and names this switch.
-  talk:
-    legend: Other Players
-    lookHint:
-      Once per person, on an idle moment rather than the instant they arrive, and never during a
-      fight. What they wear shows on their Worn tab with the time it was read.
-    lookLabel: Auto-Inspect Players
-    lookWarning: A look is a command from the same budget walking and fighting spend from, and
-      the server tells the person they were looked at.
   worldDatabaseHint:
     Blank follows what the realm calls itself at its menu, MajorMUD or Paradigm; type majormud
     or paradigm to pin one, or point at your own .mdb, SQLite copy or .zip for a realm whose
     rooms differ.
-  worldDatabaseLabel: World Database
+  worldDatabaseLabel: World database
   worldDatabasePlaceholder: 'the bundled world the realm names: MajorMUD or Paradigm'
 # What the settings editor says when a save is refused.
 errors:
@@ -4457,6 +4594,9 @@ errors:
     duplicateRealmName: There is already a realm called {name}.
     globalAddressMismatch: the address did not survive being saved
     loopScopeUnknown: Nowhere to put that loop — the character or realm it named is not there.
+    loopFileEmpty: That file holds no loop this client can read.
+    loopFileTooBig: That file is too big to be a loop file.
+    loopFileUnreadable: 'That file is not a loop file: {reason}'
     tooManyLoops: That would give this realm more than {max} loops (it holds {held}), more than its
       page can keep. Remove some first.
     remoteNameRequired: No name given.
@@ -4468,16 +4608,25 @@ errors:
     profileUnreadable: could not be read
 # What a session reports: connection, walking, safety, memory.
 session:
-  # Under a timed spell the way in cast (todo 104): said once going in and
-  # once coming out, because every routine stands down in between.
-  corridor:
-    entered: 'Under {spell}: moving only, {rooms} rooms to the way out. Nothing rests, heals, loots,
-      searches or fights until it lifts.'
-    left: 'Out from under {spell}.'
+  megamud:
+    noEngine: 'This character is not run by the MegaMUD engine, so it has no MegaMUD toggles.'
+    # MegaMUD's own redial (Comms settings) waiting to dial back after a drop or a failed dial.
+    redialing: 'MegaMUD redials in {seconds}s.'
+    # MegaMUD's alerts, where it would play the sound its [Alerts] section names.
+    alert:
+      idle: 'MegaMUD alert: idle, with nothing left to do.'
+      train: 'MegaMUD alert: time to train.'
+      lowHp: 'MegaMUD alert: hit points low.'
+      hangup: 'MegaMUD alert: hanging up.'
+      playerEntered: 'MegaMUD alert: a player it watches for is about.'
+      telepath: 'MegaMUD alert: a telepath.'
+      page: 'MegaMUD alert: a page.'
+      say: 'MegaMUD alert: somebody spoke in the room.'
+      gangpath: 'MegaMUD alert: gang chat.'
+      gossip: 'MegaMUD alert: gossip.'
+      auction: 'MegaMUD alert: an auction.'
+      broadcast: 'MegaMUD alert: a broadcast.'
   supplies:
-    abandonedDied: the character died
-    beforeRoute: Short of {item} — going to {shop} first, then on to {destination}.
-    beforeRouteNowhere: where you asked
     noShopAt: 'room {map}/{room} holds no shop in the realm data'
     noShopNamed: no shop is named for it
     shopUnplaced: 'the realm places no room for a shop called {shop}'
@@ -4495,35 +4644,16 @@ session:
     noRealmData: This realm has no world data loaded, so nothing can say where to hunt.
     noSession: No character is loaded for that session.
     unknownRoom: The client does not know where this character is standing yet; move or look first.
-    better: 'Within {steps} steps, {mobs} at {room} is expected to pay about {rate}/h.'
   loop:
     ambiguousStopName: '{count} rooms are called {name} — name it as "{name} {map}/{room}".'
     preferUnresolved: 'The route {loopName} names a stop the realm cannot settle, so it is not preferred.'
-    locateReason: the loop lost its place
     locateUnavailable:
       This realm has no “{command}” command, so it was said out loud rather than answered. The
       client will work out where it is from the rooms it walks into instead.
     noRealmData: No realm data.
-    stoppedDied: you were killed, and the realm has moved you
-    stoppedForLoop: you started a loop
-    stoppedForRoute: you asked for a route
-    stoppedDisconnected: you disconnected
-    stoppedLeftRealm: you left the realm
     stoppedRealmChanged: this is a different realm
     unknownRoom: I cannot tell which room you are in.
     unknownStopName: The realm data has no room called {name}.
-    pausedForRemote: '{who} asked the party to wait'
-    pausedForHurt: '{who} is at {percent}%; the party waits for them'
-  # Play and stop. A character is routing, looping or stopped, so there is one
-  # of each rather than one per mechanism -- see `src/shared/movement.ts`.
-  # The toolbar's back button: one room back the way the character came.
-  back:
-    alreadyThere: You are already standing in the room the trail came from.
-    moveInFlight: Something is already on its way; try again when the room arrives.
-    noRoute: no route
-    noWay: 'No way back to the previous room: {reason}'
-    nothingBehind: No confirmed move to go back over — the client has not seen this character move yet.
-    notInRealm: This character is not in the realm.
   macro:
     dropped:
       one: Dropped the {count} command still waiting from the talk box.
@@ -4538,13 +4668,13 @@ session:
     restHeld: 'Not sending the rest of that line, from {command} on: {reason}.'
     restRefused: 'Not sending the rest of that line, from {command} on: the queue would not take it.'
   move:
-    alreadyMoving: This character is already moving.
     noSuchLoop: There is no loop called {name}.
     nothingToResume: There is nothing to pick back up.
-    theLoop: the loop
-    tooFarForRemote:
-      '{who} said the party is ready, but {name} is {stepCount} steps from here — press play to
-      walk back to it.'
+    # Back in the game: what was being walked when the session went away, taken up again.
+    resumingLoop: 'Taking up the loop {loopName} again, as it was going when this session ended.'
+    resumingWalk: 'Walking on to {destination}, as this session was when it ended.'
+    resumeGone: 'Not taking up the loop {loopName} again: it is not filed anywhere any more.'
+    resumeRefused: 'Could not take up what was being walked when this session ended: {reason}'
   finds:
     coins: coins
     forgot: 'Forgot the {what} found in {room}.'
@@ -4556,12 +4686,6 @@ session:
   memory:
     forgot: 'Forgot: "{command}" from {from}.'
     learned: 'Learned: {discovery}.'
-  # What a row of the realm's message table does in the moment (`onMessageFired`).
-  messages:
-    hangUpWhy: 'the "{name}" message says to'
-    lookReason: 'message: {name} — who is here?'
-    noRest: 'Not resting here for a minute: the "{name}" message says to keep moving.'
-    retrying: 'Sending {command} again: "{name}" says it did not work.'
   parser:
     fault: Something on this line could not be read; the console is unaffected. {message}
   probe:
@@ -4579,10 +4703,7 @@ session:
     noTarget: Connection lost, but there is no address to dial again.
     now: Connection lost. Reconnecting…
     waiting: Reconnect failed. Trying again in {seconds}s (attempt {attempt}).
-    waitingToBePlaced: Back in the realm; what was underway walks on once the client knows which room you are in.
   safety:
-    escapeDoublesBack: 'Running {direction}: {why}. It doubles back onto the way we came.'
-    escapeKnown: 'Running {direction}: {why}. The realm knows where that exit goes.'
     # On the ground: the server refuses every command until the character is
     # up. Recoverable -- thirty hit points of it -- so the client goes quiet
     # and says why, which is the moment a party member's `aid` is the only
@@ -4591,63 +4712,6 @@ session:
       'Mortally wounded: the realm refuses every command until this character is up. Nothing is
       being sent. Someone in the room can aid it.'
     whyMortallyWounded: 'on the ground at {hp} health'
-    escapeNoExit:
-      'Not running: {why}, but this room has named no exit and there is nothing behind us to
-      retrace. {then}'
-    # Every exit the room printed leads back into a room this character has
-    # just run out of (`ranFrom`); {directions} names them.
-    escapeOnlyBack:
-      one: 'Not running: {why}, but the only way out, {directions}, leads back to the room just run from. {then}'
-      many: 'Not running: {why}, but every way out ({directions}) leads back to a room just run from. {then}'
-    escapeOnlyBackReason: every exit leads back to a room just run from
-    escapeStanding: Standing and fighting.
-    escapeStaying: 'Not running: {why}, but nothing is taking this character anywhere, so it stays where it is. {then}'
-    escapeStayingReason: nothing is taking this character anywhere
-    escapeFollowing: 'Not running: {why}, but {leader} is leading the party and decides when to run. {then}'
-    escapeFollowingReason: following {leader}, who decides when to run
-    escapeNotFighting: 'Not fighting: auto-combat is off.'
-    escapeNoExitReason: no exit known from this room
-    escapeOpening: 'The {barrier} {direction} is shut: opening it and running again.'
-    escapeUnanswered: nothing answered the escape in time
-    escapeKilled: killed before the move landed
-    escapePrinted: 'Running {direction}: {why}. It is the exit the room listed.'
-    escapeReason: 'safety: {why}'
-    escapeRetrace: 'Retreating {direction}, the way we came: {why}.'
-    retreatBecause: Retreating to safe room ({room}) after getting out
-    retreatDropped: 'Not retreating to {room}: you were killed, and the realm has moved you.'
-    retreatGaveUp: 'Not retreating to {room}: the fight never ended.'
-    retreatPlanned: 'Retreating to {room}: {stepCount} steps.'
-    retreatRefused: 'Could not retreat to {room}: {reason}'
-    retreatUnplaced: 'Not retreating to {room}: the room never resolved after the move.'
-    fleeGoto: 'Fleeing to {destination}.'
-    fleeGotoReason: 'flee: sys goto {destination}'
-    fleeGotoLookReason: 'flee: showing the room at {destination}'
-    fleeGaveUp: 'Not fleeing to {destination}: the fight never ended.'
-    fleeDropped: 'Not fleeing to {destination}: you were killed, and the realm has moved you.'
-    hangUpRefused: Not hanging up — {why}. {reasons}. Disconnecting now would be penalised; walk out instead.
-    hangingUpClean: 'Hanging up: {why}.'
-    beforeDeath: 'Hanging up: {why}. Dying would drop everything you carry.'
-    beforeDeathCharged: 'Hanging up: {why}. The hangup costs {cost} HP and some items; dying would drop everything you carry.'
-    beforeDeathUnknownCharge: 'Hanging up: {why}. This realm charges for a hangup and its menu has not said how much; dying would drop everything you carry.'
-    beforeDeathCostly: 'Not hanging up: {why}, but the hangup would cost {cost} HP and kill you.'
-    beforeDeathCostlyReason: the hangup would cost {cost} HP and kill
-    hangingUpUncharged: 'Hanging up: {why}. {realm} charges nothing for a hang-up, by its own realm menu.'
-    hangingUpUnchargedSetting: 'Hanging up: {why}. Your settings say this realm charges nothing for a hang-up.'
-    realmCharges: '{realm} charges {percent}% for a hang-up, by its realm menu.'
-    realmChargesNothing: '{realm} charges nothing for a hang-up, by its realm menu.'
-    pvpAlertReason: 'safety: telling the gang about {attacker}'
-    pvpAlerted: 'Telling the gang: {attacker} is attacking.'
-    pvpNoGang: 'Not telling anyone about {attacker}: the roster shows you in no gang.'
-    pvpNoGangReason: the roster shows no gang to tell
-    whyHealth: health at {percent}
-    whyNextRound: 'at {hp} HP the next round kills you {risk} of the time'
-    whyRisk: 'at {hp} HP this fight kills you {risk} of the time within {rounds} rounds'
-    whyMana: mana at {percent}
-    whyAttackers: '{count} attackers'
-    whyCompany: Player present in room (PvP abort)
-    whyPvp: '{attacker} opened on you'
-    whyDreaded: '{mob} is here, and the monster table says to flee it'
-    whyStalker: '{mob} is here, and the monster table says to hang up'
   realm:
     commandUnavailable:
       This realm has no “{command}” command, so it was said out loud in the room rather than
@@ -4667,12 +4731,6 @@ session:
       keyboard, and anything sent now would be typed into one of its fields. Your own typing still
       goes through.
     released: Back at a prompt; automation is running again.
-  remotes:
-    peerPlaced: '{who} is in {room} ({address}).'
-    peerPlacedUnnamed: a room they did not name
-    comebackWalking: '{who} asked this character to come to {address}; walking {stepCount} steps.'
-    comebackRefused: '{who} asked this character to come to them, and the route was refused:
-      {reason}'
   statline:
     exact: 'The realm reports the status line as {statline}; every prompt is read by it exactly.'
     full: The realm reports the status line as full; the prompt is read by the usual pattern.
@@ -4686,7 +4744,6 @@ session:
     tooWide: "The status line you designed comes to {cells} cells and the prompt row holds {max}, so
       the realm's own line is drawn instead. Shorten it on the Status Line section in settings."
   walk:
-    keptOutDemand: 'crossing {word}, which you keep out of'
     keptOutChoose: 'This way crosses {wordList}, which you keep out of: choose the way through or the way round on the route panel.'
     claimLapsed:
       Nothing answered “{command}” in {seconds}s, so the client has given up waiting for it and is
@@ -4712,8 +4769,6 @@ session:
       'The realm answered a later question before “{command}”, so that re-read is not coming.
       Nothing was held up by it.'
     exitBackOpen: The room lists {direction} again, so routes will use it once more.
-    exitRefused: The realm data promised an exit {direction} that the realm refuses; routes will avoid it.
-    exitShut: The way {direction} is shut rather than absent; routes will avoid it until the room lists it.
     readLapsed:
       Nothing answered “{command}” in {seconds}s, so the client has stopped waiting for it. It was a
       re-read rather than a step, so nothing was held up by it.
@@ -4724,13 +4779,7 @@ session:
       Nothing answered the last {count} re-reads in {seconds}s, so the client has stopped waiting
       for them. Nothing was held up by them.
     stoppedByPlayer: you asked it to
-    stoppedConnectionClosed: the connection closed
-    stoppedLeftRealm: you left the realm
-    resumed: Back in the realm; picking the walk to {destination} back up from here.
     notResumed: 'Not walking on to {destination}: {reason}'
-    replanned:
-      That plan started in a room you have since left, so it was drawn again from here — {steps}
-      steps to {destination}.
   world:
     realmMismatch: The realm says you are in room {map},{room}, which the loaded realm data does not
       have — this character's world.database may not match this realm. Routes will fail from here.
@@ -4749,6 +4798,29 @@ automation:
     huntingHere: 'Looking for {item}: {mob} drops it, starting here in {room}.'
     huntingNextDoor: 'Looking for {item}: {mob} drops it, starting next door in {room}.'
     loopName: 'Collect: {item}'
+    # The MegaMUD engine's purchase for an errand, which is ours (2026-10-14).
+    megaNotBought: 'Did not buy {item} at {shop}: {why}'
+    whyNotSold: '{shop} sold nothing for the last buy'
+    # The cash a purchase needs, drawn first where the purse is short (2026-10-18).
+    cashFirst: 'Withdrawing {amount} from {bank} first, to buy {item}.'
+    whyNotPaid: '{bank} paid nothing out for the withdrawal'
+    whyNoBalance: '{bank} did not say its balance'
+    whyVaultShort: '{bank} holds {held}, short of the {amount} wanted'
+    refusalNoVault: 'Not enough on hand for {item}: {short} short, and no bank can be reached.'
+    refusalVaultsShort:
+      'Not enough on hand for {item}: {short} short, and no bank the record knows holds that much.'
+    # The Explorer's Buy and Buy + Wear (2026-10-18).
+    buyingIt: 'Going to buy {item} at {shop} in {room}, for {price}.'
+    boughtIt: 'Bought {item} at {shop}.'
+    refusalNoCounter: 'Nowhere this character can reach sells {item}.'
+    wearingIt: 'Bought {item}; putting it on.'
+    # Buy + Learn (2026-10-20).
+    learningIt: 'Bought {item}; reading it.'
+    refusalKnown: '{spell} is in the spellbook already.'
+    # The EQ tab's plan put on (2026-10-19).
+    wearNothing: Everything the plan puts on is worn already, or must be bought first.
+    wearingLoadout: 'Putting the plan on: {count} commands.'
+    wearingInstead: 'Bought {item}; taking off {removed} and putting it on.'
     refusalBusy: Something is already being collected.
     replacingLap: 'Stopping {loopName} to go and collect it; it will not start again on its own.'
     refusalLapStopped: 'The hunt for {item} stopped before the pack held one.'
@@ -4761,6 +4833,12 @@ automation:
     several: 'This way needs {items}; collecting each in turn before walking it.'
     asking: 'Going to {room}, {steps} steps away, to say "{say}" for {item}.'
     askingHere: 'Saying "{say}" here in {room} for {item}.'
+    # What the answer takes, fetched before it is asked (format 53).
+    takesFirst: '"{say}" in {room} takes {needs} for {item}; fetching that first.'
+    refusalTakesItself: 'Not collecting {item}: "{say}" takes {needs}, which comes only by way of {item} itself.'
+    # A source the way to which wants something carried first (2026-10-19).
+    lockedFirst: '{item} is had in {room}, and the way there needs {needs}; fetching that first.'
+    refusalLockedItself: 'Not collecting {item}: the way to {room} needs {needs}, which comes only by way of {item} itself.'
     reasonSay: 'collecting: {command}'
     reasonPackAfter: 'collecting: did it hand the item over?'
     refusalNotReached: 'Not collecting: the walk to {room} ended somewhere else.'
@@ -4813,7 +4891,6 @@ automation:
     detailConfirming: reading the counter
     whyReset: the connection was reset
     whyLeftRealm: the realm was left
-    whyPlayerMoved: you moved the character yourself
     whyStopped: you asked it to
     whySwitchedOff: Auto-Quest was switched off
     whyWalkStopped: the walk stopped
@@ -4889,275 +4966,11 @@ automation:
       'You stopped {loopName}, so automatic hunting is standing down until this character levels,
       changes its kit, or a lap stops for earning too little.'
     whyStopped: the walk stopped
-  stealth:
-    reasonHide: 'hiding, so the next fight opens with {verb}'
-    reasonSneak: 'sneaking, so the next fight opens with {verb}'
-    # Todo 104: the sheet's own figure decides, from `SneakCommand.cs`'s roll.
-    noSkill: 'Not hiding or sneaking for the opener: this character has no Stealth (the sheet says 0), so the server refuses every attempt.'
-    ceiling: 'Stealth {skill} is past {ceiling}: a move rolls no more than {ceiling} and sneaking
-      no more than 95, while hiding rolls the whole figure — the skill past {ceiling} only pays
-      standing still.'
-  combat:
-    lentForHold: 'Held with auto-combat off: turning it on until the hold wears off.'
-    returnedAfterHold: 'The hold wore off: auto-combat back off, walking on.'
-    backOnArrival: 'Arrived: auto-combat back on.'
-    # Todo 00 (2026-09-23): hit and not moving with auto-combat off lends it
-    # until the next arrival in another room.
-    lentForDefence:
-      one: 'Hit for {rounds} round and not moving, with auto-combat off: turning it on until you move.'
-      many: 'Hit for {rounds} rounds and not moving, with auto-combat off: turning it on until you move.'
-    defendBecause: 'rounds hit without moving, with auto-combat off: {rounds}'
-    defendUnwritable: "auto-combat could not be turned on in the character's file"
-    returnedAfterMove: 'Moved: auto-combat back off.'
-    returnedAfterDeath: 'Killed: auto-combat back off.'
-    returnedAfterLeaving: 'Left the realm: auto-combat back off.'
-    returnedAfterLoss: 'Connection lost: auto-combat back off.'
-    returnedAfterClose: 'Disconnected: auto-combat back off.'
-    # The file refused handing the lent switch back; tried again each state.
-    returnStuck: "Auto-combat was lent and could not be turned back off in the character's file. Trying again; turn it off by hand if this stays."
-    returnUnwritable: "auto-combat could not be turned back off in the character's file"
-    returnedAtReset: 'New session: auto-combat back off.'
-    # Todo 06: *Run it* is turn off, go -- said at the start, and again where the
-    # run is picked up after a lost connection or an errand.
-    runningCombatOff: 'Running it: auto-combat is off, and stays off until you turn it back on.'
-    runRefused: "Not running it: auto-combat could not be turned off in the character's file."
-    reason: 'auto-combat: {why}'
-    reasonRefresh: 'auto-combat: re-reading the room'
-    reasonBreakArea: 'the room spell has nothing left to hit: breaking off'
-    reasonLookAfterKill: 'something died: looking for what it dropped'
-    reasonLookAfterArrival: 'something walked in: reading the room again'
-    reasonLookAfterDeparture: 'something walked out: reading the room again'
-    reasonRoundAreaSpell: 'auto-combat: the room is crowded enough for the AE spell'
-    reasonRoundSpell: 'auto-combat: round spell'
-    reasonOpeningSpell: 'auto-combat: {why}, opening with {spell}'
-    reasonPreAttackSpell: 'auto-combat: {why}, {spell} before the attack'
-    reasonBackToMelee: 'auto-combat: no more {spell} this fight, back to the attack'
-    refusedAlreadyFighting: already fighting {target}
-    # Something already swung at is still standing here. `aa` switches target,
-    # so a second fight opened beside the first is always waste, and the block
-    # between `*Combat Off*` and `*Combat Engaged*` is where it used to happen.
-    refusedEngagedWith: 'already swinging at {target}, which is still here'
-    refusedRelationship: '{target} is marked {relationship} in the monster table'
-    # The realm lists {guard} as moving to protect {target}, and the server
-    # hands a blow at {target} to it; {why} is the guard's own refusal.
-    refusedGuarded: '{guard} protects {target} and is refused itself: {why}'
-    refusedCostly: Attacking {target} causes an alignment penalty (-10 points).
-    refusedEngageNone: engage is set to none, so nothing is opened unasked
-    refusedTooTough: '{target} has {hp} health and maxTargetHealth is {cap}'
-    refusedFled: 'you ran from {target} at level {level}; it is left alone until level {until}'
-    refusedFledUnknown: you ran from {target}; it is left alone until your level is read
-    refusedOdds: 'you survive a fight with {target} here {survives} of the time at {hp} HP; attacking needs {needs}'
-    refusedOddsResting: 'you survive a fight with {target} here {survives} of the time at {hp} HP; attacking needs {needs}; resting to {rest} HP first'
-    refusedRisk: 'at {hp} HP, a fight with {target} here kills you {risk} of the time within {rounds} rounds, so you would have to run at once'
-    refusedRiskResting: 'at {hp} HP, a fight with {target} here kills you {risk} of the time within {rounds} rounds, so you would have to run at once; resting to {needs} HP first'
-    refusedMaxMobs: '{here} monsters here, and maxMobs is {max}'
-    refusedMinMobs: 'only {here} monsters here, and minMobs is {min}'
-    refusedTooRich: '{target} is worth {exp} experience and maxMonsterExperience is {cap}'
-    refusedMovePending: a step is still waiting for its room
-    refusedNotHostile: the realm does not say {target} attacks first
-    refusedClaimed: '{player} is already fighting {target}, and politeAttacks is on'
-    refusedRetreating: Retreat in progress
-    refusedStandDown: you typed break
-    refusedUncertain: 'the realm disagrees with itself about {target}, and engage is hostile'
-    refusedDeclinedTravelling: you turned auto-combat off for this journey
-    fightingForTheRoute:
-      Auto-combat is off, but this route will fight on the way. Stop the route to stop the
-      fighting, or switch auto-combat on and off again to decline it for the rest of this journey.
-    standDown: Auto-combat is standing down after break; it resumes when you move or attack.
-    cannotAttack: Not attacking — this realm's messages say the character cannot attack right now.
-    # An opener the class can never land -- `combat.opener` survives a reroll,
-    # and a Mage was being told why its backstab was withheld (todo 28).
-    openerWrongClass:
-      'This class cannot get into the shadows, so {verb} will never land. Change the opener under
-      Combat; nothing else is affected.'
-    openerNeedsStealth: '{verb} only lands while this character is sneaking, so fights it is seen
-      opening are opened with the ordinary attack instead.'
-    verbRefused: The realm refused {verb}; dropping it from this character's attacks for this session.
-    verbRefusedWeapon: 'The realm refused {verb} for the weapon in hand, not for this character;
-      it comes back when the weapon does.'
-    verbBack: '{verb} is back: the weapon the realm refused it with is no longer in hand.'
-    whyHitBack: hitting back
-    whyHitBackMostDangerous: 'hitting back at the most dangerous of {count} attackers ({perRound} hp a round against you, {costs}{hazards})'
-    whyGuardFirst: '{target} protects {ward}, so it goes first'
-    whyGuardJoins: '{target} protects {ward}, so attacking {ward} brings it in; it goes first'
-    whyHitBackGuard: 'hitting back: {target} protects {ward}, so it goes first'
-    whyInRoom: in the room
-    whyStillOn: 'still on {target}: one target at a time, until it is dead'
-    whyRanked: 'first of {count} here: your priority list ranks {target} {band}'
-    whyRankedAlone: 'your priority list ranks {target} {band}'
-    whyRankedOver: 'first of {count} here: your priority list ranks {other} {band}'
-    whyMostDangerous: 'the most dangerous of {count} here ({perRound} hp a round against you, {costs}{hazards})'
-    costByHealth: '{hp} hp'
-    costBound: 'up to {rounds} rounds and {cost} hp to kill'
-    costEstimate: 'about {rounds} rounds and {cost} hp to kill'
-    spellIneffective: '{spell} has no effect here; casting {fallback} instead for this fight.'
-    spellIneffectiveArea: '{spell} has no effect here; the combat spell carries this fight.'
-    spellIneffectiveNoFallback: '{spell} has no effect here, and no fallback spell is set; the round attacks carry this fight.'
-    drainIneffective: '{spell} has no effect here; the combat spell carries this fight.'
-    whyUnweighed: 'first of {count} here: the realm cannot weigh {target}, and unknown is not safe'
-    hazardList: '; {list}'
-    hazard:
-      afraid: frightens
-      blinded: blinds
-      confused: confuses
-      damage: casts damage
-      drain: drains life
-      held: paralyses
-      poison: poisons
-      slowed: slows
-      summon: calls for help
-      teleported: teleports you
-      wide: room-wide
-  invoke:
-    reason: asking {item} for {spell}
-  blessing:
-    reason: 'blessing: {name}'
-    notifyReason: 'telling {caster} their {spell} wore off'
-  cure:
-    reason: 'cure: {affliction}'
-    derived: 'Curing {affliction} with {spell}, the cheapest spell in the book that does.'
-  regen:
-    reasonHp: '{spell} before resting, to heal faster'
-    reasonMana: '{spell} to regain mana faster'
-    reasonHpFull: '{spell}: health is full'
-    reasonManaFull: '{spell}: mana is full'
-  spells:
-    choseKills: 'Casting {spell} ({min}–{max}, {cost} mana): its least roll finishes what is left of the target.'
-    choseHardest: 'Casting {spell} ({min}–{max}, about {expected} a cast, {cost} mana): the hardest hitter the pool can pay for.'
-    noBookYet: Auto Choose Best Spell has no spellbook to choose from yet; asking the realm for the listing.
-    emptyBook: 'Auto Choose Best Spell: the spellbook is empty — this character has no spells yet.'
-    noAttackSpells: 'Auto Choose Best Spell: nothing in the spellbook attacks a single target.'
-    allResisted: 'Auto Choose Best Spell: every attack spell in the book is resisted by this target; the round attacks carry the fight.'
-    drainStarts: 'Health under {below}%: casting the drain spell until it is back to {to}%.'
-    drainEnds: Health is back up; the combat spell again.
-  train:
-    reason: 'spending {cp} character points at the trainer'
-    # Going to collect the level -- `TrainErrand` (todo 18). Every sentence
-    # names a figure the player can act on: the cost, the purse, the room.
-    going: A level is waiting. Going to {room} to train ({steps} steps, {cost} copper).
-    levelled: Welcome to level {level}.
-    reasonLevel: 'training: the experience for a level is there'
-    abandonedDied: 'A death: the walk to the trainer is dropped. The level is still owed.'
-    becauseOwed: a level was earned and not collected
-    whyStopped: the walk stopped before it arrived
-    refusalNowhere:
-      'A level is waiting and the realm names no trainer that will take this character at level
-      {level}. Nothing walked.'
-    refusalTrainerStale:
-      'A level is waiting and the trainer chosen in the settings no longer takes this character at
-      level {level}. Pick another, or leave it on the cheapest. Nothing walked.'
-    refusalPoor:
-      'A level is waiting and {trainer} charges {cost} copper; this character carries {purse}.
-      Nothing walked.'
-    refusalNoRoute: 'Could not walk to {room} to train: {why}'
-    # Reach is the filter (todo 102): a trainer no route reaches is skipped and
-    # named, and the level is asked about again from another room.
-    skipping: 'Skipping a cheaper trainer no route reaches: {skipped}.'
-    skippedOne: '{trainer} at {room} ({why})'
-    refusalUnreachable:
-      'A level is waiting and no trainer that takes this character at level {level} can be walked to
-      from here: {skipped}. Nothing walked; asked again from another room.'
-    refusalNotReached: 'Did not reach {room} to train: {why}'
-    refusalUnanswered: Sent train at {trainer} and the level did not move. Train by hand, or check the trainer.
-    nothingWanted: "Auto Train Stats: {cp} CP unspent, but every wanted figure is at or under the sheet's ({figures}). Raise a figure under Training to spend them."
-    nothingAffordable: 'Auto Train Stats: {cp} CP unspent, but the cheapest wanted point ({attribute}, {cost} CP) costs more than that.'
-    whyNothingWanted: every wanted figure is at or under the current one
-    whyUnaffordable: 'the cheapest wanted point costs {cost} CP and {left} are left'
-    notName: 'Not driving this stat screen: it has the name up for editing, which the client never touches. Finish it by hand — Enter through to SAVE.'
-    # Todo 116: the ask went out and nothing came back.
-    askUnanswered: 'Asked for the stat screen and nothing answered in {seconds}s; it will be asked for again.'
-    whyAskUnanswered: nothing answered the ask
-    whyNotName: the screen offers the name for editing
-    capped: "{attributes} wanted above the race's ceiling; aiming at the ceiling."
-    leaving: 'Nothing to buy on the stat screen ({why}); leaving it unchanged.'
-    opening: 'Spending {spent} of {cp} CP: {purchases}.'
-    purchase: '{attribute} {from}→{to} ({cost} CP)'
-    echoed: 'The stat screen echoed something other than what was typed into {attribute}; nothing more is bought this visit.'
-    refused: 'The stat screen refused it — “{sentence}”. Nothing more is bought this visit; what it accepted is saved.'
-    desync: 'The stat screen shows {attribute} at {shown}, not the {expected} it first said; nothing more is bought this visit.'
-    saved: 'Trained: {purchases}. {left} CP left.'
-    savedNothing: 'The stat screen was saved unchanged. {left} CP left.'
-    because: '{spent} CP spent'
-    cpLeft: '{because} ({cp} CP left)'
-    lapsed: 'The stat screen did not answer the last keystroke in {seconds}s. The client has let go of it: finish it by hand — Enter through to SAVE.'
-    whyLapsed: the screen stopped answering
-    attribute:
-      strength: Strength
-      intellect: Intellect
-      willpower: Willpower
-      agility: Agility
-      health: Health
-      charm: Charm
-  gearRecovery:
-    going: 'Stripped by the death: {count} remembered items are not in the pack. Going back to {room} for them ({steps} steps).'
-    taking: 'Taking {count} from the floor: {items}.'
-    takingGone: '{gone} of the kit are not on this floor.'
-    takingCapped: '{capped} more than the cap were left.'
-    dressed: 'Kit back on: {worn} put on, {notTaken} asked for and not taken, {missing} still missing.'
-    refused: 'Not fetching the kit: {refused}'
-    refusalUnplaced: 'the client does not know where the character died, and {count} items are missing'
-    refusalNoRoute: 'no route back to {room}: {why}'
-    refusalNotReached: 'the walk back to {room} ended early: {why}'
-    # The bounds on trying again (todo 21): a recovery walks a freshly dead,
-    # stripped character back to the room that killed it, and lives are finite.
-    refusalLives:
-      'Not going back for the kit: {lives} lives left, and the floor is {floor}. Recover it by hand,
-      or lower the floor under Movement.'
-    refusalTries:
-      'Not going back for the kit: {tries} recoveries in a row did not reach it. Recover it by
-      hand, or raise the limit under Movement.'
-    refusalLeft: the character is no longer standing where it died
-    refusalNothingHere: 'nothing of the kit is on this floor ({items}); somebody took it, or the realm cleaned up'
-    whyStopped: the walk stopped
-    becauseStripped: '{count} remembered items were on the floor where the character died'
-    becauseDied: the character died and was stripped
-    reasonTaking: 'fetching {item} back after the death'
-    reasonCoins: 'fetching the {coin} dropped by the death'
-    reasonDressing: putting the recovered kit back on
   gear:
     capped:
       'Only {max} were sent; {more} more were left. Each one is a command out of the same budget
       a fight is fought with.'
     missing: 'The pack no longer holds {count}: {items}.'
-    wearing: 'Changing into {set}.'
-    missingFromSet: '{item} is in an equipment set and not in the pack.'
-    offRound: 'Using {item} on {target} between rounds.'
-    offRoundMissing: '{item} is set to be used between rounds and is not in the pack.'
-  hangUp:
-    reasonInCombat: you are in combat
-    reasonMobEngaged: something in the room is still attacking you
-    reasonMobOnSight: 'in the room and attacks on sight: {names}'
-    reasonMobUnplaced: 'in the room and not placed by the realm data, so may attack: {names}'
-    reasonPvpNamed: PvP with {name} in the last five minutes ({minutes} to go)
-    reasonPvpUnnamed: PvP in the last five minutes ({minutes} to go)
-  heal:
-    reasonParty: 'heal: {memberName} is at {percent}%'
-    reasonRequested: 'heal: {memberName} asked (@heal)'
-    reasonSelf: 'heal: health is low'
-    reasonArea: 'heal: {count} in the party are hurt'
-    requestHealOff: '{from} asked for a heal (@heal), and healing is off (Heal If Below is 0) — nothing is cast.'
-    requestLapsed: '{from} asked for a heal (@heal) and none went out within {seconds}s.'
-    requestLowMana: '{from} asked for a heal (@heal); it waits for mana over the floor.'
-    requestNoSpell: '{from} asked for a heal (@heal), and no party heal spell is set — nothing is cast.'
-    requestNotMember: '{from} asked for a heal (@heal) and is not on the party listing — nothing is cast.'
-    requestPartyOff: '{from} asked for a heal (@heal), and Auto-Heal Party Members is off — nothing is cast.'
-    choseCovers: 'Healing with {spell} ({min}-{max}, {cost} mana): the cheapest cast expected to
-      cover the {deficit} hp missing.'
-    choseMost: 'Healing with {spell} ({min}-{max}, about {expected} a cast, {cost} mana): the most
-      one cast mends, and {deficit} hp are missing.'
-    choseArea:
-      many: 'Healing the party with {spell} ({min}-{max} each, {cost} mana): {count} are hurt,
-        and one heal on the worst does no better for the mana.'
-      one: 'Healing the party with {spell} ({min}-{max} each, {cost} mana): it does at least as
-        much as one heal for the mana.'
-    noChoice: 'No heal in the spellbook fits, so {spell} is cast as configured.'
-    noChoiceNoSpell: No heal in the spellbook fits, and none is configured, so nothing is cast.
-    noFiguresSelf:
-      Healing with the configured spell, because nothing has said what this character's health bar
-      holds and a heal is chosen against the hit points actually missing.
-    noFiguresParty:
-      Healing the party with the configured spell. The listing gives a percentage, and only their
-      own client answering @health says how many hit points a heal must cover.
   login:
     credentialMissing: No {credentialType} configured — finish logging in yourself.
     leftOnPurpose: Left the realm on purpose; automatic login stands down until the next connection.
@@ -5174,378 +4987,20 @@ automation:
     unknownPlaceholder:
       'The login step for "{promptText}" sends {placeholder}, which the client cannot fill in.
       Automatic login stopped rather than typing it at the realm.'
-  afk:
-    reasonReply: away reply
-    replied: 'Told {player} you are away.'
-  loops:
-    fightingForTheLap:
-      Auto-combat is off, but this lap will fight anyway — a loop is chosen for what lives on it.
-      Stop the loop to stop the fighting, or switch auto-combat on and off again to decline it for
-      the rest of this lap.
-    heldForErrand: Loop held — going shopping; it walks on from the shop.
-    walkingOnAfterErrand: Walking on from the shop.
-    giveUpReason: 'could not reach {stopName}: {why}'
-    mended: Mended; the loop walks on.
-    reasonLeftRealm: the character left the realm
-    reasonLowExp: 'the experience rate fell to {rate}/h, under the {floor}/h floor'
-    reasonStopMissing: that stop is not in the loop
-    refusalNotInRealm: Not in the realm.
-    skippingStop: 'Skipping {stopName}: {why}'
-    started: 'Looping {loopName}: {stopCount} stops.'
-    stopped: 'Loop stopped: {reason}'
-    tooHurt: Health below path threshold; resting to recover.
-    lowMana: Mana below the meditate threshold; meditating before walking on.
-    manaBack: Mana is back; the loop walks on.
-    afflicted: Waiting out a condition before the next leg.
-    afflictionOver: The condition has passed; the loop walks on.
-    heldAfterEscape: Ran away; the loop holds here until the fight is over and health is back.
-    walkingOnAfterEscape: Recovered from the retreat; the loop walks on.
-    heldOffline: Connection lost; the loop holds until you are back in the realm.
-    walkingOnAfterReconnect: Back in the realm; the loop walks on from here.
-    fallbackNextStop: the next stop
-    fallbackStop: a stop
-    fallbackWhy: the walk failed
-    resumed: Loop resumed from here.
-    skipped: 'Skipping {stopName} at your request.'
-    reversed: Loop turned round; it takes effect at the next stop.
-    refusalNotStopped: There is no stopped loop to resume.
-    refusalNotLooping: Nothing is looping.
-    refusalNotBounce: Only a bounce loop has a direction to reverse.
-  banking:
-    notAtCounter:
-      Nothing was deposited — the realm does not call this room a bank. A deposit typed anywhere
-      else is said out loud to everybody standing in it.
-    notYourBank:
-      Nothing was deposited — this counter is not the bank this character banks at. Change the
-      bank on the settings screen, or set it to the counter you are standing at.
-    nothingToBank: Nothing was deposited — the listing says the purse is empty.
-    reasonConfirm: 'banking: asking the vault its figure'
-    reasonCount: 'banking: restating cash on hand before it is spent'
-    reasonDeposit: 'banking: depositing {surplus} copper of the listed purse, retaining {keep}'
-  drop:
-    reasonJunk: 'drop: {item} is on the junk list'
-    reasonWorthless: 'drop: the realm prices {item} at nothing'
-  light:
-    reasonLook: 'reading the room by the {item} just lit'
-    becauseDark: '{room} is too dark to read'
-    reasonRemoveSpent: 'putting the spent {item} down before lighting another'
-    reasonLight: 'lighting {item} for {room}'
-    guessedReach: 'the realm does not say how far {item} reaches; tried anyway'
-    reasonExtinguish: 'putting {item} out — this room is lit'
-    becauseLit: '{room} is lit and nothing is walking'
-    refusalNothingCarried: no light source in the pack
-    refusalNothingUsable: 'every light carried is spent: {items}'
-    refusalNothingReaches: 'no carried light makes it readable: {items}'
-  supplies:
-    abandonedPlayerMoved: you took over
-    refusalBusy: a shopping errand is already running
-    refusalNotInRealm: this character is not in the realm
-    refusalNoErrand: the errand could not be started
-    abandonedEscape: the character is running away
-    refusalTookTooLong: the errand took too long and gave the lap back
-    abandonedLeftRealm: the realm was left
-    abandonedConnectionClosed: the connection closed
-    abandonedSwitchedOff: auto-buy was switched off
-    refusalNotSold: '{shop} does not list {item}'
-    refusalCannotAfford: '{item} is quoted at {price} copper and the purse holds {wealth}'
-    refusalUnreachable: 'could not reach {shop}: {why}'
-    refusalNoShop: 'nowhere to buy {item}: {why}'
-    refusalNoRoute: 'no route to {shop}: {why}'
-    going: 'Going to {shop} for {item} — {have} carried, keeping at least {min} ({steps} steps).'
-    becauseShort: '{item}: {have} carried, keeping at least {min}'
-    becauseShortRefused: '{item}: fewer than {min} carried'
-    # The other end of the list: what is carried over its stated maximum.
-    becauseOver: '{item}: {have} carried, keeping at most {max}'
-    surplusDropped: 'Dropping a spare {item} — {have} carried, keeping at most {max}.'
-    surplusAllWorn: 'Carrying {have} {item} over a maximum of {max}, and every one is in use.'
-    reasonList: 'asking the counter what it sells, for {item}'
-    reasonBuy: 'buying {item} ({bought} of {wanted})'
-    refusalNoListing: '{shop} did not answer list'
-    refusalUnconfirmed: 'the counter did not confirm buying {item}'
-    bought: 'Bought {count} {item} at {shop}; {have} carried.'
-    boughtSome: 'Bought {count} of {wanted} {item}, then stopped: {why}'
-    refused: 'Not buying {item}: {why}'
-    # A purse short of the price: the vault the record says holds the rest.
-    toBank:
-      'Going to {bank} for cash first — {item} costs {owed} copper and the purse holds {wealth};
-      the bank last said {held}.'
-    becausePurseShort: '{item}: {owed} copper wanted, {wealth} in the purse'
-    reasonBalance: 'asking {bank} for the balance, to withdraw for supplies'
-    reasonWithdraw: 'withdrawing {amount} copper for {item}'
-    withdrew: 'Withdrew {amount} copper at {bank}; on to {shop}.'
-    bankShort: '{bank} holds {held} copper, short of the {short} wanted.'
-    refusalNoBank:
-      '{item} costs {owed} copper, the purse holds {wealth}, and no bank on record holds the
-      {short} short — ask a bank for its balance to put it on record'
-    refusalNoOtherBank:
-      '{item} costs {owed} copper, the purse holds {wealth}, and no other bank on record holds the
-      {short} short'
-    refusalNoBalance: '{bank} did not state a balance'
-    refusalNoPayout: '{bank} did not pay out'
   keys:
     reasonNeeded: 'key: the way {direction} needs {item}, and it is on this floor'
     picking: Picking up {item} — the realm says the way {direction} needs it and the pack has none.
     ambiguous:
       Not picking up {item} — the way {direction} needs one, but the realm has several things of
       that name and this one may not be it.
-  # A realm's message table answering the realm (`MessageTriggers`).
-  messages:
-    ended: '{effects} over'
-    enter: '(Enter)'
-    firing: 'Message: {name}'
-    reason: 'message: {name}'
-    started: '{effects} begins'
-  loot:
-    reasonCoinsDropped: 'loot: {count} {coin} on the floor'
-    reasonDiscard: 'loot: shedding {count} {coin}'
-    discardBlocked:
-      'Not dropping the {coin} in the purse: “{item}” is in the pack and the realm reads
-      “drop {coin}” as that item first, so it would go on the floor instead. Take it out of the
-      pack, or take {coin} off the discard list.'
-    reasonConvert: 'loot: using {item} to convert cash'
-    reasonListed: 'loot: {item} listed here'
-    # A supply the pack is under the ceiling of, found rather than bought.
-    reasonStocking: 'loot: {item} here, {have} carried of {max} kept'
-    reasonWorth: 'loot: {item} is over the value threshold'
-  party:
-    reasonAssist: 'assist: {leader} is fighting {target}'
-    reasonDefend: 'defend: {target} is attacking {member}'
-    reasonRestWithLeader: 'resting with {leader}'
-    reasonMeditateWithLeader: 'meditating with {leader}'
-    reasonAutoRank: 'auto-rank: moving to {rank} rank'
   queue:
     fumbledResend: The realm threw away “{command}” — sending it again.
-  search:
-    reason: 'search: looking for what this room did not print'
-  potion:
-    # A rule from the player's own `health.potions` list (todo 19) -- the only
-    # thing that reaches for a potion since todo 00.
-    reasonRule: 'a potion rule fired'
   remotes:
-    followerReady: '{from} is ready.'
-    followerWait: '{from} asked the party to wait.'
-    dropAllCapped: '{from} sent @drop-all; dropped the first {max} of {total} carried.'
-    dropAllEmpty: '{from} sent @drop-all and nothing is in the pack.'
-    getAllCapped: '{from} sent @get-all; took the first {max} of {total} listed.'
-    getAllEmpty: '{from} sent @get-all and nothing is listed on the floor.'
-    healthUnknown: '{from} asked @health and no stat sheet has stated a maximum yet, so nothing was sent.'
-    answerUnknown: '{from} asked @{raw} and this client does not have that number yet, so nothing was sent.'
-    haveUncaptured:
-      '{from} asked @have {item}; {count} carried, and MegaMUD has only ever been seen answering for
-      one ({yes: 1}), so nothing was sent.'
-    ranDo: 'Remote execution (@do) by {from}: "{command}"'
-    ranParty: '{from} asked the party to "{command}".'
-    reasonParEvery: 'the party listing, every {seconds}s (Par Every)'
-    reasonParRound: the party listing after the round (Send par After Each Combat Round)
-    ignoredParty: '{from} asked the party to "{command}"; Ignore @party If Following is on, so it was not sent.'
-    autoJoinInParty: '{from} invited this character; not joining, because it is already in a party.'
-    autoJoinDenied: '{from} invited this character; not joining, because @join is denied to {from}
-      by name.'
-    autoJoinNotGranted: '{from} invited this character; not joining, because {from} has not been
-      granted @join.{unresolvedClause}'
-    ignoredWait: '{from} asked the party to wait; Ignore @wait If Leading is on, so the walk goes on.'
-    waitedLongEnough: 'Waited {minutes} min for {who}; walking on, as Wait No Longer Than says.'
-    peerIsOurs:
-      "{who} answered @version with {client}, so questions to them will use this client's own
-      wording — a room's realm address rather than its name."
-    peerIsOther: "{who} answered @version with {client}; questions to them stay in MegaMUD's
-      wording."
-    extendedRefused:
-      "{who} refused @{name} in this client's own wording, so they are not running it after all —
-      asking again the way MegaMUD words it."
-    extendedLapsed:
-      'Nothing came back from {who}, so they are recorded as not running this client — asking @{name}
-      the way MegaMUD words it instead.'
-    comebackUnplaced:
-      'Nothing has placed this character in the realm data, so there is no address to ask {who} to
-      come back to. Nothing was sent.'
-    comebackUnreadable: '{from} sent @comeback-room without a readable map/room address, so nothing
-      was walked.'
-    reasonAnswering: answering {name}
-    reasonHealthSheet: a @health answer is over the stat sheet's maximum; reading the sheet first
     reasonAsking: asking {who} {body}
-    reasonAskingHeal: 'asking the party for a heal (@heal): health is at {percent}%'
-    reasonAutoInvite: 'Auto Invite when seen: {name} is in the room'
-    reasonDo: '@do from {from}'
-    reasonDropAll: '@drop-all from {from}'
-    reasonForget: '@forget from {from}'
-    reasonGetAll: '@get-all from {from}'
-    reasonInvite: '@invite from {from}'
-    reasonJoin: '@join from {from}'
-    reasonAutoJoin: 'invited by {from}'
-    reasonParty: '@party from {from}'
-    refusal:
-      hangup: an unclean disconnect costs a percentage of maximum health and is fatal at low health;
-        walking out is the escape that works
-      kill:
-        this client never attacks a player on its own account; the first blow opens the five-minute
-        window that makes a disconnect fatal, and the thing on the other end is a person
-      panic: the half of it this client could obey is the hangup, which is the refusal above
-      relog: it hangs up first, and hanging up is the refusal above
-    refusedDenied: '{from} sent @{raw}; ignored — @{raw} is denied to {from} by name.'
-    refusedGangpathOff: '{from} sent @{raw} on the gangpath; ignored, because this character does
-      not answer on the gangpath. Turn it on from the Gang card, or ask by telepath.'
-    refusedNotGranted: '{from} sent @{raw}; ignored — {from} has not been granted
-      @{raw}.{unresolvedClause}'
-    refusedRealmWide: '{from} sent @{raw} on a realm-wide channel; ignored, because a message to
-      everybody logged in is not a message to this character. Ask by telepath.'
-    refusedUnsupported: '{from} sent @{raw}; refused — {reason}'
-    unread: Unsupported remote command @{raw} from {from}.
-    unresolvedGang:
-      " The gang grants it, and nothing has said yet whether they share this character's gang —
-      a who listing that shows both rows settles it."
-    notInParty:
-      ' The party grants it, and they are not on the party listing — a party command settles
-      it, and an invitation nobody accepted is not membership.'
-  restAway:
-    refusingHere: 'Not resting here: this room makes monsters every {seconds}s. Looking into {name} first.'
-    noSafeRoom: 'Resting here after all: this room makes monsters every {seconds}s and no neighbour is safe to rest in.'
-    refusalNoSafeRoom: no neighbouring room is free of lairs and empty
-    becauseClock: 'the room makes monsters every {seconds}s'
-    becauseStepped: 'stepped {direction} out of the lair to rest'
-    notSafe: 'Not resting in {name}: {who} standing there.'
-    peekUnanswered: 'Nothing described {name} in time; not stepping into a room unseen.'
-    stepping: 'Stepping {direction} into {name} to rest, out of the lair.'
-    stepUnanswered: 'The step {direction} was not answered; resting where the character stands.'
-    steppingBack: 'Rested; stepping {direction} back.'
-    reasonPeek: 'looking into {name} before resting there'
-    reasonStep: 'stepping into {name} to rest'
-    reasonBack: stepping back after resting next door
-  recovery:
-    reasonHealth: 'recovery: health is low'
-    # A poisoned character cannot rest at all on GreaterMUD: the server tests
-    # for poison before anything else and answers with the poison sentence
-    # instead of sitting the character down. Naming the cure because a
-    # character that cannot rest and has no cure set cannot recover at all.
-    restPoisoned: This realm refuses to rest a poisoned character. Set a cure for poison
-      under the spells settings, or cure it by hand.
-    reasonMana: 'recovery: mana is low'
-    reasonMessage: 'recovery: the "{name}" message says to rest until full'
-    verbRefused: The realm answered {verb} with "Your command had no effect."; not proposing it again this session.
   routines:
-    enteringRealm: Asking the realm for {commands}.
     reasonAbilities: reading the quest counters the realm's own gates are written on
-    reasonEnterRealm: entering the realm
-    reasonIdle: idle
-    reasonPartyChanged: the party changed
-    reasonLookAtPlayer: Looking at somebody this character has not seen before
-    reasonRosterUnknown: a name arrived without a listing to explain it
-    reasonSpellbook: reading the spellbook
-    reasonUnread: not read since entering the realm, and nothing is trusted without it
-    reasonTrained: trained, so the sheet, the experience to the next level and the purse
-      have all changed
-    reasonStatsTrained: the stats were retrained, so the sheet has changed
-    reasonBuffEnding: a sentence nothing recognised may have ended a buff; the stat sheet says which
-    reasonConditionCheck: a condition is on; the stat sheet says whether it still is
-    reasonStatline: setting the status line, so every prompt carries the maxima, the experience and the purse
-    reasonProfile: reading which status line the realm holds
-    spellbookCorrected: Asked for the wrong book — the realm says to list {book}, so asking that instead.
   walk:
-    alreadyThere: Already there.
-    arrived: Arrived at {stepName}.
-    darkLightSpent: '{stepName} is dark and your {lightName} is spent.'
-    barrierHeld: Door bash failed (door held).
-    barrierHolding: 'The {barrier} is still shut; waiting here and trying again. {detail}'
-    barrierNotAllowed: Door locked (forcing/picking disabled).
-    barrierTooHard: Requires {wanted}; this character has {picklocks} picklocks and {strength} strength.
-    barrierTooHurt: Too hurt to spend a bash on it.
-    barrierUnknownSkill: unknown
-    restHolding: Waiting for the rest to land before stepping.
-    scattered: '{spellName} dropped you in {roomName}; planning again from here.'
-    scatteredUnplaced:
-      '{spellName} dropped you somewhere the room name and its exits cannot tell apart; asking the
-      realm where that is.'
-    manaHolding: Mana is low; meditating here before walking on.
-    manaResumed: Mana is back; walking on.
-    askingWhere: '{roomName} could be one of several rooms; asking the realm where this is.'
-    landedElsewhere: '{command} put you in {roomName}, not where the route said; planning again from here.'
-    trapHolding:
-      'The way into {stepName} is a trap of up to {damage} damage; resting here to {needed} HP
-      (now {hp}) before taking it.'
-    trapResumed: Enough health for the trap into {stepName}; walking on.
-    holdingBlind: Blind; waiting here until you can see again.
-    holdingHeld: Held fast; waiting here until you can move again.
-    holdingPoisoned: Poisoned; waiting here until it runs its course.
-    afflictionResumed: The condition has passed; walking on.
-    holdingDark: Too dark to tell where this is; waiting for a light.
-    lightResumed: The room can be read again; walking on.
-    gateMissed:
-      'The way through needed {condition}, which this client cannot check — you are in {roomName}
-      instead; planning again from here.'
-    leverFetching:
-      The way to {stepName} is opened by “{phrase}” in {roomName}. Going there to pull it, then
-      carrying on.
-    leverNext: Lever pulled; {roomCount} more to go.
-    leverPulled: Lever pulled; walking on to {destination}.
-    leverRun:
-      The way to {stepName} needs levers in {roomCount} rooms. Walking them in the realm's own
-      order, then carrying on.
-    leverRunRefused:
-      The way to {stepName} needs levers in {roomCount} rooms and the round of them cannot be
-      walked — {reason}
-    leverUnreachable: The way is opened by “{phrase}” in {roomName}, and there is no route to it — {reason}
-    leversScattered:
-      The way to {stepName} needs levers in {roomCount} different rooms and the realm does not say
-      in which order. Pull them by hand and the way opens.
-    reasonAmbiguous: I can no longer tell which room you are in
-    checkedElsewhere: "The game refused {command} because you are in {roomName}, not where the route thought — planning again from here."
-    reasonBarrier: '{barrier} blocked {command}. {detail}'
-    reasonBashing: bashing the {barrier} to {stepName}
-    reasonCombat: a fight started
-    reasonDarkUnresolved: Room is {lightLevel}; unable to identify location without light source.
-    reasonDied: you were killed, and the realm has moved you
-    reasonFightUnending: nothing here is ending the fight, so the route is not waiting any longer
-    reasonLostAfterFight: the fight ended somewhere the client could not place
-    reasonMoveUnanswered: the fight ended with {command} still unanswered, so there is nowhere to plan from
-    reasonNotQueued: the client refused to send {command}
-    # A walk that ended inside `Walker.start` with no reason recorded (todo 06, on review).
-    stoppedAtStart: the walk stopped before its first step went out
-    reasonNotSent: '{command} never left the client'
-    reasonNudge: forcing an answer after {command}
-    reasonCheckingRoom: "reading the room again: the game refused {command}, and that may mean you are not where the route thinks"
-    reasonOpening: opening the {barrier} to {stepName}
-    reasonPicking: picking the {barrier} to {stepName}
-    reasonPlayerTookOver: you moved the character yourself
-    reasonRefused: the game refused {command}
-    reasonUnlocking: unlocking the {barrier} to {stepName} with the key you are carrying
-    reasonLever: “{phrase}” to open the hidden way to {stepName}
-    reasonWalkingThroughFight:
-      Auto-combat is not fighting this, so the route walks on through the fight rather than waiting
-      for it to end — which is also how it ends.
-    reasonRereading: reading the room again for the hidden way to {stepName}
-    reasonSearching: searching for the hidden way to {stepName}
-    searchHolding:
-      The realm says the way to {stepName} is hidden here. Searching for it, and staying put until
-      it turns up.
-    reasonSneak: sneaking before the route
-    reasonPartyRelay: 'telling the party to {command} too, before crossing'
-    reasonReinvite: 'inviting {name} back: the realm drops the party through a text exit'
-    partyHolding: Waiting here for {names} to come through behind you.
-    partyLeftBehind: '{names} did not come through; walking on without them.'
-    partyGoingBack: '{names} did not come on with the party; going back for them.'
-    partyRejoining: Waiting here for {names} to join the party again.
-    reasonPartyListing: checking who came on with the party after the text exit
-    # Todo 104: the sheet's own figure decides, from `SneakCommand.cs`'s roll.
-    sneakGaveUp: 'Not sneaking before steps: the last {count} tries failed. Trying again after a level or a reconnect.'
-    sneakNoSkill: 'Not sneaking before steps: this character has no Stealth (the sheet says 0), so the server refuses every attempt. Sneak Before Each Step is ignored for this session.'
-    reasonStepping: walking to {stepName}
-    reasonTimeout: nothing came back after {command}
-    reasonWrongRoom: Off path / Navigation desync ({roomName}).
-    refusalDisabled: Automation is disabled.
-    refusalInCombat: You are in combat, so I will not walk out of the fight.
-    refusalMoveInFlight: A move has not been answered yet, so I cannot tell which room to plan
-      from. Try again in a moment.
     refusalNoRoute: No route to there.
-    refusalStaleRoute: That route starts somewhere else. Plan it again from here.
-    refusalUnknownStart: I cannot tell which room you are in, so I will not start walking.
-    started:
-      many: Walking {stepCount} steps to {destination}.
-      one: Walking {stepCount} step to {destination}.
-    stopped: 'Walk stopped: {reason}'
-    superseded: 'Dropped the walk to {destination}; something else is steering now.'
-    fallbackMove: the move
-    fallbackLight: light
-    fallbackBarrier: door
 # What a realm's message table calls the things its rows mean.
 messages:
   actions:
@@ -5583,6 +5038,37 @@ monsters:
     escape: Flee
     friend: Friend
     hangup: Hang up
+mudstats:
+  link:
+    noBoard: This character's realm names no stats board.
+    busy: A link is already waiting for its code.
+    notInGame: The character has to be in the game to read the board's code.
+    notConnected: That character is not open.
+    refused: 'The stats board refused: {detail}'
+    waiting: Asked the stats board for a code; waiting for its telepath to {player}…
+    noCode: No code reached the character before it expired. Link again to ask for another.
+    linked: Linked to the stats board as {player}.
+  unlink:
+    none: This character has no stats key.
+    done: The stats key was retired at the board and forgotten here.
+    forgottenOnly: 'Forgotten here; the board did not retire it: {detail}'
+  status:
+    noBoard: This character's realm names no stats board.
+    notLinked: Not linked to the stats board.
+    refused: 'The stats board did not recognise the key: {detail}'
+    posting: posting
+    off: not posting
+    linked: Linked as {player} — {posts} posts so far, {state}.
+  post:
+    back: The stats board is answering again.
+    keyRefused: 'The stats board refused this character''s key, so posting has stopped. Link it again. ({detail})'
+    switchedOff: 'The stats board does not take posts for this character, so posting has stopped. ({detail})'
+    rejected: 'The stats board rejected a post, so posting has stopped. ({detail})'
+    unreachable: 'The stats board is not answering; trying again later. ({detail})'
+  test:
+    noUrl: Give the board's address first.
+    failed: 'No stats board answered there: {detail}'
+    ok: A stats board answered; it takes a post at most every {seconds} seconds.
 movement:
   # The back button, when the previous room is not one step away: a one-way
   # exit, a door that shut, a corridor that only runs the other way.

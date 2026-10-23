@@ -41,6 +41,7 @@ import SettingsScreen, {
 } from './components/SettingsScreen';
 import StandbyCard from './components/StandbyCard';
 import StatsCard from './components/StatsCard';
+import GearCard from './components/GearCard';
 import ConversationCard from './components/ConversationCard';
 import BanksCard from './components/BanksCard';
 import QuestCard from './components/QuestCard';
@@ -65,6 +66,7 @@ import VitalsCard from './components/VitalsCard';
 import SelfCard from './components/SelfCard';
 import type { SupplyList } from './components/SupplyControls';
 import LoopsModal from './components/LoopsModal';
+import ExplorerScreen from './components/ExplorerScreen';
 import HomeBrowser from './components/HomeBrowser';
 import { registerRealmPicker } from './lib/pickers';
 import LoopBuilderCard, {
@@ -72,9 +74,9 @@ import LoopBuilderCard, {
   type BuilderSeed
 } from './components/LoopBuilderCard';
 import ToolbarCard from './components/ToolbarCard';
-import { TOOLBAR_ACTIONS, type ToolbarSubject } from './lib/toolbar';
+import { TOOLBAR_IDS, type ToolbarSubject } from './lib/toolbar';
 import { useToolbarPins } from './hooks/useToolbarPins';
-import { recallStatsBase, rememberStatsBase } from './hooks/useRemembered';
+import { forgetStatsBase, recallStatsBase } from './hooks/useRemembered';
 import NavigationCard from './components/NavigationCard';
 import { type TerminalHandle } from './components/TerminalView';
 import { useConfig } from './hooks/useConfig';
@@ -94,8 +96,22 @@ import type { CardChrome } from './components/BentoCard';
 import type { AppConfig } from '@shared/config';
 import type { MessageTrigger } from '@shared/messageTriggers';
 import type { MonsterRule } from '@shared/monsterRules';
+import type { ItemRule } from '@shared/itemRules';
 import type { MegaMudPath } from '@shared/megamudPaths';
-import type { IpcApi } from '@shared/ipc';
+import type { IpcApi, LearnedSpellRow } from '@shared/ipc';
+import { mean, sinceCardBaseline, swings } from '@shared/tally';
+import type { ToolRequest } from '@shared/explorerTools';
+import type {
+  CompareKind,
+  EqFind,
+  EqPlan,
+  ExplorerKind,
+  ExplorerOptions,
+  GearOptions,
+  RoomMapOptions,
+  RoomSearch,
+  RoomViewRequest
+} from '@shared/explorer';
 import { CONSOLE_PALETTES, TERMINAL_THEMES, THEME_PREFERENCES, THEMES } from '@shared/themes';
 import { usePaneWidths } from './hooks/usePaneWidths';
 import { usePinnedCommands } from './hooks/usePins';
@@ -120,12 +136,12 @@ import { useTheme } from './hooks/useTheme';
 import { useStreamPressure, ZERO_METER, type StreamMeter } from './hooks/useStreamPressure';
 import { t } from './lib/i18n';
 import { loopRows, type LoopChoice, type LoopDestination, type LoopHere } from './lib/loops';
+import { editedLoop } from './lib/builder';
 import { chord } from './lib/platform';
 import type { PopoverAnchor } from './lib/popover';
 import { playerKey } from '@shared/players';
 import {
   automationSwitches,
-  AUTOMATION_SWITCH_NAMES,
   DEFAULT_CONFIG,
   resolveTerminalFonts,
   resolveUiFonts,
@@ -141,9 +157,10 @@ import { figuresOf, type StatlineFigures } from '@shared/statline';
 import { IDLE_WALK, type WalkProgress } from '@shared/walk';
 import { DEFAULT_INTERNAL, type InternalConfig } from '@shared/internal';
 import type { HuntingRoom } from '@shared/hunting';
-import { NO_LOOP, type Loop, type LoopProgress } from '@shared/loops';
-import { movementOf, type MovementConfirm } from '@shared/movement';
-import type { CombatTally } from '@shared/tally';
+import { NO_LOOP, type Loop, type LoopAddress, type LoopProgress } from '@shared/loops';
+import { saveText } from './lib/download';
+import { movementOf, type Movement, type MovementConfirm } from '@shared/movement';
+import { megaMovement } from '@shared/megamud/toggles';
 import { EMPTY_AUTOMATION, type AutomationSnapshot } from '@shared/automation';
 import { EMPTY_ROOM_VERDICT, type RoomVerdict } from '@shared/verdict';
 import {
@@ -157,6 +174,7 @@ import { isTalkBlock } from '@shared/talk';
 import type { Discovery } from '@shared/memory';
 import { roomsWithFinds, type Find } from '@shared/finds';
 import type { Addressed, ResetNotice } from '@shared/ipc';
+import MegaMudQuestion from './components/MegaMudQuestion';
 import MovementPrompt from './components/MovementPrompt';
 import ResetPrompt from './components/ResetPrompt';
 import type { GlobalDraft, ProfileDraft, ServerDraft } from '@shared/drafts';
@@ -168,7 +186,9 @@ import {
   partyNotices,
   roomNotices,
   rosterNotices,
+  escapeNotices,
   namedNotices,
+  TAB_ALERTS,
   vitalNotices,
   watchNotices,
   walkNotices,
@@ -239,16 +259,6 @@ interface SessionView {
   verdict: RoomVerdict;
   /** What the things standing in the room answer to, for this character. See `asksHere`. */
   asks: RoomAsk[];
-  /**
-   * The Combat Stats card's baseline: the totals every figure on it is a
-   * difference from, or null for the whole session.
-   *
-   * Held here rather than in the card because the card ships **put away**, and
-   * what re-bases it has to be running whether or not anything is drawn — a lap
-   * beginning is a moment, not a render. One value, written by the card's Reset
-   * button and by the lap alike, so neither has to outrank the other.
-   */
-  statsBase: CombatTally | null;
   lines: StreamLine[];
   telnet: TelnetEvent[];
   /**
@@ -271,7 +281,8 @@ interface SessionView {
    */
   notices: Notice[];
   /**
-   * What has been raised while nobody was looking at this character.
+   * The tab alerts raised while this character was not on screen
+   * (`TAB_ALERTS`), and the newest.
    *
    * The point of running four characters is that three of them are unattended,
    * and the point of a tab rail is that it reports on the ones whose terminal
@@ -283,7 +294,7 @@ interface SessionView {
    * means. Counted rather than kept: the notices themselves are already in
    * `notices`, and a tab has room for a number.
    */
-  unseen: { critical: number; warning: number; latest: string | null };
+  unseen: { alerts: number; latest: string | null };
   /**
    * What this character has found that the realm data does not have.
    *
@@ -357,18 +368,13 @@ const NO_SESSIONS: SessionSummary[] = [];
 const NO_SUPPLIES: SupplyItem[] = [];
 
 /**
- * The totals as they stand, written down as the Combat Stats card's baseline.
- *
- * The one writer for the button and the lap alike, so neither has to be
- * compared against the other — and written down beside the layout, because
- * main's totals outlive the launch and the reading they are subtracted from
- * has to as well, or a launch silently undid the last press or the lap.
+ * What is moving a character: the MegaMUD engine's own walking where one runs
+ * it, since the walker and loop runner stand idle then, else theirs.
  */
-function rebased(session: SessionId, view: SessionView): CombatTally {
-  rememberStatsBase(session, view.character.tally);
-  return view.character.tally;
+function movementIn(view: SessionView): Movement {
+  const mega = view.automation.mega;
+  return mega ? megaMovement(mega) : movementOf(view.walk, view.loop);
 }
-
 const EMPTY_VIEW: SessionView = {
   state: INITIAL_STATE,
   character: EMPTY_CHARACTER,
@@ -377,12 +383,11 @@ const EMPTY_VIEW: SessionView = {
   automation: EMPTY_AUTOMATION,
   verdict: EMPTY_ROOM_VERDICT,
   asks: [],
-  statsBase: null,
   lines: [],
   telnet: [],
   talk: [],
   notices: [],
-  unseen: { critical: 0, warning: 0, latest: null },
+  unseen: { alerts: 0, latest: null },
   learned: [],
   finds: [],
   questSaid: {},
@@ -393,29 +398,30 @@ const EMPTY_VIEW: SessionView = {
  * Folds new notices into the unseen count for a character.
  *
  * A character on screen has seen them by definition, so nothing accumulates for
- * the one being played — the count exists for the other three. `info` is not
- * counted: a tab that lights up for somebody arriving in the realm is a tab
- * nobody reads, and the whole value of the mark is that it is rare.
+ * the one being played — the count exists for the other three. Only the tab
+ * alerts are counted (`TAB_ALERTS`: hung up, dropped, ran, fled; 2026-10-17):
+ * a tab lit for a failed command or a red bar is a tab lit all evening, and
+ * the whole value of the mark is that it is rare.
  */
 function missed(
   current: SessionView['unseen'],
   raised: Notice[],
   shown: boolean
 ): SessionView['unseen'] {
-  if (shown) return current.critical === 0 && current.warning === 0 ? current : EMPTY_UNSEEN;
-  const worth = raised.filter((notice) => notice.severity !== 'info');
+  if (shown) return current.alerts === 0 ? current : EMPTY_UNSEEN;
+  const worth = raised.filter(
+    (notice) => notice.event !== undefined && TAB_ALERTS.has(notice.event)
+  );
   if (worth.length === 0) return current;
   return {
-    critical: current.critical + worth.filter((n) => n.severity === 'critical').length,
-    warning: current.warning + worth.filter((n) => n.severity === 'warning').length,
+    alerts: current.alerts + worth.length,
     // The newest, for the tab's title: a number says how much and this says what.
     latest: worth[worth.length - 1]!.text
   };
 }
 
-const EMPTY_UNSEEN = { critical: 0, warning: 0, latest: null } as const;
+const EMPTY_UNSEEN = { alerts: 0, latest: null } as const;
 
-/** Keeps a log bounded without reallocating it on every append. */
 /**
  * Where a room's quick view hangs, from whatever named the room.
  *
@@ -438,6 +444,7 @@ function roomAnchor(at: Element): PopoverAnchor {
   };
 }
 
+/** Keeps a log bounded without reallocating it on every append. */
 function capped<T>(log: T[], entry: T, limit: number): T[] {
   const next = [...log, entry];
   return next.length > limit ? next.slice(-limit) : next;
@@ -469,9 +476,7 @@ interface CardContext {
   /**
    * A gear button, addressed at this character.
    *
-   * Not `ask`: that takes a bare verb of at most eight lowercase letters and
-   * no argument, which is exactly what lets it accept a string from here. Main
-   * holds the pack, the loadout and the realm's word on what can be worn, so
+   * Not `ask`: main holds the pack, the loadout and the realm's word on what can be worn, so
    * what crosses is an action from a closed list. See `shared/gear.ts`.
    */
   gear(action: GearAction, item?: string): void;
@@ -517,6 +522,12 @@ interface CardContext {
   stopRun(): void;
   /** Where to hunt from where this character stands — addressed, like the book. */
   loadHunting(measure: string | null): ReturnType<IpcApi['huntingGrounds']>;
+  /** The Gear card's board, addressed: MME's Find Best for this character. */
+  loadGear(options: GearOptions): ReturnType<IpcApi['explorerGear']>;
+  /** Buy, or Buy + Wear, for this character. */
+  buyItem(item: number, wear: boolean): ReturnType<IpcApi['explorerBuy']>;
+  /** The Explorer opened on an item; null for a character not shown, whose Explorer it is not. */
+  explore: ((kind: ExplorerKind, item: number) => void) | null;
   /**
    * Walks a loop the Hunting card built, filed nowhere or under this
    * character — the builder's own save, offered for the *shown* character
@@ -553,8 +564,6 @@ interface CardContext {
   startMoving(loop: string | null): void;
   stopMoving(): void;
   startLoop(name: string): void;
-  skipLoop(): void;
-  reverseLoop(): void;
   /** Whose Player flyout is open from one of this character's listings, lower-cased, or null. */
   subject: string | null;
   /** The console's name index for this character, or null before the realm's names arrive. */
@@ -590,8 +599,12 @@ interface BuilderApi {
   realmName: string;
   search(query: string): Promise<WorldRoom[]>;
   loadMap(map: number, room: number, radius: number): Promise<LocalMap>;
-  draft(rooms: RoomId[]): Promise<LoopDraft>;
-  save(loop: Loop, destination: BuilderDestination): Promise<string | null>;
+  draft(rooms: RoomId[], keep: RoomId[]): Promise<LoopDraft>;
+  save(
+    loop: Loop,
+    destination: BuilderDestination,
+    replaces: LoopAddress | null
+  ): Promise<string | LoopAddress>;
   /** A loop to open drawn — the Hunting card's — or null for an empty map. */
   seed: BuilderSeed | null;
 }
@@ -619,13 +632,13 @@ interface AddressedActions {
   runPlan(block: number, marked: number | null): ReturnType<IpcApi['questRun']>;
   stopRun(): void;
   loadHunting(measure: string | null): ReturnType<IpcApi['huntingGrounds']>;
+  loadGear(options: GearOptions): ReturnType<IpcApi['explorerGear']>;
+  buyItem(item: number, wear: boolean): ReturnType<IpcApi['explorerBuy']>;
   startMoving(loop: string | null): void;
   stopMoving(): void;
   /** Re-base the Combat Stats card to this character's totals as they stand. */
   resetStats(): void;
   startLoop(name: string): void;
-  skipLoop(): void;
-  reverseLoop(): void;
   selectPlayer(name: string, anchor: PopoverAnchor): void;
   setGangRemotes(remotes: RemoteName[]): void;
   setGangpath(on: boolean): void;
@@ -650,6 +663,24 @@ function emptyCardHidden(chrome: CardChrome, id: CardId, hasSomethingToSay: bool
   return hidesWhenEmpty(chrome.settings?.value ?? NO_CARD_SETTINGS, id);
 }
 
+/**
+ * What MMUD Explorer's answers for a character turn on: its class, race,
+ * level and what it wears. The Explorer's lists and the Gear card are read
+ * again when it changes.
+ */
+function wornKey(character: CharacterState): string {
+  return [
+    character.className ?? '',
+    character.race ?? '',
+    character.progress.level ?? '',
+    character.inventory.items
+      .filter((item) => item.equipped)
+      .map((item) => item.name)
+      .sort()
+      .join(',')
+  ].join('|');
+}
+
 /** The card for an id, drawn from a context. Exhaustive over the vocabulary. */
 function cardElement(id: CardId, ctx: CardContext): ReactNode {
   const { chrome, character, view } = ctx;
@@ -672,7 +703,6 @@ function cardElement(id: CardId, ctx: CardContext): ReactNode {
             failure every addressed field here exists to refuse.
           */
           supplies={ctx.chooseOnMap === null ? null : ctx.supplies}
-          suppliesOn={ctx.toolbar.switches.supplies}
         />
       );
     case 'vitals':
@@ -769,8 +799,6 @@ function cardElement(id: CardId, ctx: CardContext): ReactNode {
           loop={view.loop}
           loops={ctx.loops}
           onChoose={ctx.chooseOnMap}
-          onReverseLoop={ctx.reverseLoop}
-          onSkipLoop={ctx.skipLoop}
           onStart={ctx.startMoving}
           onStop={ctx.stopMoving}
           walk={view.walk}
@@ -939,7 +967,7 @@ function cardElement(id: CardId, ctx: CardContext): ReactNode {
             And whether a walk or a lap is moving it, so an open plan holds its
             ground until the walk ends rather than being asked at every room.
           */
-          moving={movementOf(view.walk, view.loop).moving}
+          moving={movementIn(view).moving}
           /*
             The realm's own count of each quest counter, where the realm has a
             command that prints one. It outranks the marks the player has left
@@ -1015,10 +1043,20 @@ function cardElement(id: CardId, ctx: CardContext): ReactNode {
       return (
         <StatsCard
           {...chrome}
-          baseline={view.statsBase}
+          baseline={view.character.statsBase}
           character={character}
           onReset={ctx.resetStats}
           session={ctx.session}
+        />
+      );
+    case 'gear':
+      return (
+        <GearCard
+          {...chrome}
+          buy={ctx.buyItem}
+          characterKey={wornKey(character)}
+          explore={ctx.explore}
+          load={ctx.loadGear}
         />
       );
     case 'reference':
@@ -1206,6 +1244,16 @@ export default function App() {
   const [profilesKnown, setProfilesKnown] = useState(false);
 
   const view = views[session] ?? EMPTY_VIEW;
+  /** A question MegaMUD is waiting on, the shown character's first. See `MegaMudQuestion`. */
+  const asking = useMemo((): readonly [SessionId, string] | null => {
+    const own = views[session]?.automation.megaQuestion;
+    if (own !== undefined) return [session, own];
+    for (const [id, v] of Object.entries(views)) {
+      const question = v.automation.megaQuestion;
+      if (question !== undefined) return [id as SessionId, question];
+    }
+    return null;
+  }, [views, session]);
   const { state, character, walk, automation, lines } = view;
   const telnetEvents = view.telnet;
   const [size, setSize] = useState<TerminalSize>({ cols: 80, rows: 24 });
@@ -1220,6 +1268,8 @@ export default function App() {
    * launch because somebody once looked at it is chrome nobody asked for.
    */
   const [loopsOpen, setLoopsOpen] = useState(false);
+  /** MMUD Explorer's Weapons and Armour, for the character on screen (2026-10-18). */
+  const [explorerOpen, setExplorerOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [routeOpen, setRouteOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -1830,11 +1880,6 @@ export default function App() {
   }, [uiFonts, config.ui.font.size, terminalFonts]);
 
   /**
-   * The terminal's handle, published once xterm has mounted. Chunks that arrive
-   * before then are buffered rather than dropped, so nothing is lost if the
-   * main process pushes during the first paint.
-   */
-  /**
    * Every mounted terminal, by character.
    *
    * They all stay mounted (see `SessionTerminal`), so this is how the window
@@ -1846,7 +1891,6 @@ export default function App() {
   const [handleTick, setHandleTick] = useState(0);
   const pendingNotices = useRef<string[]>([]);
 
-  /** The character on screen, for callbacks that must not go stale. */
   /**
    * Which characters are on screen right now.
    *
@@ -1857,6 +1901,7 @@ export default function App() {
    */
   const shownRef = useRef<Set<SessionId>>(new Set());
 
+  /** The character on screen, for callbacks that must not go stale. */
   const activeRef = useRef(session);
   useEffect(() => {
     activeRef.current = session;
@@ -2047,6 +2092,14 @@ export default function App() {
 
   const applySnapshot = useCallback(
     (id: SessionId, snapshot: AttachSnapshot) => {
+      /*
+       * A baseline this browser kept before main kept them (2026-10-17),
+       * handed over once while main has none, so a Reset pressed then is
+       * not lost. Main keeps it from here, and this browser's copy is spent.
+       */
+      const kept = snapshot.character.statsBase === null ? recallStatsBase(id) : null;
+      if (kept !== null) api.statsBase(id, kept);
+      forgetStatsBase(id);
       patchView(id, (was) => ({
         state: snapshot.state,
         character: snapshot.character,
@@ -2055,16 +2108,6 @@ export default function App() {
         automation: snapshot.automation,
         verdict: snapshot.verdict,
         asks: snapshot.asks,
-        /*
-         * Carried, not reset. A snapshot is this window attaching to a session
-         * that was already running, and main's totals are the same monotonic
-         * ones the baseline was taken from — so a reading this window had
-         * survives the attach — and one written down before the launch is
-         * read back here, since main's totals outlive the launch too. A
-         * baseline older than the *totals* is a different matter and is
-         * discarded by the card's own `stale` test.
-         */
-        statsBase: was.statsBase ?? recallStatsBase(id),
         lines: snapshot.lines.slice(-tuning().lineLogLimit),
         telnet: snapshot.telnet.slice(-tuning().telnetLogLimit),
         // The conversation log's tail: main keeps what was said on disk, so a
@@ -2074,7 +2117,7 @@ export default function App() {
         // A window that has just attached has not missed anything: the
         // backscroll it replays is the record, and a count of alerts raised
         // before it existed is a number nobody can act on.
-        unseen: { critical: 0, warning: 0, latest: null },
+        unseen: { alerts: 0, latest: null },
         learned: snapshot.learned,
         finds: snapshot.finds,
         questSaid: snapshot.questSaid,
@@ -2093,9 +2136,7 @@ export default function App() {
   useEffect(() => {
     shownRef.current = new Set(panes);
     for (const id of panes) {
-      patchView(id, (v) =>
-        v.unseen.critical === 0 && v.unseen.warning === 0 ? v : { ...v, unseen: EMPTY_UNSEEN }
-      );
+      patchView(id, (v) => (v.unseen.alerts === 0 ? v : { ...v, unseen: EMPTY_UNSEEN }));
     }
   }, [panes, patchView]);
 
@@ -2310,27 +2351,7 @@ export default function App() {
       api.onLoop(({ session: id, payload }) =>
         patchView(id, (v) => ({
           ...v,
-          loop: payload,
-          /*
-           * A lap that has just begun re-bases the Combat Stats card — todo
-           * 01, *"starting a loop should reset combat statistics; restarting a
-           * loop should not"*.
-           *
-           * `lapBegunAt` is the moment the run first stood on the loop, which
-           * is what makes both halves of that sentence one test: `start` clears
-           * it and the first stop reached sets it, while `resume` leaves it
-           * exactly as it was, so a restart moves nothing here. And it is the
-           * *lap* rather than the button, so the twenty-eight steps out from
-           * town are not counted as a stretch the loop earned nothing over.
-           *
-           * The totals as they stand at that instant, which is the same value
-           * the Reset button writes — main's own totals are untouched either
-           * way, so this is a reading being re-based and never data being lost.
-           */
-          statsBase:
-            payload.lapBegunAt !== null && payload.lapBegunAt !== v.loop.lapBegunAt
-              ? rebased(id, v)
-              : v.statsBase
+          loop: payload
         }))
       ),
       api.onLearned(({ session: id, payload }) =>
@@ -2347,7 +2368,24 @@ export default function App() {
       // a fact about one, and it is answered once.
       api.onCharacterReset((message) => setResetAsked(message)),
       api.onAutomation(({ session: id, payload }) =>
-        patchView(id, (v) => ({ ...v, automation: payload }))
+        patchView(id, (v) => {
+          // The engine running or fleeing from a fight: two of the tab alerts.
+          const raised = wanted(
+            alertsRef.current,
+            escapeNotices(v.automation.mega, payload.mega, Date.now(), t),
+            quietFor(id)
+          );
+          if (raised.length === 0) return { ...v, automation: payload };
+          return {
+            ...v,
+            automation: payload,
+            notices: raised.reduce(
+              (log, notice) => capped(log, notice, tuning().noticeLimit),
+              v.notices
+            ),
+            unseen: missed(v.unseen, raised, shownRef.current.has(id))
+          };
+        })
       ),
       api.onVerdict(({ session: id, payload }) =>
         patchView(id, (v) => ({ ...v, verdict: payload }))
@@ -2441,14 +2479,6 @@ export default function App() {
   }, [mustMakeCharacter]);
 
   /**
-   * The HUD appears on its own, without the diagnostics rail.
-   *
-   * Vitals and Room are what the player reads while playing; putting them
-   * behind a toggle labelled "diagnostics" meant they were never seen. The rail
-   * is therefore present whenever there is *either* HUD content or diagnostics
-   * to show, and each half decides for itself.
-   */
-  /**
    * Whether the Navigation card is still worth the space it takes.
    *
    * A walk or a loop in progress always is. A *finished* walk is news for a
@@ -2502,6 +2532,14 @@ export default function App() {
    * So the rail keeps its space and says what it is waiting for instead.
    */
   const hudOpen = hudPreference === 'on';
+  /**
+   * The HUD appears on its own, without the diagnostics rail.
+   *
+   * Vitals and Room are what the player reads while playing; putting them
+   * behind a toggle labelled "diagnostics" meant they were never seen. The rail
+   * is therefore present whenever there is *either* HUD content or diagnostics
+   * to show, and each half decides for itself.
+   */
   const railVisible = hudOpen || railOpen;
 
   const connected = state.phase === 'connected';
@@ -2872,16 +2910,180 @@ export default function App() {
     if (loopsOpen && session === NO_SESSION) closeLoops();
   }, [loopsOpen, session, closeLoops]);
 
+  /*
+   * MMUD Explorer, on the Loops screen's terms: the shown character's, only
+   * for one that exists, and put away if it goes.
+   */
+  const closeExplorer = useCallback(() => {
+    setExplorerOpen(false);
+    returnFocus();
+  }, [returnFocus]);
+  const toggleExplorer = useCallback(() => {
+    if (explorerOpen) closeExplorer();
+    else if (session !== NO_SESSION) setExplorerOpen(true);
+  }, [explorerOpen, closeExplorer, session]);
+  // The Gear card's way in: the Explorer on one item.
+  const [explorerFocus, setExplorerFocus] = useState<{
+    kind: ExplorerKind;
+    item: number;
+    at: number;
+  } | null>(null);
+  const openExplorerAt = useCallback((kind: ExplorerKind, item: number) => {
+    setExplorerFocus({ kind, item, at: Date.now() });
+    setExplorerOpen(true);
+  }, []);
+  useEffect(() => {
+    if (explorerOpen && session === NO_SESSION) closeExplorer();
+  }, [explorerOpen, session, closeExplorer]);
+  const explorerList = useCallback(
+    (kind: ExplorerKind, options: ExplorerOptions) => api.explorerList(session, kind, options),
+    [api, session]
+  );
+  const explorerDetail = useCallback(
+    (kind: ExplorerKind, item: number, options: ExplorerOptions) =>
+      api.explorerDetail(session, kind, item, options),
+    [api, session]
+  );
+  const explorerRoomView = useCallback(
+    (request: RoomViewRequest) => api.explorerRoomView(session, request),
+    [api, session]
+  );
+  const explorerRoomTip = useCallback(
+    (map: number, room: number, options: RoomMapOptions) =>
+      api.explorerRoomTip(session, map, room, options),
+    [api, session]
+  );
+  const explorerRoomSearch = useCallback(
+    (search: RoomSearch) => api.explorerRoomSearch(session, search),
+    [api, session]
+  );
+  // The character's room as the Rooms tab keys one.
+  const explorerHere =
+    character.room.map === null || character.room.number === null
+      ? null
+      : `${character.room.map}/${character.room.number}`;
+  const explorerBuyPlan = useCallback(
+    (item: number) => api.explorerBuyPlan(session, item),
+    [api, session]
+  );
+  const explorerBuy = useCallback(
+    (item: number, wear: boolean) => api.explorerBuy(session, item, wear),
+    [api, session]
+  );
+  const explorerLearnPlan = useCallback(
+    (spell: number) => api.explorerLearnPlan(session, spell),
+    [api, session]
+  );
+  const explorerLearn = useCallback(
+    (item: number) => api.explorerLearn(session, item),
+    [api, session]
+  );
+  // What Buy's plan answers for beside the gear: the purse, the room, the vaults.
+  const explorerPurseKey = [
+    character.inventory.wealth ?? '',
+    character.room.name ?? '',
+    character.room.map ?? '',
+    character.room.number ?? '',
+    character.banks.map((bank) => `${bank.name}:${bank.copper}`).join(',')
+  ].join('|');
+  // What the lists answer for: read again when the class, level or gear change.
+  const explorerKey = wornKey(character);
+  /*
+   * The EQ tab's calls, and what its page answers for beside the gear: the
+   * pack, its reported weight, and the blessings up.
+   */
+  const explorerEqKey = [
+    explorerKey,
+    character.inventory.items.map((item) => `${item.name}x${item.count ?? 1}`).join(','),
+    character.inventory.encumbrance ?? '',
+    character.buffs.map((buff) => buff.spell).join(',')
+  ].join('|');
+  const explorerEq = useMemo(
+    () => ({
+      characterKey: explorerEqKey,
+      view: (plan: EqPlan) => api.explorerEq(session, plan),
+      best: (plan: EqPlan, find: EqFind) => api.explorerEqBest(session, plan, find),
+      wear: (plan: EqPlan) => api.explorerEqWear(session, plan),
+      copy: (text: string) => void api.copyText(text)
+    }),
+    [api, session, explorerEqKey]
+  );
+  /*
+   * The Tools tab's: its calculators, and the Combat Stats card's own Hit,
+   * Crit and Weapon rows as MegaMUD's Hit, Crit and Extra, % of every swing
+   * and the average, for the Swing calculator's true average.
+   */
+  const statsShown = sinceCardBaseline(character.tally, character.statsBase);
+  const swungAll = swings(statsShown);
+  const fromStats =
+    swungAll === 0
+      ? null
+      : {
+          hitP: Math.round((statsShown.dealt.melee.hits / swungAll) * 100),
+          hitA: Math.round(mean(statsShown.dealt.melee.damage, statsShown.dealt.melee.hits) ?? 0),
+          extraP: Math.round((statsShown.dealt.proc.hits / swungAll) * 100),
+          extraA: Math.round(mean(statsShown.dealt.proc.damage, statsShown.dealt.proc.hits) ?? 0),
+          critP: Math.round((statsShown.dealt.critical.hits / swungAll) * 100),
+          critA: Math.round(
+            mean(statsShown.dealt.critical.damage, statsShown.dealt.critical.hits) ?? 0
+          )
+        };
+  const fromStatsKey = JSON.stringify(fromStats);
+  const explorerTools = useMemo(
+    () => ({
+      characterKey: explorerEqKey,
+      tool: <R extends ToolRequest>(request: R) => api.explorerTool(session, request),
+      fromStats: JSON.parse(fromStatsKey) as typeof fromStats,
+      copy: (text: string) => void api.copyText(text)
+    }),
+    [api, session, explorerEqKey, fromStatsKey] // eslint-disable-line react-hooks/exhaustive-deps
+  );
+  // The Lists tab's: the pack as the game lists it, and the item rules its Item Manager writes.
+  const explorerPack = useMemo(
+    () =>
+      character.inventory.items.map((item) => ({
+        number: item.row?.id ?? item.id ?? null,
+        name: item.name,
+        count: item.count ?? 1,
+        equipped: item.equipped
+      })),
+    [character.inventory.items]
+  );
+  // The Reference panel's Edit: this character's own monster and item rows.
+  const referenceRules = useMemo(
+    () => ({
+      monsters: {
+        rules: () => api.monsterRulesFor(session),
+        save: (own: MonsterRule[]) => api.setCombatMonsters(session, own)
+      },
+      items: {
+        rules: () => api.itemRulesFor(session),
+        save: (own: ItemRule[]) => api.setItemDetails(session, own)
+      }
+    }),
+    [api, session]
+  );
+  const explorerLists = useMemo(
+    () => ({
+      pack: explorerPack,
+      characterKey: explorerEqKey,
+      compare: (kind: CompareKind, numbers: number[]) =>
+        api.explorerCompare(session, kind, numbers),
+      find: (kind: CompareKind | 'items', text: string) => api.explorerFind(session, kind, text),
+      items: (numbers: number[], names: string[]) => api.explorerItems(session, numbers, names),
+      rules: () => api.itemRulesFor(session),
+      saveRules: (own: ItemRule[]) => api.setItemDetails(session, own),
+      copy: (text: string) => void api.copyText(text)
+    }),
+    [api, session, explorerPack, explorerEqKey]
+  );
+
   /**
    * The rail takes no typed input, so opening it leaves focus in the terminal
    * and there is nothing to hand back on close.
    */
   const toggleRail = useCallback(() => setRailOpen((open) => !open), []);
 
-  /**
-   * Search is a dialog that takes typed input, so closing it hands focus back
-   * to the terminal — the same contract the palette honours.
-   */
   /**
    * The debug view's three doors into main, bundled once.
    *
@@ -2905,6 +3107,10 @@ export default function App() {
     returnFocus();
   }, [returnFocus]);
 
+  /**
+   * Search is a dialog that takes typed input, so closing it hands focus back
+   * to the terminal — the same contract the palette honours.
+   */
   const closeSearch = useCallback(() => {
     setSearchOpen(false);
     setSearchResult(undefined);
@@ -2925,6 +3131,29 @@ export default function App() {
   );
 
   /**
+   * A loop handed out as a file (2026-10-19): this client's own loop file for
+   * another player to import, or MegaMUD's path file for the character
+   * `from`, its legs planned. Saved as a download; why not said in the
+   * console as well, and answered.
+   */
+  const exportLoopFile = useCallback(
+    async (
+      from: SessionId | null,
+      loop: Loop | string,
+      format: 'mudengine' | 'megamud'
+    ): Promise<string | null> => {
+      const made = await api.exportLoop(from, loop, format);
+      if ('error' in made) {
+        terminals.current.get(from ?? activeRef.current)?.notice(made.error);
+        return made.error;
+      }
+      saveText(made.file, made.text);
+      return null;
+    },
+    [api]
+  );
+
+  /**
    * Stable callbacks for the settings screen.
    *
    * Inline arrows would be a new function on every render, and a child that
@@ -2935,9 +3164,20 @@ export default function App() {
     () => ({
       load: () => api.settingsSnapshot(),
       saveProfile: (id: string, draft: ProfileDraft) => api.saveProfile(id, draft),
+      megamudChoices: (id: string) => api.megamudChoices(id),
       deleteProfile: (id: string) => api.deleteProfile(id),
       saveServer: (previous: string | null, draft: ServerDraft) => api.saveServer(previous, draft),
       deleteServer: (name: string) => api.deleteServer(name),
+      stats: {
+        link: (id: string) => api.statsLink(id),
+        unlink: (id: string) => api.statsUnlink(id),
+        status: (id: string) => api.statsStatus(id),
+        test: (url: string) => api.statsTest(url)
+      },
+      players: {
+        seen: (id: string) => api.seenPlayers(id),
+        forget: (id: string, name: string) => api.forgetPlayer(id, name)
+      },
       saveGlobal: (draft: GlobalDraft) => api.saveGlobal(draft),
       revealConfig: () => reveal(() => api.revealConfig()),
       revealProfiles: () => reveal(() => api.revealProfiles()),
@@ -2952,7 +3192,15 @@ export default function App() {
       importMonsters: (realm: string, fileName: string, monsters: MonsterRule[]) =>
         api.importMonsters(realm, fileName, monsters),
       importLoops: (realm: string, paths: MegaMudPath[]) => api.importLoops(realm, paths),
+      exportLoop: (loop: Loop) => void exportLoopFile(null, loop, 'mudengine'),
+      importLoopFile: (realm: string, text: string) => api.importLoopFile('server', realm, text),
       saveMonsters: (realm: string, monsters: MonsterRule[]) => api.saveMonsters(realm, monsters),
+      loadItems: (realm: string) => api.loadItems(realm),
+      importItems: (realm: string, fileName: string, items: ItemRule[]) =>
+        api.importItems(realm, fileName, items),
+      saveItems: (realm: string, items: ItemRule[]) => api.saveItems(realm, items),
+      loadSpellLore: (realm: string) => api.loadSpellLore(realm),
+      saveSpellLore: (realm: string, rows: LearnedSpellRow[]) => api.saveSpellLore(realm, rows),
       // The shelf of shipped loops, for the Movement tab. Asked for when
       // that picker opens rather than with the snapshot: four hundred
       // loops, and most visits to that screen are about a password.
@@ -3674,6 +3922,14 @@ export default function App() {
     },
     [chooseOnMap]
   );
+  // The Explorer's Walk here: the route panel at the room, the Explorer put away.
+  const explorerWalkTo = useCallback(
+    (room: string) => {
+      setExplorerOpen(false);
+      goToRoom(room);
+    },
+    [goToRoom]
+  );
   const stopMoving = useCallback(() => {
     // One stop for both: main works out whether it is a lap or a route, and
     // stops the leg with the lap — a stopped walk under a live loop is a walk
@@ -3819,7 +4075,10 @@ export default function App() {
    * The picks of a loop being built, planned on this character's realm.
    * Addressed like every world query.
    */
-  const draftLoop = useCallback((rooms: RoomId[]) => api.draftLoop(session, rooms), [api, session]);
+  const draftLoop = useCallback(
+    (rooms: RoomId[], keep: RoomId[]) => api.draftLoop(session, rooms, keep),
+    [api, session]
+  );
 
   /**
    * File a built loop where the builder's chip says, and say so in the
@@ -3829,22 +4088,52 @@ export default function App() {
    * or a loop filed from one surface is invisible to the other.
    */
   const saveDraftLoop = useCallback(
-    async (loop: Loop, destination: BuilderDestination): Promise<string | null> => {
+    async (
+      loop: Loop,
+      destination: BuilderDestination,
+      replaces: LoopAddress | null
+    ): Promise<string | LoopAddress> => {
       const owner =
         destination === 'server'
           ? (profiles.find((profile) => profile.id === session)?.serverName ?? null)
           : destination === 'global'
             ? null
             : session;
-      const refused = await api.addLoop(destination, owner, loop);
-      if (refused === null) {
-        terminals.current
-          .get(session)
-          ?.notice(t('cards.builder.savedNotice', { loopName: loop.name }));
-      }
-      return refused;
+      const refused = await api.addLoop(destination, owner, loop, replaces);
+      if (refused !== null) return refused;
+      terminals.current
+        .get(session)
+        ?.notice(t('cards.builder.savedNotice', { loopName: loop.name }));
+      return { scope: destination, owner, name: loop.name };
     },
     [api, profiles, session]
+  );
+
+  /**
+   * A saved loop opened in the builder to be edited (2026-10-23), from its
+   * row in Settings: its stops placed on this character's realm and drawn as
+   * picks, what each carries kept, and where it is filed, so the save
+   * replaces it. A stop the realm cannot place is said, and nothing opens.
+   */
+  const editLoop = useCallback(
+    (loop: Loop, at: LoopAddress) => {
+      if (session === NO_SESSION) return;
+      void api.loopStops(session, loop).then((rooms) => {
+        if (typeof rooms === 'string') {
+          terminals.current.get(session)?.notice(t('cards.builder.cannotEdit', { reason: rooms }));
+          return;
+        }
+        const { picks, extras } = editedLoop(loop, rooms);
+        setBuilderSeed({
+          picks,
+          name: loop.name,
+          stamp: Date.now(),
+          edit: { extras, prefer: loop.prefer === true, at }
+        });
+        openBuilder();
+      });
+    },
+    [api, openBuilder, session]
   );
 
   const builderRealmName = profiles.find((profile) => profile.id === session)?.serverName ?? '';
@@ -3918,14 +4207,6 @@ export default function App() {
     },
     [api, sayRefusal]
   );
-  const skipLoop = useCallback(() => {
-    void api.skipLoopStop(session).then(sayRefusal(session));
-    returnFocus();
-  }, [api, returnFocus, sayRefusal, session]);
-  const reverseLoop = useCallback(() => {
-    void api.reverseLoop(session).then(sayRefusal(session));
-    returnFocus();
-  }, [api, returnFocus, sayRefusal, session]);
   const routeTo = useCallback(
     (room: { map: number; room: number }) => api.routeTo(session, room.map, room.room),
     [api, session]
@@ -4454,6 +4735,15 @@ export default function App() {
         // rather than once per way in.
         run: toggleLoops
       },
+      {
+        id: 'explorer:open',
+        icon: 'swords' as const,
+        label: t('explorer.paletteLabel'),
+        group: 'navigate' as const,
+        keywords: ['weapons', 'armour', 'armor', 'gear', 'equipment', 'mme', 'explorer', 'buy'],
+        movesFocus: true,
+        run: toggleExplorer
+      },
       // Loops: the loop a character walks to gain levels. Asked of the
       // session rather than read off the global config, because a profile
       // overlay replaces `automation.loops` — the global list is the wrong
@@ -4481,7 +4771,7 @@ export default function App() {
        * the reason the toolbar has one button: *stop* means the same thing
        * whether the character is routing or looping.
        */
-      ...(movementOf(view.walk, view.loop).moving
+      ...(movementIn(view).moving
         ? [
             {
               id: 'move:stop',
@@ -4803,6 +5093,7 @@ export default function App() {
       editGlobal,
       editDefaults,
       loops,
+      toggleExplorer,
       view.loop.status,
       widths.rail,
       widths.tabs,
@@ -4819,17 +5110,7 @@ export default function App() {
    * person at the keyboard, not about a character.
    */
   const pins = usePinnedCommands(internalConfig.palette.pinned, commands);
-  /*
-   * Every button the toolbar has, in the order the kebab lists them. Fixed for
-   * as long as the build is, so it is built once rather than per character —
-   * `toolbarButtons` needs a character to say what each one *says*, and
-   * nothing but the ids is needed to decide which are on the row.
-   */
-  const toolbarIds = useMemo(
-    () => [...AUTOMATION_SWITCH_NAMES, ...TOOLBAR_ACTIONS] as string[],
-    []
-  );
-  const toolbarPins = useToolbarPins(internalConfig.toolbar.pinned, toolbarIds);
+  const toolbarPins = useToolbarPins(internalConfig.toolbar.pinned, TOOLBAR_IDS);
 
   useHotkeys([
     { key: 'k', mod: true, run: togglePalette },
@@ -4894,6 +5175,7 @@ export default function App() {
     routeOpen &&
     !paletteOpen &&
     !loopsOpen &&
+    !explorerOpen &&
     !settingsOpen
       ? [{ key: 'Escape', run: closeRoute }]
       : []),
@@ -4903,6 +5185,7 @@ export default function App() {
     searchOpen &&
     !paletteOpen &&
     !loopsOpen &&
+    !explorerOpen &&
     !routeOpen &&
     !settingsOpen
       ? [{ key: 'Escape', run: closeSearch }]
@@ -4913,6 +5196,7 @@ export default function App() {
     railOpen &&
     !paletteOpen &&
     !loopsOpen &&
+    !explorerOpen &&
     !searchOpen &&
     !routeOpen &&
     !settingsOpen
@@ -4931,6 +5215,7 @@ export default function App() {
     debugOpen &&
     !paletteOpen &&
     !loopsOpen &&
+    !explorerOpen &&
     !searchOpen &&
     !routeOpen &&
     !railOpen &&
@@ -4953,16 +5238,11 @@ export default function App() {
   stepBackRef.current = stepBackIn;
 
   /**
-   * Re-base one character's Combat Stats card to its totals as they stand.
-   *
-   * The same write the lap makes on `onLoop`, so the button and the loop
-   * cannot disagree about what a baseline is; main's totals are untouched by
-   * either, which is what makes both safe.
+   * Re-base one character's Combat Stats card to its totals as they stand:
+   * main's, with the tally, as a lap begun is (`SessionManager.resetStats`),
+   * so every window and the stats board read from one moment (2026-10-17).
    */
-  const resetStats = useCallback(
-    (sid: SessionId) => patchView(sid, (v) => ({ ...v, statsBase: rebased(sid, v) })),
-    [patchView]
-  );
+  const resetStats = useCallback((sid: SessionId) => api.statsReset(sid), [api]);
   const resetStatsRef = useRef(resetStats);
   resetStatsRef.current = resetStats;
 
@@ -4994,6 +5274,8 @@ export default function App() {
         runPlan: (block, marked) => api.questRun(sid, block, marked),
         stopRun: () => void api.questStop(sid),
         loadHunting: (measure) => api.huntingGrounds(sid, measure),
+        loadGear: (options) => api.explorerGear(sid, options),
+        buyItem: (item, wear) => api.explorerBuy(sid, item, wear),
         startMoving: (loop) => startMovingRef.current(sid, loop, null),
         stopMoving: () => void api.stopMoving(sid),
         // Through a ref like `selectPlayer` beside it: this one changes state
@@ -5002,10 +5284,6 @@ export default function App() {
         resetStats: () => resetStatsRef.current(sid),
         startLoop: (name) =>
           void api.startLoop(sid, name).then((refused) => sayRefusalRef.current(sid)(refused)),
-        skipLoop: () =>
-          void api.skipLoopStop(sid).then((refused) => sayRefusalRef.current(sid)(refused)),
-        reverseLoop: () =>
-          void api.reverseLoop(sid).then((refused) => sayRefusalRef.current(sid)(refused)),
         selectPlayer: (name, anchor) => selectPlayerRef.current(sid, name, anchor),
         setGangRemotes: (remotes) => void api.setGangRemotes(sid, remotes),
         setGangpath: (on) => void api.setRemoteGangpath(sid, on),
@@ -5115,6 +5393,9 @@ export default function App() {
         runPlan: bound.runPlan,
         stopRun: bound.stopRun,
         loadHunting: bound.loadHunting,
+        loadGear: bound.loadGear,
+        buyItem: bound.buyItem,
+        explore: shown ? openExplorerAt : null,
         runHunt: shown ? runHunt : null,
         createHunt: shown ? createHunt : null,
         realmAt: loadedAt,
@@ -5129,8 +5410,6 @@ export default function App() {
         // float's own loops are not asked for, so it offers no picker.
         loops: shown ? loops : null,
         startLoop: shown ? startLoop : bound.startLoop,
-        skipLoop: shown ? skipLoop : bound.skipLoop,
-        reverseLoop: shown ? reverseLoop : bound.reverseLoop,
         subject: flyout !== null && flyout.session === sid ? playerKey(flyout.name) : null,
         selectPlayer: bound.selectPlayer,
         /*
@@ -5161,7 +5440,7 @@ export default function App() {
           // One reading of the two progresses, shared with the Navigation
           // card, so the button and the card cannot disagree about whether
           // this character is going anywhere.
-          movement: movementOf(v.walk, v.loop),
+          movement: movementIn(v),
           /*
            * The same function main will run when the button is pressed, over
            * the same two facts — so a button that is lit is a button that will
@@ -5172,6 +5451,8 @@ export default function App() {
           restoreGear: () => void api.gear(sid, 'restore'),
           setSwitch: (name, on) =>
             void api.setAutomationSwitch(sid, name, on).then(sayRefusal(sid)),
+          mega: v.automation.mega ?? null,
+          setMegaToggle: (name) => void api.megamudToggle(sid, name).then(sayRefusal(sid)),
           connect: () => dial(sid),
           disconnect: () => hangUp(sid),
           // The picker is the card's; the toolbar presses play on whatever
@@ -5188,6 +5469,7 @@ export default function App() {
            * control bound to nowhere already follows in this client.
            */
           openLoops: shown ? toggleLoops : null,
+          openExplorer: shown ? toggleExplorer : null,
           openBuilder: shown ? openBuilder : null
         },
         // Per client, not per character: which buttons somebody keeps to hand
@@ -5237,25 +5519,11 @@ export default function App() {
       navigationVisible,
       loops,
       startLoop,
-      skipLoop,
-      reverseLoop,
-      sayRefusal
+      sayRefusal,
+      openExplorerAt
     ]
   );
 
-  /**
-   * One card, wherever it is.
-   *
-   * The rail and the float layer render from the same function on purpose:
-   * dragging a card out of the rail must not change what it *is*, and two
-   * copies of this switch would drift the moment one of them gained a prop.
-   * The chrome — close, drag handle, translucency — is assembled here too, so
-   * every card gets the same set without listing it eleven times.
-   *
-   * Returns `null` for a card with nothing honest to say yet: a map of nowhere
-   * and a walk that is not happening are cards that state nothing, which
-   * docs/ui-design.md §3.2 does not allow.
-   */
   /**
    * The chrome for a card, cached so its identity is stable across renders.
    *
@@ -5364,6 +5632,19 @@ export default function App() {
     [returnFocus, theme]
   );
 
+  /**
+   * One card, wherever it is.
+   *
+   * The rail and the float layer render from the same function on purpose:
+   * dragging a card out of the rail must not change what it *is*, and two
+   * copies of this switch would drift the moment one of them gained a prop.
+   * The chrome — close, drag handle, translucency — is assembled here too, so
+   * every card gets the same set without listing it eleven times.
+   *
+   * Returns `null` for a card with nothing honest to say yet: a map of nowhere
+   * and a walk that is not happening are cards that state nothing, which
+   * docs/ui-design.md §3.2 does not allow.
+   */
   const renderCard = useCallback(
     (id: CardId): ReactNode => {
       // Diagnostics are still a group, toggled together by the rail shortcut.
@@ -5871,6 +6152,7 @@ export default function App() {
             chooseOnMap(map, room);
           }}
           realm={character.realm}
+          rules={referenceRules}
           supplies={suppliesBundle(session)}
         />
       )}
@@ -5983,6 +6265,30 @@ export default function App() {
         card's Loop face drives the loop that is running; this is where one is
         found.
       */}
+      <ExplorerScreen
+        buy={explorerBuy}
+        buyPlan={explorerBuyPlan}
+        characterKey={explorerKey}
+        characterName={character.name ?? session}
+        detail={explorerDetail}
+        eq={explorerEq}
+        focus={explorerFocus}
+        learn={explorerLearn}
+        learnPlan={explorerLearnPlan}
+        lists={explorerLists}
+        tools={explorerTools}
+        hereRoom={explorerHere}
+        list={explorerList}
+        onClose={closeExplorer}
+        open={explorerOpen}
+        purseKey={explorerPurseKey}
+        roomSearch={explorerRoomSearch}
+        roomTip={explorerRoomTip}
+        roomView={explorerRoomView}
+        session={session}
+        walkTo={explorerWalkTo}
+      />
+
       <LoopsModal
         characterName={character.name ?? session}
         here={loopHere}
@@ -5990,6 +6296,9 @@ export default function App() {
         loops={loopChoices}
         onChoose={runChosenLoop}
         onClose={closeLoops}
+        onExport={(choice, format) =>
+          exportLoopFile(session, choice.kind === 'loop' ? choice.loop : choice.name, format)
+        }
         open={loopsOpen}
         realmName={profiles.find((profile) => profile.id === session)?.serverName ?? ''}
       />
@@ -6039,6 +6348,20 @@ export default function App() {
           returnFocus();
         }}
       />
+      {/*
+        MegaMUD's own yes-or-no questions, the shown character's first: one
+        answered no where it was asked, held here (`SessionManager.megaAsk`).
+      */}
+      <MegaMudQuestion
+        characterName={
+          profiles.find((profile) => profile.id === asking?.[0])?.name ?? asking?.[0] ?? ''
+        }
+        onAnswer={(yes) => {
+          if (asking) void api.megamudAnswer(asking[0], asking[1], yes);
+          returnFocus();
+        }}
+        question={asking?.[1] ?? null}
+      />
       <ResetPrompt
         characterName={
           profiles.find((profile) => profile.id === resetAsked?.session)?.name ??
@@ -6067,6 +6390,7 @@ export default function App() {
         onClose={closeSettings}
         open={settingsOpen}
         openAt={settingsAt}
+        current={session === NO_SESSION ? null : session}
         required={mustMakeCharacter}
         revealConfig={settingsApi.revealConfig}
         chooseRealm={settingsApi.chooseRealm}
@@ -6076,7 +6400,15 @@ export default function App() {
         loadMonsters={settingsApi.loadMonsters}
         importMonsters={settingsApi.importMonsters}
         importLoops={settingsApi.importLoops}
+        exportLoop={settingsApi.exportLoop}
+        editLoop={editLoop}
+        importLoopFile={settingsApi.importLoopFile}
         saveMonsters={settingsApi.saveMonsters}
+        loadItems={settingsApi.loadItems}
+        importItems={settingsApi.importItems}
+        saveItems={settingsApi.saveItems}
+        loadSpellLore={settingsApi.loadSpellLore}
+        saveSpellLore={settingsApi.saveSpellLore}
         loadLoops={settingsApi.loadLoops}
         loadTrainers={settingsApi.loadTrainers}
         loadBanks={settingsApi.loadBanks}
@@ -6085,8 +6417,11 @@ export default function App() {
         loadMobNames={settingsApi.loadMobNames}
         revealProfiles={settingsApi.revealProfiles}
         saveProfile={settingsApi.saveProfile}
+        megamudChoices={settingsApi.megamudChoices}
         saveGlobal={settingsApi.saveGlobal}
         saveServer={settingsApi.saveServer}
+        stats={settingsApi.stats}
+        players={settingsApi.players}
       />
     </div>
   );

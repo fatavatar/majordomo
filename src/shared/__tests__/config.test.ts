@@ -7,13 +7,11 @@ import {
   AUTOMATION_SWITCHES,
   CP437_FALLBACK_FONT,
   DEFAULT_CONFIG,
-  drainHolding,
   readAutomationSwitch,
   normalizeConfig,
   resumeAtMana,
   resolveTerminalFonts,
   resolveUiFonts,
-  targetFromConfig,
   toCssFontStack,
   type AppConfig
 } from '../config';
@@ -184,8 +182,9 @@ describe('normalizeConfig', () => {
         // The default: this realm's own `locate:` key is absent.
         locate: 'rm',
         database: '',
-        hangPenalties: null,
-        coins: {}
+        coins: {},
+        bbs: {},
+        statsUrl: ''
       }
     ]);
   });
@@ -295,14 +294,6 @@ describe('normalizeConfig', () => {
   it('lets logging be turned off', () => {
     expect(normalizeConfig({ logging: { enabled: false } }).logging.enabled).toBe(false);
   });
-
-  it('defaults the connection to Paradigm, which is what the client ships for', () => {
-    expect(targetFromConfig(DEFAULT_CONFIG)).toEqual({
-      host: 'paramud.mudinfo.net',
-      port: 2323,
-      encoding: 'cp437'
-    });
-  });
 });
 
 describe('ui.vitals thresholds', () => {
@@ -365,27 +356,6 @@ describe('ui.vitals thresholds', () => {
   });
 });
 
-describe('automation.walk', () => {
-  it('defaults to a patience longer than the queue waits for an acknowledgement', () => {
-    // A step abandoned while the arbiter is still waiting its turn to send it
-    // looks exactly like a broken route.
-    const { walk, pacing } = normalizeConfig({}).automation;
-    expect(walk.stepTimeoutMs).toBeGreaterThan(pacing.ackTimeoutMs);
-  });
-
-  it('floors the timeout rather than accepting an instant give-up', () => {
-    expect(
-      normalizeConfig({ automation: { walk: { stepTimeoutMs: 5 } } }).automation.walk.stepTimeoutMs
-    ).toBe(1000);
-  });
-
-  it('falls back rather than throwing on nonsense', () => {
-    expect(normalizeConfig({ automation: { walk: 'soon' } }).automation.walk.stepTimeoutMs).toBe(
-      DEFAULT_CONFIG.automation.walk.stepTimeoutMs
-    );
-  });
-});
-
 /*
  * Auto-combat, which is the one block here that makes the client *do* something
  * unasked. Every value is coerced towards doing less, because that is the
@@ -395,19 +365,8 @@ describe('automation.combat', () => {
   const combat = (raw: unknown): AppConfig['automation']['combat'] =>
     normalizeConfig({ automation: { combat: raw } }).automation.combat;
 
-  it('is off, and hits back, by default', () => {
-    const d = DEFAULT_CONFIG.automation.combat;
-    expect(d.enabled).toBe(false);
-    // The one default that is on, because it is the one that cannot start a
-    // fight: something is already swinging.
-    expect(d.retaliate).toBe(true);
-    expect(d.engage).toBe('hostile');
-  });
-
-  it('takes the three engage policies and refuses anything else', () => {
-    expect(combat({ engage: 'none' }).engage).toBe('none');
-    expect(combat({ engage: 'all' }).engage).toBe('all');
-    expect(combat({ engage: 'players' }).engage).toBe('hostile');
+  it('is off by default', () => {
+    expect(DEFAULT_CONFIG.automation.combat.enabled).toBe(false);
   });
 
   /*
@@ -533,55 +492,6 @@ describe('the resting pair', () => {
   });
 });
 
-/*
- * Resting before a trap (todo 01, 2026-09-10): the share of maximum a walk
- * keeps *after* the trap ahead has fired, on which the floor slides with the
- * trap's damage. 45% is the figure both of the player's own examples land on.
- */
-/* Drain when hurt (2026-09-28): the heal's hysteresis pair, for the round spell. */
-describe('the drain pair', () => {
-  const spells = (raw: Record<string, unknown>) =>
-    normalizeConfig({ automation: { spells: raw } }).automation.spells;
-
-  it('ships off', () => {
-    expect(spells({})).toMatchObject({ drain: '', areaDrain: '', drainBelow: 0, drainTo: 0 });
-  });
-
-  it('lifts a ceiling under the floor, and keeps 0 as no ceiling', () => {
-    expect(spells({ drainBelow: 0.5, drainTo: 0.3 }).drainTo).toBe(0.5);
-    expect(spells({ drainBelow: 0.5, drainTo: 0 }).drainTo).toBe(0);
-  });
-
-  it('starts under drainBelow and stops at drainTo', () => {
-    const pair = spells({ drainBelow: 0.5, drainTo: 0.7 });
-    expect(drainHolding(pair, 55, 100, false)).toBe(false);
-    expect(drainHolding(pair, 45, 100, false)).toBe(true);
-    expect(drainHolding(pair, 65, 100, true)).toBe(true);
-    expect(drainHolding(pair, 70, 100, true)).toBe(false);
-  });
-
-  it('holds only to drainBelow with no ceiling, and never on an unknown figure', () => {
-    const pair = spells({ drainBelow: 0.5 });
-    expect(drainHolding(pair, 55, 100, true)).toBe(false);
-    expect(drainHolding(pair, null, 100, true)).toBe(false);
-    expect(drainHolding(spells({}), 1, 100, false)).toBe(false);
-  });
-});
-
-describe('resting before a trap', () => {
-  const health = (raw: Record<string, unknown>) =>
-    normalizeConfig({ automation: { health: raw } }).automation.health;
-
-  it('ships at 45%', () => {
-    expect(health({}).restBeforeTraps).toBe(0.45);
-  });
-
-  it('reads a figure above one as a percentage, and 0 as never', () => {
-    expect(health({ restBeforeTraps: 60 }).restBeforeTraps).toBe(0.6);
-    expect(health({ restBeforeTraps: 0 }).restBeforeTraps).toBe(0);
-  });
-});
-
 describe('the potion settings', () => {
   const health = (raw: Record<string, unknown>) =>
     normalizeConfig({ automation: { health: raw } }).automation.health;
@@ -590,11 +500,10 @@ describe('the potion settings', () => {
     expect(health({}).potions).toEqual([]);
   });
 
-  it('reads a row, trimming the name and taking the threshold as a fraction', () => {
-    expect(
-      health({ potions: [{ name: '  minor healing potion ', when: 'hp', below: 25, verb: 'use' }] })
-        .potions
-    ).toEqual([{ name: 'minor healing potion', when: 'hp', below: 0.25, verb: 'use' }]);
+  it('reads a row, trimming the name', () => {
+    expect(health({ potions: [{ name: '  minor healing potion ', when: 'hp' }] }).potions).toEqual([
+      { name: 'minor healing potion', when: 'hp' }
+    ]);
   });
 
   it('drops a row naming nothing, and one whose condition the table does not know', () => {
@@ -607,54 +516,15 @@ describe('the potion settings', () => {
       }).potions
     ).toEqual([]);
   });
-
-  it('normalises a verb the realm does not have, rather than sending it', () => {
-    // It would be said out loud in the room.
-    expect(
-      health({ potions: [{ name: 'red potion', when: 'hp', verb: 'quaff' }] }).potions
-    ).toEqual([{ name: 'red potion', when: 'hp', below: 0, verb: 'drink' }]);
-  });
-});
-
-describe('the way out of a fight', () => {
-  const retreat = (raw: Record<string, unknown>) =>
-    normalizeConfig({ automation: { safety: { retreat: raw } } }).automation.safety.retreat;
-
-  it('ships as the single step back, with no haven', () => {
-    expect(retreat({})).toMatchObject({ strategy: 'step-back', safeHavenRoom: '' });
-  });
-
-  it('reads the haven strategy, and falls back from one it does not have', () => {
-    expect(retreat({ strategy: 'safe-haven' }).strategy).toBe('safe-haven');
-    expect(retreat({ strategy: 'teleport' }).strategy).toBe('step-back');
-  });
-
-  /*
-   * The two words that used to be here. `flee` named a command this server
-   * family does not have and `reverse-step` fell back to it, so a file still
-   * saying either must land on the strategy that walks — never on a spelling
-   * the client would quietly keep and then not act on.
-   */
-  it('will not read back the two strategies that named a command', () => {
-    expect(retreat({ strategy: 'flee' }).strategy).toBe('step-back');
-    expect(retreat({ strategy: 'reverse-step' }).strategy).toBe('step-back');
-  });
-
-  it('keeps the haven as typed, trimmed', () => {
-    expect(retreat({ safeHavenRoom: '  Newhaven, Town Gates 1/2150 ' }).safeHavenRoom).toBe(
-      'Newhaven, Town Gates 1/2150'
-    );
-  });
 });
 
 describe('cures and blessings', () => {
   const spells = (raw: Record<string, unknown>) =>
     normalizeConfig({ automation: { spells: raw } }).automation.spells;
 
-  it('ships with no cure, no blessing, and the notification off', () => {
+  it('ships with no cure and no blessing', () => {
     expect(spells({}).cures).toEqual({ blindness: '', poison: '', disease: '', freedom: '' });
     expect(spells({}).blessings).toEqual([]);
-    expect(spells({}).notifyPartyOnWearOff).toBe(false);
   });
 
   it('trims a cure name and ignores one it does not know', () => {
@@ -670,7 +540,7 @@ describe('cures and blessings', () => {
     expect(
       spells({
         blessings: [
-          { spell: 'protection', minMana: 30, fallbackSeconds: 5 },
+          { spell: 'protection', fallbackSeconds: 5 },
           // The same spell at the same target is the same row: the first
           // wins, since the order is the priority.
           { spell: 'Protection' },
@@ -686,14 +556,12 @@ describe('cures and blessings', () => {
       {
         spell: 'protection',
         target: 'self',
-        minMana: 0.3,
         prioritizeOverHeal: false,
         inCombat: true
       },
       {
         spell: 'Protection',
         target: 'party',
-        minMana: 0,
         prioritizeOverHeal: false,
         inCombat: false,
         fallbackSeconds: 300
@@ -701,7 +569,6 @@ describe('cures and blessings', () => {
       {
         spell: 'bless',
         target: 'party',
-        minMana: 0,
         prioritizeOverHeal: false,
         inCombat: false,
         fallbackSeconds: 30
@@ -735,11 +602,7 @@ describe('following somebody', () => {
   // client already did.
   it('ships entirely off, bar asking a joiner for their health', () => {
     expect(party({})).toEqual({
-      assistLeader: false,
       defendParty: false,
-      restWithLeader: false,
-      autoRank: false,
-      preferredRank: 'mid',
       askForHealBelow: 0,
       waitForMembersBelow: 0,
       waitNoLongerMinutes: 0,
@@ -754,11 +617,7 @@ describe('following somebody', () => {
   it('reads the switches', () => {
     expect(
       party({
-        assistLeader: true,
         defendParty: true,
-        restWithLeader: true,
-        autoRank: true,
-        preferredRank: 'front',
         askForHealBelow: 0.4,
         waitForMembersBelow: 0.5,
         waitNoLongerMinutes: 5,
@@ -769,11 +628,7 @@ describe('following somebody', () => {
         parAfterRound: true
       })
     ).toEqual({
-      assistLeader: true,
       defendParty: true,
-      restWithLeader: true,
-      autoRank: true,
-      preferredRank: 'front',
       askForHealBelow: 0.4,
       waitForMembersBelow: 0.5,
       waitNoLongerMinutes: 5,
@@ -783,15 +638,6 @@ describe('following somebody', () => {
       parEverySeconds: 15,
       parAfterRound: true
     });
-  });
-
-  // Case-insensitive, like this file's other closed-enum settings, and a
-  // word the roster would not recognise falls back to Mid rather than
-  // passing through.
-  it('coerces preferredRank case-insensitively, and falls back on an unknown word', () => {
-    expect(party({ preferredRank: 'FRONT' }).preferredRank).toBe('front');
-    expect(party({ preferredRank: 'Back' }).preferredRank).toBe('back');
-    expect(party({ preferredRank: 'sideways' }).preferredRank).toBe('mid');
   });
 
   // The server acknowledges a command a status line; a listing every second
@@ -834,25 +680,21 @@ describe('the automation switches the toolbar flips', () => {
       ...DEFAULT_CONFIG,
       automation: {
         ...DEFAULT_CONFIG.automation,
-        enabled: true,
-        combat: { ...DEFAULT_CONFIG.automation.combat, enabled: true }
+        safety: {
+          ...DEFAULT_CONFIG.automation.safety,
+          fleeGoto: { ...DEFAULT_CONFIG.automation.safety.fleeGoto, enabled: true }
+        }
       }
     };
-    expect(readAutomationSwitch(on.automation, 'automation')).toBe(true);
-    expect(readAutomationSwitch(on.automation, 'combat')).toBe(true);
+    expect(readAutomationSwitch(on.automation, 'fleeGoto')).toBe(true);
     // Off by default, like most of what is automated.
-    expect(readAutomationSwitch(on.automation, 'retreat')).toBe(false);
-    // The two exceptions, on since 2026-09-07: a route that stops at a shut
-    // door stops for no reason a player would recognise, and bashing is gated
-    // on the realm's own strength number. Picking is not one of them.
-    expect(automationSwitches(on.automation).bashDoors).toBe(true);
-    expect(automationSwitches(on.automation).openDoors).toBe(true);
-    expect(automationSwitches(on.automation).pickLocks).toBe(false);
+    expect(automationSwitches(DEFAULT_CONFIG.automation).fleeGoto).toBe(false);
   });
 
   it('refuses a name that is not one', () => {
-    expect(asAutomationSwitch('combat')).toBe('combat');
-    expect(asAutomationSwitch('combat.enabled')).toBeNull();
+    expect(asAutomationSwitch('fleeGoto')).toBe('fleeGoto');
+    expect(asAutomationSwitch('combat')).toBeNull();
+    expect(asAutomationSwitch('fleeGoto.enabled')).toBeNull();
     expect(asAutomationSwitch(7)).toBeNull();
     expect(asAutomationSwitch('toString')).toBeNull();
   });

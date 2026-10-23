@@ -47,6 +47,32 @@ describe('reading a loop out of the options file', () => {
     ]);
   });
 
+  /* Commands typed at a stop (2026-10-23): one or a list, blanks dropped. */
+  it('takes the commands typed at a stop', () => {
+    const [loop] = asLoops([
+      {
+        name: 'Frost giant',
+        stops: [
+          { room: 'A', commands: ['touch hammer', '  ', 7, ' look '] },
+          { room: 'B', commands: 'say hello' },
+          { room: 'C', commands: [] }
+        ]
+      }
+    ]);
+    expect(loop?.stops).toEqual([
+      { room: 'A', commands: ['touch hammer', 'look'] },
+      { room: 'B', commands: ['say hello'] },
+      { room: 'C' }
+    ]);
+  });
+
+  it('tells two loops apart by the commands at a stop', () => {
+    const one = asLoops([{ name: 'L', stops: [{ room: 'A', commands: ['touch hammer'] }, 'B'] }]);
+    const two = asLoops([{ name: 'L', stops: ['A', 'B'] }]);
+    expect(sameLoops(one, two)).toBe(false);
+    expect(sameLoops(one, one)).toBe(true);
+  });
+
   it('drops a loop that is not one', () => {
     // No name, no stops, not an object: none of these is a loop. One stop is
     // a camp and is kept (todo 108).

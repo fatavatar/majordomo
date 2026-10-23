@@ -3,7 +3,7 @@
  * character is going.
  *
  * A route and a loop are one mechanism underneath: a loop's legs are routes
- * the loop plans one at a time, and `Walker` walks both. They were **two
+ * the loop plans one at a time, and the engine walks both. They were **two
  * things on screen** until 2026-09-11, with their own transport controls, and
  * that was the mistake: the Route face carried a Stop of its own beside the
  * Loop face's play, pause and stop, so *stop* meant two different things

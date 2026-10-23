@@ -23,6 +23,15 @@ export interface LoopSectionProps {
   onDonePicking(): void;
   /** Whatever else this scope offers after the shelf: a realm's MegaMUD import. */
   children?: React.ReactNode;
+  /** A loop handed out as a file for another player to import (2026-10-19). */
+  onExport?(loop: Loop): void;
+  /**
+   * What Edit on a row does (2026-10-23): opens the loop in the builder, or
+   * null where it cannot be, a loop of a realm or character other than the
+   * one on screen. `from` is where an inherited row lives; null for this
+   * scope's own.
+   */
+  editFor?(loop: Loop, from: ScopedLoop | null): (() => void) | null;
 }
 
 /**
@@ -50,13 +59,43 @@ export default function LoopSection({
   picking,
   onOpenPicker,
   onDonePicking,
-  children
+  children,
+  onExport,
+  editFor
 }: LoopSectionProps): React.JSX.Element {
   const chosen = new Set(loops.map((loop) => loop.name));
+  const exportButton = (loop: Loop): React.JSX.Element | null =>
+    onExport === undefined ? null : (
+      <button
+        aria-label={t('settings.loopSection.exportAriaLabel', { loopName: loop.name })}
+        className="quiet"
+        onClick={() => onExport(loop)}
+        title={t('settings.loopSection.exportTitle')}
+        type="button"
+      >
+        <Icon name="download" />
+      </button>
+    );
+  const editButton = (loop: Loop, from: ScopedLoop | null): React.JSX.Element | null => {
+    const edit = editFor?.(loop, from) ?? null;
+    return edit === null ? null : (
+      <button
+        aria-label={t('settings.loopSection.editAriaLabel', { loopName: loop.name })}
+        className="quiet"
+        onClick={edit}
+        title={t('settings.loopSection.editTitle')}
+        type="button"
+      >
+        <Icon name="edit" />
+      </button>
+    );
+  };
 
   return (
     <fieldset className="settings-menus">
       <legend>{t('settings.loopSection.heading')}</legend>
+      {/* Under the legend, where every other fieldset says what it is for. */}
+      <p className="settings-note">{note}</p>
       {loops.length === 0 ? (
         <p className="settings-note">{t('settings.loopSection.empty')}</p>
       ) : (
@@ -70,6 +109,8 @@ export default function LoopSection({
                   ? t('settings.loopPicker.stopsCount.one', { count: loop.stops.length })
                   : t('settings.loopPicker.stopsCount.many', { count: loop.stops.length })}
               </span>
+              {editButton(loop, null)}
+              {exportButton(loop)}
               <button
                 aria-label={t('settings.loopSection.removeAriaLabel', { loopName: loop.name })}
                 className="quiet"
@@ -108,31 +149,38 @@ export default function LoopSection({
 
       {warning !== undefined && <p className="settings-warn">{warning}</p>}
 
+      {/*
+        Closed until asked for: a realm's loops can run to hundreds, and listed
+        open they pushed every section after this one off the page (2026-10-14).
+      */}
       {inherited.length > 0 && (
-        <>
-          <p className="settings-note">
+        <details className="settings-inherited">
+          <summary className="settings-note">
             {t('settings.loopSection.inheritedNote', {
               count: inherited.length,
               itLivesOrTheyLive: inherited.length === 1 ? 'it lives' : 'they live'
             })}
-          </p>
+          </summary>
           <ul className="settings-loops inherited">
-            {inherited.map(({ loop, scope, owner }) => (
-              <li key={`${scope}:${loop.name}`}>
-                <Icon name="route" />
-                <span className="loop-name">{loop.name}</span>
-                <span className="hint">
-                  {scope === 'global'
-                    ? t('settings.loopSection.scopeGlobal')
-                    : (owner ?? t('settings.loopSection.scopeRealm'))}
-                </span>
-              </li>
-            ))}
+            {inherited.map((entry) => {
+              const { loop, scope, owner } = entry;
+              return (
+                <li key={`${scope}:${loop.name}`}>
+                  <Icon name="route" />
+                  <span className="loop-name">{loop.name}</span>
+                  <span className="hint">
+                    {scope === 'global'
+                      ? t('settings.loopSection.scopeGlobal')
+                      : (owner ?? t('settings.loopSection.scopeRealm'))}
+                  </span>
+                  {editButton(loop, entry)}
+                  {exportButton(loop)}
+                </li>
+              );
+            })}
           </ul>
-        </>
+        </details>
       )}
-
-      <p className="settings-note">{note}</p>
     </fieldset>
   );
 }

@@ -203,7 +203,6 @@ const session = new SessionManager(
   // the partner might send back: the measurement is what *MegaMUD* says.
   {
     ...profile.config.automation,
-    idle: { ...profile.config.automation.idle, enabled: false },
     remotes: { ...profile.config.automation.remotes, enabled: false },
     rules: []
   },

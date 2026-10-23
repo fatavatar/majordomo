@@ -4,8 +4,6 @@ import {
   asMonsterRule,
   asMonsterRules,
   mergeMonsterRules,
-  relationshipOf,
-  ruleFor,
   withRealmMonsters,
   type MonsterRule
 } from '../monsterRules';
@@ -60,71 +58,9 @@ describe('laying a character over its realm', () => {
     expect(merged).toContainEqual({ mob: 'shopkeeper', relationship: 'friend' });
   });
 
-  it('lets the narrower row change a field the realm set', () => {
-    const merged = mergeMonsterRules(realm, [{ mob: 'shopkeeper', relationship: 'enemy' }]);
-    expect(relationshipOf(merged, 'shopkeeper')).toBe('enemy');
-  });
-
   it('merges into the combat settings, and leaves them alone with no realm table', () => {
     const combat = { monsters: [{ mob: 'rat', relationship: 'friend' as const }] };
     expect(withRealmMonsters(combat, [])).toBe(combat);
     expect(withRealmMonsters(combat, realm).monsters).toHaveLength(3);
-  });
-});
-
-describe('finding the row for a monster', () => {
-  const rules: MonsterRule[] = [
-    { mob: 'bishop', relationship: 'avoid' },
-    { mob: 'dark bishop', relationship: 'escape' },
-    { mob: 'rat', relationship: 'friend' }
-  ];
-
-  it('takes the exact name first', () => {
-    expect(ruleFor(rules, 'The Bishop')?.mob).toBe('bishop');
-  });
-
-  /* What MegaMUD's Find first flag arranged by hand. */
-  it('takes the longest part of the name that fits', () => {
-    expect(ruleFor(rules, 'evil dark bishop')?.mob).toBe('dark bishop');
-  });
-
-  it('matches whole words only', () => {
-    expect(ruleFor(rules, 'giant rat')?.mob).toBe('rat');
-    expect(ruleFor(rules, 'wererat')).toBeNull();
-    expect(ruleFor(rules, 'pirate')).toBeNull();
-  });
-
-  /*
-   * Reported 2026-09-23: an imported `rogue` row, marked Avoid, reached
-   * `large orc rogue` and `fierce orc rogue`, and a character walked past both.
-   * The realm names `orc rogue`, so that is the monster; `rogue` is another.
-   */
-  describe('with the realm to say what a monster is called', () => {
-    const table: MonsterRule[] = [
-      { mob: 'rogue', relationship: 'avoid' },
-      { mob: 'guardsman', relationship: 'friend' }
-    ];
-    const realm = new Set(['rogue', 'orc rogue', 'guardsman']);
-    const known = (key: string): boolean => realm.has(key);
-
-    it('does not let a shorter monster’s row reach a longer monster', () => {
-      expect(ruleFor(table, 'large orc rogue', known)).toBeNull();
-      expect(ruleFor(table, 'orc rogue', known)).toBeNull();
-      expect(relationshipOf(table, 'fierce orc rogue', known)).toBe('enemy');
-    });
-
-    it('still reaches through a modifier to the monster the realm names', () => {
-      expect(ruleFor(table, 'nasty guardsman', known)?.mob).toBe('guardsman');
-      expect(ruleFor(table, 'fierce rogue', known)?.mob).toBe('rogue');
-    });
-
-    it('falls back to the table alone for a name the realm does not carry', () => {
-      expect(ruleFor(table, 'large sea rogue', known)?.mob).toBe('rogue');
-    });
-  });
-
-  it('calls a monster nothing names an enemy', () => {
-    expect(relationshipOf(rules, 'orc')).toBe('enemy');
-    expect(relationshipOf([], 'orc')).toBe('enemy');
   });
 });

@@ -20,7 +20,8 @@
  * at pages, and a file whose tree is damaged still has every record on a leaf.
  */
 import type { MobPriorityBand } from './config';
-import type { MonsterRule, Relationship } from './monsterRules';
+import { ITEM_FLAG_BITS, ITEM_FLAGS, itemKey, itemSaysAnything, type ItemRule } from './itemRules';
+import { saysAnything, type MonsterRule, type Relationship } from './monsterRules';
 import { mobKey } from './world';
 
 const PAGE = 1024;
@@ -184,4 +185,109 @@ export function readMegaMudMonsters(bytes: Uint8Array): MegaMudMonster[] {
 function castCount(view: DataView, offset: number): number {
   const value = view.getInt16(offset, true);
   return value > 0 ? value : 0;
+}
+
+/* ------------------------------------------------------------ items */
+
+/*
+ * Offsets into the loader's record (0x459860), as dialog 316 edits them. The
+ * rest of the record — type, weight, price, body location, the abilities that
+ * make an item loyal — is the realm's own data, which this client has.
+ */
+const ITEM = {
+  id: 0x00,
+  name: 0x02,
+  nameSize: 31,
+  shop: 0x20,
+  shopSize: 41,
+  ifNeeded: 0x49,
+  ifNeededSize: 14,
+  min: 0x57,
+  max: 0x59,
+  flags: 0x63
+} as const;
+
+/** One item as MegaMUD's database holds it: its id, name and what was chosen for it. */
+export interface MegaMudItem {
+  id: number;
+  name: string;
+  rule: ItemRule;
+}
+
+/**
+ * Every item in an `Items.md`, and what MegaMUD was told about each. `rule`
+ * states only the choices that are on and the fields that are filled.
+ */
+export function readMegaMudItems(bytes: Uint8Array): MegaMudItem[] {
+  const out: MegaMudItem[] = [];
+  for (const record of readMdb2(bytes)) {
+    const body = record.body;
+    if (body.length < ITEM.flags + 4) continue;
+    const view = new DataView(body.buffer, body.byteOffset, body.byteLength);
+    const name = field(body, ITEM.name, ITEM.nameSize);
+    const item = itemKey(name);
+    if (item.length === 0) continue;
+    const flags = view.getUint32(ITEM.flags, true) & 0x38ffffff;
+    const rule: ItemRule = { item };
+    for (const flag of ITEM_FLAGS) if (flags & ITEM_FLAG_BITS[flag]) rule[flag] = true;
+    const keep = view.getInt16(ITEM.min, true);
+    if (keep > 0) rule.keep = keep;
+    const most = view.getInt16(ITEM.max, true);
+    if (most > 0) rule.most = most;
+    const ifNeeded = field(body, ITEM.ifNeeded, ITEM.ifNeededSize);
+    if (ifNeeded.length > 0) rule.ifNeeded = ifNeeded;
+    const shop = field(body, ITEM.shop, ITEM.shopSize);
+    if (shop.length > 0) rule.shop = shop;
+    out.push({ id: view.getUint16(ITEM.id, true), name, rule });
+  }
+  return out;
+}
+
+/* ------------------------------------------------------------ table rows */
+
+/** What a MegaMUD database yields for a realm's table: its rows, and how many records it named. */
+export interface DatabaseRows<Row> {
+  rows: Row[];
+  read: number;
+}
+
+/**
+ * The rows a decoded database gives a realm's table: one per name, the first
+ * kept, and only those that say something. MegaMUD's own database holds
+ * several records of one name (`dark priest` twice, `Nahr` five times) and a
+ * row is keyed by the name.
+ */
+function distinctRows<Row>(
+  records: readonly { rule: Row }[],
+  key: (row: Row) => string,
+  says: (row: Row) => boolean
+): DatabaseRows<Row> {
+  const seen = new Set<string>();
+  const rows: Row[] = [];
+  for (const { rule } of records) {
+    if (!says(rule) || seen.has(key(rule))) continue;
+    seen.add(key(rule));
+    rows.push(rule);
+  }
+  return { rows, read: records.length };
+}
+
+/** A `Monsters.md`'s rows for a realm's monster table. */
+export function monsterTableRows(bytes: Uint8Array): DatabaseRows<MonsterRule> {
+  return distinctRows(readMegaMudMonsters(bytes), (row) => row.mob, saysAnything);
+}
+
+/**
+ * An `Items.md`'s rows for a realm's item table, without *Bought/sold*: what
+ * MegaMUD holds there is a room of its own room list (`General Store
+ * (Giovanni)`), which names one of the realm's shops for 203 of the 1,493
+ * items Skinny's file filled (2026-10-13). An item is sold at the realm's
+ * own shop for it unless the player names another.
+ */
+export function itemTableRows(bytes: Uint8Array): DatabaseRows<ItemRule> {
+  const records = readMegaMudItems(bytes).map((record) => {
+    const { shop: _shop, ...rule } = record.rule;
+    return { rule };
+  });
+  return distinctRows(records, (row) => row.item, itemSaysAnything);
 }

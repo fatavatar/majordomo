@@ -1,24 +1,24 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import type { MessageImport, MessageTable, MessageTrigger } from '@shared/messageTriggers';
 import type { MonsterImport, MonsterRule, MonsterTable } from '@shared/monsterRules';
+import type { ItemImport, ItemRule, ItemTable } from '@shared/itemRules';
 import type { LoopImport, MegaMudPath } from '@shared/megamudPaths';
 import { asShippedWorld } from '@shared/worlds';
 import { DENOMINATIONS } from '@shared/character';
 import { STOCK_COINS } from '@shared/coins';
+import { BBS_KEYS, type BbsKey } from '@shared/megamud/bbs';
 import type { StatlineFigures } from '@shared/statline';
 import type { TerminalPalette } from '@shared/themes';
-import type { GearSet } from '@shared/gear';
 import type { BankChoice, TrainerChoice, WardRule } from '@shared/world';
 import type { PotionRule, PotionWhen } from '@shared/config';
 import type { AlertRule } from '@shared/notifications';
 import AlertList from './AlertList';
 import RealmMessages from './RealmMessages';
 import RealmMonsters from './RealmMonsters';
+import RealmItems from './RealmItems';
+import RealmSpellLore from './RealmSpellLore';
 import { MonsterRuleList } from './MonsterRules';
-import SettingsNav, { type NavFieldset } from './SettingsNav';
-import GearSetList from './GearSetList';
-import PotionList, { WardRules } from './PotionList';
-import Icon from './Icon';
+import SettingsNav, { type NavFieldset, type NavSection } from './SettingsNav';
 import FormField, {
   CheckField,
   NumberField,
@@ -27,31 +27,31 @@ import FormField, {
   TextField
 } from './FormField';
 import Advanced from './Advanced';
-import CarrySections from './CarrySections';
-import BlessingList from './BlessingList';
-import CureFields from './CureFields';
-import RegenFields from './RegenFields';
-import SpellField, { castableOn, drainsIn, refusesTarget } from './SpellPicker';
-import { castsOnOthers, castsOnSelf } from '@shared/spellcraft';
+import { ItemDetailsFieldset } from './CarrySections';
 import FormActions from './FormActions';
 import GlobalSettings from './GlobalSettings';
+import LoginSteps from './LoginSteps';
 import LoopSection from './LoopSection';
+import LoopFileImport from './LoopFileImport';
 import MegaMudLoopImport from './MegaMudLoopImport';
+import { WardRules } from './PotionList';
+import {
+  MEGA_TABS,
+  MegaMudAccount,
+  MegaMudIniImport,
+  MegaMudPanel,
+  characterOfIni,
+  isMegaTab,
+  megaMudDraft
+} from './MegaMudSettings';
+import { defaultSettings, type MegaSettings } from '@shared/megamud/settings';
 import RemoteList from './RemoteList';
 import RewritesDesigner from './RewriteDesigner';
 
 import { keepFocus } from '../lib/focus';
 import { t } from '../lib/i18n';
 import { COIN_NAME } from '../lib/coins';
-import {
-  barOf,
-  figureOf,
-  fractionOf,
-  joinNames,
-  percentOf,
-  RANK_OPTIONS,
-  splitNames
-} from '../lib/form';
+import { barOf, figureOf, fractionOf, joinNames, percentOf, splitNames } from '../lib/form';
 import {
   begin,
   canRedo,
@@ -77,27 +77,31 @@ import type {
   CuresDraft,
   RegenDraft
 } from '@shared/drafts';
-import type { Loop, ScopedLoop } from '@shared/loops';
-import type { ProfileEditable, SessionId, SettingsSnapshot } from '@shared/ipc';
+import type { Loop, LoopAddress, ScopedLoop } from '@shared/loops';
+import type {
+  LearnedSpellRow,
+  LearnedSpellTable,
+  MegaChoices,
+  ProfileEditable,
+  SessionId,
+  SettingsSnapshot
+} from '@shared/ipc';
 import type { StreamEncoding } from '@shared/types';
 import {
   DEFAULT_CONFIG,
   DEFAULT_REALM_NAME,
-  PVP_ACTIONS,
-  RETREAT_STRATEGIES,
-  type BankingConfig,
-  type DropConfig,
-  type EngagePolicy,
   type LocateMethod,
   type LootConfig,
-  type RetreatStrategy,
-  type PartyRank,
-  type PvpAction,
   type RewritesUiConfig,
   type SearchConfig
 } from '@shared/config';
-import { TRAINED_ATTRIBUTES, type TrainedAttribute } from '@shared/training';
-import { ACTIONABLE_REMOTES, type PlayerGrant, type RemoteName } from '@shared/remotes';
+import {
+  ACTIONABLE_REMOTES,
+  type BotCommand,
+  type PlayerGrant,
+  type RemoteName
+} from '@shared/remotes';
+import BotCommandList from './BotCommandList';
 import { errorMessage } from '@shared/values';
 
 /**
@@ -116,51 +120,53 @@ const DEFAULT_HEALTH = DEFAULT_CONFIG.automation.health;
 const DEFAULT_MOVEMENT = DEFAULT_CONFIG.automation.movement;
 const DEFAULT_SPELLS = DEFAULT_CONFIG.automation.spells;
 
-/** The six wanted figures as the form holds them: strings, so a half-typed one is not a 0. */
-function wantedStrings(
-  wanted: Record<TrainedAttribute, string | number>
-): Record<TrainedAttribute, string> {
-  const out = {} as Record<TrainedAttribute, string>;
-  for (const attribute of TRAINED_ATTRIBUTES) out[attribute] = String(wanted[attribute]);
-  return out;
-}
-function wantedNumbers(wanted: Record<TrainedAttribute, string>): Record<TrainedAttribute, number> {
-  const out = {} as Record<TrainedAttribute, number>;
-  for (const attribute of TRAINED_ATTRIBUTES)
-    out[attribute] = Number.parseInt(wanted[attribute], 10) || 0;
-  return out;
-}
 const DEFAULT_ALERTS = DEFAULT_CONFIG.ui.alerts;
 
 /**
- * The per-player half of `automation.remotes`, edited from a form.
+ * The per-player half of `automation.remotes`, edited from a form: the
+ * Players row (2026-10-16).
  *
- * The Player flyout is the surface most people use, and it can only be opened
- * on somebody the client has **seen** — a name in a room, on a `who`, in a
- * telepath. That is the wrong constraint for setting a pair of characters up
- * before either has logged in, which is the ordinary case for the person
- * running four of them. So the same grid is here, addressed by a typed name.
+ * **Everyone the realm has seen is listed** (`PlayerBook`, from any of this
+ * player's characters there), with whoever has a grant here, so a person is
+ * chosen rather than spelled. A name can still be typed: setting a pair of
+ * characters up before either has logged in is the ordinary case for the
+ * person running four of them, and the field narrows the list as it is typed.
+ * **Remove** forgets the person from the realm's record and takes their grant
+ * back; seen again, they are listed again.
  *
  * **One person at a time.** A form showing every named player's fifty-seven
  * rows at once would be a wall nobody reads; the names are chips, and choosing
- * one opens that person's grid. Somebody with nothing granted is not kept — an
- * empty grant is the absence of a decision, and a list that accumulated a name
- * per click would read as a list of people with permissions when it holds
- * people with none.
+ * one opens that person's grid. Somebody with nothing granted is kept in the
+ * file as nobody — an empty grant is the absence of a decision.
  */
 function PlayerGrants({
   grants,
-  onChange
+  seen,
+  onChange,
+  onForget
 }: {
   grants: Record<string, PlayerGrant>;
+  /** The names the realm has seen, as it spells them. */
+  seen: readonly string[];
   onChange(next: Record<string, PlayerGrant>): void;
+  onForget(name: string): void;
 }) {
-  const names = Object.keys(grants).sort();
   const [chosen, setChosen] = useState<string | null>(null);
   const [typed, setTyped] = useState('');
 
-  const who = chosen !== null && chosen in grants ? chosen : (names[0] ?? null);
-  const grant = who === null ? null : grants[who]!;
+  /** Lower-cased, as grants are keyed, to the realm's own spelling where it has one. */
+  const spelled = new Map<string, string>(Object.keys(grants).map((key) => [key, key]));
+  for (const name of seen) spelled.set(name.trim().toLowerCase(), name.trim());
+  const granted = (key: string): boolean => key in grants;
+  const everyone = [...spelled.keys()]
+    .filter((key) => key.length > 0)
+    .sort((a, b) => Number(granted(b)) - Number(granted(a)) || (a < b ? -1 : a > b ? 1 : 0));
+  const find = typed.trim().toLowerCase();
+  const names = find === '' ? everyone : everyone.filter((key) => key.includes(find));
+
+  const who = chosen !== null && spelled.has(chosen) ? chosen : null;
+  const grant = who === null ? null : (grants[who] ?? { allow: [], deny: [] });
+  const shown = (key: string): string => spelled.get(key) ?? key;
 
   const write = (key: string, next: PlayerGrant): void => {
     const rest = { ...grants };
@@ -181,34 +187,39 @@ function PlayerGrants({
         name="remotes-add-player"
         onChange={setTyped}
         onSubmit={() => {
-          const key = typed.trim().toLowerCase();
-          if (key.length === 0) return;
+          if (find.length === 0) return;
           setTyped('');
-          setChosen(key);
           // Created empty and kept only once something is granted, so a name
           // typed by mistake leaves nothing behind.
-          if (!(key in grants)) {
-            onChange({ ...grants, [key]: { allow: [], deny: [] } });
-          }
+          setChosen(find);
+          if (!spelled.has(find)) onChange({ ...grants, [find]: { allow: [], deny: [] } });
         }}
         placeholder={t('settings.remotes.addPlayerPlaceholder')}
         spellCheck={false}
         value={typed}
       />
 
-      {names.length === 0 ? null : (
+      {everyone.length === 0 ? (
+        <p className="settings-note">{t('settings.players.none')}</p>
+      ) : (
         <div className="settings-chips" role="group">
           {names.map((name) => (
             <button
               aria-pressed={name === who}
               className="chip toggle"
+              data-granted={granted(name) ? 'true' : 'false'}
               data-on={name === who ? 'true' : 'false'}
               key={name}
-              onClick={() => setChosen(name)}
+              onClick={() => setChosen(name === who ? null : name)}
               onMouseDown={keepFocus}
+              title={
+                granted(name)
+                  ? t('settings.players.grantedTitle', { name: shown(name) })
+                  : undefined
+              }
               type="button"
             >
-              {name}
+              {shown(name)}
             </button>
           ))}
         </div>
@@ -217,13 +228,16 @@ function PlayerGrants({
       {who === null || grant === null ? null : (
         <>
           <h4 className="settings-subhead">
-            {t('settings.remotes.playerLegend', { name: who })}
+            {t('settings.remotes.playerLegend', { name: shown(who) })}
             <button
-              className="chip toggle"
-              data-level="critical"
-              onClick={() => write(who, { allow: [], deny: [] })}
+              className="quiet"
+              onClick={() => {
+                write(who, { allow: [], deny: [] });
+                onForget(shown(who));
+                setChosen(null);
+              }}
               onMouseDown={keepFocus}
-              title={t('settings.remotes.removePlayerTitle', { name: who })}
+              title={t('settings.remotes.removePlayerTitle', { name: shown(who) })}
               type="button"
             >
               {t('settings.remotes.removePlayer')}
@@ -257,7 +271,7 @@ function PlayerGrants({
                   : { allow: [], deny: [] })
               })
             }
-            subject={who}
+            subject={shown(who)}
           />
 
           {/*
@@ -280,6 +294,11 @@ function PlayerGrants({
 
 export interface SettingsScreenProps {
   open: boolean;
+  /**
+   * The character whose tab is on screen, or null: settings opens on it and
+   * on its realm unless asked for another (2026-10-15).
+   */
+  current?: string | null;
   /**
    * Which character to open on: a profile id, {@link SETTINGS_NEW_CHARACTER},
    * or `null` for wherever it was left.
@@ -326,8 +345,14 @@ export interface SettingsScreenProps {
   load(): Promise<SettingsSnapshot>;
   saveProfile(id: string, draft: ProfileDraft): Promise<string | null>;
   deleteProfile(id: string): Promise<string | null>;
+  /** What a character's running engine offers its MegaMUD tabs. See `MegaMudSettings`. */
+  megamudChoices(id: string): Promise<MegaChoices | null>;
   saveServer(previousName: string | null, draft: ServerDraft): Promise<string | null>;
   deleteServer(name: string): Promise<string | null>;
+  /** The realm's mudstats board: link, unlink and ask after a character, and test an address. */
+  stats: StatsActions;
+  /** The players a character's realm has seen, for the Players row, and one forgotten. */
+  players: PlayerActions;
   /** Writes the options file everything is inherited from. */
   saveGlobal(draft: GlobalDraft): Promise<string | null>;
   revealConfig(): void;
@@ -342,8 +367,24 @@ export interface SettingsScreenProps {
   loadMonsters(realm: string): Promise<MonsterTable>;
   importMonsters(realm: string, fileName: string, monsters: MonsterRule[]): Promise<MonsterImport>;
   saveMonsters(realm: string, monsters: MonsterRule[]): Promise<string | null>;
+  /** A realm's item table, by name. See `RealmItems`. */
+  loadItems(realm: string): Promise<ItemTable>;
+  importItems(realm: string, fileName: string, items: ItemRule[]): Promise<ItemImport>;
+  saveItems(realm: string, items: ItemRule[]): Promise<string | null>;
+  /** A realm's learned spell sentences, by name. See `RealmSpellLore`. */
+  loadSpellLore(realm: string): Promise<LearnedSpellTable>;
+  saveSpellLore(realm: string, rows: LearnedSpellRow[]): Promise<string | null>;
   /** A MegaMUD folder's loops onto a realm. See `MegaMudLoopImport`. */
   importLoops(realm: string, paths: MegaMudPath[]): Promise<LoopImport>;
+  /** A loop handed out as a mudengine loop file (2026-10-19). See `LoopFileImport`. */
+  exportLoop(loop: Loop): void;
+  /** A loop opened in the builder to be edited, filed where `at` says (2026-10-23). */
+  editLoop(loop: Loop, at: LoopAddress): void;
+  /** A shared loop file onto a realm. */
+  importLoopFile(
+    realm: string,
+    text: string
+  ): Promise<{ ok: true; count: number; replaced: number } | { ok: false; error: string }>;
   /**
    * The loops the client ships, for the Movement tab to offer.
    *
@@ -451,119 +492,94 @@ function showsGlobal(tab: string): tab is GlobalTab {
 }
 
 /**
- * Every section a character's own form is broken into, in the order shown.
+ * The rows of the Character page, in the order shown (2026-10-14).
  *
- * **MegaMUD's own tabs**, which is the point: `Options → Settings` there is
- * Combat, Health, Spells and Movement, and somebody configuring a MajorMUD
- * client has been reading those five words for twenty years. See
- * docs/terminology.md §2.2 — the realm's own vocabulary wins, then MegaMUD's,
- * then ours, and this is the middle rung.
+ * **MegaMUD's own settings tabs**, which is the point: the character is run
+ * by the ported MegaMUD engine, and somebody configuring a MajorMUD client
+ * has been reading those words for twenty years. What this client keeps for
+ * a character (its monster and item rows, the flee, the remote grants, the
+ * keep-out words, its loops, the alerts and the status line) sits under the
+ * MegaMUD tab it belongs with. See docs/terminology.md §2.2.
  *
  * `Character` and `Login` are ours because MegaMUD had nothing to name: it ran
  * behind a terminal somebody else had already logged in with.
+ *
+ * The old automation's own sections (its combat, health, spells, party,
+ * training, gear, talk and stealth settings) are gone from here: the engine
+ * stands it down, and MegaMUD's tabs are what decide. Their keys stay in the
+ * file, untouched.
  */
-const SECTIONS = [
-  'profile',
-  'login',
-  'combat',
-  'health',
-  'spells',
-  'party',
-  'movement',
-  'gear',
-  'train',
-  'quests',
-  'remotes',
-  'talk',
-  'alerts',
-  'rewrites'
-] as const;
-type Section = (typeof SECTIONS)[number];
-const SECTION_LABEL: Record<Section, string> = {
-  profile: t('settings.sections.character'),
-  login: t('settings.sections.login'),
-  combat: t('settings.tabs.combat'),
-  health: t('settings.tabs.health'),
-  spells: t('settings.tabs.spells'),
-  party: t('settings.tabs.party'),
-  movement: t('settings.tabs.movement'),
-  gear: t('settings.tabs.gear'),
-  train: t('settings.tabs.train'),
-  quests: t('settings.tabs.quests'),
-  remotes: t('settings.tabs.remotes'),
-  talk: t('settings.tabs.talk'),
-  alerts: t('settings.tabs.alerts'),
-  rewrites: t('settings.tabs.rewrites')
-};
+type Section = string;
+/** Ours, after MegaMUD's Talk tab: who may send this character remote commands. */
+const PLAYERS = 'players';
+const SECTIONS: readonly Section[] = ['profile', 'login', ...MEGA_TABS].flatMap((section) =>
+  section === 'Talk' ? [section, PLAYERS] : [section]
+);
+function sectionLabel(section: Section): string {
+  if (section === 'profile') return t('settings.sections.character');
+  if (section === 'login') return t('settings.sections.login');
+  if (section === PLAYERS) return t('settings.sections.players');
+  return section;
+}
+
+/** The realm page's sections (2026-10-15), each a part of its one form. */
+type RealmSection = 'realm' | 'loops' | 'messages' | 'monsters' | 'items' | 'spells' | 'megamud';
+
+function realmSections(): NavSection[] {
+  return [
+    {
+      id: 'realm',
+      label: t('settings.realms.sections.realm'),
+      fieldsets: [
+        { id: 'realm-login', label: t('settings.realms.loginLegend') },
+        { id: 'realm-stats', label: t('settings.realms.statsLegend') }
+      ]
+    },
+    { id: 'loops', label: t('settings.realms.sections.loops'), fieldsets: [] },
+    { id: 'messages', label: t('settings.realms.sections.messages'), fieldsets: [] },
+    { id: 'monsters', label: t('settings.realms.sections.monsters'), fieldsets: [] },
+    { id: 'items', label: t('settings.realms.sections.items'), fieldsets: [] },
+    { id: 'spells', label: t('settings.realms.sections.spells'), fieldsets: [] },
+    {
+      id: 'megamud',
+      label: t('settings.realms.sections.megamud'),
+      fieldsets: [
+        { id: 'realm-coins', label: t('settings.realms.coinsLegend') },
+        { id: 'realm-bbs', label: t('settings.realms.bbsLegend') }
+      ]
+    }
+  ];
+}
 
 /**
- * The fieldsets inside each section, as the rail's jump targets (todo 02).
+ * Ours, under each MegaMUD tab, as the rail's jump targets (todo 02).
  *
- * Written down rather than read off the DOM: a fieldset drawn only when a
- * switch is on — Combat's three — would come and go from a list built by
- * counting, and the rail would then scroll to whichever fieldset happened to
- * be third today. Each `id` matches the `data-fieldset` on the fieldset
- * itself, which is the whole of the contract between the two.
- *
- * A section with one fieldset lists none: the section's own row already goes
- * there, and a single child under it would be the same press written twice.
- * `profile` has no fieldsets at all — its fields sit directly in the section.
+ * Written down rather than read off the DOM, for the reason the rail gives:
+ * each `id` matches the `data-fieldset` on the fieldset itself. A tab with
+ * nothing of ours lists none; its own row goes to MegaMUD's page.
  */
-const SECTION_FIELDSETS: Record<Section, readonly NavFieldset[]> = {
-  profile: [],
-  login: [{ id: 'login', label: t('settings.login.legend') }],
-  combat: [
-    { id: 'combat-attack', label: t('settings.combat.attackLegend') },
-    { id: 'combat-attacks', label: t('settings.combat.attacksLegend') },
-    { id: 'combat-monsters', label: t('settings.combat.monstersLegend') },
-    { id: 'combat-monster-rows', label: t('settings.combat.monsterRowsLegend') }
+const SECTION_FIELDSETS: Readonly<Record<Section, readonly NavFieldset[]>> = {
+  login: [
+    { id: 'login', label: t('settings.login.legend') },
+    { id: 'stats', label: t('settings.mudstats.legend') }
   ],
-  health: [
-    { id: 'health-recover', label: t('settings.health.recoverLegend') },
-    { id: 'health-retreat', label: t('settings.health.retreatLegend') },
-    { id: 'health-flee', label: t('settings.health.fleeLegend') },
-    { id: 'health-hangup', label: t('settings.health.hangUpLegend') },
-    { id: 'health-potions', label: t('settings.health.potionRuleLegend') }
-  ],
-  spells: [
-    { id: 'spells-round', label: t('settings.spells.legend') },
-    { id: 'spells-drain', label: t('settings.spells.drainLegend') },
-    { id: 'spells-heal', label: t('settings.spells.healLegend') },
-    { id: 'spells-regen', label: t('settings.spells.regenLegend') },
-    { id: 'spells-cures', label: t('settings.spells.cureLegend') },
-    { id: 'spells-blessings', label: t('settings.spells.blessingsLegend') }
-  ],
-  party: [
-    { id: 'party-follow', label: t('settings.party.legend') },
-    { id: 'party-leading', label: t('settings.party.leadLegend') },
-    { id: 'party-healing', label: t('settings.party.healLegend') },
-    { id: 'party-remotes', label: t('settings.party.remotesLegend') }
-  ],
-  movement: [
-    { id: 'movement-doors', label: t('settings.movement.doorsLegend') },
-    { id: 'movement-stealth', label: t('settings.movement.stealthLegend') },
-    { id: 'movement-light', label: t('settings.movement.lightLegend') },
-    { id: 'movement-afflictions', label: t('settings.movement.afflictionsLegend') },
+  'Auto-roam': [
     { id: 'movement-keep-out', label: t('settings.movement.keepOutLegend') },
-    { id: 'movement-carry', label: t('settings.movement.carryLegend') },
-    { id: 'hunting', label: t('settings.hunting.legend') }
+    { id: 'hunting', label: t('settings.hunting.legend') },
+    { id: 'quests', label: t('settings.quests.legend') }
   ],
-  gear: [
-    { id: 'gear', label: t('settings.gear.legend') },
-    { id: 'gear-offround', label: t('settings.gear.offRoundLegend') }
+  Talk: [{ id: 'bot-commands', label: t('settings.botCommands.legend') }],
+  [PLAYERS]: [{ id: 'remotes', label: t('settings.remotes.legend') }],
+  Sounds: [{ id: 'alerts-rules', label: t('settings.alerts.ruleLegend') }],
+  Health: [
+    { id: 'health-flee', label: t('settings.health.fleeLegend') },
+    { id: 'health-wards', label: t('settings.health.wardsLegend') }
   ],
-  train: [{ id: 'train', label: t('settings.train.legend') }],
-  quests: [{ id: 'quests', label: t('settings.quests.legend') }],
-  remotes: [{ id: 'remotes', label: t('settings.remotes.legend') }],
-  talk: [
-    { id: 'talk', label: t('settings.talk.legend') },
-    { id: 'talk-pvp', label: t('settings.health.pvpLegend') }
-  ],
-  alerts: [
-    { id: 'alerts-rules', label: t('settings.alerts.ruleLegend') },
-    { id: 'alerts-afk', label: t('settings.afk.legend') }
-  ],
-  rewrites: [{ id: 'rewrites-statline', label: t('settings.statline.legend') }]
+  Combat: [{ id: 'combat-monster-rows', label: t('settings.combat.monsterRowsLegend') }],
+  Loot: [
+    { id: 'item-details', label: t('settings.movement.itemRowsLegend') },
+    { id: 'movement-carry', label: t('settings.movement.carryLegend') }
+  ]
 };
 
 interface CharacterForm {
@@ -590,18 +606,11 @@ interface CharacterForm {
   login: LoginStepDraft[];
   hangUp: boolean;
   hangUpBelow: string;
-  /** This character's own answer, null where it is left to the realm (todo 01). */
-  hangUpPenalties: boolean | null;
-  hangUpOnPlayer: boolean;
-  pvpNotifyGang: boolean;
-  pvpAction: PvpAction;
+  /** Posting to the realm's mudstats board (`logging.stats`), and every how many seconds. */
+  statsEnabled: boolean;
+  statsEvery: string;
   retreat: boolean;
   retreatBelow: string;
-  /** MegaMUD's `ManaRun%`, as a percentage string like `retreatBelow`. */
-  retreatBelowMana: string;
-  retreatOutnumbered: string;
-  retreatStrategy: string;
-  retreatHaven: string;
   fleeGoto: boolean;
   fleeGotoBelow: string;
   fleeGotoDestination: string;
@@ -616,22 +625,11 @@ interface CharacterForm {
   combat: boolean;
   combatAttack: string;
   combatOpener: string;
-  /** Hide (or sneak, while moving) between fights so the opener lands again. */
-  combatHideForOpener: boolean;
-  combatEngage: EngagePolicy;
-  combatRetaliate: boolean;
-  combatDefendAfterRounds: string;
   /** Leave alone a monster a stranger is already fighting — MegaMUD's PoliteAttacks. */
   combatPoliteAttacks: boolean;
   combatMaxMobs: string;
-  /** Share of current health a fight may be expected to cost, as a percentage string. */
   /** Following somebody — `automation.party`. */
-  partyAssist: boolean;
   partyDefend: boolean;
-  partyRest: boolean;
-  /** `party.autoRank`: keep this character at `partyPreferredRank`. */
-  partyAutoRank: boolean;
-  partyPreferredRank: PartyRank;
   /** `party.askForHealBelow`, as a percentage string. */
   partyAskHeal: string;
   /** `party.waitForMembersBelow`, as a percentage string. */
@@ -642,23 +640,15 @@ interface CharacterForm {
   partyRequestHealth: boolean;
   partyParEvery: string;
   partyParAfterRound: boolean;
-  combatRefresh: string;
   /** This character's own monster rows (`combat.monsters`). */
   combatMonsters: MonsterRule[];
-  combatMaxTargetHealth: string;
   combatMinMobs: string;
   combatMaxMonsterExp: string;
-  /** `combat.minSurvival`, as a percentage string. */
-  combatMinSurvival: string;
   /** Health — resting and meditating. Percentages on screen, fractions on disk. */
   restBelow: string;
   restTo: string;
-  restBeforeTraps: string;
-  /** Rest next door to a lair rather than in it. */
-  restNextDoor: boolean;
   meditateBelow: string;
   meditateTo: string;
-  /** And where a running loop holds still and walks on again. */
   /** The player's own *use this when that* rules. See `PotionList`. */
   potionRules: PotionRule[];
   /** The realm's own half of those rules — `automation.health.useWards`. */
@@ -668,19 +658,10 @@ interface CharacterForm {
   spellAreaAttack: string;
   /** Derive the round spell and the cures from the book. */
   spellAutoChoose: boolean;
-  /** *Auto Choose Best Heal*: each heal picked from the book. See `SpellsConfig.autoChooseHeal`. */
-  spellAutoChooseHeal: boolean;
   spellAreaMinMobs: string;
-  spellAreaMinMana: string;
-  /** The fallback once the round spell has no effect, and the per-target cast caps (0 is no limit). */
-  spellAttackFallback: string;
+  /** The per-target cast caps (0 is no limit). */
   spellAttackCasts: string;
   spellAreaCasts: string;
-  /** The drain spells cast instead while health is low, and the pair that starts and stops it. */
-  spellDrain: string;
-  spellAreaDrain: string;
-  spellDrainBelow: string;
-  spellDrainTo: string;
   /**
    * The heal, per character: a spell cast on this character, a spell cast on a
    * member, and the pair of figures that start and stop the casting.
@@ -694,38 +675,20 @@ interface CharacterForm {
   spellHealBelow: string;
   spellHealBelowInCombat: string;
   spellHealTo: string;
-  spellHealParty: boolean;
   spellMinMana: string;
   /** Cures by affliction, and the blessings kept up by events. */
   spellCures: CuresDraft;
   /** MegaMUD's regen and when-full spells. */
   spellRegen: RegenDraft;
   spellBlessings: BlessingDraft[];
-  spellNotifyWearOff: boolean;
   spellAutoBless: boolean;
-  spellInvokeItems: boolean;
   /** Movement — what a route may do on the way. */
-  openDoors: boolean;
-  openTries: string;
   pickLocks: boolean;
   pickTries: string;
-  bashDoors: boolean;
   bashTries: string;
   sneak: boolean;
   provideLight: boolean;
-  /** Go back for the kit after a death. */
-  recoverGear: boolean;
-  recoverGearTries: string;
-  recoverGearFloor: string;
   lightDimRooms: boolean;
-  extinguishInLight: boolean;
-  /** Conditions as waits, inverted: off waits blindness / poison out. */
-  walkWhileBlind: boolean;
-  walkWhilePoisoned: boolean;
-  walkWhileConfused: boolean;
-  walkWhileLosingHp: boolean;
-  /** The dangerous regions route planning keeps out of unless told. */
-  fightOnArrival: boolean;
   /** Ways and places routes keep out of. See `MovementConfig`. */
   keepOutOf: string[];
   /** Bend down for a key an exit of this room needs. */
@@ -734,23 +697,11 @@ interface CharacterForm {
   huntAuto: boolean;
   /** How far to look for a lair, as text; '' is everywhere the exits reach. */
   huntRadius: string;
-  /** Spending character points on the stat screen — `automation.train`. */
-  trainStats: boolean;
-  trainLevels: boolean;
-  /** The chosen trainer's shop row, as text, or '' for the cheapest. */
-  trainTrainer: string;
-  trainWanted: Record<TrainedAttribute, string>;
   /** Running a quest's plan — `automation.quests`. */
   questsEnabled: boolean;
-  /** Which kit to be in, and when — `automation.gear`. */
-  gearEnabled: boolean;
-  gearSets: GearSet[];
-  gearOffRoundItem: string;
-  /** As text, so a half-typed figure is not read as 0. */
-  gearOffRoundEvery: string;
   /*
-   * Held whole, like `rewrites`, rather than flattened into eighteen fields.
-   * They are the *same four blocks the Global page edits*, and the controls
+   * Held whole, like `rewrites`, rather than flattened into fields.
+   * They are the *same blocks the Global page edits*, and the controls
    * below are that page's controls unchanged — a flattened copy here would be
    * a second spelling of each field for a form to forget one of. The numbers
    * inside are numbers rather than the strings the flat fields use, which is
@@ -758,9 +709,7 @@ interface CharacterForm {
    * so far, and the clamp is the same one on both pages.
    */
   loot: LootConfig;
-  drop: DropConfig;
   search: SearchConfig;
-  banking: BankingConfig;
   /**
    * The loops this character walks — `automation.loops`.
    *
@@ -785,11 +734,14 @@ interface CharacterForm {
   afkReply: string;
   /** Whether this character answers another player's `@` commands. */
   answerRemotes: boolean;
-  lookAtPlayers: boolean;
-  /** Whether the client sets the prompt's shape on the way in — `automation.statline`. */
-  statlineControl: boolean;
   /** The status line and listings this player designed — `ui.rewrites`. */
   rewrites: RewritesUiConfig;
+  /**
+   * Its MegaMUD settings, the `megamud:` its MegaMUD tabs edit, in this one
+   * form with everything else (2026-10-18). `BBS.Password` always empty: the
+   * screen is never told it.
+   */
+  megamud: MegaSettings;
   /** Whether the gang's own channel is one of the channels it answers on. */
   remoteGangpath: boolean;
   /** Whether a leader's invitation is joined without waiting for `@join`. */
@@ -807,6 +759,8 @@ interface CharacterForm {
    * somebody pressed Save on an unrelated field.
    */
   remotePlayers: Record<string, PlayerGrant>;
+  /** The player's own commands others may ask for (`BotCommandList`). */
+  remoteCommands: BotCommand[];
 }
 
 function formOf(entry: ProfileEditable): CharacterForm {
@@ -830,10 +784,6 @@ function formOf(entry: ProfileEditable): CharacterForm {
     login: entry.login,
     retreat: entry.retreat.enabled,
     retreatBelow: String(Math.round(entry.retreat.belowHealth * 100)),
-    retreatBelowMana: String(Math.round(entry.retreat.belowMana * 100)),
-    retreatOutnumbered: String(entry.retreat.whenOutnumbered),
-    retreatStrategy: entry.retreat.strategy,
-    retreatHaven: entry.retreat.safeHavenRoom,
     fleeGoto: entry.fleeGoto.enabled,
     fleeGotoBelow: String(Math.round(entry.fleeGoto.belowHealth * 100)),
     fleeGotoDestination: entry.fleeGoto.destination,
@@ -841,24 +791,14 @@ function formOf(entry: ProfileEditable): CharacterForm {
     // As a percentage, because that is how somebody thinks about health. The
     // file keeps a fraction, so the whole client holds one representation.
     hangUpBelow: String(Math.round(entry.hangUp.belowHealth * 100)),
-    hangUpPenalties: entry.hangUp.penalties,
-    hangUpOnPlayer: entry.hangUp.onPlayerInRoom,
-    pvpNotifyGang: entry.pvp.notifyGang,
-    pvpAction: entry.pvp.action,
+    statsEnabled: entry.stats.enabled,
+    statsEvery: String(entry.stats.everySeconds),
     combat: entry.combat.enabled,
     combatAttack: entry.combat.attack,
     combatOpener: entry.combat.opener,
-    combatHideForOpener: entry.combat.hideForOpener,
-    combatEngage: entry.combat.engage,
-    combatRetaliate: entry.combat.retaliate,
-    combatDefendAfterRounds: String(entry.combat.defendAfterRounds),
     combatPoliteAttacks: entry.combat.politeAttacks,
     combatMaxMobs: String(entry.combat.maxMobs),
-    partyAssist: entry.party.assistLeader,
     partyDefend: entry.party.defendParty,
-    partyRest: entry.party.restWithLeader,
-    partyAutoRank: entry.party.autoRank,
-    partyPreferredRank: entry.party.preferredRank,
     partyAskHeal: percent(entry.party.askForHealBelow),
     partyWaitBelow: percent(entry.party.waitForMembersBelow),
     partyWaitMinutes: String(entry.party.waitNoLongerMinutes),
@@ -867,85 +807,44 @@ function formOf(entry: ProfileEditable): CharacterForm {
     partyRequestHealth: entry.party.requestPartyHealth,
     partyParEvery: String(entry.party.parEverySeconds),
     partyParAfterRound: entry.party.parAfterRound,
-    // A percentage on screen and a fraction in the file, like every other
-    // threshold here: one representation on disk, the one people think in on
-    // the form.
-    combatRefresh: String(entry.combat.refreshRounds),
     combatMonsters: entry.combat.monsters.map((row) => ({ ...row })),
-    combatMaxTargetHealth: String(entry.combat.maxTargetHealth),
     combatMinMobs: String(entry.combat.minMobs),
     combatMaxMonsterExp: String(entry.combat.maxMonsterExperience),
-    combatMinSurvival: percent(entry.combat.minSurvival),
     restBelow: percent(entry.health.restBelow),
     restTo: percent(entry.health.restTo),
-    restBeforeTraps: percent(entry.health.restBeforeTraps),
     meditateBelow: percent(entry.health.meditateBelow),
     meditateTo: percent(entry.health.meditateTo),
-    restNextDoor: entry.health.restNextDoor,
     potionRules: entry.health.potions.map((rule) => ({ ...rule })),
     useWards: entry.health.useWards,
     spellAttack: entry.spells.attack,
     spellAutoChoose: entry.spells.autoChoose,
-    spellAutoChooseHeal: entry.spells.autoChooseHeal,
     spellAreaAttack: entry.spells.areaAttack,
     spellAreaMinMobs: String(entry.spells.areaMinMobs),
-    spellAreaMinMana: percent(entry.spells.areaMinMana),
-    spellAttackFallback: entry.spells.attackFallback,
     spellAttackCasts: String(entry.spells.attackCasts),
     spellAreaCasts: String(entry.spells.areaCasts),
-    spellDrain: entry.spells.drain,
-    spellAreaDrain: entry.spells.areaDrain,
-    spellDrainBelow: percent(entry.spells.drainBelow),
-    spellDrainTo: percent(entry.spells.drainTo),
     spellHeal: entry.spells.heal,
     spellHealPartyWith: entry.spells.healPartyWith,
     spellHealBelow: percent(entry.spells.healBelow),
     spellHealBelowInCombat: percent(entry.spells.healBelowInCombat),
     spellHealTo: percent(entry.spells.healTo),
-    spellHealParty: entry.spells.healParty,
     spellMinMana: percent(entry.spells.minMana),
     spellCures: { ...entry.spells.cures },
     spellRegen: { ...entry.spells.regen },
     spellBlessings: entry.spells.blessings.map((blessing) => ({ ...blessing })),
-    spellNotifyWearOff: entry.spells.notifyPartyOnWearOff,
     spellAutoBless: entry.spells.autoBless,
-    spellInvokeItems: entry.spells.invokeItems,
-    openDoors: entry.movement.openDoors,
-    openTries: String(entry.movement.openTries),
     pickLocks: entry.movement.pickLocks,
     pickTries: String(entry.movement.pickTries),
-    bashDoors: entry.movement.bashDoors,
     bashTries: String(entry.movement.bashTries),
     sneak: entry.movement.sneak,
     provideLight: entry.movement.provideLight,
-    recoverGear: entry.movement.recoverGear,
-    recoverGearTries: String(entry.movement.recoverGearTries),
-    recoverGearFloor: String(entry.movement.recoverGearFloor),
     lightDimRooms: entry.movement.lightDimRooms,
-    extinguishInLight: entry.movement.extinguishInLight,
-    walkWhileBlind: entry.movement.walkWhileBlind,
-    walkWhilePoisoned: entry.movement.walkWhilePoisoned,
-    walkWhileConfused: entry.movement.walkWhileConfused,
-    walkWhileLosingHp: entry.movement.walkWhileLosingHp,
-    fightOnArrival: entry.movement.fightOnArrival,
     keepOutOf: [...entry.movement.keepOutOf],
     collectKeys: entry.movement.collectKeys,
     huntAuto: entry.hunting.enabled,
     huntRadius: entry.hunting.radius > 0 ? String(entry.hunting.radius) : '',
-    trainStats: entry.train.stats,
-    trainLevels: entry.train.levels,
-    trainTrainer: entry.train.trainer > 0 ? String(entry.train.trainer) : '',
-    trainWanted: wantedStrings(entry.train.wanted),
     questsEnabled: entry.quests.enabled,
-    gearEnabled: entry.gear.enabled,
-    gearSets: entry.gear.sets.map((set) => ({ ...set, wear: [...set.wear] })),
-    gearOffRoundItem: entry.gear.offRound.item,
-    gearOffRoundEvery:
-      entry.gear.offRound.everyRounds > 0 ? String(entry.gear.offRound.everyRounds) : '',
     loot: structuredClone(entry.loot),
-    drop: structuredClone(entry.drop),
     search: { ...entry.search },
-    banking: { ...entry.banking },
     // This character's *own* loops. What it inherits is shown beside them and
     // is not editable from here -- see `LoopSection`.
     loops: entry.loops,
@@ -959,9 +858,9 @@ function formOf(entry: ProfileEditable): CharacterForm {
     remoteGang: [...entry.remotes.gang],
     remoteParty: [...entry.remotes.party],
     remotePlayers: entry.remotes.players,
-    lookAtPlayers: entry.talk.lookAtPlayers,
-    statlineControl: entry.statline.control,
-    rewrites: entry.rewrites
+    remoteCommands: entry.remotes.commands,
+    rewrites: entry.rewrites,
+    megamud: entry.megamud
   };
 }
 
@@ -1042,13 +941,7 @@ function draftOf(form: CharacterForm): ProfileDraft {
     login: form.login,
     retreat: {
       enabled: form.retreat,
-      belowHealth: (Number.parseInt(form.retreatBelow, 10) || 0) / 100,
-      belowMana: (Number.parseInt(form.retreatBelowMana, 10) || 0) / 100,
-      whenOutnumbered: Number.parseInt(form.retreatOutnumbered, 10) || 0,
-      strategy: RETREAT_STRATEGIES.includes(form.retreatStrategy as RetreatStrategy)
-        ? (form.retreatStrategy as RetreatStrategy)
-        : 'step-back',
-      safeHavenRoom: form.retreatHaven.trim()
+      belowHealth: (Number.parseInt(form.retreatBelow, 10) || 0) / 100
     },
     fleeGoto: {
       enabled: form.fleeGoto,
@@ -1059,32 +952,22 @@ function draftOf(form: CharacterForm): ProfileDraft {
       enabled: form.combat,
       attack: form.combatAttack,
       opener: form.combatOpener,
-      hideForOpener: form.combatHideForOpener,
-      engage: form.combatEngage,
-      retaliate: form.combatRetaliate,
-      defendAfterRounds: Number.parseInt(form.combatDefendAfterRounds, 10) || 0,
       politeAttacks: form.combatPoliteAttacks,
       maxMobs: Number.parseInt(form.combatMaxMobs, 10) || 0,
-      refreshRounds: Number.parseInt(form.combatRefresh, 10) || 0,
       monsters: form.combatMonsters,
-      maxTargetHealth: Math.max(0, Number.parseInt(form.combatMaxTargetHealth, 10) || 0),
       minMobs: Math.max(0, Number.parseInt(form.combatMinMobs, 10) || 0),
-      maxMonsterExperience: Math.max(0, Number.parseInt(form.combatMaxMonsterExp, 10) || 0),
-      minSurvival: fractionOf(form.combatMinSurvival)
+      maxMonsterExperience: Math.max(0, Number.parseInt(form.combatMaxMonsterExp, 10) || 0)
     },
     hangUp: {
       enabled: form.hangUp,
-      belowHealth: (Number.parseInt(form.hangUpBelow, 10) || 0) / 100,
-      penalties: form.hangUpPenalties,
-      onPlayerInRoom: form.hangUpOnPlayer
+      belowHealth: (Number.parseInt(form.hangUpBelow, 10) || 0) / 100
     },
-    pvp: { notifyGang: form.pvpNotifyGang, action: form.pvpAction },
+    stats: {
+      enabled: form.statsEnabled,
+      everySeconds: Math.max(15, Number.parseInt(form.statsEvery, 10) || 60)
+    },
     party: {
-      assistLeader: form.partyAssist,
       defendParty: form.partyDefend,
-      restWithLeader: form.partyRest,
-      autoRank: form.partyAutoRank,
-      preferredRank: form.partyPreferredRank,
       askForHealBelow: fractionOf(form.partyAskHeal),
       waitForMembersBelow: fractionOf(form.partyWaitBelow),
       waitNoLongerMinutes: Number.parseInt(form.partyWaitMinutes, 10) || 0,
@@ -1097,10 +980,8 @@ function draftOf(form: CharacterForm): ProfileDraft {
     health: {
       restBelow: fractionOf(form.restBelow),
       restTo: fractionOf(form.restTo),
-      restBeforeTraps: fractionOf(form.restBeforeTraps),
       meditateBelow: fractionOf(form.meditateBelow),
       meditateTo: fractionOf(form.meditateTo),
-      restNextDoor: form.restNextDoor,
       // Kept whole, and a nameless row is dropped by `normalizePotionRules` the
       // way a nameless blessing is: a rule naming nothing fires on nothing.
       potions: form.potionRules.map((rule) => ({ ...rule, name: rule.name.trim() })),
@@ -1109,23 +990,15 @@ function draftOf(form: CharacterForm): ProfileDraft {
     spells: {
       attack: form.spellAttack.trim(),
       autoChoose: form.spellAutoChoose,
-      autoChooseHeal: form.spellAutoChooseHeal,
       areaAttack: form.spellAreaAttack.trim(),
       areaMinMobs: Math.max(1, Number.parseInt(form.spellAreaMinMobs, 10) || 3),
-      areaMinMana: fractionOf(form.spellAreaMinMana),
-      attackFallback: form.spellAttackFallback.trim(),
       attackCasts: Math.max(0, Number.parseInt(form.spellAttackCasts, 10) || 0),
       areaCasts: Math.max(0, Number.parseInt(form.spellAreaCasts, 10) || 0),
-      drain: form.spellDrain.trim(),
-      areaDrain: form.spellAreaDrain.trim(),
-      drainBelow: fractionOf(form.spellDrainBelow),
-      drainTo: fractionOf(form.spellDrainTo),
       heal: form.spellHeal.trim(),
       healPartyWith: form.spellHealPartyWith.trim(),
       healBelow: fractionOf(form.spellHealBelow),
       healBelowInCombat: fractionOf(form.spellHealBelowInCombat),
       healTo: fractionOf(form.spellHealTo),
-      healParty: form.spellHealParty,
       minMana: fractionOf(form.spellMinMana),
       cures: {
         blindness: form.spellCures.blindness.trim(),
@@ -1136,7 +1009,6 @@ function draftOf(form: CharacterForm): ProfileDraft {
       regen: {
         ...form.spellRegen,
         hp: form.spellRegen.hp.trim(),
-        mana: form.spellRegen.mana.trim(),
         hpFull: form.spellRegen.hpFull.trim(),
         manaFull: form.spellRegen.manaFull.trim()
       },
@@ -1144,29 +1016,15 @@ function draftOf(form: CharacterForm): ProfileDraft {
         ...blessing,
         spell: blessing.spell.trim()
       })),
-      notifyPartyOnWearOff: form.spellNotifyWearOff,
-      autoBless: form.spellAutoBless,
-      invokeItems: form.spellInvokeItems
+      autoBless: form.spellAutoBless
     },
     movement: {
-      openDoors: form.openDoors,
-      openTries: Number.parseInt(form.openTries, 10) || 0,
       pickLocks: form.pickLocks,
       pickTries: Number.parseInt(form.pickTries, 10) || 0,
-      bashDoors: form.bashDoors,
       bashTries: Number.parseInt(form.bashTries, 10) || 0,
       sneak: form.sneak,
       provideLight: form.provideLight,
-      recoverGear: form.recoverGear,
-      recoverGearTries: Number.parseInt(form.recoverGearTries, 10) || 0,
-      recoverGearFloor: Number.parseInt(form.recoverGearFloor, 10) || 0,
       lightDimRooms: form.lightDimRooms,
-      extinguishInLight: form.extinguishInLight,
-      walkWhileBlind: form.walkWhileBlind,
-      walkWhilePoisoned: form.walkWhilePoisoned,
-      walkWhileConfused: form.walkWhileConfused,
-      walkWhileLosingHp: form.walkWhileLosingHp,
-      fightOnArrival: form.fightOnArrival,
       keepOutOf: form.keepOutOf,
       collectKeys: form.collectKeys
     },
@@ -1176,34 +1034,9 @@ function draftOf(form: CharacterForm): ProfileDraft {
       // is what the field's own hint says.
       radius: Number.parseInt(form.huntRadius, 10) || 0
     },
-    train: {
-      stats: form.trainStats,
-      wanted: wantedNumbers(form.trainWanted),
-      levels: form.trainLevels,
-      // 0 is *the cheapest that will take me*, which is what the picker's
-      // first entry means and what an unset field says.
-      trainer: Number.parseInt(form.trainTrainer, 10) || 0
-    },
     quests: { enabled: form.questsEnabled },
-    gear: {
-      enabled: form.gearEnabled,
-      // Rows are kept as typed and dropped at the boundary, so a set being
-      // written does not vanish from under the caret on the next save.
-      sets: form.gearSets.map((set) => ({
-        ...set,
-        name: set.name.trim(),
-        mob: set.mob.trim(),
-        wear: set.wear.map((item) => item.trim()).filter((item) => item.length > 0)
-      })),
-      offRound: {
-        item: form.gearOffRoundItem.trim(),
-        everyRounds: Number.parseInt(form.gearOffRoundEvery, 10) || 0
-      }
-    },
     loot: form.loot,
-    drop: form.drop,
     search: form.search,
-    banking: form.banking,
     loops: form.loops,
     alerts: {
       // Whole, with the name trimmed as `normalizeAlertRules` trims it: a row
@@ -1221,11 +1054,12 @@ function draftOf(form: CharacterForm): ProfileDraft {
       autoJoin: form.remoteAutoJoin,
       gang: form.remoteGang,
       party: form.remoteParty,
-      players: form.remotePlayers
+      players: form.remotePlayers,
+      // Rows not yet saying what is asked or sent are not written.
+      commands: form.remoteCommands.filter((c) => c.word.trim() !== '' && c.send.trim() !== '')
     },
-    talk: { lookAtPlayers: form.lookAtPlayers },
-    statline: { control: form.statlineControl },
-    rewrites: form.rewrites
+    rewrites: form.rewrites,
+    megamud: form.megamud
   };
 }
 
@@ -1274,7 +1108,11 @@ function copyOf(entry: ProfileEditable): CharacterForm {
  * same split every other threshold here uses, and the reason the file keeps
  * fractions at all: a threshold means the same thing at every level only if it
  * is a fraction of maximum.
+ *
+ * This form keeps every field as the string in its box, so the percent is one too.
  */
+const percent = (fraction: number): string => String(percentOf(fraction));
+
 /**
  * A realm that does not exist yet, started from the Global defaults.
  *
@@ -1287,18 +1125,6 @@ function copyOf(entry: ProfileEditable): CharacterForm {
  * The host and the name are not carried, and that is the point rather than an
  * omission: they are what make it a different realm.
  */
-/** This form keeps every field as the string in its box, so the percent is one too. */
-const percent = (fraction: number): string => String(percentOf(fraction));
-
-/** A three-way answer as the select spells it: blank leaves it to the scope above. */
-function penaltiesChoice(value: boolean | null): string {
-  return value === null ? '' : value ? 'yes' : 'no';
-}
-
-function penaltiesOf(choice: string): boolean | null {
-  return choice === 'yes' ? true : choice === 'no' ? false : null;
-}
-
 function emptyServerForm(defaults: GlobalDraft | null): ServerDraft {
   return {
     name: '',
@@ -1315,9 +1141,12 @@ function emptyServerForm(defaults: GlobalDraft | null): ServerDraft {
     // somebody says otherwise. There is no Global default to copy: a map is a
     // fact about one place, so there is no sensible "next realm" value for it.
     database: '',
-    hangPenalties: null,
     // The stock names until somebody says this realm renames one.
-    coins: {}
+    coins: {},
+    // MegaMUD's defaults until somebody says this realm differs.
+    bbs: {},
+    // No board until somebody names one.
+    statsUrl: ''
   };
 }
 
@@ -1343,31 +1172,25 @@ function emptyServerForm(defaults: GlobalDraft | null): ServerDraft {
  */
 function emptyForm(
   servers: SettingsSnapshot['servers'],
-  defaults: GlobalDraft | null
+  defaults: GlobalDraft | null,
+  megamud: MegaSettings | null
 ): CharacterForm {
   const combat = defaults?.automation.combat ?? DEFAULT_COMBAT;
   const health = defaults?.automation.health ?? DEFAULT_HEALTH;
   const party = defaults?.automation.party ?? DEFAULT_CONFIG.automation.party;
   const movement = defaults?.automation.movement ?? DEFAULT_MOVEMENT;
   const hunting = defaults?.automation.hunting ?? DEFAULT_CONFIG.automation.hunting;
-  const train = defaults?.automation.train ?? DEFAULT_CONFIG.automation.train;
   const quests = defaults?.automation.quests ?? DEFAULT_CONFIG.automation.quests;
-  const gear = defaults?.automation.gear ?? DEFAULT_CONFIG.automation.gear;
   const spells = defaults?.automation.spells ?? DEFAULT_SPELLS;
   const alerts = defaults?.ui.alerts ?? DEFAULT_ALERTS;
   const remotes = defaults?.automation.remotes ?? DEFAULT_CONFIG.automation.remotes;
   const afk = defaults?.automation.afk ?? DEFAULT_CONFIG.automation.afk;
-  const talk = defaults?.automation.talk ?? DEFAULT_CONFIG.automation.talk;
-  const statline = defaults?.automation.statline ?? DEFAULT_CONFIG.automation.statline;
   const rewrites = defaults?.ui.rewrites ?? DEFAULT_CONFIG.ui.rewrites;
   const retreat = defaults?.automation.retreat ?? DEFAULT_CONFIG.automation.safety.retreat;
   const fleeGoto = defaults?.automation.fleeGoto ?? DEFAULT_CONFIG.automation.safety.fleeGoto;
   const hangUp = defaults?.automation.hangUp ?? DEFAULT_CONFIG.automation.safety.hangUp;
-  const pvp = defaults?.automation.pvp ?? DEFAULT_CONFIG.automation.safety.pvp;
   const loot = defaults?.automation.loot ?? DEFAULT_CONFIG.automation.loot;
-  const drop = defaults?.automation.drop ?? DEFAULT_CONFIG.automation.drop;
   const search = defaults?.automation.search ?? DEFAULT_CONFIG.automation.search;
-  const banking = defaults?.automation.banking ?? DEFAULT_CONFIG.automation.banking;
 
   return {
     id: '',
@@ -1412,35 +1235,21 @@ function emptyForm(
     login: [],
     retreat: retreat.enabled,
     retreatBelow: percent(retreat.belowHealth),
-    retreatBelowMana: percent(retreat.belowMana),
-    retreatOutnumbered: String(retreat.whenOutnumbered),
-    retreatStrategy: retreat.strategy,
-    retreatHaven: retreat.safeHavenRoom,
     fleeGoto: fleeGoto.enabled,
     fleeGotoBelow: percent(fleeGoto.belowHealth),
     fleeGotoDestination: fleeGoto.destination,
     hangUp: hangUp.enabled,
     hangUpBelow: percent(hangUp.belowHealth),
-    // Not the options file's answer copied down: a copy would outrank the
-    // realm's own, and whether a realm charges is a fact about the realm.
-    hangUpPenalties: null,
-    hangUpOnPlayer: hangUp.onPlayerInRoom,
-    pvpNotifyGang: pvp.notifyGang,
-    pvpAction: pvp.action,
+    // Off for a new character whatever the options file says: posting tells
+    // the board to stop asking it, which is the player's to choose.
+    statsEnabled: false,
+    statsEvery: String(DEFAULT_CONFIG.logging.stats.everySeconds),
     combat: combat.enabled,
     combatAttack: combat.attack,
     combatOpener: combat.opener,
-    combatHideForOpener: combat.hideForOpener,
-    combatEngage: combat.engage,
-    combatRetaliate: combat.retaliate,
-    combatDefendAfterRounds: String(combat.defendAfterRounds),
     combatPoliteAttacks: combat.politeAttacks,
     combatMaxMobs: String(combat.maxMobs),
-    partyAssist: party.assistLeader,
     partyDefend: party.defendParty,
-    partyRest: party.restWithLeader,
-    partyAutoRank: party.autoRank,
-    partyPreferredRank: party.preferredRank,
     partyAskHeal: percent(party.askForHealBelow),
     partyWaitBelow: percent(party.waitForMembersBelow),
     partyWaitMinutes: String(party.waitNoLongerMinutes),
@@ -1449,81 +1258,44 @@ function emptyForm(
     partyRequestHealth: party.requestPartyHealth,
     partyParEvery: String(party.parEverySeconds),
     partyParAfterRound: party.parAfterRound,
-    combatRefresh: String(combat.refreshRounds),
     combatMonsters: combat.monsters.map((row) => ({ ...row })),
-    combatMaxTargetHealth: String(combat.maxTargetHealth),
     combatMinMobs: String(combat.minMobs),
     combatMaxMonsterExp: String(combat.maxMonsterExperience),
-    combatMinSurvival: percent(combat.minSurvival),
     restBelow: percent(health.restBelow),
     restTo: percent(health.restTo),
-    restBeforeTraps: percent(health.restBeforeTraps),
     meditateBelow: percent(health.meditateBelow),
     meditateTo: percent(health.meditateTo),
-    restNextDoor: health.restNextDoor,
     potionRules: health.potions.map((rule) => ({ ...rule })),
     useWards: health.useWards,
     spellAttack: spells.attack,
     spellAutoChoose: spells.autoChoose,
-    spellAutoChooseHeal: spells.autoChooseHeal,
     spellAreaAttack: spells.areaAttack,
     spellAreaMinMobs: String(spells.areaMinMobs),
-    spellAreaMinMana: percent(spells.areaMinMana),
-    spellAttackFallback: spells.attackFallback,
     spellAttackCasts: String(spells.attackCasts),
     spellAreaCasts: String(spells.areaCasts),
-    spellDrain: spells.drain,
-    spellAreaDrain: spells.areaDrain,
-    spellDrainBelow: percent(spells.drainBelow),
-    spellDrainTo: percent(spells.drainTo),
     spellHeal: spells.heal,
     spellHealPartyWith: spells.healPartyWith,
     spellHealBelow: percent(spells.healBelow),
     spellHealBelowInCombat: percent(spells.healBelowInCombat),
     spellHealTo: percent(spells.healTo),
-    spellHealParty: spells.healParty,
     spellMinMana: percent(spells.minMana),
     spellCures: { ...spells.cures },
     spellRegen: { ...spells.regen },
     spellBlessings: spells.blessings.map((blessing) => ({ ...blessing })),
-    spellNotifyWearOff: spells.notifyPartyOnWearOff,
     spellAutoBless: spells.autoBless,
-    spellInvokeItems: spells.invokeItems,
-    openDoors: movement.openDoors,
-    openTries: String(movement.openTries),
     pickLocks: movement.pickLocks,
     pickTries: String(movement.pickTries),
-    bashDoors: movement.bashDoors,
     bashTries: String(movement.bashTries),
     sneak: movement.sneak,
     provideLight: movement.provideLight,
-    recoverGear: movement.recoverGear,
-    recoverGearTries: String(movement.recoverGearTries),
-    recoverGearFloor: String(movement.recoverGearFloor),
     lightDimRooms: movement.lightDimRooms,
-    extinguishInLight: movement.extinguishInLight,
-    walkWhileBlind: movement.walkWhileBlind,
-    walkWhilePoisoned: movement.walkWhilePoisoned,
-    walkWhileConfused: movement.walkWhileConfused,
-    walkWhileLosingHp: movement.walkWhileLosingHp,
-    fightOnArrival: movement.fightOnArrival,
     keepOutOf: [...movement.keepOutOf],
     collectKeys: movement.collectKeys,
     huntAuto: hunting.enabled,
     huntRadius: hunting.radius > 0 ? String(hunting.radius) : '',
-    trainStats: train.stats,
-    trainLevels: train.levels,
-    trainTrainer: train.trainer > 0 ? String(train.trainer) : '',
-    trainWanted: wantedStrings(train.wanted),
     questsEnabled: quests.enabled,
-    gearEnabled: gear.enabled,
-    gearSets: gear.sets.map((set) => ({ ...set, wear: [...set.wear] })),
-    gearOffRoundItem: gear.offRound.item,
-    gearOffRoundEvery: gear.offRound.everyRounds > 0 ? String(gear.offRound.everyRounds) : '',
     loot: structuredClone(loot),
-    drop: structuredClone(drop),
     search: { ...search },
-    banking: { ...banking },
     loops: [],
     alertRules: (alerts.rules ?? []).map((rule) => ({ ...rule })),
     afkEnabled: afk.enabled,
@@ -1535,10 +1307,168 @@ function emptyForm(
     remoteGang: [...remotes.gang],
     remoteParty: [...remotes.party],
     remotePlayers: remotes.players,
-    lookAtPlayers: talk.lookAtPlayers,
-    statlineControl: statline.control,
-    rewrites
+    remoteCommands: remotes.commands,
+    rewrites,
+    megamud: megamud ?? defaultSettings()
   };
+}
+
+/** A `BBS.INI` key's label. */
+function bbsLabel(key: BbsKey): string {
+  switch (key) {
+    case 'MenuPrompt':
+      return t('settings.realms.bbs.MenuPrompt');
+    case 'LogoffCmd':
+      return t('settings.realms.bbs.LogoffCmd');
+    case 'RelogCmd':
+      return t('settings.realms.bbs.RelogCmd');
+    case 'AnsiCmd':
+      return t('settings.realms.bbs.AnsiCmd');
+    case 'SpeechPrefix':
+      return t('settings.realms.bbs.SpeechPrefix');
+    case 'BroadcastPrefix':
+      return t('settings.realms.bbs.BroadcastPrefix');
+    case 'LogonMsg':
+      return t('settings.realms.bbs.LogonMsg');
+    case 'LogoffMsg':
+      return t('settings.realms.bbs.LogoffMsg');
+    case 'ShutDownMsg':
+      return t('settings.realms.bbs.ShutDownMsg');
+    case 'BroadcastMsg':
+      return t('settings.realms.bbs.BroadcastMsg');
+    case 'Global1Msg':
+      return t('settings.realms.bbs.Global1Msg');
+    case 'Global1Two':
+      return t('settings.realms.bbs.Global1Two');
+    case 'Global2Msg':
+      return t('settings.realms.bbs.Global2Msg');
+    case 'Global2Two':
+      return t('settings.realms.bbs.Global2Two');
+    case 'Global3Msg':
+      return t('settings.realms.bbs.Global3Msg');
+    case 'Global3Two':
+      return t('settings.realms.bbs.Global3Two');
+    case 'MaxInputSize':
+      return t('settings.realms.bbs.MaxInputSize');
+    case 'PvpLevel':
+      return t('settings.realms.bbs.PvpLevel');
+    case 'MaxHrsPerDay':
+      return t('settings.realms.bbs.MaxHrsPerDay');
+  }
+}
+
+/** The realm's record of players, as the Players row reads it (`Invoke.seenPlayers`). */
+export interface PlayerActions {
+  seen(id: string): Promise<string[]>;
+  forget(id: string, name: string): Promise<string | null>;
+}
+
+/** The mudstats calls the screen makes, each answering in a sentence (`Invoke.statsLink` and the rest). */
+export interface StatsActions {
+  link(id: string): Promise<string>;
+  unlink(id: string): Promise<string>;
+  status(id: string): Promise<string>;
+  test(url: string): Promise<string>;
+}
+
+/** The board a character's realm names, or '' — the form's realm, by name. */
+function boardOf(snapshot: SettingsSnapshot | null, serverName: string | null): string {
+  if (snapshot === null || serverName === null) return '';
+  const wanted = serverName.toLowerCase();
+  return snapshot.servers.find((server) => server.name.toLowerCase() === wanted)?.statsUrl ?? '';
+}
+
+/**
+ * Link, unlink and ask after a character's mudstats key, each answered in a
+ * sentence under the buttons. The link takes as long as the board takes to
+ * telepath the code, so the sentence says it is waiting meanwhile.
+ */
+function StatsLink({
+  actions,
+  id,
+  linked
+}: {
+  actions: StatsActions;
+  id: string;
+  linked: boolean;
+}): React.JSX.Element {
+  const [said, setSaid] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const run = (call: () => Promise<string>, working: string): void => {
+    setBusy(true);
+    setSaid(working);
+    void call()
+      .then(setSaid)
+      .catch((error: unknown) => setSaid(String(error)))
+      .finally(() => setBusy(false));
+  };
+  return (
+    <>
+      <p className="settings-note">
+        {linked ? t('settings.mudstats.linked') : t('settings.mudstats.notLinked')}
+      </p>
+      <div className="settings-inline">
+        <button
+          disabled={busy}
+          onClick={() => run(() => actions.link(id), t('settings.mudstats.linking'))}
+          type="button"
+        >
+          {t('settings.mudstats.link')}
+        </button>
+        <button
+          disabled={busy}
+          onClick={() => run(() => actions.status(id), t('settings.mudstats.asking'))}
+          type="button"
+        >
+          {t('settings.mudstats.check')}
+        </button>
+        <button
+          disabled={busy}
+          onClick={() => run(() => actions.unlink(id), t('settings.mudstats.unlinking'))}
+          type="button"
+        >
+          {t('settings.mudstats.unlink')}
+        </button>
+      </div>
+      {said !== null && (
+        <p className="settings-note" role="status">
+          {said}
+        </p>
+      )}
+    </>
+  );
+}
+
+/** Whether a board answers at the address typed, and its floor between posts. */
+function StatsTest({ actions, url }: { actions: StatsActions; url: string }): React.JSX.Element {
+  const [said, setSaid] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  return (
+    <>
+      <div className="settings-inline">
+        <button
+          disabled={busy || url.trim() === ''}
+          onClick={() => {
+            setBusy(true);
+            setSaid(t('settings.mudstats.asking'));
+            void actions
+              .test(url)
+              .then(setSaid)
+              .catch((error: unknown) => setSaid(String(error)))
+              .finally(() => setBusy(false));
+          }}
+          type="button"
+        >
+          {t('settings.realms.statsTest')}
+        </button>
+      </div>
+      {said !== null && (
+        <p className="settings-note" role="status">
+          {said}
+        </p>
+      )}
+    </>
+  );
 }
 
 /**
@@ -1598,6 +1528,7 @@ function emptyForm(
 export default function SettingsScreen({
   open,
   openAt = null,
+  current = null,
   maximaFor,
   figuresFor,
   palette,
@@ -1606,8 +1537,11 @@ export default function SettingsScreen({
   load,
   saveProfile,
   deleteProfile,
+  megamudChoices,
   saveServer,
   deleteServer,
+  stats,
+  players,
   saveGlobal,
   revealConfig,
   revealProfiles,
@@ -1618,7 +1552,15 @@ export default function SettingsScreen({
   loadMonsters,
   importMonsters,
   saveMonsters,
+  loadItems,
+  importItems,
+  saveItems,
+  loadSpellLore,
+  saveSpellLore,
   importLoops,
+  exportLoop,
+  editLoop,
+  importLoopFile,
   loadLoops,
   loadTrainers,
   loadBanks,
@@ -1658,14 +1600,32 @@ export default function SettingsScreen({
    * comment above for the test a section has to pass.
    */
   const [section, setSection] = useState<Section>('profile');
-  /**
-   * Whether the shelf of shipped loops is open, and what is on it.
-   *
-   * The catalogue is read once per visit to this screen and kept: it is four
-   * hundred loops out of a file inside the application, so it cannot change
-   * while the screen is open, and re-asking on every keystroke in the search
-   * field would be a query per character typed.
-   */
+  /** What the chosen character's running engine offers its MegaMUD tabs to choose from. */
+  const [megaChoices, setMegaChoices] = useState<MegaChoices | null>(null);
+  useEffect(() => {
+    let live = true;
+    setMegaChoices(null);
+    if (selected === null || selected === NEW_CHARACTER) return;
+    void megamudChoices(selected).then((found) => {
+      if (live) setMegaChoices(found);
+    });
+    return () => {
+      live = false;
+    };
+  }, [selected, megamudChoices]);
+  /** Who the chosen character's realm has seen, asked for when its Players row is open. */
+  const [seen, setSeen] = useState<string[]>([]);
+  useEffect(() => {
+    let live = true;
+    setSeen([]);
+    if (selected === null || selected === NEW_CHARACTER || section !== PLAYERS) return;
+    void players.seen(selected).then((names) => {
+      if (live) setSeen(names);
+    });
+    return () => {
+      live = false;
+    };
+  }, [selected, section, players]);
   /**
    * Which character a new one is being started from, if any.
    *
@@ -1677,6 +1637,8 @@ export default function SettingsScreen({
   const [picking, setPicking] = useState(false);
   const [catalogue, setCatalogue] = useState<Loop[] | null>(null);
   const [serverPick, setServerPick] = useState<string | null>(null);
+  /** Which part of a realm's form is showing. See `realmSections`. */
+  const [realmSection, setRealmSection] = useState<RealmSection>('realm');
   /** The server form, with the same way back the character form has. */
   const [serverHistory, setServerHistory] = useState<History<ServerDraft> | null>(null);
   const serverForm = serverHistory?.present ?? null;
@@ -1765,6 +1727,19 @@ export default function SettingsScreen({
       // character it was viewed on, not to whichever one opens next.
       setSection('profile');
 
+      // The character on screen, and its realm: where settings opens unless
+      // it is asked for something else, and where Realms opens.
+      const here = current === null ? undefined : next.characters.find((e) => e.id === current);
+      const hereRealm = next.servers.find((server) => server.name === here?.serverName);
+      if (here && openAt !== NEW_CHARACTER && openAt !== here.id) {
+        setSelected(here.id);
+        loadForm(formOf(here));
+      }
+      if (hereRealm) {
+        setServerPick(hereRealm.name);
+        loadServerForm({ ...hereRealm, loops: next.loops.servers[hereRealm.name] ?? [] });
+      }
+
       /*
        * The client's own settings, which are neither a character nor a server.
        * Loaded here rather than left to an effect, for the reason above: what
@@ -1781,6 +1756,7 @@ export default function SettingsScreen({
       // character lookup below.
       if (openAt === SETTINGS_MANAGE_SERVERS) {
         setTab('servers');
+        if (hereRealm) return;
         setServerPick(next.servers[0]?.name ?? NEW_SERVER);
         loadServerForm(
           next.servers[0]
@@ -1794,7 +1770,7 @@ export default function SettingsScreen({
         setTab('characters');
         setSelected(NEW_CHARACTER);
         setCopyFrom('');
-        loadForm(emptyForm(next.servers, next.global));
+        loadForm(emptyForm(next.servers, next.global, next.newMegamud));
         return;
       }
       const asked = openAt === null ? undefined : next.characters.find((e) => e.id === openAt);
@@ -1818,7 +1794,7 @@ export default function SettingsScreen({
        * the click and the open lands: opening normally beats opening a blank
        * form wearing a name that no longer exists.
        */
-      setSelected((current) => current ?? next.characters[0]?.id ?? NEW_CHARACTER);
+      setSelected((was) => here?.id ?? was ?? next.characters[0]?.id ?? NEW_CHARACTER);
     });
     // A failed load lands in the slot every other refusal uses, rather than
     // leaving the dialog on its loading state with nothing to read.
@@ -1830,7 +1806,9 @@ export default function SettingsScreen({
   useEffect(() => {
     if (!open || selected === null || form !== null) return;
     if (selected === NEW_CHARACTER) {
-      return loadForm(emptyForm(snapshot?.servers ?? [], snapshot?.global ?? null));
+      return loadForm(
+        emptyForm(snapshot?.servers ?? [], snapshot?.global ?? null, snapshot?.newMegamud ?? null)
+      );
     }
     const found = snapshot?.characters.find((entry) => entry.id === selected);
     if (found) loadForm(formOf(found));
@@ -1850,31 +1828,6 @@ export default function SettingsScreen({
   }, [open, tab, globalForm, snapshot, loadGlobalForm]);
 
   const characters = snapshot?.characters ?? [];
-  /**
-   * What the character form's spell pickers offer: the shown character's own
-   * book, read by `sp`/`pow` and persisted with its belongings. Null is
-   * *never read* — the form says so and gates nothing on it.
-   */
-  const shownBook = useMemo(() => {
-    const entry = characters.find((candidate) => candidate.id === selected);
-    const spells = entry?.spellbook ?? [];
-    return {
-      spells,
-      unread: (entry?.spellbook ?? null) === null,
-      gates: entry?.cureGates ?? null,
-      /*
-       * The two heal fields offer different halves of the book, because the
-       * realm marks who each spell may be cast on: `way of the swan` reaches
-       * the caster alone, so offering it for the party heal would arm
-       * `c swan <name>` once a round for a refusal printed in the room. Both
-       * predicates say yes to a spell whose targeting this build cannot read,
-       * so a derivative realm loses no options.
-       */
-      selfHeals: castableOn(spells, castsOnSelf),
-      partyHeals: castableOn(spells, castsOnOthers),
-      drains: drainsIn(spells)
-    };
-  }, [characters, selected]);
   const servers = useMemo(() => snapshot?.servers ?? [], [snapshot]);
   /** The loops each server lends its characters, keyed by the name they use. */
   const serverLoops = useMemo(() => snapshot?.loops.servers ?? {}, [snapshot]);
@@ -1993,7 +1946,8 @@ export default function SettingsScreen({
       setPicking(false);
       setCopyFrom('');
       if (id === null) return loadForm(null);
-      if (id === NEW_CHARACTER) return loadForm(emptyForm(servers, snapshot?.global ?? null));
+      if (id === NEW_CHARACTER)
+        return loadForm(emptyForm(servers, snapshot?.global ?? null, snapshot?.newMegamud ?? null));
       const found = characters.find((entry) => entry.id === id);
       loadForm(found ? formOf(found) : null);
     },
@@ -2056,6 +2010,8 @@ export default function SettingsScreen({
       // was typed into, not into the bin.
       serverSave.flush();
       setServerPick(name);
+      // A new realm starts where it is named and addressed.
+      if (name === NEW_SERVER) setRealmSection('realm');
       setProblem(null);
       setSaved(null);
       setConfirming(null);
@@ -2084,8 +2040,11 @@ export default function SettingsScreen({
    */
   const goToServers = useCallback(() => {
     setTab('servers');
-    chooseServer(servers[0]?.name ?? NEW_SERVER);
-  }, [servers, chooseServer]);
+    // The realm of the character being edited, else the first.
+    const realm = snapshot?.characters.find((e) => e.id === selected)?.serverName;
+    const known = servers.find((server) => server.name === realm)?.name;
+    chooseServer(known ?? servers[0]?.name ?? NEW_SERVER);
+  }, [servers, chooseServer, snapshot, selected]);
 
   /**
    * Open MudEngine or Global, both of which draw the options file.
@@ -2159,32 +2118,29 @@ export default function SettingsScreen({
   };
 
   /*
-   * Where this character may go and level (todo 18).
-   *
-   * Asked when the Train tab is opened for an existing character, and cleared
-   * when the chosen character changes so the list can never belong to
-   * somebody else — the bands are per level and per class, and a picker
-   * showing another character's rooms would offer walks the server refuses.
-   *
-   * `null` is *not asked yet* and `[]` is *nowhere*, which the picker draws
-   * differently: the first is a list still loading, the second is a statement
-   * about this character. The same distinction `spellbook` keeps.
+   * Edit on a loop's row (2026-10-23): the screen closed, what was typed
+   * saved first, and the loop opened in the builder. Only a loop the
+   * character on screen can plan and file — its own, its realm's or
+   * everybody's — since the builder plans on that character's realm.
    */
-  const [trainers, setTrainers] = useState<TrainerChoice[] | null>(null);
-  /*
-   * What the realm says would serve each condition, for the potion rule
-   * list's suggestions. A property of the realm and not the character, so it
-   * is asked once per open rather than per row or per selection — and left as
-   * an empty map where nothing answers, which the field draws as no
-   * suggestions and stays typable.
-   */
-  const [serving, setServing] = useState<Partial<Record<PotionWhen, string[]>>>({});
-  /*
-   * And the realm's own rules of that same kind. Empty where no realm is
-   * loaded, which draws no rows — the switch still says what it does, and
-   * a realm this client holds no data for has nothing to list.
-   */
-  const [wards, setWards] = useState<WardRule[]>([]);
+  const currentRealm = snapshot?.characters.find((entry) => entry.id === current)?.serverName;
+  const loopEditor =
+    (here: LoopAddress['scope'], owner: string | null) =>
+    (loop: Loop, from: ScopedLoop | null): (() => void) | null => {
+      const at: LoopAddress =
+        from === null
+          ? { scope: here, owner, name: loop.name }
+          : { scope: from.scope, owner: from.owner ?? null, name: loop.name };
+      const reachable =
+        at.scope === 'global' ||
+        (at.scope === 'profile' ? at.owner === current : at.owner === currentRealm);
+      if (current === null || required || !reachable) return null;
+      return () => {
+        close();
+        editLoop(loop, at);
+      };
+    };
+
   /*
    * The monsters this character's realm names, for the priority list's picker.
    * Empty where no realm is loaded, which draws no suggestions and leaves the
@@ -2198,9 +2154,28 @@ export default function SettingsScreen({
    * offer. Asked by the realm the form names, so a changed realm re-asks.
    */
   const [tabled, setTabled] = useState<string[]>([]);
+  /*
+   * The realm's ward rules (an item whose use casts the spell that stops a
+   * room's effect), drawn under the switch that obeys them. Empty where no
+   * realm is loaded, which draws no rows; the switch still says what it does.
+   */
+  const [wards, setWards] = useState<WardRule[]>([]);
+  useEffect(() => {
+    if (!open || tab !== 'characters' || section !== 'Health') return;
+    if (selected === null || selected === NEW_CHARACTER) return;
+    let stale = false;
+    void loadWards(selected).then(
+      (found) => void (stale || setWards(found)),
+      // A realm that could not be read is not a reason to refuse the save.
+      () => void (stale || setWards([]))
+    );
+    return () => {
+      stale = true;
+    };
+  }, [open, tab, section, selected, loadWards]);
   const realmName = form?.serverName ?? null;
   useEffect(() => {
-    if (!open || tab !== 'characters' || section !== 'combat' || realmName === null) {
+    if (!open || tab !== 'characters' || section !== 'Combat' || realmName === null) {
       setTabled([]);
       return;
     }
@@ -2225,70 +2200,8 @@ export default function SettingsScreen({
     }
     return out;
   }, [mobs, tabled]);
-  /*
-   * The counters this character's realm places. `null` is *not asked yet*,
-   * which draws no picker at all — a control offering only *any counter*
-   * while the realm's answer is still coming is a control that lies about
-   * what the realm holds. Asked on the Movement tab, where banking is drawn.
-   */
-  const [banks, setBanks] = useState<BankChoice[] | null>(null);
   useEffect(() => {
-    if (!open || tab !== 'characters' || section !== 'train') return;
-    if (selected === null || selected === NEW_CHARACTER) {
-      setTrainers([]);
-      return;
-    }
-    let stale = false;
-    setTrainers(null);
-    void loadTrainers(selected).then(
-      (rows) => void (stale || setTrainers(rows)),
-      // A list that could not be read is not a reason to refuse the save
-      // somebody came here to make — the picker says nowhere, as `loadLoops`
-      // says an empty shelf.
-      () => void (stale || setTrainers([]))
-    );
-    return () => {
-      stale = true;
-    };
-  }, [open, tab, section, selected, loadTrainers]);
-  useEffect(() => {
-    if (!open || tab !== 'characters' || section !== 'movement') return;
-    if (selected === null || selected === NEW_CHARACTER) {
-      setBanks([]);
-      return;
-    }
-    let stale = false;
-    setBanks(null);
-    void loadBanks(selected).then(
-      (rows) => void (stale || setBanks(rows)),
-      // A list that could not be read is not a reason to refuse the save:
-      // the picker simply is not drawn, and `bank: 0` keeps working.
-      () => void (stale || setBanks([]))
-    );
-    return () => {
-      stale = true;
-    };
-  }, [open, tab, section, selected, loadBanks]);
-  useEffect(() => {
-    if (!open || tab !== 'characters' || section !== 'health') return;
-    if (selected === null || selected === NEW_CHARACTER) return;
-    let stale = false;
-    void loadServing(selected).then(
-      (found) => void (stale || setServing(found)),
-      () => void (stale || setServing({}))
-    );
-    void loadWards(selected).then(
-      (found) => void (stale || setWards(found)),
-      // A realm that could not be read is not a reason to refuse the save:
-      // no rows are drawn, exactly as no suggestions are.
-      () => void (stale || setWards([]))
-    );
-    return () => {
-      stale = true;
-    };
-  }, [open, tab, section, selected, loadServing, loadWards]);
-  useEffect(() => {
-    if (!open || tab !== 'characters' || section !== 'combat') return;
+    if (!open || tab !== 'characters' || section !== 'Combat') return;
     if (selected === null || selected === NEW_CHARACTER) return;
     let stale = false;
     void loadMobNames(selected).then(
@@ -2326,8 +2239,6 @@ export default function SettingsScreen({
    */
   const ofHealth = (typed: string): string | null =>
     figureOf(Number.parseInt(typed, 10) || 0, maxima.hpMax);
-  const ofMana = (typed: string): string | null =>
-    figureOf(Number.parseInt(typed, 10) || 0, maxima.manaMax);
   /*
    * And the bar under it, on the **inherited** vitals bands.
    *
@@ -2340,8 +2251,6 @@ export default function SettingsScreen({
   const bands = snapshot?.global.ui.vitals ?? DEFAULT_CONFIG.ui.vitals;
   const barOfHealth = (typed: string): ReturnType<typeof barOf> =>
     barOf(Number.parseInt(typed, 10) || 0, bands.hp);
-  const barOfMana = (typed: string): ReturnType<typeof barOf> =>
-    barOf(Number.parseInt(typed, 10) || 0, bands.mana);
 
   const patch = (change: Partial<CharacterForm>): void => {
     setHistory((current) =>
@@ -2349,6 +2258,34 @@ export default function SettingsScreen({
     );
     setSaved(null);
   };
+
+  /**
+   * The character's MegaMUD settings for its MegaMUD tabs: a part of its form,
+   * changed through its history like every other field, so one Undo and one
+   * save cover the page. Changes are taken on the latest form, as a tab may
+   * make two in one event.
+   */
+  const mega =
+    form === null
+      ? null
+      : megaMudDraft(
+          selected ?? '',
+          form.megamud,
+          characters.find((entry) => entry.id === selected)?.megamudHasPassword ?? false,
+          megaChoices,
+          (change) => {
+            setHistory((current) =>
+              current === null
+                ? current
+                : record(
+                    current,
+                    { ...current.present, megamud: change(current.present.megamud) },
+                    sameForm
+                  )
+            );
+            setSaved(null);
+          }
+        );
 
   const submitCharacter = async (event: FormEvent): Promise<void> => {
     event.preventDefault();
@@ -2591,6 +2528,8 @@ export default function SettingsScreen({
             ) : (
               <GlobalSettings
                 catalogue={catalogue}
+                onExportLoop={exportLoop}
+                editLoopFor={loopEditor('global', null)}
                 draft={globalForm}
                 palette={palette}
                 scope={tab}
@@ -2624,7 +2563,7 @@ export default function SettingsScreen({
                 the form keeps the whole of the other column (todo 02).
               */}
               <SettingsNav
-                onSection={(id: string) => setSection(id as Section)}
+                onSection={(id: string) => setSection(id)}
                 picker={{
                   addId: NEW_CHARACTER,
                   addLabel: t('settings.characters.new'),
@@ -2644,8 +2583,8 @@ export default function SettingsScreen({
                 section={section}
                 sections={SECTIONS.map((id) => ({
                   id,
-                  label: SECTION_LABEL[id],
-                  fieldsets: SECTION_FIELDSETS[id]
+                  label: sectionLabel(id),
+                  fieldsets: SECTION_FIELDSETS[id] ?? []
                 }))}
               />
 
@@ -2658,6 +2597,10 @@ export default function SettingsScreen({
               ) : (
                 <form
                   className="settings-form"
+                  // Drawn as MegaMUD's pages are, on every row: Character and
+                  // Login, which have no MegaMUD tab, kept the old look beside
+                  // rows that had one (2026-10-14).
+                  data-megamud="true"
                   data-section={section}
                   onSubmit={(event) => void submitCharacter(event)}
                 >
@@ -2689,7 +2632,13 @@ export default function SettingsScreen({
                             // undo what choosing did or the control is
                             // one-way.
                             loadForm(
-                              found ? copyOf(found) : emptyForm(servers, snapshot?.global ?? null)
+                              found
+                                ? copyOf(found)
+                                : emptyForm(
+                                    servers,
+                                    snapshot?.global ?? null,
+                                    snapshot?.newMegamud ?? null
+                                  )
                             );
                           }}
                           options={[
@@ -2699,6 +2648,55 @@ export default function SettingsScreen({
                               .map((entry) => ({ value: entry.id, label: entry.name }))
                           ]}
                           value={copyFrom}
+                        />
+                      )}
+
+                      {/*
+                        A MegaMUD character's settings file: for a new
+                        character its name and login as well, for one made
+                        already its MegaMUD settings alone, undoable.
+                      */}
+                      {selected === NEW_CHARACTER ? (
+                        <MegaMudIniImport
+                          label={t('settings.megamud.importNew')}
+                          onRead={(settings, fileName) => {
+                            const who = characterOfIni(settings);
+                            const base =
+                              characters.find((entry) => entry.id === copyFrom) === undefined
+                                ? emptyForm(
+                                    servers,
+                                    snapshot?.global ?? null,
+                                    snapshot?.newMegamud ?? null
+                                  )
+                                : form;
+                            const realm = servers.find(
+                              (server) => server.name.toLowerCase() === who.bbs.toLowerCase()
+                            );
+                            loadForm({
+                              ...base,
+                              id: who.id,
+                              name: who.name,
+                              username: who.username,
+                              password: who.password,
+                              changePassword: true,
+                              ...(realm === undefined ? {} : { serverName: realm.name }),
+                              megamud: settings
+                            });
+                            setProblem(null);
+                            setSaved(t('settings.megamud.importedNew', { fileName }));
+                          }}
+                        />
+                      ) : (
+                        <MegaMudIniImport
+                          label={t('settings.megamud.importOver')}
+                          onRead={(settings, fileName) => {
+                            // The login stays the character's: an empty password is "leave it".
+                            const next = structuredClone(settings);
+                            next.live['BBS']!['Password'] = '';
+                            patch({ megamud: next });
+                            setProblem(null);
+                            setSaved(t('settings.megamud.importedOver', { fileName }));
+                          }}
                         />
                       )}
 
@@ -2841,13 +2839,8 @@ export default function SettingsScreen({
                         onChange={(value) => patch({ autoConnect: value })}
                       />
 
-                      <CheckField
-                        checked={form.autoReconnect}
-                        hint={t('settings.profile.autoReconnectHint')}
-                        label={t('settings.profile.autoReconnectLabel')}
-                        name="auto-reconnect"
-                        onChange={(value) => patch({ autoReconnect: value })}
-                      />
+                      {/* The MegaMUD engine's own redials reconnect (MegaMUD
+                          connection, below): there is no reconnect of ours. */}
 
                       <FormField label={t('settings.profile.accentLabel')} name="accent">
                         {() => (
@@ -2885,6 +2878,7 @@ export default function SettingsScreen({
                         ]}
                         value={form.theme}
                       />
+                      {mega !== null && <MegaMudAccount mega={mega} />}
                     </>
                   )}
 
@@ -2919,78 +2913,6 @@ export default function SettingsScreen({
                         })}
                       </p>
 
-                      {form.login.length > 0 && (
-                        <ul className="settings-steps">
-                          {form.login.map((step, index) => (
-                            <li key={index}>
-                              <input
-                                aria-label={t('settings.login.stepWhenAria', {
-                                  stepNumber: index + 1
-                                })}
-                                onChange={(event) =>
-                                  patch({
-                                    login: form.login.map((entry, at) =>
-                                      at === index ? { ...entry, when: event.target.value } : entry
-                                    )
-                                  })
-                                }
-                                placeholder={t('settings.login.stepWhenPlaceholder')}
-                                value={step.when}
-                              />
-                              <span aria-hidden="true" className="arrow">
-                                →
-                              </span>
-                              <input
-                                aria-label={t('settings.login.stepSendAria', {
-                                  stepNumber: index + 1
-                                })}
-                                className="answer"
-                                onChange={(event) =>
-                                  patch({
-                                    login: form.login.map((entry, at) =>
-                                      at === index ? { ...entry, send: event.target.value } : entry
-                                    )
-                                  })
-                                }
-                                placeholder={t('settings.login.stepSendPlaceholder')}
-                                value={step.send}
-                              />
-                              <input
-                                aria-label={t('settings.login.stepRepeatAria', {
-                                  stepNumber: index + 1
-                                })}
-                                checked={step.repeat ?? false}
-                                className="repeat"
-                                onChange={(event) =>
-                                  patch({
-                                    login: form.login.map((entry, at) =>
-                                      at === index
-                                        ? { ...entry, repeat: event.target.checked }
-                                        : entry
-                                    )
-                                  })
-                                }
-                                title={t('settings.login.stepRepeatTitle')}
-                                type="checkbox"
-                              />
-                              <button
-                                aria-label={t('settings.login.removeStepAria', {
-                                  stepNumber: index + 1
-                                })}
-                                className="quiet"
-                                onClick={() =>
-                                  patch({ login: form.login.filter((_, at) => at !== index) })
-                                }
-                                title={t('settings.login.removeStepTitle')}
-                                type="button"
-                              >
-                                <Icon name="close" />
-                              </button>
-                            </li>
-                          ))}
-                        </ul>
-                      )}
-
                       {/*
                         The first row on an empty list copies the realm's
                         script, then adds the blank one.
@@ -3005,9 +2927,8 @@ export default function SettingsScreen({
                         rather than a guessed pair, since a realm that words
                         its username prompt differently says so there.
                       */}
-                      <button
-                        className="quiet add-step"
-                        onClick={() =>
+                      <LoginSteps
+                        onAdd={() =>
                           patch({
                             login: [
                               ...(form.login.length === 0
@@ -3018,324 +2939,247 @@ export default function SettingsScreen({
                             ]
                           })
                         }
-                        type="button"
-                      >
-                        <Icon name="plus" />
-                        <span>{t('settings.login.addStep')}</span>
-                      </button>
+                        onChange={(login) => patch({ login })}
+                        sendPlaceholder={t('settings.login.stepSendPlaceholder')}
+                        steps={form.login}
+                        whenPlaceholder={t('settings.login.stepWhenPlaceholder')}
+                      />
                     </fieldset>
                   )}
 
-                  {section === 'combat' && (
-                    <>
-                      {/*
-                        The one warning left in the open on this screen, and the
-                        rule for why: a sentence stays out of a tooltip when the
-                        thing it warns about can cost a character. One sentence.
-                        docs/terminology.md §1.
-                      */}
-                      <fieldset className="settings-menus" data-fieldset="combat-attack">
-                        <legend>{t('settings.combat.attackLegend')}</legend>
-                        <p className="settings-warn">{t('settings.combat.openWarning')}</p>
+                  {/*
+                    The realm's mudstats board, beside the account because the
+                    key it gives is kept with the password. The realm says
+                    where the board is; whether this character posts there, and
+                    how often, is the character's.
+                  */}
+                  {section === 'login' && (
+                    <fieldset className="settings-menus" data-fieldset="stats">
+                      <legend>{t('settings.mudstats.legend')}</legend>
+                      <p className="settings-note">
+                        {boardOf(snapshot, form.serverName) === ''
+                          ? t('settings.mudstats.noBoard')
+                          : t('settings.mudstats.note', {
+                              url: boardOf(snapshot, form.serverName)
+                            })}
+                      </p>
+                      <div className="settings-inline">
                         <CheckField
-                          checked={form.combat}
-                          label={t('settings.combat.attackForMe')}
-                          name="combat"
-                          onChange={(value) => patch({ combat: value })}
+                          checked={form.statsEnabled}
+                          label={t('settings.mudstats.enabledLabel')}
+                          name="stats-enabled"
+                          onChange={(value) => patch({ statsEnabled: value })}
                         />
-                        {/* Drawn whether the switch is on or off: it is the
-                            one combat setting that acts while it is off. */}
-                        <div className="settings-inline">
+                        {form.statsEnabled && (
                           <NumberField
-                            hint={t('settings.combat.defendAfterRoundsHint')}
-                            label={t('settings.combat.defendAfterRounds')}
-                            name="defend-after-rounds"
-                            onChange={(value) => patch({ combatDefendAfterRounds: value })}
-                            value={form.combatDefendAfterRounds}
+                            hint={t('settings.mudstats.everyHint')}
+                            label={t('settings.mudstats.everyLabel')}
+                            name="stats-every"
+                            onChange={(value) => patch({ statsEvery: value })}
+                            value={form.statsEvery}
                           />
-                        </div>
-                        {form.combat && (
-                          <>
-                            <CheckField
-                              checked={form.combatRetaliate}
-                              hint={t('settings.combat.hitBackHint')}
-                              label={t('settings.combat.hitBack')}
-                              name="retaliate"
-                              onChange={(value) => patch({ combatRetaliate: value })}
-                            />
-                            <CheckField
-                              checked={form.combatPoliteAttacks}
-                              hint={t('settings.combat.politeAttacksHint')}
-                              label={t('settings.combat.politeAttacks')}
-                              name="polite-attacks"
-                              onChange={(value) => patch({ combatPoliteAttacks: value })}
-                            />
-                            {/* What it opens fights with, and the three limits
-                                that qualify it, on one row: each of the
-                                numbers is meaningless without the policy
-                                beside it. */}
-                            <div className="settings-inline">
-                              <SelectField
-                                hint={t('settings.combat.engageHint')}
-                                label={t('settings.combat.engageLabel')}
-                                name="engage"
-                                onChange={(value) => patch({ combatEngage: value as EngagePolicy })}
-                                options={[
-                                  { value: 'none', label: t('settings.combat.engageNone') },
-                                  { value: 'hostile', label: t('settings.combat.engageHostile') },
-                                  { value: 'likely', label: t('settings.combat.engageLikely') },
-                                  { value: 'all', label: t('settings.combat.engageAll') }
-                                ]}
-                                value={form.combatEngage}
-                              />
-                              <NumberField
-                                hint={t('settings.combat.maxMobsHint')}
-                                label={t('settings.combat.maxMobsLabel')}
-                                name="max-mobs"
-                                onChange={(value) => patch({ combatMaxMobs: value })}
-                                value={form.combatMaxMobs}
-                              />
-                              <NumberField
-                                hint={t('settings.combat.minMobsHint')}
-                                label={t('settings.combat.minMobsLabel')}
-                                name="min-mobs"
-                                onChange={(value) => patch({ combatMinMobs: value })}
-                                value={form.combatMinMobs}
-                              />
-                            </div>
-                          </>
                         )}
+                      </div>
+                      {form.id !== '' && (
+                        <StatsLink
+                          actions={stats}
+                          id={form.id}
+                          linked={
+                            characters.find((entry) => entry.id === form.id)?.statsLinked === true
+                          }
+                        />
+                      )}
+                    </fieldset>
+                  )}
+
+                  {/*
+  MegaMUD's own tab, as its settings dialog draws it, and under it what
+  this client keeps for the character that belongs with it (2026-10-14).
+*/}
+                  {isMegaTab(section) && mega !== null && (
+                    <MegaMudPanel
+                      loops={[
+                        ...(form?.loops ?? []),
+                        ...inheritedLoops.map((entry) => entry.loop)
+                      ].map((loop) => loop.name)}
+                      mega={mega}
+                      tab={section}
+                    />
+                  )}
+
+                  {section === 'Auto-roam' && (
+                    <>
+                      <fieldset className="settings-menus" data-fieldset="movement-keep-out">
+                        <legend>{t('settings.movement.keepOutLegend')}</legend>
+                        <TextField
+                          hint={t('settings.movement.keepOutOfHint')}
+                          label={t('settings.movement.keepOutOf')}
+                          name="keep-out-of"
+                          onChange={(value) => patch({ keepOutOf: splitNames(value) })}
+                          placeholder={t('settings.movement.keepOutOfPlaceholder')}
+                          value={joinNames(form.keepOutOf)}
+                          wide
+                        />
                       </fieldset>
 
-                      {form.combat && (
-                        <>
-                          <fieldset className="settings-menus" data-fieldset="combat-attacks">
-                            <legend>{t('settings.combat.attacksLegend')}</legend>
-                            <div className="settings-inline">
-                              <TextField
-                                hint={t('settings.combat.attackVerbHint')}
-                                label={t('settings.combat.attackVerbLabel')}
-                                name="attack"
-                                onChange={(value) => patch({ combatAttack: value })}
-                                placeholder={t('settings.combat.attackVerbPlaceholder')}
-                                spellCheck={false}
-                                value={form.combatAttack}
-                              />
-                              <TextField
-                                hint={t('settings.combat.openerHint')}
-                                label={t('settings.combat.openerLabel')}
-                                name="opener"
-                                onChange={(value) => patch({ combatOpener: value })}
-                                placeholder={t('settings.combat.openerPlaceholder')}
-                                spellCheck={false}
-                                value={form.combatOpener}
-                              />
-                            </div>
-                            <CheckField
-                              checked={form.combatHideForOpener}
-                              hint={t('settings.combat.hideForOpenerHint')}
-                              label={t('settings.combat.hideForOpener')}
-                              name="hide-for-opener"
-                              onChange={(value) => patch({ combatHideForOpener: value })}
-                            />
-                            <NumberField
-                              hint={t('settings.combat.refreshHint')}
-                              label={t('settings.combat.refreshLabel')}
-                              name="refresh"
-                              onChange={(value) => patch({ combatRefresh: value })}
-                              value={form.combatRefresh}
-                            />
-                          </fieldset>
+                      {/*
+                        The loops this character owns, and the ones it merely
+                        walks. A separate fieldset from the two switches above
+                        rather than three more rows in one, because they answer
+                        different questions: those are what a route may do on
+                        the way, and this is where the character goes at all.
+                      */}
+                      <LoopSection
+                        catalogue={catalogue}
+                        inherited={inheritedLoops}
+                        loops={form.loops}
+                        note={t('settings.movement.loopsNote')}
+                        onDonePicking={() => setPicking(false)}
+                        onOpenPicker={openPicker}
+                        onExport={exportLoop}
+                        editFor={loopEditor('profile', selected)}
+                        onToggle={toggleLoop}
+                        picking={picking}
+                        /*
+                          The one thing about this that can be wrong without
+                          looking wrong. The shipped loops name rooms by
+                          `map/room` in Paradigm's world, the one they were
+                          recorded in; a realm pinned to the other bundled
+                          world or to its own database has different rooms
+                          behind the same numbers, and a route planned from
+                          one goes somewhere nobody chose.
+                        */
+                        warning={
+                          walksAnotherWorld(
+                            servers.find((entry) => entry.name === form.serverName)?.database ?? ''
+                          ) && form.loops.length > 0
+                            ? t('settings.movement.loopsWarning')
+                            : undefined
+                        }
+                      />
 
-                          <fieldset className="settings-menus" data-fieldset="combat-monsters">
-                            <legend>{t('settings.combat.monstersLegend')}</legend>
+                      {/*
+                        Where the character should be at all (todo 05), beside
+                        the loops rather than under Training: what it decides
+                        is a place, and the loop it runs when it gets there is
+                        built from the survey rather than taken off the shelf
+                        above.
+                      */}
+                      <fieldset className="settings-menus" data-fieldset="hunting">
+                        <legend>{t('settings.hunting.legend')}</legend>
+                        <p className="settings-note">{t('settings.hunting.note')}</p>
+                        <div className="settings-inline">
+                          <CheckField
+                            checked={form.huntAuto}
+                            hint={t('settings.hunting.autoHint')}
+                            label={t('settings.hunting.auto')}
+                            name="hunt-auto"
+                            onChange={(value) => patch({ huntAuto: value })}
+                          />
+                          {form.huntAuto && (
                             <NumberField
-                              hint={t('settings.combat.maxTargetHealthHint')}
-                              label={t('settings.combat.maxTargetHealthLabel')}
-                              name="max-target-health"
-                              onChange={(value) => patch({ combatMaxTargetHealth: value })}
-                              value={form.combatMaxTargetHealth}
+                              hint={t('settings.hunting.radiusHint')}
+                              label={t('settings.hunting.radius')}
+                              name="hunt-radius"
+                              onChange={(value) => patch({ huntRadius: value })}
+                              value={form.huntRadius}
                             />
-                            <NumberField
-                              hint={t('settings.combat.maxMonsterExpHint')}
-                              label={t('settings.combat.maxMonsterExpLabel')}
-                              name="max-monster-exp"
-                              onChange={(value) => patch({ combatMaxMonsterExp: value })}
-                              value={form.combatMaxMonsterExp}
-                            />
-                            <NumberField
-                              hint={t('settings.combat.minSurvivalHint')}
-                              label={t('settings.combat.minSurvivalLabel')}
-                              name="min-survival"
-                              onChange={(value) => patch({ combatMinSurvival: value })}
-                              value={form.combatMinSurvival}
-                            />
-                          </fieldset>
+                          )}
+                        </div>
+                      </fieldset>
 
-                          {/*
-                            This character's own monster rows, laid over the
-                            realm's table field by field -- a shaman's spell
-                            for a monster the realm marks Flee keeps the Flee.
-                            The one list about named monsters: what to leave
-                            alone is a Friend, and the attack order is the
-                            priority. Part of the form's draft, so it saves
-                            with it.
-                          */}
-                          <fieldset className="settings-menus" data-fieldset="combat-monster-rows">
-                            <legend>{t('settings.combat.monsterRowsLegend')}</legend>
-                            <p className="settings-note">{t('settings.combat.monsterRowsNote')}</p>
-                            <div className="realm-messages">
-                              <MonsterRuleList
-                                addLabel={t('settings.monsters.add')}
-                                emptyText={t('settings.combat.monsterRowsNone')}
-                                known={monsterNames}
-                                namePrefix="character-monster"
-                                onChange={(rows) => {
-                                  patch({ combatMonsters: rows });
-                                  return Promise.resolve(null);
-                                }}
-                                rows={form.combatMonsters}
-                              />
-                            </div>
-                          </fieldset>
-                        </>
-                      )}
+                      <fieldset className="settings-menus" data-fieldset="quests">
+                        <legend>{t('settings.quests.legend')}</legend>
+                        <p className="settings-warn">{t('settings.quests.warning')}</p>
+                        <CheckField
+                          checked={form.questsEnabled}
+                          hint={t('settings.quests.enabledHint')}
+                          label={t('settings.quests.enabled')}
+                          name="quests-enabled"
+                          onChange={(value) => patch({ questsEnabled: value })}
+                        />
+                      </fieldset>
                     </>
                   )}
 
-                  {section === 'health' && (
+                  {section === 'Talk' && (
                     <>
-                      <fieldset className="settings-menus" data-fieldset="health-recover">
-                        <legend>{t('settings.health.recoverLegend')}</legend>
-                        <p className="settings-note">{t('settings.health.restingNote')}</p>
-                        <div className="settings-inline">
-                          <NumberField
-                            hint={t('settings.health.restBelowHint')}
-                            label={t('settings.health.restBelowLabel')}
-                            name="rest-below"
-                            bar={barOfHealth(form.restBelow)}
-                            figure={ofHealth(form.restBelow)}
-                            onChange={(value) => patch({ restBelow: value })}
-                            value={form.restBelow}
-                          />
-                          <NumberField
-                            hint={t('settings.health.restToHint')}
-                            label={t('settings.health.restToLabel')}
-                            name="rest-to"
-                            bar={barOfHealth(form.restTo)}
-                            figure={ofHealth(form.restTo)}
-                            onChange={(value) => patch({ restTo: value })}
-                            value={form.restTo}
-                          />
-                          <NumberField
-                            hint={t('settings.health.restBeforeTrapsHint')}
-                            label={t('settings.health.restBeforeTrapsLabel')}
-                            name="rest-before-traps"
-                            bar={barOfHealth(form.restBeforeTraps)}
-                            figure={ofHealth(form.restBeforeTraps)}
-                            onChange={(value) => patch({ restBeforeTraps: value })}
-                            value={form.restBeforeTraps}
-                          />
-                          <NumberField
-                            hint={t('settings.health.meditateBelowHint')}
-                            label={t('settings.health.meditateBelowLabel')}
-                            name="med-below"
-                            bar={barOfMana(form.meditateBelow)}
-                            figure={ofMana(form.meditateBelow)}
-                            onChange={(value) => patch({ meditateBelow: value })}
-                            value={form.meditateBelow}
-                          />
-                          <NumberField
-                            hint={t('settings.health.meditateToHint')}
-                            label={t('settings.health.meditateToLabel')}
-                            name="med-to"
-                            bar={barOfMana(form.meditateTo)}
-                            figure={ofMana(form.meditateTo)}
-                            onChange={(value) => patch({ meditateTo: value })}
-                            value={form.meditateTo}
-                          />
-                        </div>
-                        <CheckField
-                          checked={form.restNextDoor}
-                          hint={t('settings.health.restNextDoorHint')}
-                          label={t('settings.health.restNextDoor')}
-                          name="rest-next-door"
-                          onChange={(value) => patch({ restNextDoor: value })}
+                      {/*
+                        The player's own commands others may ask this
+                        character for, answered after MegaMUD's own
+                        (2026-10-15): a healer's @heal for whoever is named.
+                      */}
+                      <fieldset className="settings-menus" data-fieldset="bot-commands">
+                        <legend>{t('settings.botCommands.legend')}</legend>
+                        <p className="settings-note">{t('settings.botCommands.note')}</p>
+                        <BotCommandList
+                          commands={form.remoteCommands}
+                          onChange={(remoteCommands) => patch({ remoteCommands })}
                         />
                       </fieldset>
+                    </>
+                  )}
 
-                      <fieldset className="settings-menus" data-fieldset="health-retreat">
-                        <legend>{t('settings.health.retreatLegend')}</legend>
+                  {section === PLAYERS && (
+                    <fieldset className="settings-menus" data-fieldset="remotes">
+                      <legend>{t('settings.remotes.legend')}</legend>
+                      {/*
+    Who may drive this character, and how far: the per-player grants the
+    MegaMUD engine reads as each player's remote bits (`grantPlayers`).
+    Whether remotes are answered at all is MegaMUD's own, on its Talk tab;
+    the gang and party lists were the old automation's (2026-10-14). Its own
+    row since 2026-10-16, listing whoever the realm has seen.
+  */}
+                      <p className="settings-warn">{t('settings.remotes.channelWarning')}</p>
+                      <p className="settings-note">{t('settings.remotes.engineNote')}</p>
+                      <PlayerGrants
+                        grants={form.remotePlayers}
+                        onChange={(remotePlayers) => patch({ remotePlayers })}
+                        onForget={(name) => {
+                          setSeen((was) => was.filter((entry) => entry !== name));
+                          void players.forget(form.id, name);
+                        }}
+                        seen={seen}
+                      />
+                    </fieldset>
+                  )}
+
+                  {section === 'Statline' && (
+                    <>
+                      {/* The status line is MegaMUD's own StatLine command
+                          above; how the client draws it is the designer's. */}
+                      <RewritesDesigner
+                        figures={figures}
+                        idPrefix="rewrites"
+                        onChange={(next) => patch({ rewrites: next })}
+                        palette={palette}
+                        value={form.rewrites}
+                      />
+                    </>
+                  )}
+
+                  {section === 'Sounds' && (
+                    <>
+                      <fieldset className="settings-menus" data-fieldset="alerts-rules">
                         {/*
-                          The switch and the two figures it runs on are one
-                          row. A switch is two columns and a threshold is one,
-                          so the three fit a band with room to spare -- and a
-                          check alone above them spent a whole band saying
-                          nothing the legend had not already said.
-                        */}
-                        <div className="settings-inline">
-                          <CheckField
-                            checked={form.retreat}
-                            hint={t('settings.health.retreatHint')}
-                            label={t('settings.health.retreatLabel')}
-                            name="retreat"
-                            onChange={(value) => patch({ retreat: value })}
-                          />
-                          {form.retreat && (
-                            <>
-                              <NumberField
-                                label={t('settings.health.belowHealthLabel')}
-                                name="retreat-health"
-                                bar={barOfHealth(form.retreatBelow)}
-                                figure={ofHealth(form.retreatBelow)}
-                                onChange={(value) => patch({ retreatBelow: value })}
-                                value={form.retreatBelow}
-                              />
-                              <NumberField
-                                hint={t('settings.health.belowManaHint')}
-                                label={t('settings.health.belowManaLabel')}
-                                name="retreat-mana"
-                                bar={barOfMana(form.retreatBelowMana)}
-                                figure={ofMana(form.retreatBelowMana)}
-                                onChange={(value) => patch({ retreatBelowMana: value })}
-                                value={form.retreatBelowMana}
-                              />
-                              <NumberField
-                                hint={t('settings.health.outnumberedHint')}
-                                label={t('settings.health.outnumberedLabel')}
-                                name="outnumbered"
-                                onChange={(value) => patch({ retreatOutnumbered: value })}
-                                value={form.retreatOutnumbered}
-                              />
-                            </>
-                          )}
-                        </div>
-                        {form.retreat && (
-                          <>
-                            <SelectField
-                              hint={t('settings.health.retreatStrategyHint')}
-                              label={t('settings.health.retreatStrategyLabel')}
-                              name="retreat-strategy"
-                              onChange={(value) => patch({ retreatStrategy: value })}
-                              options={RETREAT_STRATEGIES.map((s) => ({ value: s, label: s }))}
-                              value={form.retreatStrategy}
-                            />
-                            {form.retreatStrategy === 'safe-haven' && (
-                              <TextField
-                                hint={t('settings.health.safeHavenHint')}
-                                label={t('settings.health.safeHavenLabel')}
-                                name="retreat-haven"
-                                onChange={(value) => patch({ retreatHaven: value })}
-                                placeholder={t('settings.health.safeHavenPlaceholder')}
-                                spellCheck={false}
-                                value={form.retreatHaven}
-                                wide
-                              />
-                            )}
-                          </>
-                        )}
+                        The player's own rows first, because they decide before
+                        the floor and the mute list below do — reading the
+                        screen top to bottom should be reading the order the
+                        client asks in (todo 29).
+                      */}
+                        <legend>{t('settings.alerts.ruleLegend')}</legend>
+                        <p className="settings-note">{t('settings.alerts.ruleNote')}</p>
+                        <AlertList
+                          namePrefix="alert-rule"
+                          onChange={(alertRules) => patch({ alertRules })}
+                          rules={form.alertRules}
+                        />
                       </fieldset>
+                    </>
+                  )}
 
+                  {section === 'Health' && (
+                    <>
                       <fieldset className="settings-menus" data-fieldset="health-flee">
                         <legend>{t('settings.health.fleeLegend')}</legend>
                         <p className="settings-note">{t('settings.health.fleeHint')}</p>
@@ -3370,84 +3214,13 @@ export default function SettingsScreen({
                           />
                         )}
                       </fieldset>
-
-                      <fieldset className="settings-menus" data-fieldset="health-hangup">
-                        <legend>{t('settings.health.hangUpLegend')}</legend>
-                        {/*
-                          The second and last warning left in the open. Every
-                          MegaMUD-era client offers this; on this server family
-                          it is one of the more reliable ways to die.
-                        */}
-                        <p className="settings-warn">{t('settings.health.hangUpWarning')}</p>
-                        <div className="settings-inline">
-                          <CheckField
-                            checked={form.hangUp}
-                            label={t('settings.health.hangUpLabel')}
-                            name="hangup"
-                            onChange={(value) => patch({ hangUp: value })}
-                          />
-                          {form.hangUp && (
-                            <NumberField
-                              label={t('settings.health.belowHealthLabel')}
-                              name="hangup-health"
-                              bar={barOfHealth(form.hangUpBelow)}
-                              figure={ofHealth(form.hangUpBelow)}
-                              onChange={(value) => patch({ hangUpBelow: value })}
-                              value={form.hangUpBelow}
-                            />
-                          )}
-                        </div>
-                        {form.hangUp && (
-                          <>
-                            <SelectField
-                              hint={t('settings.health.hangPenaltiesHint')}
-                              label={t('settings.health.hangPenaltiesLabel')}
-                              name="hang-penalties"
-                              onChange={(value) => patch({ hangUpPenalties: penaltiesOf(value) })}
-                              options={[
-                                { value: '', label: t('settings.health.hangPenaltiesRealm') },
-                                { value: 'yes', label: t('settings.health.hangPenaltiesYes') },
-                                { value: 'no', label: t('settings.health.hangPenaltiesNo') }
-                              ]}
-                              value={penaltiesChoice(form.hangUpPenalties)}
-                            />
-                            <CheckField
-                              checked={form.hangUpOnPlayer}
-                              label={t('settings.health.hangUpOnPlayer')}
-                              name="hangup-player"
-                              onChange={(value) => patch({ hangUpOnPlayer: value })}
-                            />
-                          </>
-                        )}
-                      </fieldset>
-
                       {/*
-                        *Use this item when that is true* (todo 19), and since
-                        todo 00 the only potion setting there is: two named
-                        slots stood above this with a name, a threshold and a
-                        shared verb each, and this says all of it plus the
-                        things they could not. The name field's suggestions are
-                        filtered by each row's own condition, from the realm.
+                        Kept beside the MegaMUD engine: the use goes on its
+                        pending list before the step into such a room
+                        (2026-10-14).
                       */}
-                      <fieldset className="settings-menus" data-fieldset="health-potions">
-                        <legend>{t('settings.health.potionRuleLegend')}</legend>
-                        <p className="settings-note">{t('settings.health.potionRuleNote')}</p>
-                        <PotionList
-                          namePrefix="potion-rule"
-                          onChange={(potionRules) => patch({ potionRules })}
-                          potions={form.potionRules}
-                          serving={serving}
-                        />
-                        {/*
-                          And the realm's own rows of the same list (todo 02).
-                          A player writes *drink the antidote when poisoned*;
-                          the realm has already written *use the waterskin
-                          where the desert spell is cast*, and the switch is
-                          whether that half is obeyed. The rows are drawn
-                          because a switch over a rule nobody can read is the
-                          invisible setting this project refuses everywhere
-                          else — they say which realm's rules these are.
-                        */}
+                      <fieldset className="settings-menus" data-fieldset="health-wards">
+                        <legend>{t('settings.health.wardsLegend')}</legend>
                         <CheckField
                           checked={form.useWards}
                           hint={t('settings.health.useWardsHint')}
@@ -3460,1017 +3233,47 @@ export default function SettingsScreen({
                     </>
                   )}
 
-                  {section === 'spells' && (
+                  {section === 'Combat' && (
                     <>
-                      {shownBook.unread && (
-                        <p className="settings-note">{t('settings.spells.bookUnreadNote')}</p>
-                      )}
-                      <fieldset className="settings-menus" data-fieldset="spells-round">
-                        <legend>{t('settings.spells.legend')}</legend>
-                        <CheckField
-                          checked={form.spellAutoChoose}
-                          hint={t('settings.spells.autoChooseHint')}
-                          label={t('settings.spells.autoChoose')}
-                          name="spell-auto-choose"
-                          onChange={(value) => patch({ spellAutoChoose: value })}
-                        />
-                        <SpellField
-                          hint={t('settings.spells.castHint')}
-                          label={t('settings.spells.castLabel')}
-                          name="spell"
-                          onChange={(value) => patch({ spellAttack: value })}
-                          spells={shownBook.spells}
-                          value={form.spellAttack}
-                        />
-                        <SpellField
-                          hint={t('settings.spells.fallbackCastHint')}
-                          label={t('settings.spells.fallbackCastLabel')}
-                          name="spell-fallback"
-                          onChange={(value) => patch({ spellAttackFallback: value })}
-                          spells={shownBook.spells}
-                          value={form.spellAttackFallback}
-                        />
-                        <NumberField
-                          hint={t('settings.spells.attackCastsHint')}
-                          label={t('settings.spells.attackCastsLabel')}
-                          name="attack-casts"
-                          onChange={(value) => patch({ spellAttackCasts: value })}
-                          value={form.spellAttackCasts}
-                        />
-                        <NumberField
-                          hint={t('settings.spells.minManaHint')}
-                          label={t('settings.spells.minManaLabel')}
-                          name="min-mana"
-                          onChange={(value) => patch({ spellMinMana: value })}
-                          bar={barOfMana(form.spellMinMana)}
-                          figure={ofMana(form.spellMinMana)}
-                          value={form.spellMinMana}
-                        />
-                        <SpellField
-                          hint={t('settings.spells.areaCastHint')}
-                          label={t('settings.spells.areaCastLabel')}
-                          name="area-spell"
-                          onChange={(value) => patch({ spellAreaAttack: value })}
-                          spells={shownBook.spells}
-                          value={form.spellAreaAttack}
-                        />
-                        <NumberField
-                          hint={t('settings.spells.areaMinMobsHint')}
-                          label={t('settings.spells.areaMinMobsLabel')}
-                          name="area-min-mobs"
-                          onChange={(value) => patch({ spellAreaMinMobs: value })}
-                          value={form.spellAreaMinMobs}
-                        />
-                        <NumberField
-                          hint={t('settings.spells.areaMinManaHint')}
-                          label={t('settings.spells.areaMinManaLabel')}
-                          name="area-min-mana"
-                          onChange={(value) => patch({ spellAreaMinMana: value })}
-                          bar={barOfMana(form.spellAreaMinMana)}
-                          figure={ofMana(form.spellAreaMinMana)}
-                          value={form.spellAreaMinMana}
-                        />
-                        <NumberField
-                          hint={t('settings.spells.areaCastsHint')}
-                          label={t('settings.spells.areaCastsLabel')}
-                          name="area-casts"
-                          onChange={(value) => patch({ spellAreaCasts: value })}
-                          value={form.spellAreaCasts}
-                        />
-                        <p className="settings-note">{t('settings.spells.note')}</p>
-                      </fieldset>
-
-                      <fieldset className="settings-menus" data-fieldset="spells-drain">
-                        <legend>{t('settings.spells.drainLegend')}</legend>
-                        <p className="settings-note">{t('settings.spells.drainNote')}</p>
-                        <div className="settings-inline">
-                          <SpellField
-                            hint={t('settings.spells.drainHint')}
-                            label={t('settings.spells.drainLabel')}
-                            name="drain"
-                            onChange={(value) => patch({ spellDrain: value })}
-                            spells={shownBook.drains}
-                            value={form.spellDrain}
-                          />
-                          <SpellField
-                            hint={t('settings.spells.areaDrainHint')}
-                            label={t('settings.spells.areaDrainLabel')}
-                            name="area-drain"
-                            onChange={(value) => patch({ spellAreaDrain: value })}
-                            spells={shownBook.drains}
-                            value={form.spellAreaDrain}
-                          />
-                          <NumberField
-                            hint={t('settings.spells.drainBelowHint')}
-                            label={t('settings.spells.drainBelowLabel')}
-                            name="drain-below"
-                            onChange={(value) => patch({ spellDrainBelow: value })}
-                            bar={barOfHealth(form.spellDrainBelow)}
-                            figure={ofHealth(form.spellDrainBelow)}
-                            value={form.spellDrainBelow}
-                          />
-                          <NumberField
-                            hint={t('settings.spells.drainToHint')}
-                            label={t('settings.spells.drainToLabel')}
-                            name="drain-to"
-                            onChange={(value) => patch({ spellDrainTo: value })}
-                            bar={barOfHealth(form.spellDrainTo)}
-                            figure={ofHealth(form.spellDrainTo)}
-                            value={form.spellDrainTo}
-                          />
-                        </div>
-                      </fieldset>
-
-                      <fieldset className="settings-menus" data-fieldset="spells-heal">
-                        <legend>{t('settings.spells.healLegend')}</legend>
-                        <CheckField
-                          checked={form.spellAutoChooseHeal}
-                          hint={t('settings.spells.autoChooseHealHint')}
-                          label={t('settings.spells.autoChooseHeal')}
-                          name="spell-auto-choose-heal"
-                          onChange={(value) => patch({ spellAutoChooseHeal: value })}
-                        />
-                        <div className="settings-inline">
-                          <SpellField
-                            hint={t('settings.spells.healHint')}
-                            label={t('settings.spells.healLabel')}
-                            name="heal"
-                            onChange={(value) => patch({ spellHeal: value })}
-                            spells={shownBook.selfHeals}
-                            value={form.spellHeal}
-                            warning={
-                              refusesTarget(shownBook.spells, castsOnSelf, form.spellHeal)
-                                ? t('settings.spells.healNoSelfCast')
-                                : undefined
-                            }
-                          />
-                          <NumberField
-                            label={t('settings.spells.healBelowLabel')}
-                            name="heal-below"
-                            onChange={(value) => patch({ spellHealBelow: value })}
-                            bar={barOfHealth(form.spellHealBelow)}
-                            figure={ofHealth(form.spellHealBelow)}
-                            value={form.spellHealBelow}
-                          />
-                          <NumberField
-                            hint={t('settings.spells.healBelowInCombatHint')}
-                            label={t('settings.spells.healBelowInCombatLabel')}
-                            name="heal-below-combat"
-                            onChange={(value) => patch({ spellHealBelowInCombat: value })}
-                            bar={barOfHealth(form.spellHealBelowInCombat)}
-                            figure={ofHealth(form.spellHealBelowInCombat)}
-                            value={form.spellHealBelowInCombat}
-                          />
-                          <NumberField
-                            hint={t('settings.spells.healToHint')}
-                            label={t('settings.spells.healToLabel')}
-                            name="heal-to"
-                            onChange={(value) => patch({ spellHealTo: value })}
-                            bar={barOfHealth(form.spellHealTo)}
-                            figure={ofHealth(form.spellHealTo)}
-                            value={form.spellHealTo}
-                          />
-                        </div>
-                        <CheckField
-                          checked={form.spellHealParty}
-                          hint={t('settings.spells.healPartyHint')}
-                          label={t('settings.spells.healParty')}
-                          name="heal-party"
-                          onChange={(value) => patch({ spellHealParty: value })}
-                        />
-                        <SpellField
-                          hint={t('settings.spells.healPartyWithHint')}
-                          label={t('settings.spells.healPartyWithLabel')}
-                          name="heal-party-with"
-                          onChange={(value) => patch({ spellHealPartyWith: value })}
-                          spells={shownBook.partyHeals}
-                          value={form.spellHealPartyWith}
-                          warning={
-                            refusesTarget(shownBook.spells, castsOnOthers, form.spellHealPartyWith)
-                              ? t('settings.spells.healNoPartyCast')
-                              : undefined
-                          }
-                        />
-                      </fieldset>
-
-                      <fieldset className="settings-menus" data-fieldset="spells-regen">
-                        <legend>{t('settings.spells.regenLegend')}</legend>
-                        <p className="settings-note">{t('settings.spells.regenNote')}</p>
-                        <RegenFields
-                          namePrefix="character"
-                          onChange={(spellRegen) => patch({ spellRegen })}
-                          regen={form.spellRegen}
-                          spells={shownBook.selfHeals}
-                        />
-                      </fieldset>
-
-                      <fieldset className="settings-menus" data-fieldset="spells-cures">
-                        <legend>{t('settings.spells.cureLegend')}</legend>
-                        <p className="settings-note">{t('settings.spells.cureNote')}</p>
-                        <CureFields
-                          cures={form.spellCures}
-                          gates={shownBook.gates}
-                          namePrefix="character"
-                          onChange={(spellCures) => patch({ spellCures })}
-                          spells={shownBook.spells}
-                        />
-                      </fieldset>
-
-                      <fieldset className="settings-menus" data-fieldset="spells-blessings">
-                        <legend>{t('settings.spells.blessingsLegend')}</legend>
-                        <p className="settings-note">{t('settings.spells.blessingsNote')}</p>
-                        <CheckField
-                          checked={form.spellAutoBless}
-                          hint={t('settings.spells.autoBlessHint')}
-                          label={t('settings.spells.autoBlessLabel')}
-                          name="auto-bless"
-                          onChange={(value) => patch({ spellAutoBless: value })}
-                        />
-                        <BlessingList
-                          blessings={form.spellBlessings}
-                          namePrefix="blessing"
-                          onChange={(spellBlessings) => patch({ spellBlessings })}
-                          spells={shownBook.spells}
-                        />
-                        <CheckField
-                          checked={form.spellNotifyWearOff}
-                          hint={t('settings.spells.notifyWearOffHint')}
-                          label={t('settings.spells.notifyWearOffLabel')}
-                          name="notify-wear-off"
-                          onChange={(value) => patch({ spellNotifyWearOff: value })}
-                        />
-                        {/*
-                          Beside the blessings this character *casts*, because
-                          it answers the same question from the other side: a
-                          weapon that blesses is a blessing nobody had to
-                          configure, and the list above is where somebody looks
-                          for one.
-                        */}
-                        <CheckField
-                          checked={form.spellInvokeItems}
-                          hint={t('settings.spells.invokeItemsHint')}
-                          label={t('settings.spells.invokeItemsLabel')}
-                          name="invoke-items"
-                          onChange={(value) => patch({ spellInvokeItems: value })}
-                        />
-                      </fieldset>
-                    </>
-                  )}
-
-                  {section === 'party' && (
-                    <>
-                      <fieldset className="settings-menus" data-fieldset="party-follow">
-                        <legend>{t('settings.party.legend')}</legend>
-                        <p className="settings-warn">{t('settings.party.warning')}</p>
-                        <CheckField
-                          checked={form.partyAssist}
-                          hint={t('settings.party.assistHint')}
-                          label={t('settings.party.assistLabel')}
-                          name="party-assist"
-                          onChange={(value) => patch({ partyAssist: value })}
-                        />
-                        <CheckField
-                          checked={form.partyDefend}
-                          hint={t('settings.party.defendHint')}
-                          label={t('settings.party.defendLabel')}
-                          name="party-defend"
-                          onChange={(value) => patch({ partyDefend: value })}
-                        />
-                        <CheckField
-                          checked={form.partyRest}
-                          hint={t('settings.party.restHint')}
-                          label={t('settings.party.restLabel')}
-                          name="party-rest"
-                          onChange={(value) => patch({ partyRest: value })}
-                        />
-                        <CheckField
-                          checked={form.partyAutoRank}
-                          hint={t('settings.party.autoRankHint')}
-                          label={t('settings.party.autoRankLabel')}
-                          name="party-auto-rank"
-                          onChange={(value) => patch({ partyAutoRank: value })}
-                        />
-                        <SelectField
-                          hint={t('settings.party.preferredRankHint')}
-                          label={t('settings.party.preferredRankLabel')}
-                          name="party-preferred-rank"
-                          onChange={(value) => patch({ partyPreferredRank: value as PartyRank })}
-                          options={RANK_OPTIONS()}
-                          value={form.partyPreferredRank}
-                        />
-                        <CheckField
-                          checked={form.partyIgnoreParty}
-                          hint={t('settings.party.ignorePartyHint')}
-                          label={t('settings.party.ignorePartyLabel')}
-                          name="party-ignore-party"
-                          onChange={(value) => patch({ partyIgnoreParty: value })}
-                        />
-                      </fieldset>
-                      <fieldset className="settings-menus" data-fieldset="party-leading">
-                        <legend>{t('settings.party.leadLegend')}</legend>
-                        <p className="settings-note">{t('settings.party.leadNote')}</p>
-                        <div className="settings-inline">
-                          <NumberField
-                            hint={t('settings.party.waitBelowHint')}
-                            label={t('settings.party.waitBelowLabel')}
-                            name="party-wait-below"
-                            onChange={(value) => patch({ partyWaitBelow: value })}
-                            bar={barOfHealth(form.partyWaitBelow)}
-                            figure={ofHealth(form.partyWaitBelow)}
-                            value={form.partyWaitBelow}
-                          />
-                          <NumberField
-                            hint={t('settings.party.waitMinutesHint')}
-                            label={t('settings.party.waitMinutesLabel')}
-                            name="party-wait-minutes"
-                            onChange={(value) => patch({ partyWaitMinutes: value })}
-                            value={form.partyWaitMinutes}
-                          />
-                          <NumberField
-                            hint={t('settings.party.parEveryHint')}
-                            label={t('settings.party.parEveryLabel')}
-                            name="party-par-every"
-                            onChange={(value) => patch({ partyParEvery: value })}
-                            value={form.partyParEvery}
-                          />
-                        </div>
-                        <CheckField
-                          checked={form.partyIgnoreWait}
-                          hint={t('settings.party.ignoreWaitHint')}
-                          label={t('settings.party.ignoreWaitLabel')}
-                          name="party-ignore-wait"
-                          onChange={(value) => patch({ partyIgnoreWait: value })}
-                        />
-                        <CheckField
-                          checked={form.partyParAfterRound}
-                          hint={t('settings.party.parAfterRoundHint')}
-                          label={t('settings.party.parAfterRoundLabel')}
-                          name="party-par-after-round"
-                          onChange={(value) => patch({ partyParAfterRound: value })}
-                        />
-                        <CheckField
-                          checked={form.partyRequestHealth}
-                          hint={t('settings.party.requestHealthHint')}
-                          label={t('settings.party.requestHealthLabel')}
-                          name="party-request-health"
-                          onChange={(value) => patch({ partyRequestHealth: value })}
-                        />
-                      </fieldset>
-                      <fieldset className="settings-menus" data-fieldset="party-healing">
-                        <legend>{t('settings.party.healLegend')}</legend>
-                        <p className="settings-note">{t('settings.party.healNote')}</p>
-                        <div className="settings-inline">
-                          <NumberField
-                            hint={t('settings.party.askHealHint')}
-                            label={t('settings.party.askHealLabel')}
-                            name="party-ask-heal"
-                            onChange={(value) => patch({ partyAskHeal: value })}
-                            bar={barOfHealth(form.partyAskHeal)}
-                            figure={ofHealth(form.partyAskHeal)}
-                            value={form.partyAskHeal}
-                          />
-                        </div>
-                      </fieldset>
                       {/*
-                        The party's `@` commands, here rather than beside the
-                        gang's on the Remotes page, because this is where
-                        somebody is thinking about what a party does together —
-                        and the Remotes page says the list is here.
-
-                        Drawn whether or not this character answers remotes at
-                        all: that switch is on another page, and a grid that
-                        vanished when it was off would be a control somebody
-                        has to already know about to find. The warning says so
-                        instead, the way the Gang card's does.
-                      */}
-                      <fieldset className="settings-menus" data-fieldset="party-remotes">
-                        <legend>{t('settings.party.remotesLegend')}</legend>
-                        <p className="settings-note">{t('settings.party.remotesNote')}</p>
-                        {form.answerRemotes ? null : (
-                          <p className="settings-warn">{t('settings.party.remotesOffWarning')}</p>
-                        )}
-                        <RemoteList
-                          allow={form.remoteParty}
-                          mode="party"
-                          onSet={(remote, stance) =>
-                            patch({
-                              remoteParty:
-                                stance === 'allow'
-                                  ? [...form.remoteParty, remote]
-                                  : form.remoteParty.filter((entry) => entry !== remote)
-                            })
-                          }
-                          onSetAll={(stance) =>
-                            patch({
-                              remoteParty: stance === 'allow' ? [...ACTIONABLE_REMOTES] : []
-                            })
-                          }
-                          subject={t('settings.party.remotesLegend')}
-                        />
-                      </fieldset>
-                      <p className="settings-note">{t('settings.party.blessingsMoved')}</p>
-                    </>
-                  )}
-
-                  {section === 'train' && (
-                    <fieldset className="settings-menus" data-fieldset="train">
-                      <legend>{t('settings.train.legend')}</legend>
-                      <p className="settings-warn">{t('settings.train.warning')}</p>
-                      {/*
-                        Going to collect the level, and where (todo 18).
-                        Above the stat screen's own switch because it comes
-                        first in time: the points this spends are awarded by
-                        the level this collects.
-                      */}
-                      <CheckField
-                        checked={form.trainLevels}
-                        hint={t('settings.train.levelsHint')}
-                        label={t('settings.train.levels')}
-                        name="train-levels"
-                        onChange={(value) => patch({ trainLevels: value })}
-                      />
-                      {form.trainLevels && (
-                        <>
-                          {/*
-                            Only the rooms the realm says will take this
-                            character at this level — a trainer that refuses
-                            is a walk across two maps to be told so. The class
-                            room stops at level 10 and every band has a
-                            ceiling, so the list shrinks as the character
-                            grows and a stated room can stop being offered.
+                            This character's own monster rows, laid over the
+                            realm's table field by field -- a shaman's spell
+                            for a monster the realm marks Flee keeps the Flee.
+                            The one list about named monsters: what to leave
+                            alone is a Friend, and the attack order is the
+                            priority. Part of the form's draft, so it saves
+                            with it.
                           */}
-                          <SelectField
-                            hint={t('settings.train.trainerHint')}
-                            label={t('settings.train.trainerLabel')}
-                            name="train-trainer"
-                            onChange={(value) => patch({ trainTrainer: value })}
-                            options={[
-                              { value: '', label: t('settings.train.trainerCheapest') },
-                              ...(trainers ?? []).map((entry) => ({
-                                value: String(entry.shop),
-                                label: t('settings.train.trainerOption', {
-                                  name: entry.name,
-                                  room: entry.roomName,
-                                  cost: entry.cost.toLocaleString()
-                                })
-                              }))
-                            ]}
-                            value={form.trainTrainer}
-                          />
-                          {/*
-                            Said out loud, because an empty picker and a
-                            picker still loading look the same and mean
-                            opposite things. And a stated room no longer in
-                            the list is the case the reviewer asked about:
-                            the errand refuses rather than quietly walking
-                            somewhere else.
-                          */}
-                          {trainers !== null && trainers.length === 0 && (
-                            <p className="settings-warn">{t('settings.train.trainerNowhere')}</p>
-                          )}
-                          {trainers !== null &&
-                            form.trainTrainer !== '' &&
-                            !trainers.some((entry) => String(entry.shop) === form.trainTrainer) && (
-                              <p className="settings-warn">{t('settings.train.trainerStale')}</p>
-                            )}
-                        </>
-                      )}
-                      <CheckField
-                        checked={form.trainStats}
-                        hint={t('settings.train.statsHint')}
-                        label={t('settings.train.stats')}
-                        name="train-stats"
-                        onChange={(value) => patch({ trainStats: value })}
-                      />
-                      <p className="settings-note">{t('settings.train.wantedNote')}</p>
-                      <div className="settings-inline">
-                        <NumberField
-                          label={t('settings.train.strength')}
-                          name="train-strength"
-                          onChange={(value) =>
-                            patch({ trainWanted: { ...form.trainWanted, strength: value } })
-                          }
-                          value={form.trainWanted.strength}
-                        />
-                        <NumberField
-                          label={t('settings.train.intellect')}
-                          name="train-intellect"
-                          onChange={(value) =>
-                            patch({ trainWanted: { ...form.trainWanted, intellect: value } })
-                          }
-                          value={form.trainWanted.intellect}
-                        />
-                        <NumberField
-                          label={t('settings.train.willpower')}
-                          name="train-willpower"
-                          onChange={(value) =>
-                            patch({ trainWanted: { ...form.trainWanted, willpower: value } })
-                          }
-                          value={form.trainWanted.willpower}
-                        />
-                        <NumberField
-                          label={t('settings.train.agility')}
-                          name="train-agility"
-                          onChange={(value) =>
-                            patch({ trainWanted: { ...form.trainWanted, agility: value } })
-                          }
-                          value={form.trainWanted.agility}
-                        />
-                        <NumberField
-                          label={t('settings.train.health')}
-                          name="train-health"
-                          onChange={(value) =>
-                            patch({ trainWanted: { ...form.trainWanted, health: value } })
-                          }
-                          value={form.trainWanted.health}
-                        />
-                        <NumberField
-                          label={t('settings.train.charm')}
-                          name="train-charm"
-                          onChange={(value) =>
-                            patch({ trainWanted: { ...form.trainWanted, charm: value } })
-                          }
-                          value={form.trainWanted.charm}
-                        />
-                      </div>
-                    </fieldset>
-                  )}
-
-                  {section === 'gear' && (
-                    <>
-                      {/*
-                        The kit, and when to be in it (todo 00). The sets are
-                        the section; the off-round invocation is its own
-                        fieldset because it is a different verb — `use` rather
-                        than `wear` — and the only control here that spends a
-                        round of a fight.
-                      */}
-                      <fieldset className="settings-menus" data-fieldset="gear">
-                        <legend>{t('settings.gear.legend')}</legend>
-                        <p className="settings-note">{t('settings.gear.note')}</p>
-                        <CheckField
-                          checked={form.gearEnabled}
-                          hint={t('settings.gear.enabledHint')}
-                          label={t('settings.gear.enabled')}
-                          name="gear-enabled"
-                          onChange={(value) => patch({ gearEnabled: value })}
-                        />
-                        <GearSetList
-                          mobs={mobs}
-                          namePrefix="gear-set"
-                          onChange={(gearSets) => patch({ gearSets })}
-                          sets={form.gearSets}
-                        />
-                      </fieldset>
-
-                      <fieldset className="settings-menus" data-fieldset="gear-offround">
-                        <legend>{t('settings.gear.offRoundLegend')}</legend>
-                        <p className="settings-note">{t('settings.gear.offRoundNote')}</p>
-                        <div className="settings-inline">
-                          <TextField
-                            hint={t('settings.gear.offRoundItemHint')}
-                            label={t('settings.gear.offRoundItem')}
-                            name="gear-offround-item"
-                            onChange={(value) => patch({ gearOffRoundItem: value })}
-                            value={form.gearOffRoundItem}
-                          />
-                          <NumberField
-                            hint={t('settings.gear.offRoundEveryHint')}
-                            label={t('settings.gear.offRoundEvery')}
-                            name="gear-offround-every"
-                            onChange={(value) => patch({ gearOffRoundEvery: value })}
-                            value={form.gearOffRoundEvery}
+                      <fieldset className="settings-menus" data-fieldset="combat-monster-rows">
+                        <legend>{t('settings.combat.monsterRowsLegend')}</legend>
+                        <p className="settings-note">{t('settings.combat.monsterRowsNote')}</p>
+                        <div className="realm-messages">
+                          <MonsterRuleList
+                            addLabel={t('settings.monsters.add')}
+                            emptyText={t('settings.combat.monsterRowsNone')}
+                            known={monsterNames}
+                            namePrefix="character-monster"
+                            onChange={(rows) => {
+                              patch({ combatMonsters: rows });
+                              return Promise.resolve(null);
+                            }}
+                            rows={form.combatMonsters}
                           />
                         </div>
                       </fieldset>
                     </>
                   )}
 
-                  {section === 'quests' && (
-                    <fieldset className="settings-menus" data-fieldset="quests">
-                      <legend>{t('settings.quests.legend')}</legend>
-                      <p className="settings-warn">{t('settings.quests.warning')}</p>
-                      <CheckField
-                        checked={form.questsEnabled}
-                        hint={t('settings.quests.enabledHint')}
-                        label={t('settings.quests.enabled')}
-                        name="quests-enabled"
-                        onChange={(value) => patch({ questsEnabled: value })}
-                      />
-                    </fieldset>
-                  )}
-
-                  {section === 'remotes' && (
-                    <fieldset className="settings-menus" data-fieldset="remotes">
-                      <legend>{t('settings.remotes.legend')}</legend>
-                      {/*
-                        The third warning in the open, and it earns the place
-                        the other two do: what this switch turns on is a channel
-                        by which somebody else's typing moves this character.
-                        Above the control, because a warning behind a hover is
-                        one nobody reads until afterwards.
-                      */}
-                      <p className="settings-warn">{t('settings.remotes.channelWarning')}</p>
-                      <CheckField
-                        checked={form.answerRemotes}
-                        hint={t('settings.remotes.answerHint')}
-                        label={t('settings.remotes.enabledLabel')}
-                        name="remotes-enabled"
-                        onChange={(value) => patch({ answerRemotes: value })}
-                      />
-                      {/*
-                        The gate. Only drawn with the switch on: grants for a
-                        channel nobody is listening on are a form asking a
-                        question that cannot matter yet.
-                      */}
-                      {form.answerRemotes && (
-                        <>
-                          <CheckField
-                            checked={form.remoteGangpath}
-                            hint={t('settings.remotes.gangpathHint')}
-                            label={t('settings.remotes.gangpathLabel')}
-                            name="remotes-gangpath"
-                            onChange={(value) => patch({ remoteGangpath: value })}
-                          />
-                          <CheckField
-                            checked={form.remoteAutoJoin}
-                            hint={t('settings.remotes.autoJoinHint')}
-                            label={t('settings.remotes.autoJoinLabel')}
-                            name="remotes-auto-join"
-                            onChange={(value) => patch({ remoteAutoJoin: value })}
-                          />
-                          {/*
-                            Nothing on the wire establishes who shares a gang
-                            on its own: a gangpath does not prove it, and this
-                            character's own outgoing one comes back naming
-                            itself. Said where the grant is made, not only when
-                            it silently fails to allow somebody.
-                          */}
-                          <p className="settings-warn">{t('settings.remotes.gangWarning')}</p>
-                          <h4 className="settings-subhead">{t('settings.remotes.gangLegend')}</h4>
-                          <RemoteList
-                            allow={form.remoteGang}
-                            mode="gang"
-                            onSet={(remote, stance) =>
-                              patch({
-                                remoteGang:
-                                  stance === 'allow'
-                                    ? [...form.remoteGang, remote]
-                                    : form.remoteGang.filter((entry) => entry !== remote)
-                              })
-                            }
-                            onSetAll={(stance) =>
-                              patch({
-                                remoteGang: stance === 'allow' ? [...ACTIONABLE_REMOTES] : []
-                              })
-                            }
-                            subject={t('settings.remotes.gangLegend')}
-                          />
-
-                          {/*
-                            The per-player half, which the Player flyout also
-                            writes — and it is here because the flyout can only
-                            be opened on somebody the client has *seen*. A pair
-                            of characters set up before either has logged in is
-                            the ordinary case, and a permission reachable only
-                            once the person is standing in front of you is one
-                            you cannot prepare.
-                          */}
-                          <PlayerGrants
-                            grants={form.remotePlayers}
-                            onChange={(players) => patch({ remotePlayers: players })}
-                          />
-                        </>
-                      )}
-                      {/*
-                        Where the third list is. A permission page showing two
-                        of the three grants would have somebody auditing who
-                        can drive this character conclude they had seen it all.
-                      */}
-                      <p className="settings-note">{t('settings.remotes.partyListNote')}</p>
-                      <p className="settings-note">{t('settings.remotes.remoteControlNote')}</p>
-                      <p className="settings-note">{t('settings.remotes.replyRoutingNote')}</p>
-                    </fieldset>
-                  )}
-
-                  {section === 'talk' && (
+                  {section === 'Loot' && (
                     <>
-                      <fieldset className="settings-menus" data-fieldset="talk">
-                        <legend>{t('settings.talk.legend')}</legend>
-                        {/*
-                        The cost is stated above the switch rather than behind a
-                        hover, the way the remotes warning is: this one spends a
-                        command per stranger *and* tells them they were looked
-                        at, which on a PvP realm is the half somebody would want
-                        to know before turning it on rather than after.
-                      */}
-                        <p className="settings-warn">{t('settings.talk.lookWarning')}</p>
-                        <CheckField
-                          checked={form.lookAtPlayers}
-                          hint={t('settings.talk.lookHint')}
-                          label={t('settings.talk.lookLabel')}
-                          name="talk-look"
-                          onChange={(value) => patch({ lookAtPlayers: value })}
-                        />
-                      </fieldset>
-
-                      <fieldset className="settings-menus" data-fieldset="talk-pvp">
-                        <legend>{t('settings.health.pvpLegend')}</legend>
-                        <CheckField
-                          checked={form.pvpNotifyGang}
-                          hint={t('settings.health.pvpNotifyHint')}
-                          label={t('settings.health.pvpNotifyLabel')}
-                          name="pvp-notify"
-                          onChange={(value) => patch({ pvpNotifyGang: value })}
-                        />
-                        <SelectField
-                          hint={t('settings.health.pvpActionHint')}
-                          label={t('settings.health.pvpActionLabel')}
-                          name="pvp-action"
-                          onChange={(value) =>
-                            patch({ pvpAction: value === 'retreat' ? 'retreat' : 'none' })
-                          }
-                          options={PVP_ACTIONS.map((action) => ({
-                            value: action,
-                            label: action
-                          }))}
-                          value={form.pvpAction}
-                        />
-                      </fieldset>
-                    </>
-                  )}
-
-                  {section === 'rewrites' && (
-                    <>
-                      <fieldset className="settings-menus" data-fieldset="rewrites-statline">
-                        <legend>{t('settings.statline.legend')}</legend>
-                        <CheckField
-                          checked={form.statlineControl}
-                          hint={t('settings.statline.controlHint')}
-                          label={t('settings.statline.controlLabel')}
-                          name="statline-control"
-                          onChange={(value) => patch({ statlineControl: value })}
-                        />
-                        <p className="settings-note">{t('settings.statline.templateNote')}</p>
-                      </fieldset>
-                      <RewritesDesigner
-                        figures={figures}
-                        idPrefix="rewrites"
-                        onChange={(next) => patch({ rewrites: next })}
-                        palette={palette}
-                        value={form.rewrites}
+                      <ItemDetailsFieldset
+                        idPrefix=""
+                        onChange={(itemDetails) => patch({ loot: { ...form.loot, itemDetails } })}
+                        rows={form.loot.itemDetails}
                       />
-                    </>
-                  )}
-
-                  {section === 'alerts' && (
-                    <fieldset className="settings-menus" data-fieldset="alerts-rules">
-                      {/*
-                        The player's own rows first, because they decide before
-                        the floor and the mute list below do — reading the
-                        screen top to bottom should be reading the order the
-                        client asks in (todo 29).
-                      */}
-                      <legend>{t('settings.alerts.ruleLegend')}</legend>
-                      <p className="settings-note">{t('settings.alerts.ruleNote')}</p>
-                      <AlertList
-                        namePrefix="alert-rule"
-                        onChange={(alertRules) => patch({ alertRules })}
-                        rules={form.alertRules}
-                      />
-                    </fieldset>
-                  )}
-
-                  {/*
-                    Beside the alerts, because both are about a player who is
-                    not looking: alerts are what they hear about the character,
-                    and this is what the character says for them.
-                  */}
-                  {section === 'alerts' && (
-                    <fieldset className="settings-menus" data-fieldset="alerts-afk">
-                      <legend>{t('settings.afk.legend')}</legend>
-                      <div className="settings-inline">
-                        <CheckField
-                          checked={form.afkEnabled}
-                          hint={t('settings.afk.enabledHint')}
-                          label={t('settings.afk.enabled')}
-                          name="afk-enabled"
-                          onChange={(value) => patch({ afkEnabled: value })}
-                        />
-                        <NumberField
-                          hint={t('settings.afk.afterHint')}
-                          label={t('settings.afk.afterLabel')}
-                          name="afk-after"
-                          onChange={(value) => patch({ afkAfterMinutes: value })}
-                          value={form.afkAfterMinutes}
-                        />
-                        <TextField
-                          hint={t('settings.afk.replyHint')}
-                          label={t('settings.afk.replyLabel')}
-                          name="afk-reply"
-                          onChange={(value) => patch({ afkReply: value })}
-                          value={form.afkReply}
-                        />
-                      </div>
-                    </fieldset>
-                  )}
-
-                  {section === 'movement' && (
-                    <>
-                      {/*
-                        Four questions, four fieldsets (todo 00). This was one
-                        fieldset of fourteen controls under a single *Walking a
-                        Route* legend, which is a list rather than a form: doors,
-                        the shadows, light, the kit and what a condition stops
-                        are four separate decisions, and a reader looking for one
-                        of them had to read all of it. The groups are the
-                        questions, in the order a step asks them.
-                      */}
-                      <fieldset className="settings-menus" data-fieldset="movement-doors">
-                        <legend>{t('settings.movement.doorsLegend')}</legend>
-                        <div className="settings-inline">
-                          <CheckField
-                            checked={form.openDoors}
-                            hint={t('settings.movement.openDoorsHint')}
-                            label={t('settings.movement.openDoors')}
-                            name="open-doors"
-                            onChange={(value) => patch({ openDoors: value })}
-                          />
-                          {form.openDoors && (
-                            <NumberField
-                              label={t('settings.movement.openTries')}
-                              name="open-tries"
-                              onChange={(value) => patch({ openTries: value })}
-                              value={form.openTries}
-                            />
-                          )}
-                        </div>
-                        {/*
-                          Picking above bashing, in the order the walker tries
-                          them — and for the reason it does: one costs a
-                          command and the other costs a command and some
-                          health.
-                        */}
-                        <div className="settings-inline">
-                          <CheckField
-                            checked={form.pickLocks}
-                            hint={t('settings.movement.pickLocksHint')}
-                            label={t('settings.movement.pickLocks')}
-                            name="pick-locks"
-                            onChange={(value) => patch({ pickLocks: value })}
-                          />
-                          {form.pickLocks && (
-                            <NumberField
-                              label={t('settings.movement.pickTries')}
-                              name="pick-tries"
-                              onChange={(value) => patch({ pickTries: value })}
-                              value={form.pickTries}
-                            />
-                          )}
-                        </div>
-                        <div className="settings-inline">
-                          <CheckField
-                            checked={form.bashDoors}
-                            hint={t('settings.movement.bashDoorsHint')}
-                            label={t('settings.movement.bashDoors')}
-                            name="bash-doors"
-                            onChange={(value) => patch({ bashDoors: value })}
-                          />
-                          {form.bashDoors && (
-                            <NumberField
-                              label={t('settings.movement.bashTries')}
-                              name="bash-tries"
-                              onChange={(value) => patch({ bashTries: value })}
-                              value={form.bashTries}
-                            />
-                          )}
-                        </div>
-                      </fieldset>
-
-                      <fieldset className="settings-menus" data-fieldset="movement-stealth">
-                        <legend>{t('settings.movement.stealthLegend')}</legend>
-                        <CheckField
-                          checked={form.sneak}
-                          hint={t('settings.movement.sneakHint')}
-                          label={t('settings.movement.sneak')}
-                          name="sneak"
-                          onChange={(value) => patch({ sneak: value })}
-                        />
-                      </fieldset>
-
-                      <fieldset className="settings-menus" data-fieldset="movement-light">
-                        <legend>{t('settings.movement.lightLegend')}</legend>
-                        <CheckField
-                          checked={form.provideLight}
-                          hint={t('settings.movement.provideLightHint')}
-                          label={t('settings.movement.provideLight')}
-                          name="provide-light"
-                          onChange={(value) => patch({ provideLight: value })}
-                        />
-                        {form.provideLight && (
-                          <>
-                            <CheckField
-                              checked={form.lightDimRooms}
-                              hint={t('settings.movement.lightDimRoomsHint')}
-                              label={t('settings.movement.lightDimRooms')}
-                              name="light-dim-rooms"
-                              onChange={(value) => patch({ lightDimRooms: value })}
-                            />
-                            <CheckField
-                              checked={form.extinguishInLight}
-                              hint={t('settings.movement.extinguishInLightHint')}
-                              label={t('settings.movement.extinguishInLight')}
-                              name="extinguish-in-light"
-                              onChange={(value) => patch({ extinguishInLight: value })}
-                            />
-                          </>
-                        )}
-                      </fieldset>
-
-                      <fieldset className="settings-menus" data-fieldset="movement-afflictions">
-                        <legend>{t('settings.movement.afflictionsLegend')}</legend>
-                        <CheckField
-                          checked={form.walkWhileBlind}
-                          hint={t('settings.movement.walkWhileBlindHint')}
-                          label={t('settings.movement.walkWhileBlind')}
-                          name="walk-while-blind"
-                          onChange={(value) => patch({ walkWhileBlind: value })}
-                        />
-                        <CheckField
-                          checked={form.walkWhilePoisoned}
-                          hint={t('settings.movement.walkWhilePoisonedHint')}
-                          label={t('settings.movement.walkWhilePoisoned')}
-                          name="walk-while-poisoned"
-                          onChange={(value) => patch({ walkWhilePoisoned: value })}
-                        />
-                        <CheckField
-                          checked={form.walkWhileConfused}
-                          hint={t('settings.movement.walkWhileConfusedHint')}
-                          label={t('settings.movement.walkWhileConfused')}
-                          name="walk-while-confused"
-                          onChange={(value) => patch({ walkWhileConfused: value })}
-                        />
-                        <CheckField
-                          checked={form.walkWhileLosingHp}
-                          hint={t('settings.movement.walkWhileLosingHpHint')}
-                          label={t('settings.movement.walkWhileLosingHp')}
-                          name="walk-while-losing-hp"
-                          onChange={(value) => patch({ walkWhileLosingHp: value })}
-                        />
-                        <CheckField
-                          checked={form.fightOnArrival}
-                          hint={t('settings.movement.fightOnArrivalHint')}
-                          label={t('settings.movement.fightOnArrival')}
-                          name="fight-on-arrival"
-                          onChange={(value) => patch({ fightOnArrival: value })}
-                        />
-                      </fieldset>
-
-                      <fieldset className="settings-menus" data-fieldset="movement-keep-out">
-                        <legend>{t('settings.movement.keepOutLegend')}</legend>
-                        <TextField
-                          hint={t('settings.movement.keepOutOfHint')}
-                          label={t('settings.movement.keepOutOf')}
-                          name="keep-out-of"
-                          onChange={(value) => patch({ keepOutOf: splitNames(value) })}
-                          placeholder={t('settings.movement.keepOutOfPlaceholder')}
-                          value={joinNames(form.keepOutOf)}
-                          wide
-                        />
-                      </fieldset>
 
                       <fieldset className="settings-menus" data-fieldset="movement-carry">
                         <legend>{t('settings.movement.carryLegend')}</legend>
-                        <CheckField
-                          checked={form.recoverGear}
-                          hint={t('settings.movement.recoverGearHint')}
-                          label={t('settings.movement.recoverGear')}
-                          name="recover-gear"
-                          onChange={(value) => patch({ recoverGear: value })}
-                        />
-                        {/*
-                          The bounds, drawn only where the switch is on: two
-                          numbers limiting a feature nobody has turned on are
-                          two controls that do nothing (todo 21).
-                        */}
-                        {form.recoverGear && (
-                          <div className="settings-inline">
-                            <NumberField
-                              hint={t('settings.movement.recoverGearFloorHint')}
-                              label={t('settings.movement.recoverGearFloorLabel')}
-                              name="recover-gear-floor"
-                              onChange={(value) => patch({ recoverGearFloor: value })}
-                              value={form.recoverGearFloor}
-                            />
-                            <NumberField
-                              hint={t('settings.movement.recoverGearTriesHint')}
-                              label={t('settings.movement.recoverGearTriesLabel')}
-                              name="recover-gear-tries"
-                              onChange={(value) => patch({ recoverGearTries: value })}
-                              value={form.recoverGearTries}
-                            />
-                          </div>
-                        )}
                         <CheckField
                           checked={form.collectKeys}
                           hint={t('settings.movement.collectKeysHint')}
@@ -4479,88 +3282,6 @@ export default function SettingsScreen({
                           onChange={(value) => patch({ collectKeys: value })}
                         />
                       </fieldset>
-
-                      {/*
-                        What this character picks up, puts down, searches for
-                        and banks — the same four fieldsets the Global page has
-                        always had, which this page had none of (todo 03).
-                        `resolveProfile` overlays whatever `automation:` a
-                        profile states, so a character could hold its own
-                        answers all along and no screen could write one.
-                      */}
-                      <CarrySections
-                        banking={form.banking}
-                        banks={banks}
-                        drop={form.drop}
-                        idPrefix=""
-                        loot={form.loot}
-                        onChange={patch}
-                        search={form.search}
-                      />
-
-                      {/*
-                        Where the character should be at all (todo 05), beside
-                        the loops rather than under Training: what it decides
-                        is a place, and the loop it runs when it gets there is
-                        built from the survey rather than taken off the shelf
-                        above.
-                      */}
-                      <fieldset className="settings-menus" data-fieldset="hunting">
-                        <legend>{t('settings.hunting.legend')}</legend>
-                        <p className="settings-note">{t('settings.hunting.note')}</p>
-                        <div className="settings-inline">
-                          <CheckField
-                            checked={form.huntAuto}
-                            hint={t('settings.hunting.autoHint')}
-                            label={t('settings.hunting.auto')}
-                            name="hunt-auto"
-                            onChange={(value) => patch({ huntAuto: value })}
-                          />
-                          {form.huntAuto && (
-                            <NumberField
-                              hint={t('settings.hunting.radiusHint')}
-                              label={t('settings.hunting.radius')}
-                              name="hunt-radius"
-                              onChange={(value) => patch({ huntRadius: value })}
-                              value={form.huntRadius}
-                            />
-                          )}
-                        </div>
-                      </fieldset>
-
-                      {/*
-                        The loops this character owns, and the ones it merely
-                        walks. A separate fieldset from the two switches above
-                        rather than three more rows in one, because they answer
-                        different questions: those are what a route may do on
-                        the way, and this is where the character goes at all.
-                      */}
-                      <LoopSection
-                        catalogue={catalogue}
-                        inherited={inheritedLoops}
-                        loops={form.loops}
-                        note={t('settings.movement.loopsNote')}
-                        onDonePicking={() => setPicking(false)}
-                        onOpenPicker={openPicker}
-                        onToggle={toggleLoop}
-                        picking={picking}
-                        /*
-                          The one thing about this that can be wrong without
-                          looking wrong. The shipped loops name rooms by
-                          `map/room` in Paradigm's world, the one they were
-                          recorded in; a realm pinned to the other bundled
-                          world or to its own database has different rooms
-                          behind the same numbers, and a route planned from
-                          one goes somewhere nobody chose.
-                        */
-                        warning={
-                          walksAnotherWorld(
-                            servers.find((entry) => entry.name === form.serverName)?.database ?? ''
-                          ) && form.loops.length > 0
-                            ? t('settings.movement.loopsWarning')
-                            : undefined
-                        }
-                      />
                     </>
                   )}
 
@@ -4619,13 +3340,12 @@ export default function SettingsScreen({
           ) : (
             <>
               {/*
-                A realm has no sections -- its form is short enough to read
-                whole -- so the rail here is the picker alone. It is still the
-                rail rather than the old list, because navigation that changed
-                shape from page to page would be two screens.
+                The realm's sections, one shown at a time, as the Character
+                page's are (2026-10-15): the form outgrew one scroll once its
+                imported tables and the MegaMUD set-up joined it.
               */}
               <SettingsNav
-                onSection={() => undefined}
+                onSection={(id: string) => setRealmSection(id as RealmSection)}
                 picker={{
                   addId: NEW_SERVER,
                   addLabel: t('settings.realms.new'),
@@ -4638,8 +3358,8 @@ export default function SettingsScreen({
                   label: t('settings.nav.realm'),
                   onChoose: (name: string) => chooseServer(name)
                 }}
-                section=""
-                sections={[]}
+                section={realmSection}
+                sections={realmSections()}
               />
 
               {serverForm === null ? (
@@ -4647,48 +3367,52 @@ export default function SettingsScreen({
               ) : (
                 <form
                   className="settings-form"
+                  // In MegaMUD's face, as the Character page is (2026-10-16).
+                  data-megamud="true"
                   data-section="realm"
                   onSubmit={(event) => void submitServer(event)}
                 >
-                  {/*
+                  {realmSection === 'realm' && (
+                    <>
+                      {/*
                     A realm form has no sections, so it states its subject
                     instead: it is the same thing the Global page's Realm
                     section edits, and it reads in the same hue.
                   */}
-                  {/* What the realm is called and where it is: one row, since
+                      {/* What the realm is called and where it is: one row, since
                       neither half identifies it on its own. */}
-                  <div className="settings-inline">
-                    <TextField
-                      hint={t('settings.realms.nameHint')}
-                      inputRef={firstFieldRef}
-                      label={t('settings.realms.nameLabel')}
-                      name="server-name"
-                      onChange={(value) => setServerForm({ ...serverForm, name: value })}
-                      placeholder={t('settings.realms.namePlaceholder')}
-                      value={serverForm.name}
-                    />
-                    <TextField
-                      label={t('settings.profile.hostLabel')}
-                      name="server-host"
-                      onChange={(value) => setServerForm({ ...serverForm, host: value })}
-                      placeholder={t('settings.profile.hostPlaceholder')}
-                      spellCheck={false}
-                      value={serverForm.host}
-                    />
-                    <NumberField
-                      label={t('settings.profile.portLabel')}
-                      name="server-port"
-                      onChange={(value) =>
-                        setServerForm({
-                          ...serverForm,
-                          port: Number.parseInt(value, 10) || 0
-                        })
-                      }
-                      value={serverForm.port || ''}
-                    />
-                  </div>
+                      <div className="settings-inline">
+                        <TextField
+                          hint={t('settings.realms.nameHint')}
+                          inputRef={firstFieldRef}
+                          label={t('settings.realms.nameLabel')}
+                          name="server-name"
+                          onChange={(value) => setServerForm({ ...serverForm, name: value })}
+                          placeholder={t('settings.realms.namePlaceholder')}
+                          value={serverForm.name}
+                        />
+                        <TextField
+                          label={t('settings.profile.hostLabel')}
+                          name="server-host"
+                          onChange={(value) => setServerForm({ ...serverForm, host: value })}
+                          placeholder={t('settings.profile.hostPlaceholder')}
+                          spellCheck={false}
+                          value={serverForm.host}
+                        />
+                        <NumberField
+                          label={t('settings.profile.portLabel')}
+                          name="server-port"
+                          onChange={(value) =>
+                            setServerForm({
+                              ...serverForm,
+                              port: Number.parseInt(value, 10) || 0
+                            })
+                          }
+                          value={serverForm.port || ''}
+                        />
+                      </div>
 
-                  {/*
+                      {/*
                     The map every character here walks.
 
                     On the realm rather than on the character, for the same
@@ -4698,70 +3422,74 @@ export default function SettingsScreen({
                     as many places to drift -- a third character added later
                     silently got the shipped world instead.
                   */}
-                  <FormField
-                    hint={t('settings.worldDatabaseHint')}
-                    label={t('settings.worldDatabaseLabel')}
-                    name="server-database"
-                    wide
-                  >
-                    {({ describedBy }) => (
-                      <div className="settings-file">
-                        <input
-                          aria-describedby={describedBy}
-                          onChange={(event) =>
-                            setServerForm({ ...serverForm, database: event.target.value })
-                          }
-                          placeholder={t('settings.worldDatabasePlaceholder')}
-                          spellCheck={false}
-                          value={serverForm.database}
-                        />
-                        <button
-                          className="quiet"
-                          onClick={() => {
-                            void chooseRealm().then((file) => {
-                              if (file !== null) setServerForm({ ...serverForm, database: file });
-                            });
-                          }}
-                          onMouseDown={keepFocus}
-                          type="button"
-                        >
-                          {t('settings.realms.databaseBrowse')}
-                        </button>
-                        {serverForm.database.length > 0 && (
-                          <button
-                            className="quiet"
-                            onClick={() => setServerForm({ ...serverForm, database: '' })}
-                            onMouseDown={keepFocus}
-                            type="button"
-                          >
-                            {t('settings.realms.databaseClear')}
-                          </button>
+                      <FormField
+                        hint={t('settings.worldDatabaseHint')}
+                        label={t('settings.worldDatabaseLabel')}
+                        name="server-database"
+                        wide
+                      >
+                        {({ describedBy }) => (
+                          <div className="settings-file">
+                            <input
+                              aria-describedby={describedBy}
+                              onChange={(event) =>
+                                setServerForm({ ...serverForm, database: event.target.value })
+                              }
+                              placeholder={t('settings.worldDatabasePlaceholder')}
+                              spellCheck={false}
+                              value={serverForm.database}
+                            />
+                            <button
+                              className="quiet"
+                              onClick={() => {
+                                void chooseRealm().then((file) => {
+                                  if (file !== null)
+                                    setServerForm({ ...serverForm, database: file });
+                                });
+                              }}
+                              onMouseDown={keepFocus}
+                              type="button"
+                            >
+                              {t('settings.realms.databaseBrowse')}
+                            </button>
+                            {serverForm.database.length > 0 && (
+                              <button
+                                className="quiet"
+                                onClick={() => setServerForm({ ...serverForm, database: '' })}
+                                onMouseDown={keepFocus}
+                                type="button"
+                              >
+                                {t('settings.realms.databaseClear')}
+                              </button>
+                            )}
+                          </div>
                         )}
-                      </div>
-                    )}
-                  </FormField>
+                      </FormField>
 
-                  {/*
+                      {/*
                     Behind a press, because it has a right answer already and
                     is not one anybody can choose well without knowing what
                     CP437 is. Not taste: the game lays out maps and stat
                     columns in character cells, and both reference realms open
                     with block glyphs that are invalid UTF-8.
                   */}
-                  <Advanced label={t('settings.advancedWire')}>
-                    <SelectField
-                      hint={t('settings.profile.encodingHint')}
-                      label={t('settings.profile.encodingLabel')}
-                      name="encoding"
-                      onChange={(value) =>
-                        setServerForm({ ...serverForm, encoding: value as StreamEncoding })
-                      }
-                      options={ENCODINGS.map((encoding) => ({ value: encoding, label: encoding }))}
-                      value={serverForm.encoding}
-                    />
-                  </Advanced>
+                      <Advanced label={t('settings.advancedWire')}>
+                        <SelectField
+                          hint={t('settings.profile.encodingHint')}
+                          label={t('settings.profile.encodingLabel')}
+                          name="encoding"
+                          onChange={(value) =>
+                            setServerForm({ ...serverForm, encoding: value as StreamEncoding })
+                          }
+                          options={ENCODINGS.map((encoding) => ({
+                            value: encoding,
+                            label: encoding
+                          }))}
+                          value={serverForm.encoding}
+                        />
+                      </Advanced>
 
-                  {/*
+                      {/*
                     How to get through this realm's menus.
 
                     On the realm rather than on the character, because that is
@@ -4777,107 +3505,39 @@ export default function SettingsScreen({
                     WorldGroup front end all differ, and a client with four
                     slots cannot describe them at all.
                   */}
-                  <fieldset className="settings-menus">
-                    <legend>{t('settings.realms.loginLegend')}</legend>
-                    <p className="settings-note">{t('settings.realms.loginNote')}</p>
+                      <fieldset className="settings-menus" data-fieldset="realm-login">
+                        <legend>{t('settings.realms.loginLegend')}</legend>
+                        <p className="settings-note">{t('settings.realms.loginNote')}</p>
 
-                    {serverForm.login.length > 0 && (
-                      <ul className="settings-steps">
-                        {serverForm.login.map((step, index) => (
-                          // Keyed by position, deliberately: rows are edited in
-                          // place and identified by nothing else — two blank
-                          // rows are genuinely the same until somebody types.
-                          <li key={index}>
-                            <input
-                              aria-label={t('settings.login.stepWhenAria', {
-                                stepNumber: index + 1
-                              })}
-                              onChange={(event) =>
-                                setServerForm({
-                                  ...serverForm,
-                                  login: serverForm.login.map((entry, at) =>
-                                    at === index ? { ...entry, when: event.target.value } : entry
-                                  )
-                                })
-                              }
-                              placeholder={t('settings.realms.stepWhenPlaceholder')}
-                              value={step.when}
-                            />
-                            <span aria-hidden="true" className="arrow">
-                              →
-                            </span>
-                            <input
-                              aria-label={t('settings.login.stepSendAria', {
-                                stepNumber: index + 1
-                              })}
-                              className="answer"
-                              onChange={(event) =>
-                                setServerForm({
-                                  ...serverForm,
-                                  login: serverForm.login.map((entry, at) =>
-                                    at === index ? { ...entry, send: event.target.value } : entry
-                                  )
-                                })
-                              }
-                              placeholder={t('settings.realms.stepSendPlaceholder')}
-                              value={step.send}
-                            />
-                            <input
-                              aria-label={t('settings.login.stepRepeatAria', {
-                                stepNumber: index + 1
-                              })}
-                              checked={step.repeat ?? false}
-                              className="repeat"
-                              onChange={(event) =>
-                                setServerForm({
-                                  ...serverForm,
-                                  login: serverForm.login.map((entry, at) =>
-                                    at === index
-                                      ? { ...entry, repeat: event.target.checked }
-                                      : entry
-                                  )
-                                })
-                              }
-                              title={t('settings.login.stepRepeatTitle')}
-                              type="checkbox"
-                            />
-                            <button
-                              aria-label={t('settings.login.removeStepAria', {
-                                stepNumber: index + 1
-                              })}
-                              className="quiet"
-                              onClick={() =>
-                                setServerForm({
-                                  ...serverForm,
-                                  login: serverForm.login.filter((_, at) => at !== index)
-                                })
-                              }
-                              title={t('settings.login.removeStepTitle')}
-                              type="button"
-                            >
-                              <Icon name="close" />
-                            </button>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
+                        <LoginSteps
+                          onChange={(login) => setServerForm({ ...serverForm, login })}
+                          sendPlaceholder={t('settings.realms.stepSendPlaceholder')}
+                          steps={serverForm.login}
+                          whenPlaceholder={t('settings.realms.stepWhenPlaceholder')}
+                        />
+                      </fieldset>
 
-                    <button
-                      className="quiet add-step"
-                      onClick={() =>
-                        setServerForm({
-                          ...serverForm,
-                          login: [...serverForm.login, { when: '', send: '' }]
-                        })
-                      }
-                      type="button"
-                    >
-                      <Icon name="plus" />
-                      <span>{t('settings.login.addStep')}</span>
-                    </button>
-                  </fieldset>
+                      {/*
+                    The mudstats board this realm's characters may post their
+                    readings to (`Server.statsUrl`). Each character says
+                    whether it does, on its Login page.
+                  */}
+                      <fieldset className="settings-menus" data-fieldset="realm-stats">
+                        <legend>{t('settings.realms.statsLegend')}</legend>
+                        <p className="settings-note">{t('settings.realms.statsNote')}</p>
+                        <TextField
+                          label={t('settings.realms.statsUrlLabel')}
+                          name="realm-stats-url"
+                          onChange={(value) => setServerForm({ ...serverForm, statsUrl: value })}
+                          placeholder="http://192.168.0.220:8099"
+                          spellCheck={false}
+                          value={serverForm.statsUrl}
+                          wide
+                        />
+                        <StatsTest actions={stats} url={serverForm.statsUrl} />
+                      </fieldset>
 
-                  {/*
+                      {/*
                     Which word this realm answers exact coordinates with.
 
                     On the realm, for the same reason the menu script above is:
@@ -4888,22 +3548,31 @@ export default function SettingsScreen({
                     first is exactly the broadcast a player who already knows
                     that should never have to spend.
                   */}
-                  <SelectField
-                    hint={t('settings.realms.locateHint')}
-                    label={t('settings.realms.locateLabel')}
-                    name="locate"
-                    onChange={(value) =>
-                      setServerForm({ ...serverForm, locate: value as LocateMethod })
-                    }
-                    options={[
-                      { value: 'rm', label: t('settings.realms.locateOptions.rm') },
-                      { value: 'sys-status', label: t('settings.realms.locateOptions.sysStatus') },
-                      { value: 'none', label: t('settings.realms.locateOptions.none') }
-                    ]}
-                    value={serverForm.locate}
-                  />
+                      <SelectField
+                        hint={t('settings.realms.locateHint')}
+                        label={t('settings.realms.locateLabel')}
+                        name="locate"
+                        onChange={(value) =>
+                          setServerForm({ ...serverForm, locate: value as LocateMethod })
+                        }
+                        options={[
+                          { value: 'rm', label: t('settings.realms.locateOptions.rm') },
+                          {
+                            value: 'sys-status',
+                            label: t('settings.realms.locateOptions.sysStatus')
+                          },
+                          { value: 'none', label: t('settings.realms.locateOptions.none') }
+                        ]}
+                        value={serverForm.locate}
+                        // Its choices say what each realm prints, which a column cuts off.
+                        wide
+                      />
+                    </>
+                  )}
 
-                  {/*
+                  {realmSection === 'loops' && (
+                    <>
+                      {/*
                     The loops that belong to the *place*.
 
                     A loop names rooms in a realm, so it is a fact about where
@@ -4912,104 +3581,175 @@ export default function SettingsScreen({
                     plays here, rather than pasted into each of their files and
                     then kept in step by hand.
                   */}
-                  <LoopSection
-                    catalogue={catalogue}
-                    loops={serverForm.loops}
-                    note={t('settings.realms.loopsNote')}
-                    onDonePicking={() => setPicking(false)}
-                    onOpenPicker={openPicker}
-                    onToggle={toggleServerLoop}
-                    picking={picking}
-                  >
-                    <MegaMudLoopImport
-                      beforeImport={serverSave.flush}
-                      importLoops={importLoops}
-                      onImported={() => void importedServerLoops()}
-                      realm={serverPick === NEW_SERVER ? null : serverPick}
-                    />
-                  </LoopSection>
+                      <LoopSection
+                        catalogue={catalogue}
+                        loops={serverForm.loops}
+                        note={t('settings.realms.loopsNote')}
+                        onDonePicking={() => setPicking(false)}
+                        onOpenPicker={openPicker}
+                        onExport={exportLoop}
+                        editFor={loopEditor(
+                          'server',
+                          serverPick === NEW_SERVER ? null : serverPick
+                        )}
+                        onToggle={toggleServerLoop}
+                        picking={picking}
+                      >
+                        <LoopFileImport
+                          beforeImport={serverSave.flush}
+                          importFile={importLoopFile}
+                          onImported={() => void importedServerLoops()}
+                          realm={serverPick === NEW_SERVER ? null : serverPick}
+                        />
+                        <MegaMudLoopImport
+                          beforeImport={serverSave.flush}
+                          importLoops={importLoops}
+                          onImported={() => void importedServerLoops()}
+                          realm={serverPick === NEW_SERVER ? null : serverPick}
+                        />
+                      </LoopSection>
+                    </>
+                  )}
 
-                  {/*
+                  {realmSection === 'messages' && (
+                    <>
+                      {/*
                     And what the place's sentences mean: a realm's message
                     table, imported from MegaMUD. On the realm for the reason
                     the ranking above is -- every character here hears the
                     same sentences -- and saved on its own rather than with
                     this form, which saves as somebody types.
                   */}
-                  <fieldset className="settings-menus" data-fieldset="realm-messages">
-                    <legend>{t('settings.messages.legend')}</legend>
-                    <p className="settings-note">{t('settings.messages.note')}</p>
-                    <RealmMessages
-                      importFile={importMessages}
-                      load={loadMessages}
-                      realm={serverPick === NEW_SERVER ? null : serverPick}
-                      save={saveMessages}
-                    />
-                  </fieldset>
+                      <fieldset className="settings-menus" data-fieldset="realm-messages">
+                        <legend>{t('settings.messages.legend')}</legend>
+                        <p className="settings-note">{t('settings.messages.note')}</p>
+                        <RealmMessages
+                          importFile={importMessages}
+                          load={loadMessages}
+                          realm={serverPick === NEW_SERVER ? null : serverPick}
+                          save={saveMessages}
+                        />
+                      </fieldset>
+                    </>
+                  )}
 
-                  {/*
+                  {realmSection === 'monsters' && (
+                    <>
+                      {/*
                     And what to do about particular monsters: the realm's
                     table from MegaMUD's Monsters.md. Each character's own
                     rows are laid over it, field by field.
                   */}
-                  <fieldset className="settings-menus" data-fieldset="realm-monsters">
-                    <legend>{t('settings.monsters.legend')}</legend>
-                    <p className="settings-note">{t('settings.monsters.note')}</p>
-                    <RealmMonsters
-                      importRows={importMonsters}
-                      load={loadMonsters}
-                      realm={serverPick === NEW_SERVER ? null : serverPick}
-                      save={saveMonsters}
-                    />
-                  </fieldset>
+                      <fieldset className="settings-menus" data-fieldset="realm-monsters">
+                        <legend>{t('settings.monsters.legend')}</legend>
+                        <p className="settings-note">{t('settings.monsters.note')}</p>
+                        <RealmMonsters
+                          importRows={importMonsters}
+                          load={loadMonsters}
+                          realm={serverPick === NEW_SERVER ? null : serverPick}
+                          save={saveMonsters}
+                        />
+                      </fieldset>
+                    </>
+                  )}
 
-                  {/* Whether a hang-up here is charged: a fact about the place (todo 01). */}
-                  <fieldset data-fieldset="realm-hang-penalties">
-                    <legend>{t('settings.health.hangUpLegend')}</legend>
-                    <div className="settings-inline">
-                      <SelectField
-                        hint={t('settings.health.hangPenaltiesHint')}
-                        label={t('settings.health.hangPenaltiesLabel')}
-                        name="realm-hang-penalties"
-                        onChange={(value) =>
-                          setServerForm({ ...serverForm, hangPenalties: penaltiesOf(value) })
-                        }
-                        options={[
-                          { value: '', label: t('settings.health.hangPenaltiesGlobal') },
-                          { value: 'yes', label: t('settings.health.hangPenaltiesYes') },
-                          { value: 'no', label: t('settings.health.hangPenaltiesNo') }
-                        ]}
-                        value={penaltiesChoice(serverForm.hangPenalties)}
-                      />
-                    </div>
-                  </fieldset>
+                  {realmSection === 'items' && (
+                    <>
+                      {/*
+                    And what to do about particular items: the realm's table
+                    from MegaMUD's Items.md, the choices half of its item
+                    details. The facts are the realm data's.
+                  */}
+                      <fieldset className="settings-menus" data-fieldset="realm-items">
+                        <legend>{t('settings.items.legend')}</legend>
+                        <p className="settings-note">{t('settings.items.note')}</p>
+                        <RealmItems
+                          importRows={importItems}
+                          load={loadItems}
+                          realm={serverPick === NEW_SERVER ? null : serverPick}
+                          save={saveItems}
+                        />
+                      </fieldset>
+                    </>
+                  )}
 
-                  {/*
+                  {realmSection === 'spells' && (
+                    <>
+                      {/*
+                    And what the place's spells say when they land and end,
+                    as the wire taught them: put right here when a sentence
+                    was paired with the wrong spell (2026-10-14).
+                  */}
+                      <fieldset className="settings-menus" data-fieldset="realm-spell-lore">
+                        <legend>{t('settings.spellLore.legend')}</legend>
+                        <p className="settings-note">{t('settings.spellLore.note')}</p>
+                        <RealmSpellLore
+                          load={loadSpellLore}
+                          realm={serverPick === NEW_SERVER ? null : serverPick}
+                          save={saveSpellLore}
+                        />
+                      </fieldset>
+                    </>
+                  )}
+
+                  {realmSection === 'megamud' && (
+                    <>
+                      {/*
                     What this realm calls its coins: a fact about the place, like
                     the ranking above (`Server.coins`). Blank is the stock name.
                   */}
-                  <fieldset data-fieldset="realm-coins">
-                    <legend>{t('settings.realms.coinsLegend')}</legend>
-                    <p className="settings-note">{t('settings.realms.coinsNote')}</p>
-                    <div className="settings-inline">
-                      {DENOMINATIONS.map((which) => (
-                        <TextField
-                          key={which}
-                          label={COIN_NAME[which][0]}
-                          name={`realm-coin-${which}`}
-                          onChange={(value) =>
-                            setServerForm({
-                              ...serverForm,
-                              coins: { ...serverForm.coins, [which]: value }
-                            })
-                          }
-                          placeholder={STOCK_COINS[which]}
-                          spellCheck={false}
-                          value={serverForm.coins[which] ?? ''}
-                        />
-                      ))}
-                    </div>
-                  </fieldset>
+                      <fieldset className="settings-menus" data-fieldset="realm-coins">
+                        <legend>{t('settings.realms.coinsLegend')}</legend>
+                        <p className="settings-note">{t('settings.realms.coinsNote')}</p>
+                        <div className="settings-inline">
+                          {DENOMINATIONS.map((which) => (
+                            <TextField
+                              key={which}
+                              label={COIN_NAME[which][0]}
+                              name={`realm-coin-${which}`}
+                              onChange={(value) =>
+                                setServerForm({
+                                  ...serverForm,
+                                  coins: { ...serverForm.coins, [which]: value }
+                                })
+                              }
+                              placeholder={STOCK_COINS[which]}
+                              spellCheck={false}
+                              value={serverForm.coins[which] ?? ''}
+                            />
+                          ))}
+                        </div>
+                      </fieldset>
+
+                      {/*
+                    MegaMUD's BBS.INI for this realm (`Server.bbs`), for the
+                    MegaMUD engine. Blank is MegaMUD's default, which the
+                    placeholder shows.
+                  */}
+                      <fieldset className="settings-menus" data-fieldset="realm-bbs">
+                        <legend>{t('settings.realms.bbsLegend')}</legend>
+                        <p className="settings-note">{t('settings.realms.bbsNote')}</p>
+                        <div className="settings-inline">
+                          {BBS_KEYS.map(({ key, fallback }) => (
+                            <TextField
+                              key={key}
+                              label={bbsLabel(key)}
+                              name={`realm-bbs-${key}`}
+                              onChange={(value) =>
+                                setServerForm({
+                                  ...serverForm,
+                                  bbs: { ...serverForm.bbs, [key]: value }
+                                })
+                              }
+                              placeholder={fallback}
+                              spellCheck={false}
+                              value={serverForm.bbs[key] ?? ''}
+                            />
+                          ))}
+                        </div>
+                      </fieldset>
+                    </>
+                  )}
 
                   <div className="settings-actions">
                     {serverPick === NEW_SERVER ? (

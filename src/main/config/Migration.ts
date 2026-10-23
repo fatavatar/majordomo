@@ -53,16 +53,29 @@ import {
 } from '../../shared/config';
 import {
   DEFAULT_ALERT_DEBOUNCE_SECONDS,
+  isAlertEvent,
   NOTICE_CHANNELS,
+  TAB_ALERTS,
   type AlertRule
 } from '../../shared/notifications';
+import { WAIT_AS_LONG_AS_IT_TAKES } from '../../shared/megamud/fromConfig';
 import { DEFAULT_REWRITES, type RewriteDesign, type RewriteEntity } from '../../shared/rewrites';
 import { DEFAULT_INTERNAL } from '../../shared/internal';
 import { asShippedWorld } from '../../shared/worlds';
 import { DENOMINATIONS } from '../../shared/character';
-import { SERVER_FILE, type Home } from '../app/home';
+import { MEGAMUD_FILE, SERVER_FILE, type Home } from '../app/home';
+import { settingsFromIni, settingsToStored } from '../../shared/megamud/settings';
 import { directoryNames } from './dirs';
-import { MONSTER_TABLE } from './RealmTableStore';
+import {
+  ITEM_TABLE,
+  MESSAGE_TABLE,
+  MONSTER_TABLE,
+  RealmTableStore,
+  type RealmTable,
+  type TableKind
+} from './RealmTableStore';
+import { itemTableRows, monsterTableRows } from '../../shared/megamudDb';
+import { parseMegaMudMessages } from '../../shared/messageTriggers';
 import { discoveryKey, type Discovery } from '../../shared/memory';
 import { realmKey } from '../world/RealmLore';
 import type { ShippedWorld } from '../../shared/worlds';
@@ -176,11 +189,7 @@ function migrateAll(options: MigrationOptions): void {
   statedTheNewAutomation(home, note);
   mergedBuffsIntoBlessings(home, note);
   keyedBlessingsOnSpell(home, note);
-  askedTheBankOnEntry(home, note);
-  stoppedAnnouncingTheLook(home, note);
   pinTheGearButton(home, note);
-  statedTheStepNudge(home, note);
-  statedTheNudgeWindow(home, note);
   statedTheRosterCap(home, note);
   mapDensityHasTwoEnds(home, note);
   realmOwnsTheDatabase(home, note);
@@ -198,12 +207,10 @@ function migrateAll(options: MigrationOptions): void {
    */
   restIsOnePair(home, note);
   statedTheRestCeiling(home, note);
-  statedTheTrapRest(home, note);
   theEscapeIsADirection(home, note, options.template);
   theLoopSettlesAfterAnEscape(home, note, options.internalTemplate);
   statedAutoReconnect(home, note);
   statedTheLightAndSupplies(home, note);
-  statedTheConditionWaits(home, note);
   statedTheKeyPickup(home, note);
   theTuningBlockGainedKeys(home, note, options.internalTemplate);
   theGmudRealmLeft(home, note);
@@ -212,7 +219,6 @@ function migrateAll(options: MigrationOptions): void {
   statedTheMark(home, note);
   statedTheDarkConsole(home, note, options.template);
   statedTheConsolePalette(home, note, options.template);
-  theDoorsOpenByDefault(home, note);
   alertSettingsBecameRows(home, note);
   statedTheStatusLine(home, note, options.template);
   theLineBecameARewrite(home, note, options.template);
@@ -222,16 +228,10 @@ function migrateAll(options: MigrationOptions): void {
   theTransportBecameOneButton(home, note, options.internalTemplate);
   theRoomRemoteFollowsWhere(home, note);
   theCoinsCanBeShed(home, note);
-  statedTheHideForOpener(home, note);
-  statedTheGearRecovery(home, note);
-  statedTheRestNextDoor(home, note);
   statedTheSpellChoice(home, note);
-  statedTheTraining(home, note);
   theCombatFloorWent(home, note);
   theFightCostWent(home, note);
-  statedTheLevelling(home, note);
   statedThePotionRules(home, note);
-  statedTheRecoveryBounds(home, note);
   statedTheAlertRules(home, note);
   theCombatAndPotionSettingsWent(home, note);
   theMobListsBecameRules(home, note);
@@ -241,10 +241,7 @@ function migrateAll(options: MigrationOptions): void {
   theToolbarGainedBack(home, note, options.internalTemplate);
   statedTheHunting(home, note);
   theTalkHoldGrew(home, note);
-  statedTheReplanDrift(home, note);
   theActionsBecameAFamily(home, note);
-  statedTheLightWait(home, note);
-  pinTheBlessSwitch(home, note);
   /*
    * **Before `theAccountJoinedTheScript`**, which reads `{{username}}` as a
    * row already naming the account (its `{username}` is inside) and so writes
@@ -253,9 +250,7 @@ function migrateAll(options: MigrationOptions): void {
   theAccountTokensLostABrace(home, note);
   theAccountJoinedTheScript(home, note);
   thePagerRepeats(home, note);
-  theHangPenaltyIsTheRealms(home, note);
   quietedTheLocateProbe(home, note);
-  statedTheConfusionWait(home, note);
   statedTheFreedomCure(home, note);
   /*
    * **After `statedTheNewAutomation`**, which writes `keepOutOf` with both
@@ -271,13 +266,21 @@ function migrateAll(options: MigrationOptions): void {
   theMobRulesBecameMonsterRows(home, note);
   statedTheMeditateTarget(home, note, options.template);
   statedTheFleeGoto(home, note, options.template);
-  statedTheDrain(home, note, options.template);
   statedTheAutoJoin(home, note);
-  statedTheHealChoice(home, note, options.template);
   statedTheRegenSpells(home, note, options.template);
-  statedThePartyRank(home, note, options.template);
-  statedTheSurvivalFloor(home, note, options.template);
-  statedTheLosingHpWait(home, note, options.template);
+  theMegaMudSettingsMovedIn(home, note);
+  theMegaMudDataMovedIn(home, note);
+  statedTheItemDetails(home, note, options.template);
+  pinTheMegaToggles(home, note, options.internalTemplate);
+  statedTheBotCommands(home, note, options.template);
+  statedTheMudstats(home, note, options.template);
+  onlyTheTabAlertsAreCritical(home, note);
+  theWaitLimitWaits(home, note);
+  statedTheLogBudget(home, note, options.template);
+  theOldAutomationKeysWent(home, note);
+  theOldAutomationFieldsWent(home, note);
+  theHangPenaltiesWent(home, note);
+  theOldSwitchesUnpinned(home, note);
 }
 
 /**
@@ -601,12 +604,6 @@ function theDesktopSwitchesBecameRows(home: Home, note: (message: string) => voi
 }
 
 /**
- * `automation.train` into an options file that predates it, off and wanting
- * nothing (todo 10, 2026-09-12). The whole block, in the options file alone,
- * as `drop` and `banking` were: a profile inherits it. After `movement:`
- * where the file has one, as the template orders them.
- */
-/**
  * `combat.minHealth` is gone: there is no health floor on *opening* a fight.
  *
  * The goal of the game is survival, and a character that will not swing at
@@ -684,23 +681,6 @@ function theFightCostWent(home: Home, note: (message: string) => void): void {
   );
 }
 
-function statedTheTraining(home: Home, note: (message: string) => void): void {
-  editOptions(home, (document) => {
-    const automation = document.get('automation', true);
-    if (!isMap(automation) || automation.has('train')) return false;
-    const pair = document.createPair('train', {
-      ...DEFAULT_CONFIG.automation.train,
-      wanted: { ...DEFAULT_CONFIG.automation.train.wanted }
-    }) as Pair;
-    if (isScalar(pair.key)) pair.key.commentBefore = TRAIN_COMMENT;
-    const after = automation.items.findIndex((item) => keyText(item) === 'movement');
-    if (after >= 0) automation.items.splice(after + 1, 0, pair);
-    else automation.items.push(pair);
-    note(t('notices.migration.training', { file: home.options }));
-    return true;
-  });
-}
-
 /**
  * `automation.hunting` into the options file (todo 05, 2026-09-13).
  *
@@ -741,18 +721,6 @@ const HUNTING_COMMENT = ` Going hunting on its own: where this character should 
  There is no floor here: \`walk.minExpPerHour\` is the rate below which nothing
  is worth walking to, and the survey's own exclusions are the safety.`;
 
-/** The template's own words, abridged, so the two files read alike. */
-const TRAIN_COMMENT = ` Spending character points -- the \`train stats\` screen.
-
- Every level hands out character points, and an unspent one is hit points
- the character never has. With \`stats\` on, the client opens the form at a
- trainer when points are unspent, reads its figures, buys the cheapest
- wanted point first until nothing wanted is affordable, and saves. It never
- types into the name fields and never quits the form; what it bought, what
- was refused and what is left are all said out loud. \`wanted\` is where each
- stat should end up: 0, or a figure at or under the current one, leaves
- that stat alone, so the switch does nothing until a figure is raised.`;
-
 /**
  * `automation.spells.autoChoose` into every file that states `spells:` and
  * predates it, off (todo 09, 2026-09-12): the same gap as every key added
@@ -784,66 +752,6 @@ function statedTheSpellChoice(home: Home, note: (message: string) => void): void
   );
 }
 
-/**
- * `automation.train.levels` and `trainer` into every file that already states
- * `train:` and predates them (todo 18, 2026-09-12), off and 0.
- *
- * `statedTheTraining` above writes the whole block from `DEFAULT_CONFIG`, so a
- * file that never had one gets both free; this is the other half — the files
- * written between that migration and this one, which have a `train:` block
- * holding only the stat screen's half.
- *
- * At the head of the block, because collecting the level comes first in time:
- * the points `stats` spends are awarded by the level `levels` collects.
- */
-function statedTheLevelling(home: Home, note: (message: string) => void): void {
-  const files = [home.options, ...directories(home.profilesDir).map((id) => home.profile(id).file)];
-  const stated: string[] = [];
-
-  for (const file of files) {
-    edit(file, (document) => {
-      const block = document.getIn(['automation', 'train'], true);
-      if (!isMap(block) || block.has('levels')) return false;
-      const trainer = document.createPair('trainer', 0) as Pair;
-      block.items.unshift(trainer);
-      const levels = document.createPair('levels', false) as Pair;
-      if (isScalar(levels.key)) levels.key.commentBefore = LEVELLING_COMMENT;
-      block.items.unshift(levels);
-      stated.push(file);
-      return true;
-    });
-  }
-
-  if (stated.length === 0) return;
-  const params = { count: stated.length, fileList: stated.join(', ') };
-  note(
-    stated.length === 1
-      ? t('notices.migration.levelling.one', params)
-      : t('notices.migration.levelling.many', params)
-  );
-}
-
-/**
- * `ui.alerts.rules` into every file that states `alerts:` and predates it
- * (todo 29, 2026-09-12), with the rows a fresh client ships.
- *
- * At the **head** of the block, because that is the order the client asks in:
- * a row decides before anything else does, and a file whose reading order
- * disagrees with the client's is one somebody reasons about wrongly.
- *
- * **It wrote `[]` for four days, and an empty list has since changed meaning.**
- * While the severity floor and the mute list still stood behind the rows an
- * empty list meant *carry on as before*; with those gone (todo 02) it means
- * *the player deleted every row*, which `normalizeAlerts` honours. So a file
- * carrying the `[]` this very function wrote would have started with **no
- * alerts at all**, silently, against a fresh install's four — and its owner
- * would have just lost the floor as well. Nobody deleted anything: the UI to
- * do so arrived in the same change. So an empty list **left by this migration**
- * is filled in, and a list with anything in it is never touched.
- *
- * Found in review. Pre-v1 there is no legacy to keep, but there is also no
- * excuse for changing a shape and leaving the user's own files behind it.
- */
 /**
  * The combat and potion settings todo 00 took out, and the one it renamed.
  *
@@ -965,6 +873,27 @@ function theCombatAndPotionSettingsWent(home: Home, note: (message: string) => v
   );
 }
 
+/**
+ * `ui.alerts.rules` into every file that states `alerts:` and predates it
+ * (todo 29, 2026-09-12), with the rows a fresh client ships.
+ *
+ * At the **head** of the block, because that is the order the client asks in:
+ * a row decides before anything else does, and a file whose reading order
+ * disagrees with the client's is one somebody reasons about wrongly.
+ *
+ * **It wrote `[]` for four days, and an empty list has since changed meaning.**
+ * While the severity floor and the mute list still stood behind the rows an
+ * empty list meant *carry on as before*; with those gone (todo 02) it means
+ * *the player deleted every row*, which `normalizeAlerts` honours. So a file
+ * carrying the `[]` this very function wrote would have started with **no
+ * alerts at all**, silently, against a fresh install's four — and its owner
+ * would have just lost the floor as well. Nobody deleted anything: the UI to
+ * do so arrived in the same change. So an empty list **left by this migration**
+ * is filled in, and a list with anything in it is never touched.
+ *
+ * Found in review. Pre-v1 there is no legacy to keep, but there is also no
+ * excuse for changing a shape and leaving the user's own files behind it.
+ */
 function statedTheAlertRules(home: Home, note: (message: string) => void): void {
   const files = [home.options, ...directories(home.profilesDir).map((id) => home.profile(id).file)];
   const stated: string[] = [];
@@ -1013,59 +942,6 @@ const ALERT_RULES_COMMENT = ` Your own alerts, tried in order.
  \`attacked\` (a person swinging at you), \`item\` and \`player\` (matched by
  \`name\`), \`cash\` (a pile a search turned up, \`value\` in copper). \`level\`
  empty keeps what the client decided. See the template for a worked example.`;
-
-/**
- * `automation.movement.recoverGearTries` and `recoverGearFloor` into every
- * file that already states `recoverGear` (todo 21, 2026-09-12).
- *
- * Beside the switch they bound, and only where the switch is stated: a
- * `movement:` block that never mentioned going back for the kit belongs to
- * somebody who has not turned it on, and two numbers bounding a feature they
- * do not use are two keys for the sake of keys.
- */
-function statedTheRecoveryBounds(home: Home, note: (message: string) => void): void {
-  const files = [home.options, ...directories(home.profilesDir).map((id) => home.profile(id).file)];
-  const stated: string[] = [];
-
-  for (const file of files) {
-    edit(file, (document) => {
-      const block = document.getIn(['automation', 'movement'], true);
-      if (!isMap(block) || block.has('recoverGearTries')) return false;
-      if (!block.has('recoverGear')) return false;
-      const floor = document.createPair(
-        'recoverGearFloor',
-        DEFAULT_CONFIG.automation.movement.recoverGearFloor
-      ) as Pair;
-      block.items.push(floor);
-      const tries = document.createPair(
-        'recoverGearTries',
-        DEFAULT_CONFIG.automation.movement.recoverGearTries
-      ) as Pair;
-      if (isScalar(tries.key)) tries.key.commentBefore = RECOVERY_BOUNDS_COMMENT;
-      block.items.splice(block.items.length - 1, 0, tries);
-      stated.push(file);
-      return true;
-    });
-  }
-
-  if (stated.length === 0) return;
-  const params = { count: stated.length, fileList: stated.join(', ') };
-  note(
-    stated.length === 1
-      ? t('notices.migration.recoveryBounds.one', params)
-      : t('notices.migration.recoveryBounds.many', params)
-  );
-}
-
-/** The template's own words, abridged, so the two files read alike. */
-const RECOVERY_BOUNDS_COMMENT = ` And the bounds on trying again.
-
- A recovery walks a freshly dead, stripped character back to the room that
- killed it, so where that room is still dangerous the trip is itself a way to
- die -- and each one costs a life. \`recoverGearFloor\` stops once this many
- lives are left; \`recoverGearTries\` is how many journeys in a row may fail to
- reach the kit before it gives up. A journey that gets there clears the run.
- 0 disables either.`;
 
 /**
  * `automation.health.potions` into every file that states `health:` and
@@ -1118,16 +994,6 @@ const POTION_RULES_COMMENT = ` And anything else, with its own condition -- *use
  condition the wire has stated fires one: unknown is not afflicted. Empty,
  because spending a player's consumables unasked is its own failure.`;
 
-/** The template's own words, abridged, so the two files read alike. */
-const LEVELLING_COMMENT = ` Going to collect the level.
-
- In this game you do not level by earning the experience: you earn it, then
- you walk to a trainer and pay. Until you do, every point past the threshold
- does nothing at all -- no hit points, no skills, no character points. Off,
- because a player banking levels for a reroll exists. \`trainer\` is the
- trainer's own shop row, or 0 for the cheapest that will take this character;
- the settings screen offers only the rooms the realm says will take it.`;
-
 /** The template's own words for the switch, so the two files read alike. */
 const AUTO_CHOOSE_COMMENT = ` Auto Choose Best Spell.
 
@@ -1141,141 +1007,6 @@ const AUTO_CHOOSE_COMMENT = ` Auto Choose Best Spell.
  their boxes are blank. The choice is said out loud each time it changes.
  \`attack\` and \`attackFallback\` are what is cast with this off. Off:
  it spends mana on a reading you did not type.`;
-
-/**
- * `automation.health.restNextDoor` into every file that states `health:` and
- * predates it, **on** (todo 08, 2026-09-12) — the one key written on, because
- * it acts only when resting was going to act, and the other default is the
- * one that sat a character down in a lair twice and killed it. Beside
- * `restTo`, since it is about the same rest.
- */
-function statedTheRestNextDoor(home: Home, note: (message: string) => void): void {
-  const files = [home.options, ...directories(home.profilesDir).map((id) => home.profile(id).file)];
-  const stated: string[] = [];
-
-  for (const file of files) {
-    edit(file, (document) => {
-      const block = document.getIn(['automation', 'health'], true);
-      if (!isMap(block) || block.has('restNextDoor')) return false;
-      const pair = document.createPair('restNextDoor', true) as Pair;
-      if (isScalar(pair.key)) pair.key.commentBefore = REST_NEXT_DOOR_COMMENT;
-      // After the resting figures — the trap floor sits directly after the
-      // ceiling and keeps that place — and before the mana and the potions.
-      const after = ['restBeforeTraps', 'restTo', 'restBelow']
-        .map((key) => block.items.findIndex((item) => keyText(item) === key))
-        .find((index) => index !== -1);
-      if (after === undefined) block.items.push(pair);
-      else block.items.splice(after + 1, 0, pair);
-      stated.push(file);
-      return true;
-    });
-  }
-
-  if (stated.length === 0) return;
-  const params = { count: stated.length, fileList: stated.join(', ') };
-  note(
-    stated.length === 1
-      ? t('notices.migration.restNextDoor.one', params)
-      : t('notices.migration.restNextDoor.many', params)
-  );
-}
-
-/** The template's own words for the switch, so the two files read alike. */
-const REST_NEXT_DOOR_COMMENT = ` Rest next door to a lair rather than in it.
-
- A lair is dangerous for what it is about to contain. Measured 2026-09-12,
- twice: a character won a fight, sat down at 20% in a room whose clock
- makes three wererats every twenty seconds, and met them at 2%. With this
- on, a rest in a room the realm marks as a lair with a short clock is
- refused there, out loud with the figure; a neighbouring room the realm
- holds no lair in is looked into first (\`l <direction>\`), entered only if
- it is empty, rested in, and stepped back from when nothing else has the
- character. Where no neighbour is safe the rest goes ahead where it is,
- said once. On: it acts only when resting was going to act.`;
-
-/**
- * `automation.movement.recoverGear` into every file that states `movement:`
- * and predates it, off (todo 07, 2026-09-12). The same gap `statedTheLight-
- * AndSupplies` closes for the same block, and off for the reason the template
- * gives: it walks the character back towards whatever killed it.
- */
-function statedTheGearRecovery(home: Home, note: (message: string) => void): void {
-  const files = [home.options, ...directories(home.profilesDir).map((id) => home.profile(id).file)];
-  const stated: string[] = [];
-
-  for (const file of files) {
-    edit(file, (document) => {
-      const movement = document.getIn(['automation', 'movement'], true);
-      if (!isMap(movement) || movement.has('recoverGear')) return false;
-      const pair = document.createPair('recoverGear', false) as Pair;
-      if (isScalar(pair.key)) pair.key.commentBefore = RECOVER_GEAR_COMMENT;
-      movement.items.push(pair);
-      stated.push(file);
-      return true;
-    });
-  }
-
-  if (stated.length === 0) return;
-  const params = { count: stated.length, fileList: stated.join(', ') };
-  note(
-    stated.length === 1
-      ? t('notices.migration.gearRecovery.one', params)
-      : t('notices.migration.gearRecovery.many', params)
-  );
-}
-
-/** The template's own words for the switch, so the two files read alike. */
-const RECOVER_GEAR_COMMENT = ` Go back for the kit after a death.
-
- A death drops everything where the character stood and wakes it in the
- temple naked; measured 2026-09-12, a level-30 character put back on top
- of its own falchion punched a wererat for 16 and sent no \`get\` all
- session. With this on the client notices the strip (the kit it remembers
- is no longer in the pack, and the armour class reads zero), walks back to
- the room it died in -- holding when hurt, fighting nothing on the way --
- takes what is still lying there and the coins, and puts the kit back on.
- Every refusal is said out loud. Off: it walks the character somewhere
- unasked, towards whatever did the killing.`;
-
-/**
- * `automation.combat.hideForOpener` into every file that states `combat:` and
- * predates it, off.
- *
- * The same gap as `theCoinsCanBeShed` above: a key inside a block the file
- * already states is one `reconcileWithTemplate` never reaches, and a setting
- * absent from the file is one nobody finds. Written directly after `opener`,
- * because it is about the opener and means nothing without one.
- *
- * **Off, always.** It spends a command per fight, and a migration cannot
- * know whether the character is a backstabber.
- */
-function statedTheHideForOpener(home: Home, note: (message: string) => void): void {
-  const files = [home.options, ...directories(home.profilesDir).map((id) => home.profile(id).file)];
-  const stated: string[] = [];
-
-  for (const file of files) {
-    edit(file, (document) => {
-      const combat = document.getIn(['automation', 'combat'], true);
-      if (!isMap(combat) || combat.has('hideForOpener')) return false;
-
-      const pair = document.createPair('hideForOpener', false) as Pair;
-      if (isScalar(pair.key)) pair.key.commentBefore = HIDE_FOR_OPENER_COMMENT;
-      const at = combat.items.findIndex((item) => keyText(item) === 'opener');
-      if (at === -1) combat.items.push(pair);
-      else combat.items.splice(at + 1, 0, pair);
-      stated.push(file);
-      return true;
-    });
-  }
-
-  if (stated.length === 0) return;
-  const params = { count: stated.length, fileList: stated.join(', ') };
-  note(
-    stated.length === 1
-      ? t('notices.migration.hideForOpener.one', params)
-      : t('notices.migration.hideForOpener.many', params)
-  );
-}
 
 /**
  * Alert rows named a channel or a watch; now they name an event (todo 03).
@@ -1551,18 +1282,6 @@ const MOB_RULES_COMMENT = ` How named monsters are treated -- MegaMUD's Attack P
  merged rather than replaced: a row here wins for the monster it names,
  and the realm's rows for every other monster still apply.`;
 
-/** The template's own words for the switch, so the two files read alike. */
-const HIDE_FOR_OPENER_COMMENT = ` Get back into the shadows between fights, so \`bs\` lands again.
-
- The realm grants a backstab through \`sn\` and \`hide\` alone, both refused
- while a monster is in the room, and the first blow spends it. A character
- standing in a lair therefore opens every fight after the first in plain
- sight -- measured 2026-09-12 as a 156-damage opener thrown away for a
- 38-damage swing, every fight. With this on the client sends \`hide\` when
- the character is seen in an empty room standing still, and \`sn\` when a
- lap or a route has it. Only for an opener that is \`bs\`; a jumpkick has
- nothing to hide for. Off, because it spends a command per fight.`;
-
 /**
  * `automation.loot.discardKinds` into every file that predates it, empty.
  *
@@ -1627,7 +1346,7 @@ const LOOT_DISCARD_COMMENT = ` Which coins to put back on the floor whenever any
  * `@where-room` is `@where` with the ambiguity taken out: it answers with the
  * realm's own address for the room rather than its name, and which of the two
  * goes out is the **asker's** choice, made from whether this client believes
- * the answerer runs it (`Remotes.ask`). So somebody who granted `where` and
+ * the answerer runs it (the old `Remotes.ask`). So somebody who granted `where` and
  * then saw the question refused would be refused for a wording they never
  * chose and cannot see, which is the shape a permission must not have.
  *
@@ -1677,41 +1396,27 @@ function theRoomRemoteFollowsWhere(home: Home, note: (message: string) => void):
 }
 
 /**
- * `automation.statline` into every options file that predates it, off.
+ * `ui.rewrites` into every options file that predates it.
  *
  * Same gap as `statedTheDarkConsole`: a key inside a block the file already
- * states is one `reconcileWithTemplate` never reaches, and a switch nobody's
- * file names is a switch nobody finds. Written where the template puts it,
- * after `onPartyChange`, with the template's own paragraph.
+ * states is one `reconcileWithTemplate` never reaches, and a setting nobody's
+ * file names is a setting nobody finds. Written with the template's own
+ * paragraph. (It stated `automation.statline` too, retired 2026-10-16.)
  */
 function statedTheStatusLine(
   home: Home,
   note: (message: string) => void,
   template: string | undefined
 ): void {
-  const comments = templateComments(template, 'automation');
   const uiComments = templateComments(template, 'ui');
   let stated = false;
 
   edit(home.options, (document) => {
     let changed = false;
-    const automation = document.getIn(['automation'], true);
-    if (isMap(automation) && !automation.has('statline')) {
-      const block = document.createNode({ control: DEFAULT_CONFIG.automation.statline.control });
-      const pair = document.createPair('statline', block) as Pair;
-      const lead = comments.get('automation.statline');
-      if (typeof lead === 'string' && isScalar(pair.key)) pair.key.commentBefore = lead;
-
-      const at = automation.items.findIndex((item) => keyText(item) === 'onPartyChange');
-      if (at === -1) automation.items.push(pair);
-      else automation.items.splice(at + 1, 0, pair);
-      changed = true;
-    }
-
-    // And the line the player may design, beside the alerts it keeps company
-    // with in the template: the presentation half of the same feature. Since
-    // todo 99 it is one of the console's rewrites, so the whole block goes in;
-    // a file that states the older `ui.statline` is moved by `theLineBecameARewrite`.
+    // The line the player may design, beside the alerts it keeps company with
+    // in the template. Since todo 99 it is one of the console's rewrites, so
+    // the whole block goes in; a file that states the older `ui.statline` is
+    // moved by `theLineBecameARewrite`.
     const ui = document.getIn(['ui'], true);
     if (isMap(ui) && !ui.has('rewrites') && !ui.has('statline')) {
       const block = document.createNode(structuredClone(DEFAULT_CONFIG.ui.rewrites));
@@ -2358,8 +2063,7 @@ function writeJsonAtomically(file: string, value: unknown): void {
 }
 
 /**
- * `automation.safety.flee` becomes `automation.safety.retreat`, and the two
- * strategies that named a command become the one that walks.
+ * `automation.safety.flee` becomes `automation.safety.retreat`.
  *
  * Not a tidy-up. The old block's `strategy: flee` meant *send the word `flee`
  * and let the realm choose the exit*, and there is no such command on this
@@ -2378,8 +2082,9 @@ function writeJsonAtomically(file: string, value: unknown): void {
  * the fix. So the key is renamed **in place**, keeping its value and whatever
  * comment sits above it.
  *
- * `pvp.action: flee` goes with it, and `safeHavenRoom` is untouched: the haven
- * strategy always walked, and it is the one thing in the old block that worked.
+ * The strategy and the PvP reaction it also renamed went with the old
+ * automation (`theOldAutomationFieldsWent`); the switch and the threshold are
+ * what Settings -> MegaMUD carries to `Health.HpRun%`.
  */
 function theEscapeIsADirection(
   home: Home,
@@ -2389,7 +2094,6 @@ function theEscapeIsADirection(
   const files = [home.options, ...directories(home.profilesDir).map((id) => home.profile(id).file)];
   const changed: string[] = [];
   const comments = templateComments(template, 'automation');
-  const RETIRED_STRATEGIES = new Set(['flee', 'reverse-step']);
 
   for (const file of files) {
     edit(file, (document) => {
@@ -2416,24 +2120,6 @@ function theEscapeIsADirection(
             (pair.key as Scalar).value = 'retreat';
           }
           touched = true;
-        }
-
-        const retreat = safety.get('retreat', true);
-        if (isMap(retreat)) {
-          const strategy = retreat.get('strategy', true);
-          if (isScalar(strategy) && RETIRED_STRATEGIES.has(String(strategy.value))) {
-            strategy.value = 'step-back';
-            touched = true;
-          }
-        }
-
-        const pvp = safety.get('pvp', true);
-        if (isMap(pvp)) {
-          const action = pvp.get('action', true);
-          if (isScalar(action) && action.value === 'flee') {
-            action.value = 'retreat';
-            touched = true;
-          }
         }
       }
 
@@ -2787,7 +2473,7 @@ function dropTheRoundMacro(home: Home, note: (message: string) => void): void {
  * which is every file that states a health block. It is still written at 0,
  * because 0 is the honest statement of what this client does about *resting*
  * and inventing a ceiling nobody asked for would be worse; the loop side
- * answers it instead, in `LoopRunner.resumeAt`, which resumes an uncapped rest
+ * answered it instead, in the old `LoopRunner.resumeAt`, which resumed an uncapped rest
  * a margin above the floor rather than at it.
  *
  * Same grain as `statedTheEntityPredicates`: written wherever the block is
@@ -2829,86 +2515,6 @@ function statedTheRestCeiling(home: Home, note: (message: string) => void): void
   );
 }
 
-/**
- * `automation.health.restBeforeTraps` into every file that states `health:`
- * without it, at the shipped figure (2026-09-10, todo 01).
- *
- * `statedTheRestCeiling`'s gap and shape: a key inside a block the file
- * already states is one `reconcileWithTemplate` never reaches, and a setting
- * nobody's file names is one nobody finds. Beside `restTo`, because the three
- * are the one Recover row on the screen; falls back to appending when the
- * file states neither partner.
- */
-function statedTheTrapRest(home: Home, note: (message: string) => void): void {
-  const files = [home.options, ...directories(home.profilesDir).map((id) => home.profile(id).file)];
-  const stated: string[] = [];
-
-  for (const file of files) {
-    edit(file, (document) => {
-      const block = document.getIn(['automation', 'health'], true);
-      if (!isMap(block) || block.has('restBeforeTraps')) return false;
-      const pair = document.createPair(
-        'restBeforeTraps',
-        DEFAULT_CONFIG.automation.health.restBeforeTraps
-      ) as Pair;
-      const at = block.items.findIndex(
-        (item) => isScalar(item.key) && String(item.key.value) === 'restTo'
-      );
-      if (at === -1) block.items.push(pair);
-      else block.items.splice(at + 1, 0, pair);
-      if (isScalar(pair.key)) pair.key.commentBefore = REST_BEFORE_TRAPS_COMMENT;
-      stated.push(file);
-      return true;
-    });
-  }
-
-  if (stated.length === 0) return;
-  const params = { count: stated.length, fileList: stated.join(', ') };
-  note(
-    stated.length === 1
-      ? t('notices.migration.trapRest.one', params)
-      : t('notices.migration.trapRest.many', params)
-  );
-}
-
-/**
- * States `ui.showLogo` in an options file that already has a `ui:` block.
- *
- * The same gap `statedDoorForcing` and `statedTheRestCeiling` cover, one block
- * along: `reconcileWithTemplate` brings a whole absent top-level block across
- * with its comments and **deliberately never reaches inside one**, so a key
- * added to `ui:` afterwards reaches nobody who has already run the client.
- * `normalizeConfig` still defaults it, so the mark is drawn either way — but a
- * setting absent from the file is one nobody reading the file can find, which
- * is the invisible-setting failure this repository keeps writing migrations for.
- *
- * The options file only. `showLogo` is a fact about the client rather than
- * about a character — it is offered on the MudEngine page beside the density
- * and the tab placement — so writing it into every profile would put a
- * per-character override in front of somebody who never asked for one.
- *
- * Beside `showHud`, not appended: the two are the same question asked about two
- * pieces of chrome, and a mark filed under the vitals thresholds reads as a
- * third unrelated setting. Falls back to appending when the file states
- * `showHud` nowhere.
- */
-/**
- * `ui.console`, the console's own ground when the chrome's is light.
- *
- * A whole new block *inside* `ui:`, which is precisely what
- * `reconcileWithTemplate` does not reach — it fills in an absent top-level
- * block and deliberately never goes inside one, and `ui:` has been there since
- * before this existed. So a file written before today would have kept a
- * console that turns light with the chrome, with nothing in it naming the
- * setting that decides so.
- *
- * The paragraph comes from the shipped template rather than being restated
- * here, following `theLoopSettlesAfterAnEscape`: the template is the
- * documentation, and a copy by hand is a second copy to keep in step.
- *
- * Idempotent for the reason `statedTheMark` is: a key in a map stays added
- * whatever its value, so somebody who sets `keepDark: false` keeps it.
- */
 /**
  * The old alert surface becomes rows (todo 02, 2026-09-12).
  *
@@ -3063,6 +2669,23 @@ function lowerWords(node: unknown): string[] {
   );
 }
 
+/**
+ * `ui.console`, the console's own ground when the chrome's is light.
+ *
+ * A whole new block *inside* `ui:`, which is precisely what
+ * `reconcileWithTemplate` does not reach — it fills in an absent top-level
+ * block and deliberately never goes inside one, and `ui:` has been there since
+ * before this existed. So a file written before today would have kept a
+ * console that turns light with the chrome, with nothing in it naming the
+ * setting that decides so.
+ *
+ * The paragraph comes from the shipped template rather than being restated
+ * here, following `theLoopSettlesAfterAnEscape`: the template is the
+ * documentation, and a copy by hand is a second copy to keep in step.
+ *
+ * Idempotent for the reason `statedTheMark` is: a key in a map stays added
+ * whatever its value, so somebody who sets `keepDark: false` keeps it.
+ */
 function statedTheDarkConsole(
   home: Home,
   note: (message: string) => void,
@@ -3138,6 +2761,27 @@ function statedTheConsolePalette(
   note(t('notices.migration.consolePaletteStated', { file: home.options }));
 }
 
+/**
+ * States `ui.showLogo` in an options file that already has a `ui:` block.
+ *
+ * The same gap `statedDoorForcing` and `statedTheRestCeiling` cover, one block
+ * along: `reconcileWithTemplate` brings a whole absent top-level block across
+ * with its comments and **deliberately never reaches inside one**, so a key
+ * added to `ui:` afterwards reaches nobody who has already run the client.
+ * `normalizeConfig` still defaults it, so the mark is drawn either way — but a
+ * setting absent from the file is one nobody reading the file can find, which
+ * is the invisible-setting failure this repository keeps writing migrations for.
+ *
+ * The options file only. `showLogo` is a fact about the client rather than
+ * about a character — it is offered on the MudEngine page beside the density
+ * and the tab placement — so writing it into every profile would put a
+ * per-character override in front of somebody who never asked for one.
+ *
+ * Beside `showHud`, not appended: the two are the same question asked about two
+ * pieces of chrome, and a mark filed under the vitals thresholds reads as a
+ * third unrelated setting. Falls back to appending when the file states
+ * `showHud` nowhere.
+ */
 function statedTheMark(home: Home, note: (message: string) => void): void {
   let stated = false;
   edit(home.options, (document) => {
@@ -3395,25 +3039,6 @@ const DATABASE_COMMENT = [
 ].join('\n');
 
 /**
- * What forcing a barrier is set to, written into a `movement:` block that was
- * copied before there was any.
- *
- * `reconcileWithTemplate` fills in a whole missing block and deliberately
- * never reaches inside one, so a file that already states `movement:` — which
- * every file copied since the block existed does — would never see these four
- * keys. They default to off either way, and that is exactly the failure this
- * project has a name for: a setting nobody can see in their own file is a
- * setting nobody uses, which is how automatic login shipped complete and
- * looked broken.
- *
- * The values written are the defaults, so nothing about how the client behaves
- * changes. What changes is that the file says so, with the paragraph that
- * explains it — the template *is* the documentation here.
- *
- * Nothing is overwritten: a key already stated is the user's answer, whatever
- * it says.
- */
-/**
  * The conversation log's pair stated in the user's own `logging:` block.
  *
  * Same gap as `statedDoorForcing` and for the same reason:
@@ -3449,84 +3074,39 @@ function keptTheConversationLog(home: Home, note: (message: string) => void): vo
 }
 
 /**
- * `openDoors` and `bashDoors` turned **on**, in the files this client wrote them
- * `false` into (2026-09-07, todo 06).
- *
- * This is the one migration here that changes an answer rather than adding a
- * missing one, and it is only defensible because of where the answer came from:
- * `statedDoorForcing` above wrote these two keys into every options file and
- * every profile *at the shipped default*, which was `false`. Nobody chose it.
- * Flipping the default alone would therefore reach nobody — every existing file
- * says `false` in writing — which is the invisible-setting failure with a
- * migration having caused it.
- *
- * So the value is moved, and **only from `false`**: a file already saying `true`
- * is left alone, so this cannot run twice and cannot undo somebody switching it
- * back on. What it cannot tell is a `false` somebody typed on purpose from the
- * one the client wrote, and that trade is stated rather than solved — it is
- * said out loud, it names every file, and the rolling backup beside each is
- * where the old answer still is.
- *
- * `pickLocks` is deliberately **not** moved: it is the same decision made with
- * a skill this client cannot check the character has.
+ * Whether a realm charges for a hang-up went (2026-10-16): only the old
+ * automation's hang-up read it, and the MegaMUD engine decides by its own
+ * Health and Other tabs (*Hang if below*, *Relog instead of hanging*). Out of
+ * the options file and every character's (`hangUp.penalties`, and the older
+ * `onlyWhenClean` where a file still states it), and out of every realm's
+ * `server.yaml` (`hangPenalties`).
  */
-function theDoorsOpenByDefault(home: Home, note: (message: string) => void): void {
-  const files = [home.options, ...directories(home.profilesDir).map((id) => home.profile(id).file)];
-  const moved: string[] = [];
-
-  for (const file of files) {
-    edit(file, (document) => {
-      const movement = document.getIn(['automation', 'movement'], true);
-      if (!isMap(movement)) return false;
-
-      let changed = false;
-      for (const key of ['openDoors', 'bashDoors']) {
-        // `=== false` and not falsy: an absent key inherits the new default
-        // already, and writing one in would be this migration stating a
-        // setting rather than moving one.
-        if (movement.get(key) !== false) continue;
-        movement.set(key, true);
-        changed = true;
-      }
-      if (!changed) return false;
-      moved.push(file);
-      return true;
-    });
-  }
-
-  if (moved.length === 0) return;
-  const params = { count: moved.length, fileList: moved.join(', ') };
-  note(
-    moved.length === 1
-      ? t('notices.migration.doorsOpened.one', params)
-      : t('notices.migration.doorsOpened.many', params)
-  );
-}
-
-/**
- * `hangUp.onlyWhenClean` became `hangUp.penalties` (2026-09-23, todo 01): the
- * question is whether the realm charges for a hang-up, which Paradigm's menu
- * answers itself and a realm's `server.yaml` can answer for everyone there.
- * Every file stated `onlyWhenClean: true`, the shipped default copied whole,
- * so nobody chose it: the options file takes the new default, `penalties:
- * false`, and a profile drops the key to inherit its realm. A profile that
- * said `false` said *hang up anyway*, and keeps that as `penalties: false`.
- */
-function theHangPenaltyIsTheRealms(home: Home, note: (message: string) => void): void {
-  const files = [home.options, ...directories(home.profilesDir).map((id) => home.profile(id).file)];
+function theHangPenaltiesWent(home: Home, note: (message: string) => void): void {
+  const characters = [
+    home.options,
+    ...directories(home.profilesDir).map((id) => home.profile(id).file)
+  ];
+  const realms = directories(home.serversDir).map((id) => home.server(id).file);
   const changed: string[] = [];
 
-  for (const file of files) {
+  for (const file of characters) {
     edit(file, (document) => {
       const hangUp = document.getIn(['automation', 'safety', 'hangUp'], true);
-      if (!isMap(hangUp) || !hangUp.has('onlyWhenClean')) return false;
-      const saidFalse = hangUp.get('onlyWhenClean') === false;
-      hangUp.delete('onlyWhenClean');
-      if ((file === home.options || saidFalse) && !hangUp.has('penalties')) {
-        const pair = document.createPair('penalties', false) as Pair;
-        if (isScalar(pair.key)) pair.key.commentBefore = HANG_PENALTIES_COMMENT;
-        hangUp.items.push(pair);
+      if (!isMap(hangUp)) return false;
+      let touched = false;
+      for (const key of ['penalties', 'onlyWhenClean']) {
+        if (!hangUp.has(key)) continue;
+        hangUp.delete(key);
+        touched = true;
       }
+      if (touched) changed.push(file);
+      return touched;
+    });
+  }
+  for (const file of realms) {
+    edit(file, (document) => {
+      if (!document.has('hangPenalties')) return false;
+      document.delete('hangPenalties');
       changed.push(file);
       return true;
     });
@@ -3536,9 +3116,63 @@ function theHangPenaltyIsTheRealms(home: Home, note: (message: string) => void):
   const params = { count: changed.length, fileList: changed.join(', ') };
   note(
     changed.length === 1
-      ? t('notices.migration.hangPenalties.one', params)
-      : t('notices.migration.hangPenalties.many', params)
+      ? t('notices.migration.hangPenaltiesWent.one', params)
+      : t('notices.migration.hangPenaltiesWent.many', params)
   );
+}
+
+/**
+ * The old automation's toolbar switches, unpinned (2026-10-16). A character
+ * the engine runs draws MegaMUD's toggles in their place, and every character
+ * runs on the engine, so a pin to one is a button that is never drawn. Out of
+ * `toolbar.pinned` by exact id: `gear` is the old kit switch, and
+ * `gear:restore` an action that stays. `fleeGoto` stays too, beside MegaMUD's
+ * toggles.
+ */
+const OLD_SWITCH_PINS = [
+  'automation',
+  'combat',
+  'retaliate',
+  'autoBless',
+  'retreat',
+  'hangUp',
+  'loot',
+  'drop',
+  'search',
+  'autoDeposit',
+  'supplies',
+  'openDoors',
+  'pickLocks',
+  'bashDoors',
+  'sneak',
+  'provideLight',
+  'healParty',
+  'invokeItems',
+  'assistLeader',
+  'defendParty',
+  'restWithLeader',
+  'autoRank',
+  'remotes',
+  'gangpath',
+  'lookAtPlayers',
+  'quests',
+  'gear'
+];
+
+function theOldSwitchesUnpinned(home: Home, note: (message: string) => void): void {
+  let unpinned = 0;
+  edit(home.internal, (document) => {
+    const list = document.getIn(['toolbar', 'pinned'], true);
+    if (!isSeq(list)) return false;
+    const kept = list.items.filter(
+      (item) => !(isScalar(item) && OLD_SWITCH_PINS.includes(String(item.value)))
+    );
+    unpinned = list.items.length - kept.length;
+    if (unpinned === 0) return false;
+    list.items = kept;
+    return true;
+  });
+  if (unpinned > 0) note(t('notices.migration.oldSwitchesUnpinned', { file: home.internal }));
 }
 
 /**
@@ -3606,6 +3240,25 @@ function theWardSwitchMovedToHealth(home: Home, note: (message: string) => void)
   );
 }
 
+/**
+ * What forcing a barrier is set to, written into a `movement:` block that was
+ * copied before there was any.
+ *
+ * `reconcileWithTemplate` fills in a whole missing block and deliberately
+ * never reaches inside one, so a file that already states `movement:` — which
+ * every file copied since the block existed does — would never see these four
+ * keys. They default to off either way, and that is exactly the failure this
+ * project has a name for: a setting nobody can see in their own file is a
+ * setting nobody uses, which is how automatic login shipped complete and
+ * looked broken.
+ *
+ * The values written are the defaults, so nothing about how the client behaves
+ * changes. What changes is that the file says so, with the paragraph that
+ * explains it — the template *is* the documentation here.
+ *
+ * Nothing is overwritten: a key already stated is the user's answer, whatever
+ * it says.
+ */
 function statedDoorForcing(home: Home, note: (message: string) => void): void {
   const files = [home.options, ...directories(home.profilesDir).map((id) => home.profile(id).file)];
   const stated: string[] = [];
@@ -3682,79 +3335,6 @@ function pinTheGearButton(home: Home, note: (message: string) => void): void {
 }
 
 /**
- * The walk's nudge interval, in the tuning file the player actually owns.
- *
- * `reconcileWithTemplate` only ever adds a whole *absent* top-level block, and
- * every file copied since `tuning:` existed states `walk:` — so a key added
- * inside it reaches nobody who has already run the client. The number still
- * decides something (`TUNING_DEFAULTS` answers underneath), which is the worse
- * half: the behaviour changes and the figure that governs it is invisible in
- * the one file this client says every such figure lives in.
- *
- * Beside `maxHolds`, where the shipped file puts it, so a migrated tuning file
- * reads as a fresh one. Falls back to appending when the block has been
- * rearranged by hand.
- */
-/**
- * The Auto-Bless switch onto the toolbar, beside retaliate (todo 04).
- *
- * `pinTheGearButton`'s shape and its caveat: a list entry cannot say it was
- * removed on purpose, so a player who unpins it finds it back next launch,
- * and this says so in place.
- */
-function pinTheBlessSwitch(home: Home, note: (message: string) => void): void {
-  let pinned = false;
-  edit(home.internal, (document) => {
-    const list = document.getIn(['toolbar', 'pinned'], true);
-    if (!isSeq(list)) return false;
-    const ids = list.items.map((item) => (isScalar(item) ? String(item.value) : null));
-    if (ids.includes('autoBless')) return false;
-    // Beside retaliate as the shipped row has it; on a curated row missing
-    // it, after the nearest of the switches that precede it there, else the
-    // front — the order a fresh client draws, as far as the row allows.
-    const after = ['retaliate', 'combat', 'automation']
-      .map((id) => ids.indexOf(id))
-      .find((at) => at >= 0);
-    list.items.splice(after === undefined ? 0 : after + 1, 0, new Scalar('autoBless'));
-    pinned = true;
-    return true;
-  });
-  if (pinned) note(t('notices.migration.blessSwitchPinned'));
-}
-
-function statedTheStepNudge(home: Home, note: (message: string) => void): void {
-  let stated = false;
-  edit(home.internal, (document) => {
-    const block = document.getIn(['tuning', 'walk'], true);
-    if (!isMap(block) || block.has('nudgeAfterMs')) return false;
-
-    /*
-     * The default itself, never a copy of it. `internal.test.ts` binds the
-     * shipped template to `TUNING_DEFAULTS`; a literal here would be a third
-     * copy that nothing binds, and a stated key outranks the default — so a
-     * later change to the figure would write the *stale* one into every
-     * existing file and silently keep the old behaviour. Read through
-     * `DEFAULT_INTERNAL`, which is that constant, rather than exporting a
-     * second door onto it.
-     */
-    const pair = document.createPair(
-      'nudgeAfterMs',
-      DEFAULT_INTERNAL.tuning.walk.nudgeAfterMs
-    ) as Pair;
-    const at = block.items.findIndex(
-      (item) => isScalar(item.key) && String(item.key.value) === 'maxHolds'
-    );
-    if (at === -1) block.items.push(pair);
-    else block.items.splice(at + 1, 0, pair);
-    if (isScalar(pair.key)) pair.key.commentBefore = NUDGE_AFTER_COMMENT;
-    stated = true;
-    return true;
-  });
-
-  if (stated) note(t('notices.migration.stepNudgeStated'));
-}
-
-/**
  * `{action}` becomes `{action.toggleEquip}` in a design the player keeps.
  *
  * What can be done with a thing is a family since todo 14 — the equip gate it
@@ -3794,156 +3374,9 @@ function theActionsBecameAFamily(home: Home, note: (message: string) => void): v
 }
 
 /**
- * How far a drawn plan may drift before the press asks about the redrawn one.
- *
- * `statedTheStepNudge`'s gap one key along again: a key added inside an
- * existing `walk:` block reaches nobody who has already run the client, and
- * this one decides whether pressing Walk on a plan the character has wandered
- * off the start of walks quietly or puts the new plan back on screen. Without
- * it the file has no figure and the behaviour is invisible in the one place
- * the client tells the player to look for it.
- *
- * Beside `resumeAskSteps`, where the shipped file puts it and where the
- * distance it is not is already explained.
- */
-function statedTheReplanDrift(home: Home, note: (message: string) => void): void {
-  let stated = false;
-  edit(home.internal, (document) => {
-    const block = document.getIn(['tuning', 'walk'], true);
-    if (!isMap(block) || block.has('replanDriftSteps')) return false;
-
-    // The default itself, never a copy: `statedTheStepNudge` has the argument.
-    const pair = document.createPair(
-      'replanDriftSteps',
-      DEFAULT_INTERNAL.tuning.walk.replanDriftSteps
-    ) as Pair;
-    const at = block.items.findIndex(
-      (item) => isScalar(item.key) && String(item.key.value) === 'resumeAskSteps'
-    );
-    if (at === -1) block.items.push(pair);
-    else block.items.splice(at + 1, 0, pair);
-    if (isScalar(pair.key)) pair.key.commentBefore = REPLAN_DRIFT_COMMENT;
-    stated = true;
-    return true;
-  });
-
-  if (stated) note(t('notices.migration.replanDriftStated'));
-}
-
-/**
- * How long a walk waits in the dark for the light that fixes it.
- *
- * `statedTheReplanDrift`'s gap, one key along: `reconcileWithTemplate` adds an
- * absent top-level block and never reaches inside one, so a key added under
- * `walk:` reaches nobody who has already run the client.
- *
- * Worth stating rather than leaving to the default, because what it bounds is
- * a walk that used to *stop*: a blinding room prints no room block, the client
- * could not say where the character was standing, and the journey ended one
- * statement before auto-light proposed the torch that fixed it. The figure is
- * the only thing standing between waiting for a light and waiting for ever.
- *
- * Beside `heldFallbackMs`, where the shipped file puts it.
- */
-function statedTheLightWait(home: Home, note: (message: string) => void): void {
-  let stated = false;
-  edit(home.internal, (document) => {
-    const block = document.getIn(['tuning', 'walk'], true);
-    if (!isMap(block) || block.has('lightWaitMs')) return false;
-
-    // The default itself, never a copy: `statedTheStepNudge` has the argument.
-    const pair = document.createPair(
-      'lightWaitMs',
-      DEFAULT_INTERNAL.tuning.walk.lightWaitMs
-    ) as Pair;
-    const at = block.items.findIndex(
-      (item) => isScalar(item.key) && String(item.key.value) === 'heldFallbackMs'
-    );
-    if (at === -1) block.items.push(pair);
-    else block.items.splice(at + 1, 0, pair);
-    if (isScalar(pair.key)) pair.key.commentBefore = LIGHT_WAIT_COMMENT;
-    stated = true;
-    return true;
-  });
-
-  if (stated) note(t('notices.migration.lightWaitStated'));
-}
-
-/** The template's own words for the key, so the two files read alike. */
-const LIGHT_WAIT_COMMENT = ` How long a walk stands still in a room too dark to read, waiting for the
- light auto-light is readying.
-
- A blinding room prints no room block at all, so the client cannot say where
- the character is standing and the walk used to stop there -- one statement
- before the torch it needed was even proposed. What it waits for is three
- commands and two answers ("light torch", "You lit the torch.", "l", the room),
- measured at 145ms end to end; what makes this seconds rather than a fifth of
- one is the queue, which paces the light behind whatever else is in flight.
-
- A deadline and not a retry: there is nothing further to ask. Past it the room
- is dark for a reason no light in the pack fixes, and the walk stops with the
- sentence it always had.`;
-
-/**
- * The window the walk's nudge deadline is measured over.
- *
- * `statedTheStepNudge`'s gap, one key along, and the same argument: a key
- * added inside an existing `walk:` block reaches nobody who has already run
- * the client, and this one changes what `nudgeAfterMs` beside it *means* —
- * from the whole deadline to the margin on top of a measurement. A figure
- * whose meaning moved while the file still explains the old one is worse than
- * one that is merely absent, so the comment goes in with it.
- *
- * Beside `nudgeAfterMs`, where the shipped file puts it.
- */
-function statedTheNudgeWindow(home: Home, note: (message: string) => void): void {
-  let stated = false;
-  edit(home.internal, (document) => {
-    const block = document.getIn(['tuning', 'walk'], true);
-    if (!isMap(block) || block.has('nudgeSamples')) return false;
-
-    // The default itself, never a copy: `statedTheStepNudge` has the argument.
-    const pair = document.createPair(
-      'nudgeSamples',
-      DEFAULT_INTERNAL.tuning.walk.nudgeSamples
-    ) as Pair;
-    const at = block.items.findIndex(
-      (item) => isScalar(item.key) && String(item.key.value) === 'nudgeAfterMs'
-    );
-    if (at === -1) block.items.push(pair);
-    else block.items.splice(at + 1, 0, pair);
-    if (isScalar(pair.key)) pair.key.commentBefore = NUDGE_SAMPLES_COMMENT;
-    /*
-     * `nudgeAfterMs` is still there and still read, but it no longer means
-     * what the comment written beside it says. Restated rather than left, for
-     * the same reason the key is added at all: the file is where this client
-     * says every deciding figure is explained.
-     *
-     * Only when the comment is attached to the key. A comment before a map's
-     * *first* key is parsed onto the map instead — it reads as a note about
-     * the whole block, and every shipped and migrated file states `holdMs`
-     * ahead of this one, so the case only arises in a file somebody has
-     * rearranged by hand. Rewriting a note about `walk:` because it happens
-     * to sit above this key would replace something the player wrote.
-     */
-    const existing = block.items.find(
-      (item) => isScalar(item.key) && String(item.key.value) === 'nudgeAfterMs'
-    );
-    if (existing && isScalar(existing.key) && existing.key.commentBefore !== undefined) {
-      existing.key.commentBefore = NUDGE_AFTER_COMMENT;
-    }
-    stated = true;
-    return true;
-  });
-
-  if (stated) note(t('notices.migration.nudgeWindowStated'));
-}
-
-/**
  * The `who` listing's line cap, in the tuning file the player owns.
  *
- * `statedTheStepNudge`' gap exactly, one block along: `reconcileWithTemplate`
- * adds an absent *top-level* block and never reaches inside one, and every
+ * `reconcileWithTemplate` adds an absent *top-level* block and never reaches inside one, and every
  * `internal.yaml` copied since `tuning:` existed states `parse:` — so a key
  * added under it reaches nobody who has already run the client.
  *
@@ -3965,7 +3398,7 @@ function statedTheRosterCap(home: Home, note: (message: string) => void): void {
     const block = document.getIn(['tuning', 'parse'], true);
     if (!isMap(block) || block.has('rosterLines')) return false;
 
-    // The default itself, never a copy: `statedTheStepNudge` has the argument.
+    // The default itself, never a copy: `internal.test.ts` binds the template to it.
     const pair = document.createPair(
       'rosterLines',
       DEFAULT_INTERNAL.tuning.parse.rosterLines
@@ -4071,137 +3504,9 @@ const ROSTER_LINES_COMMENT = ` Cap on the lines of a \`who\` listing -- the one 
  person on it offline.`;
 
 /**
- * `bank` added to the entry probe, in the file the player actually owns.
- *
- * `reconcileWithTemplate` never reaches inside a block, and every file copied
- * since `automation:` existed states `onEnterRealm` — so a command added to
- * the shipped list reaches nobody who has already run the client. That is the
- * same gap `pinTheLoopShelf` closes for the toolbar row, and the same reason:
- * a default nobody can see in their own file is a default nobody gets.
- *
- * Placed **before a trailing `l`**, where the shipped list put it, so the last
- * thing the entry probe left on screen was still the room. Appending would
- * have ended the sequence on a balance, or on the refusal a character that
- * logged out away from a counter gets. The shipped list no longer ends in a
- * look at all — `stoppedAnnouncingTheLook` runs after this one and takes a
- * trailing one out — so for a file that still has one this only decides the
- * order the two steps leave behind.
- *
- * The honest limit, and it is the one `pinTheLoopShelf` also has: a *list* has
- * no way to say "I took this out on purpose". A key added to a map stays
- * added once it is there whatever its value, but somebody who deletes `bank`
- * from this list looks exactly like somebody who never had it, and will get it
- * back on the next launch. The alternative — a record of which migrations have
- * run — is a second file about the user's files, and this client does not
- * keep one.
- */
-function askedTheBankOnEntry(home: Home, note: (message: string) => void): void {
-  const files = [home.options, ...directories(home.profilesDir).map((id) => home.profile(id).file)];
-  const asked: string[] = [];
-
-  for (const file of files) {
-    edit(file, (document) => {
-      const list = document.getIn(['automation', 'onEnterRealm'], true);
-      if (!isSeq(list)) return false;
-
-      const commands = list.items.map((item) => (isScalar(item) ? String(item.value) : null));
-      // Already there — a file edited by hand, or a second run of this.
-      if (commands.includes('bank')) return false;
-
-      const last = commands.length - 1;
-      const at = last >= 0 && commands[last] === 'l' ? last : commands.length;
-      list.items.splice(at, 0, new Scalar('bank'));
-      asked.push(file);
-      return true;
-    });
-  }
-
-  if (asked.length === 0) return;
-  const params = { count: asked.length, fileList: asked.join(', ') };
-  note(
-    asked.length === 1
-      ? t('notices.migration.bankAskedOnEntry.one', params)
-      : t('notices.migration.bankAskedOnEntry.many', params)
-  );
-}
-
-/** The look, in every spelling the realm accepts from one letter up. */
-const LOOK_WORDS = new Set(['l', 'lo', 'loo', 'look']);
-
-/**
- * The client stopped re-reading rooms with `l`, in the files that say so.
- *
- * `l` prints the room *and* broadcasts `<name> is looking around the room.` to
- * everybody standing there — a sentence this client already reads as
- * `player-looks`, from the other side. Sent on the idle tick it is a beacon
- * every forty-five seconds for as long as the client is connected; sent on
- * entering the realm it announces the arrival it was asked to read. A bare
- * Enter prints the same block and says nothing to anybody, so that is what the
- * client sends now (`REREAD_ROOM`) — and the two places the *player's* file
- * still names `l` have to move with it, or the change reaches nobody who has
- * already run the client. Same gap as `askedTheBankOnEntry`, same reason.
- *
- * Two edits, both conservative:
- *
- * - **`automation.idle.command`** becomes empty — a bare Enter — but only when
- *   it is still a look. Anything else there is a command somebody chose.
- * - **A trailing look in `automation.onEnterRealm`** is dropped rather than
- *   replaced: a list of command words has no spelling for a bare Enter, and
- *   the server prints the room on entering the realm anyway. Only a trailing
- *   one, because a look in the middle of the list was put there to separate
- *   two answers and removing it would change what the console shows.
- *
- * The honest limit is `askedTheBankOnEntry`'s: nothing records which
- * migrations have run, so somebody who *wants* the idle look back has to say
- * so in a spelling this does not match — `look` with an argument, or any of
- * the abbreviations after a hand edit. It runs once against a file that still
- * reads as the old default and never again, because after it the value no
- * longer matches.
- */
-function stoppedAnnouncingTheLook(home: Home, note: (message: string) => void): void {
-  const files = [home.options, ...directories(home.profilesDir).map((id) => home.profile(id).file)];
-  const quietened: string[] = [];
-
-  for (const file of files) {
-    edit(file, (document) => {
-      let changed = false;
-
-      const idle = document.getIn(['automation', 'idle', 'command'], true);
-      if (isScalar(idle) && LOOK_WORDS.has(String(idle.value).trim().toLowerCase())) {
-        // Quoted, so an empty scalar reads as a deliberate value rather than
-        // as a key somebody forgot to finish.
-        idle.value = '';
-        idle.type = Scalar.QUOTE_SINGLE;
-        changed = true;
-      }
-
-      const list = document.getIn(['automation', 'onEnterRealm'], true);
-      if (isSeq(list)) {
-        const last = list.items.at(-1);
-        if (isScalar(last) && LOOK_WORDS.has(String(last.value).trim().toLowerCase())) {
-          list.items.pop();
-          changed = true;
-        }
-      }
-
-      if (changed) quietened.push(file);
-      return changed;
-    });
-  }
-
-  if (quietened.length === 0) return;
-  const params = { count: quietened.length, fileList: quietened.join(', ') };
-  note(
-    quietened.length === 1
-      ? t('notices.migration.lookNoLongerBroadcast.one', params)
-      : t('notices.migration.lookNoLongerBroadcast.many', params)
-  );
-}
-
-/** In template order, so a file that gains all four reads like the shipped one. */
-/**
- * The blocks and keys 2026-09-01 added — dropping junk, banking the purse,
- * defending the party, the crowd spell, and the PvP reaction. Same gap
+ * The blocks and keys 2026-09-01 added — defending the party, the crowd
+ * spell, and the PvP reaction (dropping junk and banking the purse went with
+ * the old automation, 2026-10-16). Same gap
  * `statedDoorForcing` closes and for the same reason: `reconcileWithTemplate`
  * never reaches inside `automation:`, so a setting added there reaches nobody
  * who has already run the client, and here the template is the documentation.
@@ -4210,8 +3515,8 @@ function stoppedAnnouncingTheLook(home: Home, note: (message: string) => void): 
  * a block (`safety.pvp`, `party.defendParty`, the three `spells.area*`) are
  * written wherever that block is already stated — the options file always
  * states them, and a profile stating one has opted into pinning its keys. The
- * two whole new blocks (`drop:`, `banking:`) are written into the **options
- * file only**: a profile that never mentioned them inherits, and writing
+ * whole new blocks (`quests:`, `gear:`) are written into the **options file
+ * only**: a profile that never mentioned them inherits, and writing
  * defaults into every profile would freeze today's defaults into each.
  *
  * The values written are the defaults, so nothing about how the client
@@ -4248,23 +3553,11 @@ function statedTheNewAutomation(home: Home, note: (message: string) => void): vo
       let changed = false;
       // The whole new blocks, in the options file alone.
       if (file === home.options) {
-        if (addKeys(document, ['automation'], [['drop', DROP_DEFAULT]], DROP_COMMENT)) {
-          changed = true;
-        }
-        if (addKeys(document, ['automation'], [['banking', BANKING_DEFAULT]], BANKING_COMMENT)) {
-          changed = true;
-        }
         if (addKeys(document, ['automation'], [['quests', QUESTS_DEFAULT]], QUESTS_COMMENT)) {
-          changed = true;
-        }
-        if (addKeys(document, ['automation'], [['gear', GEAR_DEFAULT]], GEAR_COMMENT)) {
           changed = true;
         }
       }
       // The keys inside blocks a file already states.
-      if (addKeys(document, ['automation', 'safety'], [['pvp', PVP_DEFAULT]], PVP_COMMENT)) {
-        changed = true;
-      }
       if (
         addKeys(document, ['automation', 'party'], [['defendParty', false]], DEFEND_PARTY_COMMENT)
       ) {
@@ -4273,27 +3566,7 @@ function statedTheNewAutomation(home: Home, note: (message: string) => void): vo
       if (addKeys(document, ['automation', 'spells'], AREA_SPELL_DEFAULTS, AREA_SPELL_COMMENT)) {
         changed = true;
       }
-      if (
-        addKeys(
-          document,
-          ['automation', 'spells'],
-          [['notifyPartyOnWearOff', false]],
-          NOTIFY_WEAR_OFF_COMMENT
-        )
-      ) {
-        changed = true;
-      }
       if (addKeys(document, ['automation', 'spells'], [['autoBless', true]], AUTO_BLESS_COMMENT)) {
-        changed = true;
-      }
-      if (
-        addKeys(
-          document,
-          ['automation', 'movement'],
-          [['fightOnArrival', true]],
-          FIGHT_ON_ARRIVAL_COMMENT
-        )
-      ) {
         changed = true;
       }
       if (
@@ -4315,16 +3588,6 @@ function statedTheNewAutomation(home: Home, note: (message: string) => void): vo
           ['automation', 'movement'],
           [['keepOutOf', [...DEFAULT_CONFIG.automation.movement.keepOutOf]]],
           KEEP_OUT_OF_COMMENT
-        )
-      ) {
-        changed = true;
-      }
-      if (
-        addKeys(
-          document,
-          ['automation', 'combat'],
-          [['defendAfterRounds', 2]],
-          DEFEND_AFTER_ROUNDS_COMMENT
         )
       ) {
         changed = true;
@@ -4375,15 +3638,7 @@ function statedTheEntityPredicates(home: Home, note: (message: string) => void):
       add(['automation', 'combat'], 'minMobs', 0, '');
       add(['automation', 'combat'], 'maxMonsterExperience', 0, '');
       add(['automation', 'spells'], 'healBelowInCombat', 0, HEAL_IN_COMBAT_COMMENT);
-      add(['automation', 'combat'], 'maxTargetHealth', 0, COMBAT_KIND_COMMENT);
       add(['automation', 'loot'], 'coinKinds', [...DENOMINATIONS], LOOT_COINS_COMMENT);
-      add(['automation', 'loot'], 'stopAtGrade', 'never', LOOT_GRADE_COMMENT);
-      add(['automation', 'loot'], 'convertWith', '', LOOT_CONVERT_COMMENT);
-      add(['automation', 'loot'], 'convertAt', 'never', '');
-      add(['automation', 'loot'], 'minPrice', 0, LOOT_VALUE_COMMENT);
-      add(['automation', 'loot'], 'maxEncumbrance', 0, LOOT_WEIGHT_COMMENT);
-      add(['automation', 'drop'], 'worthless', false, DROP_WORTHLESS_COMMENT);
-      add(['automation', 'banking'], 'bank', 0, BANK_WHICH_COMMENT);
       if (changed) stated.push(file);
       return changed;
     });
@@ -4519,8 +3774,6 @@ function mergedBuffsIntoBlessings(home: Home, note: (message: string) => void): 
            * new default; a carried one keeps its old behaviour.
            */
           const row: Record<string, unknown> = { name, spell, target, inCombat: false };
-          const minMana = item.get('minMana');
-          if (typeof minMana === 'number') row['minMana'] = minMana;
           const interval = item.get('intervalSeconds');
           if (typeof interval === 'number') row['fallbackSeconds'] = interval;
           rows.push(row);
@@ -4612,29 +3865,11 @@ function keyedBlessingsOnSpell(home: Home, note: (message: string) => void): voi
   );
 }
 
-const NOTIFY_WEAR_OFF_COMMENT = ` Tell the party member who blessed you when their spell wears off --
- \`/<caster> @bless-expired <spell>\` -- so their client recasts on the event
- instead of its clock. Both ends must run mudengine. Off: it speaks on
- somebody's telepath channel unasked.`;
-
-const FIGHT_ON_ARRIVAL_COMMENT = ` Turn auto-combat back on when a route you asked for arrives: walking
- with it off is how you get somewhere without fighting on the way, and on
- arrival that reason is gone. Flips the switch in this file.`;
-
 const KEEP_OUT_OF_COMMENT = ` Ways and places routes keep out of, in the realm's own words: a way whose
  script phrase says one (\`go vortex\`), or a room whose name does. A route
  you ask for that crosses one is shown beside the way round it, and you
  choose; a walk nobody is watching is planned round them, and refused out
  loud where there is no way round, unless it starts or ends inside one.`;
-
-const DEFEND_AFTER_ROUNDS_COMMENT = ` With auto-combat off, or a route run with it off, being hit for this many
- rounds without moving turns it on until you next arrive in another room.
- Off means do not start fights; it never meant stand there and be killed.
- Flips the switch in this file, both ways. 0 never does.`;
-
-const HANG_PENALTIES_COMMENT = ` Whether this realm charges for a hang-up at all. Off: below belowHealth
- the client simply hangs up. Paradigm's realm menu states it, and that
- outranks this; so does a realm's own server.yaml (hangPenalties).`;
 
 const USE_WARDS_COMMENT = ` The realm's own half of the potion rules above: where it says a spell
  stops a room's effect and a carried item's use casts it -- the waterskin
@@ -4646,28 +3881,7 @@ const AUTO_BLESS_COMMENT = ` Whether the blessings above are cast unasked at all
  Auto-Bless switch: off keeps the mana for healing through a fight without
  emptying the list; the cures and the heal are untouched.`;
 
-const DROP_DEFAULT = { enabled: false, items: [], whenEncumbered: false };
-/** The template's own words, abridged, so the two files read alike. */
-const DROP_COMMENT = ` Dropping named junk, unasked -- the other half of MegaMUD's drop list.
- \`items\` is the only authority on what is junk: nothing you did not name is
- ever dropped, and never anything worn, wielded or lit. Matched by prefix,
- as the server reads \`drop\`. \`whenEncumbered\` holds the junk until the
- server itself grades the load as anything but None. Off by default.`;
-
-const BANKING_DEFAULT = { autoDeposit: false, depositThresholdCopper: 50_000, keepCopper: 500 };
 /** Running a quest's plan (todo 102): off, like everything automated. */
-const GEAR_DEFAULT = { enabled: false, sets: [], offRound: { item: '', everyRounds: 0 } };
-const GEAR_COMMENT = ` Which kit to be in, and when -- the equipment manager.
-
- A set names only the slots it cares about, and the kit is the \`always\` set
- overlaid by whichever other set applies: \`when\` is \`always\`, \`moving\` (a
- route or a lap under way) or \`fighting\`, and a fighting set may add \`mob:\`
- to apply against one monster only. The off-hand comes off before a two-handed
- weapon goes on, off the realm's own \`Items.WeaponType\`.
-
- \`offRound\` is \`use <item> <target>\` between rounds. It costs the round --
- the server will not use a weapon that is not in hand -- so \`everyRounds\` is
- the floor under it and 0, where it ships, is off.`;
 const QUESTS_DEFAULT = { enabled: false };
 const QUESTS_COMMENT = ` Running a quest's plan -- the Quest card's Run it.
 
@@ -4676,20 +3890,6 @@ const QUESTS_COMMENT = ` Running a quest's plan -- the Quest card's Run it.
  to the act is walked as a leg, the act is sent, and the counter is read back
  with \`abil\` before the next step starts. Off, because a run walks across
  the realm, buys, hunts and fights for as long as the chain takes.`;
-const BANKING_COMMENT = ` Banking the purse, unasked -- MegaMUD's StashCoin. At a bank counter with
- more than \`depositThresholdCopper\` in the purse, deposits everything above
- \`keepCopper\` and asks \`bank\` behind it. Both numbers are copper: 10 to the
- silver, 100 to the gold crown, 10,000 to the platinum -- the defaults are
- 500 gold and 5 gold. Never on an unread purse, never in combat or resting.
- Off by default.`;
-
-const PVP_DEFAULT = { notifyGang: false, action: 'none' };
-const PVP_COMMENT = ` What to do the moment a player opens on you. \`notifyGang\` says so on the
- gangpath (\`bg\`), once per attacker per five-minute window, with the room
- and your health riding along. \`action\` is \`none\` or \`retreat\` -- the retreat
- runs the moment the attack is seen, whatever retreat.enabled says. Both off:
- the broadcast speaks to your whole gang, and running away is the client
- deciding a fight is lost.`;
 
 const DEFEND_PARTY_COMMENT = ` Swing at a monster seen attacking any party member -- MegaMUD's
  DefendParty. The fight came to the party, so combat.engage does not gate
@@ -4720,8 +3920,7 @@ const PARTY_LEADING_COMMENT = ` MegaMUD's party pacing. Leading: waitForMembersB
 
 const AREA_SPELL_DEFAULTS: ReadonlyArray<readonly [string, string | number]> = [
   ['areaAttack', ''],
-  ['areaMinMobs', 3],
-  ['areaMinMana', 0.35]
+  ['areaMinMobs', 3]
 ];
 const AREA_SPELL_COMMENT = ` The spell for a crowded room -- MegaMUD's MultAttack. When at least
  \`areaMinMobs\` threats stand in the room and mana clears \`areaMinMana\` (or
@@ -4730,52 +3929,6 @@ const AREA_SPELL_COMMENT = ` The spell for a crowded room -- MegaMUD's MultAttac
  monster the realm calls good stands in the room: a room spell hits
  everything, and the ten evil points are a cost no setting spends unasked.
  Blank casts nothing.`;
-
-const BANK_WHICH_COMMENT = ` Which counter this character's vault is at, as a \`Shops\` row id -- the
- settings screen picks it from the realm's own list. 0 is whichever counter it
- happens to be standing at, which is what this did before the setting existed.
- A balance is per counter, so banking wherever you walk past leaves several
- figures that cannot be added up.`;
-
-const COMBAT_KIND_COMMENT = ` A refusal from the realm's own column rather than a name: more health than
- you want to open on. 0 never refuses. Silent where the realm says nothing,
- and it does not touch retaliation.`;
-
-const NUDGE_AFTER_COMMENT = ` How much longer than this realm's own slowest answer a step may go unanswered
- before the walk sends one bare Enter to force a status line out of the server.
-
- A margin over a measurement, never a claim about the server. This used to be
- the whole deadline and meant "a move is answered in well under a second" --
- true of one realm, stated about all of them. Paradigm's movement round is a
- measured 1,239ms, so the fallback fired on every step of every walk, and the
- bare Enter it sends is answered with a full reprint of the room: every room
- appeared twice, all the way round the lap.
-
- The walk now measures what a move actually costs on your realm and this is the
- headroom on top. It is also the whole deadline until a move has been answered
- once, which is the only moment there is nothing to measure against. One per
- step; the full stepTimeoutMs runs behind it before the walk gives up.`;
-
-const NUDGE_SAMPLES_COMMENT = ` How many recent move answers that deadline is measured over.
-
- The statistic is the slowest of them: the deadline exists to be later than a
- normal answer, and one fast answer says nothing about the slow case -- a step
- whose room dead reckoning had already placed answers in a millisecond and is
- not evidence the realm is quick. A window rather than an all-time maximum, so
- one lagged answer ages out instead of standing the fallback down for the
- evening.`;
-
-const REPLAN_DRIFT_COMMENT = ` How far the character may have strayed from the room a drawn plan
- starts in before pressing Walk asks about the plan it is redrawn as.
-
- A plan is drawn from where the character stood when it was drawn, and a lap or
- a party leader moves it while the panel is open -- so the press used to earn
- "that route does not start here", with nothing to do about it but draw the
- same plan again. It is redrawn from here instead, and the only question left
- is whether the reader is still looking at the journey they agreed to.
-
- Counted in the router's own steps, not in map squares. Past this, the new plan
- is put back on screen to be read. 0 asks every time.`;
 
 const SHOW_LOGO_COMMENT = ` The client's own mark, at the left of the status rail.
 
@@ -4792,12 +3945,6 @@ const REST_TO_COMMENT = ` Keep sitting back down until health reaches this; 0 is
  (measured 2026-09-02), and standing regenerates six times slower. Set this and
  you get rest, heal, rest, heal. A figure below \`restBelow\` is lifted to it.`;
 
-const REST_BEFORE_TRAPS_COMMENT = ` Rest before stepping through a trap, until health covers what the trap does
- and still leaves this share of maximum after it -- a sliding scale, so a
- 36-damage trap in front of 165 HP is fine at 110 and a 75-damage one wants
- 150. Where the room beyond is a lair the router priced, the larger share is
- kept. 0 walks into any trap at any health.`;
-
 const HEAL_IN_COMBAT_COMMENT = ` A different heal floor while in combat, when one is wanted -- MegaMUD's
  HpHealAtt%. A heal cast at 80% mid-fight is a round spent not hitting
  anything, and the round is what the fight is made of. 0 uses \`healBelow\` for
@@ -4807,33 +3954,6 @@ const LOOT_COINS_COMMENT = ` Which coins are worth bending down for. All five is
  has always meant, so this changes nothing until you take one out -- and the
  cheap ones are most of what drops: every \`get copper\` is a command out of the
  budget the fighting is done from. An empty list takes none.`;
-
-const LOOT_GRADE_COMMENT = ` Stop collecting coins once the server grades the load this heavily --
- \`never\`, \`medium\` or \`heavy\`. The server's own word off the inventory
- listing, never a percentage this client computed; a word it cannot rank leaves
- the gate closed, because unknown is not encumbered.`;
-
-const LOOT_CONVERT_COMMENT = ` An item that turns small coin into large -- GreaterMUD's coin bag, which
- Daeron Darksong drops. Blank never converts, and MajorMUD has no such item.
- The client cannot tell which item does this and does not pretend to, so name
- it yourself; \`convertAt\` says how loaded to be before using it.`;
-
-const LOOT_VALUE_COMMENT = ` Also take anything the realm prices at or above this, in copper. 0 never
- does, and an item the realm cannot price is never taken by it -- a price
- nobody has stated is not a high one, and \`items\` above is the instruction
- that does not depend on data the realm may not have.`;
-
-const LOOT_WEIGHT_COMMENT = ` Never pick anything heavier up, whatever else says to -- this outranks a name
- on the list, because the failure it exists for is an unattended character
- looting itself over the encumbrance the walker then stalls under. 0 never
- refuses, and an item the realm cannot weigh is not refused: unknown is not
- heavy.`;
-
-const DROP_WORTHLESS_COMMENT = ` Also drop anything the realm prices at zero, without naming it. Its explicit
- zero only, never its silence: a price nobody has stated is not a price of
- nothing, and dropping on absence would empty a kit into the road on the first
- realm this client has no data for. Nothing marked Not Droppable is dropped by
- it, and nothing equipped.`;
 
 const HEAL_SPLIT_COMMENT = ` Healing is two spells, because the realm distinguishes them: \`heal\` is cast
  on this character (bare, which is how a targetless cast lands on the caster)
@@ -4861,8 +3981,7 @@ const CONVERSATION_LOG_COMMENT = ` Keep the Talk card's conversation history on 
 
 const LIGHT_DEFAULTS: ReadonlyArray<readonly [string, boolean]> = [
   ['provideLight', true],
-  ['lightDimRooms', false],
-  ['extinguishInLight', true]
+  ['lightDimRooms', false]
 ];
 
 /** The template's own words for the three, so the two files read alike. */
@@ -4878,19 +3997,7 @@ const LIGHT_COMMENT = ` Light, before the dark -- MegaMUD's AutoLight.
  the light out again in a room that does not need it, while nothing is walking
  the character, so a torch lasts the sewer rather than the walk to it.`;
 
-const CONDITION_WAIT_DEFAULTS: ReadonlyArray<readonly [string, boolean]> = [
-  ['walkWhileBlind', false],
-  ['walkWhilePoisoned', false]
-];
-
 const KEY_PICKUP_DEFAULTS: ReadonlyArray<readonly [string, boolean]> = [['collectKeys', true]];
-
-/** The template's own words for it, so the two files read alike. */
-const CONFUSION_WAIT_COMMENT = ` And confusion -- MegaMUD's Ignore Confusion, off by default as MegaMUD's
- is. Nothing on the wire says a character is confused in words this
- client knows; a realm's message table does (import MegaMUD's
- Messages.md on the realm's settings page), and while it says so a route
- or a loop stands still. A confused character's commands misfire.`;
 
 /** The template's own words for the monster rows, so the files read alike. */
 const MONSTER_ROWS_COMMENT = ` What this character does differently about particular monsters -- MegaMUD's
@@ -4918,18 +4025,6 @@ const KEY_PICKUP_COMMENT = ` The key to the door in front of you.
  holds a name that can only be that row -- the realm has three \`iron key\`s,
  and a door opened on a coin toss is the confidently wrong answer the router
  refuses everywhere else. One \`get\` per key per room, said out loud.`;
-
-/** The template's own words for the pair, so the two files read alike. */
-const CONDITION_WAIT_COMMENT = `
- Conditions as waits -- MegaMUD's IgnoreBlind / IgnorePoison, whose
- defaults (0) wait the condition out before the script goes on. Off, a
- route or a loop stands still while the server says the character is
- blind or poisoned, and walks on when it says the condition has passed;
- the card and the tab say which condition it is waiting out. A blind
- character cannot read the room it walks into and misses every swing.
- Paralysis always holds -- a step while held is a command spent to be
- refused -- and disease is left to the cure. A cure spell under \`spells:\`
- ends the wait sooner.`;
 
 const SUPPLIES_COMMENT = ` Keeping the pack stocked -- MegaMUD's Must Have Minimum.
 
@@ -5869,6 +4964,10 @@ function stringify(node: Node, lead?: string | null): string {
  * only copy, and a document rebuilt from the parts that did parse discards the
  * rest without asking.
  */
+const MEGAMUD_COMMENT = ` MegaMUD's own settings for this character, in MegaMUD's sections and keys
+ and only where they differ from MegaMUD's defaults. Having them runs the
+ character on the MegaMUD engine. Edit them under Settings -> MegaMUD.`;
+
 const AUTO_RECONNECT_COMMENT = ` Dial this character again when a connection is LOST -- a link that dropped,
  a server that went away. On by default, and not the same question as the one
  above: that one opens a connection you did not ask for, this one puts back
@@ -5879,25 +4978,6 @@ const AUTO_RECONNECT_COMMENT = ` Dial this character again when a connection is 
  typed your way out to the menu. The waits are 0s, 5s, 10s and then 15s for as
  long as it takes; \`tuning.reconnect\` in internal.yaml is where those live.`;
 
-/**
- * `autoReconnect`, stated in every character's own file.
- *
- * Nothing about how the client behaves changes: the key is read as *on* when
- * it is absent, which is the one direction a default is read that way here.
- * What changes is that the file says so — and a character's file is the surface
- * half the people who use this client edit by hand, so a setting that exists
- * only in a form and in a template they copied once is the invisible-setting
- * failure with the settings screen papering over it.
- *
- * **Profiles only.** It is a property of a character, like `autoConnect` beside
- * which it is written; the options file has no `autoReconnect` to state, and
- * putting one there would be a second spelling of a setting the screen could
- * not keep honest.
- *
- * Idempotent for the reason `statedDoorForcing` is and `pinTheGearButton` is
- * not: this is a key in a map, so somebody who sets it to `false` keeps that
- * — a key stays added whatever its value. Nothing stated is overwritten.
- */
 /**
  * Automatic lighting and the supplies list, 2026-09-03.
  *
@@ -5942,7 +5022,7 @@ function statedTheLightAndSupplies(home: Home, note: (message: string) => void):
   edit(home.options, (document) => {
     const automation = document.getIn(['automation'], true);
     if (!isMap(automation) || automation.has('supplies')) return false;
-    const pair = document.createPair('supplies', { enabled: true, items: [] }) as Pair;
+    const pair = document.createPair('supplies', { items: [] }) as Pair;
     if (isScalar(pair.key)) pair.key.commentBefore = SUPPLIES_COMMENT;
     automation.items.push(pair);
     supplied = true;
@@ -5960,97 +5040,6 @@ function statedTheLightAndSupplies(home: Home, note: (message: string) => void):
   if (supplied) note(t('notices.migration.suppliesStated', { file: home.options }));
 }
 
-/**
- * Waiting a stated condition out, 2026-09-05 — and the file that never got it.
- *
- * `walkWhileBlind` and `walkWhilePoisoned` reached the type, the shipped
- * template, both readers (`afflictionHolding`, for the walker within a leg and
- * the loop between them) and both settings pages on the day they were added,
- * and reached **nobody's own options file**, because
- * `reconcileWithTemplate` copies a whole absent top-level block and
- * deliberately never reaches inside one. `normalizeConfig` still applies the
- * default, so a route standing still while the character is blind is correct
- * behaviour — and a player looking for the switch that changes it finds
- * `automation.movement` ending at `extinguishInLight`, with nothing in the
- * file to say the wait is a choice at all. That is the invisible-setting
- * failure `statedDoorForcing` and `statedTheLightAndSupplies` were each
- * written for, one pair of keys along.
- *
- * The template's own paragraph goes with them, because here the comments are
- * the documentation, and it is the half that says what the defaults refuse to
- * do: paralysis always holds, and disease is left to the cure.
- *
- * The key-into-a-map shape, so it is idempotent against somebody who has since
- * set either to `true` — a key stays added whatever its value. Nothing stated
- * is overwritten.
- */
-function statedTheConditionWaits(home: Home, note: (message: string) => void): void {
-  const files = [home.options, ...directories(home.profilesDir).map((id) => home.profile(id).file)];
-  const stated: string[] = [];
-
-  for (const file of files) {
-    edit(file, (document) => {
-      const movement = document.getIn(['automation', 'movement'], true);
-      if (!isMap(movement)) return false;
-
-      let changed = false;
-      let first: Pair | null = null;
-      for (const [key, value] of CONDITION_WAIT_DEFAULTS) {
-        if (movement.has(key)) continue;
-        const pair = document.createPair(key, value) as Pair;
-        movement.items.push(pair);
-        if (first === null) first = pair;
-        changed = true;
-      }
-      if (!changed) return false;
-      if (first !== null && isScalar(first.key)) first.key.commentBefore = CONDITION_WAIT_COMMENT;
-      stated.push(file);
-      return true;
-    });
-  }
-
-  if (stated.length === 0) return;
-  const params = { count: stated.length, fileList: stated.join(', ') };
-  note(
-    stated.length === 1
-      ? t('notices.migration.conditionWaitsStated.one', params)
-      : t('notices.migration.conditionWaitsStated.many', params)
-  );
-}
-
-/**
- * Bending down for a key an exit here needs, 2026-09-06 (todo 01).
- *
- * `collectKeys` ships on, so a file that predates it works correctly from the
- * built-in default and says nothing about it — which is the invisible-setting
- * failure `statedTheLightAndSupplies` and `statedTheConditionWaits` were each
- * written for, one key along. `reconcileWithTemplate` copies a whole absent
- * top-level block and deliberately never reaches inside one, so
- * `automation.movement` in somebody's own file would go on ending at
- * `walkWhilePoisoned` while the client picked keys up.
- *
- * The template's own paragraph goes with it, because here the comments are the
- * documentation and this one's substance is the *narrowness*: what it will not
- * do is the half somebody deciding whether to leave it on needs.
- *
- * The key-into-a-map shape, so it is idempotent against somebody who has since
- * set it to `false` — a key stays added whatever its value. Nothing stated is
- * overwritten.
- */
-/**
- * Waiting a confusion out, 2026-09-22 — the third condition wait, and the
- * first a realm's message table rather than the wire decides.
- *
- * `walkWhileConfused` ships off, so a file that predates it waits confusion
- * out from the built-in default and says nothing about it: the
- * invisible-setting failure `statedTheConditionWaits` was written for, one
- * key along. Placed after `walkWhilePoisoned` where that key is stated, so
- * the three waits read as the one paragraph they are; at the end of the
- * block otherwise.
- *
- * Idempotent against somebody who has since set it — a key stays added
- * whatever its value — and nothing stated is overwritten.
- */
 /**
  * `useVortexes` and `enterNegativePlane` became `keepOutOf` (2026-09-24).
  *
@@ -6220,59 +5209,6 @@ function statedTheFleeGoto(
 }
 
 /**
- * `automation.spells.drain`, `areaDrain`, `drainBelow` and `drainTo`
- * (2026-09-28): a necrolyte's `vampiric assault` and `necromantic storm` cast
- * in place of the attack spells while health is low. Written off, after
- * `areaCasts`, with the template's paragraph on the first, into every file
- * that states a spells block.
- */
-function statedTheDrain(
-  home: Home,
-  note: (message: string) => void,
-  template: string | undefined
-): void {
-  const comment = templateComments(template, 'automation').get('automation.spells.drain');
-  const defaults = DEFAULT_CONFIG.automation.spells;
-  const keys = [
-    ['drain', defaults.drain],
-    ['areaDrain', defaults.areaDrain],
-    ['drainBelow', defaults.drainBelow],
-    ['drainTo', defaults.drainTo]
-  ] as const;
-  const files = [home.options, ...directories(home.profilesDir).map((id) => home.profile(id).file)];
-  const stated: string[] = [];
-
-  for (const file of files) {
-    edit(file, (document) => {
-      const spells = document.getIn(['automation', 'spells'], true);
-      if (!isMap(spells) || spells.has('drain')) return false;
-      const pairs = keys
-        .filter(([key]) => !spells.has(key))
-        .map(([key, value]) => document.createPair(key, value) as Pair);
-      const first = pairs[0];
-      if (typeof comment === 'string' && first !== undefined && isScalar(first.key)) {
-        first.key.commentBefore = comment;
-      }
-      const after = spells.items.findIndex(
-        (item) => isScalar(item.key) && item.key.value === 'areaCasts'
-      );
-      if (after === -1) spells.items.push(...pairs);
-      else spells.items.splice(after + 1, 0, ...pairs);
-      stated.push(file);
-      return true;
-    });
-  }
-
-  if (stated.length === 0) return;
-  const params = { count: stated.length, fileList: stated.join(', ') };
-  note(
-    stated.length === 1
-      ? t('notices.migration.drainStated.one', params)
-      : t('notices.migration.drainStated.many', params)
-  );
-}
-
-/**
  * `mobRules` became monster rows (2026-09-24): the two lists about named
  * monsters were one question asked in two panels.
  *
@@ -6286,7 +5222,7 @@ function statedTheDrain(
  * none.
  *
  * **The rule wins where the two rows disagree**, as it did while both were
- * read: a band beat a monster row's priority (`AutoCombat.bandOf`), and a
+ * read: a band beat a monster row's priority (the old `AutoCombat.bandOf`), and a
  * `never` left the monster alone whatever its relationship. Except a Flee or
  * a Hang up, which stay: those already keep the character out of the fight,
  * and turning one into a Friend would throw away the running or the
@@ -6375,83 +5311,6 @@ function theMobRulesBecameMonsterRows(home: Home, note: (message: string) => voi
   note(t('notices.migration.mobRulesBecameMonsterRows', { fileList: moved.join(', ') }));
 }
 
-function statedTheConfusionWait(home: Home, note: (message: string) => void): void {
-  const files = [home.options, ...directories(home.profilesDir).map((id) => home.profile(id).file)];
-  const stated: string[] = [];
-
-  for (const file of files) {
-    edit(file, (document) => {
-      const movement = document.getIn(['automation', 'movement'], true);
-      if (!isMap(movement) || movement.has('walkWhileConfused')) return false;
-      const pair = document.createPair('walkWhileConfused', false) as Pair;
-      if (isScalar(pair.key)) pair.key.commentBefore = CONFUSION_WAIT_COMMENT;
-      const after = movement.items.findIndex(
-        (item) => isScalar(item.key) && item.key.value === 'walkWhilePoisoned'
-      );
-      if (after === -1) movement.items.push(pair);
-      else movement.items.splice(after + 1, 0, pair);
-      stated.push(file);
-      return true;
-    });
-  }
-
-  if (stated.length === 0) return;
-  const params = { count: stated.length, fileList: stated.join(', ') };
-  note(
-    stated.length === 1
-      ? t('notices.migration.confusionWaitStated.one', params)
-      : t('notices.migration.confusionWaitStated.many', params)
-  );
-}
-
-/**
- * MegaMUD's Freedom, 2026-09-22: a fourth cure, for a character that cannot
- * move. Blank, so nothing is cast until a spell is named — but a `cures:`
- * block that predates it would go on listing three with nothing to say a
- * fourth exists, so it is written in after `disease`, where a player
- * reading the block will find it. Idempotent; nothing stated is overwritten.
- */
-/**
- * `automation.spells.autoChooseHeal` into every file that states `spells:`
- * without it, after `healParty` and with the template's comment (upstream
- * 3b60de1, ported 2026-09-29). The heal was chosen under `autoChoose` until it
- * had its own switch, so each file's new key takes that file's `autoChoose`:
- * a player who had the heals chosen still has them chosen.
- */
-function statedTheHealChoice(
-  home: Home,
-  note: (message: string) => void,
-  template: string | undefined
-): void {
-  const comment = templateComments(template, 'automation').get('automation.spells.autoChooseHeal');
-  const files = [home.options, ...directories(home.profilesDir).map((id) => home.profile(id).file)];
-  const stated: string[] = [];
-
-  for (const file of files) {
-    edit(file, (document) => {
-      const spells = document.getIn(['automation', 'spells'], true);
-      if (!isMap(spells) || spells.has('autoChooseHeal')) return false;
-      const pair = document.createPair('autoChooseHeal', spells.get('autoChoose') === true) as Pair;
-      if (typeof comment === 'string' && isScalar(pair.key)) pair.key.commentBefore = comment;
-      const after = spells.items.findIndex(
-        (item) => isScalar(item.key) && item.key.value === 'healParty'
-      );
-      if (after === -1) spells.items.push(pair);
-      else spells.items.splice(after + 1, 0, pair);
-      stated.push(file);
-      return true;
-    });
-  }
-
-  if (stated.length === 0) return;
-  const params = { count: stated.length, fileList: stated.join(', ') };
-  note(
-    stated.length === 1
-      ? t('notices.migration.healChoiceStated.one', params)
-      : t('notices.migration.healChoiceStated.many', params)
-  );
-}
-
 /**
  * `automation.spells.regen` into every file that states `spells:` without it,
  * blank, after `cures` and with the template's comment (2026-09-29): MegaMUD's
@@ -6530,83 +5389,34 @@ function statedTheAutoJoin(home: Home, note: (message: string) => void): void {
 }
 
 /**
- * `automation.party.autoRank` and `preferredRank` into every file that states
- * `party:` without them, off and mid, after `restWithLeader` with the
- * template's paragraphs (PR #41, 2026-09-30): MegaMUD's Party Rank.
- */
-/**
- * `automation.combat.minSurvival` into every file that states `combat:`
- * without it, off, after `maxMonsterExperience` with the template's paragraph
- * (2026-10-01): upstream 5ffdf91's opening check, a choice the player makes
- * rather than tuning that turns fights down by default.
- */
-function statedTheSurvivalFloor(
-  home: Home,
-  note: (message: string) => void,
-  template: string | undefined
-): void {
-  const comment = templateComments(template, 'automation').get('automation.combat.minSurvival');
-  const files = [home.options, ...directories(home.profilesDir).map((id) => home.profile(id).file)];
-  const stated: string[] = [];
-
-  for (const file of files) {
-    edit(file, (document) => {
-      const combat = document.getIn(['automation', 'combat'], true);
-      if (!isMap(combat) || combat.has('minSurvival')) return false;
-      const pair = document.createPair(
-        'minSurvival',
-        DEFAULT_CONFIG.automation.combat.minSurvival
-      ) as Pair;
-      if (typeof comment === 'string' && isScalar(pair.key)) pair.key.commentBefore = comment;
-      const after = combat.items.findIndex(
-        (item) => isScalar(item.key) && item.key.value === 'maxMonsterExperience'
-      );
-      combat.items.splice(after === -1 ? combat.items.length : after + 1, 0, pair);
-      stated.push(file);
-      return true;
-    });
-  }
-
-  if (stated.length === 0) return;
-  const params = { count: stated.length, fileList: stated.join(', ') };
-  note(
-    stated.length === 1
-      ? t('notices.migration.survivalFloorStated.one', params)
-      : t('notices.migration.survivalFloorStated.many', params)
-  );
-}
-
-/**
- * `automation.movement.walkWhileLosingHp` into every file that states
- * `movement:` without it, off, after `walkWhileConfused` with the template's
- * paragraph (2026-10-11): a switch for the one condition that waited with
- * none. Off is what the client already did. Idempotent; nothing stated is
+ * `logging.stats` into every file that states `logging:` without it, off and
+ * every 60 seconds, after `maxBytes` with the template's paragraph
+ * (2026-10-16): posting a character's readings to its realm's mudstats board.
+ * Off is what the client already did. Idempotent; nothing stated is
  * overwritten.
  */
-function statedTheLosingHpWait(
+function statedTheMudstats(
   home: Home,
   note: (message: string) => void,
   template: string | undefined
 ): void {
-  const comment = templateComments(template, 'automation').get(
-    'automation.movement.walkWhileLosingHp'
-  );
+  const comment = templateComments(template, 'logging').get('logging.stats');
   const files = [home.options, ...directories(home.profilesDir).map((id) => home.profile(id).file)];
   const stated: string[] = [];
 
   for (const file of files) {
     edit(file, (document) => {
-      const movement = document.getIn(['automation', 'movement'], true);
-      if (!isMap(movement) || movement.has('walkWhileLosingHp')) return false;
+      const logging = document.getIn(['logging'], true);
+      if (!isMap(logging) || logging.has('stats')) return false;
       const pair = document.createPair(
-        'walkWhileLosingHp',
-        DEFAULT_CONFIG.automation.movement.walkWhileLosingHp
+        'stats',
+        document.createNode({ ...DEFAULT_CONFIG.logging.stats })
       ) as Pair;
       if (typeof comment === 'string' && isScalar(pair.key)) pair.key.commentBefore = comment;
-      const after = movement.items.findIndex(
-        (item) => isScalar(item.key) && item.key.value === 'walkWhileConfused'
+      const after = logging.items.findIndex(
+        (item) => isScalar(item.key) && item.key.value === 'maxBytes'
       );
-      movement.items.splice(after === -1 ? movement.items.length : after + 1, 0, pair);
+      logging.items.splice(after === -1 ? logging.items.length : after + 1, 0, pair);
       stated.push(file);
       return true;
     });
@@ -6616,41 +5426,36 @@ function statedTheLosingHpWait(
   const params = { count: stated.length, fileList: stated.join(', ') };
   note(
     stated.length === 1
-      ? t('notices.migration.losingHpWaitStated.one', params)
-      : t('notices.migration.losingHpWaitStated.many', params)
+      ? t('notices.migration.mudstatsStated.one', params)
+      : t('notices.migration.mudstatsStated.many', params)
   );
 }
 
-function statedThePartyRank(
+/**
+ * `logging.keepBytes` into every file that states `logging:` without it, 2 GiB,
+ * after `maxBytes` with the template's paragraph (2026-10-18): what the logs
+ * folder may hold in all, the oldest deleted past it. The folder had no limit
+ * and had reached 3.6 GB. Idempotent; nothing stated is overwritten.
+ */
+function statedTheLogBudget(
   home: Home,
   note: (message: string) => void,
   template: string | undefined
 ): void {
-  const comments = templateComments(template, 'automation');
+  const comment = templateComments(template, 'logging').get('logging.keepBytes');
   const files = [home.options, ...directories(home.profilesDir).map((id) => home.profile(id).file)];
   const stated: string[] = [];
 
   for (const file of files) {
     edit(file, (document) => {
-      const party = document.getIn(['automation', 'party'], true);
-      if (!isMap(party) || party.has('autoRank')) return false;
-      const d = DEFAULT_CONFIG.automation.party;
-      const pairs = [
-        document.createPair('autoRank', d.autoRank) as Pair,
-        ...(party.has('preferredRank')
-          ? []
-          : [document.createPair('preferredRank', d.preferredRank) as Pair])
-      ];
-      for (const pair of pairs) {
-        const comment = isScalar(pair.key)
-          ? comments.get(`automation.party.${String(pair.key.value)}`)
-          : undefined;
-        if (typeof comment === 'string' && isScalar(pair.key)) pair.key.commentBefore = comment;
-      }
-      const after = party.items.findIndex(
-        (item) => isScalar(item.key) && item.key.value === 'restWithLeader'
+      const logging = document.getIn(['logging'], true);
+      if (!isMap(logging) || logging.has('keepBytes')) return false;
+      const pair = document.createPair('keepBytes', DEFAULT_CONFIG.logging.keepBytes) as Pair;
+      if (typeof comment === 'string' && isScalar(pair.key)) pair.key.commentBefore = comment;
+      const after = logging.items.findIndex(
+        (item) => isScalar(item.key) && item.key.value === 'maxBytes'
       );
-      party.items.splice(after === -1 ? party.items.length : after + 1, 0, ...pairs);
+      logging.items.splice(after === -1 ? logging.items.length : after + 1, 0, pair);
       stated.push(file);
       return true;
     });
@@ -6660,11 +5465,320 @@ function statedThePartyRank(
   const params = { count: stated.length, fileList: stated.join(', ') };
   note(
     stated.length === 1
-      ? t('notices.migration.partyRankStated.one', params)
-      : t('notices.migration.partyRankStated.many', params)
+      ? t('notices.migration.logsKept.one', params)
+      : t('notices.migration.logsKept.many', params)
   );
 }
 
+/**
+ * A character's MegaMUD `Party.PartyWaitMax` of 0 made a day (2026-10-17).
+ * Carried across from the old automation's `waitNoLongerMinutes: 0` — "as
+ * long as it takes" — it is MegaMUD's "not at all": the wait timed out the
+ * moment it began, and Archer led blind Bowel on through every `@wait`. See
+ * `WAIT_AS_LONG_AS_IT_TAKES`. Idempotent.
+ */
+function theWaitLimitWaits(home: Home, note: (message: string) => void): void {
+  const files = directories(home.profilesDir).map((id) => home.profile(id).file);
+  const changed: string[] = [];
+  for (const file of files) {
+    edit(file, (document) => {
+      const party = document.getIn(['megamud', 'Party'], true);
+      if (!isMap(party)) return false;
+      const limit = party.get('PartyWaitMax');
+      if (limit !== 0 && limit !== '0') return false;
+      party.set('PartyWaitMax', WAIT_AS_LONG_AS_IT_TAKES);
+      changed.push(file);
+      return true;
+    });
+  }
+  if (changed.length === 0) return;
+  const params = {
+    count: changed.length,
+    fileList: changed.join(', '),
+    minutes: WAIT_AS_LONG_AS_IT_TAKES
+  };
+  note(
+    changed.length === 1
+      ? t('notices.migration.waitLimitWaits.one', params)
+      : t('notices.migration.waitLimitWaits.many', params)
+  );
+}
+
+/**
+ * Alert rows at `critical` on anything but the four tab alerts lowered to
+ * `warning` (2026-10-17): hung up, the link dropped (`connection-lost`), ran
+ * and fled are the only critical alerts, and the only ones that light a
+ * character's tab (`TAB_ALERTS`). The shipped health and attacked rows were
+ * critical, and a row the player wrote at critical is lowered with them,
+ * said by file. Idempotent.
+ */
+function onlyTheTabAlertsAreCritical(home: Home, note: (message: string) => void): void {
+  const files = [home.options, ...directories(home.profilesDir).map((id) => home.profile(id).file)];
+  const lowered: string[] = [];
+
+  for (const file of files) {
+    edit(file, (document) => {
+      const rules = document.getIn(['ui', 'alerts', 'rules'], true);
+      if (!isSeq(rules)) return false;
+      let touched = false;
+      for (const item of rules.items) {
+        if (!isMap(item) || String(item.get('level') ?? '') !== 'critical') continue;
+        const on = String(item.get('on') ?? '');
+        if (isAlertEvent(on) && TAB_ALERTS.has(on)) continue;
+        item.set('level', 'warning');
+        touched = true;
+      }
+      if (touched) lowered.push(file);
+      return touched;
+    });
+  }
+
+  if (lowered.length === 0) return;
+  const params = { count: lowered.length, fileList: lowered.join(', ') };
+  note(
+    lowered.length === 1
+      ? t('notices.migration.criticalAlertsLowered.one', params)
+      : t('notices.migration.criticalAlertsLowered.many', params)
+  );
+}
+
+/**
+ * `automation.remotes.commands` into every file that states `remotes:`
+ * without it, empty, after `players` with the template's paragraph
+ * (2026-10-15): the player's own commands others may ask for. None is what
+ * the client already did. Idempotent; nothing stated is overwritten.
+ */
+function statedTheBotCommands(
+  home: Home,
+  note: (message: string) => void,
+  template: string | undefined
+): void {
+  const comment = templateComments(template, 'automation').get('automation.remotes.commands');
+  const files = [home.options, ...directories(home.profilesDir).map((id) => home.profile(id).file)];
+  const stated: string[] = [];
+
+  for (const file of files) {
+    edit(file, (document) => {
+      const remotes = document.getIn(['automation', 'remotes'], true);
+      if (!isMap(remotes) || remotes.has('commands')) return false;
+      const pair = document.createPair('commands', document.createNode([])) as Pair;
+      if (typeof comment === 'string' && isScalar(pair.key)) pair.key.commentBefore = comment;
+      const after = remotes.items.findIndex(
+        (item) => isScalar(item.key) && item.key.value === 'players'
+      );
+      remotes.items.splice(after === -1 ? remotes.items.length : after + 1, 0, pair);
+      stated.push(file);
+      return true;
+    });
+  }
+
+  if (stated.length === 0) return;
+  const params = { count: stated.length, fileList: stated.join(', ') };
+  note(
+    stated.length === 1
+      ? t('notices.migration.botCommandsStated.one', params)
+      : t('notices.migration.botCommandsStated.many', params)
+  );
+}
+
+/**
+ * The `automation:` keys only the old automation read, gone with it
+ * (2026-10-16): the rule list, the commands sent on entering the realm and on
+ * a party change, dropping junk, banking the purse, looking at players, the
+ * client-set status line, the scheduled events and the training; and the old
+ * walker's `movement.walkWhile…` switches. The MegaMUD
+ * engine answers each from its own tabs (`Events`, `Cash`, `Party`, `Talk`)
+ * and nothing reads these, so a file still stating one is a setting somebody
+ * tunes and then waits to see work. Wherever a file states one: the options
+ * file and every character's.
+ */
+const OLD_AUTOMATION_KEYS = [
+  'rules',
+  'onEnterRealm',
+  'onPartyChange',
+  'drop',
+  'banking',
+  'talk',
+  'statline',
+  'events',
+  'train'
+];
+
+const OLD_WALK_SWITCHES = [
+  'walkWhileBlind',
+  'walkWhilePoisoned',
+  'walkWhileConfused',
+  'walkWhileLosingHp'
+];
+
+function theOldAutomationKeysWent(home: Home, note: (message: string) => void): void {
+  const files = [home.options, ...directories(home.profilesDir).map((id) => home.profile(id).file)];
+  const changed: string[] = [];
+
+  for (const file of files) {
+    edit(file, (document) => {
+      const automation = document.get('automation', true);
+      if (!isMap(automation)) return false;
+      let touched = false;
+      for (const key of OLD_AUTOMATION_KEYS) {
+        if (!automation.has(key)) continue;
+        automation.delete(key);
+        touched = true;
+      }
+      // The old walker's condition switches (2026-10-16): MegaMUD's own
+      // *Ignore poison / blindness / confusion* on its Other tab decide.
+      const movement = automation.get('movement', true);
+      if (isMap(movement)) {
+        for (const key of OLD_WALK_SWITCHES) {
+          if (!movement.has(key)) continue;
+          movement.delete(key);
+          touched = true;
+        }
+      }
+      if (touched) changed.push(file);
+      return touched;
+    });
+  }
+
+  if (changed.length === 0) return;
+  const params = { count: changed.length, fileList: changed.join(', ') };
+  note(
+    changed.length === 1
+      ? t('notices.migration.oldAutomationKeys.one', params)
+      : t('notices.migration.oldAutomationKeys.many', params)
+  );
+}
+
+/**
+ * The old automation's settings nothing reads any more, gone (2026-10-22):
+ * found by the compiler's own references, every field under `automation:` that
+ * only the settings screen, its parser and these migrations touched. The
+ * MegaMUD engine decides each from its own tabs, and the planners kept beside
+ * it never read them, so a file still stating one is a setting somebody tunes
+ * and then waits to see work. What is still read (the planners' switches, the
+ * monster and item rows, the flee, and what Settings -> MegaMUD carries across
+ * from these, `megamudFromConfig`) stays. Wherever a file states one: the
+ * options file and every character's.
+ */
+const OLD_AUTOMATION_FIELDS: ReadonlyArray<readonly [readonly string[], readonly string[]]> = [
+  [[], ['idle', 'gear']],
+  [['walk'], ['stepTimeoutMs']],
+  [['safety'], ['pvp']],
+  [['safety', 'hangUp'], ['onPlayerInRoom']],
+  [
+    ['safety', 'retreat'],
+    ['belowMana', 'whenOutnumbered', 'cooldownMs', 'strategy', 'safeHavenRoom']
+  ],
+  [
+    ['combat'],
+    [
+      'hideForOpener',
+      'engage',
+      'retaliate',
+      'defendAfterRounds',
+      'refreshRounds',
+      'maxTargetHealth',
+      'minSurvival'
+    ]
+  ],
+  [['party'], ['assistLeader', 'restWithLeader', 'autoRank', 'preferredRank']],
+  [['health'], ['restNextDoor', 'restBeforeTraps']],
+  [['loot'], ['stopAtGrade', 'convertWith', 'convertAt', 'items', 'minPrice', 'maxEncumbrance']],
+  [['supplies'], ['enabled']],
+  [
+    ['movement'],
+    [
+      'openDoors',
+      'openTries',
+      'bashDoors',
+      'recoverGear',
+      'recoverGearTries',
+      'recoverGearFloor',
+      'extinguishInLight',
+      'fightOnArrival'
+    ]
+  ],
+  [
+    ['spells'],
+    [
+      'areaMinMana',
+      'attackFallback',
+      'drain',
+      'areaDrain',
+      'drainBelow',
+      'drainTo',
+      'autoChooseHeal',
+      'healParty',
+      'invokeItems',
+      'notifyPartyOnWearOff'
+    ]
+  ],
+  [
+    ['spells', 'regen'],
+    ['mana', 'manaMinTick']
+  ]
+];
+
+/** The fields gone from each row of a list: a potion rule's and a blessing's. */
+const OLD_AUTOMATION_ROW_FIELDS: ReadonlyArray<readonly [readonly string[], readonly string[]]> = [
+  [
+    ['health', 'potions'],
+    ['below', 'verb']
+  ],
+  [['spells', 'blessings'], ['minMana']]
+];
+
+function theOldAutomationFieldsWent(home: Home, note: (message: string) => void): void {
+  const files = [home.options, ...directories(home.profilesDir).map((id) => home.profile(id).file)];
+  const changed: string[] = [];
+
+  for (const file of files) {
+    edit(file, (document) => {
+      let touched = false;
+      for (const [at, keys] of OLD_AUTOMATION_FIELDS) {
+        const block = document.getIn(['automation', ...at], true);
+        if (!isMap(block)) continue;
+        for (const key of keys) {
+          if (!block.has(key)) continue;
+          block.delete(key);
+          touched = true;
+        }
+        // A block left saying nothing goes too, but never `automation:` itself.
+        if (at.length > 0 && block.items.length === 0) document.deleteIn(['automation', ...at]);
+      }
+      for (const [at, keys] of OLD_AUTOMATION_ROW_FIELDS) {
+        const list = document.getIn(['automation', ...at], true);
+        if (!isSeq(list)) continue;
+        for (const row of list.items) {
+          if (!isMap(row)) continue;
+          for (const key of keys) {
+            if (!row.has(key)) continue;
+            row.delete(key);
+            touched = true;
+          }
+        }
+      }
+      if (touched) changed.push(file);
+      return touched;
+    });
+  }
+
+  if (changed.length === 0) return;
+  const params = { count: changed.length, fileList: changed.join(', ') };
+  note(
+    changed.length === 1
+      ? t('notices.migration.oldAutomationFields.one', params)
+      : t('notices.migration.oldAutomationFields.many', params)
+  );
+}
+
+/**
+ * MegaMUD's Freedom, 2026-09-22: a fourth cure, for a character that cannot
+ * move. Blank, so nothing is cast until a spell is named — but a `cures:`
+ * block that predates it would go on listing three with nothing to say a
+ * fourth exists, so it is written in after `disease`, where a player
+ * reading the block will find it. Idempotent; nothing stated is overwritten.
+ */
 function statedTheFreedomCure(home: Home, note: (message: string) => void): void {
   const files = [home.options, ...directories(home.profilesDir).map((id) => home.profile(id).file)];
   const stated: string[] = [];
@@ -6693,6 +5807,24 @@ function statedTheFreedomCure(home: Home, note: (message: string) => void): void
   );
 }
 
+/**
+ * Bending down for a key an exit here needs, 2026-09-06 (todo 01).
+ *
+ * `collectKeys` ships on, so a file that predates it works correctly from the
+ * built-in default and says nothing about it — which is the invisible-setting
+ * failure `statedTheLightAndSupplies` was written for, one key along.
+ * `reconcileWithTemplate` copies a whole absent top-level block and
+ * deliberately never reaches inside one, so `automation.movement` in
+ * somebody's own file would go on without it while the client picked keys up.
+ *
+ * The template's own paragraph goes with it, because here the comments are the
+ * documentation and this one's substance is the *narrowness*: what it will not
+ * do is the half somebody deciding whether to leave it on needs.
+ *
+ * The key-into-a-map shape, so it is idempotent against somebody who has since
+ * set it to `false` — a key stays added whatever its value. Nothing stated is
+ * overwritten.
+ */
 function statedTheKeyPickup(home: Home, note: (message: string) => void): void {
   const files = [home.options, ...directories(home.profilesDir).map((id) => home.profile(id).file)];
   const stated: string[] = [];
@@ -6727,6 +5859,25 @@ function statedTheKeyPickup(home: Home, note: (message: string) => void): void {
   );
 }
 
+/**
+ * `autoReconnect`, stated in every character's own file.
+ *
+ * Nothing about how the client behaves changes: the key is read as *on* when
+ * it is absent, which is the one direction a default is read that way here.
+ * What changes is that the file says so — and a character's file is the surface
+ * half the people who use this client edit by hand, so a setting that exists
+ * only in a form and in a template they copied once is the invisible-setting
+ * failure with the settings screen papering over it.
+ *
+ * **Profiles only.** It is a property of a character, like `autoConnect` beside
+ * which it is written; the options file has no `autoReconnect` to state, and
+ * putting one there would be a second spelling of a setting the screen could
+ * not keep honest.
+ *
+ * Idempotent for the reason `statedDoorForcing` is and `pinTheGearButton` is
+ * not: this is a key in a map, so somebody who sets it to `false` keeps that
+ * — a key stays added whatever its value. Nothing stated is overwritten.
+ */
 function statedAutoReconnect(home: Home, note: (message: string) => void): void {
   const stated: string[] = [];
 
@@ -6759,6 +5910,129 @@ function statedAutoReconnect(home: Home, note: (message: string) => void): void 
       : t('notices.migration.autoReconnectStated.many', params)
   );
 }
+
+/** The tuning keys the old automation read, retired at the swap (2026-10-14). */
+const OLD_ENGINE_TUNING: readonly string[] = [
+  'queue.midRoundMs',
+  'queue.minIdleTickMs',
+  'queue.rosterAskMs',
+  'queue.unreadRetryMs',
+  'queue.lookAskMs',
+  'queue.lookExpiresMs',
+  'queue.traceLimit',
+  'combat.roundMs',
+  'combat.engageCooldownMs',
+  'combat.roomOwedMs',
+  // The room re-read after a death or an arrival (retired 2026-10-16).
+  'combat.lookAfterKillMs',
+  'combat.areaSettleMs',
+  'combat.breakStandoffMs',
+  'combat.assistFreshMs',
+  'combat.runRounds',
+  'combat.runRisk',
+  'combat.hangUpRisk',
+  'combat.fledLevels',
+  'combat.fledForgetMs',
+  'spells.healExpiresMs',
+  'spells.manaRegenShortfall',
+  'spells.manaTickWaitMs',
+  'spells.healCooldownMs',
+  'spells.healRequestMs',
+  'spells.healUrgency',
+  'spells.healNearEnough',
+  'spells.cureExpiresMs',
+  'spells.buffTickMs',
+  'spells.blessCooldownMs',
+  'spells.blessWatchdogMs',
+  'spells.blessSlack',
+  'spells.roundGapMs',
+  'spells.castRoundMs',
+  'spells.refusedWindowMs',
+  'spells.conditionSheetMs',
+  'potions.expiresMs',
+  'potions.cooldownMs',
+  'loot.expiresMs',
+  'train.echoMs',
+  'train.reaskMs',
+  'train.expiresMs',
+  'train.confirmMs',
+  'gearRecovery.collectMs',
+  'gearRecovery.expiresMs',
+  'stealth.askEveryMs',
+  'stealth.expiresMs',
+  'light.expiresMs',
+  'supplies.expiresMs',
+  'supplies.retryMs',
+  'supplies.maxLegs',
+  'supplies.errandTimeoutMs',
+  'supplies.cashBuffer',
+  'drop.expiresMs',
+  'banking.cooldownMs',
+  'banking.expiresMs',
+  'rest.expiresMs',
+  'rest.lairClockMaxSeconds',
+  'rest.peekMs',
+  'rest.askedMs',
+  'events.tickMs',
+  'events.expiresMs',
+  'messages.responseGapMs',
+  'messages.effectCeilingMs',
+  'messages.retries',
+  'messages.noRestMs',
+  'walk.sneakGiveUp',
+  'walk.holdMs',
+  'walk.maxHolds',
+  'walk.followSettleMs',
+  'walk.partyCatchUpMs',
+  'walk.replanDriftSteps',
+  'walk.fightHoldMs',
+  'walk.heldFallbackMs',
+  'walk.lightWaitMs',
+  'walk.nudgeAfterMs',
+  'walk.nudgeSamples',
+  'walk.recentSteps',
+  'walk.ranFromForgetMs',
+  'walk.bashMargin',
+  'walk.pickMargin',
+  'walk.searchRetryMs',
+  'walk.searchSayEveryMs',
+  'walk.searchRecheckEvery',
+  'walk.leverTries',
+  'walk.leverErrandDepth',
+  'walk.barrierRetryMs',
+  'walk.barrierRetries',
+  'loop.maxFailures',
+  'loop.maxLocates',
+  'loop.locateWaitMs',
+  'loop.dwellMs',
+  'loop.escapeSettleMs',
+  'loop.resumeMarginWhenUncapped',
+  'afk.replyEveryMs',
+  'remotes.replyMs',
+  'remotes.healAskAgainMs',
+  'spending.maxGets',
+  'session.retreatSettleMs',
+  'session.playerMoveWindowMs',
+  'session.reconsiderMs'
+];
+
+/** Its groups that hold nothing else, removed when emptied. */
+const OLD_ENGINE_TUNING_GROUPS: readonly string[] = [
+  'afk',
+  'banking',
+  'combat',
+  'drop',
+  'events',
+  'gearRecovery',
+  'light',
+  'loot',
+  'messages',
+  'potions',
+  'remotes',
+  'rest',
+  'stealth',
+  'train'
+];
 
 /**
  * The `tuning:` keys added and retired on 2026-09-03, in the user's own
@@ -6839,20 +6113,11 @@ function theTuningBlockGainedKeys(
     // nothing to read it in a file copied before it existed would be the
     // setting somebody edits and then waits to see work.
     addGroup('menace', { ...DEFAULT_INTERNAL.tuning.menace });
-    // The shadows between fights (todo 01) and where to hunt (todo 05),
-    // 2026-09-12: two groups a file copied before them would otherwise lack.
-    addGroup('stealth', { ...DEFAULT_INTERNAL.tuning.stealth });
     addGroup('hunting', { ...DEFAULT_INTERNAL.tuning.hunting });
-    addGroup('gearRecovery', { ...DEFAULT_INTERNAL.tuning.gearRecovery });
-    // The stat screen driver (todo 10, 2026-09-12).
-    addGroup('train', { ...DEFAULT_INTERNAL.tuning.train });
     // The quest runner's own clocks (2026-09-21, todos 102-103): every wait it
     // makes is bounded by one of these, so a run that looks stuck is diagnosed
     // from this block or not at all.
     addGroup('quests', { ...DEFAULT_INTERNAL.tuning.quests });
-    // A realm's message table acted on (2026-09-24): four clocks that were
-    // constants in the code, where nobody could reach them.
-    addGroup('messages', { ...DEFAULT_INTERNAL.tuning.messages });
 
     /** One key into a sub-block the file already states, with its paragraph. */
     const addKey = (group: string, key: string, value: number): void => {
@@ -6904,9 +6169,6 @@ function theTuningBlockGainedKeys(
     addKey('hunting', 'clusterRadius', DEFAULT_INTERNAL.tuning.hunting.clusterRadius);
     addKey('hunting', 'fillerRadius', DEFAULT_INTERNAL.tuning.hunting.fillerRadius);
     addKey('hunting', 'sizeTolerance', DEFAULT_INTERNAL.tuning.hunting.sizeTolerance);
-    /* A lair's clock and the look next door (2026-09-12, todo 08). */
-    addKey('rest', 'lairClockMaxSeconds', DEFAULT_INTERNAL.tuning.rest.lairClockMaxSeconds);
-    addKey('rest', 'peekMs', DEFAULT_INTERNAL.tuning.rest.peekMs);
     /* How sure a kill must be before the cheapest spell wins (2026-09-12, todo 09). */
     addKey('spells', 'killConfidence', DEFAULT_INTERNAL.tuning.spells.killConfidence);
     /*
@@ -6914,25 +6176,6 @@ function theTuningBlockGainedKeys(
      * (2026-09-06, todo 02) — the server's own 1,000ms fumble delay.
      */
     addKey('queue', 'fumbleRetryMs', DEFAULT_INTERNAL.tuning.queue.fumbleRetryMs);
-    /*
-     * And the two that replace `walk.searchTries` below (todo 04): the beat
-     * between two searches for a hidden exit, which is now unbounded, and the
-     * count a lever exit still keeps. Added beside the drop rather than in a
-     * migration of their own, so somebody who opens the file looking for the
-     * retired number finds what took its place in the same paragraph.
-     */
-    addKey('walk', 'searchRetryMs', DEFAULT_INTERNAL.tuning.walk.searchRetryMs);
-    addKey('walk', 'searchSayEveryMs', DEFAULT_INTERNAL.tuning.walk.searchSayEveryMs);
-    /*
-     * How often a walk that is searching asks the server to reprint the room
-     * (2026-09-06, todo 03). `You found an exit to the south!` does not reprint
-     * it, so the walk went on searching a room whose exit it had already found;
-     * a success always asks now, and a failure every this many. In the
-     * template's own order — a file somebody opens should read the way the
-     * documentation they are comparing it against does.
-     */
-    addKey('walk', 'searchRecheckEvery', DEFAULT_INTERNAL.tuning.walk.searchRecheckEvery);
-    addKey('walk', 'leverTries', DEFAULT_INTERNAL.tuning.walk.leverTries);
     /*
      * How long a command may go unanswered before the link is called dead
      * (2026-09-07, todo 00). It is the only number that decides whether a
@@ -6952,11 +6195,6 @@ function theTuningBlockGainedKeys(
     addKey('session', 'sentenceHoldMs', DEFAULT_INTERNAL.tuning.session.sentenceHoldMs);
     /* How long a listing the client redraws waits for its prompt (2026-09-10, todo 99). */
     addKey('session', 'rewriteHoldMs', DEFAULT_INTERNAL.tuning.session.rewriteHoldMs);
-    /* The look queue's floor and its shelf life (2026-09-07, todo 10). */
-    addKey('queue', 'lookAskMs', DEFAULT_INTERNAL.tuning.queue.lookAskMs);
-    addKey('queue', 'lookExpiresMs', DEFAULT_INTERNAL.tuning.queue.lookExpiresMs);
-    // The required facts asked for again until read (2026-09-25).
-    addKey('queue', 'unreadRetryMs', DEFAULT_INTERNAL.tuning.queue.unreadRetryMs);
     /* What a room's own spell costs, and when the router looks for another way
        (2026-09-09, todo 01), and how much shorter the way with the right items
        has to be to be offered (2026-09-10, todo 01). */
@@ -6994,18 +6232,8 @@ function theTuningBlockGainedKeys(
     addKey('world', 'errandItems', DEFAULT_INTERNAL.tuning.world.errandItems);
     addKey('world', 'errandPlaces', DEFAULT_INTERNAL.tuning.world.errandPlaces);
     addKey('world', 'errandSweepRooms', DEFAULT_INTERNAL.tuning.world.errandSweepRooms);
-    /*
-     * The follow window (2026-09-23): how long a walk stands in the room it
-     * has arrived in before stepping out again, where the room behind held a
-     * monster. It is the one number that decides whether a lap drags whatever
-     * was chasing it through the next four rooms, and the sort of number
-     * somebody who plays a realm with different pacing would want to raise.
-     */
-    addKey('walk', 'followSettleMs', DEFAULT_INTERNAL.tuning.walk.followSettleMs);
     // How long an item errand waits on a summons it asked for (todo 806).
     addKey('walk', 'errandAskMs', DEFAULT_INTERNAL.tuning.walk.errandAskMs);
-    // And how many levers-behind-levers one walk will fetch (todo 807).
-    addKey('walk', 'leverErrandDepth', DEFAULT_INTERNAL.tuning.walk.leverErrandDepth);
     /*
      * And the eight this file had fallen behind by (2026-09-23, on review).
      *
@@ -7031,13 +6259,9 @@ function theTuningBlockGainedKeys(
      * is *write the block whole, or fill the one key into the block that
      * exists*, and a file that has neither ends up with both.
      */
-    for (const group of ['spells', 'remotes', 'view', 'world', 'walk'] as const) {
+    for (const group of ['spells', 'view', 'world', 'walk'] as const) {
       addGroup(group, { ...DEFAULT_INTERNAL.tuning[group] });
     }
-    addKey('spells', 'healRequestMs', DEFAULT_INTERNAL.tuning.spells.healRequestMs);
-    addKey('spells', 'healUrgency', DEFAULT_INTERNAL.tuning.spells.healUrgency);
-    addKey('spells', 'healNearEnough', DEFAULT_INTERNAL.tuning.spells.healNearEnough);
-    addKey('remotes', 'healAskAgainMs', DEFAULT_INTERNAL.tuning.remotes.healAskAgainMs);
     addKey('hunting', 'measuredFightsMin', DEFAULT_INTERNAL.tuning.hunting.measuredFightsMin);
     addKey('view', 'questRunLingerMs', DEFAULT_INTERNAL.tuning.view.questRunLingerMs);
     addKey('world', 'anotherWayPenalty', DEFAULT_INTERNAL.tuning.world.anotherWayPenalty);
@@ -7048,19 +6272,12 @@ function theTuningBlockGainedKeys(
     /*
      * This fork's own clocks (2026-09-22 to 09-23), which reached no file that
      * already stated their groups: which attack a `*Combat Engaged*` answers,
-     * the room re-read after a death or an arrival and how long it is owed,
      * the room spell's settle before it is let go, the one heal or blessing a
      * round, a blessing's onset settling, how long the errand waits on a
      * summons, and how long a locate answer is waited for.
      */
     addKey('parse', 'engageBindMs', DEFAULT_INTERNAL.tuning.parse.engageBindMs);
-    addKey('combat', 'lookAfterKillMs', DEFAULT_INTERNAL.tuning.combat.lookAfterKillMs);
-    addKey('combat', 'roomOwedMs', DEFAULT_INTERNAL.tuning.combat.roomOwedMs);
-    addKey('combat', 'areaSettleMs', DEFAULT_INTERNAL.tuning.combat.areaSettleMs);
     addKey('spells', 'onsetSettleMs', DEFAULT_INTERNAL.tuning.spells.onsetSettleMs);
-    addKey('spells', 'roundGapMs', DEFAULT_INTERNAL.tuning.spells.roundGapMs);
-    addKey('spells', 'castRoundMs', DEFAULT_INTERNAL.tuning.spells.castRoundMs);
-    addKey('spells', 'refusedWindowMs', DEFAULT_INTERNAL.tuning.spells.refusedWindowMs);
     addKey('walk', 'errandAskMs', DEFAULT_INTERNAL.tuning.walk.errandAskMs);
     addKey('session', 'locateResolveMs', DEFAULT_INTERNAL.tuning.session.locateResolveMs);
     /*
@@ -7069,37 +6286,6 @@ function theTuningBlockGainedKeys(
      * as an errand or left to the long way.
      */
     addKey('world', 'keyFetchTrips', DEFAULT_INTERNAL.tuning.world.keyFetchTrips);
-    /*
-     * How long a leader waits for the party through a text exit (2026-09-29,
-     * PR #35), in place of the `party.catchUpWaitSeconds` option it shipped as:
-     * a bound on a hold, which is what this block is for.
-     */
-    addKey('walk', 'partyCatchUpMs', DEFAULT_INTERNAL.tuning.walk.partyCatchUpMs);
-    /*
-     * MegaMUD's two fixed figures for mana regen (2026-09-29): how far short
-     * mana must be, and how long a tick of nothing takes. Read from megamud.exe.
-     */
-    addKey('spells', 'manaRegenShortfall', DEFAULT_INTERNAL.tuning.spells.manaRegenShortfall);
-    addKey('spells', 'manaTickWaitMs', DEFAULT_INTERNAL.tuning.spells.manaTickWaitMs);
-    /*
-     * Avoiding death (upstream 5ffdf91, ported 2026-10-01): when the room's
-     * simulated fight is too dangerous to stay in or to stay connected
-     * through, how long a monster run from is left alone, and how many refused
-     * sneaks stop the walk asking. Whether to open one is the player's
-     * `combat.minSurvival`.
-     */
-    const danger = DEFAULT_INTERNAL.tuning.combat;
-    addKey('combat', 'runRounds', danger.runRounds);
-    addKey('combat', 'runRisk', danger.runRisk);
-    addKey('combat', 'hangUpRisk', danger.hangUpRisk);
-    addKey('combat', 'fledLevels', danger.fledLevels);
-    addKey('combat', 'fledForgetMs', danger.fledForgetMs);
-    addKey('walk', 'sneakGiveUp', DEFAULT_INTERNAL.tuning.walk.sneakGiveUp);
-    /*
-     * The `st` a condition is checked with (2026-10-01): the sheet lists what
-     * is still on, so a condition whose ending was never said is let go.
-     */
-    addKey('spells', 'conditionSheetMs', DEFAULT_INTERNAL.tuning.spells.conditionSheetMs);
 
     /** A key this build no longer reads, taken out rather than left to mean nothing. */
     const dropKey = (group: string, key: string): void => {
@@ -7160,6 +6346,23 @@ function theTuningBlockGainedKeys(
      * kept a leader standing.
      */
     dropKey('remotes', 'okAfterMs');
+    /*
+     * The old automation's clocks and figures, retired with it at the swap to
+     * the MegaMUD engine (2026-10-14): each was read by a module that no
+     * longer exists, and a group with nothing left in it goes whole.
+     */
+    for (const key of OLD_ENGINE_TUNING) {
+      const [group, name] = key.split('.');
+      dropKey(group!, name!);
+    }
+    for (const group of OLD_ENGINE_TUNING_GROUPS) {
+      const at = tuning.items.findIndex((item) => keyText(item) === group);
+      const block = at === -1 ? undefined : tuning.items[at]!.value;
+      if (at === -1 || (isMap(block) && block.items.length > 0)) continue;
+      tuning.items.splice(at, 1);
+      removed.push(`tuning.${group}`);
+      changed = true;
+    }
     const tallyAt = tuning.items.findIndex((item) => keyText(item) === 'tally');
     if (tallyAt !== -1) {
       tuning.items.splice(tallyAt, 1);
@@ -7308,7 +6511,7 @@ function directories(dir: string): string[] {
  * - **`tuning.walk.trailSteps` beside `recentSteps`.** The button walks the
  *   trail, and the trail was five steps long because a retreat was all that
  *   read it. A key added inside an existing block reaches nobody who has
- *   already run the client — `statedTheStepNudge`'s reason — and without it
+ *   already run the client — `reconcileWithTemplate` never reaches inside one — and without it
  *   back would work five presses and then stop.
  *
  * The paragraph above `toolbar:` lists every button there is by name, so it is
@@ -7374,6 +6577,57 @@ function theToolbarGainedBack(
   if (changed) note(t('notices.migration.toolbarGainedBack', { file: home.internal }));
 }
 
+/**
+ * MegaMUD's toggles onto the toolbar's pins (2026-10-14).
+ *
+ * They were drawn on the row whatever the pins said, as many as the
+ * character's `[Toolbar]` showed, and set on the Character page's Toolbar
+ * row: a second place deciding the one row, which the player found did not
+ * match what the toolbar drew. The row is the pins' alone now, so a
+ * `toolbar.pinned` from before would draw none of them. They go on as the
+ * shipped row has them, after `search` (else before the loop shelf, else at
+ * the end), with our flee beside them, which was drawn the same way.
+ *
+ * `pinTheGearButton`'s caveat: a list entry cannot say it was removed on
+ * purpose, so this runs only while no `mega:` id is listed at all. The
+ * paragraph above `toolbar:` names every button, so it is refreshed from the
+ * shipped template while it lacks them.
+ */
+function pinTheMegaToggles(
+  home: Home,
+  note: (message: string) => void,
+  template: string | undefined
+): void {
+  let pinned = false;
+  edit(home.internal, (document) => {
+    const list = document.getIn(['toolbar', 'pinned'], true);
+    if (!isSeq(list)) return false;
+    const ids = list.items.map((item) => (isScalar(item) ? String(item.value) : null));
+    if (ids.some((id) => id?.startsWith('mega:') === true)) return false;
+    const shipped = DEFAULT_INTERNAL.toolbar.pinned.filter(
+      (id) => (id.startsWith('mega:') || id === 'fleeGoto') && !ids.includes(id)
+    );
+    const search = ids.indexOf('search');
+    const shelf = ids.indexOf('loop:open');
+    const at = search >= 0 ? search + 1 : shelf >= 0 ? shelf : list.items.length;
+    list.items.splice(at, 0, ...shipped.map((id) => new Scalar(id)));
+
+    const lead = document.contents;
+    if (isMap(lead)) {
+      const pair = lead.items.find((item) => keyText(item) === 'toolbar');
+      const key = pair === undefined ? null : (pair.key as Scalar);
+      const current = key === null ? undefined : key.commentBefore;
+      if (typeof current === 'string' && !current.includes('mega:')) {
+        const fresh = templateLead(template, 'toolbar');
+        if (fresh !== undefined) key!.commentBefore = fresh;
+      }
+    }
+    pinned = true;
+    return true;
+  });
+  if (pinned) note(t('notices.migration.megaTogglesPinned', { file: home.internal }));
+}
+
 const BACK_BUTTON_COMMENT = ` One room back the way you came, per press. A walk into a room nobody meant
  to be in is answered by a press rather than by working out which direction
  undoes it -- and the way back is a route, so a one-way exit or a door that
@@ -7408,7 +6662,7 @@ const TRAIL_STEPS_COMMENT = ` How many confirmed moves the trail keeps -- the ba
  * The paragraph above `toolbar:` lists every button there is by name, so it is
  * refreshed from the shipped template when it still recommends the old three.
  * And `tuning.walk.resumeAskSteps` is written in beside `maxHolds`, for
- * `statedTheStepNudge`'s reason: a key added inside an existing block reaches
+ * the reason `reconcileWithTemplate` gives: a key added inside an existing block reaches
  * nobody who has already run the client, and this one decides whether pressing
  * play walks a character across the realm or asks first.
  */
@@ -7426,7 +6680,7 @@ function theTransportBecameOneButton(
     if (isMap(walk) && !walk.has('resumeAskSteps')) {
       // The default itself, never a copy: `internal.test.ts` binds the shipped
       // template to `TUNING_DEFAULTS`, and a literal here would be a third copy
-      // nothing binds. `statedTheStepNudge` states the whole argument.
+      // nothing binds.
       const pair = document.createPair(
         'resumeAskSteps',
         DEFAULT_INTERNAL.tuning.walk.resumeAskSteps
@@ -7522,3 +6776,179 @@ const RESUME_ASK_COMMENT = ` How far the character may have wandered from what i
  movement stopped -- for a route and for a lap alike, so a movement stopped and
  started again from the same room never asks however far it still has to go,
  and a character killed and reborn two maps away does.`;
+
+/**
+ * A character's `megamud.ini` taken into its `profile.yaml` as `megamud:`
+ * (2026-10-13): MegaMUD's settings kept in our own storage, as the user
+ * asked ("move away from using any ini's from megamud and just use our own
+ * storage system"). Read as MegaMUD's loader reads the file, written in
+ * MegaMUD's sections and keys where they differ from its defaults; the file
+ * is then renamed `megamud.ini.imported`, so nothing reads it again and
+ * nothing in it is lost. A character that already states `megamud:` keeps
+ * it, and its file is left alone.
+ */
+function theMegaMudSettingsMovedIn(home: Home, note: (message: string) => void): void {
+  const moved: string[] = [];
+  for (const id of directories(home.profilesDir)) {
+    const ini = path.join(home.profilesDir, id, MEGAMUD_FILE);
+    const file = home.profile(id).file;
+    if (!fs.existsSync(ini) || !fs.existsSync(file)) continue;
+    let text: string;
+    try {
+      text = fs.readFileSync(ini, 'latin1');
+    } catch {
+      continue;
+    }
+    let written = false;
+    edit(file, (document) => {
+      const root = document.contents;
+      if (!isMap(root) || root.has('megamud')) return false;
+      const pair = document.createPair('megamud', settingsToStored(settingsFromIni(text))) as Pair;
+      if (isScalar(pair.key)) pair.key.commentBefore = MEGAMUD_COMMENT;
+      root.items.push(pair);
+      written = true;
+      return true;
+    });
+    // Renamed only once the character's file is seen to hold them.
+    if (!written || !/^megamud:/m.test(fs.readFileSync(file, 'utf8'))) continue;
+    fs.renameSync(ini, `${ini}.imported`);
+    moved.push(file);
+  }
+  if (moved.length === 0) return;
+  const params = { count: moved.length, fileList: moved.join(', ') };
+  note(
+    moved.length === 1
+      ? t('notices.migration.megamudSettingsMovedIn.one', params)
+      : t('notices.migration.megamudSettingsMovedIn.many', params)
+  );
+}
+
+/** Where a character's own MegaMUD databases were kept: MegaMUD's `Default` layout. */
+const MEGAMUD_DATA_FOLDER = 'Default';
+
+/**
+ * A character's own MegaMUD databases taken into its realm's tables
+ * (2026-10-13), so the ported engine reads no MegaMUD file in play: its
+ * facts come from the realm's own data, and the choices these files held
+ * from `items.yaml`, `monsters.yaml` and `messages.yaml` beside the realm
+ * (`megamud/fromWorld.ts`). Each of `Items.md`, `Monsters.md` and
+ * `Messages.md` fills its table only where the realm has none, so a table
+ * imported or edited on the realm's page is never replaced; the folder is
+ * then renamed `Default.imported`, nothing in it lost. A `MegaMud.DataDir`
+ * outside the client's home is MegaMUD's own install, and is left alone.
+ */
+function theMegaMudDataMovedIn(home: Home, note: (message: string) => void): void {
+  const realms = new Map<string, string>();
+  for (const id of directories(home.serversDir)) {
+    try {
+      const name = parseDocument(fs.readFileSync(home.server(id).file, 'utf8')).get('name');
+      if (typeof name === 'string') realms.set(name.trim().toLowerCase(), id);
+    } catch {
+      // Not a realm this can read; its own store says so.
+    }
+  }
+  const moved: string[] = [];
+  for (const id of directories(home.profilesDir)) {
+    const folder = path.join(home.profilesDir, id, MEGAMUD_DATA_FOLDER);
+    if (!fs.existsSync(folder) || !fs.statSync(folder).isDirectory()) continue;
+    let realm: unknown;
+    try {
+      realm = parseDocument(fs.readFileSync(home.profile(id).file, 'utf8')).get('server');
+    } catch {
+      continue;
+    }
+    const serverId = typeof realm === 'string' ? realms.get(realm.trim().toLowerCase()) : undefined;
+    if (serverId === undefined) continue;
+    const read = (name: string): Buffer | null => {
+      try {
+        return fs.readFileSync(path.join(folder, name));
+      } catch {
+        return null;
+      }
+    };
+    const source = (name: string): RealmTable['source'] => ({
+      file: path.join(folder, name),
+      importedAt: new Date().toISOString()
+    });
+    const fill = <Table extends RealmTable>(kind: TableKind<Table>, table: Table): boolean => {
+      const store = new RealmTableStore(home, kind);
+      try {
+        if (fs.existsSync(store.file(serverId))) return true;
+        return store.write(serverId, table).ok;
+      } finally {
+        store.dispose();
+      }
+    };
+    let ok = true;
+    const items = read('Items.md');
+    if (items) {
+      const rows = itemTableRows(items).rows;
+      if (rows.length > 0) ok &&= fill(ITEM_TABLE, { source: source('Items.md'), items: rows });
+    }
+    const monsters = read('Monsters.md');
+    if (monsters) {
+      const rows = monsterTableRows(monsters).rows;
+      if (rows.length > 0) {
+        ok &&= fill(MONSTER_TABLE, { source: source('Monsters.md'), monsters: rows });
+      }
+    }
+    const messages = read('Messages.md');
+    if (messages) {
+      const triggers = parseMegaMudMessages(messages.toString('latin1')).triggers;
+      if (triggers.length > 0) {
+        ok &&= fill(MESSAGE_TABLE, { source: source('Messages.md'), triggers });
+      }
+    }
+    // Renamed only once every table it fed is seen written.
+    if (!ok) continue;
+    fs.renameSync(folder, `${folder}.imported`);
+    moved.push(folder);
+  }
+  if (moved.length === 0) return;
+  const params = { count: moved.length, fileList: moved.join(', ') };
+  note(
+    moved.length === 1
+      ? t('notices.migration.megamudDataMovedIn.one', params)
+      : t('notices.migration.megamudDataMovedIn.many', params)
+  );
+}
+
+/**
+ * `automation.loot.itemDetails` into every file that states `loot:` without
+ * it, empty, after `discardKinds` with the template's paragraph
+ * (2026-10-13): MegaMUD's item details at the scope of a character or the
+ * options file, laid over the realm's item table. Empty is what the engine
+ * already did. Idempotent; nothing stated is overwritten.
+ */
+function statedTheItemDetails(
+  home: Home,
+  note: (message: string) => void,
+  template: string | undefined
+): void {
+  const comment = templateComments(template, 'automation').get('automation.loot.itemDetails');
+  const files = [home.options, ...directories(home.profilesDir).map((id) => home.profile(id).file)];
+  const stated: string[] = [];
+
+  for (const file of files) {
+    edit(file, (document) => {
+      const loot = document.getIn(['automation', 'loot'], true);
+      if (!isMap(loot) || loot.has('itemDetails')) return false;
+      const pair = document.createPair('itemDetails', document.createNode([])) as Pair;
+      if (typeof comment === 'string' && isScalar(pair.key)) pair.key.commentBefore = comment;
+      const after = loot.items.findIndex(
+        (item) => isScalar(item.key) && item.key.value === 'discardKinds'
+      );
+      loot.items.splice(after === -1 ? loot.items.length : after + 1, 0, pair);
+      stated.push(file);
+      return true;
+    });
+  }
+
+  if (stated.length === 0) return;
+  const params = { count: stated.length, fileList: stated.join(', ') };
+  note(
+    stated.length === 1
+      ? t('notices.migration.itemDetailsStated.one', params)
+      : t('notices.migration.itemDetailsStated.many', params)
+  );
+}

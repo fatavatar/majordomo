@@ -18,7 +18,7 @@ import { parse } from 'yaml';
 
 import { DEFAULT_INTERNAL, normalizeInternal, type InternalConfig } from '../../shared/internal';
 import { errorMessage } from '../../shared/values';
-import { Poller } from './Poller';
+import { fileStamp, Poller } from './Poller';
 
 export interface InternalStoreOptions {
   /** Where the live file is, or should be created. */
@@ -48,7 +48,7 @@ export class InternalStore extends EventEmitter {
   constructor(private readonly options: InternalStoreOptions) {
     super();
     this.poller = new Poller({
-      signature: () => this.signature(),
+      signature: (settledAt) => this.signature(settledAt),
       reload: () => {
         this.read();
         this.emit('change', this.current);
@@ -111,8 +111,7 @@ export class InternalStore extends EventEmitter {
   }
 
   /** One file's revision. A throw — no file yet — is `Poller`'s to absorb. */
-  private signature(): string {
-    const stat = fs.statSync(this.options.file);
-    return `${stat.mtimeMs}:${stat.size}`;
+  private signature(settledAt: number): string {
+    return fileStamp(this.options.file, settledAt);
   }
 }

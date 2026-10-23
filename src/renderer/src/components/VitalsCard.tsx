@@ -1,4 +1,4 @@
-import { memo, useMemo } from 'react';
+import { Fragment, memo, useMemo } from 'react';
 
 import BentoCard, { type CardChrome, type CardTab } from './BentoCard';
 import CardTable, { type Column } from './CardTable';
@@ -7,6 +7,7 @@ import {
   isStated,
   ratio,
   vitalLevel,
+  type AfflictionCause,
   type CharacterState,
   type SessionPhase,
   type VitalThresholds
@@ -16,6 +17,29 @@ import type { SessionId } from '@shared/ipc';
 import { useRememberedChoice } from '../hooks/useRemembered';
 import { t } from '../lib/i18n';
 import { levelWord } from '../lib/vitals';
+
+/** What set an affliction on, for its tooltip: how it was read, when, and the line. */
+function causeText(cause: AfflictionCause): string {
+  const at = new Date(cause.at).toLocaleTimeString(undefined, { hour12: false });
+  const how = ((): string => {
+    switch (cause.how) {
+      case 'said':
+        return t('cards.vitals.cause.said', { at });
+      case 'spell':
+        return t('cards.vitals.cause.spell', { spell: cause.spell ?? '?', at });
+      case 'fumble':
+        return t('cards.vitals.cause.fumble', { at });
+      case 'unseen':
+        return t('cards.vitals.cause.unseen', { at });
+      case 'message':
+        return t('cards.vitals.cause.message', { row: cause.spell ?? '?', at });
+      case 'engine':
+        return t('cards.vitals.cause.engine', { at });
+    }
+  })();
+  // A change the engine made away from any line (a cure cast) has none to show.
+  return cause.line === '' ? how : `${how}\n${cause.line}`;
+}
 
 export interface VitalsCardProps extends CardChrome {
   character: CharacterState;
@@ -161,23 +185,38 @@ function VitalsCard({ character, session, thresholds, ask, ...chrome }: VitalsCa
    * `i18n-coverage.test.ts` reads only the literal after `t(`, so a dynamic
    * key would be an unexempted dynamic call and a key nothing is seen to read.
    */
+  /*
+   * Each with what set it on as its tooltip (`afflictionCauses`), so a flag
+   * that is wrong can be traced to the line that set it (2026-10-18).
+   */
+  const causes = character.afflictionCauses;
   const afflicted = [
-    afflictions.blind === 'yes' ? t('cards.vitals.afflicted.blind') : null,
-    afflictions.poisoned === 'yes' ? t('cards.vitals.afflicted.poisoned') : null,
-    afflictions.diseased === 'yes' ? t('cards.vitals.afflicted.diseased') : null,
-    afflictions.held === 'yes' ? t('cards.vitals.afflicted.held') : null,
-    afflictions.confused === 'yes' ? t('cards.vitals.afflicted.confused') : null,
+    afflictions.blind === 'yes'
+      ? { word: t('cards.vitals.afflicted.blind'), cause: causes.blind }
+      : null,
+    afflictions.poisoned === 'yes'
+      ? { word: t('cards.vitals.afflicted.poisoned'), cause: causes.poisoned }
+      : null,
+    afflictions.diseased === 'yes'
+      ? { word: t('cards.vitals.afflicted.diseased'), cause: causes.diseased }
+      : null,
+    afflictions.held === 'yes'
+      ? { word: t('cards.vitals.afflicted.held'), cause: causes.held }
+      : null,
+    afflictions.confused === 'yes'
+      ? { word: t('cards.vitals.afflicted.confused'), cause: causes.confused }
+      : null,
     // What only the realm's message table says; see `CharacterState.heard`.
     // Confusion the tracker has already read is said above, once.
     isStated(character, 'confused') && afflictions.confused !== 'yes'
-      ? t('cards.vitals.stated.confused')
+      ? { word: t('cards.vitals.stated.confused') }
       : null,
-    isStated(character, 'losing-hp') ? t('cards.vitals.stated.losingHp') : null,
-    isStated(character, 'no-attack') ? t('cards.vitals.stated.noAttack') : null,
+    isStated(character, 'losing-hp') ? { word: t('cards.vitals.stated.losingHp') } : null,
+    isStated(character, 'no-attack') ? { word: t('cards.vitals.stated.noAttack') } : null,
     isStated(character, 'hp-regen') || isStated(character, 'mana-regen')
-      ? t('cards.vitals.stated.regenerating')
+      ? { word: t('cards.vitals.stated.regenerating') }
       : null
-  ].filter((word): word is string => word !== null);
+  ].filter((entry): entry is { word: string; cause?: AfflictionCause } => entry !== null);
 
   const badge = inCombat ? (
     <span className="chip bad">{t('cards.vitals.badge.combat')}</span>
@@ -234,7 +273,14 @@ function VitalsCard({ character, session, thresholds, ask, ...chrome }: VitalsCa
           {afflicted.length > 0 && (
             <>
               <dt>{t('cards.vitals.labels.afflicted')}</dt>
-              <dd className="bad">{afflicted.join(' · ')}</dd>
+              <dd className="bad">
+                {afflicted.map(({ word, cause }, i) => (
+                  <Fragment key={word}>
+                    {i > 0 && ' · '}
+                    <span title={cause === undefined ? undefined : causeText(cause)}>{word}</span>
+                  </Fragment>
+                ))}
+              </dd>
             </>
           )}
           {/*
@@ -378,7 +424,7 @@ function VitalsCard({ character, session, thresholds, ask, ...chrome }: VitalsCa
           // face on screen, and a line naming no affliction would be a fact
           // the card is not showing.
           afflicted.length > 0
-            ? `${t('cards.vitals.labels.afflicted')}: ${afflicted.join(' · ')}`
+            ? `${t('cards.vitals.labels.afflicted')}: ${afflicted.map((entry) => entry.word).join(' · ')}`
             : null,
           standing !== null && standing.ahead
             ? `${t('cards.vitals.labels.earned')}: ${standing.earned}`

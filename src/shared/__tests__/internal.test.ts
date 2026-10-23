@@ -112,8 +112,8 @@ describe('the tuning block', () => {
     expect(normalizeInternal({}).tuning).toEqual(DEFAULT_INTERNAL.tuning);
     expect(normalizeInternal({ tuning: 'nope' }).tuning).toEqual(DEFAULT_INTERNAL.tuning);
     expect(
-      normalizeInternal({ tuning: { walk: { maxHolds: 'three' } } }).tuning.walk.maxHolds
-    ).toBe(DEFAULT_INTERNAL.tuning.walk.maxHolds);
+      normalizeInternal({ tuning: { walk: { trailSteps: 'three' } } }).tuning.walk.trailSteps
+    ).toBe(DEFAULT_INTERNAL.tuning.walk.trailSteps);
   });
 
   /* A zero-millisecond timer spins a core, and this is a file edited by hand. */
@@ -142,8 +142,12 @@ describe('the tuning block', () => {
 
   /* A count may be zero — "no holds", "nothing quiet" — and is a whole number. */
   it('lets a count be zero, and rounds one that is not whole', () => {
-    expect(normalizeInternal({ tuning: { walk: { maxHolds: 0 } } }).tuning.walk.maxHolds).toBe(0);
-    expect(normalizeInternal({ tuning: { walk: { maxHolds: 2.6 } } }).tuning.walk.maxHolds).toBe(3);
+    expect(normalizeInternal({ tuning: { walk: { trailSteps: 0 } } }).tuning.walk.trailSteps).toBe(
+      0
+    );
+    expect(
+      normalizeInternal({ tuning: { walk: { trailSteps: 2.6 } } }).tuning.walk.trailSteps
+    ).toBe(3);
   });
 
   /* A fractional default means a fraction: a confidence, a threshold, a tolerance. */
@@ -166,11 +170,11 @@ describe('the tuning block', () => {
    */
   it('ignores a group and a key it does not know', () => {
     const config = normalizeInternal({
-      tuning: { walk: { maxHolds: 9, maxHoldz: 1 }, somewhereElse: { thing: 1 } }
+      tuning: { walk: { trailSteps: 9, trailStepz: 1 }, somewhereElse: { thing: 1 } }
     });
-    expect(config.tuning.walk.maxHolds).toBe(9);
+    expect(config.tuning.walk.trailSteps).toBe(9);
     expect(config.tuning).not.toHaveProperty('somewhereElse');
-    expect(config.tuning.walk).not.toHaveProperty('maxHoldz');
+    expect(config.tuning.walk).not.toHaveProperty('trailStepz');
   });
 
   /*
@@ -200,8 +204,10 @@ describe('the tuning block', () => {
           (match) => (match[1] ?? '').split(',').map((name) => name.split(':')[0]!.trim())
         )
       );
+      // And a group handed over whole (`weighVerdicts(…, tuning().menace, …)`).
+      const whole = suffix !== '' && new RegExp(`tuning\\(\\)\\.${group}(?![\\w.])`).test(sources);
       for (const key of Object.keys(fields)) {
-        if (sources.includes(`tuning()${suffix}.${key}`) || taken.has(key)) continue;
+        if (whole || sources.includes(`tuning()${suffix}.${key}`) || taken.has(key)) continue;
         unread.push(`${group}.${key}`);
       }
     }

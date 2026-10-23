@@ -195,7 +195,7 @@ export function raisableWhileFocused(notice: Notice, rules: readonly AlertRule[]
  */
 export const NOTABLE: Partial<Record<BlockType, { severity: Severity; channel: NoticeChannel }>> = {
   // Something is wrong with the connection or the character's standing in it.
-  'login-failed': { severity: 'critical', channel: 'session' },
+  'login-failed': { severity: 'warning', channel: 'session' },
   /* A level, and what it bought. Rare, and the thing a rule file is edited for. */
   'user-levels': { severity: 'info', channel: 'session' },
   'user-learns': { severity: 'info', channel: 'session' },
@@ -266,10 +266,11 @@ export const NOTABLE: Partial<Record<BlockType, { severity: Severity; channel: N
   /*
    * This character's own death, which is the loudest thing that can happen to
    * it: a life spent, everything carried on the ground where it fell, and the
-   * character standing in the temple rather than where it was. Critical, on
-   * the combat channel with the blow that caused it.
+   * character standing in the temple rather than where it was. On the combat
+   * channel with the blow that caused it; a warning, as everything but the
+   * four `TAB_ALERTS` is (2026-10-17).
    */
-  'user-dies': { severity: 'critical', channel: 'combat' },
+  'user-dies': { severity: 'warning', channel: 'combat' },
   'user-equipped-failed': { severity: 'warning', channel: 'items' },
   /* Two more commands that did nothing, both captured live: an `open` at a wall, a `list` outside a shop. */
   'open-failed': { severity: 'warning', channel: 'movement' },
@@ -279,7 +280,8 @@ export const NOTABLE: Partial<Record<BlockType, { severity: Severity; channel: N
    * Somebody walking into *this room* is a different fact from entering the
    * realm, and the more urgent one: the realm is large and this room is where a
    * fight happens. Ranked a warning rather than the record for that reason —
-   * and raised to critical when the roster says who it is, in `roomNotices`.
+   * and said again, naming them, when the roster says who it is, in
+   * `roomNotices`.
    */
   'player-arrives-room': { severity: 'warning', channel: 'room' },
   'player-leaves-room': { severity: 'info', channel: 'room' },
@@ -474,7 +476,7 @@ export const ALERT_EVENTS = {
   throttled: { channel: 'command', types: ['slow-down', 'comms-throttled'] },
 
   /*
-   * The six the client composes rather than reads off one block.
+   * The ones the client composes rather than reads off one block.
    *
    * Every one is a fact assembled from two things — a roster and a room, a
    * route and an arrival, a party listing and the last one — so no block type
@@ -489,6 +491,9 @@ export const ALERT_EVENTS = {
   'hostile-in-realm': { channel: 'realm', types: [] },
   'party-hurt': { channel: 'party', types: [] },
   'vitals-crossing': { channel: 'vitals', types: [] },
+  /* The engine getting the character out of a fight: MegaMUD's run, and our Auto-Flee's sys goto. */
+  ran: { channel: 'combat', types: [] },
+  fled: { channel: 'combat', types: [] },
 
   /* The character itself, and the connection under it. */
   levelled: { channel: 'session', types: ['user-levels'] },
@@ -499,6 +504,21 @@ export const ALERT_EVENTS = {
 } as const satisfies Record<string, AlertEventSpec>;
 
 export type AlertEvent = keyof typeof ALERT_EVENTS;
+
+/**
+ * The only alerts that light a character's tab, and the only critical ones
+ * (2026-10-17): the character out of the realm, hung up or dropped
+ * (`connection-lost`), or got out of a fight, by running (`ran`) or by
+ * Auto-Flee (`fled`). Each is a thing that has already happened to a
+ * character nobody is watching and changes what it is doing; everything else
+ * is on its own cards, and a tab lit for a red bar or a failed command is a
+ * tab lit all evening.
+ */
+export const TAB_ALERTS: ReadonlySet<AlertEvent> = new Set<AlertEvent>([
+  'connection-lost',
+  'ran',
+  'fled'
+]);
 
 /** The event names, for a picker and for the runtime half of the union. */
 export const ALERT_EVENT_NAMES = Object.keys(ALERT_EVENTS) as AlertEvent[];
@@ -535,18 +555,6 @@ const EVENT_OF_TYPE = new Map<BlockType, AlertEvent>(
 
 export function eventOfBlock(type: BlockType): AlertEvent | null {
   return EVENT_OF_TYPE.get(type) ?? null;
-}
-
-/** Which event a watch produces, for the five that are watched rather than read. */
-const EVENT_OF_WATCH = new Map<AlertWatch, AlertEvent>(
-  ALERT_EVENT_NAMES.flatMap((name) => {
-    const watch = alertEvent(name).watch;
-    return watch === undefined ? [] : [[watch, name] as [AlertWatch, AlertEvent]];
-  })
-);
-
-export function eventOfWatch(watch: AlertWatch): AlertEvent | null {
-  return EVENT_OF_WATCH.get(watch) ?? null;
 }
 
 /** Whether this event takes a comparison and a number. */
@@ -753,7 +761,7 @@ export const STARTER_ALERTS: readonly AlertRule[] = [
   {
     on: 'health',
     enabled: true,
-    level: 'critical',
+    level: 'warning',
     alert: true,
     notify: true,
     whileFocused: false,
@@ -779,7 +787,7 @@ export const STARTER_ALERTS: readonly AlertRule[] = [
   {
     on: 'attacked',
     enabled: true,
-    level: 'critical',
+    level: 'warning',
     alert: true,
     notify: true,
     whileFocused: true,
@@ -987,8 +995,7 @@ export function noticeFor(block: Block, t: UiLookup, state?: CharacterState): No
  * `user-hits` with `you` as the target, and the roster is what tells the two
  * apart.
  *
- * Nothing is raised for an attacker nobody has listed. That is the same refusal
- * `AutoCombat` makes about swinging at one: a name with no listing behind it is
+ * Nothing is raised for an attacker nobody has listed: a name with no listing behind it is
  * as likely to be a quest NPC as a person, and crying wolf in this channel is
  * how the channel stops being read.
  */
@@ -1003,7 +1010,7 @@ function pvpNotice(block: Block, state: CharacterState, t: UiLookup): Notice | n
   return {
     id: `pvp${block.seq}`,
     at: block.at,
-    severity: 'critical',
+    severity: 'warning',
     channel: 'combat',
     desktop: 'attacked',
     // The watch a player's own row claims by (todo 29): *a person swinging at
@@ -1146,7 +1153,7 @@ export function vitalNotices(
     notices.push({
       id: `v${label}${now.current}-${at}`,
       at,
-      severity: level === 'critical' ? 'critical' : 'warning',
+      severity: 'warning',
       channel: 'vitals',
       event: 'vitals-crossing',
       ...(level === 'critical' && alarm !== undefined ? { desktop: alarm } : {}),
@@ -1241,9 +1248,8 @@ export function walkNotices(
  * of the realm and standing wherever it was — so they share a notification and
  * differ only in the sentence.
  *
- * `warning` rather than `critical`: on this server family the damage is
- * already done by the time this is read, and the ranking's loudest level is
- * for a decision being made right now.
+ * `critical`, and one of the `TAB_ALERTS` (2026-10-17): the character is out
+ * of the realm, and a tab nobody is looking at is where that has to show.
  */
 export function linkNotices(
   before: ConnectionState,
@@ -1261,7 +1267,7 @@ export function linkNotices(
     {
       id: `link${at}`,
       at,
-      severity: 'warning',
+      severity: 'critical',
       channel: 'session',
       desktop: 'hungup',
       event: 'connection-lost' as const,
@@ -1271,18 +1277,43 @@ export function linkNotices(
 }
 
 /**
- * Notices for who has turned up in the realm.
- *
- * The one thing a PvP realm makes urgent is not a number: it is a name. The
- * server announces arrivals for free — no command spent — but an arrival
- * carries only a name, so what the realm *thinks* of that person arrives later,
- * with the next `who` listing.
- *
- * So there are two moments worth reporting and they are not the same one:
- * somebody arriving, and somebody turning out to be hostile. An arrival whose
- * alignment is still unknown is reported as an arrival and nothing more —
- * calling it safe would be a guess, and calling it hostile would cry wolf.
+ * The engine getting the character out of a fight: a run begun (`ran`) or
+ * Auto-Flee's sys goto sent (`fled`), read off the counts the engine's
+ * toggles carry as they go up. Critical, and two of the four `TAB_ALERTS`
+ * (2026-10-17): a character nobody is watching has left the fight, and
+ * perhaps the loop, and somebody should look.
  */
+export function escapeNotices(
+  before: { ran: number; fled: number } | undefined,
+  after: { ran: number; fled: number } | undefined,
+  at: number,
+  t: UiLookup
+): Notice[] {
+  if (before === undefined || after === undefined) return [];
+  const notices: Notice[] = [];
+  if (after.ran > before.ran) {
+    notices.push({
+      id: `ran${after.ran}-${at}`,
+      at,
+      severity: 'critical',
+      channel: 'combat',
+      event: 'ran',
+      text: t('cards.alerts.escape.ran')
+    });
+  }
+  if (after.fled > before.fled) {
+    notices.push({
+      id: `fled${after.fled}-${at}`,
+      at,
+      severity: 'critical',
+      channel: 'combat',
+      event: 'fled',
+      text: t('cards.alerts.escape.fled')
+    });
+  }
+  return notices;
+}
+
 /**
  * Somebody in the party in trouble.
  *
@@ -1325,7 +1356,7 @@ export function partyNotices(
     notices.push({
       id: `p${member.name}-${Math.round(member.health * 100)}-${at}`,
       at,
-      severity: level === 'critical' ? 'critical' : 'warning',
+      severity: 'warning',
       channel: 'party',
       event: 'party-hurt',
       text: t('cards.alerts.party.memberHealth', {
@@ -1338,36 +1369,10 @@ export function partyNotices(
 }
 
 /**
- * A hostile in the room, which is not the same as a hostile in the realm.
- *
- * The realm is large; the room is where a fight happens. Raised from the *room*
- * rather than from a line, because the line that says somebody walked in does
- * not say what they are — the roster does, and the two arrive separately.
- */
-/**
- * What a `search` just turned up, when somebody asked to be told about it.
- *
- * From the **state**, like `roomNotices` and for the same kind of reason: the
- * line that says `You notice a rusty key here.` is the same sentence a look
- * prints, and what tells them apart is which command it answers — a fact
- * `CharacterTracker` has already settled by the time this state arrives.
- * `room.hidden` and `room.hiddenCash` are set only by a search's answer and
- * cleared by walking out and by `Your search revealed nothing.`, so a change
- * *into* something is the find, once.
- *
- * `critical`, and deliberately louder than the `user-search-succeeded` line
- * already in `NOTABLE`: that one is *a search worked*, which is common and
- * quiet. This one only fires for a word somebody typed into the watch list or
- * for money over a figure they chose, and an alert nobody asked for at a level
- * nobody chose is the one this project spends its silence budget avoiding.
- */
-/**
  * The player's own named watches: an item, and a person (todo 29).
  *
- * Beside `findNotices` rather than inside it, because that one is about what a
- * **search** turned up — a narrower and louder fact, with its own settings —
- * and these are *anything of this name, however it arrived*: on the floor, in
- * the pack, or standing in the room.
+ * *Anything of this name, however it arrived*: on the floor, in the pack, or
+ * standing in the room.
  *
  * **Only what has just appeared.** Both halves compare against the previous
  * state and report the difference, for the reason every other producer here
@@ -1493,6 +1498,13 @@ export function namedNotices(
   return notices;
 }
 
+/**
+ * A hostile in the room, which is not the same as a hostile in the realm.
+ *
+ * The realm is large; the room is where a fight happens. Raised from the *room*
+ * rather than from a line, because the line that says somebody walked in does
+ * not say what they are — the roster does, and the two arrive separately.
+ */
 export function roomNotices(before: CharacterState, after: CharacterState, t: UiLookup): Notice[] {
   const at = noticedAt(after);
   const standing = new Map(after.online.map((entry) => [entry.name.toLowerCase(), entry]));
@@ -1542,7 +1554,7 @@ export function roomNotices(before: CharacterState, after: CharacterState, t: Ui
     notices.push({
       id: `r${who.name}-${at}`,
       at,
-      severity: 'critical',
+      severity: 'warning',
       channel: 'room',
       event: 'hostile-arrives',
       text: t('cards.alerts.room.playerArrived', { name: who.name, alignment: known.alignment })
@@ -1551,6 +1563,19 @@ export function roomNotices(before: CharacterState, after: CharacterState, t: Ui
   return notices;
 }
 
+/**
+ * Notices for who has turned up in the realm.
+ *
+ * The one thing a PvP realm makes urgent is not a number: it is a name. The
+ * server announces arrivals for free — no command spent — but an arrival
+ * carries only a name, so what the realm *thinks* of that person arrives later,
+ * with the next `who` listing.
+ *
+ * So there are two moments worth reporting and they are not the same one:
+ * somebody arriving, and somebody turning out to be hostile. An arrival whose
+ * alignment is still unknown is reported as an arrival and nothing more —
+ * calling it safe would be a guess, and calling it hostile would cry wolf.
+ */
 export function rosterNotices(
   before: CharacterState,
   after: CharacterState,
@@ -1570,7 +1595,7 @@ export function rosterNotices(
       notices.push({
         id: `h${entry.name}-${at}`,
         at,
-        severity: 'critical',
+        severity: 'warning',
         channel: 'realm',
         event: 'hostile-in-realm',
         text: t('cards.alerts.realm.becameHostile', {

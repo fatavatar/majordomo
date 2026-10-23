@@ -115,6 +115,18 @@ describe('what a capture keeps', () => {
     ]);
   });
 
+  /* For a replay: what the player did in the app, and the engine's own log. */
+  it('keeps what the player did through the app, and the engine’s log', async () => {
+    const capture = open();
+    capture.act({ act: 'startMoving', loop: 'Ring' });
+    capture.engine('doing', 'Resting because we can’t move');
+    const kept = (await entries(capture)).filter((entry) => entry['k'] !== 'meta');
+    expect(kept.map(({ t: _t, ...rest }) => rest)).toEqual([
+      { k: 'act', act: 'startMoving', loop: 'Ring' },
+      { k: 'engine', kind: 'doing', s: 'Resting because we can’t move' }
+    ]);
+  });
+
   it('stamps every entry with when it happened, relative to the start', async () => {
     const capture = open();
     capture.text('one');
@@ -127,34 +139,29 @@ describe('what a capture keeps', () => {
  * capture records *every outbound command verbatim*, so it grows faster and is
  * usually left on for a whole evening on purpose.
  */
+/* Past the cap the capture goes on in a new part, each opening with its `meta` (2026-10-18). */
 describe('the size cap', () => {
-  it('stops recording once the cap is reached', async () => {
-    const capture = open(200);
-    for (let i = 0; i < 50; i += 1) capture.text('x'.repeat(50));
-    const written = await entries(capture);
-    expect(written.length).toBeLessThan(10);
-  });
-
-  it('says so rather than going quiet', () => {
-    const capture = open(200);
-    for (let i = 0; i < 50; i += 1) capture.text('x'.repeat(50));
-    expect(problems.join(' ')).toMatch(/size limit|no longer recording/i);
-    void capture.close();
-  });
-
-  it('says it once, however much more arrives', () => {
-    const capture = open(200);
-    for (let i = 0; i < 200; i += 1) capture.text('x'.repeat(50));
-    expect(problems).toHaveLength(1);
-    void capture.close();
-  });
-
-  it('stays stopped for the rest of the session', async () => {
-    const capture = open(200);
-    for (let i = 0; i < 50; i += 1) capture.text('x'.repeat(50));
-    capture.out('a-short-command');
-    const written = await entries(capture);
-    expect(written.some((entry) => entry['s'] === 'a-short-command')).toBe(false);
+  it('goes on in new parts, each one readable on its own', async () => {
+    const capture = open(400);
+    for (let i = 0; i < 20; i += 1) capture.text('x'.repeat(50));
+    capture.out('the-last-command');
+    await capture.close();
+    const names = fs.readdirSync(dir).sort();
+    expect(names.length).toBeGreaterThan(2);
+    expect(names).toContain('2026-08-25_12-00-00_vaelor.2.mudcap.jsonl');
+    const rows = names.flatMap((name) =>
+      fs
+        .readFileSync(path.join(dir, name), 'utf8')
+        .split('\n')
+        .filter(Boolean)
+        .map((row) => JSON.parse(row) as Record<string, unknown>)
+    );
+    const metas = rows.filter((row) => row['k'] === 'meta');
+    expect(metas).toHaveLength(names.length);
+    expect(new Set(metas.map((row) => row['startedAt'])).size).toBe(1);
+    expect(rows.filter((row) => row['k'] === 'text')).toHaveLength(20);
+    expect(rows.some((row) => row['s'] === 'the-last-command')).toBe(true);
+    expect(problems).toEqual([]);
   });
 });
 

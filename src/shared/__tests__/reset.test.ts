@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import { EMPTY_CHARACTER, type CharacterState } from '../character';
-import { comparable, identityOf, resetSignals, type CharacterIdentity } from '../reset';
+import { EMPTY_CHARACTER } from '../character';
+import { identityOf, resetSignals, type CharacterIdentity } from '../reset';
 
 const NOW = 1_757_000_000_000;
 
@@ -12,15 +12,6 @@ function who(over: Partial<CharacterIdentity> = {}): CharacterIdentity {
 describe('who the wire says this is', () => {
   it('says nothing at all before anything has been read', () => {
     expect(identityOf(EMPTY_CHARACTER, NOW)).toBeNull();
-  });
-
-  it('is worth keeping the moment one fact lands', () => {
-    const state: CharacterState = { ...EMPTY_CHARACTER, race: 'Gnome' };
-    const identity = identityOf(state, NOW);
-    expect(identity).not.toBeNull();
-    expect(comparable(identity!)).toBe(true);
-    // And the rest stays unknown rather than becoming zero.
-    expect(identity?.level).toBeNull();
   });
 });
 

@@ -73,11 +73,6 @@ export function lightPhrase(illu: number): RoomLight | null {
   return null;
 }
 
-/** Whether the room is described at this much light. */
-export function canSeeAt(illu: number): boolean {
-  return illu >= CAN_SEE_FROM;
-}
-
 /** The sum of one ability across a set of `[id, value]` pairs. */
 export function abilitySum(pairs: ReadonlyArray<readonly [number, number]>, id: number): number {
   let total = 0;
@@ -190,71 +185,4 @@ export function wornVision(items: ReadonlyArray<ItemEntity>): number {
     total += abilitySum(item.abilities, ROOM_LIGHT_ABILITY);
   }
   return total;
-}
-
-/**
- * What a room at `level` reads as for this character, or null when the realm
- * records no level for it — which is an ordinarily lit room *as far as the
- * data goes*, and the honest answer is that nothing is claimed.
- */
-export function seenAt(level: number | undefined, sight: Sight): number | null {
-  return level === undefined ? null : level + sight.total;
-}
-
-/**
- * The light to ready for a room at `level`, or the reason none will do.
- *
- * Only a light that would actually make the room readable is worth its
- * charges: one that lifts `pitch black` to `very dark` burns for nothing, so
- * it is not chosen. Among those that suffice, the one with the **least**
- * reach wins — a torch is spent on a sewer and a marsh light kept for a cave
- * — and a light the realm cannot measure (null reach) is never chosen over a
- * measured one, because choosing it is a guess about whether it lights
- * anything. With nothing measured that suffices, an unmeasured usable light
- * is offered as a `guess`: the player packed it as a light and the cost of
- * trying is one command.
- *
- * `dim` widens the question from *readable* to *not dark at all*, which is
- * MegaMUD's "provide light in dimly-lit rooms".
- */
-export type LightChoice =
-  /** The room is readable by vision alone; nothing to light. */
-  | { kind: 'unneeded' }
-  /** A usable light is lit and reaches. */
-  | { kind: 'lit' }
-  | { kind: 'ready'; light: CarriedLight; guess: boolean }
-  | { kind: 'none'; reason: 'nothing carried' | 'nothing usable' | 'nothing reaches' };
-
-export function chooseLight(
-  level: number,
-  vision: number,
-  lights: ReadonlyArray<CarriedLight>,
-  dim = false
-): LightChoice {
-  const enough = (reach: number): boolean =>
-    dim ? lightPhrase(level + vision + reach) === null : canSeeAt(level + vision + reach);
-  if (enough(0)) return { kind: 'unneeded' };
-  const lit = lights.find((light) => light.lit && lightIsUsable(light));
-  if (lit !== undefined && (lit.reach === null || enough(lit.reach))) return { kind: 'lit' };
-  if (lights.length === 0) return { kind: 'none', reason: 'nothing carried' };
-  const usable = lights.filter((light) => !light.lit && lightIsUsable(light));
-  if (usable.length === 0) return { kind: 'none', reason: 'nothing usable' };
-  const measured = usable
-    .filter((light): light is CarriedLight & { reach: number } => light.reach !== null)
-    .filter((light) => enough(light.reach))
-    .sort((a, b) => a.reach - b.reach);
-  if (measured[0] !== undefined) return { kind: 'ready', light: measured[0], guess: false };
-  const unmeasured = usable.find((light) => light.reach === null);
-  if (unmeasured !== undefined) return { kind: 'ready', light: unmeasured, guess: true };
-  return { kind: 'none', reason: 'nothing reaches' };
-}
-
-/**
- * Whether the character needs a light readied for a room at `level`.
- *
- * Asked of the room *without* the light that is currently lit, so a torch
- * already burning is counted by `chooseLight` rather than assumed here.
- */
-export function needsLightAt(level: number, vision: number, dim = false): boolean {
-  return dim ? lightPhrase(level + vision) !== null : !canSeeAt(level + vision);
 }

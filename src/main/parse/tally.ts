@@ -53,6 +53,9 @@ function inCopper(count: number, noun: string | undefined): number {
   return denomination === undefined ? 0 : count * COPPER_PER[denomination];
 }
 
+/** A blow whose line names nobody, read as this character's: see `trackTally`. */
+export type OwnBlow = 'proc' | 'spell' | null;
+
 /**
  * The tally after one block.
  *
@@ -66,15 +69,17 @@ export function trackTally(
   after: CharacterState,
   before: CharacterState,
   /**
-   * Whether this block was read as a chance-on-hit off this character's own
-   * gear — see `CharacterTracker.readsAsProc`.
+   * Whose this block's blow is, where the line names nobody: a chance-on-hit
+   * off this character's own gear (`CharacterTracker.readsAsProc`), or this
+   * character's own spell, the damage line after its cast line
+   * (`CharacterTracker.readsAsOwnSpell`, 2026-10-17).
    *
-   * Handed in rather than derived, because the one thing that can attribute
-   * such a line is the realm's item row and the round it landed in, and
-   * neither is anywhere near here. Decided once so the ledger and this table
-   * cannot disagree about the same blow.
+   * Handed in rather than derived, because what attributes such a line is
+   * the realm's item row, the round it landed in, or the cast before it, and
+   * none of them is anywhere near here. Decided once so the ledger and this
+   * table cannot disagree about the same blow.
    */
-  proc = false
+  own: OwnBlow = null
 ): CombatTally {
   const g = block.groups ?? {};
   let next = tally;
@@ -100,7 +105,7 @@ export function trackTally(
        * line names nobody, so `blowKind` has nothing to read and the verdict
        * arrives from the tracker instead.
        */
-      const kind = proc ? 'proc' : isSelf(g['attacker'], after) ? blowKind(g['line']) : null;
+      const kind = own ?? (isSelf(g['attacker'], after) ? blowKind(g['line']) : null);
       if (kind === null) break;
       count({ dealt: { ...next.dealt, [kind]: withBlow(next.dealt[kind], int(g['damage'])) } });
       break;

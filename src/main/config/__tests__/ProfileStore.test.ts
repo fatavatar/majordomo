@@ -5,6 +5,7 @@ import path from 'node:path';
 
 import { ProfileStore, type ProfileSnapshot } from '../ProfileStore';
 import { PROFILE_FILE } from '../../app/home';
+import { num } from '../../../shared/megamud/settings';
 
 let dir: string;
 let stores: ProfileStore[];
@@ -155,20 +156,30 @@ describe('ProfileStore', () => {
     expect((await changed).profiles[0]?.name).toBe('Thorn the Unready');
   });
 
+  it('reads MegaMUD settings from the file’s megamud:, defaults and off without one', () => {
+    write('thorn.yaml', 'server: local\nmegamud:\n  Health:\n    HpRest%: 55\n');
+    write('mara.yaml', 'server: local\n');
+    const [mara, thorn] = open().profiles;
+    expect(num(thorn!.megamud, 'Health', 'HpRest%')).toBe(55);
+    expect(thorn!.megamudOn).toBe(true);
+    expect(num(mara!.megamud, 'Health', 'HpRest%')).toBe(90);
+    expect(mara!.megamudOn).toBe(false);
+  });
+
   it('reapplies every overlay when the options file underneath changes', () => {
     write('thorn.yaml', 'server: local\n');
     const store = open();
-    expect(store.profiles[0]?.config.automation.idle.afterSeconds).toBe(45); // the default
+    expect(store.profiles[0]?.config.automation.walk.clearAfterSeconds).toBe(15); // the default
 
     // A profile is an overlay, so a reloaded options file has to reach every
     // character — including settings no profile mentions.
     base = {
       servers: [{ name: 'local', host: 'gmud-tgs', port: 2427 }],
-      automation: { idle: { afterSeconds: 120 } }
+      automation: { walk: { clearAfterSeconds: 120 } }
     };
     store.refresh();
 
-    expect(store.profiles[0]?.config.automation.idle.afterSeconds).toBe(120);
+    expect(store.profiles[0]?.config.automation.walk.clearAfterSeconds).toBe(120);
   });
 
   it('survives a directory that does not exist', () => {

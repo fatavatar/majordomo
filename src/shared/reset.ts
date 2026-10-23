@@ -119,13 +119,3 @@ export function resetSignals(
 function sameWord(a: string, b: string): boolean {
   return a.trim().toLowerCase() === b.trim().toLowerCase();
 }
-
-/** Whether the two identities describe anything at all worth comparing. */
-export function comparable(identity: CharacterIdentity): boolean {
-  return (
-    identity.race !== null ||
-    identity.className !== null ||
-    identity.level !== null ||
-    identity.exp !== null
-  );
-}

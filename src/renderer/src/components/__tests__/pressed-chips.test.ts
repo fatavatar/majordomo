@@ -32,17 +32,4 @@ describe('a chip that is a control says which way it is held', () => {
     const css = read('src/renderer/src/styles/index.css');
     expect(css).toMatch(/\.chip\.pick\[aria-pressed='true']\s*\{/);
   });
-
-  it('and the coin rows are drawn by that rule', () => {
-    const source = read('src/renderer/src/components/CarrySections.tsx');
-    const pressed = [...source.matchAll(/aria-pressed=\{on\}\s*\n\s*className="([^"]+)"/g)].map(
-      (match) => match[1]!
-    );
-    /*
-     * The positive control: a regex that matched nothing would leave the list
-     * empty and `every` would pass on it. Two rows, collect and discard.
-     */
-    expect(pressed).toHaveLength(2);
-    expect(pressed.every((names) => names.split(/\s+/).includes('pick'))).toBe(true);
-  });
 });

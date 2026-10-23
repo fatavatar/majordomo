@@ -89,24 +89,12 @@ export class WindowRegistry {
     return this.entries.size;
   }
 
-  /** Sessions the given window is showing. */
-  attachments(windowId: number): SessionId[] {
-    return [...(this.entries.get(windowId)?.attached ?? [])];
-  }
-
   attach(windowId: number, session: SessionId): void {
     this.entries.get(windowId)?.attached.add(session);
   }
 
   detach(windowId: number, session: SessionId): void {
     this.entries.get(windowId)?.attached.delete(session);
-  }
-
-  /** Every window showing a session, so a pop-out knows whether it is the last. */
-  viewers(session: SessionId): number[] {
-    return [...this.entries.values()]
-      .filter((entry) => entry.attached.has(session))
-      .map((entry) => entry.window.id);
   }
 
   /** The byte stream: only to windows actually showing that session. */

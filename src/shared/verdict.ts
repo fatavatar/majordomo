@@ -1,23 +1,3 @@
-import {
-  rankByMenace,
-  type Menace,
-  type MenacePlayer,
-  type MenaceSubject,
-  type MenaceWeights,
-  weighRoom
-} from './menace';
-import { swing, type ProwessSheet, type ProwessWeapon, type Reckoning } from './prowess';
-import type { RealmFamily } from './realm';
-// Type only: `survival.ts` imports this module's values, and a value the other
-// way would be the cycle `module-cycle.test.ts` exists to refuse.
-import type { Survival } from './survival';
-import { DODGE_ABILITY } from './abilities';
-import { statedNow } from './stated';
-import type { CharacterState, RoomOccupant } from './character';
-import type { MobEntity } from './entities';
-import { DEFAULT_MOB_PRIORITY, MOB_PRIORITIES, type MobPriorityBand, type MobRule } from './config';
-import { mobKey } from './world';
-
 /**
  * *Can I fight this?* — one answer, read by the card and by the engine.
  *
@@ -30,7 +10,7 @@ import { mobKey } from './world';
  *
  * ## Why this is one function and not two implementations
  *
- * `AutoCombat` picks a target and the Reference card explains one. **If the
+ * The fight picks a target and the Reference card explains one. **If the
  * card says a monster is a bad fight and the engine picks it anyway, one of
  * them is lying**, and the only way that stays true is if both read the same
  * function. So the verdict is computed here, in `src/shared/`, dependency-free
@@ -52,6 +32,23 @@ import { mobKey } from './world';
  * back to `menace.weight` where they are not — per monster, not per room, so
  * one unknown does not throw away what is known about the rest.
  */
+import {
+  rankByMenace,
+  type Menace,
+  type MenacePlayer,
+  type MenaceSubject,
+  type MenaceWeights,
+  weighRoom
+} from './menace';
+import { swing, type ProwessSheet, type ProwessWeapon, type Reckoning } from './prowess';
+import type { RealmFamily } from './realm';
+// Type only: `survival.ts` imports this module's values, and a value the other
+// way would be the cycle `module-cycle.test.ts` exists to refuse.
+import type { Survival } from './survival';
+import { DODGE_ABILITY } from './abilities';
+import { statedNow } from './stated';
+import type { CharacterState, RoomOccupant } from './character';
+import type { MobEntity } from './entities';
 
 /** What a monster costs, in both directions, with every figure's provenance. */
 export interface Verdict {
@@ -124,7 +121,7 @@ export type TargetEntity = Pick<MobEntity, 'armour' | 'damageResist' | 'abilitie
  * sides and the division happens here, once. Dodge is the row's `Abil-n = 34`
  * slot, in points, and there is no unit to convert.
  *
- * **`AutoCombat` used to pass `{}` here.** `hitChance` takes an unread armour
+ * **The old `AutoCombat` used to pass `{}` here.** `hitChance` takes an unread armour
  * class as none — the answer that makes every blow land — so with the entity
  * never consulted every monster was priced as unarmoured, and the rounds
  * figure, labelled *at most*, was smaller than the truth for anything in
@@ -465,58 +462,6 @@ export function rankByVerdict(verdicts: ReadonlyArray<Verdict>): number[] {
   return scored
     .sort((a, b) => a.tier - b.tier || b.score - a.score || a.index - b.index)
     .map((entry) => entry.index);
-}
-
-/**
- * The order to attack a room in when the monster list has something to say.
- *
- * Bands first, and **instead of** the weighing rather than above it: a listed
- * monster's band decides, and within one band the room's own listing order
- * decides. That is the order the client used before any weighing existed, and
- * it is the one somebody reading their own list can predict — which is the
- * whole point of writing the list. `rankByVerdict` is not consulted here at
- * all; see `CombatConfig.monsters`, whose priorities `AutoCombat.bandsFor` hands in as these rows.
- *
- * `names` and `verdicts` are parallel to the candidates the caller is choosing
- * between, and the returned indices point back into them. `verdicts` is taken
- * only so the caller can hand the chosen one's verdict to the trace.
- *
- * Returns null when no row names anything in the room, which is the common
- * case and the one where the realm's arithmetic should decide as it always
- * has. Deciding that here keeps the caller from asking the same question
- * twice.
- *
- * A `never` row is not a rank and is skipped outright: such a monster was
- * declined long before this, so a row for it says nothing about the order of
- * what is left — and counting it as *listed* would take the whole room off
- * the realm's arithmetic on the strength of a monster nobody is fighting.
- */
-export function rankByPriority(
-  names: readonly string[],
-  rows: readonly MobRule[]
-): number[] | null {
-  if (rows.length === 0) return null;
-  /*
-   * Both sides through `mobKey`. The normalizer keys a row on the way in, but
-   * a row still being typed on the settings screen has not been through it —
-   * and a list that quietly did nothing until the file was reloaded would be
-   * the control lying about itself while somebody watched it.
-   */
-  const bands = new Map<string, MobPriorityBand>();
-  for (const row of rows) {
-    if (row.treat === 'never') continue;
-    bands.set(mobKey(row.mob), row.treat);
-  }
-  const middle = MOB_PRIORITIES.indexOf(DEFAULT_MOB_PRIORITY);
-  let listed = false;
-  const scored = names.map((name, index) => {
-    const band = bands.get(mobKey(name));
-    if (band !== undefined) listed = true;
-    return { index, rank: band === undefined ? middle : MOB_PRIORITIES.indexOf(band) };
-  });
-  if (!listed) return null;
-  // Ties break on the room's listing order, which `index` already is.
-  return scored.sort((a, b) => a.rank - b.rank || a.index - b.index).map((entry) => entry.index);
 }
 
 /** Re-exported so a caller that only has menaces still has one ranking to reach for. */

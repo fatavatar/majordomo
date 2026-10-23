@@ -217,6 +217,18 @@ export class RealmLibrary {
   }
 
   /**
+   * The file a realm's `database` names, as `load` reads it; null for a
+   * bundled world, which is a converted map and no database to read again.
+   * For MMUD Explorer (`mme/Explorer.ts`), which reads the realm's tables
+   * themselves (2026-10-18).
+   */
+  databaseFile(database: string): string | null {
+    const stated = database.trim();
+    if (stated.length === 0 || asShippedWorld(stated) !== null) return null;
+    return this.resolve(stated);
+  }
+
+  /**
    * A database path as an absolute one.
    *
    * A path a *player* typed is theirs and is used as given — the file picker

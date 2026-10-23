@@ -34,7 +34,7 @@ export type ItemKind =
   | 'scroll'
   | 'misc';
 
-const ITEM_KINDS: readonly ItemKind[] = [
+export const ITEM_KINDS: readonly ItemKind[] = [
   'armour', // 0 — padded vest, chainmail hauberk, and also every ring and amulet
   'weapon', // 1 — broadsword, quarterstaff, fist
   'trap', // 2 — net, bola, poisoned shuriken: thrown, and six rows in the whole realm
@@ -126,26 +126,6 @@ export const SLOT_CAPACITY: Readonly<Record<string, number>> = { finger: 2, wris
 export function capacityOf(slot: string): number {
   return SLOT_CAPACITY[slot.toLowerCase()] ?? 1;
 }
-
-/**
- * `Worn` code 1 — the hand a weapon is swung with, by the word the listing
- * prints for it (`ice crystal falchion (Weapon Hand)`, live 2026-09-11).
- *
- * Named because one slot in the table decides something on its own: a refusal
- * the server blames on *this weapon* lasts as long as this weapon, and the
- * only way to notice the hand has changed is to read it. Everything else in
- * `WORN_SLOT` is the Reference card's.
- */
-export const WEAPON_HAND = 'Weapon Hand';
-
-/**
- * `Worn` code 12 — the other hand, which a two-handed weapon takes with it.
- *
- * Named for the same reason `WEAPON_HAND` is: one slot decides something on
- * its own. A shield here is what an equipment set has to take off before a
- * two-hander goes on, and the server refuses the `wear` otherwise.
- */
-export const OFF_HAND = 'Off-Hand';
 
 /**
  * `Items.WeaponType`: **handedness × damage kind**, which is two axes and not

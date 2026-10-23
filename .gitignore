@@ -5,6 +5,7 @@
 node_modules
 node_modules/
 out/
+out-replay/
 dist/
 release/
 *.log
@@ -84,6 +85,11 @@ docs/*
 # the tool reads it from the MegaMUD zip.
 !/docs/megamud/
 !/docs/megamud/*.md
+
+# And the guide to the codebase itself (2026-10-22): how the client is put
+# together, for whoever works on it next, kept beside the code it describes.
+!/docs/codebase/
+!/docs/codebase/*.md
 
 # The one exception, and it is deliberate: the root README is the front page
 # of the repository, so it is the one piece of prose worth keeping under

@@ -80,7 +80,6 @@ const session = new SessionManager(
   // No standing routines: this measures what commands *here* cause.
   {
     ...profile.config.automation,
-    idle: { ...profile.config.automation.idle, enabled: false },
     rules: []
   },
   profile.config.connection.login

@@ -4,13 +4,17 @@ import { NO_TALK } from '../TalkLog';
 import { NO_REALM_PLAYERS } from '../../../shared/players';
 import { NO_BELONGINGS } from '../../../shared/belongings';
 import { NO_LORE } from '../../../shared/lore';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { NO_PARTY, type Party } from '../../../shared/character';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import fs from 'node:fs';
 import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 
 import { SessionHost } from '../SessionHost';
+import type { MegaEngine } from '../MegaEngine';
+import { goOnline } from '../../megamud/script/game';
+import { defaultSettings } from '../../../shared/megamud/settings';
 import { Push, type Addressed, type Notice, type SessionId } from '../../../shared/ipc';
 import { DEFAULT_CONFIG, type AppConfig } from '../../../shared/config';
 import type { ConnectionTarget, StreamChunk } from '../../../shared/types';
@@ -252,6 +256,36 @@ describe('SessionHost', () => {
     expect(host!.ids).toEqual(['thorn']);
   });
 
+  /*
+   * Bowel's collect-keys took the gate key Archer's *Collect it first* had
+   * come for (2026-10-19). Left for the fetcher, and only by a party both
+   * name: a stranger's errand leaves nothing on the floor.
+   */
+  it('leaves an item for the party member whose errand is fetching it', () => {
+    const archer = host!.ensure('archer').manager;
+    const bowel = host!.ensure('bowel').manager;
+    const party = (...names: string[]): Party => ({
+      ...NO_PARTY,
+      members: names.map((name) => ({ name }) as Party['members'][number])
+    });
+    const as = (manager: typeof archer, name: string, members: string[]) =>
+      vi
+        .spyOn(manager, 'character', 'get')
+        .mockReturnValue({ ...manager.character, name, party: party(...members) });
+    as(archer, 'Archer', ['Bowel', 'Archer']);
+    as(bowel, 'Bowel', ['Bowel', 'Archer']);
+    vi.spyOn(archer, 'errandWants').mockImplementation((item) => item === 'gate key');
+    const leaves = (manager: typeof archer, item: string): boolean =>
+      (manager as unknown as { leaveFor(item: string): boolean }).leaveFor(item);
+    expect(leaves(bowel, 'gate key')).toBe(true);
+    expect(leaves(bowel, 'moldy key')).toBe(false);
+    // Archer's own errand takes it.
+    expect(leaves(archer, 'gate key')).toBe(false);
+    // Out of the party, the key is Bowel's to take.
+    as(bowel, 'Bowel', []);
+    expect(leaves(bowel, 'gate key')).toBe(false);
+  });
+
   it('addresses every coalesced fact it publishes', async () => {
     await host!.connect('thorn', target());
     await until(() => accepted.length === 1);
@@ -340,6 +374,56 @@ describe('SessionHost', () => {
     await new Promise((resolve) => setTimeout(resolve, 200));
     expect(accepted).toHaveLength(2);
     expect(host!.get('thorn')?.reconnect.pending).toBe(false);
+  });
+
+  /*
+   * A character the MegaMUD engine runs is dialled back by MegaMUD's own
+   * rules, never by both (2026-10-13): out of the game it does not redial,
+   * and auto-reconnect stands down.
+   */
+  it('leaves a MegaMUD character’s redial to the engine', async () => {
+    autoReconnect = true;
+    await host!.connect('thorn', target());
+    await until(() => accepted.length === 1);
+    host!.get('thorn')!.manager.useMegaMud({
+      settings: defaultSettings(),
+      data: { monsters: [], items: [], spells: [] },
+      grants: {}
+    });
+
+    accepted[0]!.destroy();
+    await until(() => host!.get('thorn')?.manager.state.phase === 'closed');
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    expect(accepted).toHaveLength(1);
+    expect(host!.get('thorn')?.reconnect.pending).toBe(false);
+  });
+
+  it('dials back through the host when the engine redials, and Disconnect calls it off', async () => {
+    await host!.connect('thorn', target());
+    await until(() => accepted.length === 1);
+    const manager = host!.get('thorn')!.manager;
+    manager.useMegaMud({
+      settings: defaultSettings(),
+      data: { monsters: [], items: [], spells: [] },
+      grants: {}
+    });
+    const mega = (manager as unknown as { mega: MegaEngine }).mega;
+    mega.s.Comms_RedialPause = 0;
+    goOnline(mega.s, 1);
+    mega.s.inGame = 1;
+
+    accepted[0]!.destroy();
+    await until(() => accepted.length === 2, 4000);
+    expect(manager.state.phase).toBe('connected');
+
+    goOnline(mega.s, 1);
+    mega.s.inGame = 1;
+    mega.s.Comms_RedialPause = 60;
+    accepted[1]!.destroy();
+    await until(() => manager.megaRedialing);
+    expect(host!.summaries.find((row) => row.id === 'thorn')?.retrying).toBe(true);
+    host!.disconnect('thorn');
+    expect(manager.megaRedialing).toBe(false);
   });
 
   it('does not dial back a character that never asked for it', async () => {

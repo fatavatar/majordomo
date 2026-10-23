@@ -253,10 +253,41 @@ describe('a peer that stops reading', () => {
     // An attach snapshot is the whole backscroll: bigger than the cap on its
     // own, and a push behind it is no sign the tab has stopped reading.
     const { Duplex } = await import('node:stream');
+    const taken: Array<() => void> = [];
+    const slow = new Duplex({
+      read() {},
+      write(_chunk, _encoding, callback) {
+        // Taken when the test says: the answer is still on its way until then.
+        taken.push(callback);
+      }
+    });
+    const connection = new WebSocketConnection(slow, {
+      maxMessageBytes: 1024,
+      maxBufferedBytes: 2048
+    });
+    connection.send('x'.repeat(5000), true);
+    /*
+     * Pushes behind the answer wait their turn, past the cap and uncounted
+     * (2026-10-18: five snapshots and three characters' pushes behind them
+     * closed every fresh tab on the container).
+     */
+    for (let i = 0; i < 5; i += 1) connection.send('x'.repeat(1500));
+    expect(connection.open).toBe(true);
+    // Once it has all gone out, the cap counts again.
+    while (taken.length > 0) taken.shift()!();
+    connection.send('x'.repeat(1500));
+    connection.send('x'.repeat(1500));
+    connection.send('one more');
+    expect(connection.open).toBe(false);
+    slow.destroy();
+  });
+
+  it('closes a peer that stalls mid-answer once what waits behind it passes its ceiling', async () => {
+    const { Duplex } = await import('node:stream');
     const stalled = new Duplex({
       read() {},
       write(_chunk, _encoding, _callback) {
-        // Never called back: the answer is still on its way.
+        // Never called back.
       }
     });
     const connection = new WebSocketConnection(stalled, {
@@ -264,11 +295,7 @@ describe('a peer that stops reading', () => {
       maxBufferedBytes: 2048
     });
     connection.send('x'.repeat(5000), true);
-    connection.send('x'.repeat(1500));
-    connection.send('one more');
-    expect(connection.open).toBe(true);
-    connection.send('x'.repeat(1500));
-    connection.send('one more');
+    for (let i = 0; i < 40 && connection.open; i += 1) connection.send('x'.repeat(1500));
     expect(connection.open).toBe(false);
     stalled.destroy();
   });
@@ -326,5 +353,31 @@ describe('a peer that is not a browser', () => {
     socket.write(masked(OPCODE.ping, Buffer.from('are you there')));
     expect((await pong).toString()).toBe('are you there');
     socket.destroy();
+  });
+});
+
+describe('a peer reading a long answer', () => {
+  it('is seen taking it, between asks, and not when it stops', async () => {
+    const { Duplex } = await import('node:stream');
+    const taken: Array<() => void> = [];
+    const slow = new Duplex({
+      read() {},
+      write(_chunk, _encoding, callback) {
+        taken.push(callback);
+      }
+    });
+    const connection = new WebSocketConnection(slow, {
+      maxMessageBytes: 1024,
+      maxBufferedBytes: 2048
+    });
+    connection.send('x'.repeat(5000), true);
+    connection.send('a push behind it');
+    expect(connection.taking()).toBe(false);
+    taken.shift()!();
+    expect(connection.taking()).toBe(true);
+    expect(connection.taking()).toBe(false);
+    taken.shift()!();
+    expect(connection.taking()).toBe(true);
+    slow.destroy();
   });
 });

@@ -49,7 +49,11 @@ const session = new SessionManager(
       current?.lines.push({ text: line.plain, tag: line.tag ?? null });
     },
     block: (block) => {
-      current?.blocks.push({ type: block.type, groups: block.groups ?? {}, rows: block.rows?.length });
+      current?.blocks.push({
+        type: block.type,
+        groups: block.groups ?? {},
+        rows: block.rows?.length
+      });
     },
     character: () => {},
     state: () => {},
@@ -61,7 +65,6 @@ const session = new SessionManager(
   // and its own answers inside the capture.
   {
     ...profile.config.automation,
-    idle: { ...profile.config.automation.idle, enabled: false },
     rules: []
   },
   profile.config.connection.login

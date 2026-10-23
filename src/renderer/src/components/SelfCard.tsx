@@ -8,7 +8,7 @@
  * armour — were parsed off every `st` and drawn by nothing. Three faces:
  *
  * - **the character** (face 0, wearing the name): who it is, the sheet, and
- *   what it sees by — the light arithmetic `AutoLight` acts on, drawn so a
+ *   what it sees by — the light arithmetic, drawn so a
  *   torch not lit is a decision somebody can read (`src/shared/light.ts`).
  * - **PACK**: the Carrying card's own body, because "everything about the
  *   player" includes what it carries and a second listing that could drift
@@ -43,8 +43,6 @@ export interface SelfCardProps extends CardChrome, Omit<InventoryBodyProps, 'ret
   profileName: string;
   /** This character's supplies list, and the write. Null on a pinned float. */
   supplies: SupplyList | null;
-  /** Whether the auto-buy switch is on, so an idle list can say why. */
-  suppliesOn: boolean;
 }
 
 const FACES = ['self', 'pack', 'supplies'] as const;
@@ -106,7 +104,6 @@ function SelfCard({
   session,
   profileName,
   supplies,
-  suppliesOn,
   inspect,
   gear,
   loadWearer,
@@ -117,8 +114,8 @@ function SelfCard({
   const [finding, setFinding] = useState(false);
   const { progress, sight, room, attributeSpans: spans } = character;
   /*
-   * Whether the pack has been read at all. `Supplies.consider` refuses to act
-   * until it has — *an unlisted pack is not an empty one* — and this row is
+   * Whether the pack has been read at all. Nothing that buys acts until it
+   * has — *an unlisted pack is not an empty one* — and this row is
    * the readout somebody decides from, so it has to say the same thing: a
    * fresh session drew `0` against every minimum and a badge reading `2 short`
    * about a character carrying plenty.
@@ -127,7 +124,7 @@ function SelfCard({
   const title = character.fullName ?? character.name ?? profileName;
 
   /*
-   * What the character sees by, as the decision `AutoLight` makes: the room's
+   * What the character sees by: the room's
    * recorded level plus everything the character brings to it. `here` is what
    * the server would print for the room being stood in — checked against what
    * it did print when it printed anything, which is the one line that can
@@ -370,7 +367,7 @@ function SelfCard({
           </span>
         ) : (
           // A row with no shop is not a row that does nothing: it is filled
-          // off the floor instead of out of a shop (`AutoLoot.stockingUp`),
+          // off the floor instead of out of a shop,
           // which is what a `black star key` at min 2, max 2 is for.
           <span className="slot" title={t('cards.self.supplies.foundTooltip')}>
             {t('cards.self.supplies.foundOnly')}
@@ -401,9 +398,6 @@ function SelfCard({
 
   const suppliesFace = (
     <>
-      {!suppliesOn && rows.length > 0 && (
-        <p className="settings-note">{t('cards.self.supplies.switchedOff')}</p>
-      )}
       <CardTable
         caption={t('cards.self.supplies.tableCaption')}
         className="supplies"

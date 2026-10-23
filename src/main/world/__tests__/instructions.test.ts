@@ -109,6 +109,11 @@ describe('parseInstruction', () => {
     expect(parseInstruction('Hidden/Unknown')?.searchable).toBe(false);
   });
 
+  it('reads a passable hidden exit as one walked by its direction', () => {
+    expect(parseInstruction('Hidden/Passable')).toMatchObject({ kind: 'hidden', passable: true });
+    expect(parseInstruction('Hidden/Searchable')).not.toHaveProperty('passable');
+  });
+
   it('classifies the remaining kinds seen in the data', () => {
     const cases: Array<[string, string]> = [
       ['Toll', 'toll'],

@@ -34,7 +34,7 @@
  *   combat setting's own count.
  *
  * MegaMUD's *Find first* is not carried: it orders substring matching so
- * `dark bishop` is found before `bishop`, and `ruleFor` always tries the
+ * `dark bishop` is found before `bishop`, and the table is always read
  * longest name first. *Check if alive* belongs to a MudOp tool this client
  * does not have.
  */
@@ -42,7 +42,6 @@
 // import back would be a cycle for a bundler to order.
 import type { MobPriorityBand } from './config';
 import type { UiLookup } from './i18n';
-import { mobNameCandidates } from './mobs';
 import { isRecord } from './values';
 import { mobKey } from './world';
 
@@ -175,6 +174,19 @@ export function saysAnything(rule: MonsterRule): boolean {
   return Object.keys(rule).some((key) => key !== 'mob');
 }
 
+/** A row as the file holds it: the fields in a fixed order (`itemRuleForFile`). */
+export function monsterRuleForFile(rule: MonsterRule): Record<string, unknown> {
+  const row: Record<string, unknown> = { mob: rule.mob };
+  if (rule.relationship !== undefined) row['relationship'] = rule.relationship;
+  if (rule.priority !== undefined) row['priority'] = rule.priority;
+  if (rule.notHostile !== undefined) row['notHostile'] = rule.notHostile;
+  if (rule.noBackstab !== undefined) row['noBackstab'] = rule.noBackstab;
+  if (rule.stopToKill !== undefined) row['stopToKill'] = rule.stopToKill;
+  if (rule.preAttack !== undefined) row['preAttack'] = { ...rule.preAttack };
+  if (rule.attack !== undefined) row['attack'] = { ...rule.attack };
+  return row;
+}
+
 /* ------------------------------------------------------------ merging */
 
 /**
@@ -194,77 +206,6 @@ export function mergeMonsterRules(...scopes: readonly (readonly MonsterRule[])[]
     }
   }
   return [...merged.values()];
-}
-
-/**
- * Whether the realm's own monster table names a monster exactly, by `mobKey`.
- * What tells a modifier from the start of a different monster's name.
- */
-export type KnownMob = (key: string) => boolean;
-
-/**
- * The row that speaks for a monster the room named, or null.
- *
- * The exact name first. Failing that, the name with the realm's modifier
- * taken off — `guardsman` answers for `nasty guardsman`, because this family
- * hangs a word on either end of a base name (`mobNameCandidates`) — least
- * stripping first, which is what MegaMUD's *Find first* flag existed to
- * arrange by hand.
- *
- * **But only down to the realm's own name for it.** Where the realm's table
- * knows the monster — `orc rogue`, say — that is the monster, and a row for
- * anything shorter is a different one. Reported 2026-09-23: an imported
- * `rogue` row, marked Avoid, matched `large orc rogue` and `fierce orc rogue`
- * as whole words, and a character walked past both without swinging. With no
- * realm to ask (`known` absent, or naming none of the spellings) the shortest
- * stripping that finds a row is the only evidence there is, and it is used.
- */
-export function ruleFor(
-  rules: readonly MonsterRule[],
-  name: string,
-  known?: KnownMob
-): MonsterRule | null {
-  if (rules.length === 0) return null;
-  const key = mobKey(name);
-  // Keyed on both sides: a row typed on the settings screen has not been
-  // through `asMonsterRules` yet, and must mean the same while it is written.
-  const byMob = (mob: string): MonsterRule | null =>
-    rules.find((rule) => mobKey(rule.mob) === mob) ?? null;
-  const exact = byMob(key);
-  if (exact !== null) return exact;
-  const stripped = mobNameCandidates(key).slice(1);
-  if (known !== undefined) {
-    if (known(key)) return null;
-    for (const candidate of stripped) if (known(candidate)) return byMob(candidate);
-  }
-  for (const candidate of stripped) {
-    const row = byMob(candidate);
-    if (row !== null) return row;
-  }
-  return null;
-}
-
-/** The relationship a monster is treated with — `enemy` where nothing says. */
-export function relationshipOf(
-  rules: readonly MonsterRule[],
-  name: string,
-  known?: KnownMob
-): Relationship {
-  return ruleFor(rules, name, known)?.relationship ?? 'enemy';
-}
-
-/**
- * Whether the table says this monster will not open on the character — a row
- * marked Not hostile, or a friend. MegaMUD's reason for the flag: *this allows
- * MegaMMUD to rest within the room if needed before attacking the monster*.
- */
-export function willNotOpen(
-  rules: readonly MonsterRule[],
-  name: string,
-  known?: KnownMob
-): boolean {
-  const rule = ruleFor(rules, name, known);
-  return rule !== null && (rule.notHostile === true || rule.relationship === 'friend');
 }
 
 /* ----------------------------------------------------------- the words */

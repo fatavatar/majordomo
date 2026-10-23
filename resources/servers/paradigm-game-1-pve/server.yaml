@@ -105,3 +105,10 @@ login:
 # characters on one realm cannot be walking two different maps.
 #
 # database: /path/to/your-realm.zip
+
+# The mudstats board this realm's characters may post their readings to, or
+# absent for none. A board watches one realm, so the address is the realm's;
+# whether a character posts there, and how often, is the character's own
+# `logging.stats`, and the key the board gives it is kept beside its password.
+#
+# statsUrl: http://192.168.0.220:8099

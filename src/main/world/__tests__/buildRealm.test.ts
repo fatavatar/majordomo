@@ -286,6 +286,24 @@ describe('naming what a monster is worth in health', () => {
   const bare = (mobs: ReturnType<typeof indexMobs>) =>
     mobs.map(({ i: _ids, ty: _types, rw: _rows, ...rest }) => rest);
 
+  // Format 49: MegaMUD multiplies `EXP` by it, and every row of the name has to agree.
+  it('keeps the experience multiplier a name agrees on', () => {
+    const mobs = indexMobs(
+      fake({
+        Monsters: [
+          { Number: 1, Name: 'mosquito swarm', HP: 50, EXP: 512011, ExpMulti: 48, 'In Game': 1 },
+          { Number: 2, Name: 'rat', HP: 5, EXP: 9, ExpMulti: 1, 'In Game': 1 },
+          { Number: 3, Name: 'orc', HP: 5, EXP: 9, ExpMulti: 2, 'In Game': 1 },
+          { Number: 4, Name: 'orc', HP: 5, EXP: 9, ExpMulti: 3, 'In Game': 1 }
+        ]
+      })
+    );
+    const byName = new Map(mobs.map((mob) => [mob.n, mob]));
+    expect(byName.get('mosquito swarm')?.xm).toBe(48);
+    expect(byName.get('rat')?.xm).toBeUndefined();
+    expect(byName.get('orc')?.xm).toBeUndefined();
+  });
+
   /*
    * Format 32: each row answering for itself beside its number, so a lair —
    * or a name resolved by the room it stands in — is weighed by the row rather
@@ -778,6 +796,14 @@ describe('naming the spells a realm has', () => {
     expect(indexSpells(fake({ Spells: [{ Number: 1, Name: '' }] }))).toEqual([]);
   });
 
+  // Format 49: which magic a spell is, as MegaMUD's engine reads it.
+  it('keeps the magic a spell is and its level', () => {
+    const [spell] = indexSpells(
+      fake({ Spells: [{ Number: 1, Name: 'Magic Missile', Magery: 2, MageryLVL: 1 }] })
+    );
+    expect(spell).toEqual({ id: 1, n: 'Magic Missile', mg: 2, ml: 1 });
+  });
+
   it('survives a realm with no Spells table at all', () => {
     expect(indexSpells(fake({ Rooms: [room()] }))).toEqual([]);
   });
@@ -1069,16 +1095,35 @@ describe('naming the races and classes a realm offers', () => {
   });
 
   /*
-   * `MinHits`/`MaxHits` and `MageryType` are in the table and deliberately not
-   * carried: the first is larger than the second in all fifteen rows and
-   * nothing read so far says which way round they are, and the second speaks
-   * only for zero. A guess published here would look exactly like a fact.
+   * `MinHits`/`MaxHits` are in the table and deliberately not carried: the
+   * first is larger than the second in all fifteen rows and nothing read so
+   * far says which way round they are. A guess published here would look
+   * exactly like a fact.
    */
-  it('carries nothing for the two columns whose meaning is unsettled', () => {
+  it('carries nothing for the hit-dice columns, whose order is unsettled', () => {
     const [entry] = indexClasses(
-      fake({ Classes: [{ Number: 1, Name: 'Warrior', MinHits: 7, MaxHits: 4, MageryType: 2 }] })
+      fake({ Classes: [{ Number: 1, Name: 'Warrior', MinHits: 7, MaxHits: 4 }] })
     );
     expect(entry).toEqual({ id: 1, n: 'Warrior' });
+  });
+
+  /*
+   * Format 49. `MageryType` was left out while only its zero was understood;
+   * MegaMUD's own `Classes.md` holds every class's magic against the same
+   * rows (1 mage, 2 priest, 3 druid, 4 bard, 5 kai), and its engine reads it,
+   * with `WeaponType` 9 for a kai class's martial arts.
+   */
+  it("carries the magic a class casts and the weapons it fights with, for MegaMUD's engine", () => {
+    const [mystic, warrior] = indexClasses(
+      fake({
+        Classes: [
+          { Number: 15, Name: 'Mystic', MageryType: 5, MageryLVL: 1, WeaponType: 9 },
+          { Number: 16, Name: 'Warrior', MageryType: 0, MageryLVL: 0, WeaponType: 0 }
+        ]
+      })
+    );
+    expect(mystic).toEqual({ id: 15, n: 'Mystic', magery: 1, mt: 5, wt: 9 });
+    expect(warrior).toEqual({ id: 16, n: 'Warrior' });
   });
 
   it('survives a realm with neither table', () => {
