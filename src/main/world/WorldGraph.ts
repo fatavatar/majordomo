@@ -440,9 +440,6 @@ export interface RouteOptions {
   unlocks?: boolean;
 }
 
-/** The most rooms a lever set may span and still be planned: every order of them is tried. */
-const MAX_LEVER_ROOMS = 4;
-
 /**
  * How many levers deep a detour is planned, each behind the door the next
  * opens (2026-10-19). The Treetops' way north from 16/551 is five: `tear
@@ -450,14 +447,6 @@ const MAX_LEVER_ROOMS = 4;
  * 16/556, behind `move branch` in 16/561, behind `turn knot` in 16/547.
  */
 const MAX_LEVER_DEPTH = 6;
-
-/** Every order of a few rooms. */
-function orders<T>(items: readonly T[]): T[][] {
-  if (items.length <= 1) return [[...items]];
-  return items.flatMap((item, i) =>
-    orders([...items.slice(0, i), ...items.slice(i + 1)]).map((rest) => [item, ...rest])
-  );
-}
 
 /**
  * How a lever is filed and looked up: the exit it opens, not the room that
@@ -4444,7 +4433,8 @@ export class WorldGraph {
    * **The shapes the walker acted on.** Levers spread over several rooms
    * that the realm counts as one set (`Needs N Actions` with N levers) are a
    * round of the rooms, out from the door and back, in the cheapest order
-   * (2026-10-17). A lever in the door's own room is `leversHere`. Everything
+   * (2026-10-17), the door's own room among them where one of the set is
+   * there (2026-10-23). Levers all in the door's room are `leversHere`. Everything
    * else names alternatives — the Inner Gate's two Guardrooms each raise it —
    * so the cheapest room is the errand. A room holding fewer levers than the
    * realm says are needed opens nothing and is passed over.
@@ -4462,7 +4452,7 @@ export class WorldGraph {
     const depth = traveller.leverDepth ?? 0;
     if (depth >= MAX_LEVER_DEPTH) return null;
     const levers = this.leversFor(from, direction);
-    if (levers.length === 0 || levers.some((lever) => lever.at === from)) return null;
+    if (levers.length === 0 || levers.every((lever) => lever.at === from)) return null;
     const key = leverKey(from, direction);
     let held = this.errands.get(traveller);
     if (held === undefined) this.errands.set(traveller, (held = new Map()));
@@ -4491,18 +4481,37 @@ export class WorldGraph {
      */
     const limit =
       traveller.leversUnbounded?.has(key) === true ? Infinity : tuning().world.leverDetourCost;
-    /** The round through `order` from the door's room and back, priced, or null where a leg is too far. */
-    const round = (order: RoomId[]): LeverErrand | null => {
+    /** Each leg walked once, whatever order asks for it, with what waits on it priced in. */
+    const walked = new Map<string, { leg: LeverErrand['legs'][number]; price: number } | null>();
+    const legOf = (
+      at: RoomId,
+      next: RoomId
+    ): { leg: LeverErrand['legs'][number]; price: number } | null => {
+      const pair = `${at}>${next}`;
+      if (!walked.has(pair)) {
+        const leg = this.leverLeg(at, next, reach, limit);
+        walked.set(
+          pair,
+          leg === null
+            ? null
+            : { leg, price: leg.cost + this.riskAlong(leg.cameFrom, at, next, traveller) }
+        );
+      }
+      return walked.get(pair)!;
+    };
+    /** The round through `visits` from the door's room and back, priced, or null where a leg is too far. */
+    const round = (visits: RoomId[]): LeverErrand | null => {
       const stops: LeverErrand['stops'] = [];
       const legs: LeverErrand['legs'] = [];
       let price = 0;
       let at = from;
-      for (const next of [...order, from]) {
-        const leg = this.leverLeg(at, next, reach, limit);
-        if (leg === null) return null;
-        legs.push(leg);
-        price += leg.cost + this.riskAlong(leg.cameFrom, at, next, traveller);
-        if (next !== from) {
+      for (let i = 0; i <= visits.length; i += 1) {
+        const next = visits[i] ?? from;
+        const walk = legOf(at, next);
+        if (walk === null) return null;
+        legs.push(walk.leg);
+        price += walk.price;
+        if (i < visits.length) {
           const pulled = rooms.get(next)!;
           const pull = this.pullPrice(pulled, traveller);
           if (pull === null) return null;
@@ -4520,16 +4529,43 @@ export class WorldGraph {
        * (1/1056), which opens on a lever in 1/1038 and another in 1/1044,
        * and sent `n` there for as long as he was let. The old walker's
        * `runLeverSet` walked such a set on the wire, and went with it.
-       * Planned as one round, in the cheapest order of a few rooms.
+       * Planned as one round, in the cheapest order (`bestOrder`).
+       *
+       * **However many rooms, and the door's own among them** (2026-10-23).
+       * The Ebon Blade's Study (8/1852) opens on seven levers, one in the
+       * Dark Passage at its door (8/1851) and six about the guild, and was
+       * refused twice over: every order of more than four rooms was too many
+       * to try, and a set with a lever at the door was no errand at all. The
+       * door's own is pulled first, on the way out; the order of the rest is
+       * Held and Karp's, over legs each walked once.
        */
-      if (rooms.size <= MAX_LEVER_ROOMS) {
-        for (const order of orders([...rooms.keys()])) {
-          const errand = round(order);
-          if (errand !== null && (best === null || errand.price < best.price)) best = errand;
+      const away = [...rooms.keys()].filter((room) => room !== from);
+      const priced = (at: RoomId, room: RoomId): { cost: number; moves: number } | undefined => {
+        const walk = legOf(at, room);
+        return walk === null ? undefined : { cost: walk.price, moves: 0 };
+      };
+      const nodes = away.map((room, item) => ({ item, room }));
+      const reachFrom = new Map<RoomId, { cost: number; moves: number }>();
+      const between = new Map<RoomId, Map<RoomId, { cost: number; moves: number }>>();
+      for (const room of away) {
+        const first = priced(from, room);
+        if (first !== undefined) reachFrom.set(room, first);
+        const onward = new Map<RoomId, { cost: number; moves: number }>();
+        for (const next of [...away, from]) {
+          const leg = next === room ? undefined : priced(room, next);
+          if (leg !== undefined) onward.set(next, leg);
         }
+        between.set(room, onward);
+      }
+      const order = this.bestOrder(nodes, reachFrom, between, from);
+      if (order !== null) {
+        const visits = order.map((index) => away[index]!);
+        best = round(rooms.has(from) ? [from, ...visits] : visits);
       }
     } else {
       for (const [at, pulled] of rooms) {
+        // A lever at the door is said there (`leversHere`), not walked to.
+        if (at === from) continue;
         if (needed !== undefined && pulled.length < needed) continue;
         const errand = round([at]);
         if (errand !== null && (best === null || errand.price < best.price)) best = errand;

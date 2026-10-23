@@ -3091,10 +3091,65 @@ describe('the levers that open an exit', () => {
       const route = graph.route('1/1', '1/2', { packKnown: true });
       expect(route.blocked).toBe(false);
       expect(route.steps.map((step) => [step.from, step.to, step.pull?.say ?? null])).toEqual([
-        ['1/1', '1/8', null],
-        ['1/8', '1/1', ['pull lever']],
         ['1/1', '1/9', null],
         ['1/9', '1/1', ['push lever']],
+        ['1/1', '1/8', null],
+        ['1/8', '1/1', ['pull lever']],
+        ['1/1', '1/2', null]
+      ]);
+    });
+
+    /*
+     * The Ebon Blade's Study (8/1852): seven levers, one at its door and six
+     * about the guild, refused because more than four rooms was too many
+     * orders to try and a lever at the door made the set no errand at all
+     * (2026-10-23). The door's is pulled on the way out, the rest in the
+     * cheapest order, however many there are: down the hall and back here,
+     * pulled on the way back, which costs the same as on the way down.
+     */
+    it('plans a set of many rooms with one lever at the door', () => {
+      const hall = [11, 12, 13, 14, 15];
+      const graph = makeWorld([
+        {
+          m: 1,
+          r: 1,
+          n: 'Dark Passage',
+          x: {
+            n: {
+              m: 1,
+              r: 2,
+              i: 'Hidden/Needs 6 Actions, any order',
+              a: [
+                { say: ['pull lever'] },
+                ...hall.map((r) => ({ say: [`pull lever ${r}`], at: { map: 1, room: r } }))
+              ]
+            },
+            e: { m: 1, r: 11 }
+          },
+          cmd: [{ say: ['pull lever'], opens: { room: '1/1', direction: 'n' } }]
+        },
+        { m: 1, r: 2, n: 'Study', x: {} },
+        ...hall.map((r) => ({
+          m: 1,
+          r,
+          n: `Hall ${r}`,
+          x: { w: { m: 1, r: r === 11 ? 1 : r - 1 }, ...(r < 15 ? { e: { m: 1, r: r + 1 } } : {}) },
+          cmd: [{ say: [`pull lever ${r}`], opens: { room: '1/1', direction: 'n' } }]
+        }))
+      ]);
+      const route = graph.route('1/1', '1/2', { packKnown: true });
+      expect(route.blocked).toBe(false);
+      expect(route.steps.map((step) => [step.from, step.to, step.pull?.say ?? null])).toEqual([
+        ['1/1', '1/11', ['pull lever']],
+        ['1/11', '1/12', null],
+        ['1/12', '1/13', null],
+        ['1/13', '1/14', null],
+        ['1/14', '1/15', null],
+        ['1/15', '1/14', ['pull lever 15']],
+        ['1/14', '1/13', ['pull lever 14']],
+        ['1/13', '1/12', ['pull lever 13']],
+        ['1/12', '1/11', ['pull lever 12']],
+        ['1/11', '1/1', ['pull lever 11']],
         ['1/1', '1/2', null]
       ]);
     });
