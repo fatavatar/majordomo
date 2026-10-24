@@ -20,7 +20,9 @@ import {
   type ExplorerDetail,
   type ExplorerKind,
   type ExplorerOptions,
-  type ExplorerTab
+  type ExplorerRoomFacts,
+  type ExplorerTab,
+  type ItemFacts
 } from '@shared/explorer';
 import type { SessionId } from '@shared/ipc';
 
@@ -41,6 +43,10 @@ export interface ExplorerCalls {
   buy: BuyPress;
   learnPlan: BuyPlanOf;
   learn: LearnPress;
+  /** What MME says a room holds, as data (the Room card's Lair and Shop faces). */
+  room(map: number, room: number): Promise<ExplorerRoomFacts>;
+  /** MME's facts for carried items, by the realm's numbers (the Inventory card's). */
+  items(numbers: number[]): Promise<ItemFacts[]>;
 }
 
 /** The calls bound to a character, built once per character so a card's memo holds. */
@@ -57,6 +63,8 @@ export function explorerCalls(
     explorerBuy(session: SessionId, item: number, wear: boolean): ReturnType<BuyPress>;
     explorerLearnPlan(session: SessionId, spell: number): ReturnType<BuyPlanOf>;
     explorerLearn(session: SessionId, item: number): ReturnType<LearnPress>;
+    explorerRoom(session: SessionId, map: number, room: number): Promise<ExplorerRoomFacts>;
+    explorerItems(session: SessionId, numbers: number[], names: string[]): Promise<ItemFacts[]>;
   }
 ): ExplorerCalls {
   return {
@@ -64,7 +72,9 @@ export function explorerCalls(
     buyPlan: (item) => api.explorerBuyPlan(session, item),
     buy: (item, wear) => api.explorerBuy(session, item, wear),
     learnPlan: (spell) => api.explorerLearnPlan(session, spell),
-    learn: (item) => api.explorerLearn(session, item)
+    learn: (item) => api.explorerLearn(session, item),
+    room: (map, room) => api.explorerRoom(session, map, room),
+    items: (numbers) => api.explorerItems(session, numbers, [])
   };
 }
 
@@ -79,6 +89,8 @@ export interface ExplorerLink {
   explore: ((kind: ExplorerKind, n: number) => void) | null;
   /** A room's panel beside the link that named it, `map/room`; null where there is none to open. */
   openRoom: ((room: string, anchor: HTMLElement) => void) | null;
+  /** A textblock's panel beside the link that named it; null where there is none to open. */
+  openTextblock: ((n: number, anchor: HTMLElement) => void) | null;
 }
 
 /** What a card is handed to link its detail to MME; a card without them draws the realm figures. */
@@ -91,6 +103,8 @@ export interface ExplorerLinkProps {
   explore?: ((kind: ExplorerKind, n: number) => void) | null;
   /** A room's panel beside the link that named it; null for a character not shown. */
   openRoom?: ((room: string, anchor: HTMLElement) => void) | null;
+  /** A textblock's panel beside the link that named it; null for a character not shown. */
+  openTextblock?: ((n: number, anchor: HTMLElement) => void) | null;
 }
 
 /** The link a card's detail is drawn with, kept while nothing in it changes. */
@@ -99,12 +113,15 @@ export function useExplorerLink({
   characterKey = '',
   purseKey = '',
   explore = null,
-  openRoom = null
+  openRoom = null,
+  openTextblock = null
 }: ExplorerLinkProps): ExplorerLink | null {
   return useMemo(
     () =>
-      explorer === null ? null : { calls: explorer, characterKey, purseKey, explore, openRoom },
-    [explorer, characterKey, purseKey, explore, openRoom]
+      explorer === null
+        ? null
+        : { calls: explorer, characterKey, purseKey, explore, openRoom, openTextblock },
+    [explorer, characterKey, purseKey, explore, openRoom, openTextblock]
   );
 }
 
@@ -201,18 +218,22 @@ function isKind(tab: ExplorerTab): tab is ExplorerKind {
 /**
  * Where a reference in MME's detail leads from a card: a name to the
  * slide-out beside it, a room to the room's panel with the way there on it,
- * a shop (which neither answers) to the Explorer on it; undefined where none
+ * a textblock to its panel, a shop (which none answers) to the Explorer on it; undefined where none
  * of them can be opened, which leaves the references as text.
  */
 export function followFor(
-  link: Pick<ExplorerLink, 'explore' | 'openRoom'>,
+  link: Pick<ExplorerLink, 'explore' | 'openRoom' | 'openTextblock'>,
   onName: ((name: string, anchor: HTMLElement) => void) | null
 ): Follow | undefined {
-  const { explore, openRoom } = link;
-  if (onName === null && explore === null && openRoom === null) return undefined;
+  const { explore, openRoom, openTextblock } = link;
+  if (onName === null && explore === null && openRoom === null && openTextblock === null) {
+    return undefined;
+  }
   return (place, text, anchor) => {
     if (place.tab === 'rooms') {
       if (openRoom !== null && typeof place.n === 'string') openRoom(place.n, anchor);
+    } else if (place.tab === 'textblock') {
+      openTextblock?.(Number(place.n), anchor);
     } else if (NAMED.has(place.tab)) {
       onName?.(text, anchor);
     } else if (explore !== null && isKind(place.tab) && typeof place.n === 'number') {

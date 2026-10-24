@@ -1,3 +1,4 @@
+import type { MobDisposition } from './mobs';
 /**
  * MMUD Explorer's lists, as main answers them for one character on its realm
  * (`src/main/mme/Explorer.ts`, 2026-10-18).
@@ -27,7 +28,7 @@ export const EXPLORER_KINDS: readonly ExplorerKind[] = [
  * The Explorer's tabs: the lists, and the Rooms walker, which is a map and not
  * a list (`ExplorerRoomView`). What a reference opens (`ExplorerSegment.tab`).
  */
-export type ExplorerTab = ExplorerKind | 'rooms' | 'eq' | 'lists' | 'tools';
+export type ExplorerTab = ExplorerKind | 'rooms' | 'textblock' | 'eq' | 'lists' | 'tools';
 
 /** One column: its heading and how wide, and whether it holds figures. */
 export interface ExplorerColumn {
@@ -727,6 +728,70 @@ export interface RoomExit {
   mapChange: boolean;
 }
 
+/**
+ * A textblock as MME's frmResults shows it (2026-10-24, mudtool
+ * `tabs/rooms.js` `showTextblock`): what it does, as one of its three
+ * readings, and what runs it.
+ */
+export type TextblockMode = 'plain' | 'room' | 'greet';
+
+export const TEXTBLOCK_MODES: readonly TextblockMode[] = ['plain', 'room', 'greet'];
+
+export interface TextblockRequest {
+  n: number;
+  /** `plain` a block another runs (actions only), `room` a room's commands, `greet` an NPC's. */
+  mode: TextblockMode;
+  /** MME's Hide textblocks: the blocks a tree passes through left out, what they do kept. */
+  hideTB: boolean;
+  /** The map a teleport that names none lands on: the one the reader is looking at. */
+  defaultMap: number;
+}
+
+/** Requests that crossed the wire, parsed: anything unreadable is the default. */
+export function asTextblockRequest(value: unknown): TextblockRequest | null {
+  const o = (typeof value === 'object' && value !== null ? value : {}) as Record<string, unknown>;
+  const n = o['n'];
+  if (typeof n !== 'number' || !Number.isInteger(n) || n < 0) return null;
+  const map = o['defaultMap'];
+  return {
+    n,
+    mode: TEXTBLOCK_MODES.includes(o['mode'] as TextblockMode)
+      ? (o['mode'] as TextblockMode)
+      : 'plain',
+    hideTB: o['hideTB'] === true,
+    defaultMap: typeof map === 'number' && Number.isInteger(map) && map >= 0 ? map : 1
+  };
+}
+
+/** One line of a textblock's tree: its words, MME's icon, where it leads, and what is under it. */
+export interface TextblockNode {
+  text: ExplorerSegment[];
+  /** MME's icon key: `STAR`, `ARROW`, `PAPER`, `MONSTER`, `ROOM`, `BOLT`, `MONEY`, `ITEM`, `REDARROW`. */
+  icon: string;
+  place: ExplorerPlace | null;
+  bold: boolean;
+  kids: TextblockNode[];
+}
+
+export interface ExplorerTextblock {
+  supported: boolean;
+  reason?: string;
+  found: boolean;
+  number: number;
+  /** The block this one carries on into (`LinkTo`); null for none. */
+  linkTo: number | null;
+  /** Where the realm says it is called from (`Called From`), its rooms and blocks links. */
+  calledFrom: ExplorerSegment[] | null;
+  /** The commands it answers (`textblockCMDS`), for a room's or an NPC's block. */
+  commands: string | null;
+  /** What it does. */
+  command: TextblockNode;
+  /** What runs it. */
+  executed: TextblockNode;
+  /** Its `Action`, as the realm holds it. */
+  raw: string;
+}
+
 /** A line of a room's references or a finder's results, and where it leads. */
 export interface RoomLine {
   text: ExplorerSegment[];
@@ -738,6 +803,51 @@ export interface RoomLine {
  * references and its full text (`MapGetRoomLoc`), and where the character
  * stands, which the map marks.
  */
+/**
+ * What MME says a room holds, as data (2026-10-24): the Room card's Lair and
+ * Shop faces and the room panel draw it, where they drew the realm's own.
+ */
+export interface ExplorerRoomFacts {
+  supported: boolean;
+  reason?: string;
+  found: boolean;
+  map: number;
+  room: number;
+  name: string;
+  /** Its references, each a link: who lives here, the lair's monsters, the shop, what is placed. */
+  refs: RoomLine[];
+  /** MME's own text for it (`MapGetRoomLoc`). */
+  info: string;
+  lair?: ExplorerLair;
+  /** The shop it holds, by MME's number for it. */
+  shop?: { n: number; name: string };
+}
+
+/** A room's lair as MME reads it (`parseLair`, `lairInfo`, `roomTooltip`). */
+export interface ExplorerLair {
+  /** How many are up at once. */
+  max: number;
+  /** How long it takes to fill again, as MME words it (`@ 5 mins`). */
+  regen: string | null;
+  /** The lair's experience and health, all slots full; null where `Lairs` has no row. */
+  exp: number | null;
+  hp: number | null;
+  /** `Dmg vs Char: 6.5/clear`, against the character as it is; null where none is worked out. */
+  damage: string | null;
+  monsters: Array<{
+    n: number;
+    name: string;
+    hp: number;
+    exp: number;
+    /** From the row's own alignment and type (`dispositionOf`). */
+    disposition: MobDisposition;
+    /** Killing it costs alignment (`costsAlignment`). */
+    costsAlignment: boolean;
+    /** Its own respawn clock in hours (`RegenTime`), a boss's; 0 for none. */
+    regenHours: number;
+  }>;
+}
+
 export interface ExplorerRoomView {
   supported: boolean;
   reason?: string;

@@ -1348,6 +1348,26 @@ explorer:
 # The Loops modal: the shelf of every loop, grouped by area, opened from
 # anywhere. The Loop card drives the loop that is running; this is where one
 # is found.
+  # A textblock as MME's frmResults shows it (2026-10-24, mudtool's Rooms tab):
+  # the Explorer under its Rooms tab, and the cards' textblock panel.
+  textblock:
+    calledFrom: 'Called from:'
+    collapse: Collapse all
+    commands: 'Commands:'
+    copied: "Raw textblock ({n}):\n{raw}"
+    copyRaw: Copy raw
+    dialog: Dialog (no actions).
+    expand: Expand all
+    hide: Hide textblocks
+    linksTo: Links to
+    modes:
+      greet: NPC greet
+      plain: Actions
+      room: Room commands
+    nothing: Nothing found.
+    notFound: Textblock {n} not found.
+    raw: Raw textblock
+    title: 'Textblock #{n}'
 loops:
   dialogLabel: Loops
   filterLabel: Find a loop
@@ -2361,6 +2381,9 @@ cards:
       kill: kill {who}
       killVerb: kill
       orSay: or {words}
+      # The step's own textblock in MMUD Explorer's words (2026-10-24).
+      textblock: '#{block}'
+      textblockTitle: 'Textblock #{block}: what it does and what runs it'
       verb: ask
       walkTo: Walk to {place} — {room}
     title: Quest Book
@@ -2532,6 +2555,8 @@ cards:
         mid: sil
         short: s
     columns:
+      # MMUD Explorer's buy / sell at this character's charm (2026-10-24).
+      value: Value
       weight: Weight
     copy:
       keysPrefix: 'keys: {keyList}'
@@ -2551,6 +2576,9 @@ cards:
     inUseStatus: Equipped / Worn
     inUseTooltip: Equipped or held; no listing has named the slot yet
     realmSlotTooltip: From the world data's Worn code; no listing has printed this slot yet
+    # MMUD Explorer's word for where it is worn, and its refusal (2026-10-24).
+    mmeSlotTooltip: Where MMUD Explorer says it is worn; no listing has printed this slot yet
+    mmeCantUse: MMUD Explorer says this character cannot use {item}
     keysLabel: Keys
     removeTooltip: Unequip {item}
     tableCaption: What this character is carrying
@@ -3126,6 +3154,8 @@ cards:
       unnamed: The world data marks this a lair, and names none of what spawns here — monsters this
         client's data was not built from.
       health: '{hp} hp'
+      # MMUD Explorer's figures for one monster of the lair (2026-10-24).
+      healthExp: '{hp} hp, {exp} exp'
       healthSpan: '{low}–{high} hp'
       # How long the room waits before it fills again, and — on a row the realm
       # gives a clock of its own — how long that one monster takes to come back.
@@ -3135,6 +3165,8 @@ cards:
       upTo:
         many: up to {max} at once
         one: one at a time
+      # MMUD Explorer's figures for the lair full: experience and health of all its slots.
+      worth: 'Lair exp {exp}, hp {hp}'
     finds:
       caption: What searching has turned up in this realm
       chance: Chance

@@ -15,6 +15,7 @@ import ExplorerTools, { type ExplorerToolsProps } from './ExplorerTools';
 import ExplorerRooms from './ExplorerRooms';
 import { Check, Choice, Field, Figure, Pick } from './ExplorerFields';
 import ExplorerMonsterBar from './ExplorerMonsterBar';
+import TextblockView, { useTextblock } from './TextblockView';
 import { BuyBox, Chest, Runs, Stock } from './ExplorerDetailParts';
 import { Splitter } from './Splitter';
 import { keepFocus } from '../lib/focus';
@@ -48,7 +49,9 @@ import {
   type RoomMapOptions,
   type RoomSearch,
   type RoomSearchResult,
-  type RoomViewRequest
+  type RoomViewRequest,
+  type ExplorerTextblock,
+  type TextblockRequest
 } from '@shared/explorer';
 
 /**
@@ -89,10 +92,12 @@ export interface ExplorerScreenProps {
   learnPlan(spell: number): Promise<ExplorerBuyPlan | null>;
   learn(item: number): Promise<string | null>;
   /** An item to open on, from the Gear card; `at` tells one ask of the same item from the next. */
-  focus: { kind: ExplorerKind; item: number; at: number } | null;
+  focus: { kind: ExplorerTab; item: number | string; at: number } | null;
   /** The character's room, `map/room`, which the Rooms tab opens on and marks. */
   hereRoom: string | null;
   roomView(request: RoomViewRequest): Promise<ExplorerRoomView>;
+  /** A textblock as MME's frmResults shows it, under the Rooms tab as mudtool has it. */
+  textblock(request: TextblockRequest): Promise<ExplorerTextblock>;
   roomTip(map: number, room: number, options: RoomMapOptions): Promise<string>;
   roomSearch(search: RoomSearch): Promise<RoomSearchResult>;
   /** Send the character to a room by the route panel, the Explorer put away. */
@@ -283,6 +288,7 @@ export default function ExplorerScreen({
   focus,
   hereRoom,
   roomView,
+  textblock,
   roomTip,
   roomSearch,
   walkTo,
@@ -298,6 +304,10 @@ export default function ExplorerScreen({
   // The tab shown: a list, which keeps `kind` and all of its state, or the Rooms walker.
   const [tab, setTab] = useState<ExplorerTab>('weapons');
   const [roomAt, setRoomAt] = useState<string | null>(null);
+  const [tbAt, setTbAt] = useState<number | null>(null);
+  // A teleport that names no map lands on the one the Rooms tab was showing.
+  const tbMap = Number((roomAt ?? hereRoom ?? FIRST_ROOM).split('/')[0]) || 1;
+  const tbView = useTextblock(textblock, tbAt, tbMap);
   const [trail, setTrail] = useState<Visit[]>([]);
   const [answer, setAnswer] = useState<ExplorerList | null>(null);
   const [filters, setFilters] = useState<ExplorerFilters>(DEFAULT_FILTERS);
@@ -465,6 +475,10 @@ export default function ExplorerScreen({
       if (visit.n !== null) setRoomAt(String(visit.n));
       return;
     }
+    if (visit.tab === 'textblock') {
+      if (visit.n !== null) setTbAt(Number(visit.n));
+      return;
+    }
     if (kindRef.current !== visit.tab) {
       setKind(visit.tab);
       setAnswer(null);
@@ -493,9 +507,11 @@ export default function ExplorerScreen({
   const visitNow = (): Visit =>
     tab === 'rooms'
       ? { tab, n: roomAt }
-      : tab === 'eq' || tab === 'lists' || tab === 'tools'
-        ? { tab, n: null }
-        : { tab: kind, n: chosen };
+      : tab === 'textblock'
+        ? { tab, n: tbAt }
+        : tab === 'eq' || tab === 'lists' || tab === 'tools'
+          ? { tab, n: null }
+          : { tab: kind, n: chosen };
   /** Go somewhere, remembering where from. */
   const follow = (visit: Visit | ExplorerPlace): void => {
     const now = visitNow();
@@ -640,7 +656,7 @@ export default function ExplorerScreen({
               </button>
             ))}
             <button
-              aria-selected={tab === 'rooms'}
+              aria-selected={tab === 'rooms' || tab === 'textblock'}
               className="ex-tab"
               onClick={() => switchTab('rooms')}
               onMouseDown={keepFocus}
@@ -712,6 +728,11 @@ export default function ExplorerScreen({
             session={session}
             setLists={setCompared}
           />
+        ) : tab === 'textblock' ? (
+          <section className="ex-textblock">
+            <h2 className="ex-name">{t('explorer.textblock.title', { n: tbAt ?? 0 })}</h2>
+            <TextblockView {...tbView} follow={follow} />
+          </section>
         ) : tab === 'rooms' ? (
           <ExplorerRooms
             at={roomAt ?? hereRoom ?? FIRST_ROOM}

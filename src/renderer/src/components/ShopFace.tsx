@@ -3,7 +3,9 @@ import EntityNumber from './EntityNumber';
 import { keepFocus } from '../lib/focus';
 import { t } from '../lib/i18n';
 import { ago } from '../lib/players';
-import { affordable, mergeStock, priceValue, type StockRow } from '../lib/shop';
+import { Stock } from './ExplorerDetailParts';
+import { affordable, mergeMmeStock, mergeStock, priceValue, type StockRow } from '../lib/shop';
+import type { ExplorerStock } from '@shared/explorer';
 import { balanceOf, type BankBalance, type ShopListing } from '@shared/character';
 import type { SessionId } from '@shared/ipc';
 import type { ShopKind, WorldShop } from '@shared/world';
@@ -63,6 +65,12 @@ export interface ShopFaceProps {
   inspect?(name: string, anchor: HTMLElement): void;
   /** Hands the caret back to the game when the find field is left. */
   returnFocus?(): void;
+  /**
+   * MMUD Explorer's shelf for this shop (2026-10-24): its stock with the
+   * price for this character, or a trainer's cost by level, and its charm
+   * line. Drawn in place of the realm's own stock where it answers.
+   */
+  mme?: { stock: ExplorerStock; note?: string } | null;
 }
 
 /**
@@ -177,9 +185,10 @@ export default function ShopFace({
   banks,
   session,
   inspect,
-  returnFocus
+  returnFocus,
+  mme = null
 }: ShopFaceProps): React.JSX.Element {
-  const rows = mergeStock(shop, listing);
+  const rows = mme !== null ? mergeMmeStock(mme.stock, listing) : mergeStock(shop, listing);
   /**
    * Two columns and no filters: the stock has no kind in the realm data — the
    * shop table carries a name and a price and nothing that says a sword is a
@@ -270,10 +279,30 @@ export default function ShopFace({
           row.quoted === null ? null : (
             <span className="price">{row.quoted}</span>
           )
+        ) : row.cost !== null ? (
+          <span className="price">{row.cost}</span>
         ) : row.realmPrice === null ? null : (
           <span className="price">{row.realmPrice}</span>
         )
-    }
+    },
+    // MME's shelf: how many it holds at most and how it refills (2026-10-24).
+    ...(mme === null
+      ? []
+      : [
+          {
+            id: 'max',
+            label: t('explorer.shops.max'),
+            numeric: true,
+            value: (row: StockRow) => row.max,
+            cell: (row: StockRow) => row.max
+          },
+          {
+            id: 'regen',
+            label: t('explorer.shops.regen'),
+            value: (row: StockRow) => row.regen,
+            cell: (row: StockRow) => row.regen
+          }
+        ])
   ];
   const listed = rows.filter((row) => row.listed === true).length;
   const unlisted = rows.filter((row) => row.listed === false).length;
@@ -320,6 +349,19 @@ export default function ShopFace({
     );
   }
 
+  // A trainer's shelf is its cost by level, as MME's Shops tab draws it.
+  if (mme !== null && mme.stock.trainer) {
+    return (
+      <>
+        <div className="room-name">
+          {shop !== null && shop.name.length > 0 ? shop.name : shopFaceLabel(shop)}
+        </div>
+        <Stock follow={(_place, text, anchor) => inspect?.(text, anchor)} stock={mme.stock} />
+        {mme.note !== undefined && <div className="aside">{mme.note}</div>}
+      </>
+    );
+  }
+
   return (
     <>
       {/*
@@ -357,9 +399,11 @@ export default function ShopFace({
       <div className="aside">
         {listing !== null
           ? t('cards.room.shop.asideListed', { listed, unlisted })
-          : shop?.markup !== undefined
-            ? t('cards.room.shop.asideWithMarkup', { markup: shop.markup })
-            : t('cards.room.shop.asideNoMarkup')}
+          : mme?.note !== undefined
+            ? mme.note
+            : shop?.markup !== undefined
+              ? t('cards.room.shop.asideWithMarkup', { markup: shop.markup })
+              : t('cards.room.shop.asideNoMarkup')}
       </div>
     </>
   );
