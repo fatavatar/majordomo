@@ -229,6 +229,16 @@ function onsetRule(condition: keyof Afflictions): Rule {
   return { type: found.type, pattern: found.pattern };
 }
 
+/**
+ * An item's name in a sentence about it. The names come from the world
+ * database, and 148 of gmud.zip's 2,140 carry `-`, `'` or `.` (counted over
+ * its converted items: `iron-capped staff`, `thief's kit`, `scroll of prot.
+ * from evil`). Read as `[\w ]`, `You just bought iron-capped staff for 78
+ * copper farthings.` went unread on orohost (2026-10-04, upstream 9c23972e):
+ * the buy was never confirmed, and was made again and again.
+ */
+const ITEM_NAME = "[\\w' .-]";
+
 /** The rank titles with ` of ` inside them, as one alternation (the `who` row). */
 const TITLE_WITH_OF = TITLES_WITH_OF.map((title) => escapeRegExp(title).replace(/ /g, '\\s+')).join(
   '|'
@@ -1988,7 +1998,9 @@ export const RULES: Rule[] = [
    */
   {
     type: 'light-out',
-    pattern: /^Your (?<item>[\w ]+?) (?:flickers and goes out|runs out of oil, and goes out)\.$/
+    pattern: new RegExp(
+      `^Your (?<item>${ITEM_NAME}+?) (?:flickers and goes out|runs out of oil, and goes out)\\.$`
+    )
   },
   {
     type: 'user-buys',
@@ -2002,8 +2014,9 @@ export const RULES: Rule[] = [
     // line matched nothing, so the amber talisman bought for a route never
     // read as carried and the route was never walked. The purse is left for
     // the next listing to restate.
-    pattern:
-      /^You just bought (?:(?<quantity>\d+) )?(?<item>[\w ]+) for (?:(?<price>\d+) copper farthings|nothing|(?<cost>.+?))\.$/
+    pattern: new RegExp(
+      `^You just bought (?:(?<quantity>\\d+) )?(?<item>${ITEM_NAME}+) for (?:(?<price>\\d+) copper farthings|nothing|(?<cost>.+?))\\.$`
+    )
   },
   /*
    * Selling, captured beside the buying line it mirrors:
@@ -2017,7 +2030,9 @@ export const RULES: Rule[] = [
    */
   {
     type: 'user-sells',
-    pattern: /^You sold (?:(?<count>\d+) )?(?<item>[\w '-]+) for (?<price>\d+) copper farthings\.$/
+    pattern: new RegExp(
+      `^You sold (?:(?<count>\\d+) )?(?<item>${ITEM_NAME}+) for (?<price>\\d+) copper farthings\\.$`
+    )
   },
   { type: 'user-list', pattern: /^The following items are for sale here:$/ },
   /*

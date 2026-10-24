@@ -1444,6 +1444,35 @@ describe('buying and selling', () => {
     expect(g).toMatchObject({ item: 'black star key' });
   });
 
+  /* orohost, 2026-10-04 (upstream 9c23972e): the staff went unread and the buy was never confirmed. */
+  it('reads an item whose name has a hyphen, an apostrophe or a full stop', () => {
+    expect(
+      expectType('You just bought iron-capped staff for 78 copper farthings.', 'user-buys')
+    ).toMatchObject({
+      item: 'iron-capped staff',
+      price: '78'
+    });
+    expect(expectType('You are now holding iron-capped staff.', 'user-equipped')).toMatchObject({
+      item: 'iron-capped staff'
+    });
+    expect(expectType("You are now wearing thief's kit.", 'user-equipped')).toMatchObject({
+      item: "thief's kit"
+    });
+    expect(
+      expectType('You have removed severed head of Goru-Nezar.', 'user-removed')
+    ).toMatchObject({
+      item: 'severed head of Goru-Nezar'
+    });
+    expect(
+      expectType('You sold scroll of prot. from evil for 5 copper farthings.', 'user-sells')
+    ).toMatchObject({
+      item: 'scroll of prot. from evil'
+    });
+    expect(
+      expectType("Your thief's lantern runs out of oil, and goes out.", 'light-out')
+    ).toMatchObject({ item: "thief's lantern" });
+  });
+
   it('reads what was sold, which mirrors it', () => {
     const g = expectType('You sold quarterstaff for 0 copper farthings.', 'user-sells');
     expect(g).toMatchObject({ item: 'quarterstaff', price: '0' });
