@@ -5,6 +5,11 @@ derivatives (GreaterMUD, Paradigm), served to your browser. The game sockets,
 the realm database, your characters and the automation run in the container;
 the browser draws the console and the cards.
 
+Every character is played by a port of MegaMUD's own engine (`megamud.exe`,
+rewritten function by function), with MegaMUD's settings. This is a fork that
+has gone its own way from [rayzorben/mudengine](https://github.com/rayzorben/mudengine)
+since the end of September 2026; its image is not upstream's.
+
 Source, issues and releases: <https://github.com/fatavatar/mudengine>
 
 ## Run it

@@ -285,6 +285,15 @@ jobs:
           image="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/mudengine"
 
           cat > notes.md <<NOTES
+          ### This version
+
+          A fork that has gone its own way from
+          [rayzorben/mudengine](https://github.com/rayzorben/mudengine) since the
+          end of September 2026. Every character is played by a port of MegaMUD's
+          own engine (\`megamud.exe\`, rewritten function by function), with
+          MegaMUD's settings, in place of upstream's automation. See the README's
+          *Where this version comes from*.
+
           ### Install
 
           | | |
