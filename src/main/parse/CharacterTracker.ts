@@ -57,6 +57,7 @@ import {
   parseCoinEntry,
   parseKeyEntries,
   withBankBalance,
+  withCoinsHanded,
   withEquipped,
   withJoinedItems,
   withOwnEquipment,
@@ -5654,6 +5655,22 @@ export class CharacterTracker {
          * cleared the entry and waited for the room to restate it.
          */
         return withoutRoomItem(withItem(s, item, count), item, count);
+      }
+
+      /*
+       * A give between players: `Killa gives you red iron axe.` into the pack,
+       * `You give red iron axe to Killa.` out of it, coins into or out of the
+       * purse. Neither touches the floor (upstream ac2f11ec).
+       */
+      case 'user-given':
+      case 'user-gives': {
+        const received = block.type === 'user-given';
+        const count = int(g['count']) ?? 1;
+        if (g['coin'] !== undefined) return withCoinsHanded(s, count, g['coin'], received);
+        const item = g['item'];
+        if (!item) return null;
+        this.notePack(block.seq, item, received, count);
+        return received ? withItem(s, item, count) : withoutItem(s, item, count);
       }
 
       /*

@@ -34,6 +34,7 @@ import type {
 import { bankKey, DENOMINATIONS } from '../../shared/character';
 import { wireItem, type ItemEntity } from '../../shared/entities';
 import { bareName, capacityOf, countedName, sameItem } from '../../shared/items';
+import { quotedInCopper } from '../../shared/coins';
 import type { WorldGraph } from '../world/WorldGraph';
 
 /**
@@ -63,6 +64,42 @@ export function withSpend(s: CharacterState, copper: number): CharacterState | n
   const wealth = s.inventory.wealth;
   if (wealth === null || !Number.isFinite(copper) || copper === 0) return null;
   return { ...s, inventory: { ...s.inventory, wealth: Math.max(0, wealth + copper) } };
+}
+
+/**
+ * Coins handed over between players, either way (`GiveCommand.cs`,
+ * `ShareCommand.cs`; upstream ac2f11ec): the denomination counts by the lot,
+ * and the purse by its copper, which the sentence states exactly. An
+ * uncounted denomination stays uncounted. Coins the server let go that the
+ * purse did not hold say the purse was stale: unknown until the next listing,
+ * never 0.
+ */
+export function withCoinsHanded(
+  s: CharacterState,
+  count: number,
+  coin: string,
+  received: boolean
+): CharacterState {
+  const word = coin.split(' ')[0]?.toLowerCase() ?? '';
+  const denomination = DENOMINATIONS.find((name) => name === word);
+  if (denomination === undefined) return s;
+  const known = s.inventory.coins[denomination];
+  const left = known === null ? null : known + (received ? count : -count);
+  const counted: CharacterState = {
+    ...s,
+    inventory: {
+      ...s.inventory,
+      coins: { ...s.inventory.coins, [denomination]: left !== null && left < 0 ? null : left }
+    }
+  };
+  const copper = quotedInCopper(`${count} ${coin}`);
+  if (received) return copper === null ? counted : (withSpend(counted, copper) ?? counted);
+  const wealth = counted.inventory.wealth;
+  const stale = left !== null && left < 0;
+  if (copper === null || stale || (wealth !== null && wealth < copper)) {
+    return { ...counted, inventory: { ...counted.inventory, wealth: null } };
+  }
+  return withSpend(counted, -copper) ?? counted;
 }
 
 /**

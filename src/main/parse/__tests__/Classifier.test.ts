@@ -628,6 +628,25 @@ describe('session prompts', () => {
 });
 
 describe('conversation, movement, items', () => {
+  it('reads a give between players either way', () => {
+    // A give: the stack carries its count, coins end without a stop (upstream ac2f11ec).
+    expect(expectType('Killa gives you red iron axe.', 'user-given')).toMatchObject({
+      player: 'Killa',
+      item: 'red iron axe'
+    });
+    expect(expectType('Killa gives you 4 gold crowns', 'user-given')).toMatchObject({
+      count: '4',
+      coin: 'gold crowns'
+    });
+    expect(expectType('You give 2 padded gloves to Killa.', 'user-gives')).toMatchObject({
+      count: '2',
+      item: 'padded gloves',
+      target: 'Killa'
+    });
+    expect(expectType('You give 1 runic coin to Killa', 'user-gives')['coin']).toBe('runic coin');
+    expect(classify('Grimjaw gives you a stern look.').type).not.toBe('user-given');
+  });
+
   it('reads the conversation channels', () => {
     expect(expectType('Rayzor gossips: hello', 'conversation-gossip')).toMatchObject({
       player: 'Rayzor',
