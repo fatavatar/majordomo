@@ -119,6 +119,8 @@ export interface ClientHooks {
    * sentence that says why and skips the teardown.
    */
   abort(reason: string): void;
+  /** Where the session logs go, as the options file says (`logging.directory`). */
+  logDirectory(): string;
 }
 
 /**

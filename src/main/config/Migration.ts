@@ -6286,6 +6286,25 @@ function theTuningBlockGainedKeys(
      * as an errand or left to the long way.
      */
     addKey('world', 'keyFetchTrips', DEFAULT_INTERNAL.tuning.world.keyFetchTrips);
+    /*
+     * A browser tab kept across the sockets that carry it (upstream 4e94f8bf,
+     * 71fb1f33): how long and how much is held for one that is away, its
+     * hello, its log, what is deflated, and the window's own dial, cover and
+     * report.
+     */
+    for (const key of [
+      'resumeMs',
+      'helloMs',
+      'resumeBytes',
+      'logBytes',
+      'trafficLogMs',
+      'deflateMinBytes'
+    ] as const) {
+      addKey('web', key, DEFAULT_INTERNAL.tuning.web[key]);
+    }
+    addKey('view', 'webLostCoverMs', DEFAULT_INTERNAL.tuning.view.webLostCoverMs);
+    addKey('view', 'webDialMs', DEFAULT_INTERNAL.tuning.view.webDialMs);
+    addKey('view', 'webReportMs', DEFAULT_INTERNAL.tuning.view.webReportMs);
 
     /** A key this build no longer reads, taken out rather than left to mean nothing. */
     const dropKey = (group: string, key: string): void => {

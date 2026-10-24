@@ -4033,7 +4033,8 @@ function build(): void {
     publishRosters,
     quitting,
     appIcon,
-    abort
+    abort,
+    logDirectory
   });
 }
 

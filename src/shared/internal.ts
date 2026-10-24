@@ -1412,9 +1412,36 @@ const TUNING_DEFAULTS = {
     /**
      * How often the client pings each tab. A proxy closes an idle socket and
      * a tab that vanished never says goodbye; a ping unanswered by the next
-     * one is how either is found, and the interval is what it costs.
+     * one is how either is found, and the interval is what it costs. Each
+     * ping goes with a beat the page hears, and a tab that has heard nothing
+     * for two of these dials again, so this is also how long a dead link can
+     * look alive in the browser.
      */
-    pingIntervalMs: 20000
+    pingIntervalMs: 20000,
+    /**
+     * How long the client keeps a browser tab whose socket dropped, and holds
+     * what it sends that tab, so the tab can come back as the same window
+     * (upstream 4e94f8bf). Past it, the tab comes back as a new window and
+     * redraws everything. `resumeBytes` bounds the memory, so this can be
+     * long: a laptop asleep over lunch.
+     */
+    resumeMs: 14_400_000,
+    /** How long a new socket may stay silent before it is closed: a tab's hello is its first word. */
+    helloMs: 10000,
+    /**
+     * The most held for a tab that has not taken it, away or not reading,
+     * before it is let go and comes back as a new window.
+     */
+    resumeBytes: 33_554_432,
+    /** Past this, `logs/web.log` is moved to `web.log.1` and started again. */
+    logBytes: 5_242_880,
+    /** How often `logs/web.log` says what each tab was sent, by channel. */
+    trafficLogMs: 60000,
+    /**
+     * Messages to a browser tab this long or longer are sent deflated, when
+     * the browser offers it; shorter ones gain nothing for the work.
+     */
+    deflateMinBytes: 256
   },
   /**
    * The window's own numbers.
@@ -1427,11 +1454,28 @@ const TUNING_DEFAULTS = {
     /** Diagnostics log kept in renderer memory. */
     telnetLogLimit: 500,
     /**
-     * How often a browser tab that lost its socket tries the client again
-     * before reloading itself. Web mode only; the desktop window has no socket
-     * to lose.
+     * How long a browser tab that lost its socket waits between tries at the
+     * client. The first try is at once. Web mode only; the desktop window has
+     * no socket to lose.
      */
     webReconnectMs: 1500,
+    /**
+     * How long a browser tab that lost its socket goes on showing the game
+     * before it covers the window and says so. A link back within this is
+     * not shown at all. Web mode only.
+     */
+    webLostCoverMs: 1500,
+    /**
+     * How long a browser tab's dial may stay connecting before it is given up
+     * and made again. A dial made while the network comes back can hang. Web
+     * mode only.
+     */
+    webDialMs: 5000,
+    /**
+     * How often a browser tab reports how it is faring (its long tasks, key
+     * timings, drops) into `logs/web.log`. Web mode only.
+     */
+    webReportMs: 60000,
     /** Framed lines kept for the Stream card. */
     lineLogLimit: 200,
     /**

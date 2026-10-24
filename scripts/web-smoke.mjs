@@ -257,9 +257,9 @@ delete serverEnv.MUDENGINE_PASSWORD;
 delete serverEnv.MUDENGINE_CONFIG;
 
 let serverOut = '';
-function startServer() {
+function startServer(port = '0') {
   const child = spawn(process.execPath, ['out/main/index.js'], {
-    env: serverEnv,
+    env: { ...serverEnv, MUDENGINE_PORT: port },
     stdio: ['ignore', 'pipe', 'pipe']
   });
   child.stdout.on('data', (chunk) => {
@@ -745,6 +745,47 @@ check(
   'and draws the one rail every tab draws'
 );
 
+// ------------------------------------------------- assert: the link comes back
+
+/*
+ * A message over the client's cap is closed with 1009, which is a lost link
+ * from the tab's side. The tab dials again and the client knows it as the
+ * same window: nothing is redrawn (a node marked before is the same node
+ * after), the cover never goes up for a link back this quickly, and a call made while
+ * the link was down is answered once it is back.
+ */
+await second.evaluate(
+  `(window.__smokeRail = document.querySelector('.status-rail'), window.__smokeMark = 1, true)`
+);
+await second.evaluate(
+  `(window.mudengine.ask(${JSON.stringify(SESSION)}, 'x'.repeat(2_000_000)), true)`
+);
+const answered = second.evaluate(`window.mudengine.listSessions().then((all) => all.length)`);
+check(
+  (await waitFor(() => (/tab \d+ from .* closed \(1009/.test(serverOut) ? true : null), 40)) ===
+    true,
+  'a message over the cap closes the tab’s socket'
+);
+const cameBack = await waitFor(
+  () => (/tab \d+ came back from/.test(serverOut.split(/closed \(1009/).pop() ?? '') ? true : null),
+  40
+);
+check(cameBack === true, 'and the tab dials again by itself, as the same window');
+check(
+  (await second.evaluate(
+    `window.__smokeMark === 1 && document.querySelector('.status-rail') === window.__smokeRail`
+  )) === true,
+  'and carries on in place, nothing redrawn'
+);
+check(
+  (await Promise.race([answered, sleep(10000).then(() => null)])) === roster.length,
+  'and a call made while the link was down is answered'
+);
+check(
+  (await second.evaluate(`!document.querySelector('.link-lost')`)) === true,
+  'and never covered the window for a link back at once'
+);
+
 // ------------------------------------------------------- assert: the game
 
 /*
@@ -860,6 +901,7 @@ check(closed !== null, 'and disconnects', closed);
  * teardown line is what says it heard: a harness that kills the app never
  * learns that it cannot quit.
  */
+await first.evaluate(`(window.__smokeMark = 1, true)`);
 const exited = serverExit();
 server.kill('SIGTERM');
 const exit = await Promise.race([exited, sleep(8000).then(() => null)]);
@@ -878,7 +920,8 @@ check(
 
 const firstRun = serverOut;
 serverOut = '';
-server = startServer();
+// The same port, as a redeploy keeps its address, so the open tab can find it.
+server = startServer(String(address));
 const again = await waitFor(
   () => (/Open:\s+http:\/\/localhost:(\d+)\//.test(serverOut) ? true : null),
   120
@@ -889,6 +932,35 @@ check(
   'and does not reprint the password'
 );
 check(firstRun.split(password).length === 2, 'the password appeared exactly once across both runs');
+
+/*
+ * The restart dropped every sign-in, so the tab asks for the password in the
+ * cover, and once given carries on as a new window: redrawn, but never the
+ * page reloaded (the mark on the page survives).
+ */
+check(
+  (await waitFor(() => first.evaluate(`!!document.querySelector('.link-sign-in input')`), 80)) ===
+    true,
+  'the open tab asks for the password again in the window'
+);
+await first.evaluate(
+  `(() => {
+    const form = document.querySelector('.link-sign-in');
+    form.querySelector('input').value = ${JSON.stringify(password)};
+    form.requestSubmit();
+    return true;
+  })()`
+);
+check(
+  (await waitFor(
+    () =>
+      first.evaluate(
+        `!document.querySelector('.link-lost') && !!document.querySelector('.status-rail')`
+      ),
+    80
+  )) === true && (await first.evaluate(`window.__smokeMark === 1`)) === true,
+  'and once signed in carries on, without a page reload'
+);
 {
   const port2 = Number(/Open:\s+http:\/\/localhost:(\d+)\//.exec(serverOut)?.[1] ?? 0);
   const response = await fetch(`http://127.0.0.1:${port2}/login`, {
