@@ -397,6 +397,18 @@ export interface Traveller {
    */
   leverDepth?: number;
   /**
+   * The lifted doors (`leversUnbounded`) whose own lever errand this
+   * traveller's legs are walked for (`leverErrand`), each shut to it (ours,
+   * 2026-10-24). A leg of a door's
+   * errand never gains by opening that door again: the nested round would
+   * visit the same levers and come back through the door, so it costs more
+   * than the walk it would replace. Priced anyway, the Ebon Blade Study's
+   * lifted legs were walked again at every depth to `MAX_LEVER_DEPTH`, six
+   * times about 420,000 rooms, and Archer's route to 8/1852 took 19 s.
+   * Never set by a caller.
+   */
+  leversOpening?: ReadonlySet<string>;
+  /**
    * The exits (`leverKey`) whose lever detours are planned however far they
    * are, past `tuning.world.leverDetourCost` (2026-10-23): set by `route`
    * for the levers a plan was refused for, or walked into a wall for, so a
@@ -1926,7 +1938,10 @@ export class WorldGraph {
    * missed `errands` and were planned again for every door outside them, and
    * the Treetops' chain of five took thirty seconds a route.
    */
-  private readonly deeper = new WeakMap<Traveller, { walker: Traveller; reach: Traveller }>();
+  private readonly deeper = new WeakMap<
+    Traveller,
+    Map<string, { walker: Traveller; reach: Traveller }>
+  >();
   /**
    * The lever legs' searches, by room, bound and shape of traveller, oldest
    * used first (`legTree`).
@@ -4497,9 +4512,11 @@ export class WorldGraph {
   private leverErrand(from: RoomId, direction: string, traveller: Traveller): LeverErrand | null {
     const depth = traveller.leverDepth ?? 0;
     if (depth >= MAX_LEVER_DEPTH) return null;
+    const key = leverKey(from, direction);
+    // Shut inside its own errand's legs: see `Traveller.leversOpening`.
+    if (traveller.leversOpening?.has(key) === true) return null;
     const levers = this.leversFor(from, direction);
     if (levers.length === 0 || levers.every((lever) => lever.at === from)) return null;
-    const key = leverKey(from, direction);
     let held = this.errands.get(traveller);
     if (held === undefined) this.errands.set(traveller, (held = new Map()));
     if (held.has(key)) return held.get(key)!;
@@ -4513,7 +4530,8 @@ export class WorldGraph {
     const needed = this.rooms.get(from)?.exits.find((exit) => exit.direction === direction)
       ?.requirement?.actionsNeeded;
     let best: LeverErrand | null = null;
-    const { reach } = this.deeperOf(traveller);
+    const lifted = traveller.leversUnbounded?.has(key) === true;
+    const { reach } = this.deeperOf(traveller, lifted ? key : null);
     /*
      * **How far the lever is, by the walk alone** (2026-10-19). The bound is
      * a distance — a plain room 1, a search 26 — and the legs were measured
@@ -4525,8 +4543,7 @@ export class WorldGraph {
      * lairs, went through it. The legs are found by the walk; what waits on
      * them is added to the price after (`riskAlong`), as the plan would.
      */
-    const limit =
-      traveller.leversUnbounded?.has(key) === true ? Infinity : tuning().world.leverDetourCost;
+    const limit = lifted ? Infinity : tuning().world.leverDetourCost;
     /** Each leg walked once, whatever order asks for it, with what waits on it priced in. */
     const walked = new Map<string, { leg: LeverErrand['legs'][number]; price: number } | null>();
     const legOf = (
@@ -4621,13 +4638,32 @@ export class WorldGraph {
     return best;
   }
 
-  /** The traveller a detour's legs are walked for, and the one they are measured for. */
-  private deeperOf(traveller: Traveller): { walker: Traveller; reach: Traveller } {
-    let held = this.deeper.get(traveller);
+  /**
+   * The traveller a detour's legs are walked for, and the one they are
+   * measured for: a lever deeper, and for a lifted door (`shut`) with that
+   * door shut (`Traveller.leversOpening`). Only a lifted one: its legs are
+   * realm-wide, and each level priced again was another of them, while a
+   * bounded door's legs stay within `leverDetourCost` and the one pair per
+   * traveller is what lets every door's errand share them.
+   */
+  private deeperOf(
+    traveller: Traveller,
+    shut: string | null
+  ): { walker: Traveller; reach: Traveller } {
+    let doors = this.deeper.get(traveller);
+    if (doors === undefined) this.deeper.set(traveller, (doors = new Map()));
+    const which = shut ?? '';
+    let held = doors.get(which);
     if (held === undefined) {
-      const walker: Traveller = { ...traveller, leverDepth: (traveller.leverDepth ?? 0) + 1 };
+      const walker: Traveller = {
+        ...traveller,
+        leverDepth: (traveller.leverDepth ?? 0) + 1,
+        ...(shut === null
+          ? {}
+          : { leversOpening: new Set([...(traveller.leversOpening ?? []), shut]) })
+      };
       held = { walker, reach: { ...walker, danger: undefined, hazard: undefined } };
-      this.deeper.set(traveller, held);
+      doors.set(which, held);
     }
     return held;
   }
@@ -9255,7 +9291,15 @@ export class WorldGraph {
        */
       const errand = this.errandOn(prev, exit, traveller);
       if (errand !== null) {
-        steps.unshift(...this.errandSteps(errand, prev, destination?.name ?? '', traveller));
+        steps.unshift(
+          ...this.errandSteps(
+            errand,
+            prev,
+            leverKey(prev, exit.direction),
+            destination?.name ?? '',
+            traveller
+          )
+        );
       }
       cursor = prev;
     }
@@ -9292,10 +9336,12 @@ export class WorldGraph {
   private errandSteps(
     errand: LeverErrand,
     door: RoomId,
+    key: string,
     beyond: string,
     traveller: Traveller
   ): RouteStep[] {
-    const { walker } = this.deeperOf(traveller);
+    const lifted = traveller.leversUnbounded?.has(key) === true;
+    const { walker } = this.deeperOf(traveller, lifted ? key : null);
     const steps: RouteStep[] = [];
     // The levers of the stop just reached, said on the first step out of it.
     let saying: string[] = [];
