@@ -751,9 +751,13 @@ check(
  * A message over the client's cap is closed with 1009, which is a lost link
  * from the tab's side. The tab dials again and the client knows it as the
  * same window: nothing is redrawn (a node marked before is the same node
- * after), the cover never goes up for a link back this quickly, and a call made while
- * the link was down is answered once it is back.
+ * after), the cover never goes up for a link back this quickly, the shown
+ * character is the one shown before, and a call made while the link was down
+ * is answered once it is back.
  */
+const shownBefore = await second.evaluate(
+  `document.querySelector('.tab[data-active="true"]')?.dataset.session ?? null`
+);
 await second.evaluate(
   `(window.__smokeRail = document.querySelector('.status-rail'), window.__smokeMark = 1, true)`
 );
@@ -784,6 +788,13 @@ check(
 check(
   (await second.evaluate(`!document.querySelector('.link-lost')`)) === true,
   'and never covered the window for a link back at once'
+);
+check(
+  (await second.evaluate(
+    `document.querySelector('.tab[data-active="true"]')?.dataset.session ?? null`
+  )) === shownBefore,
+  'and shows the character it showed before',
+  `${shownBefore}`
 );
 
 // ------------------------------------------------------- assert: the game
