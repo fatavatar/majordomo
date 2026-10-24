@@ -93,11 +93,25 @@ export interface LearnedSpellTable {
  */
 export interface MegaChoices {
   rooms: string[];
+  /** The rooms in the list that are banks (`RoomFlag.Bank`), for `Cash.Bank`. */
+  banks: string[];
   weapons: string[] | null;
   backstab: string[] | null;
   shields: string[] | null;
   /** The figures the Statline tab shows its line with (`0x4a6920`). */
   statline: StatlineSample;
+}
+
+/**
+ * The item names a character's MegaMUD databases hold, for its settings
+ * boxes to suggest (`megaNames`): built from its realm whether or not it is
+ * connected.
+ */
+export interface MegaNames {
+  items: string[];
+  weapons: string[];
+  backstab: string[];
+  shields: string[];
 }
 import type { StatlineSample } from './megamud/lists';
 import type {
@@ -882,6 +896,8 @@ export const Invoke = {
    * snapshot and `saveProfile` (2026-10-18).
    */
   megamudChoices: 'settings:megamud-choices',
+  /** The item names its MegaMUD databases hold, connected or not (`MegaNames`). */
+  megamudNames: 'settings:megamud-names',
   /**
    * The players a character's realm has seen (`PlayerBook`), by name, for the
    * Players row's list; and one of them forgotten from it, until seen again.
@@ -1449,6 +1465,8 @@ export interface IpcApi {
   deleteServer(name: string): Promise<string | null>;
   /** What a character's running engine offers its MegaMUD tabs; null with none running. */
   megamudChoices(id: string): Promise<MegaChoices | null>;
+  /** The item names a character's MegaMUD databases hold; null for no such character. */
+  megamudNames(id: string): Promise<MegaNames | null>;
   /** The names a character's realm has seen, as the realm spells them. */
   seenPlayers(id: string): Promise<string[]>;
   /** One forgotten from the realm's record of players; why it could not be, or null. */

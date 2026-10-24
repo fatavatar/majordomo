@@ -17,6 +17,7 @@ import { Fragment, useRef, useState, type ReactNode } from 'react';
 import { customControl, drawnHere } from './MegaMudEditors';
 import { CheckField, NumberField, TextField } from './FormField';
 import Icon from './Icon';
+import NameCombo from './NameCombo';
 import type { MegaChoices } from '@shared/ipc';
 import {
   SETTINGS_TABS,
@@ -36,6 +37,7 @@ import {
   type SettingValue
 } from '@shared/megamud/settings';
 import { keepFocus } from '../lib/focus';
+import { NO_NAMES, type Offer, type SettingsNames } from '../lib/settingsNames';
 import { t } from '../lib/i18n';
 
 /**
@@ -51,6 +53,8 @@ export interface MegaMudDraft {
   hasPassword: boolean;
   /** What its running engine offers to choose from, or null with none running. */
   choices: MegaChoices | null;
+  /** What its boxes suggest as they are typed in. */
+  names: SettingsNames;
   set(section: string, key: string, value: SettingValue): void;
   update(change: (current: MegaSettings) => MegaSettings): void;
 }
@@ -89,13 +93,15 @@ export function megaMudDraft(
   draft: MegaSettings,
   hasPassword: boolean,
   choices: MegaChoices | null,
-  update: (change: (current: MegaSettings) => MegaSettings) => void
+  update: (change: (current: MegaSettings) => MegaSettings) => void,
+  names: SettingsNames = NO_NAMES
 ): MegaMudDraft {
   return {
     id,
     draft,
     hasPassword,
     choices,
+    names,
     set: (section, key, value) => update((current) => withValue(current, section, key, value)),
     update
   };
@@ -132,16 +138,7 @@ export function isMegaTab(section: string): boolean {
  * a part of the Character page's draft: saved as it is changed and undone by
  * its Undo, as every other field there is.
  */
-export function MegaMudPanel({
-  tab,
-  mega,
-  loops = []
-}: {
-  tab: string;
-  mega: MegaMudDraft;
-  /** The loops the character can walk, for a timed event's loop. */
-  loops?: readonly string[];
-}) {
+export function MegaMudPanel({ tab, mega }: { tab: string; mega: MegaMudDraft }) {
   const found = SETTINGS_TABS.find((p) => p.title === tab);
   if (found === undefined || NO_PAGE.includes(tab)) return null;
   const page = tabAsDrawn(found);
@@ -153,7 +150,7 @@ export function MegaMudPanel({
         controls={page.controls}
         draft={draft}
         key={`${mega.id}-${tab}`}
-        loops={loops}
+        names={mega.names}
         tab={tab}
         update={mega.update}
         hasPassword={mega.hasPassword}
@@ -363,7 +360,7 @@ function withSlotEnabled(
 interface TabPageProps {
   tab: string;
   choices: MegaChoices | null;
-  loops: readonly string[];
+  names: SettingsNames;
   update(change: (current: MegaSettings) => MegaSettings): void;
   controls: readonly TabControl[];
   draft: MegaSettings;
@@ -414,7 +411,7 @@ function closedUp(shown: readonly TabControl[]): { y(at: number): number; height
 function TabPage({
   tab,
   choices,
-  loops,
+  names,
   update,
   controls,
   draft,
@@ -449,7 +446,7 @@ function TabPage({
         const custom = customControl(tab, c, {
           draft,
           choices,
-          loops,
+          names,
           style,
           set,
           update,
@@ -493,6 +490,7 @@ function TabPage({
             draft={draft}
             hasPassword={hasPassword}
             key={key}
+            names={names}
             set={set}
             style={style}
           />
@@ -507,6 +505,7 @@ interface ControlProps {
   control: TabControl;
   draft: MegaSettings;
   hasPassword: boolean;
+  names: SettingsNames;
   style: React.CSSProperties;
   set(section: string, key: string, value: SettingValue): void;
 }
@@ -525,11 +524,67 @@ const INERT: ReadonlySet<string> = new Set([
   'Other.IgnoreSpellMsgChecks'
 ]);
 
-function Control({ control: c, draft, hasPassword, style, set }: ControlProps) {
+/**
+ * The boxes that name a weapon, a shield, a room, a bank or a loop, by the
+ * list each suggests from (ours, 2026-10-24); `SPELL_BOX` names a spell.
+ */
+const NAMED_BOX: Readonly<Record<string, Exclude<keyof SettingsNames, 'spells' | 'items'>>> = {
+  'Combat.BsWeapon': 'backstab',
+  'Combat.NrmWeapon': 'weapons',
+  'Combat.AltWeapon': 'weapons',
+  'Combat.Shield': 'shields',
+  'PvP.PvpFleeRoom': 'rooms',
+  'Cash.Bank': 'banks',
+  'MegaMud.DefaultLoop': 'loops'
+};
+
+/** The boxes MegaMUD casts from: what each holds is the short command typed to cast it. */
+const SPELL_BOX =
+  /^(Spells\.\w+Cmd\d*|Combat\.(PreMultAttack|MultAttack|PreAttack|AttackSpl2?)|PvP\.PvpSpell\d|Party\.Party(Heal\d|HealArea|Bless\d))$/;
+
+/** What a free-text box suggests, or undefined for one that takes anything (a command, say). */
+function offerFor(b: ControlBind | undefined, names: SettingsNames): Offer | undefined {
+  if (b === undefined || b.as === 'int' || b.as === 'index') return undefined;
+  const at = `${b.section}.${b.key}`;
+  if (SPELL_BOX.test(at)) return names.spells;
+  const list = NAMED_BOX[at];
+  return list === undefined ? undefined : names[list];
+}
+
+/** A free-text box that suggests what it names as it is typed in. */
+function NamedBox({
+  b,
+  offer,
+  set,
+  style,
+  value
+}: {
+  b: ControlBind;
+  offer: Offer;
+  set(section: string, key: string, value: SettingValue): void;
+  style: React.CSSProperties;
+  value: SettingValue | undefined;
+}) {
+  return (
+    <NameCombo
+      {...offer}
+      ariaLabel={`${b.section}.${b.key}`}
+      boxClassName="megamud-control"
+      className="megamud-edit"
+      name={`megamud-${b.section}-${b.key}`}
+      onChange={(text) => set(b.section, b.key, text)}
+      style={style}
+      value={value === undefined ? '' : String(value)}
+    />
+  );
+}
+
+function Control({ control: c, draft, hasPassword, names, style, set }: ControlProps) {
   const b: ControlBind | undefined = c.bind;
   const inert = b !== undefined && INERT.has(`${b.section}.${b.key}`);
   const said = inert ? t('settings.megamud.inertTitle') : undefined;
   const value = b ? valueOf(draft, b.section, b.key) : undefined;
+  const offer = offerFor(b, names);
   const label = plain(c.text);
   switch (c.kind) {
     case 'group':
@@ -586,6 +641,7 @@ function Control({ control: c, draft, hasPassword, style, set }: ControlProps) {
     }
     case 'edit': {
       const password = b?.section === 'BBS' && b.key === 'Password';
+      if (b && offer) return <NamedBox b={b} offer={offer} set={set} style={style} value={value} />;
       return (
         <input
           aria-label={b ? `${b.section}.${b.key}` : undefined}
@@ -623,6 +679,7 @@ function Control({ control: c, draft, hasPassword, style, set }: ControlProps) {
           </select>
         );
       }
+      if (b && offer) return <NamedBox b={b} offer={offer} set={set} style={style} value={value} />;
       return (
         <input
           aria-label={b ? `${b.section}.${b.key}` : undefined}

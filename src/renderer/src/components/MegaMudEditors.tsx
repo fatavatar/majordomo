@@ -45,8 +45,10 @@ import {
   type SettingValue
 } from '@shared/megamud/settings';
 import type { TabControl } from '@shared/megamud/settingsTabs';
+import NameCombo from './NameCombo';
 import { keepFocus } from '../lib/focus';
 import { t } from '../lib/i18n';
+import type { Offer, SettingsNames } from '../lib/settingsNames';
 
 /**
  * What is not drawn, per tab: controls by id, and the labels and frames that
@@ -102,8 +104,8 @@ export function drawnHere(tab: string, c: TabControl): boolean {
 export interface EditorContext {
   draft: MegaSettings;
   choices: MegaChoices | null;
-  /** The loops the character can walk, for an event's loop. */
-  loops: readonly string[];
+  /** What a box suggests as it is typed in. */
+  names: SettingsNames;
   style: React.CSSProperties;
   set(section: string, key: string, value: SettingValue): void;
   update(change: (current: MegaSettings) => MegaSettings): void;
@@ -526,9 +528,8 @@ function editEvent(ctx: EditorContext, at: number | null): void {
     at === null ? { type: 5, disabled: false, at: { hour: 12, minute: 0 }, text: '' } : events[at]!;
   ctx.open(
     <EventDialog
-      choices={ctx.choices}
       close={() => ctx.open(null)}
-      loops={ctx.loops}
+      names={ctx.names}
       save={(e) => {
         ctx.update((s) => {
           const list = eventsOf(s);
@@ -546,14 +547,12 @@ function editEvent(ctx: EditorContext, at: number | null): void {
 /** MegaMUD's Scheduled Event dialog (`0x435f80`). */
 function EventDialog({
   start,
-  choices,
-  loops,
+  names,
   save,
   close
 }: {
   start: ScheduledEvent;
-  choices: MegaChoices | null;
-  loops: readonly string[];
+  names: SettingsNames;
   save(e: ScheduledEvent): void;
   close(): void;
 }) {
@@ -570,30 +569,15 @@ function EventDialog({
           </label>
         ))}
         {(e.type === 4 || e.type === 5 || e.type === 6) && (
-          <input
+          <NameCombo
             className="megamud-edit"
-            list={
-              e.type === 4
-                ? 'megamud-event-rooms'
-                : e.type === 6
-                  ? 'megamud-event-loops'
-                  : undefined
-            }
             maxLength={80}
-            onChange={(event) => setE({ ...e, text: event.target.value })}
+            name="megamud-event-text"
+            onChange={(text) => setE({ ...e, text })}
+            options={e.type === 4 ? names.rooms.options : e.type === 6 ? names.loops.options : []}
             value={e.text}
           />
         )}
-        <datalist id="megamud-event-rooms">
-          {(choices?.rooms ?? []).map((name) => (
-            <option key={name} value={name} />
-          ))}
-        </datalist>
-        <datalist id="megamud-event-loops">
-          {loops.map((name) => (
-            <option key={name} value={name} />
-          ))}
-        </datalist>
         <label>
           <input
             checked={e.disabled}
@@ -725,6 +709,7 @@ function editMonitor(ctx: EditorContext, at: number | null): void {
   ctx.open(
     <MonitorDialog
       close={() => ctx.open(null)}
+      spells={ctx.names.spells}
       save={(m) => {
         ctx.update((s) => {
           const list = monitorsOf(s);
@@ -746,10 +731,12 @@ const ABILITY_IDS = Object.keys(ABILITY)
 /** MegaMUD's Ability Monitor dialog (template 406). */
 function MonitorDialog({
   start,
+  spells,
   save,
   close
 }: {
   start: AbilityMonitorRow;
+  spells: Offer;
   save(m: AbilityMonitorRow): void;
   close(): void;
 }) {
@@ -831,11 +818,13 @@ function MonitorDialog({
             />
             <span>Cast spell</span>
           </label>
-          <input
+          <NameCombo
+            {...spells}
             className="megamud-edit"
             disabled={m.useCommand !== 0}
             maxLength={6}
-            onChange={(event) => setM({ ...m, spell: event.target.value })}
+            name="megamud-monitor-spell"
+            onChange={(spell) => setM({ ...m, spell })}
             value={m.spell}
           />
         </span>

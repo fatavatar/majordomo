@@ -12,9 +12,10 @@
  */
 import { useMemo, useState } from 'react';
 
-import FormField, { NumberField, SelectField, TextField } from './FormField';
+import FormField, { NumberField, SelectField } from './FormField';
 import Icon from './Icon';
 import NameCombo from './NameCombo';
+import type { Offer } from '../lib/settingsNames';
 import { t } from '../lib/i18n';
 import type { MobPriorityBand } from '@shared/config';
 import {
@@ -89,6 +90,8 @@ export interface MonsterRuleListProps {
    * of a monster.
    */
   known?: readonly string[];
+  /** Spells to suggest for a row's attack spells (`MonsterRuleEditorProps.spells`). */
+  spells?: Offer;
 }
 
 export function MonsterRuleList({
@@ -97,7 +100,8 @@ export function MonsterRuleList({
   namePrefix,
   addLabel,
   emptyText,
-  known = []
+  known = [],
+  spells
 }: MonsterRuleListProps): React.JSX.Element {
   const [query, setQuery] = useState('');
   const [editing, setEditing] = useState<Editing | null>(null);
@@ -156,6 +160,7 @@ export function MonsterRuleList({
       <MonsterRuleEditor
         draft={editing.draft}
         known={known}
+        spells={spells}
         namePrefix={namePrefix}
         onCancel={() => setEditing(null)}
         onDraft={(draft) => setEditing((was) => (was === null ? was : { ...was, draft }))}
@@ -256,6 +261,8 @@ export interface MonsterRuleEditorProps {
   namePrefix: string;
   /** Monster names to suggest (`MonsterRuleListProps.known`). */
   known?: readonly string[];
+  /** Spells to suggest for the two attack spells, by the command typed to cast each. */
+  spells?: Offer;
   /** Draws the monster's name field; off where the row's monster is already chosen. */
   named?: boolean;
 }
@@ -273,6 +280,7 @@ export function MonsterRuleEditor({
   removeLabel,
   namePrefix,
   known = [],
+  spells = { options: [] },
   named = true
 }: MonsterRuleEditorProps): React.JSX.Element {
   const patch = (change: Partial<MonsterRule>): void => onDraft({ ...draft, ...change });
@@ -292,18 +300,24 @@ export function MonsterRuleEditor({
     const spell = draft[key];
     return (
       <div className="settings-inline">
-        <TextField
-          hint={hint}
-          label={label}
-          name={`${namePrefix}-${key}`}
-          onChange={(value) => {
-            const word = value.trim();
-            setField(key, word.length === 0 ? undefined : { spell: value, max: spell?.max ?? 0 });
-          }}
-          onSubmit={onSave}
-          spellCheck={false}
-          value={spell?.spell ?? ''}
-        />
+        <FormField hint={hint} label={label} name={`${namePrefix}-${key}`}>
+          {({ describedBy }) => (
+            <NameCombo
+              {...spells}
+              describedBy={describedBy}
+              name={`${namePrefix}-${key}`}
+              onChange={(value) => {
+                const word = value.trim();
+                setField(
+                  key,
+                  word.length === 0 ? undefined : { spell: value, max: spell?.max ?? 0 }
+                );
+              }}
+              onSubmit={onSave}
+              value={spell?.spell ?? ''}
+            />
+          )}
+        </FormField>
         <NumberField
           label={t('settings.monsters.maxLabel')}
           name={`${namePrefix}-${key}-max`}
