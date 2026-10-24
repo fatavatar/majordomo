@@ -38,6 +38,7 @@ import { tuning } from '../app/tuning';
 import type { Caller, ClientHooks, Handler, Host, Layout, Transport } from './Host';
 import { AccessTokens, resolveAccessPassword, type AccessPassword } from './web/access';
 import { createWebServer, type WebServer } from './web/server';
+import { Downloads } from './web/downloads';
 import { WebLog } from './web/log';
 import { TabSessions, type Tab } from './web/tabs';
 import { Send } from '../../shared/ipc';
@@ -158,6 +159,8 @@ export function createWebHost(layout: Layout): Host {
   /** The window registry, known once the client opens. */
   let windows: ClientHooks['windows'] | null = null;
 
+  const downloads = new Downloads();
+
   const transport: Transport = {
     handle: (channel, handler) => handlers.set(channel, handler),
     on: (channel, listener) => listeners.set(channel, listener)
@@ -221,7 +224,10 @@ export function createWebHost(layout: Layout): Host {
         send: (channel, payload) => tabs.push(tab, { k: 'push', c: channel, p: payload })
       }),
     request: answer,
-    ended: (id) => windows?.remove(id),
+    ended: (id) => {
+      downloads.dropTab(id);
+      windows?.remove(id);
+    },
     report: (tab, { k: _report, ...figures }) =>
       log?.write(`web: tab ${tab.id} fared ${JSON.stringify(figures)}`),
     log: sayAndKeep
@@ -301,7 +307,8 @@ export function createWebHost(layout: Layout): Host {
         tokens,
         trustProxy,
         onSocket: (connection, remote) => tabs.connect(connection, remote),
-        log: say
+        log: say,
+        download: (token) => downloads.take(token)
       });
       server.listen(port, bind).then(
         (bound) => {
@@ -326,6 +333,12 @@ export function createWebHost(layout: Layout): Host {
       console.warn('web: asked for a native file picker; there is none here.');
       return Promise.resolve(null);
     },
+    /*
+     * The tab is on another machine, so a file main wrote is offered to its
+     * browser as well: the one tab that asked, once.
+     */
+    deliver: (caller, file) =>
+      tabs.has(caller.windowId) ? downloads.offer(caller.windowId, file) : null,
     clipboard: null,
 
     /*

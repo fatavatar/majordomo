@@ -7,7 +7,7 @@
  * envelope is `src/shared/rpc.ts`; the server side is
  * `src/main/host/WebHost.ts`.
  *
- * Three things the desktop asks main for are answered in the window here,
+ * Four things the desktop asks main for are answered in the window here,
  * because main in web mode is on another machine:
  *
  * - **the clipboard** — `navigator.clipboard`, which a browser tab may use
@@ -16,6 +16,9 @@
  * - **the realm picker** — the window's own, over `Invoke.browseHome`
  *   (`lib/pickers.ts`), because the disk is the client's and not the
  *   viewer's;
+ * - **a saved file** — the debug report is written on the client's disk as
+ *   on the desktop, then fetched into the browser's downloads over the link
+ *   main hands back (`Host.deliver`);
  * - **a lost socket** — `lib/webLink.ts` dials again and the client sends
  *   what was missed, so the window carries on as it was. Only a client that
  *   no longer knows the tab makes `onRenewed` remount the window, which
@@ -27,7 +30,15 @@
  * older than `webLostCoverMs` when the link comes back is not sent, since
  * keys typed into a dead link would arrive as a burst of moves.
  */
-import { bridgeOver, Push, Send, type IpcApi, type Notice } from '@shared/ipc';
+import {
+  bridgeOver,
+  Invoke,
+  Push,
+  Send,
+  type DebugSave,
+  type IpcApi,
+  type Notice
+} from '@shared/ipc';
 import { trimArgs, type RpcOutbound } from '@shared/rpc';
 import { t } from './i18n';
 import { hasRealmPicker, pickRealm } from './pickers';
@@ -115,10 +126,25 @@ export function createWebBridge(onRenewed: () => void, signal: AbortSignal): Ipc
     };
   };
 
+  /** A file main wrote and offered, saved into the browser's downloads (upstream 8db9a39c). */
+  const download = (link: string | null): void => {
+    if (link === null) return;
+    const anchor = document.createElement('a');
+    anchor.href = link;
+    anchor.download = '';
+    anchor.click();
+  };
+
   return bridgeOver(
     { invoke, send, subscribe },
     {
       host: 'web',
+      // Written on the client's disk as on the desktop, then fetched here.
+      saveDebug: async (session) => {
+        const saved = await invoke<DebugSave>(Invoke.saveDebug, session);
+        if ('path' in saved) download(saved.download);
+        return saved;
+      },
       // The tab is on the viewer's machine and main is not, so raising *this*
       // window means this window. The browser grants it off a notification click.
       raiseWindow: async () => {

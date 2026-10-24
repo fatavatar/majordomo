@@ -52,11 +52,24 @@ export interface WebServerOptions {
   onSocket(connection: WebSocketConnection, remote: string): void;
   /** The server explaining itself: a refused sign-in, a refused upgrade. */
   log(line: string): void;
+  /** The file a tab was handed to download, given once (`downloads.ts`). */
+  download?(token: string): string | null;
 }
 
 export interface WebServer {
   listen(port: number, host: string): Promise<{ port: number; host: string }>;
   close(): void;
+}
+
+/** A file handed to a tab: `/download/<token>/<name>` (upstream 8db9a39c). */
+const DOWNLOAD_PATH = /^\/download\/([0-9a-f]+)\/[^/]+$/;
+
+/** A file name as RFC 5987 writes one, which also escapes what `encodeURIComponent` leaves. */
+function headerValue(name: string): string {
+  return encodeURIComponent(name).replace(
+    /[!'()*]/g,
+    (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`
+  );
 }
 
 /** What the server will hand out by extension, and nothing else. */
@@ -358,6 +371,38 @@ export function createWebServer(options: WebServerOptions): WebServer {
     });
   };
 
+  /**
+   * A file handed to a tab, saved into the browser's downloads. Only a GET
+   * takes it, since the link is good for one fetch and a HEAD would spend it.
+   */
+  const serveDownload = (
+    request: http.IncomingMessage,
+    response: http.ServerResponse,
+    token: string
+  ): void => {
+    const file = request.method === 'GET' ? (options.download?.(token) ?? null) : null;
+    if (file === null) {
+      reply(response, 404, { 'Content-Type': CONTENT_TYPES['.txt']! }, 'not found');
+      return;
+    }
+    fs.stat(file, (error, stat) => {
+      if (error || !stat.isFile()) {
+        reply(response, 404, { 'Content-Type': CONTENT_TYPES['.txt']! }, 'not found');
+        return;
+      }
+      response.writeHead(200, {
+        ...HARDENING,
+        'Content-Type': 'application/octet-stream',
+        'Content-Length': String(stat.size),
+        'Cache-Control': 'no-store',
+        'Content-Disposition': `attachment; filename*=UTF-8''${headerValue(path.basename(file))}`
+      });
+      const stream = fs.createReadStream(file);
+      stream.on('error', () => response.destroy());
+      stream.pipe(response);
+    });
+  };
+
   const handle = async (
     request: http.IncomingMessage,
     response: http.ServerResponse
@@ -391,6 +436,11 @@ export function createWebServer(options: WebServerOptions): WebServer {
     }
     if (request.method !== 'GET' && request.method !== 'HEAD') {
       reply(response, 405, { Allow: 'GET, HEAD', 'Content-Type': CONTENT_TYPES['.txt']! }, 'GET');
+      return;
+    }
+    const download = DOWNLOAD_PATH.exec(pathname);
+    if (download !== null) {
+      serveDownload(request, response, download[1]!);
       return;
     }
     serveStatic(request, response, pathname);

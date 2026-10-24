@@ -328,6 +328,8 @@ export function createElectronHost(layout: Layout): Host {
       return result.canceled ? null : (result.filePaths[0] ?? null);
     },
 
+    // The window shares this machine's disk: the file is already where it is shown.
+    deliver: () => null,
     clipboard: {
       read: () => clipboard.readText(),
       write: (text) => clipboard.writeText(text)
