@@ -15,6 +15,7 @@
 import { quotedInCopper } from '@shared/coins';
 import type { ShopListing } from '@shared/character';
 import type { WorldShop } from '@shared/world';
+import type { ExplorerStock } from '@shared/explorer';
 
 export interface StockRow {
   name: string;
@@ -43,6 +44,15 @@ export interface StockRow {
    * listed" only against a listing that exists.
    */
   listed: boolean | null;
+  /**
+   * MMUD Explorer's price for it here (2026-10-24), the charm worked in, as
+   * MME words it and in copper; null where MME did not answer for the shop.
+   */
+  cost: string | null;
+  costCopper: number | null;
+  /** How many the shelf holds at most, and how it refills, as MME says; null without MME. */
+  max: number | null;
+  regen: string | null;
 }
 
 const key = (name: string): string => name.trim().toLowerCase();
@@ -63,9 +73,18 @@ export function mergeStock(shop: WorldShop | null, listing: ShopListing | null):
       quotedCopper: said ? quotedInCopper(said.price) : null,
       quantity: said?.quantity ?? null,
       note: said?.note ?? null,
-      listed: listing === null ? null : said !== undefined
+      listed: listing === null ? null : said !== undefined,
+      ...NO_MME
     });
   }
+  return [...rows, ...counterOnly(listing, seen)];
+}
+
+const NO_MME = { cost: null, costCopper: null, max: null, regen: null } as const;
+
+/** What the counter listed that the shelf did not name, added as the counter said it. */
+function counterOnly(listing: ShopListing | null, seen: Set<string>): StockRow[] {
+  const rows: StockRow[] = [];
   for (const item of listing?.items ?? []) {
     if (seen.has(key(item.name))) continue;
     seen.add(key(item.name));
@@ -77,10 +96,43 @@ export function mergeStock(shop: WorldShop | null, listing: ShopListing | null):
       quotedCopper: quotedInCopper(item.price),
       quantity: item.quantity,
       note: item.note,
-      listed: true
+      listed: true,
+      ...NO_MME
     });
   }
   return rows;
+}
+
+/**
+ * MMUD Explorer's shelf for the shop here (2026-10-24) and the counter's
+ * listing, as one table: the lead is MME's, with its price for this
+ * character, the shelf's size and how it refills; the counter stays the
+ * authority, as it is over the realm's own stock.
+ */
+export function mergeMmeStock(stock: ExplorerStock, listing: ShopListing | null): StockRow[] {
+  const quoted = new Map(listing?.items.map((item) => [key(item.name), item]) ?? []);
+  const rows: StockRow[] = [];
+  const seen = new Set<string>();
+  for (const item of stock.rows) {
+    if (item.name === undefined) continue;
+    const said = quoted.get(key(item.name));
+    seen.add(key(item.name));
+    rows.push({
+      name: item.name,
+      id: item.item ?? null,
+      realmPrice: null,
+      quoted: said?.price ?? null,
+      quotedCopper: said ? quotedInCopper(said.price) : null,
+      quantity: said?.quantity ?? null,
+      note: said?.note ?? null,
+      listed: listing === null ? null : said !== undefined,
+      cost: item.cost,
+      costCopper: item.copper,
+      max: item.max ?? null,
+      regen: item.regen ?? null
+    });
+  }
+  return [...rows, ...counterOnly(listing, seen)];
 }
 
 /**
@@ -94,7 +146,7 @@ export function mergeStock(shop: WorldShop | null, listing: ShopListing | null):
  * because `10` is less than `2000` whatever the units.
  */
 export function priceValue(row: StockRow, listing: ShopListing | null): number | null {
-  return listing === null ? row.realmPrice : row.quotedCopper;
+  return listing === null ? (row.costCopper ?? row.realmPrice) : row.quotedCopper;
 }
 
 /**
@@ -105,6 +157,8 @@ export function priceValue(row: StockRow, listing: ShopListing | null): number |
  * says so beside a negative.
  */
 export function affordable(row: StockRow, wealth: number | null): boolean | null {
-  if (row.quotedCopper === null || wealth === null) return null;
-  return row.quotedCopper <= wealth;
+  // The counter's price where it quoted one, MME's for this character where not.
+  const price = row.quotedCopper ?? row.costCopper;
+  if (price === null || wealth === null) return null;
+  return price <= wealth;
 }

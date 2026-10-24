@@ -1,4 +1,5 @@
-import { memo, Fragment } from 'react';
+import { memo, Fragment, useEffect, useState } from 'react';
+import { DEFAULT_EXPLORER_OPTIONS, type ExplorerStock } from '@shared/explorer';
 
 import BentoCard, { type CardChrome } from './BentoCard';
 import { keepFocus } from '../lib/focus';
@@ -10,6 +11,8 @@ import Icon from './Icon';
 import ShopFace, { balanceHere, bankCopyText, shopCopyText, shopFaceLabel } from './ShopFace';
 import FindsFace, { findsCopyText } from './FindsFace';
 import LairList, { lairCopyText, ownAlignment } from './LairList';
+import { MmeLairList, mmeLairCopyText, useMmeRoom } from './MmeRoom';
+import type { ExplorerCalls } from './ReferenceExplorer';
 import {
   DIRECTION_NAME,
   roomId,
@@ -96,6 +99,14 @@ export interface RoomCardProps extends CardChrome {
    * three of its four inputs move without the room moving. See `asksHere`.
    */
   asks: readonly RoomAsk[];
+  /**
+   * MMUD Explorer for this character (2026-10-24): the Lair and Shop faces
+   * draw what it says the room holds in place of the realm's own, where it
+   * answers. Absent keeps the realm's.
+   */
+  explorer?: ExplorerCalls | null;
+  /** Changes when MME's answers do: the class, the level, what is worn (a shop's charm). */
+  characterKey?: string;
 }
 
 /** Compass order, so exits always read in the same sequence regardless of the
@@ -130,9 +141,13 @@ function RoomCard({
   goToRoom,
   forgetFind,
   verdict,
+  explorer = null,
+  characterKey = '',
   ...chrome
 }: RoomCardProps) {
   const { room } = character;
+  const mme = useMmeRoom(explorer?.room, room.map, room.number, characterKey);
+  const mmeShop = useMmeShop(explorer, mme?.shop?.n ?? null, characterKey);
   const located = room.map !== null && room.number !== null;
   /*
    * The ways out of *this* room the realm data does not have.
@@ -171,7 +186,9 @@ function RoomCard({
    * characters cannot show one character's stock beside another's room.
    */
   const shop = room.shop ?? null;
-  const lair = room.lair ?? null;
+  // MME's lair where it answered, the realm's while it is asked or where it cannot.
+  const mmeLair = mme?.lair ?? null;
+  const lair = mme === null || mme === undefined ? (room.lair ?? null) : null;
   const answers = room.commands ?? [];
 
   const face = (
@@ -337,7 +354,12 @@ function RoomCard({
          * smoke check for it failed and the data path was fine, which is
          * exactly the shape of a click-path bug.
          */
-        hasShop || lair !== null || answers.length > 0 || here.length > 0 || finds.length > 0
+        hasShop ||
+        lair !== null ||
+        mmeLair !== null ||
+        answers.length > 0 ||
+        here.length > 0 ||
+        finds.length > 0
           ? [
               { id: 'room', label: t('cards.room.title'), content: face, copyText },
               ...(hasShop
@@ -353,6 +375,7 @@ function RoomCard({
                           inspect={inspect}
                           listing={listing}
                           returnFocus={chrome.returnFocus}
+                          mme={mmeShop}
                           session={session}
                           shop={shop}
                           wealth={character.inventory.wealth}
@@ -379,6 +402,22 @@ function RoomCard({
                         shop?.kind === 'bank'
                           ? bankCopyText(shop, character.banks, Date.now())
                           : shopCopyText(shop, listing)
+                    }
+                  ]
+                : []),
+              ...(mmeLair !== null
+                ? [
+                    {
+                      id: 'lair',
+                      label: t('cards.room.tabs.lair'),
+                      content: (
+                        <MmeLairList
+                          inspect={inspect}
+                          lair={mmeLair}
+                          mine={ownAlignment(character)}
+                        />
+                      ),
+                      copyText: () => mmeLairCopyText(mmeLair)
                     }
                   ]
                 : []),
@@ -1191,3 +1230,41 @@ function answersCopyText(answers: RoomCommand[]): string {
 }
 
 export default memo(RoomCard);
+
+/**
+ * MME's shelf for the shop here (2026-10-24): its stock with the price for
+ * this character, or a trainer's cost by level, and its charm line. Null
+ * while asked, where there is no shop, or where MME did not answer.
+ */
+function useMmeShop(
+  explorer: ExplorerCalls | null,
+  shop: number | null,
+  characterKey: string
+): { stock: ExplorerStock; note?: string } | null {
+  const [answer, setAnswer] = useState<{
+    key: string;
+    shelf: { stock: ExplorerStock; note?: string } | null;
+  } | null>(null);
+  const key = `${shop}:${characterKey}`;
+  useEffect(() => {
+    if (explorer === null || shop === null) return;
+    let live = true;
+    void explorer.detail('shops', shop, DEFAULT_EXPLORER_OPTIONS).then(
+      (detail) =>
+        live &&
+        setAnswer({
+          key,
+          shelf:
+            detail?.stock === undefined
+              ? null
+              : { stock: detail.stock, ...(detail.note !== undefined ? { note: detail.note } : {}) }
+        }),
+      () => live && setAnswer({ key, shelf: null })
+    );
+    return () => {
+      live = false;
+    };
+  }, [explorer, shop, key]);
+  if (explorer === null || shop === null) return null;
+  return answer?.key === key ? answer.shelf : null;
+}

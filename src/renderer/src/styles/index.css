@@ -5916,6 +5916,18 @@ button.quest-plan-back {
  * MMUD Explorer's detail on a card (2026-10-24): across the readout's two
  * columns, between this client's own rows above and the places below.
  */
+/* MMUD Explorer's facts for a room (2026-10-24): its references, then its text. */
+.mme-room-refs {
+  font-size: 12px;
+  list-style: none;
+  margin: 0 0 6px;
+  padding: 0;
+}
+
+.mme-room .rm-info {
+  margin: 0;
+}
+
 .readout > .reference-explorer {
   grid-column: 1 / -1;
   min-width: 0;
@@ -5943,6 +5955,111 @@ button.reference-explore {
   display: block;
   font-size: 12px;
   margin-top: 8px;
+}
+
+/*
+ * A textblock as MME's frmResults shows it (2026-10-24), mudtool's
+ * `styles/rooms.css` on this client's tokens: the two trees side by side
+ * where there is room, one above the other in a panel.
+ */
+.ex-textblock {
+  overflow: auto;
+  padding: 12px 16px;
+}
+
+.tb-view .tb-refs {
+  font-size: 12px;
+  margin: 4px 0;
+}
+
+.tb-field {
+  color: var(--text-lo);
+}
+
+.tb-modes {
+  margin: 8px 0 6px;
+}
+
+.tb-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  font-size: 12px;
+  gap: 6px 10px;
+}
+
+.tb-trees {
+  display: grid;
+  font-size: 12px;
+  gap: 18px;
+  grid-template-columns: repeat(auto-fit, minmax(min(380px, 100%), 1fr));
+  margin-top: 10px;
+}
+
+ul.tb-tree {
+  list-style: none;
+  margin: 0;
+  padding-left: 16px;
+}
+
+ul.tb-root {
+  padding-left: 0;
+}
+
+ul.tb-tree li {
+  margin: 1px 0;
+}
+
+ul.tb-tree summary {
+  cursor: pointer;
+}
+
+ul.tb-tree li > .tb-label {
+  margin-left: 13px;
+}
+
+.tb-label[data-bold='true'] {
+  color: var(--text-hi);
+  font-weight: 600;
+}
+
+.tb-icon {
+  color: var(--text-lo-quiet);
+  display: inline-block;
+  text-align: center;
+  width: 1.1em;
+}
+
+.tb-star,
+.tb-money {
+  color: var(--pending);
+}
+
+.tb-monster,
+.tb-redarrow {
+  color: var(--danger);
+}
+
+.tb-room {
+  color: var(--ok);
+}
+
+.tb-bolt,
+.tb-item {
+  color: var(--accent);
+}
+
+.tb-raw {
+  margin-top: 16px;
+}
+
+.tb-raw pre {
+  background: var(--ink-card);
+  border: 1px solid var(--ink-line);
+  border-radius: 5px;
+  font-size: 12px;
+  padding: 8px 10px;
+  white-space: pre-wrap;
 }
 
 /* MME's own text, its line breaks kept. */

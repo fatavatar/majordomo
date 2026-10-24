@@ -24,6 +24,8 @@ export const EXPLORER_CALLS = {
   roomView: facade.explorerRoomView,
   roomTip: facade.explorerRoomTip,
   roomSearch: facade.explorerRoomSearch,
+  textblock: facade.explorerTextblock,
+  room: facade.explorerRoom,
   eq: facade.explorerEq,
   eqBest: facade.explorerEqBest,
   eqWear: facade.explorerEqWear,

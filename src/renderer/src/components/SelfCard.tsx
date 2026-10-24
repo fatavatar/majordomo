@@ -107,6 +107,8 @@ function SelfCard({
   inspect,
   gear,
   loadWearer,
+  loadItemFacts,
+  characterKey,
   ...chrome
 }: SelfCardProps) {
   const [face, chooseFace] = useRememberedChoice(session, 'self-tab', FACE_IDS, FACE_IDS[0]!);
@@ -266,6 +268,8 @@ function SelfCard({
       finding={finding}
       gear={gear}
       inspect={inspect}
+      characterKey={characterKey}
+      loadItemFacts={loadItemFacts}
       loadWearer={loadWearer}
       onFindDismiss={() => setFinding(false)}
       returnFocus={chrome.returnFocus}

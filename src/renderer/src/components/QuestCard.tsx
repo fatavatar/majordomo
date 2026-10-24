@@ -157,6 +157,11 @@ export interface QuestCardProps extends CardChrome {
    */
   onName?: ((name: string, anchor: HTMLElement) => void) | null;
   /**
+   * Opens MMUD Explorer's view of a step's textblock beside it (2026-10-24):
+   * what the block does and what runs it. Null where `onName` is.
+   */
+  onTextblock?: ((block: number, anchor: HTMLElement) => void) | null;
+  /**
    * What the server's own ability listing says each counter stands at.
    *
    * A quest is a counter and until 2026-09-07 nothing on the wire ever printed
@@ -1039,6 +1044,7 @@ function QuestCard({
   realmAt,
   onGoTo,
   onName,
+  onTextblock,
   characterClass,
   characterRace,
   characterLevel,
@@ -1457,6 +1463,7 @@ function QuestCard({
           loadErrand={loadErrand}
           onGoTo={onGoTo}
           onName={onName}
+          onTextblock={onTextblock}
           onPlan={loadPlan ? setPlanFor : null}
           onPlanBack={closePlan}
           onRank={(rank) => ranks.set(String(opened.id), rank)}
@@ -1488,6 +1495,7 @@ function Track({
   onRank,
   onGoTo,
   onName,
+  onTextblock,
   onPlan,
   onPlanBack,
   plan,
@@ -1517,6 +1525,7 @@ function Track({
   onRank(rank: number | null): void;
   onGoTo?: ((room: string) => void) | null;
   onName?: ((name: string, anchor: HTMLElement) => void) | null;
+  onTextblock?: ((block: number, anchor: HTMLElement) => void) | null;
   characterClass?: string | null;
   /** What the pack holds, as realm rows, or null where nobody has listed it. */
   carrying: readonly number[] | null;
@@ -1641,6 +1650,7 @@ function Track({
               key={`${step.block}:${step.from ?? ''}:${step.to ?? ''}`}
               onGoTo={onGoTo}
               onName={onName}
+              onTextblock={onTextblock}
               /*
               Only on the step being run. An order is a walk from where the
               character is standing *now*, which is an answer about the step
@@ -2565,6 +2575,7 @@ function Step({
   onRank,
   onGoTo,
   onName,
+  onTextblock,
   characterClass,
   carrying,
   errand,
@@ -2585,6 +2596,7 @@ function Step({
   onRank: (() => void) | null;
   onGoTo?: ((room: string) => void) | null;
   onName?: ((name: string, anchor: HTMLElement) => void) | null;
+  onTextblock?: ((block: number, anchor: HTMLElement) => void) | null;
   characterClass?: string | null;
   /** What the pack holds, as realm rows, or null where nobody has listed it. */
   carrying: readonly number[] | null;
@@ -2683,7 +2695,10 @@ function Step({
           pinned float's null loader) is not drawn. The head row is skipped
           where there would be nothing in it.
         */}
-        {(step.kill !== undefined || ask !== null || (onPlan !== null && state !== 'done')) && (
+        {(step.kill !== undefined ||
+          ask !== null ||
+          (onPlan !== null && state !== 'done') ||
+          onTextblock) && (
           <div className="quest-step-head">
             {step.kill !== undefined ? (
               <p className="quest-kill">
@@ -2718,6 +2733,18 @@ function Step({
                 type="button"
               >
                 {t('cards.quests.plan.button')}
+              </button>
+            )}
+            {/* The step's own block, in MMUD Explorer's words: what it does, what runs it. */}
+            {onTextblock && (
+              <button
+                className="quest-plan-btn"
+                onClick={(event) => onTextblock(step.block, event.currentTarget)}
+                onMouseDown={keepFocus}
+                title={t('cards.quests.step.textblockTitle', { block: step.block })}
+                type="button"
+              >
+                {t('cards.quests.step.textblock', { block: step.block })}
               </button>
             )}
           </div>

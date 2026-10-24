@@ -54,7 +54,8 @@ describe("where a reference in MMUD Explorer's detail leads from a card", () => 
     const follow = followFor(
       {
         explore: (kind, n) => went.push(`explore ${kind} ${n}`),
-        openRoom: (room) => went.push(`room ${room}`)
+        openRoom: (room) => went.push(`room ${room}`),
+        openTextblock: (n) => went.push(`textblock ${n}`)
       },
       (name) => went.push(`name ${name}`)
     );
@@ -67,6 +68,13 @@ describe("where a reference in MMUD Explorer's detail leads from a card", () => 
     expect(went).toEqual(['room 1/355']);
   });
 
+  /* MME's textblocks pulled in (2026-10-24): a block named in a detail or a quest. */
+  it("opens a textblock's panel", () => {
+    const { went, follow } = calls();
+    follow({ tab: 'textblock', n: 2944 }, 'Textblock(rndm) #2944', anchor);
+    expect(went).toEqual(['textblock 2944']);
+  });
+
   it('opens the slide-out on a name, and the Explorer on a shop', () => {
     const { went, follow } = calls();
     follow({ tab: 'monsters', n: 747 }, 'massive white dragon', anchor);
@@ -75,6 +83,6 @@ describe("where a reference in MMUD Explorer's detail leads from a card", () => 
   });
 
   it('leaves the references as text where nothing can be opened', () => {
-    expect(followFor({ explore: null, openRoom: null }, null)).toBeUndefined();
+    expect(followFor({ explore: null, openRoom: null, openTextblock: null }, null)).toBeUndefined();
   });
 });

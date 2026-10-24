@@ -120,7 +120,9 @@ import type {
   ExplorerKind,
   ExplorerList,
   ExplorerOptions,
+  ExplorerRoomFacts,
   ExplorerRoomView,
+  ExplorerTextblock,
   GearBoard,
   GearOptions,
   EqFind,
@@ -133,7 +135,8 @@ import type {
   RoomMapOptions,
   RoomSearch,
   RoomSearchResult,
-  RoomViewRequest
+  RoomViewRequest,
+  TextblockRequest
 } from './explorer';
 import type { InternalConfig } from './internal';
 import type { Loop, LoopAddress, LoopProgress, LoopScope, ScopedLoop } from './loops';
@@ -1131,6 +1134,10 @@ export const Invoke = {
   setCombatMonsters: 'settings:combat-monsters',
   /** The Rooms tab: MME's map from a room, a cell's tooltip, and its finders. */
   explorerRoomView: 'explorer:room-view',
+  /** A textblock as MME's frmResults shows it (`ExplorerTextblock`, 2026-10-24). */
+  explorerTextblock: 'explorer:textblock',
+  /** What MME says a room holds, as data, for the Room card and the room panel (2026-10-24). */
+  explorerRoom: 'explorer:room',
   explorerRoomTip: 'explorer:room-tip',
   explorerRoomSearch: 'explorer:room-search',
   /**
@@ -1766,6 +1773,8 @@ export interface IpcApi {
   ): Promise<{ refusal: string | null; buy: Array<{ number: number; name: string }> }>;
   /** MME's map from a room, with its references and the character's room. */
   explorerRoomView(session: SessionId, request: RoomViewRequest): Promise<ExplorerRoomView>;
+  explorerTextblock(session: SessionId, request: TextblockRequest): Promise<ExplorerTextblock>;
+  explorerRoom(session: SessionId, map: number, room: number): Promise<ExplorerRoomFacts>;
   /** One cell's tooltip, asked as it is hovered. */
   explorerRoomTip(
     session: SessionId,

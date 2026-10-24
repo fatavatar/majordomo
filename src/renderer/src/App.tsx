@@ -49,7 +49,7 @@ import SettingsScreen, {
 import StandbyCard from './components/StandbyCard';
 import StatsCard from './components/StatsCard';
 import GearCard from './components/GearCard';
-import { explorerCalls, type ExplorerCalls } from './components/ReferenceExplorer';
+import { explorerCalls, followFor, type ExplorerCalls } from './components/ReferenceExplorer';
 import ConversationCard from './components/ConversationCard';
 import BanksCard from './components/BanksCard';
 import QuestCard from './components/QuestCard';
@@ -59,6 +59,7 @@ import SessionCard from './components/SessionCard';
 import SessionTerminal from './components/SessionTerminal';
 import ReferenceCard from './components/ReferenceCard';
 import ReferencePopover, { type Asked } from './components/ReferencePopover';
+import TextblockPopover, { type TextblockAsked } from './components/TextblockPopover';
 import RoomQuickView, { type RoomAsked } from './components/RoomQuickView';
 import { ownAlignment } from './components/LairList';
 import TabRail, { type RailSide } from './components/TabRail';
@@ -115,10 +116,12 @@ import type {
   EqPlan,
   ExplorerKind,
   ExplorerOptions,
+  ExplorerTab,
   GearOptions,
   RoomMapOptions,
   RoomSearch,
-  RoomViewRequest
+  RoomViewRequest,
+  TextblockRequest
 } from '@shared/explorer';
 import { CONSOLE_PALETTES, TERMINAL_THEMES, THEME_PREFERENCES, THEMES } from '@shared/themes';
 import { usePaneWidths } from './hooks/usePaneWidths';
@@ -496,6 +499,8 @@ interface CardContext {
   inspect(name: string, anchor: HTMLElement): void;
   /** A room's panel beside the link that named it, `map/room`; the shown character's only. */
   inspectRoom: ((room: string, anchor: HTMLElement) => void) | null;
+  /** A textblock's panel beside what named it; the shown character's only. */
+  inspectTextblock: ((n: number, anchor: HTMLElement) => void) | null;
   loadWearer(): ReturnType<IpcApi['wearer']>;
   loadMap(map: number, room: number, radius?: number): ReturnType<IpcApi['localMap']>;
   lookupName(query: string): ReturnType<IpcApi['lookup']>;
@@ -715,6 +720,8 @@ function cardElement(id: CardId, ctx: CardContext): ReactNode {
     case 'self':
       return (
         <SelfCard
+          characterKey={wornKey(character)}
+          loadItemFacts={ctx.explorer.items}
           {...chrome}
           character={character}
           gear={ctx.gear}
@@ -745,6 +752,8 @@ function cardElement(id: CardId, ctx: CardContext): ReactNode {
     case 'room':
       return (
         <RoomCard
+          characterKey={wornKey(character)}
+          explorer={ctx.explorer}
           {...chrome}
           ask={ctx.ask}
           locate={ctx.locate}
@@ -933,6 +942,8 @@ function cardElement(id: CardId, ctx: CardContext): ReactNode {
     case 'inventory':
       return (
         <InventoryCard
+          characterKey={wornKey(character)}
+          loadItemFacts={ctx.explorer.items}
           {...chrome}
           character={character}
           gear={ctx.gear}
@@ -1035,6 +1046,7 @@ function cardElement(id: CardId, ctx: CardContext): ReactNode {
           stopRun={ctx.stopRun}
           loadQuests={ctx.loadQuests}
           onName={ctx.chooseOnMap === null ? null : ctx.inspect}
+          onTextblock={ctx.inspectTextblock}
           realmAt={ctx.realmAt}
           session={ctx.session}
         />
@@ -1095,6 +1107,7 @@ function cardElement(id: CardId, ctx: CardContext): ReactNode {
           explorer={ctx.explorer}
           level={character.progress.level}
           openRoom={ctx.inspectRoom}
+          openTextblock={ctx.inspectTextblock}
           lookup={ctx.lookupName}
           /*
             Addressed like `lookup` and `onRoom` beside it: the panel it opens
@@ -1352,6 +1365,8 @@ export default function App() {
   const [searchResult, setSearchResult] = useState<SearchResult | undefined>(undefined);
   /** The name last clicked on a card, and where, so the answer can open beside it. */
   const [asked, setAsked] = useState<Asked | null>(null);
+  /** A textblock's panel (2026-10-24): one more slide-out, sharing the one slot. */
+  const [tbAsked, setTbAsked] = useState<TextblockAsked | null>(null);
   /**
    * The Player flyout: whose it is about, which character's listing it was
    * opened from, and where on screen. One at a time, like the reference
@@ -2965,14 +2980,23 @@ export default function App() {
   }, [explorerOpen, closeExplorer, session]);
   // The Gear card's way in: the Explorer on one item.
   const [explorerFocus, setExplorerFocus] = useState<{
-    kind: ExplorerKind;
-    item: number;
+    kind: ExplorerTab;
+    item: number | string;
     at: number;
   } | null>(null);
-  const openExplorerAt = useCallback((kind: ExplorerKind, item: number) => {
+  const openExplorerAt = useCallback((kind: ExplorerTab, item: number | string) => {
+    setTbAsked(null);
     setExplorerFocus({ kind, item, at: Date.now() });
     setExplorerOpen(true);
   }, []);
+  const explorerTextblock = useCallback(
+    (request: TextblockRequest) => api.explorerTextblock(session, request),
+    [api, session]
+  );
+  const explorerRoomFacts = useCallback(
+    (map: number, room: number) => api.explorerRoom(session, map, room),
+    [api, session]
+  );
   useEffect(() => {
     if (explorerOpen && session === NO_SESSION) closeExplorer();
   }, [explorerOpen, session, closeExplorer]);
@@ -3479,6 +3503,7 @@ export default function App() {
     (name: string, anchor: HTMLElement) => {
       setFlyout(null);
       setGangFlyout(null);
+      setTbAsked(null);
       dismissPeek();
       setAsked({ name, anchor });
     },
@@ -3504,6 +3529,7 @@ export default function App() {
     (name: string, anchor: PopoverAnchor, row?: number) => {
       setFlyout(null);
       setGangFlyout(null);
+      setTbAsked(null);
       dismissPeek();
       setAsked(row === undefined ? { name, anchor } : { name, anchor, row });
     },
@@ -3602,6 +3628,7 @@ export default function App() {
     (sid: SessionId, name: string, anchor: PopoverAnchor) => {
       setAsked(null);
       setGangFlyout(null);
+      setTbAsked(null);
       dismissPeek();
       setFlyout({ session: sid, name, anchor });
     },
@@ -3649,6 +3676,7 @@ export default function App() {
     (sid: SessionId, name: string, anchor: PopoverAnchor) => {
       setAsked(null);
       setFlyout(null);
+      setTbAsked(null);
       dismissPeek();
       setGangFlyout({ session: sid, name, anchor });
     },
@@ -3866,6 +3894,7 @@ export default function App() {
     setAsked(null);
     setFlyout(null);
     setGangFlyout(null);
+    setTbAsked(null);
     setPeek(asked);
   }, []);
   /**
@@ -3966,6 +3995,32 @@ export default function App() {
       openPeek({ room: id, anchor: box, settled: true, act: walkTo(id) });
     },
     [openPeek, walkTo]
+  );
+
+  /**
+   * A textblock's panel (2026-10-24): MME's view of the block beside the quest
+   * step or the link that named it, kept where the link was on screen, as a
+   * room's is. One panel at a time, like the rest.
+   */
+  const inspectTextblock = useCallback(
+    (n: number, anchor: HTMLElement) => {
+      setAsked(null);
+      setFlyout(null);
+      setGangFlyout(null);
+      dismissPeek();
+      setTbAsked({ n, anchor: { box: anchor.getBoundingClientRect(), within: document.body } });
+    },
+    [dismissPeek]
+  );
+  const dismissTextblock = useCallback(() => setTbAsked(null), []);
+  // Where a reference in the textblock panel leads: as from any card.
+  const textblockFollow = useMemo(
+    () =>
+      followFor(
+        { explore: openExplorerAt, openRoom: inspectRoom, openTextblock: inspectTextblock },
+        inspect
+      )!,
+    [openExplorerAt, inspectRoom, inspectTextblock, inspect]
   );
 
   /**
@@ -5446,6 +5501,7 @@ export default function App() {
         forgetFind: bound.forgetFind,
         inspect,
         inspectRoom: shown ? inspectRoom : null,
+        inspectTextblock: shown ? inspectTextblock : null,
         gear: bound.gear,
         loadWearer: shown ? loadWearer : bound.loadWearer,
         loadMap: shown ? loadMap : bound.loadMap,
@@ -6223,6 +6279,7 @@ export default function App() {
             chooseOnMap(map, room);
           }}
           openRoom={inspectRoom}
+          openTextblock={inspectTextblock}
           purseKey={explorerPurseKey}
           realm={character.realm}
           rules={referenceRules}
@@ -6236,10 +6293,23 @@ export default function App() {
         is a button on it, which is the affordance the room's bare click used
         to be.
       */}
+      {tbAsked !== null && (
+        <TextblockPopover
+          ask={explorerTextblock}
+          asked={tbAsked}
+          defaultMap={character.room.map ?? 1}
+          explore={() => openExplorerAt('textblock', tbAsked.n)}
+          follow={textblockFollow}
+          onDismiss={dismissTextblock}
+        />
+      )}
+
       {peek !== null && (
         <RoomQuickView
           asked={peek}
+          follow={textblockFollow}
           load={loadRoomBrief}
+          loadMme={explorerRoomFacts}
           mine={ownAlignment(character)}
           onDismiss={dismissPeek}
           onPointerEnter={holdPeek}
@@ -6346,6 +6416,7 @@ export default function App() {
         detail={explorerDetail}
         eq={explorerEq}
         focus={explorerFocus}
+        textblock={explorerTextblock}
         learn={explorerLearn}
         learnPlan={explorerLearnPlan}
         lists={explorerLists}

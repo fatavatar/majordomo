@@ -154,6 +154,7 @@ import {
   type CompareKind,
   NO_EQ_VIEW,
   asRoomViewRequest,
+  asTextblockRequest,
   EXPLORER_KINDS,
   type ExplorerBuyPlan,
   type ExplorerKind,
@@ -2722,6 +2723,56 @@ function registerIpc(): void {
    * character's room marked. A request that does not parse is answered as
    * no such room rather than a throw.
    */
+  /*
+   * A textblock as MME's frmResults shows it (2026-10-24): the Explorer's
+   * Rooms tab and the cards' textblock panel both ask it.
+   */
+  handle(Invoke.explorerTextblock, async (_caller, session: SessionId, request: unknown) => {
+    const realm = explorerRealm(session);
+    const asked = asTextblockRequest(request);
+    const empty = { text: [], icon: 'PAPER', place: null, bold: false, kids: [] };
+    const none = {
+      supported: false,
+      found: false,
+      number: asked?.n ?? 0,
+      linkTo: null,
+      calledFrom: null,
+      commands: null,
+      command: empty,
+      executed: empty,
+      raw: ''
+    };
+    if (typeof realm === 'string' || asked === null)
+      return { ...none, reason: typeof realm === 'string' ? realm : '' };
+    try {
+      const tb = await explorerAsk('textblock', realm.file, asked);
+      return tb.supported ? tb : { ...tb, reason: t('app.explorer.unsupported') };
+    } catch (error) {
+      return { ...none, reason: t('app.explorer.unreadable', { reason: errorMessage(error) }) };
+    }
+  });
+  /*
+   * What MME says a room holds, as data (2026-10-24): the Room card's Lair and
+   * Shop faces and the room panel, without the Rooms tab's map.
+   */
+  handle(
+    Invoke.explorerRoom,
+    async (_caller, session: SessionId, rawMap: unknown, rawRoom: unknown) => {
+      const realm = explorerRealm(session);
+      const manager = host?.get(session)?.manager;
+      const map = typeof rawMap === 'number' && Number.isInteger(rawMap) ? rawMap : 0;
+      const room = typeof rawRoom === 'number' && Number.isInteger(rawRoom) ? rawRoom : 0;
+      const none = { supported: false, found: false, map, room, name: '', refs: [], info: '' };
+      if (typeof realm === 'string' || manager === undefined)
+        return { ...none, reason: typeof realm === 'string' ? realm : '' };
+      try {
+        const facts = await explorerAsk('room', realm.file, manager.character, map, room);
+        return facts.supported ? facts : { ...facts, reason: t('app.explorer.unsupported') };
+      } catch (error) {
+        return { ...none, reason: t('app.explorer.unreadable', { reason: errorMessage(error) }) };
+      }
+    }
+  );
   handle(Invoke.explorerRoomView, async (_caller, session: SessionId, request: unknown) => {
     const realm = explorerRealm(session);
     const manager = host?.get(session)?.manager;

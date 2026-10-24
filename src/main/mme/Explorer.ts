@@ -101,15 +101,23 @@ import {
   EXIT,
   findRoomByName,
   getRoom,
+  lairInfo,
   leadsHere,
   MAP_SIZES,
+  parseLair,
   roomExits,
   roomRefs,
   roomTooltip,
   searchRooms,
   type MapCell
 } from './vendor/js/mmud/roommap.js';
-import { roomTeleports } from './vendor/js/mmud/textblocks.js';
+import {
+  commandTree,
+  executionTree,
+  roomTeleports,
+  textblockCMDS,
+  type TbTreeNode
+} from './vendor/js/mmud/textblocks.js';
 import { chestContents } from './vendor/js/mmud/chest.js';
 import {
   attackConfig,
@@ -141,7 +149,10 @@ import type {
   ExplorerOptions,
   ExplorerRow,
   ExplorerPlace,
+  ExplorerLair,
+  ExplorerRoomFacts,
   ExplorerRoomView,
+  ExplorerTextblock,
   ExplorerSegment,
   ExplorerShopFacts,
   ExplorerSpellFacts,
@@ -151,6 +162,8 @@ import type {
   RoomSearch,
   RoomSearchResult,
   RoomViewRequest,
+  TextblockNode,
+  TextblockRequest,
   GearBoard,
   GearOptions,
   GearPick,
@@ -165,7 +178,13 @@ import type {
   CompareRow,
   ItemFacts
 } from '../../shared/explorer';
-import { DEFAULT_EQ_PLAN, EQ_SLOT_COUNT, NO_EQ_VIEW } from '../../shared/explorer';
+import {
+  DEFAULT_EQ_PLAN,
+  DEFAULT_ROOM_MAP_OPTIONS,
+  EQ_SLOT_COUNT,
+  NO_EQ_VIEW
+} from '../../shared/explorer';
+import { costsAlignment, dispositionOf } from '../../shared/mobs';
 
 /** The tables mudtool reads, as the realm database names them. */
 const TABLES = [
@@ -881,6 +900,8 @@ function tabOf(kind: string, n: number | string): ExplorerTab | null {
       return 'shops';
     case 'room':
       return 'rooms';
+    case 'textblock':
+      return 'textblock';
     default:
       return null;
   }
@@ -898,6 +919,89 @@ function runs(text: string): ExplorerSegment[] {
   return segments(text).map((run) =>
     'kind' in run ? { ...run, tab: tabOf(run.kind, run.n) } : run
   );
+}
+
+/**
+ * mudtool's `ui/detail.js` `linkify`: the references in a plain column of the
+ * realm's (a textblock's `Called From`), `Textblock #5`, `Monster #12`, `Room
+ * 1/234`, `Group(lair): 1/552`, as runs.
+ */
+const PLAIN_REF =
+  /\b(Item|Monster|NPC|Shop|Spell|Textblock)(?:\([a-z]+\))?\s*#(\d+)|\b(Room|Group(?:\(lair\))?:?)\s*(\d+)\/(\d+)/gi;
+const PLAIN_KIND: Record<string, string> = {
+  item: 'item',
+  monster: 'monster',
+  npc: 'monster',
+  shop: 'shop',
+  spell: 'spell',
+  textblock: 'textblock'
+};
+
+function linked(text: string): ExplorerSegment[] {
+  const out: ExplorerSegment[] = [];
+  let last = 0;
+  for (const m of text.matchAll(PLAIN_REF)) {
+    if (m.index > last) out.push({ text: text.slice(last, m.index) });
+    const kind = m[1] !== undefined ? PLAIN_KIND[m[1].toLowerCase()]! : 'room';
+    const n = m[1] !== undefined ? Number(m[2]) : roomKey(Number(m[4]), Number(m[5]));
+    out.push({ kind, n, text: m[0], tab: tabOf(kind, n) });
+    last = m.index + m[0].length;
+  }
+  if (last < text.length) out.push({ text: text.slice(last) });
+  return out;
+}
+
+/** A line of frmResults' trees, its words as runs and where the whole line leads. */
+function treeOf(node: TbTreeNode): TextblockNode {
+  return {
+    text: runs(node.text),
+    icon: node.icon,
+    place: placeOf(node.ref),
+    bold: node.bold,
+    kids: node.kids.map(treeOf)
+  };
+}
+
+/**
+ * A textblock as MME's frmResults shows it (2026-10-24, mudtool
+ * `tabs/rooms.js` `showTextblock`): what it does in the reading asked for,
+ * what runs it, where it is called from, the block it links on to, and its
+ * raw text.
+ */
+export async function explorerTextblock(
+  realm: MmeRealm,
+  request: TextblockRequest
+): Promise<ExplorerTextblock> {
+  await useRealm(realm);
+  const { n, mode, hideTB, defaultMap } = request;
+  const empty: TextblockNode = { text: [], icon: 'PAPER', place: null, bold: false, kids: [] };
+  const none: ExplorerTextblock = {
+    supported: supported(),
+    found: false,
+    number: n,
+    linkTo: null,
+    calledFrom: null,
+    commands: null,
+    command: empty,
+    executed: empty,
+    raw: ''
+  };
+  if (!supported()) return none;
+  const tb = by.textblock.get(n);
+  if (tb === undefined) return none;
+  const linkTo = Number(tb['LinkTo']) || null;
+  const calledFrom = String(tb['Called From'] ?? '');
+  return {
+    supported: true,
+    found: true,
+    number: n,
+    linkTo,
+    calledFrom: calledFrom === '' ? null : linked(calledFrom),
+    commands: mode === 'plain' ? null : textblockCMDS(n),
+    command: treeOf(commandTree(n, { mode, hideTB, defaultMap })),
+    executed: treeOf(executionTree(n, { hideTB })),
+    raw: String(tb['Action'] ?? '')
+  };
 }
 
 /** One item's detail as MME writes it, compared against what is worn in its slot. */
@@ -1963,6 +2067,84 @@ export async function explorerRoomView(
     refs: roomRefs(map, room, options).map(lineOf),
     info: tooltipOf(row, { ...options, showAllExits: true }),
     here
+  };
+}
+
+/**
+ * What MME says a room holds, as data (2026-10-24): its references and text,
+ * as the Rooms tab has them, and its lair and shop as the cards draw them.
+ * No map: the cards draw none.
+ */
+export async function explorerRoom(
+  realm: MmeRealm,
+  state: CharacterState,
+  map: number,
+  room: number
+): Promise<ExplorerRoomFacts> {
+  const empty = { found: false, map, room, name: '', refs: [], info: '' };
+  await useRealm(realm);
+  if (!supported()) return { ...empty, supported: false };
+  useCharacter(state);
+  const row = getRoom(map, room);
+  if (row === null) return { ...empty, supported: true };
+  const options = { ...DEFAULT_ROOM_MAP_OPTIONS };
+  const lair = roomLairOf(row);
+  const shopN = Number(row['Shop']);
+  const shop = shopN > 2 ? by.shop.get(shopN) : undefined;
+  return {
+    supported: true,
+    found: true,
+    map,
+    room,
+    name: String(row['Name']),
+    refs: roomRefs(map, room, options).map(lineOf),
+    info: tooltipOf(row, { ...options, showAllExits: true }),
+    ...(lair !== null ? { lair } : {}),
+    ...(shop !== undefined ? { shop: { n: shopN, name: String(shop['Name']) } } : {})
+  };
+}
+
+/**
+ * A room's lair as MME's `roomTooltip` reads it: the slots, the regen, the
+ * lair's experience, health and damage against the character, and each
+ * monster, with the disposition its own row states.
+ */
+function roomLairOf(row: Row): ExplorerLair | null {
+  const column = String(row['Lair'] ?? '');
+  if (column.length <= 1) return null;
+  const parsed = parseLair(column);
+  const info = parsed.groupIndex !== '' ? lairInfo(parsed.groupIndex) : null;
+  const grouped = info !== null && info.Mobs > 0;
+  const delay = Number(row['Delay'] ?? 0);
+  const ids = grouped
+    ? info.MobList.split(',')
+        .map(Number)
+        .filter((n) => n > 0)
+    : parsed.mobs;
+  const damage = grouped
+    ? lairDamageLine(lairInfoFor(parsed.groupIndex, parsed.maxRegen)) || null
+    : null;
+  return {
+    max: parsed.maxRegen,
+    regen: grouped ? (engine.greater ? `@ ${delay - 1}m 30s` : `@ ${delay} mins`) : null,
+    exp: grouped ? info.AvgExp * parsed.maxRegen : null,
+    hp: grouped ? info.AvgHP * parsed.maxRegen : null,
+    damage,
+    monsters: [...new Set(ids)].flatMap((n) => {
+      const mob = by.monster.get(n);
+      if (mob === undefined) return [];
+      return [
+        {
+          n,
+          name: String(mob['Name']),
+          hp: Number(mob['HP'] ?? 0),
+          exp: Number(mob['EXP'] ?? 0),
+          disposition: dispositionOf(Number(mob['Align'] ?? 0), Number(mob['Type'] ?? 0)),
+          costsAlignment: costsAlignment(Number(mob['Align'] ?? 0)),
+          regenHours: Number(mob['RegenTime'] ?? 0)
+        }
+      ];
+    })
   };
 }
 

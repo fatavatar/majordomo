@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { affordable, mergeStock, priceValue } from '../shop';
+import { affordable, mergeMmeStock, mergeStock, priceValue } from '../shop';
 import type { ShopListing } from '@shared/character';
 import type { WorldShop } from '@shared/world';
 
@@ -103,5 +103,40 @@ describe('whether the purse covers it', () => {
   it('cannot say without a quotation or a counted purse', () => {
     expect(affordable(sling!, 5_000_000)).toBeNull();
     expect(affordable(shortbow!, null)).toBeNull();
+  });
+});
+
+/*
+ * MMUD Explorer's shelf for the same shop (2026-10-24): its price is for this
+ * character, the charm worked in, and in coin, so it sorts and weighs the
+ * purse until the counter has quoted.
+ */
+describe("MMUD Explorer's shelf beside the counter", () => {
+  const STOCK = {
+    trainer: false,
+    rows: [
+      { item: 1, name: 'shortbow', max: 30, regen: '1 per 5 min', cost: '20 gold', copper: 2000 },
+      { item: 3, name: 'sling', max: 10, regen: '', cost: '4 gold', copper: 400 }
+    ]
+  };
+
+  it("leads with MME's rows, priced for this character", () => {
+    const rows = mergeMmeStock(STOCK, null);
+    expect(rows.map((row) => [row.name, row.cost, row.max, row.listed])).toEqual([
+      ['shortbow', '20 gold', 30, null],
+      ['sling', '4 gold', 10, null]
+    ]);
+    expect(priceValue(rows[1]!, null)).toBe(400);
+    expect(affordable(rows[0]!, 1000)).toBe(false);
+  });
+
+  it('keeps the counter the authority, and adds what only it listed', () => {
+    const rows = mergeMmeStock(STOCK, COUNTER);
+    expect(rows.map((row) => [row.name, row.quoted, row.listed])).toEqual([
+      ['shortbow', '20 gold crowns', true],
+      ['sling', null, false],
+      ['runed longbow', '20 platinum pieces', true],
+      ['staff-sling', '21 gold crowns', true]
+    ]);
   });
 });

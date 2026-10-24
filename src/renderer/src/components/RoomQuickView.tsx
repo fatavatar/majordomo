@@ -28,6 +28,8 @@ import { Fragment, useEffect, useState } from 'react';
 
 import EntityNumber from './EntityNumber';
 import LairList from './LairList';
+import { MmeRoomFacts, useMmeRoom } from './MmeRoom';
+import type { Follow } from './ExplorerDetailParts';
 import { shopKindLabel } from './ShopFace';
 import PopoverHead, { PopoverSizer } from './PopoverHead';
 import { usePopoverFrame } from '../hooks/usePopoverFrame';
@@ -37,7 +39,14 @@ import type { PopoverAnchor } from '../lib/popover';
 import type { Alignment } from '@shared/character';
 import { errorMessage } from '@shared/values';
 import { lightPhrase } from '@shared/light';
-import { DIRECTION_NAME, type Direction, type RoomBrief, type RoomId } from '@shared/world';
+import {
+  asRoomReference,
+  DIRECTION_NAME,
+  type Direction,
+  type RoomBrief,
+  type RoomId
+} from '@shared/world';
+import type { ExplorerRoomFacts } from '@shared/explorer';
 
 /**
  * A room somebody pointed at, and where.
@@ -82,6 +91,13 @@ export interface RoomQuickViewProps {
   asked: RoomAsked;
   /** Asks the character's own realm. Two characters may be on two realms. */
   load(room: RoomId): Promise<RoomBrief | null>;
+  /**
+   * What MMUD Explorer says the room holds (2026-10-24), drawn in place of the
+   * realm's own facts where it answers; absent or unanswered keeps those.
+   */
+  loadMme?: ((map: number, room: number) => Promise<ExplorerRoomFacts>) | null;
+  /** Where a reference in MME's facts leads. */
+  follow?: Follow;
   /** How the realm ranks the reader, for the lair's hostility words. */
   mine: Alignment | null;
   onDismiss(): void;
@@ -97,12 +113,16 @@ export interface RoomQuickViewProps {
 export default function RoomQuickView({
   asked,
   load,
+  loadMme,
+  follow,
   mine,
   onDismiss,
   onPointerEnter,
   onPointerLeave
 }: RoomQuickViewProps) {
   const [brief, setBrief] = useState<RoomBrief | null | 'pending'>('pending');
+  const at = asRoomReference(asked.room);
+  const mme = useMmeRoom(loadMme, at?.map ?? null, at?.room ?? null);
 
   /*
    * `dismiss` rather than `hold` when the anchor goes: this panel hangs off a
@@ -177,6 +197,17 @@ export default function RoomQuickView({
           <div className="empty">{t('cards.roomPeek.pending')}</div>
         ) : brief === null ? (
           <div className="empty">{t('cards.roomPeek.unknownRoom')}</div>
+        ) : mme !== null && mme !== undefined ? (
+          <>
+            <MmeRoomFacts facts={mme} follow={follow} />
+            {brief.spell !== undefined && (
+              <dl className="readout">
+                <SpellRows brief={brief} />
+              </dl>
+            )}
+          </>
+        ) : mme === undefined ? (
+          <div className="empty">{t('cards.roomPeek.pending')}</div>
         ) : (
           <RoomFacts brief={brief} mine={mine} />
         )}
@@ -259,51 +290,7 @@ function RoomFacts({ brief, mine }: { brief: RoomBrief; mine: Alignment | null }
             <dd className="span">{dark}</dd>
           </>
         )}
-        {/*
-         * The spell the realm casts on whoever stands here. Written into the
-         * realm file since format 13 and read by nothing until now — 13,016
-         * of the shipped realm's rooms carry one, and a room that heals you
-         * and a room that drowns you are the same column.
-         */}
-        {brief.spell !== undefined && (
-          <>
-            <dt>{t('cards.roomPeek.roomSpellLabel')}</dt>
-            <dd className="span">
-              {brief.spell.name}
-              {/* And what it actually does — `river damage` and `inn rest`
-                  are the same column, and the name alone does not answer the
-                  question the reader is asking. */}
-              {brief.hazard !== undefined && (
-                <span
-                  className={
-                    brief.hazard.unread === true || brief.hazard.summons === true
-                      ? 'chip warn'
-                      : 'chip bad'
-                  }
-                >
-                  {/* Read off the field rather than inferred from the absence
-                      of the other two: a spell that only names what stops it
-                      would otherwise be reported as moving you. */}
-                  {brief.hazard.damage !== undefined
-                    ? t('cards.roomPeek.roomSpellDamage', { damage: brief.hazard.damage })
-                    : brief.hazard.relocates === true
-                      ? t('cards.roomPeek.roomSpellMoves')
-                      : brief.hazard.summons === true
-                        ? t('cards.roomPeek.roomSpellSummons')
-                        : t('cards.route.hazardUnread')}
-                </span>
-              )}
-            </dd>
-          </>
-        )}
-        {/* What stops it. The half that decides what to do: a room that bashes
-            you against the rocks is a corridor if you are carrying a boat. */}
-        {brief.hazardItems !== undefined && (
-          <>
-            <dt>{t('cards.roomPeek.roomSpellStoppedBy')}</dt>
-            <dd className="span">{brief.hazardItems.map((item) => item.name).join(', ')}</dd>
-          </>
-        )}
+        <SpellRows brief={brief} />
         {/* What the realm furnishes it with and puts back every night —
             format 42. Names, not controls, for the lair's reason below; the
             ones nobody can pick up are drawn quiet, since the raft is the
@@ -398,5 +385,62 @@ function RoomFacts({ brief, mine }: { brief: RoomBrief; mine: Alignment | null }
         </>
       )}
     </div>
+  );
+}
+
+/**
+ * The spell the realm casts on whoever stands here, what it does and what
+ * stops it: the one thing about a room MMUD Explorer does not say, so drawn
+ * beside its facts as well as in the realm's own (2026-10-24).
+ */
+function SpellRows({ brief }: { brief: RoomBrief }) {
+  return (
+    <>
+      {/*
+       * The spell the realm casts on whoever stands here. Written into the
+       * realm file since format 13 and read by nothing until now — 13,016
+       * of the shipped realm's rooms carry one, and a room that heals you
+       * and a room that drowns you are the same column.
+       */}
+      {brief.spell !== undefined && (
+        <>
+          <dt>{t('cards.roomPeek.roomSpellLabel')}</dt>
+          <dd className="span">
+            {brief.spell.name}
+            {/* And what it actually does — `river damage` and `inn rest`
+                are the same column, and the name alone does not answer the
+                question the reader is asking. */}
+            {brief.hazard !== undefined && (
+              <span
+                className={
+                  brief.hazard.unread === true || brief.hazard.summons === true
+                    ? 'chip warn'
+                    : 'chip bad'
+                }
+              >
+                {/* Read off the field rather than inferred from the absence
+                    of the other two: a spell that only names what stops it
+                    would otherwise be reported as moving you. */}
+                {brief.hazard.damage !== undefined
+                  ? t('cards.roomPeek.roomSpellDamage', { damage: brief.hazard.damage })
+                  : brief.hazard.relocates === true
+                    ? t('cards.roomPeek.roomSpellMoves')
+                    : brief.hazard.summons === true
+                      ? t('cards.roomPeek.roomSpellSummons')
+                      : t('cards.route.hazardUnread')}
+              </span>
+            )}
+          </dd>
+        </>
+      )}
+      {/* What stops it. The half that decides what to do: a room that bashes
+          you against the rocks is a corridor if you are carrying a boat. */}
+      {brief.hazardItems !== undefined && (
+        <>
+          <dt>{t('cards.roomPeek.roomSpellStoppedBy')}</dt>
+          <dd className="span">{brief.hazardItems.map((item) => item.name).join(', ')}</dd>
+        </>
+      )}
+    </>
   );
 }
