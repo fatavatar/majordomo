@@ -193,6 +193,11 @@ describe('every fact the parser produces reaches something', () => {
      * nothing addressable to record.
      */
     'conversation-yell': 'names a direction rather than a player, so nothing can answer it',
+    // Typed so neither reaches the effect learning as an unread sentence (upstream e597ccdd,
+    // 33964b50). The realm's StrReq already says heavy, and the room's occupants come from
+    // `Also here:` and nothing else, so a searcher is not put in the room on its word.
+    'user-weapon-feel': "the equip reply's second line; the realm's StrReq already says heavy",
+    'player-searches': 'room occupants come from Also here: alone, never a broadcast',
     // The attempt, not the outcome. Consuming it would be treating "Attempting
     // to sneak..." as sneaking, which is the bug the stealth model avoids.
     'user-sneak-initiate': 'the attempt, deliberately not the outcome',

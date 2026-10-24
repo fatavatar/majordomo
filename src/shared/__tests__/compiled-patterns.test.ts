@@ -17,10 +17,13 @@ import { describe, expect, it } from 'vitest';
  */
 const BUILT_ONCE: Record<string, { count: number; because: string }> = {
   'src/main/parse/patterns.ts': {
-    count: 1,
+    count: 10,
     because:
       'the room-light alternation is built from `ROOM_LIGHTS` so the union the tracker ' +
-      'branches on and the pattern that produces it cannot drift; module-level, in `RULES`'
+      'branches on and the pattern that produces it cannot drift; the `who` row tries ' +
+      '`TITLES_WITH_OF` whole (upstream cb8f9c68); the bought, sold and burnt-out sentences ' +
+      'share `ITEM_NAME` (upstream 9c23972e), and the coin pick-up and the four give ' +
+      'sentences `COIN_NOUN` (upstream ac2f11ec); module-level, in `RULES`'
   },
   'src/shared/statline.ts': {
     count: 1,

@@ -24,7 +24,14 @@ function line(plain: string, raw = plain): StreamLine {
  * the line and names nobody, which is the honest degradation rather than the
  * behaviour under test.
  */
-const KNOWN = new Set(['orc rogue', 'giant rat', 'cave rat']);
+const KNOWN = new Set([
+  'orc rogue',
+  'giant rat',
+  'cave rat',
+  'big cave worm',
+  'orc shaman',
+  'moaning spirit'
+]);
 const NAMES = {
   present: () => [],
   mob: (name: string) =>
@@ -105,6 +112,26 @@ describe('room', () => {
 });
 
 describe('combat', () => {
+  /*
+   * A monster's spell carries no article on Paradigm, and its name is the
+   * realm's lowercase spelling (orohost wire, upstream 6c0234be). Each names
+   * its caster and counts as damage taken.
+   */
+  it('reads a monster’s spell on this character without an article', () => {
+    expect(expectType('orc shaman casts harm on you for 17 damage!', 'mob-hits')).toMatchObject({
+      attacker: 'orc shaman',
+      damage: '17'
+    });
+    expect(
+      expectType('moaning spirit draws the breath from your body for 7 damage!', 'mob-hits')
+    ).toMatchObject({ attacker: 'moaning spirit', damage: '7' });
+  });
+
+  it('leaves a lowercase blow nothing can name to the blow between others', () => {
+    expect(classify('gelatinous horror casts harm on you for 17 damage!').type).toBe('user-hits');
+    expect(classify('orc shaman casts harm on Youssef for 17 damage!').type).toBe('user-hits');
+  });
+
   it('distinguishes a mob hitting the player from the player hitting a mob', () => {
     // Ordering in the table is what makes this work: `The orc hits you for 3`
     // matches the generic attacker pattern too, with source="The".
@@ -601,6 +628,35 @@ describe('session prompts', () => {
 });
 
 describe('conversation, movement, items', () => {
+  it('reads the equip reply’s second line and a searcher in the room', () => {
+    expect(expectType('This weapon feels heavy in your hands.', 'user-weapon-feel')['feel']).toBe(
+      'heavy'
+    );
+    expect(
+      expectType('You are extremely quick and deadly with this weapon.', 'user-weapon-feel')['feel']
+    ).toBe('quick');
+    expect(expectType('Killa is searching the area.', 'player-searches')['player']).toBe('Killa');
+  });
+
+  it('reads a give between players either way', () => {
+    // A give: the stack carries its count, coins end without a stop (upstream ac2f11ec).
+    expect(expectType('Killa gives you red iron axe.', 'user-given')).toMatchObject({
+      player: 'Killa',
+      item: 'red iron axe'
+    });
+    expect(expectType('Killa gives you 4 gold crowns', 'user-given')).toMatchObject({
+      count: '4',
+      coin: 'gold crowns'
+    });
+    expect(expectType('You give 2 padded gloves to Killa.', 'user-gives')).toMatchObject({
+      count: '2',
+      item: 'padded gloves',
+      target: 'Killa'
+    });
+    expect(expectType('You give 1 runic coin to Killa', 'user-gives')['coin']).toBe('runic coin');
+    expect(classify('Grimjaw gives you a stern look.').type).not.toBe('user-given');
+  });
+
   it('reads the conversation channels', () => {
     expect(expectType('Rayzor gossips: hello', 'conversation-gossip')).toMatchObject({
       player: 'Rayzor',
@@ -1417,6 +1473,35 @@ describe('buying and selling', () => {
     expect(g).toMatchObject({ item: 'black star key' });
   });
 
+  /* orohost, 2026-10-04 (upstream 9c23972e): the staff went unread and the buy was never confirmed. */
+  it('reads an item whose name has a hyphen, an apostrophe or a full stop', () => {
+    expect(
+      expectType('You just bought iron-capped staff for 78 copper farthings.', 'user-buys')
+    ).toMatchObject({
+      item: 'iron-capped staff',
+      price: '78'
+    });
+    expect(expectType('You are now holding iron-capped staff.', 'user-equipped')).toMatchObject({
+      item: 'iron-capped staff'
+    });
+    expect(expectType("You are now wearing thief's kit.", 'user-equipped')).toMatchObject({
+      item: "thief's kit"
+    });
+    expect(
+      expectType('You have removed severed head of Goru-Nezar.', 'user-removed')
+    ).toMatchObject({
+      item: 'severed head of Goru-Nezar'
+    });
+    expect(
+      expectType('You sold scroll of prot. from evil for 5 copper farthings.', 'user-sells')
+    ).toMatchObject({
+      item: 'scroll of prot. from evil'
+    });
+    expect(
+      expectType("Your thief's lantern runs out of oil, and goes out.", 'light-out')
+    ).toMatchObject({ item: "thief's lantern" });
+  });
+
   it('reads what was sold, which mirrors it', () => {
     const g = expectType('You sold quarterstaff for 0 copper farthings.', 'user-sells');
     expect(g).toMatchObject({ item: 'quarterstaff', price: '0' });
@@ -1579,6 +1664,14 @@ describe('combat, anchored on the frame', () => {
         'player-misses'
       )['target']
     ).toBe('ancient sand dragon');
+  });
+
+  it('reads paramud’s miss at another player, which ends in a space', () => {
+    // Paramud's wire, 2026-10-08: the server writes a space before the CRLF.
+    expect(expectType('The big cave worm lunges at Beanis! ', 'player-misses')).toMatchObject({
+      attacker: 'The big cave worm',
+      target: 'Beanis'
+    });
   });
 
   it('keeps a monster’s swing at this character as mob-misses', () => {

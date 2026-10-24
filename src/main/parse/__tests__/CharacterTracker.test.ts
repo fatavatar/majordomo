@@ -1728,7 +1728,8 @@ describe('the fight this character is in', () => {
       mobs: [
         { n: 'orc rogue', hp: 30, d: 'h' },
         { n: 'cave rat', hp: 10, d: 'h' },
-        { n: 'giant rat', hp: 12, d: 'h' }
+        { n: 'giant rat', hp: 12, d: 'h' },
+        { n: 'orc shaman', hp: 40, d: 'h' }
       ]
     });
     fs.writeFileSync(file, zlib.gzipSync(header + '\n'));
@@ -1782,6 +1783,16 @@ describe('the fight this character is in', () => {
   it('lets them go when the fight ends and nothing re-engages', () => {
     const tracker = fighting('The orc rogue slashes you for 5 damage!', '*Combat Off*');
     expect(tracker.current.combat.attackers).toEqual([]);
+  });
+
+  /* A caster's spell is damage taken, and the caster is fighting this character (upstream 6c0234be). */
+  it('counts a monster’s spell as an attacker and as damage taken', () => {
+    const tracker = fighting(
+      'The orc rogue slashes you for 5 damage!',
+      'orc shaman casts harm on you for 17 damage!'
+    );
+    expect(tracker.current.combat.attackers).toEqual(['orc shaman', 'orc rogue']);
+    expect(tracker.current.tally.taken).toMatchObject({ hits: 2, damage: 22 });
   });
 
   it('counts a miss as an attacker too, because it is still fighting you', () => {
@@ -3304,6 +3315,36 @@ describe('what is carried, between listings', () => {
     made.feed('[HP=33]:');
     return made;
   };
+
+  /* Something another player gave (`GiveCommand.cs`; orohost wire, 2026-10-09, upstream ac2f11ec). */
+  it('adds what another player gave and removes what it gave away', () => {
+    const { tracker, feed } = carrying();
+    feed('Killa gives you red iron axe.');
+    expect(held(tracker)).toContain('red iron axe');
+    feed('Killa gives you 2 padded gloves.');
+    expect(held(tracker).filter((name) => name === 'padded gloves')).toHaveLength(2);
+    feed('You give a torch to Killa.');
+    expect(held(tracker).some((i) => /torch/.test(i))).toBe(false);
+    // A look from a named monster is not an item.
+    const before = held(tracker).length;
+    feed('Grimjaw gives you a stern look.');
+    expect(held(tracker)).toHaveLength(before);
+  });
+
+  it('moves the purse by coins handed over either way', () => {
+    const { tracker, feed } = carrying();
+    feed('Killa gives you 3 silver nobles');
+    expect(tracker.current.inventory.coins.silver).toBe(3);
+    expect(tracker.current.inventory.wealth).toBe(70);
+    feed('You give 2 silver nobles to Killa');
+    expect(tracker.current.inventory.coins.silver).toBe(1);
+    expect(tracker.current.inventory.wealth).toBe(50);
+    // More than were counted: the count was stale, so it is unknown.
+    feed('You give 5 silver nobles to Killa');
+    expect(tracker.current.inventory.coins.silver).toBeNull();
+    expect(tracker.current.inventory.wealth).toBeNull();
+    expect(tracker.current.inventory.items.map((i) => i.name)).not.toContain('silver nobles');
+  });
 
   /* `i` lists keys on their own line, so a dropped key comes off the ring.
      Festus's festus.log, 2026-09-29: `drop 3 black star` with six on it. */

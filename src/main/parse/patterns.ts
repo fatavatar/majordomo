@@ -18,6 +18,8 @@
  */
 import type { BlockType } from '../../shared/blocks';
 import { ROOM_LIGHTS, type Afflictions } from '../../shared/character';
+import { escapeRegExp } from '../../shared/regex';
+import { TITLES_WITH_OF } from '../../shared/titles';
 
 export interface Rule {
   type: BlockType;
@@ -36,6 +38,12 @@ export interface Rule {
    * article — and never for a monster's, where the first word is `The`.
    */
   nameFallback?: boolean;
+  /**
+   * Matches only when the room or the realm names the attacker; otherwise the
+   * table goes on to the next rule. For a frame whose shape alone cannot tell
+   * a monster from anything else that ends the same way (upstream 6c0234be).
+   */
+  named?: true;
   /**
    * SGR foreground codes this line is *expected* to carry, if any. Agreement
    * raises confidence; disagreement lowers it. Never a gate.
@@ -220,6 +228,24 @@ function onsetRule(condition: keyof Afflictions): Rule {
   if (!found) throw new Error(`No onset sentence for ${condition}.`);
   return { type: found.type, pattern: found.pattern };
 }
+
+/**
+ * An item's name in a sentence about it. The names come from the world
+ * database, and 148 of gmud.zip's 2,140 carry `-`, `'` or `.` (counted over
+ * its converted items: `iron-capped staff`, `thief's kit`, `scroll of prot.
+ * from evil`). Read as `[\w ]`, `You just bought iron-capped staff for 78
+ * copper farthings.` went unread on orohost (2026-10-04, upstream 9c23972e):
+ * the buy was never confirmed, and was made again and again.
+ */
+const ITEM_NAME = "[\\w' .-]";
+
+/** The five coins as the server spells a count of them, one or many. */
+const COIN_NOUN = 'copper farthings?|silver nobles?|gold crowns?|platinum pieces?|runic coins?';
+
+/** The rank titles with ` of ` inside them, as one alternation (the `who` row). */
+const TITLE_WITH_OF = TITLES_WITH_OF.map((title) => escapeRegExp(title).replace(/ /g, '\\s+')).join(
+  '|'
+);
 
 export const RULES: Rule[] = [
   /* ---------------------------------------------------------- session */
@@ -892,6 +918,22 @@ export const RULES: Rule[] = [
   },
   {
     /*
+     * The same confirmation with the spell's own flavour after the target,
+     * which stock MajorMUD prints for many buffs: `You cast magic armour on
+     * yourself. A glimmering shield surrounds you!` (captures/056), and `at`
+     * for some: `You cast resist cold at Techno, surrounding him with a pale
+     * blue glow.` is Techno's own cast (captures/004:193). Unread, the first
+     * buff never reached the list, and the second fell to the targetless frame
+     * below with `resist cold at Techno` for the spell (upstream 7febf66b, its
+     * issue #4). An amount after the comma is the frame above, so it is kept
+     * out of this one.
+     */
+    type: 'spell-cast',
+    pattern:
+      /^(?<caster>You) cast (?<spell>[\w' -]+?) (?:on|at) (?<target>yourself|[A-Z][\w'-]*)(?:, |\. )(?!(?:for|healing|regenerating) \d).+[.!]$/
+  },
+  {
+    /*
      * The self-cast confirmation that has no `on <target>` frame at all:
      * `You cast protection from evil, and Festus is surrounded in a white
      * glow!` (live, 22 times), `You cast ethereal shield, and a shimmering
@@ -1033,6 +1075,26 @@ export const RULES: Rule[] = [
     resolve: 'attacker',
     nameFallback: true
   },
+  /*
+   * A monster's spell on this character. `Spell.cs` composes the caster as
+   * `(needsTheNamePrefix ? "The " : "") + Name`, and the test that sets the
+   * prefix (`(MessageStyle & 32) == 1`, `Spell.cs:814`, GreaterMUD source) is
+   * never true, so the line carries no article and the monster's name as the
+   * realm spells it, lowercase on Paradigm (orohost wire, 2026-10-07, upstream
+   * 6c0234be):
+   *
+   *     orc shaman casts harm on you for 17 damage!
+   *     moaning spirit draws the breath from your body for 7 damage!
+   *
+   * The second has no `you` beside the figure, only `your body`. Lowercase,
+   * so no player's blow reaches it, and `named`: a sentence the room and the
+   * realm cannot name is left to the catch-all as a blow between two others.
+   */
+  {
+    type: 'mob-hits',
+    pattern: /^(?<line>[a-z][^"]*?\b(?:you|your body)\b[^"]*?) for (?<damage>\d+) damage!/,
+    named: true
+  },
   {
     type: 'user-hits',
     pattern: /^(?<line>[^"]+?) for (?<damage>\d+) damage!$/,
@@ -1083,11 +1145,17 @@ export const RULES: Rule[] = [
    * the swinger; where neither can, the frame's own guess stands (`first`,
    * everything before a one-word verb), which is how a monster nothing has
    * listed still joins the room.
+   *
+   * Paramud ends some monsters' misses at another player with a space before
+   * the CRLF (`The big cave worm lunges at Beanis! `; `The big acid slime
+   * flails at Beanis!` in the same session has none). Wire 2026-10-08
+   * (upstream 6249394d): 102 such lines in one session, all unread, so the
+   * trailing space is allowed. GreaterMUD's `Mob.cs:1754` writes none.
    */
   {
     type: 'player-misses',
     pattern:
-      /^\s*(?<line>(?<first>(?!You\b)(?:The )?[\w'-]+(?: [\w'-]+)*?) \w+) at (?<target>(?!you\b)[\w' -]+?)(?: with (?:his|her|its|their) (?<weapon>[\w' -]+?))?!$/,
+      /^\s*(?<line>(?<first>(?!You\b)(?:The )?[\w'-]+(?: [\w'-]+)*?) \w+) at (?<target>(?!you\b)[\w' -]+?)(?: with (?:his|her|its|their) (?<weapon>[\w' -]+?))?!\s*$/,
     resolve: 'attacker',
     nameFallback: true
   },
@@ -1519,6 +1587,12 @@ export const RULES: Rule[] = [
     pattern: /^(?<player>[A-Z][\w'-]*) is an? [A-Za-z]+, (?<who>[A-Za-z][A-Za-z' -]*?) with(?:\s|$)/
   },
   { type: 'player-enters', pattern: /^(?<player>\w+) just entered the Realm\./ },
+  /*
+   * `Player.TrySearch` breaks the searcher's stealth and then says this to the
+   * room (GreaterMUD `Player.cs:1326`, source; captures 001, 012, 029;
+   * upstream 33964b50).
+   */
+  { type: 'player-searches', pattern: /^(?<player>[A-Z][\w'-]*) is searching the area\.$/ },
   { type: 'player-exits', pattern: /^(?<player>\w+) just left the Realm\./ },
   { type: 'player-disconnects', pattern: /^(?<player>\w+) just disconnected!!!/ },
 
@@ -1884,11 +1958,38 @@ export const RULES: Rule[] = [
   },
   {
     type: 'user-gets-coins',
-    pattern:
-      /^You picked up (?<count>\d+) (?<coin>copper farthings?|silver nobles?|gold crowns?|platinum pieces?|runic coins?)\.?$/
+    pattern: new RegExp(`^You picked up (?<count>\\d+) (?<coin>${COIN_NOUN})\\.?$`)
   },
   { type: 'player-gets', pattern: /^(?<player>\w+) picks up (?<item>.+)\./ },
   { type: 'player-gets', pattern: /^You took (?:(?<count>\d+) )?(?<item>.+)\./ },
+  /*
+   * A give between two players in the room (`GiveCommand.cs`; orohost wire,
+   * `Killa gives you red iron axe.`, 2026-10-09, upstream ac2f11ec). The
+   * stack's name carries its count and no article
+   * (`ItemStack.GetItemStackName`); coins end without a full stop, and
+   * `share` prints the receiving half the same way. The article guard keeps a
+   * named monster's `gives you a stern look` out of the pack.
+   */
+  {
+    type: 'user-given',
+    pattern: new RegExp(`^(?<player>\\w+) gives you (?<count>\\d+) (?<coin>${COIN_NOUN})$`)
+  },
+  {
+    type: 'user-given',
+    pattern: new RegExp(
+      `^(?<player>\\w+) gives you (?!(?:a|an|the|some|his|her|its|their) )(?:(?<count>\\d+) )?(?<item>${ITEM_NAME}+)\\.$`
+    )
+  },
+  {
+    type: 'user-gives',
+    pattern: new RegExp(`^You give (?<count>\\d+) (?<coin>${COIN_NOUN}) to (?<target>.+)$`)
+  },
+  {
+    type: 'user-gives',
+    pattern: new RegExp(
+      `^You give (?:(?<count>\\d+) )?(?<item>${ITEM_NAME}+) to (?<target>[^.]+)\\.$`
+    )
+  },
   { type: 'player-drops', pattern: /^(?<player>\w+) drops (?<item>.+)\./ },
   { type: 'player-drops', pattern: /^You dropped (?:(?<count>\d+) )?(?<item>.+)\./ },
   /*
@@ -1911,6 +2012,19 @@ export const RULES: Rule[] = [
    */
   { type: 'user-equipped', pattern: /^You are now holding (?<item>.+?)\.$/ },
   { type: 'user-equipped', pattern: /^You lit the (?<item>.+?)\.$/ },
+  /*
+   * The second line of a weapon's equip reply, live on orohost (2026-10-10,
+   * upstream e597ccdd) and in the corpus (`quick and deadly`, captures 017,
+   * 066, 119):
+   *
+   *     You are now holding platinum mace.
+   *     This weapon feels heavy in your hands.
+   */
+  { type: 'user-weapon-feel', pattern: /^This weapon feels (?<feel>heavy) in your hands\.$/ },
+  {
+    type: 'user-weapon-feel',
+    pattern: /^You are extremely (?<feel>quick) and deadly with this weapon\.$/
+  },
   { type: 'user-equipped-failed', pattern: /^You may not wear that item!/ },
   // `wear` for something already on, captured live while recovering a kit.
   { type: 'user-equipped-failed', pattern: /^You are already wearing (?<item>.+?)!$/ },
@@ -1933,7 +2047,9 @@ export const RULES: Rule[] = [
    */
   {
     type: 'light-out',
-    pattern: /^Your (?<item>[\w ]+?) (?:flickers and goes out|runs out of oil, and goes out)\.$/
+    pattern: new RegExp(
+      `^Your (?<item>${ITEM_NAME}+?) (?:flickers and goes out|runs out of oil, and goes out)\\.$`
+    )
   },
   {
     type: 'user-buys',
@@ -1947,8 +2063,9 @@ export const RULES: Rule[] = [
     // line matched nothing, so the amber talisman bought for a route never
     // read as carried and the route was never walked. The purse is left for
     // the next listing to restate.
-    pattern:
-      /^You just bought (?:(?<quantity>\d+) )?(?<item>[\w ]+) for (?:(?<price>\d+) copper farthings|nothing|(?<cost>.+?))\.$/
+    pattern: new RegExp(
+      `^You just bought (?:(?<quantity>\\d+) )?(?<item>${ITEM_NAME}+) for (?:(?<price>\\d+) copper farthings|nothing|(?<cost>.+?))\\.$`
+    )
   },
   /*
    * Selling, captured beside the buying line it mirrors:
@@ -1962,7 +2079,9 @@ export const RULES: Rule[] = [
    */
   {
     type: 'user-sells',
-    pattern: /^You sold (?:(?<count>\d+) )?(?<item>[\w '-]+) for (?<price>\d+) copper farthings\.$/
+    pattern: new RegExp(
+      `^You sold (?:(?<count>\\d+) )?(?<item>${ITEM_NAME}+) for (?<price>\\d+) copper farthings\\.$`
+    )
   },
   { type: 'user-list', pattern: /^The following items are for sale here:$/ },
   /*
@@ -2521,14 +2640,20 @@ export const BATCH_RULES: BatchRule[] = [
      *              Rand                  -  Apprentice of Mudengine
      *
      * The seam is therefore ` of `, not the double space the corpus alone
-     * suggested — the wire wins. A title is a class-and-rank string and none
-     * in either realm contains `of`; the gang name is anything at all after
-     * it. Glued into `title` it put `Squire  of EyeExploredDora` on the Realm
-     * card as a rank, and — the half that mattered — left the only realm-wide
-     * statement of gang membership read by nothing. The status flag stays
-     * last, so a gang whose last word is one to three capitals would lose it
-     * to `flags`: the same exposure a title has always had, and no gang seen
-     * on either realm has that shape.
+     * suggested — the wire wins. The gang name is anything at all after it.
+     * Some rank titles contain ` of ` themselves, and cut at the first one
+     * `Master of the Way of The Coma Machine` read as `Master` in the gang
+     * `the Way of The Coma Machine` (live, 2026-10-07, upstream cb8f9c68). So
+     * the title tries `TITLES_WITH_OF` whole first. `Lord` alone is a title
+     * too, so a row `Lord of Nature` reads as the longer title and no gang;
+     * nothing in the row tells the two apart. Glued into `title` it put
+     * `Squire  of EyeExploredDora` on the Realm card as a rank, and — the half
+     * that mattered — left the only realm-wide statement of gang membership
+     * read by nothing. The status flag is `getOpFlag()` (`Player.cs`): `S` for
+     * a sysop, `M` for a mudop, else nothing, written after a space. Any one
+     * to three capitals took the `ID` off the gang `Wizard of ID` (live,
+     * 2026-10-09, upstream 9516c1cd); a gang whose last word is a lone `S` or
+     * `M` still loses it, and nothing in the row tells.
      *
      * The alignment column is eight wide and `Criminal` fills it, so that row
      * starts at the margin with no leading space (captures/076 again); the
@@ -2543,7 +2668,9 @@ export const BATCH_RULES: BatchRule[] = [
     // client has never met.
     maxLines: 'roster',
     qualifiers: [
-      /^\s*(?:(?<alignment>Saint|Good|Neutral|Seedy|Outlaw|Criminal|Villain|Lawful|FIEND)\s+)?(?<name>[A-Z][\w'-]*)(?:\s+(?<last>[A-Z][\w'-]*))?\s+[-x]\s+(?<title>.+?)(?:\s+of (?<gang>.+?))?(?:\s+(?<flags>[A-Z]{1,3}))?\s*$/
+      new RegExp(
+        `^\\s*(?:(?<alignment>Saint|Good|Neutral|Seedy|Outlaw|Criminal|Villain|Lawful|FIEND)\\s+)?(?<name>[A-Z][\\w'-]*)(?:\\s+(?<last>[A-Z][\\w'-]*))?\\s+[-x]\\s+(?<title>${TITLE_WITH_OF}|.+?)(?:\\s+of (?<gang>.+?))?(?:\\s+(?<flags>[SM]))?\\s*$`
+      )
     ]
   },
   {
