@@ -77,6 +77,8 @@ export interface ExplorerLink {
   purseKey: string;
   /** The Explorer screen on a record; null for a character not shown, whose Explorer it is not. */
   explore: ((kind: ExplorerKind, n: number) => void) | null;
+  /** A room's panel beside the link that named it, `map/room`; null where there is none to open. */
+  openRoom: ((room: string, anchor: HTMLElement) => void) | null;
 }
 
 /** What a card is handed to link its detail to MME; a card without them draws the realm figures. */
@@ -87,6 +89,8 @@ export interface ExplorerLinkProps {
   purseKey?: string;
   /** The Explorer screen on a record; null for a character not shown. */
   explore?: ((kind: ExplorerKind, n: number) => void) | null;
+  /** A room's panel beside the link that named it; null for a character not shown. */
+  openRoom?: ((room: string, anchor: HTMLElement) => void) | null;
 }
 
 /** The link a card's detail is drawn with, kept while nothing in it changes. */
@@ -94,11 +98,13 @@ export function useExplorerLink({
   explorer = null,
   characterKey = '',
   purseKey = '',
-  explore = null
+  explore = null,
+  openRoom = null
 }: ExplorerLinkProps): ExplorerLink | null {
   return useMemo(
-    () => (explorer === null ? null : { calls: explorer, characterKey, purseKey, explore }),
-    [explorer, characterKey, purseKey, explore]
+    () =>
+      explorer === null ? null : { calls: explorer, characterKey, purseKey, explore, openRoom },
+    [explorer, characterKey, purseKey, explore, openRoom]
   );
 }
 
@@ -181,10 +187,34 @@ function isKind(tab: ExplorerTab): tab is ExplorerKind {
 }
 
 /**
+ * Where a reference in MME's detail leads from a card: a name to the
+ * slide-out beside it, a room to the room's panel with the way there on it,
+ * a shop (which neither answers) to the Explorer on it; undefined where none
+ * of them can be opened, which leaves the references as text.
+ */
+export function followFor(
+  link: Pick<ExplorerLink, 'explore' | 'openRoom'>,
+  onName: ((name: string, anchor: HTMLElement) => void) | null
+): Follow | undefined {
+  const { explore, openRoom } = link;
+  if (onName === null && explore === null && openRoom === null) return undefined;
+  return (place, text, anchor) => {
+    if (place.tab === 'rooms') {
+      if (openRoom !== null && typeof place.n === 'string') openRoom(place.n, anchor);
+    } else if (NAMED.has(place.tab)) {
+      onName?.(text, anchor);
+    } else if (explore !== null && isKind(place.tab) && typeof place.n === 'number') {
+      explore(place.tab, place.n);
+    }
+  };
+}
+
+/**
  * MME's detail drawn on a card: its text, a monster's or a class's table, a
  * shop's shelf or a chest's contents, Buy (or Buy + Learn) for an item or a
  * spell, and where it comes from. A name in it opens the slide-out beside
- * it; a shop, which the slide-out does not answer, the Explorer on it.
+ * it, a room the room's panel with the way there on it, and a shop, which
+ * neither answers, the Explorer on it.
  */
 export function ExplorerFacts({
   detail,
@@ -198,15 +228,7 @@ export function ExplorerFacts({
   onName: ((name: string, anchor: HTMLElement) => void) | null;
 }) {
   const { explore } = link;
-  const follow: Follow | undefined =
-    onName === null && explore === null
-      ? undefined
-      : (place, text, anchor) => {
-          if (NAMED.has(place.tab) && onName !== null) onName(text, anchor);
-          else if (explore !== null && isKind(place.tab) && typeof place.n === 'number') {
-            explore(place.tab, place.n);
-          }
-        };
+  const follow = followFor(link, onName);
   const item = kind === 'weapons' || kind === 'armour' || kind === 'sundry';
   return (
     <div className="reference-explorer">

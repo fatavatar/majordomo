@@ -101,9 +101,10 @@ export default function ReferencePopover({
   explorer,
   characterKey,
   purseKey,
-  explore
+  explore,
+  openRoom
 }: ReferencePopoverProps) {
-  const link = useExplorerLink({ explorer, characterKey, purseKey, explore });
+  const link = useExplorerLink({ explorer, characterKey, purseKey, explore, openRoom });
   const [entry, setEntry] = useState<ReferenceEntry | null | 'pending'>('pending');
   /*
    * The Edit open under the heading. Closed again by the next name asked
