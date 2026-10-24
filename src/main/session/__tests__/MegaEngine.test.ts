@@ -24,6 +24,7 @@ import type { WalkProgress } from '../../../shared/walk';
 import type { LoopProgress } from '../../../shared/loops';
 import { State } from '../../megamud/states';
 import { readMegaMudLoop } from '../../../shared/megamudPaths';
+import { headFor } from '../../megamud/move/destinations';
 import { Darkness, ItemFlag, SpellFlag } from '../../megamud/flags';
 
 function room(map: number, number: number, name: string, exits: WorldRoom['exits']): WorldRoom {
@@ -441,6 +442,29 @@ describe('the engine in a session', () => {
     e.s.MegaMud_AutoCombat = 0;
     expect(e.walkTo('1/2')).toBeNull();
     expect([e.s.MegaMud_AutoCombat, e.s.detourCombat]).toEqual([1, 1]);
+    e.dispose();
+  });
+
+  /*
+   * Fatty's Run to Southwind Dale (2026-10-24): put aside at the slums'
+   * locked gate while its way was planned again, the walk came back with
+   * auto-combat on and fought the rest of the way.
+   */
+  it('keeps a Run off auto-combat across a walk put aside for its way', async () => {
+    vi.useFakeTimers();
+    const { e } = engine('1/1');
+    e.s.inGame = 1;
+    e.received('\x1b[1;36mTown Square\r\n\x1b[0;32mObvious exits: north, closed door east\r\n');
+    e.s.MegaMud_AutoCombat = 1;
+    expect(e.walkTo('1/2', true)).toBeNull();
+    await planned();
+    expect([e.s.walking, e.s.MegaMud_AutoCombat]).toEqual([1, 0]);
+    // The way asked for again from where it stands, the plan not kept.
+    vi.advanceTimersByTime(60_001);
+    headFor(e.s, 0);
+    expect([e.s.walking, e.s.MegaMud_AutoCombat]).toEqual([0, 0]);
+    await planned();
+    expect([e.s.walking, e.s.MegaMud_AutoCombat, e.s.detourCombat]).toEqual([1, 0, 0]);
     e.dispose();
   });
 

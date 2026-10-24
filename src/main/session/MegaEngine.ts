@@ -599,6 +599,7 @@ export class MegaEngine {
       isStepRoom: (p, i) => this.isStepRoom(p, i),
       uncertain: (p, i) => this.uncertain(p, i),
       lostInDark: () => this.lostInDark(),
+      walkAside: () => this.parked !== null,
       opensAWay: (name) => this.host.opensAWay?.(name) ?? false,
       leaveFor: (name) => this.host.leaveFor?.(name) ?? false,
       keepCoins: () => this.host.keepCoins?.() ?? false,
