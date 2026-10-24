@@ -31,6 +31,8 @@ import type { ShopPlace, WorldLookup } from '@shared/world';
 export interface Asked {
   name: string;
   anchor: PopoverAnchor;
+  /** The row of a shared monster name chosen (Ctrl+K lists each); absent for the name alone. */
+  row?: number;
 }
 
 export interface ReferencePopoverProps extends ExplorerLinkProps {
@@ -280,6 +282,7 @@ export default function ReferencePopover({
               entry={entry}
               explorer={link}
               heading={false}
+              row={asked.row}
               level={level}
               onName={onName}
               onResize={onResize}

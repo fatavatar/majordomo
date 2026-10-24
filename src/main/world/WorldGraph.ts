@@ -74,6 +74,7 @@ import {
   type DropSources,
   type ItemAsk,
   type MobPlaces,
+  type MobRowBrief,
   type MobSpawn,
   type ItemPlaces,
   type PlaceGroup,
@@ -3174,6 +3175,31 @@ export class WorldGraph {
       found.push(...rooms);
     }
     return found;
+  }
+
+  /**
+   * Each row of a name several rows share, where nothing settled which, told
+   * apart (2026-10-24): its own health and experience (`mobRow`, the fold's
+   * where the realm keeps no row of its own) and the room name it spawns in
+   * most, with how many rooms it spawns in. Undefined for one row, or a row
+   * a room settled. Ctrl+K lists one entry per row from it.
+   */
+  rowBriefs(mob: WorldMob): MobRowBrief[] | undefined {
+    if (mob.row !== undefined || (mob.ids?.length ?? 0) < 2) return undefined;
+    return mob.ids!.map((id): MobRowBrief => {
+      const row = this.mobRow(id);
+      const places = this.mobPlaces({ ...mob, row: { id, how: 'here', steps: 0, beyond: null } });
+      const first = places?.spawns[0];
+      const experience = row?.experience ?? mob.experience;
+      return {
+        id,
+        hp: row?.hp ?? mob.hp,
+        ...(experience !== undefined ? { experience } : {}),
+        ...(first !== undefined && places !== undefined
+          ? { where: { roomName: first.roomName, rooms: places.rooms } }
+          : {})
+      };
+    });
   }
 
   /** The reverse index, built on the first ask. See `mobPlaces`. */

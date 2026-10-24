@@ -5929,6 +5929,16 @@ button.quest-plan-back {
   margin-top: 8px;
 }
 
+/* The rows a monster name holds, where nothing settled which: one picked at a time. */
+.reference-rows {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  font-size: 12px;
+  gap: 4px 6px;
+  margin-bottom: 4px;
+}
+
 button.reference-explore {
   display: block;
   font-size: 12px;

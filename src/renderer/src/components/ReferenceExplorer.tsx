@@ -109,15 +109,19 @@ export function useExplorerLink({
 }
 
 /**
- * Which of MME's lists an entry is on, and its number there; null where no
- * single row answers (a monster name several rows share, with nothing to
- * settle which). An item is on mudtool's `itemTab`: a weapon, a worn piece
- * of armour, and everything else on Sundry.
+ * Which of MME's lists an entry is on, and its number there. A monster name
+ * several rows share, with nothing to settle which (Ctrl+K asks by name
+ * alone), is the row picked (`sharedRows`), else the first. An item is on
+ * mudtool's `itemTab`: a weapon, a worn piece of armour, and everything else
+ * on Sundry.
  */
-export function explorerPlace(entry: ReferenceEntry): { kind: ExplorerKind; n: number } | null {
+export function explorerPlace(
+  entry: ReferenceEntry,
+  picked?: number
+): { kind: ExplorerKind; n: number } | null {
   switch (entry.kind) {
     case 'mob': {
-      const n = entityNumber(entry.mob);
+      const n = entityNumber(entry.mob) ?? picked ?? entry.mob.ids?.[0] ?? null;
       return n === null ? null : { kind: 'monsters', n };
     }
     case 'item':
@@ -139,15 +143,23 @@ export function explorerPlace(entry: ReferenceEntry): { kind: ExplorerKind; n: n
   }
 }
 
+/** The rows a monster name holds where nothing settled which, for the reader to pick from; else null. */
+export function sharedRows(entry: ReferenceEntry): readonly number[] | null {
+  if (entry.kind !== 'mob' || entityNumber(entry.mob) !== null) return null;
+  const ids = entry.mob.ids ?? [];
+  return ids.length > 1 ? ids : null;
+}
+
 /**
  * MME's detail for an entry: undefined while it is asked, null where MME has
- * none (no link, a realm it does not read, a row it cannot settle).
+ * none (no link, a realm it does not read).
  */
 export function useExplorerDetail(
   link: ExplorerLink | null,
-  entry: ReferenceEntry
+  entry: ReferenceEntry,
+  picked?: number
 ): ExplorerDetail | null | undefined {
-  const place = link === null ? null : explorerPlace(entry);
+  const place = link === null ? null : explorerPlace(entry, picked);
   const kind = place?.kind ?? null;
   const n = place?.n ?? null;
   const calls = link?.calls ?? null;
@@ -220,18 +232,41 @@ export function ExplorerFacts({
   detail,
   kind,
   link,
-  onName
+  onName,
+  rows = null,
+  onRow
 }: {
   detail: ExplorerDetail;
   kind: ExplorerKind;
   link: ExplorerLink;
   onName: ((name: string, anchor: HTMLElement) => void) | null;
+  /** The rows sharing a monster's name, where nothing settled which (`sharedRows`), told apart. */
+  rows?: ReadonlyArray<{ id: number; note: string | undefined }> | null;
+  onRow?: (row: number) => void;
 }) {
   const { explore } = link;
   const follow = followFor(link, onName);
   const item = kind === 'weapons' || kind === 'armour' || kind === 'sundry';
   return (
     <div className="reference-explorer">
+      {rows !== null && (
+        <div className="reference-rows" role="group">
+          <span className="quiet">{t('cards.reference.sharedRows', { count: rows.length })}</span>
+          {rows.map((row) => (
+            <button
+              aria-pressed={row.id === detail.number}
+              className="chip pick"
+              key={row.id}
+              onClick={() => onRow?.(row.id)}
+              onMouseDown={keepFocus}
+              type="button"
+            >
+              #{row.id}
+              {row.note !== undefined && <span className="quiet"> {row.note}</span>}
+            </button>
+          ))}
+        </div>
+      )}
       <p className="ex-text">
         <Runs follow={follow} runs={detail.text} />
       </p>

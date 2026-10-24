@@ -4,6 +4,7 @@ import EntityNumber from './EntityNumber';
 import {
   ExplorerFacts,
   explorerPlace,
+  sharedRows,
   useExplorerDetail,
   type ExplorerLink
 } from './ReferenceExplorer';
@@ -19,6 +20,7 @@ import { asRoomReference, roomId } from '@shared/world';
 import type {
   ItemHandover,
   MobPlaces,
+  MobRowBrief,
   MobSpawn,
   PlaceGroup,
   ShopPlace,
@@ -32,6 +34,9 @@ import type {
 import type { MobLoreEntry } from '@shared/lore';
 import type { FightSummary } from '@shared/fights';
 
+/** A room clicked in the detail, and the element clicked, for a panel beside it. */
+type RoomClick = (map: number, room: number, at?: HTMLElement) => void;
+
 /** One thing the realm answered with, whatever kind of thing it is. */
 export type ReferenceEntry =
   | {
@@ -44,6 +49,8 @@ export type ReferenceEntry =
       verdict: Verdict | null;
       /** Where the realm puts it; null where it puts it nowhere. See `MobPlaces`. */
       places: MobPlaces | null;
+      /** Each row of a name several rows share, told apart; null for one row or one settled. */
+      rows: MobRowBrief[] | null;
     }
   | { kind: 'item'; name: string; item: WorldItem }
   | { kind: 'spell'; name: string; spell: WorldSpell }
@@ -59,7 +66,8 @@ export function flattenLookup(found: WorldLookup): ReferenceEntry[] {
       learned: found.learned?.[mob.name] ?? null,
       fights: found.fights?.[mob.name] ?? null,
       verdict: found.verdicts?.[mob.name] ?? null,
-      places: found.mobPlaces?.[mob.name] ?? null
+      places: found.mobPlaces?.[mob.name] ?? null,
+      rows: found.mobRows?.[mob.name] ?? null
     })),
     ...found.items.map((item): ReferenceEntry => ({ kind: 'item', name: item.name, item })),
     ...found.spells.map((spell): ReferenceEntry => ({ kind: 'spell', name: spell.name, spell })),
@@ -70,6 +78,29 @@ export function flattenLookup(found: WorldLookup): ReferenceEntry[] {
       className: entry
     }))
   ];
+}
+
+/**
+ * One row of a shared monster name, told apart from its twins: its health,
+ * its experience and where it spawns (2026-10-24). Ctrl+K's hint and the
+ * card's row picker both say it.
+ */
+export function mobRowText(row: MobRowBrief): string {
+  const parts = [t('cards.reference.row.hp', { hp: row.hp })];
+  if (row.experience !== undefined) {
+    parts.push(t('cards.reference.row.exp', { exp: row.experience.toLocaleString() }));
+  }
+  if (row.where !== undefined) {
+    parts.push(
+      row.where.rooms > 1
+        ? t('cards.reference.row.whereMore', {
+            room: row.where.roomName,
+            more: row.where.rooms - 1
+          })
+        : row.where.roomName
+    );
+  }
+  return parts.join(' · ');
 }
 
 /** A mean as a figure: whole above ten, one decimal below, never a rounded-away zero. */
@@ -198,7 +229,7 @@ function PlacesIn({
   more: number;
   /** The title on a group of several: what opening it shows. */
   choose: (room: string) => string;
-  onRoom: ((map: number, room: number) => void) | null;
+  onRoom: RoomClick | null;
   onResize: (() => void) | null;
 }) {
   /*
@@ -221,7 +252,7 @@ function PlacesIn({
             ) : only !== undefined ? (
               <button
                 className="lookup"
-                onClick={() => onRoom(only.map, only.room)}
+                onClick={(event) => onRoom(only.map, only.room, event.currentTarget)}
                 title={t('cards.reference.item.shopRouteTitle', { room: spawn.roomName })}
                 type="button"
               >
@@ -272,7 +303,7 @@ function PlacesIn({
                   <button
                     className="lookup"
                     key={`${room.map}/${room.room}`}
-                    onClick={() => onRoom(room.map, room.room)}
+                    onClick={(event) => onRoom(room.map, room.room, event.currentTarget)}
                     title={t('cards.reference.item.shopRouteTitle', { room: spawn.roomName })}
                     type="button"
                   >
@@ -333,7 +364,7 @@ function MobDetail({
   places: MobPlaces | null;
   realm: RealmFamily | null;
   classNames: Record<number, string>;
-  onRoom: ((map: number, room: number) => void) | null;
+  onRoom: RoomClick | null;
   onResize: (() => void) | null;
   /** MME's detail in place of the realm figures; null draws them, undefined neither (asking). */
   facts: ReactNode | null | undefined;
@@ -839,7 +870,7 @@ function SoldBy({
 }: {
   shops: readonly string[];
   places: Record<string, ShopPlace>;
-  onRoom: ((map: number, room: number) => void) | null;
+  onRoom: RoomClick | null;
 }) {
   return (
     <dd>
@@ -851,7 +882,7 @@ function SoldBy({
             {place?.at === 'one' && onRoom !== null ? (
               <button
                 className="lookup"
-                onClick={() => onRoom(place.map, place.room)}
+                onClick={(event) => onRoom(place.map, place.room, event.currentTarget)}
                 title={t('cards.reference.item.shopRouteTitle', { room: place.roomName })}
                 type="button"
               >
@@ -940,7 +971,7 @@ function GivenBy({
   onName
 }: {
   from: readonly ItemHandover[];
-  onRoom: ((map: number, room: number) => void) | null;
+  onRoom: RoomClick | null;
   onName: ((name: string, anchor: HTMLElement) => void) | null;
 }) {
   return (
@@ -985,7 +1016,7 @@ function GivenBy({
                 {at !== null && onRoom !== null ? (
                   <button
                     className="lookup"
-                    onClick={() => onRoom(at.map, at.room)}
+                    onClick={(event) => onRoom(at.map, at.room, event.currentTarget)}
                     title={t('cards.reference.item.shopRouteTitle', { room: place })}
                     type="button"
                   >
@@ -1027,7 +1058,7 @@ function ItemDetail({
   realm: RealmFamily | null;
   classNames: Record<number, string>;
   shopPlaces: Record<string, ShopPlace>;
-  onRoom: ((map: number, room: number) => void) | null;
+  onRoom: RoomClick | null;
   onName: ((name: string, anchor: HTMLElement) => void) | null;
   onResize: (() => void) | null;
   supplies: SupplyList | null;
@@ -1496,6 +1527,8 @@ export interface ReferenceDetailProps {
    * or a spell. Null draws the figures, as a realm MME does not read does.
    */
   explorer?: ExplorerLink | null;
+  /** The row of a shared monster name to open on: the one chosen in Ctrl+K. */
+  row?: number;
 }
 
 /**
@@ -1517,10 +1550,28 @@ export default function ReferenceDetail({
   onResize = null,
   supplies = null,
   heading = true,
-  explorer = null
+  explorer = null,
+  row: startRow
 }: ReferenceDetailProps) {
-  const mme = useExplorerDetail(explorer, entry);
-  const place = explorerPlace(entry);
+  /*
+   * The row a reader picked of a monster name several rows share, while it
+   * is that entry being shown; a new entry starts from its first again.
+   */
+  const [picked, setPicked] = useState<{ entry: ReferenceEntry; row: number } | null>(null);
+  const row = picked?.entry === entry ? picked.row : startRow;
+  const mme = useExplorerDetail(explorer, entry, row);
+  /*
+   * A room in the detail opens the room's own panel beside it, with the way
+   * there on it (2026-10-24), as a room in MME's words does; the route panel
+   * straight away where there is no panel to open.
+   */
+  const openRoom = explorer?.openRoom ?? null;
+  const roomClick: RoomClick | null =
+    openRoom === null
+      ? onRoom
+      : (map, room, at) =>
+          at === undefined ? onRoom?.(map, room) : openRoom(roomId(map, room), at);
+  const place = explorerPlace(entry, row);
   /*
    * MME's words where it has them (2026-10-24): undefined while asked, so a
    * card does not draw the old figures and then swap them out; null where it
@@ -1528,7 +1579,19 @@ export default function ReferenceDetail({
    */
   const facts: ReactNode | null | undefined =
     mme === undefined ? undefined : mme === null || explorer === null || place === null ? null : (
-      <ExplorerFacts detail={mme} kind={place.kind} link={explorer} onName={onName} />
+      <ExplorerFacts
+        detail={mme}
+        kind={place.kind}
+        link={explorer}
+        onName={onName}
+        onRow={(chosen) => setPicked({ entry, row: chosen })}
+        rows={
+          sharedRows(entry)?.map((id) => {
+            const brief = entry.kind === 'mob' ? entry.rows?.find((r) => r.id === id) : undefined;
+            return { id, note: brief === undefined ? undefined : mobRowText(brief) };
+          }) ?? null
+        }
+      />
     );
   return (
     <div
@@ -1553,7 +1616,7 @@ export default function ReferenceDetail({
           learned={entry.learned}
           mob={entry.mob}
           onResize={onResize}
-          onRoom={onRoom}
+          onRoom={roomClick}
           places={entry.places}
           realm={realm}
           verdict={entry.verdict}
@@ -1566,7 +1629,7 @@ export default function ReferenceDetail({
           item={entry.item}
           onName={onName}
           onResize={onResize}
-          onRoom={onRoom}
+          onRoom={roomClick}
           realm={realm}
           shopPlaces={shopPlaces}
           supplies={supplies}
