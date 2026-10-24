@@ -687,6 +687,8 @@ notices:
         'Could not write {fileName}: {message}. The console keeps working; nothing more is kept
         for the next launch.'
     closeRefused: '{refusalReason} Disconnect it before closing the tab.'
+    # Connect pressed while a dial was still waiting for the far end to answer.
+    dialAgain: The last dial had no answer yet. Giving it up and dialing again.
     # What each character was walking, taken up again when it is next in the game.
     movement:
       readError:
@@ -1613,7 +1615,7 @@ tabs:
     closeAria: Close {characterName}
     dialClosingTooltip: Closing…
     dialConnectAria: Connect {characterName}
-    dialConnectingTooltip: Connecting…
+    dialAgainTooltip: Still dialing with no answer. Press to dial {characterName} again.
     dialDisconnectAria: Disconnect {characterName}
     dialStopRetryingAria: Stop reconnecting {characterName}
     dragHint: Drag to reorder the characters
@@ -4638,6 +4640,7 @@ session:
     deadLink: No answer from the realm for {seconds}s — treating the connection as lost.
     disconnected: Disconnected.
     hungUp: Hung up on a connection that had stopped answering.
+    resolved: '{host} resolved to {address}.'
     loginStalled: The login got no further for {seconds}s. Treating the connection as lost.
     failed: 'Connection failed: {detail}'
     socketError: 'Connection error: {message}'

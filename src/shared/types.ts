@@ -70,6 +70,15 @@ export type ConnectionPhase =
   | 'closed'
   | 'error';
 
+/**
+ * Whether a Connect waits for this phase to end. Only a close does: a dial
+ * still waiting on the socket is given up and made again, and an open socket
+ * is `connected`, where Connect hangs up (upstream 74005e34).
+ */
+export function dialWaits(phase: ConnectionPhase): boolean {
+  return phase === 'closing';
+}
+
 export interface ConnectionState {
   phase: ConnectionPhase;
   target: ConnectionTarget | null;

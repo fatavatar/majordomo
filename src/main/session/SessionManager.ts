@@ -157,7 +157,6 @@ import { sameTarget } from '../../shared/types';
 import { t } from '../app/i18n';
 import type {
   ConnectionEnd,
-  ConnectionPhase,
   ConnectionState,
   ConnectionTarget,
   StreamChunk,
@@ -1515,6 +1514,10 @@ export class SessionManager {
      * recording tap, and it must never be given work that could delay a paint.
      */
     this.client.on('bytes', (payload) => this.sink.bytes?.(payload));
+    // Said, and so captured, so a dial with no answer names the address it went to (upstream 74005e34).
+    this.client.on('resolved', (host, address) =>
+      this.sink.notice(t('session.connection.resolved', { host, address }))
+    );
 
     this.client.on('data', (text) => {
       const at = Date.now();
@@ -2024,10 +2027,13 @@ export class SessionManager {
    * so this latches the answer and the handler reads it.
    */
   disconnect(by: ConnectionEnd = 'player'): ConnectionState {
-    if (!this.client.connected) return this.current;
+    if (!this.client.connected && !this.client.dialling) return this.current;
     if (this.megaHangingUp) by = 'player';
-    else if (by === 'player' && this.mega) {
+    else if (by === 'player' && this.mega && this.client.connected) {
       /*
+       * A dial still waiting on the socket has nobody to log off, so it is
+       * dropped below without the engine (upstream 74005e34).
+       *
        * The engine told first, as MegaMUD's own Disconnect is (`0x7d4`): it
        * logs off and hangs up through `hangUp` back into here, and marks the
        * close as the player's so it does not redial it as a lost carrier.
@@ -2175,10 +2181,10 @@ export class SessionManager {
      * one socket keep their order, so sending the keystroke first is the
      * whole fix.
      */
-    this.client.send(outgoing);
+    const sent = this.client.send(outgoing);
 
-    // A line typed at a closed socket went nowhere, so nothing is owed for it.
-    if (committed && this.client.connected) this.link.noteSent();
+    // A line typed while the socket dials or after it closed went nowhere, so nothing is owed.
+    if (committed && sent) this.link.noteSent();
     /*
      * A half-typed line stands automation down; a committed or erased one
      * hands the floor straight back. State, not a timer — the grace this
@@ -6053,21 +6059,6 @@ export class SessionManager {
     this.sink.state(this.current);
   }
 }
-
-/**
- * Phases in which a connect attempt should be refused as already in progress.
- *
- * `connected` is deliberately *not* one of them, despite being busy: dialling
- * while connected is how you switch servers, and the palette offers exactly
- * that. What must be refused is a second attempt arriving while the first is
- * still in flight — `connect` tears down whatever is open before it dials, so
- * that would kill a connection seconds from succeeding.
- */
-export const BUSY_PHASES: ReadonlySet<ConnectionPhase> = new Set([
-  'resolving',
-  'connecting',
-  'negotiating'
-]);
 
 /**
  * The command a status line echoed after its colon, or null for a bare prompt.

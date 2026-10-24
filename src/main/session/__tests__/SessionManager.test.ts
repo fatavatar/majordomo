@@ -6,7 +6,6 @@ import path from 'node:path';
 import zlib from 'node:zlib';
 
 import {
-  BUSY_PHASES,
   editorInput,
   IDLE_FLUSH_MS,
   SessionManager,
@@ -1021,23 +1020,6 @@ describe('credentials in the record', () => {
     manager.send('who\r');
     await until(() => commands.length > 0);
     expect(commands[0]).toBe('who');
-  });
-});
-
-describe('connecting twice', () => {
-  it('refuses a second attempt while the first is still in flight', async () => {
-    // `connect` tears down whatever is open before it dials, so a second call
-    // arriving mid-handshake kills a connection that was about to succeed.
-    // React's StrictMode made that the *normal* case in development: it mounts
-    // the renderer twice, and both mounts said "ready".
-    expect(BUSY_PHASES.has('connecting')).toBe(true);
-    expect(BUSY_PHASES.has('resolving')).toBe(true);
-  });
-
-  it('does not treat being connected as a reason to refuse', async () => {
-    // Dialling while connected is how you switch servers, and the palette
-    // offers it.
-    expect(BUSY_PHASES.has('connected')).toBe(false);
   });
 });
 

@@ -200,7 +200,7 @@ export interface ToolbarSubject {
    * under the pointer (`ToolbarButton.disabled`).
    */
   inRealm: boolean;
-  /** Whether a dial or a hang-up is already in flight. */
+  /** Whether a Connect waits for the phase to end: a close under way (`dialWaits`). */
   dialling: boolean;
   /** Routing, looping or stopped, and whether it is going. See `movementOf`. */
   movement: Movement;
@@ -288,9 +288,8 @@ export function toolbarButtons(subject: ToolbarSubject): ToolbarButton[] {
     // The action, not the state — the tab rail's own rule for its dial button.
     icon: connected ? 'logout' : 'login',
     on: connected,
-    // Main refuses the second attempt anyway, and a button that stays
-    // pressable through a fifteen-second connect reads as one that did
-    // nothing.
+    // Pressable through a dial with no answer, which a press makes again;
+    // greyed only while a close is under way (upstream 74005e34).
     disabled: dialling,
     run: () => (connected ? disconnect() : connect())
   };

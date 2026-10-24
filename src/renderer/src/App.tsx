@@ -215,13 +215,14 @@ import {
   type SessionId,
   type SessionSummary
 } from '@shared/ipc';
-import type {
-  ConnectionState,
-  ConnectionTarget,
-  StreamLine,
-  TelnetEvent,
-  TerminalActionName,
-  TerminalSize
+import {
+  dialWaits,
+  type ConnectionState,
+  type ConnectionTarget,
+  type StreamLine,
+  type TelnetEvent,
+  type TerminalActionName,
+  type TerminalSize
 } from '@shared/types';
 import { setTuning, tuning } from './lib/tuning';
 
@@ -2543,7 +2544,8 @@ export default function App() {
   const railVisible = hudOpen || railOpen;
 
   const connected = state.phase === 'connected';
-  const busy = state.phase === 'connecting' || state.phase === 'closing';
+  // Refused only while a close is under way; a dial with no answer is made again.
+  const busy = dialWaits(state.phase);
 
   /**
    * Dial the character being shown.
@@ -2584,15 +2586,15 @@ export default function App() {
    * character would disconnect the wrong one, which on this realm costs
    * something (docs/greatermud/combat.md).
    *
-   * Refused while a dial or a close is already in flight. `connect()` in main
-   * refuses a second attempt itself, so this is about the button rather than
-   * the socket: one that stays pressable through a fifteen-second dial reads as
-   * one that did nothing.
+   * Refused while a close is in flight. A dial with no answer yet is given up
+   * and made again by main, so a press during one dials again (upstream
+   * 74005e34): refusing it locked a player out for 15 s of every 30 while a
+   * realm restarted.
    */
   const toggleSessionConnection = useCallback(
     (id: SessionId) => {
       const phase = views[id]?.state.phase ?? 'idle';
-      if (phase === 'connecting' || phase === 'closing') return;
+      if (dialWaits(phase)) return;
       /*
        * **A retry pending counts as connected for this button**, because the
        * question it answers is *is something dialling this character* and
@@ -5436,7 +5438,7 @@ export default function App() {
           // The same reading the rail's `inGame` makes, because the toolbar is
           // the one card drawn on both sides of it.
           inRealm: v.character.phase === 'in-game',
-          dialling: v.state.phase === 'connecting' || v.state.phase === 'closing',
+          dialling: dialWaits(v.state.phase),
           // One reading of the two progresses, shared with the Navigation
           // card, so the button and the card cannot disagree about whether
           // this character is going anywhere.

@@ -22,13 +22,13 @@
  * per query rather than held per graph.
  */
 import { Backscroll } from './Backscroll';
+import { t } from '../app/i18n';
 import { SessionCapture } from './SessionCapture';
 import { SessionLog } from './SessionLog';
 import { Reconnect } from './Reconnect';
 import type { MegaEngineSetup } from './MegaEngine';
 import type { ResumableMovement } from './MovementBook';
 import {
-  BUSY_PHASES,
   NO_REALM_TABLES,
   SessionManager,
   type RealmData,
@@ -560,22 +560,22 @@ export class SessionHost {
   /**
    * Dials a session, opening its log and capture first.
    *
-   * Only the in-flight phases are refused. Connecting while *connected* is a
-   * legitimate way to switch servers, and the palette offers it; refusing a
-   * second attempt while one is still in flight is what stops a call arriving
-   * mid-handshake from killing a connection that was seconds from succeeding.
+   * Connecting while *connected* is a legitimate way to switch servers, and
+   * the palette offers it. A dial still waiting on the socket is given up and
+   * made again (`dial`).
    */
   async connect(id: SessionId, target: ConnectionTarget): Promise<ConnectionState> {
     const slot = this.ensure(id);
     /*
-     * A dial somebody asked for supersedes one that was scheduled. Without
-     * this, pressing Connect during a retry's wait leaves the timer armed, and
-     * it fires into a connection that is already up — tearing down the socket
-     * the player just made.
+     * A Connect at the realm a reconnect is dialling back is that reconnect
+     * dialling now, and a failure goes back on the ladder (upstream 74005e34).
+     * Any other dial supersedes the scheduled one: left armed, the timer would
+     * fire into the connection the player just made and tear it down.
      */
-    slot.reconnect.cancel();
+    const ladder = slot.reconnect.redials(target);
+    if (!ladder) slot.reconnect.cancel();
     slot.manager.stopRedial();
-    return this.dial(slot, target);
+    return ladder ? slot.reconnect.now() : this.dial(slot, target);
   }
 
   /**
@@ -588,12 +588,15 @@ export class SessionHost {
   private async dial(slot: SessionSlot, target: ConnectionTarget): Promise<ConnectionState> {
     const id = slot.id;
 
-    if (BUSY_PHASES.has(slot.manager.state.phase)) {
-      this.options.notice({
-        session: id,
-        message: 'Already connecting; ignoring the second attempt.'
-      });
-      return slot.manager.state;
+    /*
+     * A dial with no answer yet is given up and made again (upstream
+     * 74005e34): nothing has gone out on it, and refusing it locked a player
+     * out for 15 s of every 30 while Paradigm restarted. `TelnetClient.connect`
+     * drops the old socket, and the manager's own `connect` returns quietly on
+     * `DialCancelled`.
+     */
+    if (slot.manager.state.phase === 'connecting') {
+      this.options.notice({ session: id, message: t('notices.session.dialAgain') });
     }
 
     const config = this.options.configFor(id);
