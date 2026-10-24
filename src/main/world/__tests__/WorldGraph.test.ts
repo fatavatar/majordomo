@@ -27,7 +27,7 @@ import {
   landingRooms
 } from '../../../shared/world';
 import { roomId } from '../../../shared/world';
-import { tuning } from '../../app/tuning';
+import { setTuning, tuning } from '../../app/tuning';
 import { questLevel } from '../../../shared/quests';
 import type { QuestStep } from '../../../shared/quests';
 
@@ -3107,9 +3107,10 @@ describe('the levers that open an exit', () => {
      * cheapest order, however many there are: down the hall and back here,
      * pulled on the way back, which costs the same as on the way down.
      */
-    it('plans a set of many rooms with one lever at the door', () => {
+    /** A door at 1/1 opened by a lever there and one in each of five halls along 1/11–1/15. */
+    const leverHalls = (): WorldGraph => {
       const hall = [11, 12, 13, 14, 15];
-      const graph = makeWorld([
+      return makeWorld([
         {
           m: 1,
           r: 1,
@@ -3137,21 +3138,81 @@ describe('the levers that open an exit', () => {
           cmd: [{ say: [`pull lever ${r}`], opens: { room: '1/1', direction: 'n' } }]
         }))
       ]);
-      const route = graph.route('1/1', '1/2', { packKnown: true });
+    };
+    const hallRound = [
+      ['1/1', '1/11', ['pull lever']],
+      ['1/11', '1/12', null],
+      ['1/12', '1/13', null],
+      ['1/13', '1/14', null],
+      ['1/14', '1/15', null],
+      ['1/15', '1/14', ['pull lever 15']],
+      ['1/14', '1/13', ['pull lever 14']],
+      ['1/13', '1/12', ['pull lever 13']],
+      ['1/12', '1/11', ['pull lever 12']],
+      ['1/11', '1/1', ['pull lever 11']],
+      ['1/1', '1/2', null]
+    ];
+
+    it('plans a set of many rooms with one lever at the door', () => {
+      const route = leverHalls().route('1/1', '1/2', { packKnown: true });
       expect(route.blocked).toBe(false);
-      expect(route.steps.map((step) => [step.from, step.to, step.pull?.say ?? null])).toEqual([
-        ['1/1', '1/11', ['pull lever']],
-        ['1/11', '1/12', null],
-        ['1/12', '1/13', null],
-        ['1/13', '1/14', null],
-        ['1/14', '1/15', null],
-        ['1/15', '1/14', ['pull lever 15']],
-        ['1/14', '1/13', ['pull lever 14']],
-        ['1/13', '1/12', ['pull lever 13']],
-        ['1/12', '1/11', ['pull lever 12']],
-        ['1/11', '1/1', ['pull lever 11']],
-        ['1/1', '1/2', null]
+      expect(route.steps.map((step) => [step.from, step.to, step.pull?.say ?? null])).toEqual(
+        hallRound
+      );
+    });
+
+    /*
+     * The legs' searches are kept between routes (2026-10-23), so a second
+     * traveller of the same shape is planned from them, and one kept out of a
+     * hall is not: the hall's lever is out of reach and the door a wall.
+     */
+    it('plans a lever round again from kept legs, and not for another shape of traveller', () => {
+      const graph = leverHalls();
+      const steps = (traveller: Traveller): unknown[] =>
+        graph.route('1/1', '1/2', traveller).steps.map((s) => [s.from, s.to, s.pull?.say ?? null]);
+      expect(steps({ packKnown: true })).toEqual(hallRound);
+      expect(steps({ packKnown: true })).toEqual(hallRound);
+      expect(graph.route('1/1', '1/2', { packKnown: true, avoid: new Set(['1/13']) }).blocked).toBe(
+        true
+      );
+      expect(steps({ packKnown: true })).toEqual(hallRound);
+    });
+
+    /*
+     * And let go when the tuning changes, every price being read from it: the
+     * Guardroom is three rooms' walk or a rope priced at `portalPenalty`.
+     */
+    it('plans a lever errand afresh under new tuning', () => {
+      const graph = makeWorld([
+        {
+          m: 1,
+          r: 1,
+          n: 'Pathway',
+          x: { w: { m: 1, r: 2, i: 'Door [1000 picklocks/strength]' }, n: { m: 1, r: 21 } },
+          cmd: [{ say: ['climb rope'], to: '1/9' }]
+        },
+        { m: 1, r: 2, n: 'Beyond', x: {} },
+        { m: 1, r: 21, n: 'Stair', x: { e: { m: 1, r: 22 } } },
+        { m: 1, r: 22, n: 'Landing', x: { e: { m: 1, r: 9 } } },
+        {
+          m: 1,
+          r: 9,
+          n: 'Guardroom',
+          x: { w: { m: 1, r: 1 } },
+          cmd: [{ say: ['lift portcullis'], opens: { room: '1/1', direction: 'w' } }]
+        }
       ]);
+      const out = (): string | undefined =>
+        graph.route('1/1', '1/2', { packKnown: true }).steps[0]?.direction;
+      expect(out()).toBe('n');
+      const shipped = tuning();
+      try {
+        setTuning({ ...shipped, world: { ...shipped.world, portalPenalty: 0 } });
+        expect(out()).toBe('portal');
+      } finally {
+        setTuning(shipped);
+      }
+      expect(out()).toBe('n');
     });
   });
 

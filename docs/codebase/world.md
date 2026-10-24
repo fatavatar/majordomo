@@ -56,7 +56,10 @@ the answers built on it:
   planned again with that lever's budget lifted (`planReaching`). A set of
   levers over several rooms is one round, any number of rooms, in the
   cheapest order (`bestOrder`), with a lever at the door pulled on the way
-  out.
+  out. A leg is one Dijkstra out of its room, kept and taken further by the
+  next leg out of the same room (`leverLeg`), and kept between routes for
+  the same shape of traveller, up to `LEG_TREE_ROOMS` rooms in all and let
+  go when the tuning changes.
 - **Hidden exits.** `Hidden/Passable` is a plain exit the room does not
   list, priced as any other unless a lever opens it; `Hidden/Searchable`
   costs the search, and `Hidden/Needs N Actions` the levers.

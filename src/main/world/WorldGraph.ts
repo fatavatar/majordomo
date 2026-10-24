@@ -128,6 +128,7 @@ import {
   itemKind
 } from '../../shared/items';
 import { tuning } from '../app/tuning';
+import type { TuningConfig } from '../../shared/internal';
 import { counterPriceInCopper, currencyOfCode } from '../../shared/coins';
 import { respawnSeconds } from '../../shared/hunting';
 import { spellTargeting } from '../../shared/spellcraft';
@@ -423,6 +424,38 @@ interface LeverErrand {
    */
   legs: { cameFrom: Map<RoomId, { prev: RoomId; exit: WorldExit | PortalExit }>; cost: number }[];
 }
+
+/**
+ * A lever leg's Dijkstra out of one room, kept to be taken further by the
+ * next leg out of it (`WorldGraph.leverLeg`).
+ */
+interface LegTree {
+  /** Whether it is one of `WorldGraph.legTrees`, whose rooms are counted. */
+  kept: boolean;
+  /** The traveller it prices for, and the one it keeps out of places for. */
+  traveller: Traveller;
+  who: Traveller;
+  limit: number;
+  discount: number;
+  best: Map<RoomId, number>;
+  cameFrom: Map<RoomId, { prev: RoomId; exit: WorldExit | PortalExit }>;
+  settled: Set<RoomId>;
+  open: MinHeap<RoomId>;
+  /** The room settled last, whose steps onward are taken only when the search goes on. */
+  reached: RoomId | null;
+}
+
+/**
+ * How many rooms the kept lever legs' searches hold in all (`legTree`): the
+ * Ebon Blade's set is seven searches of up to thirty thousand rooms each.
+ */
+const LEG_TREE_ROOMS = 400_000;
+
+/**
+ * How many shapes of traveller the kept legs are named for before all are let
+ * go: a purse that changes with every kill is a new shape for every route.
+ */
+const LEG_SHAPES = 256;
 
 /** What a caller wants beyond the plan itself. */
 export interface RouteOptions {
@@ -1894,6 +1927,19 @@ export class WorldGraph {
    * the Treetops' chain of five took thirty seconds a route.
    */
   private readonly deeper = new WeakMap<Traveller, { walker: Traveller; reach: Traveller }>();
+  /**
+   * The lever legs' searches, by room, bound and shape of traveller, oldest
+   * used first (`legTree`).
+   */
+  private readonly legTrees = new Map<string, LegTree>();
+  /** The tuning the kept legs were priced by, and as text, to tell a new one from a resent one. */
+  private legRules: { held: TuningConfig | null; text: string } = { held: null, text: '' };
+  /** How many rooms the kept legs' searches have settled in all. */
+  private legRooms = 0;
+  /** Each traveller's shape for the kept legs (`legShape`), and each shape's short name. */
+  private readonly legShapes = new WeakMap<Traveller, string | null>();
+  private readonly shapeNames = new Map<string, string>();
+  private shapesNamed = 0;
   /**
    * Every item name the realm has, for recognising one in a line of text.
    * Empty before v11, where the console recognised only the ~100 items some
@@ -4622,6 +4668,16 @@ export class WorldGraph {
    * the same prunings as the plan — a draw is not a way, and the rooms and
    * edges a traveller is kept out of stay out — so a leg is walked exactly as
    * it was priced.
+   *
+   * **One search out of a room, taken on as far as each leg asks** (ours,
+   * 2026-10-23). Every leg out of a room is the same Dijkstra stopped at a
+   * different room, popped in the same order up to it, so the search is kept
+   * (`LegTree`) and taken on from where it stopped: a set's round asks every
+   * room of it for every other, and the Ebon Blade's seven levers were
+   * fifty-six searches, each through the guild's traps and across most of the
+   * realm. Kept across travellers and routes for the same shape of traveller
+   * (`legShape`); the way to each room is the one it was, because a room
+   * settled is never touched again.
    */
   private leverLeg(
     from: RoomId,
@@ -4634,40 +4690,134 @@ export class WorldGraph {
   } | null {
     const goal = this.rooms.get(to);
     if (goal === undefined || !this.rooms.has(from)) return null;
-    const cameFrom = new Map<RoomId, { prev: RoomId; exit: WorldExit | PortalExit }>();
-    const best = new Map<RoomId, number>([[from, 0]]);
-    const settled = new Set<RoomId>();
-    const open = new MinHeap<RoomId>();
-    open.push(0, from);
     // Kept out of as the plan is, save a place the leg starts or ends inside.
     const who = this.insideOf(traveller, [from, to]);
-    const discount = this.discountFor(traveller);
-    while (open.size > 0) {
-      const id = open.pop()!;
-      if (settled.has(id)) continue;
-      settled.add(id);
-      const cost = best.get(id)!;
-      if (id === to) return { cameFrom, cost };
-      const here = this.rooms.get(id);
-      if (here === undefined) continue;
-      for (const exit of [...here.exits, ...this.portalsFrom(id)]) {
-        if (exit.requirement?.spellEffect === 'scatters') continue;
-        const nextId = this.beyond(exit);
-        const next = this.rooms.get(nextId);
-        if (next === undefined || settled.has(nextId)) continue;
-        if (traveller.avoid?.has(nextId) === true) continue;
-        if (traveller.avoidEdges?.has(`${id}|${exit.direction}`) === true) continue;
-        if (this.keptOut(who, exit, next) !== null) continue;
-        const price = this.stepCost(id, exit, next, traveller, false, discount);
-        if (price === null) continue;
-        const tentative = cost + price;
-        if (tentative > limit || tentative >= (best.get(nextId) ?? Infinity)) continue;
-        best.set(nextId, tentative);
-        cameFrom.set(nextId, { prev: id, exit });
-        open.push(tentative, nextId);
+    const tree = this.legTree(from, traveller, who, limit);
+    while (!tree.settled.has(to)) {
+      if (tree.reached !== null) this.legOnward(tree, tree.reached);
+      tree.reached = null;
+      const id = tree.open.pop();
+      if (id === undefined) return null;
+      if (tree.settled.has(id)) continue;
+      tree.settled.add(id);
+      if (tree.kept) this.legRooms += 1;
+      tree.reached = id;
+    }
+    return { cameFrom: tree.cameFrom, cost: tree.best.get(to)! };
+  }
+
+  /** The steps out of one room a leg's search has settled (`leverLeg`). */
+  private legOnward(tree: LegTree, id: RoomId): void {
+    const here = this.rooms.get(id);
+    if (here === undefined) return;
+    const { traveller, who, limit, discount, best, cameFrom, settled, open } = tree;
+    const cost = best.get(id)!;
+    for (const exit of [...here.exits, ...this.portalsFrom(id)]) {
+      if (exit.requirement?.spellEffect === 'scatters') continue;
+      const nextId = this.beyond(exit);
+      const next = this.rooms.get(nextId);
+      if (next === undefined || settled.has(nextId)) continue;
+      if (traveller.avoid?.has(nextId) === true) continue;
+      if (traveller.avoidEdges?.has(`${id}|${exit.direction}`) === true) continue;
+      if (this.keptOut(who, exit, next) !== null) continue;
+      const price = this.stepCost(id, exit, next, traveller, false, discount);
+      if (price === null) continue;
+      const tentative = cost + price;
+      if (tentative > limit || tentative >= (best.get(nextId) ?? Infinity)) continue;
+      best.set(nextId, tentative);
+      cameFrom.set(nextId, { prev: id, exit });
+      open.push(tentative, nextId);
+    }
+  }
+
+  /**
+   * The search a leg out of `from` is taken from: the one kept for this shape
+   * of traveller where there is one, else a new one, kept where the traveller
+   * has a shape. The kept are held to `LEG_TREE_ROOMS` rooms in all, the
+   * longest unused let go first, and all let go when the tuning changes,
+   * since every price is read from it.
+   */
+  private legTree(from: RoomId, traveller: Traveller, who: Traveller, limit: number): LegTree {
+    const fresh = (kept: boolean): LegTree => {
+      const open = new MinHeap<RoomId>();
+      open.push(0, from);
+      return {
+        kept,
+        traveller,
+        who,
+        limit,
+        discount: this.discountFor(traveller),
+        best: new Map([[from, 0]]),
+        cameFrom: new Map(),
+        settled: new Set(),
+        open,
+        reached: null
+      };
+    };
+    const shape = this.legShape(traveller);
+    const inside = who === traveller ? '' : this.legShape(who);
+    if (shape === null || inside === null) return fresh(false);
+    const rules = tuning();
+    if (rules !== this.legRules.held) {
+      const text = JSON.stringify(rules);
+      if (text !== this.legRules.text) this.forgetLegs();
+      this.legRules = { held: rules, text };
+    }
+    const key = `${from}|${limit}|${shape}|${inside}`;
+    let tree = this.legTrees.get(key);
+    if (tree !== undefined) {
+      this.legTrees.delete(key);
+    } else {
+      tree = fresh(true);
+      for (const [old, kept] of this.legTrees) {
+        if (this.legRooms <= LEG_TREE_ROOMS) break;
+        this.legRooms -= kept.settled.size;
+        this.legTrees.delete(old);
       }
     }
-    return null;
+    this.legTrees.set(key, tree);
+    return tree;
+  }
+
+  /**
+   * What a leg's search depends on in this traveller, as text — every field
+   * but what waits in the rooms, which a leg leaves to `riskAlong` — or null
+   * where a field is a reading this text cannot hold, and the search is not
+   * kept (`legTree`).
+   */
+  private legShape(traveller: Traveller): string | null {
+    const held = this.legShapes.get(traveller);
+    if (held !== undefined) return held;
+    const text =
+      traveller.danger !== undefined || traveller.hazard !== undefined
+        ? null
+        : JSON.stringify(traveller, (_key, value: unknown) => {
+            if (typeof value === 'function') return undefined;
+            if (value instanceof Set) return [...(value as Set<unknown>)].map(String).sort();
+            if (value !== null && typeof value === 'object' && !Array.isArray(value)) {
+              return Object.fromEntries(
+                Object.entries(value).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+              );
+            }
+            return value;
+          });
+    let shape: string | null = null;
+    if (text !== null) {
+      // Named by a number never given twice, so a traveller's name outlives a
+      // forgetting without ever meaning another shape.
+      if (this.shapeNames.size >= LEG_SHAPES) this.forgetLegs();
+      shape = this.shapeNames.get(text) ?? `s${(this.shapesNamed += 1)}`;
+      this.shapeNames.set(text, shape);
+    }
+    this.legShapes.set(traveller, shape);
+    return shape;
+  }
+
+  /** Every kept leg let go, and the shapes' names with them (`legTree`). */
+  private forgetLegs(): void {
+    this.legTrees.clear();
+    this.legRooms = 0;
+    this.shapeNames.clear();
   }
 
   /**
