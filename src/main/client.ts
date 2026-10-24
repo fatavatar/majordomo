@@ -161,7 +161,7 @@ import {
 } from '../shared/explorer';
 import { planRoute } from './world/RoutePlanner';
 import type { EngineMemory, MegaEngineSetup } from './session/MegaEngine';
-import type { LearnedSpellTable, SessionSummary } from '../shared/ipc';
+import type { DebugSave, LearnedSpellTable, SessionSummary } from '../shared/ipc';
 import { EMPTY_CHARACTER } from '../shared/character';
 import { IDLE_WALK } from '../shared/walk';
 import {
@@ -191,6 +191,7 @@ import {
 } from '../shared/world';
 import { LoopDraftCache } from './world/loopDraft';
 import { errorMessage } from '../shared/values';
+import { BUILD, versionWithCommit } from '../shared/build';
 import { formatDebugReport } from '../shared/debug';
 import { fileSlug } from '../shared/files';
 /*
@@ -805,10 +806,11 @@ function labelOf(id: SessionId): { name: string; server: string; accent: string 
  * first report this wrote said `version 33.4.11` next to `Electron 33.4.11`,
  * which tells whoever is diagnosing it nothing at all. The repository's own
  * `package.json` is bundled at build time and is the same file electron-builder
- * takes the packaged version from, so the two cannot disagree.
+ * takes the packaged version from, so the two cannot disagree. The commit it
+ * was built from rides beside it (`src/shared/build.ts`).
  */
 function appVersion(): string {
-  return APP_VERSION;
+  return versionWithCommit(APP_VERSION, BUILD, t);
 }
 
 /** Where session logs go: the configured directory, or the per-user data dir. */
@@ -1811,7 +1813,7 @@ function registerIpc(): void {
    * Named after the character and the moment, because a player reporting two
    * problems in an evening has to be able to say which file is which.
    */
-  handle(Invoke.saveDebug, async (_caller, session: SessionId) => {
+  handle(Invoke.saveDebug, async (caller, session: SessionId): Promise<DebugSave> => {
     const slot = host?.get(session);
     if (!slot) return { error: t('app.debug.noSession') };
     const who = labelOf(session);
@@ -1836,7 +1838,7 @@ function registerIpc(): void {
         ),
         'utf8'
       );
-      return { path: file };
+      return { path: file, download: platform.deliver(caller, file) };
     } catch (error) {
       // Said out loud rather than swallowed: a save button that quietly did
       // nothing is worse than one that reports why it could not.
@@ -4031,7 +4033,8 @@ function build(): void {
     publishRosters,
     quitting,
     appIcon,
-    abort
+    abort,
+    logDirectory
   });
 }
 

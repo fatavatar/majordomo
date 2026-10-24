@@ -21,22 +21,40 @@ import '@xterm/xterm/css/xterm.css';
  * preload failed to run has no socket to open and would otherwise die
  * constructing one here, outside the boundary that would have said so.
  */
-const bridged = (window as { mudengine?: IpcApi }).mudengine;
-if (bridged === undefined) {
-  if (/^https?:$/.test(location.protocol)) window.mudengine = createWebBridge();
-  else throw new Error('The preload did not run, so this window has no bridge to main.');
-}
-
 const container = document.getElementById('root');
 if (!container) throw new Error('Root container missing from index.html');
+const root = createRoot(container);
+
+/*
+ * A browser tab the client no longer knows (it restarted, or the tab was
+ * away too long; `lib/webLink.ts`) is a new window to main, holding nothing.
+ * Mounting the tree afresh re-runs the one attach flow the desktop runs
+ * (`clientReady`, the roster, each console's attach and backscroll) without
+ * reloading the page (upstream 4e94f8bf).
+ */
+let mounted = 0;
+const mount = (): void => {
+  mounted += 1;
+  root.render(
+    <StrictMode>
+      <ErrorBoundary>
+        <App key={mounted} />
+      </ErrorBoundary>
+    </StrictMode>
+  );
+};
+
+const bridged = (window as { mudengine?: IpcApi }).mudengine;
+if (bridged === undefined) {
+  if (/^https?:$/.test(location.protocol)) {
+    const bridge = new AbortController();
+    // A hot update builds a second bridge; the first one's socket and timers go.
+    import.meta.hot?.dispose(() => bridge.abort());
+    window.mudengine = createWebBridge(mount, bridge.signal);
+  } else throw new Error('The preload did not run, so this window has no bridge to main.');
+}
 
 // index.html carries the literal title as the pre-boot fallback; the dictionary owns it from here.
 document.title = t('app.windowTitle');
 
-createRoot(container).render(
-  <StrictMode>
-    <ErrorBoundary>
-      <App />
-    </ErrorBoundary>
-  </StrictMode>
-);
+mount();

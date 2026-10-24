@@ -39,6 +39,19 @@ main's thread, where they would freeze the socket: route planning
   over the socket (`renderer/src/lib/webBridge.ts`). This is how the Docker
   image runs, and `npm run web` runs it outside Docker.
 
+  **A tab outlives its socket.** Everything main sends a tab is numbered and
+  held until the tab acknowledges it (`host/web/link.ts`), and everything the
+  tab sends is numbered and taken once. A tab that dials again says hello as
+  itself and is sent what it missed (`host/web/tabs.ts`,
+  `renderer/src/lib/webLink.ts`), so nothing on its screen is redrawn. It is
+  kept for `tuning.web.resumeMs`, up to `resumeBytes`; past either, or when
+  the client restarted, it comes back as a new window and remounts. A beat
+  each ping sweep lets the page notice a link the browser still shows open.
+  Character and automation pushes go as the fields that changed
+  (`host/web/patches.ts`), deflated where the browser offers it, and a page
+  holding another build's code reloads onto the running one. Each tab's link
+  and how it fared go to `logs/web.log`.
+
 `client.ts` never learns which host it has. Whatever differs (windows, a file
 picker, the clipboard, revealing a file) is a duty of the `Host` interface
 (`host/Host.ts`), and a host that cannot do something says so. Only

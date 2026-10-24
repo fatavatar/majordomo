@@ -119,6 +119,8 @@ export interface ClientHooks {
    * sentence that says why and skips the teardown.
    */
   abort(reason: string): void;
+  /** Where the session logs go, as the options file says (`logging.directory`). */
+  logDirectory(): string;
 }
 
 /**
@@ -174,6 +176,12 @@ export interface Host {
   reveal(target: string, kind: 'file' | 'directory'): Promise<boolean>;
   /** A native file picker. Null when dismissed — or when there is no such thing. */
   chooseFile(caller: Caller, choice: FileChoice): Promise<string | null>;
+  /**
+   * Hand a file main has written to whoever asked for it. The link their
+   * browser downloads it from, or null where the file is already on the
+   * asker's own disk (upstream 8db9a39c).
+   */
+  deliver(caller: Caller, file: string): string | null;
   /** The system clipboard, or null where the window has to keep its own. */
   readonly clipboard: { read(): string; write(text: string): void } | null;
   /** Put the quit confirmation up and wait for the answer. */

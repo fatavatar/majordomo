@@ -31,6 +31,7 @@ import { canRestore, type GearAction } from '@shared/gear';
 import { knownGangs } from './lib/gangs';
 import { ago, knownPlayerNames, presentPlayerNames } from './lib/players';
 import { NameIndex } from './lib/names';
+import { readShown, writeShown } from './lib/shownPanes';
 import PlayersCard from './components/PlayersCard';
 import GangCard from './components/GangCard';
 import SettingsScreen, {
@@ -1206,8 +1207,11 @@ export default function App() {
    * six documents rather than watching four characters. See docs/profiles.md
    * §7.3.
    */
-  const [paneIds, setPaneIds] = useState<SessionId[]>([]);
-  const [focusedPane, setFocusedPane] = useState(0);
+  // Seeded from the last panes drawn, so a remount after a lost web socket, a
+  // reload or a relaunch comes back to them (upstream 3a3eb4aa).
+  const [shown] = useState(readShown);
+  const [paneIds, setPaneIds] = useState<SessionId[]>(shown.panes);
+  const [focusedPane, setFocusedPane] = useState(shown.at);
 
   /**
    * The panes, filtered to characters that are still loaded.
@@ -1224,6 +1228,11 @@ export default function App() {
 
   const paneAt = Math.min(focusedPane, Math.max(0, panes.length - 1));
   const session = panes[paneAt] ?? NO_SESSION;
+  // Nothing is written before the roster arrives, or a reload would forget
+  // the choice it is about to restore.
+  useEffect(() => {
+    if (panes.length > 0) writeShown({ panes, at: paneAt });
+  }, [panes, paneAt]);
 
   /** Every session is a character with a name worth showing; none is no rail. */
   const showTabs = sessions.length > 0;

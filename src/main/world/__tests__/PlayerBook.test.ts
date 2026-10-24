@@ -75,10 +75,25 @@ describe('what a realm knows about its players', () => {
     first.flush();
 
     const again = store();
-    expect(again.forRealm('orohost:2427').recall().map((f) => f.name)).toEqual(['Rend']);
-    expect(again.forRealm('bbs.example:23').recall().map((f) => f.name)).toEqual(['Soul']);
+    expect(
+      again
+        .forRealm('orohost:2427')
+        .recall()
+        .map((f) => f.name)
+    ).toEqual(['Rend']);
+    expect(
+      again
+        .forRealm('bbs.example:23')
+        .recall()
+        .map((f) => f.name)
+    ).toEqual(['Soul']);
     again.forRealm('orohost:2427').remember(facts({ lastSeen: 2_000 }));
-    expect(again.forRealm('orohost:2427').recall().map((f) => f.name)).toContain('Soul');
+    expect(
+      again
+        .forRealm('orohost:2427')
+        .recall()
+        .map((f) => f.name)
+    ).toContain('Soul');
   });
 
   /*

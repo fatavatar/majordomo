@@ -7,7 +7,7 @@
  * envelope is `src/shared/rpc.ts`; the server side is
  * `src/main/host/WebHost.ts`.
  *
- * Three things the desktop asks main for are answered in the window here,
+ * Four things the desktop asks main for are answered in the window here,
  * because main in web mode is on another machine:
  *
  * - **the clipboard** — `navigator.clipboard`, which a browser tab may use
@@ -16,18 +16,33 @@
  * - **the realm picker** — the window's own, over `Invoke.browseHome`
  *   (`lib/pickers.ts`), because the disk is the client's and not the
  *   viewer's;
- * - **a lost socket** — said out loud over the whole window, and the page
- *   reloads itself once the client answers again, which re-attaches every
- *   character and replays the backscroll main kept for exactly this.
+ * - **a saved file** — the debug report is written on the client's disk as
+ *   on the desktop, then fetched into the browser's downloads over the link
+ *   main hands back (`Host.deliver`);
+ * - **a lost socket** — `lib/webLink.ts` dials again and the client sends
+ *   what was missed, so the window carries on as it was. Only a client that
+ *   no longer knows the tab makes `onRenewed` remount the window, which
+ *   re-attaches every character and replays the backscroll main kept
+ *   (upstream 4e94f8bf).
  *
- * Calls made before the socket opens are queued, not dropped: `App` sends
- * `clientReady` on its first effect and the handshake is still in flight.
+ * A call made while the link is down waits for it and goes when it is back,
+ * except a key: one typed once the window is covered goes nowhere, and one
+ * older than `webLostCoverMs` when the link comes back is not sent, since
+ * keys typed into a dead link would arrive as a burst of moves.
  */
-import { bridgeOver, Push, type IpcApi, type Notice } from '@shared/ipc';
-import { asRpcOutbound, RPC_PATH, trimArgs, type RpcRequest } from '@shared/rpc';
+import {
+  bridgeOver,
+  Invoke,
+  Push,
+  Send,
+  type DebugSave,
+  type IpcApi,
+  type Notice
+} from '@shared/ipc';
+import { trimArgs, type RpcOutbound } from '@shared/rpc';
 import { t } from './i18n';
 import { hasRealmPicker, pickRealm } from './pickers';
-import { tuning } from './tuning';
+import { openWebLink } from './webLink';
 
 type Listener = (payload: unknown) => void;
 
@@ -36,13 +51,17 @@ interface Pending {
   reject(error: Error): void;
 }
 
-export function createWebBridge(): IpcApi {
+/** The keys a player types: each goes stale while the link is down (the header's reason). */
+const TYPED: ReadonlySet<string> = new Set([Send.input, Send.macro]);
+
+/**
+ * @param onRenewed The client no longer knows this tab; the window remounts.
+ * @param signal Ends the bridge: its timers, its listeners and its socket.
+ */
+export function createWebBridge(onRenewed: () => void, signal: AbortSignal): IpcApi {
   const listeners = new Map<string, Set<Listener>>();
   const pending = new Map<number, Pending>();
-  const queue: RpcRequest[] = [];
-  let socket: WebSocket | null = null;
   let nextId = 1;
-  let lost = false;
 
   /** A notice into the console, from the window itself. Same shape as main's. */
   const notice = (message: string): void => {
@@ -50,92 +69,48 @@ export function createWebBridge(): IpcApi {
     for (const listener of listeners.get(Push.notice) ?? []) listener(payload);
   };
 
-  const url = (): string => {
-    const scheme = location.protocol === 'https:' ? 'wss' : 'ws';
-    return `${scheme}://${location.host}${RPC_PATH}`;
-  };
-
-  const transmit = (request: RpcRequest): void => {
-    if (socket !== null && socket.readyState === WebSocket.OPEN) {
-      socket.send(JSON.stringify(request));
-    } else {
-      queue.push(request);
+  const take = (message: RpcOutbound): void => {
+    if (message.k === 'push') {
+      for (const listener of listeners.get(message.c) ?? []) listener(message.p);
+      return;
     }
+    const entry = pending.get(message.id);
+    if (!entry) return;
+    pending.delete(message.id);
+    if ('e' in message) entry.reject(new Error(message.e));
+    else entry.resolve(message.r);
   };
 
-  /**
-   * The socket is gone. The window says so over everything, then asks the
-   * client every `webReconnectMs` whether it is back and reloads when it is.
-   * A reload rather than a re-handshake: the attach flow was written for a
-   * renderer that mounts afresh, and reusing it is the one path that cannot
-   * drift from the desktop's.
-   *
-   * Every call waiting on the socket is left waiting, deliberately, and so
-   * is every call made from now on. Rejecting them was tried first and every
-   * one surfaced as an uncaught rejection: the callers are the same effects
-   * and handlers the desktop runs, and on the desktop the bridge cannot fail
-   * — Electron's IPC outlives the window — so none of them catches. The tab
-   * is covered and about to reload; a promise that never settles under it
-   * costs nothing, where seven errors nobody can act on cost the console.
-   */
-  const onLost = (): void => {
-    if (lost) return;
-    lost = true;
-    pending.clear();
-    showLost();
-    const probe = (): void => {
-      fetch('/health', { cache: 'no-store' })
-        .then((response) => {
-          if (response.ok) location.reload();
-          else setTimeout(probe, tuning().webReconnectMs);
-        })
-        .catch(() => setTimeout(probe, tuning().webReconnectMs));
-    };
-    setTimeout(probe, tuning().webReconnectMs);
-  };
-
-  const connect = (): void => {
-    const ws = new WebSocket(url());
-    socket = ws;
-    ws.onopen = () => {
-      for (const request of queue.splice(0)) ws.send(JSON.stringify(request));
-    };
-    ws.onmessage = (event) => {
-      let parsed: unknown;
-      try {
-        parsed = JSON.parse(String(event.data));
-      } catch {
-        return;
+  const link = openWebLink(
+    {
+      frame: take,
+      /*
+       * Every call still waiting is left waiting, deliberately: rejecting
+       * them surfaced each as an uncaught rejection, since on the desktop the
+       * bridge cannot fail and none of the callers catches. The remount drops
+       * the callers, and a promise that never settles under them costs nothing.
+       */
+      renewed: () => {
+        pending.clear();
+        onRenewed();
       }
-      const message = asRpcOutbound(parsed);
-      if (message === null) return;
-      if (message.k === 'push') {
-        for (const listener of listeners.get(message.c) ?? []) listener(message.p);
-        return;
-      }
-      const entry = pending.get(message.id);
-      if (!entry) return;
-      pending.delete(message.id);
-      if ('e' in message) entry.reject(new Error(message.e));
-      else entry.resolve(message.r);
-    };
-    ws.onclose = onLost;
-    ws.onerror = () => ws.close();
-  };
+    },
+    signal
+  );
 
   const send = (channel: string, ...args: unknown[]): void => {
-    transmit({ k: 'send', c: channel, a: trimArgs(args) });
+    const request = { k: 'send', c: channel, a: trimArgs(args) } as const;
+    if (!TYPED.has(channel)) link.send(request);
+    // A key typed into a covered window goes nowhere (the header's reason).
+    else if (!link.covered) link.send(request, true);
   };
 
   const invoke = <T>(channel: string, ...args: unknown[]): Promise<T> =>
     new Promise<T>((resolve, reject) => {
-      // Left waiting, for the reason `onLost` gives: the tab is covered and
-      // about to reload, and a rejection here reaches nobody who catches.
-      if (lost) return;
       const id = nextId;
       nextId += 1;
       pending.set(id, { resolve: (value) => resolve(value as T), reject });
-      transmit({ k: 'invoke', id, c: channel, a: trimArgs(args) });
+      link.send({ k: 'invoke', id, c: channel, a: trimArgs(args) });
     });
 
   const subscribe = <T>(channel: string, handler: (payload: T) => void): (() => void) => {
@@ -151,12 +126,25 @@ export function createWebBridge(): IpcApi {
     };
   };
 
-  connect();
+  /** A file main wrote and offered, saved into the browser's downloads (upstream 8db9a39c). */
+  const download = (link: string | null): void => {
+    if (link === null) return;
+    const anchor = document.createElement('a');
+    anchor.href = link;
+    anchor.download = '';
+    anchor.click();
+  };
 
   return bridgeOver(
     { invoke, send, subscribe },
     {
       host: 'web',
+      // Written on the client's disk as on the desktop, then fetched here.
+      saveDebug: async (session) => {
+        const saved = await invoke<DebugSave>(Invoke.saveDebug, session);
+        if ('path' in saved) download(saved.download);
+        return saved;
+      },
       // The tab is on the viewer's machine and main is not, so raising *this*
       // window means this window. The browser grants it off a notification click.
       raiseWindow: async () => {
@@ -198,24 +186,4 @@ export function createWebBridge(): IpcApi {
       }
     }
   );
-}
-
-/**
- * The whole window, covered, with one sentence.
- *
- * Outside React on purpose: the bridge is what knows the socket is gone, and
- * it is constructed before React mounts. `.link-lost` is styled in
- * `index.css` from the same tokens as everything else.
- */
-function showLost(): void {
-  if (document.getElementById('link-lost') !== null) return;
-  const cover = document.createElement('div');
-  cover.id = 'link-lost';
-  cover.className = 'link-lost';
-  cover.setAttribute('role', 'alert');
-  const panel = document.createElement('div');
-  panel.className = 'link-lost-panel';
-  panel.textContent = t('web.link.lost');
-  cover.appendChild(panel);
-  document.body.appendChild(cover);
 }

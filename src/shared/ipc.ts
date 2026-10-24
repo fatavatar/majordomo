@@ -180,6 +180,21 @@ export interface Addressed<T> {
 }
 
 /**
+ * The bug report written, or the failure. `download` is the link a browser
+ * tab fetches the written file from, null where the window shares the
+ * client's disk (`Host.deliver`).
+ */
+export type DebugSave = { path: string; download: string | null } | { error: string };
+
+/** A push's payload as `Addressed`, where it names a session, or null. */
+export function addressedOf(payload: unknown): Addressed<unknown> | null {
+  if (typeof payload !== 'object' || payload === null) return null;
+  const session = (payload as Record<string, unknown>)['session'];
+  if (typeof session !== 'string') return null;
+  return { session, payload: (payload as Record<string, unknown>)['payload'] };
+}
+
+/**
  * What the window is running under.
  *
  * `electron` is the desktop client: a `BrowserWindow` with the preload as its
@@ -1303,7 +1318,7 @@ export interface IpcApi {
   /** Everything the debug ring holds, and how much it has already dropped. */
   getDebug(session: SessionId): Promise<{ records: DebugRecord[]; dropped: number }>;
   /** Writes the bug report and answers with where it went, or the failure. */
-  saveDebug(session: SessionId): Promise<{ path: string } | { error: string }>;
+  saveDebug(session: SessionId): Promise<DebugSave>;
   getCharacter(session: SessionId): Promise<CharacterState>;
   routeTo(session: SessionId, map: number, room: number): Promise<Route>;
   /**
