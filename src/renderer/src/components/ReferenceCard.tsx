@@ -3,6 +3,7 @@ import { memo, useEffect, useMemo, useState } from 'react';
 
 import BentoCard, { type CardChrome } from './BentoCard';
 import EntityNumber from './EntityNumber';
+import { useExplorerLink, type ExplorerLinkProps } from './ReferenceExplorer';
 import ReferenceDetail, {
   entryFigure,
   entryKey,
@@ -16,7 +17,7 @@ import type { RealmFamily } from '@shared/character';
 import { t } from '../lib/i18n';
 import type { WorldLookup } from '@shared/world';
 
-export interface ReferenceCardProps extends CardChrome {
+export interface ReferenceCardProps extends CardChrome, ExplorerLinkProps {
   /** Asks the character's own realm. Two characters may be on two realms. */
   lookup(query: string): Promise<WorldLookup>;
   /** What the realm says this character can do, for the "can I cast it" mark. */
@@ -60,9 +61,10 @@ export interface ReferenceCardProps extends CardChrome {
  * card is for the name you do not have in front of you. Both draw
  * `ReferenceDetail`, so they cannot disagree.
  *
- * **It reads; it does not act.** Nothing here sends a command: the one
- * control in this client that sends what you did not type is the arbiter,
- * where a decision can be reviewed and cancelled.
+ * **It reads, and acts only through Buy.** Where MMUD Explorer answers for
+ * the thing (2026-10-24), its Buy, Buy + Wear and Buy + Learn send the
+ * character on the same errand the Explorer's do, with where and for how
+ * much said before the press; nothing else here sends a command.
  */
 function ReferenceCard({
   lookup,
@@ -71,8 +73,13 @@ function ReferenceCard({
   onRoom = null,
   onName = null,
   supplies = null,
+  explorer,
+  characterKey,
+  purseKey,
+  explore,
   ...chrome
 }: ReferenceCardProps) {
+  const link = useExplorerLink({ explorer, characterKey, purseKey, explore });
   const [query, setQuery] = useState('');
   const [found, setFound] = useState<WorldLookup>({
     mobs: [],
@@ -149,6 +156,7 @@ function ReferenceCard({
           <ReferenceDetail
             classNames={found.classNames}
             entry={chosen}
+            explorer={link}
             level={level}
             onName={onName}
             onRoom={onRoom}

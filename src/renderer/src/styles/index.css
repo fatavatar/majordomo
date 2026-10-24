@@ -5912,6 +5912,29 @@ button.quest-plan-back {
   width: 100%;
 }
 
+/*
+ * MMUD Explorer's detail on a card (2026-10-24): across the readout's two
+ * columns, between this client's own rows above and the places below.
+ */
+.readout > .reference-explorer {
+  grid-column: 1 / -1;
+  min-width: 0;
+}
+
+.reference-explorer .ex-text {
+  margin-top: 2px;
+}
+
+.reference-explorer .ex-heading {
+  margin-top: 8px;
+}
+
+button.reference-explore {
+  display: block;
+  font-size: 12px;
+  margin-top: 8px;
+}
+
 /* MME's own text, its line breaks kept. */
 .ex-text {
   line-height: 1.5;

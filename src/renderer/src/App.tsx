@@ -43,6 +43,7 @@ import SettingsScreen, {
 import StandbyCard from './components/StandbyCard';
 import StatsCard from './components/StatsCard';
 import GearCard from './components/GearCard';
+import { explorerCalls, type ExplorerCalls } from './components/ReferenceExplorer';
 import ConversationCard from './components/ConversationCard';
 import BanksCard from './components/BanksCard';
 import QuestCard from './components/QuestCard';
@@ -528,6 +529,8 @@ interface CardContext {
   loadGear(options: GearOptions): ReturnType<IpcApi['explorerGear']>;
   /** Buy, or Buy + Wear, for this character. */
   buyItem(item: number, wear: boolean): ReturnType<IpcApi['explorerBuy']>;
+  /** MMUD Explorer's detail and Buy for the Reference card's entries, this character's. */
+  explorer: ExplorerCalls;
   /** The Explorer opened on an item; null for a character not shown, whose Explorer it is not. */
   explore: ((kind: ExplorerKind, item: number) => void) | null;
   /**
@@ -636,6 +639,8 @@ interface AddressedActions {
   loadHunting(measure: string | null): ReturnType<IpcApi['huntingGrounds']>;
   loadGear(options: GearOptions): ReturnType<IpcApi['explorerGear']>;
   buyItem(item: number, wear: boolean): ReturnType<IpcApi['explorerBuy']>;
+  /** MMUD Explorer's detail and Buy for the Reference card's entries. */
+  explorer: ExplorerCalls;
   startMoving(loop: string | null): void;
   stopMoving(): void;
   /** Re-base the Combat Stats card to this character's totals as they stand. */
@@ -680,6 +685,17 @@ function wornKey(character: CharacterState): string {
       .map((item) => item.name)
       .sort()
       .join(',')
+  ].join('|');
+}
+
+/** What Buy's plan answers for beside the gear: the purse, the room, the vaults. */
+function purseKey(character: CharacterState): string {
+  return [
+    character.inventory.wealth ?? '',
+    character.room.name ?? '',
+    character.room.map ?? '',
+    character.room.number ?? '',
+    character.banks.map((bank) => `${bank.name}:${bank.copper}`).join(',')
   ].join('|');
 }
 
@@ -1065,6 +1081,9 @@ function cardElement(id: CardId, ctx: CardContext): ReactNode {
       return (
         <ReferenceCard
           {...chrome}
+          characterKey={wornKey(character)}
+          explore={ctx.explore}
+          explorer={ctx.explorer}
           level={character.progress.level}
           lookup={ctx.lookupName}
           /*
@@ -1077,6 +1096,7 @@ function cardElement(id: CardId, ctx: CardContext): ReactNode {
           */
           onName={ctx.chooseOnMap === null ? null : ctx.inspect}
           onRoom={ctx.chooseOnMap}
+          purseKey={purseKey(character)}
           realm={character.realm}
           supplies={ctx.chooseOnMap === null ? null : ctx.supplies}
         />
@@ -2989,16 +3009,11 @@ export default function App() {
     (item: number) => api.explorerLearn(session, item),
     [api, session]
   );
-  // What Buy's plan answers for beside the gear: the purse, the room, the vaults.
-  const explorerPurseKey = [
-    character.inventory.wealth ?? '',
-    character.room.name ?? '',
-    character.room.map ?? '',
-    character.room.number ?? '',
-    character.banks.map((bank) => `${bank.name}:${bank.copper}`).join(',')
-  ].join('|');
+  const explorerPurseKey = purseKey(character);
   // What the lists answer for: read again when the class, level or gear change.
   const explorerKey = wornKey(character);
+  // The slide-out's link to MME: the shown character's, as the slide-out is.
+  const popoverExplorer = useMemo(() => explorerCalls(session, api), [session, api]);
   /*
    * The EQ tab's calls, and what its page answers for beside the gear: the
    * pack, its reported weight, and the blessings up.
@@ -5288,6 +5303,7 @@ export default function App() {
         loadHunting: (measure) => api.huntingGrounds(sid, measure),
         loadGear: (options) => api.explorerGear(sid, options),
         buyItem: (item, wear) => api.explorerBuy(sid, item, wear),
+        explorer: explorerCalls(sid, api),
         startMoving: (loop) => startMovingRef.current(sid, loop, null),
         stopMoving: () => void api.stopMoving(sid),
         // Through a ref like `selectPlayer` beside it: this one changes state
@@ -5407,6 +5423,7 @@ export default function App() {
         loadHunting: bound.loadHunting,
         loadGear: bound.loadGear,
         buyItem: bound.buyItem,
+        explorer: bound.explorer,
         explore: shown ? openExplorerAt : null,
         runHunt: shown ? runHunt : null,
         createHunt: shown ? createHunt : null,
@@ -6149,6 +6166,9 @@ export default function App() {
       {asked !== null && (
         <ReferencePopover
           asked={asked}
+          characterKey={explorerKey}
+          explore={openExplorerAt}
+          explorer={popoverExplorer}
           level={character.progress.level}
           lookup={lookupName}
           onDismiss={dismissAsked}
@@ -6163,6 +6183,7 @@ export default function App() {
             dismissAsked();
             chooseOnMap(map, room);
           }}
+          purseKey={explorerPurseKey}
           realm={character.realm}
           rules={referenceRules}
           supplies={suppliesBundle(session)}

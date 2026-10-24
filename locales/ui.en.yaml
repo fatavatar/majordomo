@@ -2864,6 +2864,7 @@ cards:
     ofYours: 'of your {hp}'
   reference:
     emptyPrompt: Type a name, or click one on a card.
+    openInExplorer: Open in MMUD Explorer
     edit:
       button: Edit
       clear: Clear my row
