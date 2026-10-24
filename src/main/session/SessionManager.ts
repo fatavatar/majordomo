@@ -1199,16 +1199,8 @@ export class SessionManager {
     });
 
     this.link = new LinkWatch({
-      dead: (seconds) => {
-        // Said before the socket goes, so the console reads in the order it
-        // happened: this is why the connection dropped, then that it dropped.
-        // A safety feature that acts without saying so is one nobody can tell
-        // from a bug.
-        this.sink.notice(t('session.connection.deadLink', { seconds }));
-        // Hung up as a *loss*, not a disconnect: `close` reports `graceful`
-        // false, so the loop is held rather than stopped and `Reconnect` dials
-        // back if this character asked it to. Whether it does is not decided
-        // here.
+      notice: (message) => this.sink.notice(message),
+      hangUp: () => {
         this.hungUpDead = true;
         this.client.abandon();
       }
@@ -1510,7 +1502,9 @@ export class SessionManager {
      */
     this.secret = login.password;
     this.login = new LoginAutomator(login, this.queue, {
-      notice: (message) => this.sink.notice(message)
+      notice: (message) => this.sink.notice(message),
+      promptOwed: () => this.link.owePrompt(),
+      prompted: () => this.link.notePrompt()
     });
     /*
      * Raw bytes first, and deliberately before `data`.
@@ -2007,6 +2001,7 @@ export class SessionManager {
       this.patch({ phase: 'connected', connectedAt: Date.now(), detail: null });
       this.mega?.connected();
       this.sink.notice(t('session.connection.connected', { host: target.host, port: target.port }));
+      this.login.opened();
     } catch (error) {
       if (error instanceof DialCancelled) return this.current; // `close` reports it
       const detail = errorMessage(error);

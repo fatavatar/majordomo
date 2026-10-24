@@ -4638,6 +4638,7 @@ session:
     deadLink: No answer from the realm for {seconds}s — treating the connection as lost.
     disconnected: Disconnected.
     hungUp: Hung up on a connection that had stopped answering.
+    loginStalled: The login got no further for {seconds}s. Treating the connection as lost.
     failed: 'Connection failed: {detail}'
     socketError: 'Connection error: {message}'
   hunt:

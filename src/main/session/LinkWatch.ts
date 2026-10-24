@@ -1,14 +1,12 @@
 /**
- * Noticing that a connection has died without the socket saying so.
+ * Noticing that a connection has died without the socket saying so: a NAT
+ * table that forgot the flow, a host gone without a FIN. It counts only while
+ * an answer is owed, and on expiry says which and hangs up as a loss, so the
+ * loop is held and `Reconnect` decides. Two things can be owed:
  *
- * Everything else in this client that reacts to a lost connection reacts to a
- * socket that **closed**: `SessionManager`'s `close` handler decides whether
- * anybody asked for it, and `Reconnect` dials back the remainder. None of that
- * can see the failure this exists for. A NAT table that forgot the flow, a host
- * that went away without a FIN, a link that dropped mid-round: each leaves a
- * writable socket nothing will ever answer again, and the client sat at one
- * reporting `connected`, with the loop still nominally running, until somebody
- * came back to the keyboard and found out.
+ * - `reply`: a line reached the wire, and the next byte in pays it.
+ * - `prompt`: on the way in, the next prompt is owed after the socket opens
+ *   and after each login answer. The echo of the answer does not pay it.
  *
  * Two rules decide what it measures.
  *
@@ -30,23 +28,45 @@
  * the character's own `autoReconnect`.
  *
  * The threshold is `tuning.reconnect.silentForMs`, read at each arm so a change
- * reaches a session that is already running; `0` switches it off.
+ * reaches a session that is already running; `0` switches both off. The
+ * prompt owed on the way in is upstream 7a48e3a3 (2026-10-06: a login that
+ * echoed the password and then stood silent for 7h43m, redialled by nothing).
  */
+import { t } from '../app/i18n';
 import { tuning } from '../app/tuning';
 
-export interface LinkWatchEvents {
-  /** The link is dead. Hang up as a loss and say so. */
-  dead(seconds: number): void;
+/** What the far end owes: any byte back, or on the way in its next prompt. */
+type Owed = 'reply' | 'prompt';
+
+export interface LinkWatchSession {
+  /** Said before the hang-up, so the console reads why it dropped, then that it did. */
+  notice(message: string): void;
+  /** Hang up as a loss, never a disconnect: whether to dial back is not decided here. */
+  hangUp(): void;
+}
+
+/** One sentence per thing owed, so the console says which went unanswered. */
+function deadNotice(owed: Owed, seconds: number): string {
+  switch (owed) {
+    case 'reply':
+      return t('session.connection.deadLink', { seconds });
+    case 'prompt':
+      return t('session.connection.loginStalled', { seconds });
+    default: {
+      const never: never = owed;
+      return never;
+    }
+  }
 }
 
 export class LinkWatch {
-  private timer: NodeJS.Timeout | null = null;
+  private readonly timers = new Map<Owed, NodeJS.Timeout>();
 
-  constructor(private readonly events: LinkWatchEvents) {}
+  constructor(private readonly session: LinkWatchSession) {}
 
   /** Whether an answer is currently owed. Read by the tests and nothing else. */
   get waiting(): boolean {
-    return this.timer !== null;
+    return this.timers.size > 0;
   }
 
   /**
@@ -57,37 +77,61 @@ export class LinkWatch {
    * a character that sends every three seconds hold a dead link open for ever.
    */
   noteSent(): void {
-    if (this.timer !== null) return;
-    const after = tuning().reconnect.silentForMs;
-    if (after <= 0) return;
-    this.timer = setTimeout(() => this.expire(after), after);
-    // A pending deadline does not owe the process another tick: a client told
-    // to quit should not be held open by a connection it is about to drop.
-    this.timer.unref();
+    this.arm('reply');
   }
 
-  /** A byte arrived. Whatever was owed has been answered. */
+  /** A byte arrived. Whatever reply was owed has been answered. */
   noteReceived(): void {
-    this.clear();
+    this.clear('reply');
+  }
+
+  /** The socket opened for an automated login, or a login answer reached the wire. */
+  owePrompt(): void {
+    this.arm('prompt');
+  }
+
+  /** A prompt or the statline arrived. */
+  notePrompt(): void {
+    this.clear('prompt');
   }
 
   /** The socket opened or closed: nothing is owed across one. */
   reset(): void {
-    this.clear();
+    this.clearAll();
   }
 
-  /** Deterministic cleanup: the timer is owned here, so it is released here. */
+  /** Deterministic cleanup: the timers are owned here, so they are released here. */
   dispose(): void {
-    this.clear();
+    this.clearAll();
   }
 
-  private expire(after: number): void {
-    this.timer = null;
-    this.events.dead(Math.round(after / 1000));
+  private arm(owed: Owed): void {
+    if (this.timers.has(owed)) return;
+    const after = tuning().reconnect.silentForMs;
+    if (after <= 0) return;
+    const timer = setTimeout(() => this.expire(owed, after), after);
+    // A pending deadline does not owe the process another tick: a client told
+    // to quit should not be held open by a connection it is about to drop.
+    timer.unref();
+    this.timers.set(owed, timer);
   }
 
-  private clear(): void {
-    if (this.timer !== null) clearTimeout(this.timer);
-    this.timer = null;
+  private expire(owed: Owed, after: number): void {
+    // One hang-up answers everything that was owed.
+    this.clearAll();
+    this.session.notice(deadNotice(owed, Math.round(after / 1000)));
+    this.session.hangUp();
+  }
+
+  private clear(owed: Owed): void {
+    const timer = this.timers.get(owed);
+    if (timer === undefined) return;
+    clearTimeout(timer);
+    this.timers.delete(owed);
+  }
+
+  private clearAll(): void {
+    for (const timer of this.timers.values()) clearTimeout(timer);
+    this.timers.clear();
   }
 }
