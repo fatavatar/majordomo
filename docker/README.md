@@ -5,12 +5,12 @@ derivatives (GreaterMUD, Paradigm), served to your browser. The game sockets,
 the realm database, your characters and the automation run in the container;
 the browser draws the console and the cards.
 
-Source, issues and releases: <https://github.com/rayzorben/mudengine>
+Source, issues and releases: <https://github.com/fatavatar/mudengine>
 
 ## Run it
 
 ```
-docker run -d --name mudengine -p 8080:8080 -v mudengine:/config rayzorben/mudengine:latest
+docker run -d --name mudengine -p 8080:8080 -v mudengine:/config ghcr.io/fatavatar/mudengine:latest
 docker logs mudengine
 ```
 
@@ -23,7 +23,7 @@ Or with Compose:
 ```yaml
 services:
   mudengine:
-    image: rayzorben/mudengine:latest
+    image: ghcr.io/fatavatar/mudengine:latest
     ports:
       - '8080:8080'
     volumes:

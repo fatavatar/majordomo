@@ -65,7 +65,7 @@ server, the window is served to your browser, and the game sockets, the files
 and the automation stay in the container.
 
 ```
-docker run --rm -p 8080:8080 -v mudengine:/config rayzorben/mudengine:latest
+docker run --rm -p 8080:8080 -v mudengine:/config ghcr.io/fatavatar/mudengine:latest
 ```
 
 Then open `http://localhost:8080/` and sign in with the password the
