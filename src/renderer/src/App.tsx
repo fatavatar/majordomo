@@ -10,7 +10,13 @@ import {
 } from 'react';
 
 import CommandPalette, { type Command, type Found } from './components/CommandPalette';
-import { entryWord, flattenLookup, entryNumber } from './components/ReferenceDetail';
+import {
+  entryWord,
+  flattenLookup,
+  entryNumber,
+  mobRowText,
+  type ReferenceEntry
+} from './components/ReferenceDetail';
 import type { IconName } from './components/Icon';
 import { entityNumber } from '@shared/entities';
 import AutomationCard from './components/AutomationCard';
@@ -203,6 +209,7 @@ import {
   roomAddress,
   roomId,
   type LoopDraft,
+  type MobRowBrief,
   type RoomId,
   type Route,
   type WorldNames,
@@ -3494,11 +3501,11 @@ export default function App() {
    * — xterm paints cells — so it hands up the box of the cells instead.
    */
   const inspectAt = useCallback(
-    (name: string, anchor: PopoverAnchor) => {
+    (name: string, anchor: PopoverAnchor, row?: number) => {
       setFlyout(null);
       setGangFlyout(null);
       dismissPeek();
-      setAsked({ name, anchor });
+      setAsked(row === undefined ? { name, anchor } : { name, anchor, row });
     },
     [dismissPeek]
   );
@@ -3517,9 +3524,26 @@ export default function App() {
   const findInRealm = useCallback(
     async (query: string): Promise<Command[]> => {
       const entries = flattenLookup(await api.lookup(session, query));
-      return entries.slice(0, tuning().paletteFoundRows).map((entry, index) => {
+      // A hotkey has no box to hand over; the palette always does.
+      const middle: PopoverAnchor = {
+        box: { top: 0, right: window.innerWidth / 2, bottom: 0, left: window.innerWidth / 2 },
+        within: document.body
+      };
+      /*
+       * One entry per row of a monster name several rows share (2026-10-24):
+       * seven rows are a giant rat, and a typed name settles none of them, so
+       * each is listed told apart by its own figures and where it spawns, and
+       * opens on itself.
+       */
+      const rows = entries.flatMap(
+        (entry): Array<{ entry: ReferenceEntry; row: MobRowBrief | null }> =>
+          entry.kind === 'mob' && entry.rows !== null
+            ? entry.rows.map((row) => ({ entry, row }))
+            : [{ entry, row: null }]
+      );
+      return rows.slice(0, tuning().paletteFoundRows).map(({ entry, row }, index) => {
         const kindWord = entryWord(entry);
-        const number = entityNumber(entryNumber(entry));
+        const number = row?.id ?? entityNumber(entryNumber(entry));
         const icon: IconName =
           entry.kind === 'mob'
             ? 'sword'
@@ -3538,22 +3562,14 @@ export default function App() {
           hint:
             number === null
               ? kindWord
-              : t('palette.navigate.lookupNumberHint', { kindWord, number: String(number) }),
-          run: (from?: PopoverAnchor) => {
-            // A hotkey has no box to hand over; the palette always does.
-            inspectAt(
-              entry.name,
-              from ?? {
-                box: {
-                  top: 0,
-                  right: window.innerWidth / 2,
-                  bottom: 0,
-                  left: window.innerWidth / 2
-                },
-                within: document.body
-              }
-            );
-          }
+              : row !== null
+                ? t('palette.navigate.lookupRowHint', {
+                    kindWord,
+                    number: String(number),
+                    brief: mobRowText(row)
+                  })
+                : t('palette.navigate.lookupNumberHint', { kindWord, number: String(number) }),
+          run: (from?: PopoverAnchor) => inspectAt(entry.name, from ?? middle, row?.id)
         };
       });
     },
@@ -3944,7 +3960,10 @@ export default function App() {
       const at = asRoomReference(room);
       if (at === null) return;
       const id = roomId(at.map, at.room);
-      openPeek({ room: id, anchor, settled: true, act: walkTo(id) });
+      // Where the link was, not the link: in the slide-out it goes with the
+      // slide-out this panel replaces, and the panel went with it.
+      const box = { box: anchor.getBoundingClientRect(), within: document.body };
+      openPeek({ room: id, anchor: box, settled: true, act: walkTo(id) });
     },
     [openPeek, walkTo]
   );

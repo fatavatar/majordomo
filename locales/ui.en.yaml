@@ -1441,6 +1441,7 @@ palette:
     loopLabel: 'Loop: {loopName}'
     lookupLabel: 'Look up: {name}'
     lookupNumberHint: '{kindWord} #{number}'
+    lookupRowHint: '{kindWord} #{number} · {brief}'
     moveStopHint: routing or looping — it keeps its place, so play picks it back up
     moveStopLabel: Stop moving
     loopStopsHint:
@@ -2865,6 +2866,11 @@ cards:
   reference:
     emptyPrompt: Type a name, or click one on a card.
     openInExplorer: Open in MMUD Explorer
+    sharedRows: '{count} monsters share this name:'
+    row:
+      exp: '{exp} exp'
+      hp: '{hp} hp'
+      whereMore: '{room} +{more} rooms'
     edit:
       button: Edit
       clear: Clear my row

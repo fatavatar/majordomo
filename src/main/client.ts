@@ -187,6 +187,7 @@ import {
   EMPTY_LOOP_DRAFT,
   roomId,
   type MobPlaces,
+  type MobRowBrief,
   type ShopPlace
 } from '../shared/world';
 import { LoopDraftCache } from './world/loopDraft';
@@ -3023,6 +3024,16 @@ function registerIpc(): void {
       if (places !== undefined) mobPlaces[mob.name] = places;
     }
     /*
+     * And each row of a name several rows share, where nothing settled which:
+     * its own figures and where it spawns, so a name typed into Ctrl+K lists
+     * every one of them told apart (2026-10-24).
+     */
+    const mobRows: Record<string, MobRowBrief[]> = {};
+    for (const mob of found.mobs) {
+      const rows = world.rowBriefs(mob);
+      if (rows !== undefined) mobRows[mob.name] = rows;
+    }
+    /*
      * And *can I fight this?* — each monster named, weighed against the
      * character as it stands at this moment, by the session's own arithmetic
      * so the card reads exactly what auto-combat ranks on. A session with no
@@ -3035,6 +3046,7 @@ function registerIpc(): void {
       ...(Object.keys(fights).length > 0 ? { fights } : {}),
       ...(Object.keys(shopPlaces).length > 0 ? { shopPlaces } : {}),
       ...(Object.keys(mobPlaces).length > 0 ? { mobPlaces } : {}),
+      ...(Object.keys(mobRows).length > 0 ? { mobRows } : {}),
       ...(Object.keys(verdicts).length > 0 ? { verdicts } : {})
     };
   });

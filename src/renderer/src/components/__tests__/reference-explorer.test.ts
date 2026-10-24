@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { explorerPlace, followFor } from '../ReferenceExplorer';
+import { explorerPlace, followFor, sharedRows } from '../ReferenceExplorer';
 import type { ReferenceEntry } from '../ReferenceDetail';
 import type { WorldItem, WorldMob } from '@shared/world';
 
@@ -17,7 +17,8 @@ const mob = (over: Partial<WorldMob>): ReferenceEntry => ({
   learned: null,
   fights: null,
   verdict: null,
-  places: null
+  places: null,
+  rows: null
 });
 
 /* Which of MMUD Explorer's lists a card's entry is asked of (2026-10-24). */
@@ -32,13 +33,16 @@ describe("a Reference entry's place in MMUD Explorer", () => {
     expect(explorerPlace(item({}))).toEqual({ kind: 'sundry', n: 64 });
   });
 
-  it('asks for a monster only where one row answers for its name', () => {
+  it("asks for a monster's row: the one settled, else the one picked, else the first", () => {
     expect(explorerPlace(mob({ ids: [12] }))).toEqual({ kind: 'monsters', n: 12 });
-    expect(explorerPlace(mob({ ids: [12, 40], row: { id: 40 } } as Partial<WorldMob>))).toEqual({
-      kind: 'monsters',
-      n: 40
-    });
-    expect(explorerPlace(mob({ ids: [12, 40] }))).toBeNull();
+    const settled = mob({ ids: [12, 40], row: { id: 40 } } as Partial<WorldMob>);
+    expect(explorerPlace(settled)).toEqual({ kind: 'monsters', n: 40 });
+    expect(sharedRows(settled)).toBeNull();
+    // Ctrl+K asks by name alone (2026-10-24): seven rows are a giant rat.
+    const shared = mob({ ids: [12, 40, 41] });
+    expect(explorerPlace(shared)).toEqual({ kind: 'monsters', n: 12 });
+    expect(explorerPlace(shared, 41)).toEqual({ kind: 'monsters', n: 41 });
+    expect(sharedRows(shared)).toEqual([12, 40, 41]);
   });
 });
 
