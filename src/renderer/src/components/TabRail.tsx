@@ -12,7 +12,7 @@ import type { LoopProgress } from '@shared/loops';
 import { keepFocus } from '../lib/focus';
 import { useTabDrag } from '../hooks/useTabDrag';
 import { t } from '../lib/i18n';
-import type { ConnectionState } from '@shared/types';
+import { dialWaits, type ConnectionState } from '@shared/types';
 
 /**
  * Which edge the rail takes.
@@ -499,10 +499,10 @@ function TabRail({
           const room = view?.character.room.name ?? null;
           const isActive = session.id === active;
           const phase = view?.state.phase ?? 'idle';
-          // A dial takes up to fifteen seconds and a close is not instant
-          // either. A button that stays pressable through either reads as one
-          // that did nothing, and main refuses the second attempt anyway.
-          const busy = phase === 'connecting' || phase === 'closing';
+          // A close is not instant, and a button that stays pressable through
+          // one reads as one that did nothing. A dial with no answer is made
+          // again by a press (upstream 74005e34).
+          const busy = dialWaits(phase);
           /*
            * A retry pending reads as *dialling*, because it is.
            *
@@ -662,10 +662,10 @@ function TabRail({
                     onMouseDown={keepFocus}
                     title={
                       busy
-                        ? phase === 'connecting'
-                          ? t('tabs.tab.dialConnectingTooltip')
-                          : t('tabs.tab.dialClosingTooltip')
-                        : dialLabel
+                        ? t('tabs.tab.dialClosingTooltip')
+                        : phase === 'connecting'
+                          ? t('tabs.tab.dialAgainTooltip', { characterName: session.name })
+                          : dialLabel
                     }
                     type="button"
                   >
