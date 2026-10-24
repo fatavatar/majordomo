@@ -24,7 +24,14 @@ function line(plain: string, raw = plain): StreamLine {
  * the line and names nobody, which is the honest degradation rather than the
  * behaviour under test.
  */
-const KNOWN = new Set(['orc rogue', 'giant rat', 'cave rat']);
+const KNOWN = new Set([
+  'orc rogue',
+  'giant rat',
+  'cave rat',
+  'big cave worm',
+  'orc shaman',
+  'moaning spirit'
+]);
 const NAMES = {
   present: () => [],
   mob: (name: string) =>
@@ -105,6 +112,26 @@ describe('room', () => {
 });
 
 describe('combat', () => {
+  /*
+   * A monster's spell carries no article on Paradigm, and its name is the
+   * realm's lowercase spelling (orohost wire, upstream 6c0234be). Each names
+   * its caster and counts as damage taken.
+   */
+  it('reads a monster’s spell on this character without an article', () => {
+    expect(expectType('orc shaman casts harm on you for 17 damage!', 'mob-hits')).toMatchObject({
+      attacker: 'orc shaman',
+      damage: '17'
+    });
+    expect(
+      expectType('moaning spirit draws the breath from your body for 7 damage!', 'mob-hits')
+    ).toMatchObject({ attacker: 'moaning spirit', damage: '7' });
+  });
+
+  it('leaves a lowercase blow nothing can name to the blow between others', () => {
+    expect(classify('gelatinous horror casts harm on you for 17 damage!').type).toBe('user-hits');
+    expect(classify('orc shaman casts harm on Youssef for 17 damage!').type).toBe('user-hits');
+  });
+
   it('distinguishes a mob hitting the player from the player hitting a mob', () => {
     // Ordering in the table is what makes this work: `The orc hits you for 3`
     // matches the generic attacker pattern too, with source="The".
@@ -1579,6 +1606,14 @@ describe('combat, anchored on the frame', () => {
         'player-misses'
       )['target']
     ).toBe('ancient sand dragon');
+  });
+
+  it('reads paramud’s miss at another player, which ends in a space', () => {
+    // Paramud's wire, 2026-10-08: the server writes a space before the CRLF.
+    expect(expectType('The big cave worm lunges at Beanis! ', 'player-misses')).toMatchObject({
+      attacker: 'The big cave worm',
+      target: 'Beanis'
+    });
   });
 
   it('keeps a monster’s swing at this character as mob-misses', () => {

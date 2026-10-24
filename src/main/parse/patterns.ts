@@ -39,6 +39,12 @@ export interface Rule {
    */
   nameFallback?: boolean;
   /**
+   * Matches only when the room or the realm names the attacker; otherwise the
+   * table goes on to the next rule. For a frame whose shape alone cannot tell
+   * a monster from anything else that ends the same way (upstream 6c0234be).
+   */
+  named?: true;
+  /**
    * SGR foreground codes this line is *expected* to carry, if any. Agreement
    * raises confidence; disagreement lowers it. Never a gate.
    */
@@ -1040,6 +1046,26 @@ export const RULES: Rule[] = [
     resolve: 'attacker',
     nameFallback: true
   },
+  /*
+   * A monster's spell on this character. `Spell.cs` composes the caster as
+   * `(needsTheNamePrefix ? "The " : "") + Name`, and the test that sets the
+   * prefix (`(MessageStyle & 32) == 1`, `Spell.cs:814`, GreaterMUD source) is
+   * never true, so the line carries no article and the monster's name as the
+   * realm spells it, lowercase on Paradigm (orohost wire, 2026-10-07, upstream
+   * 6c0234be):
+   *
+   *     orc shaman casts harm on you for 17 damage!
+   *     moaning spirit draws the breath from your body for 7 damage!
+   *
+   * The second has no `you` beside the figure, only `your body`. Lowercase,
+   * so no player's blow reaches it, and `named`: a sentence the room and the
+   * realm cannot name is left to the catch-all as a blow between two others.
+   */
+  {
+    type: 'mob-hits',
+    pattern: /^(?<line>[a-z][^"]*?\b(?:you|your body)\b[^"]*?) for (?<damage>\d+) damage!/,
+    named: true
+  },
   {
     type: 'user-hits',
     pattern: /^(?<line>[^"]+?) for (?<damage>\d+) damage!$/,
@@ -1090,11 +1116,17 @@ export const RULES: Rule[] = [
    * the swinger; where neither can, the frame's own guess stands (`first`,
    * everything before a one-word verb), which is how a monster nothing has
    * listed still joins the room.
+   *
+   * Paramud ends some monsters' misses at another player with a space before
+   * the CRLF (`The big cave worm lunges at Beanis! `; `The big acid slime
+   * flails at Beanis!` in the same session has none). Wire 2026-10-08
+   * (upstream 6249394d): 102 such lines in one session, all unread, so the
+   * trailing space is allowed. GreaterMUD's `Mob.cs:1754` writes none.
    */
   {
     type: 'player-misses',
     pattern:
-      /^\s*(?<line>(?<first>(?!You\b)(?:The )?[\w'-]+(?: [\w'-]+)*?) \w+) at (?<target>(?!you\b)[\w' -]+?)(?: with (?:his|her|its|their) (?<weapon>[\w' -]+?))?!$/,
+      /^\s*(?<line>(?<first>(?!You\b)(?:The )?[\w'-]+(?: [\w'-]+)*?) \w+) at (?<target>(?!you\b)[\w' -]+?)(?: with (?:his|her|its|their) (?<weapon>[\w' -]+?))?!\s*$/,
     resolve: 'attacker',
     nameFallback: true
   },
