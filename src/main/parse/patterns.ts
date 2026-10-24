@@ -905,6 +905,22 @@ export const RULES: Rule[] = [
   },
   {
     /*
+     * The same confirmation with the spell's own flavour after the target,
+     * which stock MajorMUD prints for many buffs: `You cast magic armour on
+     * yourself. A glimmering shield surrounds you!` (captures/056), and `at`
+     * for some: `You cast resist cold at Techno, surrounding him with a pale
+     * blue glow.` is Techno's own cast (captures/004:193). Unread, the first
+     * buff never reached the list, and the second fell to the targetless frame
+     * below with `resist cold at Techno` for the spell (upstream 7febf66b, its
+     * issue #4). An amount after the comma is the frame above, so it is kept
+     * out of this one.
+     */
+    type: 'spell-cast',
+    pattern:
+      /^(?<caster>You) cast (?<spell>[\w' -]+?) (?:on|at) (?<target>yourself|[A-Z][\w'-]*)(?:, |\. )(?!(?:for|healing|regenerating) \d).+[.!]$/
+  },
+  {
+    /*
      * The self-cast confirmation that has no `on <target>` frame at all:
      * `You cast protection from evil, and Festus is surrounded in a white
      * glow!` (live, 22 times), `You cast ethereal shield, and a shimmering
