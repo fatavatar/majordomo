@@ -2,6 +2,7 @@ import type { SupplyList } from './SupplyControls';
 import { useCallback, useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 
+import { useExplorerLink, type ExplorerLinkProps } from './ReferenceExplorer';
 import ReferenceDetail, {
   entryNumber,
   entryWord,
@@ -32,7 +33,7 @@ export interface Asked {
   anchor: PopoverAnchor;
 }
 
-export interface ReferencePopoverProps {
+export interface ReferencePopoverProps extends ExplorerLinkProps {
   asked: Asked;
   /** Asks the character's own realm. Two characters may be on two realms. */
   lookup(query: string): Promise<WorldLookup>;
@@ -96,8 +97,13 @@ export default function ReferencePopover({
   onName = null,
   onDismiss,
   supplies = null,
-  rules = null
+  rules = null,
+  explorer,
+  characterKey,
+  purseKey,
+  explore
 }: ReferencePopoverProps) {
+  const link = useExplorerLink({ explorer, characterKey, purseKey, explore });
   const [entry, setEntry] = useState<ReferenceEntry | null | 'pending'>('pending');
   /*
    * The Edit open under the heading. Closed again by the next name asked
@@ -271,6 +277,7 @@ export default function ReferencePopover({
             <ReferenceDetail
               classNames={classNames}
               entry={entry}
+              explorer={link}
               heading={false}
               level={level}
               onName={onName}
