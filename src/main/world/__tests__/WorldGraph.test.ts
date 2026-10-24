@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -2953,6 +2953,34 @@ describe('the levers that open an exit', () => {
       expect(route.blocked).toBe(false);
       expect(pulled(route)).toEqual(['move boulder']);
       expect(route.steps.at(-1)).toMatchObject({ from: '1/1', to: '1/2' });
+    });
+
+    /*
+     * A lifted door's legs cross the door itself, and opening it again inside
+     * its own errand never pays: priced anyway, the Ebon Blade Study's legs
+     * were walked again at every depth (2026-10-24, Archer's 19 s route).
+     */
+    it('walks a far lever once, never again for the same door inside its own legs', () => {
+      const far = tuning().world.leverDetourCost + 5;
+      const graph = farLever('move boulder', {
+        i: 'Hidden/Needs 1 Actions, any order',
+        a: [{ say: ['move boulder'], at: { map: 1, room: 100 + far - 1 } }]
+      });
+      // Spied through: every leg is walked as it would be, and its traveller kept.
+      const legs = vi.spyOn(
+        WorldGraph.prototype as unknown as {
+          leverLeg: (from: string, to: string, who: Traveller, limit: number) => unknown;
+        },
+        'leverLeg'
+      );
+      const route = graph.route('1/1', '1/2', { packKnown: true });
+      const depths = legs.mock.calls
+        .filter((call) => call[3] === Infinity)
+        .map((call) => call[2].leverDepth ?? 0);
+      legs.mockRestore();
+      expect(pulled(route)).toEqual(['move boulder']);
+      expect(depths.length).toBeGreaterThan(0);
+      expect(Math.max(...depths)).toBe(1);
     });
 
     it('walks a passable hidden exit as a plain one, unless a lever opens it', () => {

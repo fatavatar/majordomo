@@ -59,7 +59,8 @@ the answers built on it:
   out. A leg is one Dijkstra out of its room, kept and taken further by the
   next leg out of the same room (`leverLeg`), and kept between routes for
   the same shape of traveller, up to `LEG_TREE_ROOMS` rooms in all and let
-  go when the tuning changes.
+  go when the tuning changes. A lifted door is shut inside its own errand's
+  legs (`Traveller.leversOpening`), which never gain by opening it again.
 - **Hidden exits.** `Hidden/Passable` is a plain exit the room does not
   list, priced as any other unless a lever opens it; `Hidden/Searchable`
   costs the search, and `Hidden/Needs N Actions` the levers.
