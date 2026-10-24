@@ -409,3 +409,17 @@ export function titleReading(title: string | null | undefined): TitleReading | n
   if (key.length === 0) return null;
   return BY_TITLE.get(key) ?? null;
 }
+
+/**
+ * Every rank title with ` of ` inside it (`Master of the Way`, `Lord of
+ * Nature`), longest first, as the server prints it. A `who` row cuts its gang
+ * off at ` of `, so the pattern tries these whole before cutting (upstream
+ * cb8f9c68, 2026-10-07).
+ */
+export const TITLES_WITH_OF: readonly string[] = [
+  ...new Set(
+    Object.values(CLASS_TITLES).flatMap((bands) =>
+      bands.map(([title]) => title.trim()).filter((title) => title.includes(' of '))
+    )
+  )
+].sort((a, b) => b.length - a.length);
