@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState, type KeyboardEvent } from 'react';
+import { useMemo, useRef, useState, type CSSProperties, type KeyboardEvent } from 'react';
 
 import { useListNavigation } from '../hooks/useListNavigation';
 
@@ -24,6 +24,20 @@ export interface NameComboProps {
   onChange(value: string): void;
   /** What to offer. Empty offers nothing, and typing still works. */
   options: readonly string[];
+  /**
+   * What an option is, shown beside it and matched as well: a spell's name
+   * beside the short command a box takes, so `minor` finds `mend`.
+   */
+  notes?: ReadonlyMap<string, string>;
+  /** The input's own class. */
+  className?: string;
+  /** The whole's class and place beside `spell-picker`'s: a MegaMUD page places each box. */
+  boxClassName?: string;
+  style?: CSSProperties;
+  maxLength?: number;
+  title?: string;
+  /** Enter with no list showing: the field's own act (save the row, add the name). */
+  onSubmit?(): void;
   ariaLabel?: string;
   describedBy?: string;
   disabled?: boolean;
@@ -51,15 +65,26 @@ const MOST = 60;
  *
  * A prefix outranks a match anywhere — typing `heal` means `healing potion`
  * before `greater healing draught` — which is the rule the spell picker and
- * the Reference card's search both follow.
+ * the Reference card's search both follow. A match in an option's note comes
+ * after both.
  */
-function matches(options: readonly string[], value: string): string[] {
+function matches(
+  options: readonly string[],
+  value: string,
+  notes?: ReadonlyMap<string, string>
+): string[] {
   const needle = value.trim().toLowerCase();
   if (needle.length === 0) return options.slice(0, MOST);
   const ranked: Array<{ name: string; rank: number }> = [];
   for (const name of options) {
     const lower = name.toLowerCase();
-    const rank = lower.startsWith(needle) ? 0 : lower.includes(needle) ? 1 : -1;
+    const rank = lower.startsWith(needle)
+      ? 0
+      : lower.includes(needle)
+        ? 1
+        : notes?.get(name)?.toLowerCase().includes(needle) === true
+          ? 2
+          : -1;
     if (rank < 0) continue;
     ranked.push({ name, rank });
   }
@@ -80,7 +105,8 @@ function matches(options: readonly string[], value: string): string[] {
 export function comboFor(
   options: readonly string[],
   value: string,
-  separator?: string
+  separator?: string,
+  notes?: ReadonlyMap<string, string>
 ): { suggestions: string[]; choose(chosen: string): string } {
   const cut = separator === undefined ? -1 : value.lastIndexOf(separator);
   const head = cut === -1 ? '' : value.slice(0, cut + 1);
@@ -96,7 +122,7 @@ export function comboFor(
     offered = options.filter((option) => !written.has(option.toLowerCase()));
   }
   return {
-    suggestions: matches(offered, typing),
+    suggestions: matches(offered, typing, notes),
     choose: (chosen) => (head.length === 0 ? chosen : `${head} ${chosen}`)
   };
 }
@@ -106,6 +132,13 @@ export default function NameCombo({
   value,
   onChange,
   options,
+  notes,
+  className,
+  boxClassName,
+  style,
+  maxLength,
+  title,
+  onSubmit,
   ariaLabel,
   describedBy,
   disabled,
@@ -115,7 +148,10 @@ export default function NameCombo({
   const [open, setOpen] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const combo = useMemo(() => comboFor(options, value, separator), [options, value, separator]);
+  const combo = useMemo(
+    () => comboFor(options, value, separator, notes),
+    [options, value, separator, notes]
+  );
   const shownOptions = combo.suggestions;
   const shown = open && !disabled && shownOptions.length > 0;
 
@@ -145,19 +181,27 @@ export default function NameCombo({
       // Never the form's implicit submission — the enclosing form saves the
       // whole character, and Enter in a name field is not that.
       event.preventDefault();
+      onSubmit?.();
       return;
     }
     navigation.onKeyDown(event);
   };
 
   return (
-    <span className="spell-picker" data-open={shown ? 'true' : 'false'}>
+    <span
+      className={boxClassName === undefined ? 'spell-picker' : `spell-picker ${boxClassName}`}
+      data-open={shown ? 'true' : 'false'}
+      style={style}
+      title={title}
+    >
       <input
         aria-autocomplete="list"
         aria-describedby={describedBy}
         aria-expanded={shown}
         aria-label={ariaLabel}
+        className={className}
         disabled={disabled}
+        maxLength={maxLength}
         name={name}
         onBlur={() => setOpen(false)}
         onChange={(event) => {
@@ -189,6 +233,9 @@ export default function NameCombo({
               role="option"
             >
               <span>{option}</span>
+              {notes?.get(option) !== undefined && (
+                <span className="spell-short">{notes.get(option)}</span>
+              )}
             </li>
           ))}
         </ul>

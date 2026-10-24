@@ -3176,6 +3176,7 @@ export default function App() {
       load: () => api.settingsSnapshot(),
       saveProfile: (id: string, draft: ProfileDraft) => api.saveProfile(id, draft),
       megamudChoices: (id: string) => api.megamudChoices(id),
+      megamudNames: (id: string) => api.megamudNames(id),
       deleteProfile: (id: string) => api.deleteProfile(id),
       saveServer: (previous: string | null, draft: ServerDraft) => api.saveServer(previous, draft),
       deleteServer: (name: string) => api.deleteServer(name),
@@ -6429,6 +6430,7 @@ export default function App() {
         revealProfiles={settingsApi.revealProfiles}
         saveProfile={settingsApi.saveProfile}
         megamudChoices={settingsApi.megamudChoices}
+        megamudNames={settingsApi.megamudNames}
         saveGlobal={settingsApi.saveGlobal}
         saveServer={settingsApi.saveServer}
         stats={settingsApi.stats}

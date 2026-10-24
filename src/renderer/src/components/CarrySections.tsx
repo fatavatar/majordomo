@@ -12,10 +12,13 @@ import type { LootConfig } from '@shared/config';
 export function ItemDetailsFieldset({
   rows,
   idPrefix,
+  known,
   onChange
 }: {
   rows: LootConfig['itemDetails'];
   idPrefix: string;
+  /** Item names to suggest for a row's item. */
+  known?: readonly string[];
   onChange(rows: LootConfig['itemDetails']): void;
 }): React.JSX.Element {
   return (
@@ -26,6 +29,7 @@ export function ItemDetailsFieldset({
         <ItemRuleList
           addLabel={t('settings.items.add')}
           emptyText={t('settings.movement.itemRowsNone')}
+          known={known}
           namePrefix={`${idPrefix}item-row`}
           onChange={(next) => {
             onChange(next);

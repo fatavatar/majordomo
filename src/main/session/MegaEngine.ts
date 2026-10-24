@@ -83,7 +83,7 @@ import {
 } from '../../shared/character';
 import type { MegaSettings } from '../../shared/megamud/settings';
 import { MEGA_TOGGLES, type MegaToggle, type MegaToggles } from '../../shared/megamud/toggles';
-import type { MegaChoices } from '../../shared/ipc';
+import type { MegaChoices, MegaNames } from '../../shared/ipc';
 import type { BotCommand, PlayerGrant } from '../../shared/remotes';
 import { IDLE_WALK, type WalkProgress } from '../../shared/walk';
 import { NO_LOOP, type LoopProgress } from '../../shared/loops';
@@ -101,7 +101,15 @@ import {
 } from '../../shared/world';
 import type { WorldGraph } from '../world/WorldGraph';
 import { State } from '../megamud/states';
-import { SpellFlag, ItemFlag, StepFlag, RouteFlag, Exit, Darkness } from '../megamud/flags';
+import {
+  SpellFlag,
+  ItemFlag,
+  StepFlag,
+  RouteFlag,
+  RoomFlag,
+  Exit,
+  Darkness
+} from '../megamud/flags';
 import { worldSignature } from '../world/megamudSignature';
 
 /**
@@ -408,6 +416,31 @@ function bounced<T>(stops: readonly T[], bounce: boolean): T[] {
 function loopArea(name: string): string | null {
   const at = name.indexOf(':');
   return at > 0 ? name.slice(0, at).trim() : null;
+}
+
+/** What MegaMUD's weapon and shield boxes take (`0x42afc0`): a weapon, one that backstabs, a shield. */
+const isWeapon = (item: ItemRec): boolean => item.type === 1;
+const canBackstab = (item: ItemRec): boolean =>
+  isWeapon(item) && (item.flags & ItemFlag.Backstab) !== 0;
+const isShield = (item: ItemRec): boolean => item.location === 12;
+
+/**
+ * What a character's MegaMUD databases name, for its settings boxes to
+ * suggest as they are typed in (ours, 2026-10-24): every item, and each of
+ * the kinds `0x42afc0` picks from the inventory, out of the whole database,
+ * so a box can be filled with what is not carried yet.
+ */
+export function megaNames(data: MegaData): MegaNames {
+  const named = (fits: (item: ItemRec) => boolean): string[] =>
+    [...new Set(data.items.filter(fits).map((item) => item.name))].sort((a, b) =>
+      a.localeCompare(b)
+    );
+  return {
+    items: named(() => true),
+    weapons: named(isWeapon),
+    backstab: named(canBackstab),
+    shields: named(isShield)
+  };
 }
 
 /** A short, steady name for a path MegaMUD can hold (13 characters). */
@@ -1710,11 +1743,15 @@ export class MegaEngine {
         : s.inventory
             .flatMap((c) => (c.item !== null && fits(c.item) ? [c.item.name] : []))
             .slice(0, 9);
+    const rooms = s.data.rooms ?? [];
     return {
-      rooms: [...new Set((s.data.rooms ?? []).map((r) => r.name))],
-      weapons: carried((item) => item.type === 1),
-      backstab: carried((item) => item.type === 1 && (item.flags & ItemFlag.Backstab) !== 0),
-      shields: carried((item) => item.location === 12),
+      rooms: [...new Set(rooms.map((r) => r.name))],
+      banks: [
+        ...new Set(rooms.filter((r) => ((r.flags ?? 0) & RoomFlag.Bank) !== 0).map((r) => r.name))
+      ],
+      weapons: carried(isWeapon),
+      backstab: carried(canBackstab),
+      shields: carried(isShield),
       statline: {
         hp: s.hp,
         maxHp: s.Player_MaxHP,

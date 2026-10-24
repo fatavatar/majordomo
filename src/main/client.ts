@@ -160,7 +160,7 @@ import {
   type RoomSearch
 } from '../shared/explorer';
 import { planRoute } from './world/RoutePlanner';
-import type { EngineMemory, MegaEngineSetup } from './session/MegaEngine';
+import { megaNames, type EngineMemory, type MegaEngineSetup } from './session/MegaEngine';
 import type { DebugSave, LearnedSpellTable, SessionSummary } from '../shared/ipc';
 import { EMPTY_CHARACTER } from '../shared/character';
 import { IDLE_WALK } from '../shared/walk';
@@ -940,17 +940,12 @@ function megamudSettingsOf(id: SessionId, profile: Profile): MegaSettings {
 }
 
 /**
- * The ported MegaMUD engine's set-up: the character's settings, its
- * databases built from the realm's data and tables (`megamud/fromWorld.ts`)
- * and its per-player remote grants.
+ * A character's MegaMUD databases, built from its realm's data and tables
+ * with its own item rows laid over them, and kept until what they are built
+ * from changes: what its engine is given, and what its settings boxes
+ * suggest (`megamudNames`) whether or not it is connected.
  */
-function megamudFor(id: SessionId): { key: string; setup: MegaEngineSetup } | null {
-  const profile = profileFor(id);
-  if (profile === undefined) return null;
-  const grants = profile.config.automation.remotes.players;
-  const joinWhenInvited = profile.config.automation.remotes.autoJoin;
-  const botCommands = profile.config.automation.remotes.commands;
-  // The realm's name for its runic coin (BBS.INI's `RunicName`, ours per realm).
+function megaDataFor(id: SessionId, profile: Profile): MegaData {
   const runic = profile.config.connection.coins.runic;
   const world = worldFor(id);
   const tables = realmTablesFor(id);
@@ -982,7 +977,24 @@ function megamudFor(id: SessionId): { key: string; setup: MegaEngineSetup } | nu
       'log'
     );
   }
-  const data = built.data;
+  return built.data;
+}
+
+/**
+ * The ported MegaMUD engine's set-up: the character's settings, its
+ * databases built from the realm's data and tables (`megamud/fromWorld.ts`)
+ * and its per-player remote grants.
+ */
+function megamudFor(id: SessionId): { key: string; setup: MegaEngineSetup } | null {
+  const profile = profileFor(id);
+  if (profile === undefined) return null;
+  const grants = profile.config.automation.remotes.players;
+  const joinWhenInvited = profile.config.automation.remotes.autoJoin;
+  const botCommands = profile.config.automation.remotes.commands;
+  // The realm's name for its runic coin (BBS.INI's `RunicName`, ours per realm).
+  const runic = profile.config.connection.coins.runic;
+  const world = worldFor(id);
+  const data = megaDataFor(id, profile);
   const dataKey = `${world?.info.source ?? ''}|${runic ?? ''}`;
   // What it knows from before on this realm, out of our stores, and where
   // what it learns goes: stances to the lore, the rest to `MegaLearned`.
@@ -3559,6 +3571,12 @@ function registerIpc(): void {
   handle(Invoke.megamudChoices, (_caller, rawId: unknown) => {
     const id = asProfileId(rawId);
     return id === null ? null : (host?.get(id)?.manager.megaChoices() ?? null);
+  });
+
+  handle(Invoke.megamudNames, (_caller, rawId: unknown) => {
+    const id = asProfileId(rawId);
+    const profile = id === null ? undefined : profileFor(id);
+    return id === null || profile === undefined ? null : megaNames(megaDataFor(id, profile));
   });
 
   handle(Invoke.seenPlayers, (_caller, rawId: unknown) => {
