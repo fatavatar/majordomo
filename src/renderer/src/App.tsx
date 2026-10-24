@@ -487,6 +487,8 @@ interface CardContext {
   /** Strikes a find out of the realm's log. See `RoomCard`'s Finds face. */
   forgetFind(find: Pick<Find, 'room' | 'name'>): void;
   inspect(name: string, anchor: HTMLElement): void;
+  /** A room's panel beside the link that named it, `map/room`; the shown character's only. */
+  inspectRoom: ((room: string, anchor: HTMLElement) => void) | null;
   loadWearer(): ReturnType<IpcApi['wearer']>;
   loadMap(map: number, room: number, radius?: number): ReturnType<IpcApi['localMap']>;
   lookupName(query: string): ReturnType<IpcApi['lookup']>;
@@ -1085,6 +1087,7 @@ function cardElement(id: CardId, ctx: CardContext): ReactNode {
           explore={ctx.explore}
           explorer={ctx.explorer}
           level={character.progress.level}
+          openRoom={ctx.inspectRoom}
           lookup={ctx.lookupName}
           /*
             Addressed like `lookup` and `onRoom` beside it: the panel it opens
@@ -3931,6 +3934,22 @@ export default function App() {
   );
 
   /**
+   * A room named in MMUD Explorer's words on a card or the slide-out
+   * (2026-10-24): its panel beside the link, settled as a clicked map room
+   * is, with the way there on it. It takes the slide-out's place, as a name
+   * clicked in the slide-out does.
+   */
+  const inspectRoom = useCallback(
+    (room: string, anchor: HTMLElement) => {
+      const at = asRoomReference(room);
+      if (at === null) return;
+      const id = roomId(at.map, at.room);
+      openPeek({ room: id, anchor, settled: true, act: walkTo(id) });
+    },
+    [openPeek, walkTo]
+  );
+
+  /**
    * The same panel, opened from a `map/room` string.
    *
    * The quest book states where a step's NPC stands as the realm writes it, so
@@ -5407,6 +5426,7 @@ export default function App() {
         forget: shown ? forget : bound.forget,
         forgetFind: bound.forgetFind,
         inspect,
+        inspectRoom: shown ? inspectRoom : null,
         gear: bound.gear,
         loadWearer: shown ? loadWearer : bound.loadWearer,
         loadMap: shown ? loadMap : bound.loadMap,
@@ -6183,6 +6203,7 @@ export default function App() {
             dismissAsked();
             chooseOnMap(map, room);
           }}
+          openRoom={inspectRoom}
           purseKey={explorerPurseKey}
           realm={character.realm}
           rules={referenceRules}

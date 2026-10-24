@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { explorerPlace } from '../ReferenceExplorer';
+import { explorerPlace, followFor } from '../ReferenceExplorer';
 import type { ReferenceEntry } from '../ReferenceDetail';
 import type { WorldItem, WorldMob } from '@shared/world';
 
@@ -39,5 +39,38 @@ describe("a Reference entry's place in MMUD Explorer", () => {
       n: 40
     });
     expect(explorerPlace(mob({ ids: [12, 40] }))).toBeNull();
+  });
+});
+
+/* A reference clicked in MME's detail on a card (2026-10-24). */
+describe("where a reference in MMUD Explorer's detail leads from a card", () => {
+  const anchor = {} as HTMLElement;
+  const calls = () => {
+    const went: string[] = [];
+    const follow = followFor(
+      {
+        explore: (kind, n) => went.push(`explore ${kind} ${n}`),
+        openRoom: (room) => went.push(`room ${room}`)
+      },
+      (name) => went.push(`name ${name}`)
+    );
+    return { went, follow: follow! };
+  };
+
+  it("opens a room's panel, with the way there on it", () => {
+    const { went, follow } = calls();
+    follow({ tab: 'rooms', n: '1/355' }, 'Helfgrim', anchor);
+    expect(went).toEqual(['room 1/355']);
+  });
+
+  it('opens the slide-out on a name, and the Explorer on a shop', () => {
+    const { went, follow } = calls();
+    follow({ tab: 'monsters', n: 747 }, 'massive white dragon', anchor);
+    follow({ tab: 'shops', n: 12 }, "Helfgrim's Blades", anchor);
+    expect(went).toEqual(['name massive white dragon', 'explore shops 12']);
+  });
+
+  it('leaves the references as text where nothing can be opened', () => {
+    expect(followFor({ explore: null, openRoom: null }, null)).toBeUndefined();
   });
 });

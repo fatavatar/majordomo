@@ -77,9 +77,10 @@ function ReferenceCard({
   characterKey,
   purseKey,
   explore,
+  openRoom,
   ...chrome
 }: ReferenceCardProps) {
-  const link = useExplorerLink({ explorer, characterKey, purseKey, explore });
+  const link = useExplorerLink({ explorer, characterKey, purseKey, explore, openRoom });
   const [query, setQuery] = useState('');
   const [found, setFound] = useState<WorldLookup>({
     mobs: [],
