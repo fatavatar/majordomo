@@ -1587,6 +1587,12 @@ export const RULES: Rule[] = [
     pattern: /^(?<player>[A-Z][\w'-]*) is an? [A-Za-z]+, (?<who>[A-Za-z][A-Za-z' -]*?) with(?:\s|$)/
   },
   { type: 'player-enters', pattern: /^(?<player>\w+) just entered the Realm\./ },
+  /*
+   * `Player.TrySearch` breaks the searcher's stealth and then says this to the
+   * room (GreaterMUD `Player.cs:1326`, source; captures 001, 012, 029;
+   * upstream 33964b50).
+   */
+  { type: 'player-searches', pattern: /^(?<player>[A-Z][\w'-]*) is searching the area\.$/ },
   { type: 'player-exits', pattern: /^(?<player>\w+) just left the Realm\./ },
   { type: 'player-disconnects', pattern: /^(?<player>\w+) just disconnected!!!/ },
 
@@ -2006,6 +2012,19 @@ export const RULES: Rule[] = [
    */
   { type: 'user-equipped', pattern: /^You are now holding (?<item>.+?)\.$/ },
   { type: 'user-equipped', pattern: /^You lit the (?<item>.+?)\.$/ },
+  /*
+   * The second line of a weapon's equip reply, live on orohost (2026-10-10,
+   * upstream e597ccdd) and in the corpus (`quick and deadly`, captures 017,
+   * 066, 119):
+   *
+   *     You are now holding platinum mace.
+   *     This weapon feels heavy in your hands.
+   */
+  { type: 'user-weapon-feel', pattern: /^This weapon feels (?<feel>heavy) in your hands\.$/ },
+  {
+    type: 'user-weapon-feel',
+    pattern: /^You are extremely (?<feel>quick) and deadly with this weapon\.$/
+  },
   { type: 'user-equipped-failed', pattern: /^You may not wear that item!/ },
   // `wear` for something already on, captured live while recovering a kit.
   { type: 'user-equipped-failed', pattern: /^You are already wearing (?<item>.+?)!$/ },

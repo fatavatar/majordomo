@@ -628,6 +628,16 @@ describe('session prompts', () => {
 });
 
 describe('conversation, movement, items', () => {
+  it('reads the equip reply’s second line and a searcher in the room', () => {
+    expect(expectType('This weapon feels heavy in your hands.', 'user-weapon-feel')['feel']).toBe(
+      'heavy'
+    );
+    expect(
+      expectType('You are extremely quick and deadly with this weapon.', 'user-weapon-feel')['feel']
+    ).toBe('quick');
+    expect(expectType('Killa is searching the area.', 'player-searches')['player']).toBe('Killa');
+  });
+
   it('reads a give between players either way', () => {
     // A give: the stack carries its count, coins end without a stop (upstream ac2f11ec).
     expect(expectType('Killa gives you red iron axe.', 'user-given')).toMatchObject({
