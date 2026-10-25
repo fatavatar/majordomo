@@ -36,14 +36,17 @@ const HIDE_KEY = 'mudengine.explorer.hideTextblocks';
 
 /**
  * A textblock asked for and the reader's choices about it: the reading, which
- * starts plain for each block, and Hide textblocks, which is kept.
+ * starts as the one the realm reads each block as (a monster's greeting, a
+ * room's commands, otherwise plain) until the reader picks another, and Hide
+ * textblocks, which is kept.
  */
 export function useTextblock(
   ask: (request: TextblockRequest) => Promise<ExplorerTextblock>,
   n: number | null,
   defaultMap: number
 ): Pick<TextblockViewProps, 'tb' | 'mode' | 'onMode' | 'hideTB' | 'onHideTB'> {
-  const [mode, setMode] = useState<TextblockMode>('plain');
+  // Null until the reader picks one: the realm's own reading, which the answer names.
+  const [mode, setMode] = useState<TextblockMode | null>(null);
   const [hideTB, setHideTB] = useState(() =>
     readStored(
       HIDE_KEY,
@@ -52,7 +55,7 @@ export function useTextblock(
     )
   );
   const [answer, setAnswer] = useState<{ key: string; tb: ExplorerTextblock } | null>(null);
-  useEffect(() => setMode('plain'), [n]);
+  useEffect(() => setMode(null), [n]);
   const key = `${n}:${mode}:${hideTB}:${defaultMap}`;
   useEffect(() => {
     if (n === null) return;
@@ -62,9 +65,10 @@ export function useTextblock(
       live = false;
     };
   }, [ask, n, mode, hideTB, defaultMap, key]);
+  const tb = answer?.key === key ? answer.tb : null;
   return {
-    tb: answer?.key === key ? answer.tb : null,
-    mode,
+    tb,
+    mode: mode ?? tb?.mode ?? 'plain',
     onMode: setMode,
     hideTB,
     onHideTB: (hide) => {

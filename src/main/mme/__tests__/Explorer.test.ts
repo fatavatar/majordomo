@@ -543,6 +543,58 @@ describe('a textblock as MMUD Explorer shows it', () => {
     const tb = await asked(999999);
     expect([tb.supported, tb.found]).toEqual([true, false]);
   });
+
+  /*
+   * Dhelvanen's (2026-10-25): frmResults printed `levelcheck`, `minlevel 20
+   * 2614` and `message 2639` as the realm wrote them, where they are the
+   * server's filler, a level gate refused with block 2614's words, and block
+   * 2639's words shown.
+   */
+  const words = (node: { text: ExplorerSegment[] }): string =>
+    node.text.map((run) => run.text).join('');
+
+  it('reads the steps frmResults leaves as written, the blocks they show linked', async () => {
+    const tb = await asked(9022);
+    expect(tb.command.kids.map(words)).toEqual(['Min level: 20', 'Text, words of: Textblock 9024']);
+    expect(tb.command.kids[1]!.text.at(-1)).toMatchObject({
+      kind: 'textblock',
+      n: 9024,
+      tab: 'textblock'
+    });
+  });
+
+  it('reads a block as the realm uses it when no reading is asked for', async () => {
+    const as = (n: number) =>
+      explorerTextblock(fixture(), { n, mode: null, hideTB: false, defaultMap: 1 });
+    // Dhelvanen's greeting: each word to the block it answers with, followed.
+    const greet = await as(177);
+    expect(greet.mode).toBe('greet');
+    expect(words(greet.command.kids[0]!)).toBe('Command: dragon --> Textblock 179');
+    // Their room's give-to-Dhelvanen trades.
+    const room = await as(181);
+    expect(room.mode).toBe('room');
+    expect(words(room.command.kids[0]!)).toBe('Command: give spider silk to Dhelvanen');
+    expect((await as(9046)).mode).toBe('plain');
+  });
+
+  it("draws the reading asked for over the realm's", async () => {
+    const tb = await explorerTextblock(fixture(), {
+      n: 177,
+      mode: 'plain',
+      hideTB: false,
+      defaultMap: 1
+    });
+    expect(tb.mode).toBe('plain');
+    expect(words(tb.command.kids[0]!)).toBe('Line 1');
+  });
+
+  it('says a guard and the block that refuses it, and a message as the words of a block', async () => {
+    const tb = await asked(9046);
+    const line = tb.command.kids[0]!.kids.map(words);
+    expect(line).toContain('Min level: 20, else Textblock 2614');
+    expect(line).toContain('Message, words of: Textblock 2639');
+    expect(line.some((text) => /^check\b/.test(text))).toBe(false);
+  });
 });
 
 /* MME's room as data, for the Room card and the room panel (2026-10-24). */

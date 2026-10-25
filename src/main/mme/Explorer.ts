@@ -85,6 +85,7 @@ import {
 } from './vendor/js/hooks/combat.js';
 import { ATTACK, MUD } from './vendor/js/mmud/combat.js';
 import {
+  abilityName,
   armourType,
   itemType,
   magery,
@@ -119,6 +120,7 @@ import {
   type TbTreeNode
 } from './vendor/js/mmud/textblocks.js';
 import { chestContents } from './vendor/js/mmud/chest.js';
+import { readStep } from './textblockSteps';
 import {
   attackConfig,
   expHrCharacter,
@@ -163,6 +165,7 @@ import type {
   RoomSearchResult,
   RoomViewRequest,
   TextblockNode,
+  TextblockMode,
   TextblockRequest,
   GearBoard,
   GearOptions,
@@ -958,8 +961,61 @@ function treeOf(node: TbTreeNode): TextblockNode {
     icon: node.icon,
     place: placeOf(node.ref),
     bold: node.bold,
-    kids: node.kids.map(treeOf)
+    kids: node.kids.flatMap((kid) => {
+      const read = stepOf(kid);
+      return read === 'drop' ? [] : [read ?? treeOf(kid)];
+    })
   };
+}
+
+/**
+ * A step frmResults printed as the realm wrote it, read for what it does
+ * (`textblockSteps.ts`), or null to keep MME's line. Only a plain line with
+ * nothing under it is such a step: a line MME named carries a reference or
+ * marked-up words.
+ */
+function stepOf(node: TbTreeNode): TextblockNode | 'drop' | null {
+  if (node.icon !== 'PAPER' || node.ref !== null || node.kids.length > 0) return null;
+  if (segments(node.text).some((run) => 'kind' in run)) return null;
+  const read = readStep(node.text);
+  if (read === null || read === 'drop') return read;
+  const text = read.parts.map((part): ExplorerSegment => {
+    if (typeof part === 'string') return { text: part };
+    if (part.kind === 'ability') return { text: abilityName(part.n, true) };
+    const name =
+      part.kind === 'textblock'
+        ? `Textblock ${part.n}`
+        : `${String(by.monster.get(part.n)?.['Name'] ?? 'Monster')}(${part.n})`;
+    return { kind: part.kind, n: part.n, text: name, tab: tabOf(part.kind, part.n) };
+  });
+  return { text, icon: read.icon, place: null, bold: false, kids: [] };
+}
+
+/**
+ * How the realm reads each textblock that is not a plain script, for the
+ * realm loaded: a monster's greeting (`GreetTXT`) as a keyword table, a room's
+ * commands (`CMD`) as a room's. MME is told which by whoever opens the block,
+ * and a link here does not carry it, so a greeting opened from a monster drew
+ * as words and numbers with nothing it leads to followed (2026-10-25,
+ * Dhelvanen's).
+ */
+let readings: { realm: string; of: Map<number, TextblockMode> } | null = null;
+
+function readingOf(n: number): TextblockMode {
+  if (readings?.realm !== loaded) {
+    const of = new Map<number, TextblockMode>();
+    for (const room of by.room.values()) {
+      const block = Number(room['CMD']);
+      if (block > 0) of.set(block, 'room');
+    }
+    // A block that is both is read as the greeting: that is the table a person types at.
+    for (const monster of by.monster.values()) {
+      const block = Number(monster['GreetTXT']);
+      if (block > 0) of.set(block, 'greet');
+    }
+    readings = { realm: loaded ?? '', of };
+  }
+  return readings.of.get(n) ?? 'plain';
 }
 
 /**
@@ -973,12 +1029,14 @@ export async function explorerTextblock(
   request: TextblockRequest
 ): Promise<ExplorerTextblock> {
   await useRealm(realm);
-  const { n, mode, hideTB, defaultMap } = request;
+  const { n, hideTB, defaultMap } = request;
+  const mode = request.mode ?? readingOf(n);
   const empty: TextblockNode = { text: [], icon: 'PAPER', place: null, bold: false, kids: [] };
   const none: ExplorerTextblock = {
     supported: supported(),
     found: false,
     number: n,
+    mode,
     linkTo: null,
     calledFrom: null,
     commands: null,
@@ -995,6 +1053,7 @@ export async function explorerTextblock(
     supported: true,
     found: true,
     number: n,
+    mode,
     linkTo,
     calledFrom: calledFrom === '' ? null : linked(calledFrom),
     commands: mode === 'plain' ? null : textblockCMDS(n),
