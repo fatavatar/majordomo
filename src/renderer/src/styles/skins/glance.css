@@ -2,23 +2,54 @@
  * The glance skin (2026-10-25): colour and shape carry what rows of words
  * did. Most of it is the cards' own layouts under this skin
  * (`components/glance/`) and the kit they are built from (`styles/kit.css`);
- * what is here restyles the parts a card shares with classic, scoped to
- * `[data-skin='glance']` and read from the colour theme's tokens.
+ * what is here restyles the parts a card shares with classic, read from the
+ * colour theme's tokens. The compact layouts are atlas's and halo's too, so
+ * what every one of them needs is under `:is(…)` of the three, and what is
+ * glance's own (MME's colouring, the alerts' edges) under `[data-skin='glance']`;
+ * `atlas.css` and `halo.css` come after and restyle the rest.
  *
  * Never taller than classic, card by card, measured before it ships.
  */
+
+/* Glance's face, JetBrains Mono (bundled, `fonts.css`), as atlas's and halo's are theirs. */
+:root[data-skin='glance'] body {
+  --font-glance: 'JetBrains Mono', var(--font-ui-family);
+  --font-sans: var(--font-glance);
+  --font-mono: var(--font-glance);
+  font-family: var(--font-glance);
+}
+
+/*
+ * Never taller than classic (2026-10-25): each skin's face has a looser line
+ * than classic's, whose own face sets solid, and at it every row of a listing
+ * and a readout came out taller, the Realm and Players cards most, and a
+ * paragraph a line longer than the heading band saves. Listings set solid, as
+ * Telemetry learned (a row mixes faces, each taking its half-leading), and
+ * everything else at a close line.
+ */
+:is([data-skin='glance'], [data-skin='atlas'], [data-skin='halo']) .card {
+  line-height: 1.05;
+}
+
+:is([data-skin='glance'], [data-skin='atlas'], [data-skin='halo']) .card-table {
+  line-height: 1;
+}
 
 /*
  * A slimmer heading band: a face's tab is a word in a pill, not a control's
  * 32px box (every button's `--control-h`), and a long name ends in an
  * ellipsis rather than wrapping the heading onto two lines.
  */
-[data-skin='glance'] .card > header {
+:is([data-skin='glance'], [data-skin='atlas'], [data-skin='halo']) .card > header {
   padding-bottom: calc(var(--pad-card) - 7px);
   padding-top: calc(var(--pad-card) - 5px);
 }
 
-[data-skin='glance'] .card > header .crumbs[role='tablist'] .crumb {
+:is([data-skin='glance'], [data-skin='atlas'], [data-skin='halo'])
+  .card
+  > header
+  .crumbs[role='tablist']
+  .crumb {
   height: auto;
   max-width: 16ch;
   overflow: hidden;
@@ -154,17 +185,25 @@
   box-shadow: inset 3px 0 0 var(--danger);
 }
 
-[data-skin='glance'] .alert-list tbody tr[data-level='warning'] .alert-text {
+:is([data-skin='glance'], [data-skin='atlas'])
+  .alert-list
+  tbody
+  tr[data-level='warning']
+  .alert-text {
   color: var(--text-hi);
 }
 
-[data-skin='glance'] .alert-list tbody tr[data-level='critical'] .alert-text {
+:is([data-skin='glance'], [data-skin='atlas'])
+  .alert-list
+  tbody
+  tr[data-level='critical']
+  .alert-text {
   color: var(--danger);
 }
 
 /* A room's answers and asks as small keys, not full-height controls. */
-[data-skin='glance'] .room-answers > .chip,
-[data-skin='glance'] .room-asks > .chip {
+:is([data-skin='glance'], [data-skin='atlas'], [data-skin='halo']) .room-answers > .chip,
+:is([data-skin='glance'], [data-skin='atlas'], [data-skin='halo']) .room-asks > .chip {
   height: auto;
   padding-block: 1px;
 }
@@ -172,12 +211,13 @@
 /* ------------------------------------------------------------- realm */
 
 /* The realm's make-up, worst first, a segment per standing. */
+/* In the gap over the listing, so it costs the card no height. */
 .glance-makeup {
   border-radius: 3px;
   display: flex;
   gap: 1px;
-  height: 5px;
-  margin-bottom: 6px;
+  height: 3px;
+  margin: -4px 0 1px;
   overflow: hidden;
 }
 
@@ -187,11 +227,15 @@
 }
 
 /* A person's standing as the colour of the name, and a dot before it. */
-[data-skin='glance'] .realm-list tbody tr[data-align] .realm-name {
+:is([data-skin='glance'], [data-skin='atlas']) .realm-list tbody tr[data-align] .realm-name {
   color: var(--align);
 }
 
-[data-skin='glance'] .realm-list tbody tr[data-align] .realm-name::before {
+:is([data-skin='glance'], [data-skin='atlas'])
+  .realm-list
+  tbody
+  tr[data-align]
+  .realm-name::before {
   background: var(--align);
   border-radius: 50%;
   content: '';
@@ -204,11 +248,15 @@
 
 /* ----------------------------------------------------------- players */
 
-[data-skin='glance'] .player-list tbody tr[data-align] .player-name {
+:is([data-skin='glance'], [data-skin='atlas']) .player-list tbody tr[data-align] .player-name {
   color: var(--align);
 }
 
-[data-skin='glance'] .player-list tbody tr[data-align] .player-name::before {
+:is([data-skin='glance'], [data-skin='atlas'])
+  .player-list
+  tbody
+  tr[data-align]
+  .player-name::before {
   background: var(--align);
   border-radius: 50%;
   content: '';
@@ -220,32 +268,54 @@
 }
 
 /* How long ago, fading: fresh, plain, quieter, dim. */
-[data-skin='glance'] .player-list tbody tr[data-age='hour'] .player-seen {
+:is([data-skin='glance'], [data-skin='atlas'], [data-skin='halo'])
+  .player-list
+  tbody
+  tr[data-age='hour']
+  .player-seen {
   color: var(--ok);
 }
-[data-skin='glance'] .player-list tbody tr[data-age='day'] .player-seen {
+:is([data-skin='glance'], [data-skin='atlas'], [data-skin='halo'])
+  .player-list
+  tbody
+  tr[data-age='day']
+  .player-seen {
   color: var(--text);
 }
-[data-skin='glance'] .player-list tbody tr[data-age='week'] .player-seen {
+:is([data-skin='glance'], [data-skin='atlas'], [data-skin='halo'])
+  .player-list
+  tbody
+  tr[data-age='week']
+  .player-seen {
   color: var(--text-lo);
 }
-[data-skin='glance'] .player-list tbody tr[data-age='old'] .player-seen,
-[data-skin='glance'] .player-list tbody tr[data-age='never'] .player-seen {
+:is([data-skin='glance'], [data-skin='atlas'], [data-skin='halo'])
+  .player-list
+  tbody
+  tr[data-age='old']
+  .player-seen,
+:is([data-skin='glance'], [data-skin='atlas'], [data-skin='halo'])
+  .player-list
+  tbody
+  tr[data-age='never']
+  .player-seen {
   color: var(--text-lo-quiet);
   opacity: 0.75;
 }
 
 /* A run's count leads its line, where an ellipsis cannot take it. */
-[data-skin='glance'] .alert-text > .kit-count:first-child {
+:is([data-skin='glance'], [data-skin='atlas'], [data-skin='halo'])
+  .alert-text
+  > .kit-count:first-child {
   color: var(--pending);
   margin: 0 0.5em 0 0;
 }
 
 /* A name with its dot stays on its line; a heading's state stays on its own. */
-[data-skin='glance'] .realm-name,
-[data-skin='glance'] .player-name,
-[data-skin='glance'] .card > header .badge,
-[data-skin='glance'] .card > header .chip {
+:is([data-skin='glance'], [data-skin='atlas'], [data-skin='halo']) .realm-name,
+:is([data-skin='glance'], [data-skin='atlas'], [data-skin='halo']) .player-name,
+:is([data-skin='glance'], [data-skin='atlas'], [data-skin='halo']) .card > header .badge,
+:is([data-skin='glance'], [data-skin='atlas'], [data-skin='halo']) .card > header .chip {
   white-space: nowrap;
 }
 
@@ -382,4 +452,23 @@
 
 .glance-gain {
   color: var(--ok);
+}
+
+/* -------------------------------------------------------- character tabs */
+
+/* A character's tab in the skin's inks: the name bright, what it is doing green, its figures white. */
+[data-skin='glance'] .tab .name {
+  color: var(--text-hi);
+}
+
+[data-skin='glance'] .tab .where {
+  color: var(--g-label);
+}
+
+[data-skin='glance'] .tab .figures {
+  color: var(--text-hi);
+}
+
+[data-skin='glance'] .tab .track {
+  height: 4px;
 }

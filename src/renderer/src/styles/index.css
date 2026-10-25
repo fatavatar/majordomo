@@ -884,6 +884,13 @@ button.quest-banner-dismiss {
   flex-direction: column;
   min-height: 0;
   overflow: hidden;
+  /*
+   * The action column and the corner grip are placed against the card. The
+   * glass blur did that only by the way (a backdrop filter makes the box hold
+   * its absolute children), so a skin with no blur, atlas's and halo's, put a
+   * railed or docked card's controls against the rail or the strip instead.
+   */
+  position: relative;
   animation: card-enter var(--dur-surface) var(--ease-out) backwards;
   /*
    * The action column's own box, named here rather than in `.card-side` so the

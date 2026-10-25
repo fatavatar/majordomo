@@ -1,7 +1,8 @@
 import { memo, useMemo } from 'react';
 
 import { t } from '../lib/i18n';
-import { useSkin } from '../lib/skin';
+import { useCompact } from '../lib/skin';
+import { KitInitials } from './kit';
 import { PlayerName } from '../lib/players';
 import type { PopoverAnchor } from '../lib/popover';
 
@@ -119,7 +120,7 @@ function RealmCard({ character, session, subject, onSelect, ...chrome }: RealmCa
    * and a dot before it, the realm's word its title, rather than a column of
    * words; and a bar over the list is the realm's make-up, worst first.
    */
-  const glance = useSkin() === 'glance';
+  const glance = useCompact();
   const makeup = useMemo(() => {
     const counts = new Map<string, number>();
     for (const entry of roster) {
@@ -187,12 +188,15 @@ function RealmCard({ character, session, subject, onSelect, ...chrome }: RealmCa
        * so this listing and the Players card's cannot drift apart.
        */
       cell: (entry) => (
-        <PlayerName
-          className="realm-name"
-          name={entry.name}
-          onSelect={onSelect}
-          self={playerKey(entry.name) === self}
-        />
+        <>
+          {glance && <KitInitials name={entry.name} />}
+          <PlayerName
+            className="realm-name"
+            name={entry.name}
+            onSelect={onSelect}
+            self={playerKey(entry.name) === self}
+          />
+        </>
       )
     },
     {

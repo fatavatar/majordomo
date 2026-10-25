@@ -1,6 +1,6 @@
 import { createContext, useContext } from 'react';
 
-import { DEFAULT_SKIN, type SkinId } from '@shared/skins';
+import { compactSkin, DEFAULT_SKIN, type SkinId } from '@shared/skins';
 
 /**
  * The skin the cards are drawn in (2026-10-25), for a card whose skin lays
@@ -11,4 +11,9 @@ export const SkinContext = createContext<SkinId>(DEFAULT_SKIN);
 
 export function useSkin(): SkinId {
   return useContext(SkinContext);
+}
+
+/** Whether the cards are laid out compactly: glance, atlas and halo alike. */
+export function useCompact(): boolean {
+  return compactSkin(useContext(SkinContext));
 }

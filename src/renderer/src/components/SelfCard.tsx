@@ -36,7 +36,7 @@ import type { SupplyList } from './SupplyControls';
 import { useRememberedChoice } from '../hooks/useRemembered';
 import { keepFocus } from '../lib/focus';
 import { t } from '../lib/i18n';
-import { useSkin } from '../lib/skin';
+import { useCompact } from '../lib/skin';
 
 export interface SelfCardProps extends CardChrome, Omit<InventoryBodyProps, 'returnFocus'> {
   character: CharacterState;
@@ -114,7 +114,7 @@ function SelfCard({
   ...chrome
 }: SelfCardProps) {
   const [face, chooseFace] = useRememberedChoice(session, 'self-tab', FACE_IDS, FACE_IDS[0]!);
-  const skin = useSkin();
+  const compact = useCompact();
   /* The PACK face's find row. Held, never remembered: a search is asked now. */
   const [finding, setFinding] = useState(false);
   const { progress, sight, room, attributeSpans: spans } = character;
@@ -154,119 +154,118 @@ function SelfCard({
    * sight rows are sentences, and pairing a sentence puts an ellipsis where
    * the answer is.
    */
-  const selfFace =
-    skin === 'glance' ? (
-      <SelfGlance character={character} />
-    ) : (
-      <div className="readout-box">
-        <dl className="readout columns">
-          <dt className="span">{t('cards.vitals.labels.class')}</dt>
-          <dd className={`span${character.className ? '' : ' inert'}`}>
-            {character.className ?? '—'}
-            {character.race ? ` · ${character.race}` : ''}
-          </dd>
-          <Row label={t('cards.vitals.labels.level')} value={progress.level} />
-          <dt className="span">{t('cards.self.labels.lives')}</dt>
-          <dd className={`span${progress.lives === null ? ' inert' : ''}`}>
-            {figure(progress.lives)}
-            {progress.cp !== null ? ` / ${progress.cp}` : ''}
-          </dd>
-          {/* The one figure that runs to seven digits: paired, it would be the
+  const selfFace = compact ? (
+    <SelfGlance character={character} />
+  ) : (
+    <div className="readout-box">
+      <dl className="readout columns">
+        <dt className="span">{t('cards.vitals.labels.class')}</dt>
+        <dd className={`span${character.className ? '' : ' inert'}`}>
+          {character.className ?? '—'}
+          {character.race ? ` · ${character.race}` : ''}
+        </dd>
+        <Row label={t('cards.vitals.labels.level')} value={progress.level} />
+        <dt className="span">{t('cards.self.labels.lives')}</dt>
+        <dd className={`span${progress.lives === null ? ' inert' : ''}`}>
+          {figure(progress.lives)}
+          {progress.cp !== null ? ` / ${progress.cp}` : ''}
+        </dd>
+        {/* The one figure that runs to seven digits: paired, it would be the
             row that pushes the sheet wider than the card. */}
-          <dt className="span">{t('cards.self.labels.exp')}</dt>
-          <dd className={`span${progress.exp === null ? ' inert' : ''}`}>{figure(progress.exp)}</dd>
+        <dt className="span">{t('cards.self.labels.exp')}</dt>
+        <dd className={`span${progress.exp === null ? ' inert' : ''}`}>{figure(progress.exp)}</dd>
 
-          <dt className="group" data-group="1">
-            {t('cards.self.groups.attributes')}
-          </dt>
-          <dd className="group" />
-          <Row
-            label={t('cards.self.labels.strength')}
-            value={progress.strength}
-            span={spans?.strength}
-          />
-          <Row
-            label={t('cards.self.labels.intellect')}
-            value={progress.intellect}
-            span={spans?.intellect}
-          />
-          <Row
-            label={t('cards.self.labels.willpower')}
-            value={progress.willpower}
-            span={spans?.willpower}
-          />
-          <Row
-            label={t('cards.self.labels.agility')}
-            value={progress.agility}
-            span={spans?.agility}
-          />
-          <Row label={t('cards.self.labels.health')} value={progress.health} span={spans?.health} />
-          <Row label={t('cards.self.labels.charm')} value={progress.charm} span={spans?.charm} />
+        <dt className="group" data-group="1">
+          {t('cards.self.groups.attributes')}
+        </dt>
+        <dd className="group" />
+        <Row
+          label={t('cards.self.labels.strength')}
+          value={progress.strength}
+          span={spans?.strength}
+        />
+        <Row
+          label={t('cards.self.labels.intellect')}
+          value={progress.intellect}
+          span={spans?.intellect}
+        />
+        <Row
+          label={t('cards.self.labels.willpower')}
+          value={progress.willpower}
+          span={spans?.willpower}
+        />
+        <Row
+          label={t('cards.self.labels.agility')}
+          value={progress.agility}
+          span={spans?.agility}
+        />
+        <Row label={t('cards.self.labels.health')} value={progress.health} span={spans?.health} />
+        <Row label={t('cards.self.labels.charm')} value={progress.charm} span={spans?.charm} />
 
-          <dt className="group" data-group="2">
-            {t('cards.self.groups.skills')}
-          </dt>
-          <dd className="group" />
-          <dt className="span">{t('cards.self.labels.armour')}</dt>
-          <dd className={`span${progress.armourClass === null ? ' inert' : ''}`}>
-            {figure(progress.armourClass)}
-            {progress.damageResist !== null ? ` / ${progress.damageResist}` : ''}
-          </dd>
-          <Row label={t('cards.self.labels.perception')} value={progress.perception} />
-          <Row label={t('cards.self.labels.stealth')} value={progress.stealthSkill} />
-          <Row label={t('cards.self.labels.thievery')} value={progress.thievery} />
-          <Row label={t('cards.self.labels.traps')} value={progress.traps} />
-          <Row label={t('cards.self.labels.picklocks')} value={progress.picklocks} />
-          <Row label={t('cards.self.labels.tracking')} value={progress.tracking} />
-          <Row label={t('cards.self.labels.martialArts')} value={progress.martialArts} />
-          <Row label={t('cards.self.labels.magicRes')} value={progress.magicRes} />
-          <Row label={t('cards.self.labels.spellcasting')} value={progress.spellcasting} />
+        <dt className="group" data-group="2">
+          {t('cards.self.groups.skills')}
+        </dt>
+        <dd className="group" />
+        <dt className="span">{t('cards.self.labels.armour')}</dt>
+        <dd className={`span${progress.armourClass === null ? ' inert' : ''}`}>
+          {figure(progress.armourClass)}
+          {progress.damageResist !== null ? ` / ${progress.damageResist}` : ''}
+        </dd>
+        <Row label={t('cards.self.labels.perception')} value={progress.perception} />
+        <Row label={t('cards.self.labels.stealth')} value={progress.stealthSkill} />
+        <Row label={t('cards.self.labels.thievery')} value={progress.thievery} />
+        <Row label={t('cards.self.labels.traps')} value={progress.traps} />
+        <Row label={t('cards.self.labels.picklocks')} value={progress.picklocks} />
+        <Row label={t('cards.self.labels.tracking')} value={progress.tracking} />
+        <Row label={t('cards.self.labels.martialArts')} value={progress.martialArts} />
+        <Row label={t('cards.self.labels.magicRes')} value={progress.magicRes} />
+        <Row label={t('cards.self.labels.spellcasting')} value={progress.spellcasting} />
 
-          <dt className="group" data-group="3">
-            {t('cards.self.groups.sight')}
-          </dt>
-          <dd className="group" />
-          <dt className="span">{t('cards.self.labels.nightVision')}</dt>
-          <dd className={`span${sight === null ? ' inert' : ''}`}>
-            {sight === null ? '—' : sight.vision}
-            {sight !== null && !sight.raceKnown && (
-              <span className="hint"> {t('cards.self.sight.raceUnknown')}</span>
-            )}
-          </dd>
-          <dt className="span">{t('cards.self.labels.lit')}</dt>
-          <dd className={`span${sight?.lit ? '' : ' inert'}`}>
-            {sight?.lit
-              ? t('cards.self.sight.litFormat', { item: sight.lit, reach: sight.reach })
-              : t('cards.self.sight.nothingLit')}
-          </dd>
-          <dt className="span">{t('cards.self.labels.seesDownTo')}</dt>
-          <dd className={`span${darkestUnlit === null ? ' inert' : ''}`}>
-            {darkestUnlit === null
-              ? '—'
-              : darkestLit === null
-                ? String(darkestUnlit)
-                : t('cards.self.sight.downToFormat', { unlit: darkestUnlit, lit: darkestLit })}
-          </dd>
-          <dt className="span">{t('cards.self.labels.here')}</dt>
-          <dd className={`span${seen === null ? ' inert' : ''}`}>
-            {seen === null
-              ? t('cards.self.sight.hereUnknown')
-              : t('cards.self.sight.hereFormat', {
-                  level: level ?? 0,
-                  seen,
-                  reading: phrase ?? t('cards.self.sight.readable')
-                })}
-            {/* The server's own word, where it printed one: the check on the sum. */}
-            {room.light !== null && (
-              <span className="hint">
-                {' '}
-                {t('cards.self.sight.serverSaid', { phrase: room.light })}
-              </span>
-            )}
-          </dd>
-        </dl>
-      </div>
-    );
+        <dt className="group" data-group="3">
+          {t('cards.self.groups.sight')}
+        </dt>
+        <dd className="group" />
+        <dt className="span">{t('cards.self.labels.nightVision')}</dt>
+        <dd className={`span${sight === null ? ' inert' : ''}`}>
+          {sight === null ? '—' : sight.vision}
+          {sight !== null && !sight.raceKnown && (
+            <span className="hint"> {t('cards.self.sight.raceUnknown')}</span>
+          )}
+        </dd>
+        <dt className="span">{t('cards.self.labels.lit')}</dt>
+        <dd className={`span${sight?.lit ? '' : ' inert'}`}>
+          {sight?.lit
+            ? t('cards.self.sight.litFormat', { item: sight.lit, reach: sight.reach })
+            : t('cards.self.sight.nothingLit')}
+        </dd>
+        <dt className="span">{t('cards.self.labels.seesDownTo')}</dt>
+        <dd className={`span${darkestUnlit === null ? ' inert' : ''}`}>
+          {darkestUnlit === null
+            ? '—'
+            : darkestLit === null
+              ? String(darkestUnlit)
+              : t('cards.self.sight.downToFormat', { unlit: darkestUnlit, lit: darkestLit })}
+        </dd>
+        <dt className="span">{t('cards.self.labels.here')}</dt>
+        <dd className={`span${seen === null ? ' inert' : ''}`}>
+          {seen === null
+            ? t('cards.self.sight.hereUnknown')
+            : t('cards.self.sight.hereFormat', {
+                level: level ?? 0,
+                seen,
+                reading: phrase ?? t('cards.self.sight.readable')
+              })}
+          {/* The server's own word, where it printed one: the check on the sum. */}
+          {room.light !== null && (
+            <span className="hint">
+              {' '}
+              {t('cards.self.sight.serverSaid', { phrase: room.light })}
+            </span>
+          )}
+        </dd>
+      </dl>
+    </div>
+  );
 
   const packFace = (
     <InventoryBody

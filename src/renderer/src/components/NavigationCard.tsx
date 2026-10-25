@@ -9,7 +9,7 @@ import type { LoopProgress } from '@shared/loops';
 import { movementOf } from '@shared/movement';
 import type { WalkProgress } from '@shared/walk';
 import { tuning } from '../lib/tuning';
-import { useSkin } from '../lib/skin';
+import { useCompact } from '../lib/skin';
 import { KitAside, KitFigure, KitLine, KitTrack, compact } from './kit';
 
 export interface NavigationCardProps extends CardChrome {
@@ -76,7 +76,7 @@ function NavigationCard({
 }: NavigationCardProps) {
   const movement = movementOf(walk, loop);
   const running = loop.status === 'running';
-  const glance = useSkin() === 'glance';
+  const glance = useCompact();
   const live = movement.kind === 'loop';
 
   /*
@@ -373,7 +373,7 @@ function NavigationCard({
   const rate =
     made !== null && ranFor !== null && ranFor > 60_000 ? made / (ranFor / 3_600_000) : null;
   const glanceLoopFace = (
-    <>
+    <div className="glance-loop">
       <div className="glance-loop-head">
         {transport}
         {canPick ? picker : <div className="walk-destination">{loop.name ?? '—'}</div>}
@@ -418,7 +418,7 @@ function NavigationCard({
           {t('cards.navigation.loop.endedLabel')} {loop.reason}
         </KitAside>
       )}
-    </>
+    </div>
   );
 
   const loopFace = glance ? (

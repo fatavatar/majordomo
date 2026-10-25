@@ -27,7 +27,7 @@ import type { SessionId } from '@shared/ipc';
 import { useRememberedChoice } from '../hooks/useRemembered';
 import { t } from '../lib/i18n';
 import { levelWord } from '../lib/vitals';
-import { useSkin } from '../lib/skin';
+import { useCompact } from '../lib/skin';
 
 /** What set an affliction on, for its tooltip: how it was read, when, and the line. */
 function causeText(cause: AfflictionCause): string {
@@ -225,7 +225,7 @@ function VitalsCard({
 }: VitalsCardProps) {
   const { vitals, progress, phase, inCombat, stealth, afflictions } = character;
   const [face, chooseFace] = useRememberedChoice(session, 'vitals-tab', FACE_IDS, FACE_IDS[0]!);
-  const skin = useSkin();
+  const compact = useCompact();
   // The experience over the view this card has chosen: the session, or the last hours.
   const view = useExperienceView(character, session);
   const graph = chrome.settings?.value.statsGraph ?? DEFAULT_STATS_GRAPH;
@@ -315,7 +315,7 @@ function VitalsCard({
   const vitalsFace =
     phase !== 'in-game' ? (
       <div className="empty">{t('cards.vitals.emptyNotInRealm')}</div>
-    ) : skin === 'glance' ? (
+    ) : compact ? (
       <VitalsGlance
         afflicted={afflicted.map(({ word, cause }) => ({
           word,
