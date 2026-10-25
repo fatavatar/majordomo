@@ -32,3 +32,22 @@ describe('a list of names in one field', () => {
     expect(comboFor(MOBS, 'kob', ',').choose('kobold thief')).toBe('kobold thief');
   });
 });
+
+/* A spell box: it takes the short command, and the spell's name is beside it. */
+describe('a box that takes a short form', () => {
+  const SHORTS = ['bles', 'mend', 'mihe'];
+  const NAMES = new Map([
+    ['bles', 'bless'],
+    ['mend', 'minor healing'],
+    ['mihe', 'major healing']
+  ]);
+
+  it('finds a short form by its name, after any by the short form itself', () => {
+    expect(comboFor(SHORTS, 'mi', undefined, NAMES).suggestions).toEqual(['mihe', 'mend']);
+    expect(comboFor(SHORTS, 'heal', undefined, NAMES).suggestions).toEqual(['mend', 'mihe']);
+  });
+
+  it('puts the short form in the box', () => {
+    expect(comboFor(SHORTS, 'minor', undefined, NAMES).choose('mend')).toBe('mend');
+  });
+});

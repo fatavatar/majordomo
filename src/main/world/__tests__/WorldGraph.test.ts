@@ -4052,6 +4052,20 @@ describe('where the realm puts a monster', () => {
     ]);
   });
 
+  /*
+   * A name typed rather than clicked in a room settles no row (Ctrl+K,
+   * 2026-10-24): each row told apart by where it spawns.
+   */
+  it('tells the rows of a shared name apart by where each spawns', () => {
+    const world = withPlacements();
+    const briefs = world.rowBriefs(world.mob('snow cat')!)!;
+    expect(briefs.map((row) => [row.id, row.hp, row.where])).toEqual([
+      [70, 300, { roomName: 'Snowy Plains', rooms: 3 }],
+      [71, 300, { roomName: 'Snowy Plains', rooms: 1 }]
+    ]);
+    expect(world.rowBriefs(world.mob('healer')!)).toBeUndefined();
+  });
+
   /* A figure the rows disagree about is no figure. */
   it('states the slot count only where the group agrees on one', () => {
     const world = withPlacements();

@@ -58,6 +58,13 @@ export interface Column<Row> {
   control?: boolean;
   /** Kept out of the find field, for a column whose text is chrome rather than fact. */
   unsearchable?: boolean;
+  /**
+   * Steps aside where the card is narrow (2026-10-24): a column worth having
+   * on a wide card and not worth the one that names the row, which on a rail
+   * card it was eating (the pack's items read five letters each beside their
+   * row numbers and values). Still sorted and searched by.
+   */
+  optional?: boolean;
   /** Nothing to sort by — a bar, a control. */
   unsortable?: boolean;
 }
@@ -104,7 +111,8 @@ function columnClassName<Row>(column: Column<Row>, extra?: string): string {
     extra ?? '',
     column.numeric === true ? 'numeric' : '',
     column.wide === true ? 'wide' : '',
-    column.control === true ? 'control' : ''
+    column.control === true ? 'control' : '',
+    column.optional === true ? 'optional' : ''
   ]
     .filter((part) => part.length > 0)
     .join(' ');

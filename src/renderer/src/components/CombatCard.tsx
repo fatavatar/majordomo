@@ -1,6 +1,7 @@
 import { memo } from 'react';
 
 import BentoCard, { type CardChrome } from './BentoCard';
+import CombatGlance from './glance/CombatGlance';
 import type { CharacterState, TargetHealth } from '@shared/character';
 import type { RoomVerdict } from '@shared/verdict';
 import { woundBandFor } from '@shared/wounds';
@@ -9,6 +10,7 @@ import { t } from '../lib/i18n';
 import { isKnownPlayer, PlayerName } from '../lib/players';
 import type { PopoverAnchor } from '../lib/popover';
 import { levelWord } from '../lib/vitals';
+import { useCompact } from '../lib/skin';
 import { tuning } from '../lib/tuning';
 
 export interface CombatCardProps extends CardChrome {
@@ -184,52 +186,52 @@ function Provenance({ health }: { health: TargetHealth }) {
  */
 function SurvivalMeter({ verdict, hp }: { verdict: RoomVerdict; hp: number | null }) {
   const survival = verdict.survival;
+  /*
+   * A fight that cannot be run is one quiet line (2026-10-24): the empty
+   * striped bar it drew above it said nothing the line does not, and read as
+   * a meter at zero.
+   */
+  if (survival === null) {
+    return (
+      <div className="combat-survival">
+        <span className="hint">{t('cards.combat.survival.unknown')}</span>
+      </div>
+    );
+  }
   const level: Level =
-    survival === null
-      ? 'unknown'
-      : survival.level === 'safe'
-        ? 'ok'
-        : survival.level === 'risky'
-          ? 'caution'
-          : 'critical';
-  const percent = survival === null ? 0 : Math.round(survival.survives * 100);
+    survival.level === 'safe' ? 'ok' : survival.level === 'risky' ? 'caution' : 'critical';
+  const percent = Math.round(survival.survives * 100);
   return (
     <div className="combat-survival">
       <div
-        className={`meter survival${survival === null ? ' unknown' : ''}`}
+        className="meter survival"
         data-level={level}
-        title={
-          survival === null
-            ? undefined
-            : t('cards.combat.survival.trials', { count: survival.trials })
-        }
+        title={t('cards.combat.survival.trials', { count: survival.trials })}
       >
-        <div className="fill" style={survival === null ? undefined : { width: `${percent}%` }} />
+        <div className="fill" style={{ width: `${percent}%` }} />
         {/* A figure and a word, like every meter: a sentence in a bar wraps
             when the chrome font is turned up. The sentence is the hint's. */}
         <span className="meter-label">
-          {survival === null ? '—' : t('cards.combat.survival.figure', { percent })}
-          {survival !== null && <span className="meter-state">{levelWord(level)}</span>}
+          {t('cards.combat.survival.figure', { percent })}
+          <span className="meter-state">{levelWord(level)}</span>
         </span>
       </div>
       <span className="hint">
-        {survival === null
-          ? t('cards.combat.survival.unknown')
-          : [
-              t('cards.combat.survival.walkOut', { percent }),
-              survival.hpLeft === null
-                ? t('cards.combat.survival.roundsOnly', {
-                    rounds: Math.round(survival.rounds.value)
-                  })
-                : t('cards.combat.survival.detail', {
-                    rounds: Math.round(survival.rounds.value),
-                    hp: Math.round(survival.hpLeft),
-                    hpMax: hp ?? Math.round(survival.hpLeft)
-                  }),
-              ...(survival.heals >= 0.5
-                ? [t('cards.combat.survival.heals', { count: Math.round(survival.heals) })]
-                : [])
-            ].join(' · ')}
+        {[
+          t('cards.combat.survival.walkOut', { percent }),
+          survival.hpLeft === null
+            ? t('cards.combat.survival.roundsOnly', {
+                rounds: Math.round(survival.rounds.value)
+              })
+            : t('cards.combat.survival.detail', {
+                rounds: Math.round(survival.rounds.value),
+                hp: Math.round(survival.hpLeft),
+                hpMax: hp ?? Math.round(survival.hpLeft)
+              }),
+          ...(survival.heals >= 0.5
+            ? [t('cards.combat.survival.heals', { count: Math.round(survival.heals) })]
+            : [])
+        ].join(' · ')}
       </span>
     </div>
   );
@@ -255,6 +257,7 @@ function SurvivalMeter({ verdict, hp }: { verdict: RoomVerdict; hp: number | nul
 function CombatCard({ character, verdict, inspect, onSelect, ...chrome }: CombatCardProps) {
   const { combat } = character;
   const outnumbered = combat.attackers.length > 1;
+  const compact = useCompact();
 
   /*
    * The badge reports the number that decides something. "Three on you" is a
@@ -279,63 +282,73 @@ function CombatCard({ character, verdict, inspect, onSelect, ...chrome }: Combat
       title={t('cards.combat.title')}
     >
       <div className="scroller">
-        {/* Drawn whether or not anything has swung yet: the question it
-            answers is asked on the way in, and only where the room holds
-            something the realm could weigh. */}
-        {verdict.monsters.length > 0 && (
-          <SurvivalMeter hp={character.vitals.hp} verdict={verdict} />
-        )}
-        {!combat.engaged && combat.attackers.length === 0 ? (
-          <div className="empty">{t('cards.combat.empty')}</div>
+        {compact ? (
+          <CombatGlance
+            character={character}
+            name={(name) => (
+              <Combatant character={character} inspect={inspect} name={name} onSelect={onSelect} />
+            )}
+            verdict={verdict}
+          />
         ) : (
           <>
-            {/* Never the first attacker standing in for a target: they are
+            {/* Drawn whether or not anything has swung yet: the question it
+            answers is asked on the way in, and only where the room holds
+            something the realm could weigh. */}
+            {verdict.monsters.length > 0 && (
+              <SurvivalMeter hp={character.vitals.hp} verdict={verdict} />
+            )}
+            {!combat.engaged && combat.attackers.length === 0 ? (
+              <div className="empty">{t('cards.combat.empty')}</div>
+            ) : (
+              <>
+                {/* Never the first attacker standing in for a target: they are
                 different questions and conflating them is how a rule swings at
                 the wrong thing. */}
-            {combat.health === null ? (
-              <div className="combat-target none">
-                <span className="hint">{t('cards.combat.noTarget')}</span>
-              </div>
-            ) : (
-              <div className="combat-target">
-                <div className="combat-name">
-                  <Combatant
-                    character={character}
-                    inspect={inspect}
-                    name={combat.health.name}
-                    onSelect={onSelect}
-                  />
-                  <Provenance health={combat.health} />
-                </div>
-                <TargetMeter health={combat.health} />
-                <div className="combat-damage">
-                  <span className="damage-key mine">
-                    {t('cards.combat.damage.mine', { damage: combat.health.damage.mine })}
-                  </span>
-                  {/* Absent rather than zero when nobody else is in the fight:
+                {combat.health === null ? (
+                  <div className="combat-target none">
+                    <span className="hint">{t('cards.combat.noTarget')}</span>
+                  </div>
+                ) : (
+                  <div className="combat-target">
+                    <div className="combat-name">
+                      <Combatant
+                        character={character}
+                        inspect={inspect}
+                        name={combat.health.name}
+                        onSelect={onSelect}
+                      />
+                      <Provenance health={combat.health} />
+                    </div>
+                    <TargetMeter health={combat.health} />
+                    <div className="combat-damage">
+                      <span className="damage-key mine">
+                        {t('cards.combat.damage.mine', { damage: combat.health.damage.mine })}
+                      </span>
+                      {/* Absent rather than zero when nobody else is in the fight:
                       a legend for a colour that is not on screen is noise. */}
-                  {combat.health.damage.others > 0 && (
-                    <span className="damage-key others">
-                      {t('cards.combat.damage.others', { damage: combat.health.damage.others })}
-                    </span>
-                  )}
-                </div>
-              </div>
-            )}
+                      {combat.health.damage.others > 0 && (
+                        <span className="damage-key others">
+                          {t('cards.combat.damage.others', { damage: combat.health.damage.others })}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                )}
 
-            <dl className="readout">
-              {/* The one hard reading there is, and only when there is one: the
+                <dl className="readout">
+                  {/* The one hard reading there is, and only when there is one: the
                   server states a monster's health nowhere else. Absent rather
                   than "not looked at", which would be a row that is empty for
                   the whole of most fights. */}
-              {combat.health?.observed != null && (
-                <>
-                  <dt>{t('cards.combat.readout.looked')}</dt>
-                  <dd>{combat.health.observed}</dd>
-                </>
-              )}
+                  {combat.health?.observed != null && (
+                    <>
+                      <dt>{t('cards.combat.readout.looked')}</dt>
+                      <dd>{combat.health.observed}</dd>
+                    </>
+                  )}
 
-              {/*
+                  {/*
                 What the realm says about what is being fought — off the entity
                 the tracker joined when the target was set, so the card states
                 it on the first paint and never asks for it.
@@ -346,70 +359,75 @@ function CombatCard({ character, verdict, inspect, onSelect, ...chrome }: Combat
                 when it dies. Absent is *the realm does not say*, which for an
                 uncatalogued monster is the honest and ordinary answer.
               */}
-              {combat.targetEntity !== null && (
-                <>
-                  {(combat.targetEntity.armour !== undefined ||
-                    combat.targetEntity.damageResist !== undefined) && (
+                  {combat.targetEntity !== null && (
                     <>
-                      <dt>{t('cards.reference.mob.defenceLabel')}</dt>
-                      <dd>
-                        {t('cards.reference.mob.defenceFigure', {
-                          ac: combat.targetEntity.armour ?? 0,
-                          dr: combat.targetEntity.damageResist ?? 0
-                        })}
-                      </dd>
+                      {(combat.targetEntity.armour !== undefined ||
+                        combat.targetEntity.damageResist !== undefined) && (
+                        <>
+                          <dt>{t('cards.reference.mob.defenceLabel')}</dt>
+                          <dd>
+                            {t('cards.reference.mob.defenceFigure', {
+                              ac: combat.targetEntity.armour ?? 0,
+                              dr: combat.targetEntity.damageResist ?? 0
+                            })}
+                          </dd>
+                        </>
+                      )}
+                      {combat.targetEntity.follows !== undefined && (
+                        <>
+                          <dt>{t('cards.reference.mob.followsLabel')}</dt>
+                          <dd>
+                            {t('cards.reference.mob.followsFigure', {
+                              percent: combat.targetEntity.follows
+                            })}
+                          </dd>
+                        </>
+                      )}
+                      {combat.targetEntity.deathSpell !== undefined && (
+                        <>
+                          <dt>{t('cards.combat.readout.onDeathLabel')}</dt>
+                          <dd className="warn">{t('cards.combat.readout.onDeathCasts')}</dd>
+                        </>
+                      )}
+                      {combat.targetEntity.drops !== undefined &&
+                        combat.targetEntity.drops.length > 0 && (
+                          <>
+                            <dt>{t('cards.reference.mob.dropsLabel')}</dt>
+                            <dd>{combat.targetEntity.drops.map((drop) => drop.name).join(', ')}</dd>
+                          </>
+                        )}
                     </>
                   )}
-                  {combat.targetEntity.follows !== undefined && (
-                    <>
-                      <dt>{t('cards.reference.mob.followsLabel')}</dt>
-                      <dd>
-                        {t('cards.reference.mob.followsFigure', {
-                          percent: combat.targetEntity.follows
-                        })}
-                      </dd>
-                    </>
-                  )}
-                  {combat.targetEntity.deathSpell !== undefined && (
-                    <>
-                      <dt>{t('cards.combat.readout.onDeathLabel')}</dt>
-                      <dd className="warn">{t('cards.combat.readout.onDeathCasts')}</dd>
-                    </>
-                  )}
-                  {combat.targetEntity.drops !== undefined &&
-                    combat.targetEntity.drops.length > 0 && (
-                      <>
-                        <dt>{t('cards.reference.mob.dropsLabel')}</dt>
-                        <dd>{combat.targetEntity.drops.map((drop) => drop.name).join(', ')}</dd>
-                      </>
-                    )}
-                </>
-              )}
 
-              <dt>{t('cards.combat.readout.onYou')}</dt>
-              <dd>
-                {combat.attackers.length === 0 ? (
-                  <span className="hint">{t('cards.combat.readout.noAttackers')}</span>
-                ) : (
-                  <span className="combat-attackers" data-many={outnumbered ? 'true' : undefined}>
-                    {combat.attackers.map((name, index) => (
-                      <span key={name}>
-                        <Combatant
-                          character={character}
-                          inspect={inspect}
-                          name={name}
-                          onSelect={onSelect}
-                        />
-                        {index < combat.attackers.length - 1 && ', '}
+                  <dt>{t('cards.combat.readout.onYou')}</dt>
+                  <dd>
+                    {combat.attackers.length === 0 ? (
+                      <span className="hint">{t('cards.combat.readout.noAttackers')}</span>
+                    ) : (
+                      <span
+                        className="combat-attackers"
+                        data-many={outnumbered ? 'true' : undefined}
+                      >
+                        {combat.attackers.map((name, index) => (
+                          <span key={name}>
+                            <Combatant
+                              character={character}
+                              inspect={inspect}
+                              name={name}
+                              onSelect={onSelect}
+                            />
+                            {index < combat.attackers.length - 1 && ', '}
+                          </span>
+                        ))}
                       </span>
-                    ))}
-                  </span>
-                )}
-              </dd>
+                    )}
+                  </dd>
 
-              <dt>{t('cards.combat.readout.blows')}</dt>
-              <dd>{combat.blows}</dd>
-            </dl>
+                  <dt>{t('cards.combat.readout.blows')}</dt>
+                  <dd>{combat.blows}</dd>
+                </dl>
+              </>
+            )}
           </>
         )}
       </div>

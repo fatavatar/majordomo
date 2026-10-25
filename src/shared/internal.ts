@@ -1006,6 +1006,14 @@ const TUNING_DEFAULTS = {
      * on the lines kept is not a cap on a file that only grows.
      */
     backscrollRewriteAt: 2,
+    /**
+     * How many of the latest lines a window is handed when it attaches to a
+     * console; the rest is sent when it is asked for, by scrolling to the top
+     * or finding in it (2026-10-25). Five characters' whole backscroll was
+     * 34 MB, past what a web tab may be owed, and every tab was let go as
+     * it opened.
+     */
+    backscrollAttachLines: 2000,
     /** How long a balance change waits before it is written. */
     belongingsWriteDelayMs: 2000,
     /**
@@ -1758,6 +1766,15 @@ const TUNING_DEFAULTS = {
      * frame.
      */
     restoreSliceChars: 65536,
+    /**
+     * How many older lines a console fetches at a time once it is drawn,
+     * filling in the history behind what attaching handed it
+     * (`records.backscrollAttachLines`), and how long it waits between
+     * fetches: a page well under what a web tab may be owed, at a pace that
+     * leaves the link to the game (2026-10-25).
+     */
+    backscrollPageLines: 4000,
+    backscrollPageMs: 400,
     /**
      * How long after a plain Enter the shown console must have turned it into
      * input before the console says it did not (todo 00). xterm hands a key

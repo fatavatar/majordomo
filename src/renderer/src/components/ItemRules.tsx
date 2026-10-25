@@ -11,7 +11,8 @@
  */
 import { useMemo, useState } from 'react';
 
-import { NumberField, TextField } from './FormField';
+import FormField, { NumberField, TextField } from './FormField';
+import NameCombo from './NameCombo';
 import Icon from './Icon';
 import { t } from '../lib/i18n';
 import { ITEM_FLAGS, itemKey, type ItemFlag, type ItemRule } from '@shared/itemRules';
@@ -51,6 +52,8 @@ export interface ItemRuleListProps {
   namePrefix: string;
   addLabel: string;
   emptyText: string;
+  /** Item names to suggest (`ItemRuleEditorProps.known`). */
+  known?: readonly string[];
 }
 
 export function ItemRuleList({
@@ -58,7 +61,8 @@ export function ItemRuleList({
   onChange,
   namePrefix,
   addLabel,
-  emptyText
+  emptyText,
+  known
 }: ItemRuleListProps): React.JSX.Element {
   const [query, setQuery] = useState('');
   const [editing, setEditing] = useState<Editing | null>(null);
@@ -115,6 +119,7 @@ export function ItemRuleList({
     editing === null ? null : (
       <ItemRuleEditor
         draft={editing.draft}
+        known={known}
         namePrefix={namePrefix}
         onCancel={() => setEditing(null)}
         onDraft={(draft) => setEditing((was) => (was === null ? was : { ...was, draft }))}
@@ -213,6 +218,8 @@ export interface ItemRuleEditorProps {
   namePrefix: string;
   /** Draws the item's name field; off where the row's item is already chosen. */
   named?: boolean;
+  /** Item names to suggest as the name is typed; none still takes any name. */
+  known?: readonly string[];
 }
 
 /**
@@ -227,7 +234,8 @@ export function ItemRuleEditor({
   onRemove,
   removeLabel,
   namePrefix,
-  named = true
+  named = true,
+  known = []
 }: ItemRuleEditorProps): React.JSX.Element {
   /** Sets or clears one optional field; `undefined` removes the key outright. */
   const setField = <K extends keyof ItemRule>(key: K, value: ItemRule[K] | undefined): void => {
@@ -266,15 +274,19 @@ export function ItemRuleEditor({
     <div className="message-editor">
       {named && (
         <div className="settings-inline">
-          <TextField
-            label={t('settings.items.nameLabel')}
-            name={`${namePrefix}-item`}
-            onChange={(value) => setField('item', value)}
-            onSubmit={onSave}
-            placeholder={t('settings.items.namePlaceholder')}
-            spellCheck={false}
-            value={draft.item}
-          />
+          <FormField label={t('settings.items.nameLabel')} name={`${namePrefix}-item`}>
+            {({ describedBy }) => (
+              <NameCombo
+                describedBy={describedBy}
+                name={`${namePrefix}-item`}
+                onChange={(value) => setField('item', value)}
+                onSubmit={onSave}
+                options={known}
+                placeholder={t('settings.items.namePlaceholder')}
+                value={draft.item}
+              />
+            )}
+          </FormField>
         </div>
       )}
       <div className="message-effects" role="group" aria-label={t('settings.items.flagsLabel')}>

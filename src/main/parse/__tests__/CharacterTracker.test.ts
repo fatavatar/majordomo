@@ -11065,6 +11065,8 @@ describe('the spellbook and the belongings record', () => {
         rememberStatsBase: (base: CombatTally | null) => {
           state.statsBase = base;
         },
+        recallExpResetAt: () => null,
+        rememberExpResetAt: () => {},
         forget: () => false
       }
     };

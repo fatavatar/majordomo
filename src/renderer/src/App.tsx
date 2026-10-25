@@ -10,7 +10,13 @@ import {
 } from 'react';
 
 import CommandPalette, { type Command, type Found } from './components/CommandPalette';
-import { entryWord, flattenLookup, entryNumber } from './components/ReferenceDetail';
+import {
+  entryWord,
+  flattenLookup,
+  entryNumber,
+  mobRowText,
+  type ReferenceEntry
+} from './components/ReferenceDetail';
 import type { IconName } from './components/Icon';
 import { entityNumber } from '@shared/entities';
 import AutomationCard from './components/AutomationCard';
@@ -32,6 +38,7 @@ import { knownGangs } from './lib/gangs';
 import { ago, knownPlayerNames, presentPlayerNames } from './lib/players';
 import { NameIndex } from './lib/names';
 import { readShown, writeShown } from './lib/shownPanes';
+import { SkinContext } from './lib/skin';
 import PlayersCard from './components/PlayersCard';
 import GangCard from './components/GangCard';
 import SettingsScreen, {
@@ -43,6 +50,7 @@ import SettingsScreen, {
 import StandbyCard from './components/StandbyCard';
 import StatsCard from './components/StatsCard';
 import GearCard from './components/GearCard';
+import { explorerCalls, followFor, type ExplorerCalls } from './components/ReferenceExplorer';
 import ConversationCard from './components/ConversationCard';
 import BanksCard from './components/BanksCard';
 import QuestCard from './components/QuestCard';
@@ -52,6 +60,7 @@ import SessionCard from './components/SessionCard';
 import SessionTerminal from './components/SessionTerminal';
 import ReferenceCard from './components/ReferenceCard';
 import ReferencePopover, { type Asked } from './components/ReferencePopover';
+import TextblockPopover, { type TextblockAsked } from './components/TextblockPopover';
 import RoomQuickView, { type RoomAsked } from './components/RoomQuickView';
 import { ownAlignment } from './components/LairList';
 import TabRail, { type RailSide } from './components/TabRail';
@@ -108,10 +117,12 @@ import type {
   EqPlan,
   ExplorerKind,
   ExplorerOptions,
+  ExplorerTab,
   GearOptions,
   RoomMapOptions,
   RoomSearch,
-  RoomViewRequest
+  RoomViewRequest,
+  TextblockRequest
 } from '@shared/explorer';
 import { CONSOLE_PALETTES, TERMINAL_THEMES, THEME_PREFERENCES, THEMES } from '@shared/themes';
 import { usePaneWidths } from './hooks/usePaneWidths';
@@ -202,6 +213,7 @@ import {
   roomAddress,
   roomId,
   type LoopDraft,
+  type MobRowBrief,
   type RoomId,
   type Route,
   type WorldNames,
@@ -486,6 +498,10 @@ interface CardContext {
   /** Strikes a find out of the realm's log. See `RoomCard`'s Finds face. */
   forgetFind(find: Pick<Find, 'room' | 'name'>): void;
   inspect(name: string, anchor: HTMLElement): void;
+  /** A room's panel beside the link that named it, `map/room`; the shown character's only. */
+  inspectRoom: ((room: string, anchor: HTMLElement) => void) | null;
+  /** A textblock's panel beside what named it; the shown character's only. */
+  inspectTextblock: ((n: number, anchor: HTMLElement) => void) | null;
   loadWearer(): ReturnType<IpcApi['wearer']>;
   loadMap(map: number, room: number, radius?: number): ReturnType<IpcApi['localMap']>;
   lookupName(query: string): ReturnType<IpcApi['lookup']>;
@@ -528,6 +544,8 @@ interface CardContext {
   loadGear(options: GearOptions): ReturnType<IpcApi['explorerGear']>;
   /** Buy, or Buy + Wear, for this character. */
   buyItem(item: number, wear: boolean): ReturnType<IpcApi['explorerBuy']>;
+  /** MMUD Explorer's detail and Buy for the Reference card's entries, this character's. */
+  explorer: ExplorerCalls;
   /** The Explorer opened on an item; null for a character not shown, whose Explorer it is not. */
   explore: ((kind: ExplorerKind, item: number) => void) | null;
   /**
@@ -557,6 +575,8 @@ interface CardContext {
   openBuilder: (() => void) | null;
   /** Re-base the Combat Stats card to this character's totals as they stand. */
   resetStats(): void;
+  /** Restart the Vitals card's experience hours views; the session's stays. */
+  resetExp(): void;
   /**
    * The Navigation card's transport. `startMoving` takes the picker's choice,
    * or null where there is none; `loops` is the character's own list to pick
@@ -636,10 +656,14 @@ interface AddressedActions {
   loadHunting(measure: string | null): ReturnType<IpcApi['huntingGrounds']>;
   loadGear(options: GearOptions): ReturnType<IpcApi['explorerGear']>;
   buyItem(item: number, wear: boolean): ReturnType<IpcApi['explorerBuy']>;
+  /** MMUD Explorer's detail and Buy for the Reference card's entries. */
+  explorer: ExplorerCalls;
   startMoving(loop: string | null): void;
   stopMoving(): void;
   /** Re-base the Combat Stats card to this character's totals as they stand. */
   resetStats(): void;
+  /** Restart the Vitals card's experience hours views; the session's stays. */
+  resetExp(): void;
   startLoop(name: string): void;
   selectPlayer(name: string, anchor: PopoverAnchor): void;
   setGangRemotes(remotes: RemoteName[]): void;
@@ -683,6 +707,17 @@ function wornKey(character: CharacterState): string {
   ].join('|');
 }
 
+/** What Buy's plan answers for beside the gear: the purse, the room, the vaults. */
+function purseKey(character: CharacterState): string {
+  return [
+    character.inventory.wealth ?? '',
+    character.room.name ?? '',
+    character.room.map ?? '',
+    character.room.number ?? '',
+    character.banks.map((bank) => `${bank.name}:${bank.copper}`).join(',')
+  ].join('|');
+}
+
 /** The card for an id, drawn from a context. Exhaustive over the vocabulary. */
 function cardElement(id: CardId, ctx: CardContext): ReactNode {
   const { chrome, character, view } = ctx;
@@ -690,6 +725,8 @@ function cardElement(id: CardId, ctx: CardContext): ReactNode {
     case 'self':
       return (
         <SelfCard
+          characterKey={wornKey(character)}
+          loadItemFacts={ctx.explorer.items}
           {...chrome}
           character={character}
           gear={ctx.gear}
@@ -713,6 +750,7 @@ function cardElement(id: CardId, ctx: CardContext): ReactNode {
           {...chrome}
           ask={ctx.ask}
           character={character}
+          onExpReset={ctx.resetExp}
           session={ctx.session}
           thresholds={ctx.thresholds}
         />
@@ -720,6 +758,8 @@ function cardElement(id: CardId, ctx: CardContext): ReactNode {
     case 'room':
       return (
         <RoomCard
+          characterKey={wornKey(character)}
+          explorer={ctx.explorer}
           {...chrome}
           ask={ctx.ask}
           locate={ctx.locate}
@@ -908,6 +948,8 @@ function cardElement(id: CardId, ctx: CardContext): ReactNode {
     case 'inventory':
       return (
         <InventoryCard
+          characterKey={wornKey(character)}
+          loadItemFacts={ctx.explorer.items}
           {...chrome}
           character={character}
           gear={ctx.gear}
@@ -1010,6 +1052,7 @@ function cardElement(id: CardId, ctx: CardContext): ReactNode {
           stopRun={ctx.stopRun}
           loadQuests={ctx.loadQuests}
           onName={ctx.chooseOnMap === null ? null : ctx.inspect}
+          onTextblock={ctx.inspectTextblock}
           realmAt={ctx.realmAt}
           session={ctx.session}
         />
@@ -1065,7 +1108,12 @@ function cardElement(id: CardId, ctx: CardContext): ReactNode {
       return (
         <ReferenceCard
           {...chrome}
+          characterKey={wornKey(character)}
+          explore={ctx.explore}
+          explorer={ctx.explorer}
           level={character.progress.level}
+          openRoom={ctx.inspectRoom}
+          openTextblock={ctx.inspectTextblock}
           lookup={ctx.lookupName}
           /*
             Addressed like `lookup` and `onRoom` beside it: the panel it opens
@@ -1077,6 +1125,7 @@ function cardElement(id: CardId, ctx: CardContext): ReactNode {
           */
           onName={ctx.chooseOnMap === null ? null : ctx.inspect}
           onRoom={ctx.chooseOnMap}
+          purseKey={purseKey(character)}
           realm={character.realm}
           supplies={ctx.chooseOnMap === null ? null : ctx.supplies}
         />
@@ -1322,6 +1371,8 @@ export default function App() {
   const [searchResult, setSearchResult] = useState<SearchResult | undefined>(undefined);
   /** The name last clicked on a card, and where, so the answer can open beside it. */
   const [asked, setAsked] = useState<Asked | null>(null);
+  /** A textblock's panel (2026-10-24): one more slide-out, sharing the one slot. */
+  const [tbAsked, setTbAsked] = useState<TextblockAsked | null>(null);
   /**
    * The Player flyout: whose it is about, which character's listing it was
    * opened from, and where on screen. One at a time, like the reference
@@ -1888,6 +1939,15 @@ export default function App() {
     // renderer otherwise hides.
     root.setProperty('--font-terminal', terminalFonts);
   }, [uiFonts, config.ui.font.size, terminalFonts]);
+
+  /*
+   * The skin the chrome wears (2026-10-24), as an attribute the skin's
+   * stylesheet keys off (`styles/skins/`), the way density is; and as
+   * `SkinContext` below, for the cards a skin lays out its own way.
+   */
+  useEffect(() => {
+    document.documentElement.dataset['skin'] = config.ui.skin;
+  }, [config.ui.skin]);
 
   /**
    * Every mounted terminal, by character.
@@ -2935,14 +2995,23 @@ export default function App() {
   }, [explorerOpen, closeExplorer, session]);
   // The Gear card's way in: the Explorer on one item.
   const [explorerFocus, setExplorerFocus] = useState<{
-    kind: ExplorerKind;
-    item: number;
+    kind: ExplorerTab;
+    item: number | string;
     at: number;
   } | null>(null);
-  const openExplorerAt = useCallback((kind: ExplorerKind, item: number) => {
+  const openExplorerAt = useCallback((kind: ExplorerTab, item: number | string) => {
+    setTbAsked(null);
     setExplorerFocus({ kind, item, at: Date.now() });
     setExplorerOpen(true);
   }, []);
+  const explorerTextblock = useCallback(
+    (request: TextblockRequest) => api.explorerTextblock(session, request),
+    [api, session]
+  );
+  const explorerRoomFacts = useCallback(
+    (map: number, room: number) => api.explorerRoom(session, map, room),
+    [api, session]
+  );
   useEffect(() => {
     if (explorerOpen && session === NO_SESSION) closeExplorer();
   }, [explorerOpen, session, closeExplorer]);
@@ -2989,16 +3058,11 @@ export default function App() {
     (item: number) => api.explorerLearn(session, item),
     [api, session]
   );
-  // What Buy's plan answers for beside the gear: the purse, the room, the vaults.
-  const explorerPurseKey = [
-    character.inventory.wealth ?? '',
-    character.room.name ?? '',
-    character.room.map ?? '',
-    character.room.number ?? '',
-    character.banks.map((bank) => `${bank.name}:${bank.copper}`).join(',')
-  ].join('|');
+  const explorerPurseKey = purseKey(character);
   // What the lists answer for: read again when the class, level or gear change.
   const explorerKey = wornKey(character);
+  // The slide-out's link to MME: the shown character's, as the slide-out is.
+  const popoverExplorer = useMemo(() => explorerCalls(session, api), [session, api]);
   /*
    * The EQ tab's calls, and what its page answers for beside the gear: the
    * pack, its reported weight, and the blessings up.
@@ -3176,6 +3240,7 @@ export default function App() {
       load: () => api.settingsSnapshot(),
       saveProfile: (id: string, draft: ProfileDraft) => api.saveProfile(id, draft),
       megamudChoices: (id: string) => api.megamudChoices(id),
+      megamudNames: (id: string) => api.megamudNames(id),
       deleteProfile: (id: string) => api.deleteProfile(id),
       saveServer: (previous: string | null, draft: ServerDraft) => api.saveServer(previous, draft),
       deleteServer: (name: string) => api.deleteServer(name),
@@ -3453,6 +3518,7 @@ export default function App() {
     (name: string, anchor: HTMLElement) => {
       setFlyout(null);
       setGangFlyout(null);
+      setTbAsked(null);
       dismissPeek();
       setAsked({ name, anchor });
     },
@@ -3475,11 +3541,12 @@ export default function App() {
    * — xterm paints cells — so it hands up the box of the cells instead.
    */
   const inspectAt = useCallback(
-    (name: string, anchor: PopoverAnchor) => {
+    (name: string, anchor: PopoverAnchor, row?: number) => {
       setFlyout(null);
       setGangFlyout(null);
+      setTbAsked(null);
       dismissPeek();
-      setAsked({ name, anchor });
+      setAsked(row === undefined ? { name, anchor } : { name, anchor, row });
     },
     [dismissPeek]
   );
@@ -3498,9 +3565,26 @@ export default function App() {
   const findInRealm = useCallback(
     async (query: string): Promise<Command[]> => {
       const entries = flattenLookup(await api.lookup(session, query));
-      return entries.slice(0, tuning().paletteFoundRows).map((entry, index) => {
+      // A hotkey has no box to hand over; the palette always does.
+      const middle: PopoverAnchor = {
+        box: { top: 0, right: window.innerWidth / 2, bottom: 0, left: window.innerWidth / 2 },
+        within: document.body
+      };
+      /*
+       * One entry per row of a monster name several rows share (2026-10-24):
+       * seven rows are a giant rat, and a typed name settles none of them, so
+       * each is listed told apart by its own figures and where it spawns, and
+       * opens on itself.
+       */
+      const rows = entries.flatMap(
+        (entry): Array<{ entry: ReferenceEntry; row: MobRowBrief | null }> =>
+          entry.kind === 'mob' && entry.rows !== null
+            ? entry.rows.map((row) => ({ entry, row }))
+            : [{ entry, row: null }]
+      );
+      return rows.slice(0, tuning().paletteFoundRows).map(({ entry, row }, index) => {
         const kindWord = entryWord(entry);
-        const number = entityNumber(entryNumber(entry));
+        const number = row?.id ?? entityNumber(entryNumber(entry));
         const icon: IconName =
           entry.kind === 'mob'
             ? 'sword'
@@ -3519,22 +3603,14 @@ export default function App() {
           hint:
             number === null
               ? kindWord
-              : t('palette.navigate.lookupNumberHint', { kindWord, number: String(number) }),
-          run: (from?: PopoverAnchor) => {
-            // A hotkey has no box to hand over; the palette always does.
-            inspectAt(
-              entry.name,
-              from ?? {
-                box: {
-                  top: 0,
-                  right: window.innerWidth / 2,
-                  bottom: 0,
-                  left: window.innerWidth / 2
-                },
-                within: document.body
-              }
-            );
-          }
+              : row !== null
+                ? t('palette.navigate.lookupRowHint', {
+                    kindWord,
+                    number: String(number),
+                    brief: mobRowText(row)
+                  })
+                : t('palette.navigate.lookupNumberHint', { kindWord, number: String(number) }),
+          run: (from?: PopoverAnchor) => inspectAt(entry.name, from ?? middle, row?.id)
         };
       });
     },
@@ -3567,6 +3643,7 @@ export default function App() {
     (sid: SessionId, name: string, anchor: PopoverAnchor) => {
       setAsked(null);
       setGangFlyout(null);
+      setTbAsked(null);
       dismissPeek();
       setFlyout({ session: sid, name, anchor });
     },
@@ -3614,6 +3691,7 @@ export default function App() {
     (sid: SessionId, name: string, anchor: PopoverAnchor) => {
       setAsked(null);
       setFlyout(null);
+      setTbAsked(null);
       dismissPeek();
       setGangFlyout({ session: sid, name, anchor });
     },
@@ -3831,6 +3909,7 @@ export default function App() {
     setAsked(null);
     setFlyout(null);
     setGangFlyout(null);
+    setTbAsked(null);
     setPeek(asked);
   }, []);
   /**
@@ -3912,6 +3991,51 @@ export default function App() {
       });
     },
     [openPeek, walkTo]
+  );
+
+  /**
+   * A room named in MMUD Explorer's words on a card or the slide-out
+   * (2026-10-24): its panel beside the link, settled as a clicked map room
+   * is, with the way there on it. It takes the slide-out's place, as a name
+   * clicked in the slide-out does.
+   */
+  const inspectRoom = useCallback(
+    (room: string, anchor: HTMLElement) => {
+      const at = asRoomReference(room);
+      if (at === null) return;
+      const id = roomId(at.map, at.room);
+      // Where the link was, not the link: in the slide-out it goes with the
+      // slide-out this panel replaces, and the panel went with it.
+      const box = { box: anchor.getBoundingClientRect(), within: document.body };
+      openPeek({ room: id, anchor: box, settled: true, act: walkTo(id) });
+    },
+    [openPeek, walkTo]
+  );
+
+  /**
+   * A textblock's panel (2026-10-24): MME's view of the block beside the quest
+   * step or the link that named it, kept where the link was on screen, as a
+   * room's is. One panel at a time, like the rest.
+   */
+  const inspectTextblock = useCallback(
+    (n: number, anchor: HTMLElement) => {
+      setAsked(null);
+      setFlyout(null);
+      setGangFlyout(null);
+      dismissPeek();
+      setTbAsked({ n, anchor: { box: anchor.getBoundingClientRect(), within: document.body } });
+    },
+    [dismissPeek]
+  );
+  const dismissTextblock = useCallback(() => setTbAsked(null), []);
+  // Where a reference in the textblock panel leads: as from any card.
+  const textblockFollow = useMemo(
+    () =>
+      followFor(
+        { explore: openExplorerAt, openRoom: inspectRoom, openTextblock: inspectTextblock },
+        inspect
+      )!,
+    [openExplorerAt, inspectRoom, inspectTextblock, inspect]
   );
 
   /**
@@ -5287,12 +5411,15 @@ export default function App() {
         loadHunting: (measure) => api.huntingGrounds(sid, measure),
         loadGear: (options) => api.explorerGear(sid, options),
         buyItem: (item, wear) => api.explorerBuy(sid, item, wear),
+        explorer: explorerCalls(sid, api),
         startMoving: (loop) => startMovingRef.current(sid, loop, null),
         stopMoving: () => void api.stopMoving(sid),
         // Through a ref like `selectPlayer` beside it: this one changes state
         // in `App` rather than sending anything, and the bound object has to
         // stay the same object across renders or every card's memo is defeated.
         resetStats: () => resetStatsRef.current(sid),
+        // Main's, with the tally, as the Combat Stats card's is, and apart from it.
+        resetExp: () => void api.expReset(sid),
         startLoop: (name) =>
           void api.startLoop(sid, name).then((refused) => sayRefusalRef.current(sid)(refused)),
         selectPlayer: (name, anchor) => selectPlayerRef.current(sid, name, anchor),
@@ -5390,6 +5517,8 @@ export default function App() {
         forget: shown ? forget : bound.forget,
         forgetFind: bound.forgetFind,
         inspect,
+        inspectRoom: shown ? inspectRoom : null,
+        inspectTextblock: shown ? inspectTextblock : null,
         gear: bound.gear,
         loadWearer: shown ? loadWearer : bound.loadWearer,
         loadMap: shown ? loadMap : bound.loadMap,
@@ -5406,6 +5535,7 @@ export default function App() {
         loadHunting: bound.loadHunting,
         loadGear: bound.loadGear,
         buyItem: bound.buyItem,
+        explorer: bound.explorer,
         explore: shown ? openExplorerAt : null,
         runHunt: shown ? runHunt : null,
         createHunt: shown ? createHunt : null,
@@ -5417,6 +5547,7 @@ export default function App() {
         // Addressed always: a pinned float's Reset re-bases that character's
         // card, never the one being watched.
         resetStats: bound.resetStats,
+        resetExp: bound.resetExp,
         // The shown character's list is the only one the renderer holds; a
         // float's own loops are not asked for, so it offers no picker.
         loops: shown ? loops : null,
@@ -5827,7 +5958,7 @@ export default function App() {
     );
   };
 
-  return (
+  const drawn = (
     <div className="app">
       <div
         className="workspace"
@@ -6148,6 +6279,9 @@ export default function App() {
       {asked !== null && (
         <ReferencePopover
           asked={asked}
+          characterKey={explorerKey}
+          explore={openExplorerAt}
+          explorer={popoverExplorer}
           level={character.progress.level}
           lookup={lookupName}
           onDismiss={dismissAsked}
@@ -6162,6 +6296,9 @@ export default function App() {
             dismissAsked();
             chooseOnMap(map, room);
           }}
+          openRoom={inspectRoom}
+          openTextblock={inspectTextblock}
+          purseKey={explorerPurseKey}
           realm={character.realm}
           rules={referenceRules}
           supplies={suppliesBundle(session)}
@@ -6174,10 +6311,23 @@ export default function App() {
         is a button on it, which is the affordance the room's bare click used
         to be.
       */}
+      {tbAsked !== null && (
+        <TextblockPopover
+          ask={explorerTextblock}
+          asked={tbAsked}
+          defaultMap={character.room.map ?? 1}
+          explore={() => openExplorerAt('textblock', tbAsked.n)}
+          follow={textblockFollow}
+          onDismiss={dismissTextblock}
+        />
+      )}
+
       {peek !== null && (
         <RoomQuickView
           asked={peek}
+          follow={textblockFollow}
           load={loadRoomBrief}
+          loadMme={explorerRoomFacts}
           mine={ownAlignment(character)}
           onDismiss={dismissPeek}
           onPointerEnter={holdPeek}
@@ -6284,6 +6434,7 @@ export default function App() {
         detail={explorerDetail}
         eq={explorerEq}
         focus={explorerFocus}
+        textblock={explorerTextblock}
         learn={explorerLearn}
         learnPlan={explorerLearnPlan}
         lists={explorerLists}
@@ -6429,6 +6580,7 @@ export default function App() {
         revealProfiles={settingsApi.revealProfiles}
         saveProfile={settingsApi.saveProfile}
         megamudChoices={settingsApi.megamudChoices}
+        megamudNames={settingsApi.megamudNames}
         saveGlobal={settingsApi.saveGlobal}
         saveServer={settingsApi.saveServer}
         stats={settingsApi.stats}
@@ -6436,4 +6588,6 @@ export default function App() {
       />
     </div>
   );
+  // The skin's layouts reach every card from here, popovers included (`lib/skin.ts`).
+  return <SkinContext.Provider value={config.ui.skin}>{drawn}</SkinContext.Provider>;
 }

@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { goStop, roam } from '../move/buttons';
 import { goTo, headFor } from '../move/destinations';
 import { doors, runBack } from '../move/go';
+import { resync } from '../move/path';
 import { noAllowedExits, walkPath } from '../script/path';
 import { fetchCash } from '../script/cash';
 import { newItem, newPlayer } from '../data';
@@ -143,6 +144,16 @@ describe('walking a path (D48)', () => {
     walkPath(s);
     expect(out.shown).toEqual(['[Resynced from path step 0 to 2 (MAZE.MP)]']);
     expect(out.sent).toEqual(['w\r']);
+  });
+
+  /*
+   * A walk from where it ends has no steps, and a signature that is neither
+   * end had the search go round for ever: a replay of Fatty's hung (2026-10-25).
+   */
+  it('finds no step on a path that has none', () => {
+    const { s } = walker();
+    s.roomSignature = C;
+    expect(resync(s, path('~R000016', [], A, B))).toBe(0);
   });
 
   it('walks on by signature where no step’s room is known', () => {

@@ -2,12 +2,13 @@
  * `0x4c0af0`: the defaults of the mode MegaMUD is in, read 2026-10-12. Going
  * idle (automation off) applies the `Def…1` set to the `Auto…` toggles, going
  * active the `Def…2` set, unless `NoModeDefs`. Auto-combat kept across a
- * detour (`detourCombat`) is put back.
+ * detour (`detourCombat`) is put back. A walk the host has put aside
+ * (`SessionHost.walkAside`, ours) is still active: MegaMUD has no such pause.
  */
 import { automated, type Session } from '../Session';
 
 export function modeDefaults(s: Session): void {
-  const active = automated(s) && s.allOff === 0 ? 1 : 0;
+  const active = (automated(s) || s.host.walkAside?.() === true) && s.allOff === 0 ? 1 : 0;
   if (s.modeApplied !== -1 && s.modeApplied === active) return;
   s.modeApplied = active;
   if (s.MegaMud_NoModeDefs === 0) {

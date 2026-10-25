@@ -26,6 +26,7 @@ import BentoCard, { type CardChrome, type CardTab } from './BentoCard';
 import CardTable, { type Column } from './CardTable';
 import Icon from './Icon';
 import { InventoryBody, findAction, type InventoryBodyProps } from './InventoryCard';
+import SelfGlance from './glance/SelfGlance';
 import type { CharacterState } from '@shared/character';
 import type { SupplyItem } from '@shared/config';
 import type { SessionId } from '@shared/ipc';
@@ -35,6 +36,7 @@ import type { SupplyList } from './SupplyControls';
 import { useRememberedChoice } from '../hooks/useRemembered';
 import { keepFocus } from '../lib/focus';
 import { t } from '../lib/i18n';
+import { useCompact } from '../lib/skin';
 
 export interface SelfCardProps extends CardChrome, Omit<InventoryBodyProps, 'returnFocus'> {
   character: CharacterState;
@@ -107,9 +109,12 @@ function SelfCard({
   inspect,
   gear,
   loadWearer,
+  loadItemFacts,
+  characterKey,
   ...chrome
 }: SelfCardProps) {
   const [face, chooseFace] = useRememberedChoice(session, 'self-tab', FACE_IDS, FACE_IDS[0]!);
+  const compact = useCompact();
   /* The PACK face's find row. Held, never remembered: a search is asked now. */
   const [finding, setFinding] = useState(false);
   const { progress, sight, room, attributeSpans: spans } = character;
@@ -149,7 +154,9 @@ function SelfCard({
    * sight rows are sentences, and pairing a sentence puts an ellipsis where
    * the answer is.
    */
-  const selfFace = (
+  const selfFace = compact ? (
+    <SelfGlance character={character} />
+  ) : (
     <div className="readout-box">
       <dl className="readout columns">
         <dt className="span">{t('cards.vitals.labels.class')}</dt>
@@ -266,6 +273,8 @@ function SelfCard({
       finding={finding}
       gear={gear}
       inspect={inspect}
+      characterKey={characterKey}
+      loadItemFacts={loadItemFacts}
       loadWearer={loadWearer}
       onFindDismiss={() => setFinding(false)}
       returnFocus={chrome.returnFocus}

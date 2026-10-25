@@ -30,6 +30,9 @@
  *                   those were recorded: a JSON list of `SessionAct`s, each
  *                   with `at` (HH:MM:SS UTC), e.g.
  *                   `[{"at":"20:29:00","act":"startMoving","loop":"Mermex"}]`
+ *   REPLAY_REBUILD  set: the engine is handed freshly built databases at every
+ *                   settings act, as a live client hands them after what they
+ *                   are built from has changed (2026-10-25: Fatty's songs)
  *
  * Since 2026-10-18 a capture records those itself (`act`), and the engine's
  * own log as it played (`engine`): shown here as `live …` beside the replay's.
@@ -187,7 +190,9 @@ it('replays a capture through the engine', { timeout: 30 * 60_000 }, async () =>
   const realms = new RealmLibrary({
     shippedDir: path.join(resources, 'world'),
     resourcesDir: resources,
-    cacheDir: path.join(scratch, 'realms'),
+    // Kept between replays, keyed as the client keys it (the file's identity):
+    // converting the realm was a fifth of a short replay (2026-10-25).
+    cacheDir: path.join(os.tmpdir(), 'mudengine-replay-realms'),
     notify: quiet
   });
   const world = realms.load(database).graph;
@@ -230,10 +235,10 @@ it('replays a capture through the engine', { timeout: 30 * 60_000 }, async () =>
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
   const port = (server.address() as net.AddressInfo).port;
 
-  let received = 0;
   const sink = new Proxy({} as SessionSink, {
     get: (_target, key) => {
-      if (key === 'bytes') return (payload: Buffer) => (received += payload.length);
+      // No cards here, so none of what only the cards draw (the room's verdict).
+      if (key === 'verdict') return undefined;
       if (key === 'notice') return (message: string) => note(Date.now(), 'notice', message);
       if (key === 'engineLog')
         return (kind: EngineLogKind, text: string) => logged(Date.now(), kind, text);
@@ -267,6 +272,11 @@ it('replays a capture through the engine', { timeout: 30 * 60_000 }, async () =>
   for (let i = 0; i < 200 && socket === null; i += 1) await new Promise((r) => setImmediate(r));
   if (socket === null) throw new Error('The session did not connect');
   const wire = socket as net.Socket;
+  // The recorded chunks go straight to the client's reading of its socket, as
+  // they were recorded (2026-10-25): through the loopback, every chunk waited
+  // on the kernel and the event loop, a third of a replay spent idle. What
+  // the client sends still goes over the wire to the server above.
+  const client = (manager as unknown as { client: { ingest(chunk: Buffer): void } }).client;
 
   /** What the player did in the app, done again through the same door. */
   const perform = (act: SessionAct): void => {
@@ -305,7 +315,14 @@ it('replays a capture through the engine', { timeout: 30 * 60_000 }, async () =>
         // Recorded without the login, which the profile has.
         const recorded = structuredClone(act.settings);
         recorded.live['BBS'] = { ...recorded.live['BBS'], ...settings.live['BBS'] };
-        manager.useMegaMud({ ...setup, settings: recorded });
+        // A live client builds its databases again when what they are built
+        // from changes, and the engine takes them at the next settings act:
+        // `REPLAY_REBUILD` hands it fresh ones at every act, as that does.
+        manager.useMegaMud({
+          ...setup,
+          settings: recorded,
+          ...(process.env.REPLAY_REBUILD ? { data: structuredClone(setup.data) } : {})
+        });
         break;
       }
     }
@@ -333,11 +350,9 @@ it('replays a capture through the engine', { timeout: 30 * 60_000 }, async () =>
       continue;
     }
     const bytes = Buffer.from(entry.raw ?? '', 'base64');
-    const target = received + bytes.length;
-    wire.write(bytes);
-    for (let n = 0; n < 1000 && received < target; n += 1) {
-      await new Promise((r) => setImmediate(r));
-    }
+    client.ingest(bytes);
+    // A turn of the loop, so the server hears any answer before the next chunk.
+    await new Promise((r) => setImmediate(r));
     for (const line of bytes
       .toString('latin1')
       .replace(/\x1b\[[0-9;]*[A-Za-z]/g, '')

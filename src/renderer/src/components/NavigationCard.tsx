@@ -9,6 +9,8 @@ import type { LoopProgress } from '@shared/loops';
 import { movementOf } from '@shared/movement';
 import type { WalkProgress } from '@shared/walk';
 import { tuning } from '../lib/tuning';
+import { useCompact } from '../lib/skin';
+import { KitAside, KitFigure, KitLine, KitTrack, compact } from './kit';
 
 export interface NavigationCardProps extends CardChrome {
   walk: WalkProgress;
@@ -74,6 +76,7 @@ function NavigationCard({
 }: NavigationCardProps) {
   const movement = movementOf(walk, loop);
   const running = loop.status === 'running';
+  const glance = useCompact();
   const live = movement.kind === 'loop';
 
   /*
@@ -361,7 +364,66 @@ function NavigationCard({
    * is a `0` standing in for "unknown": experience made is claimed only when
    * the count was known when the loop started.
    */
-  const loopFace = (
+  /*
+   * The glance skin's loop (2026-10-25): the controls and the name on one
+   * line, the lap as its strip of stops — passed, this one, ahead, each
+   * stop's name its title — in place of the list of them, and the figures on
+   * one line with the rate the loop is earning at.
+   */
+  const rate =
+    made !== null && ranFor !== null && ranFor > 60_000 ? made / (ranFor / 3_600_000) : null;
+  const glanceLoopFace = (
+    <div className="glance-loop">
+      <div className="glance-loop-head">
+        {transport}
+        {canPick ? picker : <div className="walk-destination">{loop.name ?? '—'}</div>}
+      </div>
+      {loop.stops > 0 && (
+        <KitTrack
+          at={live && loop.stop > 0 ? loop.stop - 1 : null}
+          label={t('cards.navigation.loop.meterLabel', {
+            stop: loop.stop,
+            stops: loop.stops,
+            stopName: loop.stopName ?? '—'
+          })}
+          names={loop.stopNames}
+          stops={loop.stops}
+        />
+      )}
+      <KitLine>
+        {loop.stops > 0 && (
+          <KitFigure
+            title={loop.stopName ?? undefined}
+            unit={`/ ${loop.stops} ${loop.stopName ?? ''}`}
+            value={loop.stop}
+          />
+        )}
+        {loop.bounce && live && <span>{loop.forward ? '→' : '←'}</span>}
+        {loop.status !== 'idle' && (
+          <KitFigure
+            push
+            title={t('cards.navigation.loop.lapsLabel')}
+            unit={t('cards.navigation.glance.laps')}
+            value={loop.laps}
+          />
+        )}
+        {ranFor !== null && <KitFigure value={duration(ranFor)} />}
+        {running && made !== null && (
+          <KitFigure title={made.toLocaleString()} tone="life" value={`+${compact(made)}`} />
+        )}
+        {rate !== null && <KitFigure unit={t('kit.perHour')} value={compact(Math.round(rate))} />}
+      </KitLine>
+      {loop.status === 'stopped' && loop.reason !== null && (
+        <KitAside>
+          {t('cards.navigation.loop.endedLabel')} {loop.reason}
+        </KitAside>
+      )}
+    </div>
+  );
+
+  const loopFace = glance ? (
+    glanceLoopFace
+  ) : (
     <>
       {transport}
       {canPick ? picker : <div className="walk-destination">{loop.name ?? '—'}</div>}

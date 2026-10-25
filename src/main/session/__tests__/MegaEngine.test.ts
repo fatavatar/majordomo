@@ -24,6 +24,7 @@ import type { WalkProgress } from '../../../shared/walk';
 import type { LoopProgress } from '../../../shared/loops';
 import { State } from '../../megamud/states';
 import { readMegaMudLoop } from '../../../shared/megamudPaths';
+import { headFor } from '../../megamud/move/destinations';
 import { Darkness, ItemFlag, SpellFlag } from '../../megamud/flags';
 
 function room(map: number, number: number, name: string, exits: WorldRoom['exits']): WorldRoom {
@@ -441,6 +442,29 @@ describe('the engine in a session', () => {
     e.s.MegaMud_AutoCombat = 0;
     expect(e.walkTo('1/2')).toBeNull();
     expect([e.s.MegaMud_AutoCombat, e.s.detourCombat]).toEqual([1, 1]);
+    e.dispose();
+  });
+
+  /*
+   * Fatty's Run to Southwind Dale (2026-10-24): put aside at the slums'
+   * locked gate while its way was planned again, the walk came back with
+   * auto-combat on and fought the rest of the way.
+   */
+  it('keeps a Run off auto-combat across a walk put aside for its way', async () => {
+    vi.useFakeTimers();
+    const { e } = engine('1/1');
+    e.s.inGame = 1;
+    e.received('\x1b[1;36mTown Square\r\n\x1b[0;32mObvious exits: north, closed door east\r\n');
+    e.s.MegaMud_AutoCombat = 1;
+    expect(e.walkTo('1/2', true)).toBeNull();
+    await planned();
+    expect([e.s.walking, e.s.MegaMud_AutoCombat]).toEqual([1, 0]);
+    // The way asked for again from where it stands, the plan not kept.
+    vi.advanceTimersByTime(60_001);
+    headFor(e.s, 0);
+    expect([e.s.walking, e.s.MegaMud_AutoCombat]).toEqual([0, 0]);
+    await planned();
+    expect([e.s.walking, e.s.MegaMud_AutoCombat, e.s.detourCombat]).toEqual([1, 0, 0]);
     e.dispose();
   });
 
@@ -1400,6 +1424,40 @@ describe('blessings the realm says last', () => {
       }) as never;
     e.buffs([]);
     expect(agil.flags & SpellFlag.Timed).toBe(2);
+    e.dispose();
+  });
+
+  /*
+   * Fatty's songs went down together on a settings save that built his
+   * databases again, and were never cast again (2026-10-25): the fresh copy
+   * had lost the mark, and what the spellbook showed.
+   */
+  it('are marked again on databases built afresh, with the spellbook kept', () => {
+    const { e } = engine();
+    const host = (e as unknown as { host: MegaEngineHost }).host;
+    const song = (): SpellRec =>
+      ({ short: 'agil', name: 'song of agility', flags: 0x30 }) as never as SpellRec;
+    e.s.data.spells.push(song());
+    const world = host.world();
+    host.world = () =>
+      ({
+        ...world,
+        spellNamed: () => ({ id: 48, name: 'song of agility', casts: [2156] }),
+        spellById: (id: number) => ({ id, name: 'song of agility', duration: 40 })
+      }) as never;
+    e.buffs([]);
+    e.s.data.spells[0]!.flags |= SpellFlag.Known;
+    e.reload({
+      settings: defaultSettings(),
+      data: { monsters: [], items: [], spells: [song()] },
+      grants: {}
+    });
+    e.buffs([]);
+    const agil = e.s.data.spells[0]!;
+    expect([agil.flags & SpellFlag.Timed, agil.flags & SpellFlag.Known]).toEqual([
+      SpellFlag.Timed,
+      SpellFlag.Known
+    ]);
     e.dispose();
   });
 

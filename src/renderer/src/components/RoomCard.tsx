@@ -1,7 +1,10 @@
-import { memo, Fragment } from 'react';
+import { memo, Fragment, useEffect, useState } from 'react';
+import { DEFAULT_EXPLORER_OPTIONS, type ExplorerStock } from '@shared/explorer';
 
 import BentoCard, { type CardChrome } from './BentoCard';
 import { keepFocus } from '../lib/focus';
+import { useCompact } from '../lib/skin';
+import { KitCount, KitInitials, KitRose } from './kit';
 import { t } from '../lib/i18n';
 import { coinText } from '../lib/coins';
 import { ago } from '../lib/players';
@@ -10,6 +13,8 @@ import Icon from './Icon';
 import ShopFace, { balanceHere, bankCopyText, shopCopyText, shopFaceLabel } from './ShopFace';
 import FindsFace, { findsCopyText } from './FindsFace';
 import LairList, { lairCopyText, ownAlignment } from './LairList';
+import { MmeLairList, mmeLairCopyText, useMmeRoom } from './MmeRoom';
+import type { ExplorerCalls } from './ReferenceExplorer';
 import {
   DIRECTION_NAME,
   roomId,
@@ -96,6 +101,14 @@ export interface RoomCardProps extends CardChrome {
    * three of its four inputs move without the room moving. See `asksHere`.
    */
   asks: readonly RoomAsk[];
+  /**
+   * MMUD Explorer for this character (2026-10-24): the Lair and Shop faces
+   * draw what it says the room holds in place of the realm's own, where it
+   * answers. Absent keeps the realm's.
+   */
+  explorer?: ExplorerCalls | null;
+  /** Changes when MME's answers do: the class, the level, what is worn (a shop's charm). */
+  characterKey?: string;
 }
 
 /** Compass order, so exits always read in the same sequence regardless of the
@@ -108,6 +121,35 @@ function sortExits(exits: RoomExit[]): RoomExit[] {
     const bi = ORDER.indexOf(b.direction);
     return (ai === -1 ? ORDER.length : ai) - (bi === -1 ? ORDER.length : bi);
   });
+}
+
+/**
+ * The room's occupants with each name said once and how many share it, in
+ * the order they were first listed (the glance skin, 2026-10-25): `pirate
+ * ghost, pirate ghost` is one row with a count. Two of a name that differ in
+ * what the realm says of them stay two rows.
+ */
+function foldOccupants(occupants: readonly RoomOccupant[]): { who: RoomOccupant; count: number }[] {
+  const rows: { who: RoomOccupant; count: number }[] = [];
+  const at = new Map<string, number>();
+  for (const who of occupants) {
+    const key = JSON.stringify([
+      who.name,
+      who.kind,
+      who.disposition,
+      who.uncertain,
+      who.costly,
+      who.charmed
+    ]);
+    const seen = at.get(key);
+    if (seen === undefined) {
+      at.set(key, rows.length);
+      rows.push({ who, count: 1 });
+    } else {
+      rows[seen]!.count += 1;
+    }
+  }
+  return rows;
 }
 
 /**
@@ -130,9 +172,13 @@ function RoomCard({
   goToRoom,
   forgetFind,
   verdict,
+  explorer = null,
+  characterKey = '',
   ...chrome
 }: RoomCardProps) {
   const { room } = character;
+  const mme = useMmeRoom(explorer?.room, room.map, room.number, characterKey);
+  const mmeShop = useMmeShop(explorer, mme?.shop?.n ?? null, characterKey);
   const located = room.map !== null && room.number !== null;
   /*
    * The ways out of *this* room the realm data does not have.
@@ -171,7 +217,9 @@ function RoomCard({
    * characters cannot show one character's stock beside another's room.
    */
   const shop = room.shop ?? null;
-  const lair = room.lair ?? null;
+  // MME's lair where it answered, the realm's while it is asked or where it cannot.
+  const mmeLair = mme?.lair ?? null;
+  const lair = mme === null || mme === undefined ? (room.lair ?? null) : null;
   const answers = room.commands ?? [];
 
   const face = (
@@ -337,7 +385,12 @@ function RoomCard({
          * smoke check for it failed and the data path was fine, which is
          * exactly the shape of a click-path bug.
          */
-        hasShop || lair !== null || answers.length > 0 || here.length > 0 || finds.length > 0
+        hasShop ||
+        lair !== null ||
+        mmeLair !== null ||
+        answers.length > 0 ||
+        here.length > 0 ||
+        finds.length > 0
           ? [
               { id: 'room', label: t('cards.room.title'), content: face, copyText },
               ...(hasShop
@@ -353,6 +406,7 @@ function RoomCard({
                           inspect={inspect}
                           listing={listing}
                           returnFocus={chrome.returnFocus}
+                          mme={mmeShop}
                           session={session}
                           shop={shop}
                           wealth={character.inventory.wealth}
@@ -379,6 +433,22 @@ function RoomCard({
                         shop?.kind === 'bank'
                           ? bankCopyText(shop, character.banks, Date.now())
                           : shopCopyText(shop, listing)
+                    }
+                  ]
+                : []),
+              ...(mmeLair !== null
+                ? [
+                    {
+                      id: 'lair',
+                      label: t('cards.room.tabs.lair'),
+                      content: (
+                        <MmeLairList
+                          inspect={inspect}
+                          lair={mmeLair}
+                          mine={ownAlignment(character)}
+                        />
+                      ),
+                      copyText: () => mmeLairCopyText(mmeLair)
                     }
                   ]
                 : []),
@@ -515,6 +585,12 @@ function RoomBody({
   const mine = ownAlignment(character);
   const light = lightNote(room);
   /*
+   * The glance skin's room (2026-10-25): the ways out as a rose beside the
+   * name, a blocked one still a chip that says why; and who is here as rows,
+   * edged in their temper, a name the room holds twice said once with a count.
+   */
+  const glance = useCompact();
+  /*
    * What the vault holds, on the **first** face rather than only on the Bank
    * one behind it.
    *
@@ -543,7 +619,28 @@ function RoomBody({
         <div className="empty">{t('cards.room.empty')}</div>
       ) : (
         <>
-          {room.name !== null && <div className="room-name">{room.name}</div>}
+          {room.name !== null &&
+            (glance && !exitsUnseen(room) ? (
+              <div className="glance-room-head">
+                <div className="room-name">{room.name}</div>
+                <KitRose
+                  blocked={
+                    new Set(
+                      room.exits
+                        .filter((exit) => exit.note)
+                        .map((exit) => exit.direction as Direction)
+                    )
+                  }
+                  label={sortExits(room.exits)
+                    .map((exit) => DIRECTION_NAME[exit.direction as Direction] ?? exit.direction)
+                    .join(', ')}
+                  names={DIRECTION_NAME}
+                  open={new Set(room.exits.map((exit) => exit.direction as Direction))}
+                />
+              </div>
+            ) : (
+              <div className="room-name">{room.name}</div>
+            ))}
 
           {/*
             The light, in the server's words, and what the client did about a
@@ -578,28 +675,36 @@ function RoomBody({
               full text is in the terminal, a few lines up. */}
           {room.description !== null && <p className="room-description">{room.description}</p>}
 
-          <div className="exits">
-            {/* Null is not zero: exits the server would not print are unseen,
+          {(!glance ||
+            exitsUnseen(room) ||
+            room.exits.length === 0 ||
+            room.exits.some((exit) => exit.note)) && (
+            <div className="exits">
+              {/* Null is not zero: exits the server would not print are unseen,
                 not absent, and `no exits` would be a claim nothing supports. */}
-            {exitsUnseen(room) ? (
-              <span className="chip warn">{t('cards.room.exits.unseen')}</span>
-            ) : room.exits.length === 0 ? (
-              <span className="chip bad">{t('cards.room.exits.none')}</span>
-            ) : (
-              sortExits(room.exits).map((exit) => (
-                // A blocked exit is still an exit; saying why beats hiding it.
-                <span
-                  className={`chip${exit.note ? ' warn' : ''}`}
-                  key={exit.direction}
-                  title={exit.note ?? undefined}
-                >
-                  {/* Short codes are canonical; expand them for reading. */}
-                  {DIRECTION_NAME[exit.direction as Direction] ?? exit.direction}
-                  {exit.note && <span className="exit-note"> {exit.note}</span>}
-                </span>
-              ))
-            )}
-          </div>
+              {exitsUnseen(room) ? (
+                <span className="chip warn">{t('cards.room.exits.unseen')}</span>
+              ) : room.exits.length === 0 ? (
+                <span className="chip bad">{t('cards.room.exits.none')}</span>
+              ) : (
+                sortExits(room.exits)
+                  // Under glance the rose has the open ones; a blocked one still says why.
+                  .filter((exit) => !glance || exit.note)
+                  .map((exit) => (
+                    // A blocked exit is still an exit; saying why beats hiding it.
+                    <span
+                      className={`chip${exit.note ? ' warn' : ''}`}
+                      key={exit.direction}
+                      title={exit.note ?? undefined}
+                    >
+                      {/* Short codes are canonical; expand them for reading. */}
+                      {DIRECTION_NAME[exit.direction as Direction] ?? exit.direction}
+                      {exit.note && <span className="exit-note"> {exit.note}</span>}
+                    </span>
+                  ))
+              )}
+            </div>
+          )}
 
           {/*
             What the room answers to, as controls, on the face that is on
@@ -795,9 +900,23 @@ function RoomBody({
               {room.occupants.length > 0 && (
                 <>
                   <dt>{t('cards.room.readout.hereLabel')}</dt>
-                  <dd className="occupants">
-                    {room.occupants.map((who, index) => (
-                      <span key={`${who.name}-${index}`}>
+                  <dd className={glance ? 'occupants glance-mobs' : 'occupants'}>
+                    {(glance
+                      ? foldOccupants(room.occupants)
+                      : room.occupants.map((who) => ({ who, count: 1 }))
+                    ).map(({ who, count }, index, shown) => (
+                      <span
+                        className={glance ? 'glance-mob' : undefined}
+                        data-hostile={
+                          glance && attacksOnSight(who.disposition, mine) === true
+                            ? who.uncertain
+                              ? 'maybe'
+                              : 'yes'
+                            : undefined
+                        }
+                        data-kind={glance ? who.kind : undefined}
+                        key={`${who.name}-${index}`}
+                      >
                         {/*
                       A monster's name opens the Reference card — health,
                       temper, the alignment cost spelled out. A player's does
@@ -806,6 +925,7 @@ function RoomBody({
                       clicking. `keepFocus` because this is clicked, never
                       typed into — the caret stays with the game.
                     */}
+                        {glance && <KitInitials name={who.name} />}
                         {inspect && who.kind !== 'player' ? (
                           <button
                             className={`occupant ${who.kind} lookup`}
@@ -825,7 +945,8 @@ function RoomBody({
                         one thing on this line worth deciding on. A word, not a
                         hue: docs/ui-design.md §6, and this is the readout a
                         decision about whether to keep walking is made off. */}
-                        {attacksOnSight(who.disposition, mine) === true && (
+                        {glance && <KitCount count={count} />}
+                        {!glance && attacksOnSight(who.disposition, mine) === true && (
                           <span className={`chip warn${who.uncertain ? ' quiet' : ''}`}>
                             {who.uncertain
                               ? t('cards.room.occupant.hostileUncertainChip')
@@ -856,7 +977,7 @@ function RoomBody({
                         {who.charmed && (
                           <span className="chip quiet">{t('cards.room.occupant.charmedChip')}</span>
                         )}
-                        {index < room.occupants.length - 1 && ', '}
+                        {!glance && index < shown.length - 1 && ', '}
                       </span>
                     ))}
                   </dd>
@@ -1191,3 +1312,41 @@ function answersCopyText(answers: RoomCommand[]): string {
 }
 
 export default memo(RoomCard);
+
+/**
+ * MME's shelf for the shop here (2026-10-24): its stock with the price for
+ * this character, or a trainer's cost by level, and its charm line. Null
+ * while asked, where there is no shop, or where MME did not answer.
+ */
+function useMmeShop(
+  explorer: ExplorerCalls | null,
+  shop: number | null,
+  characterKey: string
+): { stock: ExplorerStock; note?: string } | null {
+  const [answer, setAnswer] = useState<{
+    key: string;
+    shelf: { stock: ExplorerStock; note?: string } | null;
+  } | null>(null);
+  const key = `${shop}:${characterKey}`;
+  useEffect(() => {
+    if (explorer === null || shop === null) return;
+    let live = true;
+    void explorer.detail('shops', shop, DEFAULT_EXPLORER_OPTIONS).then(
+      (detail) =>
+        live &&
+        setAnswer({
+          key,
+          shelf:
+            detail?.stock === undefined
+              ? null
+              : { stock: detail.stock, ...(detail.note !== undefined ? { note: detail.note } : {}) }
+        }),
+      () => live && setAnswer({ key, shelf: null })
+    );
+    return () => {
+      live = false;
+    };
+  }, [explorer, shop, key]);
+  if (explorer === null || shop === null) return null;
+  return answer?.key === key ? answer.shelf : null;
+}

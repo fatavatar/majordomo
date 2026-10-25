@@ -18,6 +18,7 @@ import RealmMonsters from './RealmMonsters';
 import RealmItems from './RealmItems';
 import RealmSpellLore from './RealmSpellLore';
 import { MonsterRuleList } from './MonsterRules';
+import NameCombo from './NameCombo';
 import SettingsNav, { type NavFieldset, type NavSection } from './SettingsNav';
 import FormField, {
   CheckField,
@@ -52,6 +53,7 @@ import { keepFocus } from '../lib/focus';
 import { t } from '../lib/i18n';
 import { COIN_NAME } from '../lib/coins';
 import { barOf, figureOf, fractionOf, joinNames, percentOf, splitNames } from '../lib/form';
+import { settingsNames } from '../lib/settingsNames';
 import {
   begin,
   canRedo,
@@ -82,6 +84,7 @@ import type {
   LearnedSpellRow,
   LearnedSpellTable,
   MegaChoices,
+  MegaNames,
   ProfileEditable,
   SessionId,
   SettingsSnapshot
@@ -181,23 +184,30 @@ function PlayerGrants({
 
   return (
     <div className="remote-players">
-      <TextField
+      <FormField
         hint={t('settings.remotes.addPlayerHint')}
         label={t('settings.remotes.addPlayerLabel')}
         name="remotes-add-player"
-        onChange={setTyped}
-        onSubmit={() => {
-          if (find.length === 0) return;
-          setTyped('');
-          // Created empty and kept only once something is granted, so a name
-          // typed by mistake leaves nothing behind.
-          setChosen(find);
-          if (!spelled.has(find)) onChange({ ...grants, [find]: { allow: [], deny: [] } });
-        }}
-        placeholder={t('settings.remotes.addPlayerPlaceholder')}
-        spellCheck={false}
-        value={typed}
-      />
+      >
+        {({ describedBy }) => (
+          <NameCombo
+            describedBy={describedBy}
+            name="remotes-add-player"
+            onChange={setTyped}
+            onSubmit={() => {
+              if (find.length === 0) return;
+              setTyped('');
+              // Created empty and kept only once something is granted, so a name
+              // typed by mistake leaves nothing behind.
+              setChosen(find);
+              if (!spelled.has(find)) onChange({ ...grants, [find]: { allow: [], deny: [] } });
+            }}
+            options={[...spelled.values()]}
+            placeholder={t('settings.remotes.addPlayerPlaceholder')}
+            value={typed}
+          />
+        )}
+      </FormField>
 
       {everyone.length === 0 ? (
         <p className="settings-note">{t('settings.players.none')}</p>
@@ -347,6 +357,8 @@ export interface SettingsScreenProps {
   deleteProfile(id: string): Promise<string | null>;
   /** What a character's running engine offers its MegaMUD tabs. See `MegaMudSettings`. */
   megamudChoices(id: string): Promise<MegaChoices | null>;
+  /** The item names its MegaMUD databases hold, for its boxes to suggest. */
+  megamudNames(id: string): Promise<MegaNames | null>;
   saveServer(previousName: string | null, draft: ServerDraft): Promise<string | null>;
   deleteServer(name: string): Promise<string | null>;
   /** The realm's mudstats board: link, unlink and ask after a character, and test an address. */
@@ -1538,6 +1550,7 @@ export default function SettingsScreen({
   saveProfile,
   deleteProfile,
   megamudChoices,
+  megamudNames,
   saveServer,
   deleteServer,
   stats,
@@ -1613,6 +1626,19 @@ export default function SettingsScreen({
       live = false;
     };
   }, [selected, megamudChoices]);
+  /** The item names the chosen character's MegaMUD databases hold, connected or not. */
+  const [megaNames, setMegaNames] = useState<MegaNames | null>(null);
+  useEffect(() => {
+    let live = true;
+    setMegaNames(null);
+    if (selected === null || selected === NEW_CHARACTER) return;
+    void megamudNames(selected).then((found) => {
+      if (live) setMegaNames(found);
+    });
+    return () => {
+      live = false;
+    };
+  }, [selected, megamudNames]);
   /** Who the chosen character's realm has seen, asked for when its Players row is open. */
   const [seen, setSeen] = useState<string[]>([]);
   useEffect(() => {
@@ -1846,6 +1872,25 @@ export default function SettingsScreen({
         ? (snapshot?.loops.global.map((loop) => ({ loop, scope: 'global' as const })) ?? [])
         : (snapshot?.characters.find((entry) => entry.id === selected)?.inherited ?? []),
     [snapshot, selected]
+  );
+  /**
+   * What the chosen character's boxes suggest as they are typed in: its own
+   * book's spells (the shipped realm's castable ones while its book is not
+   * known), its MegaMUD databases' items, its engine's rooms and its loops.
+   */
+  const names = useMemo(
+    () =>
+      settingsNames(
+        snapshot?.characters.find((entry) => entry.id === selected)?.spellbook ??
+          snapshot?.realmSpells ??
+          [],
+        megaNames,
+        megaChoices,
+        [...(form?.loops ?? []), ...inheritedLoops.map((entry) => entry.loop)].map(
+          (loop) => loop.name
+        )
+      ),
+    [snapshot, selected, megaNames, megaChoices, form?.loops, inheritedLoops]
   );
 
   /*
@@ -2284,7 +2329,8 @@ export default function SettingsScreen({
                   )
             );
             setSaved(null);
-          }
+          },
+          names
         );
 
   const submitCharacter = async (event: FormEvent): Promise<void> => {
@@ -2997,14 +3043,7 @@ export default function SettingsScreen({
   this client keeps for the character that belongs with it (2026-10-14).
 */}
                   {isMegaTab(section) && mega !== null && (
-                    <MegaMudPanel
-                      loops={[
-                        ...(form?.loops ?? []),
-                        ...inheritedLoops.map((entry) => entry.loop)
-                      ].map((loop) => loop.name)}
-                      mega={mega}
-                      tab={section}
-                    />
+                    <MegaMudPanel mega={mega} tab={section} />
                   )}
 
                   {section === 'Auto-roam' && (
@@ -3253,6 +3292,7 @@ export default function SettingsScreen({
                             emptyText={t('settings.combat.monsterRowsNone')}
                             known={monsterNames}
                             namePrefix="character-monster"
+                            spells={names.spells}
                             onChange={(rows) => {
                               patch({ combatMonsters: rows });
                               return Promise.resolve(null);
@@ -3268,6 +3308,7 @@ export default function SettingsScreen({
                     <>
                       <ItemDetailsFieldset
                         idPrefix=""
+                        known={names.items.options}
                         onChange={(itemDetails) => patch({ loot: { ...form.loot, itemDetails } })}
                         rows={form.loot.itemDetails}
                       />

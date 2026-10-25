@@ -316,6 +316,20 @@ const pad = (value: number): string => String(value).padStart(2, '0');
  * the person reading it was sitting there.
  */
 export function formatTalkStamp(at: number, format: TalkStamp): string {
+  const { date, clock } = talkStampParts(at, format);
+  return date === null ? clock : `${date} ${clock}`;
+}
+
+/**
+ * The same moment as its two halves (2026-10-24): the date where the format
+ * has one, and the clock. The card sets the date quieter than the time, so
+ * a column of `10/21/2026` reads as the day it is and the eye lands on the
+ * time and the line.
+ */
+export function talkStampParts(
+  at: number,
+  format: TalkStamp
+): { date: string | null; clock: string } {
   const when = new Date(at);
   const date24 = `${when.getFullYear()}-${pad(when.getMonth() + 1)}-${pad(when.getDate())}`;
   const date12 = `${when.getMonth() + 1}/${when.getDate()}/${when.getFullYear()}`;
@@ -330,15 +344,15 @@ export function formatTalkStamp(at: number, format: TalkStamp): string {
 
   switch (format) {
     case 'date-time-12':
-      return `${date12} ${clock12}`;
+      return { date: date12, clock: clock12 };
     case 'date-time-24':
-      return `${date24} ${clock24}`;
+      return { date: date24, clock: clock24 };
     case 'time-12':
-      return clock12;
+      return { date: null, clock: clock12 };
     case 'time-24':
-      return clock24;
+      return { date: null, clock: clock24 };
     case 'time-24-seconds':
-      return `${clock24}:${pad(when.getSeconds())}`;
+      return { date: null, clock: `${clock24}:${pad(when.getSeconds())}` };
   }
 }
 

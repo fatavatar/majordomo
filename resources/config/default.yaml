@@ -228,6 +228,25 @@ ui:
   # you clear it.
   theme: dark
 
+  # How the cards are laid out: what each one puts where, and how it shows it.
+  # The theme above says what everything is painted; any skin wears any theme.
+  #
+  # classic  the cards as they have always been drawn, in ui.font.
+  # glance   colour and shape carry what rows of words did: figures inside
+  #          their bars, a player's alignment as the colour of the name, lines
+  #          that say the same thing folded into one with a count. Shorter
+  #          cards, read at a glance, in JetBrains Mono.
+  # atlas    glance's cards as soft panels in Victor Mono, places named in its
+  #          cursive italic like labels on a map, the ways out as a compass
+  #          rose and a loop as a ring.
+  # halo     glance's cards as a contemporary app in Geist Mono: rounded cards
+  #          tinted by kind, the vitals and attributes as rings, people and
+  #          monsters as initials in their colour, notices as a timeline.
+  #
+  # Every style but classic sets its own monospace face for the whole window,
+  # in place of ui.font; the console keeps terminal.font in all of them.
+  skin: classic
+
   # Where the HUD meters turn yellow and then red.
   #
   # Fractions of maximum, not points, so a threshold means the same thing at

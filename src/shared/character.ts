@@ -1536,6 +1536,14 @@ export interface CharacterState {
    * with the tally (2026-10-17), so every window and the board agree.
    */
   statsBase: CombatTally | null;
+  /**
+   * When the Vitals card's experience was last reset (2026-10-25), its hours
+   * views counting from here where it is later than their window's start; or
+   * null for never. Apart from `statsBase`: the Combat Stats card's Reset and
+   * a lap begun leave it, and its own leaves them. The session view is
+   * `progress.expThisSession`, which no reset touches.
+   */
+  expResetAt: number | null;
   party: Party;
   /** Whether this character is moving unseen. See `Stealth`. */
   stealth: Stealth;
@@ -1681,6 +1689,7 @@ export const EMPTY_CHARACTER: CharacterState = {
   combat: NO_COMBAT,
   tally: NO_TALLY,
   statsBase: null,
+  expResetAt: null,
   party: NO_PARTY,
   stealth: 'unknown',
   afflictions: NO_AFFLICTIONS,

@@ -15,7 +15,9 @@ import {
   explorerList,
   explorerRoomSearch,
   explorerRoomTip,
+  explorerRoom,
   explorerRoomView,
+  explorerTextblock,
   explorerWear,
   type MmeRealm
 } from '../Explorer';
@@ -511,5 +513,55 @@ describe('MMUD Explorer for the character being played', () => {
     });
     expect(built?.races?.length).toBeGreaterThan(0);
     expect(built?.text.map((run) => run.text).join('').length).toBeGreaterThan(0);
+  });
+});
+
+/* MME's textblocks pulled in (2026-10-24): frmResults, as mudtool's Rooms tab has it. */
+describe('a textblock as MMUD Explorer shows it', () => {
+  const asked = (n: number) =>
+    explorerTextblock(fixture(), { n, mode: 'plain', hideTB: false, defaultMap: 1 });
+
+  it('says what it does, line by line, its items links', async () => {
+    const tb = await asked(2944);
+    expect(tb.found).toBe(true);
+    expect(tb.raw.startsWith('3:message 1428:giveitem 905')).toBe(true);
+    const line = tb.command.kids[0]!;
+    expect(line.kids.map((kid) => kid.place)).toContainEqual({ tab: 'sundry', n: 905 });
+  });
+
+  it('says what runs it, and where it is called from, as links', async () => {
+    const tb = await asked(2944);
+    expect(tb.executed.kids[0]!.place).toEqual({ tab: 'textblock', n: 2943 });
+    expect(tb.calledFrom?.find((run) => 'kind' in run)).toMatchObject({
+      kind: 'textblock',
+      n: 2943,
+      tab: 'textblock'
+    });
+  });
+
+  it('answers a block the realm does not hold as not found', async () => {
+    const tb = await asked(999999);
+    expect([tb.supported, tb.found]).toEqual([true, false]);
+  });
+});
+
+/* MME's room as data, for the Room card and the room panel (2026-10-24). */
+describe('a room as MMUD Explorer says it holds', () => {
+  it("reads a lair's slots, regen, worth and monsters with their tempers", async () => {
+    const room = await explorerRoom(fixture(), character(), 1, 552);
+    expect(room.name).toBe('Sewer Tunnel');
+    expect(room.lair).toMatchObject({ max: 1, regen: '@ 5 mins', exp: 14, hp: 19 });
+    expect(room.lair?.monsters[0]).toMatchObject({
+      n: 1,
+      name: 'giant rat',
+      hp: 12,
+      disposition: 'hostile'
+    });
+  });
+
+  it('names the shop a room holds, by its number', async () => {
+    const room = await explorerRoom(fixture(), character(), 1, 355);
+    expect(room.shop).toEqual({ n: 5, name: 'Sword Shop' });
+    expect(room.lair).toBeUndefined();
   });
 });

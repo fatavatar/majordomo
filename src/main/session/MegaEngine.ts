@@ -83,7 +83,7 @@ import {
 } from '../../shared/character';
 import type { MegaSettings } from '../../shared/megamud/settings';
 import { MEGA_TOGGLES, type MegaToggle, type MegaToggles } from '../../shared/megamud/toggles';
-import type { MegaChoices } from '../../shared/ipc';
+import type { MegaChoices, MegaNames } from '../../shared/ipc';
 import type { BotCommand, PlayerGrant } from '../../shared/remotes';
 import { IDLE_WALK, type WalkProgress } from '../../shared/walk';
 import { NO_LOOP, type LoopProgress } from '../../shared/loops';
@@ -101,7 +101,15 @@ import {
 } from '../../shared/world';
 import type { WorldGraph } from '../world/WorldGraph';
 import { State } from '../megamud/states';
-import { SpellFlag, ItemFlag, StepFlag, RouteFlag, Exit, Darkness } from '../megamud/flags';
+import {
+  SpellFlag,
+  ItemFlag,
+  StepFlag,
+  RouteFlag,
+  RoomFlag,
+  Exit,
+  Darkness
+} from '../megamud/flags';
 import { worldSignature } from '../world/megamudSignature';
 
 /**
@@ -410,6 +418,31 @@ function loopArea(name: string): string | null {
   return at > 0 ? name.slice(0, at).trim() : null;
 }
 
+/** What MegaMUD's weapon and shield boxes take (`0x42afc0`): a weapon, one that backstabs, a shield. */
+const isWeapon = (item: ItemRec): boolean => item.type === 1;
+const canBackstab = (item: ItemRec): boolean =>
+  isWeapon(item) && (item.flags & ItemFlag.Backstab) !== 0;
+const isShield = (item: ItemRec): boolean => item.location === 12;
+
+/**
+ * What a character's MegaMUD databases name, for its settings boxes to
+ * suggest as they are typed in (ours, 2026-10-24): every item, and each of
+ * the kinds `0x42afc0` picks from the inventory, out of the whole database,
+ * so a box can be filled with what is not carried yet.
+ */
+export function megaNames(data: MegaData): MegaNames {
+  const named = (fits: (item: ItemRec) => boolean): string[] =>
+    [...new Set(data.items.filter(fits).map((item) => item.name))].sort((a, b) =>
+      a.localeCompare(b)
+    );
+  return {
+    items: named(() => true),
+    weapons: named(isWeapon),
+    backstab: named(canBackstab),
+    shields: named(isShield)
+  };
+}
+
 /** A short, steady name for a path MegaMUD can hold (13 characters). */
 function shortName(prefix: string, text: string): string {
   let h = 0x811c9dc5;
@@ -566,6 +599,7 @@ export class MegaEngine {
       isStepRoom: (p, i) => this.isStepRoom(p, i),
       uncertain: (p, i) => this.uncertain(p, i),
       lostInDark: () => this.lostInDark(),
+      walkAside: () => this.parked !== null,
       opensAWay: (name) => this.host.opensAWay?.(name) ?? false,
       leaveFor: (name) => this.host.leaveFor?.(name) ?? false,
       keepCoins: () => this.host.keepCoins?.() ?? false,
@@ -794,6 +828,15 @@ export class MegaEngine {
     s.data = structuredClone(data);
     s.data.players = was.players;
     s.data.rooms = was.rooms;
+    // The spells the spellbook showed, and those the realm says last marked
+    // again on the fresh copy (2026-10-25): Fatty's songs, lasting only by
+    // the spell they cast, lost the mark on a settings save and were never
+    // cast again.
+    const known = new Set(
+      was.spells.filter((spell) => (spell.flags & SpellFlag.Known) !== 0).map((spell) => spell.name)
+    );
+    for (const spell of s.data.spells) if (known.has(spell.name)) spell.flags |= SpellFlag.Known;
+    this.lastingMarked = false;
     this.recall();
     this.useMonsters(this.monsterRules);
     this.useItems(this.itemRules);
@@ -1710,11 +1753,15 @@ export class MegaEngine {
         : s.inventory
             .flatMap((c) => (c.item !== null && fits(c.item) ? [c.item.name] : []))
             .slice(0, 9);
+    const rooms = s.data.rooms ?? [];
     return {
-      rooms: [...new Set((s.data.rooms ?? []).map((r) => r.name))],
-      weapons: carried((item) => item.type === 1),
-      backstab: carried((item) => item.type === 1 && (item.flags & ItemFlag.Backstab) !== 0),
-      shields: carried((item) => item.location === 12),
+      rooms: [...new Set(rooms.map((r) => r.name))],
+      banks: [
+        ...new Set(rooms.filter((r) => ((r.flags ?? 0) & RoomFlag.Bank) !== 0).map((r) => r.name))
+      ],
+      weapons: carried(isWeapon),
+      backstab: carried(canBackstab),
+      shields: carried(isShield),
       statline: {
         hp: s.hp,
         maxHp: s.Player_MaxHP,

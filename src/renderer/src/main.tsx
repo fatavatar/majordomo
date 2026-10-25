@@ -9,6 +9,10 @@ import { createWebBridge } from './lib/webBridge';
 import './styles/tokens.css';
 import './styles/fonts.css';
 import './styles/index.css';
+import './styles/kit.css';
+import './styles/skins/glance.css';
+import './styles/skins/atlas.css';
+import './styles/skins/halo.css';
 import '@xterm/xterm/css/xterm.css';
 
 /*

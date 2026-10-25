@@ -2,6 +2,7 @@ import type { SupplyList } from './SupplyControls';
 import { useCallback, useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 
+import { useExplorerLink, type ExplorerLinkProps } from './ReferenceExplorer';
 import ReferenceDetail, {
   entryNumber,
   entryWord,
@@ -30,9 +31,11 @@ import type { ShopPlace, WorldLookup } from '@shared/world';
 export interface Asked {
   name: string;
   anchor: PopoverAnchor;
+  /** The row of a shared monster name chosen (Ctrl+K lists each); absent for the name alone. */
+  row?: number;
 }
 
-export interface ReferencePopoverProps {
+export interface ReferencePopoverProps extends ExplorerLinkProps {
   asked: Asked;
   /** Asks the character's own realm. Two characters may be on two realms. */
   lookup(query: string): Promise<WorldLookup>;
@@ -96,8 +99,22 @@ export default function ReferencePopover({
   onName = null,
   onDismiss,
   supplies = null,
-  rules = null
+  rules = null,
+  explorer,
+  characterKey,
+  purseKey,
+  explore,
+  openRoom,
+  openTextblock
 }: ReferencePopoverProps) {
+  const link = useExplorerLink({
+    explorer,
+    characterKey,
+    purseKey,
+    explore,
+    openRoom,
+    openTextblock
+  });
   const [entry, setEntry] = useState<ReferenceEntry | null | 'pending'>('pending');
   /*
    * The Edit open under the heading. Closed again by the next name asked
@@ -271,7 +288,9 @@ export default function ReferencePopover({
             <ReferenceDetail
               classNames={classNames}
               entry={entry}
+              explorer={link}
               heading={false}
+              row={asked.row}
               level={level}
               onName={onName}
               onResize={onResize}

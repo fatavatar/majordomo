@@ -1,6 +1,13 @@
 import { SupplyControl, type SupplyList } from './SupplyControls';
-import { Fragment, useState } from 'react';
+import { Fragment, useState, type ReactNode } from 'react';
 import EntityNumber from './EntityNumber';
+import {
+  ExplorerFacts,
+  explorerPlace,
+  sharedRows,
+  useExplorerDetail,
+  type ExplorerLink
+} from './ReferenceExplorer';
 import { t } from '../lib/i18n';
 import type { Numbered } from '@shared/entities';
 import { ago } from '../lib/players';
@@ -13,6 +20,7 @@ import { asRoomReference, roomId } from '@shared/world';
 import type {
   ItemHandover,
   MobPlaces,
+  MobRowBrief,
   MobSpawn,
   PlaceGroup,
   ShopPlace,
@@ -26,6 +34,9 @@ import type {
 import type { MobLoreEntry } from '@shared/lore';
 import type { FightSummary } from '@shared/fights';
 
+/** A room clicked in the detail, and the element clicked, for a panel beside it. */
+type RoomClick = (map: number, room: number, at?: HTMLElement) => void;
+
 /** One thing the realm answered with, whatever kind of thing it is. */
 export type ReferenceEntry =
   | {
@@ -38,6 +49,8 @@ export type ReferenceEntry =
       verdict: Verdict | null;
       /** Where the realm puts it; null where it puts it nowhere. See `MobPlaces`. */
       places: MobPlaces | null;
+      /** Each row of a name several rows share, told apart; null for one row or one settled. */
+      rows: MobRowBrief[] | null;
     }
   | { kind: 'item'; name: string; item: WorldItem }
   | { kind: 'spell'; name: string; spell: WorldSpell }
@@ -53,7 +66,8 @@ export function flattenLookup(found: WorldLookup): ReferenceEntry[] {
       learned: found.learned?.[mob.name] ?? null,
       fights: found.fights?.[mob.name] ?? null,
       verdict: found.verdicts?.[mob.name] ?? null,
-      places: found.mobPlaces?.[mob.name] ?? null
+      places: found.mobPlaces?.[mob.name] ?? null,
+      rows: found.mobRows?.[mob.name] ?? null
     })),
     ...found.items.map((item): ReferenceEntry => ({ kind: 'item', name: item.name, item })),
     ...found.spells.map((spell): ReferenceEntry => ({ kind: 'spell', name: spell.name, spell })),
@@ -64,6 +78,29 @@ export function flattenLookup(found: WorldLookup): ReferenceEntry[] {
       className: entry
     }))
   ];
+}
+
+/**
+ * One row of a shared monster name, told apart from its twins: its health,
+ * its experience and where it spawns (2026-10-24). Ctrl+K's hint and the
+ * card's row picker both say it.
+ */
+export function mobRowText(row: MobRowBrief): string {
+  const parts = [t('cards.reference.row.hp', { hp: row.hp })];
+  if (row.experience !== undefined) {
+    parts.push(t('cards.reference.row.exp', { exp: row.experience.toLocaleString() }));
+  }
+  if (row.where !== undefined) {
+    parts.push(
+      row.where.rooms > 1
+        ? t('cards.reference.row.whereMore', {
+            room: row.where.roomName,
+            more: row.where.rooms - 1
+          })
+        : row.where.roomName
+    );
+  }
+  return parts.join(' · ');
 }
 
 /** A mean as a figure: whole above ten, one decimal below, never a rounded-away zero. */
@@ -192,7 +229,7 @@ function PlacesIn({
   more: number;
   /** The title on a group of several: what opening it shows. */
   choose: (room: string) => string;
-  onRoom: ((map: number, room: number) => void) | null;
+  onRoom: RoomClick | null;
   onResize: (() => void) | null;
 }) {
   /*
@@ -215,7 +252,7 @@ function PlacesIn({
             ) : only !== undefined ? (
               <button
                 className="lookup"
-                onClick={() => onRoom(only.map, only.room)}
+                onClick={(event) => onRoom(only.map, only.room, event.currentTarget)}
                 title={t('cards.reference.item.shopRouteTitle', { room: spawn.roomName })}
                 type="button"
               >
@@ -266,7 +303,7 @@ function PlacesIn({
                   <button
                     className="lookup"
                     key={`${room.map}/${room.room}`}
-                    onClick={() => onRoom(room.map, room.room)}
+                    onClick={(event) => onRoom(room.map, room.room, event.currentTarget)}
                     title={t('cards.reference.item.shopRouteTitle', { room: spawn.roomName })}
                     type="button"
                   >
@@ -317,7 +354,8 @@ function MobDetail({
   realm,
   classNames,
   onRoom,
-  onResize
+  onResize,
+  facts
 }: {
   mob: WorldMob;
   learned: MobLoreEntry | null;
@@ -326,8 +364,10 @@ function MobDetail({
   places: MobPlaces | null;
   realm: RealmFamily | null;
   classNames: Record<number, string>;
-  onRoom: ((map: number, room: number) => void) | null;
+  onRoom: RoomClick | null;
   onResize: (() => void) | null;
+  /** MME's detail in place of the realm figures; null draws them, undefined neither (asking). */
+  facts: ReactNode | null | undefined;
 }) {
   const word = mob.disposition === null ? null : DISPOSITION_WORD[mob.disposition];
   /*
@@ -376,29 +416,31 @@ function MobDetail({
           </>
         )}
       </dd>
-      <dt>{t('cards.player.detail.health')}</dt>
-      <dd>
-        {mobHealth(mob)}
-        {mob.span && <span className="quiet">{t('cards.reference.mob.healthRangeNote')}</span>}
-        {/*
+      {facts === null && <dt>{t('cards.player.detail.health')}</dt>}
+      {facts === null && (
+        <dd>
+          {mobHealth(mob)}
+          {mob.span && <span className="quiet">{t('cards.reference.mob.healthRangeNote')}</span>}
+          {/*
           And which of the realm's rows these figures are, where the room the
           reader is standing in resolved the name to one of several. A card
           showing one row's numbers under a name that holds two is making a
           claim, so it says which row and on what evidence -- the room's own
           lair, or the next row sharing the name being a long way off.
         */}
-        {mob.row !== undefined && (
-          <span className="quiet">
-            {mob.row.how === 'here'
-              ? t('cards.reference.mob.rowHere', { id: mob.row.id })
-              : t('cards.reference.mob.rowNearest', {
-                  id: mob.row.id,
-                  steps: mob.row.steps,
-                  far: mob.row.beyond ?? 0
-                })}
-          </span>
-        )}
-      </dd>
+          {mob.row !== undefined && (
+            <span className="quiet">
+              {mob.row.how === 'here'
+                ? t('cards.reference.mob.rowHere', { id: mob.row.id })
+                : t('cards.reference.mob.rowNearest', {
+                    id: mob.row.id,
+                    steps: mob.row.steps,
+                    far: mob.row.beyond ?? 0
+                  })}
+            </span>
+          )}
+        </dd>
+      )}
       {/*
         What this character's realm has learned by fighting it, beside the
         realm's figure and never instead of it. Absent until something has been
@@ -476,87 +518,90 @@ function MobDetail({
           </dd>
         </>
       )}
-      <dt>{t('cards.reference.mob.temperLabel')}</dt>
-      <dd>
-        {word === null ? t('cards.reference.mob.temperUnknown') : word}
-        {mob.uncertain && (
-          <span className="quiet">{t('cards.reference.mob.temperUncertainNote')}</span>
-        )}
-      </dd>
-      {mob.costly !== 'never' && (
+      {facts}
+      {facts === null && (
         <>
-          <dt>{t('cards.reference.mob.costLabel')}</dt>
+          <dt>{t('cards.reference.mob.temperLabel')}</dt>
           <dd>
-            {mob.costly === 'always'
-              ? t('cards.reference.mob.costAlways')
-              : t('cards.reference.mob.costMaybe')}
+            {word === null ? t('cards.reference.mob.temperUnknown') : word}
+            {mob.uncertain && (
+              <span className="quiet">{t('cards.reference.mob.temperUncertainNote')}</span>
+            )}
           </dd>
-        </>
-      )}
+          {mob.costly !== 'never' && (
+            <>
+              <dt>{t('cards.reference.mob.costLabel')}</dt>
+              <dd>
+                {mob.costly === 'always'
+                  ? t('cards.reference.mob.costAlways')
+                  : t('cards.reference.mob.costMaybe')}
+              </dd>
+            </>
+          )}
 
-      {/*
+          {/*
         What the realm says it takes and what it is worth — realm format 12.
         Every one of these is the **worst of the rows sharing the name** (see
         `WorldMob`), so the figure a player acts on is never the reassuring end
         of a range. Each row is absent where the realm states no column, which
         is the ordinary case on a derivative.
       */}
-      {(mob.armour !== undefined || mob.damageResist !== undefined) && (
-        <>
-          <dt>{t('cards.reference.mob.defenceLabel')}</dt>
-          <dd>
-            {t('cards.reference.mob.defenceFigure', {
-              ac: mob.armour ?? '—',
-              dr: mob.damageResist ?? '—'
-            })}
-          </dd>
-        </>
-      )}
-      {mob.magicResist !== undefined && (
-        <>
-          <dt>{t('cards.reference.mob.magicResistLabel')}</dt>
-          <dd>{mob.magicResist}</dd>
-        </>
-      )}
-      {mob.experience !== undefined && (
-        <>
-          <dt>{t('cards.reference.mob.experienceLabel')}</dt>
-          <dd>{mob.experience.toLocaleString()}</dd>
-        </>
-      )}
-      {mob.regen !== undefined && (
-        <>
-          <dt>{t('cards.reference.mob.regenLabel')}</dt>
-          {/*
+          {(mob.armour !== undefined || mob.damageResist !== undefined) && (
+            <>
+              <dt>{t('cards.reference.mob.defenceLabel')}</dt>
+              <dd>
+                {t('cards.reference.mob.defenceFigure', {
+                  ac: mob.armour ?? '—',
+                  dr: mob.damageResist ?? '—'
+                })}
+              </dd>
+            </>
+          )}
+          {mob.magicResist !== undefined && (
+            <>
+              <dt>{t('cards.reference.mob.magicResistLabel')}</dt>
+              <dd>{mob.magicResist}</dd>
+            </>
+          )}
+          {mob.experience !== undefined && (
+            <>
+              <dt>{t('cards.reference.mob.experienceLabel')}</dt>
+              <dd>{mob.experience.toLocaleString()}</dd>
+            </>
+          )}
+          {mob.regen !== undefined && (
+            <>
+              <dt>{t('cards.reference.mob.regenLabel')}</dt>
+              {/*
             The other half of the wound estimate, and the reason it stopped
             drifting: this is what the bar adds back per tick. The cadence is
             realm-wide (`parse.mobRegenMs`) rather than per monster, so it is
             not repeated per row.
           */}
-          <dd>{t('cards.reference.mob.regenFigure', { hp: mob.regen })}</dd>
-        </>
-      )}
-      {mob.follows !== undefined && (
-        <>
-          <dt>{t('cards.reference.mob.followsLabel')}</dt>
-          {/*
+              <dd>{t('cards.reference.mob.regenFigure', { hp: mob.regen })}</dd>
+            </>
+          )}
+          {mob.follows !== undefined && (
+            <>
+              <dt>{t('cards.reference.mob.followsLabel')}</dt>
+              {/*
             The one row here with a safety consequence: running one room from
             something that always follows spends a move and changes nothing.
             Warned at all, because a 100% follower is what an automatic retreat
             cannot escape.
           */}
-          <dd className={mob.follows >= 100 ? 'chip warn' : undefined}>
-            {t('cards.reference.mob.followsFigure', { percent: mob.follows })}
-          </dd>
-        </>
-      )}
-      {mob.undead === true && (
-        <>
-          <dt>{t('cards.reference.mob.undeadLabel')}</dt>
-          <dd>{t('cards.reference.mob.undeadYes')}</dd>
-        </>
-      )}
-      {/*
+              <dd className={mob.follows >= 100 ? 'chip warn' : undefined}>
+                {t('cards.reference.mob.followsFigure', { percent: mob.follows })}
+              </dd>
+            </>
+          )}
+          {mob.undead === true && (
+            <>
+              <dt>{t('cards.reference.mob.undeadLabel')}</dt>
+              <dd>{t('cards.reference.mob.undeadYes')}</dd>
+            </>
+          )}
+          {/*
         What it resists and ignores — format 14, and the rows that decide
         whether a spell is worth casting at it. Above the drop table, which is
         the reward: what it takes to kill the thing comes before what killing
@@ -564,16 +609,23 @@ function MobDetail({
         states, and `effectValues` reduces here: the cautious end of a
         magnitude, every member of a set — see `WorldMob.abilities`.
       */}
-      <EffectRows classNames={classNames} pairs={mob.abilities ?? []} realm={realm} table="mob" />
-      {mob.drops !== undefined && (
-        <>
-          <dt>{t('cards.reference.mob.dropsLabel')}</dt>
-          {/*
+          <EffectRows
+            classNames={classNames}
+            pairs={mob.abilities ?? []}
+            realm={realm}
+            table="mob"
+          />
+          {mob.drops !== undefined && (
+            <>
+              <dt>{t('cards.reference.mob.dropsLabel')}</dt>
+              {/*
             The reverse of an item's "dropped by", and the other of the two
             questions anybody asks about a monster. Capped at six by the build,
             so this is a lead rather than a drop table.
           */}
-          <dd>{mob.drops.join(', ')}</dd>
+              <dd>{mob.drops.join(', ')}</dd>
+            </>
+          )}
         </>
       )}
       {/*
@@ -818,7 +870,7 @@ function SoldBy({
 }: {
   shops: readonly string[];
   places: Record<string, ShopPlace>;
-  onRoom: ((map: number, room: number) => void) | null;
+  onRoom: RoomClick | null;
 }) {
   return (
     <dd>
@@ -830,7 +882,7 @@ function SoldBy({
             {place?.at === 'one' && onRoom !== null ? (
               <button
                 className="lookup"
-                onClick={() => onRoom(place.map, place.room)}
+                onClick={(event) => onRoom(place.map, place.room, event.currentTarget)}
                 title={t('cards.reference.item.shopRouteTitle', { room: place.roomName })}
                 type="button"
               >
@@ -919,7 +971,7 @@ function GivenBy({
   onName
 }: {
   from: readonly ItemHandover[];
-  onRoom: ((map: number, room: number) => void) | null;
+  onRoom: RoomClick | null;
   onName: ((name: string, anchor: HTMLElement) => void) | null;
 }) {
   return (
@@ -964,7 +1016,7 @@ function GivenBy({
                 {at !== null && onRoom !== null ? (
                   <button
                     className="lookup"
-                    onClick={() => onRoom(at.map, at.room)}
+                    onClick={(event) => onRoom(at.map, at.room, event.currentTarget)}
                     title={t('cards.reference.item.shopRouteTitle', { room: place })}
                     type="button"
                   >
@@ -999,16 +1051,19 @@ function ItemDetail({
   onRoom,
   onName,
   onResize,
-  supplies
+  supplies,
+  facts
 }: {
   item: WorldItem;
   realm: RealmFamily | null;
   classNames: Record<number, string>;
   shopPlaces: Record<string, ShopPlace>;
-  onRoom: ((map: number, room: number) => void) | null;
+  onRoom: RoomClick | null;
   onName: ((name: string, anchor: HTMLElement) => void) | null;
   onResize: (() => void) | null;
   supplies: SupplyList | null;
+  /** MME's detail in place of the realm figures; null draws them, undefined neither (asking). */
+  facts: ReactNode | null | undefined;
 }) {
   const nothing =
     item.weapon === undefined &&
@@ -1022,7 +1077,7 @@ function ItemDetail({
     !item.from?.length &&
     item.placed === undefined &&
     !item.abilities?.length;
-  if (nothing && supplies === null) {
+  if (nothing && supplies === null && facts === null) {
     return <div className="empty">{t('cards.reference.item.noDetail')}</div>;
   }
 
@@ -1042,63 +1097,73 @@ function ItemDetail({
           supplies={supplies}
         />
       )}
-      {item.weapon && <WeaponRows weapon={item.weapon} />}
-      {item.armour && <ArmourRows armour={item.armour} />}
-      {/* What it does, ahead of what it costs: the effects are the reason to
-          carry it and the price is the reason not to. */}
-      <EffectRows classNames={classNames} pairs={item.abilities ?? []} realm={realm} table="item" />
-      {item.uses !== undefined && (
+      {facts}
+      {facts === null && (
         <>
-          <dt>{t('cards.reference.item.usesLabel')}</dt>
-          <dd>
-            {/*
+          {item.weapon && <WeaponRows weapon={item.weapon} />}
+          {item.armour && <ArmourRows armour={item.armour} />}
+          {/* What it does, ahead of what it costs: the effects are the reason to
+          carry it and the price is the reason not to. */}
+          <EffectRows
+            classNames={classNames}
+            pairs={item.abilities ?? []}
+            realm={realm}
+            table="item"
+          />
+          {item.uses !== undefined && (
+            <>
+              <dt>{t('cards.reference.item.usesLabel')}</dt>
+              <dd>
+                {/*
               `-1` is the realm saying *for ever*, and it arrives here from
               format 25 on — before that it was dropped, so unlimited and
               unstated were the same absence. Drawn as a word: a row reading
               `-1 charges` is the number leaking through a label.
             */}
-            {item.uses === -1
-              ? t('cards.reference.item.usesUnlimited')
-              : item.uses === 1
-                ? t('cards.reference.item.usesOnce')
-                : t('cards.reference.item.usesMany', { count: item.uses })}
-          </dd>
-        </>
-      )}
-      {item.slot !== undefined && (
-        <>
-          <dt>{t('cards.reference.item.wornLabel')}</dt>
-          <dd>{item.slot}</dd>
-        </>
-      )}
-      {item.price !== undefined && (
-        <>
-          <dt>{t('cards.room.shop.columnPrice')}</dt>
-          <dd>{t('cards.reference.item.priceNote', { price: item.price })}</dd>
-        </>
-      )}
-      {item.encumbrance !== undefined && (
-        <>
-          <dt>{t('cards.inventory.columns.weight')}</dt>
-          <dd>{item.encumbrance}</dd>
-        </>
-      )}
-      {item.shops && item.shops.length > 0 && (
-        <>
-          <dt>{t('cards.reference.item.soldByLabel')}</dt>
-          <SoldBy onRoom={onRoom} places={shopPlaces} shops={item.shops} />
-        </>
-      )}
-      {item.mobs && item.mobs.length > 0 && (
-        <>
-          <dt>{t('cards.reference.item.droppedByLabel')}</dt>
-          <DroppedBy mobs={item.mobs} onName={onName} />
-        </>
-      )}
-      {item.from && item.from.length > 0 && (
-        <>
-          <dt>{t('cards.reference.item.givenByLabel')}</dt>
-          <GivenBy from={item.from} onName={onName} onRoom={onRoom} />
+                {item.uses === -1
+                  ? t('cards.reference.item.usesUnlimited')
+                  : item.uses === 1
+                    ? t('cards.reference.item.usesOnce')
+                    : t('cards.reference.item.usesMany', { count: item.uses })}
+              </dd>
+            </>
+          )}
+          {item.slot !== undefined && (
+            <>
+              <dt>{t('cards.reference.item.wornLabel')}</dt>
+              <dd>{item.slot}</dd>
+            </>
+          )}
+          {item.price !== undefined && (
+            <>
+              <dt>{t('cards.room.shop.columnPrice')}</dt>
+              <dd>{t('cards.reference.item.priceNote', { price: item.price })}</dd>
+            </>
+          )}
+          {item.encumbrance !== undefined && (
+            <>
+              <dt>{t('cards.inventory.columns.weight')}</dt>
+              <dd>{item.encumbrance}</dd>
+            </>
+          )}
+          {item.shops && item.shops.length > 0 && (
+            <>
+              <dt>{t('cards.reference.item.soldByLabel')}</dt>
+              <SoldBy onRoom={onRoom} places={shopPlaces} shops={item.shops} />
+            </>
+          )}
+          {item.mobs && item.mobs.length > 0 && (
+            <>
+              <dt>{t('cards.reference.item.droppedByLabel')}</dt>
+              <DroppedBy mobs={item.mobs} onName={onName} />
+            </>
+          )}
+          {item.from && item.from.length > 0 && (
+            <>
+              <dt>{t('cards.reference.item.givenByLabel')}</dt>
+              <GivenBy from={item.from} onName={onName} onRoom={onRoom} />
+            </>
+          )}
         </>
       )}
       {item.placed !== undefined && (
@@ -1456,6 +1521,14 @@ export interface ReferenceDetailProps {
    * them scrolling away, would say the same word twice and only sometimes.
    */
   heading?: boolean;
+  /**
+   * MMUD Explorer for the character the detail is shown for (2026-10-24):
+   * its words in place of the realm figures drawn here, Buy beside an item
+   * or a spell. Null draws the figures, as a realm MME does not read does.
+   */
+  explorer?: ExplorerLink | null;
+  /** The row of a shared monster name to open on: the one chosen in Ctrl+K. */
+  row?: number;
 }
 
 /**
@@ -1476,8 +1549,50 @@ export default function ReferenceDetail({
   onName = null,
   onResize = null,
   supplies = null,
-  heading = true
+  heading = true,
+  explorer = null,
+  row: startRow
 }: ReferenceDetailProps) {
+  /*
+   * The row a reader picked of a monster name several rows share, while it
+   * is that entry being shown; a new entry starts from its first again.
+   */
+  const [picked, setPicked] = useState<{ entry: ReferenceEntry; row: number } | null>(null);
+  const row = picked?.entry === entry ? picked.row : startRow;
+  const mme = useExplorerDetail(explorer, entry, row);
+  /*
+   * A room in the detail opens the room's own panel beside it, with the way
+   * there on it (2026-10-24), as a room in MME's words does; the route panel
+   * straight away where there is no panel to open.
+   */
+  const openRoom = explorer?.openRoom ?? null;
+  const roomClick: RoomClick | null =
+    openRoom === null
+      ? onRoom
+      : (map, room, at) =>
+          at === undefined ? onRoom?.(map, room) : openRoom(roomId(map, room), at);
+  const place = explorerPlace(entry, row);
+  /*
+   * MME's words where it has them (2026-10-24): undefined while asked, so a
+   * card does not draw the old figures and then swap them out; null where it
+   * has none, which keeps them.
+   */
+  const facts: ReactNode | null | undefined =
+    mme === undefined ? undefined : mme === null || explorer === null || place === null ? null : (
+      <ExplorerFacts
+        detail={mme}
+        kind={place.kind}
+        link={explorer}
+        onName={onName}
+        onRow={(chosen) => setPicked({ entry, row: chosen })}
+        rows={
+          sharedRows(entry)?.map((id) => {
+            const brief = entry.kind === 'mob' ? entry.rows?.find((r) => r.id === id) : undefined;
+            return { id, note: brief === undefined ? undefined : mobRowText(brief) };
+          }) ?? null
+        }
+      />
+    );
   return (
     <div
       className="reference-detail"
@@ -1496,11 +1611,12 @@ export default function ReferenceDetail({
       {entry.kind === 'mob' && (
         <MobDetail
           classNames={classNames}
+          facts={facts}
           fights={entry.fights}
           learned={entry.learned}
           mob={entry.mob}
           onResize={onResize}
-          onRoom={onRoom}
+          onRoom={roomClick}
           places={entry.places}
           realm={realm}
           verdict={entry.verdict}
@@ -1509,22 +1625,25 @@ export default function ReferenceDetail({
       {entry.kind === 'item' && (
         <ItemDetail
           classNames={classNames}
+          facts={facts}
           item={entry.item}
           onName={onName}
           onResize={onResize}
-          onRoom={onRoom}
+          onRoom={roomClick}
           realm={realm}
           shopPlaces={shopPlaces}
           supplies={supplies}
         />
       )}
-      {entry.kind === 'spell' && (
+      {/* A spell, a race and a class are the realm's figures and nothing of ours: MME's whole. */}
+      {entry.kind !== 'mob' && entry.kind !== 'item' && facts}
+      {entry.kind === 'spell' && facts === null && (
         <SpellDetail classNames={classNames} level={level} realm={realm} spell={entry.spell} />
       )}
-      {entry.kind === 'race' && (
+      {entry.kind === 'race' && facts === null && (
         <RaceDetail classNames={classNames} race={entry.race} realm={realm} />
       )}
-      {entry.kind === 'class' && (
+      {entry.kind === 'class' && facts === null && (
         <ClassDetail className={entry.className} classNames={classNames} realm={realm} />
       )}
     </div>

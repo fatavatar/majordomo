@@ -44,6 +44,12 @@ export function buildMap(
   known?: ((map: number, room: number) => boolean) | null
 ): { cols: number; rows: number; center: number; zoom: boolean; cells: Array<MapCell | null> };
 export function roomTooltip(row: Row, opts?: Record<string, unknown>): string;
+/** A room's `Lair` column: its group, how many are up at once, and the monsters. */
+export function parseLair(s: unknown): { groupIndex: string; maxRegen: number; mobs: number[] };
+/** The `Lairs` row of a group: `Mobs`, `MobList`, `AvgExp`, `AvgHP`. */
+export function lairInfo(
+  groupIndex: string
+): { Mobs: number; MobList: string; AvgExp: number; AvgHP: number } | null;
 export function roomRefs(
   map: number,
   room: number,

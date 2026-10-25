@@ -1393,7 +1393,8 @@ export class CharacterTracker {
        * the file's, with any clock it left open closed at the write.
        */
       tally: this.recalledTally(),
-      statsBase: this.belongings.recallStatsBase()
+      statsBase: this.belongings.recallStatsBase(),
+      expResetAt: this.belongings.recallExpResetAt()
     };
     this.room.discard();
     this.expect.forget();
@@ -3718,6 +3719,7 @@ export class CharacterTracker {
       spellbook: this.belongings.recallSpellbook()?.map((spell) => ({ ...spell })) ?? null,
       abilities: this.belongings.recallAbilities(),
       statsBase: null,
+      expResetAt: null,
       // And the totals, which were somebody gone's. The character is standing
       // in the realm, so the clocks that were running start again now.
       tally:
@@ -3743,6 +3745,12 @@ export class CharacterTracker {
     if (this.state.statsBase === base) return;
     this.state = { ...this.state, statsBase: base, updatedAt: Date.now() };
     this.belongings.rememberStatsBase(base);
+  }
+
+  /** The Vitals card's experience reset, now: its hours views count from here. */
+  resetExp(at = Date.now()): void {
+    this.state = { ...this.state, expResetAt: at, updatedAt: Date.now() };
+    this.belongings.rememberExpResetAt(at);
   }
 
   /**

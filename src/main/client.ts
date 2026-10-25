@@ -103,6 +103,7 @@ import {
   Push,
   Send,
   type AttachSnapshot,
+  type BackscrollPage,
   type HomeListing,
   type Notice,
   type ProfileSummary,
@@ -154,13 +155,14 @@ import {
   type CompareKind,
   NO_EQ_VIEW,
   asRoomViewRequest,
+  asTextblockRequest,
   EXPLORER_KINDS,
   type ExplorerBuyPlan,
   type ExplorerKind,
   type RoomSearch
 } from '../shared/explorer';
 import { planRoute } from './world/RoutePlanner';
-import type { EngineMemory, MegaEngineSetup } from './session/MegaEngine';
+import { megaNames, type EngineMemory, type MegaEngineSetup } from './session/MegaEngine';
 import type { DebugSave, LearnedSpellTable, SessionSummary } from '../shared/ipc';
 import { EMPTY_CHARACTER } from '../shared/character';
 import { IDLE_WALK } from '../shared/walk';
@@ -187,6 +189,7 @@ import {
   EMPTY_LOOP_DRAFT,
   roomId,
   type MobPlaces,
+  type MobRowBrief,
   type ShopPlace
 } from '../shared/world';
 import { LoopDraftCache } from './world/loopDraft';
@@ -940,17 +943,12 @@ function megamudSettingsOf(id: SessionId, profile: Profile): MegaSettings {
 }
 
 /**
- * The ported MegaMUD engine's set-up: the character's settings, its
- * databases built from the realm's data and tables (`megamud/fromWorld.ts`)
- * and its per-player remote grants.
+ * A character's MegaMUD databases, built from its realm's data and tables
+ * with its own item rows laid over them, and kept until what they are built
+ * from changes: what its engine is given, and what its settings boxes
+ * suggest (`megamudNames`) whether or not it is connected.
  */
-function megamudFor(id: SessionId): { key: string; setup: MegaEngineSetup } | null {
-  const profile = profileFor(id);
-  if (profile === undefined) return null;
-  const grants = profile.config.automation.remotes.players;
-  const joinWhenInvited = profile.config.automation.remotes.autoJoin;
-  const botCommands = profile.config.automation.remotes.commands;
-  // The realm's name for its runic coin (BBS.INI's `RunicName`, ours per realm).
+function megaDataFor(id: SessionId, profile: Profile): MegaData {
   const runic = profile.config.connection.coins.runic;
   const world = worldFor(id);
   const tables = realmTablesFor(id);
@@ -982,7 +980,24 @@ function megamudFor(id: SessionId): { key: string; setup: MegaEngineSetup } | nu
       'log'
     );
   }
-  const data = built.data;
+  return built.data;
+}
+
+/**
+ * The ported MegaMUD engine's set-up: the character's settings, its
+ * databases built from the realm's data and tables (`megamud/fromWorld.ts`)
+ * and its per-player remote grants.
+ */
+function megamudFor(id: SessionId): { key: string; setup: MegaEngineSetup } | null {
+  const profile = profileFor(id);
+  if (profile === undefined) return null;
+  const grants = profile.config.automation.remotes.players;
+  const joinWhenInvited = profile.config.automation.remotes.autoJoin;
+  const botCommands = profile.config.automation.remotes.commands;
+  // The realm's name for its runic coin (BBS.INI's `RunicName`, ours per realm).
+  const runic = profile.config.connection.coins.runic;
+  const world = worldFor(id);
+  const data = megaDataFor(id, profile);
   const dataKey = `${world?.info.source ?? ''}|${runic ?? ''}`;
   // What it knows from before on this realm, out of our stores, and where
   // what it learns goes: stances to the lore, the rest to `MegaLearned`.
@@ -1708,6 +1723,9 @@ function registerIpc(): void {
   on(Send.statsReset, (_caller, session: SessionId) => {
     host?.get(session)?.manager.resetStats();
   });
+  on(Send.expReset, (_caller, session: SessionId) => {
+    host?.get(session)?.manager.resetExp();
+  });
   on(Send.statsBase, (_caller, session: SessionId, base: unknown) => {
     if (isCombatTally(base)) host?.get(session)?.manager.adoptStatsBase(base);
   });
@@ -2251,8 +2269,11 @@ function registerIpc(): void {
     const slot = host?.get(session);
     if (slot) windows.attach(caller.windowId, session);
     const manager = slot?.manager;
+    const tail = slot?.backscroll.tail(tuning().records.backscrollAttachLines);
     return {
-      backscroll: slot?.backscroll.text ?? '',
+      backscroll: tail?.text ?? '',
+      backscrollFrom: tail?.from ?? 0,
+      backscrollEarlier: tail !== undefined && tail.from > (slot?.backscroll.first ?? 0),
       lines: manager?.lines ?? [],
       state: manager?.state ?? IDLE_STATE,
       character: manager?.character ?? EMPTY_CHARACTER,
@@ -2271,6 +2292,12 @@ function registerIpc(): void {
       talk: slot ? talkFor(session).backlog() : []
     };
   });
+
+  handle(
+    Invoke.backscrollBefore,
+    (_caller, session: SessionId, at: number, lines: number): BackscrollPage =>
+      host?.get(session)?.backscroll.before(at, lines) ?? { text: '', from: 0, more: false }
+  );
 
   handle(Invoke.detach, (caller, session: SessionId) => {
     windows.detach(caller.windowId, session);
@@ -2709,6 +2736,56 @@ function registerIpc(): void {
    * character's room marked. A request that does not parse is answered as
    * no such room rather than a throw.
    */
+  /*
+   * A textblock as MME's frmResults shows it (2026-10-24): the Explorer's
+   * Rooms tab and the cards' textblock panel both ask it.
+   */
+  handle(Invoke.explorerTextblock, async (_caller, session: SessionId, request: unknown) => {
+    const realm = explorerRealm(session);
+    const asked = asTextblockRequest(request);
+    const empty = { text: [], icon: 'PAPER', place: null, bold: false, kids: [] };
+    const none = {
+      supported: false,
+      found: false,
+      number: asked?.n ?? 0,
+      linkTo: null,
+      calledFrom: null,
+      commands: null,
+      command: empty,
+      executed: empty,
+      raw: ''
+    };
+    if (typeof realm === 'string' || asked === null)
+      return { ...none, reason: typeof realm === 'string' ? realm : '' };
+    try {
+      const tb = await explorerAsk('textblock', realm.file, asked);
+      return tb.supported ? tb : { ...tb, reason: t('app.explorer.unsupported') };
+    } catch (error) {
+      return { ...none, reason: t('app.explorer.unreadable', { reason: errorMessage(error) }) };
+    }
+  });
+  /*
+   * What MME says a room holds, as data (2026-10-24): the Room card's Lair and
+   * Shop faces and the room panel, without the Rooms tab's map.
+   */
+  handle(
+    Invoke.explorerRoom,
+    async (_caller, session: SessionId, rawMap: unknown, rawRoom: unknown) => {
+      const realm = explorerRealm(session);
+      const manager = host?.get(session)?.manager;
+      const map = typeof rawMap === 'number' && Number.isInteger(rawMap) ? rawMap : 0;
+      const room = typeof rawRoom === 'number' && Number.isInteger(rawRoom) ? rawRoom : 0;
+      const none = { supported: false, found: false, map, room, name: '', refs: [], info: '' };
+      if (typeof realm === 'string' || manager === undefined)
+        return { ...none, reason: typeof realm === 'string' ? realm : '' };
+      try {
+        const facts = await explorerAsk('room', realm.file, manager.character, map, room);
+        return facts.supported ? facts : { ...facts, reason: t('app.explorer.unsupported') };
+      } catch (error) {
+        return { ...none, reason: t('app.explorer.unreadable', { reason: errorMessage(error) }) };
+      }
+    }
+  );
   handle(Invoke.explorerRoomView, async (_caller, session: SessionId, request: unknown) => {
     const realm = explorerRealm(session);
     const manager = host?.get(session)?.manager;
@@ -3011,6 +3088,16 @@ function registerIpc(): void {
       if (places !== undefined) mobPlaces[mob.name] = places;
     }
     /*
+     * And each row of a name several rows share, where nothing settled which:
+     * its own figures and where it spawns, so a name typed into Ctrl+K lists
+     * every one of them told apart (2026-10-24).
+     */
+    const mobRows: Record<string, MobRowBrief[]> = {};
+    for (const mob of found.mobs) {
+      const rows = world.rowBriefs(mob);
+      if (rows !== undefined) mobRows[mob.name] = rows;
+    }
+    /*
      * And *can I fight this?* — each monster named, weighed against the
      * character as it stands at this moment, by the session's own arithmetic
      * so the card reads exactly what auto-combat ranks on. A session with no
@@ -3023,6 +3110,7 @@ function registerIpc(): void {
       ...(Object.keys(fights).length > 0 ? { fights } : {}),
       ...(Object.keys(shopPlaces).length > 0 ? { shopPlaces } : {}),
       ...(Object.keys(mobPlaces).length > 0 ? { mobPlaces } : {}),
+      ...(Object.keys(mobRows).length > 0 ? { mobRows } : {}),
       ...(Object.keys(verdicts).length > 0 ? { verdicts } : {})
     };
   });
@@ -3559,6 +3647,12 @@ function registerIpc(): void {
   handle(Invoke.megamudChoices, (_caller, rawId: unknown) => {
     const id = asProfileId(rawId);
     return id === null ? null : (host?.get(id)?.manager.megaChoices() ?? null);
+  });
+
+  handle(Invoke.megamudNames, (_caller, rawId: unknown) => {
+    const id = asProfileId(rawId);
+    const profile = id === null ? undefined : profileFor(id);
+    return id === null || profile === undefined ? null : megaNames(megaDataFor(id, profile));
   });
 
   handle(Invoke.seenPlayers, (_caller, rawId: unknown) => {

@@ -50,6 +50,8 @@ export interface TerminalHandle {
   /** Print an engine message inline, in the game's own visual language. */
   notice(message: string): void;
   jumpToLatest(): void;
+  /** Whether the reader is following the game: at the live edge, holding nothing. */
+  following(): boolean;
   focus(): void;
   /** Find in the backscroll. Empty query clears the highlight. */
   search(query: string, direction: 'next' | 'previous'): void;
@@ -880,6 +882,10 @@ export default function TerminalView({
         }),
       notice: postNotice,
       jumpToLatest,
+      following: () => {
+        const buffer = term.buffer.active;
+        return !holdRef.current && buffer.viewportY >= buffer.baseY;
+      },
       focus: () => term.focus(),
       search: (query, direction) => {
         if (query.length === 0) {

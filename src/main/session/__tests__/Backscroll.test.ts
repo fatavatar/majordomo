@@ -114,6 +114,49 @@ describe('Backscroll', () => {
  * client again used to be the one way to empty a console. What the terminal
  * would have painted is written down, and the next launch reads it back.
  */
+/*
+ * What a window attaching is handed, and the pages behind it (2026-10-25):
+ * five characters' whole backscroll was past what a web tab may be owed.
+ */
+describe('the backscroll a page at a time', () => {
+  it('hands over the latest lines and the live line, numbered from the first ever kept', () => {
+    const scroll = new Backscroll({ lines: 100 });
+    for (let i = 0; i < 10; i += 1) scroll.write(`line ${i}\n`);
+    scroll.write('[HP=30]:');
+    expect(scroll.tail(3)).toEqual({ text: 'line 7\nline 8\nline 9\n[HP=30]:', from: 7 });
+    expect(scroll.tail(50)).toEqual({ text: scroll.text, from: 0 });
+  });
+
+  it('pages back from a line in whole lines, until none older is kept', () => {
+    const scroll = new Backscroll({ lines: 100 });
+    scroll.write('line 0\nline 1\nli');
+    scroll.write('ne 2\nline 3\nline 4\n');
+    expect(scroll.before(4, 2)).toEqual({ text: 'line 2\nline 3\n', from: 2, more: true });
+    expect(scroll.before(2, 2)).toEqual({ text: 'line 0\nline 1\n', from: 0, more: false });
+  });
+
+  it('keeps each line its number as the oldest are dropped', () => {
+    const scroll = new Backscroll({ lines: 5 });
+    for (let i = 0; i < 12; i += 1) scroll.write(`line ${i}\n`);
+    expect(scroll.first).toBe(7);
+    expect(scroll.tail(2)).toEqual({ text: 'line 10\nline 11\n', from: 10 });
+    expect(scroll.before(10, 2)).toEqual({ text: 'line 8\nline 9\n', from: 8, more: true });
+    // Older than any kept: what is left, and nothing more.
+    expect(scroll.before(8, 5)).toEqual({ text: 'line 7\n', from: 7, more: false });
+  });
+
+  it('pages within one chunk cut at its head, as a launch reads the file', () => {
+    const scroll = new Backscroll({ lines: 5 });
+    scroll.write(Array.from({ length: 12 }, (_, i) => `line ${i}\n`).join(''));
+    expect(scroll.tail(2).from).toBe(10);
+    expect(scroll.before(10, 3)).toEqual({
+      text: 'line 7\nline 8\nline 9\n',
+      from: 7,
+      more: false
+    });
+  });
+});
+
 describe('the backscroll on disk', () => {
   it('writes what it was given, and reads it back on the next launch', () => {
     const first = new Backscroll({ lines: 100, file });

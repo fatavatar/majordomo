@@ -93,11 +93,25 @@ export interface LearnedSpellTable {
  */
 export interface MegaChoices {
   rooms: string[];
+  /** The rooms in the list that are banks (`RoomFlag.Bank`), for `Cash.Bank`. */
+  banks: string[];
   weapons: string[] | null;
   backstab: string[] | null;
   shields: string[] | null;
   /** The figures the Statline tab shows its line with (`0x4a6920`). */
   statline: StatlineSample;
+}
+
+/**
+ * The item names a character's MegaMUD databases hold, for its settings
+ * boxes to suggest (`megaNames`): built from its realm whether or not it is
+ * connected.
+ */
+export interface MegaNames {
+  items: string[];
+  weapons: string[];
+  backstab: string[];
+  shields: string[];
 }
 import type { StatlineSample } from './megamud/lists';
 import type {
@@ -106,7 +120,9 @@ import type {
   ExplorerKind,
   ExplorerList,
   ExplorerOptions,
+  ExplorerRoomFacts,
   ExplorerRoomView,
+  ExplorerTextblock,
   GearBoard,
   GearOptions,
   EqFind,
@@ -119,7 +135,8 @@ import type {
   RoomMapOptions,
   RoomSearch,
   RoomSearchResult,
-  RoomViewRequest
+  RoomViewRequest,
+  TextblockRequest
 } from './explorer';
 import type { InternalConfig } from './internal';
 import type { Loop, LoopAddress, LoopProgress, LoopScope, ScopedLoop } from './loops';
@@ -262,6 +279,13 @@ export interface Notice {
   message: string;
 }
 
+/** Whole lines of a session's retained output, from line `from`; `more` while older ones are kept. */
+export interface BackscrollPage {
+  text: string;
+  from: number;
+  more: boolean;
+}
+
 /**
  * Everything a window needs to start drawing a session it has just attached to.
  *
@@ -275,8 +299,16 @@ export interface Notice {
  * lines quietly did not, which is the kind of gap that reads as "parsing broke".
  */
 export interface AttachSnapshot {
-  /** Retained bytes for the terminal, escape sequences intact. */
+  /**
+   * The latest retained output for the terminal, escape sequences intact:
+   * `tuning.records.backscrollAttachLines` lines of it, the older lines
+   * fetched behind it a page at a time (`backscrollBefore`, 2026-10-25).
+   */
   backscroll: string;
+  /** The number of its first line, which `backscrollBefore` pages back from. */
+  backscrollFrom: number;
+  /** Whether older lines are retained than it holds. */
+  backscrollEarlier: boolean;
   /** Retained framed lines, for the diagnostics stream card. */
   lines: StreamLine[];
   state: ConnectionState;
@@ -677,6 +709,12 @@ export const Send = {
    * (2026-10-17).
    */
   statsReset: 'session:stats-reset',
+  /**
+   * A character's experience reset on the Vitals card (2026-10-25): its hours
+   * views count from now (`CharacterState.expResetAt`); the session's, and the
+   * Combat Stats card's figures, are left as they are.
+   */
+  expReset: 'session:exp-reset',
   /** A baseline this window kept from before main kept one, taken once while main has none. */
   statsBase: 'session:stats-base'
 } as const;
@@ -784,6 +822,12 @@ export const Invoke = {
   /** This window is no longer showing that session. */
   detach: 'sessions:detach',
   /**
+   * A page of the retained output older than what attaching handed over: the
+   * whole lines before line `at`, so a console fills in its history behind
+   * the live screen rather than taking all of it at once (2026-10-25).
+   */
+  backscrollBefore: 'sessions:backscroll-before',
+  /**
    * The rail, in the order somebody dragged it into.
    *
    * Stated whole rather than as a move: the renderer already knows the order it
@@ -882,6 +926,8 @@ export const Invoke = {
    * snapshot and `saveProfile` (2026-10-18).
    */
   megamudChoices: 'settings:megamud-choices',
+  /** The item names its MegaMUD databases hold, connected or not (`MegaNames`). */
+  megamudNames: 'settings:megamud-names',
   /**
    * The players a character's realm has seen (`PlayerBook`), by name, for the
    * Players row's list; and one of them forgotten from it, until seen again.
@@ -1115,6 +1161,10 @@ export const Invoke = {
   setCombatMonsters: 'settings:combat-monsters',
   /** The Rooms tab: MME's map from a room, a cell's tooltip, and its finders. */
   explorerRoomView: 'explorer:room-view',
+  /** A textblock as MME's frmResults shows it (`ExplorerTextblock`, 2026-10-24). */
+  explorerTextblock: 'explorer:textblock',
+  /** What MME says a room holds, as data, for the Room card and the room panel (2026-10-24). */
+  explorerRoom: 'explorer:room',
   explorerRoomTip: 'explorer:room-tip',
   explorerRoomSearch: 'explorer:room-search',
   /**
@@ -1300,6 +1350,8 @@ export interface IpcApi {
   debugFeed(on: boolean): void;
   /** A character's Combat Stats Reset. See `Send.statsReset`. */
   statsReset(session: SessionId): void;
+  /** A character's experience reset on the Vitals card. See `Send.expReset`. */
+  expReset(session: SessionId): void;
   /** A baseline this window kept from before main kept one. See `Send.statsBase`. */
   statsBase(session: SessionId, base: CombatTally): void;
 
@@ -1416,6 +1468,7 @@ export interface IpcApi {
   /** Resolves with everything needed to draw the session from cold. */
   attach(session: SessionId): Promise<AttachSnapshot>;
   detach(session: SessionId): Promise<void>;
+  backscrollBefore(session: SessionId, at: number, lines: number): Promise<BackscrollPage>;
   /** The rail's own order, remembered across restarts. See the channel. */
   reorderSessions(order: SessionId[]): Promise<void>;
   /** Each resolves to why it refused, or null. */
@@ -1449,6 +1502,8 @@ export interface IpcApi {
   deleteServer(name: string): Promise<string | null>;
   /** What a character's running engine offers its MegaMUD tabs; null with none running. */
   megamudChoices(id: string): Promise<MegaChoices | null>;
+  /** The item names a character's MegaMUD databases hold; null for no such character. */
+  megamudNames(id: string): Promise<MegaNames | null>;
   /** The names a character's realm has seen, as the realm spells them. */
   seenPlayers(id: string): Promise<string[]>;
   /** One forgotten from the realm's record of players; why it could not be, or null. */
@@ -1748,6 +1803,8 @@ export interface IpcApi {
   ): Promise<{ refusal: string | null; buy: Array<{ number: number; name: string }> }>;
   /** MME's map from a room, with its references and the character's room. */
   explorerRoomView(session: SessionId, request: RoomViewRequest): Promise<ExplorerRoomView>;
+  explorerTextblock(session: SessionId, request: TextblockRequest): Promise<ExplorerTextblock>;
+  explorerRoom(session: SessionId, map: number, room: number): Promise<ExplorerRoomFacts>;
   /** One cell's tooltip, asked as it is hovered. */
   explorerRoomTip(
     session: SessionId,

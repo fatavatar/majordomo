@@ -1710,6 +1710,13 @@ export interface WorldLookup {
    * which is the honest answer rather than an empty list reading as *nowhere*.
    */
   mobPlaces?: Record<string, MobPlaces>;
+  /**
+   * Each row of a monster name several rows share, where nothing settled
+   * which (a name typed rather than clicked in a room), by the monster's
+   * name: enough of each to tell them apart (2026-10-24). Ctrl+K lists one
+   * entry per row from it, and the card's row picker says it beside each.
+   */
+  mobRows?: Record<string, MobRowBrief[]>;
 }
 
 /**
@@ -1982,6 +1989,15 @@ export interface WorldMobRow {
  * hundred steps away*. Absent where nothing could be resolved, which leaves
  * the fold and its range exactly as they were.
  */
+/** One row of a shared monster name, briefly: its own figures and where it spawns. */
+export interface MobRowBrief {
+  id: number;
+  hp: number;
+  experience?: number;
+  /** The room name it spawns in most, and how many rooms it spawns in all. */
+  where?: { roomName: string; rooms: number };
+}
+
 export interface MobRowChoice {
   /** The realm row the numbers came from. */
   id: number;

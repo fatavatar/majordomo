@@ -1,6 +1,8 @@
 import { memo, useMemo } from 'react';
 
 import { t } from '../lib/i18n';
+import { useCompact } from '../lib/skin';
+import { KitInitials } from './kit';
 import { PlayerName } from '../lib/players';
 import type { PopoverAnchor } from '../lib/popover';
 
@@ -113,6 +115,20 @@ function order(a: Adventurer, b: Adventurer): number {
  */
 function RealmCard({ character, session, subject, onSelect, ...chrome }: RealmCardProps) {
   const roster = useMemo(() => [...character.online].sort(order), [character.online]);
+  /*
+   * Under glance (2026-10-25) a person's standing is the colour of their name
+   * and a dot before it, the realm's word its title, rather than a column of
+   * words; and a bar over the list is the realm's make-up, worst first.
+   */
+  const glance = useCompact();
+  const makeup = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const entry of roster) {
+      const word = entry.alignment ?? 'unknown';
+      counts.set(word, (counts.get(word) ?? 0) + 1);
+    }
+    return [...counts];
+  }, [roster]);
   const hostile = roster.filter((entry) => isHostile(entry.alignment)).length;
   /* The `who` listing includes the character reading it. See the name column. */
   const self = character.name === null ? null : playerKey(character.name);
@@ -136,7 +152,7 @@ function RealmCard({ character, session, subject, onSelect, ...chrome }: RealmCa
    * quietly thrown that order away, and it is the order this card was built
    * around.
    */
-  const columns: Column<Adventurer>[] = [
+  const everyColumn: Column<Adventurer>[] = [
     {
       id: 'standing',
       label: t('cards.realm.column.standing'),
@@ -172,12 +188,15 @@ function RealmCard({ character, session, subject, onSelect, ...chrome }: RealmCa
        * so this listing and the Players card's cannot drift apart.
        */
       cell: (entry) => (
-        <PlayerName
-          className="realm-name"
-          name={entry.name}
-          onSelect={onSelect}
-          self={playerKey(entry.name) === self}
-        />
+        <>
+          {glance && <KitInitials name={entry.name} />}
+          <PlayerName
+            className="realm-name"
+            name={entry.name}
+            onSelect={onSelect}
+            self={playerKey(entry.name) === self}
+          />
+        </>
       )
     },
     {
@@ -191,6 +210,7 @@ function RealmCard({ character, session, subject, onSelect, ...chrome }: RealmCa
       )
     }
   ];
+  const columns = glance ? everyColumn.filter((column) => column.id !== 'standing') : everyColumn;
 
   return (
     <BentoCard
@@ -205,6 +225,18 @@ function RealmCard({ character, session, subject, onSelect, ...chrome }: RealmCa
         somebody has just been told over telepath. Finding it by eye down a
         scrolling list is the thing this card was worst at.
       */}
+      {glance && roster.length > 0 && (
+        <div className="glance-makeup" role="img" aria-label={t('cards.realm.glance.makeup')}>
+          {makeup.map(([word, count]) => (
+            <i
+              data-align={word.toLowerCase()}
+              key={word}
+              style={{ flexGrow: count }}
+              title={`${count} ${word === 'unknown' ? t('cards.realm.facet.unknown') : word}`}
+            />
+          ))}
+        </div>
+      )}
       <CardTable
         caption={t('cards.realm.caption')}
         className="realm-list"
@@ -221,6 +253,12 @@ function RealmCard({ character, session, subject, onSelect, ...chrome }: RealmCa
         name="realm"
         returnFocus={chrome.returnFocus}
         rowAttrs={(entry) => ({
+          ...(glance
+            ? {
+                'data-align': (entry.alignment ?? 'unknown').toLowerCase(),
+                title: entry.alignment ?? t('cards.realm.facet.unknown')
+              }
+            : {}),
           'data-hostile': isHostile(entry.alignment) ? 'true' : undefined,
           'data-unknown': entry.alignment === null ? 'true' : undefined,
           'data-selected': playerKey(entry.name) === subject ? 'true' : undefined

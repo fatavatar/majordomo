@@ -6,7 +6,15 @@ import CardTable, { type Column, type Facet } from './CardTable';
 import EntityNumber, { entityNumberText } from './EntityNumber';
 import { keepFocus } from '../lib/focus';
 import { entityNumber } from '@shared/entities';
-import { equipVerdict, UNKNOWN_WEARER, type GearAction, type Wearer } from '@shared/gear';
+import {
+  equip,
+  equipVerdict,
+  UNKNOWN_WEARER,
+  type EquipVerdict,
+  type GearAction,
+  type Wearer
+} from '@shared/gear';
+import type { ItemFacts } from '@shared/explorer';
 import { t } from '../lib/i18n';
 import { coinText } from '../lib/coins';
 import { type CarriedItem, type CharacterState, type Coins } from '@shared/character';
@@ -112,6 +120,15 @@ export interface InventoryCardProps extends CardChrome {
    */
   loadWearer?(): Promise<Wearer>;
   /**
+   * MMUD Explorer's facts for what is carried (2026-10-24): its weight, where
+   * it is worn, its value at this character's charm, and whether this
+   * character can use it, which the equip control follows. Absent keeps the
+   * realm's own.
+   */
+  loadItemFacts?: ((numbers: number[]) => Promise<ItemFacts[]>) | null;
+  /** Changes when MME's answers do: the class, the level, what is worn. */
+  characterKey?: string;
+  /**
    * A gear button: put one item on, put on everything the realm says can be
    * worn, or put the whole pack on the floor.
    *
@@ -143,6 +160,8 @@ function InventoryCard({
   inspect,
   load,
   loadWearer,
+  loadItemFacts,
+  characterKey,
   gear,
   session,
   ...chrome
@@ -200,6 +219,8 @@ function InventoryCard({
         finding={finding}
         gear={gear}
         inspect={inspect}
+        characterKey={characterKey}
+        loadItemFacts={loadItemFacts}
         loadWearer={loadWearer}
         onFindDismiss={() => setFinding(false)}
         returnFocus={chrome.returnFocus}
@@ -282,6 +303,8 @@ export interface InventoryBodyProps {
   inspect?: InventoryCardProps['inspect'];
   gear?: InventoryCardProps['gear'];
   loadWearer?: InventoryCardProps['loadWearer'];
+  loadItemFacts?: InventoryCardProps['loadItemFacts'];
+  characterKey?: string;
   returnFocus?: () => void;
   /**
    * Whether the find row is out. Driven from the search glyph in the action
@@ -304,11 +327,18 @@ export function InventoryBody({
   inspect,
   gear,
   loadWearer,
+  loadItemFacts,
+  characterKey = '',
   returnFocus,
   finding,
   onFindDismiss
 }: InventoryBodyProps) {
   const { items, keys, wealth, coins, encumbrance, encumbranceMax } = character.inventory;
+  const facts = useItemFacts(loadItemFacts, items, characterKey);
+  const factsOf = (item: CarriedItem): ItemFacts | undefined => {
+    const n = entityNumber(item);
+    return n === null ? undefined : facts.get(n);
+  };
   /**
    * Who the realm thinks this character is.
    *
@@ -423,7 +453,7 @@ export function InventoryBody({
          * stays reachable from the keyboard; a thing that is not kit gets no
          * control at all, because one could only ever earn a refusal.
          */
-        const verdict = equipVerdict(item, wearer, t);
+        const verdict = mmeVerdict(equipVerdict(item, wearer, t), item, factsOf(item));
         switch (verdict.state) {
           case 'worn':
             return (
@@ -506,6 +536,7 @@ export function InventoryBody({
        * (`iron key` is three) into the find text as well as on screen.
        */
       id: 'number',
+      optional: true,
       label: t('entity.numberColumn'),
       name: t('entity.numberColumnLabel'),
       numeric: true,
@@ -516,11 +547,19 @@ export function InventoryBody({
       id: 'weight',
       label: t('cards.inventory.columns.weight'),
       numeric: true,
-      value: (item) => item.encumbrance ?? null,
+      value: (item) => factsOf(item)?.enc ?? item.encumbrance ?? null,
       // The figure and nothing around it: the cell is already the `weight`
       // column, and a span inside it carrying the same name would be a second
       // thing to select by that can disagree with the first.
-      cell: (item) => item.encumbrance ?? null
+      cell: (item) => factsOf(item)?.enc ?? item.encumbrance ?? null
+    },
+    {
+      // What it fetches and costs at this character's charm, MME's short words (2026-10-24).
+      id: 'value',
+      optional: true,
+      label: t('cards.inventory.columns.value'),
+      value: (item) => factsOf(item)?.value || null,
+      cell: (item) => <span className="item-value">{factsOf(item)?.value || null}</span>
     },
     {
       /*
@@ -545,7 +584,12 @@ export function InventoryBody({
       label: t('cards.player.detail.where'),
       value: (item) => item.slot ?? (item.equipped ? t('cards.inventory.inUseStatus') : null),
       cell: (item) =>
-        item.slot !== null ? (
+        // A slot the game named stands; one read off the data is MME's word (2026-10-24).
+        (item.slot === null || item.slotSource === 'realm') && mmeSlot(factsOf(item)) !== null ? (
+          <span className="slot inferred" title={t('cards.inventory.mmeSlotTooltip')}>
+            {mmeSlot(factsOf(item))}
+          </span>
+        ) : item.slot !== null ? (
           item.slotSource === 'realm' ? (
             <span className="slot inferred" title={t('cards.inventory.realmSlotTooltip')}>
               {item.slot}
@@ -630,3 +674,72 @@ export function InventoryBody({
 }
 
 export default memo(InventoryCard);
+
+/** Where MME says a thing is worn, or null for nowhere (or no answer). */
+function mmeSlot(facts: ItemFacts | undefined): string | null {
+  return facts === undefined || facts.worn === 'Nowhere' ? null : facts.worn;
+}
+
+/**
+ * The equip control as MMUD Explorer rules it (2026-10-24): worn stays worn;
+ * a thing worn nowhere has no control; one this character cannot use is
+ * refused, with the realm's own reason where it gives one; the rest can be
+ * put on.
+ */
+function mmeVerdict(
+  verdict: EquipVerdict,
+  item: CarriedItem,
+  facts: ItemFacts | undefined
+): EquipVerdict {
+  if (facts === undefined || verdict.state === 'worn') return verdict;
+  if (facts.worn === 'Nowhere') return { state: 'none', label: '', command: null };
+  if (!facts.usable) {
+    return {
+      state: 'blocked',
+      label:
+        verdict.state === 'blocked'
+          ? verdict.label
+          : t('cards.inventory.mmeCantUse', { item: item.name }),
+      command: null
+    };
+  }
+  return {
+    state: 'wearable',
+    label: t('cards.inventory.equipTooltip', { item: item.name }),
+    command: equip(item.name)
+  };
+}
+
+/** MME's facts for what is carried, by the realm's number, asked again as the pack or the character changes. */
+function useItemFacts(
+  load: ((numbers: number[]) => Promise<ItemFacts[]>) | null | undefined,
+  items: readonly CarriedItem[],
+  characterKey: string
+): ReadonlyMap<number, ItemFacts> {
+  const numbers = [
+    ...new Set(
+      items.flatMap((item) => {
+        const n = entityNumber(item);
+        return n === null ? [] : [n];
+      })
+    )
+  ].sort((a, b) => a - b);
+  const asked = numbers.join(',');
+  const key = `${asked}:${characterKey}`;
+  const [answer, setAnswer] = useState<{ key: string; facts: ReadonlyMap<number, ItemFacts> }>({
+    key: '',
+    facts: new Map()
+  });
+  useEffect(() => {
+    if (!load || asked === '') return;
+    let live = true;
+    void load(asked.split(',').map(Number)).then(
+      (found) => live && setAnswer({ key, facts: new Map(found.map((f) => [f.number, f])) }),
+      () => {}
+    );
+    return () => {
+      live = false;
+    };
+  }, [load, asked, key]);
+  return answer.facts;
+}

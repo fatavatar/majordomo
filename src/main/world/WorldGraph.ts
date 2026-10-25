@@ -74,6 +74,7 @@ import {
   type DropSources,
   type ItemAsk,
   type MobPlaces,
+  type MobRowBrief,
   type MobSpawn,
   type ItemPlaces,
   type PlaceGroup,
@@ -1841,6 +1842,12 @@ export class WorldGraph {
   private spells: WorldSpell[] = [];
   /** The same rows by id — see `spellById` for why this is not a scan. */
   private spellsById = new Map<number, WorldSpell>();
+  /** `spellNamed`'s index, for the spell list it was built from. */
+  private spellIndex: {
+    of: readonly WorldSpell[];
+    byName: Map<string, WorldSpell>;
+    byShort: Map<string, WorldSpell>;
+  } | null = null;
   private confusionRows: ReadonlySet<number> | null = null;
   /** The realm's races and classes, in table order. Empty before v10. */
   private races: WorldRace[] = [];
@@ -3176,6 +3183,31 @@ export class WorldGraph {
     return found;
   }
 
+  /**
+   * Each row of a name several rows share, where nothing settled which, told
+   * apart (2026-10-24): its own health and experience (`mobRow`, the fold's
+   * where the realm keeps no row of its own) and the room name it spawns in
+   * most, with how many rooms it spawns in. Undefined for one row, or a row
+   * a room settled. Ctrl+K lists one entry per row from it.
+   */
+  rowBriefs(mob: WorldMob): MobRowBrief[] | undefined {
+    if (mob.row !== undefined || (mob.ids?.length ?? 0) < 2) return undefined;
+    return mob.ids!.map((id): MobRowBrief => {
+      const row = this.mobRow(id);
+      const places = this.mobPlaces({ ...mob, row: { id, how: 'here', steps: 0, beyond: null } });
+      const first = places?.spawns[0];
+      const experience = row?.experience ?? mob.experience;
+      return {
+        id,
+        hp: row?.hp ?? mob.hp,
+        ...(experience !== undefined ? { experience } : {}),
+        ...(first !== undefined && places !== undefined
+          ? { where: { roomName: first.roomName, rooms: places.rooms } }
+          : {})
+      };
+    });
+  }
+
   /** The reverse index, built on the first ask. See `mobPlaces`. */
   private mobRooms(): Map<number, MobSpawnRoom[]> {
     if (this.mobRoomsById !== null) return this.mobRoomsById;
@@ -3707,12 +3739,29 @@ export class WorldGraph {
   spellNamed(word: string): WorldSpell | null {
     const needle = word.trim().toLowerCase();
     if (needle.length === 0) return null;
-    let byShort: WorldSpell | null = null;
+    const index = this.spellNameIndex();
+    return index.byName.get(needle) ?? index.byShort.get(needle) ?? null;
+  }
+
+  /**
+   * The spells by lower-cased name and by short, the first of each kept, as
+   * `spellNamed`'s scan took them: an exact name before any short, and the
+   * earlier row of two. Built once per spell list (2026-10-25): the scan
+   * lowered 2,002 names a call, and the appraisal asks for every buff on
+   * every status line.
+   */
+  private spellNameIndex(): { byName: Map<string, WorldSpell>; byShort: Map<string, WorldSpell> } {
+    if (this.spellIndex?.of === this.spells) return this.spellIndex;
+    const byName = new Map<string, WorldSpell>();
+    const byShort = new Map<string, WorldSpell>();
     for (const spell of this.spells) {
-      if (spell.name.toLowerCase() === needle) return spell;
-      if (byShort === null && spell.short?.toLowerCase() === needle) byShort = spell;
+      const name = spell.name.toLowerCase();
+      if (!byName.has(name)) byName.set(name, spell);
+      const short = spell.short?.toLowerCase();
+      if (short !== undefined && !byShort.has(short)) byShort.set(short, spell);
     }
-    return byShort;
+    this.spellIndex = { of: this.spells, byName, byShort };
+    return this.spellIndex;
   }
 
   /**
