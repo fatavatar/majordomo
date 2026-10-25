@@ -91,7 +91,7 @@ function banner(
   const lines = [
     '',
     rule,
-    '   mudengine is serving the client over HTTP.',
+    '   Majordomo is serving the client over HTTP.',
     '',
     `   Open:  http://localhost:${bound.port}/`
   ];
