@@ -456,6 +456,40 @@ shown, 2 shown after a separator. The Toolbar tab (`0x4bb4d0`) ticks Visible
 when the value is above 0 and Separator when above 1. `AllOff` and `AFK`
 default to 2.
 
+## Auto-combat and auto-heal coming back on
+
+Read 2026-10-25.
+
+- **The mode defaults (`0x4c0af0`).** When the mode changes, MegaMUD applies
+  a set of defaults to the `Auto…` toggles. Going idle applies the `Def…1`
+  set, and going active applies the `Def…2` set, unless `NoModeDefs` is set.
+  "Active" is `active` (AFK) or walking, roaming or importing, and nothing
+  under All Off. MegaMUD's own defaults have `DefCombat1` and `DefCombat2`
+  both 1, so with them every change of mode turns auto-combat on.
+- **Re-engaging (`0x4bfa20`).** Runs when walking stops or resumes. It turns
+  auto-combat on when it is off and any of these holds:
+  - `0xa324` (the idle setting) is set;
+  - `Other.AutoAutoCombat` is set;
+  - `NoModeDefs` is 0 and `DefCombat1` or `DefCombat2` is set.
+
+  It prints "[Auto-combat re-engaged]". Auto-heal is the same, with
+  `0xe394` and `DefHeal1`/`DefHeal2`, and "[Auto-rest/heal re-engaged]".
+  It ends by clearing `0xa320` (the detour's setting).
+- **What stops it re-engaging (`0x48fcc0(n)`).** This is not a player's lock.
+  It answers 1 when plugins are on (`0x59cc5c` > 0) and a plugin holds a
+  lease on feature `n` (1 combat, 4 heal; the table at `0x5c09b0`, 24 bytes
+  an entry). `0x48fc60` revokes a lease and logs
+  "PLUGIN: lease on '%s' revoked (%s)". A window command with a lease held
+  does so as "user override" (`0x48fcf0`).
+- **Arriving at a Go To destination** clears `0xa320` before the mode
+  defaults and re-engaging run, so the setting before the walk is not what
+  MegaMUD puts back there.
+
+The client departs from these for a walk to a destination
+(`src/main/megamud/script/modes.ts`). Its routes start, stop and arrive at
+every leg, so they would apply the defaults far more often than MegaMUD's
+fixed paths do.
+
 ## Redrawing the window (`0x460d50`)
 
 Read 2026-10-13. After each command `0x462d20` redraws the window: every
