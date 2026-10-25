@@ -739,8 +739,11 @@ export const TEXTBLOCK_MODES: readonly TextblockMode[] = ['plain', 'room', 'gree
 
 export interface TextblockRequest {
   n: number;
-  /** `plain` a block another runs (actions only), `room` a room's commands, `greet` an NPC's. */
-  mode: TextblockMode;
+  /**
+   * `plain` a block another runs (actions only), `room` a room's commands,
+   * `greet` an NPC's; null for the one the realm reads it as (`ExplorerTextblock.mode`).
+   */
+  mode: TextblockMode | null;
   /** MME's Hide textblocks: the blocks a tree passes through left out, what they do kept. */
   hideTB: boolean;
   /** The map a teleport that names none lands on: the one the reader is looking at. */
@@ -757,7 +760,7 @@ export function asTextblockRequest(value: unknown): TextblockRequest | null {
     n,
     mode: TEXTBLOCK_MODES.includes(o['mode'] as TextblockMode)
       ? (o['mode'] as TextblockMode)
-      : 'plain',
+      : null,
     hideTB: o['hideTB'] === true,
     defaultMap: typeof map === 'number' && Number.isInteger(map) && map >= 0 ? map : 1
   };
@@ -778,6 +781,12 @@ export interface ExplorerTextblock {
   reason?: string;
   found: boolean;
   number: number;
+  /**
+   * The reading the tree was drawn in: the one asked for, or where none was,
+   * the one the realm reads the block as (`greet` for a monster's greeting,
+   * `room` for a room's commands, otherwise `plain`).
+   */
+  mode: TextblockMode;
   /** The block this one carries on into (`LinkTo`); null for none. */
   linkTo: number | null;
   /** Where the realm says it is called from (`Called From`), its rooms and blocks links. */
