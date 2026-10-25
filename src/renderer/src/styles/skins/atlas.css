@@ -1,0 +1,287 @@
+/*
+ * The atlas skin (2026-10-25): glance's compact cards as soft, borderless
+ * panels in Victor Mono, and places named in its cursive italic like the
+ * labels on a map — the room, the loop.
+ * Its own pieces are the compass rose for the ways out and the ring for how
+ * far round a lap is (`components/kit.tsx`); everything else is the compact
+ * layouts restyled here. Colour is for meaning only: a person's standing, a
+ * monster's temper, a vital's band. The face is bundled (`fonts.css`); the
+ * console keeps its own.
+ */
+
+:root[data-skin='atlas'] {
+  --r-card: 12px;
+  --r-control: 8px;
+  --r-chip: 99px;
+  --r-pill: 99px;
+}
+
+/*
+ * The faces on `body`, where `ui.font` is not written inline, and as the
+ * chrome's own two (`--font-sans`, `--font-mono`) so every rule that names
+ * one follows the skin; the console reads `--font-terminal` and is untouched.
+ */
+:root[data-skin='atlas'] body {
+  --font-atlas: 'Victor Mono', var(--font-ui-family);
+  --font-label: var(--font-atlas);
+  --font-sans: var(--font-atlas);
+  --font-mono: var(--font-atlas);
+  font-family: var(--font-atlas);
+}
+
+/* --------------------------------------------------------------- panels */
+
+/* Soft panels: no rim, a faint lift, the card's own ink. */
+[data-skin='atlas'] .surface {
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  background: color-mix(in srgb, var(--ink-card) 96%, var(--accent));
+  border-color: transparent;
+  box-shadow:
+    0 1px 0 color-mix(in srgb, var(--text-hi) 4%, transparent) inset,
+    0 6px 18px rgb(0 0 0 / 22%);
+}
+
+[data-skin='atlas'] .float > .card.surface {
+  background: color-mix(in srgb, var(--ink-card) var(--card-alpha, 100%), transparent);
+}
+
+/* The heading in sentence case, as a title rather than an eyebrow. */
+[data-skin='atlas'] .card > header h2 {
+  color: var(--text-hi);
+  font-family: var(--font-atlas);
+  font-size: var(--font-ui);
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+[data-skin='atlas'] .card > header .crumbs[role='tablist'] .crumb {
+  background: transparent;
+  color: var(--text-lo);
+  font-family: var(--font-atlas);
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+[data-skin='atlas'] .card > header .crumbs[role='tablist'] .crumb[data-active='true'] {
+  background: var(--ink-raised);
+  color: var(--text-hi);
+}
+
+[data-skin='atlas'] .chip {
+  font-family: var(--font-atlas);
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+/* ---------------------------------------------------------------- labels */
+
+/* A place named like a map label: the room, and the loop being walked. */
+[data-skin='atlas'] .room-name,
+[data-skin='atlas'] .glance-loop .walk-destination {
+  color: var(--text-hi);
+  font-family: var(--font-label);
+  font-style: italic;
+  font-weight: 400;
+  letter-spacing: 0.005em;
+  line-height: 1.05;
+}
+
+[data-skin='atlas'] .room-name {
+  font-size: calc(var(--font-ui) + 5px);
+}
+
+[data-skin='atlas'] .glance-loop .walk-destination {
+  font-size: calc(var(--font-ui) + 4px);
+}
+
+/* Readouts: the label quiet, the figure in the bright ink. */
+[data-skin='atlas'] .readout > dt,
+[data-skin='atlas'] .kit-pair > dt,
+[data-skin='atlas'] .kit-figure > span {
+  color: var(--text-lo);
+}
+
+[data-skin='atlas'] .readout > dt.group {
+  color: var(--text-lo-quiet);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+/* --------------------------------------------------------------- pieces */
+
+/* The attributes as soft tiles, the figure green high in its race's range and red low. */
+[data-skin='atlas'] .kit-tile {
+  border-radius: 8px;
+  padding: 2px 0 3px;
+}
+
+[data-skin='atlas'] .kit-tile-fill {
+  display: none;
+}
+
+[data-skin='atlas'] .kit-tile > small {
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+[data-skin='atlas'] .kit-tile > b {
+  font-weight: 600;
+}
+
+[data-skin='atlas'] .kit-tile[data-band='high'] > b {
+  color: var(--ok);
+}
+
+[data-skin='atlas'] .kit-tile[data-band='low'] > b {
+  color: var(--danger);
+}
+
+[data-skin='atlas'] .kit-level {
+  background: none;
+  color: var(--marker);
+  padding: 0;
+}
+
+/* The fight as a soft pill. */
+[data-skin='atlas'] .glance-fight {
+  border-radius: 99px;
+}
+
+/* Who is here as soft pills, red where they attack on sight, a name twice counted. */
+[data-skin='atlas'] .glance-mobs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+[data-skin='atlas'] .glance-mob {
+  background: color-mix(in srgb, var(--text-lo) var(--tone-weak), transparent);
+  border-left: 0;
+  border-radius: 99px;
+  padding: 1px 9px;
+}
+
+[data-skin='atlas'] .glance-mob[data-hostile='yes'],
+[data-skin='atlas'] .glance-mob[data-hostile='maybe'] {
+  background: color-mix(in srgb, var(--danger) 14%, transparent);
+}
+
+[data-skin='atlas'] .glance-mob[data-hostile] .occupant {
+  color: color-mix(in srgb, var(--danger) 70%, var(--text-hi));
+}
+
+[data-skin='atlas'] .glance-mob .kit-count {
+  color: var(--danger);
+  font-weight: 600;
+}
+
+/* The loop: the ring beside its name, the figures under the name. */
+[data-skin='atlas'] .glance-loop {
+  align-items: center;
+  column-gap: 12px;
+  display: grid;
+  grid-template-areas:
+    'ring head'
+    'ring line'
+    'aside aside';
+  grid-template-columns: 50px minmax(0, 1fr);
+}
+
+[data-skin='atlas'] .glance-loop > .kit-loop-ring {
+  grid-area: ring;
+  height: 50px;
+  width: 50px;
+}
+
+[data-skin='atlas'] .glance-loop > .glance-loop-head {
+  grid-area: head;
+  margin-bottom: 1px;
+}
+
+[data-skin='atlas'] .glance-loop > .kit-line {
+  grid-area: line;
+  margin-top: 0;
+}
+
+[data-skin='atlas'] .glance-loop > .kit-aside {
+  grid-area: aside;
+}
+
+[data-skin='atlas'] .kit-loop-ring .kit-ring-fill {
+  stroke: var(--pending);
+}
+
+/* The view picker as a segmented control. */
+[data-skin='atlas'] .exp-scope {
+  background: var(--ink-raised);
+  border-radius: 99px;
+  display: inline-flex;
+  gap: 1px;
+  padding: 2px;
+}
+
+[data-skin='atlas'] .exp-scope > .chip.toggle {
+  background: transparent;
+  border: 0;
+  border-radius: 99px;
+}
+
+[data-skin='atlas'] .exp-scope > .chip.toggle[data-on='true'] {
+  background: var(--ink-edge);
+  color: var(--text-hi);
+}
+
+[data-skin='atlas'] .exp-scope > .chip.toggle[data-on='false'] {
+  opacity: 1;
+  color: var(--text-lo);
+}
+
+/* Alerts as sentences: a warning's words amber, no edge. */
+[data-skin='atlas'] .alert-list tbody tr > td:first-child {
+  color: var(--text-lo-quiet);
+}
+
+/* -------------------------------------------------------- character tabs */
+
+/* Soft tabs: the chosen one raised as a panel is, the health a pill under the name. */
+[data-skin='atlas'] .tab {
+  border-radius: 10px;
+}
+
+[data-skin='atlas'] .tab[data-active='true'] {
+  background: color-mix(in srgb, var(--ink-raised) 85%, var(--tab-accent));
+  box-shadow: 0 4px 12px rgb(0 0 0 / 22%);
+}
+
+[data-skin='atlas'] .tab[data-active='true']::after {
+  display: none;
+}
+
+[data-skin='atlas'] .tab .name {
+  font-family: var(--font-atlas);
+  font-weight: 600;
+}
+
+[data-skin='atlas'] .tab .on,
+[data-skin='atlas'] .tab .where,
+[data-skin='atlas'] .tab .figures {
+  font-family: var(--font-atlas);
+}
+
+[data-skin='atlas'] .tab .track {
+  border-radius: 99px;
+  height: 4px;
+}
+
+[data-skin='atlas'] .tab .fill {
+  border-radius: 99px;
+}
+
+[data-skin='atlas'] .tab .mark {
+  border-radius: 99px;
+  letter-spacing: 0;
+  text-transform: none;
+}

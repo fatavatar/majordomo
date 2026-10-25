@@ -1,11 +1,12 @@
 import { Fragment, type ReactNode } from 'react';
 
-import { KitBar, KitLine, compact } from '../kit';
+import { KitBar, KitLine, KitRings, compact } from '../kit';
 import { ratio, vitalLevel, type CharacterState, type VitalThresholds } from '@shared/character';
 import type { ExperienceStanding } from '@shared/experience';
 import { t } from '../../lib/i18n';
 import { levelWord } from '../../lib/vitals';
 import type { ExperienceView } from '../ExperienceScope';
+import { useSkin } from '../../lib/skin';
 
 /** One vital as its bar, the figures inside it and the threshold band its fill wears. */
 function VitalBar({
@@ -31,7 +32,8 @@ function VitalBar({
       max={max === null ? undefined : max.toLocaleString()}
       tag={fraction === null ? levelWord(level) : `${Math.round(fraction * 100)}%`}
       tone={tone}
-      value={value === null ? '—' : `${value.toLocaleString()} ${unit}`}
+      unit={unit}
+      value={value === null ? '—' : value.toLocaleString()}
     />
   );
 }
@@ -79,8 +81,10 @@ function towards(
  * and the level it could train to where the experience is already there;
  * the next level, as a bar of the way through it, what it still costs and
  * how long that is at the chosen view's rate; and then the experience over
- * that view — the session or the last hours — as both skins draw it. Short figures, each exact in its title. The name and class
- * are the tab rail's and the Self card's, so not here.
+ * that view — the session or the last hours — as both skins draw it. Short
+ * figures, each exact in its title. The name and class are the tab rail's
+ * and the Self card's, so not here. Halo leads with the two vitals as
+ * concentric rings and the figures in a small table beside them.
  */
 export default function VitalsGlance({
   character,
@@ -96,6 +100,94 @@ export default function VitalsGlance({
   const next = standing?.next ?? (progress.level === null ? null : progress.level + 1);
   const through = towards(progress.exp, standing, progress.expTable);
   const worked = t('cards.vitals.workedOut');
+  const skin = useSkin();
+  const toGo = (
+    <span
+      title={
+        owed.value === null
+          ? undefined
+          : `${owed.value.toLocaleString()}${owed.derived ? ` ${worked}` : ''}`
+      }
+    >
+      {owed.value === null ? '—' : t('cards.vitals.glance.toGo', { exp: compact(owed.value) })}
+      {hours !== null && <span className="glance-eta"> · {span(hours)}</span>}
+    </span>
+  );
+  const afflictions = afflicted.length > 0 && (
+    <KitLine>
+      {afflicted.map(({ word, title }) => (
+        <Fragment key={word}>
+          <span className="chip bad" title={title}>
+            {word}
+          </span>
+        </Fragment>
+      ))}
+    </KitLine>
+  );
+  const train = standing !== null && standing.ahead && (
+    <span
+      className="glance-train"
+      title={standing.earnedSource === 'database' ? worked : undefined}
+    >
+      {' '}
+      {t('cards.vitals.glance.canTrain', { level: standing.earned })}
+    </span>
+  );
+  const toLabel =
+    next === null
+      ? t('cards.vitals.labels.toLevel')
+      : t('cards.vitals.toLevelFormat', { level: next });
+  if (skin === 'halo') {
+    const hp = ratio(vitals.hp, vitals.hpMax);
+    const mana = vitals.mana === null ? null : ratio(vitals.mana, vitals.manaMax);
+    const figure = (value: number | null, max: number | null): string =>
+      `${value === null ? '—' : value.toLocaleString()}${max === null ? '' : ` / ${max.toLocaleString()}`}`;
+    return (
+      <>
+        <div className="halo-vitals">
+          <KitRings
+            center={hp === null ? '—' : `${Math.round(hp * 100)}%`}
+            label={t('cards.vitals.glance.rings')}
+            rings={[
+              {
+                fraction: hp,
+                tone: 'life',
+                level: vitalLevel(vitals.hp, vitals.hpMax, thresholds.hp)
+              },
+              ...(vitals.mana === null
+                ? []
+                : [
+                    {
+                      fraction: mana,
+                      tone: 'mana' as const,
+                      level: vitalLevel(vitals.mana, vitals.manaMax, thresholds.mana)
+                    }
+                  ])
+            ]}
+          />
+          <dl className="readout">
+            <dt>HP</dt>
+            <dd>{figure(vitals.hp, vitals.hpMax)}</dd>
+            {vitals.mana !== null && (
+              <>
+                <dt>{vitals.manaType ?? 'MA'}</dt>
+                <dd>{figure(vitals.mana, vitals.manaMax)}</dd>
+              </>
+            )}
+            <dt>{t('cards.vitals.labels.level')}</dt>
+            <dd>
+              {progress.level ?? '—'}
+              {train}
+            </dd>
+            <dt>{toLabel}</dt>
+            <dd>{toGo}</dd>
+          </dl>
+        </div>
+        {afflictions}
+        {experience}
+      </>
+    );
+  }
   return (
     <>
       <VitalBar
@@ -114,36 +206,14 @@ export default function VitalsGlance({
           value={vitals.mana}
         />
       )}
-      {afflicted.length > 0 && (
-        <KitLine>
-          {afflicted.map(({ word, title }) => (
-            <Fragment key={word}>
-              <span className="chip bad" title={title}>
-                {word}
-              </span>
-            </Fragment>
-          ))}
-        </KitLine>
-      )}
+      {afflictions}
       <dl className="readout glance-vitals">
         <dt>{t('cards.vitals.labels.level')}</dt>
         <dd>
           {progress.level ?? '—'}
-          {standing !== null && standing.ahead && (
-            <span
-              className="glance-train"
-              title={standing.earnedSource === 'database' ? worked : undefined}
-            >
-              {' '}
-              {t('cards.vitals.glance.canTrain', { level: standing.earned })}
-            </span>
-          )}
+          {train}
         </dd>
-        <dt>
-          {next === null
-            ? t('cards.vitals.labels.toLevel')
-            : t('cards.vitals.toLevelFormat', { level: next })}
-        </dt>
+        <dt>{toLabel}</dt>
         <dd className="glance-next">
           <KitBar
             fraction={through}
@@ -151,18 +221,7 @@ export default function VitalsGlance({
             tone="exp"
             value={through === null ? '' : `${Math.round(through * 100)}%`}
           />
-          <span
-            title={
-              owed.value === null
-                ? undefined
-                : `${owed.value.toLocaleString()}${owed.derived ? ` ${worked}` : ''}`
-            }
-          >
-            {owed.value === null
-              ? '—'
-              : t('cards.vitals.glance.toGo', { exp: compact(owed.value) })}
-            {hours !== null && <span className="glance-eta"> · {span(hours)}</span>}
-          </span>
+          {toGo}
         </dd>
       </dl>
       {experience}

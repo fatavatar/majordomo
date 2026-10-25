@@ -2822,9 +2822,26 @@ function statedTheMark(home: Home, note: (message: string) => void): void {
  */
 function statedTheSkin(home: Home, note: (message: string) => void): void {
   let stated = false;
+  let explained = false;
   edit(home.options, (document) => {
     const ui = document.getIn(['ui'], true);
-    if (!isMap(ui) || ui.has('skin')) return false;
+    if (!isMap(ui)) return false;
+    /*
+     * Stated already, under a paragraph an earlier client wrote: brought up
+     * to the one that names every style and its face (2026-10-25).
+     */
+    const present = ui.items.find(
+      (item) => isScalar(item.key) && String(item.key.value) === 'skin'
+    );
+    if (present !== undefined) {
+      const key = present.key as Scalar;
+      // `yaml` reads a paragraph's blank line back as a space.
+      const said = (key.commentBefore ?? '').replace(/^ $/gm, '');
+      if (!EARLIER_SKIN_COMMENTS.includes(said)) return false;
+      key.commentBefore = SKIN_COMMENT;
+      explained = true;
+      return true;
+    }
     const pair = document.createPair('skin', DEFAULT_SKIN) as Pair;
     const at = ui.items.findIndex(
       (item) => isScalar(item.key) && String(item.key.value) === 'theme'
@@ -2835,8 +2852,8 @@ function statedTheSkin(home: Home, note: (message: string) => void): void {
     stated = true;
     return true;
   });
-  if (!stated) return;
-  note(t('notices.migration.skinStated', { file: home.options }));
+  if (stated) note(t('notices.migration.skinStated', { file: home.options }));
+  if (explained) note(t('notices.migration.skinExplained', { file: home.options }));
 }
 
 /**
@@ -3970,11 +3987,50 @@ const AREA_SPELL_COMMENT = ` The spell for a crowded room -- MegaMUD's MultAttac
 const SKIN_COMMENT = ` How the cards are laid out: what each one puts where, and how it shows it.
  The theme above says what everything is painted; any skin wears any theme.
 
+ classic  the cards as they have always been drawn, in ui.font.
+ glance   colour and shape carry what rows of words did: figures inside
+          their bars, a player's alignment as the colour of the name, lines
+          that say the same thing folded into one with a count. Shorter
+          cards, read at a glance, in JetBrains Mono.
+ atlas    glance's cards as soft panels in Victor Mono, places named in its
+          cursive italic like labels on a map, the ways out as a compass
+          rose and a loop as a ring.
+ halo     glance's cards as a contemporary app in Geist Mono: rounded cards
+          tinted by kind, the vitals and attributes as rings, people and
+          monsters as initials in their colour, notices as a timeline.
+
+ Every style but classic sets its own monospace face for the whole window,
+ in place of ui.font; the console keeps terminal.font in all of them.`;
+
+/**
+ * `ui.skin`'s paragraph as earlier clients wrote it: classic and glance only
+ * (2026-10-24), then with atlas and halo in proportional faces (2026-10-25).
+ * Only these are refreshed, so a paragraph the player wrote stays theirs.
+ */
+const EARLIER_SKIN_COMMENTS = [
+  ` How the cards are laid out: what each one puts where, and how it shows it.
+ The theme above says what everything is painted; any skin wears any theme.
+
  classic  the cards as they have always been drawn.
  glance   colour and shape carry what rows of words did: figures inside
           their bars, a player's alignment as the colour of the name, lines
           that say the same thing folded into one with a count. Shorter
-          cards, read at a glance.`;
+          cards, read at a glance.`,
+  ` How the cards are laid out: what each one puts where, and how it shows it.
+ The theme above says what everything is painted; any skin wears any theme.
+
+ classic  the cards as they have always been drawn.
+ glance   colour and shape carry what rows of words did: figures inside
+          their bars, a player's alignment as the colour of the name, lines
+          that say the same thing folded into one with a count. Shorter
+          cards, read at a glance.
+ atlas    glance's cards as soft panels in a humanist sans, places named in
+          an italic serif like labels on a map, the ways out as a compass
+          rose and a loop as a ring.
+ halo     glance's cards as a contemporary app: rounded cards tinted by
+          kind, the vitals and attributes as rings, people and monsters as
+          initials in their colour, notices as a timeline.`
+];
 
 const SHOW_LOGO_COMMENT = ` The client's own mark, at the left of the status rail.
 

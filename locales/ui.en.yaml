@@ -339,8 +339,11 @@ notices:
         off, which is what the client was already doing. {fileList}'
     skinStated:
       '"ui.skin" was written into {file}, as classic: the cards as they have always been drawn.
-      Set it to glance there, or on the MudEngine page in settings, for shorter cards that colour
-      and shape help to read.'
+      Set it to glance, atlas or halo there, or on the MudEngine page in settings, for shorter
+      cards that colour and shape help to read.'
+    skinExplained:
+      'The paragraph above "ui.skin" in {file} was brought up to date: it names every card style
+      now, and the monospace face each one sets.'
     markStated:
       '"ui.showLogo" was written into {file}, on: the client draws its own mark at the left of the
       status rail. Turn it off there or on the MudEngine page in settings.'
@@ -3709,6 +3712,8 @@ cards:
       canTrain: 'can train to {level}'
       # The bar of the way through the level being earned towards.
       through: How far through the level
+      # Halo's two vitals as concentric rings, health outside and mana inside.
+      rings: Health and mana
       toGo: '{exp} to go'
     tabExp: Exp
     title: Vitals
@@ -3922,11 +3927,16 @@ settings:
       skins:
         classic: Classic
         glance: Glance (colour and shape, shorter cards)
+        atlas: Atlas (soft panels, places named like a map)
+        halo: Halo (rounded cards, rings and avatars)
       tabPlacementLabel: Character tabs
       tabsLeft: Down the left, cards right
       tabsRight: Down the right, cards left
       tabsTop: Across the top
-      uiFontHint: Everything except the console, which is always fixed-pitch. Blank uses the console face.
+      uiFontHint:
+        Everything except the console, which is always fixed-pitch. Blank uses the console face. The
+        classic card style only, as every other sets its own; JetBrains Mono, Victor Mono and Geist Mono
+        come with the client.
       uiFontLabel: Interface font
       uiFontPlaceholder: the same face as the console
       vitalCautionPercent: '{vitalName} Caution, %'

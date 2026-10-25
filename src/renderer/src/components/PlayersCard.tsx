@@ -1,7 +1,8 @@
 import { memo, useMemo } from 'react';
 
 import { t } from '../lib/i18n';
-import { useSkin } from '../lib/skin';
+import { useCompact } from '../lib/skin';
+import { KitInitials } from './kit';
 import { ago, place, PlayerName } from '../lib/players';
 import type { PopoverAnchor } from '../lib/popover';
 
@@ -96,7 +97,7 @@ function PlayersCard({ character, session, subject, onSelect, ...chrome }: Playe
    * as on the Realm card, and how long ago they were seen fades: fresh in the
    * last hour, plain within the day, quieter within the week, dim after.
    */
-  const glance = useSkin() === 'glance';
+  const glance = useCompact();
   const ageOf = (at: number | null): string =>
     at === null
       ? 'never'
@@ -119,12 +120,15 @@ function PlayersCard({ character, session, subject, onSelect, ...chrome }: Playe
        * Realm card's cannot drift apart.
        */
       cell: (record) => (
-        <PlayerName
-          className="player-name"
-          name={record.name}
-          offline={!record.online}
-          onSelect={onSelect}
-        />
+        <>
+          {glance && <KitInitials name={record.name} />}
+          <PlayerName
+            className="player-name"
+            name={record.name}
+            offline={!record.online}
+            onSelect={onSelect}
+          />
+        </>
       )
     },
     {

@@ -586,6 +586,49 @@ describe('the mark in the status rail', () => {
 });
 
 /*
+ * `ui.skin`'s paragraph, 2026-10-25: stated with classic and glance only,
+ * then atlas and halo came, each with a monospace face of its own.
+ */
+describe('the card style paragraph', () => {
+  beforeEach(() => {
+    fs.mkdirSync(home.globalDir, { recursive: true });
+  });
+
+  const glanceOnly = [
+    'ui:',
+    '  theme: dark',
+    '  # How the cards are laid out: what each one puts where, and how it shows it.',
+    '  # The theme above says what everything is painted; any skin wears any theme.',
+    '  #',
+    '  # classic  the cards as they have always been drawn.',
+    '  # glance   colour and shape carry what rows of words did: figures inside',
+    "  #          their bars, a player's alignment as the colour of the name, lines",
+    '  #          that say the same thing folded into one with a count. Shorter',
+    '  #          cards, read at a glance.',
+    '  skin: glance',
+    ''
+  ].join('\n');
+
+  it('is brought up to every style and its face, the answer kept', () => {
+    fs.writeFileSync(home.options, glanceOnly, 'utf8');
+    migrate();
+    const text = fs.readFileSync(home.options, 'utf8');
+    expect(text).toContain('Victor Mono');
+    expect(text).toContain('# halo ');
+    expect((parse(text).ui as Record<string, unknown>)['skin']).toBe('glance');
+    migrate();
+    expect(fs.readFileSync(home.options, 'utf8')).toBe(text);
+  });
+
+  it('leaves a paragraph the player wrote alone', () => {
+    const own = 'ui:\n  theme: dark\n  # my cards\n  skin: halo\n';
+    fs.writeFileSync(home.options, own, 'utf8');
+    migrate();
+    expect(fs.readFileSync(home.options, 'utf8')).toContain('  # my cards\n  skin: halo\n');
+  });
+});
+
+/*
  * `ui.console`, 2026-09-07 (todo 03).
  *
  * A whole block inside `ui:`, which `reconcileWithTemplate` will not reach —

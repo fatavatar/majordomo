@@ -4,7 +4,7 @@ import BentoCard, { type CardChrome } from './BentoCard';
 import CardTable, { type Column, type Facet } from './CardTable';
 import NamedText from './NamedText';
 import { t } from '../lib/i18n';
-import { useSkin } from '../lib/skin';
+import { useCompact } from '../lib/skin';
 import { KitCount } from './kit';
 import type { NameIndex } from '../lib/names';
 import type { PopoverAnchor } from '../lib/popover';
@@ -104,7 +104,7 @@ function NotificationsCard({
   ...card
 }: NotificationsCardProps) {
   const logRef = useRef<HTMLDivElement>(null);
-  const glance = useSkin() === 'glance';
+  const glance = useCompact();
   /*
    * Under glance a run of one line is one row with its count, and the level
    * is the row's edge rather than a column of words (the facet chips and the

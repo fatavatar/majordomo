@@ -10,7 +10,7 @@ import { t } from '../lib/i18n';
 import { isKnownPlayer, PlayerName } from '../lib/players';
 import type { PopoverAnchor } from '../lib/popover';
 import { levelWord } from '../lib/vitals';
-import { useSkin } from '../lib/skin';
+import { useCompact } from '../lib/skin';
 import { tuning } from '../lib/tuning';
 
 export interface CombatCardProps extends CardChrome {
@@ -257,7 +257,7 @@ function SurvivalMeter({ verdict, hp }: { verdict: RoomVerdict; hp: number | nul
 function CombatCard({ character, verdict, inspect, onSelect, ...chrome }: CombatCardProps) {
   const { combat } = character;
   const outnumbered = combat.attackers.length > 1;
-  const skin = useSkin();
+  const compact = useCompact();
 
   /*
    * The badge reports the number that decides something. "Three on you" is a
@@ -282,7 +282,7 @@ function CombatCard({ character, verdict, inspect, onSelect, ...chrome }: Combat
       title={t('cards.combat.title')}
     >
       <div className="scroller">
-        {skin === 'glance' ? (
+        {compact ? (
           <CombatGlance
             character={character}
             name={(name) => (
