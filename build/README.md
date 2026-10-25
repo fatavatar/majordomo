@@ -8,7 +8,7 @@ is nothing to configure in `package.json`.
 |---|---|
 | `icon.png` | Linux, and the source macOS `.icns` is generated from |
 | `icon.ico` | Windows |
-| `logo-source.png` | The artwork as supplied. Not read by anything; kept so the two above can be recut without going back to whoever drew it |
+| `logo-source.png` | The artwork as supplied, its wordmark re-lettered MAJORDOMO in Montserrat (OFL) when the client was renamed (2026-10-25), MAJOR in the brown MUD wore. Not read by anything; kept so the two above can be recut without going back to whoever drew it |
 
 **Nothing in here is copied into the application.** `resources/` is what the
 client reads at runtime — including `resources/icon.png`, which is the icon the

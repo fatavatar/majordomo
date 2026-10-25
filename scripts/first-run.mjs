@@ -60,7 +60,7 @@ fs.rmSync(CONFIG_DIR, { recursive: true, force: true });
 fs.rmSync(PROFILE, { recursive: true, force: true });
 fs.mkdirSync(CONFIG_DIR, { recursive: true });
 
-console.log('\nmudengine first-run check -- a fresh options directory, no characters\n');
+console.log('\nMajordomo first-run check -- a fresh options directory, no characters\n');
 
 /* -------------------------------------------------------------------- launch */
 
@@ -189,7 +189,7 @@ check(await evaluate(`!!document.querySelector('.status-rail')`), 'the client st
  */
 check(fs.existsSync(CONFIG), 'and writes an options file where it was told to');
 const written = fs.existsSync(CONFIG) ? fs.readFileSync(CONFIG, 'utf8') : '';
-check(/^# mudengine configuration/.test(written), 'from the bundled template, comments and all');
+check(/^# Majordomo configuration/.test(written), 'from the bundled template, comments and all');
 check(/onPartyChange/.test(written), 'including the settings added most recently');
 // And no account of its own: the template describes a realm, and credentials
 // belong to a character.

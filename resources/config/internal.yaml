@@ -1,4 +1,4 @@
-# mudengine — internal settings
+# Majordomo — internal settings
 #
 # How the client behaves about its *own* commands. Not the options file: that
 # one is yours, and every value in it is a choice about a character. This one

@@ -149,7 +149,7 @@ if (unknown.length > 0) {
 const wanted = asked.length > 0 ? asked : PLATFORMS;
 const explicit = asked.length > 0;
 
-console.log(`\nmudengine ${version()} — packaging on ${os.type()} ${process.arch}\n`);
+console.log(`\nMajordomo ${version()} — packaging on ${os.type()} ${process.arch}\n`);
 
 const buildable = [];
 for (const platform of wanted) {

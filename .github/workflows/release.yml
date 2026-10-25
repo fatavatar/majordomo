@@ -51,7 +51,7 @@ jobs:
   # A tag is a promise, so this is the last place to catch a broken one — and
   # the version check below is the one that has no other guard: the tag names
   # the release and `package.json` names every artifact inside it, so a mismatch
-  # ships `mudengine-0.5.0-win-x64-setup.exe` under a release called v0.6.0 and
+  # ships `majordomo-0.5.0-win-x64-setup.exe` under a release called v0.6.0 and
   # nothing anywhere says which is right.
   verify:
     name: Lint, typecheck and test
@@ -134,7 +134,7 @@ jobs:
       # them.
       - uses: actions/upload-artifact@v4
         with:
-          name: mudengine-${{ matrix.platform }}
+          name: majordomo-${{ matrix.platform }}
           if-no-files-found: error
           retention-days: 14
           path: |
@@ -157,7 +157,7 @@ jobs:
   # perfectly good image behind a Windows toolchain problem it shares no code
   # with.
   #
-  # **Pushed to the GitHub Container Registry**, as `ghcr.io/<owner>/mudengine`,
+  # **Pushed to the GitHub Container Registry**, as `ghcr.io/<owner>/majordomo`,
   # with the workflow's own token: no account or secret to keep (2026-10-24,
   # in place of upstream's Docker Hub image). Pushed only from a tag, or a
   # dispatch that asked to publish. Everything else builds the image and
@@ -182,7 +182,7 @@ jobs:
         id: v
         run: |
           echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
-          echo "image=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/mudengine" >> "$GITHUB_OUTPUT"
+          echo "image=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/majordomo" >> "$GITHUB_OUTPUT"
 
       - uses: docker/setup-buildx-action@v3
 
@@ -215,7 +215,8 @@ jobs:
             ${{ steps.v.outputs.image }}:latest
           labels: |
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
-            org.opencontainers.image.description=Client, terminal and automation engine for MajorMUD, GreaterMUD and Paradigm, in a browser.
+            org.opencontainers.image.title=Majordomo
+            org.opencontainers.image.description=Majordomo, a MajorMUD client in a browser: a fork of rayzorben/mudengine whose characters are played by a port of MegaMUD's own engine.
             org.opencontainers.image.version=${{ steps.v.outputs.version }}
             org.opencontainers.image.revision=${{ github.sha }}
           # The layer cache lives in the Actions cache, so an unchanged
@@ -260,7 +261,7 @@ jobs:
       # install. Naming what we publish fixes both.
       - uses: actions/download-artifact@v4
         with:
-          pattern: mudengine-*
+          pattern: majordomo-*
           path: artifacts
           merge-multiple: true
 
@@ -282,23 +283,31 @@ jobs:
           tag="${GITHUB_REF_NAME}"
           case "$tag" in v*) ;; *) tag="v${version}" ;; esac
 
-          image="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/mudengine"
+          image="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/majordomo"
 
           cat > notes.md <<NOTES
-          ### This version
+          ### Where Majordomo comes from
 
-          A fork that has gone its own way from
-          [rayzorben/mudengine](https://github.com/rayzorben/mudengine) since the
-          end of September 2026. Every character is played by a port of MegaMUD's
-          own engine (\`megamud.exe\`, rewritten function by function), with
-          MegaMUD's settings, in place of upstream's automation. See the README's
-          *Where this version comes from*.
+          Majordomo owes its existence to two programs.
+
+          - **mudengine.** Majordomo is a fork of Raymond Bennett's
+            [mudengine](https://github.com/rayzorben/mudengine), and the client
+            itself (the console, the cards, the realm data, the browser tabs) is
+            his work. The two have gone their own ways since the end of
+            September 2026, and fixes from mudengine are still brought over.
+          - **MegaMUD.** Every character is played by a port of MegaMUD's own
+            engine (\`megamud.exe\`, rewritten function by function), with
+            MegaMUD's settings under MegaMUD's names, in place of mudengine's
+            automation.
+
+          Neither project made or endorses Majordomo. See the README's
+          *Where Majordomo comes from*.
 
           ### Install
 
           | | |
           |---|---|
-          | **Docker** | \`docker run -d -p 8080:8080 -v mudengine:/config ${image}:${version}\`, then open http://localhost:8080/ and sign in with the password the first start printed. |
+          | **Docker** | \`docker run -d -p 8080:8080 -v majordomo:/config ${image}:${version}\`, then open http://localhost:8080/ and sign in with the password the first start printed. |
           | **Windows** | \`-win-x64-setup.exe\` is the installer; \`-win-x64.zip\` if you would rather not install. |
           | **macOS** | \`-mac-arm64.dmg\` on Apple silicon, \`-mac-x64.dmg\` on Intel. |
           | **Linux** | \`.AppImage\` runs anywhere (\`chmod +x\`, then run it). \`.deb\` for Debian and Ubuntu. |
@@ -307,7 +316,7 @@ jobs:
 
           Windows shows a SmartScreen warning: **More info → Run anyway**.
           macOS refuses on a double-click: **Ctrl-click the app → Open**, or
-          \`xattr -dr com.apple.quarantine /Applications/mudengine.app\`.
+          \`xattr -dr com.apple.quarantine /Applications/Majordomo.app\`.
 
           ### What changed
           NOTES
@@ -316,6 +325,6 @@ jobs:
           # release follows the text above (`--generate-notes`), so the notes
           # need no hand-kept changelog.
           gh release create "$tag" artifacts/* \
-            --title "mudengine $version" \
+            --title "Majordomo $version" \
             --notes-file notes.md \
             --generate-notes

@@ -29,7 +29,7 @@ import type { StreamEncoding } from '@shared/types';
  * The file holds two different kinds of thing and used to present them as one
  * list, which made "Global" mean everything and therefore nothing:
  *
- * - **`scope: 'client'` — MudEngine.** Settings about the client itself: how
+ * - **`scope: 'client'` — Majordomo.** Settings about the client itself: how
  *   the console looks, which theme, where the tabs sit, what gets written to
  *   disk. Nothing here belongs to a realm or to a character.
  * - **`scope: 'defaults'` — Global.** The values a *new* realm and a *new*
@@ -317,6 +317,7 @@ export default function GlobalSettings({
         {scope === 'defaults' && (
           <p className="settings-note">{t('settings.global.startingValuesNote')}</p>
         )}
+        {scope === 'client' && <p className="settings-note">{t('settings.client.lineage')}</p>}
 
         {shown === 'appearance' && (
           <>

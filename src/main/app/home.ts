@@ -144,6 +144,16 @@ export function homeRoot(
 }
 
 /**
+ * The name of the home's directory under the platform's per-user data
+ * directory, kept `mudengine` when the client became Majordomo (2026-10-25):
+ * Electron names `userData` after the app, so without this a player's options,
+ * characters and passwords would have been left behind in the old directory
+ * and the renamed client opened on an empty home. The desktop host pins
+ * `userData` to it and the web host and the probes name it.
+ */
+export const HOME_DIR_NAME = 'mudengine';
+
+/**
  * The platform's per-user data directory, computed without Electron.
  *
  * Electron answers `app.getPath('userData')` with `<appData>/<name>`, and the

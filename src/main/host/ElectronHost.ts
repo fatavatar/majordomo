@@ -15,11 +15,14 @@ import path from 'node:path';
 
 import type { SessionId } from '../../shared/ipc';
 import { t } from '../app/i18n';
+import { HOME_DIR_NAME } from '../app/home';
 import { ownTheProfile } from '../app/instance';
 import type { QuitAnswer } from '../app/quit';
 import type { Caller, ClientHooks, Host, Layout, Transport } from './Host';
 
 export function createElectronHost(layout: Layout): Host {
+  // The home and the browser profile stay where they were before the rename (`HOME_DIR_NAME`).
+  app.setPath('userData', path.join(app.getPath('appData'), HOME_DIR_NAME));
   let mainWindow: BrowserWindow | null = null;
   let hooks: ClientHooks | null = null;
 

@@ -1,7 +1,7 @@
 {
-  "name": "mudengine",
+  "name": "majordomo",
   "version": "1.0.0",
-  "description": "Modern cross-platform client, terminal and reactive automation engine for MajorMUD / GreaterMUD / Paradigm",
+  "description": "A MajorMUD client whose characters are played by a port of MegaMUD's own engine; a fork of rayzorben/mudengine",
   "author": "Raymond Bennett <raymond.bennett@gmail.com>",
   "license": "MIT",
   "homepage": "https://github.com/fatavatar/mudengine",
@@ -77,8 +77,8 @@
     "probe:signal": "node scripts/signal-probe.mjs"
   },
   "build": {
-    "appId": "com.fatavatar.mudengine",
-    "productName": "mudengine",
+    "appId": "com.fatavatar.majordomo",
+    "productName": "Majordomo",
     "copyright": "Copyright © 2026 Raymond Bennett",
     "directories": {
       "output": "dist",

@@ -122,7 +122,7 @@ a pull request, merge it, then tag that commit and push the one tag:
 `git tag v1.0.0 && git push origin v1.0.0`. Never `git push --tags`, which
 would publish upstream's own tags. `.github/workflows/release.yml` checks the
 tag against `package.json`, builds unsigned installers for Linux, Windows and
-macOS, pushes `ghcr.io/fatavatar/mudengine:<version>` and `:latest`, and
+macOS, pushes `ghcr.io/fatavatar/majordomo:<version>` and `:latest`, and
 publishes the release with install notes and the pull requests merged since
 the last one. Run it by hand (Actions, *Release*, publish off) to build
 everything without publishing.
