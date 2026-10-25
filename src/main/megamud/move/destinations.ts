@@ -296,15 +296,16 @@ export function headFor(s: Session, how: number): number {
       }
       detourDone(s, 0);
       dest = s.detours[0]!.room;
-      if (dest === 0) {
-        s.detourCombat = -1;
-        break;
-      }
+      if (dest === 0) break;
       if (!reached(s, dest)) break;
     }
   }
   if (dest === 0) {
-    if (s.loopPath.start !== 0 && s.loopPath.start === s.loopPath.end) return resumeLoop(s);
+    if (s.loopPath.start !== 0 && s.loopPath.start === s.loopPath.end) {
+      s.detourCombat = -1;
+      return resumeLoop(s);
+    }
+    // MegaMUD lets the setting before go here; ours puts it back (`reEngage`, 2026-10-25).
     s.walking = 0;
     modeDefaults(s);
     reEngage(s);

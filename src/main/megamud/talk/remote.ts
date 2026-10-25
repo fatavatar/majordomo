@@ -43,6 +43,7 @@ import { joinLeader } from '../party/ranks';
 import { findPlayer, partyIndex } from '../room/checkNames';
 import { whereAgo, whereText, roomKnown } from '../room/where';
 import { hangUp, resetAll } from '../script/game';
+import { combatChosen } from '../script/modes';
 import { expandMacros, plainText, queue, send } from '../script/send';
 import { goStop } from '../move/buttons';
 import { clearDetours, goTo, headFor, startWalking } from '../move/destinations';
@@ -150,10 +151,7 @@ function toggle(c: Ctx, key: Switch, label: string): number {
   const s = c.s;
   const was = s[key];
   s[key] = onOff(c.cmd, was === 0 ? 1 : 0);
-  if (key === 'MegaMud_AutoCombat') {
-    if (s.detourCombat === -1) s.idleCombat = s.MegaMud_AutoCombat;
-    else if (s.MegaMud_AutoCombat !== 0) s.idleCombat = 1;
-  }
+  if (key === 'MegaMud_AutoCombat') combatChosen(s);
   if (key === 'MegaMud_AutoHeal' && s.MegaMud_AutoHeal === 0) {
     s.resting = 0;
     s.restHpToFull = 0;

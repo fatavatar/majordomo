@@ -428,11 +428,12 @@ export interface SessionHost {
   /**
    * Ours (2026-10-24): a walk the host has put aside while its way is planned
    * or the room located, MegaMUD's walking flags down until it is taken up
-   * again. Still the walk to MegaMUD's modes (`modeDefaults`): Fatty's Run to
-   * Southwind Dale, put aside at the slums' locked gate, came back to the
-   * idle defaults, auto-combat on, and fought the rest of the way.
+   * again, as it stood; null while none is. Still that walk to MegaMUD's modes
+   * (`modeDefaults`): Fatty's Run to Southwind Dale, put aside at the slums'
+   * locked gate, came back to the idle defaults, auto-combat on, and fought
+   * the rest of the way.
    */
-  walkAside?(): boolean;
+  walkAside?(): Pick<Session, 'walking' | 'looping' | 'roaming' | 'detours'> | null;
   /**
    * Ours: whether the closed exit `dir` from here gives to picking or
    * bashing, by what the realm states of it; both when nothing is known.

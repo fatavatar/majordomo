@@ -430,8 +430,12 @@ describe('the engine in a session', () => {
     e.dispose();
   });
 
-  /* The route panel's Run it walked with auto-combat on (2026-10-14): `0x43e680`'s Go and Run. */
-  it('walks a route with auto-combat on for Go and off for Run, the setting before kept', () => {
+  /*
+   * The route panel's Run it and Walk it (2026-10-14): `0x43e680`'s Run and
+   * Go. Go walks with the player's own setting since 2026-10-25, where
+   * MegaMUD's turns auto-combat on.
+   */
+  it('walks a route as set for Walk and off for Run, the setting before kept', () => {
     vi.useFakeTimers();
     const { e } = engine('1/2');
     e.s.inGame = 1;
@@ -439,9 +443,13 @@ describe('the engine in a session', () => {
     e.s.MegaMud_AutoCombat = 1;
     expect(e.walkTo('1/2', true)).toBeNull();
     expect([e.s.MegaMud_AutoCombat, e.s.detourCombat, e.s.idleCombat]).toEqual([0, 0, 1]);
-    e.s.MegaMud_AutoCombat = 0;
+    // A Walk taken in its place: the Run's off let go, the player's on walked.
     expect(e.walkTo('1/2')).toBeNull();
-    expect([e.s.MegaMud_AutoCombat, e.s.detourCombat]).toEqual([1, 1]);
+    expect([e.s.MegaMud_AutoCombat, e.s.detourCombat, e.s.idleCombat]).toEqual([1, 1, 1]);
+    // Turned off, and a fresh Walk keeps it off.
+    e.button(0x7d3);
+    expect(e.walkTo('1/2')).toBeNull();
+    expect([e.s.MegaMud_AutoCombat, e.s.detourCombat]).toEqual([0, 0]);
     e.dispose();
   });
 

@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
-import { goStop, roam } from '../move/buttons';
+import { goStop, menuCommand, roam } from '../move/buttons';
 import { goTo, headFor } from '../move/destinations';
 import { doors, runBack } from '../move/go';
 import { resync } from '../move/path';
 import { noAllowedExits, walkPath } from '../script/path';
+import { modeDefaults } from '../script/modes';
+import { WindowCommand } from '../../../shared/megamud/toggles';
 import { fetchCash } from '../script/cash';
 import { newItem, newPlayer } from '../data';
 import { newPath, type PathRec, type PathStep, type SessionHost } from '../Session';
@@ -460,5 +462,76 @@ describe('the walking buttons and remote commands', () => {
     remoteCommand(s, 'Fatty telepaths: @loop town loop', 0x10);
     expect(s.pending.map((x) => x.text)).toEqual(['/Fatty {ok}\r']);
     expect([s.MegaMud_SelPath, s.MegaMud_CurPath]).toEqual(['TOWNLOOP.MP', 'TOTOWN.MP']);
+  });
+});
+
+/*
+ * Fatty's player (2026-10-25): auto-combat turned off came back on at the
+ * next step of a route, because every start, stop and arrival of a walk to a
+ * destination applied MegaMUD's idle and active defaults (both on, MegaMUD's
+ * own) and the arrival re-engaged it (`AutoAutoCombat`). Here a walk to a
+ * destination keeps the player's setting; a loop is still MegaMUD's.
+ */
+describe('auto-combat across a walk to a destination', () => {
+  function toTheBank(combat: number) {
+    const r = walker();
+    const { s } = r;
+    s.roomSignature = A;
+    const way = path('TOBANK.MP', [step(A, 'n'), step(B, 'e')], A, C);
+    s.paths = [way];
+    (s.host as SessionHost).route = () => ({ flags: 0, path: way, steps: 2 });
+    // In the game a while: its idle defaults applied, then the player's own choice.
+    modeDefaults(s);
+    s.MegaMud_AutoCombat = combat;
+    // The route panel's Walk it (`MegaEngine.walkTo`): the player's own setting.
+    goTo(s, C, null);
+    headFor(s, 1);
+    s.idleCombat = combat;
+    s.detourCombat = combat;
+    return r;
+  }
+
+  it('stays off through the walk, a step taken with Go and Stop, and the arrival', () => {
+    const { s, out } = toTheBank(0);
+    expect([s.walking, s.MegaMud_AutoCombat]).toEqual([1, 0]);
+    goStop(s);
+    goStop(s);
+    expect([s.walking, s.MegaMud_AutoCombat]).toEqual([1, 0]);
+    s.roomSignature = C;
+    headFor(s, 0);
+    expect([s.walking, s.MegaMud_AutoCombat, s.detourCombat]).toEqual([0, 0, -1]);
+    expect(out.shown).not.toContain('[Auto-combat re-engaged]');
+  });
+
+  it('keeps it off when the player turns it off on the way', () => {
+    const { s } = toTheBank(1);
+    menuCommand(s, WindowCommand.AutoCombat);
+    expect(s.MegaMud_AutoCombat).toBe(0);
+    s.roomSignature = C;
+    headFor(s, 0);
+    expect(s.MegaMud_AutoCombat).toBe(0);
+  });
+
+  it("walks a Run off, the player's setting back while it is stopped and at its end", () => {
+    const { s } = toTheBank(1);
+    // Run it: off for the walk, the player's on kept to come back to.
+    s.detourCombat = 0;
+    s.MegaMud_AutoCombat = 0;
+    goStop(s);
+    expect([s.walking, s.MegaMud_AutoCombat]).toEqual([0, 1]);
+    goStop(s);
+    expect([s.walking, s.MegaMud_AutoCombat]).toEqual([1, 0]);
+    s.roomSignature = C;
+    headFor(s, 0);
+    expect([s.walking, s.MegaMud_AutoCombat]).toEqual([0, 1]);
+  });
+
+  it('applies the active defaults for a loop, as MegaMUD does', () => {
+    const { s } = walker();
+    s.MegaMud_AutoCombat = 0;
+    s.looping = 1;
+    s.walking = 1;
+    modeDefaults(s);
+    expect(s.MegaMud_AutoCombat).toBe(s.MegaMud_DefCombat2);
   });
 });
