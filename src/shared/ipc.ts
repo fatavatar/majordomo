@@ -279,6 +279,13 @@ export interface Notice {
   message: string;
 }
 
+/** Whole lines of a session's retained output, from line `from`; `more` while older ones are kept. */
+export interface BackscrollPage {
+  text: string;
+  from: number;
+  more: boolean;
+}
+
 /**
  * Everything a window needs to start drawing a session it has just attached to.
  *
@@ -292,8 +299,16 @@ export interface Notice {
  * lines quietly did not, which is the kind of gap that reads as "parsing broke".
  */
 export interface AttachSnapshot {
-  /** Retained bytes for the terminal, escape sequences intact. */
+  /**
+   * The latest retained output for the terminal, escape sequences intact:
+   * `tuning.records.backscrollAttachLines` lines of it, the older lines
+   * fetched behind it a page at a time (`backscrollBefore`, 2026-10-25).
+   */
   backscroll: string;
+  /** The number of its first line, which `backscrollBefore` pages back from. */
+  backscrollFrom: number;
+  /** Whether older lines are retained than it holds. */
+  backscrollEarlier: boolean;
   /** Retained framed lines, for the diagnostics stream card. */
   lines: StreamLine[];
   state: ConnectionState;
@@ -694,6 +709,12 @@ export const Send = {
    * (2026-10-17).
    */
   statsReset: 'session:stats-reset',
+  /**
+   * A character's experience reset on the Vitals card (2026-10-25): its hours
+   * views count from now (`CharacterState.expResetAt`); the session's, and the
+   * Combat Stats card's figures, are left as they are.
+   */
+  expReset: 'session:exp-reset',
   /** A baseline this window kept from before main kept one, taken once while main has none. */
   statsBase: 'session:stats-base'
 } as const;
@@ -800,6 +821,12 @@ export const Invoke = {
   attach: 'sessions:attach',
   /** This window is no longer showing that session. */
   detach: 'sessions:detach',
+  /**
+   * A page of the retained output older than what attaching handed over: the
+   * whole lines before line `at`, so a console fills in its history behind
+   * the live screen rather than taking all of it at once (2026-10-25).
+   */
+  backscrollBefore: 'sessions:backscroll-before',
   /**
    * The rail, in the order somebody dragged it into.
    *
@@ -1323,6 +1350,8 @@ export interface IpcApi {
   debugFeed(on: boolean): void;
   /** A character's Combat Stats Reset. See `Send.statsReset`. */
   statsReset(session: SessionId): void;
+  /** A character's experience reset on the Vitals card. See `Send.expReset`. */
+  expReset(session: SessionId): void;
   /** A baseline this window kept from before main kept one. See `Send.statsBase`. */
   statsBase(session: SessionId, base: CombatTally): void;
 
@@ -1439,6 +1468,7 @@ export interface IpcApi {
   /** Resolves with everything needed to draw the session from cold. */
   attach(session: SessionId): Promise<AttachSnapshot>;
   detach(session: SessionId): Promise<void>;
+  backscrollBefore(session: SessionId, at: number, lines: number): Promise<BackscrollPage>;
   /** The rail's own order, remembered across restarts. See the channel. */
   reorderSessions(order: SessionId[]): Promise<void>;
   /** Each resolves to why it refused, or null. */

@@ -8,13 +8,7 @@ import {
 import { t } from '../lib/i18n';
 import { themesOfAppearance, THEMES, type Appearance, type ThemeId } from '@shared/themes';
 import { DEFAULT_MAP_DENSITY } from '@shared/map';
-import {
-  DEFAULT_STATS_GRAPH,
-  DEFAULT_STATS_HOURS,
-  isStatsGraph,
-  STATS_GRAPHS,
-  STATS_WINDOW_HOURS
-} from '@shared/tally';
+import { DEFAULT_STATS_GRAPH, isStatsGraph, STATS_GRAPHS } from '@shared/tally';
 import {
   DEFAULT_TALK_LAYOUT,
   DEFAULT_TALK_STAMP,
@@ -331,29 +325,14 @@ export default function CardSettingsPopup({
         </>
       )}
 
-      {cardId === 'stats' && (
+      {cardId === 'vitals' && (
         <>
           {/*
-            The rate graph's window and shape (todo 08). View settings, like the
-            map's density: the samples are kept for a day whatever is shown.
-            Stored only where they differ from the shipped answer.
+            The experience graph's shape (todo 08), with the experience moved
+            off the Combat Stats card (2026-10-25); its window is the card's
+            own Session and hours keys now. Stored only where it differs from
+            the shipped answer.
           */}
-          <label className="card-settings-field">
-            <span>{t('cards.settings.stats.window')}</span>
-            <select
-              onChange={(event) => {
-                const hours = Number.parseInt(event.target.value, 10);
-                onChange({ statsHours: hours === DEFAULT_STATS_HOURS ? undefined : hours });
-              }}
-              value={value.statsHours ?? DEFAULT_STATS_HOURS}
-            >
-              {STATS_WINDOW_HOURS.map((hours) => (
-                <option key={hours} value={hours}>
-                  {t('cards.settings.stats.windowHours', { hours })}
-                </option>
-              ))}
-            </select>
-          </label>
           <label className="card-settings-field">
             <span>{t('cards.settings.stats.graph')}</span>
             <select

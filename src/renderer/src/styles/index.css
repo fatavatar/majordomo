@@ -1297,7 +1297,15 @@ button.quest-banner-dismiss {
   grid-column: 1;
 }
 
-@container (min-width: 290px) {
+/*
+ * **In characters, not pixels** (2026-10-24): the 290px this was first set at
+ * was measured in one face, and in LucidaProgrammer at 13px the two longest
+ * labels took the room and the value tracks shrank to a character, so every
+ * figure broke one digit to a line. Two `Armour class / DR`-long labels, two
+ * short figures and the gutters are about fifty characters in any face; the
+ * container's own `ch` is its own font's.
+ */
+@container (min-width: 52ch) {
   /*
    * `auto` label tracks, and the threshold set so they never have to give way.
    *
@@ -1837,6 +1845,38 @@ kbd {
  * tinted beyond it. The graph is an SVG stretched to the card's width, one
  * bar or point per bin, with the session's own rate ruled across it.
  */
+/*
+ * The Vitals card's experience (2026-10-25): the view chosen — the session or
+ * the last hours — as a row of small keys, the reset for the hours views at
+ * its right edge, and the view's figures, level and graph under it.
+ */
+.exp-view {
+  margin-top: 6px;
+}
+
+.exp-scope {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  margin-bottom: 4px;
+}
+
+.exp-scope > .chip.toggle {
+  height: auto;
+  padding: 1px 7px;
+}
+
+/* A view not chosen is only quieter: the table facets' strike says *hidden*. */
+.exp-scope > .chip.toggle[data-on='false'] {
+  opacity: 0.6;
+  text-decoration: none;
+}
+
+.exp-scope-reset {
+  margin-left: auto;
+}
+
 .stats-level {
   margin-bottom: 8px;
 }
@@ -2406,6 +2446,22 @@ kbd {
   justify-content: center;
   padding: 0;
   width: var(--control-h);
+}
+
+/*
+ * Framed, so a lone Stop reads as the control it is (2026-10-24): `quiet`
+ * drew it as a bare square glyph floating over the loop's name.
+ */
+.loop-controls .loop-control {
+  background: color-mix(in srgb, var(--ink-line) 40%, transparent);
+  border: var(--rule) solid var(--ink-line);
+  border-radius: var(--r-control);
+  color: var(--text);
+}
+
+.loop-controls .loop-control:hover {
+  border-color: var(--accent);
+  color: var(--text-hi);
 }
 
 /* Not `.loop-picker`: that is the settings screen's loop shelf, and the smoke run asserts on it. */
@@ -7008,12 +7064,22 @@ ul.tb-tree li > .tb-label {
  * takes the rest -- the same shape `.readout`'s two columns already have, with
  * one more.
  */
+/*
+ * The second figure has a floor and the label gives way to it (2026-10-24):
+ * with `auto` labels on a rail card `Exp. needed, level 54` and its figure
+ * took the width and the second column was two characters, so `907 of
+ * 1,001` stood one character to a line. A label wraps; a figure does not.
+ */
 .readout.paired {
-  grid-template-columns: auto auto minmax(0, 1fr);
+  grid-template-columns: minmax(8ch, max-content) auto minmax(11ch, 1fr);
 }
 
 .readout.paired dt {
   grid-column: 1;
+}
+
+.readout.paired > dd:not(.second) {
+  white-space: nowrap;
 }
 
 /* Quieter than the figure it qualifies: it is context, not the answer. */
@@ -7613,6 +7679,11 @@ ul.tb-tree li > .tb-label {
   white-space: nowrap;
 }
 
+/* The day, a step quieter than the time, which is what the eye is after (2026-10-24). */
+.conversation-log .stamp-date {
+  opacity: 0.6;
+}
+
 /*
  * Each channel wears the hue the server itself prints it in.
  *
@@ -8050,6 +8121,14 @@ ul.tb-tree li > .tb-label {
  * the name is cut with an ellipsis where it does not fit; the full name is
  * on the row's own tooltip and the realm's panel a click away.
  */
+/*
+ * A chip in a cell is one phrase, never two lines (2026-10-24): the Hunting
+ * card's `up to 554,358` broke into a box two lines tall beside a one-line row.
+ */
+.card-table td .chip {
+  white-space: nowrap;
+}
+
 .card-table td.wide {
   max-width: 0;
   overflow: hidden;
@@ -8059,7 +8138,25 @@ ul.tb-tree li > .tb-label {
 
 /* A table never scrolls sideways: see `CardTable`. */
 .table-scroller {
+  /*
+   * What a narrow table measures itself against (2026-10-24): its own box,
+   * which holds the table and nothing positioned that a containing block
+   * would move — the reason `.readout-box` is a wrapper of its own.
+   */
+  container-type: inline-size;
   overflow-x: hidden;
+}
+
+/* MME's `buy / sell`, one phrase on one line where the card has room for it. */
+.card-table .item-value {
+  white-space: nowrap;
+}
+
+/* A column that steps aside on a narrow card, for the one that names the row. */
+@container (max-width: 48ch) {
+  .card-table .optional {
+    display: none;
+  }
 }
 
 .card-table th button.sort {

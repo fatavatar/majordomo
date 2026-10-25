@@ -95,6 +95,8 @@ interface BelongingsFile {
    * moment, whichever window is open or none. Absent is the whole series.
    */
   statsBase?: CombatTally;
+  /** When the Vitals card's experience was last reset. Absent is never. */
+  expResetAt?: number;
 }
 
 export interface BelongingsOptions {
@@ -124,6 +126,8 @@ export class Belongings implements BelongingsSink {
   private stats: StatsRecord | null = null;
   /** The Combat Stats card's baseline: see `BelongingsSink.recallStatsBase`. */
   private statsBase: CombatTally | null = null;
+  /** The Vitals card's experience reset: see `BelongingsSink.recallExpResetAt`. */
+  private expResetAt: number | null = null;
   private timer: NodeJS.Timeout | null = null;
   /** When the armed timer fires, so a sooner request can replace a later one. */
   private due = 0;
@@ -218,6 +222,16 @@ export class Belongings implements BelongingsSink {
     return this.statsBase;
   }
 
+  recallExpResetAt(): number | null {
+    return this.expResetAt;
+  }
+
+  rememberExpResetAt(at: number | null): void {
+    if (this.suspended) return;
+    this.expResetAt = at;
+    this.schedule();
+  }
+
   rememberStatsBase(base: CombatTally | null): void {
     if (this.suspended) return;
     this.statsBase = base;
@@ -267,6 +281,7 @@ export class Belongings implements BelongingsSink {
     this.identity = null;
     this.stats = null;
     this.statsBase = null;
+    this.expResetAt = null;
     this.schedule();
     return true;
   }
@@ -363,6 +378,7 @@ export class Belongings implements BelongingsSink {
       this.identity = parsed.identity ?? null;
       this.stats = parsed.stats ?? null;
       this.statsBase = parsed.statsBase ?? null;
+      this.expResetAt = parsed.expResetAt ?? null;
     } catch (error) {
       /*
        * Suspended rather than started fresh: this is the only copy of what the
@@ -409,7 +425,8 @@ export class Belongings implements BelongingsSink {
       ...(this.abilities !== null ? { abilities: this.abilities } : {}),
       ...(this.identity !== null ? { identity: this.identity } : {}),
       ...(this.stats !== null ? { stats: this.stats } : {}),
-      ...(this.statsBase !== null ? { statsBase: this.statsBase } : {})
+      ...(this.statsBase !== null ? { statsBase: this.statsBase } : {}),
+      ...(this.expResetAt !== null ? { expResetAt: this.expResetAt } : {})
     };
     const temporary = `${this.options.file}.tmp`;
     try {
@@ -530,6 +547,7 @@ function isBelongingsFile(value: unknown): value is BelongingsFile {
   if (file.identity !== undefined && !isIdentity(file.identity)) return false;
   if (file.stats !== undefined && !isStatsRecord(file.stats)) return false;
   if (file.statsBase !== undefined && !isCombatTally(file.statsBase)) return false;
+  if (file.expResetAt !== undefined && !Number.isFinite(file.expResetAt)) return false;
   return file.banks.every(isBankBalance);
 }
 

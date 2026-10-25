@@ -103,6 +103,7 @@ import {
   Push,
   Send,
   type AttachSnapshot,
+  type BackscrollPage,
   type HomeListing,
   type Notice,
   type ProfileSummary,
@@ -1722,6 +1723,9 @@ function registerIpc(): void {
   on(Send.statsReset, (_caller, session: SessionId) => {
     host?.get(session)?.manager.resetStats();
   });
+  on(Send.expReset, (_caller, session: SessionId) => {
+    host?.get(session)?.manager.resetExp();
+  });
   on(Send.statsBase, (_caller, session: SessionId, base: unknown) => {
     if (isCombatTally(base)) host?.get(session)?.manager.adoptStatsBase(base);
   });
@@ -2265,8 +2269,11 @@ function registerIpc(): void {
     const slot = host?.get(session);
     if (slot) windows.attach(caller.windowId, session);
     const manager = slot?.manager;
+    const tail = slot?.backscroll.tail(tuning().records.backscrollAttachLines);
     return {
-      backscroll: slot?.backscroll.text ?? '',
+      backscroll: tail?.text ?? '',
+      backscrollFrom: tail?.from ?? 0,
+      backscrollEarlier: tail !== undefined && tail.from > (slot?.backscroll.first ?? 0),
       lines: manager?.lines ?? [],
       state: manager?.state ?? IDLE_STATE,
       character: manager?.character ?? EMPTY_CHARACTER,
@@ -2285,6 +2292,12 @@ function registerIpc(): void {
       talk: slot ? talkFor(session).backlog() : []
     };
   });
+
+  handle(
+    Invoke.backscrollBefore,
+    (_caller, session: SessionId, at: number, lines: number): BackscrollPage =>
+      host?.get(session)?.backscroll.before(at, lines) ?? { text: '', from: 0, more: false }
+  );
 
   handle(Invoke.detach, (caller, session: SessionId) => {
     windows.detach(caller.windowId, session);

@@ -139,6 +139,22 @@ export class Appraisal {
     null;
   /** The room's last fight run and what it was run on, so a status line that moves nothing reruns nothing. */
   private ran: { key: string; survival: Survival | null } | null = null;
+  /**
+   * `protectionOf`'s last answer and what it read (2026-10-25): the buffs and
+   * the party are the tracker's immutable lists, so the same lists, level,
+   * name and world give the same figures. It was asked on every status line,
+   * three sums over every buff's candidates each time, and was half of what a
+   * replay of a seven-song Skald spent.
+   */
+  private guarded: {
+    buffs: CharacterState['buffs'];
+    party: CharacterState['party'];
+    level: number | null;
+    name: string | null;
+    fullName: string | null;
+    world: WorldGraph | undefined;
+    figures: ReturnType<typeof protectionOf>;
+  } | null = null;
 
   constructor(private readonly host: AppraisalHost) {}
 
@@ -978,6 +994,34 @@ export class Appraisal {
     };
   }
 
+  /** The protection the sheet does not print, remembered while what it reads stands. */
+  private protection(state: CharacterState): ReturnType<typeof protectionOf> {
+    const world = this.host.world();
+    const was = this.guarded;
+    if (
+      was !== null &&
+      was.buffs === state.buffs &&
+      was.party === state.party &&
+      was.level === state.progress.level &&
+      was.name === state.name &&
+      was.fullName === state.fullName &&
+      was.world === world
+    ) {
+      return was.figures;
+    }
+    const figures = protectionOf(state, (name) => world?.spellNamed(name) ?? null);
+    this.guarded = {
+      buffs: state.buffs,
+      party: state.party,
+      level: state.progress.level,
+      name: state.name,
+      fullName: state.fullName,
+      world,
+      figures
+    };
+    return figures;
+  }
+
   /**
    * What a monster's blow or cast is measured against: the sheet's three
    * figures, the protection the server adds that the sheet does not print,
@@ -989,7 +1033,7 @@ export class Appraisal {
       armourClass: state.progress.armourClass,
       damageResist: state.progress.damageResist,
       magicRes: state.progress.magicRes,
-      ...protectionOf(state, (name) => this.host.world()?.spellNamed(name) ?? null),
+      ...this.protection(state),
       dodge: dodge(prowessSheetOf(state, { combat, magery }), family)?.value ?? null
     };
   }

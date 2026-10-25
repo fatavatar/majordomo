@@ -62,6 +62,8 @@ export class Backscroll {
   private head = 0;
   private total = 0;
   private count = 0;
+  /** Lines dropped off the front, so a line keeps its number as others go. */
+  private dropped = 0;
   private limit: number;
   /** Written to memory and not yet to the file. */
   private held: string[] = [];
@@ -87,6 +89,71 @@ export class Backscroll {
     return this.chunks
       .map((chunk, index) => (index === 0 ? chunk.text.slice(this.head) : chunk.text))
       .join('');
+  }
+
+  /** The number of the oldest line retained, counting every line ever written. */
+  get first(): number {
+    return this.dropped;
+  }
+
+  /**
+   * The latest `lines` lines and what follows the last of them, from a line's
+   * start, and the number of its first line (2026-10-25): what a window
+   * attaching is handed, the older lines fetched behind it a page at a time
+   * (`before`). Five characters' whole backscroll was 34 MB, past what a web
+   * tab may be owed, and every tab was let go as it opened.
+   */
+  tail(lines: number): { text: string; from: number } {
+    const skip = Math.max(0, this.count - Math.max(0, Math.trunc(lines)));
+    return { text: this.textFrom(skip, this.count, true), from: this.dropped + skip };
+  }
+
+  /**
+   * Up to `lines` whole lines ending before line `at` (numbered as `first`),
+   * the number of the first, and whether older ones are retained still.
+   */
+  before(at: number, lines: number): { text: string; from: number; more: boolean } {
+    const end = Math.min(this.count, Math.max(0, at - this.dropped));
+    const start = Math.max(0, end - Math.max(0, Math.trunc(lines)));
+    return {
+      text: this.textFrom(start, end, false),
+      from: this.dropped + start,
+      more: start > 0
+    };
+  }
+
+  /** Lines `start` to `end` of those retained, and with `rest` what follows the last. */
+  private textFrom(start: number, end: number, rest: boolean): string {
+    const from = this.offsetOf(start);
+    const to = rest ? null : this.offsetOf(end);
+    const parts: string[] = [];
+    for (let index = from.chunk; index < this.chunks.length; index += 1) {
+      const text = this.chunks[index]!.text;
+      const begin = index === from.chunk ? from.at : 0;
+      if (to !== null && index === to.chunk) {
+        parts.push(text.slice(begin, to.at));
+        break;
+      }
+      parts.push(text.slice(begin));
+    }
+    return parts.join('');
+  }
+
+  /** Where retained line `line` starts: a chunk, and an index into its text. */
+  private offsetOf(line: number): { chunk: number; at: number } {
+    let left = line;
+    for (let index = 0; index < this.chunks.length; index += 1) {
+      const chunk = this.chunks[index]!;
+      let at = index === 0 ? this.head : 0;
+      if (left === 0) return { chunk: index, at };
+      if (chunk.lines < left) {
+        left -= chunk.lines;
+        continue;
+      }
+      for (; left > 0; left -= 1) at = chunk.text.indexOf('\n', at) + 1;
+      return { chunk: index, at };
+    }
+    return { chunk: this.chunks.length, at: 0 };
   }
 
   write(text: string): void {
@@ -260,6 +327,7 @@ export class Backscroll {
       this.head = 0;
       this.total -= first.bytes;
       this.count -= first.lines;
+      this.dropped += first.lines;
     }
     const first = this.chunks[0];
     if (first === undefined || this.count <= this.limit) return;
@@ -269,6 +337,7 @@ export class Backscroll {
     const droppedBytes = Buffer.byteLength(first.text.slice(this.head, from), 'utf8');
     this.total -= droppedBytes;
     this.count -= excess;
+    this.dropped += excess;
     if (from >= first.text.length) {
       this.chunks.shift();
       this.head = 0;

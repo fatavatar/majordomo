@@ -536,6 +536,7 @@ export function InventoryBody({
        * (`iron key` is three) into the find text as well as on screen.
        */
       id: 'number',
+      optional: true,
       label: t('entity.numberColumn'),
       name: t('entity.numberColumnLabel'),
       numeric: true,
@@ -555,9 +556,10 @@ export function InventoryBody({
     {
       // What it fetches and costs at this character's charm, MME's short words (2026-10-24).
       id: 'value',
+      optional: true,
       label: t('cards.inventory.columns.value'),
       value: (item) => factsOf(item)?.value || null,
-      cell: (item) => factsOf(item)?.value || null
+      cell: (item) => <span className="item-value">{factsOf(item)?.value || null}</span>
     },
     {
       /*

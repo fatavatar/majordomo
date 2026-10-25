@@ -228,6 +228,16 @@ ui:
   # you clear it.
   theme: dark
 
+  # How the cards are laid out: what each one puts where, and how it shows it.
+  # The theme above says what everything is painted; any skin wears any theme.
+  #
+  # classic  the cards as they have always been drawn.
+  # glance   colour and shape carry what rows of words did: figures inside
+  #          their bars, a player's alignment as the colour of the name, lines
+  #          that say the same thing folded into one with a count. Shorter
+  #          cards, read at a glance.
+  skin: classic
+
   # Where the HUD meters turn yellow and then red.
   #
   # Fractions of maximum, not points, so a threshold means the same thing at

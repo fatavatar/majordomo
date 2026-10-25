@@ -142,6 +142,11 @@ export function resync(s: Session, p: PathRec): number {
   )
     return 0;
   if (p.steps === null && loadPath(s, p) === 0) return 0;
+  // Ours (2026-10-25): no steps, no step to be at. MegaMUD's paths always
+  // have one, but ours for a walk from where it ends has none, and the
+  // search below never came round to its start again: a replay of Fatty's
+  // hung on one, his tracker placing him there and his signature not.
+  if (p.count <= 0) return 0;
   const steps = p.steps!;
   let from = p.at - 1;
   if (from < 0) from = p.count - 1;

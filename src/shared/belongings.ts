@@ -160,6 +160,13 @@ export interface BelongingsSink {
   recallStatsBase(): CombatTally | null;
   rememberStatsBase(base: CombatTally | null): void;
   /**
+   * When the Vitals card's experience was last reset (2026-10-25): its hours
+   * views count from here where it is later than their window's start. Apart
+   * from `statsBase`, so resetting one leaves the other; null is never.
+   */
+  recallExpResetAt(): number | null;
+  rememberExpResetAt(at: number | null): void;
+  /**
    * Throws the whole record away, because the player says this is not the same
    * character.
    *
@@ -196,5 +203,7 @@ export const NO_BELONGINGS: BelongingsSink = {
   rememberStats: () => {},
   recallStatsBase: () => null,
   rememberStatsBase: () => {},
+  recallExpResetAt: () => null,
+  rememberExpResetAt: () => {},
   forget: () => false
 };

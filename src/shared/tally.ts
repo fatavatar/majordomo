@@ -570,6 +570,30 @@ export function experienceAt(samples: readonly ExperienceSample[], at: number): 
 }
 
 /**
+ * The experience made from `from` to now, and the time spent in the realm in
+ * that stretch (2026-10-25): the Vitals card's hours views. Read off the
+ * samples, so a window reaching back before the first one starts at it, and
+ * says so in `from`; null where there is no sample to read.
+ */
+export function experienceWithin(
+  tally: CombatTally,
+  from: number,
+  now: number
+): { made: number; presentMs: number; from: number } | null {
+  const first = tally.samples[0];
+  if (first === undefined) return null;
+  const start = Math.min(now, Math.max(from, first.at));
+  const base = experienceAt(tally.samples, start) ?? first.experience;
+  const spells =
+    tally.leftAt === null ? tally.away : [...tally.away, { from: tally.leftAt, to: now }];
+  return {
+    made: Math.max(0, tally.experience - base),
+    presentMs: Math.max(0, now - start - awayWithin(spells, start, now)),
+    from: start
+  };
+}
+
+/**
  * Experience an hour, per bin, across `[from, to)`: the difference the
  * samples state across each bin over the part of it spent in the realm.
  * Null for a bin the samples cannot speak for — before the first one — and

@@ -3,6 +3,8 @@ import { DEFAULT_EXPLORER_OPTIONS, type ExplorerStock } from '@shared/explorer';
 
 import BentoCard, { type CardChrome } from './BentoCard';
 import { keepFocus } from '../lib/focus';
+import { useSkin } from '../lib/skin';
+import { KitCount, KitRose } from './kit';
 import { t } from '../lib/i18n';
 import { coinText } from '../lib/coins';
 import { ago } from '../lib/players';
@@ -119,6 +121,35 @@ function sortExits(exits: RoomExit[]): RoomExit[] {
     const bi = ORDER.indexOf(b.direction);
     return (ai === -1 ? ORDER.length : ai) - (bi === -1 ? ORDER.length : bi);
   });
+}
+
+/**
+ * The room's occupants with each name said once and how many share it, in
+ * the order they were first listed (the glance skin, 2026-10-25): `pirate
+ * ghost, pirate ghost` is one row with a count. Two of a name that differ in
+ * what the realm says of them stay two rows.
+ */
+function foldOccupants(occupants: readonly RoomOccupant[]): { who: RoomOccupant; count: number }[] {
+  const rows: { who: RoomOccupant; count: number }[] = [];
+  const at = new Map<string, number>();
+  for (const who of occupants) {
+    const key = JSON.stringify([
+      who.name,
+      who.kind,
+      who.disposition,
+      who.uncertain,
+      who.costly,
+      who.charmed
+    ]);
+    const seen = at.get(key);
+    if (seen === undefined) {
+      at.set(key, rows.length);
+      rows.push({ who, count: 1 });
+    } else {
+      rows[seen]!.count += 1;
+    }
+  }
+  return rows;
 }
 
 /**
@@ -554,6 +585,12 @@ function RoomBody({
   const mine = ownAlignment(character);
   const light = lightNote(room);
   /*
+   * The glance skin's room (2026-10-25): the ways out as a rose beside the
+   * name, a blocked one still a chip that says why; and who is here as rows,
+   * edged in their temper, a name the room holds twice said once with a count.
+   */
+  const glance = useSkin() === 'glance';
+  /*
    * What the vault holds, on the **first** face rather than only on the Bank
    * one behind it.
    *
@@ -582,7 +619,28 @@ function RoomBody({
         <div className="empty">{t('cards.room.empty')}</div>
       ) : (
         <>
-          {room.name !== null && <div className="room-name">{room.name}</div>}
+          {room.name !== null &&
+            (glance && !exitsUnseen(room) ? (
+              <div className="glance-room-head">
+                <div className="room-name">{room.name}</div>
+                <KitRose
+                  blocked={
+                    new Set(
+                      room.exits
+                        .filter((exit) => exit.note)
+                        .map((exit) => exit.direction as Direction)
+                    )
+                  }
+                  label={sortExits(room.exits)
+                    .map((exit) => DIRECTION_NAME[exit.direction as Direction] ?? exit.direction)
+                    .join(', ')}
+                  names={DIRECTION_NAME}
+                  open={new Set(room.exits.map((exit) => exit.direction as Direction))}
+                />
+              </div>
+            ) : (
+              <div className="room-name">{room.name}</div>
+            ))}
 
           {/*
             The light, in the server's words, and what the client did about a
@@ -617,28 +675,36 @@ function RoomBody({
               full text is in the terminal, a few lines up. */}
           {room.description !== null && <p className="room-description">{room.description}</p>}
 
-          <div className="exits">
-            {/* Null is not zero: exits the server would not print are unseen,
+          {(!glance ||
+            exitsUnseen(room) ||
+            room.exits.length === 0 ||
+            room.exits.some((exit) => exit.note)) && (
+            <div className="exits">
+              {/* Null is not zero: exits the server would not print are unseen,
                 not absent, and `no exits` would be a claim nothing supports. */}
-            {exitsUnseen(room) ? (
-              <span className="chip warn">{t('cards.room.exits.unseen')}</span>
-            ) : room.exits.length === 0 ? (
-              <span className="chip bad">{t('cards.room.exits.none')}</span>
-            ) : (
-              sortExits(room.exits).map((exit) => (
-                // A blocked exit is still an exit; saying why beats hiding it.
-                <span
-                  className={`chip${exit.note ? ' warn' : ''}`}
-                  key={exit.direction}
-                  title={exit.note ?? undefined}
-                >
-                  {/* Short codes are canonical; expand them for reading. */}
-                  {DIRECTION_NAME[exit.direction as Direction] ?? exit.direction}
-                  {exit.note && <span className="exit-note"> {exit.note}</span>}
-                </span>
-              ))
-            )}
-          </div>
+              {exitsUnseen(room) ? (
+                <span className="chip warn">{t('cards.room.exits.unseen')}</span>
+              ) : room.exits.length === 0 ? (
+                <span className="chip bad">{t('cards.room.exits.none')}</span>
+              ) : (
+                sortExits(room.exits)
+                  // Under glance the rose has the open ones; a blocked one still says why.
+                  .filter((exit) => !glance || exit.note)
+                  .map((exit) => (
+                    // A blocked exit is still an exit; saying why beats hiding it.
+                    <span
+                      className={`chip${exit.note ? ' warn' : ''}`}
+                      key={exit.direction}
+                      title={exit.note ?? undefined}
+                    >
+                      {/* Short codes are canonical; expand them for reading. */}
+                      {DIRECTION_NAME[exit.direction as Direction] ?? exit.direction}
+                      {exit.note && <span className="exit-note"> {exit.note}</span>}
+                    </span>
+                  ))
+              )}
+            </div>
+          )}
 
           {/*
             What the room answers to, as controls, on the face that is on
@@ -834,9 +900,23 @@ function RoomBody({
               {room.occupants.length > 0 && (
                 <>
                   <dt>{t('cards.room.readout.hereLabel')}</dt>
-                  <dd className="occupants">
-                    {room.occupants.map((who, index) => (
-                      <span key={`${who.name}-${index}`}>
+                  <dd className={glance ? 'occupants glance-mobs' : 'occupants'}>
+                    {(glance
+                      ? foldOccupants(room.occupants)
+                      : room.occupants.map((who) => ({ who, count: 1 }))
+                    ).map(({ who, count }, index, shown) => (
+                      <span
+                        className={glance ? 'glance-mob' : undefined}
+                        data-hostile={
+                          glance && attacksOnSight(who.disposition, mine) === true
+                            ? who.uncertain
+                              ? 'maybe'
+                              : 'yes'
+                            : undefined
+                        }
+                        data-kind={glance ? who.kind : undefined}
+                        key={`${who.name}-${index}`}
+                      >
                         {/*
                       A monster's name opens the Reference card — health,
                       temper, the alignment cost spelled out. A player's does
@@ -864,7 +944,8 @@ function RoomBody({
                         one thing on this line worth deciding on. A word, not a
                         hue: docs/ui-design.md §6, and this is the readout a
                         decision about whether to keep walking is made off. */}
-                        {attacksOnSight(who.disposition, mine) === true && (
+                        {glance && <KitCount count={count} />}
+                        {!glance && attacksOnSight(who.disposition, mine) === true && (
                           <span className={`chip warn${who.uncertain ? ' quiet' : ''}`}>
                             {who.uncertain
                               ? t('cards.room.occupant.hostileUncertainChip')
@@ -895,7 +976,7 @@ function RoomBody({
                         {who.charmed && (
                           <span className="chip quiet">{t('cards.room.occupant.charmedChip')}</span>
                         )}
-                        {index < room.occupants.length - 1 && ', '}
+                        {!glance && index < shown.length - 1 && ', '}
                       </span>
                     ))}
                   </dd>

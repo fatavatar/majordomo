@@ -5,6 +5,7 @@ import TerminalView, { type TerminalHandle } from './TerminalView';
 import { errorMessage } from '@shared/values';
 import { t } from '../lib/i18n';
 import { restores } from '../lib/restore';
+import { tuning } from '../lib/tuning';
 import type { AttachSnapshot, SessionId } from '@shared/ipc';
 import type { TerminalConfig } from '@shared/config';
 import type { QuestRunProgress } from '@shared/quests';
@@ -57,6 +58,11 @@ export interface SessionTerminalProps {
   walk: WalkProgress | null;
   onStopRun(session: SessionId): void;
 }
+
+/** The consoles filling in their history, one after another (`fillHistory`). */
+let filling: Promise<void> = Promise.resolve();
+
+const pause = (ms: number): Promise<void> => new Promise((done) => setTimeout(done, ms));
 
 /**
  * One character's terminal, and the whole of its stream lifecycle.
@@ -111,6 +117,12 @@ function SessionTerminal({
   const handleRef = useRef<TerminalHandle | null>(null);
   /** Output and notices that arrived before the backscroll was queued, in order. */
   const pending = useRef<Array<(handle: TerminalHandle) => void>>([]);
+  /**
+   * Everything written since the attach's snapshot while the older lines are
+   * still being fetched behind it, so the console can be drawn again whole
+   * (`fillHistory`); null once it has been, or with nothing older to fetch.
+   */
+  const since = useRef<Array<(handle: TerminalHandle) => void> | null>(null);
   const attached = useRef(false);
   const [ready, setReady] = useState(false);
   const shownRef = useRef(shown);
@@ -127,6 +139,7 @@ function SessionTerminal({
       onHandle(session, {
         ...handle,
         notice: (message) => {
+          since.current?.push((to) => to.notice(message));
           if (attached.current) handle.notice(message);
           else pending.current.push((to) => to.notice(message));
         }
@@ -148,6 +161,7 @@ function SessionTerminal({
     return api.onData(({ session: from, payload }) => {
       if (from !== session) return;
       onChunk(session, payload.text.length);
+      since.current?.push((to) => to.write(payload));
       const handle = handleRef.current;
       if (handle && attached.current) handle.write(payload);
       else pending.current.push((to) => to.write(payload));
@@ -188,6 +202,8 @@ function SessionTerminal({
           for (const act of pending.current) act(handle);
           pending.current = [];
         };
+        // What arrived during the round trip came after the snapshot too.
+        since.current = snapshot.backscrollEarlier ? [...pending.current] : null;
         if (snapshot.backscroll.length === 0) {
           release();
           letGo();
@@ -196,7 +212,18 @@ function SessionTerminal({
         takeBack = restores.add({
           shown: () => shownRef.current,
           run: (done) => {
-            handle.restore(snapshot.backscroll, done);
+            handle.restore(snapshot.backscroll, () => {
+              done();
+              if (snapshot.backscrollEarlier) {
+                filling = filling
+                  .then(() => fillHistory(handle, snapshot.backscroll, snapshot.backscrollFrom))
+                  .catch((error: unknown) => {
+                    // The history stays as attaching handed it; the live screen is whole.
+                    console.error(`[terminal] history for session ${session}:`, error);
+                    since.current = null;
+                  });
+              }
+            });
             release();
           }
         });
@@ -219,11 +246,54 @@ function SessionTerminal({
         handle.notice(t('terminal.backscrollRestoreFailed', { message: errorMessage(error) }));
       });
 
+    /**
+     * The older lines behind what attaching handed over, a page at a time
+     * and one console after another (2026-10-25): five characters' whole
+     * backscroll at once was past what a web tab may be owed, and every tab
+     * was let go as it opened. Once all of it is here the console is drawn
+     * again whole — the history, the snapshot, and what came after it — when
+     * the reader is following the game, so nobody's place is taken from them.
+     */
+    const fillHistory = async (
+      handle: TerminalHandle,
+      latest: string,
+      from: number
+    ): Promise<void> => {
+      const older: string[] = [];
+      let at = from;
+      for (;;) {
+        await pause(tuning().backscrollPageMs);
+        if (!live) return;
+        const page = await api.backscrollBefore(session, at, tuning().backscrollPageLines);
+        if (!live) return;
+        if (page.text.length > 0) older.unshift(page.text);
+        if (!page.more || page.from >= at) break;
+        at = page.from;
+      }
+      while (live && older.length > 0 && !handle.following())
+        await pause(tuning().backscrollPageMs);
+      const after = since.current ?? [];
+      since.current = null;
+      if (!live || older.length === 0) return;
+      attached.current = false;
+      handle.reset();
+      await new Promise<void>((drawn) =>
+        handle.restore(older.join('') + latest, () => {
+          for (const act of after) act(handle);
+          attached.current = true;
+          for (const act of pending.current) act(handle);
+          pending.current = [];
+          drawn();
+        })
+      );
+    };
+
     return () => {
       live = false;
       letGo();
       takeBack?.();
       attached.current = false;
+      since.current = null;
       void api.detach(session);
     };
   }, [api, session, ready, onSnapshot]);

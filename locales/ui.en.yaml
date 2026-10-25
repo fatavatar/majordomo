@@ -337,6 +337,10 @@ notices:
         'New settings — defending the party, the crowd spell and the reaction to a player
         attacking — were written into {count} file with the paragraphs that explain them. All
         off, which is what the client was already doing. {fileList}'
+    skinStated:
+      '"ui.skin" was written into {file}, as classic: the cards as they have always been drawn.
+      Set it to glance there, or on the MudEngine page in settings, for shorter cards that colour
+      and shape help to read.'
     markStated:
       '"ui.showLogo" was written into {file}, on: the client draws its own mark at the left of the
       status rail. Turn it off there or on the MudEngine page in settings.'
@@ -1721,6 +1725,13 @@ entity:
   numberColumnLabel: The realm's number
 field:
   clear: Clear "{label}"
+# The pieces a skin lays a card out from (`components/kit.tsx`, 2026-10-25).
+kit:
+  # How many lines or names a folded one stands for.
+  count: '×{count}'
+  # Experience this session, and the rate it is coming at.
+  perHour: /h
+
 table:
   chip:
     hide: Hide {facetLabel}
@@ -2416,6 +2427,14 @@ cards:
     toolbarLabel: '{cardTitle} actions'
     unpin: 'Unpin: follow the shown character'
   combat:
+    # The card as the glance skin lays it out (2026-10-25).
+    glance:
+      you: 'you {damage}'
+      party: 'party {damage}'
+      armour: 'AC {ac} DR {dr}'
+      follows: 'follows {percent}%'
+      round: rd
+      drops: 'drops {drops}'
     badge:
       clear: clear
       engaged: engaged
@@ -2692,6 +2711,9 @@ cards:
   # card and one face, named for whichever is happening — routing, looping or
   # stopped — so the card never reports the mechanism under the other one.
   navigation:
+    # The loop as the glance skin lays it out (2026-10-25).
+    glance:
+      laps: laps
     actions:
       play: Start Selected Loop
       resume: Resume — pick up where it left off
@@ -2858,6 +2880,9 @@ cards:
       here: here
     title: Players
   realm:
+    # The roster as the glance skin lays it out (2026-10-25).
+    glance:
+      makeup: The realm's make-up by standing
     badge:
       hostile: '{hostile} hostile'
       online: '{count} online'
@@ -3373,8 +3398,6 @@ cards:
       graphs:
         bars: bars
         line: line
-      window: Rate graph covers
-      windowHours: '{hours} h'
     talk:
       # Off: the box sends what was typed, so `gos` is how a line gossips.
       channels: Put a channel in front.
@@ -3397,6 +3420,8 @@ cards:
     labels:
       agility: Agility
       armour: Armour class / DR
+      # The same, where it sits in a pair of a short line (the glance skin).
+      armourShort: AC / DR
       charm: Charm
       exp: Experience
       health: Health
@@ -3420,6 +3445,20 @@ cards:
     # On an attribute the realm states a range for: the tint on the figure is
     # its share of that range, so the tooltip says what the range is.
     statRange: 'this race runs {low} to {high}'
+    # The sheet as the glance skin lays it out (2026-10-25).
+    glance:
+      exp: exp
+      # The skills trained to nothing, folded into one line.
+      untrained: '{skills}: 0'
+      seesTo: 'sees to {depth}'
+    # The six in the sheet's bank of tiles, where a word fits a tile.
+    short:
+      agility: Agi
+      charm: Cha
+      health: Hea
+      intellect: Int
+      strength: Str
+      willpower: Wil
     sight:
       # Beside the night-vision figure while the stat sheet has not named the race.
       raceUnknown: race not yet read
@@ -3482,10 +3521,6 @@ cards:
     ofCount: '{part} of {whole}'
     empty: Nothing has been fought yet.
     expMadeLabel: Exp. made
-    expNeededLabel: Exp. needed
-    # Named with its level where the table can say which: the next level is
-    # often already paid for, and `Exp. needed` alone read as though it were not.
-    expNeededToLevel: Exp. needed, level {level}
     expRateLabel: Exp. rate
     exchangeFigure: '{dealt} dealt · {taken} taken'
     exchangeLabel: Dealt against taken
@@ -3660,8 +3695,21 @@ cards:
     level:
       caution: low
       critical: critical
-    rateFormat: '{rate} exp/h'
-    sessionExpFormat: +{sessionExp} exp
+    # The experience it shows over the session or the last hours (2026-10-25).
+    scope:
+      label: Experience over
+      session: Session
+      hours: '{hours}h'
+      # The hours views count from now; the session's is left as it is.
+      reset: Reset the hours views (the session stays)
+      graphSession: Exp. rate, this session
+    # The card as the glance skin lays it out (2026-10-25).
+    glance:
+      # Beside the level, where the experience already pays for more.
+      canTrain: 'can train to {level}'
+      # The bar of the way through the level being earned towards.
+      through: How far through the level
+      toGo: '{exp} to go'
     tabExp: Exp
     title: Vitals
     # Which level the figure beside it is counting towards. `To level` on its
@@ -3869,6 +3917,11 @@ settings:
       scrollbackLabel: Scrollback, lines
       showHud: Show cards beside console
       showLogo: Show the MudEngine mark
+      # How the cards are drawn, beside the theme that paints them (2026-10-24).
+      skinLabel: Card style
+      skins:
+        classic: Classic
+        glance: Glance (colour and shape, shorter cards)
       tabPlacementLabel: Character tabs
       tabsLeft: Down the left, cards right
       tabsRight: Down the right, cards left

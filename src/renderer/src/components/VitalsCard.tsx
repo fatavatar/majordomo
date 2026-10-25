@@ -1,9 +1,19 @@
 import { Fragment, memo, useMemo } from 'react';
 
 import BentoCard, { type CardChrome, type CardTab } from './BentoCard';
+import VitalsGlance from './glance/VitalsGlance';
+import {
+  LevelMeter,
+  RateGraph,
+  ScopePicker,
+  levelReading,
+  rate as perHourText,
+  useExperienceView,
+  type ExperienceView
+} from './ExperienceScope';
+import { DEFAULT_STATS_GRAPH, clock, type StatsGraph } from '@shared/tally';
 import CardTable, { type Column } from './CardTable';
 import {
-  EXP_RATE_SETTLE_MS,
   isStated,
   ratio,
   vitalLevel,
@@ -17,6 +27,7 @@ import type { SessionId } from '@shared/ipc';
 import { useRememberedChoice } from '../hooks/useRemembered';
 import { t } from '../lib/i18n';
 import { levelWord } from '../lib/vitals';
+import { useSkin } from '../lib/skin';
 
 /** What set an affliction on, for its tooltip: how it was read, when, and the line. */
 function causeText(cause: AfflictionCause): string {
@@ -55,6 +66,8 @@ export interface VitalsCardProps extends CardChrome {
    * the budget walking and fighting spend from for a fact it already has.
    */
   ask?(command: string): void;
+  /** Restarts the experience's hours views; the session's is left as it is. */
+  onExpReset(): void;
 }
 
 /** The card's faces: the instrument, then what the levels above cost. */
@@ -149,15 +162,82 @@ function figure(value: number | null): string {
  * read — it is the server's own arithmetic, and it is right about the next
  * level every time.
  */
-function VitalsCard({ character, session, thresholds, ask, ...chrome }: VitalsCardProps) {
+/**
+ * The experience over the chosen view, as both skins draw it under the
+ * vitals: the view's own figures, where it stands in its level, and its rate
+ * graph — moved off the Combat Stats card (2026-10-25).
+ */
+function ExperienceRows({
+  character,
+  view,
+  onReset,
+  graph,
+  withLevel
+}: {
+  character: CharacterState;
+  view: ExperienceView;
+  onReset(): void;
+  graph: StatsGraph;
+  withLevel: boolean;
+}) {
+  const reading = levelReading(character.progress, view.made ?? 0);
+  return (
+    <div className="exp-view">
+      <ScopePicker onReset={onReset} view={view} />
+      <dl className="readout exp-figures">
+        <dt>{t('cards.stats.expMadeLabel')}</dt>
+        <dd className={view.made === null ? 'inert' : ''}>
+          {view.made === null ? '—' : view.made.toLocaleString()}
+        </dd>
+        <dt>{t('cards.stats.expRateLabel')}</dt>
+        <dd className={view.perHour === null ? 'inert' : ''}>{perHourText(view.perHour)}</dd>
+        <dt>{t('cards.stats.willLevelLabel')}</dt>
+        <dd className={view.levelInMs === null ? 'inert' : ''}>
+          {view.levelInMs === null ? '—' : clock(view.levelInMs)}
+        </dd>
+      </dl>
+      {withLevel && reading !== null && <LevelMeter reading={reading} />}
+      <RateGraph
+        away={character.tally.away}
+        current={view.perHour}
+        from={view.from}
+        graph={graph}
+        label={
+          view.scope === 'session'
+            ? t('cards.vitals.scope.graphSession')
+            : t('cards.stats.graphLabel', { hours: Number(view.scope) })
+        }
+        leftAt={character.tally.leftAt}
+        now={view.now}
+        samples={character.tally.samples}
+      />
+    </div>
+  );
+}
+
+function VitalsCard({
+  character,
+  session,
+  thresholds,
+  ask,
+  onExpReset,
+  ...chrome
+}: VitalsCardProps) {
   const { vitals, progress, phase, inCombat, stealth, afflictions } = character;
   const [face, chooseFace] = useRememberedChoice(session, 'vitals-tab', FACE_IDS, FACE_IDS[0]!);
-  const elapsed =
-    progress.realmEnteredAt === null ? 0 : Math.max(0, Date.now() - progress.realmEnteredAt);
-  const rate =
-    elapsed < EXP_RATE_SETTLE_MS || progress.expThisSession === 0
-      ? null
-      : Math.round(progress.expThisSession / (elapsed / 3_600_000));
+  const skin = useSkin();
+  // The experience over the view this card has chosen: the session, or the last hours.
+  const view = useExperienceView(character, session);
+  const graph = chrome.settings?.value.statsGraph ?? DEFAULT_STATS_GRAPH;
+  const experience = (withLevel: boolean) => (
+    <ExperienceRows
+      character={character}
+      graph={graph}
+      onReset={onExpReset}
+      view={view}
+      withLevel={withLevel}
+    />
+  );
 
   const table = progress.expTable;
   const standing = useMemo(
@@ -235,6 +315,19 @@ function VitalsCard({ character, session, thresholds, ask, ...chrome }: VitalsCa
   const vitalsFace =
     phase !== 'in-game' ? (
       <div className="empty">{t('cards.vitals.emptyNotInRealm')}</div>
+    ) : skin === 'glance' ? (
+      <VitalsGlance
+        afflicted={afflicted.map(({ word, cause }) => ({
+          word,
+          ...(cause === undefined ? {} : { title: causeText(cause) })
+        }))}
+        character={character}
+        owed={owed}
+        experience={experience(false)}
+        standing={standing}
+        view={view}
+        thresholds={thresholds}
+      />
     ) : (
       <>
         <Meter max={vitals.hpMax} tag="HP" thresholds={thresholds.hp} tone="hp" value={vitals.hp} />
@@ -313,19 +406,8 @@ function VitalsCard({ character, session, thresholds, ask, ...chrome }: VitalsCa
             {figure(owed.value)}
             {owed.derived && <span className="hint"> {t('cards.vitals.workedOut')}</span>}
           </dd>
-          <dt>{t('cards.session.title')}</dt>
-          <dd>
-            {t('cards.vitals.sessionExpFormat', {
-              sessionExp: progress.expThisSession.toLocaleString()
-            })}
-          </dd>
-          <dt>{t('cards.session.rate')}</dt>
-          {/* Meaningless for the first couple of minutes: 40 exp in ten
-              seconds extrapolates to a rate nobody is earning. */}
-          <dd className={rate === null ? 'inert' : ''}>
-            {rate === null ? '—' : t('cards.vitals.rateFormat', { rate: rate.toLocaleString() })}
-          </dd>
         </dl>
+        {experience(true)}
       </>
     );
 
