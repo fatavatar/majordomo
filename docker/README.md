@@ -18,7 +18,7 @@ Majordomo owes its existence to two programs.
 
 Neither project made or endorses Majordomo.
 
-Source, issues and releases: <https://github.com/fatavatar/mudengine>
+Source, issues and releases: <https://github.com/fatavatar/majordomo>
 
 ## Run it
 

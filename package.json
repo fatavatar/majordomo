@@ -4,13 +4,13 @@
   "description": "A MajorMUD client whose characters are played by a port of MegaMUD's own engine; a fork of rayzorben/mudengine",
   "author": "Raymond Bennett <raymond.bennett@gmail.com>",
   "license": "MIT",
-  "homepage": "https://github.com/fatavatar/mudengine",
+  "homepage": "https://github.com/fatavatar/majordomo",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/fatavatar/mudengine.git"
+    "url": "git+https://github.com/fatavatar/majordomo.git"
   },
   "bugs": {
-    "url": "https://github.com/fatavatar/mudengine/issues"
+    "url": "https://github.com/fatavatar/majordomo/issues"
   },
   "type": "module",
   "main": "./out/main/index.js",
