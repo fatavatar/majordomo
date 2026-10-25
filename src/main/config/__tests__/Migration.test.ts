@@ -5819,3 +5819,26 @@ describe('Item Details stated', () => {
     expect(loot()['itemDetails']).toEqual([{ item: 'rope', buy: true }]);
   });
 });
+
+/*
+ * One start's migrations leave nothing for the next start's (2026-10-25):
+ * `statedDoorForcing` stated `bashDoors`, which `OLD_AUTOMATION_FIELDS`
+ * takes out as read by nothing, so every launch rewrote each options file
+ * twice and said so twice; and `retireStaleProse` found the template's own
+ * paragraph naming `flee` back on a block it had fixed, every start.
+ */
+describe('a home brought up to date', () => {
+  it('is left exactly as it is by the next start', () => {
+    fs.mkdirSync(path.dirname(home.options), { recursive: true });
+    fs.writeFileSync(
+      home.options,
+      'ui:\n  theme: dark\nautomation:\n  movement:\n    openDoors: true\n  safety:\n    # Send flee when it goes badly.\n    retreat:\n      enabled: true\n',
+      'utf8'
+    );
+    migrate(true);
+    const once = fs.readFileSync(home.options, 'utf8');
+    migrate(true);
+    expect(fs.readFileSync(home.options, 'utf8')).toBe(once);
+    expect(said).toEqual([]);
+  });
+});

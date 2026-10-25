@@ -16,6 +16,7 @@
  *    every ASCII map, box-drawn frame and column-aligned stat block the game
  *    emits, so it is not a matter of taste.
  */
+import { DEFAULT_SKIN, isSkin, type SkinId } from './skins';
 import { bool, int, isRecord, str } from './values';
 import { asLoops, mergeNamed, type Loop } from './loops';
 /*
@@ -399,6 +400,11 @@ export interface UiConfig {
    * it takes the height the line already has.
    */
   showLogo: boolean;
+  /**
+   * How the cards are drawn — type, shape, gauges, the order a card states
+   * things in — beside `theme`, which paints them. See `shared/skins.ts`.
+   */
+  skin: SkinId;
   /** How the console is painted when the chrome is light. See `ConsoleUiConfig`. */
   console: ConsoleUiConfig;
   /** Where the HUD meters turn yellow and red. */
@@ -1837,6 +1843,7 @@ export const DEFAULT_CONFIG: AppConfig = {
     tabs: 'left',
     showHud: true,
     showLogo: true,
+    skin: DEFAULT_SKIN,
     console: { palette: DEFAULT_CONSOLE_PALETTE, keepDark: true, darkTheme: DEFAULT_THEME },
     // Half and a quarter: the same numbers `megamind-client` shipped for
     // `restIfBelow` / `runIfBelow`, and the ones a MajorMUD player already has
@@ -2283,6 +2290,7 @@ export function normalizeConfig(input: unknown): AppConfig {
       theme: isThemePreference(ui['theme']) ? ui['theme'] : DEFAULT_CONFIG.ui.theme,
       showHud: bool(ui['showHud'], DEFAULT_CONFIG.ui.showHud),
       showLogo: bool(ui['showLogo'], DEFAULT_CONFIG.ui.showLogo),
+      skin: isSkin(ui['skin']) ? ui['skin'] : DEFAULT_CONFIG.ui.skin,
       console: normalizeConsoleUi(ui['console']),
       vitals: normalizeVitals(ui['vitals']),
       alerts: normalizeAlerts(ui['alerts']),

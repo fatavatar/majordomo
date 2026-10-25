@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   BLOW_KINDS,
   experienceAt,
+  experienceWithin,
   rateSeries,
   withSample,
   blowKind,
@@ -481,6 +482,31 @@ describe('experience sampled for the rate graph', () => {
     // present half, so it reads as 8,000 an hour rather than 4,000.
     const half = [{ from: 3 * hour, to: 3.5 * hour }];
     expect(rateSeries(samples, 3 * hour, 4 * hour, 1, half)).toEqual([8_000]);
+  });
+
+  /* The Vitals card's hours views (2026-10-25): what was made since a moment,
+     over the time spent in the realm since it. */
+  it('reads what was made since a moment, over the time present since it', () => {
+    const hour = 3_600_000;
+    const samples = [at(0, 0), at(8_000, hour), at(8_000, 3 * hour), at(12_000, 4 * hour)];
+    const tally = {
+      ...NO_TALLY,
+      experience: 12_000,
+      samples,
+      away: [{ from: hour, to: 3 * hour }]
+    };
+    expect(experienceWithin(tally, 2 * hour, 4 * hour)).toEqual({
+      made: 4_000,
+      presentMs: hour,
+      from: 2 * hour
+    });
+    // A window reaching back before the first sample starts at it.
+    expect(experienceWithin({ ...tally, away: [] }, -hour, 4 * hour)).toEqual({
+      made: 12_000,
+      presentMs: 4 * hour,
+      from: 0
+    });
+    expect(experienceWithin(NO_TALLY, 0, hour)).toBeNull();
   });
 
   it('keeps one point per slot, the newest current, and drops the oldest past the cap', () => {

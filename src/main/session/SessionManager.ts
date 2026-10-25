@@ -2478,6 +2478,12 @@ export class SessionManager {
     this.publishCharacter();
   }
 
+  /** The Vitals card's experience reset: its hours views count from now; the session's does not. */
+  resetExp(): void {
+    this.tracker.resetExp();
+    this.publishCharacter();
+  }
+
   /** A baseline a window kept before main kept one (`CharacterTracker.adoptStatsBase`). */
   adoptStatsBase(base: CombatTally): void {
     if (this.tracker.adoptStatsBase(base)) this.publishCharacter();
@@ -5918,7 +5924,9 @@ export class SessionManager {
   private publishCharacter(): void {
     this.mega?.knowSpellbook((this.tracker.current.spellbook ?? []).map((spell) => spell.name));
     this.sink.character(this.tracker.current);
-    this.appraisal.publishVerdict();
+    // The room's appraisal is the cards', so a sink that draws none (a capture
+    // replay) is spared it: it was half of what a replay spent (2026-10-25).
+    if (this.sink.verdict !== undefined) this.appraisal.publishVerdict();
     this.publishAsks();
     this.watchForReset();
   }

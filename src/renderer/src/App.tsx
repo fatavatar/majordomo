@@ -38,6 +38,7 @@ import { knownGangs } from './lib/gangs';
 import { ago, knownPlayerNames, presentPlayerNames } from './lib/players';
 import { NameIndex } from './lib/names';
 import { readShown, writeShown } from './lib/shownPanes';
+import { SkinContext } from './lib/skin';
 import PlayersCard from './components/PlayersCard';
 import GangCard from './components/GangCard';
 import SettingsScreen, {
@@ -574,6 +575,8 @@ interface CardContext {
   openBuilder: (() => void) | null;
   /** Re-base the Combat Stats card to this character's totals as they stand. */
   resetStats(): void;
+  /** Restart the Vitals card's experience hours views; the session's stays. */
+  resetExp(): void;
   /**
    * The Navigation card's transport. `startMoving` takes the picker's choice,
    * or null where there is none; `loops` is the character's own list to pick
@@ -659,6 +662,8 @@ interface AddressedActions {
   stopMoving(): void;
   /** Re-base the Combat Stats card to this character's totals as they stand. */
   resetStats(): void;
+  /** Restart the Vitals card's experience hours views; the session's stays. */
+  resetExp(): void;
   startLoop(name: string): void;
   selectPlayer(name: string, anchor: PopoverAnchor): void;
   setGangRemotes(remotes: RemoteName[]): void;
@@ -745,6 +750,7 @@ function cardElement(id: CardId, ctx: CardContext): ReactNode {
           {...chrome}
           ask={ctx.ask}
           character={character}
+          onExpReset={ctx.resetExp}
           session={ctx.session}
           thresholds={ctx.thresholds}
         />
@@ -1933,6 +1939,15 @@ export default function App() {
     // renderer otherwise hides.
     root.setProperty('--font-terminal', terminalFonts);
   }, [uiFonts, config.ui.font.size, terminalFonts]);
+
+  /*
+   * The skin the chrome wears (2026-10-24), as an attribute the skin's
+   * stylesheet keys off (`styles/skins/`), the way density is; and as
+   * `SkinContext` below, for the cards a skin lays out its own way.
+   */
+  useEffect(() => {
+    document.documentElement.dataset['skin'] = config.ui.skin;
+  }, [config.ui.skin]);
 
   /**
    * Every mounted terminal, by character.
@@ -5403,6 +5418,8 @@ export default function App() {
         // in `App` rather than sending anything, and the bound object has to
         // stay the same object across renders or every card's memo is defeated.
         resetStats: () => resetStatsRef.current(sid),
+        // Main's, with the tally, as the Combat Stats card's is, and apart from it.
+        resetExp: () => void api.expReset(sid),
         startLoop: (name) =>
           void api.startLoop(sid, name).then((refused) => sayRefusalRef.current(sid)(refused)),
         selectPlayer: (name, anchor) => selectPlayerRef.current(sid, name, anchor),
@@ -5530,6 +5547,7 @@ export default function App() {
         // Addressed always: a pinned float's Reset re-bases that character's
         // card, never the one being watched.
         resetStats: bound.resetStats,
+        resetExp: bound.resetExp,
         // The shown character's list is the only one the renderer holds; a
         // float's own loops are not asked for, so it offers no picker.
         loops: shown ? loops : null,
@@ -5940,7 +5958,7 @@ export default function App() {
     );
   };
 
-  return (
+  const drawn = (
     <div className="app">
       <div
         className="workspace"
@@ -6570,4 +6588,6 @@ export default function App() {
       />
     </div>
   );
+  // The skin's layouts reach every card from here, popovers included (`lib/skin.ts`).
+  return <SkinContext.Provider value={config.ui.skin}>{drawn}</SkinContext.Provider>;
 }

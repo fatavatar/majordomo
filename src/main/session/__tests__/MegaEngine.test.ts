@@ -1427,6 +1427,40 @@ describe('blessings the realm says last', () => {
     e.dispose();
   });
 
+  /*
+   * Fatty's songs went down together on a settings save that built his
+   * databases again, and were never cast again (2026-10-25): the fresh copy
+   * had lost the mark, and what the spellbook showed.
+   */
+  it('are marked again on databases built afresh, with the spellbook kept', () => {
+    const { e } = engine();
+    const host = (e as unknown as { host: MegaEngineHost }).host;
+    const song = (): SpellRec =>
+      ({ short: 'agil', name: 'song of agility', flags: 0x30 }) as never as SpellRec;
+    e.s.data.spells.push(song());
+    const world = host.world();
+    host.world = () =>
+      ({
+        ...world,
+        spellNamed: () => ({ id: 48, name: 'song of agility', casts: [2156] }),
+        spellById: (id: number) => ({ id, name: 'song of agility', duration: 40 })
+      }) as never;
+    e.buffs([]);
+    e.s.data.spells[0]!.flags |= SpellFlag.Known;
+    e.reload({
+      settings: defaultSettings(),
+      data: { monsters: [], items: [], spells: [song()] },
+      grants: {}
+    });
+    e.buffs([]);
+    const agil = e.s.data.spells[0]!;
+    expect([agil.flags & SpellFlag.Timed, agil.flags & SpellFlag.Known]).toEqual([
+      SpellFlag.Timed,
+      SpellFlag.Known
+    ]);
+    e.dispose();
+  });
+
   /* Our tracker asks for a sheet through the engine's own wish for one (`0xe29c`). */
   it('want a stat sheet when our tracker asks, without undoing a forced one', () => {
     const { e } = engine();

@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useState } from 'react';
+import { DEFAULT_SKIN, isSkin, SKINS, type SkinId } from '@shared/skins';
 import Advanced from './Advanced';
 import AlertList from './AlertList';
 import { MonsterRuleList } from './MonsterRules';
@@ -174,6 +175,12 @@ type BlockKey<T> = {
   [K in keyof T]: T[K] extends readonly unknown[] ? never : T[K] extends object ? K : never;
 }[keyof T];
 
+/** One literal \`t()\` per skin, for \`i18n-coverage.test.ts\`. */
+const SKIN_WORD: Record<SkinId, () => string> = {
+  classic: () => t('settings.client.appearance.skins.classic'),
+  glance: () => t('settings.client.appearance.skins.glance')
+};
+
 export default function GlobalSettings({
   scope,
   draft,
@@ -341,6 +348,13 @@ export default function GlobalSettings({
                   ...themes.map((theme) => ({ value: theme.id, label: theme.label }))
                 ]}
                 value={draft.ui.theme}
+              />
+              <SelectField
+                label={t('settings.client.appearance.skinLabel')}
+                name="global-skin"
+                onChange={(value) => patch('ui', { skin: isSkin(value) ? value : DEFAULT_SKIN })}
+                options={SKINS.map((skin) => ({ value: skin, label: SKIN_WORD[skin]() }))}
+                value={draft.ui.skin}
               />
               <SelectField
                 label={t('settings.client.appearance.densityLabel')}

@@ -828,6 +828,15 @@ export class MegaEngine {
     s.data = structuredClone(data);
     s.data.players = was.players;
     s.data.rooms = was.rooms;
+    // The spells the spellbook showed, and those the realm says last marked
+    // again on the fresh copy (2026-10-25): Fatty's songs, lasting only by
+    // the spell they cast, lost the mark on a settings save and were never
+    // cast again.
+    const known = new Set(
+      was.spells.filter((spell) => (spell.flags & SpellFlag.Known) !== 0).map((spell) => spell.name)
+    );
+    for (const spell of s.data.spells) if (known.has(spell.name)) spell.flags |= SpellFlag.Known;
+    this.lastingMarked = false;
     this.recall();
     this.useMonsters(this.monsterRules);
     this.useItems(this.itemRules);

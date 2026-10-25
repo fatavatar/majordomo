@@ -1,6 +1,7 @@
 import { memo, useMemo } from 'react';
 
 import { t } from '../lib/i18n';
+import { useSkin } from '../lib/skin';
 import { ago, place, PlayerName } from '../lib/players';
 import type { PopoverAnchor } from '../lib/popover';
 
@@ -90,11 +91,27 @@ function PlayersCard({ character, session, subject, onSelect, ...chrome }: Playe
       <span className="chip off">{t('cards.players.badge.known', { count: players.length })}</span>
     );
 
+  /*
+   * Under glance (2026-10-25) a person's standing is the colour of their name,
+   * as on the Realm card, and how long ago they were seen fades: fresh in the
+   * last hour, plain within the day, quieter within the week, dim after.
+   */
+  const glance = useSkin() === 'glance';
+  const ageOf = (at: number | null): string =>
+    at === null
+      ? 'never'
+      : now - at < 3_600_000
+        ? 'hour'
+        : now - at < 86_400_000
+          ? 'day'
+          : now - at < 7 * 86_400_000
+            ? 'week'
+            : 'old';
+
   const columns: Column<PlayerRecord>[] = [
     {
       id: 'name',
       label: t('cards.realm.column.name'),
-      wide: true,
       value: (record) => record.name,
       /*
        * The name is the control that selects somebody, following the Room and
@@ -113,6 +130,10 @@ function PlayersCard({ character, session, subject, onSelect, ...chrome }: Playe
     {
       id: 'where',
       label: t('cards.player.detail.where'),
+      // The column that gives way (2026-10-24): a room's name runs long and a
+      // player's is at most eleven letters, so the name is whole and the room
+      // is cut, where the name was cut to five and pushed *seen* off the card.
+      wide: true,
       value: (record) => record.lastRoomName ?? record.lastRoom,
       cell: (record) => <span className="player-where">{place(record)}</span>
     },
@@ -170,6 +191,12 @@ function PlayersCard({ character, session, subject, onSelect, ...chrome }: Playe
         name="players"
         returnFocus={chrome.returnFocus}
         rowAttrs={(record) => ({
+          ...(glance
+            ? {
+                'data-align': (record.alignment ?? 'unknown').toLowerCase(),
+                'data-age': ageOf(record.lastRoomAt)
+              }
+            : {}),
           'data-selected': playerKey(record.name) === subject ? 'true' : undefined,
           'data-offline': record.online ? undefined : 'true'
         })}

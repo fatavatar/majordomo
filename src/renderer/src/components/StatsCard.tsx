@@ -4,13 +4,10 @@ import BentoCard, { type CardChrome, type CardTab } from './BentoCard';
 import { useRememberedChoice } from '../hooks/useRemembered';
 import CardTable, { type Column } from './CardTable';
 import type { CharacterState } from '@shared/character';
-import { experienceOwed, experienceStanding } from '@shared/experience';
 import {
   BLOW_KINDS,
-  DEFAULT_STATS_GRAPH,
   MEGA_MODES,
   NO_MEGA_TALLY,
-  DEFAULT_STATS_HOURS,
   damageDealt,
   engagedFor,
   engagedShare,
@@ -19,24 +16,20 @@ import {
   perRound,
   onlineFor,
   ratePerHour,
-  rateSeries,
   share,
   clock,
-  levelIn,
   sinceCardBaseline,
   swings,
   turnedAside,
   type BlowKind,
   type BlowTally,
   type CombatTally,
-  type AwaySpell,
-  type ExperienceSample,
-  type MegaMode,
-  type StatsGraph
+  type MegaMode
 } from '@shared/tally';
 import type { SessionId } from '@shared/ipc';
 import { t } from '../lib/i18n';
 import { tuning } from '../lib/tuning';
+import { rate } from './ExperienceScope';
 
 export interface StatsCardProps extends CardChrome {
   character: CharacterState;
@@ -59,23 +52,6 @@ function figure(value: number | null, digits = 0): string {
 /** A share as a percentage, or a dash. `share` already returns null for 0/0. */
 function percent(value: number | null): string {
   return value === null ? '—' : t('cards.stats.percent', { value: (value * 100).toFixed(1) });
-}
-
-/**
- * A rate an hour, in the unit that keeps it readable.
- *
- * MegaMUD switched between `k/hr` and `m/hr` for the same reason: six figures
- * of experience per hour is a number nobody reads at a glance, and the card is
- * three inches wide.
- */
-function rate(value: number | null): string {
-  if (value === null) return '—';
-  const size = Math.abs(value);
-  if (size >= 1_000_000)
-    return t('cards.stats.ratePerHour', { value: `${(value / 1_000_000).toFixed(2)}M` });
-  if (size >= 1_000)
-    return t('cards.stats.ratePerHour', { value: `${(value / 1_000).toFixed(1)}k` });
-  return t('cards.stats.ratePerHour', { value: value.toFixed(0) });
 }
 
 /** `12 – 48`, or a dash while nothing has landed. */
@@ -199,166 +175,9 @@ const MORE_ROWS: ReadonlySet<string> = new Set([
   'attacking'
 ]);
 
-interface LevelReading {
-  next: number;
-  into: number;
-  span: number;
-  over: number;
-  made: number;
-}
-
-/**
- * Where the character stands in its level, off the experience table.
- *
- * `into` is what it has past the level's own threshold and `span` what the
- * next one costs from there; past the next threshold `over` is the surplus,
- * which is a banked level the trainer has not been asked for. `made` is this
- * scope's own experience, drawn as the band it accounts for.
- */
-function levelReading(progress: CharacterState['progress'], made: number): LevelReading | null {
-  const { level, exp, expTable } = progress;
-  if (level === null || exp === null || expTable === null) return null;
-  const rowAt = (which: number): number | null =>
-    expTable.rows.find((row) => row.level === which)?.experience ?? null;
-  const base = rowAt(level) ?? (level <= 1 ? 0 : null);
-  const top = rowAt(level + 1);
-  if (base === null || top === null || top <= base) return null;
-  const into = Math.max(0, exp - base);
-  const span = top - base;
-  return { next: level + 1, into, span, over: Math.max(0, into - span), made: Math.max(0, made) };
-}
-
-/**
- * The level meter. The scale is the larger of the way into the level and the
- * level's span, so a character past the threshold fills the whole track, the
- * 100% mark moves left to where the span ends and the overage is tinted past
- * it — the todo's own picture. The band inside the fill is this scope's
- * share, as the target meter draws this character's share of the damage.
- */
-function LevelMeter({ reading }: { reading: LevelReading }) {
-  const scale = Math.max(reading.into, reading.span, 1);
-  const pct = (value: number): number => Math.max(0, Math.min(100, (value / scale) * 100));
-  const fill = pct(reading.into);
-  const mark = pct(reading.span);
-  const mineFrom = pct(Math.max(0, reading.into - reading.made));
-  const percent = Math.round((reading.into / reading.span) * 100);
-  return (
-    <div className="stats-level">
-      <div className="meter exp-meter" data-level="ok">
-        <div className="fill" style={{ width: `${fill}%` }} />
-        {reading.made > 0 && (
-          <span className="mine" style={{ left: `${mineFrom}%`, width: `${fill - mineFrom}%` }} />
-        )}
-        {reading.over > 0 && (
-          <>
-            <span className="over" style={{ left: `${mark}%`, width: `${100 - mark}%` }} />
-            <span className="mark" style={{ left: `${mark}%` }} />
-          </>
-        )}
-        {/* A figure and a word, like every meter: a sentence in a bar wraps
-            when the chrome font is turned up. The sentence is the hint's. */}
-        <span className="meter-label">
-          {t('cards.stats.percent', { value: String(percent) })}
-          {reading.over > 0 && (
-            <span className="meter-state">
-              {t('cards.stats.levelOver', { over: figure(reading.over) })}
-            </span>
-          )}
-        </span>
-      </div>
-      <span className="hint">
-        {t('cards.stats.levelFigure', { percent, next: reading.next })}
-        {' · '}
-        {t('cards.stats.levelMade', { made: figure(reading.made) })}
-      </span>
-    </div>
-  );
-}
-
-/**
- * The rate over the window, one bar or point per bin, the scope's own rate
- * ruled across it. Drawn from `CombatTally.samples`; a bin before the first
- * sample is left blank rather than drawn as a rate of nothing.
- */
-function RateGraph({
-  samples,
-  away,
-  leftAt,
-  hours,
-  graph,
-  now,
-  current
-}: {
-  samples: readonly ExperienceSample[];
-  away: readonly AwaySpell[];
-  leftAt: number | null;
-  hours: number;
-  graph: StatsGraph;
-  now: number;
-  current: number | null;
-}) {
-  const bins = tuning().statsGraphBins;
-  // A stretch away still running reaches to now: a character off the realm
-  // is drawn as off it, not as earning nothing.
-  const spells = leftAt === null ? away : [...away, { from: leftAt, to: now }];
-  const series = rateSeries(samples, now - hours * 3_600_000, now, bins, spells);
-  const known = series.filter((value): value is number => value !== null);
-  const head = (
-    <div className="stats-graph-head">
-      <span>{t('cards.stats.graphLabel', { hours })}</span>
-      {current !== null && <span>{t('cards.stats.graphNow', { rate: rate(current) })}</span>}
-    </div>
-  );
-  if (known.length === 0) {
-    return (
-      <div className="stats-graph">
-        {head}
-        <span className="hint">{t('cards.stats.graphEmpty')}</span>
-      </div>
-    );
-  }
-  const top = Math.max(...known, current ?? 0, 1);
-  const height = 36;
-  const width = 100;
-  const step = width / series.length;
-  const y = (value: number): number => height - 2 - (value / top) * (height - 4);
-  const points = series
-    .map((value, index) => (value === null ? null : `${index * step + step / 2},${y(value)}`))
-    .filter((point): point is string => point !== null)
-    .join(' ');
-  return (
-    <div className="stats-graph">
-      {head}
-      <svg aria-hidden="true" preserveAspectRatio="none" viewBox={`0 0 ${width} ${height}`}>
-        {graph === 'bars' ? (
-          series.map((value, index) =>
-            value === null ? null : (
-              <rect
-                className="bar"
-                height={height - y(value)}
-                key={index}
-                width={Math.max(0.2, step - 0.6)}
-                x={index * step + 0.3}
-                y={y(value)}
-              />
-            )
-          )
-        ) : (
-          <polyline className="line" points={points} />
-        )}
-        {current !== null && (
-          <line className="now" x1={0} x2={width} y1={y(current)} y2={y(current)} />
-        )}
-      </svg>
-    </div>
-  );
-}
-
 function StatsCard({ baseline, character, onReset, session, ...chrome }: StatsCardProps) {
-  const { tally, progress } = character;
+  const { tally } = character;
   const [face, chooseFace] = useRememberedChoice(session, 'stats-tab', FACE_IDS, FACE_IDS[0]);
-  const hours = chrome.settings?.value.statsHours ?? DEFAULT_STATS_HOURS;
-  const graph = chrome.settings?.value.statsGraph ?? DEFAULT_STATS_GRAPH;
 
   /**
    * The Reset control, as a *baseline* rather than a message to main.
@@ -400,19 +219,6 @@ function StatsCard({ baseline, character, onReset, session, ...chrome }: StatsCa
    * disconnected is not an hour the character earned nothing in.
    */
   const elapsed = onlineFor(shown, now);
-  const expRate = ratePerHour(shown.experience, elapsed, tuning().rateFloorMs);
-  /*
-   * **What is still owed, from the table rather than from the realm's summary.**
-   *
-   * `progress.expNeeded` is the server's `Exp needed for next level`, which
-   * reads 0 for a character that has not been to a guild in a while — and
-   * `Will level in` under it then read `0:00:00`, which is a client telling
-   * somebody they are already there when what they are actually earning is
-   * three levels further up. The Vitals card makes the same correction from
-   * the same place, so the two cannot disagree; see `src/shared/experience.ts`.
-   */
-  const standing = experienceStanding(progress.level, progress.exp, progress.expTable);
-  const owed = experienceOwed(progress.expNeeded, standing);
 
   /*
    * **Which rows exist is read from the session, not from the reset.**
@@ -505,6 +311,8 @@ function StatsCard({ baseline, character, onReset, session, ...chrome }: StatsCa
     {
       id: 'span',
       label: t('cards.stats.column.span'),
+      // The range steps aside on a rail card, for the average it brackets.
+      optional: true,
       numeric: true,
       value: (row) => row.blows.most ?? -1,
       cell: (row) => span(row.blows)
@@ -536,29 +344,6 @@ function StatsCard({ baseline, character, onReset, session, ...chrome }: StatsCa
    */
   const readout: { key: string; label: string; value: string; second?: string; when?: boolean }[] =
     [
-      { key: 'exp', label: t('cards.stats.expMadeLabel'), value: figure(shown.experience) },
-      {
-        key: 'need',
-        // Which level, where the table can say: `Exp needed` on its own could
-        // only ever mean the next one, and the next one is often already paid.
-        label:
-          standing?.next == null
-            ? t('cards.stats.expNeededLabel')
-            : t('cards.stats.expNeededToLevel', { level: standing.next }),
-        value: figure(owed.value),
-        // Marked where the figure is this client's arithmetic rather than the
-        // realm's, in the column the readout already has for a second figure.
-        second: owed.derived ? t('cards.vitals.workedOut') : undefined
-      },
-      { key: 'exp-rate', label: t('cards.stats.expRateLabel'), value: rate(expRate) },
-      {
-        key: 'level-in',
-        label: t('cards.stats.willLevelLabel'),
-        value: (() => {
-          const ms = levelIn(owed.value, expRate);
-          return ms === null ? '—' : clock(ms);
-        })()
-      },
       { key: 'killed', label: t('cards.stats.killedLabel'), value: figure(shown.kills) },
       {
         key: 'kill-rate',
@@ -676,7 +461,6 @@ function StatsCard({ baseline, character, onReset, session, ...chrome }: StatsCa
       }
     ].filter((row) => row.when !== false);
 
-  const level = levelReading(progress, shown.experience);
   const mainRows = readout.filter((row) => !MORE_ROWS.has(row.key));
   const moreRows = readout.filter((row) => MORE_ROWS.has(row.key));
   const exchange = share(dealt, dealt + shown.taken.damage);
@@ -689,20 +473,12 @@ function StatsCard({ baseline, character, onReset, session, ...chrome }: StatsCa
     );
   const copyMain = useCallback((): string => {
     return [
-      ...(level === null
-        ? []
-        : [
-            t('cards.stats.levelFigure', {
-              percent: Math.round((level.into / level.span) * 100),
-              next: level.next
-            })
-          ]),
       ...rowLines(mainRows),
       ...rows.map(
         (row) => `${row.label}: ${row.hits} · ${percent(row.accuracy)} · ${span(row.blows)}`
       )
     ].join('\n');
-  }, [level, mainRows, rows]);
+  }, [mainRows, rows]);
   const copyMore = useCallback((): string => {
     return [
       ...rowLines(moreRows),
@@ -733,7 +509,6 @@ function StatsCard({ baseline, character, onReset, session, ...chrome }: StatsCa
         <div className="scroller">
           {empty ?? (
             <>
-              {level !== null && <LevelMeter reading={level} />}
               {/*
                 One `<dl>` for the face, and the table under it rather than
                 between two of them: a `.readout` sizes its label column from
@@ -743,15 +518,6 @@ function StatsCard({ baseline, character, onReset, session, ...chrome }: StatsCa
                 still starts a new row.
               */}
               <dl className="readout paired">{pairs(mainRows)}</dl>
-              <RateGraph
-                away={shown.away}
-                current={expRate}
-                graph={graph}
-                hours={hours}
-                leftAt={shown.leftAt}
-                now={now}
-                samples={shown.samples}
-              />
               <CardTable
                 caption={t('cards.stats.tableCaption')}
                 className="stats-table"

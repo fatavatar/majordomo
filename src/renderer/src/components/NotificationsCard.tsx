@@ -4,6 +4,8 @@ import BentoCard, { type CardChrome } from './BentoCard';
 import CardTable, { type Column, type Facet } from './CardTable';
 import NamedText from './NamedText';
 import { t } from '../lib/i18n';
+import { useSkin } from '../lib/skin';
+import { KitCount } from './kit';
 import type { NameIndex } from '../lib/names';
 import type { PopoverAnchor } from '../lib/popover';
 import type { CharacterState } from '@shared/character';
@@ -68,6 +70,30 @@ function clock(at: number): string {
  * client that says "this one is urgent" only by turning something red says it
  * to some of its users and not to others.
  */
+/**
+ * The record with each run of one line said once (the glance skin,
+ * 2026-10-25): `You hear movement to the west.` three times in a second is
+ * one row and a count. Only lines one after another, the same level and the
+ * same words; the row keeps the first one's time and name.
+ */
+function foldRuns(notices: readonly Notice[]): { notice: Notice; count: number }[] {
+  const rows: { notice: Notice; count: number }[] = [];
+  for (const notice of notices) {
+    const last = rows.at(-1);
+    if (
+      last !== undefined &&
+      last.notice.text === notice.text &&
+      last.notice.severity === notice.severity &&
+      last.notice.channel === notice.channel
+    ) {
+      last.count += 1;
+    } else {
+      rows.push({ notice, count: 1 });
+    }
+  }
+  return rows;
+}
+
 function NotificationsCard({
   notices,
   session,
@@ -78,6 +104,16 @@ function NotificationsCard({
   ...card
 }: NotificationsCardProps) {
   const logRef = useRef<HTMLDivElement>(null);
+  const glance = useSkin() === 'glance';
+  /*
+   * Under glance a run of one line is one row with its count, and the level
+   * is the row's edge rather than a column of words (the facet chips and the
+   * row's title still say it in words).
+   */
+  const folded = glance ? foldRuns(notices) : null;
+  const shown = folded === null ? notices : folded.map(({ notice }) => notice);
+  const runOf = new Map<string, number>();
+  for (const row of folded ?? []) runOf.set(row.notice.id, row.count);
 
   const counts = { critical: 0, warning: 0, info: 0 };
   for (const notice of notices) counts[notice.severity] += 1;
@@ -113,7 +149,7 @@ function NotificationsCard({
     if (log) log.scrollTop = log.scrollHeight;
   }, [notices.length]);
 
-  const columns: Column<Notice>[] = [
+  const everyColumn: Column<Notice>[] = [
     {
       /*
        * When it happened. The record is read hours later, and roughly-when is
@@ -134,6 +170,7 @@ function NotificationsCard({
     },
     {
       id: 'channel',
+      optional: true,
       label: t('cards.alerts.columns.channel'),
       value: (notice) => notice.channel,
       cell: (notice) => <span className="alert-channel">{notice.channel}</span>
@@ -154,6 +191,7 @@ function NotificationsCard({
       // text readable as one run for copy and for the harness.
       cell: (notice) => (
         <span className="alert-text">
+          {glance && <KitCount count={runOf.get(notice.id) ?? 1} />}
           {names && character && inspect && onSelect ? (
             <NamedText
               index={names}
@@ -169,6 +207,7 @@ function NotificationsCard({
       )
     }
   ];
+  const columns = glance ? everyColumn.filter((column) => column.id !== 'level') : everyColumn;
 
   return (
     <BentoCard {...card} badge={badge} className="alert-card" paned title={t('cards.alerts.title')}>
@@ -188,8 +227,11 @@ function NotificationsCard({
         keyOf={(notice) => notice.id}
         name="alerts"
         returnFocus={card.returnFocus}
-        rowAttrs={(notice) => ({ 'data-level': notice.severity })}
-        rows={notices}
+        rowAttrs={(notice) => ({
+          'data-level': notice.severity,
+          ...(glance ? { title: LABEL[notice.severity] } : {})
+        })}
+        rows={shown}
         scrollerRef={logRef}
         session={session}
       />

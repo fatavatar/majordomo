@@ -11,6 +11,7 @@
  *
  * Dependency-free, like the rest of `src/shared`.
  */
+import { DEFAULT_SKIN, isSkin, type SkinId } from './skins';
 import {
   DEFAULT_CONFIG,
   normalizeRewrites,
@@ -189,6 +190,7 @@ export interface GlobalDraft {
     tabs: TabsPreference;
     showHud: boolean;
     showLogo: boolean;
+    skin: SkinId;
     /** Which sixteen the console paints with, or `theme` to follow the chrome. */
     consolePalette: ConsolePalette;
     /** Keep the console dark while the chrome is light. See `ConsoleUiConfig`. */
@@ -1001,6 +1003,7 @@ export function asGlobalDraft(value: unknown): GlobalDraft | null {
       tabs: oneOf(ui['tabs'], ['top', 'left', 'right'] as const, 'left'),
       showHud: ui['showHud'] !== false,
       showLogo: ui['showLogo'] !== false,
+      skin: isSkin(ui['skin']) ? ui['skin'] : DEFAULT_SKIN,
       consolePalette: isConsolePalette(consoleUi['palette'])
         ? consoleUi['palette']
         : DEFAULT_CONSOLE_PALETTE,

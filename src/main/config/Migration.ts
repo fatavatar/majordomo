@@ -24,6 +24,7 @@
  * - **Every step is reported.** A migration that moved somebody's characters
  *   and said nothing is indistinguishable from one that lost them.
  */
+import { DEFAULT_SKIN } from '../../shared/skins';
 import fs from 'node:fs';
 import path from 'node:path';
 import {
@@ -281,6 +282,7 @@ function migrateAll(options: MigrationOptions): void {
   theOldAutomationFieldsWent(home, note);
   theHangPenaltiesWent(home, note);
   theOldSwitchesUnpinned(home, note);
+  statedTheSkin(home, note);
 }
 
 /**
@@ -2248,7 +2250,13 @@ function retireStaleProse(
     if (typeof blob === 'string' && /\bflee/i.test(blob) && firstKey !== null) {
       const forBlock = comments.get(`${root}.${key}`);
       const forFirst = comments.get(`${root}.${key}.${firstKey}`);
-      if (forBlock !== undefined && forFirst !== undefined) {
+      /*
+       * Already the template's (ours, 2026-10-25): `yaml` reads the first
+       * setting's paragraph back onto the block, so a file this had fixed
+       * matched again on every start, was rewritten as it stood and said so.
+       */
+      const done = blob === forFirst && (pair.key as Scalar).commentBefore === forBlock;
+      if (forBlock !== undefined && forFirst !== undefined && !done) {
         (pair.key as Scalar).commentBefore = forBlock;
         (first!.key as Scalar).commentBefore = forFirst;
         pair.value.commentBefore = null;
@@ -2800,6 +2808,35 @@ function statedTheMark(home: Home, note: (message: string) => void): void {
 
   if (!stated) return;
   note(t('notices.migration.markStated', { file: home.options }));
+}
+
+/**
+ * States `ui.skin` in an options file that already has a `ui:` block
+ * (2026-10-24), as `statedTheMark` states `showLogo`: `reconcileWithTemplate`
+ * never reaches inside a block, and a setting absent from the file is one
+ * nobody reading it can find. Beside `theme`, the question it sits next to.
+ *
+ * Written as `classic`, the skin the client ships with, which is what
+ * `normalizeConfig` already draws for a file without the key; the file says
+ * so, and what the other one is.
+ */
+function statedTheSkin(home: Home, note: (message: string) => void): void {
+  let stated = false;
+  edit(home.options, (document) => {
+    const ui = document.getIn(['ui'], true);
+    if (!isMap(ui) || ui.has('skin')) return false;
+    const pair = document.createPair('skin', DEFAULT_SKIN) as Pair;
+    const at = ui.items.findIndex(
+      (item) => isScalar(item.key) && String(item.key.value) === 'theme'
+    );
+    if (at === -1) ui.items.push(pair);
+    else ui.items.splice(at + 1, 0, pair);
+    if (isScalar(pair.key)) pair.key.commentBefore = SKIN_COMMENT;
+    stated = true;
+    return true;
+  });
+  if (!stated) return;
+  note(t('notices.migration.skinStated', { file: home.options }));
 }
 
 /**
@@ -3930,6 +3967,15 @@ const AREA_SPELL_COMMENT = ` The spell for a crowded room -- MegaMUD's MultAttac
  everything, and the ten evil points are a cost no setting spends unasked.
  Blank casts nothing.`;
 
+const SKIN_COMMENT = ` How the cards are laid out: what each one puts where, and how it shows it.
+ The theme above says what everything is painted; any skin wears any theme.
+
+ classic  the cards as they have always been drawn.
+ glance   colour and shape carry what rows of words did: figures inside
+          their bars, a player's alignment as the colour of the name, lines
+          that say the same thing folded into one with a count. Shorter
+          cards, read at a glance.`;
+
 const SHOW_LOGO_COMMENT = ` The client's own mark, at the left of the status rail.
 
  On by default: it is the one place the client says what it is, and a brand
@@ -4041,10 +4087,15 @@ const SUPPLIES_COMMENT = ` Keeping the pack stocked -- MegaMUD's Must Have Minim
    items:
      - { name: torch, min: 3, max: 7, shop: General Store, at: { map: 1, room: 2147 } }`;
 
+/*
+ * Not `bashDoors` (ours, 2026-10-25): nothing reads it since the MegaMUD
+ * engine, and `OLD_AUTOMATION_FIELDS` takes it out of every file, so stating
+ * it here put it back on every start for the other to take out again — two
+ * rewrites of each options file and two notices, every launch.
+ */
 const DOOR_FORCING_DEFAULTS: ReadonlyArray<readonly [string, boolean | number]> = [
   ['pickLocks', false],
   ['pickTries', 3],
-  ['bashDoors', false],
   ['bashTries', 3]
 ];
 
@@ -6305,6 +6356,13 @@ function theTuningBlockGainedKeys(
     addKey('view', 'webLostCoverMs', DEFAULT_INTERNAL.tuning.view.webLostCoverMs);
     addKey('view', 'webDialMs', DEFAULT_INTERNAL.tuning.view.webDialMs);
     addKey('view', 'webReportMs', DEFAULT_INTERNAL.tuning.view.webReportMs);
+    addKey('view', 'backscrollPageLines', DEFAULT_INTERNAL.tuning.view.backscrollPageLines);
+    addKey('view', 'backscrollPageMs', DEFAULT_INTERNAL.tuning.view.backscrollPageMs);
+    addKey(
+      'records',
+      'backscrollAttachLines',
+      DEFAULT_INTERNAL.tuning.records.backscrollAttachLines
+    );
 
     /** A key this build no longer reads, taken out rather than left to mean nothing. */
     const dropKey = (group: string, key: string): void => {

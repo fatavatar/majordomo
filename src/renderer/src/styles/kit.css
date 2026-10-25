@@ -1,0 +1,342 @@
+/*
+ * The kit (`components/kit.tsx`, 2026-10-25): the pieces a skin lays a card
+ * out from where it lays the card out its own way. Drawn in the chrome's own
+ * font and the colour theme's tokens, so every theme works under them; a
+ * skin's stylesheet (`styles/skins/`) restyles the same names.
+ */
+
+[data-tone='life'] {
+  --kit-tone: var(--ok);
+}
+[data-tone='mana'],
+[data-tone='load'] {
+  --kit-tone: var(--accent);
+}
+[data-tone='exp'] {
+  --kit-tone: var(--marker);
+}
+[data-tone='threat'] {
+  --kit-tone: var(--danger);
+}
+[data-tone='gold'] {
+  --kit-tone: var(--pending);
+}
+[data-tone='plain'] {
+  --kit-tone: var(--text-hi);
+}
+
+/*
+ * A standing as a colour (2026-10-25), from the theme's own five: the good
+ * end gold to cyan to green, neutral the quiet ink, and the bad end deepening
+ * from amber to red to the marker's violet for a fiend.
+ */
+[data-align] {
+  --align: var(--text-lo);
+}
+[data-align='saint'] {
+  --align: var(--pending);
+}
+[data-align='good'] {
+  --align: var(--accent);
+}
+[data-align='lawful'] {
+  --align: var(--ok);
+}
+[data-align='seedy'] {
+  --align: color-mix(in srgb, var(--pending) 70%, var(--danger));
+}
+[data-align='outlaw'] {
+  --align: color-mix(in srgb, var(--pending) 40%, var(--danger));
+}
+[data-align='criminal'] {
+  --align: color-mix(in srgb, var(--pending) 15%, var(--danger));
+}
+[data-align='villain'] {
+  --align: var(--danger);
+}
+[data-align='fiend'] {
+  --align: color-mix(in srgb, var(--danger) 55%, var(--marker));
+}
+[data-align='unknown'] {
+  --align: var(--text-lo-quiet);
+}
+
+/*
+ * A bar with its figures in it. The text sits on the fill and the track
+ * alike, so it is the card's brightest ink with a shadow under it rather than
+ * a colour that would vanish against one or the other.
+ */
+.kit-bar {
+  background: color-mix(in srgb, var(--text-lo) var(--tone-weak), transparent);
+  border-radius: var(--r-chip);
+  height: calc(1em + 6px);
+  overflow: hidden;
+  position: relative;
+}
+
+.kit-bar + .kit-bar {
+  margin-top: 3px;
+}
+
+.kit-bar-fill {
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--kit-tone) 55%, var(--ink-card)),
+    color-mix(in srgb, var(--kit-tone) 85%, var(--ink-card))
+  );
+  border-radius: var(--r-chip);
+  inset: 0 auto 0 0;
+  position: absolute;
+  transition: width var(--dur-control) var(--ease-out);
+}
+
+/* A vital past its warning band says so in the fill, as the HUD meters do. */
+.kit-bar[data-level='caution'] {
+  --kit-tone: var(--pending);
+}
+.kit-bar[data-level='critical'] {
+  --kit-tone: var(--danger);
+}
+
+.kit-bar-text {
+  align-items: center;
+  color: var(--text-hi);
+  display: flex;
+  font-variant-numeric: tabular-nums;
+  gap: 8px;
+  inset: 0;
+  justify-content: space-between;
+  padding: 0 6px;
+  position: absolute;
+  text-shadow: 0 1px 2px rgb(0 0 0 / 55%);
+  white-space: nowrap;
+}
+
+.kit-bar-of {
+  opacity: 0.75;
+}
+
+/* A line of figures: what rows of a readout said, in one breath. */
+.kit-line {
+  align-items: baseline;
+  color: var(--text-lo);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 10px;
+  min-width: 0;
+}
+
+.kit-line + .kit-line,
+.kit-bar + .kit-line,
+.kit-line + .kit-bar,
+.kit-track + .kit-line,
+.kit-line + .kit-track {
+  margin-top: 3px;
+}
+
+.kit-figure {
+  white-space: nowrap;
+}
+
+.kit-figure > b {
+  color: var(--text-hi);
+  font-variant-numeric: tabular-nums;
+  font-weight: inherit;
+}
+
+.kit-figure[data-tone] > b {
+  color: var(--kit-tone);
+}
+
+.kit-figure > span {
+  margin-left: 0.3em;
+}
+
+.kit-figure[data-push='true'] {
+  margin-left: auto;
+}
+
+.kit-level {
+  background: color-mix(in srgb, var(--marker) var(--tone), transparent);
+  border-radius: var(--r-chip);
+  color: var(--marker);
+  font-variant-numeric: tabular-nums;
+  padding: 0 5px;
+}
+
+.kit-count {
+  color: var(--text-lo);
+  font-size: var(--font-micro);
+  font-variant-numeric: tabular-nums;
+  margin-left: 0.4em;
+  white-space: nowrap;
+}
+
+/* Tiles filled from the bottom to where each figure stands; green high, amber low. */
+.kit-tiles {
+  display: grid;
+  gap: 3px;
+  grid-template-columns: repeat(auto-fit, minmax(4.5ch, 1fr));
+}
+
+.kit-tile {
+  background: color-mix(in srgb, var(--text-lo) var(--tone-wash), transparent);
+  border-radius: var(--r-chip);
+  min-width: 0;
+  overflow: hidden;
+  padding: 1px 4px 2px;
+  position: relative;
+  text-align: center;
+}
+
+.kit-tile-fill {
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
+  inset: auto 0 0 0;
+  position: absolute;
+}
+
+.kit-tile[data-band='high'] > .kit-tile-fill {
+  background: color-mix(in srgb, var(--ok) 30%, transparent);
+}
+
+.kit-tile[data-band='low'] > .kit-tile-fill {
+  background: color-mix(in srgb, var(--pending) 24%, transparent);
+}
+
+.kit-tile > small {
+  color: var(--text-lo);
+  display: block;
+  font-size: var(--font-micro);
+  letter-spacing: 0.06em;
+  position: relative;
+  text-transform: uppercase;
+}
+
+.kit-tile > b {
+  color: var(--text-hi);
+  font-variant-numeric: tabular-nums;
+  font-weight: inherit;
+  position: relative;
+}
+
+/* A strip of stops: passed green, this one amber, the rest a track. */
+.kit-track {
+  display: grid;
+  gap: 2px;
+  grid-auto-columns: minmax(0, 1fr);
+  grid-auto-flow: column;
+}
+
+.kit-track-stop {
+  background: color-mix(in srgb, var(--text-lo) var(--tone), transparent);
+  border-radius: 2px;
+  height: 8px;
+}
+
+.kit-track-stop[data-state='done'] {
+  background: color-mix(in srgb, var(--ok) 45%, transparent);
+}
+
+.kit-track-stop[data-state='at'] {
+  background: var(--pending);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--pending) 25%, transparent);
+}
+
+/* Labelled figures two to a line. */
+.kit-pairs {
+  column-gap: 14px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin: 0;
+  row-gap: 1px;
+}
+
+.kit-pair {
+  align-items: baseline;
+  display: flex;
+  gap: 6px;
+  justify-content: space-between;
+  min-width: 0;
+}
+
+.kit-pair > dt {
+  color: var(--text-lo);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.kit-pair > dd {
+  color: var(--text-hi);
+  font-variant-numeric: tabular-nums;
+  margin: 0;
+  white-space: nowrap;
+}
+
+.kit-aside {
+  color: var(--text-lo-quiet);
+  font-size: var(--font-micro);
+  margin-top: 4px;
+}
+
+.kit-aside b {
+  color: var(--text-lo);
+  font-weight: inherit;
+}
+
+.kit-tiles + .kit-pairs,
+.kit-line + .kit-tiles {
+  margin-top: 5px;
+}
+
+/* A room's ways out as a rose: lit green, amber where blocked, up and down beside it. */
+.kit-rose {
+  align-items: center;
+  display: inline-flex;
+  flex: none;
+  gap: 3px;
+}
+
+.kit-rose-compass {
+  display: grid;
+  gap: 2px;
+  grid-template-columns: repeat(3, 8px);
+  grid-template-rows: repeat(3, 8px);
+}
+
+.kit-rose-compass > i,
+.kit-rose-levels > i {
+  background: color-mix(in srgb, var(--text-lo) var(--tone-weak), transparent);
+  border-radius: 2px;
+}
+
+.kit-rose-compass > i.kit-rose-here {
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--ink-edge);
+}
+
+.kit-rose-levels {
+  display: grid;
+  gap: 2px;
+}
+
+.kit-rose-levels > i {
+  color: transparent;
+  font-size: 7px;
+  font-style: normal;
+  height: 12px;
+  line-height: 12px;
+  text-align: center;
+  width: 9px;
+}
+
+.kit-rose [data-state='open'] {
+  background: var(--ok);
+  color: var(--on-accent);
+}
+
+.kit-rose [data-state='blocked'] {
+  background: var(--pending);
+  color: var(--on-accent);
+}

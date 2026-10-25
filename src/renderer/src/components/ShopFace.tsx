@@ -254,6 +254,7 @@ export default function ShopFace({
        * this client's data has never heard of.
        */
       id: 'number',
+      optional: true,
       label: t('entity.numberColumn'),
       name: t('entity.numberColumnLabel'),
       numeric: true,
@@ -291,6 +292,7 @@ export default function ShopFace({
       : [
           {
             id: 'max',
+            optional: true,
             label: t('explorer.shops.max'),
             numeric: true,
             value: (row: StockRow) => row.max,
@@ -298,6 +300,7 @@ export default function ShopFace({
           },
           {
             id: 'regen',
+            optional: true,
             label: t('explorer.shops.regen'),
             value: (row: StockRow) => row.regen,
             cell: (row: StockRow) => row.regen

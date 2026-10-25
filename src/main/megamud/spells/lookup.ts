@@ -9,6 +9,46 @@ import type { Session } from '../Session';
 import { SpellFlag } from '../flags';
 
 /**
+ * The spell table by name and by short, each key the rows that `stricmp`
+ * takes for it in table order (ours, 2026-10-25): a lookup was a scan of two
+ * thousand rows on every line that names a spell, and the first of the rows
+ * that pass is still the one returned.
+ */
+interface SpellIndex {
+  byName: Map<string, SpellRec[]>;
+  byShort: Map<string, SpellRec[]>;
+}
+
+const indexed = new WeakMap<readonly SpellRec[], SpellIndex>();
+
+/** What `stricmp` compares: up to a terminator, ASCII letters folded. */
+function cKey(text: string): string {
+  const end = text.indexOf('\0');
+  return (end === -1 ? text : text.slice(0, end)).replace(/[A-Z]+/g, (run) => run.toLowerCase());
+}
+
+function spellIndex(spells: readonly SpellRec[]): SpellIndex {
+  let index = indexed.get(spells);
+  if (index === undefined) {
+    index = { byName: new Map(), byShort: new Map() };
+    for (const spell of spells) {
+      for (const [map, key] of [
+        [index.byName, cKey(spell.name)],
+        [index.byShort, cKey(spell.short)]
+      ] as const) {
+        const rows = map.get(key);
+        if (rows === undefined) map.set(key, [spell]);
+        else rows.push(spell);
+      }
+    }
+    indexed.set(spells, index);
+  }
+  return index;
+}
+
+const NONE: readonly SpellRec[] = [];
+
+/**
  * `0x4a2410`: the spell whose short name is `short`. One with a magic class
  * that this character can cast is preferred; otherwise any it can cast.
  */
@@ -20,20 +60,19 @@ export function findSpell(s: Session, short: string): SpellRec | null {
    * casts the demonic, was taken for the divine (2026-10-21), its messages
    * never seen and its lasting bit holding it to the round timer.
    */
-  for (const spell of s.data.spells) {
+  const rows = spellIndex(s.data.spells).byShort.get(cKey(short)) ?? NONE;
+  for (const spell of rows) {
     if (
-      stricmp(short, spell.short) === 0 &&
       ((spell.flags & SpellFlag.Known) !== 0 || s.spellbookNames.has(spell.name.toLowerCase())) &&
       castable(s, spell) !== 0
     )
       return spell;
   }
-  for (const spell of s.data.spells) {
-    if (spell.magic !== 0 && stricmp(short, spell.short) === 0 && castable(s, spell) !== 0)
-      return spell;
+  for (const spell of rows) {
+    if (spell.magic !== 0 && castable(s, spell) !== 0) return spell;
   }
-  for (const spell of s.data.spells) {
-    if (stricmp(short, spell.short) === 0 && castable(s, spell) !== 0) return spell;
+  for (const spell of rows) {
+    if (castable(s, spell) !== 0) return spell;
   }
   return null;
 }
@@ -116,8 +155,8 @@ function magicSuits(s: Session, spell: SpellRec): number {
 
 /** `0x4a24e0`: the spell this character can cast whose full name is `name`. */
 export function findSpellByName(s: Session, name: string): SpellRec | null {
-  for (const spell of s.data.spells) {
-    if (castable(s, spell) !== 0 && stricmp(name, spell.name) === 0) return spell;
+  for (const spell of spellIndex(s.data.spells).byName.get(cKey(name)) ?? NONE) {
+    if (castable(s, spell) !== 0) return spell;
   }
   return null;
 }

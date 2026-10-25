@@ -227,6 +227,7 @@ function HuntingCard({
       },
       {
         id: 'rooms',
+        optional: true,
         label: t('cards.hunting.columns.rooms'),
         numeric: true,
         value: (spot) => spot.walk.length,
@@ -235,6 +236,7 @@ function HuntingCard({
       },
       {
         id: 'steps',
+        optional: true,
         label: t('cards.hunting.columns.steps'),
         numeric: true,
         value: (spot) => spot.rooms[0]?.steps ?? null

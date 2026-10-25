@@ -8222,9 +8222,17 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
           const clipped = terms.filter((dt) => dt.scrollWidth > dt.clientWidth + 1);
           const spans = [...list.querySelectorAll('dd.span')];
           const box = list.getBoundingClientRect();
+          // The pairing threshold in this card's own font: the stylesheet's
+          // \`52ch\`, laid out where the container query measures it.
+          const probe = document.createElement('div');
+          probe.style.width = '52ch';
+          list.parentElement.appendChild(probe);
+          const threshold = Math.round(probe.getBoundingClientRect().width);
+          probe.remove();
           return JSON.stringify({
             found: true,
             width: Math.round(box.width),
+            threshold,
             terms: terms.length,
             lines: new Set(tops).size,
             clipped: clipped.map((dt) => dt.innerText.trim()),
@@ -8255,7 +8263,7 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
      */
     const paired = sheet.lines < sheet.terms;
     check(
-      paired || sheet.width < 290,
+      paired || sheet.width < sheet.threshold,
       paired
         ? 'and the rows share lines rather than each taking one'
         : 'and at this width it stays one row per fact, which is the honest fit',

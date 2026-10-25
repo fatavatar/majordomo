@@ -783,6 +783,11 @@ tuning:
     # the lines kept is not a cap on a file that only grows.
     backscrollRewriteAt: 2
 
+    # How many of the latest lines a window is handed when it attaches to a
+    # console; the rest is sent when it is asked for, by scrolling to the top
+    # or finding in it.
+    backscrollAttachLines: 2000
+
     # How long a balance change waits before it is written.
     belongingsWriteDelayMs: 2000
 
@@ -1361,6 +1366,13 @@ tuning:
     # xterm parses one write in one go, so a whole restored backscroll was a
     # second-long freeze per character; slices this size keep each short.
     restoreSliceChars: 65536
+
+    # How many older lines a console fetches at a time once it is drawn,
+    # filling in the history behind what it was first handed.
+    backscrollPageLines: 4000
+
+    # And how long it waits between those fetches.
+    backscrollPageMs: 400
 
     # How long after a plain Enter the shown console must have turned it into
     # input before the console says it did not, and where the caret was.

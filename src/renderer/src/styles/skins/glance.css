@@ -1,0 +1,385 @@
+/*
+ * The glance skin (2026-10-25): colour and shape carry what rows of words
+ * did. Most of it is the cards' own layouts under this skin
+ * (`components/glance/`) and the kit they are built from (`styles/kit.css`);
+ * what is here restyles the parts a card shares with classic, scoped to
+ * `[data-skin='glance']` and read from the colour theme's tokens.
+ *
+ * Never taller than classic, card by card, measured before it ships.
+ */
+
+/*
+ * A slimmer heading band: a face's tab is a word in a pill, not a control's
+ * 32px box (every button's `--control-h`), and a long name ends in an
+ * ellipsis rather than wrapping the heading onto two lines.
+ */
+[data-skin='glance'] .card > header {
+  padding-bottom: calc(var(--pad-card) - 7px);
+  padding-top: calc(var(--pad-card) - 5px);
+}
+
+[data-skin='glance'] .card > header .crumbs[role='tablist'] .crumb {
+  height: auto;
+  max-width: 16ch;
+  overflow: hidden;
+  padding-block: 2px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ------------------------------------------------------------ combat */
+
+/* The fight as one bar: this character's damage, the party's, and the track left. */
+.glance-fight {
+  background: color-mix(in srgb, var(--text-lo) var(--tone-weak), transparent);
+  border-radius: var(--r-chip);
+  height: calc(1em + 6px);
+  margin-top: 3px;
+  overflow: hidden;
+  position: relative;
+}
+
+.glance-fight > i {
+  inset: 0 auto 0 0;
+  position: absolute;
+}
+
+.glance-fight-mine {
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--accent) 50%, var(--ink-card)),
+    color-mix(in srgb, var(--accent) 80%, var(--ink-card))
+  );
+}
+
+.glance-fight-others {
+  background: color-mix(in srgb, var(--marker) 75%, var(--ink-card));
+}
+
+.glance-fight-left {
+  color: var(--text-hi);
+}
+
+.glance-fight[data-level='caution'] .glance-fight-left {
+  color: var(--pending);
+}
+
+.glance-fight[data-level='critical'] .glance-fight-left {
+  color: var(--danger);
+}
+
+.glance-target {
+  color: var(--text-hi);
+}
+
+.glance-on-you {
+  color: var(--text-lo);
+}
+
+.glance-on-you.many {
+  color: var(--danger);
+}
+
+/* -------------------------------------------------------------- room */
+
+/* The room's name with its ways out as a rose at the right. */
+.glance-room-head {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  justify-content: space-between;
+}
+
+/* Who is here, a row each, edged in their temper: red for one that attacks on sight. */
+.glance-mobs {
+  display: grid;
+  gap: 2px;
+}
+
+.glance-mob {
+  align-items: baseline;
+  border-left: 3px solid var(--ink-edge);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding-left: 6px;
+}
+
+.glance-mob[data-kind='player'] {
+  border-left-color: var(--accent);
+}
+
+.glance-mob[data-hostile='yes'] {
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--danger) 10%, transparent),
+    transparent 75%
+  );
+  border-left-color: var(--danger);
+}
+
+.glance-mob[data-hostile='maybe'] {
+  border-left-color: color-mix(in srgb, var(--danger) 55%, transparent);
+  border-left-style: dashed;
+}
+
+/* -------------------------------------------------------------- loop */
+
+/* The controls and the loop's name on one line. */
+.glance-loop-head {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  margin-bottom: 4px;
+  min-width: 0;
+}
+
+.glance-loop-head > :last-child {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* ------------------------------------------------------------ alerts */
+
+/* A notice's level as its row's edge: the word is in the chips and the row's title. */
+[data-skin='glance'] .alert-list tbody tr > td:first-child {
+  box-shadow: inset 3px 0 0 var(--ink-edge);
+}
+
+[data-skin='glance'] .alert-list tbody tr[data-level='warning'] > td:first-child {
+  box-shadow: inset 3px 0 0 var(--pending);
+}
+
+[data-skin='glance'] .alert-list tbody tr[data-level='critical'] > td:first-child {
+  box-shadow: inset 3px 0 0 var(--danger);
+}
+
+[data-skin='glance'] .alert-list tbody tr[data-level='warning'] .alert-text {
+  color: var(--text-hi);
+}
+
+[data-skin='glance'] .alert-list tbody tr[data-level='critical'] .alert-text {
+  color: var(--danger);
+}
+
+/* A room's answers and asks as small keys, not full-height controls. */
+[data-skin='glance'] .room-answers > .chip,
+[data-skin='glance'] .room-asks > .chip {
+  height: auto;
+  padding-block: 1px;
+}
+
+/* ------------------------------------------------------------- realm */
+
+/* The realm's make-up, worst first, a segment per standing. */
+.glance-makeup {
+  border-radius: 3px;
+  display: flex;
+  gap: 1px;
+  height: 5px;
+  margin-bottom: 6px;
+  overflow: hidden;
+}
+
+.glance-makeup > i {
+  background: var(--align);
+  flex-basis: 0;
+}
+
+/* A person's standing as the colour of the name, and a dot before it. */
+[data-skin='glance'] .realm-list tbody tr[data-align] .realm-name {
+  color: var(--align);
+}
+
+[data-skin='glance'] .realm-list tbody tr[data-align] .realm-name::before {
+  background: var(--align);
+  border-radius: 50%;
+  content: '';
+  display: inline-block;
+  height: 7px;
+  margin-right: 5px;
+  vertical-align: 1px;
+  width: 7px;
+}
+
+/* ----------------------------------------------------------- players */
+
+[data-skin='glance'] .player-list tbody tr[data-align] .player-name {
+  color: var(--align);
+}
+
+[data-skin='glance'] .player-list tbody tr[data-align] .player-name::before {
+  background: var(--align);
+  border-radius: 50%;
+  content: '';
+  display: inline-block;
+  height: 7px;
+  margin-right: 5px;
+  vertical-align: 1px;
+  width: 7px;
+}
+
+/* How long ago, fading: fresh, plain, quieter, dim. */
+[data-skin='glance'] .player-list tbody tr[data-age='hour'] .player-seen {
+  color: var(--ok);
+}
+[data-skin='glance'] .player-list tbody tr[data-age='day'] .player-seen {
+  color: var(--text);
+}
+[data-skin='glance'] .player-list tbody tr[data-age='week'] .player-seen {
+  color: var(--text-lo);
+}
+[data-skin='glance'] .player-list tbody tr[data-age='old'] .player-seen,
+[data-skin='glance'] .player-list tbody tr[data-age='never'] .player-seen {
+  color: var(--text-lo-quiet);
+  opacity: 0.75;
+}
+
+/* A run's count leads its line, where an ellipsis cannot take it. */
+[data-skin='glance'] .alert-text > .kit-count:first-child {
+  color: var(--pending);
+  margin: 0 0.5em 0 0;
+}
+
+/* A name with its dot stays on its line; a heading's state stays on its own. */
+[data-skin='glance'] .realm-name,
+[data-skin='glance'] .player-name,
+[data-skin='glance'] .card > header .badge,
+[data-skin='glance'] .card > header .chip {
+  white-space: nowrap;
+}
+
+/* ============================================================ colour
+ *
+ * MMUD Explorer's way with colour (2026-10-25), which the user asked the
+ * skin to bring in: a label in green over a figure in the bright ink; a zero
+ * grey, a strength green and a weakness red; a
+ * worked-out figure violet; headings and the chosen tab amber; and a name
+ * that opens something in blue. Mixed from the colour theme's five accents,
+ * so every theme keeps its own version of the same reading.
+ */
+:root[data-skin='glance'] {
+  --g-label: color-mix(in srgb, var(--ok) 78%, var(--text-lo));
+  /* Figures in the plain bright ink: the yellow was one colour too many (2026-10-25). */
+  --g-value: var(--text-hi);
+  --g-value-hi: var(--ok);
+  --g-zero: var(--text-lo-quiet);
+  --g-head: var(--pending);
+  --g-link: color-mix(in srgb, var(--accent) 55%, var(--marker) 15%);
+  --g-calc: var(--marker);
+}
+
+/* Headings and the face on screen in amber, as MME's tabs and titles. */
+[data-skin='glance'] .card > header h2,
+[data-skin='glance'] .room-name,
+[data-skin='glance'] .readout > dt.group {
+  color: var(--g-head);
+}
+
+[data-skin='glance'] .card > header .crumbs[role='tablist'] .crumb[data-active='true'] {
+  background: color-mix(in srgb, var(--g-head) var(--tone), transparent);
+  color: var(--g-head);
+}
+
+/*
+ * Labels green, figures bright: every readout, pair, tile and line. Under
+ * `:where`, so these weigh what the base rules they recolour weigh, and a
+ * card's own `.bad` or `.warn` on a figure still wins.
+ */
+:where([data-skin='glance']) .readout > dt,
+:where([data-skin='glance']) .kit-pair > dt,
+:where([data-skin='glance']) .kit-tile > small,
+:where([data-skin='glance']) .kit-figure > span {
+  color: var(--g-label);
+}
+
+:where([data-skin='glance']) .readout > dd,
+:where([data-skin='glance']) .kit-pair > dd,
+:where([data-skin='glance']) .kit-tile > b,
+:where([data-skin='glance']) .kit-figure > b {
+  color: var(--g-value);
+}
+
+:where([data-skin='glance']) .readout > dd.inert,
+:where([data-skin='glance']) .readout > dd.none {
+  color: var(--g-zero);
+}
+
+/* An attribute at the top of its race's range green, at the bottom red. */
+:where([data-skin='glance']) .kit-tile[data-band='high'] > b {
+  color: var(--g-value-hi);
+}
+
+:where([data-skin='glance']) .kit-tile[data-band='low'] > b {
+  color: var(--danger);
+}
+
+/* What the client worked out rather than read, violet: MME's calculated figures. */
+:where([data-skin='glance']) .hint,
+:where([data-skin='glance']) .kit-level {
+  color: var(--g-calc);
+}
+
+/* A name that opens something, blue, as MME's cross-references; a hostile one red. */
+:where([data-skin='glance']) .lookup,
+:where([data-skin='glance']) .card-table .what {
+  color: var(--g-link);
+}
+
+[data-skin='glance'] .glance-mob[data-hostile='yes'] .occupant {
+  color: var(--danger);
+}
+
+/* Listings: the heading green, the rest in the plain ink. */
+:where([data-skin='glance']) .card-table thead th {
+  color: var(--g-label);
+}
+
+:where([data-skin='glance']) .card-table td.numeric {
+  color: var(--g-value);
+}
+
+/* Coins in the room and the purse, gold. */
+:where([data-skin='glance']) .coins,
+:where([data-skin='glance']) .purse {
+  color: var(--pending);
+}
+
+/* ------------------------------------------------------------ vitals */
+
+/* Three labelled rows under the bars: the level, the next one, the session. */
+.glance-vitals {
+  margin-top: 4px;
+}
+
+.glance-train {
+  color: var(--g-calc);
+}
+
+/* The next level: a slim bar of the way through it, then what it still costs. */
+.glance-next {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  min-width: 0;
+}
+
+.glance-next > .kit-bar {
+  flex: 1 1 0;
+  font-size: var(--font-micro);
+  height: calc(1em + 4px);
+  min-width: 4em;
+}
+
+.glance-next > span {
+  flex: none;
+  white-space: nowrap;
+}
+
+.glance-eta {
+  color: var(--g-label);
+}
+
+.glance-gain {
+  color: var(--ok);
+}

@@ -16,7 +16,7 @@ import {
   compose,
   DEFAULT_TALK_LAYOUT,
   DEFAULT_TALK_STAMP,
-  formatTalkStamp,
+  talkStampParts,
   talkChannel,
   TALK_CHANNELS,
   TALK_PRESENCE_TYPES,
@@ -258,6 +258,17 @@ interface TalkLineProps {
   inspect?(name: string, anchor: HTMLElement): void;
 }
 
+/** A line's time, its date (where the format has one) quieter than its clock. */
+function Stamp({ at, format }: { at: number; format: TalkStamp }) {
+  const { date, clock } = talkStampParts(at, format);
+  return (
+    <span className="stamp">
+      {date !== null && <span className="stamp-date">{date} </span>}
+      {clock}
+    </span>
+  );
+}
+
 /**
  * One line of the backlog, drawn once and left alone.
  *
@@ -280,7 +291,7 @@ const TalkLine = memo(function TalkLine(props: TalkLineProps) {
         is hours old, and drawing "now" beside it would be the card
         lying about when the conversation happened.
       */}
-      {stamped && <span className="stamp">{formatTalkStamp(message.at, stampFormat)}</span>}
+      {stamped && <Stamp at={message.at} format={stampFormat} />}
       {layout === 'original' ? (
         /*
           The realm's own sentence, with both the links and the names
