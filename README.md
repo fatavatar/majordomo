@@ -1,8 +1,22 @@
-# mudengine
+# Majordomo
 
-**A modern way to play a classic game.**
+**A modern way to play a classic game, with MegaMUD's own engine at the helm.**
 
-![mudengine playing a character on Paradigm — terminal in the centre, live combat, inventory, vitals, map and chat around it](main-screenshot.png)
+> **Majordomo owes its existence to two programs, and would not exist without either.**
+>
+> - **[mudengine](https://github.com/rayzorben/mudengine)**, Raymond Bennett's
+>   MajorMUD client. Majordomo is a fork of it: the console, the cards, the
+>   realm data, the routing and the browser tabs are his work, and most of what
+>   this README describes is what mudengine built.
+> - **MegaMUD**, the MajorMUD helper generations of players grew up on. Every
+>   Majordomo character is played by a port of `megamud.exe`'s own engine, read
+>   from the original program and rewritten function by function, with
+>   MegaMUD's settings under MegaMUD's names.
+>
+> Majordomo is not made or endorsed by either project. Anything that works is
+> theirs first; anything broken here is ours.
+
+![Majordomo playing a character on Paradigm — terminal in the centre, live combat, inventory, vitals, map and chat around it](main-screenshot.png)
 
 ## What is this?
 
@@ -12,15 +26,16 @@ thousands of players explored, fought monsters, formed gangs and built
 characters over months and years. Against all odds, that world is still alive.
 Communities run servers to this day, and people still play.
 
-**mudengine is a fresh start.** It is a brand-new program for playing MajorMUD
+**mudengine was a fresh start, and Majordomo carries it on.** It is a program for playing MajorMUD
 and the games descended from it, built for today's computers — Windows, Mac and
 Linux — with everything the old tools did and a great deal they never could.
 
-## Where this version comes from
+## Where Majordomo comes from
 
-This is a fork of [rayzorben/mudengine](https://github.com/rayzorben/mudengine).
+Majordomo is a fork of [rayzorben/mudengine](https://github.com/rayzorben/mudengine).
 The two shared their code until the end of September 2026 and have gone their
-own ways since.
+own ways since; the new name, from 1.0.0, is so the two are never mistaken for
+each other, not to put distance between them.
 
 **The biggest difference is the engine.** Here, every character is played by a
 port of MegaMUD itself: `megamud.exe`'s decision engine, read from the
@@ -52,7 +67,7 @@ rests when you are hurt, gathers what the monsters drop, and walks routes you
 choose. You stay in charge: the moment you touch the keyboard, you have the
 wheel.
 
-**It is honest about what it is doing.** Every helper in mudengine explains
+**It is honest about what it is doing.** Every helper in Majordomo explains
 itself. If it attacked, it says why. If it *refused* to attack, it says why.
 If it is not sure where you are, it stops and says so rather than guessing —
 because a wrong guess is how a character dies at an unattended keyboard.
@@ -75,7 +90,7 @@ player from today should never feel like they are operating a museum piece.
 
 The deeper goal is trust. Automation in this game has always meant crossing
 your fingers — scripts that ran blind and characters that died to a mystery.
-mudengine is built on the opposite idea: it never pretends to know something
+Majordomo is built on the opposite idea, as mudengine was: it never pretends to know something
 it doesn't, it never quietly does something you can't inspect, and when it
 declines to act, it tells you that too.
 
@@ -86,7 +101,7 @@ server, the window is served to your browser, and the game sockets, the files
 and the automation stay in the container.
 
 ```
-docker run --rm -p 8080:8080 -v mudengine:/config ghcr.io/fatavatar/mudengine:latest
+docker run --rm -p 8080:8080 -v majordomo:/config ghcr.io/fatavatar/majordomo:latest
 ```
 
 Then open `http://localhost:8080/` and sign in with the password the
@@ -102,7 +117,7 @@ window manager and Electron's GTK stack, and it is gone.)
 | | |
 |---|---|
 | `-p 8080:8080` | the port the browser connects to. |
-| `-v mudengine:/config` | **keep this.** It is `MUDENGINE_HOME`: your options file, realms, characters, logs and the access password. Without it they are deleted with the container. |
+| `-v majordomo:/config` | **keep this.** It is `MUDENGINE_HOME`: your options file, realms, characters, logs and the access password. Without it they are deleted with the container. |
 | `-e MUDENGINE_PASSWORD=…` | choose the password instead of having one generated. |
 
 **The password.** On the first start the container generates one, prints it

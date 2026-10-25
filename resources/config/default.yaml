@@ -1,4 +1,4 @@
-# mudengine configuration
+# Majordomo configuration
 #
 # This file is watched. Save it and the running client picks the change up
 # within about half a second — no restart, no reconnect. If a save leaves the
@@ -16,7 +16,7 @@
 # Two kinds of thing live here, and the settings screen shows them as two
 # pages:
 #
-#   MudEngine   the client itself -- the console, the theme, the tabs, the
+#   Majordomo   the client itself -- the console, the theme, the tabs, the
 #               records it keeps. `terminal:`, `ui:`, `logging:`.
 #   Global      what a NEW realm or character starts with. `connection:`,
 #               `automation:`, `ui.alerts`.

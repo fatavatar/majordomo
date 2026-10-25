@@ -25,7 +25,7 @@ app:
   debug:
     noSession: There is no session to write a report for.
     realmUnknown: (not dialled)
-    reportTitle: mudengine debug report
+    reportTitle: Majordomo debug report
   gpu:
     softwareCompositing: 'The window is not drawn by the GPU (compositing {compositing}, rasterization {rasterization}, WebGL {webgl}): every frame is composed in software, which is why typing and scrolling crawl. Check the graphics driver, or how the client was launched.'
   connect:
@@ -43,7 +43,7 @@ app:
     reload: Reload window
   instance:
     alreadyRunning: This profile is already running. Switched to existing window.
-    homeHeld: '{home} is already in use by another mudengine (pid {pid}). Two clients on one home
+    homeHeld: '{home} is already in use by another Majordomo (pid {pid}). Two clients on one home
       write the same files and dial the same characters; stop the other one first, or delete
       {file} if it is not running.'
     staleLock: The lock left by pid {pid}, which is no longer running, was taken over.
@@ -86,7 +86,7 @@ app:
     consequenceDetail:
       Quitting disconnects them. On a PvP realm an unclean disconnect can cost items,
       or the character.
-    dialogTitle: Quit mudengine
+    dialogTitle: Quit Majordomo
     whoIsConnected:
       many: '{count} characters are still in the realm: {names}.'
       one: '{name} is still in the realm.'
@@ -127,7 +127,7 @@ app:
     none: This host has no clipboard of its own; the window keeps one instead.
   commitUnknown: unknown
   versionWithCommit: '{version}, commit {commit}'
-  windowTitle: mudengine
+  windowTitle: Majordomo
 # Lines the client itself prints into the terminal or pushes as one-off notices.
 notices:
   config:
@@ -151,7 +151,7 @@ notices:
     unavailable:
       'Desktop notifications are switched on, but nothing here can show one. Alerts are still kept
       on the Alerts card.'
-    untitled: MudEngine
+    untitled: Majordomo
   migration:
     talkHold:
       'The Talk card now holds its place for 45 seconds after you scroll, rather than 15, and
@@ -339,14 +339,14 @@ notices:
         off, which is what the client was already doing. {fileList}'
     skinStated:
       '"ui.skin" was written into {file}, as classic: the cards as they have always been drawn.
-      Set it to glance, atlas or halo there, or on the MudEngine page in settings, for shorter
+      Set it to glance, atlas or halo there, or on the Majordomo page in settings, for shorter
       cards that colour and shape help to read.'
     skinExplained:
       'The paragraph above "ui.skin" in {file} was brought up to date: it names every card style
       now, and the monospace face each one sets.'
     markStated:
       '"ui.showLogo" was written into {file}, on: the client draws its own mark at the left of the
-      status rail. Turn it off there or on the MudEngine page in settings.'
+      status rail. Turn it off there or on the Majordomo page in settings.'
     alertRowsBecameEvents: 'Alert rows in {count} file(s) ({fileList}) now name events rather than
       channels: a row said what kind of thing it was about, not what happens. Channel rows were
       carried to the nearest happening ({pairs}), which is narrower than a whole channel — check
@@ -366,7 +366,7 @@ notices:
     desktopSwitchesBecameRows:
       '"ui.alerts.desktop" was removed from {count} file(s): its two switches are questions each
       alert row already answers — "Notify" says whether a row raises one outside the window, and
-      "Even when MudEngine is in front" says whether that holds while you are looking. Set them per
+      "Even when Majordomo is in front" says whether that holds while you are looking. Set them per
       row in the Alerts section of settings. {fileList}'
     desktopSwitchesSilenced:
       'Notifications were switched off altogether in {count} file(s), so every alert row there has
@@ -375,11 +375,11 @@ notices:
     darkConsoleStated:
       '"ui.console" was written into {file}, on: under a light theme the console keeps a dark
       palette, because a light one has to make the realm''s black its paper. Choose which dark
-      palette, or turn it off, there or on the MudEngine page in settings.'
+      palette, or turn it off, there or on the Majordomo page in settings.'
     consolePaletteStated:
       '"ui.console.palette" was written into {file} as "theme", which is the console you already
       have. Seven palettes repaint what the realm sends — four dark, three light — and naming one
-      there or on the MudEngine page in settings outranks the two keys beside it.'
+      there or on the Majordomo page in settings outranks the two keys beside it.'
     statusLineStated:
       '"ui.rewrites" was written into {file}, all off: the status line and listings you can design
       to draw in the realm''s place. Turn any on there or on the Rewrites section in settings.'
@@ -1403,7 +1403,7 @@ loops:
   startedKept: 'Started {loopName}, and kept it.'
   startedOnly: 'Started {loopName}.'
   paletteLabel: 'Loops: find one to walk'
-  # A loop handed out as a file (2026-10-19): mudengine's own loop file for
+  # A loop handed out as a file (2026-10-19): Majordomo's own loop file for
   # another player to import, or a MegaMUD path file for this character.
   exportAriaLabel: 'Export {loopName} as a loop file'
   exportTitle: Export as a loop file another player can import
@@ -1426,7 +1426,7 @@ palette:
     popoutLabel: 'Move to a new window: {characterName}'
     popoutOnlyHint: the only character here
     serversLabel: 'Settings: add or edit a realm…'
-    settingsClientLabel: 'Settings: MudEngine itself…'
+    settingsClientLabel: 'Settings: Majordomo itself…'
     settingsDefaultsLabel: 'Settings: what a new realm or character starts with…'
     settingsLabel: 'Settings: add or edit a character, realm or password…'
     showIdleStatus: idle
@@ -3804,7 +3804,7 @@ settings:
     ruleAdd: Add an alert
     ruleAlert: Alert
     ruleNotify: Notify
-    ruleWhileFocused: Even when MudEngine is in front
+    ruleWhileFocused: Even when Majordomo is in front
     levelKeep: as decided
     rulePercent: '%'
     ruleNamePlaceholder: name to watch for
@@ -3895,6 +3895,12 @@ settings:
     removed: Character removed. Its file was backed up beside it.
     saved: '{characterName} saved.'
   client:
+    # Said at the head of the client's own page (2026-10-25): what Majordomo owes its existence to.
+    lineage:
+      Majordomo owes its existence to two programs. It is a fork of mudengine, Raymond
+      Bennett's MajorMUD client (github.com/rayzorben/mudengine), and every character is
+      played by a port of MegaMUD's own engine, read from megamud.exe. Neither project made
+      or endorses Majordomo.
     appearance:
       advancedConsole: the console
       consoleFontHint: A monospace fallback and the bundled CP437 face are always appended.
@@ -3921,7 +3927,7 @@ settings:
       fontSizeLabel: Size, px
       scrollbackLabel: Scrollback, lines
       showHud: Show cards beside console
-      showLogo: Show the MudEngine mark
+      showLogo: Show the Majordomo mark
       # How the cards are drawn, beside the theme that paints them (2026-10-24).
       skinLabel: Card style
       skins:
@@ -3985,7 +3991,7 @@ settings:
   crumbs:
     characters: Character
     global: Global
-    mudEngine: MudEngine
+    mudEngine: Majordomo
     realms: Realms
   megamud:
     # The BBS tab's settings kept with the character: MudOp access, sys goto and the redials.
@@ -4474,7 +4480,7 @@ settings:
     portLabel: Port
     realmElsewhere: Somewhere else — type the address
     realmLabel: Realm
-    themeInherit: As set in MudEngine
+    themeInherit: As set in Majordomo
     themeLabel: Theme
     themeSystem: Follow the system
     usernameLabel: Username
@@ -5258,9 +5264,10 @@ remotes:
 # and what a browser tab says when the desktop's answer is not available.
 web:
   login:
-    title: mudengine — sign in
-    heading: mudengine
+    title: Majordomo — sign in
+    heading: Majordomo
     lead: This client is behind a password. Enter it to open the console.
+    lineage: A fork of mudengine, playing every character with a port of MegaMUD's own engine.
     passwordLabel: Password
     submit: Sign in
     wrong: That is not the password.

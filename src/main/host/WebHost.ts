@@ -32,7 +32,7 @@ import path from 'node:path';
 
 import type { RpcRequest } from '../../shared/rpc';
 import { errorMessage } from '../../shared/values';
-import { platformUserData } from '../app/home';
+import { HOME_DIR_NAME, platformUserData } from '../app/home';
 import { t } from '../app/i18n';
 import { tuning } from '../app/tuning';
 import type { Caller, ClientHooks, Handler, Host, Layout, Transport } from './Host';
@@ -250,7 +250,7 @@ export function createWebHost(layout: Layout): Host {
   return {
     kind: 'web',
     packaged: false,
-    defaultHome: platformUserData(process.platform, process.env, os.homedir(), 'mudengine'),
+    defaultHome: platformUserData(process.platform, process.env, os.homedir(), HOME_DIR_NAME),
     resourcesPath: null,
     resourceCandidates: () => [layout.resources, path.join(process.cwd(), 'resources')],
     runtime: `Node ${process.versions.node}, served over HTTP`,

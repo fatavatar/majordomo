@@ -1,7 +1,7 @@
 /**
  * Builds, runs and pushes the container image.
  *
- *   npm run docker:build          build ghcr.io/fatavatar/mudengine:<package version>
+ *   npm run docker:build          build ghcr.io/fatavatar/majordomo:<package version>
  *   npm run docker:run            run what was just built, on port 8080
  *   npm run docker:push           push the version tag and `latest`
  *   npm run docker:build -- --list   say what would happen, do nothing
@@ -11,7 +11,7 @@
  * disagrees with the version for the desktop artefacts, for a stated reason —
  * the tag names the release and `package.json` names every file inside it — and
  * an image is one more artefact of that release. Typing `:0.5.0` by hand is how
- * `ghcr.io/fatavatar/mudengine:0.5.0` comes to hold the 0.6.0 build.
+ * `ghcr.io/fatavatar/majordomo:0.5.0` comes to hold the 0.6.0 build.
  *
  * **Pushing is a separate command and never happens as part of a build.** An
  * image push is public and cannot be taken back — the tag can be overwritten
@@ -34,7 +34,7 @@ import { buildStamp } from './lib/build-stamp.mjs';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 /** The repository the image is published under. */
-const IMAGE = process.env['MUDENGINE_IMAGE'] ?? 'ghcr.io/fatavatar/mudengine';
+const IMAGE = process.env['MUDENGINE_IMAGE'] ?? 'ghcr.io/fatavatar/majordomo';
 
 /**
  * The host port `docker:run` publishes the container's 8080 on.
@@ -205,7 +205,9 @@ if (action === 'run') {
   // A named volume rather than a bind mount, so a first run on a fresh machine
   // does not depend on a directory existing with the right ownership -- the
   // image runs as uid 1000 and a bind-mounted host directory owned by anybody
-  // else is a container that cannot write its own options file.
+  // else is a container that cannot write its own options file. Still called
+  // `mudengine`, the name it had before the client became Majordomo, so a
+  // volume made by an earlier run keeps its characters.
   //
   // The client prints where it is listening and, on the first start, the
   // password it generated. `MUDENGINE_PASSWORD` in this shell's environment
@@ -220,7 +222,7 @@ if (action === 'run') {
     'mudengine:/config',
     ...(chosen ? ['--env', `MUDENGINE_PASSWORD=${chosen}`] : []),
     '--name',
-    'mudengine',
+    'majordomo',
     versioned
   ]);
 }

@@ -1,22 +1,30 @@
-# mudengine
+# Majordomo
 
-A modern client, terminal and reactive automation engine for MajorMUD and its
-derivatives (GreaterMUD, Paradigm), served to your browser. The game sockets,
-the realm database, your characters and the automation run in the container;
-the browser draws the console and the cards.
+A MajorMUD client served to your browser, for MajorMUD and its derivatives
+(GreaterMUD, Paradigm). The game sockets, the realm database, your characters
+and the automation run in the container; the browser draws the console and the
+cards.
 
-Every character is played by a port of MegaMUD's own engine (`megamud.exe`,
-rewritten function by function), with MegaMUD's settings. This is a fork that
-has gone its own way from [rayzorben/mudengine](https://github.com/rayzorben/mudengine)
-since the end of September 2026; its image is not upstream's.
+## Where Majordomo comes from
+
+Majordomo owes its existence to two programs.
+
+- **mudengine.** Majordomo is a fork of Raymond Bennett's
+  [mudengine](https://github.com/rayzorben/mudengine), and the client itself
+  is his work. The two have gone their own ways since the end of September
+  2026; this image is not upstream's.
+- **MegaMUD.** Every character is played by a port of MegaMUD's own engine
+  (`megamud.exe`, rewritten function by function), with MegaMUD's settings.
+
+Neither project made or endorses Majordomo.
 
 Source, issues and releases: <https://github.com/fatavatar/mudengine>
 
 ## Run it
 
 ```
-docker run -d --name mudengine -p 8080:8080 -v mudengine:/config ghcr.io/fatavatar/mudengine:latest
-docker logs mudengine
+docker run -d --name majordomo -p 8080:8080 -v majordomo:/config ghcr.io/fatavatar/majordomo:latest
+docker logs majordomo
 ```
 
 Open `http://localhost:8080/` and sign in with the password the first start
@@ -27,22 +35,22 @@ Or with Compose:
 
 ```yaml
 services:
-  mudengine:
-    image: ghcr.io/fatavatar/mudengine:latest
+  majordomo:
+    image: ghcr.io/fatavatar/majordomo:latest
     ports:
       - '8080:8080'
     volumes:
-      - mudengine:/config
+      - majordomo:/config
     restart: unless-stopped
 volumes:
-  mudengine:
+  majordomo:
 ```
 
 ## What to know
 
 | | |
 |---|---|
-| `-v mudengine:/config` | **Keep this.** Your options file, realms, characters, logs and the access password live here. Without it they go with the container. |
+| `-v majordomo:/config` | **Keep this.** Your options file, realms, characters, logs and the access password live here. Without it they go with the container. |
 | `-e MUDENGINE_PASSWORD=…` | Choose the sign-in password instead of having one generated. |
 | `-e MUDENGINE_TRUST_PROXY=1` | Set only when a TLS proxy you control is in front; the client then believes its `X-Forwarded-Proto`. |
 
