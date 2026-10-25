@@ -3,12 +3,45 @@
  * idle (automation off) applies the `Def…1` set to the `Auto…` toggles, going
  * active the `Def…2` set, unless `NoModeDefs`. Auto-combat kept across a
  * detour (`detourCombat`) is put back. A walk the host has put aside
- * (`SessionHost.walkAside`, ours) is still active: MegaMUD has no such pause.
+ * (`SessionHost.walkAside`, ours) is still the walk it was: MegaMUD has no
+ * such pause.
+ *
+ * **What counts as active is ours (2026-10-25).** MegaMUD walks a fixed list
+ * of steps: Go once, and it is active until the path or the loop ends or the
+ * player stops it, so its idle and active defaults are applied when the
+ * player's automation starts or stops. This client's routes are walked as
+ * MegaMUD's Go To, and they start, stop and arrive at every leg, re-plan, step
+ * and quest leg, so each of those applied the defaults again: Fatty's player
+ * turned auto-combat off, and the next step of a route put it back on. A walk
+ * to a destination (`detours[0]`) is therefore not active here, and keeps the
+ * player's own setting (`reEngage`, `combatChosen`); AFK, a loop, a path,
+ * roaming and an import are, as in MegaMUD.
  */
-import { automated, type Session } from '../Session';
+import type { Session } from '../Session';
+
+/** The walking state that decides the mode: the session's, or a walk the host has put aside. */
+type ModeState = Pick<
+  Session,
+  'active' | 'walking' | 'looping' | 'roaming' | 'importing' | 'detours'
+>;
+
+/** Whether the player's automation is running, as MegaMUD's modes mean it (see above). */
+export function automation(s: ModeState): boolean {
+  return (
+    s.active !== 0 ||
+    s.looping !== 0 ||
+    s.roaming !== 0 ||
+    s.importing !== 0 ||
+    (s.walking !== 0 && s.detours[0]!.room === 0)
+  );
+}
 
 export function modeDefaults(s: Session): void {
-  const active = (automated(s) || s.host.walkAside?.() === true) && s.allOff === 0 ? 1 : 0;
+  const aside = s.host.walkAside?.() ?? null;
+  const running =
+    automation(s) ||
+    (aside !== null && automation({ ...aside, active: s.active, importing: s.importing }));
+  const active = running && s.allOff === 0 ? 1 : 0;
   if (s.modeApplied !== -1 && s.modeApplied === active) return;
   s.modeApplied = active;
   if (s.MegaMud_NoModeDefs === 0) {
@@ -50,11 +83,18 @@ export function modeDefaults(s: Session): void {
 
 /**
  * `0x4bfa20`: walking resumes: auto-combat and auto-heal come back on if they
- * would be (`AutoAutoCombat`, `AutoAutoHeal`, or a mode default), unless the
- * user has locked them off (`0x48fcc0`, the toolbar's lock: not kept here).
+ * would be (`AutoAutoCombat`, `AutoAutoHeal`, or a mode default), unless a
+ * plugin holds them (`0x48fcc0`, a lease no plugin here takes).
+ *
+ * Ours (2026-10-25): at the end of a walk to a destination (`detourCombat`
+ * set), auto-combat is the player's own setting put back, not turned on by
+ * the rule above, which with `AutoAutoCombat` on turned it on at every
+ * arrival whatever the player had chosen.
  */
 export function reEngage(s: Session): void {
-  if (s.MegaMud_AutoCombat === 0) {
+  if (s.detourCombat !== -1) {
+    s.MegaMud_AutoCombat = s.idleCombat;
+  } else if (s.MegaMud_AutoCombat === 0) {
     if (
       s.idleCombat !== 0 ||
       s.Other_AutoAutoCombat !== 0 ||
@@ -74,4 +114,15 @@ export function reEngage(s: Session): void {
     }
   }
   s.detourCombat = -1;
+}
+
+/**
+ * The player set auto-combat (the toolbar, `@combat`): their setting from now
+ * on, a walk to a destination's own included. MegaMUD keeps a press during a
+ * Go To only when it turns combat on, so one turning it off was undone at the
+ * arrival (ours, 2026-10-25).
+ */
+export function combatChosen(s: Session): void {
+  s.idleCombat = s.MegaMud_AutoCombat;
+  if (s.detourCombat !== -1) s.detourCombat = s.MegaMud_AutoCombat;
 }

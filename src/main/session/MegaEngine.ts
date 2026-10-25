@@ -599,7 +599,7 @@ export class MegaEngine {
       isStepRoom: (p, i) => this.isStepRoom(p, i),
       uncertain: (p, i) => this.uncertain(p, i),
       lostInDark: () => this.lostInDark(),
-      walkAside: () => this.parked !== null,
+      walkAside: () => this.parked,
       opensAWay: (name) => this.host.opensAWay?.(name) ?? false,
       leaveFor: (name) => this.host.leaveFor?.(name) ?? false,
       keepCoins: () => this.host.keepCoins?.() ?? false,
@@ -1616,10 +1616,12 @@ export class MegaEngine {
     this.goingTo = { sig, room };
     goTo(s, sig, null);
     headFor(s, 1);
-    // The Go-To dialog's Go and Run (`0x43e680`): walked with auto-combat on
-    // or off, and the setting before put back on arrival.
+    // The Go-To dialog's Go and Run (`0x43e680`), and the setting before put
+    // back on arrival. Go walks with the player's own setting rather than
+    // MegaMUD's auto-combat on (ours, 2026-10-25: a route is walked for every
+    // leg and errand, not only when the player sets out to fight its way).
     if (s.detourCombat !== -1) reEngage(s);
-    const fight = run ? 0 : 1;
+    const fight = run ? 0 : s.MegaMud_AutoCombat;
     s.detourCombat = fight;
     s.idleCombat = s.MegaMud_AutoCombat;
     s.MegaMud_AutoCombat = fight;

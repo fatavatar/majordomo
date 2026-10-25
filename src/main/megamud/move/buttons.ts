@@ -7,7 +7,7 @@
  * ours, when the engine reports its toggles changed.
  */
 import { goOnline, hangUp } from '../script/game';
-import { modeDefaults, reEngage } from '../script/modes';
+import { combatChosen, modeDefaults, reEngage } from '../script/modes';
 import { send, wake } from '../script/send';
 import { setState } from '../script/state';
 import { setActive } from '../script/timer';
@@ -27,12 +27,20 @@ export function goStop(s: Session): void {
   s.movementHalted = 0;
   s.walking = s.walking === 0 ? 1 : 0;
   modeDefaults(s);
+  /*
+   * `0x4c0980`: auto-combat back from a detour, which MegaMUD ends here. A
+   * walk to a destination is stepped with Go and Stop here, so the Stop
+   * puts the player's setting back and keeps the walk's own for its Go, and
+   * the arrival puts the player's back again (ours, 2026-10-25).
+   */
+  const toDestination = s.detours[0]!.room !== 0 && s.detourCombat !== -1;
   if (s.walking === 0) {
-    // `0x4c0980`: auto-combat back from a detour.
-    if (s.detourCombat !== -1) reEngage(s);
+    if (toDestination) s.MegaMud_AutoCombat = s.idleCombat;
+    else if (s.detourCombat !== -1) reEngage(s);
     setTask(s, Task.InGame);
     return;
   }
+  if (toDestination) s.MegaMud_AutoCombat = s.detourCombat;
   setTask(
     s,
     s.lost !== 0
@@ -114,8 +122,7 @@ function settle(s: Session): void {
 function autoCombat(s: Session): void {
   const was = s.MegaMud_AutoCombat;
   s.MegaMud_AutoCombat = was === 0 ? 1 : 0;
-  if (s.detourCombat === -1) s.idleCombat = s.MegaMud_AutoCombat;
-  else if (was === 0) s.idleCombat = 1;
+  combatChosen(s);
   if (s.inCombat !== 0) settle(s);
   if (s.MegaMud_AutoCombat !== 0) {
     s.runCount = 0;
