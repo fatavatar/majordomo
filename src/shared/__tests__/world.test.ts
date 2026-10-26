@@ -414,25 +414,33 @@ describe('forcibleBy', () => {
     ({ kind: 'key', raw: 'Key: 7', keyId: 7, ...extra }) as Requirement;
 
   it('opens a key-only lock to neither skill', () => {
-    expect(forcibleBy(lock({}), 500, 500)).toEqual({ pick: false, bash: false });
+    expect(forcibleBy(lock({}), 500, 500, 500)).toEqual({ pick: false, bash: false, knock: false });
   });
 
   it('opens a lock to the skills its bracket names, at or above the difficulty', () => {
     expect(forcibleBy(lock({ pickDifficulty: 157 }), 200, 500)).toEqual({
       pick: true,
-      bash: false
+      bash: false,
+      knock: false
     });
     const both = lock({ pickDifficulty: 301, bashDifficulty: 301 });
-    expect(forcibleBy(both, 100, 320)).toEqual({ pick: false, bash: true });
-    expect(forcibleBy(both, null, null)).toEqual({ pick: true, bash: true });
+    expect(forcibleBy(both, 100, 320)).toEqual({ pick: false, bash: true, knock: false });
+    expect(forcibleBy(both, null, null)).toEqual({ pick: true, bash: true, knock: false });
+  });
+
+  it('opens a lock picklocks opens to a knock as strong as the pick it asks', () => {
+    const lockPick = lock({ pickDifficulty: 157 });
+    expect(forcibleBy(lockPick, 0, 0, 157).knock).toBe(true);
+    expect(forcibleBy(lockPick, 0, 0, 120).knock).toBe(false);
   });
 
   it('leaves a plain door, and anything not a lock, to either', () => {
-    expect(forcibleBy({ kind: 'door', raw: 'Door' } as Requirement, 0, 0)).toEqual({
+    expect(forcibleBy({ kind: 'door', raw: 'Door' } as Requirement, 0, 0, 117)).toEqual({
       pick: true,
-      bash: true
+      bash: true,
+      knock: true
     });
-    expect(forcibleBy(null, 0, 0)).toEqual({ pick: true, bash: true });
+    expect(forcibleBy(null, 0, 0)).toEqual({ pick: true, bash: true, knock: false });
   });
 });
 

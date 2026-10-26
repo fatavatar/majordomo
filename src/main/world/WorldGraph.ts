@@ -268,6 +268,12 @@ export interface Traveller {
    */
   forcing?: { pick: boolean; bash: boolean };
   /**
+   * The lock-opening spell this character casts (`doorSpell`), and its
+   * power: a third way through a lock the realm lets picklocks open,
+   * graded against the same figure. Absent or null is none in the book.
+   */
+  knock?: { name: string; power: number } | null;
+  /**
    * The ways and places this traveller keeps out of (`movement.keepOutOf`,
    * todo 806): a word a way's script phrase says, or a room's name does.
    * `allowed` are the words this walk may cross anyway — ones the player chose
@@ -410,6 +416,15 @@ export interface Traveller {
    */
   leversOpening?: ReadonlySet<string>;
   /**
+   * The doors an errand's legs have walked through, as the far side's
+   * `leverKey`: open on the way back, since a door opens on both sides at
+   * once (`The door to the northwest just opened.`). The Obsidian Fortress's
+   * barracks doors read `Door [251 …]` from the hall and `[51 …]` from
+   * inside, and each way out was priced as forcing the door its own lever
+   * had just opened (2026-10-26). Never set by a caller.
+   */
+  opened?: ReadonlySet<string>;
+  /**
    * The exits (`leverKey`) whose lever detours are planned however far they
    * are, past `tuning.world.leverDetourCost` (2026-10-23): set by `route`
    * for the levers a plan was refused for, or walked into a wall for, so a
@@ -435,8 +450,16 @@ interface LeverErrand {
    * The ways walked: from the door's room to the first stop, from each stop
    * to the next, and from the last back to the door's room.
    */
-  legs: { cameFrom: Map<RoomId, { prev: RoomId; exit: WorldExit | PortalExit }>; cost: number }[];
+  legs: {
+    cameFrom: Map<RoomId, { prev: RoomId; exit: WorldExit | PortalExit }>;
+    cost: number;
+    /** The doors open on it (`Traveller.opened`), those the legs before it came through. */
+    opened?: ReadonlySet<string>;
+  }[];
 }
+
+/** A door with nothing said of its lock: what a door already open costs to step through. */
+const OPEN_DOOR: Requirement = { kind: 'door', raw: 'Door' };
 
 /**
  * A lever leg's Dijkstra out of one room, kept to be taken further by the
@@ -451,6 +474,11 @@ interface LegTree {
   limit: number;
   discount: number;
   best: Map<RoomId, number>;
+  /**
+   * How far each room is by the walk alone, which `limit` bounds: `best`
+   * less the lever errands of the doors on the way, each bounded on its own.
+   */
+  far: Map<RoomId, number>;
   cameFrom: Map<RoomId, { prev: RoomId; exit: WorldExit | PortalExit }>;
   settled: Set<RoomId>;
   open: MinHeap<RoomId>;
@@ -507,15 +535,19 @@ function leverKey(room: RoomId, direction: string): string {
 }
 
 /**
- * A plan with every step straight back the way it came taken out.
+ * A plan with every round that comes back where it was, doing nothing on the
+ * way, taken out.
  *
- * A search never makes one — every move costs something — so the only
- * doubling a plan holds is a lever errand's: planned from the door's room, its
- * first leg retraces the rooms the plan walked in by. The Grand Stair's lever
- * is off 7/148, which the plan crosses two rooms before the door, and without
+ * A search never makes one — every move costs something — so the only rounds
+ * a plan holds are a lever errand's: planned from the door's room, its first
+ * leg retraces the rooms the plan walked in by. The Grand Stair's lever is
+ * off 7/148, which the plan crosses two rooms before the door, and without
  * this the walk climbed to the door, came back down, fetched the lever and
- * climbed again. A step that pulls, uses an item or teleports is never taken
- * out: it does something besides move.
+ * climbed again. And a chain of them goes the long way round: the Obsidian
+ * Fortress's first lever is at its gates, the last door the ring's far side,
+ * and the plan walked the whole ring of halls back to the gates before
+ * pushing the button (2026-10-26). A step that pulls, uses an item or
+ * teleports is never taken out: it does something besides move.
  */
 function withoutDoubling(steps: readonly RouteStep[]): RouteStep[] {
   const plain = (step: RouteStep): boolean =>
@@ -525,18 +557,14 @@ function withoutDoubling(steps: readonly RouteStep[]): RouteStep[] {
     step.invoke === undefined;
   const kept: RouteStep[] = [];
   for (const step of steps) {
-    const last = kept.at(-1);
-    if (
-      last !== undefined &&
-      last.from === step.to &&
-      last.to === step.from &&
-      plain(last) &&
-      plain(step)
-    ) {
-      kept.pop();
-      continue;
-    }
     kept.push(step);
+    if (!plain(step)) continue;
+    // Back as far as the steps are plain, to the first room this one returns to.
+    let cut = -1;
+    for (let i = kept.length - 1; i >= 0 && plain(kept[i]!); i -= 1) {
+      if (kept[i]!.from === step.to) cut = i;
+    }
+    if (cut !== -1) kept.length = cut;
   }
   return kept;
 }
@@ -559,6 +587,9 @@ const NO_LEVERS: readonly RemoteLever[] = [];
 
 /** The same, for the realm that scatters nobody. */
 const EMPTY_COSTS: ReadonlyMap<number, number> = new Map();
+
+/** No doors open behind a leg (`Traveller.opened`). */
+const NO_DOORS: ReadonlySet<string> = new Set();
 
 /**
  * Nobody in particular, for the one solve that is about the realm rather than
@@ -725,8 +756,10 @@ function forcedDoorCost(requirement: Requirement, traveller: Traveller, base: nu
   // the wall, still walkable when nothing else leads there, never a price the
   // plan pays on the strength of a command nobody will send.
   const { pick, bash } = traveller.forcing ?? FORCING_BOTH;
-  if (pickDifficulty !== undefined)
+  if (pickDifficulty !== undefined) {
     costs.push(gradedCost(pick ? traveller.pickSkill : null, pickDifficulty, base));
+    if (traveller.knock) costs.push(gradedCost(traveller.knock.power, pickDifficulty, base));
+  }
   if (bashDifficulty !== undefined)
     costs.push(gradedCost(bash ? traveller.strength : null, bashDifficulty, base));
   return Math.min(...costs);
@@ -4595,13 +4628,23 @@ export class WorldGraph {
     const limit = lifted ? Infinity : tuning().world.leverDetourCost;
     /** Each leg walked once, whatever order asks for it, with what waits on it priced in. */
     const walked = new Map<string, { leg: LeverErrand['legs'][number]; price: number } | null>();
+    /** The traveller a leg is walked for with these doors open behind it (`Traveller.opened`). */
+    const openedFor = new Map<string, Traveller>();
     const legOf = (
       at: RoomId,
-      next: RoomId
+      next: RoomId,
+      opened: ReadonlySet<string> = NO_DOORS
     ): { leg: LeverErrand['legs'][number]; price: number } | null => {
-      const pair = `${at}>${next}`;
+      const doors = [...opened].sort().join(',');
+      const pair = `${at}>${next}|${doors}`;
       if (!walked.has(pair)) {
-        const leg = this.leverLeg(at, next, reach, limit);
+        let walker = reach;
+        if (opened.size > 0) {
+          walker = openedFor.get(doors) ?? { ...reach, opened };
+          openedFor.set(doors, walker);
+        }
+        const found = this.leverLeg(at, next, walker, limit);
+        const leg = found === null ? null : { ...found, ...(opened.size > 0 ? { opened } : {}) };
         walked.set(
           pair,
           leg === null
@@ -4617,12 +4660,16 @@ export class WorldGraph {
       const legs: LeverErrand['legs'] = [];
       let price = 0;
       let at = from;
+      // The doors come through on the way, open on the legs after.
+      let opened: ReadonlySet<string> = NO_DOORS;
       for (let i = 0; i <= visits.length; i += 1) {
         const next = visits[i] ?? from;
-        const walk = legOf(at, next);
+        const walk = legOf(at, next, opened);
         if (walk === null) return null;
         legs.push(walk.leg);
         price += walk.price;
+        const behind = this.doorsBehind(walk.leg.cameFrom, at, next);
+        if (behind.length > 0) opened = new Set([...opened, ...behind]);
         if (i < visits.length) {
           const pulled = rooms.get(next)!;
           const pull = this.pullPrice(pulled, traveller);
@@ -4795,7 +4842,7 @@ export class WorldGraph {
   private legOnward(tree: LegTree, id: RoomId): void {
     const here = this.rooms.get(id);
     if (here === undefined) return;
-    const { traveller, who, limit, discount, best, cameFrom, settled, open } = tree;
+    const { traveller, who, limit, discount, best, far, cameFrom, settled, open } = tree;
     const cost = best.get(id)!;
     for (const exit of [...here.exits, ...this.portalsFrom(id)]) {
       if (exit.requirement?.spellEffect === 'scatters') continue;
@@ -4808,8 +4855,17 @@ export class WorldGraph {
       const price = this.stepCost(id, exit, next, traveller, false, discount);
       if (price === null) continue;
       const tentative = cost + price;
-      if (tentative > limit || tentative >= (best.get(nextId) ?? Infinity)) continue;
+      /*
+       * Bounded by the walk, and a door's own lever errand by its own bound
+       * (2026-10-26): counted here as well, the Obsidian Fortress's chain of
+       * five levers, each behind the last one's door, was out of reach from
+       * the third, and every door after it was walked as a wall.
+       */
+      const errand = exit.requirement === null ? null : this.errandOn(id, exit, traveller);
+      const walk = far.get(id)! + price - (errand?.price ?? 0);
+      if (walk > limit || tentative >= (best.get(nextId) ?? Infinity)) continue;
       best.set(nextId, tentative);
+      far.set(nextId, walk);
       cameFrom.set(nextId, { prev: id, exit });
       open.push(tentative, nextId);
     }
@@ -4833,6 +4889,7 @@ export class WorldGraph {
         limit,
         discount: this.discountFor(traveller),
         best: new Map([[from, 0]]),
+        far: new Map([[from, 0]]),
         cameFrom: new Map(),
         settled: new Set(),
         open,
@@ -7351,6 +7408,45 @@ export class WorldGraph {
    * plain exit `edgePenalty` takes it for, since what opens it is a
    * restriction on it.
    */
+  /** A step's requirement, or a plain door where the walk has just come through it (`Traveller.opened`). */
+  private lockOf(
+    from: RoomId,
+    exit: WorldExit | PortalExit,
+    traveller: Traveller
+  ): Requirement | null {
+    return traveller.opened?.has(leverKey(from, exit.direction)) === true
+      ? OPEN_DOOR
+      : exit.requirement;
+  }
+
+  /**
+   * The far sides of the doors a leg walks through from `from` to `to`, as
+   * `leverKey`s: the exit back out of each room it enters by a door or a
+   * lock, to the room it came from.
+   */
+  private doorsBehind(
+    cameFrom: ReadonlyMap<RoomId, { prev: RoomId; exit: WorldExit | PortalExit }>,
+    from: RoomId,
+    to: RoomId
+  ): string[] {
+    const behind: string[] = [];
+    for (let at = to; at !== from;) {
+      const came = cameFrom.get(at);
+      if (came === undefined) break;
+      const kind = came.exit.requirement?.kind;
+      if (kind === 'door' || kind === 'key') {
+        const back = this.rooms
+          .get(at)
+          ?.exits.find((exit) => this.beyond(exit) === came.prev && exit.requirement !== null);
+        const backKind = back?.requirement?.kind;
+        if (back !== undefined && (backKind === 'door' || backKind === 'key'))
+          behind.push(leverKey(at, back.direction));
+      }
+      at = came.prev;
+    }
+    return behind;
+  }
+
   private leveredPassage(from: RoomId, exit: WorldExit | PortalExit): boolean {
     return (
       exit.requirement?.kind === 'hidden' &&
@@ -8691,7 +8787,9 @@ export class WorldGraph {
      * above the figure that makes a route report itself as crossing a wall.
      */
     const priced =
-      exit.requirement?.spellEffect === 'scatters' ? 0 : edgePenalty(exit.requirement, traveller);
+      exit.requirement?.spellEffect === 'scatters'
+        ? 0
+        : edgePenalty(this.lockOf(from, exit, traveller), traveller);
     // A gate held open is still the worst edge on the map, so the path this
     // finds is the one that was *nearly* walkable rather than a detour
     // through every locked door in the realm.
@@ -9175,6 +9273,9 @@ export class WorldGraph {
             ...(wall.bashDifficulty === undefined ? {} : { bashDifficulty: wall.bashDifficulty }),
             picklocks: traveller.pickSkill ?? null,
             strength: traveller.strength ?? null,
+            ...(wall.pickDifficulty === undefined || !traveller.knock
+              ? {}
+              : { knock: traveller.knock }),
             ...(off.length === 0 ? {} : { switchedOff: off }),
             ...(wall.keyId === undefined ? {} : { keyId: wall.keyId }),
             ...(item === undefined ? {} : { itemName: item.name }),
@@ -9369,7 +9470,7 @@ export class WorldGraph {
     traveller: Traveller
   ): LeverErrand | null {
     if (exit.direction === 'portal' || exit.requirement?.spellEffect === 'scatters') return null;
-    const priced = edgePenalty(exit.requirement, traveller);
+    const priced = edgePenalty(this.lockOf(from, exit, traveller), traveller);
     if (priced === null) return null;
     if (priced < tuning().world.wallCost && !leveredElsewhere(exit.requirement)) return null;
     if (this.leversHere(from, exit.direction).length > 0) return null;
@@ -9396,7 +9497,8 @@ export class WorldGraph {
     let saying: string[] = [];
     errand.legs.forEach((leg, i) => {
       const to = errand.stops[i]?.at ?? door;
-      const [first, ...rest] = this.buildRoute(leg.cameFrom, to, leg.cost, walker).steps;
+      const legWalker = leg.opened === undefined ? walker : { ...walker, opened: leg.opened };
+      const [first, ...rest] = this.buildRoute(leg.cameFrom, to, leg.cost, legWalker).steps;
       if (first !== undefined) {
         steps.push(
           saying.length > 0 ? { ...first, pull: { say: saying, opensName: beyond } } : first,

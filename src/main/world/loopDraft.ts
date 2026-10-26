@@ -295,6 +295,7 @@ function fingerprint(traveller: Traveller): string {
     traveller.level ?? '',
     traveller.strength ?? '',
     traveller.pickSkill ?? '',
+    traveller.knock?.power ?? '',
     // Which of those two the walker may spend: a switch flipped in settings
     // changes which doors a draft can walk through.
     traveller.forcing === undefined

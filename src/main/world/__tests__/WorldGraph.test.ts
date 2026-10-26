@@ -4333,6 +4333,41 @@ describe('what a door costs to force', () => {
     expect(route.walls?.[0]).toMatchObject({ kind: 'door', switchedOff: ['strength'] });
     expect(describeBlock(route.walls![0]!)).toContain('bashing doors is switched off');
   });
+
+  /* `wizard knock` opens what a lock-pick does, against the same figure. */
+  it('credits a lock-opening spell where the lock gives to picklocks, and only there', () => {
+    const knock = { name: 'wizard knock', power: 130 };
+    const keyed = (raw: string, pick?: number): Requirement => ({
+      kind: 'key',
+      raw,
+      keyId: 7,
+      ...(pick === undefined ? {} : { pickDifficulty: pick })
+    });
+    expect(edgePenalty(door(30), { pickSkill: 0, strength: 0, knock })!).toBeLessThan(100_000);
+    expect(edgePenalty(door(30), { pickSkill: 0, strength: 0 })!).toBeGreaterThan(100_000);
+    expect(
+      edgePenalty(keyed('Key: 7 [or 120 picklocks]', 120), { pickSkill: 0, knock })
+    ).toBeLessThan(100_000);
+    expect(
+      edgePenalty(keyed('Key: 7 [or 157 picklocks]', 157), { pickSkill: 0, knock })!
+    ).toBeGreaterThan(100_000);
+    // A lock only its key opens is not knocked open: the walk is told it needs the key.
+    expect(edgePenalty(keyed('Key: 7'), { packKnown: true, keys: [], knock })).toBeNull();
+  });
+
+  it('names the spell beside the skills at a lock it is too weak for', () => {
+    const graph = makeWorld([
+      { m: 1, r: 1, n: 'Start', x: { e: { m: 1, r: 2, i: 'Door [301 picklocks/strength]' } } },
+      { m: 1, r: 2, n: 'Vault', x: { w: { m: 1, r: 1 } } }
+    ]);
+    const route = graph.route('1/1', '1/2', {
+      strength: 90,
+      pickSkill: 0,
+      knock: { name: 'wizard knock', power: 130 }
+    });
+    expect(route.walls?.[0]).toMatchObject({ kind: 'door', knock: { power: 130 } });
+    expect(describeBlock(route.walls![0]!)).toContain('wizard knock at 130');
+  });
 });
 
 describe('an edge the live server refused', () => {
@@ -7979,5 +8014,83 @@ describe('what a spell ends, through what its script casts', () => {
         .map((spell) => [spell.name, spell.serves?.diseased])
     );
     expect(offered).toEqual({ bless: false, 'cure disease': true });
+  });
+});
+
+/*
+ * Reported 2026-10-26: through the Obsidian Fortress (MudRev 16/5003) the
+ * plan did not press the buttons and levers that open its doors. Each
+ * barracks door reads `Door [251 …]` from the hall and opens on a switch in
+ * the barracks before it; from inside it reads `[51 …]`. The way out was
+ * priced as forcing the door the switch had just opened, and the deeper
+ * switches' walks were counted against the nearer ones' bound, so from the
+ * third door on every one was walked as a wall.
+ */
+describe('a fortress of switches, each behind the door the last one opens', () => {
+  const shut = 'Door [251 picklocks/strength]';
+  const inner = 'Door [51 picklocks/strength]';
+  const fortress = (): WorldGraph =>
+    makeWorld([
+      {
+        m: 1,
+        r: 1,
+        n: 'Main Gates',
+        x: { e: { m: 1, r: 2 } },
+        cmd: [{ say: ['push button'], opens: { room: '1/3', direction: 's' } }]
+      },
+      { m: 1, r: 2, n: 'Hallway', x: { w: { m: 1, r: 1 }, e: { m: 1, r: 3 } } },
+      {
+        m: 1,
+        r: 3,
+        n: 'Hallway',
+        x: { w: { m: 1, r: 2 }, e: { m: 1, r: 4 }, s: { m: 1, r: 10, i: shut } }
+      },
+      {
+        m: 1,
+        r: 4,
+        n: 'Hallway',
+        x: { w: { m: 1, r: 3 }, e: { m: 1, r: 5 }, s: { m: 1, r: 20, i: shut } }
+      },
+      { m: 1, r: 5, n: 'Hallway', x: { w: { m: 1, r: 4 }, s: { m: 1, r: 30, i: shut } } },
+      { m: 1, r: 10, n: 'Barracks', x: { n: { m: 1, r: 3, i: inner }, e: { m: 1, r: 11 } } },
+      {
+        m: 1,
+        r: 11,
+        n: 'Barracks',
+        x: { w: { m: 1, r: 10 } },
+        cmd: [{ say: ['push stud'], opens: { room: '1/4', direction: 's' } }]
+      },
+      { m: 1, r: 20, n: 'Barracks', x: { n: { m: 1, r: 4, i: inner }, e: { m: 1, r: 21 } } },
+      {
+        m: 1,
+        r: 21,
+        n: 'Barracks',
+        x: { w: { m: 1, r: 20 } },
+        cmd: [{ say: ['push knob'], opens: { room: '1/5', direction: 's' } }]
+      },
+      { m: 1, r: 30, n: 'Stairway', x: { n: { m: 1, r: 5, i: inner } } }
+    ]);
+
+  it('presses each switch in turn and walks out of each barracks by the door it came in', () => {
+    const route = fortress().route('1/1', '1/30', { strength: 40, pickSkill: 0 });
+    expect(route.blocked).toBe(false);
+    expect(route.walls ?? []).toEqual([]);
+    expect(
+      route.steps.map((step) => (step.pull ? `[${step.pull.say.join()}] ` : '') + step.command)
+    ).toEqual([
+      '[push button] e',
+      'e',
+      's',
+      'e',
+      '[push stud] w',
+      'n',
+      'e',
+      's',
+      'e',
+      '[push knob] w',
+      'n',
+      'e',
+      's'
+    ]);
   });
 });

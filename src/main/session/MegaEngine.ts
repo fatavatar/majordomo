@@ -87,6 +87,7 @@ import type { MegaChoices, MegaNames } from '../../shared/ipc';
 import type { BotCommand, PlayerGrant } from '../../shared/remotes';
 import { IDLE_WALK, type WalkProgress } from '../../shared/walk';
 import { NO_LOOP, type LoopProgress } from '../../shared/loops';
+import { doorSpell } from '../../shared/spellcraft';
 import {
   asRoomReference,
   DIRECTIONS,
@@ -1943,16 +1944,27 @@ export class MegaEngine {
   private clearing: { key: string; levers: number; searches: number } | null = null;
 
   /** `SessionHost.forcible`: what the realm states of the exit `dir` from here. */
-  private forcible(dir: number): { pick: boolean; bash: boolean } {
+  private forcible(dir: number): { pick: boolean; bash: boolean; knock: string | null } {
     const here = this.placedHere();
     const way = here === null ? undefined : DIRECTIONS[dir];
     const exit = way && this.worldRoom(here!)?.exits.find((x) => x.direction === way);
     const s = this.s;
-    return forcibleBy(
+    const world = this.host.world();
+    const spell = world
+      ? doorSpell(
+          world.allSpells(),
+          (known) => s.spellbookNames.has(known.name.toLowerCase()),
+          s.Player_Level
+        )
+      : null;
+    const may = forcibleBy(
       exit?.requirement ?? null,
       s.Player_Picklocks > 0 ? s.Player_Picklocks : null,
-      s.Player_Strength > 0 ? s.Player_Strength : null
+      s.Player_Strength > 0 ? s.Player_Strength : null,
+      spell?.power ?? null
     );
+    const word = spell?.spell.short ?? null;
+    return { pick: may.pick, bash: may.bash, knock: may.knock && word ? word : null };
   }
 
   /**

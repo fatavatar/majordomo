@@ -8,6 +8,7 @@ import {
   castsOnOthers,
   castsOnSelf,
   cureGates,
+  doorSpell,
   holdsMovement,
   isShortIn,
   resolveSpell,
@@ -415,5 +416,32 @@ describe('spellServes drains', () => {
         linked
       ).drains
     ).toBe(false);
+  });
+});
+
+describe('doorSpell', () => {
+  // MudRev's `wizard knock` (750): `OpenDoor` at MinBase 100, a point a level, cap 250.
+  const knock: WorldSpell = {
+    id: 750,
+    name: 'wizard knock',
+    short: 'knok',
+    abilities: [
+      [161, 0],
+      [120, 104]
+    ],
+    power: [100, 100],
+    cap: 250,
+    minGrowth: [1, 1],
+    maxGrowth: [1, 1]
+  } as WorldSpell;
+  const bolt = { id: 9, name: 'lightning bolt', abilities: [[1, 0]] } as WorldSpell;
+
+  it('finds the book’s lock-opening spell at the caster’s level', () => {
+    expect(doorSpell([bolt, knock], () => true, 30)).toEqual({ spell: knock, power: 130 });
+    expect(doorSpell([bolt, knock], () => true, 300)?.power).toBe(350);
+  });
+
+  it('is none where the book does not hold one', () => {
+    expect(doorSpell([bolt, knock], (spell) => spell.id !== 750, 30)).toBeNull();
   });
 });

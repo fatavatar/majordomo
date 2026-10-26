@@ -27,8 +27,9 @@
  * the far side of a cycle.
  */
 
-import { HAZARD_ABILITY } from './abilities';
+import { HAZARD_ABILITY, OPEN_DOOR_ABILITY } from './abilities';
 import { commandOf } from './commands';
+import { scaledPower } from './menace';
 import type { WorldSpell } from './world';
 
 /**
@@ -384,6 +385,28 @@ export function cureGates(spells: ReadonlyArray<AbilityPairs | undefined>): Cure
  */
 export function holdsMovement(spell: Pick<WorldSpell, 'abilities'> | null | undefined): boolean {
   return (spell?.abilities ?? []).some(([id]) => id === HAZARD_ABILITY.holdPerson);
+}
+
+/**
+ * The strongest lock-opening spell (`OpenDoor`) among those `knows` says the
+ * character has, and its power at `level`: `wizard knock` is 100 plus a
+ * point a level, to a cap of 250 on MudRev. Read against the lock's picklocks
+ * figure, the lock-pick's own channel, by the router and the engine's door
+ * code alike. Null when the book holds none.
+ */
+export function doorSpell(
+  spells: readonly WorldSpell[],
+  knows: (spell: WorldSpell) => boolean,
+  level: number
+): { spell: WorldSpell; power: number } | null {
+  let best: { spell: WorldSpell; power: number } | null = null;
+  for (const spell of spells) {
+    const row = spell.abilities?.find(([id]) => id === OPEN_DOOR_ABILITY);
+    if (row === undefined || !knows(spell)) continue;
+    const power = row[1] !== 0 ? row[1] : scaledPower(spell, level)[0];
+    if (best === null || power > best.power) best = { spell, power };
+  }
+  return best;
 }
 
 /**
