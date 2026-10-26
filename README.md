@@ -18,6 +18,10 @@
 
 ![Majordomo playing a character on Paradigm — terminal in the centre, live combat, inventory, vitals, map and chat around it](main-screenshot.png)
 
+**New here?** [Getting started](docs/getting-started.md) takes you from
+installing to a character walking a loop, including bringing over your
+MegaMUD settings, databases and paths.
+
 ## What is this?
 
 Back in the days before the web, people dialled into bulletin board systems and

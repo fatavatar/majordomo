@@ -91,6 +91,9 @@ docs/*
 !/docs/codebase/
 !/docs/codebase/*.md
 
+# And the players' getting-started guide (2026-10-26), linked from the README.
+!/docs/getting-started.md
+
 # The one exception, and it is deliberate: the root README is the front page
 # of the repository, so it is the one piece of prose worth keeping under
 # version control. Only the root one -- `/README.md`, anchored. It used to be
