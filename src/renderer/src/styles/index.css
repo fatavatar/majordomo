@@ -2666,7 +2666,26 @@ kbd {
 .map-card > .body {
   display: flex;
   flex-direction: column;
+  gap: 4px;
   min-height: 0;
+}
+
+/* Follow, the finder and the levels: one row over the picture, the builder's tools'. */
+.map-tools {
+  align-items: center;
+  display: flex;
+  flex: 0 0 auto;
+  gap: 4px;
+}
+
+.map-tools > .field-hold {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.map-tools input {
+  min-width: 0;
+  width: 100%;
 }
 
 /*
@@ -3050,6 +3069,11 @@ kbd {
 
 .map-mark[data-reach='away'] {
   --mark: var(--map-away);
+}
+
+/* A mark that takes the eye where it leads (`MapPlan`'s `onGo`). */
+.map-mark[data-go] {
+  cursor: pointer;
 }
 
 .map-glyph {

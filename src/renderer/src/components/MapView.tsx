@@ -81,6 +81,7 @@ import {
   NO_PAN,
   radiusForView,
   wheelFactor,
+  wholeFloor,
   within,
   zoomedAt,
   zoomFloor,
@@ -109,11 +110,27 @@ export interface MapViewProps extends Omit<MapPlanProps, 'map' | 'viewport'> {
   empty: ReactNode;
   /** Which map this is, for the console line a failed fetch writes. */
   name: string;
+  /**
+   * `load` answers with everything there is to see (an area, `LocalMap.whole`)
+   * rather than what the window reaches: fetched once a centre rather than per
+   * zoom, and zoomed out as far as the whole of it fits.
+   */
+  whole?: boolean;
 }
 
 const NO_BOX: Box = { width: 0, height: 0 };
 
-function MapView({ centre, load, zoom, onZoom, onLoaded, empty, name, ...picture }: MapViewProps) {
+function MapView({
+  centre,
+  load,
+  zoom,
+  onZoom,
+  onLoaded,
+  empty,
+  name,
+  whole = false,
+  ...picture
+}: MapViewProps) {
   const box = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState<Box>(NO_BOX);
   const [map, setMap] = useState<LocalMap>(EMPTY_MAP);
@@ -131,8 +148,13 @@ function MapView({ centre, load, zoom, onZoom, onLoaded, empty, name, ...picture
   const extent = useMemo(() => extentOf(map.cells), [map]);
   const { mapRadiusMin, mapRadiusMax, mapRoomPixelsDense, mapRoomPixelsSparse } = tuning();
   const bounds = useMemo(
-    () => ({ min: zoomFloor(size, mapRoomPixelsDense, mapRadiusMax), max: mapRoomPixelsSparse }),
-    [size, mapRoomPixelsDense, mapRadiusMax, mapRoomPixelsSparse]
+    () => ({
+      min: whole
+        ? wholeFloor(size, mapRoomPixelsDense, extent)
+        : zoomFloor(size, mapRoomPixelsDense, mapRadiusMax),
+      max: mapRoomPixelsSparse
+    }),
+    [whole, size, extent, mapRoomPixelsDense, mapRadiusMax, mapRoomPixelsSparse]
   );
   /* What is drawn: the zoom inside its bounds, the pan inside the drawing. */
   const view = useMemo<View>(
@@ -166,7 +188,8 @@ function MapView({ centre, load, zoom, onZoom, onLoaded, empty, name, ...picture
     return () => observer.disconnect();
   }, []);
 
-  const radius = radiusForView(view, size, mapRadiusMin, mapRadiusMax);
+  // A whole area is one fetch whatever the zoom: the radius it is asked at is moot.
+  const radius = whole ? mapRadiusMax : radiusForView(view, size, mapRadiusMin, mapRadiusMax);
 
   /* The latest of what the fetch reports to, read from inside its promise. */
   const loaded = useRef(onLoaded);
@@ -257,7 +280,7 @@ function MapView({ centre, load, zoom, onZoom, onLoaded, empty, name, ...picture
   const onPointerDown = (event: ReactPointerEvent<HTMLDivElement>): void => {
     if (event.button !== 0 || !drawn) return;
     const target = event.target as Element;
-    if (target.closest('.map-room, .map-away') !== null) return;
+    if (target.closest('.map-room, .map-away, .map-mark[data-go]') !== null) return;
     // The caret stays in the console. Cancelling the press stops the
     // selection a drag would otherwise sweep; `keepFocus` on the mouse event
     // below stops the focus move, whichever of the two the browser hangs it

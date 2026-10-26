@@ -80,7 +80,7 @@ function tagsOf(
     if (requirement === undefined || requirement === null) continue;
     const direction = exit.direction as Direction;
     const to = placeOf(world, world.beyond(exit), placed);
-    const obstacle = describeObstacle(requirement, world, world.leversHere(here, direction));
+    const obstacle = describeObstacle(requirement, world, world.leversOf(here, direction));
     const command = requirement.commands?.[0]?.trim();
     if (command) {
       if (said.has(command)) continue;

@@ -2620,9 +2620,15 @@ cards:
     title: Link
     trafficEmpty: No negotiation yet.
   map:
-    badgeFoldedCount: '{roomCount} · {droppedCount} dropped'
-    badgeRoomCount: '{roomCount} rooms'
-    badgeTooltipDropped: Rooms the grid could not place
+    # An area at a time, like mudmaps (2026-10-26).
+    badgeAreaLevel: '{areaName} · {level}/{levels}'
+    badgeAreaTooltip: '{areaName}: {roomCount} rooms on this level, {areaRooms} in the area'
+    follow: Follow
+    followTooltip: Keep the map on your character. Off, it stays where you take it.
+    findAria: Find a room on the map
+    findPlaceholder: Find a room
+    levelUp: The level above
+    levelDown: The level below
     emptyNoLocation: Location not known yet.
     emptyNoWorldData: The world data has nothing for here.
     away:
@@ -3222,6 +3228,7 @@ cards:
   roomPeek:
     ariaLabel: What the realm knows about {roomName}
     answersHeading: Answers to
+    opens: 'opens the {direction} way out of {roomName} ({room})'
     exitsLabel: Ways out
     lightLabel: Light
     livesHereLabel: Lives here
@@ -3736,7 +3743,7 @@ map:
     hidden: Hidden
     hiddenLever: Hidden — “{phrase}” here
     hiddenLeverItem: Hidden — “{phrase}” here, needs {itemName}
-    hiddenLeverElsewhere: Hidden — “{phrase}”, in {room}
+    hiddenLeverElsewhere: Hidden — “{phrase}” in {roomName} ({room})
     hiddenSearchable: Hidden — search for it
     itemNumberFallback: '#{itemId}'
     itemUnknown: unknown
@@ -3748,6 +3755,8 @@ map:
     levelMinimum: Level {minLevel}+
     levelRange: Levels {minLevel}–{maxLevel}
     leverOrForced: '{opens} — or force it, {forcing}'
+    leverAway: '“{phrase}” in {roomName} ({room})'
+    leverAwayItem: '“{phrase}” in {roomName} ({room}), needs {itemName}'
     leverSay: '“{phrase}” here'
     leverSayItem: '“{phrase}” here, needs {itemName}'
     levelRestricted: Level restricted

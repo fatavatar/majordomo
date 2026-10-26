@@ -249,6 +249,12 @@ export interface MapPlanProps {
    */
   onAway?: (away: MapAway, from: RoomId) => void;
   /**
+   * Take the eye to the room a mark leads to: an arrow out of the area or to
+   * a room the corridors cannot reach, a way up or down (the Map card, when it
+   * is not following the character, 2026-10-26). Absent, they are marks.
+   */
+  onGo?: (to: RoomId) => void;
+  /**
    * The rooms the walk in progress has still to travel through, opening with
    * the one the character is standing in — `WalkProgress.path`.
    *
@@ -316,6 +322,7 @@ function MapPlan({
   onChoose,
   marks,
   onAway,
+  onGo,
   onPeek,
   onPeekEnd,
   path = NO_ROOMS,
@@ -384,6 +391,7 @@ function MapPlan({
         focus={focus}
         marks={marks}
         onAway={onAway}
+        onGo={onGo}
         found={found}
         onChoose={onChoose}
         onPeek={onPeek}
@@ -406,6 +414,7 @@ const Picture = memo(function Picture({
   found,
   marks,
   onAway,
+  onGo,
   onChoose,
   onPeek,
   onPeekEnd,
@@ -418,6 +427,7 @@ const Picture = memo(function Picture({
   found: ReadonlySet<RoomId>;
   marks: BuilderMarks | undefined;
   onAway: ((away: MapAway, from: RoomId) => void) | undefined;
+  onGo: ((to: RoomId) => void) | undefined;
   onChoose: ((map: number, room: number) => void) | undefined;
   onPeek: ((room: RoomId, at: SVGGElement, settled: boolean) => void) | undefined;
   onPeekEnd: (() => void) | undefined;
@@ -736,7 +746,7 @@ const Picture = memo(function Picture({
        */}
       <g className="map-marks">
         {drawing.nodes.flatMap((node) => [
-          ...(onAway === undefined ? awayMarks(node) : []),
+          ...(onAway === undefined ? awayMarks(node, onGo) : []),
           ...(node.arrows ?? []).map((arrow) => {
             const at = exitArrowAt(node.x, node.y, tuning().mapRoomRadius, arrow.direction);
             const where = arrow.local
@@ -746,8 +756,10 @@ const Picture = memo(function Picture({
               <g
                 className="map-mark"
                 data-gated={arrow.obstacle === undefined ? undefined : 'true'}
+                data-go={onGo === undefined ? undefined : 'true'}
                 data-reach={arrow.local ? 'local' : 'away'}
                 key={`${node.id}>${arrow.direction}`}
+                onClick={onGo === undefined ? undefined : () => onGo(arrow.to)}
               >
                 <title>
                   {arrow.obstacle === undefined ? where : `${where} — ${arrow.obstacle.detail}`}
@@ -787,7 +799,7 @@ const Picture = memo(function Picture({
  * its chevrons and portals, each saying where it goes, and a room the realm
  * gives only a direction for still wearing its chevron.
  */
-function awayMarks(node: MapNode): ReactNode[] {
+function awayMarks(node: MapNode, onGo?: (to: RoomId) => void): ReactNode[] {
   const r = tuning().mapRoomRadius;
   const slots = { up: 0, down: 0 };
   const ways = node.away ?? [];
@@ -803,8 +815,10 @@ function awayMarks(node: MapNode): ReactNode[] {
       <g
         className="map-mark"
         data-gated={away.obstacle === undefined ? undefined : 'true'}
+        data-go={onGo === undefined ? undefined : 'true'}
         data-reach="jump"
         key={`${node.id}:${away.kind}:${away.to}`}
+        onClick={onGo === undefined ? undefined : () => onGo(away.to)}
       >
         <title>{away.obstacle === undefined ? where : `${where} — ${away.obstacle.detail}`}</title>
         <Chevron up={up} x={at.x} y={at.y} />

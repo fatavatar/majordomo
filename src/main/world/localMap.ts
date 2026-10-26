@@ -24,7 +24,7 @@ import {
   type MapObstacle,
   type Vertical
 } from '../../shared/map';
-import { roomId, type Direction, type RoomId } from '../../shared/world';
+import { roomId, type Direction, type RoomId, type WorldRoom } from '../../shared/world';
 import { describeObstacle } from './obstacle';
 import type { WorldGraph } from './WorldGraph';
 import { tuning } from '../app/tuning';
@@ -47,6 +47,118 @@ function verticalOf(directions: Direction[]): Vertical {
   return null;
 }
 
+/**
+ * One room as the picture draws it, at its square: its kind, where each way
+ * out on the plane leads, what stands in each, and the ways off the plane.
+ * The neighbourhood here and the area maps (`areaMap`) both draw with it.
+ */
+export function mapCell(graph: WorldGraph, room: WorldRoom, gx: number, gy: number): MapCell {
+  const cell: MapCell = {
+    id: roomId(room.map, room.room),
+    name: room.name,
+    gx,
+    gy,
+    exits: room.exits.map((exit) => exit.direction),
+    vertical: verticalOf(room.exits.map((exit) => exit.direction)),
+    shop: room.shop !== undefined,
+    lair: room.lair !== undefined
+  };
+  // Where each way out on the plane leads, so the picture joins only the rooms it does.
+  const exitsTo: Partial<Record<Direction, RoomId>> = {};
+  for (const exit of room.exits) {
+    if (STEP[exit.direction as Direction] === null) continue;
+    if (exit.requirement?.spellEffect === 'scatters') continue;
+    exitsTo[exit.direction as Direction] = graph.beyond(exit);
+  }
+  if (Object.keys(exitsTo).length > 0) cell.exitsTo = exitsTo;
+  if ((room.npcId ?? 0) > 0) cell.npc = true;
+  if ((room.commands?.length ?? 0) > 0) cell.commands = true;
+  const place = room.shop === undefined ? undefined : graph.shop(room.shop)?.kind;
+  if (place !== undefined) cell.place = place;
+
+  // A door is a property of the passage, so it travels with the exit.
+  const blocked: Partial<Record<Direction, MapObstacle>> = {};
+  for (const exit of room.exits) {
+    if (!exit.requirement) continue;
+    // With the word that opens it, where the room holds one — the map is
+    // where a player decides whether a door is worth walking to.
+    blocked[exit.direction] = describeObstacle(
+      exit.requirement,
+      graph,
+      graph.leversOf(cell.id, exit.direction)
+    );
+  }
+  if (Object.keys(blocked).length > 0) cell.blocked = blocked;
+
+  /*
+   * The ways out the plane cannot draw, each with where it lands. Up and
+   * down come off the exit table; a teleport comes off the room's script,
+   * which is why the graph is asked for it separately. A destination the
+   * realm does not have is left out — a control leading to a room that
+   * does not exist is worse than none — and the command is the exit's own
+   * phrase where it states one, because the bare direction does not work
+   * on a `Text:` exit.
+   */
+  const away: MapAway[] = [];
+  for (const exit of room.exits) {
+    if (exit.direction !== 'u' && exit.direction !== 'd') continue;
+    // Where it goes, which for an exit whose cast teleports is the spell's
+    // room and not the table's — see `WorldGraph.beyond`.
+    const to = graph.beyond(exit);
+    const destination = graph.byId(to);
+    if (!destination) continue;
+    away.push({
+      kind: exit.direction === 'u' ? 'up' : 'down',
+      to,
+      name: destination.name,
+      command: exit.requirement?.commands?.[0] ?? exit.direction,
+      ...(exit.requirement
+        ? {
+            obstacle: describeObstacle(
+              exit.requirement,
+              graph,
+              graph.leversOf(cell.id, exit.direction)
+            )
+          }
+        : {})
+    });
+  }
+  for (const portal of graph.portalsFrom(cell.id)) {
+    const to = roomId(portal.map, portal.room);
+    const destination = graph.byId(to);
+    if (!destination) continue;
+    /*
+     * One mark a landing: the Grey Lord answers `code` and `teleport` both
+     * with 1/224 (2026-10-19), and two rings for one place crowd the room's
+     * side. The way with nothing in it is the one kept.
+     */
+    /*
+     * Guarded where it wants anything: a gate the router reads, or a
+     * condition it cannot (`unread`) — the barmaid's `adventure` is class 9
+     * and charm, which a ring with no bar said nothing about.
+     */
+    const guarded =
+      portal.requirement.kind !== 'text' || (portal.requirement.unread?.length ?? 0) > 0;
+    const held = away.findIndex((each) => each.kind === 'teleport' && each.to === to);
+    if (held !== -1) {
+      if (away[held]!.obstacle !== undefined && !guarded) away.splice(held, 1);
+      else continue;
+    }
+    away.push({
+      kind: 'teleport',
+      to,
+      name: destination.name,
+      command: portal.requirement.commands?.[0] ?? portal.requirement.raw,
+      // An unguarded portal's requirement is only its phrase — the command
+      // above says that — so it is an obstacle only when it wants something.
+      ...(guarded ? { obstacle: describeObstacle(portal.requirement, graph) } : {})
+    });
+  }
+  if (away.length > 0) cell.away = away;
+
+  return cell;
+}
+
 export function localMap(graph: WorldGraph, centre: RoomId, radius = DEFAULT_RADIUS): LocalMap {
   const start = graph.byId(centre);
   if (!start) return { centre: null, cells: [], dropped: 0 };
@@ -57,110 +169,8 @@ export function localMap(graph: WorldGraph, centre: RoomId, radius = DEFAULT_RAD
 
   const cellOf = (gx: number, gy: number): string => `${gx},${gy}`;
 
-  const push = (room: typeof start, gx: number, gy: number): MapCell => {
-    const cell: MapCell = {
-      id: roomId(room.map, room.room),
-      name: room.name,
-      gx,
-      gy,
-      exits: room.exits.map((exit) => exit.direction),
-      vertical: verticalOf(room.exits.map((exit) => exit.direction)),
-      shop: room.shop !== undefined,
-      lair: room.lair !== undefined
-    };
-    // Where each way out on the plane leads, so the picture joins only the rooms it does.
-    const exitsTo: Partial<Record<Direction, RoomId>> = {};
-    for (const exit of room.exits) {
-      if (STEP[exit.direction as Direction] === null) continue;
-      if (exit.requirement?.spellEffect === 'scatters') continue;
-      exitsTo[exit.direction as Direction] = graph.beyond(exit);
-    }
-    if (Object.keys(exitsTo).length > 0) cell.exitsTo = exitsTo;
-    if ((room.npcId ?? 0) > 0) cell.npc = true;
-    if ((room.commands?.length ?? 0) > 0) cell.commands = true;
-    const place = room.shop === undefined ? undefined : graph.shop(room.shop)?.kind;
-    if (place !== undefined) cell.place = place;
-
-    // A door is a property of the passage, so it travels with the exit.
-    const blocked: Partial<Record<Direction, MapObstacle>> = {};
-    for (const exit of room.exits) {
-      if (!exit.requirement) continue;
-      // With the word that opens it, where the room holds one — the map is
-      // where a player decides whether a door is worth walking to.
-      blocked[exit.direction] = describeObstacle(
-        exit.requirement,
-        graph,
-        graph.leversHere(cell.id, exit.direction)
-      );
-    }
-    if (Object.keys(blocked).length > 0) cell.blocked = blocked;
-
-    /*
-     * The ways out the plane cannot draw, each with where it lands. Up and
-     * down come off the exit table; a teleport comes off the room's script,
-     * which is why the graph is asked for it separately. A destination the
-     * realm does not have is left out — a control leading to a room that
-     * does not exist is worse than none — and the command is the exit's own
-     * phrase where it states one, because the bare direction does not work
-     * on a `Text:` exit.
-     */
-    const away: MapAway[] = [];
-    for (const exit of room.exits) {
-      if (exit.direction !== 'u' && exit.direction !== 'd') continue;
-      // Where it goes, which for an exit whose cast teleports is the spell's
-      // room and not the table's — see `WorldGraph.beyond`.
-      const to = graph.beyond(exit);
-      const destination = graph.byId(to);
-      if (!destination) continue;
-      away.push({
-        kind: exit.direction === 'u' ? 'up' : 'down',
-        to,
-        name: destination.name,
-        command: exit.requirement?.commands?.[0] ?? exit.direction,
-        ...(exit.requirement
-          ? {
-              obstacle: describeObstacle(
-                exit.requirement,
-                graph,
-                graph.leversHere(cell.id, exit.direction)
-              )
-            }
-          : {})
-      });
-    }
-    for (const portal of graph.portalsFrom(cell.id)) {
-      const to = roomId(portal.map, portal.room);
-      const destination = graph.byId(to);
-      if (!destination) continue;
-      /*
-       * One mark a landing: the Grey Lord answers `code` and `teleport` both
-       * with 1/224 (2026-10-19), and two rings for one place crowd the room's
-       * side. The way with nothing in it is the one kept.
-       */
-      /*
-       * Guarded where it wants anything: a gate the router reads, or a
-       * condition it cannot (`unread`) — the barmaid's `adventure` is class 9
-       * and charm, which a ring with no bar said nothing about.
-       */
-      const guarded =
-        portal.requirement.kind !== 'text' || (portal.requirement.unread?.length ?? 0) > 0;
-      const held = away.findIndex((each) => each.kind === 'teleport' && each.to === to);
-      if (held !== -1) {
-        if (away[held]!.obstacle !== undefined && !guarded) away.splice(held, 1);
-        else continue;
-      }
-      away.push({
-        kind: 'teleport',
-        to,
-        name: destination.name,
-        command: portal.requirement.commands?.[0] ?? portal.requirement.raw,
-        // An unguarded portal's requirement is only its phrase — the command
-        // above says that — so it is an obstacle only when it wants something.
-        ...(guarded ? { obstacle: describeObstacle(portal.requirement, graph) } : {})
-      });
-    }
-    if (away.length > 0) cell.away = away;
-
+  const push = (room: WorldRoom, gx: number, gy: number): MapCell => {
+    const cell = mapCell(graph, room, gx, gy);
     placed.set(cellOf(gx, gy), cell);
     return cell;
   };

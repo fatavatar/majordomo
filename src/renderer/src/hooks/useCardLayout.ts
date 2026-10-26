@@ -384,6 +384,12 @@ export interface CardSettings {
    */
   mapDensity?: number;
   /**
+   * Map card: whether the map keeps to the character (2026-10-26). Absent is
+   * following; off, the map stays where it was taken — searched, panned, a
+   * level or an arrow away — while the character walks.
+   */
+  mapFollow?: boolean;
+  /**
    * Room card, Finds face: how many days back the log is shown, `0` for all.
    *
    * A **window**, not a purge. The store is the record and keeps what it kept
@@ -794,6 +800,7 @@ function readSettings(value: unknown): Partial<Record<CardId, CardSettings>> {
       ...(typeof found['mapDensity'] === 'number' && Number.isFinite(found['mapDensity'])
         ? { mapDensity: Math.max(0, Math.min(1, found['mapDensity'])) }
         : {}),
+      ...(typeof found['mapFollow'] === 'boolean' ? { mapFollow: found['mapFollow'] } : {}),
       ...(isCount(found['findDays']) ? { findDays: found['findDays'] } : {}),
       ...(isStatsGraph(found['statsGraph']) ? { statsGraph: found['statsGraph'] } : {})
     };

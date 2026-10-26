@@ -47,6 +47,7 @@
  */
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
+import { AreaBadge, LevelKeys } from './AreaControls';
 import BentoCard, { type CardChrome } from './BentoCard';
 import ClearField from './ClearField';
 import Icon from './Icon';
@@ -83,7 +84,7 @@ import type { CharacterState } from '@shared/character';
 import { LOOP_LIMITS } from '@shared/drafts';
 import { roomsWithFinds, type Find } from '@shared/finds';
 import type { Loop, LoopAddress, LoopScope } from '@shared/loops';
-import { EMPTY_MAP, type LocalMap, type MapAway } from '@shared/map';
+import { EMPTY_MAP, type AreaMap, type LocalMap, type MapAway } from '@shared/map';
 import { errorMessage } from '@shared/values';
 import {
   describeBlock,
@@ -130,7 +131,12 @@ export interface LoopBuilderCardProps extends CardChrome {
   /** The realm it plays on, for the other chip; empty when unknown, and the chip is then not drawn. */
   realmName: string;
   search(query: string): Promise<WorldRoom[]>;
-  loadMap(map: number, room: number, radius: number): Promise<LocalMap>;
+  /**
+   * One level of the area a room is in, laid out whole — the Map card's own
+   * (2026-10-26), so a lap is drawn over all of the area rather than what a
+   * radius reaches. The room's own level where `level` is null.
+   */
+  loadArea(map: number, room: number, level: number | null): Promise<AreaMap | null>;
   /**
    * The rooms this realm's find log names, marked with a dot — the Map card's
    * own prop, taken in the same shape and drawn for the reason it is drawn
@@ -168,7 +174,7 @@ function LoopBuilderCard({
   onPeek,
   onPeekEnd,
   search,
-  loadMap,
+  loadArea,
   draft,
   save,
   seed = null,
@@ -178,10 +184,24 @@ function LoopBuilderCard({
   const foundRooms = useMemo(() => [...roomsWithFinds(finds)], [finds]);
   const [history, setHistory] = useState<History<RoomId[]>>(() => begin([]));
   const picks = history.present;
-  const [centre, setCentre] = useState<RoomId | null>(null);
+  /** Where the eye is: a room, and the level of its area asked for (null is the room's own). */
+  const [eye, setEye] = useState<{ room: RoomId; level: number | null } | null>(null);
+  const centre = eye?.room ?? null;
+  const setCentre = useCallback((room: RoomId): void => setEye({ room, level: null }), []);
+  const atLevel = useCallback((room: RoomId, level: number): void => setEye({ room, level }), []);
   /* The densest end of the Map card's slider, which is where the builder opens. */
   const [zoom, setZoom] = useState(() => tuning().mapRoomPixelsDense);
-  const [map, setMap] = useState<LocalMap>(EMPTY_MAP);
+  /** The level last drawn, with its area: the badge, and the levels above and below. */
+  const [shown, setShown] = useState<AreaMap | null>(null);
+  const level = eye?.level ?? null;
+  const loadLevel = useCallback(
+    (map: number, room: number): Promise<LocalMap> =>
+      loadArea(map, room, level).then((found) => found ?? EMPTY_MAP),
+    [loadArea, level]
+  );
+  const onLoaded = useCallback((next: LocalMap): void => {
+    setShown(next.whole === true ? (next as AreaMap) : null);
+  }, []);
   const [plan, setPlan] = useState<LoopDraft>(EMPTY_LOOP_DRAFT);
   const [planFailed, setPlanFailed] = useState<string | null>(null);
   const [query, setQuery] = useState('');
@@ -495,12 +515,7 @@ function LoopBuilderCard({
       .catch((error) => setStatus({ text: errorMessage(error), failed: true }));
   };
 
-  const badge =
-    map.cells.length === 0 ? null : (
-      <span className="chip off">
-        {t('cards.map.badgeRoomCount', { roomCount: map.cells.length })}
-      </span>
-    );
+  const badge = <AreaBadge shown={shown} />;
 
   return (
     <BentoCard
@@ -541,6 +556,7 @@ function LoopBuilderCard({
         >
           <Icon name="crosshair" />
         </button>
+        <LevelKeys onLevel={atLevel} shown={shown} />
         <button
           aria-label={t('cards.builder.undo')}
           className="quiet builder-key"
@@ -609,16 +625,18 @@ function LoopBuilderCard({
           empty={empty}
           finds={foundRooms}
           focus="centre"
-          load={loadMap}
+          load={loadLevel}
           marks={marks}
           name="builder"
           onAway={takeAway}
           onChoose={choose}
-          onLoaded={setMap}
+          onGo={setCentre}
+          onLoaded={onLoaded}
           onPeek={onPeek ?? undefined}
           onPeekEnd={onPeekEnd ?? undefined}
           onZoom={setZoom}
           path={plan.path}
+          whole
           you={here}
           zoom={zoom}
         />

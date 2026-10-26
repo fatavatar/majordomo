@@ -103,21 +103,69 @@ function leverSays(levers: readonly RemoteLever[], graph: WorldGraph): string | 
   });
 }
 
+/** The levers that open a step: said where it stands, or walked to (`WorldGraph.leversOf`). */
+export interface StepLevers {
+  here: readonly RemoteLever[];
+  away: readonly RemoteLever[];
+}
+
+export const NO_STEP_LEVERS: StepLevers = { here: [], away: [] };
+
+/**
+ * The lever in another room that opens a door, with that room's name and
+ * number: a place to walk to, which mudmaps' room card always said and the
+ * map did not — the Obsidian Fortress's barracks doors open on a button at the
+ * gates (2026-10-26).
+ */
+function leverAway(levers: readonly RemoteLever[], graph: WorldGraph): string | null {
+  const lever = levers[0];
+  if (lever === undefined) return null;
+  const at = {
+    phrase: lever.say,
+    roomName: lever.roomName || (graph.byId(lever.at)?.name ?? lever.at),
+    room: lever.at
+  };
+  if (lever.item === undefined) return t('map.obstacle.leverAway', at);
+  return t('map.obstacle.leverAwayItem', {
+    ...at,
+    itemName: graph.item(lever.item)?.name ?? t('map.obstacle.itemUnknown')
+  });
+}
+
+/**
+ * A hidden exit's lever in another room, with that room's name and number, or
+ * null: *the lever for this is in 1/1339* is a place to walk to, where
+ * *hidden* is a shrug. The router plans the detour (`WorldGraph.leverErrand`),
+ * so this is what a person reads either way.
+ */
+function leverElsewhere(requirement: Requirement, graph: WorldGraph): string | null {
+  const act = requirement.actions?.find((each) => each.at !== undefined);
+  if (act === undefined) return null;
+  const room = roomId(act.at!.map, act.at!.room);
+  return t('map.obstacle.hiddenLeverElsewhere', {
+    phrase: act.say[0]!,
+    roomName: graph.byId(room)?.name ?? room,
+    room
+  });
+}
+
 export function describeObstacle(
   requirement: Requirement,
   graph: WorldGraph,
   /**
-   * The levers that open this step without leaving the room
-   * (`WorldGraph.leversHere`), for the callers that know which step this is.
-   * Empty for the map's own cells and anything else asking about a
+   * The levers that open this step (`WorldGraph.leversOf`), for the callers
+   * that know which step this is. None for anything asking about a
    * requirement rather than about a move.
    */
-  here: readonly RemoteLever[] = []
+  levers: StepLevers = NO_STEP_LEVERS
 ): MapObstacle {
   const kind = requirement.kind;
   const force = forcing(requirement);
   const window = levels(requirement);
-  const opens = kind === 'door' || kind === 'key' ? leverSays(here, graph) : null;
+  const opens =
+    kind === 'door' || kind === 'key'
+      ? (leverSays(levers.here, graph) ?? leverAway(levers.away, graph))
+      : null;
 
   /*
    * The chip. Short enough to sit beside a room name on a route step, and
@@ -177,7 +225,8 @@ export function describeObstacle(
           }
           return t('map.obstacle.hiddenLever', { phrase: act.say[0]! });
         }
-        return t('map.obstacle.hidden');
+        // A lever in another room is a place to walk to: said on the chip, as a door's is.
+        return leverElsewhere(requirement, graph) ?? t('map.obstacle.hidden');
       case 'cast':
       case 'spell': {
         /*
@@ -262,23 +311,6 @@ export function describeObstacle(
         return window === null
           ? t('map.obstacle.levelRestricted')
           : t('map.obstacle.levelDetail', { window });
-      /*
-       * A lever somewhere else is the one case with a real second half, and it
-       * is the half somebody acts on: *the lever for this is in 1/1339* is a
-       * place to walk to, where *hidden* is a shrug. The router plans that
-       * detour where the lever is near (`WorldGraph.leverErrand`) and
-       * the walk's lever detour (`RouteStep.pull`) takes it where it is not, so this is what a
-       * person reads either way, and it is why the exit is not written off
-       * on a refusal.
-       */
-      case 'hidden': {
-        const away = requirement.actions?.filter((act) => act.at !== undefined) ?? [];
-        if (away.length === 0) return label;
-        return t('map.obstacle.hiddenLeverElsewhere', {
-          phrase: away[0]!.say[0]!,
-          room: `${away[0]!.at!.map}/${away[0]!.at!.room}`
-        });
-      }
       case 'cast':
       case 'spell': {
         // The chip has room for the fact; the line has room for what it means

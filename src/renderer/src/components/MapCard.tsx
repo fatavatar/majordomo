@@ -1,28 +1,38 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
+import { AreaBadge, LevelKeys } from './AreaControls';
 import BentoCard, { type CardChrome } from './BentoCard';
+import ClearField from './ClearField';
 import MapView from './MapView';
+import { useListNavigation } from '../hooks/useListNavigation';
+import { keepFocus } from '../lib/focus';
 import { t } from '../lib/i18n';
 import { densityFor } from '../lib/mapView';
 import { tuning } from '../lib/tuning';
-import { DEFAULT_MAP_DENSITY, EMPTY_MAP, roomPixelsFor, type LocalMap } from '@shared/map';
+import {
+  DEFAULT_MAP_DENSITY,
+  EMPTY_MAP,
+  roomPixelsFor,
+  type AreaMap,
+  type LocalMap
+} from '@shared/map';
 import type { CharacterState } from '@shared/character';
 import type { LoopProgress } from '@shared/loops';
 import type { WalkProgress } from '@shared/walk';
-import { roomId, type RoomId } from '@shared/world';
+import { roomId, type RoomId, type WorldRoom } from '@shared/world';
 import { roomsWithFinds, type Find } from '@shared/finds';
 
 export interface MapCardProps extends CardChrome {
   character: CharacterState;
   /**
-   * The neighbourhood around a room, out to `radius` rooms.
-   *
-   * The radius is the view's, measured from its own laid-out box and the zoom
-   * it is at — see `radiusForView`. It used to be main's default of five
-   * whatever the card was drawn in, so a floating map dragged bigger drew the
-   * same rooms larger.
+   * One level of the area a room is in, laid out whole (mudmaps' areas,
+   * 2026-10-26): the room's own level where `level` is null. The map draws
+   * the whole of it, so it has no draw distance; the zoom goes out as far as
+   * the level fits.
    */
-  load(map: number, room: number, radius: number): Promise<LocalMap>;
+  load(map: number, room: number, level: number | null): Promise<AreaMap | null>;
+  /** Rooms by name or `map/room`, for the finder. */
+  search(query: string): Promise<WorldRoom[]>;
   /**
    * Where this character is headed, so the map can draw it.
    *
@@ -72,11 +82,17 @@ export interface MapCardProps extends CardChrome {
  *
  * Looked at through `MapView`, which every map in the client shares: the wheel
  * zooms about the pointer, a drag on the background pans, a pointer at rest
- * on a room opens what the realm knows about it, the neighbourhood fetched is
- * whatever the window can see. The legend is the Explorer's Rooms map's
- * alone (2026-10-19). What is this card's is the centre — always where the character is, so every
- * step recentres the picture — and the zoom, which it keeps as its density
- * setting.
+ * on a room opens what the realm knows about it. The legend is the Explorer's
+ * Rooms map's alone (2026-10-19). What is this card's is the centre and the
+ * zoom, which it keeps as its density setting.
+ *
+ * **An area at a time, like mudmaps** (2026-10-26): the whole level of the
+ * area the eye is in, laid out once for the area (`areaMap`), rather than a
+ * radius around the character. **Follow** keeps the eye on the character, on
+ * its level, recentring at every step; off, the eye stays where it was taken —
+ * a room found, a level up or down, an arrow out of the area followed — while
+ * the character walks, and the character is ringed wherever it shows. Taking
+ * the eye anywhere turns Follow off; a room's panel walks there either way.
  */
 function MapCard({
   character,
@@ -86,10 +102,12 @@ function MapCard({
   onBuild,
   onPeek,
   onPeekEnd,
+  search,
   walk,
   ...chrome
 }: MapCardProps) {
-  const [map, setMap] = useState<LocalMap>(EMPTY_MAP);
+  /** The level last drawn, with its area: the badge, and the levels above and below. */
+  const [shown, setShown] = useState<AreaMap | null>(null);
   /*
    * The rooms alone, memoised on the log: the picture asks per drawn room, and
    * a fresh array every render would reconcile two hundred rooms for a value
@@ -98,6 +116,86 @@ function MapCard({
   const foundRooms = useMemo(() => [...roomsWithFinds(finds)], [finds]);
   const { map: area, number } = character.room;
   const here = area === null || number === null ? null : roomId(area, number);
+
+  /*
+   * Follow, held here and written to the card's settings so it outlives a
+   * reload: absent is following, the shipped answer, so only *off* is stored.
+   */
+  const stored = chrome.settings?.value.mapFollow !== false;
+  const [following, setFollowing] = useState(stored);
+  useEffect(() => setFollowing(stored), [stored]);
+  /** Where the eye is while not following: a room, and the level asked for (null is its own). */
+  const [eye, setEye] = useState<{ room: RoomId; level: number | null } | null>(null);
+  const setFollow = useCallback(
+    (on: boolean): void => {
+      setFollowing(on);
+      if (on) setEye(null);
+      chrome.settings?.onChange({ mapFollow: on ? undefined : false });
+    },
+    [chrome.settings]
+  );
+  /** Takes the eye to a room, or another level of the area drawn, and stops following. */
+  const lookAt = useCallback(
+    (room: RoomId, level: number | null): void => {
+      setEye({ room, level });
+      if (following) setFollow(false);
+    },
+    [following, setFollow]
+  );
+  const looking = !following && eye !== null;
+  const centre = looking ? eye.room : here;
+  const level = looking ? eye.level : null;
+  const loadLevel = useCallback(
+    (map: number, room: number): Promise<LocalMap> =>
+      load(map, room, level).then((found) => found ?? EMPTY_MAP),
+    [load, level]
+  );
+  const onLoaded = useCallback((next: LocalMap): void => {
+    setShown(next.whole === true ? (next as AreaMap) : null);
+  }, []);
+  const onGo = useCallback((to: RoomId): void => lookAt(to, null), [lookAt]);
+
+  /* The finder, debounced like the builder's and searching the same index. */
+  const [query, setQuery] = useState('');
+  const [matches, setMatches] = useState<WorldRoom[]>([]);
+  useEffect(() => {
+    if (query.trim().length < tuning().roomSearchMinChars) {
+      setMatches([]);
+      return;
+    }
+    let live = true;
+    const timer = window.setTimeout(() => {
+      void search(query)
+        .then((found) => {
+          if (live) setMatches(found);
+        })
+        .catch(() => {
+          if (live) setMatches([]);
+        });
+    }, tuning().roomSearchDebounceMs);
+    return () => {
+      live = false;
+      window.clearTimeout(timer);
+    };
+  }, [query, search]);
+  const found = useCallback(
+    (room: WorldRoom): void => {
+      lookAt(roomId(room.map, room.room), null);
+      setQuery('');
+      setMatches([]);
+      chrome.returnFocus?.();
+    },
+    [lookAt, chrome]
+  );
+  const list = useListNavigation<WorldRoom>({
+    items: matches,
+    onChoose: found,
+    onCancel: () => {
+      setQuery('');
+      setMatches([]);
+      chrome.returnFocus?.();
+    }
+  });
   const { mapRoomPixelsSparse: sparse, mapRoomPixelsDense: dense } = tuning();
   /*
    * How much of the realm to fit on the card, from the gear in its own action
@@ -173,20 +271,6 @@ function MapCard({
     [area]
   );
 
-  const badge =
-    map.dropped > 0 ? (
-      <span className="chip warn" title={t('cards.map.badgeTooltipDropped')}>
-        {t('cards.map.badgeFoldedCount', {
-          roomCount: map.cells.length,
-          droppedCount: map.dropped
-        })}
-      </span>
-    ) : (
-      <span className="chip off">
-        {t('cards.map.badgeRoomCount', { roomCount: map.cells.length })}
-      </span>
-    );
-
   return (
     <BentoCard
       {...chrome}
@@ -195,7 +279,7 @@ function MapCard({
           ? undefined
           : [{ id: 'build', label: t('cards.map.buildAction'), icon: 'flag', run: onBuild }]
       }
-      badge={badge}
+      badge={<AreaBadge shown={shown} />}
       className="map-card"
       scroll
       title={t('cards.map.title')}
@@ -212,18 +296,70 @@ function MapCard({
        * separate, deliberate action — a bare map click is the easiest possible
        * way to send a character somewhere by accident.
        */}
+      <div className="map-tools">
+        <button
+          aria-pressed={following}
+          className="chip toggle"
+          data-level="ok"
+          data-on={following ? 'true' : 'false'}
+          disabled={here === null}
+          onClick={() => setFollow(!following)}
+          onMouseDown={keepFocus}
+          title={t('cards.map.followTooltip')}
+          type="button"
+        >
+          {t('cards.map.follow')}
+        </button>
+        <ClearField label={t('cards.map.findAria')} onClear={() => setQuery('')} query={query}>
+          <input
+            aria-label={t('cards.map.findAria')}
+            onChange={(event) => setQuery(event.target.value)}
+            onKeyDown={list.onKeyDown}
+            placeholder={t('cards.map.findPlaceholder')}
+            spellCheck={false}
+            value={query}
+          />
+        </ClearField>
+        <LevelKeys onLevel={lookAt} shown={shown} />
+      </div>
+      {matches.length > 0 && (
+        <ul className="route-matches builder-matches" ref={list.listRef}>
+          {matches.map((room, index) => (
+            <li
+              data-active={list.isActive(index) ? 'true' : 'false'}
+              key={`${room.map}/${room.room}`}
+              onMouseEnter={() => list.point(index)}
+            >
+              <button
+                onClick={() => found(room)}
+                onMouseDown={(event) => event.preventDefault()}
+                type="button"
+              >
+                <span>{room.name}</span>
+                <span className="hint">
+                  {room.map}/{room.room}
+                </span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
       <MapView
-        centre={here}
+        centre={centre}
         empty={empty}
-        load={load}
+        finds={foundRooms}
+        focus={looking ? 'centre' : 'here'}
+        load={loadLevel}
         name="map"
-        onLoaded={setMap}
+        onGo={onGo}
+        onLoaded={onLoaded}
         onPeek={onPeek ?? undefined}
         onPeekEnd={onPeekEnd ?? undefined}
         onZoom={onZoom}
-        finds={foundRooms}
         path={walk.path}
         stops={loop.remainingStops}
+        whole
+        you={here}
         zoom={zoom}
       />
     </BentoCard>

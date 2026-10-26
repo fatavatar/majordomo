@@ -106,9 +106,41 @@ export interface LocalMap {
    * picture that is wrong.
    */
   dropped: number;
+  /**
+   * The picture holds the whole of what it draws (an `AreaMap`), so an exit to
+   * a room not on it is a way out of it rather than past its edge.
+   */
+  whole?: boolean;
 }
 
 export const EMPTY_MAP: LocalMap = { centre: null, cells: [], dropped: 0 };
+
+/**
+ * One level of an area, laid out whole (`areaMap`, mudmaps' layout,
+ * 2026-10-26): every room of the area on that level, the centre at `(0, 0)`.
+ * The picture is the area's, not a radius's, so an exit to a room it does not
+ * hold leads out of the area or to another level, and is drawn as an arrow.
+ */
+export interface AreaMap extends LocalMap {
+  whole: true;
+  area: { id: number; name: string; rooms: number };
+  /** The level drawn, in the area's own frame: higher is up. */
+  level: number;
+  /** Every level the area has, the top first, with how many rooms it holds. */
+  levels: Array<{ level: number; rooms: number }>;
+}
+
+/** The level above (`-1`) or below (`1`) the one drawn, or null at the end or with nothing drawn. */
+export function levelBeside(map: AreaMap | null, by: -1 | 1): number | null {
+  if (map === null) return null;
+  const at = map.levels.findIndex((each) => each.level === map.level);
+  return map.levels[at + by]?.level ?? null;
+}
+
+/** Which level is drawn, counted from the bottom: the ground floor of a tower is 1. */
+export function levelNumber(map: AreaMap): number {
+  return map.levels.length - map.levels.findIndex((each) => each.level === map.level);
+}
 
 /** How a direction moves the pen, in cells. */
 export const STEP: Record<Direction, { dx: number; dy: number } | null> = {
@@ -311,11 +343,12 @@ export function layoutMap(map: LocalMap): MapDrawing {
        * this picture. An exit into an empty square to a room the picture
        * does not hold is only past its edge, and stays undrawn, as it was:
        * an arrow there called every exit at the rim a way somewhere else.
+       * A whole area has no rim: such a room is out of it, and is an arrow.
        */
       const elsewhere =
         reaches !== undefined &&
         neighbour?.id !== reaches &&
-        (neighbour !== undefined || shown.has(reaches));
+        (neighbour !== undefined || shown.has(reaches) || map.whole === true);
       if (elsewhere) {
         const obstacle = cell.blocked?.[direction as Direction];
         const list = arrows.get(cell.id) ?? [];

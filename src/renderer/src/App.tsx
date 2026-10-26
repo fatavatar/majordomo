@@ -219,7 +219,7 @@ import {
   type WorldNames,
   type WorldRoom
 } from '@shared/world';
-import type { LocalMap } from '@shared/map';
+import type { AreaMap } from '@shared/map';
 import {
   NO_SESSION,
   type AttachSnapshot,
@@ -503,7 +503,10 @@ interface CardContext {
   /** A textblock's panel beside what named it; the shown character's only. */
   inspectTextblock: ((n: number, anchor: HTMLElement) => void) | null;
   loadWearer(): ReturnType<IpcApi['wearer']>;
-  loadMap(map: number, room: number, radius?: number): ReturnType<IpcApi['localMap']>;
+  /** One level of the area a room is in, on this character's realm (the Map card). */
+  loadArea(map: number, room: number, level: number | null): ReturnType<IpcApi['areaMap']>;
+  /** Rooms by name or `map/room`, on this character's realm (the Map card's search). */
+  searchRooms(query: string): ReturnType<IpcApi['searchRooms']>;
   lookupName(query: string): ReturnType<IpcApi['lookup']>;
   /** Null for a character not shown: the route panel is the shown one's. */
   chooseOnMap: ((map: number, room: number) => void) | null;
@@ -620,7 +623,7 @@ interface BuilderApi {
   characterName: string;
   realmName: string;
   search(query: string): Promise<WorldRoom[]>;
-  loadMap(map: number, room: number, radius: number): Promise<LocalMap>;
+  loadArea(map: number, room: number, level: number | null): Promise<AreaMap | null>;
   draft(rooms: RoomId[], keep: RoomId[]): Promise<LoopDraft>;
   save(
     loop: Loop,
@@ -646,7 +649,8 @@ interface AddressedActions {
   forgetFind(find: Pick<Find, 'room' | 'name'>): void;
   gear(action: GearAction, item?: string): void;
   loadWearer(): ReturnType<IpcApi['wearer']>;
-  loadMap(map: number, room: number, radius?: number): ReturnType<IpcApi['localMap']>;
+  loadArea(map: number, room: number, level: number | null): ReturnType<IpcApi['areaMap']>;
+  searchRooms(query: string): ReturnType<IpcApi['searchRooms']>;
   lookupName(query: string): ReturnType<IpcApi['lookup']>;
   loadQuests(): ReturnType<IpcApi['questBook']>;
   loadErrand(block: number): ReturnType<IpcApi['questErrand']>;
@@ -778,15 +782,16 @@ function cardElement(id: CardId, ctx: CardContext): ReactNode {
         />
       );
     case 'map':
-      // A map of nowhere states nothing.
-      return character.room.map === null ? null : (
+      // Drawn before the character is placed too: the finder browses the realm.
+      return (
         <MapCard
           {...chrome}
           character={character}
           // The realm's find log, not this character's: a room a second
           // character searched is marked here too.
           finds={view.finds}
-          load={ctx.loadMap}
+          load={ctx.loadArea}
+          search={ctx.searchRooms}
           // This character's own route and lap, drawn over its own
           // neighbourhood — a pinned float belongs to somebody else.
           loop={view.loop}
@@ -816,7 +821,7 @@ function cardElement(id: CardId, ctx: CardContext): ReactNode {
           // The realm's find log, as the Map card takes it: where searching has
           // turned something up is a reason to route a lap through a room.
           finds={view.finds}
-          loadMap={ctx.builder.loadMap}
+          loadArea={ctx.builder.loadArea}
           /* The same quick view every other map has — the same panel, the same
              button — so the lair a room is worth picking for says what is in
              it, and the way there is offered where it is offered everywhere. */
@@ -3471,6 +3476,10 @@ export default function App() {
     (map: number, room: number, radius?: number) => api.localMap(session, map, room, radius),
     [api, session]
   );
+  const loadArea = useCallback(
+    (map: number, room: number, level: number | null) => api.areaMap(session, map, room, level),
+    [api, session]
+  );
   /**
    * The realm's whole answer about one room, for the quick view.
    *
@@ -4278,7 +4287,7 @@ export default function App() {
       characterName: builderCharacterName,
       realmName: builderRealmName,
       search: searchRooms,
-      loadMap,
+      loadArea,
       draft: draftLoop,
       save: saveDraftLoop,
       seed: builderSeed
@@ -4287,7 +4296,7 @@ export default function App() {
       builderCharacterName,
       builderRealmName,
       searchRooms,
-      loadMap,
+      loadArea,
       draftLoop,
       saveDraftLoop,
       builderSeed
@@ -5401,7 +5410,8 @@ export default function App() {
         forgetFind: (find) => void api.forgetFind(sid, find),
         gear: (action, item) => void api.gear(sid, action, item),
         loadWearer: () => api.wearer(sid),
-        loadMap: (map, room, radius) => api.localMap(sid, map, room, radius),
+        loadArea: (map, room, level) => api.areaMap(sid, map, room, level),
+        searchRooms: (query) => api.searchRooms(sid, query),
         lookupName: (query) => api.lookup(sid, query),
         loadQuests: () => api.questBook(sid),
         loadErrand: (block) => api.questErrand(sid, block),
@@ -5521,7 +5531,8 @@ export default function App() {
         inspectTextblock: shown ? inspectTextblock : null,
         gear: bound.gear,
         loadWearer: shown ? loadWearer : bound.loadWearer,
-        loadMap: shown ? loadMap : bound.loadMap,
+        loadArea: bound.loadArea,
+        searchRooms: bound.searchRooms,
         lookupName: shown ? lookupName : bound.lookupName,
         chooseOnMap: shown ? chooseOnMap : null,
         peekRoom: shown ? peekRoom : null,
@@ -5641,7 +5652,6 @@ export default function App() {
       forget,
       inspect,
       loadWearer,
-      loadMap,
       flyout,
       lookupName,
       pressure,
