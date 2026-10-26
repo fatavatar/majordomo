@@ -2410,8 +2410,11 @@ export interface RoomBrief {
   hazardItems?: Array<{ id: number; name: string }>;
   /** The realm's own light level, where it records one. Negative is dark. */
   light?: number;
-  /** The words the room answers to, from its own script. */
-  commands?: RoomCommand[];
+  /**
+   * The words the room answers to, from its own script, with the names of
+   * the rooms they take you to or open a way out of (`opensName`).
+   */
+  commands?: Array<RoomCommand & { toName?: string; opensName?: string }>;
   /**
    * What the realm puts in this room at every cleanup (`WorldRoom.placed`),
    * named. `fixed` where the realm will not let it be picked up, which is

@@ -21,7 +21,7 @@ import type { MonsterImport, MonsterRule, MonsterTable } from './monsterRules';
 import type { LoopImport, MegaMudPath } from './megamudPaths';
 import type { AutomationSnapshot } from './automation';
 import type { Block } from './blocks';
-import type { LocalMap } from './map';
+import type { AreaMap, LocalMap } from './map';
 import type { Discovery } from './memory';
 import type { Find } from './finds';
 import type { CharacterIdentity, ResetSignal } from './reset';
@@ -1102,6 +1102,7 @@ export const Invoke = {
   questStop: 'world:quest-stop',
   /** The rooms around a given one, laid out on a grid. */
   localMap: 'world:map',
+  areaMap: 'world:area',
   /** Everything the realm knows about one room, for a room nobody is in. */
   roomBrief: 'world:room',
   wearer: 'world:wearer',
@@ -1665,6 +1666,17 @@ export interface IpcApi {
   /** Stop the run, and everything it started. */
   questStop(session: SessionId): Promise<void>;
   localMap(session: SessionId, map: number, room: number, radius?: number): Promise<LocalMap>;
+  /**
+   * One level of the area a room is in, laid out whole (mudmaps' areas and
+   * layout): the room's own level where `level` is null. Null where the realm
+   * has no such room.
+   */
+  areaMap(
+    session: SessionId,
+    map: number,
+    room: number,
+    level: number | null
+  ): Promise<AreaMap | null>;
   /**
    * The realm's whole answer about one room — its ways out, the place it
    * holds, what its lair spawns, the spell it casts on whoever stands in it.

@@ -7,6 +7,7 @@ import {
   radiusForView,
   viewBoxFor,
   wheelFactor,
+  wholeFloor,
   within,
   zoomedAt,
   zoomFloor,
@@ -175,6 +176,27 @@ describe('the smallest a room may be drawn', () => {
 
   it('is the dense end for a box not yet measured', () => {
     expect(zoomFloor({ width: 0, height: 0 }, 10, 12)).toBe(10);
+  });
+});
+
+describe('the smallest a room may be drawn over a whole area', () => {
+  // Forty rooms across and nineteen down, the centre anywhere inside.
+  const level = {
+    minX: -10 * MAP_CELL,
+    maxX: 29 * MAP_CELL,
+    minY: -9 * MAP_CELL,
+    maxY: 9 * MAP_CELL
+  };
+
+  it('is the zoom the whole level fits the box at', () => {
+    expect(wholeFloor({ width: 400, height: 400 }, 10, level)).toBe(10);
+    expect(wholeFloor({ width: 200, height: 400 }, 10, level)).toBe(5);
+  });
+
+  it('is the dense end for a level smaller than that, or a box not yet measured', () => {
+    const small = { minX: 0, maxX: 2 * MAP_CELL, minY: 0, maxY: 2 * MAP_CELL };
+    expect(wholeFloor({ width: 400, height: 400 }, 10, small)).toBe(10);
+    expect(wholeFloor({ width: 0, height: 0 }, 10, level)).toBe(10);
   });
 });
 

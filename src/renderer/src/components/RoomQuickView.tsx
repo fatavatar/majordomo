@@ -378,7 +378,24 @@ function RoomFacts({ brief, mine }: { brief: RoomBrief; mine: Alignment | null }
               // the place in the list is the key — `keyOf`'s own rule.
               <li key={`${answer.say[0] ?? ''}-${index}`}>
                 <span className="step-command">{answer.say[0]}</span>
-                {answer.to !== undefined && <span className="quiet"> → {answer.to}</span>}
+                {answer.to !== undefined && (
+                  <span className="quiet">
+                    {' → '}
+                    {answer.toName === undefined ? answer.to : `${answer.toName} (${answer.to})`}
+                  </span>
+                )}
+                {answer.opens !== undefined && (
+                  <span className="quiet">
+                    {' → '}
+                    {t('cards.roomPeek.opens', {
+                      direction:
+                        DIRECTION_NAME[answer.opens.direction as Direction] ??
+                        answer.opens.direction,
+                      roomName: answer.opensName ?? answer.opens.room,
+                      room: answer.opens.room
+                    })}
+                  </span>
+                )}
               </li>
             ))}
           </ul>

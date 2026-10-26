@@ -62,11 +62,7 @@ export function roomBrief(
             // The word that opens it, where the room itself holds one: this is
             // what a player reads *while standing here*, so it is the last
             // surface that should still be saying `Door, pick/bash 1000`.
-            obstacle: describeObstacle(
-              exit.requirement,
-              graph,
-              graph.leversHere(id, exit.direction)
-            )
+            obstacle: describeObstacle(exit.requirement, graph, graph.leversOf(id, exit.direction))
           })
     };
   });
@@ -106,7 +102,23 @@ export function roomBrief(
   }
 
   if (room.light !== undefined) brief.light = room.light;
-  if (room.commands !== undefined && room.commands.length > 0) brief.commands = room.commands;
+  /*
+   * Named where they lead, and a lever by the room whose way out it opens:
+   * `push button` at the Obsidian Fortress's gates opens the barracks door in
+   * a hall two rooms on, which mudmaps' room card said and this did not.
+   */
+  if (room.commands !== undefined && room.commands.length > 0) {
+    brief.commands = room.commands.map((command) => {
+      const toName = command.to === undefined ? undefined : graph.byId(command.to)?.name;
+      const opensName =
+        command.opens === undefined ? undefined : graph.byId(command.opens.room)?.name;
+      return {
+        ...command,
+        ...(toName === undefined ? {} : { toName }),
+        ...(opensName === undefined ? {} : { opensName })
+      };
+    });
+  }
 
   /*
    * What the realm furnishes the room with — format 42. Named here, where the

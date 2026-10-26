@@ -23,7 +23,7 @@ import { spellElementOf } from '../../shared/spellchoice';
 import zlib from 'node:zlib';
 
 import { t } from '../app/i18n';
-import { describeObstacle } from './obstacle';
+import { describeObstacle, NO_STEP_LEVERS, type StepLevers } from './obstacle';
 import { parseInstruction } from './instructions';
 import type { BuiltExit } from './buildRealm';
 import {
@@ -1505,7 +1505,7 @@ function statedPenalty(requirement: Requirement | null, traveller: Traveller): n
 }
 
 /** Binary min-heap. The original re-sorted the open list every iteration. */
-class MinHeap<T> {
+export class MinHeap<T> {
   private readonly items: Array<{ key: number; value: T }> = [];
 
   get size(): number {
@@ -2459,8 +2459,8 @@ export class WorldGraph {
             match.requirement,
             this,
             from === null || from === undefined
-              ? []
-              : this.leversHere(roomId(from.map, from.room), match.direction)
+              ? undefined
+              : this.leversOf(roomId(from.map, from.room), match.direction)
           );
           const key = match.requirement.keyId;
           if (key !== undefined) {
@@ -4472,6 +4472,19 @@ export class WorldGraph {
    */
   leversFor(room: RoomId, direction: string): readonly RemoteLever[] {
     return this.levers.get(leverKey(room, direction)) ?? NO_LEVERS;
+  }
+
+  /**
+   * The levers that open this step, for the sentence that names them: those
+   * said where it stands (`leversHere`), or else those walked to. The Obsidian
+   * Fortress's barracks doors open on a button in the gates and a stud in the
+   * barracks before, and the map said only *Door, pick/bash 251* (2026-10-26).
+   */
+  leversOf(from: RoomId, direction: string): StepLevers {
+    const here = this.leversHere(from, direction);
+    if (here.length > 0) return { here, away: NO_LEVERS };
+    const away = this.leversFor(from, direction).filter((lever) => lever.at !== from);
+    return away.length === 0 ? NO_STEP_LEVERS : { here: NO_LEVERS, away };
   }
 
   /**
@@ -9362,7 +9375,7 @@ export class WorldGraph {
                 this,
                 // A door's lever is not on the door: the step is what knows
                 // where it is standing, so the join is made here.
-                this.leversHere(prev, exit.direction)
+                this.leversOf(prev, exit.direction)
               )
             }
           : {}),

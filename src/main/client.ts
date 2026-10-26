@@ -13,7 +13,7 @@
  * window that will show it.
  */
 import fs from 'node:fs/promises';
-import { cpSync, existsSync } from 'node:fs';
+import { cpSync, existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 
 import { ConfigStore } from './config/ConfigStore';
@@ -88,6 +88,8 @@ import type { MobLoreEntry } from '../shared/lore';
 import type { MovementStart, WalkStart } from '../shared/movement';
 import type { FightSummary } from '../shared/fights';
 import { localMap } from './world/localMap';
+import { areaMap } from './world/areaMap';
+import type { AreaOverrides } from './world/areas';
 import { roomBrief } from './world/roomBrief';
 import type { HuntingAdvice } from '../shared/hunting';
 import { SessionHost } from './session/SessionHost';
@@ -457,6 +459,24 @@ function loreFor(id: SessionId): MobLore {
   // Before the store exists there is nothing to learn from and nowhere to
   // learn to, which is the honest answer rather than a reason to throw.
   return lore?.forRealm(world?.info.source ?? 'none', world) ?? NO_LORE;
+}
+
+/** mudmaps' hand tuning of the areas, read once (`resources/world/areas.json`). */
+let areaTuning: AreaOverrides | null = null;
+
+function areaOverrides(): AreaOverrides {
+  if (areaTuning === null) {
+    try {
+      areaTuning = JSON.parse(
+        readFileSync(path.join(resourcesDir(), 'world', 'areas.json'), 'utf8')
+      ) as AreaOverrides;
+    } catch (error) {
+      // The areas are still carved, untuned: Silvermere's streets as several.
+      announce('world', `areas.json unread: ${errorMessage(error)}`);
+      areaTuning = {};
+    }
+  }
+  return areaTuning;
 }
 
 /**
@@ -2485,6 +2505,20 @@ function registerIpc(): void {
           ? Math.max(mapRadiusMin, Math.min(mapRadiusMax, radius))
           : undefined;
       return localMap(world, roomId(map, room), asked);
+    }
+  );
+  handle(
+    Invoke.areaMap,
+    (_caller, session: SessionId, map: unknown, room: unknown, level: unknown) => {
+      const world = worldFor(session);
+      if (!world || world.size === 0) return null;
+      if (!Number.isInteger(map) || !Number.isInteger(room)) return null;
+      return areaMap(
+        world,
+        roomId(map as number, room as number),
+        Number.isInteger(level) ? (level as number) : null,
+        areaOverrides()
+      );
     }
   );
   handle(Invoke.huntingGrounds, async (_caller, session: SessionId, measure: unknown) => {

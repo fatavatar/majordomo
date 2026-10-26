@@ -238,6 +238,19 @@ export function extentOf(cells: ReadonlyArray<{ gx: number; gy: number }>): Exte
 }
 
 /**
+ * The smallest a room may be drawn over a whole area (`LocalMap.whole`): the
+ * zoom at which the level fits the box, panned to its middle — or the
+ * slider's dense end where the level is smaller than that. Nothing is fetched
+ * past it, so there is nothing to bound by a radius.
+ */
+export function wholeFloor(box: Box, dense: number, extent: Extent): number {
+  if (!measured(box)) return dense;
+  const across = (extent.maxX - extent.minX) / MAP_CELL + 1;
+  const down = (extent.maxY - extent.minY) / MAP_CELL + 1;
+  return Math.max(1, Math.min(dense, box.width / across, box.height / down));
+}
+
+/**
  * The zoom as the Map card's density setting states it — a fraction from the
  * sparse end to the dense one — so a wheel on the card and the slider in its
  * settings are one number read two ways. Inverse of `roomPixelsFor`.
