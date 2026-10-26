@@ -437,8 +437,10 @@ export interface SessionHost {
   /**
    * Ours: whether the closed exit `dir` from here gives to picking or
    * bashing, by what the realm states of it; both when nothing is known.
+   * And the word of the lock-opening spell the book holds that opens it
+   * (`wizard knock`'s `knok`), or null.
    */
-  forcible?(dir: number): { pick: boolean; bash: boolean };
+  forcible?(dir: number): { pick: boolean; bash: boolean; knock?: string | null };
   /**
    * Ours: step `i` of path `p`, out by `dir`, made ready where the realm
    * says how (levers in this room, a hidden exit searched for); 1 when
@@ -819,6 +821,8 @@ export class Session extends StateFields {
    * takes the first.
    */
   spellbookNames = new Set<string>();
+  /** Ours: knocks cast at this lock (`doors`), to `Other.PickMax` as picks are. */
+  knockTries = 0;
   /** 0xa444: the attack the fight is engaged in (0x11 attack, 0x12 backstab, 9–15 the casts). */
   engagedMode = 0;
   /**

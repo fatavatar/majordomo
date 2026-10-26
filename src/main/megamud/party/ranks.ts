@@ -186,6 +186,7 @@ function movedWithParty(s: Session, line: string, at: number): number {
   s.stepTries = 0;
   s.bashTries = 0;
   s.pickTries = 0;
+  s.knockTries = 0;
   s.disarmTries = 0;
   s.manaFullAt = 0;
   s.hpFullAt = 0;

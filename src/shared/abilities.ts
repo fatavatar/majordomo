@@ -346,6 +346,12 @@ export const MIN_LEVEL_ABILITY = 135;
 export const CONFUSE_MESSAGE_ABILITY = 101;
 
 /**
+ * `OpenDoor` — what a lock-opening spell does: `wizard knock` (750) carries it,
+ * its power the spell's own `MinBase` grown by level (`scaledPower`).
+ */
+export const OPEN_DOOR_ABILITY = 161;
+
+/**
  * What a character can *do*, from the realm's own class and race rows
  * (todo 22, 2026-09-12).
  *

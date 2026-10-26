@@ -305,6 +305,22 @@ describe('doors and traps (0x408870)', () => {
     expect(out.sent).toEqual(['bash north\r']);
   });
 
+  it('knocks a lock it does not pick open, then opens it, before bashing', () => {
+    const r = walker();
+    const { s, out } = r;
+    s.roomExits[0] = Exit.ClosedDoor;
+    s.Other_PickMax = 2;
+    (s.host as SessionHost).forcible = () => ({ pick: false, bash: true, knock: 'knok' });
+    doors(s, 0, 0, null);
+    expect(out.sent).toEqual(['knok north\r']);
+    expect(s.pending.map((p) => p.text)).toEqual(['open n\r']);
+    s.pending.length = 0;
+    // Still shut: knocked again, and at `PickMax` knocks bashed.
+    doors(s, 0, 0, null);
+    doors(s, 0, 0, null);
+    expect(out.sent).toEqual(['knok north\r', 'knok north\r', 'bash north\r']);
+  });
+
   it('searches for a trap, then disarms it', () => {
     const r = walker();
     const { s, out } = r;

@@ -27,6 +27,7 @@ import { version as APP_VERSION } from '../../../package.json';
 import type { MegaChoices } from '../../shared/ipc';
 import type { RemoteName } from '../../shared/remotes';
 import { NO_LOOP, type LoopProgress } from '../../shared/loops';
+import { doorSpell } from '../../shared/spellcraft';
 import {
   movementOf,
   type Movement,
@@ -4621,6 +4622,19 @@ export class SessionManager {
   /** Whether the counters were asked for this connection. See `askCountersFor`. */
   private askedAbilities = false;
 
+  /** The book's lock-opening spell at this character's level (`doorSpell`), as the traveller carries it. */
+  private knockOf(state: CharacterState): { name: string; power: number } | null {
+    const book = state.spellbook;
+    if (!this.world || book === null || book.length === 0) return null;
+    const names = new Set(book.map((spell) => spell.name.toLowerCase()));
+    const found = doorSpell(
+      this.world.allSpells(),
+      (spell) => names.has(spell.name.toLowerCase()),
+      state.progress.level ?? 0
+    );
+    return found && { name: found.spell.name, power: found.power };
+  }
+
   /**
    * What this character costs to move, as the router prices it.
    *
@@ -4648,6 +4662,9 @@ export class SessionManager {
       // own Other tab's: it picks with Pick locks instead of bashing and
       // bashes every other locked door (`0x408870`, 2026-10-16).
       forcing: { pick: (this.mega?.s.Other_CanPickLocks ?? 0) !== 0, bash: true },
+      // And the lock-opening spell in the book, which the engine casts at a
+      // lock it cannot pick (`SessionHost.forcible`).
+      knock: this.knockOf(state),
       // And the ways and places routes keep out of (todo 806): pruned for a
       // walk nobody watches, offered beside the way round on the panel.
       keepOut: { words: this.automationConfig.movement.keepOutOf, allowed: allowing },

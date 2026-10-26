@@ -86,6 +86,7 @@ export function leaving(s: Session): void {
   s.stepTries = 0;
   s.bashTries = 0;
   s.pickTries = 0;
+  s.knockTries = 0;
   s.disarmTries = 0;
   s.hpFullAt = 0;
   s.manaFullAt = 0;
@@ -272,19 +273,30 @@ export function doors(s: Session, dir: number, flags: number, command: string | 
   if (s.walking !== 0 && s.runCount !== 0 && s.Other_BashMax <= s.bashTries) {
     s.bashTries = 0;
     s.pickTries = 0;
+    s.knockTries = 0;
     if (runBack(s, 0) !== 0) return 1;
   }
   // Ours: a lock the realm says no skill opens, or none the character has,
   // is not picked or bashed at; the walk takes its retry path or stops.
   const may = s.host.forcible?.(dir) ?? { pick: true, bash: true };
   const pick = may.pick && s.Other_CanPickLocks !== 0 && s.pickTries < s.Other_PickMax * 2;
-  if (!pick && !may.bash) {
+  // Ours: a lock it does not pick is knocked open where the book holds the
+  // spell, before a bash, then opened; a lock still shut is knocked again.
+  const knock = !pick && s.knockTries < s.Other_PickMax ? (may.knock ?? null) : null;
+  if (!pick && knock === null && !may.bash) {
     s.host.show(`[The ${directionWord(dir)} exit is locked: it needs its key]`);
     s.pickTries = 0;
+    s.knockTries = 0;
     return retryPath(s);
   }
   atDoor(s);
-  if (!pick) {
+  if (knock !== null) {
+    s.knockTries += 1;
+    setState(s, State.Opening);
+    s.host.activity('Knocking door open');
+    send(s, `${knock} ${directionWord(dir)}\r`);
+    queue(s, `open ${directionShort(dir)}\r`);
+  } else if (!pick) {
     setState(s, State.Bashing);
     s.host.activity('Bashing door');
     send(s, `bash ${directionWord(dir)}\r`);

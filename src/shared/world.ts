@@ -633,7 +633,8 @@ export function openableHere(requirement: Requirement | null): boolean {
  * bracket to either, and a stated difficulty above the character's skill is
  * a wall, as the router prices it (`forcedDoorCost`). A skill not known
  * (`null`) is not held against it. Anything else, or no requirement, says
- * nothing and leaves both.
+ * nothing and leaves both. A lock-opening spell's `knock` power goes where a
+ * pick does, against the same figure; null is no such spell, and never a pass.
  *
  * Read by the MegaMUD engine's door code, which picked and bashed a gate
  * that only its key opens (Fatty, 2026-10-16).
@@ -641,17 +642,23 @@ export function openableHere(requirement: Requirement | null): boolean {
 export function forcibleBy(
   requirement: Requirement | null,
   picklocks: number | null,
-  strength: number | null
-): { pick: boolean; bash: boolean } {
+  strength: number | null,
+  knock: number | null = null
+): { pick: boolean; bash: boolean; knock: boolean } {
   const kind = requirement?.kind;
+  const casts = knock !== null;
   if (requirement === null || (kind !== 'key' && kind !== 'door'))
-    return { pick: true, bash: true };
+    return { pick: true, bash: true, knock: casts };
   const { pickDifficulty, bashDifficulty } = requirement;
   if (kind === 'door' && pickDifficulty === undefined && bashDifficulty === undefined)
-    return { pick: true, bash: true };
+    return { pick: true, bash: true, knock: casts };
   const meets = (need: number | undefined, skill: number | null): boolean =>
     need !== undefined && (need <= 0 || skill === null || skill >= need);
-  return { pick: meets(pickDifficulty, picklocks), bash: meets(bashDifficulty, strength) };
+  return {
+    pick: meets(pickDifficulty, picklocks),
+    bash: meets(bashDifficulty, strength),
+    knock: casts && meets(pickDifficulty, knock)
+  };
 }
 
 /**
@@ -3135,6 +3142,8 @@ export type RouteBlock =
       /** Null while the sheet is unread; never zero standing in for unknown. */
       picklocks: number | null;
       strength: number | null;
+      /** The lock-opening spell the character casts, where the lock gives to picklocks. */
+      knock?: { name: string; power: number };
       /**
        * The skills this door names that the walker is switched off from using
        * (*Auto-Pick Locks*, *Auto-Bash Doors*), said as a setting, because a
@@ -3402,6 +3411,7 @@ export function describeBlock(block: RouteBlock): string {
       if (block.pickDifficulty !== undefined) {
         if (block.picklocks === null) unread.push('picklocks');
         else have.push(`${block.picklocks} picklocks`);
+        if (block.knock !== undefined) have.push(`${block.knock.name} at ${block.knock.power}`);
       }
       if (block.bashDifficulty !== undefined) {
         if (block.strength === null) unread.push('strength');
