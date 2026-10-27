@@ -160,6 +160,8 @@ export interface MegaEngineHost {
    * with what turned it on, for the character's own record of them.
    */
   afflicted?(name: SharedAffliction, on: boolean, cause: AfflictionCause | null): void;
+  /** A party member said `@forget` (`SessionHost.partyForgot`). */
+  partyForgot?(name: string): void;
   /** The engine closes the connection. */
   hangUp(): void;
   /** The engine dials again (after its redial pause). */
@@ -586,6 +588,7 @@ export class MegaEngine {
         this.said(text);
       },
       activity: (text) => this.host.logged?.('doing', text),
+      partyForgot: (name) => this.host.partyForgot?.(name),
       show: (text) => this.said(text),
       clock: () => Math.floor(Date.now() / 1000),
       tickMs: () => Date.now(),

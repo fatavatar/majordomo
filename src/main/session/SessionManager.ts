@@ -484,6 +484,8 @@ export interface SessionSink {
   acted?(act: SessionAct): void;
   /** The MegaMUD engine's own log (`MegaEngineHost.logged`). */
   engineLog?(kind: EngineLogKind, text: string): void;
+  /** A party member said `@forget`: the Party card's roster leaves them out of Regroup. */
+  partyForgot?(name: string): void;
   /** How a route walk is going, when one is running. */
   walk?(progress: WalkProgress): void;
   /**
@@ -3366,6 +3368,7 @@ export class SessionManager {
           },
           // Where MegaMUD would play the sound its `[Alerts]` names.
           alert: (which) => this.sink.notice(megaAlertText(which)),
+          partyForgot: (name) => this.sink.partyForgot?.(name),
           world: () => this.world,
           /*
            * With the way a refusal for a key would take once it is carried,
@@ -5612,6 +5615,44 @@ export class SessionManager {
     return refused;
   }
 
+  /**
+   * The Party card's Regroup and Muster (2026-10-27): a walk to `to`, planned
+   * from here as the route panel plans one, and walked by MegaMUD's Go To.
+   * Null when it started, or why not.
+   */
+  async walkTo(to: RoomId): Promise<string | null> {
+    const character = this.tracker.current;
+    const { map, number } = character.room;
+    if (!this.world) return t('session.loop.noRealmData');
+    if (map === null || number === null) return t('app.route.unknownRoom');
+    const route = await planRoute(
+      this.world,
+      roomId(map, number),
+      to,
+      this.travellerNow(character),
+      {
+        unlocks: true
+      }
+    );
+    if (route.blocked) return route.reason ?? t('app.route.unknownRoom');
+    return this.walkRoute(route);
+  }
+
+  /**
+   * A party command on the character's behalf (Regroup's `invite`, `join` or
+   * telepathed `@invite`): on the engine's pending list, as a card's probe
+   * is, and only in the realm. Coalesced, so a repeat waits on the first.
+   */
+  partyCommand(command: string, reason: string): boolean {
+    if (this.tracker.current.phase !== 'in-game') return false;
+    return this.keptQueue.enqueue({
+      command,
+      priority: 'probe',
+      coalesceKey: `party:${command.toLowerCase()}`,
+      reason
+    });
+  }
+
   /** One room back the way the character came, per press: MegaMUD's Step Back. */
   stepBack(): MovementStart {
     this.sink.acted?.({ act: 'stepBack' });
@@ -5839,6 +5880,19 @@ export class SessionManager {
       this.publishAutomation();
     }
     return false;
+  }
+
+  /**
+   * MegaMUD's MudOp switch and its `sys goto` word (`BBS.IsMudop`,
+   * `BBS.SysGoto`): whether the Party card's Muster may teleport this
+   * character, and the place it seeds a new roster with.
+   */
+  get megaMudop(): { mudop: boolean; place: string } {
+    const bbs = this.megaSettings?.live['BBS'];
+    return {
+      mudop: Number(bbs?.['IsMudop'] ?? 0) !== 0,
+      place: String(bbs?.['SysGoto'] ?? '').trim()
+    };
   }
 
   /** The engine's settings to the capture, without the login (`SessionAct`). */

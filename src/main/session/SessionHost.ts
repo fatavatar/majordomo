@@ -308,6 +308,10 @@ export interface SessionHostOptions {
   /** Coalesced facts: routed to every window, which may render a tab for it. */
   toAll: (channel: string, payload: unknown) => void;
   notice: (notice: Notice) => void;
+  /** A character's state changed: the Party card's Regroup looks again. */
+  characterChanged?(id: SessionId): void;
+  /** A party member said `@forget` to this character: its roster leaves them out of Regroup. */
+  partyForgot?(id: SessionId, name: string): void;
 }
 
 export class SessionHost {
@@ -435,6 +439,7 @@ export class SessionHost {
         character: (state) => {
           debug.characterState(state);
           this.options.toAll(Push.character, { session: id, payload: state });
+          this.options.characterChanged?.(id);
           /*
            * A tab is named after the character, and the realm does not say who
            * that is until the stat sheet arrives. Without this the rail keeps
@@ -507,7 +512,8 @@ export class SessionHost {
           debug.out(command, source);
         },
         acted: (act) => slot.capture?.act(act),
-        engineLog: (kind, text) => slot.capture?.engine(kind, text)
+        engineLog: (kind, text) => slot.capture?.engine(kind, text),
+        partyForgot: (name) => this.options.partyForgot?.(id, name)
       },
       this.options.worldFor(id),
       config.automation,

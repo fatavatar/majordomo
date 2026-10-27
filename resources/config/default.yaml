@@ -236,15 +236,9 @@ ui:
   #          their bars, a player's alignment as the colour of the name, lines
   #          that say the same thing folded into one with a count. Shorter
   #          cards, read at a glance, in JetBrains Mono.
-  # atlas    glance's cards as soft panels in Victor Mono, places named in its
-  #          cursive italic like labels on a map, the ways out as a compass
-  #          rose and a loop as a ring.
-  # halo     glance's cards as a contemporary app in Geist Mono: rounded cards
-  #          tinted by kind, the vitals and attributes as rings, people and
-  #          monsters as initials in their colour, notices as a timeline.
   #
-  # Every style but classic sets its own monospace face for the whole window,
-  # in place of ui.font; the console keeps terminal.font in all of them.
+  # Glance sets its own monospace face for the whole window, in place of
+  # ui.font; the console keeps terminal.font in both.
   skin: classic
 
   # Where the HUD meters turn yellow and then red.

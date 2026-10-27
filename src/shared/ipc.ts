@@ -156,6 +156,7 @@ import type {
   WorldRoom
 } from './world';
 import type { Visited } from './destinations';
+import type { MusterTarget, PartyRoster } from './partyRoster';
 import type { CombatTally } from './tally';
 import type {
   ConnectionState,
@@ -1103,6 +1104,16 @@ export const Invoke = {
   /** The rooms around a given one, laid out on a grid. */
   localMap: 'world:map',
   areaMap: 'world:area',
+  /** The Party card's rosters, every realm's (`shared/partyRoster.ts`). */
+  partyRosters: 'party:rosters',
+  /** A roster added or replaced by its id; answers every roster after. */
+  saveRoster: 'party:save',
+  /** A roster taken off the card; answers every roster after. */
+  removeRoster: 'party:remove',
+  /** Regroup pressed: every act at once. How many were taken. */
+  regroupParty: 'party:regroup',
+  /** Muster pressed: each member of ours sent, with what happened, a line each. */
+  musterParty: 'party:muster',
   /** Everything the realm knows about one room, for a room nobody is in. */
   roomBrief: 'world:room',
   wearer: 'world:wearer',
@@ -1281,6 +1292,8 @@ export const Push = {
   sessions: 'sessions:changed',
   /** The set of characters on disk changed. */
   profiles: 'profiles:changed',
+  /** A party roster was made, edited or removed, or a member said `@forget`. */
+  partyRosters: 'party:rosters-changed',
   /**
    * This character proved the realm data wrong, and wrote it down.
    *
@@ -1677,6 +1690,16 @@ export interface IpcApi {
     room: number,
     level: number | null
   ): Promise<AreaMap | null>;
+  /** The Party card's rosters, every realm's. */
+  partyRosters(): Promise<PartyRoster[]>;
+  /** A roster added or replaced by its id; every roster after. */
+  saveRoster(roster: PartyRoster): Promise<PartyRoster[]>;
+  /** A roster removed; every roster after. */
+  removeRoster(id: string): Promise<PartyRoster[]>;
+  /** Regroup, now, whatever the automatic switch says. How many acts were taken. */
+  regroupParty(id: string): Promise<number>;
+  /** Muster: to the leader, or to a place by `sys goto`. A line per member of ours. */
+  musterParty(id: string, target: MusterTarget): Promise<string[]>;
   /**
    * The realm's whole answer about one room — its ways out, the place it
    * holds, what its lair spawns, the spell it casts on whoever stands in it.
@@ -1880,6 +1903,7 @@ export interface IpcApi {
   onNotice(handler: (notice: Notice) => void): () => void;
   onSessions(handler: (sessions: SessionSummary[]) => void): () => void;
   onProfiles(handler: (profiles: ProfileSummary[]) => void): () => void;
+  onPartyRosters(handler: (rosters: PartyRoster[]) => void): () => void;
   onLearned(handler: (message: Addressed<Discovery[]>) => void): () => void;
   onFinds(handler: (message: Addressed<Find[]>) => void): () => void;
   onCharacterReset(handler: (message: Addressed<ResetNotice>) => void): () => void;

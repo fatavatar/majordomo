@@ -587,7 +587,8 @@ describe('the mark in the status rail', () => {
 
 /*
  * `ui.skin`'s paragraph, 2026-10-25: stated with classic and glance only,
- * then atlas and halo came, each with a monospace face of its own.
+ * then atlas and halo came, each with a monospace face of its own — and on
+ * 2026-10-27 went again, a file naming either moved to glance.
  */
 describe('the card style paragraph', () => {
   beforeEach(() => {
@@ -613,18 +614,28 @@ describe('the card style paragraph', () => {
     fs.writeFileSync(home.options, glanceOnly, 'utf8');
     migrate();
     const text = fs.readFileSync(home.options, 'utf8');
-    expect(text).toContain('Victor Mono');
-    expect(text).toContain('# halo ');
+    expect(text).toContain('JetBrains Mono');
+    expect(text).not.toContain('# halo ');
     expect((parse(text).ui as Record<string, unknown>)['skin']).toBe('glance');
     migrate();
     expect(fs.readFileSync(home.options, 'utf8')).toBe(text);
   });
 
+  it('moves a file naming atlas or halo to glance, and says so', () => {
+    for (const skin of ['atlas', 'halo']) {
+      fs.writeFileSync(home.options, `ui:\n  theme: dark\n  # my cards\n  skin: ${skin}\n`, 'utf8');
+      migrate();
+      const text = fs.readFileSync(home.options, 'utf8');
+      expect(text).toContain('  # my cards\n  skin: glance\n');
+      expect(said.join('\n')).toContain(`The ${skin} card style was retired`);
+    }
+  });
+
   it('leaves a paragraph the player wrote alone', () => {
-    const own = 'ui:\n  theme: dark\n  # my cards\n  skin: halo\n';
+    const own = 'ui:\n  theme: dark\n  # my cards\n  skin: classic\n';
     fs.writeFileSync(home.options, own, 'utf8');
     migrate();
-    expect(fs.readFileSync(home.options, 'utf8')).toContain('  # my cards\n  skin: halo\n');
+    expect(fs.readFileSync(home.options, 'utf8')).toContain('  # my cards\n  skin: classic\n');
   });
 });
 

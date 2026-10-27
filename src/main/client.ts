@@ -52,6 +52,16 @@ import { isCombatTally } from '../shared/tally';
 import { cureGates, spellServes, spellTargeting } from '../shared/spellcraft';
 import { DestinationBook, type RealmDestinations } from './world/DestinationBook';
 import { MovementBook } from './session/MovementBook';
+import { PartyBook } from './session/PartyBook';
+import {
+  musterActs,
+  PartyKeeper,
+  type KeptMember,
+  type MusterAct,
+  type MusterSkip,
+  type RegroupAct
+} from './session/PartyKeeper';
+import { readPlace, type MusterTarget, type PartyRoster } from '../shared/partyRoster';
 import { bareName } from '../shared/items';
 import { nameAnswersTo } from '../shared/world';
 import {
@@ -329,6 +339,8 @@ let megaLearned: MegaLearned | null = null;
  */
 let destinations: DestinationBook | null = null;
 let movements: MovementBook | null = null;
+/** The Party card's rosters, every realm's. See `PartyBook`. */
+let parties: PartyBook | null = null;
 /** Which window shows which characters. See `Workspace`. */
 let workspace: Workspace | null = null;
 
@@ -376,6 +388,111 @@ function createMovements(): MovementBook {
   return new MovementBook({
     file: home.state('movement.json'),
     notify: (message) => announce('movement', message)
+  });
+}
+
+/** This client's characters on `realm`, as Regroup sees them. */
+function keptOn(realm: string): KeptMember[] {
+  if (!host) return [];
+  const kept: KeptMember[] = [];
+  for (const { id } of host.summaries) {
+    if (labelOf(id).server !== realm) continue;
+    const manager = host.get(id)?.manager;
+    if (!manager || manager.character.name === null) continue;
+    const character = manager.character;
+    kept.push({
+      session: id,
+      character,
+      inGame: manager.state.phase === 'connected' && character.phase === 'in-game',
+      busy:
+        character.inCombat ||
+        manager.walkProgress.status === 'walking' ||
+        manager.loopProgress.status === 'running'
+    });
+  }
+  return kept;
+}
+
+/** One Regroup act, carried out by the character it names. Whether it was taken. */
+function regroup(act: RegroupAct): boolean {
+  const manager = host?.get(act.session)?.manager;
+  if (!manager) return false;
+  switch (act.act) {
+    case 'invite':
+      return manager.partyCommand(
+        `invite ${act.name}`,
+        t('session.party.regroupInvite', { name: act.name })
+      );
+    case 'join':
+      return manager.partyCommand(
+        `join ${act.leader}`,
+        t('session.party.regroupJoin', { leader: act.leader })
+      );
+    case 'askInvite':
+      return manager.partyCommand(
+        `/${act.leader} @invite`,
+        t('session.party.regroupAsk', { leader: act.leader })
+      );
+    case 'walk':
+      void manager.walkTo(act.to).then((refused) => {
+        if (refused !== null)
+          announce('party', t('session.party.regroupWalkRefused', { leader: act.leader, refused }));
+      });
+      return true;
+  }
+}
+
+/** A Muster target from the window, parsed rather than trusted: it turns into commands. */
+function asMusterTarget(value: unknown): MusterTarget | null {
+  if (typeof value !== 'object' || value === null) return null;
+  const record = value as Record<string, unknown>;
+  if (record['to'] === 'leader') return { to: 'leader' };
+  const place = readPlace(record['place']);
+  return record['to'] === 'place' && place !== null ? { to: 'place', place } : null;
+}
+
+/** Why a member of ours stays where they are, in a line. */
+const MUSTER_SKIP: Record<MusterSkip, (name: string) => string> = {
+  offline: (name) => t('session.party.musterSkip.offline', { name }),
+  fighting: (name) => t('session.party.musterSkip.fighting', { name }),
+  notMudop: (name) => t('session.party.musterSkip.notMudop', { name }),
+  leaderUnknown: (name) => t('session.party.musterSkip.leaderUnknown', { name }),
+  isLeader: (name) => t('session.party.musterSkip.isLeader', { name })
+};
+
+/** One Muster act, carried out, as the line the card shows. */
+function muster(act: MusterAct): string {
+  const manager = host?.get(act.session)?.manager;
+  switch (act.act) {
+    case 'skip':
+      return MUSTER_SKIP[act.why](act.name);
+    case 'sysGoto':
+      manager?.partyCommand(
+        `sys goto ${act.place}`,
+        t('session.party.musterReason', { place: act.place })
+      );
+      return t('session.party.musterTeleport', { name: act.name, place: act.place });
+    case 'walk':
+      void manager?.walkTo(act.to).then((refused) => {
+        if (refused !== null)
+          announce('party', t('session.party.musterWalkRefused', { name: act.name, refused }));
+      });
+      return t('session.party.musterWalk', { name: act.name });
+  }
+}
+
+/** Regroup: looks again whenever a character's state changes. See `PartyKeeper`. */
+const partyKeeper = new PartyKeeper({
+  againMs: () => tuning().session.partyRegroupAgainMs,
+  run: regroup
+});
+
+/** Beside the lore, for the same reasons `createLore` gives; every window told of a change. */
+function createParties(): PartyBook {
+  return new PartyBook({
+    file: home.state('parties.json'),
+    notify: (message) => announce('party', message),
+    changed: (rosters) => push(Push.partyRosters, rosters)
   });
 }
 
@@ -1638,6 +1755,10 @@ function createHost(): SessionHost {
      * that two characters on two realms are told apart at a glance.
      */
     label: labelOf,
+    characterChanged: () => {
+      if (parties) partyKeeper.check(parties.all, keptOn);
+    },
+    partyForgot: (id, name) => parties?.forget(labelOf(id).server, name),
     logDirectory,
     toAttached: (channel, message) => windows.toAttached(channel, message),
     toDiagnostics: (channel, message) => windows.toDiagnostics(channel, message),
@@ -1701,6 +1822,7 @@ function registerIpc(): void {
      */
     if (host) caller.send(Push.sessions, rosterFor(caller));
     caller.send(Push.profiles, profileSummaries());
+    if (parties) caller.send(Push.partyRosters, parties.all);
     if (config) {
       caller.send(Push.config, config.snapshot);
     }
@@ -2585,6 +2707,44 @@ function registerIpc(): void {
    * section.
    */
   handle(Invoke.wards, (_caller, session: SessionId) => worldFor(session)?.wards() ?? []);
+  handle(Invoke.partyRosters, () => parties?.all ?? []);
+  handle(Invoke.saveRoster, (_caller, roster: unknown) => {
+    if (!parties) return [];
+    // A roster made just now starts with its characters' own MegaMUD sys goto words.
+    const made = roster as Partial<PartyRoster> | null;
+    if (
+      made !== null &&
+      typeof made === 'object' &&
+      typeof made.realm === 'string' &&
+      !parties.all.some((entry) => entry.id === made.id) &&
+      (made.places ?? []).length === 0
+    ) {
+      const places = keptOn(made.realm)
+        .map(({ session }) => host?.get(session)?.manager.megaMudop.place ?? '')
+        .map(readPlace)
+        .filter((place): place is string => place !== null);
+      return parties.save({ ...made, places: [...new Set(places)] });
+    }
+    return parties.save(roster);
+  });
+  handle(Invoke.regroupParty, (_caller, id: unknown) => {
+    const roster = parties?.all.find((entry) => entry.id === id);
+    return roster ? partyKeeper.now(roster, keptOn(roster.realm)) : 0;
+  });
+  handle(Invoke.musterParty, (_caller, id: unknown, target: unknown) => {
+    const roster = parties?.all.find((entry) => entry.id === id);
+    const where = asMusterTarget(target);
+    if (!roster || where === null) return [];
+    return musterActs(
+      roster,
+      keptOn(roster.realm),
+      where,
+      (session) => host?.get(session)?.manager.megaMudop.mudop ?? false
+    ).map(muster);
+  });
+  handle(Invoke.removeRoster, (_caller, id: unknown) =>
+    typeof id === 'string' ? (parties?.remove(id) ?? []) : (parties?.all ?? [])
+  );
   handle(Invoke.roomBrief, (_caller, session: SessionId, map: number, room: number) => {
     const world = worldFor(session);
     // A realm with no world loaded knows nothing about any room, which is the
@@ -4120,6 +4280,7 @@ function build(): void {
   }
   destinations = createDestinations();
   movements = createMovements();
+  parties = createParties();
   worldBook = createWorldBook();
   realms = createRealms();
   /*

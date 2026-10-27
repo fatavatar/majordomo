@@ -887,7 +887,7 @@ button.quest-banner-dismiss {
   /*
    * The action column and the corner grip are placed against the card. The
    * glass blur did that only by the way (a backdrop filter makes the box hold
-   * its absolute children), so a skin with no blur, atlas's and halo's, put a
+   * its absolute children), so a skin with no blur (atlas and halo, since retired) put a
    * railed or docked card's controls against the rail or the strip instead.
    */
   position: relative;
@@ -12961,6 +12961,111 @@ tr:hover .row-action.worn,
 
 .party-meter[data-level='critical'] > .party-bar > span {
   background: var(--danger);
+}
+
+/*
+ * A member of this client's own: a dot of the accent before the name, so the
+ * rows read from their own tab are told from the ones read off a listing.
+ */
+.party-name[data-ours='true']::before {
+  color: var(--accent);
+  content: '● ';
+  font-size: var(--font-micro);
+}
+
+/*
+ * Where a member stands against the roster, when it is not simply with the
+ * party: out of it is the case Regroup exists for, so it takes the danger
+ * tone; offline and @forget are facts, quiet.
+ */
+.party-status {
+  background: color-mix(in srgb, var(--text-lo) var(--tone-weak), transparent);
+  border-radius: var(--r-chip);
+  color: var(--text-lo);
+  flex: 0 0 auto;
+  font-size: var(--font-micro);
+  padding: 0 5px;
+}
+
+.party-status[data-status='out'] {
+  background: color-mix(in srgb, var(--danger) var(--tone-weak), transparent);
+  color: var(--danger);
+}
+
+.party-list li[data-status='offline'],
+.party-list li[data-status='forgotten'] {
+  opacity: 0.6;
+}
+
+.party-away {
+  font-size: var(--font-micro);
+}
+
+/*
+ * The bar over the groups: Regroup and Muster, then Say to — who sends it as
+ * chips, the line beside them. Wraps on a narrow rail rather than clipping.
+ */
+.party-actions,
+.party-say,
+.party-say-to {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.party-say {
+  margin-top: 6px;
+}
+
+.party-say input {
+  flex: 1 1 10em;
+  min-width: 0;
+}
+
+.party-report {
+  font-size: var(--font-micro);
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+}
+
+.party-summary {
+  font-size: var(--font-micro);
+  margin: 6px 0;
+}
+
+/* The editor: a row's own controls under it, and the roster's beneath the groups. */
+.party-edit-row,
+.party-editor,
+.party-add {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.party-editor {
+  border-top: var(--rule) solid var(--ink-line);
+  margin-top: 8px;
+  padding-top: 8px;
+}
+
+.party-add input {
+  flex: 1 1 10em;
+  min-width: 0;
+}
+
+.party-edit-row button.danger,
+.party-editor button.danger {
+  color: var(--danger);
+}
+
+.party-check {
+  align-items: center;
+  display: inline-flex;
+  font-size: var(--font-micro);
+  gap: 4px;
 }
 
 /*

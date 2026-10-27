@@ -1,12 +1,11 @@
 import { Fragment, type ReactNode } from 'react';
 
-import { KitBar, KitLine, KitRings, compact } from '../kit';
+import { KitBar, KitLine, compact } from '../kit';
 import { ratio, vitalLevel, type CharacterState, type VitalThresholds } from '@shared/character';
 import type { ExperienceStanding } from '@shared/experience';
 import { t } from '../../lib/i18n';
 import { levelWord } from '../../lib/vitals';
 import type { ExperienceView } from '../ExperienceScope';
-import { useSkin } from '../../lib/skin';
 
 /** One vital as its bar, the figures inside it and the threshold band its fill wears. */
 function VitalBar({
@@ -83,8 +82,7 @@ function towards(
  * how long that is at the chosen view's rate; and then the experience over
  * that view — the session or the last hours — as both skins draw it. Short
  * figures, each exact in its title. The name and class are the tab rail's
- * and the Self card's, so not here. Halo leads with the two vitals as
- * concentric rings and the figures in a small table beside them.
+ * and the Self card's, so not here.
  */
 export default function VitalsGlance({
   character,
@@ -100,7 +98,6 @@ export default function VitalsGlance({
   const next = standing?.next ?? (progress.level === null ? null : progress.level + 1);
   const through = towards(progress.exp, standing, progress.expTable);
   const worked = t('cards.vitals.workedOut');
-  const skin = useSkin();
   const toGo = (
     <span
       title={
@@ -137,57 +134,6 @@ export default function VitalsGlance({
     next === null
       ? t('cards.vitals.labels.toLevel')
       : t('cards.vitals.toLevelFormat', { level: next });
-  if (skin === 'halo') {
-    const hp = ratio(vitals.hp, vitals.hpMax);
-    const mana = vitals.mana === null ? null : ratio(vitals.mana, vitals.manaMax);
-    const figure = (value: number | null, max: number | null): string =>
-      `${value === null ? '—' : value.toLocaleString()}${max === null ? '' : ` / ${max.toLocaleString()}`}`;
-    return (
-      <>
-        <div className="halo-vitals">
-          <KitRings
-            center={hp === null ? '—' : `${Math.round(hp * 100)}%`}
-            label={t('cards.vitals.glance.rings')}
-            rings={[
-              {
-                fraction: hp,
-                tone: 'life',
-                level: vitalLevel(vitals.hp, vitals.hpMax, thresholds.hp)
-              },
-              ...(vitals.mana === null
-                ? []
-                : [
-                    {
-                      fraction: mana,
-                      tone: 'mana' as const,
-                      level: vitalLevel(vitals.mana, vitals.manaMax, thresholds.mana)
-                    }
-                  ])
-            ]}
-          />
-          <dl className="readout">
-            <dt>HP</dt>
-            <dd>{figure(vitals.hp, vitals.hpMax)}</dd>
-            {vitals.mana !== null && (
-              <>
-                <dt>{vitals.manaType ?? 'MA'}</dt>
-                <dd>{figure(vitals.mana, vitals.manaMax)}</dd>
-              </>
-            )}
-            <dt>{t('cards.vitals.labels.level')}</dt>
-            <dd>
-              {progress.level ?? '—'}
-              {train}
-            </dd>
-            <dt>{toLabel}</dt>
-            <dd>{toGo}</dd>
-          </dl>
-        </div>
-        {afflictions}
-        {experience}
-      </>
-    );
-  }
   return (
     <>
       <VitalBar

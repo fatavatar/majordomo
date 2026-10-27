@@ -67,6 +67,17 @@ describe('the remote commands (0x4ae4a0)', () => {
     expect(flags('Fatty')).toBe(0);
   });
 
+  /* The Party card's roster leaves a member who said @forget out of Regroup (2026-10-27). */
+  it('takes a member who says @forget out of the party, and says who to the host', () => {
+    const { s } = remote();
+    addMember(s, 'Fatty', 1);
+    const forgot: string[] = [];
+    s.host.partyForgot = (name) => forgot.push(name);
+    remoteCommand(s, tele('@forget'), 0x10);
+    expect(forgot).toEqual(['Fatty']);
+    expect(s.party.slice(0, s.partySize).map((m) => m.name)).not.toContain('Fatty');
+  });
+
   it('gives a stranger nothing it is not allowed, with the command reply', () => {
     const { s } = remote();
     expect(remoteCommand(s, 'Stranger telepaths: @health', 0x10)).toBe(0);

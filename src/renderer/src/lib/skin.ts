@@ -13,7 +13,7 @@ export function useSkin(): SkinId {
   return useContext(SkinContext);
 }
 
-/** Whether the cards are laid out compactly: glance, atlas and halo alike. */
+/** Whether the cards are laid out compactly: glance's way. */
 export function useCompact(): boolean {
   return compactSkin(useContext(SkinContext));
 }

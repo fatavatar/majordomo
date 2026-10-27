@@ -859,6 +859,7 @@ export function remoteCommand(s: Session, line: string, kind: number): number {
     return 0;
   }
   if (is('@forget') && mi !== -1) {
+    s.host.partyForgot?.(s.party[mi]!.name);
     removeMember(s, mi);
     return reply(c, `${to} {ok}\r`);
   }

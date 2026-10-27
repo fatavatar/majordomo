@@ -2,7 +2,6 @@ import { Fragment, memo, type CSSProperties } from 'react';
 import { createPortal } from 'react-dom';
 
 import Icon from './Icon';
-import { KitInitials } from './kit';
 import { reordered } from '../lib/reorder';
 
 import { ratio, vitalLevel, type CharacterState } from '@shared/character';
@@ -586,8 +585,6 @@ function TabRail({
                     realmName: session.server
                   })}
                 >
-                  {/* Halo leads the tab with the character's initials (2026-10-25). */}
-                  <KitInitials name={session.name} />
                   <span className="name">{session.name}</span>
                   {/*
                 Then the two right-aligned facts, in this order: what the

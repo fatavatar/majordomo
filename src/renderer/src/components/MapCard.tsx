@@ -142,6 +142,14 @@ function MapCard({
     },
     [following, setFollow]
   );
+  /*
+   * Follow turned off where the eye was never taken anywhere — the button
+   * pressed from a standing start, or a reload with it stored off — holds the
+   * eye where the character is now, or the map went on following it.
+   */
+  useEffect(() => {
+    if (!following && eye === null && here !== null) setEye({ room: here, level: null });
+  }, [following, eye, here]);
   const looking = !following && eye !== null;
   const centre = looking ? eye.room : here;
   const level = looking ? eye.level : null;
