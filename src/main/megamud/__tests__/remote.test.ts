@@ -78,6 +78,22 @@ describe('the remote commands (0x4ae4a0)', () => {
     expect(s.party.slice(0, s.partySize).map((m) => m.name)).not.toContain('Fatty');
   });
 
+  /* The Party card had this character do it itself: the leader's @party is not done again (2026-10-27). */
+  it('leaves a leader’s @party the client already had it do, and does any other', () => {
+    const { s } = remote(0x2000);
+    s.leaderName = 'Fatty';
+    addMember(s, 'Fatty', 1);
+    const asked: string[] = [];
+    s.host.partyAlreadyDone = (leader, command) => {
+      asked.push(`${leader}: ${command}`);
+      return command === 'sys goto kha';
+    };
+    remoteCommand(s, tele('@party sys goto kha'), 0x10);
+    remoteCommand(s, tele('@party eq tabard'), 0x10);
+    expect(asked).toEqual(['Fatty: sys goto kha', 'Fatty: eq tabard']);
+    expect(pending(s)).toEqual(['eq tabard\r']);
+  });
+
   it('gives a stranger nothing it is not allowed, with the command reply', () => {
     const { s } = remote();
     expect(remoteCommand(s, 'Stranger telepaths: @health', 0x10)).toBe(0);

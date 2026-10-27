@@ -936,6 +936,8 @@ export function remoteCommand(s: Session, line: string, kind: number): number {
     if (s.Party_IgnoreParty === 0 && i !== -1 && s.leaderName === sender) {
       const text = commandFor(c, cmd.slice(7), perms);
       if (text === null) return 0;
+      // Ours: a line the Party card already had this character do itself (2026-10-27).
+      if (s.host.partyAlreadyDone?.(sender, text.replace(/\r$/, '')) === true) return 1;
       queue(s, text);
       return 1;
     }

@@ -119,20 +119,84 @@ export function regroupActs(
   return acts;
 }
 
-/** What Muster does for one member of ours, or why it does nothing. */
-export type MusterAct =
-  | { session: SessionId; name: string; act: 'walk'; to: RoomId }
-  | { session: SessionId; name: string; act: 'sysGoto'; place: string }
-  | { session: SessionId; name: string; act: 'skip'; why: MusterSkip };
+/**
+ * One command sent across the party (2026-10-27): what Muster's `sys goto`,
+ * the card's Say to, and any other party-wide command go through.
+ *
+ * - **Each member of ours** does it itself (`direct`): this client runs it,
+ *   so nothing has to be asked of anybody.
+ * - **Everybody else travelling with a leader of ours** gets it as the
+ *   leader's `@party <command>` (`atParty`, once), MegaMUD's leader's
+ *   command, which every member running MegaMUD carries out where it grants
+ *   the leader what the command needs (`sys` wants sysop commands).
+ *
+ * Our own members hear that `@party` too; the client remembers what it had
+ * them do (`partyAlreadyDone`), so none of them does it twice.
+ */
+export type FanAct =
+  | { session: SessionId; name: string; act: 'direct' }
+  | { session: SessionId; name: string; act: 'atParty'; others: string[] }
+  | { session: SessionId; name: string; act: 'skip'; why: FanSkip };
 
-export type MusterSkip = 'offline' | 'fighting' | 'notMudop' | 'leaderUnknown' | 'isLeader';
+export type FanSkip =
+  | 'offline'
+  | 'fighting'
+  | 'notMudop'
+  | 'leaderUnknown'
+  | 'isLeader'
+  /** Left out by the player (Say to's chips). */
+  | 'leftOut';
 
 /**
- * Muster, pressed (2026-10-27): every member of ours on the roster sent to
- * the leader's room, walking, or to a place by `sys goto` — for a character
- * whose MegaMUD settings say it is a MudOp (`BBS.IsMudop`, the switch
- * MegaMUD's own teleport out at critical HP reads). One that cannot go is
- * said, with why. A member who is somebody else's is not ours to move.
+ * Who does a command and how. `chosen`, where given, is the members of ours
+ * it goes to (the rest are left out, and skip the leader's `@party` too);
+ * `others` whether everybody else travelling with the leader gets it by
+ * `@party`; `can` says why a member of ours cannot, or null.
+ */
+export function fanOutActs(
+  roster: PartyRoster,
+  ours: readonly KeptMember[],
+  options: {
+    chosen?: ReadonlySet<SessionId>;
+    others: boolean;
+    can?(member: KeptMember): FanSkip | null;
+  }
+): FanAct[] {
+  const acts: FanAct[] = [];
+  for (const { name } of roster.members) {
+    const member = ourOf(ours, name);
+    if (member === null) continue;
+    const { session } = member;
+    const why: FanSkip | null = !member.inGame
+      ? 'offline'
+      : options.chosen !== undefined && !options.chosen.has(session)
+        ? 'leftOut'
+        : (options.can?.(member) ?? null);
+    acts.push(
+      why === null ? { session, name, act: 'direct' } : { session, name, act: 'skip', why }
+    );
+  }
+  const leader = roster.leader === null ? null : ourOf(ours, roster.leader);
+  if (options.others && leader !== null && leader.inGame) {
+    const others = leader.character.party.members
+      .filter((m) => !m.invited && ourOf(ours, m.name) === null)
+      .map((m) => m.name);
+    if (others.length > 0)
+      acts.push({ session: leader.session, name: roster.leader!, act: 'atParty', others });
+  }
+  return acts;
+}
+
+/** What Muster does for one member of ours, or why it does nothing. */
+export type MusterAct = FanAct | { session: SessionId; name: string; act: 'walk'; to: RoomId };
+
+/**
+ * Muster, pressed (2026-10-27). To the leader: every member of ours walks to
+ * the leader's room. To a place: `sys goto <place>`, fanned out across the
+ * party (`fanOutActs`) — each member of ours that its MegaMUD settings say
+ * is a MudOp (`BBS.IsMudop`, the switch MegaMUD's own teleport out at
+ * critical HP reads) sends it itself, everybody else gets the leader's
+ * `@party`. One that cannot go is said, with why.
  */
 export function musterActs(
   roster: PartyRoster,
@@ -140,6 +204,12 @@ export function musterActs(
   target: MusterTarget,
   mudop: (session: SessionId) => boolean
 ): MusterAct[] {
+  if (target.to === 'place')
+    return fanOutActs(roster, ours, {
+      others: true,
+      can: (member) =>
+        member.character.inCombat ? 'fighting' : mudop(member.session) ? null : 'notMudop'
+    });
   const leader = roster.leader === null ? null : ourOf(ours, roster.leader);
   const to = leader !== null && leader.inGame ? here(leader.character) : null;
   const acts: MusterAct[] = [];
@@ -147,13 +217,9 @@ export function musterActs(
     const member = ourOf(ours, name);
     if (member === null) continue;
     const { session } = member;
-    const skip = (why: MusterSkip): MusterAct => ({ session, name, act: 'skip', why });
+    const skip = (why: FanSkip): MusterAct => ({ session, name, act: 'skip', why });
     if (!member.inGame) acts.push(skip('offline'));
     else if (member.character.inCombat) acts.push(skip('fighting'));
-    else if (target.to === 'place')
-      acts.push(
-        mudop(session) ? { session, name, act: 'sysGoto', place: target.place } : skip('notMudop')
-      );
     else if (member === leader) acts.push(skip('isLeader'));
     else if (to === null) acts.push(skip('leaderUnknown'));
     else acts.push({ session, name, act: 'walk', to });

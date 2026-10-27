@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { EMPTY_CHARACTER, type CharacterState, type PartyMember } from '../../../shared/character';
 import type { PartyRoster } from '../../../shared/partyRoster';
 import {
+  fanOutActs,
   musterActs,
   PartyKeeper,
   regroupActs,
@@ -190,19 +191,35 @@ describe('Muster', () => {
     ]);
   });
 
-  it('sends a MudOp by sys goto, leader and all, and nobody else', () => {
+  it('sends each MudOp of ours by sys goto itself, and says why one cannot', () => {
     expect(
       musterActs(
         roster(),
         [kept('Fatty'), kept('Skinny'), kept('healbot')],
         { to: 'place', place: 'kha' },
         mudop
-      ).map((act) => [act.name, act.act])
+      ).map((act) => [act.name, act.act === 'skip' ? act.why : act.act])
     ).toEqual([
-      ['Fatty', 'sysGoto'],
-      ['Skinny', 'sysGoto'],
-      ['healbot', 'skip']
+      ['Fatty', 'direct'],
+      ['Skinny', 'direct'],
+      ['healbot', 'notMudop']
     ]);
+  });
+
+  it('reaches everybody else travelling with the leader by its @party, ours still directly', () => {
+    const fatty = kept('Fatty', { party: [member('Fatty'), member('Skinny'), member('Zed')] });
+    const acts = musterActs(
+      roster(),
+      [fatty, kept('Skinny')],
+      { to: 'place', place: 'kha' },
+      mudop
+    );
+    expect(acts.map((act) => [act.name, act.act])).toEqual([
+      ['Fatty', 'direct'],
+      ['Skinny', 'direct'],
+      ['Fatty', 'atParty']
+    ]);
+    expect(acts.at(-1)).toMatchObject({ session: 'fatty', others: ['Zed'] });
   });
 
   it('has nowhere to walk while the leader is not one of ours in the game', () => {
@@ -211,6 +228,35 @@ describe('Muster', () => {
         act.act === 'skip' ? act.why : act.act
       )
     ).toEqual(['leaderUnknown']);
+  });
+});
+
+describe('a command fanned out (Say to)', () => {
+  it('goes to the chosen of ours, and to everybody else by @party only when asked', () => {
+    const fatty = kept('Fatty', { party: [member('Fatty'), member('Zed'), member('Skinny')] });
+    const ours = [fatty, kept('Skinny'), kept('healbot', { inGame: false })];
+    const chosen = new Set(['fatty']);
+    expect(
+      fanOutActs(roster(), ours, { chosen, others: true }).map((act) => [
+        act.name,
+        act.act === 'skip' ? act.why : act.act
+      ])
+    ).toEqual([
+      ['Fatty', 'direct'],
+      ['Skinny', 'leftOut'],
+      ['healbot', 'offline'],
+      ['Fatty', 'atParty']
+    ]);
+    expect(
+      fanOutActs(roster(), ours, { chosen, others: false }).some((act) => act.act === 'atParty')
+    ).toBe(false);
+  });
+
+  it('has no @party to send while the leader is not one of ours', () => {
+    const skinny = kept('Skinny', { party: [member('Zed'), member('Skinny')] });
+    expect(
+      fanOutActs(roster({ leader: 'Zed' }), [skinny], { others: true }).map((act) => act.act)
+    ).toEqual(['direct']);
   });
 });
 

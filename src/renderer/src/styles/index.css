@@ -13014,6 +13014,20 @@ tr:hover .row-action.worn,
   font-size: var(--font-micro);
 }
 
+/* Muster: where to, typed, and the button. */
+.party-muster {
+  align-items: center;
+  display: flex;
+  flex: 1 1 14em;
+  gap: 6px;
+  min-width: 0;
+}
+
+.party-muster input {
+  flex: 1 1 8em;
+  min-width: 0;
+}
+
 /*
  * The bar over the groups: Regroup and Muster, then Say to — who sends it as
  * chips, the line beside them. Wraps on a narrow rail rather than clipping.

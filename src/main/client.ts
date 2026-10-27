@@ -44,7 +44,12 @@ import { WorldMemory } from './world/WorldMemory';
 import { FindBook } from './world/FindBook';
 import { WorldBook } from './world/WorldBook';
 import { SplitMemory } from './world/SplitMemory';
-import { NO_REALM_TABLES, type RealmMemory, type RealmTables } from './session/SessionManager';
+import {
+  NO_REALM_TABLES,
+  type RealmMemory,
+  type RealmTables,
+  type SessionManager
+} from './session/SessionManager';
 import { MegaLearned } from './world/MegaLearned';
 import { RealmLore, realmKey } from './world/RealmLore';
 import { PlayerBook, realmAddress } from './world/PlayerBook';
@@ -57,8 +62,9 @@ import {
   musterActs,
   PartyKeeper,
   type KeptMember,
-  type MusterAct,
-  type MusterSkip,
+  fanOutActs,
+  type FanAct,
+  type FanSkip,
   type RegroupAct
 } from './session/PartyKeeper';
 import { readPlace, type MusterTarget, type PartyRoster } from '../shared/partyRoster';
@@ -451,34 +457,107 @@ function asMusterTarget(value: unknown): MusterTarget | null {
   return record['to'] === 'place' && place !== null ? { to: 'place', place } : null;
 }
 
-/** Why a member of ours stays where they are, in a line. */
-const MUSTER_SKIP: Record<MusterSkip, (name: string) => string> = {
+/** Why a member of ours does not do a fanned-out command, in a line; null says nothing. */
+const FAN_SKIP: Record<FanSkip, ((name: string) => string) | null> = {
   offline: (name) => t('session.party.musterSkip.offline', { name }),
   fighting: (name) => t('session.party.musterSkip.fighting', { name }),
   notMudop: (name) => t('session.party.musterSkip.notMudop', { name }),
   leaderUnknown: (name) => t('session.party.musterSkip.leaderUnknown', { name }),
-  isLeader: (name) => t('session.party.musterSkip.isLeader', { name })
+  isLeader: (name) => t('session.party.musterSkip.isLeader', { name }),
+  leftOut: null
 };
 
-/** One Muster act, carried out, as the line the card shows. */
-function muster(act: MusterAct): string {
-  const manager = host?.get(act.session)?.manager;
-  switch (act.act) {
-    case 'skip':
-      return MUSTER_SKIP[act.why](act.name);
-    case 'sysGoto':
-      manager?.partyCommand(
-        `sys goto ${act.place}`,
-        t('session.party.musterReason', { place: act.place })
-      );
-      return t('session.party.musterTeleport', { name: act.name, place: act.place });
-    case 'walk':
-      void manager?.walkTo(act.to).then((refused) => {
-        if (refused !== null)
-          announce('party', t('session.party.musterWalkRefused', { name: act.name, refused }));
-      });
-      return t('session.party.musterWalk', { name: act.name });
+/**
+ * What each character of ours was just had do itself, by the leader it
+ * would hear the same `@party` from: so that `@party` is not done twice
+ * (`partyAlreadyDone`). Each is taken once, and only while fresh.
+ */
+const doneDirectly = new Map<string, number>();
+const doneKey = (session: SessionId, leader: string, command: string): string =>
+  `${session}|${leader.toLowerCase()}|${command.trim().toLowerCase()}`;
+
+function partyAlreadyDone(session: SessionId, leader: string, command: string): boolean {
+  const key = doneKey(session, leader, command);
+  const at = doneDirectly.get(key);
+  if (at === undefined) return false;
+  doneDirectly.delete(key);
+  return Date.now() - at < tuning().session.partyEchoMs;
+}
+
+/**
+ * A command fanned out across a party (`fanOutActs`), carried out: each
+ * member of ours by `direct`, everybody else by the leader's `@party`, with
+ * every member of ours marked first as having done it — or as left out of it —
+ * so none of them takes the leader's line as theirs as well. A line each
+ * for the card.
+ */
+function fanOut(
+  roster: PartyRoster,
+  acts: readonly FanAct[],
+  command: string,
+  direct: (manager: SessionManager, act: FanAct) => string | null
+): string[] {
+  const leader = roster.leader;
+  if (leader !== null && acts.some((act) => act.act === 'atParty')) {
+    for (const { session } of keptOn(roster.realm))
+      doneDirectly.set(doneKey(session, leader, command), Date.now());
   }
+  const said: string[] = [];
+  for (const act of acts) {
+    const manager = host?.get(act.session)?.manager;
+    if (!manager) continue;
+    if (act.act === 'skip') {
+      const line = FAN_SKIP[act.why]?.(act.name);
+      if (line) said.push(line);
+    } else if (act.act === 'atParty') {
+      manager.partyCommand(
+        `${manager.megaMudop.prefix}@party ${command}`,
+        t('session.party.fanReason', { command })
+      );
+      said.push(
+        t('session.party.fanAtParty', { name: act.name, command, others: act.others.join(', ') })
+      );
+    } else {
+      const line = direct(manager, act);
+      if (line) said.push(line);
+    }
+  }
+  return said;
+}
+
+/** A Muster pressed, carried out: walking to the leader, or `sys goto` fanned out. */
+function muster(roster: PartyRoster, target: MusterTarget): string[] {
+  const ours = keptOn(roster.realm);
+  const acts = musterActs(
+    roster,
+    ours,
+    target,
+    (session) => host?.get(session)?.manager.megaMudop.mudop ?? false
+  );
+  if (target.to === 'place') {
+    const command = `sys goto ${target.place}`;
+    return fanOut(roster, acts as FanAct[], command, (manager, act) => {
+      // A loop or a walk let go first: walked on from where the teleport lands, it is lost.
+      manager.stopMoving();
+      manager.partyCommand(command, t('session.party.fanReason', { command }));
+      return t('session.party.musterTeleport', { name: act.name, place: target.place });
+    });
+  }
+  return acts
+    .map((act) => {
+      if (act.act === 'walk') {
+        void host
+          ?.get(act.session)
+          ?.manager.walkTo(act.to)
+          .then((refused) => {
+            if (refused !== null)
+              announce('party', t('session.party.musterWalkRefused', { name: act.name, refused }));
+          });
+        return t('session.party.musterWalk', { name: act.name });
+      }
+      return act.act === 'skip' ? (FAN_SKIP[act.why]?.(act.name) ?? '') : '';
+    })
+    .filter((line) => line !== '');
 }
 
 /** Regroup: looks again whenever a character's state changes. See `PartyKeeper`. */
@@ -1759,6 +1838,7 @@ function createHost(): SessionHost {
       if (parties) partyKeeper.check(parties.all, keptOn);
     },
     partyForgot: (id, name) => parties?.forget(labelOf(id).server, name),
+    partyAlreadyDone,
     logDirectory,
     toAttached: (channel, message) => windows.toAttached(channel, message),
     toDiagnostics: (channel, message) => windows.toDiagnostics(channel, message),
@@ -2735,13 +2815,30 @@ function registerIpc(): void {
     const roster = parties?.all.find((entry) => entry.id === id);
     const where = asMusterTarget(target);
     if (!roster || where === null) return [];
-    return musterActs(
-      roster,
-      keptOn(roster.realm),
-      where,
-      (session) => host?.get(session)?.manager.megaMudop.mudop ?? false
-    ).map(muster);
+    return muster(roster, where);
   });
+  /*
+   * Say to: one line typed once, fanned out — each chosen character of ours
+   * sends it as its own, as if typed there, and everybody else in the party
+   * gets the leader's @party when `others` says so.
+   */
+  handle(
+    Invoke.partySay,
+    (_caller, id: unknown, chosen: unknown, line: unknown, others: unknown) => {
+      const roster = parties?.all.find((entry) => entry.id === id);
+      const text = typeof line === 'string' ? line.trim().slice(0, 200) : '';
+      if (!roster || text === '' || !Array.isArray(chosen)) return [];
+      const sessions = new Set(chosen.filter((s): s is string => typeof s === 'string'));
+      const acts = fanOutActs(roster, keptOn(roster.realm), {
+        chosen: sessions,
+        others: others === true
+      });
+      return fanOut(roster, acts, text, (manager) => {
+        manager.sendMacro(text);
+        return null;
+      });
+    }
+  );
   handle(Invoke.removeRoster, (_caller, id: unknown) =>
     typeof id === 'string' ? (parties?.remove(id) ?? []) : (parties?.all ?? [])
   );

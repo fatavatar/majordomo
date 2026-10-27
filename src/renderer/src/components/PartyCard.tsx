@@ -56,8 +56,17 @@ export interface PartyCardProps extends CardChrome {
   onRegroup?(id: string): Promise<number>;
   /** Muster pressed: a line per member of ours, said under the bar. */
   onMuster?(id: string, target: MusterTarget): Promise<string[]>;
-  /** One line typed once, sent by each of these characters as its own. */
-  onSay?(sessions: readonly SessionId[], line: string): void;
+  /**
+   * One line typed once: sent by each chosen character of ours as its own,
+   * and by the leader's `@party` to everybody else in the party when
+   * `others`. A line each for what happened.
+   */
+  onSay?(
+    id: string,
+    sessions: readonly SessionId[],
+    line: string,
+    others: boolean
+  ): Promise<string[]>;
 }
 
 /**
@@ -97,9 +106,6 @@ const RANKS: ReadonlyArray<{ rank: RosterRank | null; label: string }> = [
   { rank: 'mid', label: t('cards.party.groups.middle') },
   { rank: 'back', label: t('cards.party.groups.back') }
 ];
-
-/** Muster's own option for the leader, which no `sys goto` word can be (it has a space). */
-const LEADER = ' leader';
 
 /** A member who is not simply travelling with the party, in a word. */
 const STATUS_WORD: Record<Exclude<BoardRow['status'], 'in' | 'invited'>, string> = {
@@ -207,7 +213,11 @@ function PartyCard({
   const [report, setReport] = useState<string[]>([]);
   /** Who `Say to` leaves out; everybody of ours on the roster is in by default. */
   const [quiet, setQuiet] = useState<ReadonlySet<SessionId>>(new Set());
+  /** Whether Say to leaves out everybody else in the party (the leader's @party). */
+  const [othersQuiet, setOthersQuiet] = useState(false);
   const [line, setLine] = useState('');
+  /** A sys goto place typed beside the Muster button. */
+  const [goto, setGoto] = useState('');
   const rows = boardRows(roster, character, ours);
   const editable = roster !== null && onSaveRoster !== undefined;
   const open = editing && editable;
@@ -309,6 +319,16 @@ function PartyCard({
   /* The bar: only with a roster, since every control on it acts on the roster's members. */
   const speakers = rows.filter((row) => row.ours !== null && row.status !== 'offline');
   const sayTo = speakers.map((row) => row.ours!).filter((sid) => !quiet.has(sid));
+  /*
+   * Everybody else in the party, whom only the leader's @party reaches — so
+   * only while the leader is one of ours and in it.
+   */
+  const leaderOurs = rows.some((row) => row.leader && row.ours !== null && row.status === 'in');
+  const othersIn = leaderOurs
+    ? rows.filter((row) => row.ours === null && row.status === 'in').map((row) => row.name)
+    : [];
+  const toOthers = othersIn.length > 0 && !othersQuiet;
+  const reach = sayTo.length + (toOthers ? othersIn.length : 0);
   const regroupNow = (): void => {
     if (roster === null || !onRegroup) return;
     void onRegroup(roster.id).then((count) =>
@@ -321,16 +341,27 @@ function PartyCard({
       ])
     );
   };
-  const musterTo = (value: string): void => {
-    if (roster === null || !onMuster || value === '') return;
-    const target: MusterTarget =
-      value === LEADER ? { to: 'leader' } : { to: 'place', place: value };
-    void onMuster(roster.id, target).then(setReport);
+  /*
+   * Muster to what is typed: the leader's name walks everybody to the
+   * leader, anything else is a sys goto place, kept for the suggestions.
+   */
+  const musterTyped = (): void => {
+    const place = readPlace(goto);
+    if (roster === null || !onMuster || place === null) return;
+    if (roster.leader !== null && sameName(place, roster.leader)) {
+      void onMuster(roster.id, { to: 'leader' }).then(setReport);
+      setGoto('');
+      return;
+    }
+    if (!roster.places.some((kept) => sameName(kept, place)))
+      edit((r) => ({ ...r, places: [...r.places, place] }));
+    void onMuster(roster.id, { to: 'place', place }).then(setReport);
+    setGoto('');
   };
   const say = (): void => {
     const text = line.trim();
-    if (text === '' || sayTo.length === 0 || !onSay) return;
-    onSay(sayTo, text);
+    if (text === '' || reach === 0 || !onSay || roster === null) return;
+    void onSay(roster.id, sayTo, text, toOthers).then(setReport);
     setLine('');
   };
 
@@ -374,28 +405,37 @@ function PartyCard({
             </button>
           )}
           {onMuster && (
-            /* No `keepFocus` on a select: its default is the popup opening. */
-            <select
-              aria-label={t('cards.party.musterAria')}
-              onChange={(event) => {
-                musterTo(event.target.value);
-                event.target.value = '';
-                chrome.returnFocus?.();
+            <form
+              className="party-muster"
+              onSubmit={(event) => {
+                event.preventDefault();
+                musterTyped();
               }}
-              value=""
             >
-              <option value="">{t('cards.party.muster')}</option>
-              {roster.leader !== null && (
-                <option value={LEADER}>
-                  {t('cards.party.musterToLeader', { leader: roster.leader })}
-                </option>
-              )}
-              {roster.places.map((place) => (
-                <option key={place} value={place}>
-                  {t('cards.party.musterToPlace', { place })}
-                </option>
-              ))}
-            </select>
+              <input
+                aria-label={t('cards.party.edit.placesAria')}
+                list={`party-places-${roster.id}`}
+                onChange={(event) => setGoto(event.target.value)}
+                placeholder={t('cards.party.edit.placesPlaceholder')}
+                spellCheck={false}
+                title={t('cards.party.edit.placesHint')}
+                value={goto}
+              />
+              <datalist id={`party-places-${roster.id}`}>
+                {roster.leader !== null && (
+                  <option
+                    label={t('cards.party.musterToLeader', { leader: roster.leader })}
+                    value={roster.leader}
+                  />
+                )}
+                {roster.places.map((place) => (
+                  <option key={place} value={place} />
+                ))}
+              </datalist>
+              <button disabled={readPlace(goto) === null} onMouseDown={keepFocus} type="submit">
+                {t('cards.party.edit.muster')}
+              </button>
+            </form>
           )}
         </div>
       )}
@@ -427,16 +467,29 @@ function PartyCard({
                 {row.name}
               </button>
             ))}
+            {othersIn.length > 0 && (
+              <button
+                aria-pressed={!othersQuiet}
+                className="chip toggle"
+                data-on={othersQuiet ? 'false' : 'true'}
+                onClick={() => setOthersQuiet(!othersQuiet)}
+                onMouseDown={keepFocus}
+                title={t('cards.party.sayOthersHint', { names: othersIn.join(', ') })}
+                type="button"
+              >
+                {t('cards.party.sayOthers', { count: othersIn.length })}
+              </button>
+            )}
           </span>
           <input
             aria-label={t('cards.party.sayAria')}
             onChange={(event) => setLine(event.target.value)}
             placeholder={
-              sayTo.length === 0
+              reach === 0
                 ? t('cards.party.sayPlaceholder.zero')
-                : sayTo.length === 1
+                : reach === 1
                   ? t('cards.party.sayPlaceholder.one')
-                  : t('cards.party.sayPlaceholder.many', { count: sayTo.length })
+                  : t('cards.party.sayPlaceholder.many', { count: reach })
             }
             spellCheck={false}
             value={line}
@@ -683,22 +736,6 @@ function PartyCard({
               {t('cards.party.edit.add')}
             </button>
           </form>
-          <input
-            aria-label={t('cards.party.edit.placesAria')}
-            defaultValue={roster.places.join(', ')}
-            key={roster.places.join(',')}
-            onBlur={(event) => {
-              const places = event.target.value
-                .split(',')
-                .map(readPlace)
-                .filter((place): place is string => place !== null);
-              if (places.join(',') !== roster.places.join(','))
-                edit((r) => ({ ...r, places: [...new Set(places)] }));
-            }}
-            placeholder={t('cards.party.edit.placesPlaceholder')}
-            spellCheck={false}
-            title={t('cards.party.edit.placesHint')}
-          />
           <label className="party-check" title={t('cards.party.edit.regroupHint')}>
             <input
               checked={roster.regroup}

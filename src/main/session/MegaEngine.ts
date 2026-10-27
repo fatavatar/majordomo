@@ -30,7 +30,13 @@ import { CAST_IMMUNITY, refreshImmunities } from '../megamud/combat/immunity';
 import { grantPlayers, loadCharacter, profileChanged, reloadCharacter } from '../megamud/character';
 import { newTerminal, parseData, type TerminalState } from '../megamud/input/ParseData';
 import { typedCommand } from '../megamud/input/typed';
-import { disconnect, menuCommand, playerCommand, playerKey } from '../megamud/move/buttons';
+import {
+  connectPressed,
+  disconnect,
+  menuCommand,
+  playerCommand,
+  playerKey
+} from '../megamud/move/buttons';
 import { blessCommand } from '../megamud/player/cast';
 import { clearDetours, goTo, headFor, startWalking } from '../megamud/move/destinations';
 import { clearPath, copyPath, freeSteps, stepsShown } from '../megamud/move/path';
@@ -162,6 +168,8 @@ export interface MegaEngineHost {
   afflicted?(name: SharedAffliction, on: boolean, cause: AfflictionCause | null): void;
   /** A party member said `@forget` (`SessionHost.partyForgot`). */
   partyForgot?(name: string): void;
+  /** A leader's `@party` already done by this character itself (`SessionHost.partyAlreadyDone`). */
+  partyAlreadyDone?(leader: string, command: string): boolean;
   /** The engine closes the connection. */
   hangUp(): void;
   /** The engine dials again (after its redial pause). */
@@ -589,6 +597,7 @@ export class MegaEngine {
       },
       activity: (text) => this.host.logged?.('doing', text),
       partyForgot: (name) => this.host.partyForgot?.(name),
+      partyAlreadyDone: (leader, command) => this.host.partyAlreadyDone?.(leader, command) ?? false,
       show: (text) => this.said(text),
       clock: () => Math.floor(Date.now() / 1000),
       tickMs: () => Date.now(),
@@ -1119,6 +1128,19 @@ export class MegaEngine {
     this.act(() => connectFailed(this.s));
   }
 
+  /**
+   * The player's Connect (`connectPressed`): a redial MegaMUD had stopped as
+   * unsafe overridden, and the last hang-up's leftovers cleared before the
+   * dial. Whether it overrode a stop.
+   */
+  connectPressed(): boolean {
+    let overrode = false;
+    this.safely(() => {
+      overrode = connectPressed(this.s, false);
+    });
+    return overrode;
+  }
+
   /** The redial waited on called off, the player's Disconnect: offline, idle (task `0x14`). */
   cancelRedial(): void {
     if (!this.redialing) return;
@@ -1555,6 +1577,11 @@ export class MegaEngine {
       }
       wake(this.s);
     });
+  }
+
+  /** What is said before `@party` and the other party lines (BBS.INI `SpeechPrefix`). */
+  get speechPrefix(): string {
+    return this.s.speechPrefix;
   }
 
   /** Whether a command queued here is still on the pending list. */
