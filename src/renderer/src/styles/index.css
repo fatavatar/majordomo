@@ -13057,11 +13057,6 @@ tr:hover .row-action.worn,
   padding: 0;
 }
 
-.party-summary {
-  font-size: var(--font-micro);
-  margin: 6px 0;
-}
-
 /* The editor: a row's own controls under it, and the roster's beneath the groups. */
 .party-edit-row,
 .party-editor,

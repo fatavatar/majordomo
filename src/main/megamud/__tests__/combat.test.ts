@@ -299,6 +299,23 @@ describe('running and attacking (0x40e190)', () => {
     expect(out.sent).toEqual(['a giant rat\r', 'bash giant rat\r']);
   });
 
+  /* Ours (2026-10-27): the Party card reads the leader's listing, so a leader asks every round. */
+  it('has a party’s leader ask for the party after every round, a follower only by its setting', () => {
+    const { s } = fighter([]);
+    s.Party_ParAfterRound = 0;
+    s.partySize = 3;
+    s.following = 0;
+    s.parAt = 100;
+    blowStruck(s);
+    combatRoundEnd(s);
+    expect(s.parAt).toBe(0);
+    s.following = 1;
+    s.parAt = 100;
+    blowStruck(s);
+    combatRoundEnd(s);
+    expect(s.parAt).toBe(100);
+  });
+
   it('waits for the opening round to be fought before going on', () => {
     const { s, out } = fighter([]);
     s.Combat_AttackCmd = 'bash';

@@ -348,6 +348,12 @@ export type BlockType =
   // combat
   | 'combat-status'
   | 'user-hits'
+  /**
+   * `<Name>'s blood is drained for <n> damage!` (and life, soul): damage
+   * dealt to somebody else that names them only in the possessive, which no
+   * blow frame reads. For a party member's bar (2026-10-27).
+   */
+  | 'other-drained'
   | 'mob-hits'
   /**
    * A monster's attack on this character that did no damage.
@@ -961,6 +967,7 @@ const DOMAIN_OF: Record<BlockType, BlockDomain> = {
 
   'combat-status': 'combat',
   'user-hits': 'combat',
+  'other-drained': 'combat',
   'mob-hits': 'combat',
   'mob-misses': 'combat',
   'user-misses': 'combat',

@@ -94,7 +94,7 @@ describe('a stats snapshot', () => {
       path_text: 'Orc Training - 81 steps to lap end',
       race: 'Dwarf',
       class: 'Skald',
-      megamud_version: 'mudengine 1.2.3'
+      megamud_version: 'Majordomo 1.2.3'
     });
   });
 

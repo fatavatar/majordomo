@@ -34,7 +34,7 @@ import {
 } from '../../shared/character';
 import { asAlignment } from '../../shared/alignment';
 import { parseRemoteReply } from '../../shared/remotes';
-import { observe, type WornItem } from '../../shared/players';
+import { observe, playerKey, type WornItem } from '../../shared/players';
 
 /**
  * A row's alignment. An empty column is **Neutral**: MajorMUD's `who` prints
@@ -501,15 +501,25 @@ export function withPartyListing(
     .map((row): PartyMember | null => {
       const name = row['name'];
       if (!name) return null;
+      const held = s.party.members.find((member) => member.name === name);
+      const health = percent(row['health']);
+      // The numbers this member's client last said, on the row or, from before
+      // they joined, in the registry: a listing is newer, so it moves the HP.
+      const said = held?.vitals ?? s.players[playerKey(name)]?.vitals ?? null;
+      const vitals =
+        said !== null && health !== null ? { ...said, hp: Math.round(health * said.hpMax) } : said;
       return {
         name,
         className: row['class']?.trim() || null,
-        health: percent(row['health']),
+        health,
         mana: percent(row['mana']),
         rank: rankOf(row['rank']),
         activity: partyActivity(row['flag']),
         invited: row['invited'] !== undefined,
-        vitals: s.party.members.find((held) => held.name === name)?.vitals ?? null
+        vitals,
+        listed: health,
+        taken: 0,
+        hpMaxGuess: guessedMax(held, health)
       };
     })
     .filter((entry): entry is PartyMember => entry !== null);
@@ -517,6 +527,56 @@ export function withPartyListing(
   if (alone || (!pending && members.length <= 1)) {
     return { ...s, party: NO_PARTY };
   }
+  return { ...s, party: { ...s.party, members } };
+}
+
+/**
+ * A member's maximum health, guessed (2026-10-27): the damage seen dealt
+ * to them since the last listing, over how far the listings' share fell
+ * between the two. Only off a fall big enough to measure; kept as a running
+ * average, so one fight's heal or regeneration mid-count does not swing it.
+ */
+function guessedMax(held: PartyMember | undefined, health: number | null): number | null {
+  const was = held?.hpMaxGuess ?? null;
+  const taken = held?.taken ?? 0;
+  const listed = held?.listed ?? null;
+  if (health === null || listed === null || taken <= 0) return was;
+  const fell = listed - health;
+  if (fell < 0.02) return was;
+  const guess = taken / fell;
+  return Math.round(was === null ? guess : was * 0.7 + guess * 0.3);
+}
+
+/**
+ * Damage seen dealt to a party member (2026-10-27), between the listings
+ * that say their share: counted towards the next guess at their maximum,
+ * and, where a maximum is known or guessed, taken off the bar now rather
+ * than at the next `par`. Null when `name` is nobody in the party.
+ */
+export function withPartyDamage(
+  s: CharacterState,
+  name: string | undefined,
+  damage: number
+): CharacterState | null {
+  if (name === undefined || damage <= 0) return null;
+  const index = s.party.members.findIndex(
+    (held) => held.name.toLowerCase() === name.toLowerCase() && !held.invited
+  );
+  if (index === -1) return null;
+  const members = s.party.members.map((held, position) => {
+    if (position !== index) return held;
+    const max = held.vitals?.hpMax ?? held.hpMaxGuess ?? null;
+    return {
+      ...held,
+      taken: (held.taken ?? 0) + damage,
+      health:
+        max !== null && max > 0 && held.health !== null
+          ? Math.max(0, held.health - damage / max)
+          : held.health,
+      vitals:
+        held.vitals === null ? null : { ...held.vitals, hp: Math.max(0, held.vitals.hp - damage) }
+    };
+  });
   return { ...s, party: { ...s.party, members } };
 }
 

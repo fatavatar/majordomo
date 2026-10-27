@@ -2791,8 +2791,6 @@ cards:
       fighting: fighting
     # A member of ours who is not in the leader's room.
     away: 'at {room}'
-    # Under the bar: the party's missing health, from the members whose figures are known.
-    down: 'Party down {hp} HP · lowest {name} {percent}%'
     musterToLeader: 'walk everyone to {leader}'
     regroup: Regroup
     start: Make this a party
@@ -2809,7 +2807,6 @@ cards:
     sayOthers: 'Others ({count}) via @party'
     sayOthersHint: '{names}: sent by the leader''s @party, which their MegaMUD carries out — click to leave them out or put them back'
     sayToggle: 'Send as {name} — click to leave them out or put them back'
-    whole: Everybody is at full health
     badge:
       hurt: '{count} hurt'
       invited: '{count} invited'

@@ -23,7 +23,7 @@ import {
 import { isKnownPlayer, isSelf, PlayerName } from '../lib/players';
 import { playerKey } from '@shared/players';
 import type { PopoverAnchor } from '../lib/popover';
-import { levelWord, meterValue } from '../lib/vitals';
+import { levelWord } from '../lib/vitals';
 import { tuning } from '../lib/tuning';
 
 export interface PartyCardProps extends CardChrome {
@@ -130,26 +130,26 @@ const newId = (): string =>
   `party-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
 
 /**
- * A fraction against a track, with the number and the level in words beside it.
+ * A fraction against a track, with its figures and the level in words beside it.
  *
- * The party roster gives percentages and no absolutes, so there is no `n/max`
- * to print — the maximum, when this member's client has answered `@health`
- * or the member is one of ours, goes beside the percentage instead
- * (`meterValue` says why not the pair). The rule from the Vitals card holds
- * unchanged: a null fraction is an empty track, never a full or a zero one,
- * and the level is said in words as well as in hue.
+ * The listing gives a share and no absolutes, so the figures are printed only
+ * where a maximum is known — a member of ours, a client's `{HP=…}`, or one
+ * guessed from damage seen — and never as a percentage: the track is the
+ * share (2026-10-27). The rule from the Vitals card holds unchanged: a null
+ * fraction is an empty track, never a full or a zero one, and the level is
+ * said in words as well as in hue.
  */
 function Bar({
   label,
   fraction,
-  max,
+  figures,
   thresholds,
   tone
 }: {
   label: string;
   fraction: number | null;
-  /** From an `@health` answer or the member's own tab, or null when nobody has said. */
-  max: number | null;
+  /** What it stands at of its maximum, when either is known; nothing to print otherwise. */
+  figures: string | null;
   thresholds: VitalsUiConfig['hp'];
   tone: string;
 }) {
@@ -162,11 +162,23 @@ function Bar({
         <span style={fraction === null ? undefined : { width: `${fraction * 100}%` }} />
       </span>
       <span className="party-meter-value">
-        {meterValue(fraction, max)}
+        {figures ?? ''}
         {word === null ? '' : ` ${word}`}
       </span>
     </span>
   );
+}
+
+/**
+ * A bar's figures (2026-10-27): what it stands at of its maximum, never a
+ * percentage — the bar is the share. Exact from a member's own tab or their
+ * client's `{HP=…}`; `≈` where the maximum is guessed from damage seen.
+ */
+function figures(now: number | null, max: number | null, guessed = false): string | null {
+  if (max === null || max <= 0) return null;
+  const mark = guessed ? '≈' : '';
+  const at = now === null ? '?' : `${mark}${Math.round(now).toLocaleString()}`;
+  return `${at} / ${mark}${max.toLocaleString()}`;
 }
 
 /**
@@ -365,17 +377,6 @@ function PartyCard({
     setLine('');
   };
 
-  /* How far the party is down, from the members whose figures are known. */
-  const known = rows.filter((row) => row.status === 'in' && row.health !== null);
-  const deficit = known.reduce(
-    (sum, row) => sum + (row.vitals === null ? 0 : Math.max(0, row.vitals.hpMax - row.vitals.hp)),
-    0
-  );
-  const lowest = known.reduce<BoardRow | null>(
-    (low, row) => (low === null || (row.health ?? 1) < (low.health ?? 1) ? row : low),
-    null
-  );
-
   return (
     <BentoCard
       {...chrome}
@@ -503,17 +504,6 @@ function PartyCard({
           ))}
         </ul>
       )}
-      {roster !== null && lowest !== null && (
-        <div className="party-summary hint">
-          {deficit > 0
-            ? t('cards.party.down', {
-                hp: deficit.toLocaleString(),
-                name: lowest.name,
-                percent: Math.round((lowest.health ?? 1) * 100)
-              })
-            : t('cards.party.whole')}
-        </div>
-      )}
       {rows.length === 0 ? (
         <div className="empty">{t('cards.party.empty')}</div>
       ) : (
@@ -620,8 +610,18 @@ function PartyCard({
                       <div className="party-meters">
                         <Bar
                           fraction={row.health}
+                          figures={
+                            row.vitals !== null
+                              ? figures(row.vitals.hp, row.vitals.hpMax)
+                              : figures(
+                                  row.health === null || row.hpMaxGuess === null
+                                    ? null
+                                    : row.health * row.hpMaxGuess,
+                                  row.hpMaxGuess,
+                                  true
+                                )
+                          }
                           label={t('cards.party.bar.hp')}
-                          max={row.vitals?.hpMax ?? null}
                           thresholds={thresholds.hp}
                           tone="hp"
                         />
@@ -631,8 +631,8 @@ function PartyCard({
                         {row.mana !== null && (
                           <Bar
                             fraction={row.mana}
+                            figures={figures(row.vitals?.mana ?? null, row.vitals?.manaMax ?? null)}
                             label={t('cards.party.bar.mana')}
-                            max={row.vitals?.manaMax ?? null}
                             thresholds={thresholds.mana}
                             tone="mana"
                           />

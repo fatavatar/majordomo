@@ -22,7 +22,7 @@ import { mergeItemRules, type ItemRule } from '../../shared/itemRules';
 import { withRealmMonsters, type MonsterRule } from '../../shared/monsterRules';
 import { AutoKeys, type KeyedWay } from '../automation/AutoKeys';
 import { StatsReporter, type KeepKey } from '../stats/StatsReporter';
-import { statsSnapshot } from '../stats/snapshot';
+import { REPORTED_AS, statsSnapshot } from '../stats/snapshot';
 import { version as APP_VERSION } from '../../../package.json';
 import type { MegaChoices } from '../../shared/ipc';
 import type { RemoteName } from '../../shared/remotes';
@@ -1271,7 +1271,7 @@ export class SessionManager {
         },
         notice: (text) => this.sink.notice(text)
       },
-      `mudengine ${APP_VERSION}`
+      `${REPORTED_AS} ${APP_VERSION}`
     );
     this.keys = new AutoKeys(
       automation.movement,

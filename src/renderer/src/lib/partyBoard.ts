@@ -50,6 +50,8 @@ export interface BoardRow {
   health: number | null;
   mana: number | null;
   vitals: PartyMember['vitals'];
+  /** Maximum health guessed from damage seen, for a member whose client never said it. */
+  hpMaxGuess: number | null;
   activity: PartyActivity | { state: 'fighting' } | null;
   /** The room a member of ours is in, when it is not the leader's. */
   away: string | null;
@@ -127,6 +129,7 @@ function rowFor(
     health,
     mana,
     vitals,
+    hpMaxGuess: own === null ? (entry?.hpMaxGuess ?? null) : null,
     activity,
     away
   };

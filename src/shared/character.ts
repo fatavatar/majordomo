@@ -1114,6 +1114,19 @@ export interface PartyMember {
    * fills the same bar the listing would have.
    */
   vitals: { hp: number; hpMax: number; mana: number | null; manaMax: number | null } | null;
+  /**
+   * The share of health the last listing gave (2026-10-27), apart from
+   * `health`, which damage seen since moves on (`withPartyDamage`).
+   */
+  listed?: number | null;
+  /** Damage seen dealt to this member since that listing. */
+  taken?: number;
+  /**
+   * Maximum health guessed from the damage seen against how far the
+   * listings' share fell, for a member whose client never said its own
+   * (`vitals`): a running average, as good as the fights it was measured on.
+   */
+  hpMaxGuess?: number | null;
 }
 
 /**

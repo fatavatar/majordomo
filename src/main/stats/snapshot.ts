@@ -25,6 +25,13 @@ import {
 import type { EngineStats } from '../session/MegaEngine';
 import type { Reading } from './MudStatsApi';
 
+/**
+ * What the board is told the client is, beside its version: the version
+ * field and the label a character's key is claimed under. Majordomo since the
+ * rename (2026-10-25; reported as it from 2026-10-27, mudengine before).
+ */
+export const REPORTED_AS = 'Majordomo';
+
 /** The Combat Stats card's scope: its baseline, the hour's floor it reads rates over, and now. */
 export interface CardScope {
   baseline: CombatTally | null;
@@ -93,6 +100,6 @@ export function statsSnapshot(
 
   text('race', state.race);
   text('class', state.className);
-  text('megamud_version', `mudengine ${version}`);
+  text('megamud_version', `${REPORTED_AS} ${version}`);
   return out;
 }

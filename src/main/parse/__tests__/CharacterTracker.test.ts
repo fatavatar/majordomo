@@ -2776,6 +2776,61 @@ describe('the party this character travels with', () => {
    * members became one, and one member is not a party — the card vanished the
    * moment somebody sat down (live, 2026-08-27).
    */
+  /*
+   * 2026-10-27: a member's bar between listings, from the blows seen landing
+   * on them, and their maximum guessed from that damage against how far the
+   * next listing's share fell — for a member whose client never said it.
+   */
+  it('moves a member’s bar on the blows seen, and guesses their maximum from the next listing', () => {
+    // As the app wires it: names read against the room the tracker holds.
+    const tracker = new CharacterTracker();
+    const classifier = new Classifier({
+      present: () => tracker.current.room.occupants.map((who) => who.name),
+      mob: () => undefined
+    });
+    let seq = 0;
+    const feed = (text: string): void => {
+      seq += 1;
+      const { block, batch } = classifier.classify({
+        seq,
+        at: 1_700_000_000_000 + seq,
+        text,
+        plain: text,
+        terminator: 'newline'
+      });
+      tracker.apply(block);
+      if (batch) tracker.apply(batch, batch.rows);
+    };
+    const listing = (skinny: number): void => {
+      feed('The following people are in your travel party:');
+      feed('  Fatty Fatterson                (Skald)      [M: 59%] [H:100%]   - Frontrank');
+      feed(
+        `  Skinny Fatterson               (Necrolyte)  [M: 80%] [H:${String(skinny).padStart(3)}%]   - Backrank`
+      );
+      feed('[HP=81/MA=647]:');
+    };
+    feed('[HP=81/MA=647]:');
+    feed('Dark Cavern');
+    feed('Also here: Fatty, Skinny, dark oceanid guard.');
+    feed('Obvious exits: north');
+    feed('[HP=81/MA=647]:');
+    listing(100);
+    feed('The dark oceanid guard cleaves Skinny for 200 damage!');
+    feed("Skinny's blood is drained for 100 damage!");
+    feed('[HP=81/MA=647]:');
+    let skinny = tracker.current.party.members[1];
+    expect(skinny?.taken).toBe(300);
+    // No maximum known yet, so the bar waits for the listing.
+    expect(skinny?.health).toBe(1);
+    listing(80);
+    skinny = tracker.current.party.members[1];
+    expect(skinny?.hpMaxGuess).toBe(1500);
+    expect(skinny?.taken).toBe(0);
+    feed('The dark oceanid guard cleaves Skinny for 150 damage!');
+    feed('[HP=81/MA=647]:');
+    expect(tracker.current.party.members[1]?.health).toBeCloseTo(0.7);
+  });
+
   it('keeps the party when a member is resting, and says which one', () => {
     const { tracker, feed } = feeder();
     feed('[HP=101/KAI=5]:');
@@ -6496,7 +6551,10 @@ describe('loot and listings from other realms', () => {
         rank: 'mid',
         activity: null,
         invited: false,
-        vitals: null
+        vitals: null,
+        listed: 0.76,
+        taken: 0,
+        hpMaxGuess: null
       },
       {
         name: 'Dungeon',
@@ -6506,7 +6564,10 @@ describe('loot and listings from other realms', () => {
         rank: 'front',
         activity: null,
         invited: false,
-        vitals: null
+        vitals: null,
+        listed: 0.84,
+        taken: 0,
+        hpMaxGuess: null
       }
     ]);
   });

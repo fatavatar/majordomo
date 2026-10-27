@@ -53,7 +53,7 @@ function reporter(
       playerName: () => state.name,
       notice: (text) => notices.push(text)
     },
-    'mudengine test',
+    'Majordomo test',
     fetcher,
     () => Promise.resolve()
   );
@@ -91,7 +91,7 @@ describe('the link (the handshake)', () => {
     expect(kept).toEqual(['mudk_86fb_secret']);
     const claims = calls.filter((c) => c.path === '/api/ingest/claim');
     expect(claims).toHaveLength(2);
-    expect(claims[0]!.body).toEqual({ ticket: 'api:abc', code: '481923', label: 'mudengine test' });
+    expect(claims[0]!.body).toEqual({ ticket: 'api:abc', code: '481923', label: 'Majordomo test' });
   });
 
   it('says what the board said, and never asks twice on its own', async () => {

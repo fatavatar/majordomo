@@ -1095,6 +1095,15 @@ export const RULES: Rule[] = [
     pattern: /^(?<line>[a-z][^"]*?\b(?:you|your body)\b[^"]*?) for (?<damage>\d+) damage!/,
     named: true
   },
+  /*
+   * Somebody else drained, named in the possessive (`Skinny's blood is
+   * drained for 51 damage!`, the realm's messages 252 and 919): ahead of the
+   * catch-all, which reads names off the ends and finds none here.
+   */
+  {
+    type: 'other-drained',
+    pattern: /^(?<target>[A-Z][\w'-]*)'s (?:blood|life|soul) is drained for (?<damage>\d+) damage!$/
+  },
   {
     type: 'user-hits',
     pattern: /^(?<line>[^"]+?) for (?<damage>\d+) damage!$/,
