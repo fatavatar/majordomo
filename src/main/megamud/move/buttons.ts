@@ -83,6 +83,33 @@ export function disconnect(s: Session): void {
   setTask(s, Task.InGame);
 }
 
+/**
+ * `0x7d4` offline: the player's Connect (`0x46326c`, read 2026-10-27). Where
+ * MegaMUD had stopped reconnecting because it was unsafe (`noRedial`, a
+ * hang-up for low HP, a player or a death) it warns first — "MegaMMUD
+ * previously disconnected and has not reconnected because it was deemed
+ * unsafe to do so. Do you wish to override this and re-connect?" — and the
+ * press is the answer; then the hang-up's leftovers are cleared before the
+ * dial: halted movement, both redial stops, the hang-up and the live
+ * connection, following, and (unless an event's logon, lParam -1) the count
+ * of redials. Whether it overrode a stop, for the app to say so.
+ *
+ * Skipped, Skinny stayed unable to redial for a whole session (2026-10-26):
+ * the client's own Connect after a low-HP hang-up left `noRedial` set, and
+ * the nightly cleanup's drop seven hours later was never dialled back.
+ */
+export function connectPressed(s: Session, scheduled: boolean): boolean {
+  const overrode = s.noRedial === 1;
+  s.movementHalted = 0;
+  s.skipRedialOnce = 0;
+  s.noRedial = 0;
+  s.connectionLive = 0;
+  s.hangingUp = 0;
+  s.following = 0;
+  if (!scheduled) s.redials = 0;
+  return overrode;
+}
+
 /** `0x808`: roaming (and so walking) on or off; the loop let go. */
 export function roam(s: Session): void {
   const was = s.roaming;
@@ -227,7 +254,14 @@ export function menuCommand(s: Session, command: number): void {
   else if (command === WindowCommand.AllOff) allOff(s);
   else if (command === WindowCommand.NoHangup)
     s.MegaMud_NoHangup = s.MegaMud_NoHangup === 0 ? 1 : 0;
-  else {
+  else if (command === WindowCommand.Connect) {
+    // Online it is the Disconnect; offline, the Connect a Logon event presses.
+    if (s.online !== 0) disconnect(s);
+    else {
+      connectPressed(s, true);
+      s.host.dial?.();
+    }
+  } else {
     const plain = PLAIN[command];
     if (!plain) return;
     const [field, idle] = plain;

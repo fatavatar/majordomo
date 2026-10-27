@@ -312,6 +312,8 @@ export interface SessionHostOptions {
   characterChanged?(id: SessionId): void;
   /** A party member said `@forget` to this character: its roster leaves them out of Regroup. */
   partyForgot?(id: SessionId, name: string): void;
+  /** Whether a leader's `@party <command>` to this character is one it already did itself. */
+  partyAlreadyDone?(id: SessionId, leader: string, command: string): boolean;
 }
 
 export class SessionHost {
@@ -513,7 +515,9 @@ export class SessionHost {
         },
         acted: (act) => slot.capture?.act(act),
         engineLog: (kind, text) => slot.capture?.engine(kind, text),
-        partyForgot: (name) => this.options.partyForgot?.(id, name)
+        partyForgot: (name) => this.options.partyForgot?.(id, name),
+        partyAlreadyDone: (leader, command) =>
+          this.options.partyAlreadyDone?.(id, leader, command) ?? false
       },
       this.options.worldFor(id),
       config.automation,
@@ -581,6 +585,13 @@ export class SessionHost {
     const ladder = slot.reconnect.redials(target);
     if (!ladder) slot.reconnect.cancel();
     slot.manager.stopRedial();
+    /*
+     * MegaMUD's own Connect: a redial it stopped as unsafe (a low-HP hang-up)
+     * is overridden by pressing it, and said so — its warning, answered by
+     * the press. Left set, the next lost carrier was never dialled back.
+     */
+    if (slot.manager.megaConnectPressed())
+      this.options.notice({ session: id, message: t('notices.session.redialOverridden') });
     return ladder ? slot.reconnect.now() : this.dial(slot, target);
   }
 

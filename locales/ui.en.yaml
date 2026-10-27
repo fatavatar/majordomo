@@ -701,6 +701,11 @@ notices:
     closeRefused: '{refusalReason} Disconnect it before closing the tab.'
     # Connect pressed while a dial was still waiting for the far end to answer.
     dialAgain: The last dial had no answer yet. Giving it up and dialing again.
+    # MegaMUD had stopped redialling as unsafe (a hang-up for low HP, a player or a death);
+    # the player's Connect overrides that, as MegaMUD's own Connect does after its warning.
+    redialOverridden:
+      MegaMUD had stopped reconnecting this character after hanging up because it was unsafe.
+      Connecting as you asked, and dropped connections are redialled again from now on.
     # What each character was walking, taken up again when it is next in the game.
     movement:
       readError:
@@ -2788,10 +2793,7 @@ cards:
     away: 'at {room}'
     # Under the bar: the party's missing health, from the members whose figures are known.
     down: 'Party down {hp} HP · lowest {name} {percent}%'
-    muster: Muster…
-    musterAria: Send the party somewhere
-    musterToLeader: 'Everyone to {leader}'
-    musterToPlace: 'Everyone: sys goto {place}'
+    musterToLeader: 'walk everyone to {leader}'
     regroup: Regroup
     start: Make this a party
     startHint: Regroup, Muster and Say to work from a party's roster — its members, leader and ranks, edited here.
@@ -2804,6 +2806,8 @@ cards:
       one: Type once, sent by 1 character
       many: 'Type once, sent by {count} characters'
       zero: Choose who sends it
+    sayOthers: 'Others ({count}) via @party'
+    sayOthersHint: '{names}: sent by the leader''s @party, which their MegaMUD carries out — click to leave them out or put them back'
     sayToggle: 'Send as {name} — click to leave them out or put them back'
     whole: Everybody is at full health
     badge:
@@ -2823,11 +2827,12 @@ cards:
       disband: Forget this party
       done: Done editing
       makeLeader: Lead
-      placesAria: Places Muster can send the party by sys goto
+      muster: Muster
+      placesAria: Where to muster the party
       placesHint:
-        The realm's own sys goto words, separated by commas. Only a character whose MegaMUD settings
-        say it is a MudOp can use them; the others are said to stay put.
-      placesPlaceholder: 'Muster places: kha, sil, lost'
+        The leader's name walks everybody to the leader. Anything else is the realm's own sys goto
+        word for a place, kept as a suggestion for next time.
+      placesPlaceholder: 'Muster to: leader, or a sys goto place (kha)'
       putBack: Put back
       rankAria: 'Where {name} stands'
       rankAuto: As listed
@@ -4791,7 +4796,8 @@ session:
     regroupInvite: 'Regroup: inviting {name} back into the party.'
     regroupJoin: 'Regroup: joining {leader}''s party again.'
     regroupWalkRefused: 'Regroup could not walk to {leader}: {refused}'
-    musterReason: 'Muster: sys goto {place}.'
+    fanReason: 'Party card: {command}'
+    fanAtParty: '{name}: @party {command} — for {others}.'
     musterTeleport: '{name}: sys goto {place}.'
     musterWalk: '{name}: walking to the leader.'
     musterWalkRefused: 'Muster could not walk {name} to the leader: {refused}'

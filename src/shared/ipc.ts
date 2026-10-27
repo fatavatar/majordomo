@@ -1114,6 +1114,8 @@ export const Invoke = {
   regroupParty: 'party:regroup',
   /** Muster pressed: each member of ours sent, with what happened, a line each. */
   musterParty: 'party:muster',
+  /** Say to: one line fanned out across the party, a line each for what happened. */
+  partySay: 'party:say',
   /** Everything the realm knows about one room, for a room nobody is in. */
   roomBrief: 'world:room',
   wearer: 'world:wearer',
@@ -1700,6 +1702,16 @@ export interface IpcApi {
   regroupParty(id: string): Promise<number>;
   /** Muster: to the leader, or to a place by `sys goto`. A line per member of ours. */
   musterParty(id: string, target: MusterTarget): Promise<string[]>;
+  /**
+   * Say to: `line` sent by each chosen character of ours as its own, and by
+   * the leader's `@party` to everybody else travelling with it when `others`.
+   */
+  partySay(
+    id: string,
+    sessions: readonly SessionId[],
+    line: string,
+    others: boolean
+  ): Promise<string[]>;
   /**
    * The realm's whole answer about one room — its ways out, the place it
    * holds, what its lair spawns, the spell it casts on whoever stands in it.

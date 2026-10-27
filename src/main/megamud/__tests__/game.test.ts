@@ -15,8 +15,9 @@ import {
 } from '../script/game';
 import { newTerminal, parseData } from '../input/ParseData';
 import { expandMacros } from '../script/send';
-import { disconnect, menuCommand, playerCommand } from '../move/buttons';
+import { connectPressed, disconnect, menuCommand, playerCommand } from '../move/buttons';
 import { session } from './fixture';
+import { WindowCommand } from '../../../shared/megamud/toggles';
 import { State } from '../states';
 import { Task } from '../script/task';
 
@@ -191,6 +192,61 @@ describe('hanging up (0x42d510, 0x4b6fe0)', () => {
     hangUp(s, 0);
     expect(out.sent).toEqual([]);
     sessionEnded(s);
+  });
+});
+
+/*
+ * Skinny, 2026-10-26: hung up at -611 HP (23:33), connected again by the
+ * client's Connect (23:34), and the nightly cleanup's drop at 07:20 never
+ * redialled — `noRedial` was still set from the hang-up, which only
+ * MegaMUD's own Connect (`0x46326c`) clears.
+ */
+describe("the player's Connect (0x7d4 offline)", () => {
+  const hungUpForLowHp = () => {
+    const made = session();
+    const { s } = made;
+    connected(s);
+    goOnline(s, 1);
+    s.inGame = 1;
+    s.Comms_RedialCarrier = 1;
+    // What the critical-HP hang-up leaves behind it.
+    s.noRedial = 1;
+    s.skipRedialOnce = 1;
+    s.hangingUp = 1;
+    connectionClosed(s);
+    return made;
+  };
+
+  it('overrides a redial stopped as unsafe, so the next lost carrier is dialled back', () => {
+    const { s, out } = hungUpForLowHp();
+    expect(connectPressed(s, false)).toBe(true);
+    expect([s.noRedial, s.skipRedialOnce, s.hangingUp]).toEqual([0, 0, 0]);
+    connected(s);
+    goOnline(s, 1);
+    s.inGame = 1;
+    connectionClosed(s);
+    expect(out.shown.at(-1)).toBe('Unexpected disconnection.');
+    expect(s.task).toBe(Task.Redial);
+  });
+
+  it('without it, the stop holds: the drop is not redialled', () => {
+    const { s } = hungUpForLowHp();
+    connected(s);
+    goOnline(s, 1);
+    s.inGame = 1;
+    connectionClosed(s);
+    expect(s.task).toBe(Task.Terminated);
+    expect(connectPressed(s, false)).toBe(true);
+    expect(connectPressed(s, false)).toBe(false);
+  });
+
+  it('is what the Connect command does offline, and dials; online it disconnects', () => {
+    const { s } = hungUpForLowHp();
+    const dials: number[] = [];
+    s.host.dial = () => dials.push(1);
+    menuCommand(s, WindowCommand.Connect);
+    expect(dials).toEqual([1]);
+    expect(s.noRedial).toBe(0);
   });
 });
 

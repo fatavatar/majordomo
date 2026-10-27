@@ -627,6 +627,20 @@ The port keeps these quirks:
     `Comms.RedialCarrier` it redials after `Comms.RedialPause`.
   - After a BBS shutdown, with `Comms.RedialCleanup`, it redials after
     `Comms.CleanupPeriod` minutes.
+- **The player's Connect (`0x7d4` offline, `0x46326c`, read 2026-10-27)**:
+  - With redialling stopped as unsafe (`0x30de8` is 1: a hang-up for low HP,
+    a player or a death), it first asks: "WARNING! MegaMMUD previously
+    disconnected and has not reconnected because it was deemed unsafe to do
+    so. Do you wish to override this and re-connect?" Anything but Yes
+    (`IDYES`, 6) leaves it offline.
+  - Then it clears the hang-up's leftovers: `0xe398` (movement halted),
+    `0x30de4` (skip the next redial), `0x30de8` (redialling stopped),
+    `0x318e4`, `0xdb10`, `0x30dec`, `0xe160` (the connection live), `0xe158`
+    (hanging up) and `0xe2e8` (following); and, unless the press came from a
+    Logon event (lParam -1), `0x30dc8` (redials counted). Then it dials.
+  - Only this clears `0x30de8` offline. A client that dials without it keeps
+    the stop for the whole next session, and the next lost carrier is never
+    redialled (Skinny, 2026-10-26).
 - **A dial that failed (`0x4b71d0`, read 2026-10-13)**, called by the
   telnet connect (`0x4b6e00`) with `Comms.RedialConnect`: the failure is
   counted (`0x30dc8`). At `Comms.RedialMax` it shows "[Re-dial maximum

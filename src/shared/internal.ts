@@ -873,6 +873,12 @@ const TUNING_DEFAULTS = {
      * that was refused is not repeated at every prompt.
      */
     partyRegroupAgainMs: 20_000,
+    /**
+     * How long a command the Party card had one of this client's characters
+     * do itself stands in for the leader's `@party` of the same command, so
+     * the character does not do it a second time when that line arrives.
+     */
+    partyEchoMs: 120_000,
     /** Negotiation records the diagnostics pane can look back over. */
     telnetLogLimit: 500,
     /** Framed lines retained; the terminal keeps the real backscroll. */

@@ -486,6 +486,8 @@ export interface SessionSink {
   engineLog?(kind: EngineLogKind, text: string): void;
   /** A party member said `@forget`: the Party card's roster leaves them out of Regroup. */
   partyForgot?(name: string): void;
+  /** A leader's `@party` the Party card already had this character do itself. */
+  partyAlreadyDone?(leader: string, command: string): boolean;
   /** How a route walk is going, when one is running. */
   walk?(progress: WalkProgress): void;
   /**
@@ -3369,6 +3371,8 @@ export class SessionManager {
           // Where MegaMUD would play the sound its `[Alerts]` names.
           alert: (which) => this.sink.notice(megaAlertText(which)),
           partyForgot: (name) => this.sink.partyForgot?.(name),
+          partyAlreadyDone: (leader, command) =>
+            this.sink.partyAlreadyDone?.(leader, command) ?? false,
           world: () => this.world,
           /*
            * With the way a refusal for a key would take once it is carried,
@@ -3425,6 +3429,14 @@ export class SessionManager {
    */
   get megaRedialing(): boolean {
     return this.mega?.redialing ?? false;
+  }
+
+  /**
+   * The player's Connect, told to the engine as MegaMUD's own (`0x7d4`): a
+   * redial it had stopped as unsafe overridden. Whether it overrode one.
+   */
+  megaConnectPressed(): boolean {
+    return this.mega?.connectPressed() ?? false;
   }
 
   /** Stop trying: the engine's redial called off, as Disconnect calls ours off. */
@@ -5887,11 +5899,13 @@ export class SessionManager {
    * `BBS.SysGoto`): whether the Party card's Muster may teleport this
    * character, and the place it seeds a new roster with.
    */
-  get megaMudop(): { mudop: boolean; place: string } {
+  get megaMudop(): { mudop: boolean; place: string; prefix: string } {
     const bbs = this.megaSettings?.live['BBS'];
     return {
       mudop: Number(bbs?.['IsMudop'] ?? 0) !== 0,
-      place: String(bbs?.['SysGoto'] ?? '').trim()
+      place: String(bbs?.['SysGoto'] ?? '').trim(),
+      // What the realm puts before a party line (BBS.INI `SpeechPrefix`), `.` by default.
+      prefix: this.mega?.speechPrefix ?? '.'
     };
   }
 

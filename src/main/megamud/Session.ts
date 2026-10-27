@@ -366,6 +366,11 @@ export interface SessionHost {
    * roster leaves them out of Regroup until the player puts them back.
    */
   partyForgot?(name: string): void;
+  /**
+   * Ours: whether the leader's `@party <command>` is one the Party card
+   * already had this character do itself, so it is not done twice.
+   */
+  partyAlreadyDone?(leader: string, command: string): boolean;
   /** `0x4bd3c0`: a line shown to the player. */
   show(text: string): void;
   /** `_time64(NULL)`. */

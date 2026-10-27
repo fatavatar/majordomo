@@ -612,7 +612,12 @@ interface CardContext {
     remove(id: string): void;
     regroup(id: string): Promise<number>;
     muster(id: string, target: MusterTarget): Promise<string[]>;
-    say(sessions: readonly SessionId[], line: string): void;
+    say(
+      id: string,
+      sessions: readonly SessionId[],
+      line: string,
+      others: boolean
+    ): Promise<string[]>;
   };
   /** The toolbar: this character's own switches, and what its buttons do. */
   toolbar: ToolbarSubject;
@@ -5565,9 +5570,8 @@ export default function App() {
   );
   /* The Party card's Say to: each character sends the line through its own talk box's path. */
   const sayAsParty = useCallback(
-    (sids: readonly SessionId[], line: string) => {
-      for (const sid of sids) api.macro(sid, line);
-    },
+    (id: string, sids: readonly SessionId[], line: string, others: boolean) =>
+      api.partySay(id, sids, line, others),
     [api]
   );
   /* Each realm's characters of ours, from their own tabs: the cross-tab half of the Party card. */
