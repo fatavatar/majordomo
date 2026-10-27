@@ -25,12 +25,18 @@ import { openingRoundEnded } from './opening';
 /**
  * `0x425c40`: a round's damage is shown (`Display.ShowRounds`) and cleared,
  * and with `Party.ParAfterRound` the next party status is due.
+ *
+ * **Ours, not MegaMUD's (2026-10-27): a leader always asks.** The listing is
+ * the only place most members' health shows, and the leader's is the one
+ * the Party card reads, so a party's leader asks after every round whatever
+ * `ParAfterRound` says; a follower keeps MegaMUD's setting.
  */
 export function combatRoundEnd(s: Session): void {
   openingRoundEnded(s, s.roundBlowSeen);
+  const parAfter = s.Party_ParAfterRound !== 0 || (s.partySize > 0 && s.following === 0);
   if (s.probablyRoundFought === 0 || s.roundBlowSeen === 0 || s.probablyRoundCounted === 0) {
     s.roundDamage = 0;
-    if (s.Party_ParAfterRound === 0 || s.roundBlowSeen === 0) return;
+    if (!parAfter || s.roundBlowSeen === 0) return;
     s.roundBlowSeen = 0;
     s.probablyRoundCounted = 0;
   } else {
@@ -39,7 +45,7 @@ export function combatRoundEnd(s: Session): void {
     s.roundDamage = 0;
     s.roundBlowSeen = 0;
     s.probablyRoundCounted = 0;
-    if (s.Party_ParAfterRound === 0) return;
+    if (!parAfter) return;
   }
   s.parAt = 0;
 }

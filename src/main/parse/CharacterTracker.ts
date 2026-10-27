@@ -122,6 +122,7 @@ import {
   withInvited,
   withJoined,
   withLeft,
+  withPartyDamage,
   withEquipment,
   withGangJoined,
   withGangLeft,
@@ -6910,8 +6911,16 @@ export class CharacterTracker {
         const engaged = engagedBy(hit ?? s, g['attacker'], g['target'], block.at) ?? hit;
         const threatened =
           threatenedBy(engaged ?? s, g['attacker'], g['target'], block.at) ?? engaged;
-        return claimedBy(threatened ?? s, g['attacker'], g['target'], block.at) ?? threatened;
+        const claimed =
+          claimedBy(threatened ?? s, g['attacker'], g['target'], block.at) ?? threatened;
+        // A blow on a party member moves their bar before the next `par` (2026-10-27).
+        const struck =
+          g['target'] !== undefined && !/^you$/i.test(g['target']) ? g['target'] : undefined;
+        return withPartyDamage(claimed ?? s, struck, int(g['damage']) ?? 0) ?? claimed;
       }
+
+      case 'other-drained':
+        return withPartyDamage(s, g['target'], int(g['damage']) ?? 0);
 
       /*
        * A swing between two other parties says both of them are in this room,
