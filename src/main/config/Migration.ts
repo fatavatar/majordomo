@@ -2812,7 +2812,8 @@ function statedTheMark(home: Home, note: (message: string) => void): void {
 
 /**
  * States `ui.skin` in an options file that already has a `ui:` block
- * (2026-10-24), as `statedTheMark` states `showLogo`: `reconcileWithTemplate`
+ * (2026-10-24), and moves a file still naming atlas or halo, retired on
+ * 2026-10-27, to glance — as `statedTheMark` states `showLogo`: `reconcileWithTemplate`
  * never reaches inside a block, and a setting absent from the file is one
  * nobody reading it can find. Beside `theme`, the question it sits next to.
  *
@@ -2823,6 +2824,7 @@ function statedTheMark(home: Home, note: (message: string) => void): void {
 function statedTheSkin(home: Home, note: (message: string) => void): void {
   let stated = false;
   let explained = false;
+  let retired: string | null = null;
   edit(home.options, (document) => {
     const ui = document.getIn(['ui'], true);
     if (!isMap(ui)) return false;
@@ -2834,13 +2836,22 @@ function statedTheSkin(home: Home, note: (message: string) => void): void {
       (item) => isScalar(item.key) && String(item.key.value) === 'skin'
     );
     if (present !== undefined) {
+      let changed = false;
+      // Atlas and halo were retired (2026-10-27): glance is what both were built on.
+      if (isScalar(present.value) && RETIRED_SKINS.includes(String(present.value.value))) {
+        retired = String(present.value.value);
+        present.value.value = 'glance';
+        changed = true;
+      }
       const key = present.key as Scalar;
       // `yaml` reads a paragraph's blank line back as a space.
       const said = (key.commentBefore ?? '').replace(/^ $/gm, '');
-      if (!EARLIER_SKIN_COMMENTS.includes(said)) return false;
-      key.commentBefore = SKIN_COMMENT;
-      explained = true;
-      return true;
+      if (EARLIER_SKIN_COMMENTS.includes(said)) {
+        key.commentBefore = SKIN_COMMENT;
+        explained = true;
+        changed = true;
+      }
+      return changed;
     }
     const pair = document.createPair('skin', DEFAULT_SKIN) as Pair;
     const at = ui.items.findIndex(
@@ -2854,6 +2865,8 @@ function statedTheSkin(home: Home, note: (message: string) => void): void {
   });
   if (stated) note(t('notices.migration.skinStated', { file: home.options }));
   if (explained) note(t('notices.migration.skinExplained', { file: home.options }));
+  if (retired !== null)
+    note(t('notices.migration.skinRetired', { file: home.options, skin: retired }));
 }
 
 /**
@@ -3992,20 +4005,18 @@ const SKIN_COMMENT = ` How the cards are laid out: what each one puts where, and
           their bars, a player's alignment as the colour of the name, lines
           that say the same thing folded into one with a count. Shorter
           cards, read at a glance, in JetBrains Mono.
- atlas    glance's cards as soft panels in Victor Mono, places named in its
-          cursive italic like labels on a map, the ways out as a compass
-          rose and a loop as a ring.
- halo     glance's cards as a contemporary app in Geist Mono: rounded cards
-          tinted by kind, the vitals and attributes as rings, people and
-          monsters as initials in their colour, notices as a timeline.
 
- Every style but classic sets its own monospace face for the whole window,
- in place of ui.font; the console keeps terminal.font in all of them.`;
+ Glance sets its own monospace face for the whole window, in place of
+ ui.font; the console keeps terminal.font in both.`;
+
+/** The styles retired on 2026-10-27; a file naming either is moved to glance. */
+const RETIRED_SKINS: readonly string[] = ['atlas', 'halo'];
 
 /**
  * `ui.skin`'s paragraph as earlier clients wrote it: classic and glance only
- * (2026-10-24), then with atlas and halo in proportional faces (2026-10-25).
- * Only these are refreshed, so a paragraph the player wrote stays theirs.
+ * (2026-10-24), then with atlas and halo in proportional faces and in their
+ * monospace ones (2026-10-25). Only these are refreshed, so a paragraph the
+ * player wrote stays theirs.
  */
 const EARLIER_SKIN_COMMENTS = [
   ` How the cards are laid out: what each one puts where, and how it shows it.
@@ -4029,7 +4040,24 @@ const EARLIER_SKIN_COMMENTS = [
           rose and a loop as a ring.
  halo     glance's cards as a contemporary app: rounded cards tinted by
           kind, the vitals and attributes as rings, people and monsters as
-          initials in their colour, notices as a timeline.`
+          initials in their colour, notices as a timeline.`,
+  ` How the cards are laid out: what each one puts where, and how it shows it.
+ The theme above says what everything is painted; any skin wears any theme.
+
+ classic  the cards as they have always been drawn, in ui.font.
+ glance   colour and shape carry what rows of words did: figures inside
+          their bars, a player's alignment as the colour of the name, lines
+          that say the same thing folded into one with a count. Shorter
+          cards, read at a glance, in JetBrains Mono.
+ atlas    glance's cards as soft panels in Victor Mono, places named in its
+          cursive italic like labels on a map, the ways out as a compass
+          rose and a loop as a ring.
+ halo     glance's cards as a contemporary app in Geist Mono: rounded cards
+          tinted by kind, the vitals and attributes as rings, people and
+          monsters as initials in their colour, notices as a timeline.
+
+ Every style but classic sets its own monospace face for the whole window,
+ in place of ui.font; the console keeps terminal.font in all of them.`
 ];
 
 const SHOW_LOGO_COMMENT = ` The client's own mark, at the left of the status rail.

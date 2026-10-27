@@ -15,19 +15,16 @@
  *   did: figures inside their bars, an alignment as the colour of a name,
  *   lines that say the same thing folded into one with a count. Shorter than
  *   classic wherever it differs, which is the point of it.
- * - `atlas` (2026-10-25), the same compact cards as soft panels in Victor
- *   Mono, places named in its cursive italic like labels on a map, the ways
- *   out as a compass rose and a loop as a ring.
- * - `halo` (2026-10-25), the same compact cards as a contemporary app:
- *   rounded cards tinted by kind, the vitals and the attributes as rings,
- *   people and monsters as initials in their colour, alerts as a timeline.
  *
- * Every skin but classic lays the cards out compactly (`compactSkin`), from
- * one set of layouts; where a skin draws a piece its own way (a ring for a
- * bar, a rose for the exits' grid) the kit piece asks which it is. A skin is
- * never taller than classic: measured card by card before one ships.
+ * `atlas` and `halo` (2026-10-25) were retired on 2026-10-27: restyling the
+ * same cards did not make them more useful, and every new card paid for
+ * keeping them in step. A file still naming either is moved to glance
+ * (`statedTheSkin`), and anything else unknown draws classic.
+ *
+ * Every skin but classic lays the cards out compactly (`compactSkin`). A skin
+ * is never taller than classic: measured card by card before one ships.
  */
-export const SKINS = ['classic', 'glance', 'atlas', 'halo'] as const;
+export const SKINS = ['classic', 'glance'] as const;
 
 export type SkinId = (typeof SKINS)[number];
 

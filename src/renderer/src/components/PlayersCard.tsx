@@ -2,7 +2,6 @@ import { memo, useMemo } from 'react';
 
 import { t } from '../lib/i18n';
 import { useCompact } from '../lib/skin';
-import { KitInitials } from './kit';
 import { ago, place, PlayerName } from '../lib/players';
 import type { PopoverAnchor } from '../lib/popover';
 
@@ -121,7 +120,6 @@ function PlayersCard({ character, session, subject, onSelect, ...chrome }: Playe
        */
       cell: (record) => (
         <>
-          {glance && <KitInitials name={record.name} />}
           <PlayerName
             className="player-name"
             name={record.name}

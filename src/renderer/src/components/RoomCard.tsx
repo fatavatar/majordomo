@@ -4,7 +4,7 @@ import { DEFAULT_EXPLORER_OPTIONS, type ExplorerStock } from '@shared/explorer';
 import BentoCard, { type CardChrome } from './BentoCard';
 import { keepFocus } from '../lib/focus';
 import { useCompact } from '../lib/skin';
-import { KitCount, KitInitials, KitRose } from './kit';
+import { KitCount, KitRose } from './kit';
 import { t } from '../lib/i18n';
 import { coinText } from '../lib/coins';
 import { ago } from '../lib/players';
@@ -925,7 +925,6 @@ function RoomBody({
                       clicking. `keepFocus` because this is clicked, never
                       typed into — the caret stays with the game.
                     */}
-                        {glance && <KitInitials name={who.name} />}
                         {inspect && who.kind !== 'player' ? (
                           <button
                             className={`occupant ${who.kind} lookup`}

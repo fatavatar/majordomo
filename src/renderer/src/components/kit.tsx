@@ -2,7 +2,6 @@ import type { ReactNode } from 'react';
 
 import type { Direction } from '@shared/world';
 import { t } from '../lib/i18n';
-import { useSkin } from '../lib/skin';
 
 /**
  * The shared pieces a skin lays a card out from (2026-10-25), where it lays
@@ -31,9 +30,7 @@ export function compact(value: number): string {
  * what it is out of at the left, the share (or the state, where `tag` says)
  * at the right. A null fraction draws the empty track, which is how an
  * unknown reads, never as zero; `level` is the threshold band a vital is in,
- * which the fill wears. Atlas draws the same as a label, a pill track and the
- * figures after it (`unit` is the label, `HP`); the others put `unit` after
- * the value inside the bar.
+ * which the fill wears; `unit` goes after the value inside the bar.
  */
 export function KitBar({
   value,
@@ -57,7 +54,6 @@ export function KitBar({
   label: string;
   title?: string;
 }) {
-  const skin = useSkin();
   const shown = fraction === null ? null : Math.max(0, Math.min(1, fraction));
   const meter = {
     'aria-label': label,
@@ -71,20 +67,6 @@ export function KitBar({
     title
   } as const;
   const of = max !== undefined && max !== null && <span className="kit-bar-of"> / {max}</span>;
-  if (skin === 'atlas') {
-    return (
-      <div className="kit-bar kit-bar-row" {...meter}>
-        {unit !== undefined && <span className="kit-bar-unit">{unit}</span>}
-        <span className="kit-bar-track">
-          <i className="kit-bar-fill" style={{ width: `${(shown ?? 0) * 100}%` }} />
-        </span>
-        <span className="kit-bar-figures">
-          {value}
-          {of}
-        </span>
-      </div>
-    );
-  }
   return (
     <div className="kit-bar" {...meter}>
       <i className="kit-bar-fill" style={{ width: `${(shown ?? 0) * 100}%` }} />
@@ -97,85 +79,6 @@ export function KitBar({
         {tag !== undefined && tag !== null && <span className="kit-bar-tag">{tag}</span>}
       </span>
     </div>
-  );
-}
-
-/**
- * Concentric rings, the first outermost (Halo's vitals, 2026-10-25): each
- * filled to its share in its tone, the threshold band a vital is in its
- * colour, the figure in the middle. An unknown share draws its empty track.
- */
-export function KitRings({
-  rings,
-  center,
-  size = 64,
-  label
-}: {
-  rings: ReadonlyArray<{ fraction: number | null; tone: KitTone; level?: string }>;
-  center?: ReactNode;
-  size?: number;
-  label: string;
-}) {
-  const stroke = Math.max(3, Math.round(size / 11));
-  return (
-    <svg
-      aria-label={label}
-      className="kit-rings"
-      height={size}
-      role="img"
-      viewBox={`0 0 ${size} ${size}`}
-      width={size}
-    >
-      {rings.map((ring, i) => {
-        const r = size / 2 - stroke / 2 - i * (stroke + 3);
-        const length = 2 * Math.PI * r;
-        const shown = ring.fraction === null ? 0 : Math.max(0, Math.min(1, ring.fraction));
-        return (
-          <g data-level={ring.level} data-tone={ring.tone} key={i}>
-            <circle
-              className="kit-ring-track"
-              cx={size / 2}
-              cy={size / 2}
-              r={r}
-              strokeWidth={stroke}
-            />
-            <circle
-              className="kit-ring-fill"
-              cx={size / 2}
-              cy={size / 2}
-              r={r}
-              strokeDasharray={`${shown * length} ${length}`}
-              strokeWidth={stroke}
-              transform={`rotate(-90 ${size / 2} ${size / 2})`}
-            />
-          </g>
-        );
-      })}
-      {center !== undefined && (
-        <text
-          className="kit-rings-center"
-          x={size / 2}
-          y={size / 2}
-          dy="0.35em"
-          textAnchor="middle"
-        >
-          {center}
-        </text>
-      )}
-    </svg>
-  );
-}
-
-/** A name's initials in a disc of its colour (Halo's people and monsters): `pirate ghost` is `PG`, `Damyr` is `D`. */
-export function KitInitials({ name }: { name: string }) {
-  const words = name.split(/\s+/).filter((word) => /^[\p{L}]/u.test(word));
-  // Two words, their first letters; one, its first: `Damyr` is D, not DA.
-  const initials =
-    words.length >= 2 ? `${words[0]![0]}${words.at(-1)![0]}` : (words[0] ?? name).slice(0, 1);
-  return (
-    <span aria-hidden="true" className="kit-initials">
-      {initials.toUpperCase()}
-    </span>
   );
 }
 
@@ -243,7 +146,6 @@ export function KitTiles({
     title?: string;
   }>;
 }) {
-  const skin = useSkin();
   return (
     <div className="kit-tiles">
       {cells.map((cell) => {
@@ -253,38 +155,6 @@ export function KitTiles({
             : Math.max(0, Math.min(1, cell.share));
         const band =
           share === null ? undefined : share >= 0.75 ? 'high' : share <= 0.3 ? 'low' : 'mid';
-        // Halo's tile is a small ring filled to the same share, the figure inside it.
-        if (skin === 'halo') {
-          const r = 13;
-          const length = 2 * Math.PI * r;
-          return (
-            <div
-              className="kit-tile kit-tile-ring"
-              data-band={band}
-              key={cell.key}
-              title={cell.title}
-            >
-              <svg aria-hidden="true" height={32} viewBox="0 0 32 32" width={32}>
-                <circle className="kit-ring-track" cx={16} cy={16} r={r} strokeWidth={3} />
-                {share !== null && (
-                  <circle
-                    className="kit-ring-fill"
-                    cx={16}
-                    cy={16}
-                    r={r}
-                    strokeDasharray={`${share * length} ${length}`}
-                    strokeWidth={3}
-                    transform="rotate(-90 16 16)"
-                  />
-                )}
-                <text className="kit-rings-center" dy="0.35em" textAnchor="middle" x={16} y={16}>
-                  {cell.value}
-                </text>
-              </svg>
-              <small>{cell.label}</small>
-            </div>
-          );
-        }
         return (
           <div className="kit-tile" data-band={band} key={cell.key} title={cell.title}>
             {share !== null && (
@@ -346,67 +216,8 @@ export function KitRose({
   label: string;
   names: Record<Direction, string>;
 }) {
-  const skin = useSkin();
   const state = (direction: Direction): string | undefined =>
     blocked.has(direction) ? 'blocked' : open.has(direction) ? 'open' : undefined;
-  // Halo: the ways out as lettered keys, in the compass's reading order.
-  if (skin === 'halo') {
-    const order: Direction[] = ['n', 'ne', 'e', 'se', 's', 'sw', 'w', 'nw', 'u', 'd'];
-    return (
-      <div aria-label={label} className="kit-keys" role="img">
-        {order
-          .filter((direction) => state(direction) !== undefined)
-          .map((direction) => (
-            <span data-state={state(direction)} key={direction} title={names[direction]}>
-              {direction.toUpperCase()}
-            </span>
-          ))}
-      </div>
-    );
-  }
-  // Atlas: a compass rose, each way out an arm lit from the centre.
-  if (skin === 'atlas') {
-    const arm: Partial<Record<Direction, number>> = {
-      n: 0,
-      ne: 45,
-      e: 90,
-      se: 135,
-      s: 180,
-      sw: 225,
-      w: 270,
-      nw: 315
-    };
-    return (
-      <svg aria-label={label} className="kit-compass" role="img" viewBox="0 0 40 40">
-        <circle className="kit-compass-ring" cx={20} cy={20} r={17} />
-        {(Object.entries(arm) as Array<[Direction, number]>).map(([direction, angle]) => (
-          <path
-            d={angle % 90 === 0 ? 'M20 4 L23 20 L17 20 Z' : 'M20 8 L22 20 L18 20 Z'}
-            data-state={state(direction)}
-            key={direction}
-            transform={`rotate(${angle} 20 20)`}
-          >
-            <title>{names[direction]}</title>
-          </path>
-        ))}
-        <circle className="kit-compass-hub" cx={20} cy={20} r={2.2} />
-        {(['u', 'd'] as const).map((direction) =>
-          state(direction) === undefined ? null : (
-            <text
-              className="kit-compass-level"
-              data-state={state(direction)}
-              key={direction}
-              textAnchor="middle"
-              x={direction === 'u' ? 34 : 6}
-              y={direction === 'u' ? 9 : 37}
-            >
-              {direction === 'u' ? '▲' : '▼'}
-            </text>
-          )
-        )}
-      </svg>
-    );
-  }
   return (
     <div aria-label={label} className="kit-rose" role="img">
       <div className="kit-rose-compass">
@@ -453,30 +264,6 @@ export function KitTrack({
   label: string;
   names?: readonly string[];
 }) {
-  const skin = useSkin();
-  // Atlas: how far round the lap, as a ring with the stop in the middle.
-  if (skin === 'atlas') {
-    const r = 21;
-    const length = 2 * Math.PI * r;
-    const share = at === null || stops <= 0 ? 0 : (at + 1) / stops;
-    return (
-      <svg aria-label={label} className="kit-loop-ring" role="img" viewBox="0 0 50 50">
-        <circle className="kit-ring-track" cx={25} cy={25} r={r} strokeWidth={5} />
-        <circle
-          className="kit-ring-fill"
-          cx={25}
-          cy={25}
-          r={r}
-          strokeDasharray={`${share * length} ${length}`}
-          strokeWidth={5}
-          transform="rotate(-90 25 25)"
-        />
-        <text className="kit-rings-center" dy="0.35em" textAnchor="middle" x={25} y={25}>
-          {at === null ? '—' : `${at + 1}/${stops}`}
-        </text>
-      </svg>
-    );
-  }
   const cells = Array.from({ length: Math.max(0, stops) }, (_, i) =>
     at === null ? 'ahead' : i < at ? 'done' : i === at ? 'at' : 'ahead'
   );

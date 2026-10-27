@@ -1,0 +1,211 @@
+/**
+ * Regroup (2026-10-27): a member of a roster who has dropped out of the party
+ * is put back, across this client's characters.
+ *
+ * MegaMUD already invites back a member gone from the party — but only from
+ * the leader, and only once the member is standing in the leader's room
+ * (`invitePlayers`, `0x407ee0`). What it cannot do is the case the player was
+ * doing by hand forty times: one of their own characters relogged somewhere
+ * else, so it has to be brought to the leader first. This client runs both
+ * ends, so it can:
+ *
+ * - **The leader is ours.** A member in the leader's room is invited; one of
+ *   ours who is invited joins; one of ours somewhere else walks to the
+ *   leader, and is invited on arrival.
+ * - **The leader is not ours.** One of ours standing with the leader asks
+ *   for an invitation (`@invite`, which MegaMUD answers). Accepting it is
+ *   MegaMUD's own *Join When Invited*, granted to that leader on the
+ *   character's Remotes page: nothing here says a character was invited.
+ *
+ * A member who said `@forget` is left out until the player puts them back on
+ * the card (`PartyRoster.forgotten`). Nothing is done for a member of ours
+ * who is fighting or already walking: Regroup waits for them rather than
+ * taking the character away from what it is doing.
+ *
+ * Driven by the characters' own state as it changes — no timer — and each act
+ * is tried at most once per `tuning.session.partyRegroupAgainMs` for the same
+ * member, so a refused invitation is not repeated every prompt.
+ */
+import type { CharacterState } from '../../shared/character';
+import {
+  isForgotten,
+  sameName,
+  type MusterTarget,
+  type PartyRoster
+} from '../../shared/partyRoster';
+import type { SessionId } from '../../shared/ipc';
+import { roomId, type RoomId } from '../../shared/world';
+
+/** One of this client's characters, as the keeper sees it. */
+export interface KeptMember {
+  session: SessionId;
+  character: CharacterState;
+  /** Connected and in the game. */
+  inGame: boolean;
+  /** Fighting, or walking a route or a loop: not to be sent anywhere. */
+  busy: boolean;
+}
+
+export type RegroupAct =
+  /** The leader (ours) invites `name`. */
+  | { session: SessionId; act: 'invite'; name: string }
+  /** A member of ours accepts the leader's invitation. */
+  | { session: SessionId; act: 'join'; leader: string }
+  /** A member of ours asks a leader who is not ours for an invitation. */
+  | { session: SessionId; act: 'askInvite'; leader: string }
+  /** A member of ours walks to the leader's room. */
+  | { session: SessionId; act: 'walk'; leader: string; to: RoomId };
+
+const here = (character: CharacterState): RoomId | null =>
+  character.room.map === null || character.room.number === null
+    ? null
+    : roomId(character.room.map, character.room.number);
+
+const sees = (character: CharacterState, name: string): boolean =>
+  character.room.occupants.some((occupant) => sameName(occupant.name, name));
+
+const ourOf = (ours: readonly KeptMember[], name: string): KeptMember | null =>
+  ours.find((m) => m.character.name !== null && sameName(m.character.name, name)) ?? null;
+
+/** What would put the roster's party back together, this moment. */
+export function regroupActs(
+  roster: PartyRoster,
+  ours: readonly KeptMember[],
+  /** The card's Regroup pressed: asked for, so the automatic switch does not decide. */
+  asked = false
+): RegroupAct[] {
+  if ((!roster.regroup && !asked) || roster.leader === null) return [];
+  const leaderName = roster.leader;
+  const leader = ourOf(ours, leaderName);
+  const acts: RegroupAct[] = [];
+
+  for (const { name } of roster.members) {
+    if (sameName(name, leaderName) || isForgotten(roster, name)) continue;
+    const member = ourOf(ours, name);
+    if (member !== null && !member.inGame) continue;
+
+    if (leader !== null) {
+      if (!leader.inGame) return [];
+      const row = leader.character.party.members.find((m) => sameName(m.name, name));
+      if (row !== undefined && !row.invited) continue;
+      const together = sees(leader.character, name);
+      if (member === null) {
+        // Somebody else: invited once they are standing with the leader.
+        if (together && row === undefined)
+          acts.push({ session: leader.session, act: 'invite', name });
+        continue;
+      }
+      if (together) {
+        acts.push(
+          row?.invited === true
+            ? { session: member.session, act: 'join', leader: leaderName }
+            : { session: leader.session, act: 'invite', name }
+        );
+        continue;
+      }
+      const to = here(leader.character);
+      if (!member.busy && to !== null && here(member.character) !== null)
+        acts.push({ session: member.session, act: 'walk', leader: leaderName, to });
+      continue;
+    }
+
+    // The leader is somebody else's: only our own members can act.
+    if (member === null) continue;
+    const following = member.character.party.following;
+    if (following !== null && sameName(following, leaderName)) continue;
+    if (!sees(member.character, leaderName)) continue;
+    acts.push({ session: member.session, act: 'askInvite', leader: leaderName });
+  }
+  return acts;
+}
+
+/** What Muster does for one member of ours, or why it does nothing. */
+export type MusterAct =
+  | { session: SessionId; name: string; act: 'walk'; to: RoomId }
+  | { session: SessionId; name: string; act: 'sysGoto'; place: string }
+  | { session: SessionId; name: string; act: 'skip'; why: MusterSkip };
+
+export type MusterSkip = 'offline' | 'fighting' | 'notMudop' | 'leaderUnknown' | 'isLeader';
+
+/**
+ * Muster, pressed (2026-10-27): every member of ours on the roster sent to
+ * the leader's room, walking, or to a place by `sys goto` — for a character
+ * whose MegaMUD settings say it is a MudOp (`BBS.IsMudop`, the switch
+ * MegaMUD's own teleport out at critical HP reads). One that cannot go is
+ * said, with why. A member who is somebody else's is not ours to move.
+ */
+export function musterActs(
+  roster: PartyRoster,
+  ours: readonly KeptMember[],
+  target: MusterTarget,
+  mudop: (session: SessionId) => boolean
+): MusterAct[] {
+  const leader = roster.leader === null ? null : ourOf(ours, roster.leader);
+  const to = leader !== null && leader.inGame ? here(leader.character) : null;
+  const acts: MusterAct[] = [];
+  for (const { name } of roster.members) {
+    const member = ourOf(ours, name);
+    if (member === null) continue;
+    const { session } = member;
+    const skip = (why: MusterSkip): MusterAct => ({ session, name, act: 'skip', why });
+    if (!member.inGame) acts.push(skip('offline'));
+    else if (member.character.inCombat) acts.push(skip('fighting'));
+    else if (target.to === 'place')
+      acts.push(
+        mudop(session) ? { session, name, act: 'sysGoto', place: target.place } : skip('notMudop')
+      );
+    else if (member === leader) acts.push(skip('isLeader'));
+    else if (to === null) acts.push(skip('leaderUnknown'));
+    else acts.push({ session, name, act: 'walk', to });
+  }
+  return acts;
+}
+
+/** A key for one act on one member: what the cooldown is kept by. */
+const keyOf = (roster: PartyRoster, act: RegroupAct): string =>
+  `${roster.id}:${act.session}:${act.act}:${'name' in act ? act.name.toLowerCase() : ''}`;
+
+/**
+ * The acts, applied: each at most once per `againMs` for the same member.
+ * `run` carries one out and says whether it was taken.
+ */
+export class PartyKeeper {
+  private readonly tried = new Map<string, number>();
+
+  constructor(
+    private readonly options: {
+      againMs(): number;
+      run(act: RegroupAct): boolean;
+      now?(): number;
+    }
+  ) {}
+
+  /**
+   * The card's Regroup, pressed: every act for this roster at once, whatever
+   * the automatic switch says and however recently each was tried. How many.
+   */
+  now(roster: PartyRoster, ours: readonly KeptMember[]): number {
+    const at = this.options.now?.() ?? Date.now();
+    let taken = 0;
+    for (const act of regroupActs(roster, ours, true)) {
+      if (!this.options.run(act)) continue;
+      this.tried.set(keyOf(roster, act), at);
+      taken += 1;
+    }
+    return taken;
+  }
+
+  /** Looks at every roster against our characters on its realm. */
+  check(rosters: readonly PartyRoster[], oursOn: (realm: string) => readonly KeptMember[]): void {
+    const now = this.options.now?.() ?? Date.now();
+    const again = this.options.againMs();
+    for (const roster of rosters) {
+      for (const act of regroupActs(roster, oursOn(roster.realm))) {
+        const key = keyOf(roster, act);
+        const at = this.tried.get(key);
+        if (at !== undefined && now - at < again) continue;
+        if (this.options.run(act)) this.tried.set(key, now);
+      }
+    }
+  }
+}

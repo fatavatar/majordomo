@@ -339,11 +339,14 @@ notices:
         off, which is what the client was already doing. {fileList}'
     skinStated:
       '"ui.skin" was written into {file}, as classic: the cards as they have always been drawn.
-      Set it to glance, atlas or halo there, or on the Majordomo page in settings, for shorter
-      cards that colour and shape help to read.'
+      Set it to glance there, or on the Majordomo page in settings, for shorter cards that colour
+      and shape help to read.'
     skinExplained:
       'The paragraph above "ui.skin" in {file} was brought up to date: it names every card style
       now, and the monospace face each one sets.'
+    skinRetired:
+      'The {skin} card style was retired, so "ui.skin" in {file} was set to glance: the same
+      compact cards {skin} was drawn from.'
     markStated:
       '"ui.showLogo" was written into {file}, on: the client draws its own mark at the left of the
       status rail. Turn it off there or on the Majordomo page in settings.'
@@ -704,6 +707,11 @@ notices:
         'Could not read {file} ({message}). Nothing walked before is taken up again, and nothing
         is written over the file; fix or remove it before the next launch.'
       writeError: 'Could not write {file}: {message}. What is being walked is not kept for the next launch.'
+    party:
+      readError:
+        'Could not read {file} ({message}). The Party card starts with no rosters, and nothing is
+        written over the file; fix or remove it before the next launch.'
+      writeError: 'Could not write {file}: {message}. Changes to the party rosters are not kept for the next launch.'
   world:
     megamudData: 'MegaMUD data for {name} from {realm}: {monsters} monsters, {items} items, {spells} spells, {messages} messages.'
     converted: 'Realm {file}: {rooms} rooms in {seconds}s.'
@@ -2774,13 +2782,61 @@ cards:
       towardLabel: Heading
     title: Navigation
   party:
+    activity:
+      fighting: fighting
+    # A member of ours who is not in the leader's room.
+    away: 'at {room}'
+    # Under the bar: the party's missing health, from the members whose figures are known.
+    down: 'Party down {hp} HP · lowest {name} {percent}%'
+    muster: Muster…
+    musterAria: Send the party somewhere
+    musterToLeader: 'Everyone to {leader}'
+    musterToPlace: 'Everyone: sys goto {place}'
+    regroup: Regroup
+    start: Make this a party
+    startHint: Regroup, Muster and Say to work from a party's roster — its members, leader and ranks, edited here.
+    regrouped:
+      one: Regroup sent 1 invitation, join or walk.
+      many: 'Regroup sent {count} invitations, joins or walks.'
+      zero: Regroup found nothing to do — everybody it can reach is in.
+    sayAria: Say this as each chosen character
+    sayPlaceholder:
+      one: Type once, sent by 1 character
+      many: 'Type once, sent by {count} characters'
+      zero: Choose who sends it
+    sayToggle: 'Send as {name} — click to leave them out or put them back'
+    whole: Everybody is at full health
     badge:
       hurt: '{count} hurt'
       invited: '{count} invited'
+      # With a roster: who is travelling together, of who should be.
+      of: '{count} of {of} in'
       together: '{count} together'
     bar:
       hp: HP
       mana: MA
+    edit:
+      action: Edit the party
+      add: Add
+      addAria: Add a member by name
+      addPlaceholder: Add a member — any name on the realm
+      disband: Forget this party
+      done: Done editing
+      makeLeader: Lead
+      placesAria: Places Muster can send the party by sys goto
+      placesHint:
+        The realm's own sys goto words, separated by commas. Only a character whose MegaMUD settings
+        say it is a MudOp can use them; the others are said to stay put.
+      placesPlaceholder: 'Muster places: kha, sil, lost'
+      putBack: Put back
+      rankAria: 'Where {name} stands'
+      rankAuto: As listed
+      regroup: Regroup automatically
+      regroupHint:
+        Invite back a member who drops out of the party, and bring one of your own characters to the
+        leader first. A member who says @forget is left out until you put them back.
+      remove: Remove
+      removeAria: 'Take {name} off the party'
     empty: Not in a Party (Solo)
     groups:
       back: Back
@@ -2791,9 +2847,14 @@ cards:
     fighting: 'fighting {target}'
     followAria: 'Follow {name}'
     followButton: Follow
+    keepAction: Keep this party — edit who belongs in it
     leaveAction: Leave Party
     notYetListed: not yet listed
     ofMax: '{percent}% of {max}'
+    status:
+      forgotten: said @forget
+      offline: offline
+      out: out of the party
     title: Party
   picker:
     away: '{cardCount} put away'
@@ -3719,8 +3780,6 @@ cards:
       canTrain: 'can train to {level}'
       # The bar of the way through the level being earned towards.
       through: How far through the level
-      # Halo's two vitals as concentric rings, health outside and mana inside.
-      rings: Health and mana
       toGo: '{exp} to go'
     tabExp: Exp
     title: Vitals
@@ -3942,16 +4001,13 @@ settings:
       skins:
         classic: Classic
         glance: Glance (colour and shape, shorter cards)
-        atlas: Atlas (soft panels, places named like a map)
-        halo: Halo (rounded cards, rings and avatars)
       tabPlacementLabel: Character tabs
       tabsLeft: Down the left, cards right
       tabsRight: Down the right, cards left
       tabsTop: Across the top
       uiFontHint:
         Everything except the console, which is always fixed-pitch. Blank uses the console face. The
-        classic card style only, as every other sets its own; JetBrains Mono, Victor Mono and Geist Mono
-        come with the client.
+        classic card style only, as glance sets its own; JetBrains Mono comes with the client.
       uiFontLabel: Interface font
       uiFontPlaceholder: the same face as the console
       vitalCautionPercent: '{vitalName} Caution, %'
@@ -4729,6 +4785,22 @@ errors:
     profileUnreadable: could not be read
 # What a session reports: connection, walking, safety, memory.
 session:
+  # The Party card's Regroup, putting a roster's dropped member back (`PartyKeeper`).
+  party:
+    regroupAsk: 'Regroup: asking {leader} for an invitation back into the party.'
+    regroupInvite: 'Regroup: inviting {name} back into the party.'
+    regroupJoin: 'Regroup: joining {leader}''s party again.'
+    regroupWalkRefused: 'Regroup could not walk to {leader}: {refused}'
+    musterReason: 'Muster: sys goto {place}.'
+    musterTeleport: '{name}: sys goto {place}.'
+    musterWalk: '{name}: walking to the leader.'
+    musterWalkRefused: 'Muster could not walk {name} to the leader: {refused}'
+    musterSkip:
+      fighting: '{name}: fighting, so staying put.'
+      isLeader: '{name}: leading, so the others come here.'
+      leaderUnknown: '{name}: the leader is not one of yours in the game, so there is no room to walk to.'
+      notMudop: '{name}: not a MudOp in its MegaMUD settings, so it cannot sys goto.'
+      offline: '{name}: not in the game.'
   megamud:
     noEngine: 'This character is not run by the MegaMUD engine, so it has no MegaMUD toggles.'
     # MegaMUD's own redial (Comms settings) waiting to dial back after a drop or a failed dial.

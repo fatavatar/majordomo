@@ -1,16 +1,25 @@
-import { memo } from 'react';
+import { memo, useState } from 'react';
 
-import BentoCard, { type CardChrome } from './BentoCard';
-import {
-  ratio,
-  vitalLevel,
-  type CharacterState,
-  type PartyActivity,
-  type PartyMember
-} from '@shared/character';
+import BentoCard, { type CardAction, type CardChrome } from './BentoCard';
+import { vitalLevel, type CharacterState, type PartyActivity } from '@shared/character';
 import type { VitalsUiConfig } from '@shared/config';
+import {
+  readPlace,
+  sameName,
+  type MusterTarget,
+  type PartyRoster,
+  type RosterRank
+} from '@shared/partyRoster';
+import type { SessionId } from '@shared/ipc';
 import { keepFocus } from '../lib/focus';
 import { t } from '../lib/i18n';
+import {
+  boardRows,
+  rosterFromListing,
+  together,
+  type BoardRow,
+  type OurMember
+} from '../lib/partyBoard';
 import { isKnownPlayer, isSelf, PlayerName } from '../lib/players';
 import { playerKey } from '@shared/players';
 import type { PopoverAnchor } from '../lib/popover';
@@ -31,6 +40,24 @@ export interface PartyCardProps extends CardChrome {
    * reads and does nothing.
    */
   ask?(command: string): void;
+  /** The realm this character plays, as its file names it: where its roster is looked up. */
+  realm: string | null;
+  /** The roster naming this character on its realm, or null when there is none. */
+  roster: PartyRoster | null;
+  /**
+   * This client's characters on the same realm, this one included: each read
+   * from its own tab rather than from somebody's listing (`partyBoard.ts`).
+   */
+  ours: readonly OurMember[];
+  /** A roster made or edited here. Absent, the card cannot make or edit one. */
+  onSaveRoster?(roster: PartyRoster): void;
+  onRemoveRoster?(id: string): void;
+  /** Regroup pressed: every act at once. How many were taken. */
+  onRegroup?(id: string): Promise<number>;
+  /** Muster pressed: a line per member of ours, said under the bar. */
+  onMuster?(id: string, target: MusterTarget): Promise<string[]>;
+  /** One line typed once, sent by each of these characters as its own. */
+  onSay?(sessions: readonly SessionId[], line: string): void;
 }
 
 /**
@@ -46,10 +73,10 @@ export interface PartyCardProps extends CardChrome {
  * five.
  *
  * The last two are not ranks and are deliberately last. `unranked` is somebody
- * an *announcement* added — those carry no rank, and defaulting them to `front`
- * would put a member in the line of fire on the card who is not there on the
- * server. `invited` is an offer nobody has accepted, the one group whose people
- * are not travelling with this character at all.
+ * an *announcement* added, or a roster member nobody has placed — defaulting
+ * them to `front` would put a member in the line of fire on the card who is
+ * not there on the server. `invited` is an offer nobody has accepted, the one
+ * group whose people are not travelling with this character at all.
  */
 const GROUPS = [
   { key: 'front', label: t('cards.party.groups.front') },
@@ -61,28 +88,50 @@ const GROUPS = [
 
 type GroupKey = (typeof GROUPS)[number]['key'];
 
-const groupOf = (member: PartyMember): GroupKey =>
-  member.invited ? 'invited' : (member.rank ?? 'unranked');
+const groupOf = (row: BoardRow): GroupKey =>
+  row.status === 'invited' ? 'invited' : (row.rank ?? 'unranked');
+
+const RANKS: ReadonlyArray<{ rank: RosterRank | null; label: string }> = [
+  { rank: null, label: t('cards.party.edit.rankAuto') },
+  { rank: 'front', label: t('cards.party.groups.front') },
+  { rank: 'mid', label: t('cards.party.groups.middle') },
+  { rank: 'back', label: t('cards.party.groups.back') }
+];
+
+/** Muster's own option for the leader, which no `sys goto` word can be (it has a space). */
+const LEADER = ' leader';
+
+/** A member who is not simply travelling with the party, in a word. */
+const STATUS_WORD: Record<Exclude<BoardRow['status'], 'in' | 'invited'>, string> = {
+  out: t('cards.party.status.out'),
+  offline: t('cards.party.status.offline'),
+  forgotten: t('cards.party.status.forgotten')
+};
 
 /**
- * What the roster's flag says, in the server's words where it has said them.
+ * What a member is doing, in the server's words where it has said them.
  *
  * An unrecognised letter is drawn as the letter, because expanding it would put
  * a condition on the card the server never stated — see `PartyActivity`.
  */
-function activityWord(activity: PartyActivity): string {
+function activityWord(activity: PartyActivity | { state: 'fighting' }): string {
+  if (activity.state === 'fighting') return t('cards.party.activity.fighting');
   return activity.state === 'unknown' ? activity.flag : activity.state;
 }
+
+/** A roster id nobody else has: the browser tab's crypto is not there over plain HTTP. */
+const newId = (): string =>
+  `party-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
 
 /**
  * A fraction against a track, with the number and the level in words beside it.
  *
  * The party roster gives percentages and no absolutes, so there is no `n/max`
- * to print — the maximum, when this member's client has answered `@health`,
- * goes beside the percentage instead (`meterValue` says why not the pair).
- * The rule from the Vitals card holds unchanged: a null fraction is an empty
- * track, never a full or a zero one, and the level is said in words as well as
- * in hue.
+ * to print — the maximum, when this member's client has answered `@health`
+ * or the member is one of ours, goes beside the percentage instead
+ * (`meterValue` says why not the pair). The rule from the Vitals card holds
+ * unchanged: a null fraction is an empty track, never a full or a zero one,
+ * and the level is said in words as well as in hue.
  */
 function Bar({
   label,
@@ -93,7 +142,7 @@ function Bar({
 }: {
   label: string;
   fraction: number | null;
-  /** From an `@health` answer, or null when nobody has said. */
+  /** From an `@health` answer or the member's own tab, or null when nobody has said. */
   max: number | null;
   thresholds: VitalsUiConfig['hp'];
   tone: string;
@@ -115,24 +164,26 @@ function Bar({
 }
 
 /**
- * Who is travelling with this character, and how they are doing.
+ * The party: who should be travelling together, who is, and how they are
+ * doing (2026-10-27).
  *
- * The party roster is **the only place another character's health is visible**,
- * and it costs one command rather than a second connection. For a client whose
- * whole point is running several characters, that makes it the most valuable
- * listing on this server — and it went unread until a probe with two accounts
- * went looking for it.
+ * **With a roster** — made from the party as it stands, then edited here
+ * while playing — the card draws who *should* be there and says, row by row,
+ * who has dropped out, who is offline and who is only invited. A member who
+ * is one of this client's characters is read from their own tab: exact
+ * figures, their room, whether they are fighting. Everybody else comes from a
+ * party listing, the leader's first. See `partyBoard.ts`.
  *
- * Nothing here asks the server for anything. A `party` seeds the roster and the
- * invite, follow, rank and rest announcements maintain it; those carry no
- * health, so a member added that way has none until the next listing and the
- * card **says so** rather than drawing an empty bar as though it meant zero.
+ * **Without one** it is the card it always was: whoever this character's
+ * listing names, and a button to keep that party as a roster.
  *
- * An **invitation is on the card from the moment it goes out**, under a heading
- * of its own. That is the moment the player is watching for an answer, and the
- * card was the one thing on screen with nothing to say about it: the listing
- * printed while an offer was outstanding read as a party of one, so the card
- * disappeared instead.
+ * The party roster is **the only place another character's health is
+ * visible** that is not one of ours, and it costs one command rather than a
+ * second connection. Nothing here asks the server for anything: a `party`
+ * seeds the listing and the invite, follow, rank and rest announcements
+ * maintain it; those carry no health, so a member added that way has none
+ * until the next listing and the card **says so** rather than drawing an
+ * empty bar as though it meant zero.
  */
 function PartyCard({
   character,
@@ -140,126 +191,336 @@ function PartyCard({
   onSelect,
   subject = null,
   ask,
+  realm,
+  roster,
+  ours,
+  onSaveRoster,
+  onRemoveRoster,
+  onRegroup,
+  onMuster,
+  onSay,
   ...chrome
 }: PartyCardProps) {
-  const party = {
-    ...character.party,
-    members: character.party.members.map((m) => ownRow(character, m))
+  const [editing, setEditing] = useState(false);
+  const [adding, setAdding] = useState('');
+  /** What the last Regroup or Muster did, a line each, until the next press. */
+  const [report, setReport] = useState<string[]>([]);
+  /** Who `Say to` leaves out; everybody of ours on the roster is in by default. */
+  const [quiet, setQuiet] = useState<ReadonlySet<SessionId>>(new Set());
+  const [line, setLine] = useState('');
+  const rows = boardRows(roster, character, ours);
+  const editable = roster !== null && onSaveRoster !== undefined;
+  const open = editing && editable;
+
+  const save = (next: PartyRoster): void => onSaveRoster?.(next);
+  const withMembers = (members: PartyRoster['members']): PartyRoster | null =>
+    roster === null
+      ? null
+      : {
+          ...roster,
+          members,
+          leader:
+            roster.leader !== null && members.some((m) => sameName(m.name, roster.leader!))
+              ? roster.leader
+              : (members[0]?.name ?? null),
+          forgotten: roster.forgotten.filter((f) => members.some((m) => sameName(m.name, f)))
+        };
+  const edit = (change: (r: PartyRoster) => PartyRoster | null): void => {
+    if (roster === null) return;
+    const next = change(roster);
+    if (next !== null) save(next);
   };
-  const hurt = party.members.filter(
-    (member) => vitalLevel(member.health, 1, thresholds.hp) === 'critical'
-  ).length;
 
   /*
    * The badge reports the number somebody acts on. "One hurt" is a reason to
-   * heal; "three in the party" is trivia they can already see — and while an
-   * invitation is the only thing on the roster, the number travelling together
-   * is nobody, so the badge states the offer instead of counting it as company.
+   * heal; with a roster, who is missing is the next thing; "three in the
+   * party" is trivia they can already see — and while an invitation is the
+   * only thing on the listing, the number travelling together is nobody, so
+   * the badge states the offer instead of counting it as company.
    */
-  const invited = party.members.filter((entry) => entry.invited).length;
-  const together = party.members.length - invited;
+  const hurt = rows.filter(
+    (row) => row.status === 'in' && vitalLevel(row.health, 1, thresholds.hp) === 'critical'
+  ).length;
+  const count = together(rows);
+  const invited = rows.filter((row) => row.status === 'invited').length;
   const badge =
     hurt > 0 ? (
       <span className="chip bad">{t('cards.party.badge.hurt', { count: hurt })}</span>
-    ) : together > 0 ? (
-      <span className="chip off">{t('cards.party.badge.together', { count: together })}</span>
+    ) : roster !== null ? (
+      <span className={`chip ${count.in < count.of ? 'warn' : 'off'}`}>
+        {t('cards.party.badge.of', { count: count.in, of: count.of })}
+      </span>
+    ) : count.in > 0 ? (
+      <span className="chip off">{t('cards.party.badge.together', { count: count.in })}</span>
     ) : (
       <span className="chip off">{t('cards.party.badge.invited', { count: invited })}</span>
     );
 
-  /*
-   * The head of the party goes first, whatever order the listing arrived in.
-   *
-   * That is whoever this character follows, and this character itself when it
-   * follows nobody — `You are following <name>.` is printed only for a member
-   * that is not at the head of what it can see. `sort` is stable, so everybody
-   * else keeps the order the server chose, and the copy keeps the state's own
-   * array untouched.
-   *
-   * Compared case-insensitively, because the two sources spell a name
-   * differently: the roster formats a column and the login echoes what the
-   * player typed, so `Welcome back, soul!` leaves `character.name` lower case
-   * against the listing's `Soul`.
-   */
-  const head = (party.following ?? character.name)?.toLowerCase() ?? null;
-  const isHead = (member: PartyMember): boolean => member.name.toLowerCase() === head;
-  const members =
-    head === null
-      ? party.members
-      : [...party.members].sort((a, b) => Number(isHead(b)) - Number(isHead(a)));
+  /* A roster made from the party as it stands, opened for editing: where Regroup, Muster and Say to begin. */
+  const keep =
+    roster === null && onSaveRoster && realm !== null && character.name !== null
+      ? (): void => {
+          save(rosterFromListing(newId(), realm, character));
+          setEditing(true);
+        }
+      : null;
+
+  const actions: CardAction[] = [];
+  if (editable) {
+    actions.push({
+      id: 'edit',
+      label: open ? t('cards.party.edit.done') : t('cards.party.edit.action'),
+      icon: open ? 'check' : 'edit',
+      run: () => setEditing(!open)
+    });
+  } else if (keep !== null) {
+    actions.push({ id: 'keep', label: t('cards.party.keepAction'), icon: 'users', run: keep });
+  }
+  if (ask && character.party.members.length > 0) {
+    actions.push({
+      id: 'leave',
+      label: t('cards.party.leaveAction'),
+      icon: 'popout',
+      run: () => ask('leave'),
+      danger: true
+    });
+  }
+
+  /* Who could be added: this client's characters here, and whoever the listing names. */
+  const onRoster = (name: string): boolean =>
+    roster?.members.some((m) => sameName(m.name, name)) ?? false;
+  const suggestions = [
+    ...ours.map((m) => m.character.name),
+    ...character.party.members.map((m) => m.name)
+  ].filter(
+    (name, index, all): name is string =>
+      name !== null &&
+      !onRoster(name) &&
+      all.findIndex((other) => other !== null && sameName(other, name)) === index
+  );
+  const add = (): void => {
+    const name = adding.trim();
+    if (name === '' || roster === null || onRoster(name)) return;
+    const next = withMembers([...roster.members, { name, rank: null }]);
+    if (next !== null) save(next);
+    setAdding('');
+  };
+
+  /* The bar: only with a roster, since every control on it acts on the roster's members. */
+  const speakers = rows.filter((row) => row.ours !== null && row.status !== 'offline');
+  const sayTo = speakers.map((row) => row.ours!).filter((sid) => !quiet.has(sid));
+  const regroupNow = (): void => {
+    if (roster === null || !onRegroup) return;
+    void onRegroup(roster.id).then((count) =>
+      setReport([
+        count === 0
+          ? t('cards.party.regrouped.zero')
+          : count === 1
+            ? t('cards.party.regrouped.one')
+            : t('cards.party.regrouped.many', { count })
+      ])
+    );
+  };
+  const musterTo = (value: string): void => {
+    if (roster === null || !onMuster || value === '') return;
+    const target: MusterTarget =
+      value === LEADER ? { to: 'leader' } : { to: 'place', place: value };
+    void onMuster(roster.id, target).then(setReport);
+  };
+  const say = (): void => {
+    const text = line.trim();
+    if (text === '' || sayTo.length === 0 || !onSay) return;
+    onSay(sayTo, text);
+    setLine('');
+  };
+
+  /* How far the party is down, from the members whose figures are known. */
+  const known = rows.filter((row) => row.status === 'in' && row.health !== null);
+  const deficit = known.reduce(
+    (sum, row) => sum + (row.vitals === null ? 0 : Math.max(0, row.vitals.hpMax - row.vitals.hp)),
+    0
+  );
+  const lowest = known.reduce<BoardRow | null>(
+    (low, row) => (low === null || (row.health ?? 1) < (low.health ?? 1) ? row : low),
+    null
+  );
 
   return (
     <BentoCard
       {...chrome}
-      actions={
-        ask && members.length > 0
-          ? [
-              {
-                id: 'leave',
-                label: t('cards.party.leaveAction'),
-                icon: 'popout',
-                run: () => ask('leave'),
-                danger: true
-              }
-            ]
-          : []
-      }
+      actions={actions}
       badge={badge}
       className="party-card"
       title={t('cards.party.title')}
     >
-      {members.length === 0 ? (
+      {/*
+        Said in the body, not only as a glyph in the action column: without a
+        roster the bar below is not drawn, and Regroup, Muster and Say to were
+        nowhere a player could find them.
+      */}
+      {keep !== null && (
+        <div className="party-start">
+          <button onClick={keep} onMouseDown={keepFocus} type="button">
+            {t('cards.party.start')}
+          </button>
+          <span className="hint">{t('cards.party.startHint')}</span>
+        </div>
+      )}
+      {roster !== null && (onRegroup || onMuster) && (
+        <div className="party-actions">
+          {onRegroup && (
+            <button onClick={regroupNow} onMouseDown={keepFocus} type="button">
+              {t('cards.party.regroup')}
+            </button>
+          )}
+          {onMuster && (
+            /* No `keepFocus` on a select: its default is the popup opening. */
+            <select
+              aria-label={t('cards.party.musterAria')}
+              onChange={(event) => {
+                musterTo(event.target.value);
+                event.target.value = '';
+                chrome.returnFocus?.();
+              }}
+              value=""
+            >
+              <option value="">{t('cards.party.muster')}</option>
+              {roster.leader !== null && (
+                <option value={LEADER}>
+                  {t('cards.party.musterToLeader', { leader: roster.leader })}
+                </option>
+              )}
+              {roster.places.map((place) => (
+                <option key={place} value={place}>
+                  {t('cards.party.musterToPlace', { place })}
+                </option>
+              ))}
+            </select>
+          )}
+        </div>
+      )}
+      {roster !== null && onSay && speakers.length > 0 && (
+        <form
+          className="party-say"
+          onSubmit={(event) => {
+            event.preventDefault();
+            say();
+          }}
+        >
+          <span className="party-say-to">
+            {speakers.map((row) => (
+              <button
+                aria-pressed={!quiet.has(row.ours!)}
+                className="chip toggle"
+                data-on={quiet.has(row.ours!) ? 'false' : 'true'}
+                key={row.ours}
+                onClick={() => {
+                  const next = new Set(quiet);
+                  if (next.has(row.ours!)) next.delete(row.ours!);
+                  else next.add(row.ours!);
+                  setQuiet(next);
+                }}
+                onMouseDown={keepFocus}
+                title={t('cards.party.sayToggle', { name: row.name })}
+                type="button"
+              >
+                {row.name}
+              </button>
+            ))}
+          </span>
+          <input
+            aria-label={t('cards.party.sayAria')}
+            onChange={(event) => setLine(event.target.value)}
+            placeholder={
+              sayTo.length === 0
+                ? t('cards.party.sayPlaceholder.zero')
+                : sayTo.length === 1
+                  ? t('cards.party.sayPlaceholder.one')
+                  : t('cards.party.sayPlaceholder.many', { count: sayTo.length })
+            }
+            spellCheck={false}
+            value={line}
+          />
+        </form>
+      )}
+      {report.length > 0 && (
+        <ul className="party-report hint">
+          {report.map((said) => (
+            <li key={said}>{said}</li>
+          ))}
+        </ul>
+      )}
+      {roster !== null && lowest !== null && (
+        <div className="party-summary hint">
+          {deficit > 0
+            ? t('cards.party.down', {
+                hp: deficit.toLocaleString(),
+                name: lowest.name,
+                percent: Math.round((lowest.health ?? 1) * 100)
+              })
+            : t('cards.party.whole')}
+        </div>
+      )}
+      {rows.length === 0 ? (
         <div className="empty">{t('cards.party.empty')}</div>
       ) : (
         GROUPS.map(({ key, label }) => {
-          const inRank = members.filter((entry) => groupOf(entry) === key);
+          const inRank = rows.filter((row) => groupOf(row) === key);
           if (inRank.length === 0) return null;
           return (
             <section className="party-rank-group" data-rank={key} key={key}>
               <h4 className="party-rank-head">{label}</h4>
               <ul className="party-list">
-                {inRank.map((member) => (
+                {inRank.map((row) => (
                   <li
-                    data-selected={playerKey(member.name) === subject ? 'true' : undefined}
-                    key={member.name}
+                    data-selected={playerKey(row.name) === subject ? 'true' : undefined}
+                    data-status={row.status}
+                    key={row.name}
                   >
                     <div className="party-who">
                       {/* A member the registry or roster knows is a person, and a
                           person's name is the control that opens their card — the
                           same gesture as on the Realm and Players listings, gated
-                          by the same test rather than by "a member is a person".
-                          This character's own row stays text: its numbers are on
-                          the Vitals card. */}
-                      <span className="party-name" data-leader={isHead(member)}>
-                        {onSelect && isKnownPlayer(character, member.name) ? (
+                          by the same test rather than by "a member is a person". */}
+                      <span
+                        className="party-name"
+                        data-leader={row.leader}
+                        data-ours={row.ours !== null ? 'true' : undefined}
+                      >
+                        {onSelect && isKnownPlayer(character, row.name) ? (
                           <PlayerName
                             className="name"
-                            name={member.name}
+                            name={row.name}
                             onSelect={onSelect}
-                            self={isSelf(character, member.name)}
+                            self={isSelf(character, row.name)}
                           />
                         ) : (
-                          member.name
+                          row.name
                         )}
                       </span>
-                      <span className="party-class">{member.className ?? ''}</span>
+                      <span className="party-class">{row.className ?? ''}</span>
+                      {row.status !== 'in' && row.status !== 'invited' && (
+                        <span className="party-status" data-status={row.status}>
+                          {STATUS_WORD[row.status]}
+                        </span>
+                      )}
                       {/*
                         A condition is tonal, per §9 — and it is the thing on
                         this row that decides whether a member will answer a
                         heal or a step.
                       */}
-                      {member.activity !== null && (
-                        <span className="party-activity" data-state={member.activity.state}>
-                          {activityWord(member.activity)}
+                      {row.activity !== null && (
+                        <span className="party-activity" data-state={row.activity.state}>
+                          {activityWord(row.activity)}
                         </span>
                       )}
                       {/* What the server last said this member hit, while the
                           sighting is fresh: the fact `assistLeader` acts on,
                           shown where the person deciding to help can see it. */}
-                      {fightingWord(character, member.name) !== null && (
+                      {row.ours === null && fightingWord(character, row.name) !== null && (
                         <span className="chip quiet party-fighting">
                           {t('cards.party.fighting', {
-                            target: fightingWord(character, member.name) ?? ''
+                            target: fightingWord(character, row.name) ?? ''
                           })}
                         </span>
                       )}
@@ -268,13 +529,15 @@ function PartyCard({
                           no other button. Not for this character's own row, and
                           not for whoever is already followed. */}
                       {ask &&
-                        !member.invited &&
-                        !isSelf(character, member.name) &&
-                        !isHead(member) && (
+                        !open &&
+                        row.status === 'in' &&
+                        !isSelf(character, row.name) &&
+                        !sameName(row.name, character.party.following ?? '') &&
+                        !(roster === null && row.leader) && (
                           <button
-                            aria-label={t('cards.party.followAria', { name: member.name })}
+                            aria-label={t('cards.party.followAria', { name: row.name })}
                             className="quiet party-follow"
-                            onClick={() => ask(`follow ${member.name}`)}
+                            onClick={() => ask(`follow ${row.name}`)}
                             onMouseDown={keepFocus}
                             type="button"
                           >
@@ -282,37 +545,109 @@ function PartyCard({
                           </button>
                         )}
                     </div>
+                    {row.away !== null && (
+                      <span className="hint party-away">
+                        {t('cards.party.away', { room: row.away })}
+                      </span>
+                    )}
                     {/*
                       A member the announcements added has no numbers at all
                       until the next listing, and two empty tracks would read as
                       two resources at zero. An *invited* member has none either
                       and for a different reason — they have not answered — which
                       the heading above them already says, so the row says
-                      nothing a second time.
+                      nothing a second time. Nor does a member who is out.
                     */}
-                    {member.invited ? null : member.health === null ? (
-                      <span className="hint">{t('cards.party.notYetListed')}</span>
+                    {row.status === 'invited' || row.status === 'out' ? null : row.health ===
+                      null ? (
+                      row.status === 'in' && (
+                        <span className="hint">{t('cards.party.notYetListed')}</span>
+                      )
                     ) : (
                       <div className="party-meters">
                         <Bar
-                          fraction={member.health}
+                          fraction={row.health}
                           label={t('cards.party.bar.hp')}
-                          max={member.vitals?.hpMax ?? null}
+                          max={row.vitals?.hpMax ?? null}
                           thresholds={thresholds.hp}
                           tone="hp"
                         />
                         {/* No mana track for a class that has none — the roster
                             omits the column entirely, and an empty one would
                             imply a resource that does not exist. */}
-                        {member.mana !== null && (
+                        {row.mana !== null && (
                           <Bar
-                            fraction={member.mana}
+                            fraction={row.mana}
                             label={t('cards.party.bar.mana')}
-                            max={member.vitals?.manaMax ?? null}
+                            max={row.vitals?.manaMax ?? null}
                             thresholds={thresholds.mana}
                             tone="mana"
                           />
                         )}
+                      </div>
+                    )}
+                    {open && (
+                      <div className="party-edit-row">
+                        {/* No `keepFocus` on a select: its default is the popup opening. */}
+                        <select
+                          aria-label={t('cards.party.edit.rankAria', { name: row.name })}
+                          onChange={(event) => {
+                            const rank = (event.target.value || null) as RosterRank | null;
+                            edit((r) =>
+                              withMembers(
+                                r.members.map((m) =>
+                                  sameName(m.name, row.name) ? { ...m, rank } : m
+                                )
+                              )
+                            );
+                            chrome.returnFocus?.();
+                          }}
+                          value={row.rosterRank ?? ''}
+                        >
+                          {RANKS.map(({ rank, label: word }) => (
+                            <option key={word} value={rank ?? ''}>
+                              {word}
+                            </option>
+                          ))}
+                        </select>
+                        {!row.leader && (
+                          <button
+                            className="quiet"
+                            onClick={() => edit((r) => ({ ...r, leader: row.name }))}
+                            onMouseDown={keepFocus}
+                            type="button"
+                          >
+                            {t('cards.party.edit.makeLeader')}
+                          </button>
+                        )}
+                        {row.status === 'forgotten' && (
+                          <button
+                            className="quiet"
+                            onClick={() =>
+                              edit((r) => ({
+                                ...r,
+                                forgotten: r.forgotten.filter((f) => !sameName(f, row.name))
+                              }))
+                            }
+                            onMouseDown={keepFocus}
+                            type="button"
+                          >
+                            {t('cards.party.edit.putBack')}
+                          </button>
+                        )}
+                        <button
+                          aria-label={t('cards.party.edit.removeAria', { name: row.name })}
+                          className="quiet danger"
+                          onClick={() =>
+                            edit((r) =>
+                              withMembers(r.members.filter((m) => !sameName(m.name, row.name)))
+                            )
+                          }
+                          onMouseDown={keepFocus}
+                          type="button"
+                        >
+                          {t('cards.party.edit.remove')}
+                        </button>
                       </div>
                     )}
                   </li>
@@ -322,34 +657,73 @@ function PartyCard({
           );
         })
       )}
+      {open && roster !== null && (
+        <div className="party-editor">
+          <form
+            className="party-add"
+            onSubmit={(event) => {
+              event.preventDefault();
+              add();
+            }}
+          >
+            <input
+              aria-label={t('cards.party.edit.addAria')}
+              list={`party-add-${roster.id}`}
+              onChange={(event) => setAdding(event.target.value)}
+              placeholder={t('cards.party.edit.addPlaceholder')}
+              spellCheck={false}
+              value={adding}
+            />
+            <datalist id={`party-add-${roster.id}`}>
+              {suggestions.map((name) => (
+                <option key={name} value={name} />
+              ))}
+            </datalist>
+            <button disabled={adding.trim() === ''} onMouseDown={keepFocus} type="submit">
+              {t('cards.party.edit.add')}
+            </button>
+          </form>
+          <input
+            aria-label={t('cards.party.edit.placesAria')}
+            defaultValue={roster.places.join(', ')}
+            key={roster.places.join(',')}
+            onBlur={(event) => {
+              const places = event.target.value
+                .split(',')
+                .map(readPlace)
+                .filter((place): place is string => place !== null);
+              if (places.join(',') !== roster.places.join(','))
+                edit((r) => ({ ...r, places: [...new Set(places)] }));
+            }}
+            placeholder={t('cards.party.edit.placesPlaceholder')}
+            spellCheck={false}
+            title={t('cards.party.edit.placesHint')}
+          />
+          <label className="party-check" title={t('cards.party.edit.regroupHint')}>
+            <input
+              checked={roster.regroup}
+              onChange={(event) => edit((r) => ({ ...r, regroup: event.target.checked }))}
+              type="checkbox"
+            />
+            {t('cards.party.edit.regroup')}
+          </label>
+          {onRemoveRoster && (
+            <button
+              className="quiet danger"
+              onClick={() => {
+                onRemoveRoster(roster.id);
+                setEditing(false);
+              }}
+              onMouseDown={keepFocus}
+              type="button"
+            >
+              {t('cards.party.edit.disband')}
+            </button>
+          )}
+        </div>
+      )}
     </BentoCard>
   );
-}
-
-/**
- * This character's own row, from its prompt (upstream daa7d34): the prompt
- * repaints every few hundred milliseconds and the party list is only as fresh
- * as the last `par`. Health and mana need the stat sheet's maxima to be a
- * fraction, so each keeps the party list's figure until one is known; resting
- * is the prompt's once a prompt has been read.
- */
-function ownRow(character: CharacterState, member: PartyMember): PartyMember {
-  if (!isSelf(character, member.name)) return member;
-  const { hp, hpMax, mana, manaMax, resting, meditating } = character.vitals;
-  const health = ratio(hp, hpMax);
-  const magic = ratio(mana, manaMax);
-  const activity: PartyActivity | null = resting
-    ? { state: 'resting' }
-    : meditating
-      ? { state: 'meditating' }
-      : null;
-  return {
-    ...member,
-    health: health ?? member.health,
-    mana: magic ?? member.mana,
-    activity: character.lastStatusAt === null ? member.activity : activity,
-    vitals: hp === null || hpMax === null ? member.vitals : { hp, hpMax, mana, manaMax }
-  };
 }
 
 /** The monster a member was last seen fighting, or null once the sighting is stale. */

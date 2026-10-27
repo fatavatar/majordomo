@@ -867,6 +867,12 @@ const TUNING_DEFAULTS = {
      * three are facts a character cannot do to itself and have no threshold.
      */
     resetExpDropShare: 0.3,
+    /**
+     * How long Regroup waits before trying the same thing again for the same
+     * party member — an invitation, a join, a walk to the leader — so one
+     * that was refused is not repeated at every prompt.
+     */
+    partyRegroupAgainMs: 20_000,
     /** Negotiation records the diagnostics pane can look back over. */
     telnetLogLimit: 500,
     /** Framed lines retained; the terminal keeps the real backscroll. */

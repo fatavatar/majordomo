@@ -165,6 +165,8 @@ import {
 } from '@shared/config';
 import type { RemoteName } from '@shared/remotes';
 import { EMPTY_CHARACTER, ownGang, packRows, type CharacterState } from '@shared/character';
+import { rosterOf, type MusterTarget, type PartyRoster } from '@shared/partyRoster';
+import type { OurMember } from './lib/partyBoard';
 import { figuresOf, type StatlineFigures } from '@shared/statline';
 import { IDLE_WALK, type WalkProgress } from '@shared/walk';
 import { DEFAULT_INTERNAL, type InternalConfig } from '@shared/internal';
@@ -597,6 +599,21 @@ interface CardContext {
   selectPlayer(name: string, anchor: PopoverAnchor): void;
   /** This character's resolved `automation.remotes`, for the Gang card. */
   remotes: RemotesConfig;
+  /**
+   * The Party card's world: this character's realm, the roster naming it, and
+   * every character of this client's on that realm, read from their own tabs
+   * — so every member of ours draws, and edits, the same party.
+   */
+  party: {
+    realm: string | null;
+    roster: PartyRoster | null;
+    ours: readonly OurMember[];
+    save(roster: PartyRoster): void;
+    remove(id: string): void;
+    regroup(id: string): Promise<number>;
+    muster(id: string, target: MusterTarget): Promise<string[]>;
+    say(sessions: readonly SessionId[], line: string): void;
+  };
   /** The toolbar: this character's own switches, and what its buttons do. */
   toolbar: ToolbarSubject;
   /** Which toolbar buttons are on the row, and the control that moves one. */
@@ -910,13 +927,32 @@ function cardElement(id: CardId, ctx: CardContext): ReactNode {
       // Only while there is one, by default: a card that always says
       // "travelling alone" is chrome, and it sits above the rest of the rail.
       // Somebody who would rather it held its place says so on its gear.
-      if (emptyCardHidden(chrome, id, character.party.members.length > 0)) return null;
+      // With a roster, or more than one character of ours on the realm, it has
+      // something to offer even alone: a party can be made from it.
+      if (
+        emptyCardHidden(
+          chrome,
+          id,
+          character.party.members.length > 0 ||
+            ctx.party.roster !== null ||
+            ctx.party.ours.length > 1
+        )
+      )
+        return null;
       return (
         <PartyCard
           {...chrome}
           ask={ctx.ask}
           character={character}
+          onMuster={ctx.party.muster}
+          onRegroup={ctx.party.regroup}
+          onRemoveRoster={ctx.party.remove}
+          onSay={ctx.party.say}
+          onSaveRoster={ctx.party.save}
           onSelect={ctx.selectPlayer}
+          ours={ctx.party.ours}
+          realm={ctx.party.realm}
+          roster={ctx.party.roster}
           subject={ctx.subject}
           thresholds={ctx.thresholds}
         />
@@ -5505,6 +5541,77 @@ export default function App() {
    * one exception is `toolbar`: its subject embeds live state and is rebuilt
    * per render, which is why `ToolbarCard` is deliberately not memoised.
    */
+  /*
+   * The Party card's rosters, every realm's, kept in main and pushed on every
+   * change — an edit on one character's card reaches every other's at once.
+   */
+  const [rosters, setRosters] = useState<PartyRoster[]>([]);
+  useEffect(() => {
+    void api.partyRosters().then(setRosters);
+    return api.onPartyRosters(setRosters);
+  }, [api]);
+  const saveRoster = useCallback(
+    (roster: PartyRoster) => void api.saveRoster(roster).then(setRosters),
+    [api]
+  );
+  const removeRoster = useCallback(
+    (id: string) => void api.removeRoster(id).then(setRosters),
+    [api]
+  );
+  const regroupParty = useCallback((id: string) => api.regroupParty(id), [api]);
+  const musterParty = useCallback(
+    (id: string, target: MusterTarget) => api.musterParty(id, target),
+    [api]
+  );
+  /* The Party card's Say to: each character sends the line through its own talk box's path. */
+  const sayAsParty = useCallback(
+    (sids: readonly SessionId[], line: string) => {
+      for (const sid of sids) api.macro(sid, line);
+    },
+    [api]
+  );
+  /* Each realm's characters of ours, from their own tabs: the cross-tab half of the Party card. */
+  const oursByRealm = useMemo(() => {
+    const byRealm = new Map<string, OurMember[]>();
+    for (const summary of sessions) {
+      const character = views[summary.id]?.character;
+      if (character === undefined || character.name === null) continue;
+      const list = byRealm.get(summary.server) ?? [];
+      list.push({
+        session: summary.id,
+        character,
+        inGame: summary.state.phase === 'connected' && character.phase === 'in-game'
+      });
+      byRealm.set(summary.server, list);
+    }
+    return byRealm;
+  }, [sessions, views]);
+  const partyFor = useCallback(
+    (sid: SessionId, character: CharacterState): CardContext['party'] => {
+      const realm = sessions.find((summary) => summary.id === sid)?.server ?? null;
+      return {
+        realm,
+        roster: realm === null ? null : rosterOf(rosters, realm, character.name),
+        ours: realm === null ? [] : (oursByRealm.get(realm) ?? []),
+        save: saveRoster,
+        remove: removeRoster,
+        regroup: regroupParty,
+        muster: musterParty,
+        say: sayAsParty
+      };
+    },
+    [
+      sessions,
+      rosters,
+      oursByRealm,
+      saveRoster,
+      removeRoster,
+      regroupParty,
+      musterParty,
+      sayAsParty
+    ]
+  );
+
   const contextFor = useCallback(
     (sid: SessionId, v: SessionView, chrome: CardChrome): CardContext => {
       const shown = sid === session;
@@ -5572,6 +5679,7 @@ export default function App() {
          * permissions would hand a stranger the wrong character's gang.
          */
         remotes: remotesFor(sid),
+        party: partyFor(sid, v.character),
         setGangRemotes: bound.setGangRemotes,
         setGangpath: bound.setGangpath,
         supplies: suppliesBundle(sid),
@@ -5672,7 +5780,8 @@ export default function App() {
       loops,
       startLoop,
       sayRefusal,
-      openExplorerAt
+      openExplorerAt,
+      partyFor
     ]
   );
 

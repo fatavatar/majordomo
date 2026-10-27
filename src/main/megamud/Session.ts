@@ -361,6 +361,11 @@ export interface SessionHost {
   trace(text: string): void;
   /** `0x4aab70`: the activity log ("Resting because …"). */
   activity(text: string): void;
+  /**
+   * A party member's `@forget` taken: ours, not MegaMUD's — the Party card's
+   * roster leaves them out of Regroup until the player puts them back.
+   */
+  partyForgot?(name: string): void;
   /** `0x4bd3c0`: a line shown to the player. */
   show(text: string): void;
   /** `_time64(NULL)`. */

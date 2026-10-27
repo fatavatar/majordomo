@@ -178,9 +178,7 @@ type BlockKey<T> = {
 /** One literal \`t()\` per skin, for \`i18n-coverage.test.ts\`. */
 const SKIN_WORD: Record<SkinId, () => string> = {
   classic: () => t('settings.client.appearance.skins.classic'),
-  glance: () => t('settings.client.appearance.skins.glance'),
-  atlas: () => t('settings.client.appearance.skins.atlas'),
-  halo: () => t('settings.client.appearance.skins.halo')
+  glance: () => t('settings.client.appearance.skins.glance')
 };
 
 export default function GlobalSettings({

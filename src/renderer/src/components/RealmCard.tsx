@@ -2,7 +2,6 @@ import { memo, useMemo } from 'react';
 
 import { t } from '../lib/i18n';
 import { useCompact } from '../lib/skin';
-import { KitInitials } from './kit';
 import { PlayerName } from '../lib/players';
 import type { PopoverAnchor } from '../lib/popover';
 
@@ -189,7 +188,6 @@ function RealmCard({ character, session, subject, onSelect, ...chrome }: RealmCa
        */
       cell: (entry) => (
         <>
-          {glance && <KitInitials name={entry.name} />}
           <PlayerName
             className="realm-name"
             name={entry.name}
