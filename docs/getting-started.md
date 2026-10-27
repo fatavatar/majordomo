@@ -39,6 +39,20 @@ printed (`docker logs majordomo`). It is also saved in `/config/.access-password
 The connection is not encrypted, so read the README's *Running it in a
 container* before you open the port beyond your own machine.
 
+> [!IMPORTANT]
+> ### Config location: everything lives in one folder
+> Realms, characters, settings, imported data, the realm database and logs
+> all go in the client's home:
+>
+> - **Windows:** `%APPDATA%\mudengine`
+> - **macOS:** `~/Library/Application Support/mudengine`
+> - **Linux:** `~/.config/mudengine`
+> - **Docker:** `/config`, which is the `-v majordomo:/config` volume. **Keep
+>   that `-v`.** Without it, everything is deleted with the container.
+>
+> Back this folder up, and copy it to move to another machine. See
+> [step 7](#7-where-things-are-kept) for what is inside.
+
 The first time it starts with no characters, the settings screen opens.
 **Ctrl/⌘ ,** reopens it at any time. Its sections are **Majordomo** (the
 client itself), **Global** (settings every character inherits), **Realms**
@@ -63,6 +77,18 @@ Majordomo comes with Paradigm's six realms already set up. For anything else, go
 | **World database** | See [step 3](#3-give-it-the-realms-data). |
 | **Coin names** | Only for a realm that renames its coins (one calls runic coins *Krabby Patties*). |
 | **MegaMUD BBS set-up** | What MegaMUD's `BBS.INI` held: the game menu prompt, the relog command, the broadcast formats and so on. Leave a field blank to use MegaMUD's own default. |
+
+> [!IMPORTANT]
+> ### BBS setup: address, login menus and Locate command
+> Get these three right before anything else:
+>
+> - **Host and port:** the BBS's telnet address.
+> - **Login menus:** a row for every prompt on the way in, with `{user}` and
+>   `{password}` where the account goes. A missing row leaves the login stuck
+>   at that prompt.
+> - **Locate command:** **sys status** on MajorMUD, **rm** on GreaterMUD and
+>   Paradigm. Without it the client guesses which room a character is in, and
+>   walking, loops and Muster start from that guess.
 
 ### Login menus
 
@@ -123,6 +149,17 @@ from a **realm database**.
     button sees only the container's own `/config`, so the path must start
     with `/config/`, e.g. `/config/mudrev.mdb`.
 
+> [!IMPORTANT]
+> ### MDB import: a customised realm needs its own `.mdb`
+> Left blank, the client uses the stock world. On a realm like MudRev the
+> rooms, exits, monsters and shops are different, so the map, routes, loops
+> and locked doors would all be wrong.
+
+> [!WARNING]
+> ### In Docker the path must start with `/config/`
+> A path from your own computer (`C:\…` or `/home/…`) does not exist inside
+> the container, and the client quietly falls back to the stock world.
+
 With a realm database in place you get the Map card's areas, routes to any
 room, where to buy things, which doors are locked and what opens them, and
 the Reference card's details on items and monsters.
@@ -132,6 +169,12 @@ tables for that realm. If you have MegaMUD's data folder for the realm, use
 **Import Messages.md…**, **Import Monsters.md…** and **Import Items.md…** on
 those pages. Importing replaces the whole table. Each character can still
 override single rows on its own page.
+
+> [!IMPORTANT]
+> ### Import data: `Messages.md`, `Monsters.md` and `Items.md`
+> The MegaMUD engine plays by these tables: which monsters to fight and which
+> to leave alone, what to pick up, keep or sell, and what the realm's
+> sentences mean. Without them it plays on bare defaults.
 
 ## 4. Add a character
 
@@ -163,6 +206,17 @@ did there.
 | `BBS.INI` | The realm's **MegaMUD BBS set-up** fields ([step 2](#2-add-your-bbs-a-realm)). |
 | `Messages.md`, `Monsters.md`, `Items.md` | The realm's import buttons ([step 3](#3-give-it-the-realms-data)). |
 | Paths and loops (`.mp`) | The realm's **Loops** page: **Import MegaMUD loops…**, then choose MegaMUD's data folder, the one with `Rooms.md` and the `.mp` files. Each loop is matched to the realm's map, and any that don't fit are listed with the reason. |
+
+> [!IMPORTANT]
+> ### Import data: start each character from its MegaMUD `.ini`
+> That file holds every combat, healing, spell, party and cash setting. A
+> character made without it plays on MegaMUD's defaults, not the way you set
+> it up. Use **Start from a MegaMUD character file (.ini)…** when you add it.
+
+> [!IMPORTANT]
+> ### Import data: your `.mp` loops, from the same MegaMUD data folder
+> They arrive matched to the realm's map, ready to start from the Loops
+> search. Without them, each loop has to be built again in the loop builder.
 
 What is the same:
 
