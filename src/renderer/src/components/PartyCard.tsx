@@ -256,6 +256,15 @@ function PartyCard({
       <span className="chip off">{t('cards.party.badge.invited', { count: invited })}</span>
     );
 
+  /* A roster made from the party as it stands, opened for editing: where Regroup, Muster and Say to begin. */
+  const keep =
+    roster === null && onSaveRoster && realm !== null && character.name !== null
+      ? (): void => {
+          save(rosterFromListing(newId(), realm, character));
+          setEditing(true);
+        }
+      : null;
+
   const actions: CardAction[] = [];
   if (editable) {
     actions.push({
@@ -264,16 +273,8 @@ function PartyCard({
       icon: open ? 'check' : 'edit',
       run: () => setEditing(!open)
     });
-  } else if (onSaveRoster && realm !== null && character.name !== null) {
-    actions.push({
-      id: 'keep',
-      label: t('cards.party.keepAction'),
-      icon: 'users',
-      run: () => {
-        save(rosterFromListing(newId(), realm, character));
-        setEditing(true);
-      }
-    });
+  } else if (keep !== null) {
+    actions.push({ id: 'keep', label: t('cards.party.keepAction'), icon: 'users', run: keep });
   }
   if (ask && character.party.members.length > 0) {
     actions.push({
@@ -352,6 +353,19 @@ function PartyCard({
       className="party-card"
       title={t('cards.party.title')}
     >
+      {/*
+        Said in the body, not only as a glyph in the action column: without a
+        roster the bar below is not drawn, and Regroup, Muster and Say to were
+        nowhere a player could find them.
+      */}
+      {keep !== null && (
+        <div className="party-start">
+          <button onClick={keep} onMouseDown={keepFocus} type="button">
+            {t('cards.party.start')}
+          </button>
+          <span className="hint">{t('cards.party.startHint')}</span>
+        </div>
+      )}
       {roster !== null && (onRegroup || onMuster) && (
         <div className="party-actions">
           {onRegroup && (

@@ -927,8 +927,16 @@ function cardElement(id: CardId, ctx: CardContext): ReactNode {
       // Only while there is one, by default: a card that always says
       // "travelling alone" is chrome, and it sits above the rest of the rail.
       // Somebody who would rather it held its place says so on its gear.
+      // With a roster, or more than one character of ours on the realm, it has
+      // something to offer even alone: a party can be made from it.
       if (
-        emptyCardHidden(chrome, id, character.party.members.length > 0 || ctx.party.roster !== null)
+        emptyCardHidden(
+          chrome,
+          id,
+          character.party.members.length > 0 ||
+            ctx.party.roster !== null ||
+            ctx.party.ours.length > 1
+        )
       )
         return null;
       return (

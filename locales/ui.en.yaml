@@ -2793,6 +2793,8 @@ cards:
     musterToLeader: 'Everyone to {leader}'
     musterToPlace: 'Everyone: sys goto {place}'
     regroup: Regroup
+    start: Make this a party
+    startHint: Regroup, Muster and Say to work from a party's roster — its members, leader and ranks, edited here.
     regrouped:
       one: Regroup sent 1 invitation, join or walk.
       many: 'Regroup sent {count} invitations, joins or walks.'

@@ -13001,6 +13001,19 @@ tr:hover .row-action.worn,
   font-size: var(--font-micro);
 }
 
+/* No roster yet: the way to make one, said in the body. */
+.party-start {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  margin-bottom: 6px;
+}
+
+.party-start .hint {
+  font-size: var(--font-micro);
+}
+
 /*
  * The bar over the groups: Regroup and Muster, then Say to — who sends it as
  * chips, the line beside them. Wraps on a narrow rail rather than clipping.
