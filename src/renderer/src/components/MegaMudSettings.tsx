@@ -31,6 +31,7 @@ import {
   sections,
   setSetting,
   settingsFromIni,
+  setProfileEnabled,
   switchProfile,
   type MegaSettings,
   type ProfiledSection,
@@ -158,7 +159,7 @@ export function MegaMudPanel({ tab, mega }: { tab: string; mega: MegaMudDraft })
         onProfile={(n) => mega.update((current) => switchProfile(current, n))}
         onProfileEnabled={(n, on) =>
           mega.update((current) =>
-            page.profiled ? withSlotEnabled(current, page.profiled, n, on) : current
+            page.profiled ? setProfileEnabled(current, page.profiled, n, on) : current
           )
         }
         profiled={page.profiled}
@@ -340,21 +341,6 @@ export function characterOfIni(settings: MegaSettings): {
     password: said('BBS', 'Password'),
     bbs: said('BBS', 'BbsName')
   };
-}
-
-/** A tab's profile copy (2–4) switched on or off; switched on, made from the live values when missing. */
-function withSlotEnabled(
-  settings: MegaSettings,
-  section: ProfiledSection,
-  n: number,
-  on: boolean
-): MegaSettings {
-  const next = structuredClone(settings);
-  const slots = next.profiles[section];
-  const slot = slots[n - 1];
-  if (slot) slot.enabled = on;
-  else if (on) slots[n - 1] = { enabled: true, values: { ...slots[0]!.values } };
-  return next;
 }
 
 interface TabPageProps {

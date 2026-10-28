@@ -11882,6 +11882,62 @@ describe('the status line pro reports', () => {
     ]);
     expect(tracker.current.progress.expTable?.rows.find((row) => row.level === 4)).toBeUndefined();
   });
+
+  // Damyr's prompts a minute apart on 2026-10-26, a 926,800 gain between.
+  it('carries the experience across the 32-bit wrap of Exp=', () => {
+    const tracker = play([
+      REPORT,
+      '[HP=10/10,MA=0/0,Exp=4294586506,Need=201452090,Wealth=0 ]:',
+      '[HP=10/10,MA=0/0,Exp=546010,Need=200525290,Wealth=0 ]:'
+    ]);
+    expect(tracker.current.progress.exp).toBe(4295513306);
+  });
+
+  // Warrax's, whose Exp= ran some 30 billion under its stat sheet (2026-10-27).
+  it('moves the stated total by what Exp= moved, a loss too, never taking Exp= for it', () => {
+    const stated = [
+      REPORT,
+      '[HP=10/10,MA=0/0,Exp=3705639445,Need=5,Wealth=0 ]:',
+      'Exp: 34548223718 Level: 89 Exp needed for next level: 100 (34548223818) [1%]',
+      '[HP=10/10,MA=0/0,Exp=3705639445,Need=5,Wealth=0 ]:',
+      '[HP=10/10,MA=0/0,Exp=3706566245,Need=5,Wealth=0 ]:'
+    ];
+    expect(play(stated).current.progress.exp).toBe(34549150518);
+    const lost = play([...stated, '[HP=10/10,MA=0/0,Exp=3706466245,Need=5,Wealth=0 ]:']);
+    expect(lost.current.progress.exp).toBe(34549050518);
+  });
+
+  // Skinny's, 2026-10-27: folded at the realm's width.
+  it('reads the realm’s sys goto places, folded or not', () => {
+    const folded = play([
+      'Current GOTO locations: NEWHAVEN, SILVERMERE, SUPPORT, RHUDAUR,',
+      '                        KHAZARAD, LOSTCITY',
+      '[HP=10/10,MA=0/0,Exp=1,Need=5,Wealth=0 ]:'
+    ]);
+    expect(folded.current.gotoPlaces).toEqual([
+      'newhaven',
+      'silvermere',
+      'support',
+      'rhudaur',
+      'khazarad',
+      'lostcity'
+    ]);
+    expect(play(['Current GOTO locations: NEWHAVEN, LOSTCITY']).current.gotoPlaces).toEqual([
+      'newhaven',
+      'lostcity'
+    ]);
+  });
+
+  it('states no level from Exp= and Need= once Exp= is not the total', () => {
+    const tracker = play([
+      REPORT,
+      '[HP=10/10,MA=0/0,Exp=4294967000,Need=900,Wealth=0 ]:',
+      'Welcome to level 3!',
+      '[HP=10/10,MA=0/0,Exp=100,Need=900,Wealth=0 ]:'
+    ]);
+    expect(tracker.current.progress.exp).toBe(4294967396);
+    expect(tracker.current.progress.expTable?.rows.find((row) => row.level === 4)).toBeUndefined();
+  });
 });
 
 /*

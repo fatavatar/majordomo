@@ -67,7 +67,13 @@ import {
   type FanSkip,
   type RegroupAct
 } from './session/PartyKeeper';
-import { readPlace, type MusterTarget, type PartyRoster } from '../shared/partyRoster';
+import {
+  readPlace,
+  sameName,
+  withStatedPlaces,
+  type MusterTarget,
+  type PartyRoster
+} from '../shared/partyRoster';
 import { bareName } from '../shared/items';
 import { nameAnswersTo } from '../shared/world';
 import {
@@ -485,35 +491,47 @@ function partyAlreadyDone(session: SessionId, leader: string, command: string): 
 }
 
 /**
- * A command fanned out across a party (`fanOutActs`), carried out: each
- * member of ours by `direct`, everybody else by the leader's `@party`, with
- * every member of ours marked first as having done it — or as left out of it —
- * so none of them takes the leader's line as theirs as well. A line each
- * for the card.
+ * Commands fanned out across a party (`fanOutActs`), carried out: each
+ * member of ours by `direct`, everybody else by the leader's `@party` of each
+ * in turn, with every member of ours marked first as having done them — or
+ * as left out of them — so none of them takes the leader's lines as theirs as
+ * well. A line each for the card, which names the last command: the one the
+ * others lead up to.
  */
 function fanOut(
   roster: PartyRoster,
   acts: readonly FanAct[],
-  command: string,
+  commands: readonly string[],
   direct: (manager: SessionManager, act: FanAct) => string | null
 ): string[] {
   const leader = roster.leader;
+  const command = commands[commands.length - 1] ?? '';
   if (leader !== null && acts.some((act) => act.act === 'atParty')) {
     for (const { session } of keptOn(roster.realm))
-      doneDirectly.set(doneKey(session, leader, command), Date.now());
+      for (const each of commands) doneDirectly.set(doneKey(session, leader, each), Date.now());
   }
   const said: string[] = [];
-  for (const act of acts) {
+  /*
+   * The leader's `@party` first, queued ahead of what the leader does itself:
+   * its own `sys goto` takes it out of the party, and an `@party` sent after
+   * that reaches nobody (2026-10-27).
+   */
+  const ordered = [
+    ...acts.filter((act) => act.act === 'atParty'),
+    ...acts.filter((act) => act.act !== 'atParty')
+  ];
+  for (const act of ordered) {
     const manager = host?.get(act.session)?.manager;
     if (!manager) continue;
     if (act.act === 'skip') {
       const line = FAN_SKIP[act.why]?.(act.name);
       if (line) said.push(line);
     } else if (act.act === 'atParty') {
-      manager.partyCommand(
-        `${manager.megaMudop.prefix}@party ${command}`,
-        t('session.party.fanReason', { command })
-      );
+      for (const each of commands)
+        manager.partyCommand(
+          `${manager.megaMudop.prefix}@party ${each}`,
+          t('session.party.fanReason', { command: each })
+        );
       said.push(
         t('session.party.fanAtParty', { name: act.name, command, others: act.others.join(', ') })
       );
@@ -536,12 +554,32 @@ function muster(roster: PartyRoster, target: MusterTarget): string[] {
   );
   if (target.to === 'place') {
     const command = `sys goto ${target.place}`;
-    return fanOut(roster, acts as FanAct[], command, (manager, act) => {
+    /*
+     * Out of any fight first, everybody: the others by the leader's
+     * `@party break` ahead of the teleport, and ours each by its own engine,
+     * which forgets the fight as well. The teleport takes everybody out of
+     * the party, so it is put back together as they land (`reform`).
+     */
+    partyKeeper.reform(roster, tuning().session.partyReformMs);
+    const said = fanOut(roster, acts as FanAct[], ['break', command], (manager, act) => {
       // A loop or a walk let go first: walked on from where the teleport lands, it is lost.
       manager.stopMoving();
+      manager.breakCombat();
       manager.partyCommand(command, t('session.party.fanReason', { command }));
       return t('session.party.musterTeleport', { name: act.name, place: target.place });
     });
+    /*
+     * The realm says nothing when the teleport breaks the party, so the
+     * leader's listing would still show everybody and Regroup find nobody to
+     * invite: a leader of ours lists it again, queued behind its own goto.
+     */
+    const leader = acts.find(
+      (act) => act.act === 'direct' && roster.leader !== null && sameName(act.name, roster.leader)
+    );
+    const manager = leader === undefined ? undefined : host?.get(leader.session)?.manager;
+    if (manager?.partyCommand('par', t('session.party.reformReason')) === true)
+      said.push(t('session.party.musterReform', { leader: roster.leader ?? '' }));
+    return said;
   }
   return acts
     .map((act) => {
@@ -1834,8 +1872,12 @@ function createHost(): SessionHost {
      * that two characters on two realms are told apart at a glance.
      */
     label: labelOf,
-    characterChanged: () => {
-      if (parties) partyKeeper.check(parties.all, keptOn);
+    characterChanged: (id) => {
+      if (!parties) return;
+      // The realm's sys goto places, once a character has heard it list them.
+      const places = host?.get(id)?.manager.character.gotoPlaces ?? [];
+      if (places.length > 0) parties.gotoStated(labelOf(id).server, places);
+      partyKeeper.check(parties.all, keptOn);
     },
     partyForgot: (id, name) => parties?.forget(labelOf(id).server, name),
     partyAlreadyDone,
@@ -2803,7 +2845,11 @@ function registerIpc(): void {
         .map(({ session }) => host?.get(session)?.manager.megaMudop.place ?? '')
         .map(readPlace)
         .filter((place): place is string => place !== null);
-      return parties.save({ ...made, places: [...new Set(places)] });
+      // And every place the realm itself has listed for sys goto.
+      return parties.save({
+        ...made,
+        places: withStatedPlaces(places, parties.gotoOn(made.realm))
+      });
     }
     return parties.save(roster);
   });
@@ -2833,7 +2879,7 @@ function registerIpc(): void {
         chosen: sessions,
         others: others === true
       });
-      return fanOut(roster, acts, text, (manager) => {
+      return fanOut(roster, acts, [text], (manager) => {
         manager.sendMacro(text);
         return null;
       });

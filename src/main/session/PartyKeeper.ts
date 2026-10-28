@@ -196,7 +196,9 @@ export type MusterAct = FanAct | { session: SessionId; name: string; act: 'walk'
  * party (`fanOutActs`) — each member of ours that its MegaMUD settings say
  * is a MudOp (`BBS.IsMudop`, the switch MegaMUD's own teleport out at
  * critical HP reads) sends it itself, everybody else gets the leader's
- * `@party`. One that cannot go is said, with why.
+ * `@party`. One that cannot go is said, with why. A fight is no reason not
+ * to teleport out of it: the client breaks it off first (2026-10-27), where
+ * a walk waits for it to end.
  */
 export function musterActs(
   roster: PartyRoster,
@@ -207,8 +209,7 @@ export function musterActs(
   if (target.to === 'place')
     return fanOutActs(roster, ours, {
       others: true,
-      can: (member) =>
-        member.character.inCombat ? 'fighting' : mudop(member.session) ? null : 'notMudop'
+      can: (member) => (mudop(member.session) ? null : 'notMudop')
     });
   const leader = roster.leader === null ? null : ourOf(ours, roster.leader);
   const to = leader !== null && leader.inGame ? here(leader.character) : null;
@@ -237,6 +238,8 @@ const keyOf = (roster: PartyRoster, act: RegroupAct): string =>
  */
 export class PartyKeeper {
   private readonly tried = new Map<string, number>();
+  /** Rosters a Muster's `sys goto` took apart, and until when they are put back (`reform`). */
+  private readonly reforming = new Map<string, number>();
 
   constructor(
     private readonly options: {
@@ -261,12 +264,32 @@ export class PartyKeeper {
     return taken;
   }
 
+  /**
+   * A Muster's `sys goto` sent (2026-10-27): the teleport always takes the
+   * party apart, so for `forMs` it is put back together whatever Regroup's
+   * switch says — invited and joined as each member lands with the leader,
+   * and nobody walked, since where everybody stands is only known once they
+   * have landed. What was tried before the teleport is tried again at once.
+   */
+  reform(roster: PartyRoster, forMs: number): void {
+    const now = this.options.now?.() ?? Date.now();
+    this.reforming.set(roster.id, now + forMs);
+    for (const key of [...this.tried.keys()])
+      if (key.startsWith(`${roster.id}:`)) this.tried.delete(key);
+  }
+
   /** Looks at every roster against our characters on its realm. */
   check(rosters: readonly PartyRoster[], oursOn: (realm: string) => readonly KeptMember[]): void {
     const now = this.options.now?.() ?? Date.now();
     const again = this.options.againMs();
     for (const roster of rosters) {
-      for (const act of regroupActs(roster, oursOn(roster.realm))) {
+      const until = this.reforming.get(roster.id);
+      const reform = until !== undefined && now < until;
+      if (until !== undefined && !reform) this.reforming.delete(roster.id);
+      const acts = reform
+        ? regroupActs(roster, oursOn(roster.realm), true).filter((act) => act.act !== 'walk')
+        : regroupActs(roster, oursOn(roster.realm));
+      for (const act of acts) {
         const key = keyOf(roster, act);
         const at = this.tried.get(key);
         if (at !== undefined && now - at < again) continue;

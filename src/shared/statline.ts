@@ -211,7 +211,9 @@ export function figuresOf(state: CharacterState): StatlineFigures {
 /**
  * The state's figures with a prompt's reading laid over them: every figure
  * the prompt states wins, and `state` is the prompt's even when null, because
- * an idle prompt is a statement and not an absence.
+ * an idle prompt is a statement and not an absence. Experience is the
+ * exception: `%x` is not the total (`CharacterTracker.promptedExp`), so the
+ * state's stands.
  */
 export function withReading(known: StatlineFigures, read: StatlineReading): StatlineFigures {
   return {
@@ -220,7 +222,7 @@ export function withReading(known: StatlineFigures, read: StatlineReading): Stat
     hpMax: read.hpMax ?? known.hpMax,
     mana: read.mana ?? known.mana,
     manaMax: read.manaMax ?? known.manaMax,
-    exp: read.exp ?? known.exp,
+    exp: known.exp ?? read.exp,
     need: read.need ?? known.need,
     wealth: read.wealth ?? known.wealth,
     state: read.state

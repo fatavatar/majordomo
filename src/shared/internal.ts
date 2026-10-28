@@ -879,6 +879,12 @@ const TUNING_DEFAULTS = {
      * the character does not do it a second time when that line arrives.
      */
     partyEchoMs: 120_000,
+    /**
+     * How long after a Muster's `sys goto` the party is put back together
+     * whatever Regroup's switch says: the teleport takes everybody out of it,
+     * and the invitations and joins go out as each one lands with the leader.
+     */
+    partyReformMs: 60_000,
     /** Negotiation records the diagnostics pane can look back over. */
     telnetLogLimit: 500,
     /** Framed lines retained; the terminal keeps the real backscroll. */

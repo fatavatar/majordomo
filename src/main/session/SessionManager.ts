@@ -2405,10 +2405,12 @@ export class SessionManager {
    * out through the same queue before any prompt exists, and with them in the
    * FIFO the first quiet command never reached its head — captured by the
    * smoke run, whose fake host answered `rm` and watched the console show it.
+   * The engine is told too, whoever sent it (`MegaEngine.commandSent`).
    */
   private noteSent(command: string, from: 'user' | 'automation'): void {
     if (this.tracker.current.phase !== 'in-game') return;
     this.feed.sent(command, from);
+    this.mega?.commandSent(command);
   }
 
   /**
@@ -3437,6 +3439,11 @@ export class SessionManager {
    */
   megaConnectPressed(): boolean {
     return this.mega?.connectPressed() ?? false;
+  }
+
+  /** Out of the fight now, the engine told so (`MegaEngine.breakCombat`): a Muster's `sys goto` is next. */
+  breakCombat(): void {
+    this.mega?.breakCombat();
   }
 
   /** Stop trying: the engine's redial called off, as Disconnect calls ours off. */

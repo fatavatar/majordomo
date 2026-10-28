@@ -92,6 +92,20 @@ describe('the Party card’s rows', () => {
     expect(together(rows)).toEqual({ in: 1, of: 4 });
   });
 
+  it('draws whoever else the party lists after the roster, as a guest, counted apart', () => {
+    const bowel = character('Bowel', {
+      party: [member('Archer'), member('Bowel'), member('Fatty', { health: 0.8 })]
+    });
+    const archer = character('Archer', { following: 'Bowel' });
+    const rows = boardRows(roster(['Bowel', 'Archer']), archer, [ours(bowel), ours(archer)]);
+    expect(rows.map((r) => [r.name, r.status, r.guest, r.health])).toEqual([
+      ['Bowel', 'in', false, 0.9],
+      ['Archer', 'in', false, 0.9],
+      ['Fatty', 'in', true, 0.8]
+    ]);
+    expect(together(rows)).toEqual({ in: 2, of: 2 });
+  });
+
   it('draws the listing as it stands when there is no roster, whoever this character follows first', () => {
     const skinny = character('Skinny', {
       following: 'Fatty',

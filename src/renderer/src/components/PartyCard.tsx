@@ -228,8 +228,10 @@ function PartyCard({
   /** Whether Say to leaves out everybody else in the party (the leader's @party). */
   const [othersQuiet, setOthersQuiet] = useState(false);
   const [line, setLine] = useState('');
-  /** A sys goto place typed beside the Muster button. */
+  /** Where the Muster dropdown says to go: `WALK`, a `GOTO` place, or nothing yet. */
   const [goto, setGoto] = useState('');
+  /** A sys goto place being added while editing, for the Muster dropdown. */
+  const [placing, setPlacing] = useState('');
   const rows = boardRows(roster, character, ours);
   const editable = roster !== null && onSaveRoster !== undefined;
   const open = editing && editable;
@@ -354,21 +356,25 @@ function PartyCard({
     );
   };
   /*
-   * Muster to what is typed: the leader's name walks everybody to the
-   * leader, anything else is a sys goto place, kept for the suggestions.
+   * Muster to what the dropdown says: walking everybody to the leader, or a
+   * sys goto place off the roster (2026-10-27: a dropdown, not free entry;
+   * places are added while editing). A choice no longer offered is none.
    */
-  const musterTyped = (): void => {
-    const place = readPlace(goto);
-    if (roster === null || !onMuster || place === null) return;
-    if (roster.leader !== null && sameName(place, roster.leader)) {
-      void onMuster(roster.id, { to: 'leader' }).then(setReport);
-      setGoto('');
-      return;
-    }
-    if (!roster.places.some((kept) => sameName(kept, place)))
-      edit((r) => ({ ...r, places: [...r.places, place] }));
-    void onMuster(roster.id, { to: 'place', place }).then(setReport);
-    setGoto('');
+  const musterOptions = roster === null ? [] : musterChoices(roster);
+  const chosen = musterOptions.some((option) => option.value === goto) ? goto : '';
+  const musterChosen = (): void => {
+    if (roster === null || !onMuster || chosen === '') return;
+    const target: MusterTarget =
+      chosen === WALK ? { to: 'leader' } : { to: 'place', place: chosen.slice(GOTO.length) };
+    void onMuster(roster.id, target).then(setReport);
+  };
+  const addPlace = (): void => {
+    const place = readPlace(placing);
+    if (place === null) return;
+    edit((r) =>
+      r.places.some((kept) => sameName(kept, place)) ? null : { ...r, places: [...r.places, place] }
+    );
+    setPlacing('');
   };
   const say = (): void => {
     const text = line.trim();
@@ -410,30 +416,25 @@ function PartyCard({
               className="party-muster"
               onSubmit={(event) => {
                 event.preventDefault();
-                musterTyped();
+                musterChosen();
               }}
             >
-              <input
+              <select
                 aria-label={t('cards.party.edit.placesAria')}
-                list={`party-places-${roster.id}`}
                 onChange={(event) => setGoto(event.target.value)}
-                placeholder={t('cards.party.edit.placesPlaceholder')}
-                spellCheck={false}
                 title={t('cards.party.edit.placesHint')}
-                value={goto}
-              />
-              <datalist id={`party-places-${roster.id}`}>
-                {roster.leader !== null && (
-                  <option
-                    label={t('cards.party.musterToLeader', { leader: roster.leader })}
-                    value={roster.leader}
-                  />
-                )}
-                {roster.places.map((place) => (
-                  <option key={place} value={place} />
+                value={chosen}
+              >
+                <option disabled value="">
+                  {t('cards.party.musterPick')}
+                </option>
+                {musterOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
                 ))}
-              </datalist>
-              <button disabled={readPlace(goto) === null} onMouseDown={keepFocus} type="submit">
+              </select>
+              <button disabled={chosen === ''} onMouseDown={keepFocus} type="submit">
                 {t('cards.party.edit.muster')}
               </button>
             </form>
@@ -547,6 +548,11 @@ function PartyCard({
                           {STATUS_WORD[row.status]}
                         </span>
                       )}
+                      {row.guest && (
+                        <span className="party-status" title={t('cards.party.guestHint')}>
+                          {t('cards.party.guest')}
+                        </span>
+                      )}
                       {/*
                         A condition is tonal, per §9 — and it is the thing on
                         this row that decides whether a member will answer a
@@ -639,7 +645,23 @@ function PartyCard({
                         )}
                       </div>
                     )}
-                    {open && (
+                    {open && row.guest && (
+                      <div className="party-edit-row">
+                        <button
+                          className="quiet"
+                          onClick={() =>
+                            edit((r) =>
+                              withMembers([...r.members, { name: row.name, rank: row.rank }])
+                            )
+                          }
+                          onMouseDown={keepFocus}
+                          type="button"
+                        >
+                          {t('cards.party.edit.keepGuest')}
+                        </button>
+                      </div>
+                    )}
+                    {open && !row.guest && (
                       <div className="party-edit-row">
                         {/* No `keepFocus` on a select: its default is the popup opening. */}
                         <select
@@ -736,6 +758,44 @@ function PartyCard({
               {t('cards.party.edit.add')}
             </button>
           </form>
+          <form
+            className="party-add"
+            onSubmit={(event) => {
+              event.preventDefault();
+              addPlace();
+            }}
+          >
+            <input
+              aria-label={t('cards.party.edit.placeAddAria')}
+              onChange={(event) => setPlacing(event.target.value)}
+              placeholder={t('cards.party.edit.placeAddPlaceholder')}
+              spellCheck={false}
+              value={placing}
+            />
+            <button disabled={readPlace(placing) === null} onMouseDown={keepFocus} type="submit">
+              {t('cards.party.edit.placeAdd')}
+            </button>
+          </form>
+          {roster.places.length > 0 && (
+            <ul className="party-places">
+              {roster.places.map((place) => (
+                <li key={place}>
+                  <span>{place}</span>
+                  <button
+                    aria-label={t('cards.party.edit.placeRemoveAria', { place })}
+                    className="quiet danger"
+                    onClick={() =>
+                      edit((r) => ({ ...r, places: r.places.filter((p) => !sameName(p, place)) }))
+                    }
+                    onMouseDown={keepFocus}
+                    type="button"
+                  >
+                    {t('cards.party.edit.remove')}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
           <label className="party-check" title={t('cards.party.edit.regroupHint')}>
             <input
               checked={roster.regroup}
@@ -761,6 +821,25 @@ function PartyCard({
       )}
     </BentoCard>
   );
+}
+
+/** The Muster dropdown's values: walking to the leader, and each place by `GOTO`. */
+const WALK = 'walk';
+const GOTO = 'goto:';
+
+/** What the Muster dropdown offers: the leader's walk, then each of the roster's places. */
+function musterChoices(roster: PartyRoster): Array<{ value: string; label: string }> {
+  const walk =
+    roster.leader === null
+      ? []
+      : [{ value: WALK, label: t('cards.party.musterToLeader', { leader: roster.leader }) }];
+  return [
+    ...walk,
+    ...roster.places.map((place) => ({
+      value: `${GOTO}${place}`,
+      label: t('cards.party.musterPlace', { place })
+    }))
+  ];
 }
 
 /** The monster a member was last seen fighting, or null once the sighting is stale. */

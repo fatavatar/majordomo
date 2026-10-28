@@ -13023,7 +13023,7 @@ tr:hover .row-action.worn,
   min-width: 0;
 }
 
-.party-muster input {
+.party-muster select {
   flex: 1 1 8em;
   min-width: 0;
 }
@@ -13076,6 +13076,25 @@ tr:hover .row-action.worn,
 .party-add input {
   flex: 1 1 10em;
   min-width: 0;
+}
+
+/* The Muster dropdown's places, each with its own Remove: the whole width, one per line. */
+.party-places {
+  display: flex;
+  flex: 1 1 100%;
+  flex-direction: column;
+  gap: 2px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.party-places li {
+  align-items: center;
+  display: flex;
+  font-size: var(--font-micro);
+  gap: 6px;
+  justify-content: space-between;
 }
 
 .party-edit-row button.danger,

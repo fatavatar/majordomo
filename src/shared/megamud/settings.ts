@@ -479,6 +479,36 @@ export function switchProfile(settings: MegaSettings, to: number): MegaSettings 
 }
 
 /**
+ * A tab's copy 2–4 ticked or unticked: switched on, one not there yet is made
+ * from the live values. Where that changes the copy the tab is using
+ * (`copyInUse`), the live values are stored into the copy left and the one
+ * now used becomes live, as a profile switch does. Left live, the loader
+ * would take them into the copy now used (`0x447d80`): Skinny's Combat copy
+ * 2, ticked under profile 2 on 2026-10-27, took copy 1's `intr`/`lite`/`word`
+ * over its own `dtem`/`word`/`dfur`. Copy 1 is always on.
+ */
+export function setProfileEnabled(
+  settings: MegaSettings,
+  section: ProfiledSection,
+  n: number,
+  on: boolean
+): MegaSettings {
+  if (n < 2 || n > 4) return settings;
+  const next: MegaSettings = structuredClone(settings);
+  const active = num(next, 'Profiles', 'ActiveProfile');
+  const slots = next.profiles[section];
+  const was = copyInUse(slots, active);
+  const live = profileCopy(next.live, section);
+  slots[was] = { enabled: slots[was]?.enabled ?? true, values: live };
+  const slot = slots[n - 1];
+  if (slot) slot.enabled = on;
+  else if (on) slots[n - 1] = { enabled: true, values: { ...live } };
+  const now = copyInUse(slots, active);
+  if (now !== was) Object.assign(next.live[section]!, slots[now]!.values);
+  return next;
+}
+
+/**
  * A tab's Copy From... (`0x49fd10`): another enabled copy's values put in
  * the one being edited (the live values). The copy being edited, and one not
  * there or not enabled, offer nothing to copy.
@@ -490,7 +520,8 @@ export function copyProfileFrom(
 ): MegaSettings {
   const active = num(settings, 'Profiles', 'ActiveProfile');
   const slot = settings.profiles[section][from - 1];
-  if (from === active || !slot || !slot.enabled) return settings;
+  if (from - 1 === copyInUse(settings.profiles[section], active) || !slot || !slot.enabled)
+    return settings;
   const next: MegaSettings = structuredClone(settings);
   Object.assign(next.live[section]!, slot.values);
   return next;

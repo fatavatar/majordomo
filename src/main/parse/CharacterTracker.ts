@@ -206,6 +206,13 @@ function int(value: string | undefined): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+/** A change in a 32-bit counter, across its wrap: the nearer way round, so a loss stays a loss. */
+function wrapped32(change: number): number {
+  const turn = 2 ** 32;
+  const forward = ((change % turn) + turn) % turn;
+  return forward >= turn / 2 ? forward - turn : forward;
+}
+
 /**
  * Spoken direction to canonical short code, longest first so `northeast` wins
  * over `north`.
@@ -716,6 +723,13 @@ export class CharacterTracker {
    * server-side, and the next `pro` replaces it.
    */
   private statlineMatcher: RegExp | null = null;
+  /**
+   * The prompt's `%x` as last read, beside the total it was read at
+   * (`promptedExp`). Null until the first prompt carrying it, and again after
+   * the stat sheet or `exp` states the total outright, so the next prompt
+   * reads its change from there.
+   */
+  private expAnchor: { total: number; prompt: number } | null = null;
 
   /**
    * Where this character's own record is kept between sessions — the balances
@@ -1425,6 +1439,7 @@ export class CharacterTracker {
     this.sheetWanted = false;
     this.deaths.clear();
     this.statlineMatcher = null;
+    this.expAnchor = null;
   }
 
   /**
@@ -2893,13 +2908,19 @@ export class CharacterTracker {
    * which keeps the realm's own word on the row a character climbs to. Only
    * while something is still owed: `Need=0` is the realm saying the next level is affordable, and `exp + 0`
    * would price it at whatever the character happens to hold. Nothing is
-   * rebuilt while the table already holds the row.
+   * rebuilt while the table already holds the row. Nor while `%x` is not the
+   * total (`promptedExp`): the sum would be a row in the wrong figures.
    */
-  private tableWithPrompt(s: CharacterState, read: StatlineReading): ExperienceTable | null {
+  private tableWithPrompt(
+    s: CharacterState,
+    read: StatlineReading,
+    total: number | null
+  ): ExperienceTable | null {
     const level = s.progress.level;
     if (level === null || read.exp === null || read.need === null || read.need <= 0) {
       return s.progress.expTable;
     }
+    if (read.exp !== total) return s.progress.expTable;
     const row: ExperienceLevel = {
       level: level + 1,
       experience: read.exp + read.need,
@@ -2908,6 +2929,31 @@ export class CharacterTracker {
     const held = s.progress.expTable?.rows.find((entry) => entry.level === row.level);
     if (held?.source === 'realm' && held.experience === row.experience) return s.progress.expTable;
     return withRealmExperience(s.progress.expTable, [row]);
+  }
+
+  /**
+   * The total experience, moved by what the prompt's `%x` moved since the
+   * last prompt, never taken from it.
+   *
+   * `%x` is not the total. MajorMUD renders it in 32 bits, so past
+   * 4,294,967,296 it wraps (Damyr's prompt went from 4,294,586,506 to 546,010
+   * on a 926,800 gain, 2026-10-26), and it leaves out what a quest awards
+   * (Ishi's ran 3,300,000 under the stat sheet after a quest's award,
+   * 2026-10-18), where the stat sheet and `exp` state the whole of it. Taken
+   * as the total on every prompt, it put both of those on the stats board
+   * within a minute of every sheet (`mudstats` docs/mudengine-exp-bug.md).
+   * So its change since the last prompt is what it says — a loss too, on a
+   * death — and the first prompt after a stated total starts from that total.
+   * With nothing stated yet, the prompt's figure is the best there is.
+   */
+  private promptedExp(s: CharacterState, prompt: number): number {
+    const anchor = this.expAnchor;
+    if (anchor === null) {
+      const total = s.progress.exp ?? prompt;
+      this.expAnchor = { total, prompt };
+      return total;
+    }
+    return anchor.total + wrapped32(prompt - anchor.prompt);
   }
 
   /**
@@ -4155,6 +4201,7 @@ export class CharacterTracker {
               ? 'KAI'
               : s.vitals.manaType;
         const agreed = prompt.exact === true;
+        const exp = read.exp === null ? s.progress.exp : this.promptedExp(s, read.exp);
         return {
           ...s,
           phase: 'in-game',
@@ -4196,12 +4243,12 @@ export class CharacterTracker {
           },
           progress: {
             ...s.progress,
-            exp: read.exp ?? s.progress.exp,
+            exp,
             // `%X` is an unclamped subtraction and goes negative once the next
             // level is affordable; what is *owed* is then nothing, as `exp`
             // reports it. The raw figure still gates the table row.
             expNeeded: read.need === null ? s.progress.expNeeded : Math.max(0, read.need),
-            expTable: this.tableWithPrompt(s, read),
+            expTable: this.tableWithPrompt(s, read, exp),
             // The first status line is when the session's clock starts: it is
             // the moment the realm is provably on the other end.
             realmEnteredAt: s.progress.realmEnteredAt ?? block.at
@@ -4216,6 +4263,16 @@ export class CharacterTracker {
        * pattern as the reader, with `exact` null to say so; `SessionManager`
        * says which out loud. The same report twice changes nothing.
        */
+      // The realm's `sys goto` places, for the Party card's Muster.
+      case 'sys-goto-places': {
+        const places = (g['places'] ?? '')
+          .split(',')
+          .map((place) => place.trim().toLowerCase())
+          .filter((place) => place.length > 0);
+        if (places.length === 0 || places.join() === s.gotoPlaces.join()) return null;
+        return { ...s, gotoPlaces: places };
+      }
+
       case 'user-statline': {
         const reported = g['statline']?.trim() ?? '';
         if (reported.length === 0 || s.statline.reported === reported) return null;
@@ -4362,6 +4419,8 @@ export class CharacterTracker {
           level !== null && required !== null
             ? [{ level: level + 1, experience: required, source: 'realm' }]
             : [];
+        // The whole total, as the sheet's is (`promptedExp`).
+        this.expAnchor = null;
         return {
           ...s,
           progress: {
@@ -4484,6 +4543,8 @@ export class CharacterTracker {
           if (cleared.afflictions[condition] !== 'yes' || stated.has(condition)) continue;
           cleared = afflicted(cleared, condition, 'no') ?? cleared;
         }
+        // The whole total, which the next prompt's `%x` moves on from.
+        if (int(g['exp']) !== null) this.expAnchor = null;
         return {
           ...cleared,
           // Paramud's `st` prints a countdown after each active buff; the

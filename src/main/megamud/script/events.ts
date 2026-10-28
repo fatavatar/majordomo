@@ -197,6 +197,26 @@ export function eventsStep(s: Session): number {
   }
 }
 
+/**
+ * Ours (2026-10-27): a settings save read the events afresh, so each was due
+ * again from nothing while the index of the next stayed. The one it pointed
+ * at, now due at 0, ran at once, and every repeating event's count began
+ * again from the save (healbot's hourly `sys god fatty neutral` sent the
+ * moment its second event was added at 21:21). MegaMUD edits its list in
+ * place, so an event the save left as it was keeps its time; the next is
+ * worked out again.
+ */
+export function keepSchedule(s: Session, before: readonly TimedEvent[]): void {
+  const left = [...before];
+  for (const e of s.events) {
+    const i = left.findIndex(
+      (x) => x.type === e.type && x.hour === e.hour && x.minute === e.minute && x.text === e.text
+    );
+    if (i >= 0) e.dueAt = left.splice(i, 1)[0]!.dueAt;
+  }
+  s.eventNext = nextEvent(s);
+}
+
 /** `0x437870`: the events from the character's `[Schedule]`: `EventN` is `type:hour:minute:text`. */
 export function loadEvents(s: Session, read: (key: string) => string): void {
   s.events = [];

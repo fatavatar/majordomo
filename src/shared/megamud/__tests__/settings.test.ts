@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   atol,
   copyProfileFrom,
+  setProfileEnabled,
   defaultSettings,
   num,
   parseIni,
@@ -246,5 +247,39 @@ describe('Copy From... (0x49fd10)', () => {
     expect(copyProfileFrom(settings, 'Health', 2).live['Health']!['HpRest%']).toBe(70);
     expect(copyProfileFrom(settings, 'Health', 3)).toBe(settings);
     expect(copyProfileFrom(settings, 'Health', 1)).toBe(settings);
+  });
+});
+
+describe("a tab's copy ticked or unticked", () => {
+  // Skinny on 2026-10-27: profile 2 on, its Combat copy 2 unticked, so the tab used copy 1.
+  const skinny =
+    '[Profiles]\r\nActiveProfile=2\r\n[Combat]\r\nMultAttack=intr\r\nAttackSpl=lite\r\n' +
+    '[Combat.P1]\r\nMultAttack=intr\r\nAttackSpl=lite\r\n' +
+    '[Combat.P2]\r\nEnabled=0\r\nMultAttack=dtem\r\nAttackSpl=dfur\r\n';
+
+  it('puts on the copy ticked when the profile on uses it, and keeps the one left', () => {
+    const ticked = setProfileEnabled(settingsFromIni(skinny), 'Combat', 2, true);
+    expect(ticked.live['Combat']!['MultAttack']).toBe('dtem');
+    const saved = settingsFromDraft(ticked, settingsFromIni(skinny))!;
+    expect(saved.profiles.Combat[1]!.values['AttackSpl']).toBe('dfur');
+    expect(saved.profiles.Combat[0]!.values['AttackSpl']).toBe('lite');
+  });
+
+  it('goes back to copy 1 when the copy in use is unticked, keeping its edits', () => {
+    const on = setProfileEnabled(settingsFromIni(skinny), 'Combat', 2, true);
+    on.live['Combat']!['AttackSpl'] = 'word';
+    const off = setProfileEnabled(on, 'Combat', 2, false);
+    expect(off.live['Combat']!['MultAttack']).toBe('intr');
+    const saved = settingsFromDraft(off, on)!;
+    expect(saved.profiles.Combat[1]).toMatchObject({ enabled: false });
+    expect(saved.profiles.Combat[1]!.values['AttackSpl']).toBe('word');
+    expect(saved.profiles.Combat[0]!.values['AttackSpl']).toBe('lite');
+  });
+
+  it('leaves the live values alone for a copy the profile on does not use', () => {
+    const ticked = setProfileEnabled(settingsFromIni(skinny), 'Combat', 3, true);
+    expect(ticked.live['Combat']!['MultAttack']).toBe('intr');
+    expect(ticked.profiles.Combat[2]!.values['MultAttack']).toBe('intr');
+    expect(setProfileEnabled(ticked, 'Combat', 1, false)).toBe(ticked);
   });
 });

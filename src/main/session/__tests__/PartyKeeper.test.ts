@@ -166,6 +166,31 @@ describe('the keeper', () => {
     keeper.check([roster()], () => ours);
     expect(ran.map((act) => act.act)).toEqual(['invite', 'invite']);
   });
+
+  it('puts the party back after a sys goto whatever the switch says, walking nobody, for a while', () => {
+    let now = 0;
+    const ran: RegroupAct[] = [];
+    const keeper = new PartyKeeper({
+      againMs: () => 20_000,
+      run: (act) => {
+        ran.push(act);
+        return true;
+      },
+      now: () => now
+    });
+    const off = roster({ regroup: false });
+    const ours = [kept('Fatty', { room: 9, sees: ['Skinny'] }), kept('Skinny', { room: 9 })];
+    const elsewhere = [...ours, kept('healbot', { room: 3 })];
+    keeper.check([off], () => elsewhere);
+    expect(ran).toEqual([]);
+    keeper.reform(off, 60_000);
+    now = 1_000;
+    keeper.check([off], () => elsewhere);
+    expect(ran.map((act) => act.act)).toEqual(['invite']);
+    now = 61_000;
+    keeper.check([off], () => elsewhere);
+    expect(ran).toHaveLength(1);
+  });
 });
 
 describe('Muster', () => {
@@ -203,6 +228,19 @@ describe('Muster', () => {
       ['Fatty', 'direct'],
       ['Skinny', 'direct'],
       ['healbot', 'notMudop']
+    ]);
+  });
+
+  it('sends one of ours that is fighting by sys goto too, the fight broken off first', () => {
+    const fighting = kept('Skinny');
+    fighting.character = { ...fighting.character, inCombat: true };
+    expect(
+      musterActs(roster(), [kept('Fatty'), fighting], { to: 'place', place: 'kha' }, mudop).map(
+        (act) => [act.name, act.act]
+      )
+    ).toEqual([
+      ['Fatty', 'direct'],
+      ['Skinny', 'direct']
     ]);
   });
 

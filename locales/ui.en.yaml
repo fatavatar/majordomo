@@ -2791,7 +2791,11 @@ cards:
       fighting: fighting
     # A member of ours who is not in the leader's room.
     away: 'at {room}'
-    musterToLeader: 'walk everyone to {leader}'
+    guest: not on the roster
+    guestHint: In the party by its listing, but not on this party's roster — edit the party to keep them on it.
+    musterPick: Muster to…
+    musterPlace: 'sys goto {place}'
+    musterToLeader: 'Walk everyone to {leader}'
     regroup: Regroup
     start: Make this a party
     startHint: Regroup, Muster and Say to work from a party's roster — its members, leader and ranks, edited here.
@@ -2823,13 +2827,18 @@ cards:
       addPlaceholder: Add a member — any name on the realm
       disband: Forget this party
       done: Done editing
+      keepGuest: Keep on the roster
       makeLeader: Lead
       muster: Muster
+      placeAdd: Add place
+      placeAddAria: Add a sys goto place to muster to
+      placeAddPlaceholder: 'Add a muster place — the realm''s sys goto word (kha)'
+      placeRemoveAria: 'Stop offering {place} to muster to'
       placesAria: Where to muster the party
       placesHint:
-        The leader's name walks everybody to the leader. Anything else is the realm's own sys goto
-        word for a place, kept as a suggestion for next time.
-      placesPlaceholder: 'Muster to: leader, or a sys goto place (kha)'
+        Walk everybody to the leader, or teleport the party with sys goto. A sys goto breaks off any
+        fight first, and the party is put back together where it lands. Places are added while
+        editing the party.
       putBack: Put back
       rankAria: 'Where {name} stands'
       rankAuto: As listed
@@ -4795,7 +4804,9 @@ session:
     regroupWalkRefused: 'Regroup could not walk to {leader}: {refused}'
     fanReason: 'Party card: {command}'
     fanAtParty: '{name}: @party {command} — for {others}.'
-    musterTeleport: '{name}: sys goto {place}.'
+    musterTeleport: '{name}: sys goto {place}, out of any fight first.'
+    musterReform: 'The teleport takes everybody out of the party: {leader} lists it once landed, and it is put back together as each member arrives.'
+    reformReason: 'Party card: listing the party after the sys goto'
     musterWalk: '{name}: walking to the leader.'
     musterWalkRefused: 'Muster could not walk {name} to the leader: {refused}'
     musterSkip:
