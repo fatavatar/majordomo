@@ -14,8 +14,17 @@ export function expHrCharacter(
 export function expHrProfile(profile: unknown, useChar: boolean, spellOverhead?: number): unknown;
 export interface ExpHrResult {
   kind: string;
-  info: { nExpPerHour: number; nTimeRecovering: number } | null;
+  info: {
+    nExpPerHour: number;
+    nTimeRecovering: number;
+    nAttackTime: number;
+    nMove: number;
+    nRTC: number;
+  } | null;
   args?: Record<string, number>;
+  /** `GetLairInfo`'s averages, where the monster spawns in lairs. */
+  lair?: Record<string, number>;
+  exp?: number;
 }
 export function monsterExpPerHour(monster: Row, env: Record<string, unknown>): ExpHrResult;
 export function expPerHourCell(n: number): string;

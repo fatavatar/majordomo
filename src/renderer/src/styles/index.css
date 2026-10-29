@@ -4111,6 +4111,40 @@ button.quest-plan-back {
   gap: var(--gap);
   padding: var(--gap) var(--pad);
 }
+/* Solo or Party (2026-10-29): two chips, the one priced for pressed. */
+.hunt-mode {
+  display: inline-flex;
+  gap: 4px;
+  margin-right: var(--gap);
+}
+.hunt-mode .chip[aria-pressed='true'] {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+/* An opened area's lair groups (2026-10-29), each marked with how it counts toward the area. */
+.hunt-lairs {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  list-style: none;
+  margin: 0 0 var(--gap-tight, 6px);
+  padding: 0;
+}
+.hunt-lairs li {
+  align-items: baseline;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px var(--gap);
+  justify-content: space-between;
+}
+.hunt-lairs li[data-role='main'] .chip {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.hunt-lairs li[data-role='none'],
+.hunt-lairs li[data-role='alternative'] {
+  color: var(--text-lo);
+}
 .hunt-mobs,
 .hunt-rooms {
   list-style: none;
@@ -9736,6 +9770,16 @@ ul.tb-tree li > .tb-label {
   text-overflow: ellipsis;
   text-transform: none;
   white-space: nowrap;
+}
+
+/*
+ * The Reference panel opens taller than the other slide-outs (2026-10-29): a
+ * monster carries MMUD Explorer's figures as well as the realm's, and capped
+ * at 420px most of it was below the fold. It is still kept inside the window
+ * and placed so all of it shows where it fits (`usePopoverFrame`).
+ */
+.reference-popover {
+  max-height: min(85vh, 800px);
 }
 
 .reference-popover .reference-detail {

@@ -6094,6 +6094,57 @@ export class SessionManager {
     return true;
   }
 
+  /**
+   * Every room this character can reach from where it stands, and in how
+   * many steps, priced by its own traveller (a door it cannot open is not an
+   * exit): what Hunting Grounds prices (2026-10-29). Why not, where the realm
+   * or the room is unknown.
+   */
+  huntingReach(): { from: { id: RoomId; name: string }; reach: Map<RoomId, number> } | string {
+    const state = this.tracker.current;
+    const world = this.world;
+    if (!world || world.size === 0) return t('session.hunt.noRealmData');
+    const here = state.room;
+    if (here.map === null || here.number === null) return t('session.hunt.unknownRoom');
+    const id = roomId(here.map, here.number);
+    const start = world.byId(id);
+    if (!start) return t('session.hunt.unknownRoom');
+    return {
+      from: { id, name: start.name },
+      reach: world.withinSteps(id, Number.POSITIVE_INFINITY, this.travellerNow(state))
+    };
+  }
+
+  /**
+   * How dangerous it is for this character to hunt these rooms (2026-10-29):
+   * the router's own two questions of a room — what one pass through its lair
+   * takes (`lairDanger`, the Room card's arithmetic) and what the room's spell
+   * does (`roomHazard`) — as a share of its **full** health, the worst of them.
+   * A lair group's rooms spawn one set of monsters, so its pass is weighed on
+   * its first `sampled` rooms; every room's own spell is read. Null where
+   * nothing can be weighed. The user's word: the pathing's danger check "is
+   * generally pretty good".
+   */
+  huntingDanger(rooms: readonly RoomId[], sampled = 3): number | null {
+    const world = this.world;
+    if (!world) return null;
+    const state = this.tracker.current;
+    const full: CharacterState = { ...state, vitals: { ...state.vitals, hp: state.vitals.hpMax } };
+    let worst: number | null = null;
+    rooms.forEach((id, at) => {
+      const room = world.byId(id);
+      if (!room) return;
+      const shares = [
+        this.roomHazard(room, full),
+        at < sampled ? this.lairDanger(room, full) : null
+      ];
+      for (const share of shares) {
+        if (share !== null && (worst === null || share > worst)) worst = share;
+      }
+    });
+    return worst;
+  }
+
   /** Where this character should hunt. See `Appraisal.huntingGrounds`. */
   huntingGrounds(radius: number | null, measure: string | null = null): HuntingAdvice {
     return this.appraisal.huntingGrounds(radius, measure);

@@ -18,6 +18,7 @@ import type { RealmFamily } from '@shared/character';
 import { type PopoverAnchor } from '../lib/popover';
 import { usePopoverFrame } from '../hooks/usePopoverFrame';
 import { t } from '../lib/i18n';
+import { tuning } from '../lib/tuning';
 import type { ShopPlace, WorldLookup } from '@shared/world';
 
 /**
@@ -152,11 +153,13 @@ export default function ReferencePopover({
    * on every status line — and a card redrawing is not a reason for a panel to
    * go.
    */
+  const { referenceWidthMin, referenceWidthMax } = tuning();
   const frame = usePopoverFrame({
     anchor: asked.anchor,
     measure: [entry, resized, editing],
     onDismiss,
-    whenAnchorGone: 'hold'
+    whenAnchorGone: 'hold',
+    widthRange: { min: referenceWidthMin, max: referenceWidthMax }
   });
 
   /*

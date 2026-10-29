@@ -6285,12 +6285,6 @@ function theTuningBlockGainedKeys(
     /* The wheel on a map: how much a notch zooms, and when the card writes it down. */
     addKey('view', 'mapZoomStepPercent', DEFAULT_INTERNAL.tuning.view.mapZoomStepPercent);
     addKey('view', 'mapZoomSettleMs', DEFAULT_INTERNAL.tuning.view.mapZoomSettleMs);
-    /*
-     * The Hunting card's re-ask clock (todo 00, 2026-09-13), which took the
-     * place of its reach: the sweep is realm-wide now, so a move refreshes
-     * the steps on a clock rather than re-sweeping a radius on every room.
-     */
-    addKey('view', 'huntReaskMs', DEFAULT_INTERNAL.tuning.view.huntReaskMs);
     /* Snapping one card over the console to another (todo 02, 2026-09-13). */
     addKey('view', 'snapDistance', DEFAULT_INTERNAL.tuning.view.snapDistance);
     /*
@@ -6447,6 +6441,12 @@ function theTuningBlockGainedKeys(
       'backscrollAttachLines',
       DEFAULT_INTERNAL.tuning.records.backscrollAttachLines
     );
+    // The Reference panel's own width (2026-10-29).
+    addKey('view', 'referenceWidthMin', DEFAULT_INTERNAL.tuning.view.referenceWidthMin);
+    addKey('view', 'referenceWidthMax', DEFAULT_INTERNAL.tuning.view.referenceWidthMax);
+    // The Hunting card's areas (2026-10-29).
+    addKey('hunting', 'areaRadius', DEFAULT_INTERNAL.tuning.hunting.areaRadius);
+    addKey('hunting', 'clockBound', DEFAULT_INTERNAL.tuning.hunting.clockBound);
 
     /** A key this build no longer reads, taken out rather than left to mean nothing. */
     const dropKey = (group: string, key: string): void => {
@@ -6467,6 +6467,12 @@ function theTuningBlockGainedKeys(
      * and milliseconds are not the same quantity.
      */
     dropKey('view', 'huntRadiusSteps');
+    /*
+     * And its re-ask clock (todo 00, 2026-09-13), retired in turn (2026-10-29):
+     * the card asks when it opens, when the party changes and on *Ask again*,
+     * never because the character moved — nothing it prices moves with a step.
+     */
+    dropKey('view', 'huntReaskMs');
     /*
      * The suggestion cap moved with the sweep: twelve rows out of a radius
      * were a neighbourhood, twelve out of the realm are a keyhole. A file

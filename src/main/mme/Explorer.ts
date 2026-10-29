@@ -74,7 +74,10 @@ import {
   charIllumination,
   currentAttackName,
   lairDamageLine,
+  calcMonsterDamage,
+  monsterDamageCalculated,
   monsterDamageIn,
+  party as partyBox,
   spellColumns as spellFigures,
   weaponAttack,
   setSpellOpts,
@@ -83,7 +86,7 @@ import {
   weaponMin,
   weaponSpeed
 } from './vendor/js/hooks/combat.js';
-import { ATTACK, MUD } from './vendor/js/mmud/combat.js';
+import { ATTACK, MUD, damageVsMonster } from './vendor/js/mmud/combat.js';
 import {
   abilityName,
   armourType,
@@ -134,6 +137,8 @@ import {
 } from './vendor/js/mmud/exphr.js';
 import { profileFromChar } from './vendor/js/mmud/profile.js';
 import { buildClassRace } from './vendor/js/mmud/builder.js';
+import { attackTypeOf, type HowItFights, type LairPrice } from '../../shared/huntingGrounds';
+import { calculateSpellCast, ROUND_SECS, SPELL_ROUND_SECS } from './vendor/js/mmud/spellcalc.js';
 import type { Row } from './vendor/js/db.js';
 import { t } from '../app/i18n';
 import { openRealm } from '../world/RealmSource';
@@ -296,6 +301,38 @@ function numberNamed(rows: Array<Record<string, unknown>>, name: string | null):
  * race, level, standing and stats off the tracker, and what it wears placed
  * in MME's slots by MME's own rule (`equipItem`). Made the active one.
  */
+/**
+ * How the character fights, as MME's Attack settings hold it (`nGlobalAttack*`,
+ * `char.attack`) and the blessings it keeps up (`char.bless`): what MME's
+ * exp/hour reads besides the sheet — the attack it is priced with, the heal
+ * that spares it resting, and the blessings' mana (2026-10-29). Absent, MME's
+ * own defaults: a melee swing and a heal that never runs out.
+ */
+export interface MmeAttackSetup {
+  /** `ATTACK` in `mmud/combat.js`: 1 weapon, 2 spell, 4 martial arts, 6 bash, 7 smash. */
+  type: number;
+  /** Which martial art, for type 4: 1 punch, 2 kick, 3 jumpkick. */
+  ma?: number;
+  /** The attack spell's number, for a spell attack. */
+  spellNum: number;
+  /** 0 infinite, 1 none (rests), 2 a heal spell, 4 a manual figure a round. */
+  healType: number;
+  healSpellNum: number;
+  /** Healing a round, for heal type 4 (manual). */
+  healManual?: number;
+  useMeditate: boolean;
+  backstab: boolean;
+  /** The blessings it keeps up, by spell number. */
+  bless: number[];
+}
+
+let attackSetup: MmeAttackSetup | null = null;
+
+/** The setup the next character is priced with; null for MME's defaults. */
+export function useAttackSetup(setup: MmeAttackSetup | null): void {
+  attackSetup = setup;
+}
+
 function useCharacter(state: CharacterState, options?: ExplorerOptions): void {
   const c = blankChar();
   c.name = state.name ?? '';
@@ -328,8 +365,33 @@ function useCharacter(state: CharacterState, options?: ExplorerOptions): void {
     c.weaponVsChar = { ac: options.vsAC, dr: options.vsDR, dodge: options.vsDodge };
     c.spellVsMR = options.vsMR;
   }
+  // How it fights: what main put on the options, else the setup in force.
+  const fights = options?.fights;
+  const setup = fights === undefined ? attackSetup : fights === null ? null : attackSetupOf(fights);
+  if (setup !== null) {
+    const { bless, ...attack } = setup;
+    c.attack = { ...c.attack, ...attack };
+    c.bless = c.bless.map((_: number, i: number) => bless[i] ?? 0);
+  }
   roster.chars = [{ id: 'live', char: c }];
   switchChar('live');
+  if (fights !== undefined && fights !== null && setup !== null) blessingHeal(fights, setup);
+}
+
+/**
+ * MME's *Calc dmg vs char* over the whole realm (`CalculateMonsterDamageVsCharALL`):
+ * every monster's blows simulated against the character's defences, or the
+ * party's, where not already — about two seconds for 1,500 monsters, kept
+ * until the defences change. Without it MME prices damage from the realm's
+ * raw `AvgDmg`, which put Fatty's oceanids at five times what reaches him
+ * (2026-10-29).
+ */
+function damageVsCharacter(): void {
+  const asParty = partyBox().size > 1;
+  for (const m of db.Monsters as Row[]) {
+    const n = m['Number'] as number;
+    if (!monsterDamageIn(n).calculated) calcMonsterDamage(n, asParty);
+  }
 }
 
 /**
@@ -842,6 +904,7 @@ export async function explorerList(
   } else if (kind === 'monsters') {
     const byLair = options?.byLair === true && engine.nmrVersion >= LAIR_NMR;
     setView('monstersByLair', byLair);
+    damageVsCharacter();
     columns = monsterColumns(byLair);
     rows = db.Monsters.filter((m) => monsterListed(m, byLair)).map((m) =>
       monsterRowOf(m, columns, byLair)
@@ -1076,7 +1139,10 @@ export async function explorerDetail(
   useCharacter(state, options);
   setSpellOpts({ calc: options?.mrCalc === true, antiMagic: options?.antiMagic === true });
   if (kind === 'shops') return shopDetailOf(number, options);
-  if (kind === 'monsters') return monsterDetailOf(number, options);
+  if (kind === 'monsters') {
+    damageVsCharacter();
+    return monsterDetailOf(number, options);
+  }
   if (kind === 'classes') return classDetailOf(number, options);
   if (kind === 'races') return raceDetailOf(number);
   const item = kind === 'spells' ? by.spell.get(number) : by.item.get(number);
@@ -2534,6 +2600,12 @@ function expHrEnv(): ExpHrEnv {
     char.stats,
     char.equipped,
     char.attack,
+    char.bless,
+    // Monster damage worked out against the character or the party (MME's Calc dmg vs char) since.
+    monsterDamageCalculated(false),
+    monsterDamageCalculated(true),
+    char['monsterFilter'],
+    partyHeal,
     settings['exphr']
   ]);
   if (expHr?.key === key) return expHr;
@@ -2547,6 +2619,21 @@ function expHrEnv(): ExpHrEnv {
     panel,
     summary
   });
+  /*
+   * MME's party profile (`PopulateCharacterProfile`, party size above 1): the
+   * party's health and resting rate are the box's per member times its size,
+   * its healing what the box says, and it walks at MME's default pace. What
+   * the estimate pays is then the party's, and divided by its size.
+   */
+  const box = partyBox();
+  if (box.size > 1) {
+    Object.assign(ch, {
+      hp: box.hp * box.size,
+      hpRegen: box.hpRegen * box.size,
+      damageThreshold: partyHeal,
+      walkSpeed: 1.25
+    });
+  }
   const profile = expHrProfile(cp, useChar, ch.spellOverhead);
   const lairs = new Map<string, unknown>();
   const env = {
@@ -2566,6 +2653,389 @@ function expHrEnv(): ExpHrEnv {
   };
   expHr = { key, env, list: new Map(), detail: new Map() };
   return expHr;
+}
+
+/** One lair group of the realm: the rooms one `Summoned By` group index spawns in. */
+interface LairGroupDef {
+  index: string;
+  /** Its `Summoned By` entries, one a lair, as MME's lair averages read them. */
+  entries: string[];
+  rooms: Array<{ map: number; room: number }>;
+  /** The monsters it spawns that MME prices by the lair: those on no clock of their own. */
+  mobs: Row[];
+}
+
+/** `[35-5-13][4]Group(lair): 1/5216`: a lair entry of `Summoned By`. */
+const LAIR_ENTRY = /^\[([^\]]+)\]\[(\d+)\]Group\(lair\):\s*(\d+)\/(\d+)$/;
+
+let lairGroupsOf: { realm: string; groups: Map<string, LairGroupDef>; bosses: Row[] } | null = null;
+
+/**
+ * The realm's lair groups, and the monsters MME prices on a clock of their
+ * own (`RegenTime` above 0, `monsterExpPerHour`'s `mob` kind), each with the
+ * rooms it spawns in. Read once a realm.
+ */
+function lairGroups(): { groups: Map<string, LairGroupDef>; bosses: Row[] } {
+  if (lairGroupsOf?.realm === loaded) return lairGroupsOf;
+  const groups = new Map<string, LairGroupDef>();
+  const bosses: Row[] = [];
+  for (const m of db.Monsters as Row[]) {
+    const entries = String(m['Summoned By'] ?? '')
+      .split(',')
+      .map((entry) => entry.trim())
+      .filter((entry) => LAIR_ENTRY.test(entry));
+    if (entries.length === 0) continue;
+    if (((m['RegenTime'] as number) || 0) > 0) {
+      bosses.push(m);
+      continue;
+    }
+    for (const entry of entries) {
+      const [, index, , map, room] = LAIR_ENTRY.exec(entry)!;
+      let group = groups.get(index!);
+      if (group === undefined) {
+        group = { index: index!, entries: [], rooms: [], mobs: [] };
+        groups.set(index!, group);
+      }
+      if (!group.rooms.some((at) => at.map === Number(map) && at.room === Number(room))) {
+        group.rooms.push({ map: Number(map), room: Number(room) });
+        group.entries.push(entry);
+      }
+      if (!group.mobs.includes(m)) group.mobs.push(m);
+    }
+  }
+  lairGroupsOf = { realm: loaded ?? '', groups, bosses };
+  return lairGroupsOf;
+}
+
+/** A boss's rooms: the lairs it spawns in. */
+function bossRooms(m: Row): Array<{ map: number; room: number }> {
+  return String(m['Summoned By'] ?? '')
+    .split(',')
+    .map((entry) => LAIR_ENTRY.exec(entry.trim()))
+    .flatMap((found) =>
+      found === null ? [] : [{ map: Number(found[3]), room: Number(found[4]) }]
+    );
+}
+
+/** The rest of a hunting party of ours, beside the character asking (2026-10-29). */
+export interface MmeParty {
+  /** Every player who fights, the asking character and players not of ours counted. */
+  size: number;
+  /** The members of ours besides it, each as it plays and fights. */
+  members: Array<{ state: CharacterState; how: HowItFights | null }>;
+}
+
+/** The party's healing a round, MME's `txtMonsterDamage` in party mode (`PopulateCharacterProfile`). */
+let partyHeal = 0;
+
+/**
+ * MME's party box filled from the members' own sheets (2026-10-29), as its
+ * *Paste Party* fills `txtMonsterLairFilter` and `txtMonsterDamageOUT`: the
+ * party's size; its average AC, DR, MR, dodge, health, resting rate,
+ * accuracy and swings; how many are anti-magic; its damage a round against
+ * MME's reference defences (50 AC, 0 DR; 50 MR for spells), physical and
+ * magic, added up; and its healing a round. A player not of ours counts in
+ * the size and nothing else. The asking character is put back after, with
+ * the box on it. A party of one empties the box.
+ */
+function fillPartyBox(
+  asking: { state: CharacterState; how: HowItFights | null },
+  party: MmeParty | null
+): void {
+  const use = (who: { state: CharacterState; how: HowItFights | null }): number => {
+    attackSetup = who.how === null ? null : attackSetupOf(who.how);
+    useCharacter(who.state);
+    return who.how === null ? 0 : blessingHeal(who.how, attackSetup).perRound;
+  };
+  partyHeal = 0;
+  if (party === null || party.size < 2) {
+    use(asking);
+    char['monsterFilter'] = {};
+    return;
+  }
+  const sheets = [asking, ...party.members].map((who) => {
+    const blessed = use(who);
+    const panel = calcCharStats(char, { globalFilter: true });
+    const summary = calcCharSummary(char, panel) as {
+      hp: { avg: number } | null;
+      restResting: number;
+    };
+    const profile = profileFromChar(char, { globalFilter: true });
+    const attack = attackConfig(char.attack, char.equipped);
+    const out = damageVsMonster(profile, attack, null, { vs: { ac: 50, dr: 0, mr: 50, dodge: 0 } });
+    const casts = char.attack['type'] === ATTACK.spell || char.attack['type'] === ATTACK.spellAny;
+    const heal =
+      char.attack['healType'] === 2
+        ? calculateSpellCast(profile, char.attack['healSpellNum'] as number, char.level).nAvgCast
+        : blessed;
+    return {
+      ac: panel.stats[2] ?? 0,
+      dr: panel.stats[3] ?? 0,
+      mr: panel.stats[24] ?? 0,
+      dodge: panel.stats[8] ?? 0,
+      hp: summary.hp?.avg ?? 0,
+      rest: summary.restResting,
+      accy: panel.stats[10] ?? 0,
+      swings: out.swings,
+      antiMagic: char['antiMagic'] === true,
+      physical: casts ? 0 : Math.max(0, out.averageDamage),
+      spell: casts ? Math.max(0, out.averageDamage) : 0,
+      heal
+    };
+  });
+  const mean = (pick: (sheet: (typeof sheets)[number]) => number): number =>
+    Math.round(sheets.reduce((sum, sheet) => sum + pick(sheet), 0) / sheets.length);
+  const total = (pick: (sheet: (typeof sheets)[number]) => number): number =>
+    Math.round(sheets.reduce((sum, sheet) => sum + pick(sheet), 0));
+  use(asking);
+  partyHeal = total((sheet) => sheet.heal);
+  char['monsterFilter'] = {
+    MonLairFilterTXT0: Math.min(6, party.size),
+    MonLairFilterTXT1: mean((sheet) => sheet.ac),
+    MonLairFilterTXT2: mean((sheet) => sheet.dr),
+    MonLairFilterTXT3: mean((sheet) => sheet.mr),
+    MonLairFilterTXT4: mean((sheet) => sheet.dodge),
+    MonLairFilterTXT5: mean((sheet) => sheet.hp),
+    MonLairFilterTXT6: sheets.filter((sheet) => sheet.antiMagic).length,
+    MonLairFilterTXT7: mean((sheet) => sheet.rest),
+    MonLairFilterTXT8: mean((sheet) => sheet.accy),
+    MonLairFilterTXT9:
+      Math.round((sheets.reduce((sum, sheet) => sum + sheet.swings, 0) / sheets.length) * 10) / 10,
+    MonPartyDmgOUT: total((sheet) => sheet.physical),
+    MonPartyMagDmgOUT: total((sheet) => sheet.spell)
+  };
+}
+
+/**
+ * Every lair group and boss in reach, priced by MME's exp/hour for the
+ * character (2026-10-29): its attack, heal and blessings (`setup`), and each
+ * monster's blows simulated against its own defences first, as MME's *Calc
+ * dmg vs char* would, but only for the monsters in reach — the whole realm
+ * took minutes. A lair group is priced from its own lairs' averages, as MME
+ * prices a monster by lair; a boss on its own clock as MME's `mob` kind.
+ * See `shared/huntingGrounds.ts` for what is made of it.
+ */
+export async function explorerHunting(
+  realm: MmeRealm,
+  state: CharacterState,
+  how: HowItFights | null,
+  reach: readonly string[],
+  party: MmeParty | null = null
+): Promise<{ supported: boolean; groups: LairPrice[]; setup: string | null }> {
+  await useRealm(realm);
+  if (!supported()) return { supported: false, groups: [], setup: null };
+  const was = attackSetup;
+  try {
+    fillPartyBox({ state, how }, party);
+    const said = how === null ? null : healFromBlessings(how);
+    const asParty = party !== null && party.size > 1;
+    setView('monstersByLair', true);
+    const inReach = new Set(reach);
+    const reached = (rooms: ReadonlyArray<{ map: number; room: number }>): boolean =>
+      rooms.some((at) => inReach.has(`${at.map}/${at.room}`));
+    const { groups, bosses } = lairGroups();
+    const lairs = [...groups.values()].filter(
+      (group) => reached(group.rooms) && group.mobs.length > 0
+    );
+    const placed = bosses.filter((m) => reached(bossRooms(m)));
+    // The blows first: the estimate's inputs are read once they are all in.
+    for (const m of [...lairs.flatMap((group) => group.mobs), ...placed]) {
+      const n = m['Number'] as number;
+      if (!monsterDamageIn(n).calculated) calcMonsterDamage(n, asParty);
+    }
+    const { env } = expHrEnv();
+    const priced: LairPrice[] = [];
+    for (const group of lairs) {
+      const price = pricePooled(`lair:${group.index}`, [group], env);
+      if (price !== null) priced.push(price);
+    }
+    for (const m of placed) {
+      let r: ExpHrResult;
+      try {
+        r = monsterExpPerHour(m, { ...env, list: false });
+      } catch {
+        continue;
+      }
+      priced.push({
+        key: `mob:${m['Number']}`,
+        kind: 'mob',
+        mobs: [String(m['Name'])],
+        rooms: bossRooms(m),
+        lairs: 1,
+        perSpawn: 1,
+        expPerClear: r.exp ?? ((m['EXP'] as number) || 0),
+        respawnMinutes: ((m['RegenTime'] as number) || 0) * 60,
+        ...sharesOf(r)
+      });
+    }
+    return { supported: true, groups: priced, setup: said };
+  } finally {
+    attackSetup = was;
+  }
+}
+
+/** What MME's estimate says of the hour: the rate, and how the time is spent. */
+function sharesOf(r: ExpHrResult) {
+  return {
+    expPerHour: r.info !== null && r.info.nExpPerHour > 0 ? r.info.nExpPerHour : null,
+    attack: r.info?.nAttackTime ?? 0,
+    move: r.info?.nMove ?? 0,
+    recovering: r.info?.nTimeRecovering ?? 0,
+    roundsToClear: r.info !== null && r.info.nRTC > 0 ? r.info.nRTC : null,
+    damagePerRound: typeof r.args?.['mobDmg'] === 'number' ? r.args['mobDmg'] : null
+  };
+}
+
+/**
+ * Lair groups priced as one by MME's exp/hour: their lairs pooled into one
+ * `Summoned By`, as MME pools a monster's lairs for its by-lair figure — the
+ * druidess's 49, across the group indexes they are filed under, are the
+ * 126M/h Fatty's own MME check read (2026-10-29). One group alone is that
+ * group's figure.
+ */
+function pricePooled(
+  key: string,
+  defs: readonly LairGroupDef[],
+  env: Record<string, unknown>
+): LairPrice | null {
+  const mobs = [...new Set(defs.flatMap((def) => def.mobs))];
+  if (mobs.length === 0) return null;
+  const asked = {
+    ...mobs[0]!,
+    'Summoned By': defs.flatMap((def) => def.entries).join(','),
+    RegenTime: 0
+  };
+  let r: ExpHrResult;
+  try {
+    r = monsterExpPerHour(asked, { ...env, list: false });
+  } catch {
+    return null;
+  }
+  const lair = r.lair ?? {};
+  const rooms = defs.flatMap((def) => def.rooms);
+  return {
+    key,
+    kind: 'lair',
+    mobs: [...new Set(mobs.map((m) => String(m['Name'])))],
+    rooms,
+    lairs: lair['nTotalLairs'] ?? rooms.length,
+    perSpawn: lair['nMaxRegen'] ?? 1,
+    expPerClear: lair['nAvgExp'] ?? 0,
+    respawnMinutes: lair['nAvgDelay'] ?? 0,
+    ...sharesOf(r)
+  };
+}
+
+/**
+ * Pools of lair groups, each priced as one loop (`pricePooled`): an area's
+ * busy groups, walked together, which is what Hunting Grounds ranks an area
+ * by (2026-10-29). `pools` name groups by the keys `explorerHunting` gave.
+ */
+export async function explorerHuntingPools(
+  realm: MmeRealm,
+  state: CharacterState,
+  how: HowItFights | null,
+  pools: ReadonlyArray<{ key: string; groups: readonly string[] }>,
+  party: MmeParty | null = null
+): Promise<LairPrice[]> {
+  await useRealm(realm);
+  if (!supported()) return [];
+  const was = attackSetup;
+  try {
+    fillPartyBox({ state, how }, party);
+    if (how !== null) healFromBlessings(how);
+    const asParty = party !== null && party.size > 1;
+    setView('monstersByLair', true);
+    const { groups } = lairGroups();
+    const defsOf = (keys: readonly string[]): LairGroupDef[] =>
+      keys.flatMap((key) => {
+        const def = key.startsWith('lair:') ? groups.get(key.slice(5)) : undefined;
+        return def === undefined ? [] : [def];
+      });
+    for (const pool of pools) {
+      for (const m of defsOf(pool.groups).flatMap((def) => def.mobs)) {
+        const n = m['Number'] as number;
+        if (!monsterDamageIn(n).calculated) calcMonsterDamage(n, asParty);
+      }
+    }
+    const { env } = expHrEnv();
+    return pools.flatMap((pool) => {
+      const price = pricePooled(pool.key, defsOf(pool.groups), env);
+      return price === null ? [] : [price];
+    });
+  } finally {
+    attackSetup = was;
+  }
+}
+
+/** A spell's number by its short word, as the realm spells it; 0 for none. */
+function spellNumber(short: string): number {
+  const key = short.trim().toLowerCase();
+  if (key === '') return 0;
+  const row = (db.Spells as Row[]).find(
+    (spell) => String(spell['Short'] ?? '').toLowerCase() === key
+  );
+  return typeof row?.['Number'] === 'number' ? row['Number'] : 0;
+}
+
+/**
+ * MME's Attack settings for how a character fights (2026-10-29): the attack
+ * spell where it has one, else its attack word's swing; its heal spell (type
+ * 2), else none (1) until `healFromBlessings` finds a heal-over-time among
+ * the blessings; and those blessings, whose mana MME counts as upkeep.
+ */
+function attackSetupOf(how: HowItFights): MmeAttackSetup {
+  const spell = spellNumber(how.attackSpell);
+  const swing = attackTypeOf(how.attack);
+  const heal = spellNumber(how.heal);
+  return {
+    type: spell > 0 ? ATTACK.spell : swing.type,
+    ma: swing.ma,
+    spellNum: spell,
+    healType: heal > 0 ? 2 : 1,
+    healSpellNum: heal,
+    useMeditate: how.meditate,
+    backstab: how.backstab,
+    bless: how.blessings.map(spellNumber).filter((n) => n > 0)
+  } as MmeAttackSetup;
+}
+
+/**
+ * A character with no heal spell, kept up by heal-over-time blessings
+ * (Fatty's song of harmony, 2026-10-29): what those heal a round, by MME's
+ * own spell arithmetic at its level — a tick every `SPELL_ROUND_SECS`, so
+ * `ROUND_SECS / SPELL_ROUND_SECS` ticks a round — put to MME as a manual heal
+ * (type 4). Their mana is already the blessings' upkeep. What it fights with,
+ * in words, for the card.
+ */
+function healFromBlessings(how: HowItFights): string {
+  return blessingHeal(how, attackSetup).said;
+}
+
+/** `healFromBlessings`, for a given setup, with the figure a round it put to MME. */
+function blessingHeal(
+  how: HowItFights,
+  setup: MmeAttackSetup | null
+): { said: string; perRound: number } {
+  const profile = profileFromChar(char, { globalFilter: true });
+  const healing: string[] = [];
+  let perRound = 0;
+  if (setup !== null && setup.healType === 1) {
+    for (const n of setup.bless) {
+      const cast = calculateSpellCast(profile, n, char.level);
+      if (!cast.bDoesHeal || cast.nDuration <= 1 || cast.nAvgRoundHeals <= 0) continue;
+      const each = (cast.nAvgRoundHeals * ROUND_SECS) / SPELL_ROUND_SECS;
+      perRound += each;
+      healing.push(`${cast.sSpellName} ${Math.round(each)}`);
+    }
+    if (perRound > 0) {
+      char.attack = { ...char.attack, healType: 4, healManual: Math.round(perRound * 10) / 10 };
+    }
+  }
+  const attack = how.attackSpell !== '' ? how.attackSpell : how.attack || 'a';
+  const heal =
+    how.heal !== '' ? how.heal : healing.length > 0 ? healing.join(' + ') + '/round' : 'rests';
+  return { said: `${attack}; heal ${heal}; ${how.blessings.length} blessings`, perRound };
 }
 
 function expHrFor(m: Row, list: boolean): ExpHrResult {

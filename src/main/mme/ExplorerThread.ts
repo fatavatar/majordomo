@@ -33,6 +33,8 @@ export const EXPLORER_CALLS = {
   find: facade.explorerFind,
   items: facade.explorerItems,
   tool: explorerTool,
+  hunting: facade.explorerHunting,
+  huntingPools: facade.explorerHuntingPools,
   gear: (
     realm: facade.MmeRealm,
     state: Parameters<typeof facade.explorerGear>[1],

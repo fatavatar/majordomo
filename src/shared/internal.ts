@@ -636,6 +636,19 @@ const TUNING_DEFAULTS = {
     /** How far off the ring a filler lair may lie, in steps, out and back. */
     fillerRadius: 8,
     /**
+     * How near two lairs on one map that share a monster must lie, in steps,
+     * to be one hunting area (2026-10-29). Lairs under one name on one map are
+     * one area whatever the distance: the realm's room names are its areas.
+     */
+    areaRadius: 6,
+    /**
+     * Hunting Grounds (2026-10-29): a lair group that spends less than this
+     * share of the hour attacking and moving, by MME's estimate, is waiting
+     * on its clock, and is added to its area's main loop rather than walked
+     * instead of it — Fatty's beastmistress spends 1% of the hour fighting.
+     */
+    clockBound: 0.25,
+    /**
      * How far under the best rate a smaller loop may fall and still be the
      * one chosen. Past the clock the rate is flat but for the rounding of
      * rest ticks, and the fewest rooms that reach it is the loop worth
@@ -1685,6 +1698,13 @@ const TUNING_DEFAULTS = {
      */
     popoverWidthMin: 300,
     popoverWidthMax: 560,
+    /**
+     * The Reference panel's own width (2026-10-29), wider than the other
+     * slide-outs': a monster carries MMUD Explorer's figures as well as the
+     * realm's, and between 300 and 560 most of them were below the fold.
+     */
+    referenceWidthMin: 420,
+    referenceWidthMax: 760,
     /** The smallest a panel may be dragged to and still be worth reading. */
     popoverMinHeight: 120,
     /** How close a popup menu may come to the edge of the window. */
@@ -1838,14 +1858,6 @@ const TUNING_DEFAULTS = {
      */
     roomPeekDelayMs: 250,
     roomPeekLingerMs: 220,
-    /**
-     * How often the Hunting card asks again because the character moved. The
-     * sweep is realm-wide and costs main a few hundred milliseconds, and a
-     * lap steps every second and a quarter; the steps column is the only
-     * thing a move changes, so it is refreshed on this clock rather than on
-     * every room. *Ask again* is immediate.
-     */
-    huntReaskMs: 10000,
     /**
      * The server's own combat pulse, in milliseconds.
      *

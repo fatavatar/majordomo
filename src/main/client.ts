@@ -113,7 +113,19 @@ import { localMap } from './world/localMap';
 import { areaMap } from './world/areaMap';
 import type { AreaOverrides } from './world/areas';
 import { roomBrief } from './world/roomBrief';
-import type { HuntingAdvice } from '../shared/hunting';
+import { orderRing } from '../shared/hunting';
+import { areaOfRooms, realmAreas } from './world/huntingAreas';
+import {
+  howItFights,
+  loopGroups,
+  priceArea,
+  type GroundArea,
+  type GroundGroup,
+  type GroundRoom,
+  type HowItFights,
+  type HuntingGrounds,
+  type LairPrice
+} from '../shared/huntingGrounds';
 import { SessionHost } from './session/SessionHost';
 import { WindowRegistry } from './windows/WindowRegistry';
 import { Workspace } from './windows/Workspace';
@@ -170,6 +182,7 @@ import { asMegaToggle } from '../shared/megamud/toggles';
 import type { MegaData } from './megamud/data';
 import { megaDataFrom } from './megamud/fromWorld';
 import { explorerAsk } from './mme/ExplorerThread';
+import type { MmeParty } from './mme/Explorer';
 import { asToolRequest } from '../shared/explorerTools';
 import {
   asExplorerOptions,
@@ -218,6 +231,7 @@ import {
   roomId,
   type MobPlaces,
   type MobRowBrief,
+  type RoomId,
   type ShopPlace
 } from '../shared/world';
 import { LoopDraftCache } from './world/loopDraft';
@@ -407,6 +421,241 @@ function createMovements(): MovementBook {
     file: home.state('movement.json'),
     notify: (message) => announce('movement', message)
   });
+}
+
+/**
+ * Hunting Grounds for a character (2026-10-29): every room it can reach, the
+ * lair groups and bosses in them priced by MMUD Explorer's exp/hour for how
+ * it fights (its MegaMUD settings, `howItFights`), and those gathered into
+ * areas, each priced as a loop walks it (`priceArea`). See
+ * `shared/huntingGrounds.ts`.
+ */
+async function huntingGroundsOf(
+  session: SessionId,
+  realm: { file: string } | string,
+  asParty: boolean
+): Promise<HuntingGrounds> {
+  const refused = (refusal: string): HuntingGrounds => ({
+    from: null,
+    swept: 0,
+    areas: [],
+    party: null,
+    setup: null,
+    refusal
+  });
+  const manager = host?.get(session)?.manager;
+  const profile = profileFor(session);
+  const world = worldFor(session);
+  if (!manager || !profile || !world) return refused(t('session.hunt.noSession'));
+  if (typeof realm === 'string') return refused(realm);
+  const swept = manager.huntingReach();
+  if (typeof swept === 'string') return refused(swept);
+  const { from, reach } = swept;
+  const how = howItFights(megamudSettingsOf(session, profile).live);
+  const party = asParty ? huntingPartyOf(session) : null;
+  let answer: Awaited<ReturnType<typeof explorerAsk<'hunting'>>>;
+  try {
+    answer = await explorerAsk(
+      'hunting',
+      realm.file,
+      manager.character,
+      how,
+      [...reach.keys()],
+      party?.mme ?? null
+    );
+  } catch (error) {
+    return refused(errorMessage(error));
+  }
+  if (!answer.supported) return refused(t('app.explorer.unsupported'));
+  // Each group's rooms named and stepped; a room out of reach is not one to hunt.
+  const groups: GroundGroup[] = answer.groups.flatMap((group) => {
+    const rooms = group.rooms.flatMap(({ map, room }) => {
+      const id = roomId(map, room);
+      const steps = reach.get(id);
+      const found = world.byId(id);
+      return steps === undefined || !found ? [] : [{ id, map, room, name: found.name, steps }];
+    });
+    if (rooms.length === 0) return [];
+    rooms.sort((a, b) => a.steps - b.steps);
+    // The router's danger check, at full health: too dangerous a group is not hunted.
+    return [{ ...group, rooms, danger: manager.huntingDanger(rooms.map((room) => room.id)) }];
+  });
+  const { areaRadius, clockBound, maxDamageShare } = tuning().hunting;
+  const traveller = manager.travellerNow(manager.character);
+  /*
+   * Into the realm's areas, worked out once per load of its room data
+   * (`realmAreas`): each group goes to the area most of its rooms are in, the
+   * best groups first so an area's order is its best's.
+   */
+  const places = realmAreas(world, areaRadius);
+  const byArea = new Map<string, GroundGroup[]>();
+  for (const group of [...groups].sort((a, b) => (b.expPerHour ?? -1) - (a.expPerHour ?? -1))) {
+    const area =
+      areaOfRooms(
+        places,
+        group.rooms.map((room) => room.id)
+      ) ?? group.key;
+    byArea.set(area, [...(byArea.get(area) ?? []), group]);
+  }
+  const grouped = [...byArea.entries()].map(([key, members]) => ({
+    key,
+    name: places.areas.get(key)?.name ?? members[0]!.rooms[0]?.name ?? '',
+    map: places.areas.get(key)?.map ?? members[0]!.rooms[0]?.map ?? 0,
+    members
+  }));
+  /*
+   * Each area's loop: its busy groups' lairs pooled and priced as one by MME,
+   * as MME pools a monster's lairs. A loop of one group is that group's own
+   * figure; the rest are asked for together.
+   */
+  const pools = grouped.map((area) => ({
+    key: `pool:${area.key}`,
+    groups: loopGroups(area.members, clockBound, maxDamageShare).map((group) => group.key)
+  }));
+  let pooled: LairPrice[] = [];
+  try {
+    pooled = await explorerAsk(
+      'huntingPools',
+      realm.file,
+      manager.character,
+      how,
+      pools.filter((pool) => pool.groups.length > 1),
+      party?.mme ?? null
+    );
+  } catch {
+    // Unpriced pools fall back to their best group, below.
+  }
+  const roomsOf = (keys: readonly string[], members: readonly GroundGroup[]): GroundRoom[] => {
+    const seen = new Set<RoomId>();
+    return members
+      .filter((group) => keys.includes(group.key))
+      .flatMap((group) => group.rooms)
+      .filter((room) => !seen.has(room.id) && (seen.add(room.id), true))
+      .sort((a, b) => a.steps - b.steps);
+  };
+  const areas: GroundArea[] = grouped.map((area, at) => {
+    const pool = pools[at]!;
+    const found = pooled.find((price) => price.key === pool.key);
+    const loop: GroundGroup | null =
+      found !== undefined
+        ? { ...found, rooms: roomsOf(pool.groups, area.members) }
+        : (area.members.find((group) => group.key === pool.groups[0]) ?? null);
+    return {
+      key: area.key,
+      name: area.name,
+      map: area.map,
+      steps: Math.min(...area.members.map((group) => group.rooms[0]?.steps ?? Infinity)),
+      walk: [],
+      ...priceArea(area.members, loop, clockBound, maxDamageShare)
+    };
+  });
+  // What pays first, best first; an area too dangerous to hunt after everything that pays.
+  areas.sort(
+    (a, b) =>
+      (b.expPerHour ?? -1) - (a.expPerHour ?? -1) ||
+      Number(a.tooDangerous) - Number(b.tooDangerous) ||
+      a.steps - b.steps
+  );
+  /*
+   * The loop each of the best areas is walked by: the main group's lairs and
+   * the added groups' rooms, nearest first round a ring of measured legs
+   * (`orderRing`), an added room carrying its own clock so the lap walks to
+   * it only when it is due (`LoopStop.every`).
+   */
+  const { clusterRadius, maxSpots } = tuning().hunting;
+  for (const area of areas.slice(0, maxSpots)) {
+    const stops = [
+      ...(area.loop?.rooms ?? []),
+      ...area.groups.flatMap(({ group, role }) =>
+        role === 'added'
+          ? group.rooms.map((room) => ({ ...room, respawnSeconds: group.respawnMinutes * 60 }))
+          : []
+      )
+    ];
+    const sweeps = new Map<RoomId, Map<RoomId, number>>();
+    for (const room of stops)
+      sweeps.set(room.id, world.withinSteps(room.id, clusterRadius, traveller));
+    const { order } = orderRing(
+      [...stops].sort((a, b) => a.steps - b.steps),
+      (a, b) => sweeps.get(a)?.get(b) ?? sweeps.get(b)?.get(a) ?? null
+    );
+    area.walk = order;
+  }
+  /*
+   * A party's rates are the party's: MajorMUD splits a kill among everyone
+   * fighting it, and MME divides its party estimate by the party's size.
+   * Shown per member; the lap, which is the party's, is not.
+   */
+  const size = party?.mme.size ?? 1;
+  if (size > 1) {
+    const each = (rate: number | null): number | null => (rate === null ? null : rate / size);
+    for (const area of areas) {
+      area.expPerHour = each(area.expPerHour);
+      if (area.loop !== null) area.loop = { ...area.loop, expPerHour: each(area.loop.expPerHour) };
+      area.groups = area.groups.map((entry) => ({
+        ...entry,
+        group: { ...entry.group, expPerHour: each(entry.group.expPerHour) },
+        contributes: entry.contributes / size
+      }));
+    }
+  }
+  return {
+    from,
+    swept: reach.size,
+    areas,
+    party: party === null ? null : { members: party.names, size },
+    setup: answer.setup,
+    refusal: null
+  };
+}
+
+/**
+ * The party a character hunts with (2026-10-29), off the party roster it is
+ * on: the other members of ours in the realm, each as it plays and fights,
+ * for MME's party box, and every player who would share a kill — ours in the
+ * realm, and members not of ours. Null where it is on no roster, or alone.
+ */
+function huntingPartyOf(session: SessionId): { mme: MmeParty; names: string[] } | null {
+  const realm = labelOf(session).server;
+  const me = host?.get(session)?.manager.character.name ?? null;
+  if (me === null || !parties) return null;
+  const roster = parties.all.find(
+    (entry) =>
+      entry.realm === realm &&
+      entry.members.some((member) => member.name.toLowerCase() === me.toLowerCase())
+  );
+  if (roster === undefined) return null;
+  const kept = keptOn(realm);
+  const forgotten = new Set(roster.forgotten.map((name) => name.toLowerCase()));
+  const members: MmeParty['members'] = [];
+  const names = [me];
+  let strangers = 0;
+  for (const { name } of roster.members) {
+    const lower = name.toLowerCase();
+    if (lower === me.toLowerCase() || forgotten.has(lower)) continue;
+    const ours = kept.find((member) => member.character.name?.toLowerCase() === lower);
+    if (ours === undefined) {
+      strangers += 1;
+      names.push(name);
+      continue;
+    }
+    if (!ours.inGame) continue;
+    const profile = profileFor(ours.session);
+    if (profile === undefined) continue;
+    members.push({
+      state: ours.character,
+      how: howItFights(megamudSettingsOf(ours.session, profile).live)
+    });
+    names.push(name);
+  }
+  const size = 1 + members.length + strangers;
+  return size < 2 ? null : { mme: { size, members }, names };
+}
+
+/** How a character fights, off its MegaMUD settings, for MME's Attack settings (2026-10-29). */
+function fightsOf(session: SessionId): HowItFights | null {
+  const profile = profileFor(session);
+  return profile === undefined ? null : howItFights(megamudSettingsOf(session, profile).live);
 }
 
 /** This client's characters on `realm`, as Regroup sees them. */
@@ -2791,37 +3040,10 @@ function registerIpc(): void {
       );
     }
   );
-  handle(Invoke.huntingGrounds, async (_caller, session: SessionId, measure: unknown) => {
-    const manager = host?.get(session)?.manager;
-    if (!manager) {
-      return {
-        from: null,
-        radius: null,
-        swept: 0,
-        spots: [],
-        unmeasured: [],
-        excluded: { dangerous: 0, beneath: 0 },
-        assumptions: {
-          family: null,
-          hpMax: null,
-          restingHealthPerTick: null,
-          backstab: false,
-          stepMs: tuning().hunting.stepMs,
-          heal: null,
-          poisonHoldsRest: false,
-          measured: null,
-          constants: tuning().hunting
-        },
-        refusal: t('session.hunt.noSession')
-      } satisfies HuntingAdvice;
-    }
-    // A kill the realm cannot price is priced off the fight record, folded
-    // off the thread; the card waits for it rather than showing a first
-    // answer with every fight unpriced.
-    await fightLogs.get(session)?.ready();
-    // Everywhere the exits reach: distance is a column of the answer, not its bound.
-    return manager.huntingGrounds(null, typeof measure === 'string' ? measure : null);
-  });
+  // Where this character earns most, by MMUD Explorer's own arithmetic (2026-10-29).
+  handle(Invoke.huntingGrounds, (_caller, session: SessionId, asParty: unknown) =>
+    huntingGroundsOf(session, explorerRealm(session), asParty === true)
+  );
   /*
    * Where this character may go and level. Addressed, and answered from the
    * realm's own shop rows rather than from a room name — see `trainersTaking`.
@@ -3040,7 +3262,7 @@ function registerIpc(): void {
           realm.file,
           viewedBy(session, manager.character),
           which,
-          asExplorerOptions(options)
+          { ...asExplorerOptions(options), fights: fightsOf(session) }
         );
         return list.supported ? list : { ...list, reason: t('app.explorer.unsupported') };
       } catch (error) {
@@ -3062,7 +3284,7 @@ function registerIpc(): void {
           viewedBy(session, manager.character),
           explorerKindOf(kind),
           item,
-          asExplorerOptions(options)
+          { ...asExplorerOptions(options), fights: fightsOf(session) }
         );
       } catch {
         return null;

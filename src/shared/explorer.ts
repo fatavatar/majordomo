@@ -1,5 +1,6 @@
 import type { Alignment } from './alignment';
 import type { CharacterState } from './character';
+import type { HowItFights } from './huntingGrounds';
 import type { MobDisposition } from './mobs';
 /**
  * MMUD Explorer's lists, as main answers them for one character on its realm
@@ -332,6 +333,13 @@ export interface ExplorerOptions {
   shopSell: boolean;
   /** The charm they are worked out for; null for the character's own. */
   charm: number | null;
+  /**
+   * How the character fights, off its MegaMUD settings, for MME's Attack
+   * settings (2026-10-29). Put on by main, never by the screen; absent,
+   * MME's blank defaults — a one-shot kill and a heal that never runs out —
+   * which priced Fatty's druidess lairs at 275M/h.
+   */
+  fights?: HowItFights | null;
 }
 
 export const DEFAULT_EXPLORER_OPTIONS: ExplorerOptions = {

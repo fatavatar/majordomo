@@ -1,6 +1,6 @@
 {
   "name": "majordomo",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "A MajorMUD client whose characters are played by a port of MegaMUD's own engine; a fork of rayzorben/mudengine",
   "author": "Raymond Bennett <raymond.bennett@gmail.com>",
   "license": "MIT",

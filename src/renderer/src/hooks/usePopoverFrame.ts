@@ -57,6 +57,12 @@ export interface PopoverFrameOptions {
    * often a rectangle in the console with no element to disconnect at all.
    */
   whenAnchorGone?: 'dismiss' | 'hold';
+  /**
+   * How wide it may be, where not the slide-outs' own `popoverWidthMin`–`Max`:
+   * the Reference panel's monster, with MME's figures in it, is wider
+   * (2026-10-29).
+   */
+  widthRange?: { min: number; max: number };
 }
 
 export interface PopoverFrame {
@@ -132,9 +138,32 @@ export function usePopoverFrame({
   onEscape,
   measure,
   menuOpen = false,
-  whenAnchorGone = 'dismiss'
+  whenAnchorGone = 'dismiss',
+  widthRange
 }: PopoverFrameOptions): PopoverFrame {
   const ref = useRef<HTMLDivElement>(null);
+  /*
+   * Its own size changing re-places it (2026-10-29): what it shows can grow
+   * after it opens — the Explorer's figures arrive after the realm's — and a
+   * panel placed against its first, shorter self was left running off the
+   * bottom of a window that had room for all of it. The caller's `measure`
+   * list names what it knows changes the size; this catches what it does not.
+   */
+  const [grown, setGrown] = useState(0);
+  useEffect(() => {
+    const node = ref.current;
+    if (node === null || typeof ResizeObserver === 'undefined') return;
+    let last = '';
+    const observer = new ResizeObserver(([entry]) => {
+      if (entry === undefined) return;
+      const now = `${Math.round(entry.contentRect.width)}x${Math.round(entry.contentRect.height)}`;
+      if (now === last) return;
+      last = now;
+      setGrown((count) => count + 1);
+    });
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, []);
   const [placed, setPlaced] = useState<{ top: number; left: number; side: PopoverSide } | null>(
     null
   );
@@ -180,7 +209,11 @@ export function usePopoverFrame({
     const viewport = viewportNow();
     if (size === null) {
       const { popoverWidthMin, popoverWidthMax } = tuning();
-      const want = popoverWidth(rect, viewport, { min: popoverWidthMin, max: popoverWidthMax });
+      const want = popoverWidth(
+        rect,
+        viewport,
+        widthRange ?? { min: popoverWidthMin, max: popoverWidthMax }
+      );
       if (want !== width) {
         setWidth(want);
         return;
@@ -196,7 +229,19 @@ export function usePopoverFrame({
      * documented as a fixed list of values rather than accepted as "anything
      * that changed".
      */
-  }, [anchor, moved, onDismiss, pinned, size, whenAnchorGone, width, ...measure]);
+  }, [
+    anchor,
+    moved,
+    onDismiss,
+    pinned,
+    size,
+    whenAnchorGone,
+    width,
+    grown,
+    widthRange?.min,
+    widthRange?.max,
+    ...measure
+  ]);
 
   useEffect(() => {
     const away = (event: PointerEvent): void => {

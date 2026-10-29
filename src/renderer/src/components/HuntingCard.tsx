@@ -1,119 +1,105 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useState } from 'react';
 
 import BentoCard, { type CardChrome } from './BentoCard';
 import CardTable, { type Column } from './CardTable';
 import { t } from '../lib/i18n';
 import { keepFocus } from '../lib/focus';
-import { tuning } from '../lib/tuning';
-import {
-  compareSpots,
-  fightUnpriced,
-  huntLoop,
-  loopNameOf,
-  type HuntingAdvice,
-  type HuntingRoom,
-  type HuntingSpot,
-  type HuntingUnknown
-} from '@shared/hunting';
-import type { AfflictionKind } from '@shared/menace';
+import type {
+  GroundArea,
+  GroundGroup,
+  GroundRoom,
+  GroupRole,
+  HuntingGrounds
+} from '@shared/huntingGrounds';
+import type { HuntingRoom } from '@shared/hunting';
 import type { IpcApi, SessionId } from '@shared/ipc';
 import type { Loop } from '@shared/loops';
 import type { LoopDestination } from '../lib/loops';
 
 /**
- * Where to hunt: every lair the exits reach from where this character
- * stands, priced by the realm's own respawn clock and the same arithmetic
- * the Room card prices a fight with, the loop sized to the clock and filled
- * from the lairs beside it, best first (todo 05, 2026-09-12; revamped todo
- * 00, 2026-09-13).
+ * Where to hunt, by MMUD Explorer's own arithmetic (2026-10-29): every area
+ * the exits reach from where this character stands, best first.
  *
- * **A table, because the player does not control its length** — the realm
- * decides how many lairs there are — and the rate is the one dimension worth
- * cutting it by. Distance is a column: the walk there is automated, so how
- * far a lair is decides nothing but the walk. A row opens the figures the
- * rate was decided on, the monsters with what each pays and puts on the
- * character, and the rooms the loop would walk; from there *Walk there*
- * opens the route panel on the first room, *Loop it* hands the stops to the
- * lap runner unsaved, and *Create loop* opens the builder with them picked
- * and a name offered, where the loop is drawn, edited and filed.
+ * An area is the lairs a player thinks of as one place — one map, one name,
+ * or a monster in common close by — and each of its lair groups is priced by
+ * MME's exp/hour against the character as it fights: its MegaMUD attack, its
+ * heal or heal-over-time blessings, and the monsters' blows simulated against
+ * its own defences. The area's rate is its best group walked as the loop, and
+ * the groups on a clock longer than that loop added on top for the share of
+ * laps that find them back (`priceArea`). Opening an area lists its groups,
+ * each with MME's figure and how it counts; *Walk there* opens the route
+ * panel on its first room, *Loop it* walks its loop unsaved, and *Create
+ * loop* opens the builder with the loop's rooms picked.
  *
- * Nothing here is a prediction. What was left out before the ranking — too
- * dangerous, or beneath this level — is counted in the head; a spot whose
- * rate could not be finished says which part was unknown and ranks below
- * every known rate; one whose fight itself could not be priced ranks below
- * those, nearest first and never by what it pays, and the head says how many;
- * a deadly spot is last. A move re-asks on `huntReaskMs`, since only the
- * steps column moves with the character.
+ * Checked against Fatty on 2026-10-29: the dark oceanid druidess lairs at
+ * 126M/h with his song of harmony as healing, the beastmistress adding about
+ * 27M/h on her hour, against the 143M/h he earned.
  */
 export interface HuntingCardProps extends CardChrome {
   session: SessionId;
-  /** Asks main, addressed at this card's own character; `measure` is a rough row opened. */
-  loadHunting(measure: string | null): ReturnType<IpcApi['huntingGrounds']>;
+  /** Asks main, addressed at this card's own character: alone, or with its party. */
+  loadHunting(asParty: boolean): ReturnType<IpcApi['huntingGrounds']>;
+  /** The party roster this character is on, by name; null where it is on none, and only Solo is offered. */
+  partyMembers: string[] | null;
   /** Opens the route panel on a room; null on a pinned float. */
   chooseOnMap: ((map: number, room: number) => void) | null;
   /** Walks a loop built here, filed or not; null on a pinned float. */
   runLoop: ((loop: Loop, destination: LoopDestination) => void) | null;
   /** Opens the builder with these stops picked and this name offered; null on a pinned float. */
   createLoop: ((rooms: HuntingRoom[], name: string) => void) | null;
-  /** The room the character stands in, so a move re-asks. */
-  hereKey: string | null;
 }
 
 /** Two literal calls per word, as the dictionary's coverage test reads them. */
-const UNKNOWN_WORD: Record<HuntingUnknown, () => string> = {
-  experience: () => t('cards.hunting.unknown.experience'),
-  rounds: () => t('cards.hunting.unknown.rounds'),
-  damage: () => t('cards.hunting.unknown.damage'),
-  respawn: () => t('cards.hunting.unknown.respawn'),
-  rest: () => t('cards.hunting.unknown.rest'),
-  health: () => t('cards.hunting.unknown.health'),
-  mana: () => t('cards.hunting.unknown.mana'),
-  poison: () => t('cards.hunting.unknown.poison')
+const ROLE_WORD: Record<GroupRole, () => string> = {
+  loop: () => t('cards.hunting.role.loop'),
+  added: () => t('cards.hunting.role.added'),
+  dangerous: () => t('cards.hunting.role.dangerous'),
+  none: () => t('cards.hunting.role.none')
 };
-const AFFLICTION_WORD: Record<AfflictionKind, () => string> = {
-  poison: () => t('cards.hunting.afflicts.poison'),
-  blinded: () => t('cards.hunting.afflicts.blinded'),
-  held: () => t('cards.hunting.afflicts.held')
+const ROLE_TITLE: Record<GroupRole, () => string> = {
+  loop: () => t('cards.hunting.roleTitle.loop'),
+  added: () => t('cards.hunting.roleTitle.added'),
+  dangerous: () => t('cards.hunting.roleTitle.dangerous'),
+  none: () => t('cards.hunting.roleTitle.none')
 };
-const unknownWords = (parts: readonly HuntingUnknown[]): string =>
-  parts.map((part) => UNKNOWN_WORD[part]()).join(', ');
 
-const hours = (rate: number | null): string =>
-  rate === null ? '?' : Math.round(rate).toLocaleString();
-const seconds = (value: number | null): string => (value === null ? '?' : `${Math.round(value)}s`);
-const percent = (share: number | null): string =>
-  share === null ? '?' : `${Math.round(share * 100)}%`;
-/** A floor, marked as one: the least the room can cost where a spawn's rounds are unknown. */
-const atLeast = (share: number | null): string =>
-  share === null ? '?' : `\u2265 ${percent(share)}`;
+/** Experience an hour as MME writes it: `126.4M`, `850K`. */
+function perHour(rate: number | null): string {
+  if (rate === null || rate <= 0) return '–';
+  if (rate >= 1_000_000) return `${(rate / 1_000_000).toFixed(1)}M`;
+  if (rate >= 1_000) return `${Math.round(rate / 1_000)}K`;
+  return String(Math.round(rate));
+}
+const percent = (share: number): string => `${Math.round(share * 100)}%`;
 
-function mobsOf(spot: HuntingSpot): string {
-  return spot.mobs.map((mob) => mob.name).join(', ');
+/** What an area's loop is for: its loop's monsters. */
+function mainOf(area: GroundArea): GroundGroup | null {
+  return area.loop;
 }
 
-/** A monster's own regeneration clock, in the realm's own unit: hours. */
-function mobClock(regenSeconds: number): string {
-  const hoursOf = Math.round((regenSeconds / 3600) * 10) / 10;
-  return hoursOf === 1
-    ? t('cards.hunting.mobClock.one', { hours: hoursOf })
-    : t('cards.hunting.mobClock.many', { hours: hoursOf });
+/** An area's loop, in the stop grammar every loop uses; an added room carries its clock. */
+function areaLoop(area: GroundArea): Loop {
+  return {
+    name: t('cards.hunting.loopName', { area: area.name, mob: mainOf(area)?.mobs[0] ?? '' }),
+    stops: area.walk.map((room) => ({
+      room: `${room.name} ${room.map}/${room.room}`,
+      ...(room.respawnSeconds === undefined || room.respawnSeconds <= 0
+        ? {}
+        : { every: Math.round(room.respawnSeconds) })
+    }))
+  };
 }
 
-/** Every lair the survey kept, measured or not, in one order. */
-function everySpot(advice: HuntingAdvice): HuntingSpot[] {
-  return [...advice.spots, ...advice.unmeasured].sort(compareSpots);
-}
-
-export function huntingCopyText(advice: HuntingAdvice | null): string {
-  if (advice === null) return t('cards.hunting.title');
+export function huntingCopyText(grounds: HuntingGrounds | null): string {
+  if (grounds === null) return t('cards.hunting.title');
   return [
     t('cards.hunting.title'),
-    ...everySpot(advice).map((spot) =>
+    ...grounds.areas.map((area) =>
       t('cards.hunting.copyRow', {
-        mobs: mobsOf(spot),
-        rate: hours(spot.estimate.expPerHour),
-        rooms: spot.walk.length,
-        steps: spot.rooms[0]?.steps ?? 0
+        area: area.name,
+        rate: perHour(area.expPerHour),
+        groups: area.groups.length,
+        steps: area.steps
       })
     )
   ].join('\n');
@@ -125,82 +111,63 @@ function HuntingCard({
   chooseOnMap,
   runLoop,
   createLoop,
-  hereKey,
+  partyMembers,
   ...chrome
 }: HuntingCardProps) {
-  const [advice, setAdvice] = useState<HuntingAdvice | null>(null);
+  // Priced for this character alone, or by MME's party mode with its roster (2026-10-29).
+  const canParty = partyMembers !== null && partyMembers.length > 1;
+  const [asParty, setAsParty] = useState(false);
+  const party = asParty && canParty;
+  const [grounds, setGrounds] = useState<HuntingGrounds | null>(null);
   const [loading, setLoading] = useState(false);
   const [open, setOpen] = useState<string | null>(null);
   const [asked, setAsked] = useState(0);
-  /* A rough row opened, measured on the next ask so what it walks is a ring. */
-  const [measure, setMeasure] = useState<string | null>(null);
-  /* When main was last asked, and which press it answered: a move waits its turn, a press does not. */
-  const lastAsk = useRef(0);
-  const answered = useRef(asked);
-  const answeredMeasure = useRef(measure);
-
+  /*
+   * Asked when the card opens, when the party changes — Solo or Party, or who
+   * is on the roster — and on *Ask again*, and at no other time (2026-10-29):
+   * nothing it prices moves with a step, and the survey prices every lair in
+   * reach, so asking again as the character walked redid it every ten
+   * seconds of a lap for a steps column.
+   */
+  const partyKey = party ? (partyMembers ?? []).join('|') : '';
   useEffect(() => {
     let stale = false;
-    let timer: number | undefined;
-    const run = (): void => {
-      lastAsk.current = Date.now();
-      setLoading(true);
-      void loadHunting(measure).then((answer) => {
-        if (stale) return;
-        setAdvice(answer);
-        setLoading(false);
-      });
-    };
-    /*
-     * The sweep is realm-wide and costs main a few hundred milliseconds, and
-     * a lap moves every second and a quarter; a step changes nothing but the
-     * steps column, so a move re-asks on `huntReaskMs` and *Ask again* at once.
-     */
-    const pressed = asked !== answered.current || measure !== answeredMeasure.current;
-    answered.current = asked;
-    answeredMeasure.current = measure;
-    const due = lastAsk.current + tuning().huntReaskMs - Date.now();
-    if (pressed || due <= 0) run();
-    else timer = window.setTimeout(run, due);
+    setLoading(true);
+    void loadHunting(party).then((answer) => {
+      if (stale) return;
+      setGrounds(answer);
+      setLoading(false);
+    });
     return () => {
       stale = true;
-      if (timer !== undefined) window.clearTimeout(timer);
     };
-    // `hereKey` is the room: a step re-asks, because the steps moved.
-  }, [loadHunting, asked, hereKey, measure]);
+  }, [loadHunting, asked, party, partyKey]);
 
   const refresh = useCallback(() => setAsked((n) => n + 1), []);
+  const rows = useMemo(() => grounds?.areas ?? [], [grounds]);
 
-  const rows = useMemo(() => (advice === null ? [] : everySpot(advice)), [advice]);
-  const rough = useMemo(() => new Set(advice?.unmeasured.map((spot) => spot.key) ?? []), [advice]);
-
-  const spotColumns: Array<Column<HuntingSpot>> = useMemo(
+  const columns: Array<Column<GroundArea>> = useMemo(
     () => [
       {
-        id: 'mobs',
-        label: t('cards.hunting.columns.lair'),
+        id: 'area',
+        label: t('cards.hunting.columns.area'),
         wide: true,
-        value: (spot) => `${mobsOf(spot)} ${spot.walk.map((room) => room.name).join(' ')}`,
-        cell: (spot) => (
+        value: (area) => `${area.name} ${area.groups.flatMap(({ group }) => group.mobs).join(' ')}`,
+        cell: (area) => (
           <span className="hunt-lair">
             <button
-              aria-expanded={open === spot.key}
+              aria-expanded={open === area.key}
               className="lookup"
-              onClick={() => {
-                setOpen(open === spot.key ? null : spot.key);
-                if (rough.has(spot.key)) setMeasure(spot.key);
-              }}
+              onClick={() => setOpen(open === area.key ? null : area.key)}
               onMouseDown={keepFocus}
+              title={mainOf(area)?.mobs.join(', ')}
               type="button"
             >
-              {mobsOf(spot)}
+              {area.name === '' ? t('cards.hunting.unnamedArea', { map: area.map }) : area.name}
             </button>
-            {spot.boss ? <span className="chip quiet">{t('cards.hunting.boss')}</span> : null}
-            {rough.has(spot.key) ? (
-              <span className="chip quiet" title={t('cards.hunting.roughLong')}>
-                {t('cards.hunting.rough')}
-              </span>
-            ) : null}
+            <span className="quiet">
+              {mainOf(area)?.mobs.slice(0, 2).join(', ') ?? t('cards.hunting.nothingPays')}
+            </span>
           </span>
         )
       },
@@ -208,64 +175,45 @@ function HuntingCard({
         id: 'rate',
         label: t('cards.hunting.columns.rate'),
         numeric: true,
-        value: (spot) => spot.estimate.expPerHour ?? spot.estimate.ceilingPerHour ?? null,
-        cell: (spot) =>
-          spot.estimate.deadly ? (
-            <span className="chip bad">{t('cards.hunting.deadly')}</span>
-          ) : spot.estimate.expPerHour === null ? (
-            <span
-              className="chip quiet"
-              title={t('cards.hunting.unknownParts', {
-                parts: unknownWords(spot.estimate.unknown)
-              })}
-            >
-              {t('cards.hunting.ceiling', { rate: hours(spot.estimate.ceilingPerHour) })}
+        value: (area) => area.expPerHour,
+        cell: (area) =>
+          area.tooDangerous ? (
+            <span className="chip bad" title={t('cards.hunting.tooDangerousTitle')}>
+              {t('cards.hunting.tooDangerous')}
             </span>
           ) : (
-            hours(spot.estimate.expPerHour)
+            perHour(area.expPerHour)
           )
       },
       {
-        id: 'rooms',
-        optional: true,
-        label: t('cards.hunting.columns.rooms'),
+        id: 'risk',
+        label: t('cards.hunting.columns.risk'),
         numeric: true,
-        value: (spot) => spot.walk.length,
-        cell: (spot) =>
-          t('cards.hunting.roomsCell', { loop: spot.walk.length, total: spot.roomCount })
+        // The router's check: what one pass through its worst lair, or room, takes of the bar.
+        value: (area) => area.danger,
+        cell: (area) => (area.danger === null ? '?' : percent(area.danger))
+      },
+      {
+        id: 'groups',
+        optional: true,
+        label: t('cards.hunting.columns.groups'),
+        numeric: true,
+        value: (area) => area.groups.length
       },
       {
         id: 'steps',
         optional: true,
         label: t('cards.hunting.columns.steps'),
         numeric: true,
-        value: (spot) => spot.rooms[0]?.steps ?? null
-      },
-      {
-        id: 'cost',
-        label: t('cards.hunting.columns.cost'),
-        numeric: true,
-        // The worst the room can spawn, which is what the exclusions read and
-        // what a person deciding whether to start there wants to know — and
-        // the floor under it, marked as a floor, where a spawn's rounds are
-        // unknown: a room that costs *at least* half the bar is not a room
-        // whose cost is unknown.
-        value: (spot) => {
-          const share = spot.estimate.worstShare ?? spot.estimate.worstShareAtLeast;
-          return share === null ? null : Math.round(share * 100);
-        },
-        cell: (spot) =>
-          spot.estimate.worstShare === null
-            ? atLeast(spot.estimate.worstShareAtLeast)
-            : percent(spot.estimate.worstShare)
+        value: (area) => area.steps
       }
     ],
-    [open, rough]
+    [open]
   );
 
-  const opened = rows.find((spot) => spot.key === open) ?? null;
+  const opened = rows.find((area) => area.key === open) ?? null;
   const closeDetail = useCallback(() => setOpen(null), []);
-  const copyText = useCallback(() => huntingCopyText(advice), [advice]);
+  const copyText = useCallback(() => huntingCopyText(grounds), [grounds]);
   const actions = useMemo(
     () => [
       { id: 'refresh', icon: 'reset' as const, label: t('cards.hunting.refresh'), run: refresh }
@@ -273,34 +221,29 @@ function HuntingCard({
     [refresh]
   );
 
-  const leftOut =
-    advice !== null && advice.excluded.dangerous + advice.excluded.beneath > 0
-      ? t('cards.hunting.excluded', {
-          dangerous: advice.excluded.dangerous,
-          beneath: advice.excluded.beneath
-        })
-      : '';
-  /*
-   * A fight nobody could price is listed nearest first rather than by what it
-   * pays, and the head says so — on a realm whose kill arithmetic is not this
-   * family's, that is every row, and a list that looked ranked was the bug.
-   */
-  const unpricedCount = rows.filter((spot) => fightUnpriced(spot.estimate)).length;
-  const unpriced =
-    unpricedCount === 0
-      ? ''
-      : unpricedCount === 1
-        ? t('cards.hunting.unpricedOne')
-        : t('cards.hunting.unpricedMany', { count: unpricedCount });
-  const recorded = advice?.assumptions.measured ?? null;
-  const measured =
-    recorded === null
-      ? ''
-      : t('cards.hunting.measured', {
-          perRound: Math.round(recorded.perRound),
-          fights: recorded.fights.toLocaleString(),
-          level: recorded.fromLevel
-        });
+  const note =
+    grounds?.refusal !== null && grounds?.refusal !== undefined
+      ? grounds.refusal
+      : loading
+        ? t('cards.hunting.loading')
+        : grounds === null
+          ? ''
+          : [
+              t('cards.hunting.from', {
+                room: grounds.from?.name ?? '',
+                areas: rows.length.toLocaleString(),
+                swept: grounds.swept.toLocaleString()
+              }),
+              grounds.setup === null ? '' : t('cards.hunting.setup', { setup: grounds.setup }),
+              grounds.party === null
+                ? ''
+                : t('cards.hunting.asParty', {
+                    members: grounds.party.members.join(', '),
+                    size: grounds.party.size
+                  })
+            ]
+              .filter((sentence) => sentence !== '')
+              .join(' ');
 
   return (
     <BentoCard
@@ -311,67 +254,53 @@ function HuntingCard({
       title={t('cards.hunting.title')}
     >
       <div className="hunt-head">
-        <span className="hunt-note">
-          {advice?.refusal !== null && advice?.refusal !== undefined
-            ? advice.refusal
-            : loading
-              ? t('cards.hunting.loading')
-              : advice === null
-                ? ''
-                : [
-                    t('cards.hunting.from', {
-                      room: advice.from?.name ?? '',
-                      count: rows.length.toLocaleString(),
-                      swept: advice.swept.toLocaleString()
-                    }),
-                    measured,
-                    leftOut,
-                    unpriced
-                  ]
-                    .filter((sentence) => sentence !== '')
-                    .join(' ')}
-        </span>
+        {canParty ? (
+          <span aria-label={t('cards.hunting.mode.label')} className="hunt-mode" role="group">
+            <button
+              aria-pressed={!party}
+              className="chip"
+              onClick={() => setAsParty(false)}
+              onMouseDown={keepFocus}
+              type="button"
+            >
+              {t('cards.hunting.mode.solo')}
+            </button>
+            <button
+              aria-pressed={party}
+              className="chip"
+              onClick={() => setAsParty(true)}
+              onMouseDown={keepFocus}
+              title={t('cards.hunting.mode.partyTitle', { members: partyMembers.join(', ') })}
+              type="button"
+            >
+              {t('cards.hunting.mode.party')}
+            </button>
+          </span>
+        ) : null}
+        <span className="hunt-note">{note}</span>
       </div>
       <CardTable
         caption={t('cards.hunting.caption')}
         className="hunt-table"
-        columns={spotColumns}
+        columns={columns}
         detailKey={open}
         empty={loading ? t('cards.hunting.loading') : t('cards.hunting.none')}
         find={t('cards.hunting.find')}
-        keyOf={(spot) => spot.key}
+        keyOf={(area) => area.key}
         name="hunting"
         onDetailHidden={closeDetail}
-        rowAttrs={(spot) => ({ 'data-open': open === spot.key ? 'true' : 'false' })}
+        rowAttrs={(area) => ({ 'data-open': open === area.key ? 'true' : 'false' })}
         rows={rows}
         session={session}
       />
-      {/*
-        The figures scroll and the three buttons do not.
-
-        Two panes rather than one block: the detail is as long as the lair's
-        room list, the card body is `paned` and clips what will not fit, and
-        what would not fit was the row of controls at the bottom — so a spot
-        opened on a short card, or a card resized down, drew a lair nobody
-        could walk to, loop or build from. The buttons are the card's own last
-        row, outside the scrolling part and shrinking for nothing; anchoring
-        them to the bottom rather than standing them in a column of their own
-        keeps the rail's 260px narrow end readable, where three buttons beside
-        a `.readout` would leave neither room to breathe.
-      */}
       {opened === null ? null : (
         <>
-          <SpotDetail
-            backstab={advice?.assumptions.backstab === true}
-            chooseOnMap={chooseOnMap}
-            spot={opened}
-          />
-          <SpotActions
+          <AreaDetail area={opened} chooseOnMap={chooseOnMap} />
+          <AreaActions
+            area={opened}
             chooseOnMap={chooseOnMap}
             createLoop={createLoop}
-            rough={rough.has(opened.key)}
             runLoop={runLoop}
-            spot={opened}
           />
         </>
       )}
@@ -379,193 +308,96 @@ function HuntingCard({
   );
 }
 
-function SpotDetail({
-  spot,
-  backstab,
+/** An area's groups, each with MME's figures and how it counts toward the area. */
+function AreaDetail({
+  area,
   chooseOnMap
 }: {
-  spot: HuntingSpot;
-  backstab: boolean;
+  area: GroundArea;
   chooseOnMap: HuntingCardProps['chooseOnMap'];
 }) {
-  const { estimate } = spot;
-  const poisonUnknown = estimate.unknown.includes('poison');
   return (
-    // `scroller`, so the paned body gives it a bounded share and it moves
-    // inside it — the card's own rule for anything of a length nobody controls.
     <div className="scroller hunt-detail">
       <div className="readout-box">
         <dl className="readout columns">
           <dt>{t('cards.hunting.detail.rate')}</dt>
-          <dd>
-            {estimate.deadly
-              ? t('cards.hunting.deadlyLong')
-              : estimate.expPerHour === null
-                ? t('cards.hunting.unknownParts', { parts: unknownWords(estimate.unknown) })
-                : t('cards.hunting.detail.rateValue', { rate: hours(estimate.expPerHour) })}
-          </dd>
-          <dt>{t('cards.hunting.detail.ceiling')}</dt>
-          <dd>{t('cards.hunting.detail.rateValue', { rate: hours(estimate.ceilingPerHour) })}</dd>
-          <dt>{t('cards.hunting.detail.spawns')}</dt>
-          <dd>{spot.spawns ?? 1}</dd>
-          <dt>{t('cards.hunting.detail.respawn')}</dt>
-          <dd>
-            {spot.respawnSeconds === null
-              ? '?'
-              : spot.clock === 'regenTime'
-                ? t('cards.hunting.detail.respawnHours', {
-                    hours: Math.round(spot.respawnSeconds / 360) / 10
-                  })
-                : seconds(spot.respawnSeconds)}
-          </dd>
-          <dt>{t('cards.hunting.detail.rounds')}</dt>
-          <dd>
-            {estimate.roundsPerKill === null
-              ? '?'
-              : t('cards.hunting.detail.roundsValue', {
-                  rounds: Math.round(estimate.roundsPerKill * 10) / 10
-                })}
-            {backstab ? ` ${t('cards.hunting.detail.openerCredited')}` : ''}
-          </dd>
-          <dt>{t('cards.hunting.detail.cost')}</dt>
-          <dd>
-            {estimate.damagePerRoom !== null && estimate.worstDamagePerRoom !== null
-              ? t('cards.hunting.detail.costValue', {
-                  hp: Math.round(estimate.damagePerRoom),
-                  share: percent(estimate.damageShare),
-                  worst: Math.round(estimate.worstDamagePerRoom),
-                  worstShare: percent(estimate.worstShare)
-                })
-              : estimate.worstDamageAtLeast === null
-                ? '?'
-                : t('cards.hunting.detail.costAtLeast', {
-                    worst: Math.round(estimate.worstDamageAtLeast),
-                    worstShare: percent(estimate.worstShareAtLeast)
-                  })}
-          </dd>
-          <dt>{t('cards.hunting.detail.walk')}</dt>
-          <dd>
-            {t('cards.hunting.detail.walkValue', {
-              steps: spot.loopSteps,
-              ms: Math.round(estimate.stepMs)
-            })}
-          </dd>
-          {/* Only where the cycle actually casts to recover: a row saying
-           *rests* on every melee character would be chrome. */}
-          {estimate.healCasts !== null && estimate.healCasts > 0 ? (
+          <dd>{t('cards.hunting.detail.rateValue', { rate: perHour(area.expPerHour) })}</dd>
+          {area.loop === null ? null : (
             <>
-              <dt>{t('cards.hunting.detail.heal')}</dt>
-              <dd>{t('cards.hunting.detail.healValue', { casts: estimate.healCasts })}</dd>
-            </>
-          ) : null}
-          {/* And only where poison stands the character before a rest. */}
-          {poisonUnknown || (estimate.poisonSeconds !== null && estimate.poisonSeconds > 0) ? (
-            <>
-              <dt>{t('cards.hunting.detail.poison')}</dt>
+              <dt>{t('cards.hunting.detail.loop')}</dt>
               <dd>
-                {poisonUnknown
-                  ? t('cards.hunting.detail.poisonUnknown')
-                  : t('cards.hunting.detail.poisonValue', {
-                      seconds: Math.round(estimate.poisonSeconds ?? 0)
-                    })}
+                {t('cards.hunting.detail.loopValue', {
+                  rate: perHour(area.loop.expPerHour),
+                  lairs: area.loop.lairs,
+                  recover: percent(area.loop.recovering)
+                })}
               </dd>
             </>
-          ) : null}
-          <dt>{t('cards.hunting.detail.cycle')}</dt>
-          <dd className="span">
-            {t('cards.hunting.detail.cycleValue', {
-              combat: seconds(estimate.combatSeconds),
-              rest: seconds(estimate.restSeconds),
-              walk: seconds(estimate.walkSeconds),
-              wait: seconds(estimate.waitSeconds)
-            })}
-            {/* The caster's half, only where the character casts: `meditate 0`
-                on every melee character would be noise (todo 26). */}
-            {estimate.meditateSeconds !== null &&
-              estimate.meditateSeconds > 0 &&
-              t('cards.hunting.detail.cycleMeditate', {
-                meditate: seconds(estimate.meditateSeconds)
-              })}
+          )}
+          <dt>{t('cards.hunting.detail.lap')}</dt>
+          <dd>
+            {area.lapMinutes === null
+              ? '–'
+              : t('cards.hunting.detail.lapValue', { minutes: Math.round(area.lapMinutes) })}
           </dd>
         </dl>
       </div>
-      <ul className="hunt-mobs">
-        {spot.mobs.map((mob) => (
-          <li key={mob.name}>
+      <ul className="hunt-lairs">
+        {area.groups.map(({ group, role, contributes }) => (
+          <li key={group.key} data-role={role}>
             <span>
-              {mob.name}
-              {mob.afflictions.length > 0 ? (
-                <span className="hunt-afflicts">
-                  {' '}
-                  {mob.afflictions.map((each) => AFFLICTION_WORD[each.kind]()).join(', ')}
-                </span>
-              ) : null}
-              {/*
-               * A monster on a clock of its own is up on only some laps, and
-               * its experience is weighed by how often — so the figure beside
-               * it is not what a lap pays. Say which, rather than leave a rate
-               * that does not match the list to be puzzled over.
-               */}
-              {mob.regenSeconds !== null && mob.regenSeconds > 0 ? (
-                <span className="hunt-afflicts"> {mobClock(mob.regenSeconds)}</span>
-              ) : null}
+              <span className="chip quiet" title={ROLE_TITLE[role]()}>
+                {ROLE_WORD[role]()}
+              </span>{' '}
+              {group.mobs.join(', ')}
             </span>
             <span className="quiet">
-              {t('cards.hunting.mobFigures', {
-                exp: mob.experience === null ? '?' : mob.experience.toLocaleString(),
-                rounds: mob.rounds === null ? '?' : Math.round(mob.rounds * 10) / 10,
-                perRound: mob.perRound === null ? '?' : Math.round(mob.perRound)
-              })}
+              {role === 'added'
+                ? t('cards.hunting.addedFigures', {
+                    rate: perHour(group.expPerHour),
+                    counts: perHour(contributes),
+                    respawn: Math.round(group.respawnMinutes)
+                  })
+                : t('cards.hunting.groupFigures', {
+                    rate: perHour(group.expPerHour),
+                    recover: percent(group.recovering),
+                    lairs: group.lairs,
+                    respawn: Math.round(group.respawnMinutes)
+                  })}
+              {group.danger === null || group.danger === undefined
+                ? ''
+                : ` · ${t('cards.hunting.dangerFigure', { share: percent(group.danger) })}`}
             </span>
           </li>
         ))}
       </ul>
       <ul className="hunt-rooms">
-        {spot.rooms.map((room) => (
+        {area.walk.slice(0, 12).map((room) => (
           <RoomRow chooseOnMap={chooseOnMap} key={room.id} room={room} />
         ))}
-        {spot.roomCount > spot.rooms.length ? (
+        {area.walk.length > 12 ? (
           <li className="quiet">
-            {spot.roomCount - spot.rooms.length === 1
-              ? t('cards.hunting.moreRooms.one', { count: 1 })
-              : t('cards.hunting.moreRooms.many', { count: spot.roomCount - spot.rooms.length })}
+            {t('cards.hunting.moreRooms.many', { count: area.walk.length - 12 })}
           </li>
         ) : null}
-        {spot.filler.length > 0 ? (
-          <li className="hunt-subhead">{t('cards.hunting.fillerHead')}</li>
-        ) : null}
-        {spot.filler.map((room) => (
-          <RoomRow chooseOnMap={chooseOnMap} key={room.id} room={room} />
-        ))}
       </ul>
     </div>
   );
 }
 
-/**
- * What can be done with the lair on screen: go there, run it, build it.
- *
- * The card's last row rather than the tail of the detail above it, so the
- * three are drawn whatever height the card is at — see the note at the call
- * site. Drawn only for a card that can act: a pinned float has no `runLoop`
- * and offers none of them (`HuntingCardProps`), and a spot whose first room
- * the sweep could not place has nowhere to walk to.
- */
-function SpotActions({
-  spot,
-  rough,
+/** What can be done with the area on screen: go there, walk its loop, build it. */
+function AreaActions({
+  area,
   chooseOnMap,
   runLoop,
   createLoop
 }: {
-  spot: HuntingSpot;
-  /** Not measured yet: its walk is a guess, so nothing loops it until the ask that measures it lands. */
-  rough: boolean;
+  area: GroundArea;
   chooseOnMap: HuntingCardProps['chooseOnMap'];
   runLoop: HuntingCardProps['runLoop'];
   createLoop: HuntingCardProps['createLoop'];
 }) {
-  const first = spot.walk[0];
+  const first = area.walk[0];
   if (chooseOnMap === null || runLoop === null || createLoop === null || first === undefined) {
     return null;
   }
@@ -579,32 +411,20 @@ function SpotActions({
       >
         {t('cards.hunting.walkThere')}
       </button>
-      {/* A one-room spot is a camp, and the runner keeps a one-stop loop
-          (todo 108): it dwells, steps to the same stop and dwells again. */}
       <button
         className="quiet"
-        disabled={rough}
-        onClick={() => runLoop(huntLoop(spot, t), 'none')}
+        onClick={() => runLoop(areaLoop(area), 'none')}
         onMouseDown={keepFocus}
-        title={rough ? t('cards.hunting.measuring') : undefined}
         type="button"
       >
         {t('cards.hunting.loopIt')}
       </button>
-      {/* The builder draws a way between two places at least, so a camp has
-          nothing for it to draw. */}
       <button
         className="quiet"
-        disabled={rough || spot.walk.length < 2}
-        onClick={() => createLoop(spot.walk, loopNameOf(spot, t))}
+        disabled={area.walk.length < 2}
+        onClick={() => createLoop(area.walk, areaLoop(area).name)}
         onMouseDown={keepFocus}
-        title={
-          rough
-            ? t('cards.hunting.measuring')
-            : spot.walk.length < 2
-              ? t('cards.hunting.oneRoomNoLoop')
-              : undefined
-        }
+        title={area.walk.length < 2 ? t('cards.hunting.oneRoomNoLoop') : undefined}
         type="button"
       >
         {t('cards.hunting.createLoop')}
@@ -618,14 +438,13 @@ function RoomRow({
   room,
   chooseOnMap
 }: {
-  room: HuntingRoom;
+  room: GroundRoom;
   chooseOnMap: HuntingCardProps['chooseOnMap'];
 }) {
-  const label = room.mobs === undefined ? room.name : `${room.name} (${room.mobs.join(', ')})`;
   return (
     <li>
       {chooseOnMap === null ? (
-        <span>{label}</span>
+        <span>{room.name}</span>
       ) : (
         <button
           className="lookup"
@@ -633,17 +452,11 @@ function RoomRow({
           onMouseDown={keepFocus}
           type="button"
         >
-          {label}
+          {room.name}
         </button>
       )}
       <span className="quiet">
-        {room.detour === undefined
-          ? t('cards.hunting.roomFigures', { map: room.map, room: room.room, steps: room.steps })
-          : t('cards.hunting.fillerFigures', {
-              map: room.map,
-              room: room.room,
-              detour: room.detour
-            })}
+        {t('cards.hunting.roomFigures', { map: room.map, room: room.room, steps: room.steps })}
       </span>
     </li>
   );

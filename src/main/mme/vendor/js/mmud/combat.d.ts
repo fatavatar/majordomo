@@ -98,3 +98,10 @@ export function monsterDefense(monster: number | Record<string, unknown>): {
   seeHidden: boolean;
   evil: boolean;
 };
+/** `GetDamageOutput`: damage a round against a monster, or against `opts.vs` with no monster. */
+export function damageVsMonster(
+  profile: unknown,
+  attack: unknown,
+  monster: unknown,
+  opts?: Record<string, unknown>
+): { averageDamage: number; swings: number } & Record<string, unknown>;

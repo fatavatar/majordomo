@@ -3,7 +3,7 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 /**
- * The three things that can be done with a lair, drawn at every card height.
+ * The three things that can be done with an area, drawn at every card height.
  *
  * *Walk there*, *Loop it* and *Create loop* sat at the bottom of the opened
  * spot's detail, which is as long as the lair's room list. The Hunting card's
@@ -33,13 +33,13 @@ describe("the hunting card's three buttons", () => {
    * every regex here matching nothing and passing on the emptiness.
    */
   it('is a row of its own, beside the detail rather than inside it', () => {
-    expect(source).toContain('function SpotActions(');
+    expect(source).toContain('function AreaActions(');
     expect(source).toContain('<div className="loop-controls hunt-actions">');
-    // Inside `SpotDetail` the row would scroll away with the figures. The
+    // Inside `AreaDetail` the row would scroll away with the figures. The
     // detail's own element closes before the actions component is declared.
     const detail = source.slice(
-      source.indexOf('function SpotDetail('),
-      source.indexOf('function SpotActions(')
+      source.indexOf('function AreaDetail('),
+      source.indexOf('function AreaActions(')
     );
     expect(detail).not.toContain('hunt-actions');
   });
