@@ -4957,6 +4957,15 @@ button.quest-plan-back {
   width: min(1440px, 97vw);
 }
 
+/* In a window of its own (2026-10-29): the whole of it, edge to edge. */
+.explorer-screen[data-windowed='true'] {
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  height: 100vh;
+  width: 100vw;
+}
+
 .ex-top {
   align-items: flex-end;
   background: linear-gradient(180deg, var(--ink-card), var(--ink-void));
@@ -4965,6 +4974,45 @@ button.quest-plan-back {
   flex: 0 0 auto;
   gap: 12px;
   padding: 10px 14px 0;
+}
+
+/*
+ * The top row: who the Explorer answers for (2026-10-29), MME's global fields.
+ * A field changed from the character as played wears the pending colour, and
+ * so does the row's note, so a list read for somebody else is never mistaken
+ * for the character's own.
+ */
+.ex-as {
+  align-items: flex-end;
+  background: var(--ink-card);
+  border-bottom: 1px solid var(--ink-line);
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  padding: 8px 14px 0;
+}
+
+.ex-as .ex-field {
+  margin-bottom: 8px;
+}
+
+.ex-as [data-as='true'] {
+  border-color: var(--pending);
+  color: var(--pending);
+}
+
+.ex-as-note {
+  align-self: center;
+  color: var(--text-lo-quiet);
+  flex: 1 1 auto;
+  font-size: 12px;
+  margin-bottom: 8px;
+  text-align: right;
+}
+
+.ex-as[data-as='true'] .ex-as-note {
+  color: var(--pending);
 }
 
 .ex-tabs {
@@ -10079,7 +10127,6 @@ button.lookup:focus-visible {
   .settings-name,
   .combat-name .name,
   .party-name,
-  .party-class,
   .party-meter-value,
   .rewrite-list .rewrite-name,
   .rewrite-tag .hint,
@@ -12747,39 +12794,40 @@ tr:hover .row-action.worn,
 /*
  * The only place another character's health is visible, and it costs one
  * command rather than a second connection.
+ *
+ * Laid out as the card rethink's Party Board drew it (2026-10-28): a row per
+ * member — the name, two thin tracks stacked, and one chip — so a party of
+ * three is three lines somebody reads at a glance, then where everybody is,
+ * then Regroup, Muster and Say to, each under a dashed seam.
+ */
+/*
+ * The name a column of its own, the tracks the slack, the chip at the edge:
+ * columns the whole list shares (a subgrid each row), so every row's tracks
+ * start and end where the others' do whatever its chip says.
  */
 .party-list {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
+  column-gap: 8px;
+  display: grid;
+  grid-template-columns: minmax(4.5em, auto) minmax(0, 1fr) auto;
   list-style: none;
   margin: 0;
   padding: 0;
+  row-gap: 5px;
 }
 
 .party-list li {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
+  align-items: center;
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: subgrid;
   min-width: 0;
-}
-
-/*
- * Who they are, and what they are doing: the line somebody scans down before
- * deciding which member to act on. The class takes the slack so the condition
- * and the rank make columns of their own whatever a name costs.
- */
-.party-who {
-  align-items: baseline;
-  display: flex;
-  gap: 6px;
-  min-width: 0;
+  row-gap: 3px;
 }
 
 .party-name {
   color: var(--text-hi);
-  flex: 0 1 auto;
   font-weight: 600;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -12796,133 +12844,66 @@ tr:hover .row-action.worn,
   font: inherit;
 }
 
+/* The leader, in the accent and starred: who the party follows. */
+.party-name[data-leader='true'] {
+  color: var(--accent);
+}
+
+.party-name[data-leader='true']::after {
+  content: ' ★';
+  font-size: var(--font-micro);
+}
+
 /* The row the flyout is about, in the listings' own recipe (`tr[data-selected]`). */
 .party-list li[data-selected] {
   background: color-mix(in srgb, var(--accent) var(--tone-weak), transparent);
   border-radius: var(--r-control);
 }
 
-.party-name[data-leader='true']::after {
-  color: var(--text-lo-quiet);
-  content: ' ★';
+.party-list li[data-status='offline'],
+.party-list li[data-status='forgotten'] {
+  opacity: 0.6;
+}
+
+.party-chip {
+  justify-self: end;
+}
+
+.party-unlisted {
   font-size: var(--font-micro);
 }
 
-.party-class {
-  color: var(--text-lo-quiet);
-  flex: 1 1 auto;
-  font-size: var(--font-micro);
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+/* A member's own controls: under the row, the whole width. */
+.party-edit-row {
+  grid-column: 1 / -1;
 }
 
-/*
- * The formation, boxed by rank rather than stated at the end of every row.
- *
- * A tonal panel and a hairline seam, per §9 — the grouping is *structure*, and
- * structure here is a half-step of surface tone, never an outline. The heading
- * is the card's own word for the rank (`Middle`, not `Midrank`), quiet and
- * small: it labels a box somebody is scanning past, not a thing they act on.
- *
- * A rank with nobody in it is not drawn at all — see `GROUPS` — so this box
- * appears and disappears as the party is arranged. That is safe here and
- * nowhere else on the rail: the card's height is fixed and its body scrolls, so
- * a group arriving moves nothing below the card.
- */
-.party-rank-group {
-  background: color-mix(in srgb, var(--text-lo) 7%, transparent);
-  border: var(--rule) solid var(--ink-line);
-  border-radius: var(--r-control);
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding: 6px 8px 8px;
-}
-
-.party-rank-group + .party-rank-group {
-  margin-top: 8px;
-}
-
-/*
- * An offer, not a rank. The seam says provisional rather than a second colour
- * saying it: the heading already reads `Invited`, and a hue here would make an
- * invitation look like a condition somebody has to act on.
- */
-.party-rank-group[data-rank='invited'] {
-  background: transparent;
-  border-style: dashed;
-}
-
-.party-rank-head {
-  color: var(--text-lo-quiet);
-  font-size: var(--font-micro);
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  margin: 0;
-  text-transform: uppercase;
-}
-
-/*
- * Resting or meditating: a condition, so tonal rather than plain text per §9,
- * and the one thing on the row that says whether a member will answer.
- */
-.party-activity {
-  background: color-mix(in srgb, var(--pending) var(--tone-weak), transparent);
-  border-radius: var(--r-chip);
-  color: var(--pending);
-  flex: 0 0 auto;
-  font-size: var(--font-micro);
-  padding: 0 5px;
-}
-
-/* A letter the client cannot expand states no condition, so it takes no hue. */
-.party-activity[data-state='unknown'] {
-  background: color-mix(in srgb, var(--text-lo) var(--tone-weak), transparent);
-  color: var(--text-lo);
-  font-family: var(--font-mono);
-}
-
-/*
- * Two meters share a row while they fit and stack when they do not. A meter's
- * value grew longer once a member's maximum is known (`40% of 4,434 low`),
- * and a row that stayed one line regardless would push the second meter past
- * the card's edge on the narrowest rail. Wrapping is decided on each meter's
- * *content* width (`flex-basis: auto`) — measured by layout, no constant —
- * and `min-width: 0` keeps a meter able to shrink afterwards, so nothing here
- * puts a floor under the row that the card's `overflow: hidden` would then
- * clip in silence. The card does not grow for it: the body scrolls.
- */
+/* Health over mana, each a thin track with its figures beside it. */
 .party-meters {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px 10px;
+  display: grid;
+  gap: 3px;
   min-width: 0;
 }
 
 .party-meter {
   align-items: center;
   color: var(--text-lo);
-  display: flex;
-  flex: 1 1 auto;
+  display: grid;
   font-size: var(--font-micro);
-  gap: 5px;
+  gap: 6px;
+  /* The figures a column wide enough for `2,285/2,431`, so the tracks of
+     every row end at one edge. */
+  grid-template-columns: minmax(24px, 1fr) minmax(11ch, auto);
+  line-height: 1;
   min-width: 0;
-}
-
-.party-meter-label {
-  color: var(--text-lo-quiet);
-  flex: 0 0 auto;
-  font-family: var(--font-mono);
 }
 
 /* A value that still cannot fit is shortened with an ellipsis, which says it
    was shortened; a clipped `4,434` reading `4,4` would be a wrong maximum
    stated confidently, the exact thing the maximum is there to prevent. */
 .party-meter-value {
-  flex: 0 1 auto;
   font-variant-numeric: tabular-nums;
+  text-align: right;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -12931,11 +12912,9 @@ tr:hover .row-action.worn,
 
 .party-bar {
   background: color-mix(in srgb, var(--text-hi) 10%, transparent);
-  border-radius: 2px;
+  border-radius: 3px;
   display: block;
-  flex: 1 1 auto;
-  height: 4px;
-  min-width: 20px;
+  height: 6px;
   overflow: hidden;
 }
 
@@ -12963,42 +12942,10 @@ tr:hover .row-action.worn,
   background: var(--danger);
 }
 
-/*
- * A member of this client's own: a dot of the accent before the name, so the
- * rows read from their own tab are told from the ones read off a listing.
- */
-.party-name[data-ours='true']::before {
-  color: var(--accent);
-  content: '● ';
+/* Where everybody is, under the rows. */
+.party-where {
   font-size: var(--font-micro);
-}
-
-/*
- * Where a member stands against the roster, when it is not simply with the
- * party: out of it is the case Regroup exists for, so it takes the danger
- * tone; offline and @forget are facts, quiet.
- */
-.party-status {
-  background: color-mix(in srgb, var(--text-lo) var(--tone-weak), transparent);
-  border-radius: var(--r-chip);
-  color: var(--text-lo);
-  flex: 0 0 auto;
-  font-size: var(--font-micro);
-  padding: 0 5px;
-}
-
-.party-status[data-status='out'] {
-  background: color-mix(in srgb, var(--danger) var(--tone-weak), transparent);
-  color: var(--danger);
-}
-
-.party-list li[data-status='offline'],
-.party-list li[data-status='forgotten'] {
-  opacity: 0.6;
-}
-
-.party-away {
-  font-size: var(--font-micro);
+  margin: 6px 0 0;
 }
 
 /* No roster yet: the way to make one, said in the body. */
@@ -13014,50 +12961,107 @@ tr:hover .row-action.worn,
   font-size: var(--font-micro);
 }
 
-/* Muster: where to, typed, and the button. */
-.party-muster {
-  align-items: center;
+/* Regroup, Muster and Say to, each under a dashed seam. */
+.party-section {
+  border-top: var(--rule) dashed var(--ink-line);
   display: flex;
-  flex: 1 1 14em;
-  gap: 6px;
-  min-width: 0;
+  flex-direction: column;
+  gap: 5px;
+  margin-top: 7px;
+  padding-top: 7px;
 }
 
-.party-muster input {
-  flex: 1 1 8em;
-  min-width: 0;
-}
-
-/*
- * The bar over the groups: Regroup and Muster, then Say to — who sends it as
- * chips, the line beside them. Wraps on a narrow rail rather than clipping.
- */
-.party-actions,
-.party-say,
-.party-say-to {
+.party-line {
   align-items: center;
   display: flex;
   flex-wrap: wrap;
+  gap: 5px 6px;
+}
+
+.party-section-head {
+  color: var(--text-lo-quiet);
+  font-size: var(--font-micro);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.party-left {
+  color: var(--danger);
+  flex: 1 1 auto;
+  font-size: var(--font-micro);
+}
+
+/* A press that acts at once: Re-invite, and each place to muster to. */
+button.party-go {
+  background: color-mix(in srgb, var(--accent) var(--tone), transparent);
+  border-color: transparent;
+  box-shadow: none;
+  color: var(--accent);
+  font-size: var(--font-micro);
+  height: auto;
+  padding: 2px 7px;
+}
+
+button.party-go:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--accent) var(--tone-strong), transparent);
+  color: var(--text-hi);
+}
+
+/* Who Say to sends as: a tick on whoever is in, a quiet chip for who is not. */
+.chip.party-pick {
+  box-shadow: none;
+  cursor: pointer;
+  height: auto;
+  padding: 1px 6px;
+  font: inherit;
+  font-family: var(--font-mono);
+  font-size: var(--font-micro);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.chip.party-pick[aria-pressed='true'] {
+  background: color-mix(in srgb, var(--accent) var(--tone), transparent);
+  border-color: color-mix(in srgb, var(--accent) var(--tone-strong), transparent);
+  color: var(--accent);
+}
+
+.chip.party-pick[aria-pressed='true']::after {
+  content: ' ✓';
+}
+
+/* The line typed once, drawn as a line at the prompt. */
+.party-term {
+  align-items: center;
+  background: var(--ink-slate);
+  border: var(--rule) solid var(--ink-line);
+  border-radius: var(--r-control);
+  color: var(--text-lo);
+  display: flex;
+  font-family: var(--font-mono);
   gap: 6px;
+  padding: 0 8px;
 }
 
-.party-say {
-  margin-top: 6px;
-}
-
-.party-say input {
-  flex: 1 1 10em;
+.party-term input {
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  color: var(--text-hi);
+  flex: 1 1 auto;
+  font-family: var(--font-mono);
   min-width: 0;
+  padding-left: 0;
 }
 
 .party-report {
   font-size: var(--font-micro);
-  list-style: none;
-  margin: 6px 0 0;
-  padding: 0;
+  margin: 0;
 }
 
-/* The editor: a row's own controls under it, and the roster's beneath the groups. */
+/* The editor: the roster's own controls beneath the rows. */
 .party-edit-row,
 .party-editor,
 .party-add {
@@ -13076,6 +13080,25 @@ tr:hover .row-action.worn,
 .party-add input {
   flex: 1 1 10em;
   min-width: 0;
+}
+
+/* The places Muster offers, each with its own Remove: the whole width, one per line. */
+.party-places {
+  display: flex;
+  flex: 1 1 100%;
+  flex-direction: column;
+  gap: 2px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.party-places li {
+  align-items: center;
+  display: flex;
+  font-size: var(--font-micro);
+  gap: 6px;
+  justify-content: space-between;
 }
 
 .party-edit-row button.danger,

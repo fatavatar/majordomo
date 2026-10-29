@@ -31,6 +31,7 @@ import {
   sections,
   setSetting,
   settingsFromIni,
+  setProfileEnabled,
   switchProfile,
   type MegaSettings,
   type ProfiledSection,
@@ -158,7 +159,7 @@ export function MegaMudPanel({ tab, mega }: { tab: string; mega: MegaMudDraft })
         onProfile={(n) => mega.update((current) => switchProfile(current, n))}
         onProfileEnabled={(n, on) =>
           mega.update((current) =>
-            page.profiled ? withSlotEnabled(current, page.profiled, n, on) : current
+            page.profiled ? setProfileEnabled(current, page.profiled, n, on) : current
           )
         }
         profiled={page.profiled}
@@ -342,21 +343,6 @@ export function characterOfIni(settings: MegaSettings): {
   };
 }
 
-/** A tab's profile copy (2–4) switched on or off; switched on, made from the live values when missing. */
-function withSlotEnabled(
-  settings: MegaSettings,
-  section: ProfiledSection,
-  n: number,
-  on: boolean
-): MegaSettings {
-  const next = structuredClone(settings);
-  const slots = next.profiles[section];
-  const slot = slots[n - 1];
-  if (slot) slot.enabled = on;
-  else if (on) slots[n - 1] = { enabled: true, values: { ...slots[0]!.values } };
-  return next;
-}
-
 interface TabPageProps {
   tab: string;
   choices: MegaChoices | null;
@@ -499,6 +485,13 @@ function TabPage({
       {dialog}
     </div>
   );
+}
+
+/** What one of this client's own checklist rows (`shared/megamud/layout.ts`) does. */
+function ownRowTitle(section: string, key: string): string | undefined {
+  if (section === 'Other' && key === 'IgnoreDisease')
+    return t('settings.megamud.ignoreDiseaseTitle');
+  return undefined;
 }
 
 interface ControlProps {
@@ -709,7 +702,11 @@ function Control({ control: c, draft, hasPassword, names, style, set }: ControlP
             const n = valueOf(draft, section, key);
             const on = row.kind === 'radio' ? n === row.value : typeof n === 'number' && n !== 0;
             return (
-              <label data-choice={row.kind === 'radio' ? 'true' : undefined} key={i}>
+              <label
+                data-choice={row.kind === 'radio' ? 'true' : undefined}
+                key={i}
+                title={ownRowTitle(section, key)}
+              >
                 <input
                   checked={on}
                   onChange={(event) => {

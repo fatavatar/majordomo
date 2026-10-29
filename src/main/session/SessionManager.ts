@@ -2405,10 +2405,12 @@ export class SessionManager {
    * out through the same queue before any prompt exists, and with them in the
    * FIFO the first quiet command never reached its head — captured by the
    * smoke run, whose fake host answered `rm` and watched the console show it.
+   * The engine is told too, whoever sent it (`MegaEngine.commandSent`).
    */
   private noteSent(command: string, from: 'user' | 'automation'): void {
     if (this.tracker.current.phase !== 'in-game') return;
     this.feed.sent(command, from);
+    this.mega?.commandSent(command);
   }
 
   /**
@@ -3437,6 +3439,11 @@ export class SessionManager {
    */
   megaConnectPressed(): boolean {
     return this.mega?.connectPressed() ?? false;
+  }
+
+  /** Out of the fight now, the engine told so (`MegaEngine.breakCombat`): a Muster's `sys goto` is next. */
+  breakCombat(): void {
+    this.mega?.breakCombat();
   }
 
   /** Stop trying: the engine's redial called off, as Disconnect calls ours off. */
@@ -5663,6 +5670,17 @@ export class SessionManager {
       coalesceKey: `party:${command.toLowerCase()}`,
       reason
     });
+  }
+
+  /**
+   * Regroup's join, as MegaMUD's own (`MegaEngine.join`): the Party tab's rank
+   * taken with it. Only in the realm; without the engine, a plain `join`.
+   */
+  partyJoin(leader: string, reason: string): boolean {
+    if (this.tracker.current.phase !== 'in-game') return false;
+    if (this.mega === null) return this.partyCommand(`join ${leader}`, reason);
+    this.mega.join(leader);
+    return true;
   }
 
   /** One room back the way the character came, per press: MegaMUD's Step Back. */

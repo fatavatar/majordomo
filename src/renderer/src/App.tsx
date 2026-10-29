@@ -109,21 +109,7 @@ import type { MonsterRule } from '@shared/monsterRules';
 import type { ItemRule } from '@shared/itemRules';
 import type { MegaMudPath } from '@shared/megamudPaths';
 import type { IpcApi, LearnedSpellRow } from '@shared/ipc';
-import { mean, sinceCardBaseline, swings } from '@shared/tally';
-import type { ToolRequest } from '@shared/explorerTools';
-import type {
-  CompareKind,
-  EqFind,
-  EqPlan,
-  ExplorerKind,
-  ExplorerOptions,
-  ExplorerTab,
-  GearOptions,
-  RoomMapOptions,
-  RoomSearch,
-  RoomViewRequest,
-  TextblockRequest
-} from '@shared/explorer';
+import type { ExplorerKind, ExplorerTab, GearOptions } from '@shared/explorer';
 import { CONSOLE_PALETTES, TERMINAL_THEMES, THEME_PREFERENCES, THEMES } from '@shared/themes';
 import { usePaneWidths } from './hooks/usePaneWidths';
 import { usePinnedCommands } from './hooks/usePins';
@@ -145,6 +131,8 @@ import { useDesktopAlerts } from './hooks/useDesktopAlerts';
 import { useHotkeys } from './hooks/useHotkeys';
 import { useOverridablePreference } from './hooks/usePreference';
 import { useTheme } from './hooks/useTheme';
+import { usePageLook } from './hooks/usePageLook';
+import { purseKey, useExplorer, wornKey } from './hooks/useExplorer';
 import { useStreamPressure, ZERO_METER, type StreamMeter } from './hooks/useStreamPressure';
 import { t } from './lib/i18n';
 import { loopRows, type LoopChoice, type LoopDestination, type LoopHere } from './lib/loops';
@@ -155,10 +143,7 @@ import { playerKey } from '@shared/players';
 import {
   automationSwitches,
   DEFAULT_CONFIG,
-  resolveTerminalFonts,
-  resolveUiFonts,
   targetFromServer,
-  toCssFontStack,
   type AutomationSwitches,
   type RemotesConfig,
   type SupplyItem
@@ -713,35 +698,6 @@ interface AddressedActions {
 function emptyCardHidden(chrome: CardChrome, id: CardId, hasSomethingToSay: boolean): boolean {
   if (hasSomethingToSay) return false;
   return hidesWhenEmpty(chrome.settings?.value ?? NO_CARD_SETTINGS, id);
-}
-
-/**
- * What MMUD Explorer's answers for a character turn on: its class, race,
- * level and what it wears. The Explorer's lists and the Gear card are read
- * again when it changes.
- */
-function wornKey(character: CharacterState): string {
-  return [
-    character.className ?? '',
-    character.race ?? '',
-    character.progress.level ?? '',
-    character.inventory.items
-      .filter((item) => item.equipped)
-      .map((item) => item.name)
-      .sort()
-      .join(',')
-  ].join('|');
-}
-
-/** What Buy's plan answers for beside the gear: the purse, the room, the vaults. */
-function purseKey(character: CharacterState): string {
-  return [
-    character.inventory.wealth ?? '',
-    character.room.name ?? '',
-    character.room.map ?? '',
-    character.room.number ?? '',
-    character.banks.map((bank) => `${bank.name}:${bank.copper}`).join(',')
-  ].join('|');
 }
 
 /** The card for an id, drawn from a context. Exhaustive over the vocabulary. */
@@ -1959,41 +1915,8 @@ export default function App() {
     return null;
   }, [walk, automation.queue]);
 
-  const terminalFonts = useMemo(
-    () => toCssFontStack(resolveTerminalFonts(config.terminal.font.family)),
-    [config.terminal.font.family]
-  );
-
-  const uiFonts = useMemo(
-    () => toCssFontStack(resolveUiFonts(config.ui.font.family)),
-    [config.ui.font.family]
-  );
-
-  /**
-   * Chrome typography is published as tokens rather than passed down as props:
-   * `tokens.css` is the only place literal values live, and every component
-   * already reads `--font-ui-family` from there, so a config reload repaints
-   * the whole shell without a single component knowing about the config.
-   */
-  useEffect(() => {
-    const root = document.documentElement.style;
-    root.setProperty('--font-ui-family', uiFonts);
-    root.setProperty('--font-ui-base', `${config.ui.font.size}px`);
-    // The slate must not inherit chrome typography: `ui.font` may legitimately
-    // be proportional, and the terminal cell never may. This also makes the
-    // resolved console stack observable from the DOM, which xterm's canvas
-    // renderer otherwise hides.
-    root.setProperty('--font-terminal', terminalFonts);
-  }, [uiFonts, config.ui.font.size, terminalFonts]);
-
-  /*
-   * The skin the chrome wears (2026-10-24), as an attribute the skin's
-   * stylesheet keys off (`styles/skins/`), the way density is; and as
-   * `SkinContext` below, for the cards a skin lays out its own way.
-   */
-  useEffect(() => {
-    document.documentElement.dataset['skin'] = config.ui.skin;
-  }, [config.ui.skin]);
+  // The options file's fonts and skin on the page, as the popped-out Explorer wears them too.
+  const { terminalFonts } = usePageLook(config);
 
   /**
    * Every mounted terminal, by character.
@@ -3035,25 +2958,38 @@ export default function App() {
     setExplorerOpen(false);
     returnFocus();
   }, [returnFocus]);
+  // Its own window brought forward where it has one (2026-10-29), else over the console.
   const toggleExplorer = useCallback(() => {
     if (explorerOpen) closeExplorer();
-    else if (session !== NO_SESSION) setExplorerOpen(true);
-  }, [explorerOpen, closeExplorer, session]);
+    else if (session !== NO_SESSION) {
+      void api.explorerWindow(session, false).then((popped) => {
+        if (popped) api.explorerFocus(session, null);
+        else setExplorerOpen(true);
+      });
+    }
+  }, [api, explorerOpen, closeExplorer, session]);
   // The Gear card's way in: the Explorer on one item.
   const [explorerFocus, setExplorerFocus] = useState<{
     kind: ExplorerTab;
     item: number | string;
     at: number;
   } | null>(null);
-  const openExplorerAt = useCallback((kind: ExplorerTab, item: number | string) => {
-    setTbAsked(null);
-    setExplorerFocus({ kind, item, at: Date.now() });
-    setExplorerOpen(true);
-  }, []);
-  const explorerTextblock = useCallback(
-    (request: TextblockRequest) => api.explorerTextblock(session, request),
+  const openExplorerAt = useCallback(
+    (kind: ExplorerTab, item: number | string) => {
+      setTbAsked(null);
+      void api.explorerWindow(session, false).then((popped) => {
+        if (popped) {
+          api.explorerFocus(session, { kind, item });
+          return;
+        }
+        setExplorerFocus({ kind, item, at: Date.now() });
+        setExplorerOpen(true);
+      });
+    },
     [api, session]
   );
+  // The Explorer's calls and keys, the same in the pop-out window (`ExplorerWindow`).
+  const explorer = useExplorer(api, session, character);
   const explorerRoomFacts = useCallback(
     (map: number, room: number) => api.explorerRoom(session, map, room),
     [api, session]
@@ -3061,115 +2997,8 @@ export default function App() {
   useEffect(() => {
     if (explorerOpen && session === NO_SESSION) closeExplorer();
   }, [explorerOpen, session, closeExplorer]);
-  const explorerList = useCallback(
-    (kind: ExplorerKind, options: ExplorerOptions) => api.explorerList(session, kind, options),
-    [api, session]
-  );
-  const explorerDetail = useCallback(
-    (kind: ExplorerKind, item: number, options: ExplorerOptions) =>
-      api.explorerDetail(session, kind, item, options),
-    [api, session]
-  );
-  const explorerRoomView = useCallback(
-    (request: RoomViewRequest) => api.explorerRoomView(session, request),
-    [api, session]
-  );
-  const explorerRoomTip = useCallback(
-    (map: number, room: number, options: RoomMapOptions) =>
-      api.explorerRoomTip(session, map, room, options),
-    [api, session]
-  );
-  const explorerRoomSearch = useCallback(
-    (search: RoomSearch) => api.explorerRoomSearch(session, search),
-    [api, session]
-  );
-  // The character's room as the Rooms tab keys one.
-  const explorerHere =
-    character.room.map === null || character.room.number === null
-      ? null
-      : `${character.room.map}/${character.room.number}`;
-  const explorerBuyPlan = useCallback(
-    (item: number) => api.explorerBuyPlan(session, item),
-    [api, session]
-  );
-  const explorerBuy = useCallback(
-    (item: number, wear: boolean) => api.explorerBuy(session, item, wear),
-    [api, session]
-  );
-  const explorerLearnPlan = useCallback(
-    (spell: number) => api.explorerLearnPlan(session, spell),
-    [api, session]
-  );
-  const explorerLearn = useCallback(
-    (item: number) => api.explorerLearn(session, item),
-    [api, session]
-  );
-  const explorerPurseKey = purseKey(character);
-  // What the lists answer for: read again when the class, level or gear change.
-  const explorerKey = wornKey(character);
   // The slide-out's link to MME: the shown character's, as the slide-out is.
   const popoverExplorer = useMemo(() => explorerCalls(session, api), [session, api]);
-  /*
-   * The EQ tab's calls, and what its page answers for beside the gear: the
-   * pack, its reported weight, and the blessings up.
-   */
-  const explorerEqKey = [
-    explorerKey,
-    character.inventory.items.map((item) => `${item.name}x${item.count ?? 1}`).join(','),
-    character.inventory.encumbrance ?? '',
-    character.buffs.map((buff) => buff.spell).join(',')
-  ].join('|');
-  const explorerEq = useMemo(
-    () => ({
-      characterKey: explorerEqKey,
-      view: (plan: EqPlan) => api.explorerEq(session, plan),
-      best: (plan: EqPlan, find: EqFind) => api.explorerEqBest(session, plan, find),
-      wear: (plan: EqPlan) => api.explorerEqWear(session, plan),
-      copy: (text: string) => void api.copyText(text)
-    }),
-    [api, session, explorerEqKey]
-  );
-  /*
-   * The Tools tab's: its calculators, and the Combat Stats card's own Hit,
-   * Crit and Weapon rows as MegaMUD's Hit, Crit and Extra, % of every swing
-   * and the average, for the Swing calculator's true average.
-   */
-  const statsShown = sinceCardBaseline(character.tally, character.statsBase);
-  const swungAll = swings(statsShown);
-  const fromStats =
-    swungAll === 0
-      ? null
-      : {
-          hitP: Math.round((statsShown.dealt.melee.hits / swungAll) * 100),
-          hitA: Math.round(mean(statsShown.dealt.melee.damage, statsShown.dealt.melee.hits) ?? 0),
-          extraP: Math.round((statsShown.dealt.proc.hits / swungAll) * 100),
-          extraA: Math.round(mean(statsShown.dealt.proc.damage, statsShown.dealt.proc.hits) ?? 0),
-          critP: Math.round((statsShown.dealt.critical.hits / swungAll) * 100),
-          critA: Math.round(
-            mean(statsShown.dealt.critical.damage, statsShown.dealt.critical.hits) ?? 0
-          )
-        };
-  const fromStatsKey = JSON.stringify(fromStats);
-  const explorerTools = useMemo(
-    () => ({
-      characterKey: explorerEqKey,
-      tool: <R extends ToolRequest>(request: R) => api.explorerTool(session, request),
-      fromStats: JSON.parse(fromStatsKey) as typeof fromStats,
-      copy: (text: string) => void api.copyText(text)
-    }),
-    [api, session, explorerEqKey, fromStatsKey] // eslint-disable-line react-hooks/exhaustive-deps
-  );
-  // The Lists tab's: the pack as the game lists it, and the item rules its Item Manager writes.
-  const explorerPack = useMemo(
-    () =>
-      character.inventory.items.map((item) => ({
-        number: item.row?.id ?? item.id ?? null,
-        name: item.name,
-        count: item.count ?? 1,
-        equipped: item.equipped
-      })),
-    [character.inventory.items]
-  );
   // The Reference panel's Edit: this character's own monster and item rows.
   const referenceRules = useMemo(
     () => ({
@@ -3183,20 +3012,6 @@ export default function App() {
       }
     }),
     [api, session]
-  );
-  const explorerLists = useMemo(
-    () => ({
-      pack: explorerPack,
-      characterKey: explorerEqKey,
-      compare: (kind: CompareKind, numbers: number[]) =>
-        api.explorerCompare(session, kind, numbers),
-      find: (kind: CompareKind | 'items', text: string) => api.explorerFind(session, kind, text),
-      items: (numbers: number[], names: string[]) => api.explorerItems(session, numbers, names),
-      rules: () => api.itemRulesFor(session),
-      saveRules: (own: ItemRule[]) => api.setItemDetails(session, own),
-      copy: (text: string) => void api.copyText(text)
-    }),
-    [api, session, explorerPack, explorerEqKey]
   );
 
   /**
@@ -4115,6 +3930,14 @@ export default function App() {
     },
     [goToRoom]
   );
+  // The same from the Explorer in its own window, which stays where it is.
+  useEffect(
+    () =>
+      api.onExplorerWalk(({ session: id, payload }) => {
+        if (id === session) goToRoom(payload);
+      }),
+    [api, session, goToRoom]
+  );
   const stopMoving = useCallback(() => {
     // One stop for both: main works out whether it is a lap or a route, and
     // stops the leg with the lap — a stopped walk under a live loop is a walk
@@ -4136,6 +3959,18 @@ export default function App() {
     },
     []
   );
+  // The Explorer into a window of its own (2026-10-29), put away here once it has one.
+  const popOutExplorer = useCallback(() => {
+    void api.explorerWindow(session, true).then((popped) => {
+      if (!popped) {
+        sayRefusal(session)(t('explorer.popOutRefused'));
+        return;
+      }
+      // An Explorer window already open, on another character, comes over to this one.
+      api.explorerFocus(session, null);
+      closeExplorer();
+    });
+  }, [api, session, closeExplorer, sayRefusal]);
   /**
    * Start a loop chosen from the modal, and keep it where the player said.
    *
@@ -6402,7 +6237,7 @@ export default function App() {
       {asked !== null && (
         <ReferencePopover
           asked={asked}
-          characterKey={explorerKey}
+          characterKey={explorer.characterKey}
           explore={openExplorerAt}
           explorer={popoverExplorer}
           level={character.progress.level}
@@ -6421,7 +6256,7 @@ export default function App() {
           }}
           openRoom={inspectRoom}
           openTextblock={inspectTextblock}
-          purseKey={explorerPurseKey}
+          purseKey={explorer.purseKey}
           realm={character.realm}
           rules={referenceRules}
           supplies={suppliesBundle(session)}
@@ -6436,7 +6271,7 @@ export default function App() {
       */}
       {tbAsked !== null && (
         <TextblockPopover
-          ask={explorerTextblock}
+          ask={explorer.textblock}
           asked={tbAsked}
           defaultMap={character.room.map ?? 1}
           explore={() => openExplorerAt('textblock', tbAsked.n)}
@@ -6550,26 +6385,12 @@ export default function App() {
         found.
       */}
       <ExplorerScreen
-        buy={explorerBuy}
-        buyPlan={explorerBuyPlan}
-        characterKey={explorerKey}
+        {...explorer}
         characterName={character.name ?? session}
-        detail={explorerDetail}
-        eq={explorerEq}
         focus={explorerFocus}
-        textblock={explorerTextblock}
-        learn={explorerLearn}
-        learnPlan={explorerLearnPlan}
-        lists={explorerLists}
-        tools={explorerTools}
-        hereRoom={explorerHere}
-        list={explorerList}
         onClose={closeExplorer}
         open={explorerOpen}
-        purseKey={explorerPurseKey}
-        roomSearch={explorerRoomSearch}
-        roomTip={explorerRoomTip}
-        roomView={explorerRoomView}
+        popOut={popOutExplorer}
         session={session}
         walkTo={explorerWalkTo}
       />

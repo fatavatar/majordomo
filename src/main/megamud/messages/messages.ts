@@ -327,6 +327,7 @@ function actOnNumber(s: Session, rec: MessageRec): void {
       if (s.Other_IgnoreBlind !== 0) eff &= ~MessageEffect.Blinded;
       if (s.Other_IgnoreConfusion !== 0) eff &= ~MessageEffect.Confused;
       if (s.Other_IgnorePoison !== 0) eff &= ~MessageEffect.Poisoned;
+      if (s.Other_IgnoreDisease !== 0) eff &= ~MessageEffect.Diseased;
       if (eff !== 0 || rec.effects === 0) {
         rec.flags |= MessageFlag.RestedOn;
         s.restUntilOff += 1;

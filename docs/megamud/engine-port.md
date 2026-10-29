@@ -472,6 +472,15 @@ the terminal's reset (`0x418280`).
   in the session struct, and an INI written for MegaMUD carries them unread.
   The Combat tab draws them as rows of ours among MegaMUD's
   (`shared/megamud/layout.ts`).
+- **Ignore disease** (asked for 2026-10-28). MegaMUD's Other tab ignores
+  poison, blindness and confusion but not disease. On Bowel and Archer's
+  realm every disease our tracker read (`diseaseHeard`) had each telepath
+  `@diseased` to the other (`0x40dfa0`, asked again at each rest, `0x4161d0`),
+  though neither had a cure. `Other.IgnoreDisease`, ours, ticked, rests for no
+  disease (`rest.ts`), casts no cure for its own and asks the party for none
+  (`diseaseToCure`), and takes no Messages.md row's disease as a reason to rest
+  on (`actOnNumber`); it still cures a member who asks. A row of ours in the
+  Other tab's list, under Ignore confusion (`ADDED_LIST_ROWS`).
 
 ## Order of work
 

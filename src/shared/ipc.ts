@@ -116,7 +116,9 @@ export interface MegaNames {
 import type { StatlineSample } from './megamud/lists';
 import type {
   ExplorerBuyPlan,
+  ExplorerAs,
   ExplorerDetail,
+  ExplorerFocus,
   ExplorerKind,
   ExplorerList,
   ExplorerOptions,
@@ -717,7 +719,20 @@ export const Send = {
    */
   expReset: 'session:exp-reset',
   /** A baseline this window kept from before main kept one, taken once while main has none. */
-  statsBase: 'session:stats-base'
+  statsBase: 'session:stats-base',
+  /**
+   * The Explorer in a window of its own, asked to show a character, and to
+   * open on an entry where one is named (2026-10-29): the Explorer command or
+   * a Gear or Reference link pressed in the main window. Main hands it on to
+   * every window as `Push.explorerFocus`, and the Explorer's window takes it.
+   */
+  explorerFocus: 'explorer:focus',
+  /**
+   * The popped-out Explorer's Walk here: main hands it on as
+   * `Push.explorerWalk`, and the window showing that character opens its
+   * route panel on the room, as the Explorer over the console does.
+   */
+  explorerWalk: 'explorer:walk'
 } as const;
 
 /** Renderer -> main, request/response. */
@@ -872,6 +887,31 @@ export const Invoke = {
    * viewer's machine and main is not.
    */
   raiseWindow: 'windows:raise',
+  /**
+   * A character's Explorer in a window of its own (2026-10-29): brought to the
+   * front if one is open, and opened if not and `create`. Resolves to whether
+   * one shows it now, so a link pressed in the main window goes there, or to
+   * the Explorer over the console where there is none.
+   *
+   * Answered in the window itself over the web bridge, where the window is a
+   * browser pop-up, the tab's own to open.
+   */
+  explorerWindow: 'windows:explorer',
+  /**
+   * Who a character's Explorer answers for (`ExplorerAs`, 2026-10-29): set,
+   * null for the character as played, and read. Kept in main, so every
+   * window's Explorer of that character reads the realm alike; each is told
+   * of a change as `Push.explorerAs`. Its lists, details, maps, EQ and tools
+   * read it; Buy, Wear, Learn and the Gear card are the character's own.
+   */
+  explorerAs: 'explorer:as',
+  explorerAsOf: 'explorer:as-of',
+  /**
+   * The Explorer's Sync: back to the character as played, and the realm asked
+   * for its stat sheet and pack again, so what it answers for is current.
+   * Resolves to whether the realm was asked (only a character in it can be).
+   */
+  explorerSync: 'explorer:sync',
 
   // -- app level
   /** Current options plus the path they were read from. */
@@ -1296,6 +1336,12 @@ export const Push = {
   profiles: 'profiles:changed',
   /** A party roster was made, edited or removed, or a member said `@forget`. */
   partyRosters: 'party:rosters-changed',
+  /** `Send.explorerFocus`, to every window. */
+  explorerFocus: 'explorer:focus-relayed',
+  /** `Send.explorerWalk`, to every window. */
+  explorerWalk: 'explorer:walk-relayed',
+  /** A character's `ExplorerAs` changed. See `Invoke.explorerAs`. */
+  explorerAs: 'explorer:as-changed',
   /**
    * This character proved the realm data wrong, and wrote it down.
    *
@@ -1366,6 +1412,10 @@ export interface IpcApi {
   debugFeed(on: boolean): void;
   /** A character's Combat Stats Reset. See `Send.statsReset`. */
   statsReset(session: SessionId): void;
+  /** The Explorer's window, to a character and an entry. See `Send.explorerFocus`. */
+  explorerFocus(session: SessionId, focus: ExplorerFocus | null): void;
+  /** The popped-out Explorer's Walk here. See `Send.explorerWalk`. */
+  explorerWalk(session: SessionId, room: string): void;
   /** A character's experience reset on the Vitals card. See `Send.expReset`. */
   expReset(session: SessionId): void;
   /** A baseline this window kept from before main kept one. See `Send.statsBase`. */
@@ -1493,6 +1543,12 @@ export interface IpcApi {
   gatherWindows(): Promise<string | null>;
   /** Bring this window to the front. See the channel. */
   raiseWindow(): Promise<void>;
+  /** Whether the character's Explorer has a window of its own now. See the channel. */
+  explorerWindow(session: SessionId, create: boolean): Promise<boolean>;
+  /** Who the character's Explorer answers for. See the channel. */
+  explorerAs(session: SessionId, as: ExplorerAs | null): Promise<ExplorerAs | null>;
+  explorerAsOf(session: SessionId): Promise<ExplorerAs | null>;
+  explorerSync(session: SessionId): Promise<boolean>;
 
   getConfig(): Promise<ConfigSnapshot>;
   /** The client's internal settings — the palette's pinned commands live here. */
@@ -1916,6 +1972,9 @@ export interface IpcApi {
   onSessions(handler: (sessions: SessionSummary[]) => void): () => void;
   onProfiles(handler: (profiles: ProfileSummary[]) => void): () => void;
   onPartyRosters(handler: (rosters: PartyRoster[]) => void): () => void;
+  onExplorerFocus(handler: (message: Addressed<ExplorerFocus | null>) => void): () => void;
+  onExplorerAs(handler: (message: Addressed<ExplorerAs | null>) => void): () => void;
+  onExplorerWalk(handler: (message: Addressed<string>) => void): () => void;
   onLearned(handler: (message: Addressed<Discovery[]>) => void): () => void;
   onFinds(handler: (message: Addressed<Find[]>) => void): () => void;
   onCharacterReset(handler: (message: Addressed<ResetNotice>) => void): () => void;

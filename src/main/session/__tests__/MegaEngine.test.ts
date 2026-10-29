@@ -1482,6 +1482,60 @@ describe('blessings the realm says last', () => {
   });
 });
 
+describe('the timed events over a settings save', () => {
+  it('keeps the time an unchanged event is due, and runs nothing early', () => {
+    const { e } = engine();
+    e.s.online = 1;
+    e.s.inGame = 1;
+    const settings = defaultSettings();
+    const fatty = ['Event0', '5:-1:60:sys god fatty neutral'] as [string, string];
+    settings.extra = [{ name: 'Schedule', entries: [fatty] }];
+    e.reload({ settings, data: e.s.data, grants: {} });
+    const due = e.s.events[0]!.dueAt;
+    expect(e.s.eventNext).toBe(0);
+    expect(due).toBeGreaterThan(e.s.now);
+    settings.extra = [
+      { name: 'Schedule', entries: [fatty, ['Event1', '5:-1:60:sys god skinny neutral']] }
+    ];
+    e.reload({ settings, data: e.s.data, grants: {} });
+    expect(e.s.events.map((x) => x.dueAt > 0)).toEqual([true, true]);
+    expect(e.s.events[0]!.dueAt).toBe(due);
+    expect(e.s.eventNext).toBe(0);
+    e.dispose();
+  });
+});
+
+describe('Regroup’s join', () => {
+  it('joins as MegaMUD does, the Party tab’s rank taken with it', () => {
+    const { e, sent } = engine();
+    e.s.inGame = 0;
+    e.s.Party_PartyRank = 0;
+    e.join('Bowel');
+    expect(sent.join('')).toContain('join Bowel\r');
+    expect(sent.join('')).toContain('frontrank\r');
+    expect(e.s.leaderName).toBe('Bowel');
+    e.dispose();
+  });
+});
+
+describe('a sys goto sent', () => {
+  /*
+   * Fatty, sent from the green dragon caverns by a `@do sys goto kha` with a
+   * run still to make, never blessed again (2026-10-27): only a step spends a
+   * run, and the blessings wait one out.
+   */
+  it('calls off a run still to be made, whoever sent it', () => {
+    const { e } = engine();
+    e.s.runCount = 2;
+    e.s.runByChoice = 1;
+    e.commandSent('say sys goto kha');
+    expect(e.s.runCount).toBe(2);
+    e.commandSent('  SYS GOTO kha');
+    expect([e.s.runCount, e.s.runByChoice]).toEqual([0, 0]);
+    e.dispose();
+  });
+});
+
 describe('the realm’s BBS set-up', () => {
   /* MegaMUD's BBS.INI keys, from the realm's own settings (2026-10-13). */
   it('is read at the start and again on a settings reload', () => {

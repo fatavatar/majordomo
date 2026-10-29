@@ -99,6 +99,7 @@ export type BlockType =
   | 'user-location'
   /** `pro`'s `Statusline:` row: what the realm says the prompt is. */
   | 'user-statline'
+  | 'sys-goto-places'
   | 'user-encumbrance'
   /** `health`: the one command that reports current *and* maximum together. */
   | 'user-health'
@@ -930,6 +931,7 @@ const DOMAIN_OF: Record<BlockType, BlockDomain> = {
   'user-profile': 'status',
   'user-location': 'status',
   'user-statline': 'status',
+  'sys-goto-places': 'status',
   'user-encumbrance': 'status',
   'user-health': 'status',
   'user-dies': 'presence',

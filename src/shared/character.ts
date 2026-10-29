@@ -1626,6 +1626,12 @@ export interface CharacterState {
   stated: StatedSheet | null;
   /** See `StatusLineFacts`. */
   statline: StatusLineFacts;
+  /**
+   * Where the realm says `sys goto` goes, as it last listed them (`Current
+   * GOTO locations:`), lower-cased. Empty until it has. A fact about the realm
+   * as this character heard it, which `PartyBook` keeps per realm.
+   */
+  gotoPlaces: string[];
   /** Epoch ms of the last status line, i.e. the last confirmed heartbeat. */
   lastStatusAt: number | null;
   /** Epoch ms of the last change to any of the above. */
@@ -1713,6 +1719,7 @@ export const EMPTY_CHARACTER: CharacterState = {
   abilities: null,
   stated: null,
   statline: { reported: null, exact: null },
+  gotoPlaces: [],
   lastStatusAt: null,
   updatedAt: null
 };

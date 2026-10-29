@@ -139,6 +139,25 @@ describe('the combat step (0x4120b0)', () => {
     expect(combatStep(s)).toBe(0);
     expect(s.pending.map((p) => p.text)).toEqual(['/Fatty @heal\r']);
   });
+
+  /*
+   * Bowel and Archer, neither with a cure, telepathed `@diseased` to each
+   * other at every rest of every disease (2026-10-28): Ignore disease, ours,
+   * asks nobody.
+   */
+  it('asks the party to cure a disease, unless told to ignore disease', () => {
+    const { s } = fighter([]);
+    s.partySize = 2;
+    member(s, 0, 'Skinny', 100);
+    member(s, 1, 'Fatty', 100);
+    s.diseaseHeard = 1;
+    s.Other_IgnoreDisease = 1;
+    combatStep(s);
+    expect(s.pending).toEqual([]);
+    s.Other_IgnoreDisease = 0;
+    combatStep(s);
+    expect(s.pending.map((p) => p.text)).toEqual(['/Fatty @diseased\r']);
+  });
 });
 
 describe('attack spells (0x40f510)', () => {

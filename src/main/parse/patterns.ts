@@ -86,6 +86,9 @@ export interface Rule {
  * Only health takes a sign. Mana never goes negative anywhere in that corpus,
  * and a sign added where nothing has been seen is a guess.
  */
+/** `sys goto`'s places, whole: a list of words that ends without a comma. */
+const GOTO_PLACES = /^Current GOTO locations: (?<places>\w+(?:,\s*\w+)*)\s*$/;
+
 export const STATUS_LINE =
   /^\[(?:HP|H)=(?<hp>-?\d{1,6})(?:\/(?<hpMax>\d{1,6}))?(?:[/,| ]\s*(?<manaType>MA|KAI|M|K)=(?<mana>\d{1,6})(?:\/(?<manaMax>\d{1,6}))?)?(?<fields>[^\]]*?)(?:\s?\((?<stateA>Resting|Meditating)\)\s?)?\]:?(?:\s?\((?<stateB>Resting|Meditating)\))?/;
 
@@ -351,6 +354,17 @@ export const RULES: Rule[] = [
     type: 'user-statline',
     pattern: /^Statusline:\s+(?<statline>\S.*?)\s*$/
   },
+  /*
+   * The realm's own list of where `sys goto` goes, which it prints when one
+   * names nowhere it knows (Skinny, 2026-10-27, the list folded at the
+   * realm's width onto a second line read by the batch rule below):
+   *
+   *     Current GOTO locations: NEWHAVEN, SILVERMERE, SUPPORT, RHUDAUR,
+   *                             KHAZARAD, LOSTCITY
+   *
+   * What the Party card's Muster offers (`PartyBook.gotoStated`).
+   */
+  { type: 'sys-goto-places', pattern: GOTO_PLACES },
   {
     // MajorMUD's own spelling of the word is `Encumberance:`; see the
     // `user-inventory` batch, which reads the same line inside the listing.
@@ -2424,6 +2438,15 @@ const GANG_ROW =
   /^(?<name>[A-Z][\w'-]*)(?: (?<last>[A-Z][\w'-]*))?\s{2,}(?<level>\d+) (?<who>.+?)\s+(?:- (?<online>Online))?\s*(?:\[(?<rank>\w+)\])?\s*$/;
 
 export const BATCH_RULES: BatchRule[] = [
+  {
+    // The list of `sys goto` places, folded: ended where no comma follows.
+    type: 'sys-goto-places',
+    header: /^Current GOTO locations: /,
+    shape: 'object',
+    wraps: 'record',
+    maxLines: 4,
+    qualifiers: [GOTO_PLACES]
+  },
   {
     /*
      * A floor listing the server wrapped. Live (`out/drive-L30-loop.jsonl`,

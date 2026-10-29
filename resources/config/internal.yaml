@@ -685,6 +685,12 @@ tuning:
     # character does not do it again when the @party line reaches it.
     partyEchoMs: 120000
 
+    # How long after a Muster's sys goto the party is put back together
+    # whatever the card's Regroup switch says: the teleport takes everybody
+    # out of the party, and the invitations and joins go out as each one
+    # lands with the leader.
+    partyReformMs: 60000
+
     # Negotiation records the diagnostics pane can look back over.
     telnetLogLimit: 500
 

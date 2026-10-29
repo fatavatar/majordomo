@@ -68,6 +68,21 @@ describe('the figures a design draws from', () => {
     expect(withReading(known, read)).toMatchObject({ hp: 50, hpMax: 156, state: null, level: 3 });
   });
 
+  it("keeps the state's experience over the prompt's, which is not the total", () => {
+    const known: StatlineFigures = { ...figures, exp: 34548223718 };
+    const read = {
+      hp: null,
+      hpMax: null,
+      mana: null,
+      manaMax: null,
+      exp: 3705639445,
+      need: null,
+      wealth: null,
+      state: null
+    };
+    expect(withReading(known, read).exp).toBe(34548223718);
+  });
+
   it('states the ceiling the prompt row holds, which is the server’s own repaint width', () => {
     expect(STATLINE_MAX_CELLS).toBe(79);
   });

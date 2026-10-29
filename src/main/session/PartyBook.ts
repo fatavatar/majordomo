@@ -1,7 +1,13 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { readRoster, sameName, type PartyRoster } from '../../shared/partyRoster';
+import {
+  readPlace,
+  readRoster,
+  sameName,
+  withStatedPlaces,
+  type PartyRoster
+} from '../../shared/partyRoster';
 import { errorMessage } from '../../shared/values';
 import { t } from '../app/i18n';
 
@@ -24,10 +30,13 @@ export interface PartyBookOptions {
 interface PartyFile {
   v: number;
   rosters: PartyRoster[];
+  /** Each realm's `sys goto` places, as it last listed them. */
+  goto: Record<string, string[]>;
 }
 
 export class PartyBook {
   private kept: PartyRoster[] = [];
+  private goto: Record<string, string[]> = {};
   private loaded = false;
   /** True once the file was found unreadable; nothing is written over it. */
   private suspended = false;
@@ -74,6 +83,34 @@ export class PartyBook {
     return this.kept;
   }
 
+  /** Where `sys goto` goes on `realm`, as it last listed them; empty until it has. */
+  gotoOn(realm: string): string[] {
+    this.load();
+    return this.goto[realm] ?? [];
+  }
+
+  /**
+   * The realm listed its `sys goto` places (2026-10-27): kept for the realm,
+   * and each place it had not listed before added to every roster on it, so
+   * Muster offers all of them. Only what is new is added, so a place the
+   * player took off a roster stays off until the realm's list changes.
+   */
+  gotoStated(realm: string, places: readonly string[]): void {
+    this.load();
+    const before = this.goto[realm] ?? [];
+    const stated = places.map(readPlace).filter((place): place is string => place !== null);
+    if (stated.length === 0 || stated.join() === before.join()) return;
+    const added = stated.filter((place) => !before.some((held) => sameName(held, place)));
+    this.goto = { ...this.goto, [realm]: stated };
+    const next = this.kept.map((entry) =>
+      entry.realm !== realm || added.length === 0
+        ? entry
+        : { ...entry, places: withStatedPlaces(entry.places, added) }
+    );
+    if (JSON.stringify(next) === JSON.stringify(this.kept)) this.write();
+    else this.commit(next);
+  }
+
   /**
    * `@forget` from `name` on `realm`: left out of its roster's regrouping
    * until the player puts them back. Nothing when no roster names them.
@@ -116,10 +153,17 @@ export class PartyBook {
       );
       return;
     }
-    const rosters =
-      typeof parsed === 'object' && parsed !== null
-        ? (parsed as Record<string, unknown>)['rosters']
-        : null;
+    const record =
+      typeof parsed === 'object' && parsed !== null ? (parsed as Record<string, unknown>) : {};
+    const goto = record['goto'];
+    if (typeof goto === 'object' && goto !== null) {
+      for (const [realm, places] of Object.entries(goto)) {
+        if (!Array.isArray(places)) continue;
+        const read = places.map(readPlace).filter((place): place is string => place !== null);
+        if (read.length > 0) this.goto[realm] = read;
+      }
+    }
+    const rosters = record['rosters'];
     if (!Array.isArray(rosters)) return;
     for (const value of rosters) {
       const roster = readRoster(value);
@@ -131,7 +175,7 @@ export class PartyBook {
   private write(): void {
     if (this.suspended) return;
     const temporary = `${this.options.file}.tmp`;
-    const file: PartyFile = { v: 1, rosters: this.kept };
+    const file: PartyFile = { v: 1, rosters: this.kept, goto: this.goto };
     try {
       fs.mkdirSync(path.dirname(this.options.file), { recursive: true });
       fs.writeFileSync(temporary, `${JSON.stringify(file, null, 2)}\n`);

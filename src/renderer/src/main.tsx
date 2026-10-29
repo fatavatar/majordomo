@@ -1,8 +1,10 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 
+import { EXPLORER_WINDOW_PARAM } from '@shared/explorer';
 import type { IpcApi } from '@shared/ipc';
 import App from './App';
+import ExplorerWindow from './ExplorerWindow';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { t } from './lib/i18n';
 import { createWebBridge } from './lib/webBridge';
@@ -34,13 +36,19 @@ const root = createRoot(container);
  * (`clientReady`, the roster, each console's attach and backscroll) without
  * reloading the page (upstream 4e94f8bf).
  */
+// A character's Explorer in a window of its own (2026-10-29) draws only that.
+const explorerOf = new URLSearchParams(location.search).get(EXPLORER_WINDOW_PARAM);
 let mounted = 0;
 const mount = (): void => {
   mounted += 1;
   root.render(
     <StrictMode>
       <ErrorBoundary>
-        <App key={mounted} />
+        {explorerOf !== null ? (
+          <ExplorerWindow key={mounted} session={explorerOf} />
+        ) : (
+          <App key={mounted} />
+        )}
       </ErrorBoundary>
     </StrictMode>
   );

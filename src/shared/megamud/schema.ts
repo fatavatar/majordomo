@@ -1113,6 +1113,15 @@ export const SETTINGS: readonly SettingDef[] = [
   { section: 'Other', key: 'IgnorePoison', kind: 'int', default: 0, offset: 0x9050 },
   { section: 'Other', key: 'IgnoreBlind', kind: 'int', default: 0, offset: 0x9054 },
   { section: 'Other', key: 'IgnoreConfusion', kind: 'int', default: 0, offset: 0x9058 },
+  /*
+   * Ours, not megamud.exe's (asked for 2026-10-28): MegaMUD ignores poison,
+   * blindness and confusion but not disease. On Bowel and Archer's realm every
+   * disease our tracker read had each telepath `@diseased` to the other, who
+   * had no cure for it, at every rest until it died down. Ticked, a disease
+   * is not rested for, cured or asked about. No `offset`, as the session
+   * struct has no slot for it; MegaMUD ignores the key in an INI.
+   */
+  { section: 'Other', key: 'IgnoreDisease', kind: 'int', default: 0 },
   { section: 'Other', key: 'CureOverMinorHeal', kind: 'int', default: 0, offset: 0x905c },
   { section: 'Other', key: 'CastEndOfRound', kind: 'int', default: 0, offset: 0x9060 },
   { section: 'Other', key: 'BlessPriority', kind: 'int', default: 0, offset: 0x9064 },

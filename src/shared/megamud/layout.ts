@@ -11,7 +11,7 @@
  * the frame it belongs to. A MegaMUD player finds every box in the order it
  * always was, with the new rows among them.
  */
-import type { SettingsTab, TabControl } from './settingsTabs';
+import type { ChecklistRow, SettingsTab, TabControl } from './settingsTabs';
 
 /** One row added to a tab. */
 export interface AddedRow {
@@ -77,6 +77,26 @@ export const ADDED_ROWS: Readonly<Record<string, readonly AddedRow[]>> = {
   ]
 };
 
+/** A row added to a tab's checklist, below the row of the setting `after` names. */
+export interface AddedListRow {
+  after: string;
+  row: ChecklistRow;
+}
+
+/** The checklist rows added to each tab, by its title. */
+export const ADDED_LIST_ROWS: Readonly<Record<string, readonly AddedListRow[]>> = {
+  /*
+   * Ignore disease (`Other.IgnoreDisease`, asked for 2026-10-28) with
+   * MegaMUD's Ignore poison, blindness and confusion.
+   */
+  Other: [
+    {
+      after: 'IgnoreConfusion',
+      row: { label: 'Ignore disease', kind: 'check', section: 'Other', key: 'IgnoreDisease' }
+    }
+  ]
+};
+
 /**
  * Part of a column moved up: every control from `left` to before `right`
  * across, at or below `from` down, by `by` dialog units. A frame there that
@@ -120,7 +140,23 @@ export function tabAsDrawn(tab: SettingsTab): SettingsTab {
     lifts.length === 0
       ? tab
       : { ...tab, controls: lifts.reduce<TabControl[]>(lifted, [...tab.controls]) };
-  return withRows(base);
+  return withRows(withListRows(base));
+}
+
+/** `tab` with this client's checklist rows added, each below its setting's. */
+function withListRows(tab: SettingsTab): SettingsTab {
+  const added = ADDED_LIST_ROWS[tab.title];
+  if (added === undefined || added.length === 0) return tab;
+  const controls = tab.controls.map((c) => {
+    if (c.rows === undefined) return c;
+    const rows = [...c.rows];
+    for (const { after, row } of added) {
+      const at = rows.findIndex((r) => r.key === after);
+      if (at !== -1) rows.splice(at + 1, 0, row);
+    }
+    return rows.length === c.rows.length ? c : { ...c, rows };
+  });
+  return { ...tab, controls };
 }
 
 /** `tab` with this client's rows added. */

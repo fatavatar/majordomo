@@ -14,6 +14,10 @@
  *    ours that has one — says who is in the party, who is only invited, and
  *    everybody else's health as a share.
  * 3. **The roster** says who should be there, who leads and where they stand.
+ *
+ * Whoever the listing names that the roster does not is drawn too, after the
+ * roster's own, as a guest: travelling with the party all the same, and most
+ * often somebody else's character who joined after the roster was made.
  */
 import type { CharacterState, PartyActivity, PartyMember } from '@shared/character';
 import { ratio } from '@shared/character';
@@ -55,6 +59,8 @@ export interface BoardRow {
   activity: PartyActivity | { state: 'fighting' } | null;
   /** The room a member of ours is in, when it is not the leader's. */
   away: string | null;
+  /** In the party by its listing, but not on the roster (always false without one). */
+  guest: boolean;
 }
 
 /** `name`'s row in the first listing that has one: the leader's first. */
@@ -131,7 +137,8 @@ function rowFor(
     vitals,
     hpMaxGuess: own === null ? (entry?.hpMaxGuess ?? null) : null,
     activity,
-    away
+    away,
+    guest: false
   };
 }
 
@@ -169,14 +176,27 @@ export function boardRows(
       'out'
     )
   );
-  return rows.sort((a, b) => Number(b.leader) - Number(a.leader));
+  /*
+   * The guests, off the party's own listing only: the leader's when the
+   * leader is ours, else this character's. Another of ours may be listing a
+   * different party altogether.
+   */
+  const party = leading?.character ?? self;
+  const guests = party.party.members
+    .filter((member) => !roster.members.some((m) => sameName(m.name, member.name)))
+    .map((member) => ({
+      ...rowFor(member.name, roster.leader, null, false, ours, [party], 'in'),
+      guest: true
+    }));
+  return [...rows.sort((a, b) => Number(b.leader) - Number(a.leader)), ...guests];
 }
 
-/** How many rows are travelling together, against how many should be. */
+/** How many of the roster's rows are travelling together, against how many should be. */
 export function together(rows: readonly BoardRow[]): { in: number; of: number } {
+  const roster = rows.filter((row) => !row.guest);
   return {
-    in: rows.filter((row) => row.status === 'in').length,
-    of: rows.filter((row) => row.status !== 'forgotten').length
+    in: roster.filter((row) => row.status === 'in').length,
+    of: roster.filter((row) => row.status !== 'forgotten').length
   };
 }
 

@@ -80,6 +80,23 @@ export function rosterOf(
   );
 }
 
+/**
+ * A roster's places with ones the realm stated added: a place kept as the
+ * start of exactly one of them (MegaMUD's `sil` for SILVERMERE) gives way to
+ * the realm's whole word where it stands, and the rest follow in the realm's
+ * order. Places the player added that the realm did not state stay.
+ */
+export function withStatedPlaces(kept: readonly string[], stated: readonly string[]): string[] {
+  const whole = kept.map((place) => {
+    const matches = stated.filter((word) => word.toLowerCase().startsWith(place.toLowerCase()));
+    return matches.length === 1 ? matches[0]! : place;
+  });
+  const out: string[] = [];
+  for (const place of [...whole, ...stated])
+    if (!out.some((held) => sameName(held, place))) out.push(place);
+  return out;
+}
+
 /** Whether `name` asked to be left out of this roster's regrouping. */
 export function isForgotten(roster: PartyRoster, name: string): boolean {
   return roster.forgotten.some((entry) => sameName(entry, name));

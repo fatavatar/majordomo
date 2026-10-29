@@ -44,7 +44,10 @@ import { depositAll } from '../megamud/items/all';
 import { connected, connectFailed, connectionClosed } from '../megamud/script/game';
 import { reEngage } from '../megamud/script/modes';
 import { queue, send, wake } from '../megamud/script/send';
+import { combatOff } from '../megamud/combat/engaged';
 import { startRun } from '../megamud/script/run';
+import { joinLeader } from '../megamud/party/ranks';
+import { keepSchedule } from '../megamud/script/events';
 import { tuning } from '../app/tuning';
 import { forgetAwaited, setState } from '../megamud/script/state';
 import {
@@ -391,6 +394,9 @@ const AFFLICTION_FLAG = {
 
 /** How long a walk waits on the realm saying where the character is. */
 const LOCATE_WAIT_MS = 5000;
+
+/** A MUD op's `sys goto <place>` line. */
+const SYS_GOTO = /^sys\s+goto\s+\S/i;
 
 /** Ours, not MegaMUD's: `automation.safety.fleeGoto`, the `sys goto` escape. See `useFlee`. */
 export interface FleeGoto {
@@ -820,6 +826,7 @@ export class MegaEngine {
     TOGGLE_FIELDS.forEach((field, i) => (s[field] = toggles[i]!));
     if (s.rulesChanged !== 0) [s.rules, s.ruleAt] = [rules, ruleAt];
     if (s.eventsChanged !== 0) [s.events, s.eventNext] = [events, eventNext];
+    else keepSchedule(s, events);
     if (s.monitorsChanged !== 0) s.monitors = monitors;
     grantPlayers(s, setup.grants, setup.joinWhenInvited);
     s.botCommands = setup.botCommands ?? [];
@@ -1430,6 +1437,55 @@ export class MegaEngine {
     this.act(() => playerKey(this.s));
   }
 
+  /**
+   * Out of the fight, now: `break`, and the fight forgotten, as a member's
+   * `@OI!` takes this character off its target (`oi`). Ours, for a Muster's
+   * `sys goto` (2026-10-27), which would otherwise land the character still
+   * fighting what it left behind.
+   */
+  breakCombat(): void {
+    this.act(() => {
+      const s = this.s;
+      if (s.inCombat === 0) return;
+      send(s, 'break\r');
+      typedCommand(s, 0, 'break');
+      combatOff(s);
+      s.target = '';
+    });
+  }
+
+  /**
+   * Join `leader`'s party as MegaMUD joins one it was invited to
+   * (`joinLeader`): the leader followed, the rank `Party.PartyRank` asks for
+   * taken, and the leader asked to wait if held. The Party card's Regroup
+   * sent a bare `join`, so a character joined that way stood at the realm's
+   * Midrank whatever its Party tab said (Archer, 2026-10-28).
+   */
+  join(leader: string): void {
+    this.act(() => {
+      joinLeader(this.s, leader);
+      wake(this.s);
+    });
+  }
+
+  /**
+   * Ours (2026-10-27): a command on its way to the realm, from anyone. A
+   * `sys goto` calls off a run still to be made, as MegaMUD's own at
+   * critical HP does (`criticalHp`): the realm takes the character away from
+   * what it was running from. Only a step spends a run, so one left
+   * outstanding once the walk was let go stood for good, and the blessings
+   * (D25), which wait out a run, were never cast again: Fatty, sent from the
+   * green dragon caverns to Khazarad by a `@do sys goto kha`, sang nothing
+   * for eight hours, until Combat was pressed off and on.
+   */
+  commandSent(command: string): void {
+    if (!SYS_GOTO.test(command.trim())) return;
+    this.act(() => {
+      this.s.runCount = 0;
+      this.s.runByChoice = 0;
+    });
+  }
+
   /** A command the player typed. */
   typed(command: string): void {
     this.playerSent();
@@ -1704,7 +1760,7 @@ export class MegaEngine {
         if (ch !== '\x01') this.lineSoFar += ch;
         continue;
       }
-      if (/^sys\s+goto\s+\S/i.test(this.lineSoFar.trim())) out += '\r';
+      if (SYS_GOTO.test(this.lineSoFar.trim())) out += '\r';
       this.lineSoFar = '';
     }
     return out;

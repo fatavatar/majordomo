@@ -31,7 +31,8 @@ import {
   isForgotten,
   sameName,
   type MusterTarget,
-  type PartyRoster
+  type PartyRoster,
+  type RosterRank
 } from '../../shared/partyRoster';
 import type { SessionId } from '../../shared/ipc';
 import { roomId, type RoomId } from '../../shared/world';
@@ -54,7 +55,11 @@ export type RegroupAct =
   /** A member of ours asks a leader who is not ours for an invitation. */
   | { session: SessionId; act: 'askInvite'; leader: string }
   /** A member of ours walks to the leader's room. */
-  | { session: SessionId; act: 'walk'; leader: string; to: RoomId };
+  | { session: SessionId; act: 'walk'; leader: string; to: RoomId }
+  /** A member of ours stops following somebody who is not the roster's leader (`leave`). */
+  | { session: SessionId; act: 'leave'; name: string }
+  /** A member of ours takes the rank the roster gives it (`frontrank`, `midrank`, `backrank`). */
+  | { session: SessionId; act: 'rank'; rank: RosterRank };
 
 const here = (character: CharacterState): RoomId | null =>
   character.room.map === null || character.room.number === null
@@ -78,11 +83,29 @@ export function regroupActs(
   const leaderName = roster.leader;
   const leader = ourOf(ours, leaderName);
   const acts: RegroupAct[] = [];
+  /*
+   * A leader changed on the card (2026-10-28): one of ours made leader while
+   * still following the last one leaves that party first, and nothing else
+   * is done until it has — it cannot invite anybody into a party it is not
+   * leading. The card's Lead only renamed the roster's leader, and the realm
+   * went on following the old one.
+   */
+  if (leader !== null && leader.inGame) {
+    const led = leader.character.party.following;
+    if (led !== null && !sameName(led, leaderName) && !leader.character.inCombat)
+      return [{ session: leader.session, act: 'leave', name: leaderName }];
+  }
 
   for (const { name } of roster.members) {
     if (sameName(name, leaderName) || isForgotten(roster, name)) continue;
     const member = ourOf(ours, name);
     if (member !== null && !member.inGame) continue;
+    // One of ours following somebody else: out of that party first.
+    const following = member?.character.party.following ?? null;
+    if (member !== null && following !== null && !sameName(following, leaderName)) {
+      if (!member.character.inCombat) acts.push({ session: member.session, act: 'leave', name });
+      continue;
+    }
 
     if (leader !== null) {
       if (!leader.inGame) return [];
@@ -111,10 +134,34 @@ export function regroupActs(
 
     // The leader is somebody else's: only our own members can act.
     if (member === null) continue;
-    const following = member.character.party.following;
-    if (following !== null && sameName(following, leaderName)) continue;
+    if (following !== null) continue;
     if (!sees(member.character, leaderName)) continue;
     acts.push({ session: member.session, act: 'askInvite', leader: leaderName });
+  }
+  return acts;
+}
+
+/**
+ * Each member of ours to the rank the roster gives it (2026-10-28): the
+ * card's rank was only ever drawn, so a party set out on the card stood
+ * wherever the realm put it (Archer, Front on the card and on MegaMUD's
+ * Party tab, at Midrank behind Bowel). A member left "As listed" has no rank
+ * here, and MegaMUD's own `Party.PartyRank`, taken on every join, decides.
+ * Only once the listing shows them travelling with the party, and not in a
+ * fight.
+ */
+export function rankActs(roster: PartyRoster, ours: readonly KeptMember[]): RegroupAct[] {
+  const leader = roster.leader === null ? null : ourOf(ours, roster.leader);
+  const acts: RegroupAct[] = [];
+  for (const { name, rank } of roster.members) {
+    if (rank === null || isForgotten(roster, name)) continue;
+    const member = ourOf(ours, name);
+    if (member === null || !member.inGame || member.character.inCombat) continue;
+    // The leader's listing where the leader is ours, else the member's own.
+    const listing = (leader?.inGame ? leader : member).character.party.members;
+    const row = listing.find((m) => sameName(m.name, name));
+    if (row === undefined || row.invited || row.rank === null || row.rank === rank) continue;
+    acts.push({ session: member.session, act: 'rank', rank });
   }
   return acts;
 }
@@ -196,7 +243,9 @@ export type MusterAct = FanAct | { session: SessionId; name: string; act: 'walk'
  * party (`fanOutActs`) — each member of ours that its MegaMUD settings say
  * is a MudOp (`BBS.IsMudop`, the switch MegaMUD's own teleport out at
  * critical HP reads) sends it itself, everybody else gets the leader's
- * `@party`. One that cannot go is said, with why.
+ * `@party`. One that cannot go is said, with why. A fight is no reason not
+ * to teleport out of it: the client breaks it off first (2026-10-27), where
+ * a walk waits for it to end.
  */
 export function musterActs(
   roster: PartyRoster,
@@ -207,8 +256,7 @@ export function musterActs(
   if (target.to === 'place')
     return fanOutActs(roster, ours, {
       others: true,
-      can: (member) =>
-        member.character.inCombat ? 'fighting' : mudop(member.session) ? null : 'notMudop'
+      can: (member) => (mudop(member.session) ? null : 'notMudop')
     });
   const leader = roster.leader === null ? null : ourOf(ours, roster.leader);
   const to = leader !== null && leader.inGame ? here(leader.character) : null;
@@ -237,6 +285,8 @@ const keyOf = (roster: PartyRoster, act: RegroupAct): string =>
  */
 export class PartyKeeper {
   private readonly tried = new Map<string, number>();
+  /** Rosters a Muster's `sys goto` took apart, and until when they are put back (`reform`). */
+  private readonly reforming = new Map<string, number>();
 
   constructor(
     private readonly options: {
@@ -253,7 +303,7 @@ export class PartyKeeper {
   now(roster: PartyRoster, ours: readonly KeptMember[]): number {
     const at = this.options.now?.() ?? Date.now();
     let taken = 0;
-    for (const act of regroupActs(roster, ours, true)) {
+    for (const act of [...regroupActs(roster, ours, true), ...rankActs(roster, ours)]) {
       if (!this.options.run(act)) continue;
       this.tried.set(keyOf(roster, act), at);
       taken += 1;
@@ -261,12 +311,36 @@ export class PartyKeeper {
     return taken;
   }
 
+  /**
+   * A Muster's `sys goto` sent (2026-10-27): the teleport always takes the
+   * party apart, so for `forMs` it is put back together whatever Regroup's
+   * switch says — invited and joined as each member lands with the leader,
+   * and nobody walked, since where everybody stands is only known once they
+   * have landed. What was tried before the teleport is tried again at once.
+   */
+  reform(roster: PartyRoster, forMs: number): void {
+    const now = this.options.now?.() ?? Date.now();
+    this.reforming.set(roster.id, now + forMs);
+    for (const key of [...this.tried.keys()])
+      if (key.startsWith(`${roster.id}:`)) this.tried.delete(key);
+  }
+
   /** Looks at every roster against our characters on its realm. */
   check(rosters: readonly PartyRoster[], oursOn: (realm: string) => readonly KeptMember[]): void {
     const now = this.options.now?.() ?? Date.now();
     const again = this.options.againMs();
     for (const roster of rosters) {
-      for (const act of regroupActs(roster, oursOn(roster.realm))) {
+      const until = this.reforming.get(roster.id);
+      const reform = until !== undefined && now < until;
+      if (until !== undefined && !reform) this.reforming.delete(roster.id);
+      const ours = oursOn(roster.realm);
+      const acts = [
+        ...(reform
+          ? regroupActs(roster, ours, true).filter((act) => act.act !== 'walk')
+          : regroupActs(roster, ours)),
+        ...rankActs(roster, ours)
+      ];
+      for (const act of acts) {
         const key = keyOf(roster, act);
         const at = this.tried.get(key);
         if (at !== undefined && now - at < again) continue;

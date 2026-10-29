@@ -67,7 +67,13 @@ import {
   type FanSkip,
   type RegroupAct
 } from './session/PartyKeeper';
-import { readPlace, type MusterTarget, type PartyRoster } from '../shared/partyRoster';
+import {
+  readPlace,
+  sameName,
+  withStatedPlaces,
+  type MusterTarget,
+  type PartyRoster
+} from '../shared/partyRoster';
 import { bareName } from '../shared/items';
 import { nameAnswersTo } from '../shared/world';
 import {
@@ -177,12 +183,16 @@ import {
   EXPLORER_KINDS,
   type ExplorerBuyPlan,
   type ExplorerKind,
+  isExplorerFocus,
+  asExplorerAs,
+  type ExplorerAs,
+  viewedAs,
   type RoomSearch
 } from '../shared/explorer';
 import { planRoute } from './world/RoutePlanner';
 import { megaNames, type EngineMemory, type MegaEngineSetup } from './session/MegaEngine';
 import type { DebugSave, LearnedSpellTable, SessionSummary } from '../shared/ipc';
-import { EMPTY_CHARACTER } from '../shared/character';
+import { EMPTY_CHARACTER, type CharacterState } from '../shared/character';
 import { IDLE_WALK } from '../shared/walk';
 import {
   asLoopAddress,
@@ -355,6 +365,8 @@ let workspace: Workspace | null = null;
  * what makes closing a window safe and popping a tab out possible.
  */
 const windows = new WindowRegistry();
+/** Who each character's Explorer answers for, where not as played. See `Invoke.explorerAs`. */
+const explorerAs = new Map<SessionId, ExplorerAs>();
 let host: SessionHost | null = null;
 
 /**
@@ -430,9 +442,13 @@ function regroup(act: RegroupAct): boolean {
         t('session.party.regroupInvite', { name: act.name })
       );
     case 'join':
+      return manager.partyJoin(act.leader, t('session.party.regroupJoin', { leader: act.leader }));
+    case 'leave':
+      return manager.partyCommand('leave', t('session.party.regroupLeave', { name: act.name }));
+    case 'rank':
       return manager.partyCommand(
-        `join ${act.leader}`,
-        t('session.party.regroupJoin', { leader: act.leader })
+        `${act.rank}rank`,
+        t('session.party.regroupRank', { rank: act.rank })
       );
     case 'askInvite':
       return manager.partyCommand(
@@ -485,35 +501,47 @@ function partyAlreadyDone(session: SessionId, leader: string, command: string): 
 }
 
 /**
- * A command fanned out across a party (`fanOutActs`), carried out: each
- * member of ours by `direct`, everybody else by the leader's `@party`, with
- * every member of ours marked first as having done it — or as left out of it —
- * so none of them takes the leader's line as theirs as well. A line each
- * for the card.
+ * Commands fanned out across a party (`fanOutActs`), carried out: each
+ * member of ours by `direct`, everybody else by the leader's `@party` of each
+ * in turn, with every member of ours marked first as having done them — or
+ * as left out of them — so none of them takes the leader's lines as theirs as
+ * well. A line each for the card, which names the last command: the one the
+ * others lead up to.
  */
 function fanOut(
   roster: PartyRoster,
   acts: readonly FanAct[],
-  command: string,
+  commands: readonly string[],
   direct: (manager: SessionManager, act: FanAct) => string | null
 ): string[] {
   const leader = roster.leader;
+  const command = commands[commands.length - 1] ?? '';
   if (leader !== null && acts.some((act) => act.act === 'atParty')) {
     for (const { session } of keptOn(roster.realm))
-      doneDirectly.set(doneKey(session, leader, command), Date.now());
+      for (const each of commands) doneDirectly.set(doneKey(session, leader, each), Date.now());
   }
   const said: string[] = [];
-  for (const act of acts) {
+  /*
+   * The leader's `@party` first, queued ahead of what the leader does itself:
+   * its own `sys goto` takes it out of the party, and an `@party` sent after
+   * that reaches nobody (2026-10-27).
+   */
+  const ordered = [
+    ...acts.filter((act) => act.act === 'atParty'),
+    ...acts.filter((act) => act.act !== 'atParty')
+  ];
+  for (const act of ordered) {
     const manager = host?.get(act.session)?.manager;
     if (!manager) continue;
     if (act.act === 'skip') {
       const line = FAN_SKIP[act.why]?.(act.name);
       if (line) said.push(line);
     } else if (act.act === 'atParty') {
-      manager.partyCommand(
-        `${manager.megaMudop.prefix}@party ${command}`,
-        t('session.party.fanReason', { command })
-      );
+      for (const each of commands)
+        manager.partyCommand(
+          `${manager.megaMudop.prefix}@party ${each}`,
+          t('session.party.fanReason', { command: each })
+        );
       said.push(
         t('session.party.fanAtParty', { name: act.name, command, others: act.others.join(', ') })
       );
@@ -536,12 +564,32 @@ function muster(roster: PartyRoster, target: MusterTarget): string[] {
   );
   if (target.to === 'place') {
     const command = `sys goto ${target.place}`;
-    return fanOut(roster, acts as FanAct[], command, (manager, act) => {
+    /*
+     * Out of any fight first, everybody: the others by the leader's
+     * `@party break` ahead of the teleport, and ours each by its own engine,
+     * which forgets the fight as well. The teleport takes everybody out of
+     * the party, so it is put back together as they land (`reform`).
+     */
+    partyKeeper.reform(roster, tuning().session.partyReformMs);
+    const said = fanOut(roster, acts as FanAct[], ['break', command], (manager, act) => {
       // A loop or a walk let go first: walked on from where the teleport lands, it is lost.
       manager.stopMoving();
+      manager.breakCombat();
       manager.partyCommand(command, t('session.party.fanReason', { command }));
       return t('session.party.musterTeleport', { name: act.name, place: target.place });
     });
+    /*
+     * The realm says nothing when the teleport breaks the party, so the
+     * leader's listing would still show everybody and Regroup find nobody to
+     * invite: a leader of ours lists it again, queued behind its own goto.
+     */
+    const leader = acts.find(
+      (act) => act.act === 'direct' && roster.leader !== null && sameName(act.name, roster.leader)
+    );
+    const manager = leader === undefined ? undefined : host?.get(leader.session)?.manager;
+    if (manager?.partyCommand('par', t('session.party.reformReason')) === true)
+      said.push(t('session.party.musterReform', { leader: roster.leader ?? '' }));
+    return said;
   }
   return acts
     .map((act) => {
@@ -1834,8 +1882,12 @@ function createHost(): SessionHost {
      * that two characters on two realms are told apart at a glance.
      */
     label: labelOf,
-    characterChanged: () => {
-      if (parties) partyKeeper.check(parties.all, keptOn);
+    characterChanged: (id) => {
+      if (!parties) return;
+      // The realm's sys goto places, once a character has heard it list them.
+      const places = host?.get(id)?.manager.character.gotoPlaces ?? [];
+      if (places.length > 0) parties.gotoStated(labelOf(id).server, places);
+      partyKeeper.check(parties.all, keptOn);
     },
     partyForgot: (id, name) => parties?.forget(labelOf(id).server, name),
     partyAlreadyDone,
@@ -1950,6 +2002,17 @@ function registerIpc(): void {
   });
   on(Send.statsBase, (_caller, session: SessionId, base: unknown) => {
     if (isCombatTally(base)) host?.get(session)?.manager.adoptStatsBase(base);
+  });
+  // Between a character's popped-out Explorer and the window showing it (2026-10-29).
+  on(Send.explorerFocus, (_caller, session: SessionId, focus: unknown) => {
+    if (host?.has(session) && (focus === null || isExplorerFocus(focus))) {
+      push(Push.explorerFocus, { session, payload: focus });
+    }
+  });
+  on(Send.explorerWalk, (_caller, session: SessionId, room: unknown) => {
+    if (host?.has(session) && typeof room === 'string') {
+      push(Push.explorerWalk, { session, payload: room });
+    }
   });
 
   on(Send.input, (_caller, session: SessionId, data: string) => {
@@ -2396,6 +2459,11 @@ function registerIpc(): void {
     platform.windows.focus(caller.windowId);
   });
 
+  handle(Invoke.explorerWindow, (_caller, session: SessionId, create: unknown) => {
+    if (platform.windows === null || !host?.has(session)) return false;
+    return platform.windows.explorer(session, create === true);
+  });
+
   handle(Invoke.gatherWindows, (caller) => {
     if (platform.windows === null) return t('app.window.noSecondWindow');
     if (!workspace || !host) return t('app.window.nothingToGather');
@@ -2803,9 +2871,20 @@ function registerIpc(): void {
         .map(({ session }) => host?.get(session)?.manager.megaMudop.place ?? '')
         .map(readPlace)
         .filter((place): place is string => place !== null);
-      return parties.save({ ...made, places: [...new Set(places)] });
+      // And every place the realm itself has listed for sys goto.
+      return parties.save({
+        ...made,
+        places: withStatedPlaces(places, parties.gotoOn(made.realm))
+      });
     }
-    return parties.save(roster);
+    const before = parties.all.find((entry) => entry.id === made?.id)?.leader ?? null;
+    const saved = parties.save(roster);
+    // A leader changed on the card: the party re-formed round them now, as a
+    // Regroup press would, whatever the automatic switch says.
+    const after = saved.find((entry) => entry.id === made?.id);
+    if (after?.leader && before !== null && !sameName(before, after.leader))
+      partyKeeper.now(after, keptOn(after.realm));
+    return saved;
   });
   handle(Invoke.regroupParty, (_caller, id: unknown) => {
     const roster = parties?.all.find((entry) => entry.id === id);
@@ -2833,7 +2912,7 @@ function registerIpc(): void {
         chosen: sessions,
         others: others === true
       });
-      return fanOut(roster, acts, text, (manager) => {
+      return fanOut(roster, acts, [text], (manager) => {
         manager.sendMacro(text);
         return null;
       });
@@ -2895,6 +2974,33 @@ function registerIpc(): void {
    * MMUD Explorer for one character (2026-10-18): its realm's own database
    * file, read with MME's logic, and the character as it is now.
    */
+  /*
+   * Who each character's Explorer answers for, where not the character as
+   * played (`ExplorerAs`, 2026-10-29). The reading calls take the character
+   * through it; Buy, Wear, Learn and the Gear card do not.
+   */
+  const viewedBy = (session: SessionId, character: CharacterState): CharacterState =>
+    viewedAs(character, explorerAs.get(session) ?? null);
+  const tellExplorerAs = (session: SessionId): void =>
+    push(Push.explorerAs, { session, payload: explorerAs.get(session) ?? null });
+  handle(Invoke.explorerAs, (_caller, session: SessionId, as: unknown) => {
+    if (!host?.has(session)) return null;
+    const asked = asExplorerAs(as);
+    if (asked === null) explorerAs.delete(session);
+    else explorerAs.set(session, asked);
+    tellExplorerAs(session);
+    return asked;
+  });
+  handle(Invoke.explorerAsOf, (_caller, session: SessionId) => explorerAs.get(session) ?? null);
+  // MajorMUD's stat sheet and pack, which say the class, race, level, stats and what is worn.
+  handle(Invoke.explorerSync, (_caller, session: SessionId) => {
+    const manager = host?.get(session)?.manager;
+    if (manager === undefined) return false;
+    if (explorerAs.delete(session)) tellExplorerAs(session);
+    const stat = manager.ask('stat');
+    const pack = manager.ask('i');
+    return stat || pack;
+  });
   /** A finder's question off the wire, or null for one that does not parse. */
   const asRoomSearch = (value: unknown): RoomSearch | null => {
     const o = (typeof value === 'object' && value !== null ? value : {}) as Record<string, unknown>;
@@ -2932,7 +3038,7 @@ function registerIpc(): void {
         const list = await explorerAsk(
           'list',
           realm.file,
-          manager.character,
+          viewedBy(session, manager.character),
           which,
           asExplorerOptions(options)
         );
@@ -2953,7 +3059,7 @@ function registerIpc(): void {
         return await explorerAsk(
           'detail',
           realm.file,
-          manager.character,
+          viewedBy(session, manager.character),
           explorerKindOf(kind),
           item,
           asExplorerOptions(options)
@@ -3070,7 +3176,13 @@ function registerIpc(): void {
       if (typeof realm === 'string' || manager === undefined)
         return { ...none, reason: typeof realm === 'string' ? realm : '' };
       try {
-        const facts = await explorerAsk('room', realm.file, manager.character, map, room);
+        const facts = await explorerAsk(
+          'room',
+          realm.file,
+          viewedBy(session, manager.character),
+          map,
+          room
+        );
         return facts.supported ? facts : { ...facts, reason: t('app.explorer.unsupported') };
       } catch (error) {
         return { ...none, reason: t('app.explorer.unreadable', { reason: errorMessage(error) }) };
@@ -3096,7 +3208,12 @@ function registerIpc(): void {
     if (typeof realm === 'string' || manager === undefined || asked === null)
       return { ...none, reason: typeof realm === 'string' ? realm : '' };
     try {
-      const view = await explorerAsk('roomView', realm.file, manager.character, asked);
+      const view = await explorerAsk(
+        'roomView',
+        realm.file,
+        viewedBy(session, manager.character),
+        asked
+      );
       return view.supported ? view : { ...view, reason: t('app.explorer.unsupported') };
     } catch (error) {
       return { ...none, reason: t('app.explorer.unreadable', { reason: errorMessage(error) }) };
@@ -3113,7 +3230,7 @@ function registerIpc(): void {
         return await explorerAsk(
           'roomTip',
           realm.file,
-          manager.character,
+          viewedBy(session, manager.character),
           asked.map,
           asked.room,
           asked.options
@@ -3129,7 +3246,12 @@ function registerIpc(): void {
     const asked = asRoomSearch(search);
     if (typeof realm === 'string' || manager === undefined || asked === null) return {};
     try {
-      return await explorerAsk('roomSearch', realm.file, manager.character, asked);
+      return await explorerAsk(
+        'roomSearch',
+        realm.file,
+        viewedBy(session, manager.character),
+        asked
+      );
     } catch {
       return {};
     }
@@ -3165,7 +3287,12 @@ function registerIpc(): void {
     if (typeof realm === 'string' || manager === undefined)
       return { ...NO_EQ_VIEW, reason: typeof realm === 'string' ? realm : '' };
     try {
-      const view = await explorerAsk('eq', realm.file, manager.character, asEqPlan(plan));
+      const view = await explorerAsk(
+        'eq',
+        realm.file,
+        viewedBy(session, manager.character),
+        asEqPlan(plan)
+      );
       return view.supported ? view : { ...view, reason: t('app.explorer.unsupported') };
     } catch (error) {
       return {
@@ -3184,12 +3311,18 @@ function registerIpc(): void {
         return { equipped: asked.equipped ?? [], found: false };
       const f = (typeof find === 'object' && find !== null ? find : {}) as Record<string, unknown>;
       try {
-        return await explorerAsk('eqBest', realm.file, manager.character, asked, {
-          criterion:
-            typeof f['criterion'] === 'number' ? Math.max(0, Math.trunc(f['criterion'])) : 0,
-          next: f['next'] === true,
-          noLimited: f['noLimited'] === true
-        });
+        return await explorerAsk(
+          'eqBest',
+          realm.file,
+          viewedBy(session, manager.character),
+          asked,
+          {
+            criterion:
+              typeof f['criterion'] === 'number' ? Math.max(0, Math.trunc(f['criterion'])) : 0,
+            next: f['next'] === true,
+            noLimited: f['noLimited'] === true
+          }
+        );
       } catch {
         return { equipped: asked.equipped ?? [], found: false };
       }
@@ -3232,7 +3365,7 @@ function registerIpc(): void {
         const list = await explorerAsk(
           'compare',
           realm.file,
-          manager.character,
+          viewedBy(session, manager.character),
           compareKindOf(kind),
           numbersOf(numbers)
         );
@@ -3266,7 +3399,13 @@ function registerIpc(): void {
         ? names.filter((name): name is string => typeof name === 'string').slice(0, 500)
         : [];
       try {
-        return await explorerAsk('items', realm.file, manager.character, numbersOf(numbers), words);
+        return await explorerAsk(
+          'items',
+          realm.file,
+          viewedBy(session, manager.character),
+          numbersOf(numbers),
+          words
+        );
       } catch {
         return [];
       }
@@ -3278,7 +3417,7 @@ function registerIpc(): void {
     const asked = asToolRequest(request);
     if (typeof realm === 'string' || manager === undefined || asked === null) return null;
     try {
-      return await explorerAsk('tool', realm.file, manager.character, asked);
+      return await explorerAsk('tool', realm.file, viewedBy(session, manager.character), asked);
     } catch {
       return null;
     }

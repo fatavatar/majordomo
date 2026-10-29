@@ -13,6 +13,7 @@ import { app, BrowserWindow, clipboard, dialog, ipcMain, screen, shell } from 'e
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 
+import { EXPLORER_WINDOW_PARAM } from '../../shared/explorer';
 import type { SessionId } from '../../shared/ipc';
 import { t } from '../app/i18n';
 import { HOME_DIR_NAME } from '../app/home';
@@ -25,6 +26,16 @@ export function createElectronHost(layout: Layout): Host {
   app.setPath('userData', path.join(app.getPath('appData'), HOME_DIR_NAME));
   let mainWindow: BrowserWindow | null = null;
   let hooks: ClientHooks | null = null;
+  /**
+   * The Explorer in a window of its own (2026-10-29), one for every
+   * character: it changes character itself, by its chooser or when another's
+   * Explorer is asked for (`Push.explorerFocus`). It owns no characters.
+   */
+  let explorerWindow: BrowserWindow | null = null;
+  const isExplorer = (window: BrowserWindow): boolean => window === explorerWindow;
+  /** The windows that hold characters' tabs. */
+  const gameWindows = (): BrowserWindow[] =>
+    BrowserWindow.getAllWindows().filter((window) => !window.isDestroyed() && !isExplorer(window));
 
   /** Who sent this, as the client wants to know it. */
   const callerOf = (sender: Electron.WebContents): Caller => ({
@@ -52,7 +63,7 @@ export function createElectronHost(layout: Layout): Host {
    */
   function lastWindowStanding(window: BrowserWindow): boolean {
     if (process.platform === 'darwin') return false;
-    return BrowserWindow.getAllWindows().every((other) => other === window || other.isDestroyed());
+    return gameWindows().every((other) => other === window);
   }
 
   /**
@@ -64,7 +75,9 @@ export function createElectronHost(layout: Layout): Host {
    * which characters it has tabs for, which is what keeps one code path for
    * both.
    */
-  function createWindow(options: { owns?: SessionId[] } = {}): BrowserWindow | null {
+  function createWindow(
+    options: { owns?: SessionId[]; explorer?: SessionId } = {}
+  ): BrowserWindow | null {
     // Before `open`, there is no registry to put a window in and nothing for
     // it to show; a `second-instance` arriving in that gap is left to the
     // window `open` is about to make.
@@ -72,6 +85,7 @@ export function createElectronHost(layout: Layout): Host {
     const client = hooks;
     const { width, height } = screen.getPrimaryDisplay().workAreaSize;
     const popped = (options.owns?.length ?? 0) > 0;
+    const explorer = options.explorer ?? null;
     const icon = client.appIcon();
 
     const window = new BrowserWindow({
@@ -110,7 +124,8 @@ export function createElectronHost(layout: Layout): Host {
       }
     });
 
-    if (!popped) mainWindow = window;
+    if (explorer !== null) explorerWindow = window;
+    else if (!popped) mainWindow = window;
     window.once('ready-to-show', () => window.show());
 
     /*
@@ -124,8 +139,11 @@ export function createElectronHost(layout: Layout): Host {
       isDestroyed: () => window.isDestroyed(),
       send: (channel, payload) => window.webContents.send(channel, payload)
     });
-    client.workspace()?.open(window.id);
-    for (const session of options.owns ?? []) client.workspace()?.move(session, window.id);
+    // An Explorer's window shows a character's state and owns no tab of it.
+    if (explorer === null) {
+      client.workspace()?.open(window.id);
+      for (const session of options.owns ?? []) client.workspace()?.move(session, window.id);
+    }
 
     /*
      * The question is asked *here*, before the window goes.
@@ -144,12 +162,18 @@ export function createElectronHost(layout: Layout): Host {
      * closing leaves the app running, which disconnects nobody either.
      */
     window.on('close', (event) => {
-      if (!lastWindowStanding(window)) return;
+      if (explorer !== null || !lastWindowStanding(window)) return;
       if (!client.quitting.mayQuit()) event.preventDefault();
     });
 
     window.on('closed', () => {
       client.windows.remove(window.id);
+      if (explorer !== null) {
+        if (explorerWindow === window) explorerWindow = null;
+        return;
+      }
+      // The Explorer goes with the last window of characters: nothing is left to explore for.
+      if (gameWindows().length === 0) explorerWindow?.close();
       /*
        * Its characters go back to the main window rather than with it. Closing
        * a window must never disconnect a character, and a character with a
@@ -184,12 +208,16 @@ export function createElectronHost(layout: Layout): Host {
     });
 
     const devServer = process.env['ELECTRON_RENDERER_URL'];
+    const search =
+      explorer === null
+        ? ''
+        : new URLSearchParams({ [EXPLORER_WINDOW_PARAM]: explorer }).toString();
     if (devServer) {
-      void window.loadURL(devServer);
+      void window.loadURL(search === '' ? devServer : `${devServer}?${search}`);
     } else {
-      void window.loadFile(path.join(layout.rendererDir, 'index.html'));
+      void window.loadFile(path.join(layout.rendererDir, 'index.html'), { search });
     }
-    client.workspace()?.save();
+    if (explorer === null) client.workspace()?.save();
     return window;
   }
 
@@ -291,7 +319,18 @@ export function createElectronHost(layout: Layout): Host {
         window.show();
         window.focus();
       },
-      count: () => BrowserWindow.getAllWindows().length
+      count: () => gameWindows().length,
+      explorer: (session, create) => {
+        const open = explorerWindow;
+        if (open !== null && !open.isDestroyed()) {
+          if (open.isMinimized()) open.restore();
+          open.show();
+          open.focus();
+          return true;
+        }
+        if (!create) return false;
+        return createWindow({ explorer: session }) !== null;
+      }
     },
     mainWindowId: () => mainWindow?.id ?? null,
 

@@ -117,3 +117,35 @@ describe('the rosters kept (PartyBook)', () => {
     expect(fs.readFileSync(file, 'utf8')).toBe('{ not json');
   });
 });
+
+describe('the realm’s sys goto places', () => {
+  const LISTED = ['newhaven', 'silvermere', 'support', 'rhudaur', 'khazarad', 'lostcity'];
+
+  it('adds each to the realm’s rosters, a MegaMUD short word giving way to the realm’s own', () => {
+    const { book: parties, file } = book();
+    parties.save(roster('a', ['Bowel', 'Archer'], { places: ['kha', 'sil', 'arena'] }));
+    parties.save(roster('b', ['Zed'], { realm: 'Elsewhere', places: ['sil'] }));
+    parties.gotoStated('Skinny Inc', LISTED);
+    expect(parties.all.find((r) => r.id === 'a')?.places).toEqual([
+      'khazarad',
+      'silvermere',
+      'arena',
+      'newhaven',
+      'support',
+      'rhudaur',
+      'lostcity'
+    ]);
+    expect(parties.all.find((r) => r.id === 'b')?.places).toEqual(['sil']);
+    expect(new PartyBook({ file }).gotoOn('Skinny Inc')).toEqual(LISTED);
+  });
+
+  it('leaves a place the player took off alone until the realm lists something new', () => {
+    const { book: parties } = book();
+    parties.save(roster('a', ['Bowel']));
+    parties.gotoStated('Skinny Inc', LISTED);
+    const kept = parties.all[0]!;
+    parties.save({ ...kept, places: kept.places.filter((place) => place !== 'support') });
+    parties.gotoStated('Skinny Inc', LISTED);
+    expect(parties.all[0]!.places).not.toContain('support');
+  });
+});
