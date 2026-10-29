@@ -7,7 +7,7 @@
  * envelope is `src/shared/rpc.ts`; the server side is
  * `src/main/host/WebHost.ts`.
  *
- * Four things the desktop asks main for are answered in the window here,
+ * Five things the desktop asks main for are answered in the window here,
  * because main in web mode is on another machine:
  *
  * - **the clipboard** — `navigator.clipboard`, which a browser tab may use
@@ -19,6 +19,9 @@
  * - **a saved file** — the debug report is written on the client's disk as
  *   on the desktop, then fetched into the browser's downloads over the link
  *   main hands back (`Host.deliver`);
+ * - **the Explorer's own window** — a pop-up of this tab's, the page with
+ *   `?explorer=` naming the character (2026-10-29), as `Invoke.explorerWindow`
+ *   opens a window on the desktop;
  * - **a lost socket** — `lib/webLink.ts` dials again and the client sends
  *   what was missed, so the window carries on as it was. Only a client that
  *   no longer knows the tab makes `onRenewed` remount the window, which
@@ -30,6 +33,7 @@
  * older than `webLostCoverMs` when the link comes back is not sent, since
  * keys typed into a dead link would arrive as a burst of moves.
  */
+import { EXPLORER_WINDOW_PARAM } from '@shared/explorer';
 import {
   bridgeOver,
   Invoke,
@@ -126,6 +130,14 @@ export function createWebBridge(onRenewed: () => void, signal: AbortSignal): Ipc
     };
   };
 
+  /**
+   * The Explorer this tab popped out, one for every character, which it
+   * changes itself. Kept by the tab that opened it: a pop-up is the opener's
+   * to raise, and a tab reloaded since has none, so its links open the
+   * Explorer over the console.
+   */
+  let explorer: Window | null = null;
+
   /** A file main wrote and offered, saved into the browser's downloads (upstream 8db9a39c). */
   const download = (link: string | null): void => {
     if (link === null) return;
@@ -149,6 +161,20 @@ export function createWebBridge(onRenewed: () => void, signal: AbortSignal): Ipc
       // window means this window. The browser grants it off a notification click.
       raiseWindow: async () => {
         window.focus();
+      },
+      // Opened on the press that asked, before anything is awaited, or the browser blocks it.
+      explorerWindow: async (session, create) => {
+        if (explorer !== null && !explorer.closed) {
+          explorer.focus();
+          return true;
+        }
+        if (!create) return false;
+        const page = new URL(location.href);
+        page.search = new URLSearchParams({ [EXPLORER_WINDOW_PARAM]: session }).toString();
+        page.hash = '';
+        const size = `width=${Math.min(1440, screen.availWidth)},height=${Math.round(screen.availHeight * 0.9)}`;
+        explorer = window.open(page.toString(), 'majordomo-explorer', `popup,${size}`);
+        return explorer !== null;
       },
       /*
        * The window's clipboard, not main's — see the header. Writing works on

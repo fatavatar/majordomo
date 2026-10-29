@@ -78,7 +78,7 @@ app:
     noCharacter: There is no character to put it on.
     noSuchItem: The realm has no such item.
     notWorn: '{item} is not something to wear.'
-    unreadable: 'The realm''s database could not be read: {reason}'
+    unreadable: "The realm's database could not be read: {reason}"
     unsupported: The Explorer computes stock MajorMUD only, and this realm's database is GreaterMUD.
   quit:
     cancelButton: Cancel
@@ -191,20 +191,20 @@ notices:
       many: 'Fleeing by sys goto is a setting, off by default, and was written into {count} files
         with the paragraph that explains it: {fileList}'
     monsterRowsStated:
-      one: 'A character''s own monster rows are a setting now, laid over the realm''s monster table,
-        and were written into {count} file with the paragraph that explains them: {fileList}'
-      many: 'A character''s own monster rows are a setting now, laid over the realm''s monster table,
-        and were written into {count} files with the paragraph that explains them: {fileList}'
+      one: "A character's own monster rows are a setting now, laid over the realm's monster table,
+        and were written into {count} file with the paragraph that explains them: {fileList}"
+      many: "A character's own monster rows are a setting now, laid over the realm's monster table,
+        and were written into {count} files with the paragraph that explains them: {fileList}"
     regionsBecameKeepOut:
       one: 'Using the vortexes and entering the Negative Power Plane are now the Keep Out Of list,
         and {count} file was moved over to it: {fileList}'
       many: 'Using the vortexes and entering the Negative Power Plane are now the Keep Out Of list,
         and {count} files were moved over to it: {fileList}'
     regenSpellsStated:
-      many: 'Regeneration spells (MegaMUD''s HP and Mana Regen, and the when-full spells) were added,
-        blank, to {count} files: {fileList}'
-      one: 'Regeneration spells (MegaMUD''s HP and Mana Regen, and the when-full spells) were added,
-        blank, to {fileList}.'
+      many: "Regeneration spells (MegaMUD's HP and Mana Regen, and the when-full spells) were added,
+        blank, to {count} files: {fileList}"
+      one: "Regeneration spells (MegaMUD's HP and Mana Regen, and the when-full spells) were added,
+        blank, to {fileList}."
     autoJoinStated:
       many: 'Join When Invited was added, off, to {count} files: {fileList}'
       one: 'Join When Invited was added, off, to {fileList}'
@@ -226,16 +226,16 @@ notices:
       many: 'Keep logs up to (2 GiB in all; the oldest go past it) was added to {count} files: {fileList}'
       one: 'Keep logs up to (2 GiB in all; the oldest go past it) was added to {fileList}'
     criticalAlertsLowered:
-      many: 'Alert rows at critical were lowered to warning in {count} files, as only hung up,
-        dropped, ran and fled are critical now and light a character''s tab: {fileList}'
-      one: 'Alert rows at critical were lowered to warning in {fileList}, as only hung up,
-        dropped, ran and fled are critical now and light a character''s tab'
+      many: "Alert rows at critical were lowered to warning in {count} files, as only hung up,
+        dropped, ran and fled are critical now and light a character's tab: {fileList}"
+      one: "Alert rows at critical were lowered to warning in {fileList}, as only hung up,
+        dropped, ran and fled are critical now and light a character's tab"
     botCommandsStated:
       many: 'Bot Commands (your own commands other players may ask for) was added, empty, to {count} files: {fileList}'
       one: 'Bot Commands (your own commands other players may ask for) was added, empty, to {fileList}'
     itemDetailsStated:
-      many: 'Item Details (MegaMUD''s item choices, laid over the realm''s item table) were added, empty, to {count} files: {fileList}'
-      one: 'Item Details (MegaMUD''s item choices, laid over the realm''s item table) were added, empty, to {fileList}'
+      many: "Item Details (MegaMUD's item choices, laid over the realm's item table) were added, empty, to {count} files: {fileList}"
+      one: "Item Details (MegaMUD's item choices, laid over the realm's item table) were added, empty, to {fileList}"
     freedomCureStated:
       one: 'A Freedom spell -- cast when the character cannot move -- is a setting, blank by
         default, and was written into the cures of {count} file: {fileList}'
@@ -275,12 +275,12 @@ notices:
       paragraph that explains them."
     entityPredicates:
       many:
-        "Settings were added to {count} files, at what the client already did: the fewest and most
+        'Settings were added to {count} files, at what the client already did: the fewest and most
         monsters worth a fight, the most experience a monster may be worth, the heal line in a
-        fight, and which coins to pick up. {fileList}"
-      one: "Settings were added to {count} file, at what the client already did: the fewest and most
+        fight, and which coins to pick up. {fileList}'
+      one: 'Settings were added to {count} file, at what the client already did: the fewest and most
         monsters worth a fight, the most experience a monster may be worth, the heal line in a
-        fight, and which coins to pick up. {fileList}"
+        fight, and which coins to pick up. {fileList}'
     gmudRealmFailed: 'The {realm} realm could not be removed from your realms: {reason}'
     gmudRealmRemoved:
       '{realm} no longer ships with the client and was removed from your realms ({dir}); nothing
@@ -306,16 +306,14 @@ notices:
     tuningNothingRemoved: nothing
     megamudDataMovedIn:
       many:
-        'The MegaMUD databases of {count} characters (Items.md, Monsters.md, Messages.md) were taken
-        into their realms'' item, monster and message tables wherever a realm had none, and each
-        folder was renamed Default.imported. {fileList}'
-      one:
-        'A character''s MegaMUD databases (Items.md, Monsters.md, Messages.md) were taken into its
-        realm''s item, monster and message tables wherever the realm had none, and the folder was
-        renamed Default.imported. {fileList}'
+        "The MegaMUD databases of {count} characters (Items.md, Monsters.md, Messages.md) were taken
+        into their realms' item, monster and message tables wherever a realm had none, and each
+        folder was renamed Default.imported. {fileList}"
+      one: "A character's MegaMUD databases (Items.md, Monsters.md, Messages.md) were taken into its
+        realm's item, monster and message tables wherever the realm had none, and the folder was
+        renamed Default.imported. {fileList}"
     megamudSettingsMovedIn:
-      many:
-        'The MegaMUD settings of {count} characters were moved from their megamud.ini into their
+      many: 'The MegaMUD settings of {count} characters were moved from their megamud.ini into their
         character files, under megamud:, and each megamud.ini was renamed megamud.ini.imported.
         {fileList}'
       one:
@@ -329,12 +327,10 @@ notices:
         '"Reconnect if the connection drops" was written into {count} character file, on, with the
         paragraph that explains it. It is what it was already doing. {fileList}'
     newAutomationStated:
-      many:
-        'New settings — defending the party, the crowd spell and the reaction to a player
+      many: 'New settings — defending the party, the crowd spell and the reaction to a player
         attacking — were written into {count} files with the paragraphs that explain them. All
         off, which is what the client was already doing. {fileList}'
-      one:
-        'New settings — defending the party, the crowd spell and the reaction to a player
+      one: 'New settings — defending the party, the crowd spell and the reaction to a player
         attacking — were written into {count} file with the paragraphs that explain them. All
         off, which is what the client was already doing. {fileList}'
     skinStated:
@@ -458,12 +454,10 @@ notices:
         the paragraph that explains them. Both are off, which is what the client was already doing.
         {fileList}'
     hangPenaltiesWent:
-      one:
-        'Hang penalties (whether a realm charges for a hang-up) were removed from {count} file:
-        MegaMUD''s own Hang if below and Relog instead of hanging decide now. {fileList}'
-      many:
-        'Hang penalties (whether a realm charges for a hang-up) were removed from {count} files:
-        MegaMUD''s own Hang if below and Relog instead of hanging decide now. {fileList}'
+      one: "Hang penalties (whether a realm charges for a hang-up) were removed from {count} file:
+        MegaMUD's own Hang if below and Relog instead of hanging decide now. {fileList}"
+      many: "Hang penalties (whether a realm charges for a hang-up) were removed from {count} files:
+        MegaMUD's own Hang if below and Relog instead of hanging decide now. {fileList}"
     wardsMoved:
       many:
         '"automation.movement.useWards" moved to "automation.health.useWards" in {count} files and
@@ -471,8 +465,7 @@ notices:
         waterskin against the desert spell — and it shipped off one day ago, so the "false" it
         replaces was this client''s own writing rather than your answer. Turn it off under Health
         in settings; the backup beside each file has the old answer. {fileList}'
-      one:
-        '"automation.movement.useWards" moved to "automation.health.useWards" in {count} file and
+      one: '"automation.movement.useWards" moved to "automation.health.useWards" in {count} file and
         was turned on. It is the realm''s own half of the "when to use an item" rules — the
         waterskin against the desert spell — and it shipped off one day ago, so the "false" it
         replaces was this client''s own writing rather than your answer. Turn it off under Health
@@ -481,8 +474,8 @@ notices:
       'A gear button was added to your toolbar, beside the dial. It puts back what the client
       last saw in each worn slot — the first press after a death.'
     oldSwitchesUnpinned:
-      'The old automation''s switches were taken off the toolbar in {file}: MegaMUD''s own
-      toggles stand in their place.'
+      "The old automation's switches were taken off the toolbar in {file}: MegaMUD's own
+      toggles stand in their place."
     loopsRenamed:
       one:
         'The shipped loops are named the way whoever recorded them named them, rather than after the
@@ -549,8 +542,8 @@ notices:
       many: '"automation.combat.mobRules" was written into {count} files ({fileList}), empty: one
         row per monster, saying whether to leave it alone and where it comes in the attack order.
         Nothing changes until you name one.'
-    mobRulesBecameMonsterRows: 'The monster rules and the monster rows are one list now, Monster
-      Details: a Never Attack rule is a Friend, and a band is the row''s priority. Moved in {fileList}.'
+    mobRulesBecameMonsterRows: "The monster rules and the monster rows are one list now, Monster
+      Details: a Never Attack rule is a Friend, and a band is the row's priority. Moved in {fileList}."
     mobRulesFolded:
       one: '"automation.combat.avoid" and "combat.mobPriority" became one "combat.mobRules" list in
         {fileList}. An avoided monster is now a row set to never attack; every ranked monster kept
@@ -820,6 +813,28 @@ explorer:
   close: Close
   count: '{shown} of {of}'
   dialogLabel: MMUD Explorer for {characterName}
+  # The Explorer in a window of its own (2026-10-29), and that window's title.
+  popOut: ⧉ Pop out
+  popOutTitle: Open the Explorer in a window of its own, beside the console
+  popOutRefused: The Explorer's window could not be opened. If the browser blocked a pop-up, allow them for this page.
+  # The top row: who the Explorer answers for, MME's global fields (2026-10-29).
+  as:
+    character: Character
+    className: Class
+    race: Race
+    level: Level
+    alignment: Alignment
+    alignments:
+      any: Any
+      good: Good
+      neutral: Neutral
+      evil: Evil
+    unknown: Not known yet
+    asPlayed: As played
+    viewing: Viewing as changed. Buy, Wear and Learn are still the character's own.
+    sync: ⟳ Sync
+    syncTitle: Back to the character as played, and ask the realm for its stat sheet and pack again
+  windowTitle: '{characterName} — MMUD Explorer'
   empty: Nothing here matches.
   fast: 85% speed
   find: Search…
@@ -950,14 +965,14 @@ explorer:
     attacker: Attacker
     attackerAccuracy: Attacker accuracy
     attacksim: Monster Attack Sim
-    averageNote: 'Avg damage vs 0 AC/DR, with the character''s other stats'
+    averageNote: "Avg damage vs 0 AC/DR, with the character's other stats"
     averageRound: Average round
     backstab: Backstab Calc
     backstabAttack: Backstab
     bashing: Bashing
     bsDamage: Backstab damage
     bsForChar: BS accuracy worked out for the character.
-    bsHint: 'Max damage from strength is not added for you: put all of it in Max Damage. +Min damage from strength is. The weapon''s own stats are added; with a different weapon in the hand, its stats are taken off.'
+    bsHint: "Max damage from strength is not added for you: put all of it in Max Damage. +Min damage from strength is. The weapon's own stats are added; with a different weapon in the hand, its stats are taken off."
     bsMax: BS Max DMG
     bsMin: BS Min DMG
     bsRange: '{min} - {max} (AVG: {avg})'
@@ -987,7 +1002,7 @@ explorer:
     custom: Custom
     customChart: custom
     defender: Defender
-    defenses: 'The character''s defences'
+    defenses: "The character's defences"
     diff: Diff
     dmgPerMana: Dmg/M
     dodgeCap: 'Dodge cap: {cap}%'
@@ -1008,7 +1023,7 @@ explorer:
     fast: Fast (85)
     fromLevel: From level
     fromStats: From Combat Stats
-    fromStatsTitle: 'Hit, Crit and Weapon (MegaMUD''s Extra) from this character''s Combat Stats card'
+    fromStatsTitle: "Hit, Crit and Weapon (MegaMUD's Extra) from this character's Combat Stats card"
     fromWeapon: 'From the weapon: {bits}'
     gold: Gold
     goMonster: go to monster ›
@@ -1017,12 +1032,12 @@ explorer:
     hideEnergy: Hide energy info
     hit: Hit Calc
     hitAvg: Hit AVG
-    hitHint: 'Current char. and vs Char. fill in the character''s figures; vs Player and Manual keep what is typed.'
+    hitHint: "Current char. and vs Char. fill in the character's figures; vs Player and Manual keep what is typed."
     hitIs: 'Hit: {hit}%'
     hitMinCap: 'Hit min-cap:'
     hitPct: 'Hit %'
     hitRate: Hit rate
-    learnedKey: 'Spells this character''s book holds are marked.'
+    learnedKey: "Spells this character's book holds are marked."
     level: Level
     listSpells: List Spells
     lvl: LVL
@@ -1090,7 +1105,7 @@ explorer:
     stats: Stats
     stealth: Stealth
     strength: Strength
-    strengthShort: 'Strength below the weapon''s {strength}'
+    strengthShort: "Strength below the weapon's {strength}"
     swing: Swing Calc
     swings: Swings
     swingsLeft: Swings / EU remaining
@@ -1166,8 +1181,7 @@ explorer:
     adjust: 'Adjust {stat}'
     adjustHint: Added to the figure worked out. AC and DR in whole points.
     armourClass: 'AC:'
-    adjustAccuracy:
-      Only the largest +Accuracy from ability 22 on a single slot, across items, class, race and auras, counts.
+    adjustAccuracy: Only the largest +Accuracy from ability 22 on a single slot, across items, class, race and auras, counts.
     attack: 'Attack: {name}'
     attackAccuracy: 'Accuracy with this attack: {accuracy}'
     attackApply: Apply
@@ -1365,9 +1379,9 @@ explorer:
     vsMR: Calc vs MR
     water: Water
 
-# The Loops modal: the shelf of every loop, grouped by area, opened from
-# anywhere. The Loop card drives the loop that is running; this is where one
-# is found.
+  # The Loops modal: the shelf of every loop, grouped by area, opened from
+  # anywhere. The Loop card drives the loop that is running; this is where one
+  # is found.
   # A textblock as MME's frmResults shows it (2026-10-24, mudtool's Rooms tab):
   # the Explorer under its Rooms tab, and the cards' textblock panel.
   textblock:
@@ -2289,10 +2303,8 @@ cards:
         inPurse: in the purse
         purseUnread: purse not read
         fromBank: '{short} from {bank}'
-        fromBankTitle:
-          'The purse holds {purse}; the run withdraws the rest at {place}, which last said {held}.'
-        fromBankUnreadTitle:
-          'The purse holds {purse}; the run asks {place} for its balance and withdraws the rest there.'
+        fromBankTitle: 'The purse holds {purse}; the run withdraws the rest at {place}, which last said {held}.'
+        fromBankUnreadTitle: 'The purse holds {purse}; the run asks {place} for its balance and withdraws the rest there.'
         short: the purse and the banks on record hold too little
         shortTitle:
           'The purse holds {purse} and no bank on record holds the rest. Ask a bank for its balance
@@ -2789,14 +2801,18 @@ cards:
   party:
     activity:
       fighting: fighting
-    # A member of ours who is not in the leader's room.
-    away: 'at {room}'
-    guest: not on the roster
+    # A member of ours who is not in the leader's room, under the rows.
+    away: '{name} at {room}'
+    # Every member of ours in the leader's room; {place} is ` map/room` when known.
+    allHere: 'all in {room}{place}'
+    guest: guest
     guestHint: In the party by its listing, but not on this party's roster — edit the party to keep them on it.
-    musterPick: Muster to…
-    musterPlace: 'sys goto {place}'
+    muster: Muster
+    musterPlace: 'sys goto {place}: breaks off any fight first, and the party is put back together where it lands'
     musterToLeader: 'Walk everyone to {leader}'
-    regroup: Regroup
+    # Regroup's line, while somebody has dropped out of the party.
+    left: '{names} left the party'
+    reinvite: Re-invite
     start: Make this a party
     startHint: Regroup, Muster and Say to work from a party's roster — its members, leader and ranks, edited here.
     regrouped:
@@ -2809,7 +2825,7 @@ cards:
       many: 'Type once, sent by {count} characters'
       zero: Choose who sends it
     sayOthers: 'Others ({count}) via @party'
-    sayOthersHint: '{names}: sent by the leader''s @party, which their MegaMUD carries out — click to leave them out or put them back'
+    sayOthersHint: "{names}: sent by the leader's @party, which their MegaMUD carries out — click to leave them out or put them back"
     sayToggle: 'Send as {name} — click to leave them out or put them back'
     badge:
       hurt: '{count} hurt'
@@ -2829,16 +2845,10 @@ cards:
       done: Done editing
       keepGuest: Keep on the roster
       makeLeader: Lead
-      muster: Muster
       placeAdd: Add place
       placeAddAria: Add a sys goto place to muster to
-      placeAddPlaceholder: 'Add a muster place — the realm''s sys goto word (kha)'
+      placeAddPlaceholder: "Add a muster place — the realm's sys goto word (kha)"
       placeRemoveAria: 'Stop offering {place} to muster to'
-      placesAria: Where to muster the party
-      placesHint:
-        Walk everybody to the leader, or teleport the party with sys goto. A sys goto breaks off any
-        fight first, and the party is put back together where it lands. Places are added while
-        editing the party.
       putBack: Put back
       rankAria: 'Where {name} stands'
       rankAuto: As listed
@@ -2852,9 +2862,7 @@ cards:
     groups:
       back: Back
       front: Front
-      invited: Invited
       middle: Middle
-      rankUnknown: Rank unknown
     fighting: 'fighting {target}'
     followAria: 'Follow {name}'
     followButton: Follow
@@ -2862,10 +2870,15 @@ cards:
     leaveAction: Leave Party
     notYetListed: not yet listed
     ofMax: '{percent}% of {max}'
+    # The row's chip: the one condition it states.
+    chip:
+      lowHealth: low health
+      lowMana: low mana
     status:
-      forgotten: said @forget
+      forgotten: '@forget'
+      invited: invited
       offline: offline
-      out: out of the party
+      out: out
     title: Party
   picker:
     away: '{cardCount} put away'
@@ -3372,10 +3385,10 @@ cards:
     stepSlight: <1%
     stepUnread: effect unread
     stepUnreadTitle:
-      'The realm runs a script when you stand here, and it has a step this client cannot follow — a
-      block the realm''s own table does not hold, a verb nothing here reads, or a spell that ends in
+      "The realm runs a script when you stand here, and it has a step this client cannot follow — a
+      block the realm's own table does not hold, a verb nothing here reads, or a spell that ends in
       another spell. So what the room does to you is unknown, and the router prices it as a risk
-      rather than as free. It is not a reading that the room is dangerous; it is the absence of one.'
+      rather than as free. It is not a reading that the room is dangerous; it is the absence of one."
     stepSummons: summons
     stepSummonsTitle:
       The realm's script for this room can put a monster in it, which is what a lair does — so the
@@ -3764,9 +3777,9 @@ cards:
     cause:
       engine: 'MegaMUD read it so at {at}:'
       fumble: 'A command the realm threw away, at {at}:'
-      message: 'MegaMUD''s message {row}, at {at}:'
+      message: "MegaMUD's message {row}, at {at}:"
       said: 'The realm said so at {at}:'
-      spell: 'The message of the realm''s {spell}, at {at}:'
+      spell: "The message of the realm's {spell}, at {at}:"
       unseen: 'A room the character could not see, at {at}:'
     # And the ones only a realm's message table states (`CharacterState.stated`).
     stated:
@@ -3975,8 +3988,7 @@ settings:
     saved: '{characterName} saved.'
   client:
     # Said at the head of the client's own page (2026-10-25): what Majordomo owes its existence to.
-    lineage:
-      Majordomo owes its existence to two programs. It is a fork of mudengine, Raymond
+    lineage: Majordomo owes its existence to two programs. It is a fork of mudengine, Raymond
       Bennett's MajorMUD client (github.com/rayzorben/mudengine), and every character is
       played by a port of MegaMUD's own engine, read from megamud.exe. Neither project made
       or endorses Majordomo.
@@ -4078,9 +4090,11 @@ settings:
     importedNew: Read {fileName}. Check the name and realm, then create the character; its MegaMUD settings are written with it.
     importedOver: MegaMUD settings replaced from {fileName}. The login and password are left as they were; Undo puts the old settings back.
     importNotMegamud: "{fileName} is not a MegaMUD settings file: it has none of MegaMUD's sections."
-    importUnreadable: "{fileName} could not be read."
+    importUnreadable: '{fileName} could not be read.'
     # On a control MegaMUD 2.1 draws and saves but never acts on (2026-10-16).
     inertTitle: MegaMUD 2.1 keeps this setting but never acts on it, so it does nothing here either.
+    # The Other tab's Ignore disease, a setting of this client's own (2026-10-28).
+    ignoreDiseaseTitle: A disease is not rested for, cured or asked of the party about. Not one of MegaMUD's settings.
     # The Combat tab's opening attack and weapon, settings of this client's own (2026-10-22).
     openingAttack: Opening attack
     openingAttackTitle: The first attack sent at each monster, before the normal attack takes over for the rest of the fight. Blank opens with the normal attack. Not one of MegaMUD's settings.
@@ -4212,8 +4226,8 @@ settings:
       one: 'Imported 1 loop ({replaced} replaced one of the same name).'
       many: 'Imported {count} loops ({replaced} replaced one of the same name).'
     importedName: Imported loop
-    importDropped: 'Left out: {start} whose first room this realm''s map does not have, {steps} whose
-      steps do not fit it, {short} too short to walk.'
+    importDropped: "Left out: {start} whose first room this realm's map does not have, {steps} whose
+      steps do not fit it, {short} too short to walk."
     importLabel: Import MegaMUD loops…
     importNoRooms: The folder has no Rooms.md, so each first room was found by its name alone.
     importNone: That folder has no MegaMUD loops. MegaMUD keeps them as .mp files in its data
@@ -4352,7 +4366,7 @@ settings:
       What to do about particular items here — MegaMUD's item details, used by every character that
       plays this realm. Weight, price, type and where it is worn come from the realm's own data.
       A character's own item rows change only what they state. Importing replaces the table.
-    nothingSaid: '{file} names {count} items but says nothing particular about any of them, so the realm''s table was left as it was.'
+    nothingSaid: "{file} names {count} items but says nothing particular about any of them, so the realm's table was left as it was."
     notItems: '{file} is not a MegaMUD item database. Choose the Items.md from a MegaMUD data folder.'
     removedRow: Item removed.
     removeRow: Remove
@@ -4436,13 +4450,12 @@ settings:
     needsName: A row needs a monster.
     noMatch: No monster matches that search.
     none: No monsters yet. Import the Monsters.md from a MegaMUD data folder, or add one.
-    note:
-      What to do about particular monsters here — MegaMUD's monster details, used by every
+    note: What to do about particular monsters here — MegaMUD's monster details, used by every
       character that plays this realm. Friends are never attacked; Avoid is only hit back; Flee
       runs from it before anything else; Hang up disconnects when it is in the room. A priority
       sets the order monsters are attacked in, below any row on the realm's Attack Priority list.
       A character's own monster rows change only what they state. Importing replaces the table.
-    nothingSaid: '{file} names {count} monsters but says nothing particular about any of them, so the realm''s table was left as it was.'
+    nothingSaid: "{file} names {count} monsters but says nothing particular about any of them, so the realm's table was left as it was."
     notMonsters: '{file} is not a MegaMUD monster database. Choose the Monsters.md from a MegaMUD data folder.'
     preAttackChip: 'first: {spell}'
     preAttackHint: Cast on this monster before the fight is opened; it does not open the fight itself. Leave blank for none.
@@ -4480,15 +4493,14 @@ settings:
     itemRowsLegend: Item details
     itemRowsNone: No item rows here. The realm's item table applies as it is.
     itemRowsNote:
-      'What the MegaMUD engine does differently about particular items here — MegaMUD''s item
-      details, laid over the realm''s item table one field at a time: collect, discard, equip, buy
-      or sell, the least to keep and the most to get. A field left blank keeps the realm''s answer;
-      a character''s own rows are laid over the ones on the Global page.'
+      "What the MegaMUD engine does differently about particular items here — MegaMUD's item
+      details, laid over the realm's item table one field at a time: collect, discard, equip, buy
+      or sell, the least to keep and the most to get. A field left blank keeps the realm's answer;
+      a character's own rows are laid over the ones on the Global page."
   # The player's own commands other players may ask this character for (BotCommand).
   botCommands:
     legend: Bot commands
-    note:
-      Your own commands other players may ask this character for, like a healer's @heal. Each is
+    note: Your own commands other players may ask this character for, like a healer's @heal. Each is
       answered after MegaMUD's own commands, so a party member's @heal is still MegaMUD's party
       heal, and only for who you name below. Not at all while MegaMUD's Talk tab refuses remote
       commands.
@@ -4562,8 +4574,7 @@ settings:
     usernameLabel: Username
   mudstats:
     legend: Stats Server
-    note:
-      Post this character's readings to the realm's stats board at {url}, a whole snapshot each
+    note: Post this character's readings to the realm's stats board at {url}, a whole snapshot each
       time. While it posts, the board stops asking it by telepath, so this client becomes its only
       source there.
     noBoard: This character's realm names no stats board. Set one on the realm's page first.
@@ -4800,7 +4811,9 @@ session:
   party:
     regroupAsk: 'Regroup: asking {leader} for an invitation back into the party.'
     regroupInvite: 'Regroup: inviting {name} back into the party.'
-    regroupJoin: 'Regroup: joining {leader}''s party again.'
+    regroupJoin: "Regroup: joining {leader}'s party again."
+    regroupLeave: 'Regroup: {name} leaves the party it follows, for the leader the Party card names.'
+    regroupRank: 'Regroup: taking the {rank} rank the Party card gives.'
     regroupWalkRefused: 'Regroup could not walk to {leader}: {refused}'
     fanReason: 'Party card: {command}'
     fanAtParty: '{name}: @party {command} — for {others}.'
@@ -5016,8 +5029,7 @@ automation:
     whyNoBalance: '{bank} did not say its balance'
     whyVaultShort: '{bank} holds {held}, short of the {amount} wanted'
     refusalNoVault: 'Not enough on hand for {item}: {short} short, and no bank can be reached.'
-    refusalVaultsShort:
-      'Not enough on hand for {item}: {short} short, and no bank the record knows holds that much.'
+    refusalVaultsShort: 'Not enough on hand for {item}: {short} short, and no bank the record knows holds that much.'
     # The Explorer's Buy and Buy + Wear (2026-10-18).
     buyingIt: 'Going to buy {item} at {shop} in {room}, for {price}.'
     boughtIt: 'Bought {item} at {shop}.'
@@ -5270,7 +5282,7 @@ mudstats:
     linked: Linked as {player} — {posts} posts so far, {state}.
   post:
     back: The stats board is answering again.
-    keyRefused: 'The stats board refused this character''s key, so posting has stopped. Link it again. ({detail})'
+    keyRefused: "The stats board refused this character's key, so posting has stopped. Link it again. ({detail})"
     switchedOff: 'The stats board does not take posts for this character, so posting has stopped. ({detail})'
     rejected: 'The stats board rejected a post, so posting has stopped. ({detail})'
     unreachable: 'The stats board is not answering; trying again later. ({detail})'

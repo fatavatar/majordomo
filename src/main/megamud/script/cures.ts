@@ -21,9 +21,12 @@ function cure(s: Session, short: string, at: string | null): number {
   return castSpell(s, short, at);
 }
 
-/** Diseased by MegaMUD's own rows, or by our tracker's reading (`diseaseHeard`). */
+/**
+ * Diseased by MegaMUD's own rows, or by our tracker's reading (`diseaseHeard`),
+ * and not ignored (`IgnoreDisease`, ours): neither cured nor asked about.
+ */
 export function diseaseToCure(s: Session): boolean {
-  return s.diseased !== 0 || s.diseaseHeard !== 0;
+  return (s.diseased !== 0 || s.diseaseHeard !== 0) && s.Other_IgnoreDisease === 0;
 }
 
 /** `0x410440`: cure this character. */

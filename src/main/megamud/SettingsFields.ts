@@ -843,6 +843,8 @@ export class SettingsFields {
   Other_IgnoreBlind: number = 0;
   /** Other.IgnoreConfusion (0x9058) */
   Other_IgnoreConfusion: number = 0;
+  /** Other.IgnoreDisease */
+  Other_IgnoreDisease: number = 0;
   /** Other.CureOverMinorHeal (0x905c) */
   Other_CureOverMinorHeal: number = 0;
   /** Other.CastEndOfRound (0x9060) */

@@ -487,6 +487,13 @@ function TabPage({
   );
 }
 
+/** What one of this client's own checklist rows (`shared/megamud/layout.ts`) does. */
+function ownRowTitle(section: string, key: string): string | undefined {
+  if (section === 'Other' && key === 'IgnoreDisease')
+    return t('settings.megamud.ignoreDiseaseTitle');
+  return undefined;
+}
+
 interface ControlProps {
   control: TabControl;
   draft: MegaSettings;
@@ -695,7 +702,11 @@ function Control({ control: c, draft, hasPassword, names, style, set }: ControlP
             const n = valueOf(draft, section, key);
             const on = row.kind === 'radio' ? n === row.value : typeof n === 'number' && n !== 0;
             return (
-              <label data-choice={row.kind === 'radio' ? 'true' : undefined} key={i}>
+              <label
+                data-choice={row.kind === 'radio' ? 'true' : undefined}
+                key={i}
+                title={ownRowTitle(section, key)}
+              >
                 <input
                   checked={on}
                   onChange={(event) => {

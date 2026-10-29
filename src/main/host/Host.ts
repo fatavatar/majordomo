@@ -94,6 +94,13 @@ export interface WindowHost {
   focus(windowId: number): void;
   /** How many are open, for the quit guard to know whether to make one. */
   count(): number;
+  /**
+   * The Explorer in a window of its own (2026-10-29), raised if it is open and
+   * opened on `session` if not and `create`; whether it is open now. One for
+   * every character, which it changes itself. It owns no characters and is
+   * never the last window: closing the last that does closes it too.
+   */
+  explorer(session: SessionId, create: boolean): boolean;
 }
 
 /**

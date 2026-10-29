@@ -5672,6 +5672,17 @@ export class SessionManager {
     });
   }
 
+  /**
+   * Regroup's join, as MegaMUD's own (`MegaEngine.join`): the Party tab's rank
+   * taken with it. Only in the realm; without the engine, a plain `join`.
+   */
+  partyJoin(leader: string, reason: string): boolean {
+    if (this.tracker.current.phase !== 'in-game') return false;
+    if (this.mega === null) return this.partyCommand(`join ${leader}`, reason);
+    this.mega.join(leader);
+    return true;
+  }
+
   /** One room back the way the character came, per press: MegaMUD's Step Back. */
   stepBack(): MovementStart {
     this.sink.acted?.({ act: 'stepBack' });

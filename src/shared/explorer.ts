@@ -1,3 +1,5 @@
+import type { Alignment } from './alignment';
+import type { CharacterState } from './character';
 import type { MobDisposition } from './mobs';
 /**
  * MMUD Explorer's lists, as main answers them for one character on its realm
@@ -29,6 +31,120 @@ export const EXPLORER_KINDS: readonly ExplorerKind[] = [
  * a list (`ExplorerRoomView`). What a reference opens (`ExplorerSegment.tab`).
  */
 export type ExplorerTab = ExplorerKind | 'rooms' | 'textblock' | 'eq' | 'lists' | 'tools';
+
+const EXPLORER_TABS: readonly string[] = [
+  ...EXPLORER_KINDS,
+  'rooms',
+  'textblock',
+  'eq',
+  'lists',
+  'tools'
+];
+
+/** What the Explorer is asked to open on: a tab, and an entry of it. */
+export interface ExplorerFocus {
+  kind: ExplorerTab;
+  item: number | string;
+}
+
+/** Whether a value from the other side of the bridge is an `ExplorerFocus`. */
+export function isExplorerFocus(value: unknown): value is ExplorerFocus {
+  if (typeof value !== 'object' || value === null) return false;
+  const { kind, item } = value as Record<string, unknown>;
+  return (
+    typeof kind === 'string' &&
+    EXPLORER_TABS.includes(kind) &&
+    (typeof item === 'number' || typeof item === 'string')
+  );
+}
+
+/** MME's alignment choice (`cmbGlobalAlignment`): any, or one of the three it tells apart. */
+export type ExplorerAlignment = 'any' | 'good' | 'neutral' | 'evil';
+
+export const EXPLORER_ALIGNMENTS: readonly ExplorerAlignment[] = ['any', 'good', 'neutral', 'evil'];
+
+/**
+ * Who the Explorer answers for, where that is not the character as played
+ * (2026-10-29): MME's global fields along its top row (`cmbGlobalClass`,
+ * `cmbGlobalRace`, `txtGlobalLevel`, `cmbGlobalAlignment`), so the realm can
+ * be read for another class or a higher level. Each one null is the
+ * character's own; the stats and what it wears stay its own.
+ */
+export interface ExplorerAs {
+  /** A class as the realm names it. */
+  className: string | null;
+  race: string | null;
+  level: number | null;
+  alignment: ExplorerAlignment | null;
+}
+
+/** An `ExplorerAs` from the other side of the bridge; null where it names nothing. */
+export function asExplorerAs(value: unknown): ExplorerAs | null {
+  if (typeof value !== 'object' || value === null) return null;
+  const v = value as Record<string, unknown>;
+  const name = (x: unknown): string | null =>
+    typeof x === 'string' && x.trim() !== '' ? x.trim() : null;
+  const level =
+    typeof v['level'] === 'number' && Number.isInteger(v['level']) && v['level'] > 0
+      ? Math.min(v['level'], 9999)
+      : null;
+  const alignment = EXPLORER_ALIGNMENTS.find((a) => a === v['alignment']) ?? null;
+  const as = { className: name(v['className']), race: name(v['race']), level, alignment };
+  return Object.values(as).every((field) => field === null) ? null : as;
+}
+
+/** The name `viewedAs` gives a character the realm has not named. */
+const UNNAMED = 'Explorer';
+
+/** The standing the Explorer's alignment reads as (`ALIGNMENT_INDEX` in `mme/Explorer.ts`). */
+const STANDING: Record<Exclude<ExplorerAlignment, 'any'>, Alignment> = {
+  good: 'Good',
+  neutral: 'Neutral',
+  evil: 'Villain'
+};
+
+/**
+ * `state` as the Explorer is to read it, `as` laid over it: the class, race
+ * and level where it names them, and the standing as the character's own row
+ * of the online list, which is where the Explorer reads it (`ownAlignment`);
+ * `any` is no row.
+ */
+export function viewedAs(state: CharacterState, as: ExplorerAs | null): CharacterState {
+  if (as === null) return state;
+  // A character the realm has not named yet is given one, for its row to be found by.
+  const name = state.name ?? UNNAMED;
+  const others = state.online.filter((entry) => entry.name.toLowerCase() !== name.toLowerCase());
+  const online =
+    as.alignment === null
+      ? state.online
+      : as.alignment === 'any'
+        ? others
+        : [
+            ...others,
+            {
+              name,
+              alignment: STANDING[as.alignment],
+              title: null,
+              flags: null,
+              gang: null,
+              provisional: false
+            }
+          ];
+  return {
+    ...state,
+    name,
+    className: as.className ?? state.className,
+    race: as.race ?? state.race,
+    progress: { ...state.progress, level: as.level ?? state.progress.level },
+    online
+  };
+}
+
+/**
+ * The page's query naming the character a window of the Explorer's own is for
+ * (2026-10-29): the page draws that Explorer, not the client.
+ */
+export const EXPLORER_WINDOW_PARAM = 'explorer';
 
 /** One column: its heading and how wide, and whether it holds figures. */
 export interface ExplorerColumn {

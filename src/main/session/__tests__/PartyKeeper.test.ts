@@ -6,6 +6,7 @@ import {
   fanOutActs,
   musterActs,
   PartyKeeper,
+  rankActs,
   regroupActs,
   type KeptMember,
   type RegroupAct
@@ -123,6 +124,38 @@ describe('Regroup, when the leader is ours', () => {
   });
 });
 
+describe('Regroup, when the card names a new leader', () => {
+  const archerLeads = roster({
+    leader: 'Archer',
+    members: [
+      { name: 'Archer', rank: null },
+      { name: 'Bowel', rank: null },
+      { name: 'Skinny', rank: null }
+    ]
+  });
+
+  it('has the new leader leave the old one’s party first, and nothing else until it has', () => {
+    const archer = kept('Archer', {
+      following: 'Bowel',
+      party: [member('Bowel'), member('Archer'), member('Skinny')],
+      sees: ['Bowel', 'Skinny']
+    });
+    const skinny = kept('Skinny', { following: 'Bowel' });
+    expect(regroupActs(archerLeads, [archer, kept('Bowel'), skinny])).toEqual([
+      { session: 'archer', act: 'leave', name: 'Archer' }
+    ]);
+  });
+
+  it('then takes the others out of the old party and invites the old leader', () => {
+    const archer = kept('Archer', { sees: ['Bowel', 'Skinny'] });
+    const skinny = kept('Skinny', { following: 'Bowel' });
+    expect(regroupActs(archerLeads, [archer, kept('Bowel'), skinny])).toEqual([
+      { session: 'archer', act: 'invite', name: 'Bowel' },
+      { session: 'skinny', act: 'leave', name: 'Skinny' }
+    ]);
+  });
+});
+
 describe('Regroup, when the leader is somebody else', () => {
   const zedLeads = roster({
     leader: 'Zed',
@@ -143,6 +176,52 @@ describe('Regroup, when the leader is somebody else', () => {
     expect(regroupActs(zedLeads, [kept('Skinny', { sees: ['Zed'], following: 'Zed' })])).toEqual(
       []
     );
+  });
+});
+
+describe('the roster’s ranks', () => {
+  const at = (name: string, rank: PartyMember['rank']): PartyMember => ({ ...member(name), rank });
+  const ranked = roster({
+    members: [
+      { name: 'Fatty', rank: 'front' },
+      { name: 'Skinny', rank: 'back' },
+      { name: 'healbot', rank: null }
+    ]
+  });
+
+  it('puts each of ours where the card says, off the leader’s listing, and leaves As listed alone', () => {
+    const fatty = kept('Fatty', {
+      party: [at('Fatty', 'mid'), at('Skinny', 'mid'), at('healbot', 'mid')]
+    });
+    expect(rankActs(ranked, [fatty, kept('Skinny'), kept('healbot')])).toEqual([
+      { session: 'fatty', act: 'rank', rank: 'front' },
+      { session: 'skinny', act: 'rank', rank: 'back' }
+    ]);
+  });
+
+  it('asks nothing of a member already there, not yet in the party, or fighting', () => {
+    const fatty = kept('Fatty', {
+      party: [at('Fatty', 'front'), { ...at('Skinny', 'mid'), invited: true }]
+    });
+    expect(rankActs(ranked, [fatty, kept('Skinny')])).toEqual([]);
+    const listed = kept('Fatty', { party: [at('Fatty', 'front'), at('Skinny', 'mid')] });
+    const fighting = kept('Skinny');
+    fighting.character = { ...fighting.character, inCombat: true };
+    expect(rankActs(ranked, [listed, fighting])).toEqual([]);
+  });
+
+  it('reads a member’s own listing when somebody else leads', () => {
+    const zedLeads = roster({
+      leader: 'Zed',
+      members: [
+        { name: 'Zed', rank: null },
+        { name: 'Skinny', rank: 'back' }
+      ]
+    });
+    const skinny = kept('Skinny', { party: [at('Zed', 'front'), at('Skinny', 'mid')] });
+    expect(rankActs(zedLeads, [skinny])).toEqual([
+      { session: 'skinny', act: 'rank', rank: 'back' }
+    ]);
   });
 });
 

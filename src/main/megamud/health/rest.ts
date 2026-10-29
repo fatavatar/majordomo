@@ -326,7 +326,7 @@ export function healthStep(s: Session): number {
     mustRest = true;
     because(s, 'blinded');
   }
-  if (s.diseased !== 0) {
+  if (s.diseased !== 0 && s.Other_IgnoreDisease === 0) {
     if (why === 0) s.host.activity('Resting because we are diseased');
     why |= 0x40;
     if (!wantRest && s.following === 0) return lieLow(s);

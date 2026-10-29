@@ -1505,6 +1505,19 @@ describe('the timed events over a settings save', () => {
   });
 });
 
+describe('Regroup’s join', () => {
+  it('joins as MegaMUD does, the Party tab’s rank taken with it', () => {
+    const { e, sent } = engine();
+    e.s.inGame = 0;
+    e.s.Party_PartyRank = 0;
+    e.join('Bowel');
+    expect(sent.join('')).toContain('join Bowel\r');
+    expect(sent.join('')).toContain('frontrank\r');
+    expect(e.s.leaderName).toBe('Bowel');
+    e.dispose();
+  });
+});
+
 describe('a sys goto sent', () => {
   /*
    * Fatty, sent from the green dragon caverns by a `@do sys goto kha` with a

@@ -43,6 +43,14 @@ describe('the tabs as this client draws them', () => {
     expect(ids.indexOf(9004)).toBeLessThan(ids.indexOf(1317));
   });
 
+  it('put Ignore disease, ours, under MegaMUD’s Ignore confusion', () => {
+    const list = tabAsDrawn(tab('Other')).controls.find((c) => c.id === 1965)!;
+    const keys = list.rows!.map((row) => row.key);
+    expect(keys.indexOf('IgnoreDisease')).toBe(keys.indexOf('IgnoreConfusion') + 1);
+    expect(settingDef('Other', 'IgnoreDisease')).toBeDefined();
+    expect(tab('Other').controls.find((c) => c.id === 1965)!.rows!.length).toBe(keys.length - 1);
+  });
+
   it('give their own controls ids no template uses, bound to settings the schema knows', () => {
     for (const [title, rows] of Object.entries(ADDED_ROWS)) {
       const theirs = new Set(tab(title).controls.map((c) => c.id));

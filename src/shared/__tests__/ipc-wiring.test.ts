@@ -27,11 +27,18 @@ const web = read('src/renderer/src/lib/webBridge.ts');
 /**
  * What the web bridge answers in the window rather than over the socket,
  * each for a stated reason (`webBridge.ts` header): the clipboard is the
- * tab's, and the picker browses the client's disk through `browseHome`. Each
+ * tab's, the picker browses the client's disk through `browseHome`, and the
+ * Explorer's own window is a pop-up of the tab's (2026-10-29). Each
  * still has to be a method on the bridge; it is only the channel constant it
  * does not name.
  */
-const ANSWERED_IN_THE_WINDOW = ['copyText', 'pasteText', 'chooseRealm', 'raiseWindow'] as const;
+const ANSWERED_IN_THE_WINDOW = [
+  'copyText',
+  'pasteText',
+  'chooseRealm',
+  'raiseWindow',
+  'explorerWindow'
+] as const;
 
 /** Whether a file mentions `Invoke.name`, `Send.name` or `Push.name`. */
 const mentions = (source: string, group: string, key: string): boolean =>

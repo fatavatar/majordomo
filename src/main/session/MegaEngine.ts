@@ -46,6 +46,7 @@ import { reEngage } from '../megamud/script/modes';
 import { queue, send, wake } from '../megamud/script/send';
 import { combatOff } from '../megamud/combat/engaged';
 import { startRun } from '../megamud/script/run';
+import { joinLeader } from '../megamud/party/ranks';
 import { keepSchedule } from '../megamud/script/events';
 import { tuning } from '../app/tuning';
 import { forgetAwaited, setState } from '../megamud/script/state';
@@ -1450,6 +1451,20 @@ export class MegaEngine {
       typedCommand(s, 0, 'break');
       combatOff(s);
       s.target = '';
+    });
+  }
+
+  /**
+   * Join `leader`'s party as MegaMUD joins one it was invited to
+   * (`joinLeader`): the leader followed, the rank `Party.PartyRank` asks for
+   * taken, and the leader asked to wait if held. The Party card's Regroup
+   * sent a bare `join`, so a character joined that way stood at the realm's
+   * Midrank whatever its Party tab said (Archer, 2026-10-28).
+   */
+  join(leader: string): void {
+    this.act(() => {
+      joinLeader(this.s, leader);
+      wake(this.s);
     });
   }
 
