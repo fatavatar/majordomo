@@ -36,7 +36,7 @@ import type {
   QuestWatched,
   RoomAsk
 } from './quests';
-import type { HuntingAdvice } from './hunting';
+import type { HuntingGrounds } from './huntingGrounds';
 import type {
   AlertsUiConfig,
   AutomationSwitch,
@@ -1786,7 +1786,8 @@ export interface IpcApi {
    * demand — the sweep and the pricing are work, and the steps move with the
    * character. `measure` names one row past the measured few to measure too.
    */
-  huntingGrounds(session: SessionId, measure: string | null): Promise<HuntingAdvice>;
+  /** Alone, or with the party on the roster it is on, by MMUD Explorer's party mode (2026-10-29). */
+  huntingGrounds(session: SessionId, asParty: boolean): Promise<HuntingGrounds>;
   /**
    * The trainers that will take this character, cheapest first (todo 18).
    *

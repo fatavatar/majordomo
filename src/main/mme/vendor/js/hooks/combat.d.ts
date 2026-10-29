@@ -34,3 +34,26 @@ export function spellColumns(
 };
 /** A monster's damage against the character, worked out where it can be. */
 export function monsterDamageIn(n: number): { damage: number; vs: string; calculated: boolean };
+/** How many monsters' damage has been worked out against the character (or the party). */
+export function monsterDamageCalculated(partyInstead?: boolean): number;
+/** One monster's blows simulated against the character (or the party): `CalculateMonsterDamageVsChar`. */
+export function calcMonsterDamage(
+  n: number,
+  partyInstead?: boolean,
+  rounds?: number
+): { avg: number; max: number };
+/** MME's party box (`txtMonsterLairFilter`, `txtMonsterDamageOUT`) as the character holds it. */
+export function party(): {
+  size: number;
+  ac: number;
+  dr: number;
+  mr: number;
+  dodge: number;
+  hp: number;
+  antiMagic: number;
+  hpRegen: number;
+  accy: number;
+  swings: number;
+  physical: number;
+  spell: number;
+};

@@ -2772,9 +2772,16 @@ export class WorldGraph {
    * 51ms median on Paradigm and there are thousands of candidates, while
    * this walks each room once. A door or a level gate is an exit here; the
    * route the reader then asks for prices it. Bounded by `steps`, and by the
-   * realm: a sweep that reaches nothing new stops.
+   * realm: a sweep that reaches nothing new stops. `staysIn`, where given,
+   * keeps it to rooms that pass — the hunting areas walk one named place
+   * (2026-10-29).
    */
-  withinSteps(from: RoomId, steps: number, traveller?: Traveller): Map<RoomId, number> {
+  withinSteps(
+    from: RoomId,
+    steps: number,
+    traveller?: Traveller,
+    staysIn?: (room: WorldRoom) => boolean
+  ): Map<RoomId, number> {
     const seen = new Map<RoomId, number>();
     if (!this.rooms.has(from)) return seen;
     // Kept out of, from wherever this is asked: see `Traveller.keepOut`.
@@ -2832,6 +2839,7 @@ export class WorldGraph {
         ];
         for (const to of ways) {
           if (seen.has(to) || !this.rooms.has(to)) continue;
+          if (staysIn !== undefined && !staysIn(this.rooms.get(to)!)) continue;
           seen.set(to, depth);
           next.push(to);
         }

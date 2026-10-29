@@ -529,7 +529,7 @@ interface CardContext {
   runPlan(block: number, marked: number | null): ReturnType<IpcApi['questRun']>;
   stopRun(): void;
   /** Where to hunt from where this character stands — addressed, like the book. */
-  loadHunting(measure: string | null): ReturnType<IpcApi['huntingGrounds']>;
+  loadHunting(asParty: boolean): ReturnType<IpcApi['huntingGrounds']>;
   /** The Gear card's board, addressed: MME's Find Best for this character. */
   loadGear(options: GearOptions): ReturnType<IpcApi['explorerGear']>;
   /** Buy, or Buy + Wear, for this character. */
@@ -664,7 +664,7 @@ interface AddressedActions {
   loadPlan(block: number, marked: number | null): ReturnType<IpcApi['questPlan']>;
   runPlan(block: number, marked: number | null): ReturnType<IpcApi['questRun']>;
   stopRun(): void;
-  loadHunting(measure: string | null): ReturnType<IpcApi['huntingGrounds']>;
+  loadHunting(asParty: boolean): ReturnType<IpcApi['huntingGrounds']>;
   loadGear(options: GearOptions): ReturnType<IpcApi['explorerGear']>;
   buyItem(item: number, wear: boolean): ReturnType<IpcApi['explorerBuy']>;
   /** MMUD Explorer's detail and Buy for the Reference card's entries. */
@@ -1071,12 +1071,8 @@ function cardElement(id: CardId, ctx: CardContext): ReactNode {
           {...chrome}
           chooseOnMap={ctx.chooseOnMap}
           createLoop={ctx.chooseOnMap === null ? null : ctx.createHunt}
-          hereKey={
-            character.room.map === null || character.room.number === null
-              ? null
-              : `${character.room.map}/${character.room.number}`
-          }
           loadHunting={ctx.loadHunting}
+          partyMembers={ctx.party.roster?.members.map((member) => member.name) ?? null}
           runLoop={ctx.chooseOnMap === null ? null : ctx.runHunt}
           session={ctx.session}
         />
@@ -5294,7 +5290,7 @@ export default function App() {
         loadPlan: (block, marked) => api.questPlan(sid, block, marked),
         runPlan: (block, marked) => api.questRun(sid, block, marked),
         stopRun: () => void api.questStop(sid),
-        loadHunting: (measure) => api.huntingGrounds(sid, measure),
+        loadHunting: (asParty) => api.huntingGrounds(sid, asParty),
         loadGear: (options) => api.explorerGear(sid, options),
         buyItem: (item, wear) => api.explorerBuy(sid, item, wear),
         explorer: explorerCalls(sid, api),

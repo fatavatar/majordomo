@@ -4705,10 +4705,22 @@ describe('the hunting survey’s reach', () => {
     fs.writeFileSync(home.internal, withReach, 'utf8');
   });
 
-  it('takes the reach out and writes the re-ask clock in at its default', () => {
+  it('takes the reach out, and no re-ask clock in: the card no longer asks as the character moves', () => {
     migrate();
     expect(block('view')['huntRadiusSteps']).toBeUndefined();
-    expect(block('view')['huntReaskMs']).toBe(DEFAULT_INTERNAL.tuning.view.huntReaskMs);
+    expect(block('view')['huntReaskMs']).toBeUndefined();
+    expect(block('view')['clockTickMs']).toBe(1000);
+  });
+
+  // A file that had the clock written in loses it (2026-10-29).
+  it('takes a re-ask clock out of a file that states one', () => {
+    fs.writeFileSync(
+      home.internal,
+      withReach.replace('clockTickMs: 1000', 'clockTickMs: 1000\n    huntReaskMs: 10000'),
+      'utf8'
+    );
+    migrate();
+    expect(block('view')['huntReaskMs']).toBeUndefined();
     expect(block('view')['clockTickMs']).toBe(1000);
   });
 

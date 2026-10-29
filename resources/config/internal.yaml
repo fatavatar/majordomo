@@ -508,9 +508,13 @@ tuning:
   # not take that share off an unarmoured character, the bar read
   # `trivialLevelMargin` lower; `clusterRadius` is how far apart a loop's own
   # rooms are measured and `fillerRadius` how far off the ring a filler lair
-  # may lie; `sizeTolerance` is how far under the best rate a smaller loop may
-  # fall and still be chosen, since past the clock the rate is flat but for
-  # the rounding of rest ticks. The step itself is the server's own movement
+  # may lie; `areaRadius` is how near two lairs on one map that share a
+  # monster must lie to be one hunting area (lairs under one name on one map
+  # are one area however far apart); `clockBound` is the share of the hour
+  # under which a lair group is waiting on its clock, and added to its area's
+  # main loop rather than walked instead of it; `sizeTolerance` is how far
+  # under the best rate a smaller loop may fall and still be chosen, since
+  # past the clock the rate is flat but for the rounding of rest ticks. The step itself is the server's own movement
   # delay from the pack's weight where the family states one; `stepMs` stands
   # in otherwise.
   hunting:
@@ -530,6 +534,8 @@ tuning:
     trivialLevelMargin: 0.05
     clusterRadius: 30
     fillerRadius: 8
+    areaRadius: 6
+    clockBound: 0.25
     sizeTolerance: 0.05
 
     # How often automatic hunting (`automation.hunting`) may ask the survey. A
@@ -1315,6 +1321,12 @@ tuning:
 
     popoverWidthMax: 560
 
+    # The Reference panel's own width, wider than the other slide-outs': a
+    # monster carries MMUD Explorer's figures as well as the realm's, and the
+    # narrower panel left most of them below the fold.
+    referenceWidthMin: 420
+    referenceWidthMax: 760
+
     # The smallest a panel may be dragged to and still be worth reading.
     popoverMinHeight: 120
 
@@ -1426,11 +1438,6 @@ tuning:
     roomPeekDelayMs: 250
 
     roomPeekLingerMs: 220
-
-    # How often the Hunting card asks again because the character moved. The
-    # sweep is realm-wide, so a move refreshes the steps column on this clock
-    # rather than on every room; Ask again is immediate.
-    huntReaskMs: 10000
 
     # The server's own combat pulse, in milliseconds. Damage per round is the
     # one figure that needs a length for a round, and the stream carries blows

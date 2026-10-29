@@ -2063,96 +2063,62 @@ cards:
       arrivedSomewhere: Arrived where the route ended
   hunting:
     title: Hunting Grounds
-    caption: Every lair the exits reach, priced for this character, best first
-    find: Find a lair or a room
-    none: No lair the client can price from here.
-    loading: Pricing every lair the exits reach…
+    caption: Every hunting area the exits reach, priced by MMUD Explorer for this character, best first
+    find: Find an area, a monster or a room
+    none: No area the client can price from here.
+    loading: Pricing every lair the exits reach with MMUD Explorer…
     refresh: Ask again
-    from: '{count} lairs priced over {swept} rooms from {room}.'
-    excluded: 'Left out: {dangerous} too dangerous, {beneath} beneath this level.'
-    # The fight itself unpriced -- the rounds to kill, or the blows, unknown --
-    # so the row is ordered by distance and never by what it pays.
-    unpricedOne: 'The fight in one of them could not be priced; it is listed nearest first.'
-    unpricedMany: 'The fight in {count} of them could not be priced; those are listed nearest first.'
-    # Where the realm's own arithmetic cannot price a kill (off the GreaterMUD
-    # lineage), the character's fight record does: said, with its count.
-    measured: 'Kills priced from this character’s own record: {perRound} damage a round over {fights} fights, from level {level} up.'
-    # Past the best few, a lair is ranked on the first estimate: its loop not
-    # walked out, nothing beside it added.
-    rough: rough
-    roughLong: 'Ranked on the first estimate: the loop is its nearest rooms in distance order, with no lair beside it added.'
-    measuring: Measuring this lair’s loop…
+    from: '{areas} areas over {swept} rooms from {room}.'
+    # How the character was priced to fight, read off its MegaMUD settings (2026-10-29).
+    setup: 'Priced as it fights: {setup}.'
+    # Alone, or by MME's party mode with the party roster it is on (2026-10-29).
+    mode:
+      label: Priced for
+      solo: Solo
+      party: Party
+      partyTitle: 'By MMUD Explorer’s party mode, with the party roster: {members}'
+    asParty: 'As a party of {size} ({members}): each rate is a member’s share of the kills.'
+    unnamedArea: 'Unnamed rooms, map {map}'
+    nothingPays: nothing here pays
     columns:
-      lair: Lair
+      area: Area
       rate: Exp/h
-      rooms: Rooms
+      risk: Risk
+      groups: Groups
       steps: Steps
-      cost: Cost
-    roomsCell: '{loop} of {total}'
-    boss: boss
-    deadly: deadly
-    deadlyLong: One room of this is expected to take the whole health bar.
-    ceiling: 'up to {rate}'
-    unknownParts: 'Rate not known: {parts} unknown'
-    unknown:
-      experience: the experience
-      rounds: the rounds to kill
-      damage: the damage taken
-      respawn: the respawn clock
-      rest: the rest
-      health: the health bar
-      mana: the mana pool
-      poison: how long its poison lasts
-    afflicts:
-      poison: poisons
-      blinded: blinds
-      held: holds
+    # How a lair group counts toward its area's rate (`priceArea`).
+    role:
+      loop: loop
+      added: added
+      dangerous: too dangerous
+      none: none
+    roleTitle:
+      loop: Walked as the area's loop, its lairs priced together with the other busy groups'
+      added: On a clock longer than the loop, fought when a lap finds it back, on top of the loop
+      dangerous: One pass through it, or its room's spell, takes half this character's health or more, by the same check routes are planned with
+      none: Undefeatable for this character, or it pays nothing
+    # The router's danger check, at full health (2026-10-29).
+    dangerFigure: 'a pass takes {share}'
+    tooDangerous: too dangerous
+    tooDangerousTitle: Everything here that pays takes half this character's health or more a pass, by the same check routes are planned with
+    groupFigures: '{rate}/h alone · recovering {recover} · {lairs} lairs · back in {respawn} min'
+    addedFigures: '{rate}/h if fought every time · counts {counts} · back in {respawn} min'
     detail:
       rate: Expected
       rateValue: '{rate} exp/h'
-      ceiling: Ceiling
-      spawns: Up at once
-      respawn: Respawn
-      respawnHours: '{hours} h'
-      rounds: A kill
-      roundsValue: 'about {rounds} rounds'
-      openerCredited: (opener credited)
-      cost: A room costs
-      costValue: '{hp} hp ({share} of the bar), up to {worst} hp ({worstShare}) at its worst spawn'
-      costAtLeast: 'at least {worst} hp ({worstShare} of the bar) at its worst spawn; a spawn’s rounds to kill are unknown'
-      walk: The walk
-      walkValue: '{steps} steps round, {ms} ms a step'
-      heal: Recovery
-      healValue: '{casts} heals a cycle, quicker than resting'
-      poison: Poison
-      poisonValue: 'no cure, so {seconds}s standing before a rest'
-      poisonUnknown: no cure, and the realm states no length for it
-      cycle: A cycle
-      cycleValue: 'fight {combat}, rest {rest}, walk {walk}, wait {wait}'
-      # A caster's cycle also sits to get its mana back, and that time is in
-      # the rate. Drawn only where the character actually casts -- `meditate 0`
-      # on every melee character would be noise (todo 26).
-      cycleMeditate: ', meditate {meditate}'
-    mobFigures: '{exp} exp · {rounds} rounds · {perRound} hp/round'
-    # A monster the realm gives a clock of its own is standing in the lair on
-    # only some laps, and its experience is weighed by how often -- so the
-    # figure beside it is not what a lap pays. Said out loud rather than left
-    # to be inferred from a rate that does not match the list.
-    mobClock:
-      many: 'back every {hours} hours'
-      one: 'back every {hours} hour'
+      loop: The loop
+      loopValue: '{rate}/h over {lairs} lairs, recovering {recover}'
+      lap: A lap
+      lapValue: '{minutes} min'
     roomFigures: '{map}/{room} · {steps} steps'
-    fillerFigures: '{map}/{room} · +{detour} steps'
-    fillerHead: Also on the way, while the clock runs
     moreRooms:
-      many: 'and {count} more rooms hold this lair'
-      one: 'and {count} more room holds this lair'
+      many: 'and {count} more rooms on the loop'
     walkThere: Walk there
     loopIt: Loop it
     createLoop: Create loop
     oneRoomNoLoop: One room is a place to stand, not a loop
     loopName: 'Hunt: {area} ({mob})'
-    copyRow: '{mobs}: {rate} exp/h, {rooms} rooms, {steps} steps'
+    copyRow: '{area}: {rate} exp/h, {groups} groups, {steps} steps'
   quests:
     anyOf: Any one of
     # What every way into the place a step happens, or a thing is got, demands
