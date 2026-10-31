@@ -483,7 +483,8 @@ export function calculateSpellCast(profile, spell, castLevel = 0, { vsMR = 0, vs
       minCast = calculateResistDamage(minCast, vsMR, resistOpts);
       maxCast = calculateResistDamage(maxCast, vsMR, resistOpts);
     }
-    if (sp.TypeOfResists === 2 || (sp.TypeOfResists === 1 && vsAntiMagic)) {
+    const outright = sp.TypeOfResists === 2 || (sp.TypeOfResists === 1 && vsAntiMagic);
+    if (outright && (engine.fullResistDamage || !r.bDoesDamage)) {
       fullResist = fix(vsMR / 2);
       if (fullResist > 98) fullResist = 98;
     }

@@ -93,6 +93,16 @@ function areaWords(
     : t('cards.hunting.areaFigure', { ...figures, without });
 }
 
+/** Which of an area's two pricings a row is (`priceAreaBothWays`). */
+const BOSSES_WORD: Record<NonNullable<GroundArea['bosses']>, () => string> = {
+  with: () => t('cards.hunting.bosses.with'),
+  without: () => t('cards.hunting.bosses.without')
+};
+const BOSSES_TITLE: Record<NonNullable<GroundArea['bosses']>, () => string> = {
+  with: () => t('cards.hunting.bossesTitle.with'),
+  without: () => t('cards.hunting.bossesTitle.without')
+};
+
 /** What an area's loop is for: its loop's monsters. */
 function mainOf(area: GroundArea): GroundGroup | null {
   return area.loop;
@@ -101,7 +111,10 @@ function mainOf(area: GroundArea): GroundGroup | null {
 /** An area's loop, in the stop grammar every loop uses; an added room carries its clock. */
 function areaLoop(area: GroundArea): Loop {
   return {
-    name: t('cards.hunting.loopName', { area: area.name, mob: mainOf(area)?.mobs[0] ?? '' }),
+    name:
+      area.bosses === 'without'
+        ? t('cards.hunting.loopNameNoBosses', { area: area.name, mob: mainOf(area)?.mobs[0] ?? '' })
+        : t('cards.hunting.loopName', { area: area.name, mob: mainOf(area)?.mobs[0] ?? '' }),
     stops: area.walk.map((room) => ({
       room: `${room.name} ${room.map}/${room.room}`,
       ...(room.respawnSeconds === undefined || room.respawnSeconds <= 0
@@ -190,6 +203,11 @@ function HuntingCard({
             >
               {area.name === '' ? t('cards.hunting.unnamedArea', { map: area.map }) : area.name}
             </button>
+            {area.bosses !== undefined && (
+              <span className="chip quiet" title={BOSSES_TITLE[area.bosses]()}>
+                {BOSSES_WORD[area.bosses]()}
+              </span>
+            )}
             <span className="quiet">
               {mainOf(area)?.mobs.slice(0, 2).join(', ') ?? t('cards.hunting.nothingPays')}
             </span>

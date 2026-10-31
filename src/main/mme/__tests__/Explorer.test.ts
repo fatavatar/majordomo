@@ -371,6 +371,16 @@ describe('MMUD Explorer for the character being played', () => {
     expect(plain(detail!.text)).toContain('Target: ');
   });
 
+  // 2026-10-31: MR takes its share off a damage spell's casts; resisting outright is for the rest.
+  it('reduces a damage spell against MR, and never resists it outright', async () => {
+    const priest = character({ className: 'Priest' });
+    const vs = { ...DEFAULT_EXPLORER_OPTIONS, mrCalc: true, vsMR: 80 };
+    const harm = await explorerDetail(fixture(), priest, 'spells', 12, vs);
+    const text = plain(harm!.text);
+    expect(text).toContain('resisted');
+    expect(text).not.toContain('fully-resist');
+  });
+
   /*
    * What mudtool's own `spell filters (FilterSpells)` test reads of fireball,
    * as main sends it; the window's filter is tested on these facts
@@ -679,6 +689,42 @@ describe('a lair cleared with a room spell, as MegaMUD casts it', () => {
     expect(rats.recovering).toBeGreaterThan(before.get(rats.key)!.recovering);
     expect(rats.expPerHour!).toBeLessThan(before.get(rats.key)!.expPerHour!);
     expect(nuked.setup).toContain('room spells fbal');
+  });
+
+  // 2026-10-31: Skinny's forgotten dragons, placed by a room of the Dark Cavern, went unpriced.
+  it('prices a boss that a room places, in that room', async () => {
+    const priced = await explorerHunting(fixture(), mage, how, rooms());
+    const champion = priced.groups.find((group) => group.key === 'mob:60');
+    expect(champion).toMatchObject({
+      kind: 'mob',
+      mobs: ['minotaur champion'],
+      rooms: [{ map: 1, room: 2124 }],
+      expPerClear: 6000,
+      respawnMinutes: 6000
+    });
+  });
+
+  /*
+   * The heal as MegaMUD casts it, when hurt (2026-10-31): MME's every round
+   * charged Skinny's leech each round of every fight, where it covered three
+   * of them.
+   */
+  it('casts the heal only as often as the fight needs it', async () => {
+    const priest = character({
+      name: 'Bowel',
+      className: 'Priest',
+      progress: { ...mage.progress, level: 30, willpower: 90, intellect: 60 }
+    });
+    const melee = { ...how, attackSpell: 'gwra' };
+    const every = rooms();
+    const bare = await explorerHunting(fixture(), priest, melee, every);
+    const healed = await explorerHunting(fixture(), priest, { ...melee, heal: 'mahe' }, every);
+    const without = new Map(bare.groups.map((group) => [group.key, group]));
+    // Giant rats barely scratch a priest: healed every round the rate fell 29%, healed as hurt about 2%.
+    const rats = healed.groups.find(
+      (group) => group.mobs[0] === 'giant rat' && (group.expPerHour ?? 0) > 0
+    )!;
+    expect(rats.expPerHour!).toBeGreaterThan(0.95 * without.get(rats.key)!.expPerHour!);
   });
 
   it('never casts it under its monster count', async () => {

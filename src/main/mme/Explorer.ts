@@ -131,6 +131,7 @@ import {
   expHrProfile,
   expPerHourCell,
   EXPHR_DEFAULTS,
+  healingValues,
   lairDamageOutput,
   monsterExpPerHour,
   normaliseExpHrConfig,
@@ -280,6 +281,15 @@ export async function useRealm(realm: MmeRealm): Promise<void> {
     realm.close?.();
   }
   detectEngine(db.info);
+  /*
+   * Magic resistance takes its share off a damage spell's every cast, and is
+   * no chance of the spell missing outright: that is for the spells that do no
+   * damage, a confusion or a hold (2026-10-31, the user's reading of the
+   * realm). MME took both, half the MR as a chance of nothing, and priced
+   * Skinny's divine tempest at 346 a cast against the mutated dragons' MR 80,
+   * where it hit each of them for 580–669 every cast.
+   */
+  engine.fullResistDamage = false;
   loaded = realm.key;
   // Every cache mudtool keeps was the last realm's.
   setSetting('globalFilter', true);
@@ -2684,27 +2694,34 @@ interface LairGroupDef {
 /** `[35-5-13][4]Group(lair): 1/5216`: a lair entry of `Summoned By`. */
 const LAIR_ENTRY = /^\[([^\]]+)\]\[(\d+)\]Group\(lair\):\s*(\d+)\/(\d+)$/;
 
+/** `Room 1/9663`: a room's own monster, placed there, an entry of `Summoned By`. */
+const ROOM_ENTRY = /^Room\s+(\d+)\/(\d+)$/;
+
 let lairGroupsOf: { realm: string; groups: Map<string, LairGroupDef>; bosses: Row[] } | null = null;
 
 /**
  * The realm's lair groups, and the monsters MME prices on a clock of their
  * own (`RegenTime` above 0, `monsterExpPerHour`'s `mob` kind), each with the
- * rooms it spawns in. Read once a realm.
+ * rooms it spawns in: its lairs, or the rooms that place it (2026-10-31). A
+ * boss a room places was left out, where Skinny's forgotten dragon and
+ * dragon slayer in the Dark Cavern, 52M and 62M a kill every two hours, were
+ * half of the 158M/h he earned there, and the White Stone Palace's rakshasha
+ * lord and wizardess, 76M each, went unpriced. Read once a realm.
  */
 function lairGroups(): { groups: Map<string, LairGroupDef>; bosses: Row[] } {
   if (lairGroupsOf?.realm === loaded) return lairGroupsOf;
   const groups = new Map<string, LairGroupDef>();
   const bosses: Row[] = [];
   for (const m of db.Monsters as Row[]) {
-    const entries = String(m['Summoned By'] ?? '')
+    const said = String(m['Summoned By'] ?? '')
       .split(',')
-      .map((entry) => entry.trim())
-      .filter((entry) => LAIR_ENTRY.test(entry));
-    if (entries.length === 0) continue;
+      .map((entry) => entry.trim());
+    const entries = said.filter((entry) => LAIR_ENTRY.test(entry));
     if (((m['RegenTime'] as number) || 0) > 0) {
-      bosses.push(m);
+      if (entries.length > 0 || said.some((entry) => ROOM_ENTRY.test(entry))) bosses.push(m);
       continue;
     }
+    if (entries.length === 0) continue;
     for (const entry of entries) {
       const [, index, , map, room] = LAIR_ENTRY.exec(entry)!;
       let group = groups.get(index!);
@@ -2723,14 +2740,17 @@ function lairGroups(): { groups: Map<string, LairGroupDef>; bosses: Row[] } {
   return lairGroupsOf;
 }
 
-/** A boss's rooms: the lairs it spawns in. */
+/** A boss's rooms: the lairs it spawns in, and the rooms that place it. */
 function bossRooms(m: Row): Array<{ map: number; room: number }> {
   return String(m['Summoned By'] ?? '')
     .split(',')
-    .map((entry) => LAIR_ENTRY.exec(entry.trim()))
-    .flatMap((found) =>
-      found === null ? [] : [{ map: Number(found[3]), room: Number(found[4]) }]
-    );
+    .map((entry) => entry.trim())
+    .flatMap((entry) => {
+      const lair = LAIR_ENTRY.exec(entry);
+      if (lair !== null) return [{ map: Number(lair[3]), room: Number(lair[4]) }];
+      const room = ROOM_ENTRY.exec(entry);
+      return room === null ? [] : [{ map: Number(room[1]), room: Number(room[2]) }];
+    });
 }
 
 /** The rest of a hunting party of ours, beside the character asking (2026-10-29). */
@@ -2868,7 +2888,7 @@ export async function explorerHunting(
     for (const m of placed) {
       let r: ExpHrResult;
       try {
-        r = monsterExpPerHour(m, { ...env, list: false });
+        r = healAsNeeded(monsterExpPerHour(m, { ...env, list: false }), env);
       } catch {
         continue;
       }
@@ -2923,7 +2943,7 @@ function pricePooled(
   };
   let r: AreaPriced;
   try {
-    r = withAreaAttacks(monsterExpPerHour(asked, { ...env, list: false }), env);
+    r = asItFights(monsterExpPerHour(asked, { ...env, list: false }), env);
   } catch {
     return null;
   }
@@ -2945,6 +2965,54 @@ function pricePooled(
 
 /** MME's estimate, and what the character's room spells made of the clear. */
 type AreaPriced = ExpHrResult & { areaAttack?: LairPrice['areaAttack'] };
+
+/** MME's estimate of a fight as MegaMUD fights it: its room spells, and its heal as it is needed. */
+function asItFights(r: ExpHrResult, env: Record<string, unknown>): AreaPriced {
+  return healAsNeeded(withAreaAttacks(r, env), env);
+}
+
+/**
+ * What a fight deals the character a round at its worst, as MME's lair model
+ * reads its figures (`perMobDmg`, with every monster of the spawn standing):
+ * the spawn's damage over the rounds to kill one, a single monster's a round.
+ */
+function damageARound(a: Record<string, number>): number {
+  const n = Math.max(1, a['numMobs'] ?? 1);
+  let each = a['mobDmg'] ?? 0;
+  if (n > 1) each *= (n + 1) / (2 * n);
+  if ((a['rtk'] ?? 0) > 1) each /= a['rtk']!;
+  return Math.max(0, each * n);
+}
+
+/**
+ * The heal cast as MegaMUD casts it (2026-10-31), when the character is hurt,
+ * not every round: MME's own *heal every N rounds* (`healRounds`,
+ * `RefreshCombatHealingValues`) set to the rounds one heal covers of what the
+ * fight deals a round (`damageARound`), from 1 to MME's 50. MME left at every
+ * round charged Skinny's leech, 80 mana, each round of every fight, where he
+ * took about 40 a round of its 138: over half his time in the Dark Cavern went
+ * to resting for the mana. A heal over time, and a party's, are as MME has them.
+ */
+function healAsNeeded(r: AreaPriced, env: Record<string, unknown>): AreaPriced {
+  const at = char.attack as Record<string, unknown>;
+  const a = r.args;
+  if (a === undefined || r.info === null || partyBox().size > 1) return r;
+  if (at['healType'] !== 2 && at['healType'] !== 3) return r;
+  const useChar = env['useChar'] === true;
+  const each = healingValues({ ...at, healRounds: 1 }, env['profile'], useChar);
+  if (!(each.value > 0) || !(each.cost > 0)) return r;
+  const hurt = damageARound(a);
+  const rounds = hurt > 0 ? Math.min(50, Math.max(1, Math.floor(each.value / hurt))) : 50;
+  const now = healingValues(at, env['profile'], useChar);
+  const sized = healingValues({ ...at, healRounds: rounds }, env['profile'], useChar);
+  if (sized.cost === now.cost && sized.value === now.value) return r;
+  const args = {
+    ...a,
+    damageThreshold: sized.value,
+    spellOverhead: Math.max(0, (a['spellOverhead'] ?? 0) - now.cost + sized.cost)
+  };
+  return { ...r, args, info: calcExpPerHour(args, env['config'] as Record<string, unknown>) };
+}
 
 /** `SPELL_TARGETS`: a Divided Attack Area spell shares its damage among the monsters; Full ones hit each. */
 const DIVIDED_ATTACK_AREA = 9;
@@ -3185,7 +3253,7 @@ function expHrFor(m: Row, list: boolean): ExpHrResult {
   let found = cache.get(n);
   if (found === undefined) {
     try {
-      found = withAreaAttacks(monsterExpPerHour(m, { ...at.env, list }), at.env);
+      found = asItFights(monsterExpPerHour(m, { ...at.env, list }), at.env);
     } catch {
       found = { kind: 'none', info: null };
     }

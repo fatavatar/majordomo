@@ -11,6 +11,16 @@ export function expHrCharacter(
   c: MmeChar,
   opts: { useChar?: boolean; profile?: unknown; panel?: unknown; summary?: unknown }
 ): { spellOverhead?: number } & Record<string, unknown>;
+/**
+ * `RefreshCombatHealingValues`: the heal a round MME counts against the blows,
+ * and its mana a round, for the heal settings in `attack` (its every-N-rounds
+ * in `healRounds`).
+ */
+export function healingValues(
+  attack?: Record<string, unknown>,
+  profile?: unknown,
+  useChar?: boolean
+): { value: number; cost: number };
 export function expHrProfile(profile: unknown, useChar: boolean, spellOverhead?: number): unknown;
 export interface ExpHrResult {
   kind: string;

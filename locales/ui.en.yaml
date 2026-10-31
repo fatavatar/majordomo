@@ -2107,6 +2107,13 @@ cards:
     dangerFigure: 'a pass takes {share}'
     areaFigure: '{spells} clears a spawn in {rounds} rounds, {without} without'
     areaFigureAlone: '{spells} clears a spawn in {rounds} rounds'
+    # An area priced with the bosses fought on top of its loop, and without them (2026-10-31).
+    bosses:
+      with: with bosses
+      without: no bosses
+    bossesTitle:
+      with: Its bosses fought whenever a lap finds them back, on top of the loop
+      without: The same area with its bosses left alone, for when they are too hard
     tooDangerous: too dangerous
     tooDangerousTitle: Everything here that pays takes half this character's health or more a pass, by the same check routes are planned with
     groupFigures: '{rate}/h alone · recovering {recover} · {lairs} lairs · back in {respawn} min'
@@ -2129,6 +2136,7 @@ cards:
     createLoop: Create loop
     oneRoomNoLoop: One room is a place to stand, not a loop
     loopName: 'Hunt: {area} ({mob})'
+    loopNameNoBosses: 'Hunt: {area} ({mob}, no bosses)'
     copyRow: '{area}: {rate} exp/h, {groups} groups, {steps} steps'
   quests:
     anyOf: Any one of

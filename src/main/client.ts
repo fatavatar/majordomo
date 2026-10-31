@@ -118,7 +118,7 @@ import { areaOfRooms, realmAreas } from './world/huntingAreas';
 import {
   howItFights,
   loopGroups,
-  priceArea,
+  priceAreaBothWays,
   sheetRead,
   type GroundArea,
   type GroundGroup,
@@ -536,21 +536,22 @@ async function huntingGroundsOf(
       .filter((room) => !seen.has(room.id) && (seen.add(room.id), true))
       .sort((a, b) => a.steps - b.steps);
   };
-  const areas: GroundArea[] = grouped.map((area, at) => {
+  const areas: GroundArea[] = grouped.flatMap((area, at) => {
     const pool = pools[at]!;
     const found = pooled.find((price) => price.key === pool.key);
     const loop: GroundGroup | null =
       found !== undefined
         ? { ...found, rooms: roomsOf(pool.groups, area.members) }
         : (area.members.find((group) => group.key === pool.groups[0]) ?? null);
-    return {
-      key: area.key,
+    // With its bosses and, where it has any to fight, without them as well.
+    return priceAreaBothWays(area.members, loop, clockBound, maxDamageShare).map((priced) => ({
+      key: priced.bosses === 'without' ? `${area.key}:lairs` : area.key,
       name: area.name,
       map: area.map,
       steps: Math.min(...area.members.map((group) => group.rooms[0]?.steps ?? Infinity)),
       walk: [],
-      ...priceArea(area.members, loop, clockBound, maxDamageShare)
-    };
+      ...priced
+    }));
   });
   // What pays first, best first; an area too dangerous to hunt after everything that pays.
   areas.sort(

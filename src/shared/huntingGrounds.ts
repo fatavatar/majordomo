@@ -104,6 +104,12 @@ export interface GroundArea {
   danger: number | null;
   /** Something here pays, but all of it is too dangerous for the character. */
   tooDangerous: boolean;
+  /**
+   * Where bosses are fought on top of the loop, which of the area's two
+   * pricings this is (`priceAreaBothWays`): with them, or without them.
+   * Absent where it has none to fight.
+   */
+  bosses?: 'with' | 'without';
   /** Fewest steps to its nearest room. */
   steps: number;
   /**
@@ -405,6 +411,33 @@ export function loopGroups(
  * time it takes comes off the loop's. Fatty's beastmistress came back every
  * 76–83 minutes on a 60-minute clock (2026-10-29).
  */
+/**
+ * An area priced with its bosses and without them (2026-10-31): where a boss
+ * is fought on top of the loop (an `added` group of one monster on its own
+ * clock), the same area priced as though it were not there, its lairs alone.
+ * The router's check passes a boss at full health that a character may not
+ * beat once a fight has worn it down, and a player who leaves it alone wants
+ * to know what the lairs pay; Skinny's Dark Cavern lairs are worth a third of
+ * what its two forgotten dragons add. One pricing where no boss is fought.
+ */
+export function priceAreaBothWays(
+  groups: readonly GroundGroup[],
+  loop: GroundGroup | null,
+  clockBound: number,
+  maxDanger: number
+): Array<ReturnType<typeof priceArea> & Pick<GroundArea, 'bosses'>> {
+  const priced = priceArea(groups, loop, clockBound, maxDanger);
+  const fightsBosses = priced.groups.some(
+    ({ group, role }) => role === 'added' && group.kind === 'mob'
+  );
+  if (!fightsBosses) return [priced];
+  const lairs = groups.filter((group) => group.kind !== 'mob');
+  return [
+    { ...priced, bosses: 'with' },
+    { ...priceArea(lairs, loop, clockBound, maxDanger), bosses: 'without' }
+  ];
+}
+
 export function priceArea(
   groups: readonly GroundGroup[],
   loop: GroundGroup | null,

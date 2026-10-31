@@ -13,6 +13,12 @@ export const engine = {
   datVersion: 0,       // e.g. 1.11
   maxSwings: 5,
   disableKai: false,
+  // MME takes a fully-resistable spell's chance to be resisted outright (MR / 2)
+  // off its damage too, on top of what MR takes off each cast. Off, MR only
+  // reduces a damage spell's damage, and resisting outright is for the spells
+  // that do none (confusion, a hold). mudengine turns it off (2026-10-31): its
+  // characters' tempests hit every dragon in the room, cast after cast.
+  fullResistDamage: true,
 };
 
 // ExtractNumbersFromString (modSyntaxsFunc.bas): digits from the first run,
