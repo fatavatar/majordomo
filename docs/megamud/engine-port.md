@@ -527,3 +527,26 @@ MegaMUD is kept in it:
   kind 4 resets via `0x49ade0` + `0x49b080`. Events under 1500 ms apart are merged.
 - Still to read: `0x49b220`, `0x49b5d0`, `0x49b610`, `0x49bfd0`, `0x49bf20`, `0x49bf70`,
   `0x49be90`, `0x49ade0`.
+
+### The status bar's round timer (read 2026-10-31, `roundTimer` in `combat/timer.ts`)
+
+- `0x4a9ff0` owner-draws the status bar part: background colour 15, text colour 8,
+  `DEFAULT_GUI_FONT`, bold (weight 700) while `0x49af00` says a spell waits.
+- `0x49af00(s)`: lapses the stamps (`0x49bb90`); trusted (`0x49b870`), true while
+  `0x32670` (spell lock) or `0x32660` (cast stamped); untrusted, `0x49af70(s, 0)`.
+- `0x49b8f0(s, *ms)`: 0 unless `0x32648` (synced); else `*ms = anchor - (tick % 5000)`,
+  plus 5000 when not over 0: the time to the next round, 1–5000.
+- The figure (`Display.HideRoundTimerStatus` `0x8c14` hides it), 20 px from the left:
+  `?` (`0x540490`) unsynced; else `0x49b950` → `0x49ae20`: over 2000 ms
+  `%d.0` of the seconds rounded up (at most 5), else `%d.%d` of the tenths (at most 20).
+- The bar (`Display.HideRoundTimerBar` `0x8c18` hides it): the rest of the part less 4 px
+  each side, filled colour 5 and outlined with a pen of colour 16; ten slots across it
+  (the width / 10, the remainder a pixel each to the first slots), `(ms + 499) / 1000`
+  of them (at most 10, so 5 at most) filled from the left and framed in black, a gap of
+  a pixel between them (none under 2 px slots; 1–2 px with the figure hidden).
+- `0x4aa670`, the slots' colour: unsynced, colour 5; synced under 80 confidence
+  (`0x32650 < 0x50`), `0x80e0` (orange); else `0xc06000` (blue) while `0x49af00`,
+  `0x8000` (green) otherwise.
+- Ours (`MegaEngine.round`, `RoundTimer.tsx`): the engine says the tone and time left
+  when the tone or the anchor changes (looked at on its quarter-second quiet tick), and
+  the status rail runs a bar down smoothly between, rather than a block a second.
