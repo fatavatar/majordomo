@@ -1729,6 +1729,12 @@ statusRail:
   pressure:
     burst: burst {rate} c/s
     tooltip: Animation paused while the realm is sending fast
+  # MegaMUD's round timer: the time to the next combat round, coloured by what it knows.
+  round:
+    ready: Next combat round — a spell may be cast now
+    unsure: Next combat round — still learning when rounds begin
+    unsynced: Round timer — waiting for a round to fall on (a blow struck, experience gained)
+    wait: Next combat round — a spell was cast this round; the next waits for the round to turn
   target:
     none: no realm
 # The pane handles between the console and the rails.
@@ -2099,6 +2105,8 @@ cards:
       none: Undefeatable for this character, or it pays nothing
     # The router's danger check, at full health (2026-10-29).
     dangerFigure: 'a pass takes {share}'
+    areaFigure: '{spells} clears a spawn in {rounds} rounds, {without} without'
+    areaFigureAlone: '{spells} clears a spawn in {rounds} rounds'
     tooDangerous: too dangerous
     tooDangerousTitle: Everything here that pays takes half this character's health or more a pass, by the same check routes are planned with
     groupFigures: '{rate}/h alone · recovering {recover} · {lairs} lairs · back in {respawn} min'
@@ -2108,6 +2116,9 @@ cards:
       rateValue: '{rate} exp/h'
       loop: The loop
       loopValue: '{rate}/h over {lairs} lairs, recovering {recover}'
+      area: Room spells
+      areaValue: '{spells}: a spawn in {rounds} rounds, against {without} with the attack alone'
+      areaValueAlone: '{spells}: a spawn in {rounds} rounds, which the attack alone cannot clear'
       lap: A lap
       lapValue: '{minutes} min'
     roomFigures: '{map}/{room} · {steps} steps'
@@ -4831,6 +4842,9 @@ session:
   hunt:
     noRealmData: This realm has no world data loaded, so nothing can say where to hunt.
     noSession: No character is loaded for that session.
+    notRead:
+      Waiting for this character's stat sheet and inventory (st and i); the card asks again once
+      both are in.
     unknownRoom: The client does not know where this character is standing yet; move or look first.
   loop:
     ambiguousStopName: '{count} rooms are called {name} — name it as "{name} {map}/{room}".'

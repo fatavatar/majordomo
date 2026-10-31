@@ -14,6 +14,7 @@
 import { dueOn } from '../abilities/monitors';
 import type { Session } from '../Session';
 import { MonitorWhen } from '../flags';
+import type { RoundTimer } from '../../../shared/roundTimer';
 
 const ROUND = 5000;
 /** The confidence the cast gate wants before it trusts the round. */
@@ -310,6 +311,32 @@ export function tooSoon(s: Session, secs: number): boolean {
 /** `0x49af50`. */
 export function castAllowed(s: Session, secs: number): boolean {
   return !tooSoon(s, secs);
+}
+
+/**
+ * `0x49af00`: a spell would wait for the round to turn, as the status bar
+ * shows it (its bold text, its blue bar): trusted, a spell cast or refused
+ * this round; untrusted, too soon after the last cast.
+ */
+export function castWaits(s: Session): boolean {
+  lapse(s);
+  if (trusted(s)) return s.spellLock !== 0 || s.castStamped !== 0;
+  return tooSoon(s, 0);
+}
+
+/** `0x49b8f0`: how long until the next round begins, 1–5000 ms; null before rounds are synced. */
+export function untilNextRound(s: Session): number | null {
+  if (s.roundSynced !== 1) return null;
+  const d = s.roundAnchor - phaseOf(s.host.tickMs());
+  return d > 0 ? d : d + ROUND;
+}
+
+/** `0x4aa670`: the status bar's round timer, its colour and how long the round has left. */
+export function roundTimer(s: Session): Pick<RoundTimer, 'tone' | 'nextInMs'> {
+  const nextInMs = untilNextRound(s);
+  if (nextInMs === null) return { tone: 'unsynced', nextInMs };
+  if (s.roundConfidence < 0x50) return { tone: 'unsure', nextInMs };
+  return { tone: castWaits(s) ? 'wait' : 'ready', nextInMs };
 }
 
 /** `0x426eb0`: a blow struck this round (by anyone): a combat round event. */

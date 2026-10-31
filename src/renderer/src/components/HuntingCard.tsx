@@ -39,6 +39,8 @@ export interface HuntingCardProps extends CardChrome {
   session: SessionId;
   /** Asks main, addressed at this card's own character: alone, or with its party. */
   loadHunting(asParty: boolean): ReturnType<IpcApi['huntingGrounds']>;
+  /** Whether the character is known well enough to price (`readyToPrice`); the card asks again when it becomes so. */
+  ready: boolean;
   /** The party roster this character is on, by name; null where it is on none, and only Solo is offered. */
   partyMembers: string[] | null;
   /** Opens the route panel on a room; null on a pinned float. */
@@ -71,6 +73,25 @@ function perHour(rate: number | null): string {
   return String(Math.round(rate));
 }
 const percent = (share: number): string => `${Math.round(share * 100)}%`;
+/** Rounds to one place, as MME's own rounds to clear read. */
+const rounds = (n: number): string => (Math.round(n * 10) / 10).toLocaleString();
+
+/** What the room spells did to a clear, on the area's readout or a group's line. */
+function areaWords(
+  area: NonNullable<GroundGroup['areaAttack']>,
+  where: 'detail' | 'group'
+): string {
+  const figures = { spells: area.spells.join(', '), rounds: rounds(area.rounds) };
+  if (area.without === null) {
+    return where === 'detail'
+      ? t('cards.hunting.detail.areaValueAlone', figures)
+      : t('cards.hunting.areaFigureAlone', figures);
+  }
+  const without = rounds(area.without);
+  return where === 'detail'
+    ? t('cards.hunting.detail.areaValue', { ...figures, without })
+    : t('cards.hunting.areaFigure', { ...figures, without });
+}
 
 /** What an area's loop is for: its loop's monsters. */
 function mainOf(area: GroundArea): GroundGroup | null {
@@ -112,6 +133,7 @@ function HuntingCard({
   runLoop,
   createLoop,
   partyMembers,
+  ready,
   ...chrome
 }: HuntingCardProps) {
   // Priced for this character alone, or by MME's party mode with its roster (2026-10-29).
@@ -124,7 +146,10 @@ function HuntingCard({
   const [asked, setAsked] = useState(0);
   /*
    * Asked when the card opens, when the party changes — Solo or Party, or who
-   * is on the roster — and on *Ask again*, and at no other time (2026-10-29):
+   * is on the roster — when the character becomes known enough to price
+   * (`ready`: open before it entered the realm, the card had nothing and
+   * *Ask again* before `st` and `i` had answered got nothing either), and on
+   * *Ask again*, and at no other time (2026-10-29):
    * nothing it prices moves with a step, and the survey prices every lair in
    * reach, so asking again as the character walked redid it every ten
    * seconds of a lap for a steps column.
@@ -141,7 +166,7 @@ function HuntingCard({
     return () => {
       stale = true;
     };
-  }, [loadHunting, asked, party, partyKey]);
+  }, [loadHunting, asked, party, partyKey, ready]);
 
   const refresh = useCallback(() => setAsked((n) => n + 1), []);
   const rows = useMemo(() => grounds?.areas ?? [], [grounds]);
@@ -284,7 +309,7 @@ function HuntingCard({
         className="hunt-table"
         columns={columns}
         detailKey={open}
-        empty={loading ? t('cards.hunting.loading') : t('cards.hunting.none')}
+        empty={loading ? t('cards.hunting.loading') : (grounds?.refusal ?? t('cards.hunting.none'))}
         find={t('cards.hunting.find')}
         keyOf={(area) => area.key}
         name="hunting"
@@ -334,6 +359,12 @@ function AreaDetail({
               </dd>
             </>
           )}
+          {area.loop?.areaAttack === undefined ? null : (
+            <>
+              <dt>{t('cards.hunting.detail.area')}</dt>
+              <dd>{areaWords(area.loop.areaAttack, 'detail')}</dd>
+            </>
+          )}
           <dt>{t('cards.hunting.detail.lap')}</dt>
           <dd>
             {area.lapMinutes === null
@@ -364,6 +395,7 @@ function AreaDetail({
                     lairs: group.lairs,
                     respawn: Math.round(group.respawnMinutes)
                   })}
+              {group.areaAttack === undefined ? '' : ` · ${areaWords(group.areaAttack, 'group')}`}
               {group.danger === null || group.danger === undefined
                 ? ''
                 : ` · ${t('cards.hunting.dangerFigure', { share: percent(group.danger) })}`}

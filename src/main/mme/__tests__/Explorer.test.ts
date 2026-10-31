@@ -12,6 +12,7 @@ import {
   explorerEqBest,
   explorerEqWear,
   explorerGear,
+  explorerHunting,
   explorerList,
   explorerRoomSearch,
   explorerRoomTip,
@@ -615,5 +616,75 @@ describe('a room as MMUD Explorer says it holds', () => {
     const room = await explorerRoom(fixture(), character(), 1, 355);
     expect(room.shop).toEqual({ n: 5, name: 'Sword Shop' });
     expect(room.lair).toBeUndefined();
+  });
+});
+
+/*
+ * Room spells (2026-10-29): MME clears a lair one monster at a time with the
+ * one attack; MegaMUD opens on a room spell while the spawn is big enough.
+ * Skinny's divine tempest annihilates a three-monster spawn in a cast.
+ */
+describe('a lair cleared with a room spell, as MegaMUD casts it', () => {
+  const mage = character({
+    name: 'Skinny',
+    className: 'Mage',
+    progress: {
+      ...EMPTY_CHARACTER.progress,
+      level: 30,
+      strength: 40,
+      intellect: 90,
+      willpower: 60,
+      agility: 50,
+      health: 50,
+      charm: 50
+    }
+  });
+  const how = {
+    attack: 'a',
+    attackSpell: 'lbol',
+    backstab: false,
+    heal: '',
+    blessings: [],
+    meditate: false,
+    area: []
+  };
+  const rooms = (): string[] => {
+    const table = read(manifest.tables['Rooms']!.file) as { cols: string[]; rows: unknown[][] };
+    const map = table.cols.indexOf('Map Number');
+    const room = table.cols.indexOf('Room Number');
+    return table.rows.map((row) => `${String(row[map])}/${String(row[room])}`);
+  };
+
+  it('opens a spawn of two or more with fireball, and leaves a spawn of one to the attack', async () => {
+    const every = rooms();
+    const plain = await explorerHunting(fixture(), mage, how, every);
+    const fireball = { spell: 'fbal', monsters: 2, casts: 10, maxDamage: 99999 };
+    const nuked = await explorerHunting(fixture(), mage, { ...how, area: [fireball] }, every);
+    const before = new Map(plain.groups.map((group) => [group.key, group]));
+    const sped = nuked.groups.filter((group) => group.areaAttack !== undefined);
+    expect(sped.length).toBeGreaterThan(0);
+    for (const group of sped) {
+      expect(group.perSpawn).toBeGreaterThanOrEqual(2);
+      expect(group.areaAttack!.spells).toEqual(['fireball']);
+    }
+    expect(nuked.groups.filter((group) => group.perSpawn < 2).every((g) => !g.areaAttack)).toBe(
+      true
+    );
+    // Three famished cows a spawn: lightning bolt's nine rounds, fireball's one; it pays about three times.
+    const cows = sped.find((group) => group.mobs[0] === 'famished cow')!;
+    expect(cows.areaAttack).toEqual({ spells: ['fireball'], rounds: 1, without: 9 });
+    expect(cows.expPerHour!).toBeGreaterThan(2.5 * before.get(cows.key)!.expPerHour!);
+    // Giant rats die as fast to either, and fireball's 34 mana against the bolt's 5 is resting.
+    const rats = sped.find((group) => group.mobs[0] === 'giant rat')!;
+    expect(rats.recovering).toBeGreaterThan(before.get(rats.key)!.recovering);
+    expect(rats.expPerHour!).toBeLessThan(before.get(rats.key)!.expPerHour!);
+    expect(nuked.setup).toContain('room spells fbal');
+  });
+
+  it('never casts it under its monster count', async () => {
+    const every = rooms();
+    const fireball = { spell: 'fbal', monsters: 99, casts: 10, maxDamage: 99999 };
+    const nuked = await explorerHunting(fixture(), mage, { ...how, area: [fireball] }, every);
+    expect(nuked.groups.some((group) => group.areaAttack !== undefined)).toBe(false);
   });
 });

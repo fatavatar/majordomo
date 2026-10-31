@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 
 import {
   Arrow,
@@ -13,6 +13,7 @@ import {
   toneOf
 } from './MapGlyphs';
 import { MapLegend } from './MapPlan';
+import { KeptShown } from './Kept';
 import { keepFocus } from '../lib/focus';
 import { t } from '../lib/i18n';
 import {
@@ -303,8 +304,10 @@ export default function ExplorerRooms({
     [onWalk]
   );
 
-  // The keypad walks the compass, as frmMap's does.
+  // The keypad walks the compass, as frmMap's does, while the tab is shown.
+  const shownNow = useContext(KeptShown);
   useEffect(() => {
+    if (!shownNow) return;
     const onKey = (event: KeyboardEvent): void => {
       if (event.ctrlKey || event.metaKey || event.altKey) return;
       const into = event.target as HTMLElement | null;
@@ -317,7 +320,7 @@ export default function ExplorerRooms({
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [shown, walkMap]);
+  }, [shownNow, shown, walkMap]);
 
   const findNext = (): void => {
     const text = findText.trim();

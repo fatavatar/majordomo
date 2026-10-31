@@ -454,6 +454,7 @@ export class SessionHost {
           }
         },
         walk: (progress) => this.options.toAll(Push.walk, { session: id, payload: progress }),
+        round: (round) => this.options.toAll(Push.round, { session: id, payload: round }),
         // Where a walk was headed. Nothing is pushed to a window: the palette
         // asks for the recent list when somebody types, so a record kept on
         // every leg of a loop would be a push per step for a list nobody has

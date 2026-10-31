@@ -188,6 +188,8 @@ export function eventsStep(s: Session): number {
       const text = expandMacros(s, e.text);
       setState(s, State.Other);
       s.host.activity(`Issuing command "${e.text}" from timed event`);
+      // Ours: the player's own words, so not hidden as housekeeping (2026-10-30).
+      s.host.ownCommand?.(text);
       send(s, text);
       if (!text.endsWith('\r')) send(s, '\r');
       return eventDone(s);

@@ -6,6 +6,7 @@
 import { Appraisal } from './Appraisal';
 import { CommandQueue, type Intent } from '../automation/CommandQueue';
 import { IDLE_WALK, type WalkProgress } from '../../shared/walk';
+import { NO_ROUND, type RoundTimer } from '../../shared/roundTimer';
 import { playerKey } from '../../shared/players';
 import { splitOntoChannel } from '../../shared/talk';
 import { macroLength, parseMacro } from '../../shared/macro';
@@ -490,6 +491,8 @@ export interface SessionSink {
   partyAlreadyDone?(leader: string, command: string): boolean;
   /** How a route walk is going, when one is running. */
   walk?(progress: WalkProgress): void;
+  /** MegaMUD's round timer changed colour or found the round anew (`MegaEngine.round`). */
+  round?(round: RoundTimer): void;
   /**
    * A walk was started toward this room — the palette's recent destinations.
    *
@@ -2571,6 +2574,8 @@ export class SessionManager {
   private configured: Parameters<SessionManager['configure']> | null = null;
   /** What the engine has written since its last return, for the tracker. */
   private megaLine = '';
+  /** Lines the engine is about to send that the player wrote (`ownCommand`), in order. */
+  private megaOwn: string[] = [];
   /** The question MegaMUD is waiting on the player for, if any. See `megaAsk`. */
   private megaQuestion: string | null = null;
   /** The question the player said yes to, for the engine to be told when it asks again. */
@@ -3327,6 +3332,7 @@ export class SessionManager {
       this.sink.loop?.(NO_LOOP);
     }
     this.megaLine = '';
+    this.megaOwn = [];
     this.megaHeld = '';
     this.megaQuestion = null;
     this.megaAgreed = null;
@@ -3336,6 +3342,10 @@ export class SessionManager {
         {
           write: (text) => this.megaWrite(text),
           show: (text) => this.megaShow(text),
+          ownCommand: (text) => {
+            for (const line of text.replace(/\x01/g, '').split('\r'))
+              if (line.trim() !== '') this.megaOwn.push(line.trim());
+          },
           afflicted: (name, on, cause) => {
             if (this.tracker.noteAffliction(name, on, cause ?? undefined)) this.publishCharacter();
           },
@@ -3359,6 +3369,7 @@ export class SessionManager {
           locate: () => this.megaLocate(),
           toggled: () => this.publishAutomation(),
           progressed: (walk, loop) => this.megaProgressed(walk, loop),
+          rounded: (round) => this.sink.round?.(round),
           // After the engine's own handling of the prompt, not inside it.
           enteredGame: () => queueMicrotask(() => this.megaEnteredGame()),
           ask: (text) => this.megaAsk(text),
@@ -3537,7 +3548,11 @@ export class SessionManager {
         this.tracker.observeCommand(command);
         this.classifier.observeCommand(command);
         this.sink.command?.(this.reportable(command), 'automation');
-        this.noteSent(command, 'automation');
+        // The player's own line (a timed event's) is shown as typed, whatever its first word.
+        const at = this.megaOwn.indexOf(command);
+        const own = at !== -1;
+        if (own) this.megaOwn.splice(0, at + 1);
+        this.noteSent(command, own ? 'user' : 'automation');
       } else {
         this.tracker.observeReread();
       }
@@ -5695,6 +5710,11 @@ export class SessionManager {
   /** The engine's walk, as the cards draw it. */
   get walkProgress(): WalkProgress {
     return this.mega?.progress.walk ?? IDLE_WALK;
+  }
+
+  /** MegaMUD's round timer, as its status bar draws it. */
+  get roundTimer(): RoundTimer {
+    return this.mega?.round ?? NO_ROUND;
   }
 
   /** The engine's loop, as the cards draw it, with the experience at its run's start. */

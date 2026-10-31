@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
+import { EMPTY_CHARACTER } from '../character';
 import {
   areaStem,
   attackTypeOf,
@@ -7,6 +8,8 @@ import {
   howItFights,
   loopGroups,
   priceArea,
+  readyToPrice,
+  sheetRead,
   waitsOnClock,
   type GroundGroup
 } from '../huntingGrounds';
@@ -57,8 +60,42 @@ describe('what a character fights with, off its MegaMUD settings', () => {
       backstab: false,
       heal: '',
       blessings: ['gpow', 'agil', 'hrmy', 'soot'],
-      meditate: false
+      meditate: false,
+      area: []
     });
+  });
+
+  /*
+   * Skinny's Combat copy (2026-10-29): divine tempest from two monsters up,
+   * ten casts a fight. Scripting, MegaMUD nukes by its mode default
+   * (`DefNuke2`) unless *No mode defaults* keeps the toolbar's own.
+   */
+  it('reads the room spells MegaMUD opens with while scripting', () => {
+    const combat = {
+      AttackSpl: 'word',
+      PreMultAttack: 'dfur',
+      PreMultMstrCnt: 4,
+      PreMultCastCnt: 1,
+      MultAttack: 'dtem',
+      MultMstrCnt: 2,
+      MultCastCnt: 10,
+      MultMaxDmg: 99999
+    };
+    const tempest = { spell: 'dtem', monsters: 2, casts: 10, maxDamage: 99999 };
+    const fury = { spell: 'dfur', monsters: 4, casts: 1, maxDamage: 99999 };
+    expect(howItFights({ Combat: combat }).area).toEqual([fury, tempest]);
+    // The toolbar's own switch is not the one scripting uses…
+    expect(howItFights({ Combat: combat, MegaMud: { AutoNuke: 0 } }).area).toEqual([fury, tempest]);
+    // …the mode default is; and the pre-multi-attack wants pre-attacking on too.
+    expect(howItFights({ Combat: combat, MegaMud: { DefNuke2: 0 } }).area).toEqual([]);
+    expect(howItFights({ Combat: combat, MegaMud: { DefPreAttack2: 0 } }).area).toEqual([tempest]);
+    expect(
+      howItFights({ Combat: combat, MegaMud: { NoModeDefs: 1, AutoNuke: 0, DefNuke2: 1 } }).area
+    ).toEqual([]);
+    // No casts a fight is no room spell.
+    expect(howItFights({ Combat: { ...combat, MultCastCnt: 0, PreMultAttack: '' } }).area).toEqual(
+      []
+    );
   });
 
   it('names MME’s attack type for the word, abbreviations as the realm takes them', () => {
@@ -198,5 +235,34 @@ describe('an area priced as a loop walks it', () => {
       expPerHour: null,
       loop: null
     });
+  });
+});
+
+/*
+ * A card open as the character entered the realm (2026-10-29): before `stat`
+ * answered, MME priced one of Bowel's 609 lair groups; the card waits for the
+ * sheet and the pack, and asks again once both are in.
+ */
+describe('a character known well enough to price', () => {
+  const entered = {
+    ...EMPTY_CHARACTER,
+    room: { ...EMPTY_CHARACTER.room, map: 2, number: 8713 }
+  };
+  const statted = {
+    ...entered,
+    className: 'Wardancer',
+    progress: { ...entered.progress, level: 62 }
+  };
+  const listed = { ...statted, inventory: { ...statted.inventory, listedAt: 1 } };
+
+  it('waits for the stat sheet and the inventory', () => {
+    expect(sheetRead(entered)).toBe(false);
+    expect(sheetRead(statted)).toBe(false);
+    expect(sheetRead(listed)).toBe(true);
+    expect(readyToPrice(listed)).toBe(true);
+  });
+
+  it('and for where it stands', () => {
+    expect(readyToPrice({ ...listed, room: EMPTY_CHARACTER.room })).toBe(false);
   });
 });

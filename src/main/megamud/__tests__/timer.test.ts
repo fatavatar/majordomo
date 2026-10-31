@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
 
-import { castStamp, roundEvent, RoundEvent, spellLocked, tooSoon } from '../combat/timer';
+import {
+  castStamp,
+  roundEvent,
+  RoundEvent,
+  roundTimer,
+  spellLocked,
+  tooSoon
+} from '../combat/timer';
 import { session } from './fixture';
 
 /* `0x49af70`, `0x49b9a0`, `0x49b220`, `0x49be90` and `0x49bb90`, disassembled 2026-10-12. */
@@ -91,5 +98,30 @@ describe('the cast gate once the round is trusted', () => {
     expect(tooSoon(s, 0)).toBe(true);
     clock.ms += 2000;
     expect(tooSoon(s, 0)).toBe(false);
+  });
+});
+
+describe('the status bar round timer (0x4aa670, 0x49b8f0, 0x49af00)', () => {
+  it('has no round before one is found', () => {
+    const { s } = session();
+    expect(roundTimer(s)).toEqual({ tone: 'unsynced', nextInMs: null });
+  });
+
+  it('is amber while the round is not trusted, with the time to the next', () => {
+    const { s, clock } = session();
+    blows(clock, s, 3, 200);
+    clock.ms = Math.floor(clock.ms / 5000) * 5000 + 1200;
+    expect(roundTimer(s)).toEqual({ tone: 'unsure', nextInMs: 4000 });
+  });
+
+  it('turns blue on a cast and green again when the round turns', () => {
+    const { s, clock } = session();
+    blows(clock, s, 4, 200);
+    clock.ms = Math.floor(clock.ms / 5000) * 5000 + 1200;
+    expect(roundTimer(s).tone).toBe('ready');
+    castStamp(s);
+    expect(roundTimer(s)).toEqual({ tone: 'wait', nextInMs: 4000 });
+    clock.ms += 4100;
+    expect(roundTimer(s).tone).toBe('ready');
   });
 });

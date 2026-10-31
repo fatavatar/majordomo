@@ -21,6 +21,7 @@ import {
   findClass,
   type ItemRec,
   type MegaData,
+  type MessageRec,
   type MonsterRec,
   type SpellRec
 } from '../megamud/data';
@@ -48,6 +49,7 @@ import { combatOff } from '../megamud/combat/engaged';
 import { startRun } from '../megamud/script/run';
 import { joinLeader } from '../megamud/party/ranks';
 import { keepSchedule } from '../megamud/script/events';
+import { messageEnded } from '../megamud/messages/messages';
 import { tuning } from '../app/tuning';
 import { forgetAwaited, setState } from '../megamud/script/state';
 import {
@@ -96,6 +98,8 @@ import type { MegaChoices, MegaNames } from '../../shared/ipc';
 import type { BotCommand, PlayerGrant } from '../../shared/remotes';
 import { IDLE_WALK, type WalkProgress } from '../../shared/walk';
 import { NO_LOOP, type LoopProgress } from '../../shared/loops';
+import type { RoundTimer } from '../../shared/roundTimer';
+import { roundTimer } from '../megamud/combat/timer';
 import { doorSpell } from '../../shared/spellcraft';
 import {
   asRoomReference,
@@ -113,6 +117,7 @@ import type { WorldGraph } from '../world/WorldGraph';
 import { State } from '../megamud/states';
 import {
   SpellFlag,
+  MessageFlag,
   ItemFlag,
   StepFlag,
   RouteFlag,
@@ -173,6 +178,8 @@ export interface MegaEngineHost {
   partyForgot?(name: string): void;
   /** A leader's `@party` already done by this character itself (`SessionHost.partyAlreadyDone`). */
   partyAlreadyDone?(leader: string, command: string): boolean;
+  /** Lines about to be sent that the player wrote (`SessionHost.ownCommand`). */
+  ownCommand?(text: string): void;
   /** The engine closes the connection. */
   hangUp(): void;
   /** The engine dials again (after its redial pause). */
@@ -205,6 +212,8 @@ export interface MegaEngineHost {
   toggled?(): void;
   /** Its walk or loop moved on, as the cards draw them: see `MegaEngine.progress`. */
   progressed?(walk: WalkProgress, loop: LoopProgress): void;
+  /** Its round timer changed colour or found the round anew: see `MegaEngine.round`. */
+  rounded?(round: RoundTimer): void;
   /** It began or stopped waiting to dial back: see `MegaEngine.redialing`. */
   redialChanged?(): void;
   /**
@@ -523,6 +532,8 @@ export class MegaEngine {
   private lastingMarked = false;
   /** The walk and loop as last said (`noteProgress`). */
   private progressed = '';
+  /** The round timer's colour and round as last said (`noteRound`). */
+  private rounded = '';
   /** Waiting to redial, as last said. */
   private wasRedialing = false;
   /**
@@ -604,6 +615,7 @@ export class MegaEngine {
       activity: (text) => this.host.logged?.('doing', text),
       partyForgot: (name) => this.host.partyForgot?.(name),
       partyAlreadyDone: (leader, command) => this.host.partyAlreadyDone?.(leader, command) ?? false,
+      ownCommand: (text) => this.host.ownCommand?.(text),
       show: (text) => this.said(text),
       clock: () => Math.floor(Date.now() / 1000),
       tickMs: () => Date.now(),
@@ -682,6 +694,7 @@ export class MegaEngine {
           this.safely(() => {
             quietTick(this.s, this.t, this.quiet);
             if (this.noteRun()) this.noteToggles();
+            this.noteRound();
           }),
         QUIET_POLL_MS
       ),
@@ -844,8 +857,28 @@ export class MegaEngine {
   private newData(data: MegaData): void {
     const s = this.s;
     const was = s.data;
+    /*
+     * The messages in force as the tables changed (2026-10-29): one whose
+     * row is as it was stays in force on the fresh copy; one whose row
+     * changed is ended first, so what it set does not outlast it. Skinny,
+     * its weakness's wait and movement-prevented taken off, stayed held and
+     * resting on the old row, which nothing on the new one would end.
+     */
+    const kept = new Map<string, MessageRec>();
+    for (const rec of was.messages ?? []) {
+      if ((rec.flags & MessageFlag.Active) === 0) continue;
+      const now = data.messages?.find((row) => row.name === rec.name);
+      if (now !== undefined && sameMessage(now, rec)) kept.set(rec.name, rec);
+      else messageEnded(s, null, rec);
+    }
     this.dataFrom = data;
     s.data = structuredClone(data);
+    for (const rec of s.data.messages ?? []) {
+      const old = kept.get(rec.name);
+      if (old === undefined) continue;
+      rec.flags |= old.flags & (MessageFlag.Active | MessageFlag.RestedOn);
+      rec.firedAt = old.firedAt;
+    }
     s.data.players = was.players;
     s.data.rooms = was.rooms;
     // The spells the spellbook showed, and those the realm says last marked
@@ -1362,6 +1395,37 @@ export class MegaEngine {
   private worldRoom(room: RoomId): WorldRoom | undefined {
     const place = asRoomReference(room);
     return place === null ? undefined : this.host.world()?.get(place.map, place.room);
+  }
+
+  /**
+   * MegaMUD's round timer as its status bar draws it (`0x4a9ff0`): how long
+   * the round has left and the bar's colour (`roundTimer`). Reading it lets
+   * the cast's stamps lapse, as each repaint of MegaMUD's bar does.
+   */
+  get round(): RoundTimer {
+    return {
+      ...roundTimer(this.s),
+      figure: this.s.Display_HideRoundTimerStatus === 0,
+      bar: this.s.Display_HideRoundTimerBar === 0
+    };
+  }
+
+  /**
+   * Says so when the round timer changed colour or the round was found anew
+   * (2026-10-31), looked at every quiet tick: a window counts the round down
+   * itself from what it was told, so nothing is sent while the round runs.
+   */
+  private noteRound(): void {
+    const round = this.round;
+    const now = JSON.stringify([
+      round.tone,
+      round.nextInMs === null ? null : this.s.roundAnchor,
+      round.figure,
+      round.bar
+    ]);
+    if (now === this.rounded) return;
+    this.rounded = now;
+    this.host.rounded?.(round);
   }
 
   /** Says so when the walk or the loop moved on: a step, a stop, a lap, a fight. */
@@ -2526,4 +2590,15 @@ export class MegaEngine {
     made.path.steps = p.steps.map((st) => ({ ...st }));
     return 1;
   }
+}
+
+/** Two message rows that would do the same: matched alike, with the same effects and action. */
+function sameMessage(a: MessageRec, b: MessageRec): boolean {
+  return (
+    a.msg === b.msg &&
+    a.endMsg === b.endMsg &&
+    a.effects === b.effects &&
+    a.number === b.number &&
+    a.action === b.action
+  );
 }

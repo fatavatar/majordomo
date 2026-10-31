@@ -19,6 +19,7 @@ import ExplorerMonsterBar from './ExplorerMonsterBar';
 import TextblockView, { useTextblock } from './TextblockView';
 import { BuyBox, Chest, Runs, Stock } from './ExplorerDetailParts';
 import { Splitter } from './Splitter';
+import { Kept } from './Kept';
 import { keepFocus } from '../lib/focus';
 import type { SplitRange } from '../lib/splitter';
 import { t } from '../lib/i18n';
@@ -183,6 +184,43 @@ interface Visit {
   n: number | string | null;
 }
 
+/**
+ * A list's own place (2026-10-30): its search and filters, its order, how far
+ * down it was and the record chosen, kept while another list is shown, as
+ * each of MME's lists keeps its own. They were one for every list, so a search
+ * typed on Weapons was Armour's too, and a list gone back to was in name order
+ * at its top.
+ */
+interface ListView {
+  filters: ExplorerFilters;
+  sort: { id: string; dir: 1 | -1 };
+  scrollTop: number;
+  chosen: number | null;
+  /** A record gone to, listed (faint) though the filters would hide it, until they change. */
+  pinned: number | null;
+}
+
+const NEW_VIEW: ListView = {
+  filters: DEFAULT_FILTERS,
+  sort: { id: 'Name', dir: 1 },
+  scrollTop: 0,
+  chosen: null,
+  pinned: null
+};
+
+/** The filters that are the whole Explorer's and not a list's: mudtool's global filter and in-game setting. */
+type SharedFilters = Pick<ExplorerFilters, 'usableOnly' | 'inGameOnly'>;
+
+/** A list as last answered, and what it answered for (`listKey`). */
+interface HeldList {
+  session: SessionId;
+  key: string;
+  list: ExplorerList;
+}
+
+/** How many records' details are kept to be shown again without asking. */
+const DETAILS_KEPT = 200;
+
 /** The Spells bar's choices (`FilterSpells`), each list's place its value. */
 const MAGERIES = (): string[] => [
   t('explorer.anyType'),
@@ -331,17 +369,28 @@ export default function ExplorerScreen({
   const tbMap = Number((roomAt ?? hereRoom ?? FIRST_ROOM).split('/')[0]) || 1;
   const tbView = useTextblock(textblock, tbAt, tbMap);
   const [trail, setTrail] = useState<Visit[]>([]);
-  const [answer, setAnswer] = useState<ExplorerList | null>(null);
-  const [filters, setFilters] = useState<ExplorerFilters>(DEFAULT_FILTERS);
+  const [views, setViews] = useState<Partial<Record<ExplorerKind, ListView>>>({});
+  const view = views[kind] ?? NEW_VIEW;
+  const { sort, chosen, scrollTop } = view;
+  const changeView = useCallback(
+    (which: ExplorerKind, change: (was: ListView) => Partial<ListView>): void =>
+      setViews((was) => {
+        const now = was[which] ?? NEW_VIEW;
+        return { ...was, [which]: { ...now, ...change(now) } };
+      }),
+    []
+  );
+  const [shared, setShared] = useState<SharedFilters>({
+    usableOnly: DEFAULT_FILTERS.usableOnly,
+    inGameOnly: DEFAULT_FILTERS.inGameOnly
+  });
+  const filters = useMemo(() => ({ ...view.filters, ...shared }), [view.filters, shared]);
   const [options, setOptions] = useState<ExplorerOptions>(DEFAULT_EXPLORER_OPTIONS);
   // The options the list was last asked for, a beat behind the typing.
   const [asked, setAsked] = useState<ExplorerOptions>(DEFAULT_EXPLORER_OPTIONS);
-  const [sort, setSort] = useState<{ id: string; dir: 1 | -1 }>({ id: 'Name', dir: 1 });
-  const [chosen, setChosen] = useState<number | null>(null);
-  const [shown, setShown] = useState<ExplorerDetail | null>(null);
-  const [scrollTop, setScrollTop] = useState(0);
+  // The detail shown, and the list and record it is of.
+  const [shownFor, setShownFor] = useState<{ of: string; detail: ExplorerDetail } | null>(null);
   const [viewRows, setViewRows] = useState(40);
-  const bodyRef = useRef<HTMLDivElement | null>(null);
   /*
    * The list's scrolling box as it is drawn now (2026-10-19): the Rooms tab
    * takes the list away and coming back draws a new one, where the rows it
@@ -349,10 +398,6 @@ export default function ExplorerScreen({
    * was the old box's, and the list came back a row or two or blank.
    */
   const [rowsBox, setRowsBox] = useState<HTMLDivElement | null>(null);
-  const rowsAt = useCallback((box: HTMLDivElement | null): void => {
-    bodyRef.current = box;
-    setRowsBox(box);
-  }, []);
   // The two panels under the list, sized by their handles and kept for next time.
   const [split, setSplit] = useState<ExplorerSplit>(recallSplit);
   useEffect(() => keepSplit(split), [split]);
@@ -374,8 +419,17 @@ export default function ExplorerScreen({
     }),
     []
   );
-  const set = (change: Partial<ExplorerFilters>): void =>
-    setFilters((was) => ({ ...was, ...change }));
+  /** A filter changed: the shared two the Explorer's, the rest this list's. */
+  const set = (change: Partial<ExplorerFilters>): void => {
+    const { usableOnly, inGameOnly, ...own } = change;
+    if (usableOnly !== undefined || inGameOnly !== undefined)
+      setShared((was) => ({
+        usableOnly: usableOnly ?? was.usableOnly,
+        inGameOnly: inGameOnly ?? was.inGameOnly
+      }));
+    // A record listed only because it was gone to is let go.
+    changeView(kind, (was) => ({ filters: { ...was.filters, ...own }, pinned: null }));
+  };
   const setOption = (change: Partial<ExplorerOptions>): void =>
     setOptions((was) => ({ ...was, ...change }));
 
@@ -384,28 +438,54 @@ export default function ExplorerScreen({
     return () => clearTimeout(timer);
   }, [options]);
 
+  /*
+   * Each list as last answered (2026-10-30), drawn again at once when its tab
+   * is: asked of main only when what it answers for has changed, and drawn as
+   * it was until the new answer comes. Every swap of tabs asked main for the
+   * whole list again, Loading between, and the Monsters list priced every
+   * monster each time.
+   */
+  const listKey = `${session}|${characterKey}|${JSON.stringify(asked)}`;
+  const [answers, setAnswers] = useState<Partial<Record<ExplorerKind, HeldList>>>({});
+  const held = answers[kind];
+  const answer = held !== undefined && held.session === session ? held.list : null;
+  const heldKey = held?.key;
+  // What each list is being asked for, so a tab swapped away and back does not ask twice.
+  const asking = useRef(new Map<ExplorerKind, string>());
   useEffect(() => {
-    if (!open) return;
-    let live = true;
+    if (!open || heldKey === listKey || asking.current.get(kind) === listKey) return;
+    asking.current.set(kind, listKey);
     void list(kind, asked).then((found) => {
-      if (live) setAnswer(found);
+      if (asking.current.get(kind) === listKey) asking.current.delete(kind);
+      setAnswers((was) => ({ ...was, [kind]: { session, key: listKey, list: found } }));
     });
-    return () => {
-      live = false;
-    };
-  }, [open, kind, list, characterKey, asked]);
+  }, [open, kind, list, listKey, heldKey, asked, session]);
 
+  // Records' details as answered, by list and what it answered for.
+  const details = useRef(new Map<string, ExplorerDetail>());
+  const shownOf = `${kind}|${chosen}`;
   useEffect(() => {
-    setShown(null);
     if (!open || chosen === null) return;
+    const key = `${listKey}|${shownOf}`;
+    const kept = details.current.get(key);
+    if (kept !== undefined) {
+      setShownFor({ of: shownOf, detail: kept });
+      return;
+    }
     let live = true;
     void detail(kind, chosen, asked).then((found) => {
-      if (live) setShown(found);
+      if (found === null) return;
+      details.current.set(key, found);
+      if (details.current.size > DETAILS_KEPT)
+        details.current.delete(details.current.keys().next().value!);
+      if (live) setShownFor({ of: shownOf, detail: found });
     });
     return () => {
       live = false;
     };
-  }, [open, kind, chosen, detail, characterKey, asked]);
+  }, [open, kind, chosen, detail, listKey, shownOf, asked]);
+  // The chosen record's detail; another's, until its own comes, is not drawn.
+  const shown = shownFor !== null && shownFor.of === shownOf ? shownFor.detail : null;
 
   // Escape puts it away, as every surface over the console does.
   useEffect(() => {
@@ -429,12 +509,6 @@ export default function ExplorerScreen({
     observer.observe(rowsBox);
     return () => observer.disconnect();
   }, [open, rowsBox]);
-  // A list drawn again is where it was left.
-  const scrollTopRef = useRef(scrollTop);
-  scrollTopRef.current = scrollTop;
-  useLayoutEffect(() => {
-    if (rowsBox !== null) rowsBox.scrollTop = scrollTopRef.current;
-  }, [rowsBox]);
 
   const all = useMemo(() => answer?.rows ?? [], [answer]);
   const types = useMemo(() => [...new Set(all.map((row) => row.facts.type))].sort(), [all]);
@@ -476,55 +550,40 @@ export default function ExplorerScreen({
     const dim = new Set<number>();
     const kept = all.filter((row) => {
       const ok = passes(row, kind, filters, backstabForced, asked.byLair);
-      if (!ok && showAll && (!filters.inGameOnly || row.inGame)) dim.add(row.number);
+      if (!ok && (row.number === view.pinned || (showAll && (!filters.inGameOnly || row.inGame))))
+        dim.add(row.number);
       return ok || dim.has(row.number);
     });
     return [orderRows(kept, (row) => cellOf(row, sort.id), sort.dir), dim] as const;
-  }, [all, kind, filters, sort, asked, cellOf]);
+  }, [all, kind, filters, sort, asked, cellOf, view.pinned]);
 
   /*
-   * Going somewhere (2026-10-18): a list, its search cleared and the record
-   * chosen and scrolled to; or the Rooms walker at a room. What a reference,
-   * the Gear card and Back all do.
+   * Going somewhere (2026-10-18): a list, with the record chosen, listed and
+   * brought into view; or the Rooms walker at a room. What a reference, the
+   * Gear card and Back all do. A list gone to with no record named is as it
+   * was left.
    */
   const scrollToRef = useRef<number | null>(null);
-  const kindRef = useRef(kind);
-  kindRef.current = kind;
-  const goTo = useCallback((visit: Visit): void => {
-    setTab(visit.tab);
-    if (visit.tab === 'eq' || visit.tab === 'lists' || visit.tab === 'tools') return;
-    if (visit.tab === 'rooms') {
-      if (visit.n !== null) setRoomAt(String(visit.n));
-      return;
-    }
-    if (visit.tab === 'textblock') {
-      if (visit.n !== null) setTbAt(Number(visit.n));
-      return;
-    }
-    if (kindRef.current !== visit.tab) {
+  const goTo = useCallback(
+    (visit: Visit): void => {
+      setTab(visit.tab);
+      if (visit.tab === 'eq' || visit.tab === 'lists' || visit.tab === 'tools') return;
+      if (visit.tab === 'rooms') {
+        if (visit.n !== null) setRoomAt(String(visit.n));
+        return;
+      }
+      if (visit.tab === 'textblock') {
+        if (visit.n !== null) setTbAt(Number(visit.n));
+        return;
+      }
       setKind(visit.tab);
-      setAnswer(null);
-      setChosen(null);
-      setFilters((f) => ({
-        ...f,
-        type: '',
-        slot: '',
-        ability: DEFAULT_FILTERS.ability,
-        magery: 0,
-        mageryLevel: 0,
-        target: 0,
-        attType: 0,
-        hasAbility: 0
-      }));
-      setSort({ id: 'Name', dir: 1 });
-      setScrollTop(0);
-      bodyRef.current?.scrollTo({ top: 0 });
-    }
-    if (visit.n === null) return;
-    setFilters((f) => ({ ...f, query: '' }));
-    setChosen(Number(visit.n));
-    scrollToRef.current = Number(visit.n);
-  }, []);
+      if (visit.n === null) return;
+      const n = Number(visit.n);
+      changeView(visit.tab, () => ({ chosen: n, pinned: n }));
+      scrollToRef.current = n;
+    },
+    [changeView]
+  );
   // Where Back returns to: the tab shown, and its record.
   const visitNow = (): Visit =>
     tab === 'rooms'
@@ -552,18 +611,40 @@ export default function ExplorerScreen({
   useEffect(() => {
     if (focus !== null) goTo({ tab: focus.kind, n: focus.item });
   }, [focus, goTo]);
-  useEffect(() => {
+  /*
+   * The list shown where it was left, or the record gone to brought into view
+   * where it is out of it, a third of the way down as mudtool's `select` has
+   * it (2026-10-30). Put away, the box forgets how far down it was; and a list
+   * swapped in for another draws in the same box.
+   */
+  const listShown = open && tab === kind;
+  const placeRef = useRef(scrollTop);
+  placeRef.current = scrollTop;
+  // Read by the box's scroll handler, which a list put away keeps as it was drawn.
+  const listShownRef = useRef(listShown);
+  listShownRef.current = listShown;
+  useLayoutEffect(() => {
+    if (!listShown || rowsBox === null) return;
     const wanted = scrollToRef.current;
-    if (wanted === null) return;
-    const at = rows.findIndex((row) => row.number === wanted);
-    if (at < 0) return;
-    scrollToRef.current = null;
-    const top = Math.max(0, at * ROW_PX - ROW_PX * 3);
-    bodyRef.current?.scrollTo({ top });
-    setScrollTop(top);
-  }, [rows, rowsBox]);
-
-  if (!open) return null;
+    if (wanted !== null) {
+      const at = rows.findIndex((row) => row.number === wanted);
+      if (at >= 0) {
+        scrollToRef.current = null;
+        const top = at * ROW_PX;
+        const place = placeRef.current;
+        // The rows under the head that are in view.
+        const seen = rowsBox.clientHeight - ROW_PX * 2;
+        const next =
+          top < place || top + ROW_PX > place + seen ? Math.max(0, top - seen / 3) : place;
+        rowsBox.scrollTop = next;
+        if (next !== place) changeView(kind, () => ({ scrollTop: next }));
+        return;
+      }
+      // Not on this list at all, once it has come.
+      if (answer !== null) scrollToRef.current = null;
+    }
+    if (rowsBox.scrollTop !== placeRef.current) rowsBox.scrollTop = placeRef.current;
+  }, [listShown, rowsBox, kind, rows, answer, changeView]);
 
   /*
    * One width for the head and every row, so twenty columns line up when they
@@ -592,7 +673,7 @@ export default function ExplorerScreen({
     follow(
       next === 'rooms'
         ? { tab: 'rooms', n: roomAt ?? hereRoom ?? FIRST_ROOM }
-        : { tab: next, n: next === kind ? chosen : null }
+        : { tab: next, n: null }
     );
   };
 
@@ -742,7 +823,8 @@ export default function ExplorerScreen({
         </button>
       </header>
 
-      {tab === 'eq' ? (
+      {/* Each tab kept as it was left while another is shown (`Kept`). */}
+      <Kept shown={tab === 'eq'}>
         <ExplorerEq
           addCompare={(added) =>
             setCompared((was) => {
@@ -761,9 +843,11 @@ export default function ExplorerScreen({
           best={eq.best}
           wear={eq.wear}
         />
-      ) : tab === 'tools' ? (
+      </Kept>
+      <Kept shown={tab === 'tools'}>
         <ExplorerTools {...tools} follow={follow} session={session} />
-      ) : tab === 'lists' ? (
+      </Kept>
+      <Kept shown={tab === 'lists'}>
         <ExplorerLists
           {...lists}
           follow={follow}
@@ -771,12 +855,14 @@ export default function ExplorerScreen({
           session={session}
           setLists={setCompared}
         />
-      ) : tab === 'textblock' ? (
+      </Kept>
+      {tab === 'textblock' && (
         <section className="ex-textblock">
           <h2 className="ex-name">{t('explorer.textblock.title', { n: tbAt ?? 0 })}</h2>
           <TextblockView {...tbView} follow={follow} />
         </section>
-      ) : tab === 'rooms' ? (
+      )}
+      <Kept shown={tab === 'rooms'}>
         <ExplorerRooms
           at={roomAt ?? hereRoom ?? FIRST_ROOM}
           characterName={characterName}
@@ -789,7 +875,8 @@ export default function ExplorerScreen({
           view={roomView}
           walkTo={walkTo}
         />
-      ) : (
+      </Kept>
+      <Kept shown={tab === kind}>
         <>
           <div className="ex-toolbar">
             <input
@@ -1111,10 +1198,12 @@ export default function ExplorerScreen({
                 >
                   <div
                     className="ex-rows"
-                    onScroll={(event: UIEvent<HTMLDivElement>) =>
-                      setScrollTop(event.currentTarget.scrollTop)
-                    }
-                    ref={rowsAt}
+                    onScroll={(event: UIEvent<HTMLDivElement>) => {
+                      const top = event.currentTarget.scrollTop;
+                      // Put away, the box scrolls to its top, which is not where the list was.
+                      if (listShownRef.current) changeView(kind, () => ({ scrollTop: top }));
+                    }}
+                    ref={setRowsBox}
                   >
                     <div className="ex-head" role="row">
                       {columns.map((column) => (
@@ -1131,11 +1220,12 @@ export default function ExplorerScreen({
                           key={column.id}
                           // A figure's first press is the largest first, as mudtool's is.
                           onClick={() =>
-                            setSort((was) =>
-                              was.id === column.id
-                                ? { id: column.id, dir: was.dir === 1 ? -1 : 1 }
-                                : { id: column.id, dir: column.numeric === true ? -1 : 1 }
-                            )
+                            changeView(kind, ({ sort: was }) => ({
+                              sort:
+                                was.id === column.id
+                                  ? { id: column.id, dir: was.dir === 1 ? -1 : 1 }
+                                  : { id: column.id, dir: column.numeric === true ? -1 : 1 }
+                            }))
                           }
                           onMouseDown={keepFocus}
                           role="columnheader"
@@ -1159,7 +1249,7 @@ export default function ExplorerScreen({
                             }
                             data-worn={row.worn ? 'true' : undefined}
                             key={row.number}
-                            onClick={() => setChosen(row.number)}
+                            onClick={() => changeView(kind, () => ({ chosen: row.number }))}
                             role="row"
                             style={{ top: (first + i) * ROW_PX }}
                           >
@@ -1313,13 +1403,19 @@ export default function ExplorerScreen({
             </div>
           </div>
         </>
-      )}
+      </Kept>
     </div>
   );
-  if (windowed) return screen;
+  // Put away, it is kept as it was for the next time it is opened.
   return (
-    <div className="palette-scrim" onMouseDown={onClose} role="presentation">
-      {screen}
-    </div>
+    <Kept shown={open}>
+      {windowed ? (
+        screen
+      ) : (
+        <div className="palette-scrim" onMouseDown={onClose} role="presentation">
+          {screen}
+        </div>
+      )}
+    </Kept>
   );
 }

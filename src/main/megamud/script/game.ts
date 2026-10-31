@@ -90,6 +90,15 @@ export function enterGame(s: Session): void {
   s.whoDue = 1;
   s.expDue = 1;
   s.inventoryAskedAt = 0;
+  /*
+   * Not MegaMUD's: the pack is asked for again (D15), as at the first login.
+   * MegaMUD 2.1 keeps its maximum encumbrance across a reconnect, so its
+   * inventory stays known; the client's tracker starts each session with an
+   * unlisted pack, and with no `i` asked nothing that reads it had one:
+   * Archer, back on after the realm dropped him at 07:20 on 2026-10-30, never
+   * listed his inventory in four hours, and his Hunting Grounds waited on it.
+   */
+  s.weightMax = 0;
   s.skipRedialOnce = 0;
   s.fleeingPlayer = 0;
   s.inCombat = 0;

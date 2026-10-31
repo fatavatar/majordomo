@@ -71,6 +71,7 @@ type PaneFlow = 'rows' | 'columns';
 import DebugView from './components/DebugView';
 import type { DebugRecord } from '@shared/debug';
 import StatusRail from './components/StatusRail';
+import type { HeldRound } from './components/RoundTimer';
 import StreamCard from './components/StreamCard';
 import VitalsCard from './components/VitalsCard';
 import SelfCard from './components/SelfCard';
@@ -154,8 +155,10 @@ import { rosterOf, type MusterTarget, type PartyRoster } from '@shared/partyRost
 import type { OurMember } from './lib/partyBoard';
 import { figuresOf, type StatlineFigures } from '@shared/statline';
 import { IDLE_WALK, type WalkProgress } from '@shared/walk';
+import { NO_ROUND } from '@shared/roundTimer';
 import { DEFAULT_INTERNAL, type InternalConfig } from '@shared/internal';
 import type { HuntingRoom } from '@shared/hunting';
+import { readyToPrice } from '@shared/huntingGrounds';
 import { NO_LOOP, type Loop, type LoopAddress, type LoopProgress } from '@shared/loops';
 import { saveText } from './lib/download';
 import { movementOf, type Movement, type MovementConfirm } from '@shared/movement';
@@ -255,6 +258,8 @@ interface SessionView {
   character: CharacterState;
   walk: WalkProgress;
   loop: LoopProgress;
+  /** MegaMUD's round timer, and when it was said, for the status rail. */
+  round: HeldRound;
   automation: AutomationSnapshot;
   /** The room appraised — *can I fight this?* — beside the character it is about. */
   verdict: RoomVerdict;
@@ -381,6 +386,7 @@ const EMPTY_VIEW: SessionView = {
   character: EMPTY_CHARACTER,
   walk: IDLE_WALK,
   loop: NO_LOOP,
+  round: { timer: NO_ROUND, at: 0 },
   automation: EMPTY_AUTOMATION,
   verdict: EMPTY_ROOM_VERDICT,
   asks: [],
@@ -1073,6 +1079,7 @@ function cardElement(id: CardId, ctx: CardContext): ReactNode {
           createLoop={ctx.chooseOnMap === null ? null : ctx.createHunt}
           loadHunting={ctx.loadHunting}
           partyMembers={ctx.party.roster?.members.map((member) => member.name) ?? null}
+          ready={readyToPrice(ctx.character)}
           runLoop={ctx.chooseOnMap === null ? null : ctx.runHunt}
           session={ctx.session}
         />
@@ -2140,6 +2147,7 @@ export default function App() {
         character: snapshot.character,
         walk: snapshot.walk,
         loop: snapshot.loop,
+        round: { timer: snapshot.round, at: performance.now() },
         automation: snapshot.automation,
         verdict: snapshot.verdict,
         asks: snapshot.asks,
@@ -2388,6 +2396,9 @@ export default function App() {
           ...v,
           loop: payload
         }))
+      ),
+      api.onRound(({ session: id, payload }) =>
+        patchView(id, (v) => ({ ...v, round: { timer: payload, at: performance.now() } }))
       ),
       api.onLearned(({ session: id, payload }) =>
         patchView(id, (v) => ({ ...v, learned: payload }))
@@ -6333,6 +6344,7 @@ export default function App() {
         onOpenPalette={openPalette}
         onToggleConnection={toggleConnection}
         pressure={pressure}
+        round={view.round}
         showLogo={config.ui.showLogo}
         size={size}
         state={state}
