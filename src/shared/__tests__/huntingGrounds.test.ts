@@ -8,6 +8,7 @@ import {
   howItFights,
   loopGroups,
   priceArea,
+  priceAreaBothWays,
   readyToPrice,
   sheetRead,
   waitsOnClock,
@@ -228,6 +229,24 @@ describe('an area priced as a loop walks it', () => {
     expect(both.groups.map((entry) => entry.role)).toEqual(['loop', 'dangerous', 'dangerous']);
     expect(both.expPerHour).toBe(safe.expPerHour);
     expect(both.danger).toBe(0.1);
+  });
+
+  // 2026-10-31: a boss can be too hard however the router weighs it, so the lairs are priced alone too.
+  it('prices an area with its bosses and without them', () => {
+    const both = priceAreaBothWays([druidess, beastmistress, undefeatable], druidess, 0.25, 0.5);
+    expect(both.map((priced) => priced.bosses)).toEqual(['with', 'without']);
+    expect(both[0]!.expPerHour).toBe(
+      priceArea([druidess, beastmistress, undefeatable], druidess, 0.25, 0.5).expPerHour
+    );
+    expect(both[1]!.expPerHour).toBe(druidess.expPerHour);
+    expect(both[1]!.groups.map((entry) => entry.group.key)).toEqual(['lair:35-5-13', 'lair:9']);
+    // A clock-bound lair is not a boss, and a boss too dangerous to fight is not fought.
+    const slow = group('lair:slow', { attack: 0.02, move: 0, respawnMinutes: 60 });
+    expect(priceAreaBothWays([druidess, slow], druidess, 0.25, 0.5)).toHaveLength(1);
+    const deadly = { ...beastmistress, danger: 0.9 };
+    const alone = priceAreaBothWays([druidess, deadly], druidess, 0.25, 0.5);
+    expect(alone).toHaveLength(1);
+    expect(alone[0]!.bosses).toBeUndefined();
   });
 
   it('pays nothing where no group does', () => {
