@@ -27,6 +27,17 @@ export interface ExpHrResult {
   exp?: number;
 }
 export function monsterExpPerHour(monster: Row, env: Record<string, unknown>): ExpHrResult;
+/** `CalcExpPerHour`: MME's models over a lair's or a monster's figures. */
+export function calcExpPerHour(
+  args: Record<string, number>,
+  config?: Record<string, unknown>
+): NonNullable<ExpHrResult['info']>;
+/** `GetDamageOutput` against a lair's averages: damage a round to one monster, and the spell's cost. */
+export function lairDamageOutput(
+  info: Record<string, number>,
+  profile: unknown,
+  attack: unknown
+): { damageOut: number; spell: { nManaCost: number } | null };
 export function expPerHourCell(n: number): string;
 export function scriptingRows(
   monster: Row,

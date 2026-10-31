@@ -371,6 +371,11 @@ export interface SessionHost {
    * already had this character do itself, so it is not done twice.
    */
   partyAlreadyDone?(leader: string, command: string): boolean;
+  /**
+   * Ours: the lines about to be sent are the player's own words (a timed
+   * event's command), shown in the console whatever their first word.
+   */
+  ownCommand?(text: string): void;
   /** `0x4bd3c0`: a line shown to the player. */
   show(text: string): void;
   /** `_time64(NULL)`. */

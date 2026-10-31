@@ -119,6 +119,7 @@ import {
   howItFights,
   loopGroups,
   priceArea,
+  sheetRead,
   type GroundArea,
   type GroundGroup,
   type GroundRoom,
@@ -207,6 +208,7 @@ import { megaNames, type EngineMemory, type MegaEngineSetup } from './session/Me
 import type { DebugSave, LearnedSpellTable, SessionSummary } from '../shared/ipc';
 import { EMPTY_CHARACTER, type CharacterState } from '../shared/character';
 import { IDLE_WALK } from '../shared/walk';
+import { NO_ROUND } from '../shared/roundTimer';
 import {
   asLoopAddress,
   asLoops,
@@ -448,6 +450,7 @@ async function huntingGroundsOf(
   const world = worldFor(session);
   if (!manager || !profile || !world) return refused(t('session.hunt.noSession'));
   if (typeof realm === 'string') return refused(realm);
+  if (!sheetRead(manager.character)) return refused(t('session.hunt.notRead'));
   const swept = manager.huntingReach();
   if (typeof swept === 'string') return refused(swept);
   const { from, reach } = swept;
@@ -1438,7 +1441,12 @@ function loopCatalogue(): LoopCatalogue {
 }
 
 /** MegaMUD's databases as last built, by character: rebuilt when what they are built from changes. */
-const megaDataBuilt = new Map<SessionId, { from: readonly unknown[]; data: MegaData }>();
+const megaDataBuilt = new Map<
+  SessionId,
+  { from: readonly unknown[]; data: MegaData; serial: number }
+>();
+/** Each build's number, which the engine's key carries so a running engine is handed a rebuild. */
+let megaDataBuilds = 0;
 
 /**
  * A character's MegaMUD settings: its file's, or, where it has none yet,
@@ -1476,7 +1484,8 @@ function megaDataFor(id: SessionId, profile: Profile): MegaData {
     const items = mergeItemRules(tables.items, own);
     built = {
       from,
-      data: megaDataFrom(world, { items, messages: tables.messages }, runic)
+      data: megaDataFrom(world, { items, messages: tables.messages }, runic),
+      serial: (megaDataBuilds += 1)
     };
     megaDataBuilt.set(id, built);
     // Said once a build, so what a character's engine was given is on record.
@@ -1511,7 +1520,13 @@ function megamudFor(id: SessionId): { key: string; setup: MegaEngineSetup } | nu
   const runic = profile.config.connection.coins.runic;
   const world = worldFor(id);
   const data = megaDataFor(id, profile);
-  const dataKey = `${world?.info.source ?? ''}|${runic ?? ''}`;
+  /*
+   * The build in the key (2026-10-29): a table changed under a running
+   * engine rebuilds its databases, and without it the key stayed as it was
+   * and the engine kept the old ones — Skinny held by weakness after its
+   * wait was taken off.
+   */
+  const dataKey = `${world?.info.source ?? ''}|${runic ?? ''}|${megaDataBuilt.get(id)?.serial ?? 0}`;
   // What it knows from before on this realm, out of our stores, and where
   // what it learns goes: stances to the lore, the rest to `MegaLearned`.
   // Players our tracker keeps in `PlayerBook` already.
@@ -2817,6 +2832,7 @@ function registerIpc(): void {
       state: manager?.state ?? IDLE_STATE,
       character: manager?.character ?? EMPTY_CHARACTER,
       walk: manager?.walkProgress ?? IDLE_WALK,
+      round: manager?.roundTimer ?? NO_ROUND,
       loop: manager?.loopProgress ?? NO_LOOP,
       automation: manager?.automation ?? EMPTY_AUTOMATION,
       verdict: manager?.verdict ?? EMPTY_ROOM_VERDICT,

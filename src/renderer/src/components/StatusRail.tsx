@@ -7,6 +7,7 @@ import type { ConnectionState, TerminalSize } from '@shared/types';
 import type { Density, DensityPreference } from '../hooks/useDensity';
 import { useMeter, type Pressure, type StreamMeter } from '../hooks/useStreamPressure';
 import { tuning } from '../lib/tuning';
+import RoundTimer, { type HeldRound } from './RoundTimer';
 
 export interface StatusRailProps {
   state: ConnectionState;
@@ -37,6 +38,8 @@ export interface StatusRailProps {
    * outrank. See `mudengine-ui` on which shape a toggle wants.
    */
   showLogo: boolean;
+  /** MegaMUD's round timer for the character shown, drawn while it is connected. */
+  round: HeldRound;
 }
 
 const PHASE_LABEL: Record<ConnectionState['phase'], string> = {
@@ -72,7 +75,8 @@ function StatusRail({
   density,
   densityPreference,
   onCycleDensity,
-  action
+  action,
+  round
 }: StatusRailProps) {
   const target = state.target;
   const connected = state.phase === 'connected';
@@ -163,6 +167,12 @@ function StatusRail({
           {t('statusRail.pressure.burst', { rate: charsPerSecond.toLocaleString() })}
         </span>
       )}
+      {/*
+       * MegaMUD's round timer, where MegaMUD keeps it, on its status bar
+       * (2026-10-31): the one figure here that changes several times a second,
+       * so it keeps its own clock (`RoundTimer`).
+       */}
+      {connected && <RoundTimer round={round} />}
       <span className="metric">{formatUptime(state.connectedAt)}</span>
       {/*
        * The measured grid, and a word when it is too narrow to be right.

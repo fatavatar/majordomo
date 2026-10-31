@@ -4686,6 +4686,71 @@ button.quest-plan-back {
   color: var(--pending);
 }
 
+/*
+ * MegaMUD's round timer (`RoundTimer`): the seconds left and a bar that runs
+ * down to the next round, in the colour of what the timer knows -- MegaMUD's
+ * own orange, blue and green as this theme's amber, accent and ok -- and the
+ * figure bold while a spell waits for the round to turn, as MegaMUD writes it.
+ */
+.status-rail .round-timer {
+  --round-tone: var(--text-lo);
+  align-items: center;
+  color: var(--text-lo);
+  display: inline-flex;
+  font-family: var(--font-mono);
+  gap: 6px;
+}
+
+.status-rail .round-timer[data-tone='unsure'] {
+  --round-tone: var(--pending);
+}
+
+.status-rail .round-timer[data-tone='wait'] {
+  --round-tone: var(--accent);
+}
+
+.status-rail .round-timer[data-tone='ready'] {
+  --round-tone: var(--ok);
+}
+
+.status-rail .round-timer b {
+  color: var(--round-tone);
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+  min-width: 3ch;
+  text-align: end;
+}
+
+.status-rail .round-timer[data-tone='wait'] b {
+  font-weight: 700;
+}
+
+.status-rail .round-bar {
+  border: 1px solid var(--ink-line);
+  border-radius: 2px;
+  height: 0.8em;
+  overflow: hidden;
+  width: 64px;
+}
+
+.status-rail .round-fill {
+  animation: round-run-down 5s linear infinite;
+  background: var(--round-tone);
+  display: block;
+  height: 100%;
+  transform-origin: left;
+}
+
+@keyframes round-run-down {
+  from {
+    transform: scaleX(1);
+  }
+
+  to {
+    transform: scaleX(0);
+  }
+}
+
 /* ========================================================= command palette */
 
 .palette-scrim {
@@ -4972,6 +5037,15 @@ button.quest-plan-back {
  */
 .palette-scrim:has(> .explorer-screen) {
   padding-top: 3vh;
+}
+
+/* A tab put away (`Kept`): no box of its own while shown, none at all while away. */
+.kept {
+  display: contents;
+}
+
+.kept[hidden] {
+  display: none;
 }
 
 .explorer-screen {

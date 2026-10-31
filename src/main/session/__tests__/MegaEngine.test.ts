@@ -25,7 +25,9 @@ import type { LoopProgress } from '../../../shared/loops';
 import { State } from '../../megamud/states';
 import { readMegaMudLoop } from '../../../shared/megamudPaths';
 import { headFor } from '../../megamud/move/destinations';
-import { Darkness, ItemFlag, SpellFlag } from '../../megamud/flags';
+import { Darkness, ItemFlag, MessageFlag, SpellFlag } from '../../megamud/flags';
+import { messageRec } from '../../megamud/fromWorld';
+import type { MessageTrigger } from '../../../shared/messageTriggers';
 
 function room(map: number, number: number, name: string, exits: WorldRoom['exits']): WorldRoom {
   return { map, room: number, name, exits } as WorldRoom;
@@ -1466,6 +1468,71 @@ describe('blessings the realm says last', () => {
       SpellFlag.Timed,
       SpellFlag.Known
     ]);
+    e.dispose();
+  });
+
+  /*
+   * Skinny stayed held and resting on weakness after its wait and its
+   * movement-prevented were taken off (2026-10-29): the table's change
+   * reached main, not the running engine, and the row in force kept what it
+   * set. A row as it was stays in force; a changed one is ended first.
+   */
+  it('end a message in force whose row changed, and keep one that did not', () => {
+    const { e } = engine();
+    const row = (over: Partial<MessageTrigger>) =>
+      messageRec({
+        name: 'weakness',
+        match: 'You feel weak and powerless',
+        endsWith: 'You feel your strength return',
+        effects: ['held'],
+        action: 'wait',
+        response: '',
+        enabled: true,
+        anywhere: false,
+        conversations: false,
+        chase: false,
+        ...over
+      } as MessageTrigger);
+    const web = row({
+      name: 'web',
+      match: 'You are caught in a cocoon!',
+      endsWith: 'You break free'
+    });
+    e.s.data.messages = [row({}), web];
+    e.s.inGame = 1;
+    e.received('You feel weak and powerless!\r\n');
+    expect([e.s.held, e.s.restUntilOff]).toEqual([1, 1]);
+    // Weakness made harmless: no effects, no wait.
+    e.reload({
+      settings: defaultSettings(),
+      data: {
+        monsters: [],
+        items: [],
+        spells: [],
+        messages: [row({ effects: [], action: 'none' }), web]
+      },
+      grants: {}
+    });
+    expect([e.s.held, e.s.restUntilOff]).toEqual([0, 0]);
+    // A web in force when a table changes elsewhere stays in force, and ends as it would have.
+    e.received('You are caught in a cocoon!\r\n');
+    expect([e.s.held, e.s.restUntilOff]).toEqual([1, 1]);
+    e.reload({
+      settings: defaultSettings(),
+      data: {
+        monsters: [],
+        items: [],
+        spells: [],
+        messages: [row({ effects: [], action: 'none' }), web]
+      },
+      grants: {}
+    });
+    expect([e.s.held, e.s.restUntilOff]).toEqual([1, 1]);
+    expect(e.s.data.messages!.find((m) => m.name === 'web')!.flags & MessageFlag.Active).toBe(
+      MessageFlag.Active
+    );
+    e.received('You break free\r\n');
+    expect([e.s.held, e.s.restUntilOff]).toEqual([0, 0]);
     e.dispose();
   });
 

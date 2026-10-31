@@ -86,7 +86,7 @@ import {
   weaponMin,
   weaponSpeed
 } from './vendor/js/hooks/combat.js';
-import { ATTACK, MUD, damageVsMonster } from './vendor/js/mmud/combat.js';
+import { ATTACK, MUD, calcCombatRounds, damageVsMonster } from './vendor/js/mmud/combat.js';
 import {
   abilityName,
   armourType,
@@ -126,10 +126,12 @@ import { chestContents } from './vendor/js/mmud/chest.js';
 import { readStep } from './textblockSteps';
 import {
   attackConfig,
+  calcExpPerHour,
   expHrCharacter,
   expHrProfile,
   expPerHourCell,
   EXPHR_DEFAULTS,
+  lairDamageOutput,
   monsterExpPerHour,
   normaliseExpHrConfig,
   scriptingRows,
@@ -324,6 +326,17 @@ export interface MmeAttackSetup {
   backstab: boolean;
   /** The blessings it keeps up, by spell number. */
   bless: number[];
+  /** The room spells it opens a fight with (`HowItFights.area`), by spell number. */
+  area: MmeAreaAttack[];
+}
+
+/** A room spell of the character's (`AreaAttack`), numbered as the realm numbers it. */
+interface MmeAreaAttack {
+  spellNum: number;
+  name: string;
+  monsters: number;
+  casts: number;
+  maxDamage: number;
 }
 
 let attackSetup: MmeAttackSetup | null = null;
@@ -367,11 +380,13 @@ function useCharacter(state: CharacterState, options?: ExplorerOptions): void {
   }
   // How it fights: what main put on the options, else the setup in force.
   const fights = options?.fights;
-  const setup = fights === undefined ? attackSetup : fights === null ? null : attackSetupOf(fights);
+  const setup =
+    fights === undefined ? attackSetup : fights === null ? null : attackSetupOf(fights, c);
   if (setup !== null) {
-    const { bless, ...attack } = setup;
+    const { bless, area, ...attack } = setup;
     c.attack = { ...c.attack, ...attack };
     c.bless = c.bless.map((_: number, i: number) => bless[i] ?? 0);
+    c['areaAttacks'] = area;
   }
   roster.chars = [{ id: 'live', char: c }];
   switchChar('live');
@@ -2601,6 +2616,7 @@ function expHrEnv(): ExpHrEnv {
     char.equipped,
     char.attack,
     char.bless,
+    char['areaAttacks'],
     // Monster damage worked out against the character or the party (MME's Calc dmg vs char) since.
     monsterDamageCalculated(false),
     monsterDamageCalculated(true),
@@ -2743,7 +2759,7 @@ function fillPartyBox(
   party: MmeParty | null
 ): void {
   const use = (who: { state: CharacterState; how: HowItFights | null }): number => {
-    attackSetup = who.how === null ? null : attackSetupOf(who.how);
+    attackSetup = who.how === null ? null : attackSetupOf(who.how, casterOf(who.state));
     useCharacter(who.state);
     return who.how === null ? 0 : blessingHeal(who.how, attackSetup).perRound;
   };
@@ -2905,9 +2921,9 @@ function pricePooled(
     'Summoned By': defs.flatMap((def) => def.entries).join(','),
     RegenTime: 0
   };
-  let r: ExpHrResult;
+  let r: AreaPriced;
   try {
-    r = monsterExpPerHour(asked, { ...env, list: false });
+    r = withAreaAttacks(monsterExpPerHour(asked, { ...env, list: false }), env);
   } catch {
     return null;
   }
@@ -2922,7 +2938,97 @@ function pricePooled(
     perSpawn: lair['nMaxRegen'] ?? 1,
     expPerClear: lair['nAvgExp'] ?? 0,
     respawnMinutes: lair['nAvgDelay'] ?? 0,
-    ...sharesOf(r)
+    ...sharesOf(r),
+    ...(r.areaAttack === undefined ? {} : { areaAttack: r.areaAttack })
+  };
+}
+
+/** MME's estimate, and what the character's room spells made of the clear. */
+type AreaPriced = ExpHrResult & { areaAttack?: LairPrice['areaAttack'] };
+
+/** `SPELL_TARGETS`: a Divided Attack Area spell shares its damage among the monsters; Full ones hit each. */
+const DIVIDED_ATTACK_AREA = 9;
+
+/**
+ * A lair cleared as MegaMUD clears it with room spells (2026-10-29), which
+ * MME's estimate has no room for: it clears a lair one monster at a time with
+ * the one attack, and its models never count under a round a monster. While
+ * the spawn is at least a spell's monster count, MegaMUD casts it, up to its
+ * casts and its damage cap (`wantsRoomSpell`, `multiStillWanted`), the
+ * pre-multi-attack first; each cast does MME's own damage for that spell
+ * against the lair's averages to every monster (shared among them for a
+ * Divided Attack Area spell); what is left of each is finished with the
+ * attack, at MME's rounds to kill. The clear is then put to MME's
+ * `calcExpPerHour` as one fight — its rounds, the experience it pays, the
+ * blows taken (every monster's, each round it stands), the mana spent — so
+ * its walking, resting and respawn arithmetic stand as they were. Skinny's
+ * divine tempest annihilates a three-monster spawn for 480–850 a cast. A
+ * party is priced as MME prices it.
+ */
+function withAreaAttacks(r: ExpHrResult, env: Record<string, unknown>): AreaPriced {
+  const area = (char['areaAttacks'] as MmeAreaAttack[] | undefined) ?? [];
+  const a = r.args;
+  const lair = r.lair;
+  if (r.kind !== 'lair' || a === undefined || lair === undefined || area.length === 0) return r;
+  if (partyBox().size > 1) return r;
+  const n = a['numMobs'] ?? 1;
+  // MME's `mobHP` for a lair is the spawn's, every monster's together.
+  const spawnHP = a['mobHP'] ?? 0;
+  const single = a['charDmg'] ?? 0;
+  if (spawnHP <= 0 || n <= 0) return r;
+  let left = spawnHP / n;
+  let dealt = 0;
+  let rounds = 0;
+  let mana = 0;
+  const cast: string[] = [];
+  for (const spell of area) {
+    if (n < spell.monsters || left <= 0) continue;
+    const attack = attackConfig(
+      { ...char.attack, type: ATTACK.spell, spellNum: spell.spellNum },
+      char.equipped
+    );
+    const out = lairDamageOutput(lair, env['profile'], attack);
+    const divided = by.spell.get(spell.spellNum)?.['Targets'] === DIVIDED_ATTACK_AREA;
+    const each = divided ? out.damageOut / n : out.damageOut;
+    if (!(each > 0)) continue;
+    let casts = 0;
+    while (left > 0 && casts < spell.casts && dealt < spell.maxDamage) {
+      left -= each;
+      dealt += each;
+      casts += 1;
+    }
+    rounds += casts;
+    mana += casts * (out.spell?.nManaCost ?? 0);
+    if (casts > 0) cast.push(spell.name);
+  }
+  if (rounds === 0 || (left > 0 && single <= 0)) return r;
+  const finish =
+    left > 0 ? calcCombatRounds({ damageOut: single, mobHealth: left, numMobs: 1 }).nRTK : 0;
+  const total = rounds + finish * n;
+  // Every monster's blows each round it stands: all of them through the casts, then fewer as each falls.
+  const blows = lair['nAvgDmg'] ?? 0;
+  const taken = blows * (rounds * n + (finish * n * (n + 1)) / 2);
+  const perRound = spawnHP / total;
+  const args = {
+    ...a,
+    numMobs: 1,
+    rtk: total,
+    mobHP: spawnHP,
+    charDmg: perRound,
+    firstRoundDmg: perRound,
+    minRoundDmg: perRound,
+    mobDmg: taken,
+    spellCost: (mana + finish * n * (a['spellCost'] ?? 0)) / total
+  };
+  return {
+    ...r,
+    args,
+    info: calcExpPerHour(args, env['config'] as Record<string, unknown>),
+    areaAttack: {
+      spells: cast,
+      rounds: total,
+      without: (a['rtk'] ?? 0) > 0 ? (a['rtk'] ?? 0) * n : null
+    }
   };
 }
 
@@ -2969,13 +3075,40 @@ export async function explorerHuntingPools(
 }
 
 /** A spell's number by its short word, as the realm spells it; 0 for none. */
-function spellNumber(short: string): number {
+/**
+ * A spell's number by the short word MegaMUD casts it with: the realm's row
+ * for the caster's class where several share the word, as divine tempest's
+ * three do — 210 at base for a Wizard (1429), 160 for a Priest (1430) — and
+ * `word` six; else the first.
+ */
+function spellNumber(short: string, caster: Caster = char): number {
   const key = short.trim().toLowerCase();
   if (key === '') return 0;
-  const row = (db.Spells as Row[]).find(
+  const rows = (db.Spells as Row[]).filter(
     (spell) => String(spell['Short'] ?? '').toLowerCase() === key
   );
+  const row =
+    rows.find((spell) =>
+      spellUsableBy(spell, caster.cls || 0, caster.level || 0, caster.alignment || 0)
+    ) ?? rows[0];
   return typeof row?.['Number'] === 'number' ? row['Number'] : 0;
+}
+
+/** Whose spells are numbered: the class, level and standing a spell is usable by. */
+interface Caster {
+  cls: number;
+  level: number;
+  alignment: number;
+}
+
+/** A character's caster's figures off the tracker, as `useCharacter` reads them. */
+function casterOf(state: CharacterState): Caster {
+  const standing = ownAlignment(state);
+  return {
+    cls: numberNamed(db.Classes, state.className),
+    level: state.progress.level ?? 1,
+    alignment: standing === null ? 0 : ALIGNMENT_INDEX[standing]
+  };
 }
 
 /**
@@ -2984,10 +3117,10 @@ function spellNumber(short: string): number {
  * 2), else none (1) until `healFromBlessings` finds a heal-over-time among
  * the blessings; and those blessings, whose mana MME counts as upkeep.
  */
-function attackSetupOf(how: HowItFights): MmeAttackSetup {
-  const spell = spellNumber(how.attackSpell);
+function attackSetupOf(how: HowItFights, caster: Caster = char): MmeAttackSetup {
+  const spell = spellNumber(how.attackSpell, caster);
   const swing = attackTypeOf(how.attack);
-  const heal = spellNumber(how.heal);
+  const heal = spellNumber(how.heal, caster);
   return {
     type: spell > 0 ? ATTACK.spell : swing.type,
     ma: swing.ma,
@@ -2996,7 +3129,12 @@ function attackSetupOf(how: HowItFights): MmeAttackSetup {
     healSpellNum: heal,
     useMeditate: how.meditate,
     backstab: how.backstab,
-    bless: how.blessings.map(spellNumber).filter((n) => n > 0)
+    bless: how.blessings.map((short) => spellNumber(short, caster)).filter((n) => n > 0),
+    area: how.area.flatMap((room) => {
+      const spellNum = spellNumber(room.spell, caster);
+      const name = by.spell.get(spellNum)?.['Name'];
+      return spellNum > 0 ? [{ ...room, spellNum, name: String(name ?? room.spell) }] : [];
+    })
   } as MmeAttackSetup;
 }
 
@@ -3035,7 +3173,9 @@ function blessingHeal(
   const attack = how.attackSpell !== '' ? how.attackSpell : how.attack || 'a';
   const heal =
     how.heal !== '' ? how.heal : healing.length > 0 ? healing.join(' + ') + '/round' : 'rests';
-  return { said: `${attack}; heal ${heal}; ${how.blessings.length} blessings`, perRound };
+  const room =
+    how.area.length > 0 ? `; room spells ${how.area.map((a) => a.spell).join(', ')}` : '';
+  return { said: `${attack}${room}; heal ${heal}; ${how.blessings.length} blessings`, perRound };
 }
 
 function expHrFor(m: Row, list: boolean): ExpHrResult {
@@ -3045,7 +3185,7 @@ function expHrFor(m: Row, list: boolean): ExpHrResult {
   let found = cache.get(n);
   if (found === undefined) {
     try {
-      found = monsterExpPerHour(m, { ...at.env, list });
+      found = withAreaAttacks(monsterExpPerHour(m, { ...at.env, list }), at.env);
     } catch {
       found = { kind: 'none', info: null };
     }

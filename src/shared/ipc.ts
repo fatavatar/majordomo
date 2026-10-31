@@ -143,6 +143,7 @@ import type {
 import type { InternalConfig } from './internal';
 import type { Loop, LoopAddress, LoopProgress, LoopScope, ScopedLoop } from './loops';
 import type { WalkProgress } from './walk';
+import type { RoundTimer } from './roundTimer';
 import type { MovementStart, WalkStart } from './movement';
 import type { RoomVerdict } from './verdict';
 import type {
@@ -318,6 +319,8 @@ export interface AttachSnapshot {
   character: CharacterState;
   walk: WalkProgress;
   loop: LoopProgress;
+  /** MegaMUD's round timer when the window attached; `Push.round` carries every change after. */
+  round: RoundTimer;
   automation: AutomationSnapshot;
   /** The room as appraised when the window attached; `Push.verdict` carries every change after. */
   verdict: RoomVerdict;
@@ -1312,6 +1315,8 @@ export const Push = {
   character: 'session:character',
   /** Route-walk progress, on change. */
   walk: 'walk:progress',
+  /** MegaMUD's round timer, when its colour changes or the round is found anew. */
+  round: 'session:round',
   loop: 'loop:progress',
   /** The decision trace, coalesced. See `AUTOMATION_PUBLISH_MS`. */
   automation: 'automation:trace',
@@ -1965,6 +1970,7 @@ export interface IpcApi {
   onBlock(handler: (message: Addressed<Block>) => void): () => void;
   onCharacter(handler: (message: Addressed<CharacterState>) => void): () => void;
   onWalk(handler: (message: Addressed<WalkProgress>) => void): () => void;
+  onRound(handler: (message: Addressed<RoundTimer>) => void): () => void;
   onLoop(handler: (progress: Addressed<LoopProgress>) => void): () => void;
   onAutomation(handler: (message: Addressed<AutomationSnapshot>) => void): () => void;
   onVerdict(handler: (message: Addressed<RoomVerdict>) => void): () => void;

@@ -17,6 +17,7 @@ import { newTerminal, parseData } from '../input/ParseData';
 import { expandMacros } from '../script/send';
 import { connectPressed, disconnect, menuCommand, playerCommand } from '../move/buttons';
 import { session } from './fixture';
+import { eventsStep } from '../script/events';
 import { WindowCommand } from '../../../shared/megamud/toggles';
 import { State } from '../states';
 import { Task } from '../script/task';
@@ -108,6 +109,15 @@ describe('online and in the game (0x42de00, 0x47b070)', () => {
     expect(s.inGame).toBe(1);
     expect(s.task).toBe(0xb);
     expect(out.sent).toEqual(['stat\r', '\r']);
+  });
+
+  it('asks for the pack again on entering the game, as a reconnect’s tracker has none', () => {
+    const { s } = session();
+    s.weightMax = 1200;
+    s.inventoryAskedAt = 99;
+    enterGame(s);
+    expect(s.weightMax).toBe(0);
+    expect(s.inventoryAskedAt).toBe(0);
   });
 
   it('starts roaming with StartTask 2', () => {
@@ -456,5 +466,23 @@ describe('the toolbar’s toggles', () => {
     expect([s.MegaMud_NoHangup, s.state]).toEqual([1, 0xd]);
     menuCommand(s, 0x82f);
     expect(s.MegaMud_NoHangup).toBe(0);
+  });
+});
+
+describe('a timed event’s command (0x407390)', () => {
+  it('is sent as the player’s own words, so the console shows it whatever its first word', () => {
+    const { s, out } = session();
+    s.online = 1;
+    s.inGame = 1;
+    const own: string[] = [];
+    s.host.ownCommand = (text) => own.push(text);
+    s.events = [{ type: 5, hour: -1, minute: 60, text: 'sys god fatty neutral', dueAt: 0 }];
+    s.eventNext = 0;
+    s.MegaMud_DisableEvents = 0;
+    s.MegaMud_EventsAfkOnly = 0;
+    s.allOff = 0;
+    expect(eventsStep(s)).toBe(1);
+    expect(own.map((text) => text.trim())).toEqual(['sys god fatty neutral']);
+    expect(out.sent.join('')).toBe('sys god fatty neutral\r');
   });
 });

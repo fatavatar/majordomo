@@ -13,6 +13,7 @@
  * 126.4M/h with his harmony counted as healing, the beastmistress's clock-
  * bound lairs adding about 27M/h, against the 143M/h he earned.
  */
+import type { CharacterState } from './character';
 import type { RoomId } from './world';
 
 /** One room of a priced group: where it is and how far from the character. */
@@ -55,6 +56,12 @@ export interface LairPrice {
   roundsToClear: number | null;
   /** Damage it deals a round, against the character's own defences. */
   damagePerRound: number | null;
+  /**
+   * What the room spells did to a clear (`HowItFights.area`): their names,
+   * the rounds to clear with them, and MME's rounds without, null where the
+   * attack alone clears nothing. Absent where none was cast.
+   */
+  areaAttack?: { spells: string[]; rounds: number; without: number | null };
 }
 
 /** A priced group, its rooms named and stepped. */
@@ -138,6 +145,44 @@ export interface HowItFights {
   blessings: string[];
   /** `Health.MeditateB4Rest`: meditates for mana. */
   meditate: boolean;
+  /**
+   * The room spells it opens a fight with, in the order MegaMUD tries them
+   * (`wantsRoomSpell`, `0x42c700`): the pre-multi-attack, then the
+   * multi-attack. Only those switched on while scripting are here.
+   */
+  area: AreaAttack[];
+}
+
+/**
+ * A room spell MegaMUD casts while enough monsters are in the room
+ * (2026-10-29): `Combat.PreMultAttack` or `Combat.MultAttack`, with the
+ * monsters it waits for (`…MstrCnt`), the casts a fight it makes at most
+ * (`…CastCnt`), and the damage after which it stops (`…MaxDmg`).
+ */
+export interface AreaAttack {
+  spell: string;
+  monsters: number;
+  casts: number;
+  maxDamage: number;
+}
+
+/**
+ * Whether the character is known well enough to price (2026-10-29): its
+ * sheet read (class and level) and its pack listed (what it wears), and where
+ * it stands. Before `stat` answers, MME priced one of Bowel's 609 lair groups
+ * in reach; after it, before `i`, 79; with both, 465. The card asks again when
+ * this turns true, so one opened before the character entered the realm fills
+ * itself in.
+ */
+export function readyToPrice(state: CharacterState): boolean {
+  return sheetRead(state) && state.room.map !== null && state.room.number !== null;
+}
+
+/** Its sheet read and its pack listed: what MME prices the character from. */
+export function sheetRead(state: CharacterState): boolean {
+  return (
+    state.className !== null && state.progress.level !== null && state.inventory.listedAt !== null
+  );
 }
 
 /** A character's way of fighting, from its MegaMUD settings' live sections. */
@@ -152,6 +197,33 @@ export function howItFights(
     const value = live[section]?.[key];
     return typeof value === 'number' ? value !== 0 : value === true;
   };
+  const count = (section: string, key: string, fallback: number): number => {
+    const value = live[section]?.[key];
+    return typeof value === 'number' ? value : fallback;
+  };
+  /*
+   * Scripting, MegaMUD switches its room spells to the mode's defaults
+   * (`modeDefaults`: `DefPreAttack2`, `DefNuke2`) unless *No mode defaults*
+   * keeps the toolbar's own; the schema's defaults where a key is not stored.
+   */
+  const keepsOwn = count('MegaMud', 'NoModeDefs', 0) !== 0;
+  const preAttack = count('MegaMud', keepsOwn ? 'AutoPreAttack' : 'DefPreAttack2', 1) !== 0;
+  const nuke = count('MegaMud', keepsOwn ? 'AutoNuke' : 'DefNuke2', 1) !== 0;
+  const area: AreaAttack[] = [];
+  const roomSpell = (prefix: 'PreMult' | 'Mult'): void => {
+    const spell = text('Combat', `${prefix}Attack`);
+    const casts = count('Combat', `${prefix}CastCnt`, 1);
+    if (spell === '' || casts <= 0) return;
+    area.push({
+      spell,
+      monsters: count('Combat', `${prefix}MstrCnt`, 3),
+      casts,
+      maxDamage: count('Combat', `${prefix}MaxDmg`, 99999)
+    });
+  };
+  // The pre-multi-attack wants pre-attacking and nuking both on (`attack.ts`, `0x42c700`).
+  if (preAttack && nuke) roomSpell('PreMult');
+  if (nuke) roomSpell('Mult');
   const blessings: string[] = [];
   for (let i = 1; i <= 10; i += 1) {
     const short = text('Spells', `BlessCmd${i}`);
@@ -163,7 +235,8 @@ export function howItFights(
     backstab: on('Combat', 'CanBackStab'),
     heal: text('Spells', 'HealCmd'),
     blessings,
-    meditate: on('Health', 'MeditateB4Rest')
+    meditate: on('Health', 'MeditateB4Rest'),
+    area
   };
 }
 

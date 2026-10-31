@@ -98,6 +98,15 @@ export function monsterDefense(monster: number | Record<string, unknown>): {
   seeHidden: boolean;
   evil: boolean;
 };
+/** `CalcCombatRounds`: rounds to kill a monster (`nRTK`), to the next half round. */
+export function calcCombatRounds(opts: {
+  damageOut: number;
+  mobHealth: number;
+  numMobs?: number;
+  mobDamage?: number;
+  surpriseDamageOut?: number;
+  firstRoundDamageOut?: number;
+}): { nRTK: number };
 /** `GetDamageOutput`: damage a round against a monster, or against `opts.vs` with no monster. */
 export function damageVsMonster(
   profile: unknown,
