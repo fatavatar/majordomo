@@ -62,6 +62,13 @@ export class SessionCapture {
   private part = 1;
   /** Whether this part holds anything past its heading. */
   private filled = false;
+  /**
+   * The parts already ended and still being written out (2026-11-01). `close`
+   * waits for these as well as for the part it ends: it resolved once the last
+   * part was on disk while an earlier one could still be flushing, and the
+   * release run's size-cap test read a part before its rows were there.
+   */
+  private ending: Promise<void>[] = [];
 
   constructor(private readonly options: SessionCaptureOptions) {}
 
@@ -188,10 +195,15 @@ export class SessionCapture {
     this.stream = null;
     if (this.file !== '') released(this.file);
     this.file = '';
-    if (!stream) return Promise.resolve();
-    return new Promise((resolve) => {
-      stream.end(() => resolve());
-    });
+    if (stream) this.end(stream);
+    const ending = this.ending;
+    this.ending = [];
+    return Promise.all(ending).then(() => undefined);
+  }
+
+  /** Ends a part's stream, remembered until it has been written out. */
+  private end(stream: fs.WriteStream): void {
+    this.ending.push(new Promise((resolve) => stream.end(() => resolve())));
   }
 
   private record(entry: Record<string, unknown>): void {
@@ -216,7 +228,7 @@ export class SessionCapture {
    * session's start.
    */
   private nextPart(): void {
-    this.stream?.end();
+    if (this.stream) this.end(this.stream);
     this.stream = null;
     released(this.file);
     this.part += 1;

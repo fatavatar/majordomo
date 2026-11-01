@@ -5343,6 +5343,57 @@ button.quest-plan-back {
   width: 24px;
 }
 
+/*
+ * Whose it is, in the Stable (2026-11-01): a character's colour -- its tab's
+ * dot, `ProfileAccent` -- worn by its console's frame, as a bar down the
+ * console's left edge, by the name opening its console line, and by a dot
+ * before it on the party's member list, so a party's stacked consoles and the
+ * lines above them can be matched at a glance rather than by the keyboard
+ * highlight alone.
+ */
+[data-who] {
+  --who: var(--accent);
+}
+[data-who='green'] {
+  --who: var(--ok);
+}
+[data-who='amber'] {
+  --who: var(--pending);
+}
+[data-who='violet'] {
+  --who: var(--marker);
+}
+
+.terminal-layers[data-flow='stable']
+  .terminal-layer[data-who]
+  > :is(.terminal-cell, .console-status) {
+  border-color: color-mix(in srgb, var(--who) 40%, var(--ink-line));
+  border-left: 3px solid var(--who);
+}
+
+.terminal-layers[data-flow='stable']
+  .terminal-layer[data-who][data-focused='true']
+  > :is(.terminal-cell, .console-status) {
+  border-color: var(--who);
+  border-left-width: 3px;
+}
+
+.console-status-name {
+  color: var(--who, var(--text-hi));
+  flex: none;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.stable-who {
+  align-self: center;
+  background: var(--who);
+  border-radius: 50%;
+  flex: none;
+  height: 8px;
+  width: 8px;
+}
+
 /* A character's settings: the tab's pencil, quiet until pointed at. */
 .stable-edit {
   align-items: center;
@@ -5812,10 +5863,8 @@ button.quest-plan-back {
   align-items: center;
   display: flex;
   flex-wrap: wrap;
-  font-family: var(--font-mono);
-  font-size: var(--font-ui);
-  gap: 8px;
-  margin-top: 8px;
+  gap: 6px;
+  min-width: 0;
 }
 
 .stable-away-label {
@@ -5830,8 +5879,14 @@ button.quest-plan-back {
   border: 1px dashed var(--ink-line);
   border-radius: var(--r-card);
   display: inline-flex;
-  gap: 10px;
-  padding: 4px 6px 4px 10px;
+  gap: 8px;
+  padding: 1px 3px 1px 8px;
+}
+
+/* Smaller than the head line's own buttons: a chip's press, not a command. */
+.stable-head-strip .stable-away button {
+  min-height: 22px;
+  padding: 0 8px;
 }
 
 .stable-away-tile .quiet {

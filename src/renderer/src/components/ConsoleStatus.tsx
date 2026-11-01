@@ -14,6 +14,12 @@ export interface ConsoleStatusProps {
   character: CharacterState;
   round: HeldRound;
   thresholds: VitalsUiConfig;
+  /**
+   * Whose console this is, first on the line in the character's colour: in
+   * the Stable, where a party's consoles stack and the line is what tells them
+   * apart (2026-11-01). A character's own tab names it already.
+   */
+  name?: string;
 }
 
 /**
@@ -25,7 +31,7 @@ export interface ConsoleStatusProps {
  * one, so every character in the Stable carries its own. The bars it draws
  * left the Vitals card and the Stable's status for it.
  */
-function ConsoleStatus({ session, character, round, thresholds }: ConsoleStatusProps) {
+function ConsoleStatus({ session, character, round, thresholds, name }: ConsoleStatusProps) {
   const { vitals, progress } = character;
   const hp = barOf(vitals.hp, vitals.hpMax, thresholds.hp);
   const mana = barOf(vitals.mana, vitals.manaMax, thresholds.mana);
@@ -35,6 +41,7 @@ function ConsoleStatus({ session, character, round, thresholds }: ConsoleStatusP
   const through = reading === null ? null : Math.min(1, reading.into / reading.span);
   return (
     <div className="console-status" aria-label={t('consoleStatus.label')}>
+      {name !== undefined && <b className="console-status-name">{name}</b>}
       <span className="console-status-vital">
         <span className="quiet">{t('stable.row.hp')}</span>
         <span className="stable-bar" data-kind="hp" data-level={hp.level}>

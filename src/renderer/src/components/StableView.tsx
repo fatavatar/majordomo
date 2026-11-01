@@ -266,7 +266,7 @@ function StableRate({
 
 export interface StablePartyProps {
   roster: PartyRoster;
-  members: ReadonlyArray<{ id: SessionId; name: string; view: StableRowView }>;
+  members: ReadonlyArray<{ id: SessionId; name: string; accent: string; view: StableRowView }>;
   /** The Stable's grid cell: the rows its members' consoles take. */
   cell: CSSProperties;
   focused: SessionId;
@@ -407,7 +407,7 @@ export const StableParty = memo(function StableParty({
         )}
       </div>
       <div className="stable-members">
-        {members.map(({ id, name, view }) => {
+        {members.map(({ id, name, accent, view }) => {
           const { character } = view;
           const { vitals } = character;
           const mark = attention(view, restToFor(id));
@@ -419,10 +419,12 @@ export const StableParty = memo(function StableParty({
             <div
               className="stable-member"
               data-focused={id === focused ? 'true' : 'false'}
+              data-who={accent}
               key={id}
               onMouseDown={() => onFocus(id)}
             >
               <span className="stable-member-name">
+                <span aria-hidden="true" className="stable-who" />
                 <b>
                   {character.name ?? name}
                   {isLeader ? ' ★' : ''}
@@ -683,7 +685,11 @@ export function useNarrow(): boolean {
   return narrow;
 }
 
-/** The characters loaded but not in the realm: small, last, one press to bring each in. */
+/**
+ * The characters left out and those loaded but not in the realm, small, one
+ * press to bring each in: on the Stable's head line since 2026-11-01, where
+ * they took a strip of their own under the rows and the height with it.
+ */
 export function StableAway({
   away,
   leftOut,
@@ -838,12 +844,15 @@ export function StableHead({
   rows,
   views,
   since,
+  away,
   onDismiss,
   onStopAll
 }: {
   rows: ReadonlyArray<{ id: SessionId; name: string }>;
   views: Record<SessionId, StableRowView>;
   since: number | null;
+  /** The characters left out and out of the realm (`StableAway`), on the head line. */
+  away: ReactNode;
   onDismiss(): void;
   onStopAll(): void;
 }) {
@@ -867,6 +876,7 @@ export function StableHead({
           {t('stable.head.inRealm', { count: rows.length })}
           {together > 0 ? ` · ${t('stable.head.together', { rate: rate(together) })}` : ''}
         </span>
+        {away}
         <span className="spacer" />
         <button className="danger" onClick={onStopAll} onMouseDown={keepFocus} type="button">
           {t('stable.head.stopAll')}

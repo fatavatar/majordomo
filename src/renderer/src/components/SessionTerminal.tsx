@@ -45,6 +45,11 @@ export interface SessionTerminalProps {
    * and round (`ConsoleStatus`, 2026-11-01), in every view.
    */
   footer?: ReactNode;
+  /**
+   * The character's colour (its tab's), worn by the console's frame in the
+   * Stable so a party's stacked consoles are told apart at a glance.
+   */
+  who?: string;
   /** A strip over the console: the character's toolbar, in the Stable (2026-10-31). */
   header?: ReactNode;
   /** Clicking a pane makes it the one the keyboard talks to. */
@@ -104,6 +109,7 @@ function SessionTerminal({
   flow,
   cell,
   footer,
+  who,
   header,
   onFocusPane,
   settings,
@@ -357,6 +363,7 @@ function SessionTerminal({
       data-shown={shown ? 'true' : 'false'}
       data-headed={header !== undefined ? 'true' : undefined}
       data-footed={footer !== undefined ? 'true' : undefined}
+      data-who={who}
       onMouseDown={() => onFocusPane(session)}
       style={place}
     >
