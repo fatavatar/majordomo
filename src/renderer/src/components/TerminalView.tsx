@@ -158,6 +158,15 @@ export default function TerminalView({
   const termRef = useRef<Terminal | null>(null);
   const fitRef = useRef<FitAddon | null>(null);
   const [pinned, setPinned] = useState(true);
+  /**
+   * Whether the reader is following the game (2026-11-01): let go only by a
+   * scroll the reader made, never by one layout made. The viewport's place was
+   * the whole answer, and a console shown again or refitted at another size
+   * moves its viewport off the live edge without anybody scrolling: from then
+   * on the writes stopped following and "jump to latest" stood over a console
+   * nobody had touched. See `syncPin`.
+   */
+  const followRef = useRef(true);
 
   /**
    * Where the right-click menu is, and what was selected when it opened.
@@ -275,6 +284,7 @@ export default function TerminalView({
     const term = termRef.current;
     if (!reportSize || wasReporting || !term) return;
     fitRef.current?.fit();
+    if (followRef.current && !holdRef.current) term.scrollToBottom();
     handlers.current.onResize({ cols: term.cols, rows: term.rows });
   }, [reportSize]);
 
@@ -292,6 +302,7 @@ export default function TerminalView({
     const term = termRef.current;
     if (!term) return;
     holdRef.current = false;
+    followRef.current = true;
     term.clearSelection();
     term.scrollToBottom();
     term.focus();
@@ -630,7 +641,7 @@ export default function TerminalView({
     const startSelecting = (event: MouseEvent): void => {
       if (event.button !== 0) return;
       selecting = true;
-      followingAtPress = term.buffer.active.viewportY >= term.buffer.active.baseY;
+      followingAtPress = followRef.current;
       holdRef.current = true;
     };
     const stopSelecting = (): void => {
@@ -714,7 +725,30 @@ export default function TerminalView({
      * chord handled here has to say so itself or Chromium's own paste command
      * fires as well and the run arrives twice.
      */
+    /*
+     * What the reader did to scroll, so `syncPin` can tell it from a scroll
+     * layout made: the wheel, a touch, the scrollbar held, the scroll keys,
+     * and a search moving to its match. A scroll inside `USER_SCROLL_MS` of
+     * one of those is the reader's; smooth scrolling runs on after the last
+     * wheel event for about that long.
+     */
+    let userUntil = 0;
+    let holdingBar = false;
+    const userScrolled = (): void => {
+      userUntil = performance.now() + USER_SCROLL_MS;
+    };
+    const pressBar = (): void => {
+      holdingBar = true;
+      userScrolled();
+    };
+    const releaseBar = (): void => {
+      if (!holdingBar) return;
+      holdingBar = false;
+      userScrolled();
+    };
+
     term.attachCustomKeyEventHandler((event) => {
+      if (event.type === 'keydown' && event.shiftKey && SCROLL_KEYS.has(event.key)) userScrolled();
       const intent = clipboardIntent(event, term.hasSelection());
       if (intent === null) return true;
       /*
@@ -742,7 +776,20 @@ export default function TerminalView({
      */
     const syncPin = (): void => {
       const buffer = term.buffer.active;
-      setPinned(buffer.viewportY >= buffer.baseY);
+      if (buffer.viewportY >= buffer.baseY) {
+        followRef.current = true;
+        setPinned(true);
+        return;
+      }
+      if (holdRef.current || holdingBar || performance.now() < userUntil) {
+        followRef.current = false;
+        setPinned(false);
+        return;
+      }
+      // Moved by layout rather than by the reader: a console following the
+      // game goes back to the live edge, and one backscrolled stays put.
+      if (followRef.current) term.scrollToBottom();
+      else setPinned(false);
     };
 
     const scrollListener = term.onScroll(syncPin);
@@ -758,6 +805,12 @@ export default function TerminalView({
      */
     const viewport = mount.querySelector('.xterm-viewport');
     viewport?.addEventListener('scroll', syncPin, { passive: true });
+    // On the way down rather than up: xterm takes the wheel and the touch for
+    // itself, and an event it stops never reaches a listener on the bubble.
+    mount.addEventListener('wheel', userScrolled, { passive: true, capture: true });
+    mount.addEventListener('touchmove', userScrolled, { passive: true, capture: true });
+    viewport?.addEventListener('pointerdown', pressBar, { capture: true });
+    document.addEventListener('pointerup', releaseBar);
 
     /**
      * The one thing that writes to this console, for as long as it lives.
@@ -788,7 +841,7 @@ export default function TerminalView({
     handlers.current.onReady({
       write: (chunk) => {
         const buffer = term.buffer.active;
-        const wasPinned = buffer.viewportY >= buffer.baseY;
+        const wasPinned = followRef.current;
         /*
          * The line the reader is on, captured before the write moves the
          * buffer underneath it. A viewport already at the live edge follows
@@ -882,10 +935,7 @@ export default function TerminalView({
         }),
       notice: postNotice,
       jumpToLatest,
-      following: () => {
-        const buffer = term.buffer.active;
-        return !holdRef.current && buffer.viewportY >= buffer.baseY;
-      },
+      following: () => !holdRef.current && followRef.current,
       focus: () => term.focus(),
       search: (query, direction) => {
         if (query.length === 0) {
@@ -905,6 +955,7 @@ export default function TerminalView({
             activeMatchColorOverviewRuler: paletteRef.current.brightWhite
           }
         };
+        userScrolled();
         if (direction === 'next') search.findNext(query, options);
         else search.findPrevious(query, options);
       }
@@ -913,7 +964,10 @@ export default function TerminalView({
     const observer = new ResizeObserver(() => {
       // Guard against the zero-size measurement that fires while the window is
       // minimised, which would otherwise report a 1x1 grid over NAWS.
-      if (mount.clientWidth > 0 && mount.clientHeight > 0) fit.fit();
+      if (mount.clientWidth > 0 && mount.clientHeight > 0) {
+        fit.fit();
+        if (followRef.current && !holdRef.current) term.scrollToBottom();
+      }
     });
     observer.observe(mount);
 
@@ -923,6 +977,10 @@ export default function TerminalView({
       links.dispose();
       observer.disconnect();
       viewport?.removeEventListener('scroll', syncPin);
+      mount.removeEventListener('wheel', userScrolled, { capture: true });
+      mount.removeEventListener('touchmove', userScrolled, { capture: true });
+      viewport?.removeEventListener('pointerdown', pressBar, { capture: true });
+      document.removeEventListener('pointerup', releaseBar);
       scrollListener.dispose();
       selectionListener.dispose();
       mount.removeEventListener('mousedown', startSelecting);
@@ -955,7 +1013,10 @@ export default function TerminalView({
     term.options.cursorBlink = settings.cursorBlink;
     term.options.cursorStyle = settings.cursorStyle;
 
-    if (metricsChanged) fitRef.current?.fit();
+    if (metricsChanged) {
+      fitRef.current?.fit();
+      if (followRef.current && !holdRef.current) term.scrollToBottom();
+    }
   }, [fontStack, settings]);
 
   /**
@@ -1091,6 +1152,12 @@ export default function TerminalView({
 
 /** Cells a marked line is indented by, for the glyph to sit in. */
 const MARK_INDENT = '  ';
+
+/** How long after the reader's own wheel, key or search a scroll is theirs (see `syncPin`). */
+const USER_SCROLL_MS = 600;
+
+/** The keys xterm scrolls the viewport with, held with Shift; without it they go to the realm. */
+const SCROLL_KEYS = new Set(['PageUp', 'PageDown', 'Home', 'End', 'ArrowUp', 'ArrowDown']);
 
 /**
  * SGR colour sequences, for counting the cells a line actually paints.
