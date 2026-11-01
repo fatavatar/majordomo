@@ -3769,24 +3769,6 @@ cards:
     empty: No lines framed yet.
     terminatorTooltip: terminated by {terminator}
     title: Stream
-  # What the character was doing over the window (2026-11-01, the card rethink's W5).
-  timeline:
-    title: Timeline
-    empty: Nothing recorded in this window yet. It fills as the character plays.
-    stripLabel: What the character was doing over the window
-    stripHint: Click to see that moment in the console
-    now: now
-    notInBackscroll: The console's backscroll holds nothing that old on this page.
-    died: 'Died at {at} in {where}'
-    levelled: 'Reached level {level} at {at}'
-    minutes: '{minutes}m'
-    hours: '{hours}h {minutes}m'
-    kind:
-      fight: fighting
-      rest: resting
-      walk: walking
-      idle: idle
-      away: out of the realm
   talk:
     channels:
       action: action

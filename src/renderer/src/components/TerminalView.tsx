@@ -55,12 +55,6 @@ export interface TerminalHandle {
   focus(): void;
   /** Find in the backscroll. Empty query clears the highlight. */
   search(query: string, direction: 'next' | 'previous'): void;
-  /**
-   * The backscroll brought to what arrived at a moment (the Timeline card's
-   * click, 2026-11-01), and false where nothing this page wrote is that old:
-   * a backscroll restored from main carries no times.
-   */
-  jumpTo(at: number): boolean;
 }
 
 export interface TerminalViewProps {
@@ -832,25 +826,6 @@ export default function TerminalView({
      */
     const writer = consoleWriter(term);
     writerRef.current = writer;
-    /*
-     * Where the output stood at each moment, a mark every `TIME_MARK_MS` as
-     * chunks arrive, for `jumpTo`. A marker moves with its line and is
-     * disposed when the line leaves the scrollback, so the marks age out with
-     * what they mark.
-     */
-    const marks: Array<{ at: number; marker: IMarker }> = [];
-    const markTime = (): void => {
-      const now = Date.now();
-      const last = marks.at(-1);
-      if (last !== undefined && now - last.at < TIME_MARK_MS) return;
-      const marker = term.registerMarker(0);
-      if (marker === undefined) return;
-      marks.push({ at: now, marker });
-      if (marks.length > TIME_MARKS_KEPT) {
-        const live = marks.filter((mark) => !mark.marker.isDisposed);
-        marks.splice(0, marks.length, ...live.slice(-TIME_MARKS_KEPT));
-      }
-    };
     const notices: ScreenNotices = screenNotices(() => terminalSurface(term));
     /**
      * Every notice, at the writer's `settled` moment. `term.buffer` answers
@@ -865,7 +840,6 @@ export default function TerminalView({
 
     handlers.current.onReady({
       write: (chunk) => {
-        markTime();
         const buffer = term.buffer.active;
         const wasPinned = followRef.current;
         /*
@@ -962,20 +936,6 @@ export default function TerminalView({
       notice: postNotice,
       jumpToLatest,
       following: () => !holdRef.current && followRef.current,
-      jumpTo: (at) => {
-        let found: IMarker | null = null;
-        for (const mark of marks) {
-          if (mark.marker.isDisposed) continue;
-          if (mark.at > at) break;
-          found = mark.marker;
-        }
-        if (found === null) return false;
-        // Let go of the live edge first, so the scroll is not put back there.
-        followRef.current = false;
-        term.scrollToLine(found.line);
-        setPinned(false);
-        return true;
-      },
       focus: () => term.focus(),
       search: (query, direction) => {
         if (query.length === 0) {
@@ -1192,12 +1152,6 @@ export default function TerminalView({
 
 /** Cells a marked line is indented by, for the glyph to sit in. */
 const MARK_INDENT = '  ';
-
-/** How often the console marks where its output stood, for `jumpTo`. */
-const TIME_MARK_MS = 15_000;
-
-/** How many of those marks are kept: a day's worth at that pace. */
-const TIME_MARKS_KEPT = 6000;
 
 /** How long after the reader's own wheel, key or search a scroll is theirs (see `syncPin`). */
 const USER_SCROLL_MS = 600;

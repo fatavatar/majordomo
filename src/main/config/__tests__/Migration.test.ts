@@ -2320,10 +2320,7 @@ describe('the roster cap in an existing tuning file', () => {
       'mobRegenMs',
       'staleMoveMs',
       // Which attack a `*Combat Engaged*` answers, appended by the same pass.
-      'engageBindMs',
-      // The Timeline card's record (2026-11-01), the same.
-      'activityWalkMs',
-      'activityKept'
+      'engageBindMs'
     ]);
     expect(block()['rosterLines']).toBe(400);
     expect(fs.readFileSync(home.internal, 'utf8')).toContain('A note the user wrote');
@@ -4733,6 +4730,19 @@ describe('the hunting survey’s reach', () => {
     migrate();
     expect(block('view')['huntReaskMs']).toBeUndefined();
     expect(block('view')['clockTickMs']).toBe(1000);
+  });
+
+  // The Timeline card's record, written in by 1.0.10 and retired (2026-11-01).
+  it("takes the Timeline card's keys out of a file that states them", () => {
+    fs.writeFileSync(
+      home.internal,
+      `${withReach}  parse:\n    statsSamplesKept: 1440\n    activityWalkMs: 15000\n    activityKept: 6000\n`,
+      'utf8'
+    );
+    migrate();
+    expect(block('parse')['activityWalkMs']).toBeUndefined();
+    expect(block('parse')['activityKept']).toBeUndefined();
+    expect(block('parse')['statsSamplesKept']).toBe(1440);
   });
 
   it('writes the survey’s new keys in beside the ones the file states', () => {
