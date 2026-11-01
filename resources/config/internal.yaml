@@ -360,6 +360,12 @@ tuning:
 
     statsSamplesKept: 1440
 
+    # The Timeline card: how lately the room must have changed for the
+    # character to count as walking rather than idle, and how many changes of
+    # what it was doing are kept (a busy day is a few thousand).
+    activityWalkMs: 15000
+    activityKept: 6000
+
     # The band a line has to be inside to be read as a room's name.
     #
     # Tuned against the capture corpus: the shipped realm's longest is well
@@ -562,6 +568,12 @@ tuning:
     # character chasing estimates round the realm: every move costs the walk
     # and the first cycle.
     moveMargin: 0.25
+
+    # How long a character's sheet, gear and party must hold still before MMUD
+    # Explorer's damage simulation is worked out for them, ahead of the monster
+    # cards and Hunting Grounds that read it. About two seconds a character the
+    # first time, and again only when their defences change.
+    explorerWarmMs: 3000
 
   # Keeping the pack stocked — `Supplies`. `buyTimeoutMs` is how long a `buy`
   # may go unanswered by `You just bought …` before it is taken as refused;

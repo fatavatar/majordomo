@@ -92,6 +92,26 @@ function tagsOf(
       });
       continue;
     }
+    /*
+     * A door, and nothing else asked of it: `open <dir>` as a button, the
+     * verb MegaMUD's own walker sends at a closed door (`move/go.ts`), where it
+     * was a tag saying a door is there (2026-11-01). A door with a key, a lever
+     * or a toll is still said as those below.
+     */
+    if (requirement.kind === 'door') {
+      const open = `open ${direction}`;
+      if (said.has(open)) continue;
+      said.add(open);
+      commands.push({
+        label: open,
+        commands: [open],
+        title:
+          to === null
+            ? t('terminal.tags.openHere', { direction, detail: obstacle.detail })
+            : t('terminal.tags.open', { direction, room: to, detail: obstacle.detail })
+      });
+      continue;
+    }
     if (requirement.kind === 'hidden' && requirement.searchable === true) {
       const search = `search ${direction}`;
       commands.push({

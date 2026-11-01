@@ -1,7 +1,13 @@
 import { memo, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 
 import type { HeldRound } from './RoundTimer';
-import { experienceFigures, rate, RateGraph, useExperienceView } from './ExperienceScope';
+import {
+  experienceFigures,
+  rate,
+  RateGraph,
+  ScopePicker,
+  useExperienceView
+} from './ExperienceScope';
 import { attention, type RailView } from './TabRail';
 import { musterChoices } from './PartyCard';
 import PopupMenu from './PopupMenu';
@@ -107,6 +113,8 @@ export interface StableStatusProps {
   onFocus(session: SessionId): void;
   /** Leave it out of the Stable (`useLeftOut`). */
   onLeaveOut(session: SessionId): void;
+  /** The experience's hours views restarted, as the Vitals card's reset does. */
+  onExpReset(session: SessionId): void;
   /** Its settings, as its tab's pencil opens them; absent for a character with no file. */
   onEdit?: (session: SessionId) => void;
   /** The other cards placed on it, drawn for this character. */
@@ -129,6 +137,7 @@ export const StableStatus = memo(function StableStatus({
   onStop,
   onFocus,
   onLeaveOut,
+  onExpReset,
   onEdit,
   cards,
   placed,
@@ -169,7 +178,13 @@ export const StableStatus = memo(function StableStatus({
         {doing !== null && <span className="quiet">{doing}</span>}
       </div>
       {cards}
-      <StableRate character={character} note={null} session={session} since={since} />
+      <StableRate
+        character={character}
+        note={null}
+        onReset={() => onExpReset(session)}
+        session={session}
+        since={since}
+      />
       <footer className="stable-actions">
         <button
           className="primary"
@@ -229,16 +244,21 @@ function StableRate({
   character,
   session,
   since,
-  note
+  note,
+  onReset
 }: {
   character: CharacterState;
   session: SessionId;
   since: number | null;
   note: string | null;
+  /** The hours views' own reset, the Vitals card's. */
+  onReset(): void;
 }) {
   const exp = useExperienceView(character, session);
   return (
     <div className="stable-rate">
+      {/* The Vitals card's own choice of window (2026-11-01): one choice, read by both. */}
+      <ScopePicker onReset={onReset} view={exp} />
       <span className="stable-rate-figures">
         <b data-none={exp.perHour === null ? 'true' : undefined}>{rate(exp.perHour)}</b>
         {note !== null && <span className="quiet">{note}</span>}
@@ -278,6 +298,8 @@ export interface StablePartyProps {
   onStop(session: SessionId): void;
   onFocus(session: SessionId): void;
   onLeaveOut(session: SessionId): void;
+  /** The experience's hours views restarted, as the Vitals card's reset does. */
+  onExpReset(session: SessionId): void;
   /** A member's settings; absent for one with no file. */
   editFor(session: SessionId): ((session: SessionId) => void) | undefined;
   onRegroup(roster: string): void;
@@ -309,6 +331,7 @@ export const StableParty = memo(function StableParty({
   onStop,
   onFocus,
   onLeaveOut,
+  onExpReset,
   editFor,
   onRegroup,
   onMuster,
@@ -461,6 +484,7 @@ export const StableParty = memo(function StableParty({
       <StableRate
         character={lead.view.character}
         note={t('stable.party.each', { count: members.length })}
+        onReset={() => onExpReset(lead.id)}
         session={lead.id}
         since={since}
       />

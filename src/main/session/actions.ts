@@ -90,6 +90,35 @@ function exitActions(commands: ReadonlyArray<string | TerminalCommandAction>): T
 }
 
 /**
+ * What a counter is asked, by its kind (2026-11-01): a shop's `list` and a
+ * trainer's `train`, the verbs MegaMUD's own engine sends there -- `list` to
+ * read the prices before it buys (`ItemErrand`), `train` once at the trainer
+ * (`script/path.ts`, `0x40d540`). A trainer that does not take the character
+ * says so in the realm's words, to the character alone.
+ */
+function counterActions(kind: ShopKind | undefined): TerminalAction[] {
+  if (kind === 'shop') {
+    return [
+      {
+        label: t('terminal.actions.list'),
+        commands: ['list'],
+        title: t('terminal.actions.listTitle')
+      }
+    ];
+  }
+  if (kind === 'trainer') {
+    return [
+      {
+        label: t('terminal.actions.train'),
+        commands: ['train'],
+        title: t('terminal.actions.trainTitle')
+      }
+    ];
+  }
+  return [];
+}
+
+/**
  * The bank's buttons: read the purse and bank it, or take the vault out.
  *
  * The deposit names an action rather than commands, for the reason in the
@@ -150,6 +179,7 @@ export function actionsFor(
 ): TerminalAction[] {
   const actions = [
     ...(kind === 'bank' ? bankActions(wealth, bankBalance) : []),
+    ...counterActions(kind),
     // A shop is why somebody is standing here; an exit is how they leave.
     ...exitActions(exits)
   ];

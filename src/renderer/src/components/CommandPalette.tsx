@@ -18,12 +18,13 @@ import { tuning } from '../lib/tuning';
  * typed enough to narrow the list, the group a survivor came from is the
  * fastest way to tell "this is the one" from "keep reading".
  */
-export type CommandGroup = 'character' | 'navigate' | 'view' | 'layout';
+export type CommandGroup = 'character' | 'party' | 'navigate' | 'view' | 'layout';
 
-const GROUPS: CommandGroup[] = ['character', 'navigate', 'view', 'layout'];
+const GROUPS: CommandGroup[] = ['character', 'party', 'navigate', 'view', 'layout'];
 
 const GROUP_LABEL: Record<CommandGroup, string> = {
   character: t('palette.groups.character'),
+  party: t('palette.groups.party'),
   navigate: t('palette.groups.navigate'),
   view: t('palette.groups.view'),
   layout: t('palette.groups.layout')

@@ -189,6 +189,7 @@ import type { MmeParty } from './mme/Explorer';
 import { asToolRequest } from '../shared/explorerTools';
 import {
   asExplorerOptions,
+  DEFAULT_EXPLORER_OPTIONS,
   asGearOptions,
   asEqPlan,
   COMPARE_KINDS,
@@ -697,6 +698,66 @@ function saveNewRoster(made: PartyRoster): PartyRoster[] {
     .map(readPlace)
     .filter((place): place is string => place !== null);
   return parties.save({ ...made, places: withStatedPlaces(places, parties.gotoOn(made.realm)) });
+}
+
+/**
+ * MMUD Explorer's damage simulation worked out before it is asked for
+ * (2026-11-01): every monster's blows against a character in the realm, and
+ * against its party where it has one, the two seconds a monster card or the
+ * Hunting card would otherwise wait for. Looked at once the character has
+ * held still for `hunting.explorerWarmMs`, and sent only when what the
+ * simulation reads -- the realm, the sheet, what is worn, how it fights, the
+ * party -- has changed since; the figures are kept per set of defences
+ * (`explorerWarm`), so another character's warming takes nothing from this
+ * one's.
+ */
+/** What of a character the damage simulation reads: its sheet, its gear and its book. */
+function sheetOf(character: CharacterState): unknown[] {
+  const { progress } = character;
+  return [
+    character.className,
+    character.race,
+    progress.level,
+    [progress.strength, progress.intellect, progress.willpower],
+    [progress.agility, progress.health, progress.charm],
+    character.inventory.items.filter((item) => item.equipped).map((item) => item.name),
+    character.spellbook?.map((spell) => spell.name) ?? []
+  ];
+}
+const warmedAs = new Map<SessionId, string>();
+const warmingSoon = new Set<SessionId>();
+function warmExplorer(id: SessionId): void {
+  if (warmingSoon.has(id) || host?.get(id)?.manager.character.phase !== 'in-game') return;
+  warmingSoon.add(id);
+  const timer = setTimeout(() => {
+    warmingSoon.delete(id);
+    const manager = host?.get(id)?.manager;
+    if (manager === undefined || manager.character.phase !== 'in-game') return;
+    const file = realms?.databaseFile(profileFor(id)?.database ?? '') ?? null;
+    if (file === null || !existsSync(file)) return;
+    const character = manager.character;
+    const how = fightsOf(id);
+    const party = huntingPartyOf(id)?.mme ?? null;
+    const signature = JSON.stringify([
+      file,
+      sheetOf(character),
+      how,
+      party === null
+        ? null
+        : [party.size, party.members.map((member) => [sheetOf(member.state), member.how])]
+    ]);
+    if (warmedAs.get(id) === signature) return;
+    warmedAs.set(id, signature);
+    const options = { ...DEFAULT_EXPLORER_OPTIONS, fights: how };
+    const started = Date.now();
+    void explorerAsk('warm', file, character, options, how, party).then(
+      // The log only, as the realm's load is: nothing a player needs told.
+      () => console.log(`explorer: ${labelOf(id).name} warmed in ${Date.now() - started}ms`),
+      // Asked again on the next change rather than taken as done.
+      () => warmedAs.delete(id)
+    );
+  }, tuning().hunting.explorerWarmMs);
+  timer.unref?.();
 }
 
 /**
@@ -2226,6 +2287,7 @@ function createHost(): SessionHost {
      */
     label: labelOf,
     characterChanged: (id) => {
+      warmExplorer(id);
       if (!parties) return;
       // The realm's sys goto places, once a character has heard it list them.
       const places = host?.get(id)?.manager.character.gotoPlaces ?? [];

@@ -6458,6 +6458,9 @@ function theTuningBlockGainedKeys(
      * summons, and how long a locate answer is waited for.
      */
     addKey('parse', 'engageBindMs', DEFAULT_INTERNAL.tuning.parse.engageBindMs);
+    // The Timeline card's record (2026-11-01).
+    addKey('parse', 'activityWalkMs', DEFAULT_INTERNAL.tuning.parse.activityWalkMs);
+    addKey('parse', 'activityKept', DEFAULT_INTERNAL.tuning.parse.activityKept);
     addKey('spells', 'onsetSettleMs', DEFAULT_INTERNAL.tuning.spells.onsetSettleMs);
     addKey('walk', 'errandAskMs', DEFAULT_INTERNAL.tuning.walk.errandAskMs);
     addKey('session', 'locateResolveMs', DEFAULT_INTERNAL.tuning.session.locateResolveMs);
@@ -6502,6 +6505,8 @@ function theTuningBlockGainedKeys(
     // The Hunting card's areas (2026-10-29).
     addKey('hunting', 'areaRadius', DEFAULT_INTERNAL.tuning.hunting.areaRadius);
     addKey('hunting', 'clockBound', DEFAULT_INTERNAL.tuning.hunting.clockBound);
+    // The Explorer's damage simulation, worked out ahead (2026-11-01).
+    addKey('hunting', 'explorerWarmMs', DEFAULT_INTERNAL.tuning.hunting.explorerWarmMs);
 
     /** A key this build no longer reads, taken out rather than left to mean nothing. */
     const dropKey = (group: string, key: string): void => {

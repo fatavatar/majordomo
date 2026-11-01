@@ -87,6 +87,43 @@ export function isStatsGraph(value: unknown): value is StatsGraph {
   return typeof value === 'string' && (STATS_GRAPHS as readonly string[]).includes(value);
 }
 
+/**
+ * What a character was doing (2026-11-01, the card rethink's W5): fighting,
+ * resting or meditating, walking -- the room changed within
+ * `parse.activityWalkMs` -- or standing idle. Off the realm is the tally's own
+ * `away`, not a kind here.
+ */
+export const ACTIVITY_KINDS = ['fight', 'rest', 'walk', 'idle'] as const;
+export type ActivityKind = (typeof ACTIVITY_KINDS)[number];
+
+/** From `at` until the next span, the character was doing `kind`. */
+export interface ActivitySpan {
+  at: number;
+  kind: ActivityKind;
+}
+
+/** A moment worth a mark on the timeline: a death, or a level gained. */
+export interface ActivityMoment {
+  at: number;
+  kind: 'death' | 'level';
+  /** Where it died, or the level reached. */
+  note: string;
+}
+
+/**
+ * The timeline's record, kept in the tally beside the experience samples and
+ * saved with it in the character's belongings. Optional, as `mega` is: a tally
+ * saved before it existed loads without one.
+ */
+export interface ActivityLog {
+  spans: readonly ActivitySpan[];
+  moments: readonly ActivityMoment[];
+  /** When the room last changed, which is what walking is read from. */
+  movedAt: number | null;
+}
+
+export const NO_ACTIVITY: ActivityLog = { spans: [], moments: [], movedAt: null };
+
 /** A stretch spent off the realm: from leaving it to arriving again. */
 export interface AwaySpell {
   from: number;
@@ -334,6 +371,8 @@ export interface CombatTally {
   leftAt: number | null;
   /** What the MegaMUD engine counted, where it ran (`MegaTally`). */
   mega?: MegaTally;
+  /** What the character was doing, over time (`ActivityLog`). */
+  activity?: ActivityLog;
 }
 
 export const NO_TALLY: CombatTally = {
@@ -483,6 +522,8 @@ export function sinceBaseline(now: CombatTally, baseline: CombatTally | null): C
             .filter((spell) => spell.to > since)
             .map((spell) => ({ from: Math.max(spell.from, since), to: spell.to })),
     leftAt: now.leftAt,
+    // What it was doing is a record of the session, not a count: carried whole.
+    ...(now.activity === undefined ? {} : { activity: now.activity }),
     ...(now.mega === undefined
       ? {}
       : { mega: megaBetween(now.mega, baseline.mega ?? NO_MEGA_TALLY) })
@@ -557,6 +598,36 @@ export function withSample(
   const cap = Math.max(1, Math.trunc(keep));
   if (samples.length > cap) samples = samples.slice(samples.length - cap);
   return { ...tally, samples };
+}
+
+/**
+ * The tally with what the character is doing now: a new span where the kind
+ * differs from the last one, the oldest dropped past `keep`, and the room's
+ * last move where it moved.
+ */
+export function withActivity(
+  tally: CombatTally,
+  kind: ActivityKind,
+  at: number,
+  movedAt: number | null,
+  keep: number
+): CombatTally {
+  const log = tally.activity ?? NO_ACTIVITY;
+  const last = log.spans.at(-1);
+  if (last?.kind === kind && log.movedAt === movedAt) return tally;
+  let spans = last?.kind === kind ? log.spans : [...log.spans, { at, kind }];
+  const cap = Math.max(1, Math.trunc(keep));
+  if (spans.length > cap) spans = spans.slice(spans.length - cap);
+  return { ...tally, activity: { ...log, spans, movedAt } };
+}
+
+/** The tally with a moment marked, the oldest dropped past `keep`. */
+export function withMoment(tally: CombatTally, moment: ActivityMoment, keep: number): CombatTally {
+  const log = tally.activity ?? NO_ACTIVITY;
+  let moments = [...log.moments, moment];
+  const cap = Math.max(1, Math.trunc(keep));
+  if (moments.length > cap) moments = moments.slice(moments.length - cap);
+  return { ...tally, activity: { ...log, moments } };
 }
 
 /** The cumulative experience the samples state for a moment: the last one at or before it, or null before the first. */
@@ -716,6 +787,7 @@ export function isCombatTally(value: unknown): value is CombatTally {
   const dealt = tally['dealt'];
   if (typeof dealt !== 'object' || dealt === null) return false;
   if (tally['mega'] !== undefined && !isMegaTally(tally['mega'])) return false;
+  if (tally['activity'] !== undefined && !isActivityLog(tally['activity'])) return false;
   return BLOW_KINDS.every((kind) => isBlowTally((dealt as Record<string, unknown>)[kind]));
 }
 
@@ -737,6 +809,31 @@ function isMegaTally(value: unknown): value is MegaTally {
     isBlowTally(mega.rounds) &&
     counts(mega.items, ['collected', 'sold', 'stashed']) &&
     counts(mega.copper, ['deposited', 'stashed'])
+  );
+}
+
+function isActivityLog(value: unknown): value is ActivityLog {
+  if (typeof value !== 'object' || value === null) return false;
+  const log = value as Partial<ActivityLog>;
+  return (
+    Array.isArray(log.spans) &&
+    log.spans.every(
+      (span) =>
+        typeof span === 'object' &&
+        span !== null &&
+        isCount(span.at) &&
+        (ACTIVITY_KINDS as readonly string[]).includes(span.kind)
+    ) &&
+    Array.isArray(log.moments) &&
+    log.moments.every(
+      (moment) =>
+        typeof moment === 'object' &&
+        moment !== null &&
+        isCount(moment.at) &&
+        (moment.kind === 'death' || moment.kind === 'level') &&
+        typeof moment.note === 'string'
+    ) &&
+    (log.movedAt === null || isCount(log.movedAt))
   );
 }
 

@@ -36,6 +36,14 @@ describe('the tags beside a room’s name', () => {
     }
   );
 
+  // 2026-11-01: a door is a button, the verb MegaMUD's walker sends at one.
+  it.runIf(has)('makes a plain door an open button, saying where it leads', () => {
+    const tags = roomTagsNamed(world!, nameOf('1/1'), () => false, '1/1')!;
+    const open = tags.commands.find((command) => command.label === 'open e')!;
+    expect(open.commands).toEqual(['open e']);
+    expect(open.title).toMatch(/^Open the door e/);
+  });
+
   it.runIf(has)('offers a search for a hidden way the realm marks searchable', () => {
     const tags = roomTagsNamed(world!, nameOf('7/148'), () => false, '7/148')!;
     expect(tags.commands.map((command) => command.commands)).toContainEqual(['search s']);

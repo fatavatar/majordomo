@@ -2320,7 +2320,10 @@ describe('the roster cap in an existing tuning file', () => {
       'mobRegenMs',
       'staleMoveMs',
       // Which attack a `*Combat Engaged*` answers, appended by the same pass.
-      'engageBindMs'
+      'engageBindMs',
+      // The Timeline card's record (2026-11-01), the same.
+      'activityWalkMs',
+      'activityKept'
     ]);
     expect(block()['rosterLines']).toBe(400);
     expect(fs.readFileSync(home.internal, 'utf8')).toContain('A note the user wrote');

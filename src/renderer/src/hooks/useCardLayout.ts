@@ -180,6 +180,13 @@ export const CARDS = [
    * Stats card's reason: a question asked between evenings, not watched.
    */
   { id: 'gear', label: t('cards.gear.title') },
+  /*
+   * What the character was doing over the Vitals card's window -- fighting,
+   * resting, walking, idle -- with its deaths and levels marked, and a click
+   * that takes the console there (2026-11-01, the card rethink's W5). On the
+   * rail by default: a card watched as much as asked.
+   */
+  { id: 'timeline', label: t('cards.timeline.title') },
   // The diagnostics half. Toggled as a group by the rail shortcut, and each one
   // can still be put away on its own — "all cards" means all of them.
   { id: 'session', label: t('cards.session.title') },

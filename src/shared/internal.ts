@@ -389,6 +389,14 @@ const TUNING_DEFAULTS = {
     statsSampleMs: 60_000,
     statsSamplesKept: 1440,
     /**
+     * The Timeline card (2026-11-01): how lately the room must have changed
+     * for the character to be walking rather than idle, and how many changes
+     * of what it was doing are kept -- a busy day of fighting, resting and
+     * walking is a few thousand.
+     */
+    activityWalkMs: 15_000,
+    activityKept: 6000,
+    /**
      * The band a line has to be inside to be read as a room's name.
      *
      * Tuned against the capture corpus: the shipped realm's longest is well
@@ -696,7 +704,14 @@ const TUNING_DEFAULTS = {
      * and two lairs within a few per cent of each other are the same lair for
      * this purpose.
      */
-    moveMargin: 0.25
+    moveMargin: 0.25,
+    /**
+     * How long a character's sheet, gear and party must hold still before
+     * MMUD Explorer's damage simulation is worked out for them ahead of the
+     * cards that read it (`explorerWarm`, 2026-11-01). A status line arrives
+     * every few seconds; this keeps the warming to one look at a time.
+     */
+    explorerWarmMs: 3_000
   },
   /** Keeping the pack stocked: buying a row (`SessionManager.megaBuy`). */
   supplies: {
