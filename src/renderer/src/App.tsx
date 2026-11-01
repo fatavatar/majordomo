@@ -90,7 +90,6 @@ import {
 
 import StreamCard from './components/StreamCard';
 import VitalsCard from './components/VitalsCard';
-import TimelineCard from './components/TimelineCard';
 import SelfCard from './components/SelfCard';
 import type { SupplyList } from './components/SupplyControls';
 import LoopsModal from './components/LoopsModal';
@@ -276,7 +275,6 @@ const CARD_GLYPH: Partial<Record<CardId, IconName>> = {
   reference: 'search',
   stats: 'activity',
   gear: 'shirt',
-  timeline: 'columns',
   session: 'terminal',
   link: 'link',
   automation: 'sparkle',
@@ -640,8 +638,6 @@ interface CardContext {
   resetStats(): void;
   /** Restart the Vitals card's experience hours views; the session's stays. */
   resetExp(): void;
-  /** This character's console brought to a moment (the Timeline card); false where it holds nothing that old. */
-  jumpTo(at: number): boolean;
   /**
    * The Navigation card's transport. `startMoving` takes the picker's choice,
    * or null where there is none; `loops` is the character's own list to pick
@@ -752,8 +748,6 @@ interface AddressedActions {
   resetStats(): void;
   /** Restart the Vitals card's experience hours views; the session's stays. */
   resetExp(): void;
-  /** This character's console brought to a moment (the Timeline card); false where it holds nothing that old. */
-  jumpTo(at: number): boolean;
   startLoop(name: string): void;
   selectPlayer(name: string, anchor: PopoverAnchor): void;
   setGangRemotes(remotes: RemoteName[]): void;
@@ -1169,16 +1163,6 @@ function cardElement(id: CardId, ctx: CardContext): ReactNode {
           baseline={view.character.statsBase}
           character={character}
           onReset={ctx.resetStats}
-          session={ctx.session}
-        />
-      );
-    case 'timeline':
-      return (
-        <TimelineCard
-          {...chrome}
-          character={character}
-          onExpReset={ctx.resetExp}
-          onJump={ctx.jumpTo}
           session={ctx.session}
         />
       );
@@ -5650,7 +5634,6 @@ export default function App() {
         resetStats: () => resetStatsRef.current(sid),
         // Main's, with the tally, as the Combat Stats card's is, and apart from it.
         resetExp: () => void api.expReset(sid),
-        jumpTo: (at) => terminals.current.get(sid)?.jumpTo(at) ?? false,
         startLoop: (name) =>
           void api.startLoop(sid, name).then((refused) => sayRefusalRef.current(sid)(refused)),
         selectPlayer: (name, anchor) => selectPlayerRef.current(sid, name, anchor),
@@ -5857,7 +5840,6 @@ export default function App() {
         // card, never the one being watched.
         resetStats: bound.resetStats,
         resetExp: bound.resetExp,
-        jumpTo: bound.jumpTo,
         // The shown character's list is the only one the renderer holds; a
         // float's own loops are not asked for, so it offers no picker.
         loops: shown ? loops : null,

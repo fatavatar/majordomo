@@ -303,9 +303,11 @@ export class Belongings implements BelongingsSink {
   rememberSpellDuration(spell: string, seconds: number): void {
     if (this.suspended) return;
     const key = spell.trim().toLowerCase();
-    if (key.length === 0 || !Number.isFinite(seconds) || seconds <= 0) return;
+    if (key.length === 0 || !Number.isFinite(seconds)) return;
     const rounded = Math.round(seconds);
-    if (this.durations[key] === rounded) return;
+    // Held to what the file is read back by: under half a second rounds to
+    // nothing, and a file holding a duration of nothing is refused whole.
+    if (rounded <= 0 || this.durations[key] === rounded) return;
     // The newest measurement wins outright: a duration grows with the
     // caster's level, and an average would lag it in the direction that
     // recasts early — the wasteful direction, not the dangerous one, but
@@ -376,8 +378,11 @@ export class Belongings implements BelongingsSink {
       // Absent is *never read*, and stays null — the spellbook's rule.
       this.abilities = parsed.abilities ?? null;
       this.identity = parsed.identity ?? null;
-      this.stats = parsed.stats ?? null;
-      this.statsBase = parsed.statsBase ?? null;
+      this.stats =
+        parsed.stats === undefined
+          ? null
+          : { ...parsed.stats, tally: withoutTimeline(parsed.stats.tally) };
+      this.statsBase = parsed.statsBase === undefined ? null : withoutTimeline(parsed.statsBase);
       this.expResetAt = parsed.expResetAt ?? null;
     } catch (error) {
       /*
@@ -532,6 +537,18 @@ export function peekSpellbook(file: string, realm: string): readonly KnownSpell[
 }
 
 /** Parsed, not trusted: this file is on disk where anything may have edited it. */
+/**
+ * A tally as 1.0.10 kept it, without the Timeline card's record (`activity`),
+ * retired with the card (2026-11-01): carried on, it went whole to every
+ * window with every change to the character, a few hundred kilobytes for a
+ * busy day, and nothing reads it now. The next write leaves it out.
+ */
+function withoutTimeline(tally: CombatTally): CombatTally {
+  if (!('activity' in tally)) return tally;
+  const { activity: _retired, ...kept } = tally as CombatTally & { activity?: unknown };
+  return kept;
+}
+
 function isBelongingsFile(value: unknown): value is BelongingsFile {
   if (typeof value !== 'object' || value === null) return false;
   const file = value as Partial<BelongingsFile>;

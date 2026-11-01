@@ -6458,9 +6458,6 @@ function theTuningBlockGainedKeys(
      * summons, and how long a locate answer is waited for.
      */
     addKey('parse', 'engageBindMs', DEFAULT_INTERNAL.tuning.parse.engageBindMs);
-    // The Timeline card's record (2026-11-01).
-    addKey('parse', 'activityWalkMs', DEFAULT_INTERNAL.tuning.parse.activityWalkMs);
-    addKey('parse', 'activityKept', DEFAULT_INTERNAL.tuning.parse.activityKept);
     addKey('spells', 'onsetSettleMs', DEFAULT_INTERNAL.tuning.spells.onsetSettleMs);
     addKey('walk', 'errandAskMs', DEFAULT_INTERNAL.tuning.walk.errandAskMs);
     addKey('session', 'locateResolveMs', DEFAULT_INTERNAL.tuning.session.locateResolveMs);
@@ -6533,6 +6530,12 @@ function theTuningBlockGainedKeys(
      * never because the character moved — nothing it prices moves with a step.
      */
     dropKey('view', 'huntReaskMs');
+    /*
+     * The Timeline card's record (2026-11-01), retired with the card the same
+     * day: drawn again on every push of a character's state, it froze a tab.
+     */
+    dropKey('parse', 'activityWalkMs');
+    dropKey('parse', 'activityKept');
     /*
      * The suggestion cap moved with the sweep: twelve rows out of a radius
      * were a neighbourhood, twelve out of the realm are a keyhole. A file

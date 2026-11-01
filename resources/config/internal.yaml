@@ -360,12 +360,6 @@ tuning:
 
     statsSamplesKept: 1440
 
-    # The Timeline card: how lately the room must have changed for the
-    # character to count as walking rather than idle, and how many changes of
-    # what it was doing are kept (a busy day is a few thousand).
-    activityWalkMs: 15000
-    activityKept: 6000
-
     # The band a line has to be inside to be read as a room's name.
     #
     # Tuned against the capture corpus: the shipped realm's longest is well
@@ -613,7 +607,6 @@ tuning:
 
   # Walking a planned route — `Walker`.
   walk:
-
     # How far the character may have wandered from what it was walking before
     # pressing play asks about it first.
     #
@@ -661,7 +654,6 @@ tuning:
 
   # Running a loop — `LoopRunner`.
   loop:
-
     # How long a lap runs before its experience rate is held against
     # `automation.walk.minExpPerHour`. The first minutes of any lap are the walk
     # to the first lair, at no experience at all, and a floor judged then would
@@ -676,7 +668,6 @@ tuning:
   # prevent. Said out loud when it bites, rather than silently doing ten of
   # eighteen.
   spending:
-
     # One press of the gear button.
     maxGear: 10
 

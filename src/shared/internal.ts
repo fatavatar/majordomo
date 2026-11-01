@@ -389,14 +389,6 @@ const TUNING_DEFAULTS = {
     statsSampleMs: 60_000,
     statsSamplesKept: 1440,
     /**
-     * The Timeline card (2026-11-01): how lately the room must have changed
-     * for the character to be walking rather than idle, and how many changes
-     * of what it was doing are kept -- a busy day of fighting, resting and
-     * walking is a few thousand.
-     */
-    activityWalkMs: 15_000,
-    activityKept: 6000,
-    /**
      * The band a line has to be inside to be read as a room's name.
      *
      * Tuned against the capture corpus: the shipped realm's longest is well

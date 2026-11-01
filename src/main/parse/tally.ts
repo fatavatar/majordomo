@@ -17,17 +17,7 @@ import type { Block } from '../../shared/blocks';
 import { DENOMINATIONS, type Denomination } from '../../shared/character';
 import type { CharacterState } from '../../shared/character';
 import { COPPER_PER } from '../../shared/coins';
-import {
-  blowKind,
-  withActivity,
-  withArrival,
-  withBlow,
-  withMoment,
-  withSample,
-  NO_ACTIVITY,
-  type ActivityKind,
-  type CombatTally
-} from '../../shared/tally';
+import { blowKind, withArrival, withBlow, withSample, type CombatTally } from '../../shared/tally';
 import { tuning } from '../app/tuning';
 
 /** `You` and this character's own name are the same swing, said to two audiences. */
@@ -261,44 +251,5 @@ export function trackTally(
     };
   }
 
-  return withWhatItWasDoing(next, block, after, before);
-}
-
-/**
- * What the character was doing, for the Timeline card (2026-11-01): fighting,
- * resting, walking or idle, read off the state after each block, and a death
- * or a level gained as a moment. Off the realm is the tally's `away`.
- */
-function withWhatItWasDoing(
-  tally: CombatTally,
-  block: Block,
-  after: CharacterState,
-  before: CharacterState
-): CombatTally {
-  if (after.phase !== 'in-game') return tally;
-  const { activityWalkMs, activityKept } = tuning().parse;
-  let next = tally;
-  const moved =
-    after.room.name !== before.room.name ||
-    after.room.map !== before.room.map ||
-    after.room.number !== before.room.number;
-  const movedAt = moved ? block.at : (next.activity ?? NO_ACTIVITY).movedAt;
-  const kind: ActivityKind = after.inCombat
-    ? 'fight'
-    : after.vitals.resting || after.vitals.meditating
-      ? 'rest'
-      : movedAt !== null && block.at - movedAt < activityWalkMs
-        ? 'walk'
-        : 'idle';
-  next = withActivity(next, kind, block.at, movedAt, activityKept);
-  const died = after.lastDeath;
-  if (died !== null && died.at !== before.lastDeath?.at) {
-    next = withMoment(next, { at: died.at, kind: 'death', note: died.name ?? '' }, activityKept);
-  }
-  const level = after.progress.level;
-  const was = before.progress.level;
-  if (level !== null && was !== null && level > was) {
-    next = withMoment(next, { at: block.at, kind: 'level', note: String(level) }, activityKept);
-  }
   return next;
 }

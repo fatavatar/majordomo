@@ -319,6 +319,16 @@ describe('what this character knows how to cast', () => {
     expect(next.recallSpellDurations()).toEqual({ bless: 120 });
   });
 
+  it('keeps no duration that rounds to nothing, which would have the file refused', () => {
+    const book = new Belongings({ file, realm: REALM });
+    book.rememberSpellDuration('rejuvinating field', 0.4);
+    book.rememberSpellDuration('bless', 120);
+    book.close();
+
+    const next = new Belongings({ file, realm: REALM });
+    expect(next.recallSpellDurations()).toEqual({ bless: 120 });
+  });
+
   it("ignores another realm's record, like the balances", () => {
     const home = new Belongings({ file, realm: REALM });
     home.rememberSpellbook([swan]);
@@ -528,6 +538,27 @@ describe('what the fighting added up to', () => {
     // write — which is now, not the moment the tally was handed over.
     expect(back?.tally.onlineMs).toBeGreaterThanOrEqual(4_000 + (before - 5_000));
     expect(back?.savedAt).toBeGreaterThanOrEqual(before);
+  });
+
+  // 2026-11-01: the Timeline card's record, which 1.0.10 kept in the tally, retired with the card.
+  it("reads a tally back without the retired Timeline card's record, and writes it without", () => {
+    const store = new Belongings({ file, realm: REALM });
+    store.rememberStats(tally);
+    store.rememberStatsBase(tally);
+    store.close();
+    const kept = JSON.parse(fs.readFileSync(file, 'utf8'));
+    const timeline = { spans: [{ at: 2_000, kind: 'fight' }], moments: [], movedAt: null };
+    kept.stats.tally.activity = timeline;
+    kept.statsBase.activity = timeline;
+    fs.writeFileSync(file, JSON.stringify(kept), 'utf8');
+
+    const back = new Belongings({ file, realm: REALM });
+    expect(back.recallStats()?.tally).not.toHaveProperty('activity');
+    expect(back.recallStats()?.tally.kills).toBe(3);
+    expect(back.recallStatsBase()).not.toHaveProperty('activity');
+    back.rememberStats({ ...tally, kills: 4 });
+    back.close();
+    expect(fs.readFileSync(file, 'utf8')).not.toContain('"activity"');
   });
 
   it('starts null: never kept is not "never fought"', () => {
