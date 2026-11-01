@@ -1705,6 +1705,18 @@ const TUNING_DEFAULTS = {
      */
     referenceWidthMin: 420,
     referenceWidthMax: 760,
+    /**
+     * The console lines each character's row of the Stable shows (2026-10-31),
+     * beside its status: enough of a fight to follow it without opening the
+     * character. More characters than fit scroll.
+     */
+    stableLines: 20,
+    /**
+     * How long the window must have been put away before the Stable says what
+     * the characters made in the meantime (2026-10-31): a glance at another
+     * window is not being away.
+     */
+    stableAwayMinMs: 600_000,
     /** The smallest a panel may be dragged to and still be worth reading. */
     popoverMinHeight: 120,
     /** How close a popup menu may come to the edge of the window. */

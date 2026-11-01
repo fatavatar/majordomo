@@ -46,12 +46,9 @@ import { asLoops, type Loop } from './loops';
 import { PROFILE_ACCENTS, type ProfileAccent } from './profiles';
 import {
   DEFAULT_CONSOLE_PALETTE,
-  DEFAULT_THEME,
   isConsolePalette,
-  isDarkTheme,
   isThemePreference,
   type ConsolePalette,
-  type ThemeId,
   type ThemePreference
 } from './themes';
 import type { StreamEncoding } from './types';
@@ -193,10 +190,6 @@ export interface GlobalDraft {
     skin: SkinId;
     /** Which sixteen the console paints with, or `theme` to follow the chrome. */
     consolePalette: ConsolePalette;
-    /** Keep the console dark while the chrome is light. See `ConsoleUiConfig`. */
-    consoleKeepDark: boolean;
-    /** Which dark palette it wears when it does. Always a dark theme. */
-    consoleDarkTheme: ThemeId;
     vitals: { hp: VitalDraft; mana: VitalDraft };
     alerts: ProfileDraft['alerts'];
     /** The status line and the listings everybody starts from. See `RewritesUiConfig`. */
@@ -958,7 +951,16 @@ export function asGlobalDraft(value: unknown): GlobalDraft | null {
   const ui = isRecord(value['ui']) ? value['ui'] : {};
   const vitals = isRecord(ui['vitals']) ? ui['vitals'] : {};
   const alerts = isRecord(ui['alerts']) ? ui['alerts'] : {};
-  const consoleUi = isRecord(ui['console']) ? ui['console'] : {};
+  /*
+   * The console's palette, as the settings screen sends it: flat on `ui`,
+   * the draft's own shape (`GlobalDraft.ui.consolePalette`). It was read
+   * nested (`ui.console.palette`), the options file's shape, which no draft
+   * has, so every save put it back to its default whatever was chosen, and the
+   * console never changed (2026-10-31). The nested shape is still read where
+   * the flat one is absent.
+   */
+  const nested = isRecord(ui['console']) ? ui['console'] : {};
+  const consolePalette = ui['consolePalette'] ?? nested['palette'];
   const logging = isRecord(value['logging']) ? value['logging'] : {};
   const automation = isRecord(value['automation']) ? value['automation'] : {};
   const pacing = isRecord(automation['pacing']) ? automation['pacing'] : {};
@@ -1004,15 +1006,7 @@ export function asGlobalDraft(value: unknown): GlobalDraft | null {
       showHud: ui['showHud'] !== false,
       showLogo: ui['showLogo'] !== false,
       skin: isSkin(ui['skin']) ? ui['skin'] : DEFAULT_SKIN,
-      consolePalette: isConsolePalette(consoleUi['palette'])
-        ? consoleUi['palette']
-        : DEFAULT_CONSOLE_PALETTE,
-      consoleKeepDark: consoleUi['keepDark'] !== false,
-      // Coerced to a dark theme rather than refused: naming a light one is a
-      // contradiction, not a preference. See `normalizeConsoleUi`.
-      consoleDarkTheme: isDarkTheme(consoleUi['darkTheme'])
-        ? consoleUi['darkTheme']
-        : DEFAULT_THEME,
+      consolePalette: isConsolePalette(consolePalette) ? consolePalette : DEFAULT_CONSOLE_PALETTE,
       vitals: { hp: asVital(vitals['hp']), mana: asVital(vitals['mana']) },
       alerts: asIf.alerts,
       rewrites: normalizeRewrites(ui['rewrites'])

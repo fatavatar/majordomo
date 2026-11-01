@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 
 import QuestRunBanner from './QuestRunBanner';
 import TerminalView, { type TerminalHandle } from './TerminalView';
@@ -38,6 +38,15 @@ export interface SessionTerminalProps {
   pane: number;
   /** How the panes are laid out, which decides the axis `pane` indexes. */
   flow: 'rows' | 'columns';
+  /** The grid cell it takes instead, where the window lays it out itself (the Stable's rows). */
+  cell?: { row: number; column: number };
+  /**
+   * A line along the console's foot: the character's health, mana, experience
+   * and round (`ConsoleStatus`, 2026-11-01), in every view.
+   */
+  footer?: ReactNode;
+  /** A strip over the console: the character's toolbar, in the Stable (2026-10-31). */
+  header?: ReactNode;
   /** Clicking a pane makes it the one the keyboard talks to. */
   onFocusPane(session: SessionId): void;
   settings: TerminalConfig;
@@ -93,6 +102,9 @@ function SessionTerminal({
   focused,
   pane,
   flow,
+  cell,
+  footer,
+  header,
   onFocusPane,
   settings,
   fontStack,
@@ -308,9 +320,11 @@ function SessionTerminal({
    * in the focused one, hidden — laid out, and therefore still measurable.
    */
   const place =
-    flow === 'columns'
-      ? { gridColumn: pane + 1, gridRow: 1 }
-      : { gridRow: pane + 1, gridColumn: 1 };
+    cell !== undefined
+      ? { gridRow: cell.row, gridColumn: cell.column }
+      : flow === 'columns'
+        ? { gridColumn: pane + 1, gridRow: 1 }
+        : { gridRow: pane + 1, gridColumn: 1 };
 
   // Addressed at this character, whose console was clicked — not the shown one.
   const selectPlayer = useCallback(
@@ -341,10 +355,13 @@ function SessionTerminal({
       className="terminal-layer"
       data-focused={focused ? 'true' : 'false'}
       data-shown={shown ? 'true' : 'false'}
+      data-headed={header !== undefined ? 'true' : undefined}
+      data-footed={footer !== undefined ? 'true' : undefined}
       onMouseDown={() => onFocusPane(session)}
       style={place}
     >
       {/* Over this pane rather than docked: `mudengine-ui` › quests, *the run is a banner*. */}
+      {header !== undefined && <div className="console-head">{header}</div>}
       <QuestRunBanner onSettled={focusConsole} onStop={stopRun} run={run} walk={walk} />
       <TerminalView
         fontStack={fontStack}
@@ -368,6 +385,7 @@ function SessionTerminal({
         reportSize={shown}
         settings={settings}
       />
+      {footer}
     </div>
   );
 }

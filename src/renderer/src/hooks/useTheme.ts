@@ -3,7 +3,6 @@ import { useCallback, useEffect, useState } from 'react';
 import { useOverridablePreference } from './usePreference';
 import {
   consolePaletteFor,
-  consoleThemeFor,
   DEFAULT_CONSOLE_PALETTE,
   DEFAULT_THEME,
   isConsolePalette,
@@ -13,7 +12,6 @@ import {
   type ConsolePalette,
   type TerminalPalette,
   type Theme,
-  type ThemeId,
   type ThemePreference
 } from '@shared/themes';
 
@@ -41,7 +39,7 @@ function apply(theme: Theme, console: TerminalPalette): void {
   // palette rather than duplicated as a chrome token that could drift from it —
   // and from the *console's* palette, which need not be the chrome's, whether
   // because a light theme kept the console dark or because the player named a
-  // palette outright (`ConsoleUiConfig`). A slate that disagreed with the
+  // palette outright (`ConsolePalette`). A slate that disagreed with the
   // ground behind it would be exactly the drift this line exists to prevent.
   root.style.setProperty('--ink-slate', console.background);
 
@@ -57,9 +55,9 @@ export interface UseTheme {
   /** The resolved theme: chrome tokens plus the terminal palette. */
   theme: Theme;
   /**
-   * The sixteen the **console** paints with: the theme's own palette unless a
-   * light chrome was asked to leave the console dark, or the player named one
-   * of `TERMINAL_THEMES` outright, which outranks both.
+   * The sixteen the **console** paints with: the theme's own palette, the dark
+   * one under a light theme unless asked otherwise, or one of `TERMINAL_THEMES`
+   * the player named outright. See `consolePaletteFor`.
    */
   consolePalette: TerminalPalette;
   /** What was asked for, which may be `theme`. */
@@ -83,8 +81,6 @@ export interface UseTheme {
  */
 export function useTheme(
   configured: ThemePreference = DEFAULT_THEME,
-  keepConsoleDark = false,
-  consoleDarkTheme: ThemeId = DEFAULT_THEME,
   configuredConsole: ConsolePalette = DEFAULT_CONSOLE_PALETTE
 ): UseTheme {
   const [preference, setPreference] = useOverridablePreference(
@@ -117,8 +113,7 @@ export function useTheme(
   }, []);
 
   const theme = resolveTheme(preference, prefersDark);
-  const consoleTheme = consoleThemeFor(theme, keepConsoleDark, consoleDarkTheme);
-  const consolePalette = consolePaletteFor(consoleTheme, consolePreference);
+  const consolePalette = consolePaletteFor(theme, consolePreference);
 
   useEffect(() => apply(theme, consolePalette), [theme, consolePalette]);
 

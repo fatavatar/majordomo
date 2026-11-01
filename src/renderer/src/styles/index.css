@@ -162,6 +162,143 @@ option {
 }
 
 /*
+ * The cards tucked away (2026-10-31): the rail's track is a
+ * strip of glyphs, and the rail itself slides out over the console while the
+ * pointer or the keyboard is on it, so the console keeps its width and
+ * nothing goes out over NAWS. A beat before it tucks back, so a pointer that
+ * slips off the edge does not lose it.
+ */
+.workspace[data-rail='tucked'] {
+  --track-rail: 30px;
+  --track-rsplit: var(--gap);
+}
+
+.rail[data-tucked='true'] {
+  overflow: visible;
+  position: relative;
+  scrollbar-gutter: auto;
+}
+
+.rail-strip {
+  align-items: center;
+  background: var(--ink-card);
+  border: 1px solid var(--ink-line);
+  border-radius: var(--r-card);
+  color: var(--text-lo);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  height: 100%;
+  padding: 8px 0;
+}
+
+.rail-glyph {
+  display: inline-flex;
+}
+
+.rail-slide {
+  background: var(--ink-void);
+  border-left: 1px solid var(--ink-edge);
+  bottom: 0;
+  box-shadow: -12px 0 28px rgb(0 0 0 / 45%);
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding: 0 4px;
+  position: absolute;
+  right: 0;
+  top: 0;
+  transform: translateX(calc(100% + 12px));
+  transition:
+    transform var(--dur-surface) var(--ease-out) 300ms,
+    visibility 0s linear calc(var(--dur-surface) + 300ms);
+  visibility: hidden;
+  width: var(--rail-w);
+  z-index: 20;
+}
+
+.workspace[data-rail-side='left'] .rail-slide {
+  border-left: 0;
+  border-right: 1px solid var(--ink-edge);
+  box-shadow: 12px 0 28px rgb(0 0 0 / 45%);
+  left: 0;
+  right: auto;
+  transform: translateX(calc(-100% - 12px));
+}
+
+.rail[data-tucked='true']:hover .rail-slide,
+.rail[data-tucked='true']:focus-within .rail-slide {
+  transform: none;
+  transition:
+    transform var(--dur-surface) var(--ease-out),
+    visibility 0s;
+  visibility: visible;
+}
+
+/*
+ * The slid-out rail's width handle, along its inner edge, there while the
+ * rail is out; and the rail held out while that handle is dragged, so it
+ * cannot tuck itself away from under the pointer (another handle's drag,
+ * the Stable's heights, leaves it tucked).
+ */
+.rail-slide-edge {
+  bottom: 0;
+  position: absolute;
+  right: calc(var(--rail-w) - 3px);
+  top: 0;
+  visibility: hidden;
+  width: 6px;
+  z-index: 21;
+}
+
+.workspace[data-rail-side='left'] .rail-slide-edge {
+  left: calc(var(--rail-w) - 3px);
+  right: auto;
+}
+
+.rail-slide-edge > .splitter {
+  height: 100%;
+  width: 100%;
+}
+
+.rail[data-tucked='true']:hover .rail-slide-edge,
+.rail[data-tucked='true']:focus-within .rail-slide-edge,
+.rail[data-sliding='true'] .rail-slide-edge {
+  visibility: visible;
+}
+
+.rail[data-sliding='true'] .rail-slide {
+  transform: none;
+  transition: none;
+  visibility: visible;
+}
+
+.rail-tucked-head {
+  align-items: center;
+  color: var(--text-lo);
+  display: flex;
+  font-size: var(--font-micro);
+  gap: 8px;
+  justify-content: space-between;
+  padding-top: 4px;
+}
+
+.rail-tucked-head button {
+  align-items: center;
+  display: inline-flex;
+  gap: 4px;
+  background: transparent;
+  border: 1px solid var(--ink-line);
+  border-radius: var(--r-card);
+  color: var(--text);
+  cursor: pointer;
+  font: inherit;
+  padding: 2px 8px;
+}
+
+/*
  * The tab rail takes an edge, and which edge changes the shape of the grid
  * rather than only its rotation.
  *
@@ -353,39 +490,67 @@ option {
   height: auto;
 }
 
-.rail > .vitals-card {
+/*
+ * A card placed on a status of the Stable (2026-10-31): the rail's box and
+ * declared heights, and a height of its own where its corner grip was
+ * dragged there (`--status-card-h`). Its body scrolls, as on the rail.
+ */
+.stable-card > .card {
+  flex: 0 0 auto;
+  height: var(--status-card-h, var(--card-h, 200px));
+}
+
+.stable-card > .card[data-rolled='true'] {
+  height: auto;
+}
+
+.stable-card > .card > .body:not(.paned) {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.rail > .vitals-card,
+.stable-card > .vitals-card {
   --card-h: 196px;
 }
-.rail > .room-card {
+.rail > .room-card,
+.stable-card > .room-card {
   --card-h: 208px;
 }
-.rail > .map-card {
+.rail > .map-card,
+.stable-card > .map-card {
   --card-h: 300px;
 }
 /* Two faces, and the taller is the loop's: a transport row, the loop's name, the
    stop bar and four figures. Declared rather than left to the fallback, per the
    rule above — a card that has more to say scrolls, it does not grow. */
-.rail > .navigation-card {
+.rail > .navigation-card,
+.stable-card > .navigation-card {
   --card-h: 208px;
 }
-.rail > .alert-card {
+.rail > .alert-card,
+.stable-card > .alert-card {
   --card-h: 224px;
 }
-.rail > .realm-card {
+.rail > .realm-card,
+.stable-card > .realm-card {
   --card-h: 208px;
 }
 /* Matched to the Realm card it sits beside: they are read together, and two
    heights for two lists of names is a seam nothing in the content justifies. */
-.rail > .players-card {
+.rail > .players-card,
+.stable-card > .players-card {
   --card-h: 208px;
 }
-.rail > .combat-card {
+.rail > .combat-card,
+.stable-card > .combat-card {
   /* A name, a bar, a legend and up to three readout rows. Fixed like every rail
      card: one that grows with its contents moves every control below it, and
      **Stop walking** is reached for while the thing moving it is running. */
   --card-h: 190px;
 }
-.rail > .party-card {
+.rail > .party-card,
+.stable-card > .party-card {
   /* Two ranks with a member each — the ordinary shape of a party of two, and of
      a party of one with an invitation out. Grouping by rank costs a heading and
      a box per rank, and at the old 176px the second group's meters fell under
@@ -393,7 +558,8 @@ option {
      the body scrolls when a third rank arrives. */
   --card-h: 216px;
 }
-.rail > .inventory-card {
+.rail > .inventory-card,
+.stable-card > .inventory-card {
   --card-h: 208px;
 }
 /*
@@ -404,32 +570,40 @@ option {
  * horizontal scrollbar and no rows under `PACK` looked like. Declared, like
  * every rail card; dragged from here by the corner grip.
  */
-.rail > .self-card {
+.rail > .self-card,
+.stable-card > .self-card {
   --card-h: 320px;
 }
-.rail > .banks-card {
+.rail > .banks-card,
+.stable-card > .banks-card {
   /* Two vaults with their balances and a total, which is more banking than most
      characters do. Fixed like every rail card rather than left to the fallback:
      the list grows one row per town banked in, and a card that grows moves every
      control below it. The body scrolls at the third. */
   --card-h: 176px;
 }
-.rail > .conversation-card {
+.rail > .conversation-card,
+.stable-card > .conversation-card {
   --card-h: 224px;
 }
-.rail > .standby-card {
+.rail > .standby-card,
+.stable-card > .standby-card {
   --card-h: 152px;
 }
-.rail > .session-card {
+.rail > .session-card,
+.stable-card > .session-card {
   --card-h: 196px;
 }
-.rail > .link-card {
+.rail > .link-card,
+.stable-card > .link-card {
   --card-h: 208px;
 }
-.rail > .automation-card {
+.rail > .automation-card,
+.stable-card > .automation-card {
   --card-h: 208px;
 }
-.rail > .stream-card {
+.rail > .stream-card,
+.stable-card > .stream-card {
   --card-h: 224px;
 }
 
@@ -3171,7 +3345,8 @@ kbd {
  * card under it — and the control that opens one is in the table it would be
  * moving.
  */
-.rail > .quest-card {
+.rail > .quest-card,
+.stable-card > .quest-card {
   --card-h: 420px;
 }
 
@@ -4190,7 +4365,8 @@ button.quest-plan-back {
  * and controls under that; it ships as a float sized to most of the workspace
  * (`openBuilder`), and this is the box it gets when somebody docks it.
  */
-.rail > .loop-builder-card {
+.rail > .loop-builder-card,
+.stable-card > .loop-builder-card {
   --card-h: 520px;
 }
 
@@ -4692,7 +4868,7 @@ button.quest-plan-back {
  * own orange, blue and green as this theme's amber, accent and ok -- and the
  * figure bold while a spell waits for the round to turn, as MegaMUD writes it.
  */
-.status-rail .round-timer {
+.round-timer {
   --round-tone: var(--text-lo);
   align-items: center;
   color: var(--text-lo);
@@ -4701,19 +4877,19 @@ button.quest-plan-back {
   gap: 6px;
 }
 
-.status-rail .round-timer[data-tone='unsure'] {
+.round-timer[data-tone='unsure'] {
   --round-tone: var(--pending);
 }
 
-.status-rail .round-timer[data-tone='wait'] {
+.round-timer[data-tone='wait'] {
   --round-tone: var(--accent);
 }
 
-.status-rail .round-timer[data-tone='ready'] {
+.round-timer[data-tone='ready'] {
   --round-tone: var(--ok);
 }
 
-.status-rail .round-timer b {
+.round-timer b {
   color: var(--round-tone);
   font-variant-numeric: tabular-nums;
   font-weight: 500;
@@ -4721,11 +4897,11 @@ button.quest-plan-back {
   text-align: end;
 }
 
-.status-rail .round-timer[data-tone='wait'] b {
+.round-timer[data-tone='wait'] b {
   font-weight: 700;
 }
 
-.status-rail .round-bar {
+.round-bar {
   border: 1px solid var(--ink-line);
   border-radius: 2px;
   height: 0.8em;
@@ -4733,7 +4909,7 @@ button.quest-plan-back {
   width: 64px;
 }
 
-.status-rail .round-fill {
+.round-fill {
   animation: round-run-down 5s linear infinite;
   background: var(--round-tone);
   display: block;
@@ -5037,6 +5213,639 @@ button.quest-plan-back {
  */
 .palette-scrim:has(> .explorer-screen) {
   padding-top: 3vh;
+}
+
+/* ======================================================= the Stable
+ *
+ * Every character in the realm at once (2026-10-31): one row each, its status
+ * on the left and its own console on the right, the consoles being the ones
+ * every character keeps mounted, placed in these rows rather than drawn
+ * again. A row is the console's `stable.lines` tall; more characters than fit
+ * scroll. Narrow, the status goes above its console and the console is half
+ * as tall.
+ */
+.terminal-layers[data-flow='stable'] {
+  align-content: start;
+  column-gap: 5px;
+  /* The status, the handle's own zero-width track, the consoles. */
+  grid-template-columns: var(--stable-status, 320px) 0 minmax(0, 1fr);
+  grid-template-rows: var(--stable-rows);
+  overflow-y: auto;
+}
+
+.terminal-layers[data-flow='stable'][data-narrow='true'] {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+/*
+ * The Stable's handles: the status column's width, down the track between it
+ * and the consoles, and each console's height, along its foot. Over the
+ * gaps, as the window's own handles are, the seam showing on hover and drag.
+ */
+.stable-col-split,
+.stable-row-split {
+  position: relative;
+}
+
+.stable-row-split {
+  align-self: end;
+  height: 0;
+  pointer-events: none;
+}
+
+.stable-col-split > .splitter {
+  bottom: 0;
+  left: -3px;
+  position: absolute;
+  top: 0;
+  width: 6px;
+}
+
+.stable-col-split > .splitter::before {
+  inset: 0 -6px;
+}
+
+.stable-row-split > .splitter {
+  bottom: -6px;
+  cursor: row-resize;
+  height: 6px;
+  left: 0;
+  pointer-events: auto;
+  position: absolute;
+  right: 0;
+}
+
+.stable-row-split > .splitter::before {
+  inset: -4px 0;
+}
+
+.stable-row-split > .splitter::after {
+  bottom: auto;
+  height: 2px;
+  left: 0;
+  margin-left: 0;
+  margin-top: -1px;
+  right: 0;
+  top: 50%;
+  width: auto;
+}
+
+.stable-status {
+  /* As short as its block is dragged: what does not fit scrolls. */
+  min-height: 0;
+  overflow-y: auto;
+  background: var(--ink-card);
+  border: 1px solid var(--ink-line);
+  border-radius: var(--r-card);
+  display: flex;
+  flex-direction: column;
+  font-family: var(--font-mono);
+  font-size: var(--font-ui);
+  gap: 8px;
+  min-width: 0;
+  padding: 8px 10px;
+}
+
+.stable-status[data-focused='true'] {
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--ink-line));
+}
+
+.stable-status .quiet {
+  color: var(--text-lo);
+  font-size: var(--font-micro);
+}
+
+.stable-head {
+  align-items: flex-start;
+  display: flex;
+  gap: 8px;
+  justify-content: space-between;
+}
+
+/* A party's state chip and its Disband, side by side at the head. */
+.stable-head-side {
+  align-items: center;
+  display: inline-flex;
+  gap: 4px;
+}
+
+.stable-disband {
+  align-items: center;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--r-card);
+  color: var(--text-lo);
+  cursor: pointer;
+  display: inline-flex;
+  height: 24px;
+  justify-content: center;
+  padding: 0;
+  width: 24px;
+}
+
+/* A character's settings: the tab's pencil, quiet until pointed at. */
+.stable-edit {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  border-radius: var(--r-chip);
+  color: var(--text-lo-quiet);
+  cursor: pointer;
+  display: inline-flex;
+  flex: none;
+  height: 20px;
+  justify-content: center;
+  padding: 0;
+  width: 20px;
+}
+
+.stable-edit .icon {
+  height: 13px;
+  width: 13px;
+}
+
+.stable-edit:hover,
+.stable-edit:focus-visible {
+  background: color-mix(in srgb, var(--accent) var(--tone), transparent);
+  color: var(--text-hi);
+}
+
+.stable-disband:hover {
+  border-color: color-mix(in srgb, var(--danger) 45%, var(--ink-line));
+  color: var(--danger);
+}
+
+.stable-name {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.stable-name b {
+  color: var(--text-hi);
+  font-size: calc(var(--font-ui) + 2px);
+}
+
+.stable-head .chip[data-level='critical'] {
+  background: color-mix(in srgb, var(--danger) var(--tone), transparent);
+  color: var(--danger);
+}
+
+.stable-head .chip[data-level='warn'] {
+  background: color-mix(in srgb, var(--pending) var(--tone), transparent);
+  color: var(--pending);
+}
+
+.stable-head .chip[data-level='info'] {
+  background: color-mix(in srgb, var(--accent) var(--tone), transparent);
+  color: var(--accent);
+}
+
+/*
+ * The line along a console's foot (`ConsoleStatus`, 2026-11-01): health, mana,
+ * the level and its rate, and the round timer at the end. Inside the console's
+ * own frame -- the cell gives up its bottom edge and the line takes it -- so it
+ * reads as the console's status bar rather than as a card under it. One line
+ * high and never wraps: what does not fit is cut from the experience end.
+ */
+.terminal-layer[data-footed='true'] {
+  display: flex;
+  flex-direction: column;
+}
+
+.terminal-layer[data-footed='true'] > .terminal-cell {
+  border-bottom: 0;
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+  flex: 1 1 auto;
+  height: auto;
+  min-height: 0;
+}
+
+.console-status {
+  align-items: center;
+  background: var(--ink-slate);
+  border: 1px solid var(--ink-line);
+  border-bottom-left-radius: var(--r-card);
+  border-bottom-right-radius: var(--r-card);
+  display: flex;
+  flex: none;
+  font-family: var(--font-mono);
+  font-size: var(--font-micro);
+  font-variant-numeric: tabular-nums;
+  gap: 14px;
+  min-width: 0;
+  overflow: hidden;
+  padding: 3px 10px;
+  white-space: nowrap;
+}
+
+.console-status-vital,
+.console-status-exp {
+  align-items: center;
+  display: inline-flex;
+  gap: 6px;
+  min-width: 0;
+}
+
+.console-status-vital {
+  flex: 1 1 0;
+  max-width: 260px;
+}
+
+.console-status-exp {
+  flex: 1.6 1 0;
+  overflow: hidden;
+}
+
+.console-status .stable-bar {
+  flex: 1 1 40px;
+  height: 6px;
+  min-width: 24px;
+}
+
+.console-status-exp .stable-bar {
+  flex: 0 1 120px;
+}
+
+.stable-bar[data-kind='exp'] > span {
+  background: color-mix(in srgb, var(--marker) 70%, transparent);
+}
+
+.console-status-rate {
+  color: var(--ok);
+  font-weight: 600;
+}
+
+.console-status .round-timer {
+  flex: none;
+  gap: 4px;
+  margin-left: auto;
+}
+
+.console-status .round-timer b {
+  min-width: 0;
+}
+
+.console-status .round-bar {
+  height: 5px;
+  width: 28px;
+}
+
+.stable-bar {
+  background: color-mix(in srgb, var(--text-lo) var(--tone-weak), transparent);
+  border-radius: var(--r-chip);
+  display: flex;
+  height: 8px;
+  overflow: hidden;
+}
+
+.stable-bar > span {
+  background: color-mix(in srgb, var(--ok) 70%, transparent);
+  transition: width var(--dur-control) var(--ease-out);
+}
+
+.stable-bar[data-kind='mana'] > span {
+  background: color-mix(in srgb, var(--accent) 60%, transparent);
+}
+
+.stable-bar[data-level='caution'] > span {
+  background: var(--pending);
+}
+
+.stable-bar[data-level='critical'] > span {
+  background: var(--danger);
+}
+
+.stable-figure {
+  color: var(--text-hi);
+  font-variant-numeric: tabular-nums;
+}
+
+/* A character's toolbar on its status: the Toolbar card's row, smaller. */
+.stable-toolbar .toolbar-row {
+  gap: 3px;
+}
+
+.stable-toolbar .toolbar-key {
+  height: 24px;
+  min-height: 0;
+  min-width: 0;
+  width: 26px;
+}
+
+/*
+ * The strip over a console in the Stable: the character's toolbar, the
+ * console under it taking the rest of the row.
+ */
+.terminal-layer[data-headed='true'] {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.terminal-layer[data-headed='true'] > .terminal-cell {
+  flex: 1 1 auto;
+  height: auto;
+  min-height: 0;
+}
+
+.console-head {
+  flex: none;
+}
+
+/* Cards placed on a status: the card itself, in the column. */
+.stable-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* In the Stable, the rail says whose cards it is drawing. */
+.rail-following {
+  align-items: center;
+  background: color-mix(in srgb, var(--accent) var(--tone), transparent);
+  border-radius: var(--r-card);
+  color: var(--text-hi);
+  display: flex;
+  flex-wrap: wrap;
+  font-family: var(--font-mono);
+  font-size: var(--font-ui);
+  gap: 4px 8px;
+  padding: 6px 8px;
+}
+
+.rail-following .dot {
+  background: var(--accent);
+  border-radius: 50%;
+  height: 8px;
+  width: 8px;
+}
+
+.rail-following .quiet {
+  color: var(--text-lo);
+  font-size: var(--font-micro);
+  margin-left: auto;
+}
+
+/* A party's members, together: name and state, health over mana, the figures beside. */
+.stable-members {
+  border-top: 1px solid var(--ink-line);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-top: 8px;
+}
+
+.stable-member {
+  align-items: center;
+  border-radius: var(--r-chip);
+  cursor: default;
+  display: grid;
+  gap: 3px 8px;
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.stable-member[data-focused='true'] .stable-member-name b {
+  color: var(--accent);
+}
+
+.stable-member-name {
+  align-items: baseline;
+  display: flex;
+  gap: 6px;
+  min-width: 0;
+}
+
+.stable-member-name b {
+  color: var(--text-hi);
+}
+
+.stable-member-name .quiet {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.stable-member .chip[data-level='critical'] {
+  background: color-mix(in srgb, var(--danger) var(--tone), transparent);
+  color: var(--danger);
+}
+
+.stable-member .chip[data-level='warn'] {
+  background: color-mix(in srgb, var(--pending) var(--tone), transparent);
+  color: var(--pending);
+}
+
+.stable-member .chip[data-level='info'] {
+  background: color-mix(in srgb, var(--accent) var(--tone), transparent);
+  color: var(--accent);
+}
+
+.stable-member-bars {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.stable-bar.thin {
+  height: 5px;
+}
+
+.stable-member-figures {
+  align-items: flex-end;
+  display: flex;
+  flex-direction: column;
+  font-size: var(--font-micro);
+  line-height: 1.15;
+}
+
+.stable-muster {
+  background: transparent;
+  border: 1px solid var(--ink-line);
+  border-radius: var(--r-card);
+  color: var(--text);
+  font: inherit;
+  min-height: 28px;
+  padding: 0 6px;
+}
+
+.stable-where {
+  border-top: 1px solid var(--ink-line);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-top: 6px;
+}
+
+.stable-where > span:first-child {
+  color: var(--text-hi);
+}
+
+.stable-rate {
+  border-top: 1px solid var(--ink-line);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-top: 6px;
+}
+
+.stable-rate-figures {
+  align-items: baseline;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 8px;
+}
+
+.stable-rate-figures b {
+  color: var(--ok);
+  font-size: calc(var(--font-ui) + 3px);
+  font-variant-numeric: tabular-nums;
+}
+
+.stable-rate-figures b[data-none='true'] {
+  color: var(--text-lo);
+}
+
+.stable-rate .stats-graph {
+  min-width: 0;
+}
+
+.stable-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: auto;
+}
+
+/* A party's commands, under its name: in their place, not pushed to the foot. */
+.stable-commands {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.stable-actions button,
+.stable-commands button,
+.stable-away button,
+.stable-head-strip button {
+  background: transparent;
+  border: 1px solid var(--ink-line);
+  border-radius: var(--r-card);
+  color: var(--text);
+  cursor: pointer;
+  font: inherit;
+  min-height: 28px;
+  padding: 0 10px;
+}
+
+.stable-actions button.quiet {
+  border-color: transparent;
+  color: var(--text-lo);
+}
+
+.stable-actions button.primary {
+  background: color-mix(in srgb, var(--accent) var(--tone), transparent);
+  border-color: transparent;
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.stable-head-strip button.danger {
+  border-color: color-mix(in srgb, var(--danger) 45%, var(--ink-line));
+  color: var(--danger);
+}
+
+.stable-actions button:hover,
+.stable-commands button:hover,
+.stable-away button:hover:not(:disabled),
+.stable-head-strip button:hover {
+  border-color: var(--ink-edge);
+  color: var(--text-hi);
+}
+
+.stable-head-strip {
+  display: flex;
+  flex-direction: column;
+  font-family: var(--font-mono);
+  font-size: var(--font-ui);
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.stable-summary,
+.stable-since {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+}
+
+.stable-summary b {
+  color: var(--text-hi);
+}
+
+.stable-summary .quiet {
+  color: var(--text-lo);
+}
+
+.stable-head-strip .spacer {
+  flex: 1;
+}
+
+.stable-since {
+  background: var(--ink-card);
+  border: 1px solid var(--ink-line);
+  border-radius: var(--r-card);
+  padding: 6px 10px;
+}
+
+.stable-since b {
+  color: var(--text-hi);
+}
+
+.stable-since b.gain {
+  color: var(--ok);
+}
+
+.stable-away {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  font-family: var(--font-mono);
+  font-size: var(--font-ui);
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.stable-away-label {
+  color: var(--text-lo);
+  font-size: var(--font-micro);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.stable-away-tile {
+  align-items: center;
+  border: 1px dashed var(--ink-line);
+  border-radius: var(--r-card);
+  display: inline-flex;
+  gap: 10px;
+  padding: 4px 6px 4px 10px;
+}
+
+.stable-away-tile .quiet {
+  color: var(--text-lo);
+}
+
+.stable-away button {
+  color: var(--accent);
+}
+
+.tab-stable .name {
+  align-items: center;
+  display: inline-flex;
+  gap: 6px;
 }
 
 /* A tab put away (`Kept`): no box of its own while shown, none at all while away. */
@@ -6756,6 +7565,48 @@ ul.tb-tree li > .tb-label {
  */
 .tab-rail[data-side='top'] .tab {
   flex: 0 0 var(--tab-rail-w);
+}
+
+/*
+ * In the Stable, one compact row (2026-10-31): each tab a status dot and its
+ * name, as wide as the name, everything else a tab carries being on the
+ * character's own row below.
+ */
+.tab-rail[data-compact='true'] .tab {
+  flex: 0 0 auto;
+  min-height: 0;
+  padding: 4px 12px;
+}
+
+.tab-rail[data-compact='true'] .tab :is(.tab-grip, .tab-controls, .where, .mark) {
+  display: none;
+}
+
+.tab-rail[data-compact='true'] .tab:not(.tab-stable) .on {
+  display: none;
+}
+
+.tab-rail[data-compact='true'] .tab .name::before {
+  background: var(--text-lo-quiet);
+  border-radius: 50%;
+  content: '';
+  display: inline-block;
+  height: 7px;
+  margin-right: 6px;
+  vertical-align: middle;
+  width: 7px;
+}
+
+.tab-rail[data-compact='true'] .tab[data-phase='connected'] .name::before {
+  background: var(--ok);
+}
+
+.tab-rail[data-compact='true'] .tab:is([data-phase='error'], [data-phase='closed']) .name::before {
+  background: var(--danger);
+}
+
+.tab-rail[data-compact='true'] .tab-stable .name::before {
+  display: none;
 }
 
 .tab:hover {
@@ -12562,6 +13413,76 @@ tr:hover .row-action.worn,
 
 .accent-swatch[data-active='true'] {
   border-color: var(--text-hi);
+}
+
+/*
+ * Where Majordomo comes from, at the head of its own page: set apart from the
+ * settings under it by a rule in the accent and a title, at the size of the
+ * settings themselves rather than the micro type of a note (2026-10-31).
+ */
+.settings-lineage {
+  border-left: 2px solid var(--accent);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 2px 0 2px 10px;
+}
+
+.settings-lineage strong {
+  color: var(--text-hi);
+  font-weight: 600;
+}
+
+.settings-lineage p {
+  color: var(--text);
+  margin: 0;
+  max-width: 72ch;
+}
+
+/*
+ * The console's colours read as a sentence ("Follow the theme, staying dark"),
+ * which one 165px track cuts short, so the field takes two where there are two.
+ */
+@media (min-width: 800px) {
+  .settings-field[data-field='global-console-palette'] {
+    grid-column: span 2;
+  }
+}
+
+/*
+ * A phone: the rail goes above the form as one row of sections that scrolls
+ * sideways, its fieldset jumps left out, and the form takes the width. Side by
+ * side, a 180px rail left the form a sliver that every field ran off.
+ */
+@media (max-width: 700px) {
+  .settings-body {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+
+  .settings-nav {
+    overflow: visible;
+  }
+
+  .settings-nav-sections {
+    flex-direction: row;
+    gap: 4px;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .settings-nav-sections > li {
+    flex: none;
+  }
+
+  .settings-nav-section {
+    white-space: nowrap;
+    width: auto;
+  }
+
+  .settings-nav-fieldsets {
+    display: none;
+  }
 }
 
 .settings-actions {

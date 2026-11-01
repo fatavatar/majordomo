@@ -386,37 +386,28 @@ ui:
   # cards" in the command palette puts it back.
   showHud: true
 
-  # The console's own ground, when the client's is not the one it wants.
+  # The console's colours.
   #
   # A light theme is a fine thing to want for the chrome -- a rail of cards, a
   # settings form and a table all read well on paper. The console is not that:
   # what it shows is forty years of ANSI art drawn against black, and a light
   # palette has to make colour 0 BE the paper, so every `ESC[30m` the realm
   # sends comes back as the page.
-  #
-  # keepDark is whether the console parts company with the chrome, and it only
-  # applies under a LIGHT theme -- under a dark one there is nothing to part
-  # from. darkTheme is which dark palette it wears when it does, and naming a
-  # light theme here is coerced back to `dark`: it is a contradiction rather
-  # than a preference. Any dark theme id from the palette's list will do.
   console:
     # Which sixteen the console paints the realm's colour codes with.
     #
-    # `theme` is the default and means the console wears the palette of
-    # whatever theme it is on, keepDark below included -- that is the client as
-    # it has always looked. Name one of the seven instead and it wins over both
-    # keys below, because a palette you picked outranks a rule about what to do
-    # when you picked nothing.
+    # `theme` is the default: the console wears the theme's own palette, but
+    # stays on the dark one under a light theme. `theme-light` follows a light
+    # theme too. Name one of the eight instead and it settles the console
+    # whatever the theme.
     #
-    # Dark:  vivid-vga, neon-night, aurora-ice, ember-forge
+    # Dark:  vivid-vga, neon-night, aurora-ice, ember-forge, slate
     # Light: paper-ink, parchment, daylight-neon
     #
     # vivid-vga is the IBM set the client ships with, with the dim ramp lifted
     # off the ground -- same hues, but `blue` is a colour you can read instead
     # of one that hides in the black.
     palette: theme
-    keepDark: true
-    darkTheme: dark
 
   # The client's own mark, at the left of the status rail.
   #

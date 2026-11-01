@@ -287,9 +287,12 @@ const LIGHT: Theme = {
  * registry test enforces. Surfaces step from the scheme's ground exactly as
  * the two house themes do (§3.3), so a theme is a palette, never a layout.
  *
- * Chrome only. Every one shares the house terminal palette of its appearance,
- * because the console is a separate axis: `TERMINAL_THEMES` below is what
- * paints it, chosen by `ui.console.palette`.
+ * Each brings its console palette too: the scheme's own published sixteen,
+ * colour 0 made the ground, a bright that repeated its plain colour lifted a
+ * step, and every ink then fitted to 4.5:1 on the ground the way the chrome's
+ * text is (2026-10-31). They all shared the house palette of their appearance
+ * until then, so following the theme from Dracula to Nord changed nothing in
+ * the console. `TERMINAL_THEMES` below are the ones a player names outright.
  */
 const EDITOR_THEMES: Record<Exclude<ThemeId, 'dark' | 'light'>, Theme> = {
   'one-dark': {
@@ -318,7 +321,29 @@ const EDITOR_THEMES: Record<Exclude<ThemeId, 'dark' | 'light'>, Theme> = {
       'elev-2': '0 3px 10px rgb(0 0 0 / 34%)',
       scrim: 'rgb(40 44 52 / 58%)'
     },
-    terminal: DARK.terminal
+    terminal: {
+      background: '#282c34',
+      foreground: '#abb2bf',
+      cursor: '#abb2bf',
+      cursorAccent: '#282c34',
+      selectionBackground: '#39536c',
+      black: '#282c34',
+      red: '#e17079',
+      green: '#98c379',
+      yellow: '#e5c07b',
+      blue: '#61afef',
+      magenta: '#c678dd',
+      cyan: '#56b6c2',
+      white: '#abb2bf',
+      brightBlack: '#8e95a2',
+      brightRed: '#e89299',
+      brightGreen: '#aed095',
+      brightYellow: '#f0d197',
+      brightBlue: '#86c2f3',
+      brightMagenta: '#d499e5',
+      brightCyan: '#74c3cd',
+      brightWhite: '#ffffff'
+    }
   },
   dracula: {
     id: 'dracula',
@@ -346,7 +371,29 @@ const EDITOR_THEMES: Record<Exclude<ThemeId, 'dark' | 'light'>, Theme> = {
       'elev-2': '0 3px 10px rgb(0 0 0 / 34%)',
       scrim: 'rgb(40 42 54 / 58%)'
     },
-    terminal: DARK.terminal
+    terminal: {
+      background: '#282a36',
+      foreground: '#f8f8f2',
+      cursor: '#f8f8f2',
+      cursorAccent: '#282a36',
+      selectionBackground: '#554a70',
+      black: '#282a36',
+      red: '#ff5555',
+      green: '#50fa7b',
+      yellow: '#f1fa8c',
+      blue: '#bd93f9',
+      magenta: '#ff79c6',
+      cyan: '#8be9fd',
+      white: '#c8c8c2',
+      brightBlack: '#8393ba',
+      brightRed: '#ff6e6e',
+      brightGreen: '#69ff94',
+      brightYellow: '#ffffa5',
+      brightBlue: '#d6acff',
+      brightMagenta: '#ff92df',
+      brightCyan: '#a4ffff',
+      brightWhite: '#ffffff'
+    }
   },
   nord: {
     id: 'nord',
@@ -374,7 +421,29 @@ const EDITOR_THEMES: Record<Exclude<ThemeId, 'dark' | 'light'>, Theme> = {
       'elev-2': '0 3px 10px rgb(0 0 0 / 34%)',
       scrim: 'rgb(46 52 64 / 58%)'
     },
-    terminal: DARK.terminal
+    terminal: {
+      background: '#2e3440',
+      foreground: '#d8dee9',
+      cursor: '#d8dee9',
+      cursorAccent: '#2e3440',
+      selectionBackground: '#475567',
+      black: '#2e3440',
+      red: '#ce898c',
+      green: '#a3be8c',
+      yellow: '#ebcb8b',
+      blue: '#81a1c1',
+      magenta: '#b691af',
+      cyan: '#88c0d0',
+      white: '#d8dee9',
+      brightBlack: '#909dae',
+      brightRed: '#daa6a8',
+      brightGreen: '#b8cda6',
+      brightYellow: '#f1dbae',
+      brightBlue: '#9cb5ce',
+      brightMagenta: '#c6aac1',
+      brightCyan: '#8fbcbb',
+      brightWhite: '#eceff4'
+    }
   },
   'gruvbox-dark': {
     id: 'gruvbox-dark',
@@ -402,7 +471,29 @@ const EDITOR_THEMES: Record<Exclude<ThemeId, 'dark' | 'light'>, Theme> = {
       'elev-2': '0 3px 10px rgb(0 0 0 / 34%)',
       scrim: 'rgb(40 40 40 / 58%)'
     },
-    terminal: DARK.terminal
+    terminal: {
+      background: '#282828',
+      foreground: '#ebdbb2',
+      cursor: '#ebdbb2',
+      cursorAccent: '#282828',
+      selectionBackground: '#314445',
+      black: '#282828',
+      red: '#ec6361',
+      green: '#98971a',
+      yellow: '#d79921',
+      blue: '#539a9d',
+      magenta: '#c17a9e',
+      cyan: '#689d6a',
+      white: '#a89984',
+      brightBlack: '#9a8f80',
+      brightRed: '#fb5643',
+      brightGreen: '#b8bb26',
+      brightYellow: '#fabd2f',
+      brightBlue: '#83a598',
+      brightMagenta: '#d3869b',
+      brightCyan: '#8ec07c',
+      brightWhite: '#ebdbb2'
+    }
   },
   'solarized-dark': {
     id: 'solarized-dark',
@@ -430,7 +521,29 @@ const EDITOR_THEMES: Record<Exclude<ThemeId, 'dark' | 'light'>, Theme> = {
       'elev-2': '0 3px 10px rgb(0 0 0 / 34%)',
       scrim: 'rgb(0 43 54 / 58%)'
     },
-    terminal: DARK.terminal
+    terminal: {
+      background: '#002b36',
+      foreground: '#93a1a1',
+      cursor: '#93a1a1',
+      cursorAccent: '#002b36',
+      selectionBackground: '#0b4865',
+      black: '#002b36',
+      red: '#e8625f',
+      green: '#859900',
+      yellow: '#b58900',
+      blue: '#3294da',
+      magenta: '#de62a2',
+      cyan: '#2aa198',
+      white: '#93a1a1',
+      brightBlack: '#7b929a',
+      brightRed: '#e96630',
+      brightGreen: '#a8c200',
+      brightYellow: '#dea800',
+      brightBlue: '#55a6e0',
+      brightMagenta: '#8487cc',
+      brightCyan: '#32c1b7',
+      brightWhite: '#fdf6e3'
+    }
   },
   monokai: {
     id: 'monokai',
@@ -458,7 +571,29 @@ const EDITOR_THEMES: Record<Exclude<ThemeId, 'dark' | 'light'>, Theme> = {
       'elev-2': '0 3px 10px rgb(0 0 0 / 34%)',
       scrim: 'rgb(39 40 34 / 58%)'
     },
-    terminal: DARK.terminal
+    terminal: {
+      background: '#272822',
+      foreground: '#f8f8f2',
+      cursor: '#f8f8f2',
+      cursorAccent: '#272822',
+      selectionBackground: '#3a5d60',
+      black: '#272822',
+      red: '#f94e8a',
+      green: '#a6e22e',
+      yellow: '#e6db74',
+      blue: '#66d9ef',
+      magenta: '#ae81ff',
+      cyan: '#a1efe4',
+      white: '#cfcfc2',
+      brightBlack: '#949076',
+      brightRed: '#fa75a4',
+      brightGreen: '#b5e752',
+      brightYellow: '#f4bf75',
+      brightBlue: '#8be2f3',
+      brightMagenta: '#c8aaff',
+      brightCyan: '#c4f5ee',
+      brightWhite: '#f8f8f2'
+    }
   },
   'tokyo-night': {
     id: 'tokyo-night',
@@ -486,7 +621,29 @@ const EDITOR_THEMES: Record<Exclude<ThemeId, 'dark' | 'light'>, Theme> = {
       'elev-2': '0 3px 10px rgb(0 0 0 / 34%)',
       scrim: 'rgb(26 27 38 / 58%)'
     },
-    terminal: DARK.terminal
+    terminal: {
+      background: '#1a1b26',
+      foreground: '#c0caf5',
+      cursor: '#c0caf5',
+      cursorAccent: '#1a1b26',
+      selectionBackground: '#374465',
+      black: '#1a1b26',
+      red: '#f7768e',
+      green: '#9ece6a',
+      yellow: '#e0af68',
+      blue: '#7aa2f7',
+      magenta: '#bb9af7',
+      cyan: '#7dcfff',
+      white: '#a9b1d6',
+      brightBlack: '#7a83ab',
+      brightRed: '#f99dae',
+      brightGreen: '#b2d889',
+      brightYellow: '#e7c18a',
+      brightBlue: '#a0bdf9',
+      brightMagenta: '#d4c0fa',
+      brightCyan: '#a6deff',
+      brightWhite: '#c0caf5'
+    }
   },
   'solarized-light': {
     id: 'solarized-light',
@@ -514,7 +671,29 @@ const EDITOR_THEMES: Record<Exclude<ThemeId, 'dark' | 'light'>, Theme> = {
       'elev-2': '0 3px 10px rgb(40 34 22 / 10%)',
       scrim: 'rgb(252 241 210 / 62%)'
     },
-    terminal: LIGHT.terminal
+    terminal: {
+      background: '#fdf6e3',
+      foreground: '#586e75',
+      cursor: '#586e75',
+      cursorAccent: '#fdf6e3',
+      selectionBackground: '#bcd6de',
+      black: '#fdf6e3',
+      red: '#d72825',
+      green: '#687600',
+      yellow: '#8d6900',
+      blue: '#1f76b6',
+      magenta: '#cd2d7a',
+      cyan: '#217d74',
+      white: '#586e75',
+      brightBlack: '#627272',
+      brightRed: '#c14715',
+      brightGreen: '#444d00',
+      brightYellow: '#644b00',
+      brightBlue: '#195f93',
+      brightMagenta: '#6065c1',
+      brightCyan: '#185d56',
+      brightWhite: '#073642'
+    }
   },
   'github-light': {
     id: 'github-light',
@@ -542,7 +721,29 @@ const EDITOR_THEMES: Record<Exclude<ThemeId, 'dark' | 'light'>, Theme> = {
       'elev-2': '0 3px 10px rgb(40 34 22 / 10%)',
       scrim: 'rgb(246 246 246 / 62%)'
     },
-    terminal: LIGHT.terminal
+    terminal: {
+      background: '#ffffff',
+      foreground: '#24292f',
+      cursor: '#24292f',
+      cursorAccent: '#ffffff',
+      selectionBackground: '#b5d2f4',
+      black: '#ffffff',
+      red: '#cf222e',
+      green: '#116329',
+      yellow: '#4d2d00',
+      blue: '#0969da',
+      magenta: '#8250df',
+      cyan: '#1b7c83',
+      white: '#6e7781',
+      brightBlack: '#57606a',
+      brightRed: '#a40e26',
+      brightGreen: '#1a7f37',
+      brightYellow: '#633c01',
+      brightBlue: '#0550ae',
+      brightMagenta: '#6639ba',
+      brightCyan: '#155e64',
+      brightWhite: '#24292f'
+    }
   },
   'one-light': {
     id: 'one-light',
@@ -570,7 +771,29 @@ const EDITOR_THEMES: Record<Exclude<ThemeId, 'dark' | 'light'>, Theme> = {
       'elev-2': '0 3px 10px rgb(40 34 22 / 10%)',
       scrim: 'rgb(241 241 241 / 62%)'
     },
-    terminal: LIGHT.terminal
+    terminal: {
+      background: '#fafafa',
+      foreground: '#383a42',
+      cursor: '#383a42',
+      cursorAccent: '#fafafa',
+      selectionBackground: '#c2d3f8',
+      black: '#fafafa',
+      red: '#d73024',
+      green: '#3c823b',
+      yellow: '#996a01',
+      blue: '#2769f2',
+      magenta: '#a626a4',
+      cyan: '#0178ad',
+      white: '#696c77',
+      brightBlack: '#717285',
+      brightRed: '#b4281e',
+      brightGreen: '#2f662e',
+      brightYellow: '#704e01',
+      brightBlue: '#0e53e3',
+      brightMagenta: '#851e83',
+      brightCyan: '#015c84',
+      brightWhite: '#202227'
+    }
   },
   'gruvbox-light': {
     id: 'gruvbox-light',
@@ -598,7 +821,29 @@ const EDITOR_THEMES: Record<Exclude<ThemeId, 'dark' | 'light'>, Theme> = {
       'elev-2': '0 3px 10px rgb(40 34 22 / 10%)',
       scrim: 'rgb(250 237 182 / 62%)'
     },
-    terminal: LIGHT.terminal
+    terminal: {
+      background: '#fbf1c7',
+      foreground: '#3c3836',
+      cursor: '#3c3836',
+      cursorAccent: '#fbf1c7',
+      selectionBackground: '#c4d1b4',
+      black: '#fbf1c7',
+      red: '#cc241d',
+      green: '#706f10',
+      yellow: '#8c6610',
+      blue: '#3b7679',
+      magenta: '#a35276',
+      cyan: '#4d774f',
+      white: '#766960',
+      brightBlack: '#786a61',
+      brightRed: '#9d0006',
+      brightGreen: '#74700d',
+      brightYellow: '#926110',
+      brightBlue: '#076678',
+      brightMagenta: '#8f3f71',
+      brightCyan: '#407856',
+      brightWhite: '#282828'
+    }
   },
   'catppuccin-latte': {
     id: 'catppuccin-latte',
@@ -626,7 +871,29 @@ const EDITOR_THEMES: Record<Exclude<ThemeId, 'dark' | 'light'>, Theme> = {
       'elev-2': '0 3px 10px rgb(40 34 22 / 10%)',
       scrim: 'rgb(228 231 238 / 62%)'
     },
-    terminal: LIGHT.terminal
+    terminal: {
+      background: '#eff1f5',
+      foreground: '#4c4f69',
+      cursor: '#4c4f69',
+      cursorAccent: '#eff1f5',
+      selectionBackground: '#b0c7f5',
+      black: '#eff1f5',
+      red: '#d20f39',
+      green: '#2e7c22',
+      yellow: '#946110',
+      blue: '#1460f5',
+      magenta: '#8839ef',
+      cyan: '#117a81',
+      white: '#6a6d82',
+      brightBlack: '#676b86',
+      brightRed: '#ac0c2f',
+      brightGreen: '#225c19',
+      brightYellow: '#6f490c',
+      brightBlue: '#094fd7',
+      brightMagenta: '#c42496',
+      brightCyan: '#0473a4',
+      brightWhite: '#4c4f69'
+    }
   },
   'rose-pine-dawn': {
     id: 'rose-pine-dawn',
@@ -654,7 +921,29 @@ const EDITOR_THEMES: Record<Exclude<ThemeId, 'dark' | 'light'>, Theme> = {
       'elev-2': '0 3px 10px rgb(40 34 22 / 10%)',
       scrim: 'rgb(246 235 223 / 62%)'
     },
-    terminal: LIGHT.terminal
+    terminal: {
+      background: '#faf4ed',
+      foreground: '#575279',
+      cursor: '#575279',
+      cursorAccent: '#faf4ed',
+      selectionBackground: '#c9d7d6',
+      black: '#faf4ed',
+      red: '#aa546b',
+      green: '#286983',
+      yellow: '#9b6111',
+      blue: '#427681',
+      magenta: '#7b659b',
+      cyan: '#c63e3a',
+      white: '#716d8c',
+      brightBlack: '#706c86',
+      brightRed: '#8f475a',
+      brightGreen: '#1e5064',
+      brightYellow: '#764a0d',
+      brightBlue: '#345d66',
+      brightMagenta: '#675582',
+      brightCyan: '#a73430',
+      brightWhite: '#575279'
+    }
   },
   'ayu-light': {
     id: 'ayu-light',
@@ -682,7 +971,29 @@ const EDITOR_THEMES: Record<Exclude<ThemeId, 'dark' | 'light'>, Theme> = {
       'elev-2': '0 3px 10px rgb(40 34 22 / 10%)',
       scrim: 'rgb(241 241 241 / 62%)'
     },
-    terminal: LIGHT.terminal
+    terminal: {
+      background: '#fcfcfc',
+      foreground: '#5c6166',
+      cursor: '#5c6166',
+      cursorAccent: '#fcfcfc',
+      selectionBackground: '#c2e0f5',
+      black: '#fcfcfc',
+      red: '#e90f0f',
+      green: '#5a7c00',
+      yellow: '#a2660d',
+      blue: '#1679b7',
+      magenta: '#8b5ac4',
+      cyan: '#348268',
+      white: '#727277',
+      brightBlack: '#6f7582',
+      brightRed: '#c30d0d',
+      brightGreen: '#3c5300',
+      brightYellow: '#7c4e0a',
+      brightBlue: '#126193',
+      brightMagenta: '#7641b5',
+      brightCyan: '#286551',
+      brightWhite: '#1f2430'
+    }
   }
 };
 
@@ -739,31 +1050,6 @@ export function isThemeId(value: unknown): value is ThemeId {
   return typeof value === 'string' && Object.prototype.hasOwnProperty.call(THEMES, value);
 }
 
-/**
- * A theme id that names a **dark** theme.
- *
- * Its own predicate because two settings mean "a dark one" and neither can
- * express it in the type: `ui.console.darkTheme` is coerced with it, and the
- * settings screen offers exactly what it accepts.
- */
-export function isDarkTheme(value: unknown): value is ThemeId {
-  return isThemeId(value) && THEMES[value].appearance === 'dark';
-}
-
-/**
- * The theme the **console** wears, given the one the chrome wears.
- *
- * The chrome's own theme unless it is light and the player asked for the
- * console to stay dark — see `ConsoleUiConfig` for why that is a thing anybody
- * wants. Pure, and here rather than in the renderer because the terminal frame
- * (`--ink-slate`) is derived from the console's ground and the two must not be
- * able to disagree about which palette that is.
- */
-export function consoleThemeFor(chrome: Theme, keepDark: boolean, dark: ThemeId): Theme {
-  if (!keepDark || chrome.appearance !== 'light') return chrome;
-  return THEMES[isDarkTheme(dark) ? dark : DEFAULT_THEME];
-}
-
 export function isThemePreference(value: unknown): value is ThemePreference {
   return value === 'system' || isThemeId(value);
 }
@@ -809,21 +1095,26 @@ export type TerminalThemeId =
   | 'neon-night'
   | 'aurora-ice'
   | 'ember-forge'
+  | 'slate'
   | 'paper-ink'
   | 'parchment'
   | 'daylight-neon';
 
 /**
- * What `ui.console.palette` may say.
+ * What `ui.console.palette` may say: the one question about the console's
+ * colours (2026-10-31).
  *
- * `theme` is the shipped answer and means exactly what the client did before
- * these existed: the console wears the palette of whatever theme it resolved
- * to, `ui.console.keepDark` included. Naming one of the seven is the player
- * stating the console's colours outright, and it outranks `keepDark` — that
- * setting answers "the chrome went light and I said nothing about the
- * console", which is not the situation somebody who picked a palette is in.
+ * `theme` is the shipped answer and follows the chrome, except that a light
+ * theme leaves the console on the dark palette: a light palette has to make the
+ * realm's black its paper, so colour-coded output arrives inverted. `theme-light`
+ * follows the chrome all the way, light themes included. Naming one of the eight
+ * states the console's colours outright, whatever the chrome reads as.
+ *
+ * It used to take three settings to say this — the palette, `keepDark` and a
+ * `darkTheme` — and the third could change nothing, since every dark theme
+ * wore the same sixteen then.
  */
-export type ConsolePalette = 'theme' | TerminalThemeId;
+export type ConsolePalette = 'theme' | 'theme-light' | TerminalThemeId;
 
 export interface TerminalTheme {
   id: TerminalThemeId;
@@ -838,7 +1129,7 @@ export interface TerminalTheme {
 }
 
 /**
- * The seven, four dark and three light.
+ * The eight, five dark and three light.
  *
  * On a light ground the greyscale axis inverts, as `TerminalPalette` sets out —
  * and so does the bright ramp's job. Against black, "bright" is lighter and
@@ -971,6 +1262,38 @@ export const TERMINAL_THEMES: Record<TerminalThemeId, TerminalTheme> = {
       brightWhite: '#fff3e2'
     }
   },
+  /**
+   * The mockups' console (2026-10-31): black, a soft blue-grey ink, and pastel
+   * inks that stay out of each other's way. The quiet dark one.
+   */
+  slate: {
+    id: 'slate',
+    label: 'Slate',
+    appearance: 'dark',
+    palette: {
+      background: '#000000',
+      foreground: '#a9b3c1',
+      cursor: '#6fd3de',
+      cursorAccent: '#000000',
+      selectionBackground: '#1b3a40',
+      black: '#000000',
+      red: '#ef7d7d',
+      green: '#6fcf8b',
+      yellow: '#e8b468',
+      blue: '#6f9ede',
+      magenta: '#c49ae8',
+      cyan: '#6fd3de',
+      white: '#a9b3c1',
+      brightBlack: '#7f8996',
+      brightRed: '#ffa8a8',
+      brightGreen: '#9ee8b3',
+      brightYellow: '#f7d49a',
+      brightBlue: '#a3c2f0',
+      brightMagenta: '#efa8e8',
+      brightCyan: '#a6e9f0',
+      brightWhite: '#dbe1e9'
+    }
+  },
   /** White paper, saturated printer's inks. The plainest of the light three. */
   'paper-ink': {
     id: 'paper-ink',
@@ -1066,13 +1389,18 @@ export const TERMINAL_THEME_IDS: readonly TerminalThemeId[] = [
   'neon-night',
   'aurora-ice',
   'ember-forge',
+  'slate',
   'paper-ink',
   'parchment',
   'daylight-neon'
 ];
 
 /** Everything `ui.console.palette` accepts, `theme` first because it is the default. */
-export const CONSOLE_PALETTES: readonly ConsolePalette[] = ['theme', ...TERMINAL_THEME_IDS];
+export const CONSOLE_PALETTES: readonly ConsolePalette[] = [
+  'theme',
+  'theme-light',
+  ...TERMINAL_THEME_IDS
+];
 
 export const DEFAULT_CONSOLE_PALETTE: ConsolePalette = 'theme';
 
@@ -1082,17 +1410,18 @@ export function isTerminalThemeId(value: unknown): value is TerminalThemeId {
 }
 
 export function isConsolePalette(value: unknown): value is ConsolePalette {
-  return value === 'theme' || isTerminalThemeId(value);
+  return value === 'theme' || value === 'theme-light' || isTerminalThemeId(value);
 }
 
 /**
- * The sixteen the console actually paints with.
+ * The sixteen the console actually paints with, given the chrome's theme.
  *
- * `theme` defers to whatever `consoleThemeFor` already decided, so the default
- * path is byte-for-byte what it was. A named palette is the player's own
- * statement and wins outright — including over `keepDark`, which is the answer
- * to a question they have now answered themselves.
+ * Pure, and here rather than in the renderer because the terminal frame
+ * (`--ink-slate`) is derived from the console's ground and the two must not be
+ * able to disagree about which palette that is.
  */
-export function consolePaletteFor(consoleTheme: Theme, choice: ConsolePalette): TerminalPalette {
-  return isTerminalThemeId(choice) ? TERMINAL_THEMES[choice].palette : consoleTheme.terminal;
+export function consolePaletteFor(chrome: Theme, choice: ConsolePalette): TerminalPalette {
+  if (isTerminalThemeId(choice)) return TERMINAL_THEMES[choice].palette;
+  if (choice === 'theme' && chrome.appearance === 'light') return THEMES[DEFAULT_THEME].terminal;
+  return chrome.terminal;
 }

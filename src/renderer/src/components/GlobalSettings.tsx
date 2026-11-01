@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useState } from 'react';
 import { DEFAULT_SKIN, isSkin, SKINS, type SkinId } from '@shared/skins';
 import Advanced from './Advanced';
+import FontField from './FontField';
 import AlertList from './AlertList';
 import { MonsterRuleList } from './MonsterRules';
 import SettingsNav, { type NavFieldset } from './SettingsNav';
@@ -18,7 +19,6 @@ import {
   TERMINAL_THEMES,
   THEME_IDS,
   THEMES,
-  themesOfAppearance,
   type TerminalPalette
 } from '@shared/themes';
 import type { StreamEncoding } from '@shared/types';
@@ -124,8 +124,15 @@ type Section =
  * with the same ids the Character page's `SECTION_FIELDSETS` uses.
  */
 const SECTION_FIELDSETS: Record<Section, readonly NavFieldset[]> = {
-  appearance: [{ id: 'appearance-vitals', label: t('settings.client.appearance.vitalsLegend') }],
-  records: [],
+  appearance: [
+    { id: 'appearance-window', label: t('settings.client.appearance.windowLegend') },
+    { id: 'appearance-console', label: t('settings.client.appearance.consoleLegend') },
+    { id: 'appearance-vitals', label: t('settings.client.appearance.vitalsLegend') }
+  ],
+  records: [
+    { id: 'records-logs', label: t('settings.client.records.logsLegend') },
+    { id: 'records-conversations', label: t('settings.client.records.conversationsLegend') }
+  ],
   realm: [{ id: 'realm-login', label: t('settings.realms.loginLegend') }],
   'Auto-roam': [
     { id: 'movement-keep-out', label: t('settings.movement.keepOutLegend') },
@@ -243,26 +250,20 @@ export default function GlobalSettings({
   const barOfHealth = (fraction: number): ReturnType<typeof barOf> =>
     barOf(percent(fraction), draft.ui.vitals.hp);
   /*
-   * Only the dark ones, because that is the whole of what this setting means.
-   * A select that offered a light theme here would be offering to keep the
-   * console dark and then hand it a light palette — `normalizeConsoleUi` coerces
-   * that away, and a form must not offer what the file refuses.
-   */
-  const darkThemes = useMemo(
-    () => themesOfAppearance('dark').map((id) => ({ id, label: THEMES[id].label })),
-    []
-  );
-  /*
-   * `theme` first because it is the default and the only entry that is not a
-   * palette, then the seven in registration order, each labelled with the way
-   * it reads. Built here rather than inline so the memoised form is not handed
-   * a new array every keystroke.
+   * The two that follow the theme first, the default leading, then every palette
+   * in registration order, each labelled with the way it reads. Built here
+   * rather than inline so the memoised form is not handed a new array every
+   * keystroke.
    */
   const consolePalettes = useMemo(
     () => [
       {
         value: 'theme',
         label: t('settings.client.appearance.consolePaletteFollow')
+      },
+      {
+        value: 'theme-light',
+        label: t('settings.client.appearance.consolePaletteFollowLight')
       },
       ...TERMINAL_THEME_IDS.map((id) => ({
         value: id,
@@ -315,31 +316,30 @@ export default function GlobalSettings({
         {scope === 'defaults' && (
           <p className="settings-note">{t('settings.global.startingValuesNote')}</p>
         )}
-        {scope === 'client' && <p className="settings-note">{t('settings.client.lineage')}</p>}
+        {/*
+          The credit, said once at the head of the client's own page and set
+          apart from the settings under it rather than read as one more note
+          among them (2026-10-31).
+        */}
+        {scope === 'client' && (
+          <aside className="settings-lineage">
+            <strong>{t('settings.client.lineageTitle')}</strong>
+            <p>{t('settings.client.lineage')}</p>
+          </aside>
+        )}
 
+        {/*
+          Three groups, each what it says (2026-10-31): the window around the
+          console, the console itself, and the vital bars. They were one run of
+          fields with the console font above the window's selects, the console
+          colours wrapped onto a row of their own, and the interface font and
+          the vital bars behind "Advanced: the console", neither of which is
+          the console.
+        */}
         {shown === 'appearance' && (
           <>
-            <TextField
-              hint={t('settings.client.appearance.consoleFontHint')}
-              inputRef={firstFieldRef}
-              label={t('settings.client.appearance.consoleFontLabel')}
-              name="global-font"
-              onChange={(value) => patch('terminal', { fontFamily: value })}
-              placeholder={t('settings.client.appearance.consoleFontPlaceholder')}
-              spellCheck={false}
-              value={draft.terminal.fontFamily}
-              wide
-            />
-
-            <div className="settings-inline">
-              <NumberField
-                label={t('settings.client.appearance.fontSizeLabel')}
-                name="global-font-size"
-                onChange={(value) =>
-                  patch('terminal', { fontSize: Number.parseInt(value, 10) || 0 })
-                }
-                value={draft.terminal.fontSize || ''}
-              />
+            <fieldset className="settings-menus" data-fieldset="appearance-window">
+              <legend>{t('settings.client.appearance.windowLegend')}</legend>
               <SelectField
                 label={t('settings.profile.themeLabel')}
                 name="global-theme"
@@ -384,78 +384,64 @@ export default function GlobalSettings({
                 ]}
                 value={draft.ui.tabs}
               />
-            </div>
-
-            <CheckField
-              checked={draft.ui.showHud}
-              label={t('settings.client.appearance.showHud')}
-              name="global-hud"
-              onChange={(value) => patch('ui', { showHud: value })}
-            />
-            <CheckField
-              checked={draft.ui.showLogo}
-              label={t('settings.client.appearance.showLogo')}
-              name="global-show-logo"
-              onChange={(value) => patch('ui', { showLogo: value })}
-            />
-
-            {/*
-            The console's own colours, above the pair below because it outranks
-            them: naming a palette settles what the console looks like, and the
-            two keys under it only answer the case where nothing was named. The
-            offer is grouped by which way round each palette reads, since a
-            light palette on a dark theme is a decision, not an accident.
-          */}
-            <SelectField
-              hint={t('settings.client.appearance.consolePaletteHint')}
-              label={t('settings.client.appearance.consolePaletteLabel')}
-              name="global-console-palette"
-              onChange={(value) =>
-                patch('ui', { consolePalette: value as GlobalDraft['ui']['consolePalette'] })
-              }
-              options={consolePalettes}
-              value={draft.ui.consolePalette}
-            />
-
-            {/*
-            The switch and the choice it discloses, on one row — the pattern
-            Auto-Retreat and Anti-Idle already use. Both are drawn under every
-            theme, not only a light one: a setting that vanished when you
-            switched to a dark theme would be one nobody could find again.
-
-            The hint says outright when the palette above outranks them, rather
-            than the pair quietly ceasing to do anything: a control that stops
-            working without saying so is the worse of the two failures.
-          */}
-            <div className="settings-inline">
-              <CheckField
-                checked={draft.ui.consoleKeepDark}
-                hint={
-                  draft.ui.consolePalette === 'theme'
-                    ? t('settings.client.appearance.consoleKeepDarkHint')
-                    : t('settings.client.appearance.consoleKeepDarkOutranked')
-                }
-                label={t('settings.client.appearance.consoleKeepDarkLabel')}
-                name="global-console-keep-dark"
-                onChange={(value) => patch('ui', { consoleKeepDark: value })}
+              <FontField
+                blankLabel={t('settings.client.appearance.uiFontSameAsConsole')}
+                hint={t('settings.client.appearance.uiFontHint')}
+                kind="interface"
+                label={t('settings.client.appearance.uiFontLabel')}
+                name="global-ui-font"
+                onChange={(value) => patch('ui', { fontFamily: value })}
+                value={draft.ui.fontFamily}
               />
-              {draft.ui.consoleKeepDark && (
-                <SelectField
-                  label={t('settings.client.appearance.consoleDarkThemeLabel')}
-                  name="global-console-dark-theme"
-                  onChange={(value) =>
-                    patch('ui', {
-                      consoleDarkTheme: value as GlobalDraft['ui']['consoleDarkTheme']
-                    })
-                  }
-                  options={darkThemes.map((theme) => ({ value: theme.id, label: theme.label }))}
-                  value={draft.ui.consoleDarkTheme}
-                />
-              )}
-            </div>
+              <CheckField
+                checked={draft.ui.showHud}
+                label={t('settings.client.appearance.showHud')}
+                name="global-hud"
+                onChange={(value) => patch('ui', { showHud: value })}
+              />
+              <CheckField
+                checked={draft.ui.showLogo}
+                label={t('settings.client.appearance.showLogo')}
+                name="global-show-logo"
+                onChange={(value) => patch('ui', { showLogo: value })}
+              />
+            </fieldset>
 
-            <Advanced label={t('settings.client.appearance.advancedConsole')}>
-              <div className="settings-inline">
+            <fieldset className="settings-menus" data-fieldset="appearance-console">
+              <legend>{t('settings.client.appearance.consoleLegend')}</legend>
+              <FontField
+                hint={t('settings.client.appearance.consoleFontHint')}
+                inputRef={firstFieldRef}
+                kind="console"
+                label={t('settings.client.appearance.consoleFontLabel')}
+                name="global-font"
+                onChange={(value) => patch('terminal', { fontFamily: value })}
+                value={draft.terminal.fontFamily}
+              />
+              <NumberField
+                label={t('settings.client.appearance.fontSizeLabel')}
+                name="global-font-size"
+                onChange={(value) =>
+                  patch('terminal', { fontSize: Number.parseInt(value, 10) || 0 })
+                }
+                value={draft.terminal.fontSize || ''}
+              />
+              {/*
+                One choice: follow the theme (staying dark under a light one, or
+                not) or name a palette outright, the offer grouped by which way
+                round each palette reads.
+              */}
+              <SelectField
+                hint={t('settings.client.appearance.consolePaletteHint')}
+                label={t('settings.client.appearance.consolePaletteLabel')}
+                name="global-console-palette"
+                onChange={(value) =>
+                  patch('ui', { consolePalette: value as GlobalDraft['ui']['consolePalette'] })
+                }
+                options={consolePalettes}
+                value={draft.ui.consolePalette}
+              />
+              <Advanced label={t('settings.client.appearance.advancedConsole')}>
                 <NumberField
                   label={t('settings.client.appearance.scrollbackLabel')}
                   name="global-scrollback"
@@ -485,58 +471,48 @@ export default function GlobalSettings({
                   name="global-cursor-blink"
                   onChange={(value) => patch('terminal', { cursorBlink: value })}
                 />
-              </div>
-              <TextField
-                hint={t('settings.client.appearance.uiFontHint')}
-                label={t('settings.client.appearance.uiFontLabel')}
-                name="global-ui-font"
-                onChange={(value) => patch('ui', { fontFamily: value })}
-                placeholder={t('settings.client.appearance.uiFontPlaceholder')}
-                spellCheck={false}
-                value={draft.ui.fontFamily}
-                wide
-              />
+              </Advanced>
+            </fieldset>
 
-              <fieldset className="settings-menus" data-fieldset="appearance-vitals">
-                <legend>{t('settings.client.appearance.vitalsLegend')}</legend>
-                <p className="settings-note">{t('settings.client.appearance.vitalsNote')}</p>
-                {(['hp', 'mana'] as const).map((vital) => (
-                  <div className="settings-inline" key={vital}>
-                    <NumberField
-                      label={t('settings.client.appearance.vitalCautionPercent', {
-                        vitalName:
-                          vital === 'hp'
-                            ? t('settings.client.appearance.vitalHealth')
-                            : t('settings.client.appearance.vitalMana')
-                      })}
-                      name={`global-${vital}-caution`}
-                      onChange={(value) =>
-                        patch('ui', {
-                          vitals: {
-                            ...draft.ui.vitals,
-                            [vital]: { ...draft.ui.vitals[vital], caution: fraction(value) }
-                          }
-                        })
-                      }
-                      value={percent(draft.ui.vitals[vital].caution)}
-                    />
-                    <NumberField
-                      label={t('settings.client.appearance.vitalCriticalPercent')}
-                      name={`global-${vital}-critical`}
-                      onChange={(value) =>
-                        patch('ui', {
-                          vitals: {
-                            ...draft.ui.vitals,
-                            [vital]: { ...draft.ui.vitals[vital], critical: fraction(value) }
-                          }
-                        })
-                      }
-                      value={percent(draft.ui.vitals[vital].critical)}
-                    />
-                  </div>
-                ))}
-              </fieldset>
-            </Advanced>
+            <fieldset className="settings-menus" data-fieldset="appearance-vitals">
+              <legend>{t('settings.client.appearance.vitalsLegend')}</legend>
+              <p className="settings-note">{t('settings.client.appearance.vitalsNote')}</p>
+              {(['hp', 'mana'] as const).map((vital) => (
+                <div className="settings-inline" key={vital}>
+                  <NumberField
+                    label={t('settings.client.appearance.vitalCautionPercent', {
+                      vitalName:
+                        vital === 'hp'
+                          ? t('settings.client.appearance.vitalHealth')
+                          : t('settings.client.appearance.vitalMana')
+                    })}
+                    name={`global-${vital}-caution`}
+                    onChange={(value) =>
+                      patch('ui', {
+                        vitals: {
+                          ...draft.ui.vitals,
+                          [vital]: { ...draft.ui.vitals[vital], caution: fraction(value) }
+                        }
+                      })
+                    }
+                    value={percent(draft.ui.vitals[vital].caution)}
+                  />
+                  <NumberField
+                    label={t('settings.client.appearance.vitalCriticalPercent')}
+                    name={`global-${vital}-critical`}
+                    onChange={(value) =>
+                      patch('ui', {
+                        vitals: {
+                          ...draft.ui.vitals,
+                          [vital]: { ...draft.ui.vitals[vital], critical: fraction(value) }
+                        }
+                      })
+                    }
+                    value={percent(draft.ui.vitals[vital].critical)}
+                  />
+                </div>
+              ))}
+            </fieldset>
           </>
         )}
 
@@ -875,69 +851,76 @@ export default function GlobalSettings({
         {shown === 'records' && (
           <>
             <p className="settings-note">{t('settings.client.records.note')}</p>
-            <CheckField
-              checked={draft.logging.enabled}
-              label={t('settings.client.records.enabled')}
-              name="global-logging"
-              onChange={(value) => patch('logging', { enabled: value })}
-            />
-            <CheckField
-              checked={draft.logging.capture}
-              hint={t('settings.client.records.captureHint')}
-              label={t('settings.client.records.captureLabel')}
-              name="global-capture"
-              onChange={(value) => patch('logging', { capture: value })}
-            />
-            <CheckField
-              checked={draft.logging.fights}
-              hint={t('settings.client.records.fightsHint')}
-              label={t('settings.client.records.fightsLabel')}
-              name="global-fights"
-              onChange={(value) => patch('logging', { fights: value })}
-            />
-            <CheckField
-              checked={draft.logging.conversations}
-              hint={t('settings.client.records.conversationsHint')}
-              label={t('settings.client.records.conversationsLabel')}
-              name="global-conversations"
-              onChange={(value) => patch('logging', { conversations: value })}
-            />
-            <NumberField
-              hint={t('settings.client.records.conversationDaysHint')}
-              label={t('settings.client.records.conversationDaysLabel')}
-              name="global-conversation-days"
-              onChange={(value) =>
-                patch('logging', { conversationDays: Number.parseInt(value, 10) || 0 })
-              }
-              value={draft.logging.conversationDays}
-            />
-            <TextField
-              label={t('settings.client.records.folderLabel')}
-              name="global-log-folder"
-              onChange={(value) => patch('logging', { directory: value })}
-              placeholder={t('settings.client.records.folderPlaceholder')}
-              spellCheck={false}
-              value={draft.logging.directory}
-              wide
-            />
-            <Advanced label={t('settings.client.records.advancedLogSize')}>
-              <NumberField
-                label={t('settings.client.records.maxBytesLabel')}
-                name="global-log-bytes"
-                onChange={(value) =>
-                  patch('logging', { maxBytes: Number.parseInt(value, 10) || 0 })
-                }
-                value={draft.logging.maxBytes}
+            <fieldset className="settings-menus" data-fieldset="records-logs">
+              <legend>{t('settings.client.records.logsLegend')}</legend>
+              <CheckField
+                checked={draft.logging.enabled}
+                label={t('settings.client.records.enabled')}
+                name="global-logging"
+                onChange={(value) => patch('logging', { enabled: value })}
+              />
+              <CheckField
+                checked={draft.logging.capture}
+                hint={t('settings.client.records.captureHint')}
+                label={t('settings.client.records.captureLabel')}
+                name="global-capture"
+                onChange={(value) => patch('logging', { capture: value })}
+              />
+              <CheckField
+                checked={draft.logging.fights}
+                hint={t('settings.client.records.fightsHint')}
+                label={t('settings.client.records.fightsLabel')}
+                name="global-fights"
+                onChange={(value) => patch('logging', { fights: value })}
+              />
+              <TextField
+                label={t('settings.client.records.folderLabel')}
+                name="global-log-folder"
+                onChange={(value) => patch('logging', { directory: value })}
+                placeholder={t('settings.client.records.folderPlaceholder')}
+                spellCheck={false}
+                value={draft.logging.directory}
+                wide
+              />
+              <Advanced label={t('settings.client.records.advancedLogSize')}>
+                <NumberField
+                  label={t('settings.client.records.maxBytesLabel')}
+                  name="global-log-bytes"
+                  onChange={(value) =>
+                    patch('logging', { maxBytes: Number.parseInt(value, 10) || 0 })
+                  }
+                  value={draft.logging.maxBytes}
+                />
+                <NumberField
+                  label={t('settings.client.records.keepBytesLabel')}
+                  name="global-log-keep-bytes"
+                  onChange={(value) =>
+                    patch('logging', { keepBytes: Number.parseInt(value, 10) || 0 })
+                  }
+                  value={draft.logging.keepBytes}
+                />
+              </Advanced>
+            </fieldset>
+
+            <fieldset className="settings-menus" data-fieldset="records-conversations">
+              <legend>{t('settings.client.records.conversationsLegend')}</legend>
+              <CheckField
+                checked={draft.logging.conversations}
+                hint={t('settings.client.records.conversationsHint')}
+                label={t('settings.client.records.conversationsLabel')}
+                name="global-conversations"
+                onChange={(value) => patch('logging', { conversations: value })}
               />
               <NumberField
-                label={t('settings.client.records.keepBytesLabel')}
-                name="global-log-keep-bytes"
+                hint={t('settings.client.records.conversationDaysHint')}
+                label={t('settings.client.records.conversationDaysLabel')}
+                name="global-conversation-days"
                 onChange={(value) =>
-                  patch('logging', { keepBytes: Number.parseInt(value, 10) || 0 })
+                  patch('logging', { conversationDays: Number.parseInt(value, 10) || 0 })
                 }
-                value={draft.logging.keepBytes}
+                value={draft.logging.conversationDays}
               />
-            </Advanced>
+            </fieldset>
           </>
         )}
 

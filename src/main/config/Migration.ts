@@ -220,6 +220,7 @@ function migrateAll(options: MigrationOptions): void {
   statedTheMark(home, note);
   statedTheDarkConsole(home, note, options.template);
   statedTheConsolePalette(home, note, options.template);
+  theConsoleBecameOnePalette(home, note, options.template);
   alertSettingsBecameRows(home, note);
   statedTheStatusLine(home, note, options.template);
   theLineBecameARewrite(home, note, options.template);
@@ -2692,7 +2693,8 @@ function lowerWords(node: unknown): string[] {
  * documentation, and a copy by hand is a second copy to keep in step.
  *
  * Idempotent for the reason `statedTheMark` is: a key in a map stays added
- * whatever its value, so somebody who sets `keepDark: false` keeps it.
+ * whatever its value. It wrote `keepDark` and `darkTheme` beside the palette
+ * until those became palette choices (`theConsoleBecameOnePalette`).
  */
 function statedTheDarkConsole(
   home: Home,
@@ -2706,11 +2708,7 @@ function statedTheDarkConsole(
     const ui = document.getIn(['ui'], true);
     if (!isMap(ui) || ui.has('console')) return false;
 
-    const block = document.createNode({
-      palette: DEFAULT_CONFIG.ui.console.palette,
-      keepDark: DEFAULT_CONFIG.ui.console.keepDark,
-      darkTheme: DEFAULT_CONFIG.ui.console.darkTheme
-    });
+    const block = document.createNode({ palette: DEFAULT_CONFIG.ui.console.palette });
     const pair = document.createPair('console', block) as Pair;
     const lead = comments.get('ui.console');
     if (typeof lead === 'string' && isScalar(pair.key)) pair.key.commentBefore = lead;
@@ -2767,6 +2765,60 @@ function statedTheConsolePalette(
 
   if (!stated) return;
   note(t('notices.migration.consolePaletteStated', { file: home.options }));
+}
+
+/**
+ * `ui.console.keepDark` and `ui.console.darkTheme` folded into the palette
+ * (2026-10-31).
+ *
+ * Three settings said one thing, and one of them said nothing: every dark
+ * theme wears the same console palette, so `darkTheme` never changed what the
+ * console looked like. `keepDark: true` is what `palette: theme` now means; a
+ * file that turned it off with the palette still following the theme says
+ * `theme-light`, which keeps that console exactly as it was. A named palette
+ * outranked both keys already, so it is left alone.
+ *
+ * The block's paragraph and the palette's are the template's again, since the
+ * ones in the file explain the two keys that are gone. After
+ * `statedTheConsolePalette`, so a block that predates the palette has gained it.
+ */
+function theConsoleBecameOnePalette(
+  home: Home,
+  note: (message: string) => void,
+  template: string | undefined
+): void {
+  const comments = templateComments(template, 'ui');
+  let folded = false;
+
+  edit(home.options, (document) => {
+    const ui = document.getIn(['ui'], true);
+    const console_ = document.getIn(['ui', 'console'], true);
+    if (!isMap(ui) || !isMap(console_)) return false;
+    if (!console_.has('keepDark') && !console_.has('darkTheme')) return false;
+
+    const palette = console_.get('palette');
+    if (console_.get('keepDark') === false && (palette === undefined || palette === 'theme')) {
+      console_.set('palette', 'theme-light');
+    }
+    console_.delete('keepDark');
+    console_.delete('darkTheme');
+
+    const block = ui.items.find((item) => keyText(item) === 'console');
+    const lead = comments.get('ui.console');
+    if (block && typeof lead === 'string' && isScalar(block.key)) block.key.commentBefore = lead;
+    // The first key's paragraph is filed on the map, as `templateComments` says.
+    const entry = console_.items.find((item) => keyText(item) === 'palette');
+    const about = comments.get('ui.console.palette');
+    if (entry && typeof about === 'string' && isScalar(entry.key)) {
+      if (console_.items[0] === entry) console_.commentBefore = undefined;
+      entry.key.commentBefore = about;
+    }
+    folded = true;
+    return true;
+  });
+
+  if (!folded) return;
+  note(t('notices.migration.consoleBecameOnePalette', { file: home.options }));
 }
 
 /**
@@ -6444,6 +6496,9 @@ function theTuningBlockGainedKeys(
     // The Reference panel's own width (2026-10-29).
     addKey('view', 'referenceWidthMin', DEFAULT_INTERNAL.tuning.view.referenceWidthMin);
     addKey('view', 'referenceWidthMax', DEFAULT_INTERNAL.tuning.view.referenceWidthMax);
+    // The Stable's rows (2026-10-31).
+    addKey('view', 'stableLines', DEFAULT_INTERNAL.tuning.view.stableLines);
+    addKey('view', 'stableAwayMinMs', DEFAULT_INTERNAL.tuning.view.stableAwayMinMs);
     // The Hunting card's areas (2026-10-29).
     addKey('hunting', 'areaRadius', DEFAULT_INTERNAL.tuning.hunting.areaRadius);
     addKey('hunting', 'clockBound', DEFAULT_INTERNAL.tuning.hunting.clockBound);

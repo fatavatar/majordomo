@@ -52,6 +52,12 @@ export interface PartyCardProps extends CardChrome {
   /** A roster made or edited here. Absent, the card cannot make or edit one. */
   onSaveRoster?(roster: PartyRoster): void;
   onRemoveRoster?(id: string): void;
+  /**
+   * Disband (2026-10-31): the party broken up in the realm and its roster
+   * forgotten. A party formed in the realm keeps a roster on its own, so
+   * this, not taking the roster off, is how one is let go.
+   */
+  onDisband?(id: string): void;
   /** Regroup pressed: every act at once. How many were taken. */
   onRegroup?(id: string): Promise<number>;
   /** Muster pressed: a line per member of ours, said under the bar. */
@@ -243,6 +249,7 @@ function PartyCard({
   ours,
   onSaveRoster,
   onRemoveRoster,
+  onDisband,
   onRegroup,
   onMuster,
   onSay,
@@ -331,6 +338,15 @@ function PartyCard({
     });
   } else if (keep !== null) {
     actions.push({ id: 'keep', label: t('cards.party.keepAction'), icon: 'users', run: keep });
+  }
+  if (roster !== null && onDisband) {
+    actions.push({
+      id: 'disband',
+      label: t('cards.party.disbandAction'),
+      icon: 'clearCircle',
+      run: () => onDisband(roster.id),
+      danger: true
+    });
   }
   if (ask && character.party.members.length > 0) {
     actions.push({
@@ -840,7 +856,7 @@ function PartyCard({
 }
 
 /** One Muster press: walking everybody to the leader, or a sys goto place. */
-interface MusterChoice {
+export interface MusterChoice {
   key: string;
   label: string;
   title: string;
@@ -848,7 +864,7 @@ interface MusterChoice {
 }
 
 /** What Muster offers: the leader's walk, then each of the roster's places by the realm's word. */
-function musterChoices(roster: PartyRoster): MusterChoice[] {
+export function musterChoices(roster: PartyRoster): MusterChoice[] {
   const walk: MusterChoice[] =
     roster.leader === null
       ? []

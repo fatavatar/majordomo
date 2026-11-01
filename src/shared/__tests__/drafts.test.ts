@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { asProfileDraft, asProfileId, asServerDraft, LOOP_LIMITS } from '../drafts';
+import { asGlobalDraft, asProfileDraft, asProfileId, asServerDraft, LOOP_LIMITS } from '../drafts';
 import { UNCATEGORISED } from '../loops';
 
 /*
@@ -534,5 +534,20 @@ describe('a character theme', () => {
     expect(asProfileDraft({ ...base, theme: 'system' })?.theme).toBe('system');
     expect(asProfileDraft({ ...base, theme: 'neon' })?.theme).toBe('');
     expect(asProfileDraft(base)?.theme).toBe('');
+  });
+});
+
+/*
+ * 2026-10-31: the settings screen sends the console's palette flat on `ui`,
+ * and it was read nested, so a save always wrote the default back.
+ */
+describe("the client's console colours", () => {
+  it('keeps what the settings screen chose', () => {
+    expect(asGlobalDraft({ ui: { consolePalette: 'neon-night' } })?.ui.consolePalette).toBe(
+      'neon-night'
+    );
+    expect(asGlobalDraft({ ui: { consolePalette: 'theme-light' } })?.ui.consolePalette).toBe(
+      'theme-light'
+    );
   });
 });
