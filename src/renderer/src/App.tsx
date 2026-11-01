@@ -1462,10 +1462,12 @@ export default function App() {
     () => sessions.filter((entry) => leftOut.includes(entry.id)),
     [sessions, leftOut]
   );
+  // The row with the keyboard, or the first row: never a character with no row,
+  // which a character just left out would otherwise stay as (2026-11-01).
   const focusedRow =
     stableFocus !== null && stableRows.some((entry) => entry.id === stableFocus)
       ? stableFocus
-      : null;
+      : (stableRows[0]?.id ?? null);
   const session = stableOn && focusedRow !== null ? focusedRow : (panes[paneAt] ?? NO_SESSION);
   // Nothing is written before the roster arrives, or a reload would forget
   // the choice it is about to restore.
@@ -6228,6 +6230,7 @@ export default function App() {
     return (
       <ConsoleStatus
         character={v.character}
+        name={stableOn ? (v.character.name ?? sessions.find((s) => s.id === sid)?.name) : undefined}
         round={v.round}
         session={sid}
         thresholds={config.ui.vitals}
@@ -6547,6 +6550,15 @@ export default function App() {
           */}
           {stableOn && (
             <StableHead
+              away={
+                <StableAway
+                  away={stableAway}
+                  leftOut={stableLeftOut}
+                  onBringBack={bringBack}
+                  onToggleConnection={toggleSessionConnection}
+                  views={views}
+                />
+              }
               onDismiss={away.dismiss}
               onStopAll={stopAll}
               rows={stableRows}
@@ -6644,6 +6656,7 @@ export default function App() {
                   const members = block.ids.map((id) => ({
                     id,
                     name: sessions.find((entry) => entry.id === id)?.name ?? id,
+                    accent: sessions.find((entry) => entry.id === id)?.accent ?? 'cyan',
                     view: views[id] ?? EMPTY_VIEW
                   }));
                   const key = `party:${block.roster.id}`;
@@ -6728,6 +6741,7 @@ export default function App() {
                 <SessionTerminal
                   cell={cell}
                   footer={consoleStatusFor(entry.id)}
+                  who={stableOn ? entry.accent : undefined}
                   // Its toolbar over its console, where the toolbar is placed on its status.
                   header={
                     stableOn &&
@@ -6806,15 +6820,6 @@ export default function App() {
             open={searchOpen}
             result={searchResult}
           />
-          {stableOn && (
-            <StableAway
-              away={stableAway}
-              leftOut={stableLeftOut}
-              onBringBack={bringBack}
-              onToggleConnection={toggleSessionConnection}
-              views={views}
-            />
-          )}
           {!stableOn && (cards.below.length > 0 || drag.state?.live === true) && (
             <div
               className="dock dock-below"
