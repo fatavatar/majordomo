@@ -1471,9 +1471,24 @@ palette:
     found: Go to
     layout: Layout
     navigate: Navigate
+    party: Party and everyone
     pinned: Pinned
     realm: In the realm
     view: View
+  # What the party and every character can be told at once (2026-11-01): the
+  # Party card's and the Stable's own actions, as words to type.
+  verbs:
+    everyoneStop: 'Everyone: stop'
+    everyoneStopHint: every character in the realm, where it stands
+    musterLabel: '{party} → {place}'
+    musterHint: muster
+    regroupLabel: 'Regroup {party}'
+    regroupHint: the leader invites whoever has fallen out
+    stopPartyLabel: 'Stop {party}'
+    disbandLabel: 'Disband {party}'
+    disbandHint: broken up in the realm, and the roster forgotten
+    stopLabel: 'Stop {name}'
+    stopHint: where it stands
   layout:
     cardAlwaysHint: it leaves the rail while it has nothing to say
     cardAlwaysLabel: '{cardName} card: always show'
@@ -1563,6 +1578,10 @@ terminal:
     depositAll: Deposit All
     depositAllTitle: Read the purse and deposit all of it into this bank vault
     exitTitle: 'Take exit: {command}'
+    list: List
+    listTitle: Ask the counter what it sells and for how much
+    train: Train
+    trainTitle: Train here to the next level, if this trainer takes your class and the experience is there
     withdrawAll: Withdraw All
     withdrawAllTitle: Withdraw all coins from bank vault ({amount} copper)
   contextMenu:
@@ -1622,6 +1641,8 @@ terminal:
     lever: 'Opens the way {direction}: {opens}'
     leverElsewhere: '{direction}: lever in {room}'
     leverItem: 'Opens the way {direction}: {opens}. Needs {item} carried.'
+    open: 'Open the door {direction}, to {room}: {detail}'
+    openHere: 'Open the door {direction}: {detail}'
     leads: '{command}: to {room}'
     leadsNeeding: '{command}: to {room} — {detail}'
     roomSpell: casts {spell}
@@ -3748,6 +3769,24 @@ cards:
     empty: No lines framed yet.
     terminatorTooltip: terminated by {terminator}
     title: Stream
+  # What the character was doing over the window (2026-11-01, the card rethink's W5).
+  timeline:
+    title: Timeline
+    empty: Nothing recorded in this window yet. It fills as the character plays.
+    stripLabel: What the character was doing over the window
+    stripHint: Click to see that moment in the console
+    now: now
+    notInBackscroll: The console's backscroll holds nothing that old on this page.
+    died: 'Died at {at} in {where}'
+    levelled: 'Reached level {level} at {at}'
+    minutes: '{minutes}m'
+    hours: '{hours}h {minutes}m'
+    kind:
+      fight: fighting
+      rest: resting
+      walk: walking
+      idle: idle
+      away: out of the realm
   talk:
     channels:
       action: action

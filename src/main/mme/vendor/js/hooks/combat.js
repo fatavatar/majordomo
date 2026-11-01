@@ -124,9 +124,24 @@ hooks.lairDamageOut = (info, ctx, { averages = false } = {}) => {
 // nMonsterDamageVsChar / nMonsterDamageVsParty: filled per monster on demand
 // (bAutoCalcMonDamage) or for all of them by calcAllMonsterDamage(). They
 // survive character changes that leave the defences alone, as in MME, which
-// keys them by the defence description.
-const vsChar = new Map(), vsParty = new Map();
+// keys them by the defence description. The last few descriptions are kept,
+// each with its own figures, so a host pricing several characters in turn
+// simulates each one's monsters once rather than every time it switches back.
+const KEPT_DEFENCES = 8;
+const charKept = new Map(), partyKept = new Map();
+let vsChar = new Map(), vsParty = new Map();
 let vsCharKey = '', vsPartyKey = '';
+// The monster table they were worked out from: another realm's starts them afresh.
+let keptFrom = null;
+// The figures for a description, the most recently used kept last.
+function keptFor(kept, key) {
+  let found = kept.get(key);
+  if (found === undefined) found = new Map();
+  else kept.delete(key);
+  kept.set(key, found);
+  while (kept.size > KEPT_DEFENCES) kept.delete(kept.keys().next().value);
+  return found;
+}
 
 // SetupMonsterAttackSimWithCharStats: the character's defences.
 export function charDefenses() {
@@ -140,10 +155,15 @@ function partyDefenses() {
   return { size: p.size, antiMagic: p.antiMagic, ac: p.ac, dr: p.dr, mr: p.mr, dodge: p.dodge };
 }
 function syncKeys() {
+  if (db.Monsters !== keptFrom) {
+    charKept.clear(); partyKept.clear();
+    vsCharKey = ''; vsPartyKey = '';
+    keptFrom = db.Monsters;
+  }
   const ck = JSON.stringify(charDefenses());
-  if (ck !== vsCharKey) { vsChar.clear(); vsCharKey = ck; }
+  if (ck !== vsCharKey) { vsChar = keptFor(charKept, ck); vsCharKey = ck; }
   const pk = JSON.stringify(partyDefenses());
-  if (pk !== vsPartyKey) { vsParty.clear(); vsPartyKey = pk; }
+  if (pk !== vsPartyKey) { vsParty = keptFor(partyKept, pk); vsPartyKey = pk; }
 }
 
 // modMain.CalculateMonsterDamageVsChar(n, bPartyInstead). A party with some

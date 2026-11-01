@@ -148,17 +148,33 @@ export function useRememberedChoice(
 
   const [chosen, setChosen] = useStored(read);
 
+  // Every view of the same choice follows a change made in another (2026-11-01):
+  // the Stable's experience window and the Vitals card's are one choice, and
+  // each read it once, so choosing in one left the other saying the old one.
+  useEffect(() => {
+    const follow = (event: Event): void => {
+      const { detail } = event as CustomEvent<{ key: string; value: string }>;
+      if (detail.key === key && allowed.includes(detail.value)) setChosen(detail.value);
+    };
+    window.addEventListener(CHOICE_EVENT, follow);
+    return () => window.removeEventListener(CHOICE_EVENT, follow);
+  }, [key, allowed, setChosen]);
+
   const choose = useCallback(
     (value: string) => {
       if (!allowed.includes(value)) return;
       setChosen(value);
       writeStored(key, value);
+      window.dispatchEvent(new CustomEvent(CHOICE_EVENT, { detail: { key, value } }));
     },
     [key, allowed, setChosen]
   );
 
   return [chosen, choose];
 }
+
+/** Said on the window when a remembered choice changes, for its other views. */
+const CHOICE_EVENT = 'mudengine:remembered-choice';
 
 /**
  * A number remembered against each of a set of things, per character.

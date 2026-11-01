@@ -138,3 +138,22 @@ describe('taking the vault out', () => {
     expect(withdraw?.label).toBe('Withdraw All');
   });
 });
+
+/* 2026-11-01: what a counter is asked, by its kind, as MegaMUD asks it. */
+describe('a counter', () => {
+  it('offers a shop’s list and a trainer’s train ahead of the exits', () => {
+    expect(actionsFor('shop', ['go manhole'], 100).map((action) => action.label)).toEqual([
+      'List',
+      'go manhole'
+    ]);
+    expect(actionsFor('shop', [], null)[0]).toMatchObject({ commands: ['list'] });
+    expect(actionsFor('trainer', [], null)).toEqual([
+      expect.objectContaining({ label: 'Train', commands: ['train'] })
+    ]);
+  });
+
+  it('offers neither at a temple or an inn', () => {
+    expect(actionsFor('temple', [], 100)).toEqual([]);
+    expect(actionsFor('inn', [], 100)).toEqual([]);
+  });
+});

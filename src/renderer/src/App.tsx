@@ -29,7 +29,7 @@ import CardPicker from './components/CardPicker';
 import FloatLayer from './components/FloatLayer';
 import NotificationsCard from './components/NotificationsCard';
 import CombatCard from './components/CombatCard';
-import PartyCard from './components/PartyCard';
+import PartyCard, { musterChoices } from './components/PartyCard';
 import RealmCard from './components/RealmCard';
 import PlayerFlyout, { type PlayerAsked } from './components/PlayerFlyout';
 import GangFlyout, { type GangAsked } from './components/GangFlyout';
@@ -90,6 +90,7 @@ import {
 
 import StreamCard from './components/StreamCard';
 import VitalsCard from './components/VitalsCard';
+import TimelineCard from './components/TimelineCard';
 import SelfCard from './components/SelfCard';
 import type { SupplyList } from './components/SupplyControls';
 import LoopsModal from './components/LoopsModal';
@@ -275,6 +276,7 @@ const CARD_GLYPH: Partial<Record<CardId, IconName>> = {
   reference: 'search',
   stats: 'activity',
   gear: 'shirt',
+  timeline: 'columns',
   session: 'terminal',
   link: 'link',
   automation: 'sparkle',
@@ -638,6 +640,8 @@ interface CardContext {
   resetStats(): void;
   /** Restart the Vitals card's experience hours views; the session's stays. */
   resetExp(): void;
+  /** This character's console brought to a moment (the Timeline card); false where it holds nothing that old. */
+  jumpTo(at: number): boolean;
   /**
    * The Navigation card's transport. `startMoving` takes the picker's choice,
    * or null where there is none; `loops` is the character's own list to pick
@@ -748,6 +752,8 @@ interface AddressedActions {
   resetStats(): void;
   /** Restart the Vitals card's experience hours views; the session's stays. */
   resetExp(): void;
+  /** This character's console brought to a moment (the Timeline card); false where it holds nothing that old. */
+  jumpTo(at: number): boolean;
   startLoop(name: string): void;
   selectPlayer(name: string, anchor: PopoverAnchor): void;
   setGangRemotes(remotes: RemoteName[]): void;
@@ -1163,6 +1169,16 @@ function cardElement(id: CardId, ctx: CardContext): ReactNode {
           baseline={view.character.statsBase}
           character={character}
           onReset={ctx.resetStats}
+          session={ctx.session}
+        />
+      );
+    case 'timeline':
+      return (
+        <TimelineCard
+          {...chrome}
+          character={character}
+          onExpReset={ctx.resetExp}
+          onJump={ctx.jumpTo}
           session={ctx.session}
         />
       );
@@ -4122,22 +4138,22 @@ export default function App() {
   );
 
   /**
-   * A room named in MMUD Explorer's words on a card or the slide-out
-   * (2026-10-24): its panel beside the link, settled as a clicked map room
-   * is, with the way there on it. It takes the slide-out's place, as a name
-   * clicked in the slide-out does.
+   * A room named in MMUD Explorer's words on a card or the slide-out — a
+   * monster's lairs, a shop's room: the route panel on it, the way there
+   * planned (2026-11-01). It opened the room's own panel beside the link,
+   * whose name and exits the route panel's head states as well and whose one
+   * action was Plan route, so every such click was a second click away from
+   * what it was for. It takes the slide-out's place, as the panel did.
    */
   const inspectRoom = useCallback(
-    (room: string, anchor: HTMLElement) => {
+    (room: string) => {
       const at = asRoomReference(room);
       if (at === null) return;
-      const id = roomId(at.map, at.room);
-      // Where the link was, not the link: in the slide-out it goes with the
-      // slide-out this panel replaces, and the panel went with it.
-      const box = { box: anchor.getBoundingClientRect(), within: document.body };
-      openPeek({ room: id, anchor: box, settled: true, act: walkTo(id) });
+      dismissAsked();
+      dismissPeek();
+      chooseOnMap(at.map, at.room);
     },
-    [openPeek, walkTo]
+    [dismissAsked, dismissPeek, chooseOnMap]
   );
 
   /**
@@ -5634,6 +5650,7 @@ export default function App() {
         resetStats: () => resetStatsRef.current(sid),
         // Main's, with the tally, as the Combat Stats card's is, and apart from it.
         resetExp: () => void api.expReset(sid),
+        jumpTo: (at) => terminals.current.get(sid)?.jumpTo(at) ?? false,
         startLoop: (name) =>
           void api.startLoop(sid, name).then((refused) => sayRefusalRef.current(sid)(refused)),
         selectPlayer: (name, anchor) => selectPlayerRef.current(sid, name, anchor),
@@ -5840,6 +5857,7 @@ export default function App() {
         // card, never the one being watched.
         resetStats: bound.resetStats,
         resetExp: bound.resetExp,
+        jumpTo: bound.jumpTo,
         // The shown character's list is the only one the renderer holds; a
         // float's own loops are not asked for, so it offers no picker.
         loops: shown ? loops : null,
@@ -6237,6 +6255,8 @@ export default function App() {
       />
     );
   };
+  /** The experience's hours views restarted for a character, from the Stable's picker. */
+  const resetExpOf = useCallback((sid: SessionId) => void api.expReset(sid), [api]);
   /** A character's toolbar row, small on its status in the Stable. */
   const toolbarFor = useCallback(
     (sid: SessionId): ReactNode => {
@@ -6338,6 +6358,86 @@ export default function App() {
     // The names are what the grouping reads of the views.
     [stableRows, stableNames, rosters] // eslint-disable-line react-hooks/exhaustive-deps
   );
+  /**
+   * Verbs in the palette (2026-11-01, the card rethink's V4): what the party
+   * and every character can be told, as words to type -- `regroup`, `muster`,
+   * a party's or everyone's `stop`, `disband` -- each the Party card's or the
+   * Stable's own action, so typing one is pressing that button. A party is
+   * offered while two or more of it are in the realm, as the Stable groups it.
+   */
+  const verbCommands = useMemo<Command[]>(() => {
+    const verbs: Command[] = [];
+    const nameOf = (id: SessionId): string => sessions.find((entry) => entry.id === id)?.name ?? id;
+    for (const block of blocks) {
+      if (block.kind !== 'party') continue;
+      const { roster } = block;
+      const party = t('stable.party.title', { leader: roster.leader ?? nameOf(block.ids[0]!) });
+      const words = ['party', 'group', ...block.ids.map(nameOf)];
+      verbs.push({
+        id: `party:${roster.id}:regroup`,
+        icon: 'users',
+        group: 'party',
+        label: t('palette.verbs.regroupLabel', { party }),
+        hint: t('palette.verbs.regroupHint'),
+        keywords: ['regroup', 'invite', 'join', ...words],
+        run: () => void regroupParty(roster.id)
+      });
+      for (const choice of musterChoices(roster)) {
+        verbs.push({
+          id: `party:${roster.id}:muster:${choice.key}`,
+          icon: 'route',
+          group: 'party',
+          label: t('palette.verbs.musterLabel', { party, place: choice.label }),
+          hint: t('palette.verbs.musterHint'),
+          keywords: ['muster', 'goto', 'go', 'move', 'everyone', 'all', choice.label, ...words],
+          run: () => void musterParty(roster.id, choice.target)
+        });
+      }
+      verbs.push({
+        id: `party:${roster.id}:stop`,
+        icon: 'stop',
+        group: 'party',
+        label: t('palette.verbs.stopPartyLabel', { party }),
+        keywords: ['stop', 'halt', ...words],
+        run: () => {
+          for (const id of block.ids) stopIn(id);
+        }
+      });
+      verbs.push({
+        id: `party:${roster.id}:disband`,
+        icon: 'clearCircle',
+        group: 'party',
+        label: t('palette.verbs.disbandLabel', { party }),
+        hint: t('palette.verbs.disbandHint'),
+        keywords: ['disband', 'leave', 'break', 'forget', ...words],
+        run: () => disbandParty(roster.id)
+      });
+    }
+    if (stableRows.length > 0) {
+      verbs.push({
+        id: 'everyone:stop',
+        icon: 'stop',
+        group: 'party',
+        label: t('palette.verbs.everyoneStop'),
+        hint: t('palette.verbs.everyoneStopHint'),
+        keywords: ['stop', 'halt', 'all', 'everyone', 'every'],
+        run: stopAll
+      });
+    }
+    for (const entry of stableRows) {
+      verbs.push({
+        id: `stop:${entry.id}`,
+        icon: 'stop',
+        group: 'party',
+        label: t('palette.verbs.stopLabel', { name: entry.name }),
+        hint: t('palette.verbs.stopHint'),
+        keywords: ['stop', 'halt', entry.name],
+        run: () => stopIn(entry.id)
+      });
+    }
+    return verbs;
+  }, [blocks, sessions, stableRows, regroupParty, musterParty, disbandParty, stopIn, stopAll]);
+  const paletteCommands = useMemo(() => [...commands, ...verbCommands], [commands, verbCommands]);
   /*
    * Its sizes, dragged (2026-10-31): the status column's width, by the handle
    * between it and the consoles, and each console's height, by the handle
@@ -6684,6 +6784,7 @@ export default function App() {
                       members={members}
                       onFocus={focusPane}
                       onLeaveOut={leaveOut}
+                      onExpReset={resetExpOf}
                       editFor={editFor}
                       onMuster={musterParty}
                       onOpen={showSession}
@@ -6719,6 +6820,7 @@ export default function App() {
                     name={entry?.name ?? block.id}
                     onFocus={focusPane}
                     onLeaveOut={leaveOut}
+                    onExpReset={resetExpOf}
                     onEdit={editFor(block.id)}
                     onOpen={showSession}
                     onStop={stopIn}
@@ -7084,7 +7186,7 @@ export default function App() {
       />
 
       <CommandPalette
-        commands={commands}
+        commands={paletteCommands}
         find={findFromPalette}
         onClose={closePalette}
         onTogglePin={pins.toggle}

@@ -19,6 +19,7 @@ import {
   explorerRoom,
   explorerRoomView,
   explorerTextblock,
+  explorerWarm,
   explorerWear,
   type MmeRealm
 } from '../Explorer';
@@ -510,6 +511,19 @@ describe('MMUD Explorer for the character being played', () => {
     expect(lairRogue.shown?.['dmg']).toMatch(/\*$/);
     const detail = await explorerDetail(fixture(), character(), 'monsters', rogue.number);
     expect(detail?.table?.[0]?.label.map((run) => run.text).join('')).toBe('Experience');
+  });
+
+  // 2026-11-01: worked out ahead, so the card that asks finds it done.
+  it('warms the damage simulation for a character, leaving the next question nothing to do', async () => {
+    const thief = character({
+      className: 'Thief',
+      progress: { ...EMPTY_CHARACTER.progress, level: 33, strength: 41, agility: 77 }
+    });
+    const asked = async (): Promise<boolean | undefined> =>
+      (await explorerCompare(fixture(), thief, 'monsters', [1])).rows[0]?.worked;
+    expect(await asked()).toBeUndefined();
+    await explorerWarm(fixture(), thief, { ...DEFAULT_EXPLORER_OPTIONS, fights: null }, null);
+    expect(await asked()).toBe(true);
   });
 
   it('lists classes and races, a race’s stats toned, and builds a class with a race', async () => {

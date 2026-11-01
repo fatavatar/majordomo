@@ -2843,6 +2843,36 @@ function fillPartyBox(
 }
 
 /**
+ * MME's *Calc dmg vs char* worked out before anything asks for it (2026-11-01):
+ * every monster's blows against the character as its cards ask (`explorerDetail`,
+ * `explorerList`) and, in a party, against the party as Hunting Grounds asks.
+ * About two seconds a character on mudrev the first time and again only when
+ * its defences change; the figures are kept per set of defences (mudtool
+ * 32221e5), so warming one character leaves the others' alone. Nothing comes
+ * back: what it leaves is the figures, which the next question finds done.
+ */
+export async function explorerWarm(
+  realm: MmeRealm,
+  state: CharacterState,
+  options: ExplorerOptions,
+  how: HowItFights | null,
+  party: MmeParty | null = null
+): Promise<void> {
+  await useRealm(realm);
+  if (!supported()) return;
+  useCharacter(state, options);
+  damageVsCharacter();
+  if (party === null || party.size < 2) return;
+  const was = attackSetup;
+  try {
+    fillPartyBox({ state, how }, party);
+    damageVsCharacter();
+  } finally {
+    attackSetup = was;
+  }
+}
+
+/**
  * Every lair group and boss in reach, priced by MME's exp/hour for the
  * character (2026-10-29): its attack, heal and blessings (`setup`), and each
  * monster's blows simulated against its own defences first, as MME's *Calc

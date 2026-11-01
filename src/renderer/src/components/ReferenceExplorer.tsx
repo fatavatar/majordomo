@@ -168,6 +168,33 @@ export function sharedRows(entry: ReferenceEntry): readonly number[] | null {
 }
 
 /**
+ * The details each character has been answered with, kept for the page
+ * (2026-11-01): a card opened on a monster already looked at draws its
+ * answer at once, where every open asked the Explorer's thread again and
+ * waited behind whatever it was pricing. Asked again all the same and
+ * replaced when it comes back, since the key the card asks by is the
+ * character's gear and level and not everything the answer reads (its
+ * stats, its party, how it fights). Per character, the last
+ * `KEPT_DETAILS` of each.
+ */
+const KEPT_DETAILS = 200;
+const keptDetails = new WeakMap<ExplorerCalls, Map<string, ExplorerDetail | null>>();
+function keptFor(calls: ExplorerCalls): Map<string, ExplorerDetail | null> {
+  let kept = keptDetails.get(calls);
+  if (kept === undefined) {
+    kept = new Map();
+    keptDetails.set(calls, kept);
+  }
+  return kept;
+}
+function keep(calls: ExplorerCalls, asked: string, detail: ExplorerDetail | null): void {
+  const kept = keptFor(calls);
+  kept.delete(asked);
+  kept.set(asked, detail);
+  while (kept.size > KEPT_DETAILS) kept.delete(kept.keys().next().value!);
+}
+
+/**
  * MME's detail for an entry: undefined while it is asked, null where MME has
  * none (no link, a realm it does not read).
  */
@@ -189,7 +216,10 @@ export function useExplorerDetail(
     if (calls === null || kind === null || n === null) return;
     let live = true;
     void calls.detail(kind, n, DEFAULT_EXPLORER_OPTIONS).then(
-      (detail) => live && setAnswer({ asked, detail }),
+      (detail) => {
+        keep(calls, asked, detail);
+        if (live) setAnswer({ asked, detail });
+      },
       () => live && setAnswer({ asked, detail: null })
     );
     return () => {
@@ -197,7 +227,9 @@ export function useExplorerDetail(
     };
   }, [calls, kind, n, asked]);
   if (calls === null || kind === null || n === null) return null;
-  return answer?.asked === asked ? answer.detail : undefined;
+  if (answer?.asked === asked) return answer.detail;
+  // Not answered yet this time: what it was answered with last, while it is asked again.
+  return keptFor(calls).get(asked);
 }
 
 /** The lists whose records the slide-out answers by name: everything but a shop. */

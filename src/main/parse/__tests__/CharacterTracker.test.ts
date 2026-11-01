@@ -11205,6 +11205,23 @@ describe('the spellbook and the belongings record', () => {
       expect(state.stats?.tally.onlineSince).toBe(T0 + 2_000);
     });
 
+    // 2026-11-01: the Timeline card's record, read off the state after each block.
+    it('records what the character was doing: idle, a fight, then a rest', () => {
+      const tracker = new CharacterTracker();
+      feedThrough(tracker, [
+        ...ARRIVE,
+        '*Combat Engaged*',
+        'You gain 66 experience.',
+        '*Combat Off*',
+        '[HP=34]:',
+        'You are now resting.'
+      ]);
+      const kinds = (tracker.current.tally.activity?.spans ?? []).map((span) => span.kind);
+      expect(kinds).toEqual(['idle', 'fight', 'idle', 'rest']);
+      const fight = tracker.current.tally.activity!.spans[1]!;
+      expect(fight.at).toBe(T0 + 3_000);
+    });
+
     it('settles both clocks when the realm is left, and keeps the totals', () => {
       const { state, sink } = fakeBelongings();
       const tracker = new CharacterTracker();
