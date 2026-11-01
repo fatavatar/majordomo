@@ -58,13 +58,36 @@ export default function ToolbarCard({
   onPinButton,
   ...chrome
 }: ToolbarCardProps) {
+  return (
+    <BentoCard {...chrome} className="toolbar-card" title={t('cards.toolbar.title')}>
+      <ToolbarRow
+        onPinButton={onPinButton}
+        pinnedButtons={pinnedButtons}
+        returnFocus={chrome.returnFocus}
+        subject={subject}
+      />
+    </BentoCard>
+  );
+}
+
+/**
+ * The toolbar's row on its own, without a card around it (2026-10-31): what
+ * the card holds, and what each character's status in the Stable carries
+ * small under its name.
+ */
+export function ToolbarRow({
+  subject,
+  pinnedButtons,
+  onPinButton,
+  returnFocus
+}: Pick<ToolbarCardProps, 'subject' | 'pinnedButtons' | 'onPinButton' | 'returnFocus'>) {
   const all = toolbarButtons(subject);
   const shown = all.filter((button) => pinnedButtons.has(button.id));
   const kebab = useRef<HTMLButtonElement | null>(null);
   const [menu, setMenu] = useState(false);
 
   return (
-    <BentoCard {...chrome} className="toolbar-card" title={t('cards.toolbar.title')}>
+    <>
       <div className="toolbar-row" role="toolbar" aria-label={t('cards.toolbar.title')}>
         {shown.length === 0 ? (
           /*
@@ -109,11 +132,11 @@ export default function ToolbarCard({
           }))}
           onDismiss={() => {
             setMenu(false);
-            chrome.returnFocus?.();
+            returnFocus?.();
           }}
         />
       )}
-    </BentoCard>
+    </>
   );
 }
 

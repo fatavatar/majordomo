@@ -200,26 +200,5 @@ export function together(rows: readonly BoardRow[]): { in: number; of: number } 
   };
 }
 
-/**
- * A roster made from the party as it stands: whoever `self`'s listing names,
- * plus `self`, led by whoever `self` follows (or `self`). The ranks are the
- * listing's.
- */
-export function rosterFromListing(id: string, realm: string, self: CharacterState): PartyRoster {
-  const members = self.party.members
-    .filter((member) => !member.invited)
-    .map((member) => ({ name: member.name, rank: member.rank }));
-  const name = self.name;
-  if (name !== null && !members.some((member) => sameName(member.name, name)))
-    members.unshift({ name, rank: null });
-  const head = self.party.following ?? name;
-  return {
-    id,
-    realm,
-    leader: members.find((member) => head !== null && sameName(member.name, head))?.name ?? null,
-    members,
-    regroup: true,
-    forgotten: [],
-    places: []
-  };
-}
+// Made from the party as it stands; in shared, since main makes rosters on its own too (2026-10-31).
+export { rosterFromListing } from '@shared/partyRoster';

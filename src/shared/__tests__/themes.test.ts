@@ -3,14 +3,12 @@ import { describe, expect, it } from 'vitest';
 import {
   CONSOLE_PALETTES,
   consolePaletteFor,
-  consoleThemeFor,
   DEFAULT_CONSOLE_PALETTE,
   DEFAULT_THEME,
   isConsolePalette,
   isTerminalThemeId,
   TERMINAL_THEME_IDS,
   TERMINAL_THEMES,
-  isDarkTheme,
   isThemeId,
   isThemePreference,
   resolveTheme,
@@ -207,6 +205,23 @@ describe('theme legibility', () => {
     }
   });
 
+  // 2026-10-31: every dark theme wore one palette and every light theme
+  // another, so following the theme from one to the next changed nothing.
+  it('gives every theme a console palette of its own, every ink readable on it', () => {
+    const grounds = new Set(ALL.map((theme) => JSON.stringify(theme.terminal)));
+    expect(grounds.size).toBe(ALL.length);
+    const inks = ['red', 'green', 'yellow', 'blue', 'magenta', 'cyan', 'white'] as const;
+    for (const theme of ALL.filter((entry) => entry.id !== 'dark' && entry.id !== 'light')) {
+      for (const ink of inks) {
+        for (const key of [ink, `bright${ink[0]!.toUpperCase()}${ink.slice(1)}`] as const) {
+          const value = theme.terminal[key as keyof TerminalPalette];
+          const ratio = contrast(value, theme.terminal.background);
+          expect(ratio, `${theme.id}.${key} = ${ratio.toFixed(2)}:1`).toBeGreaterThanOrEqual(4.5);
+        }
+      }
+    }
+  });
+
   it('matches colour 0 to the ground so a black-background run stays invisible', () => {
     // The server paints large areas with ESC[40m. If colour 0 is not the
     // terminal's own ground, a light theme gets a dark band across the page.
@@ -287,60 +302,6 @@ describe('guards', () => {
   });
 });
 
-/**
- * The console's own ground when the chrome's is light.
- *
- * Pure and here rather than in the renderer because the terminal frame
- * (`--ink-slate`) is derived from whichever palette this answers with, and the
- * two must not be able to disagree about which one that is.
- */
-describe('the console keeping its own ground', () => {
-  it('leaves a dark chrome alone: there is nothing to part from', () => {
-    expect(consoleThemeFor(THEMES.dracula, true, 'nord').id).toBe('dracula');
-    expect(consoleThemeFor(THEMES.dark, true, 'nord').id).toBe('dark');
-  });
-
-  it('leaves a light chrome alone when nobody asked', () => {
-    expect(consoleThemeFor(THEMES.light, false, 'nord').id).toBe('light');
-  });
-
-  it('hands a light chrome the dark palette that was asked for', () => {
-    const answer = consoleThemeFor(THEMES['github-light'], true, 'nord');
-    expect(answer.id).toBe('nord');
-    expect(answer.appearance).toBe('dark');
-  });
-
-  it('refuses a light palette for a console asked to stay dark', () => {
-    // Not a preference but a contradiction, so it is answered rather than obeyed.
-    expect(consoleThemeFor(THEMES.light, true, 'ayu-light' as never).id).toBe(DEFAULT_THEME);
-    expect(consoleThemeFor(THEMES.light, true, 'nope' as never).id).toBe(DEFAULT_THEME);
-  });
-
-  it('is dark whatever it answers with, for every light theme in the registry', () => {
-    for (const id of themesOfAppearance('light')) {
-      expect(consoleThemeFor(THEMES[id], true, DEFAULT_THEME).appearance).toBe('dark');
-    }
-  });
-});
-
-describe('isDarkTheme', () => {
-  it('accepts only registered dark ids', () => {
-    expect(isDarkTheme('dark')).toBe(true);
-    expect(isDarkTheme('nord')).toBe(true);
-    expect(isDarkTheme('light')).toBe(false);
-    expect(isDarkTheme('ayu-light')).toBe(false);
-    expect(isDarkTheme('system')).toBe(false);
-    expect(isDarkTheme(null)).toBe(false);
-  });
-
-  it('agrees with the registry it is offered from', () => {
-    // The settings screen offers `themesOfAppearance('dark')` and the file
-    // coerces with this; a form must not offer what the file refuses.
-    for (const id of themesOfAppearance('dark')) expect(isDarkTheme(id)).toBe(true);
-    for (const id of themesOfAppearance('light')) expect(isDarkTheme(id)).toBe(false);
-  });
-});
-
 /* -------------------------------------------------------------------------
  * Console palettes
  * ---------------------------------------------------------------------- */
@@ -389,8 +350,8 @@ describe('console palette registry', () => {
     for (const id of TERMINAL_THEME_IDS) expect(TERMINAL_THEMES[id].id).toBe(id);
   });
 
-  it('offers `theme` plus every palette, in registration order', () => {
-    expect(CONSOLE_PALETTES).toEqual(['theme', ...TERMINAL_THEME_IDS]);
+  it('offers the two that follow the theme plus every palette, in registration order', () => {
+    expect(CONSOLE_PALETTES).toEqual(['theme', 'theme-light', ...TERMINAL_THEME_IDS]);
     expect(CONSOLE_PALETTES[0]).toBe(DEFAULT_CONSOLE_PALETTE);
   });
 
@@ -480,25 +441,31 @@ describe('console palette legibility', () => {
 });
 
 describe('consolePaletteFor', () => {
-  it('defers to the theme the console resolved to when nothing was named', () => {
-    for (const id of THEME_IDS) {
+  it("wears a dark theme's own palette when following it", () => {
+    for (const id of themesOfAppearance('dark')) {
       expect(consolePaletteFor(THEMES[id], 'theme')).toBe(THEMES[id].terminal);
+      expect(consolePaletteFor(THEMES[id], 'theme-light')).toBe(THEMES[id].terminal);
     }
   });
 
-  // The default has to be the client exactly as it was, or every existing
-  // options file changes what it looks like on the day this shipped.
-  it('leaves the shipped default alone', () => {
-    const console = consoleThemeFor(THEMES.dark, true, DEFAULT_THEME);
-    expect(consolePaletteFor(console, DEFAULT_CONSOLE_PALETTE)).toEqual(THEMES.dark.terminal);
+  // The shipped default: a light theme has to make the realm's black its
+  // paper, so the console stays on the dark palette unless asked otherwise.
+  it('stays dark under every light theme by default, and follows it when asked', () => {
+    for (const id of themesOfAppearance('light')) {
+      expect(consolePaletteFor(THEMES[id], DEFAULT_CONSOLE_PALETTE)).toBe(
+        THEMES[DEFAULT_THEME].terminal
+      );
+      expect(consolePaletteFor(THEMES[id], 'theme-light')).toBe(THEMES[id].terminal);
+    }
   });
 
-  it('lets a named palette outrank the theme, and `keepDark` with it', () => {
-    // A palette the player named is an answer to the question `keepDark` asks,
-    // so it wins — including a light palette under a light chrome kept dark.
-    const console = consoleThemeFor(THEMES.light, true, 'nord');
-    expect(consolePaletteFor(console, 'neon-night')).toBe(TERMINAL_THEMES['neon-night'].palette);
-    expect(consolePaletteFor(console, 'parchment')).toBe(TERMINAL_THEMES.parchment.palette);
+  it('lets a named palette settle the console whatever the theme', () => {
+    for (const id of THEME_IDS) {
+      expect(consolePaletteFor(THEMES[id], 'neon-night')).toBe(
+        TERMINAL_THEMES['neon-night'].palette
+      );
+      expect(consolePaletteFor(THEMES[id], 'parchment')).toBe(TERMINAL_THEMES.parchment.palette);
+    }
   });
 });
 
@@ -508,6 +475,7 @@ describe('isTerminalThemeId / isConsolePalette', () => {
     expect(isTerminalThemeId('theme')).toBe(false);
     expect(isTerminalThemeId('dark')).toBe(false);
     expect(isConsolePalette('theme')).toBe(true);
+    expect(isConsolePalette('theme-light')).toBe(true);
     expect(isConsolePalette('neon-night')).toBe(true);
     expect(isConsolePalette('dark')).toBe(false);
     expect(isConsolePalette(null)).toBe(false);

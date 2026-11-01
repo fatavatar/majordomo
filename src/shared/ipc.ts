@@ -1153,6 +1153,12 @@ export const Invoke = {
   saveRoster: 'party:save',
   /** A roster taken off the card; answers every roster after. */
   removeRoster: 'party:remove',
+  /**
+   * Disband pressed (2026-10-31): the party broken up in the realm — the
+   * leader's `disband` where the leader is ours, else each of ours leaves —
+   * and its roster forgotten. Answers every roster after.
+   */
+  disbandParty: 'party:disband',
   /** Regroup pressed: every act at once. How many were taken. */
   regroupParty: 'party:regroup',
   /** Muster pressed: each member of ours sent, with what happened, a line each. */
@@ -1759,6 +1765,8 @@ export interface IpcApi {
   saveRoster(roster: PartyRoster): Promise<PartyRoster[]>;
   /** A roster removed; every roster after. */
   removeRoster(id: string): Promise<PartyRoster[]>;
+  /** The party broken up in the realm and its roster forgotten; every roster after. */
+  disbandParty(id: string): Promise<PartyRoster[]>;
   /** Regroup, now, whatever the automatic switch says. How many acts were taken. */
   regroupParty(id: string): Promise<number>;
   /** Muster: to the leader, or to a place by `sys goto`. A line per member of ours. */

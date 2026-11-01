@@ -15,6 +15,7 @@
 import fs from 'node:fs/promises';
 import { cpSync, existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
+import { randomUUID } from 'node:crypto';
 
 import { ConfigStore } from './config/ConfigStore';
 import { reconcileWithTemplate } from './config/reconcile';
@@ -68,6 +69,7 @@ import {
   type RegroupAct
 } from './session/PartyKeeper';
 import {
+  formedParty,
   readPlace,
   sameName,
   withStatedPlaces,
@@ -682,6 +684,82 @@ function keptOn(realm: string): KeptMember[] {
     });
   }
   return kept;
+}
+
+/**
+ * A roster made just now: started with its characters' own MegaMUD sys goto
+ * words and every place the realm itself has listed for sys goto.
+ */
+function saveNewRoster(made: PartyRoster): PartyRoster[] {
+  if (!parties) return [];
+  const places = keptOn(made.realm)
+    .map(({ session }) => host?.get(session)?.manager.megaMudop.place ?? '')
+    .map(readPlace)
+    .filter((place): place is string => place !== null);
+  return parties.save({ ...made, places: withStatedPlaces(places, parties.gotoOn(made.realm)) });
+}
+
+/**
+ * Characters of ours whose party was disbanded from the Stable or the Party
+ * card, by `realm|name`: no roster is made for them again until their listing
+ * shows the party gone, or one made before the `disband` reached the realm
+ * would bring the party back.
+ */
+const disbanded = new Set<string>();
+
+/**
+ * A party formed in the realm keeps a roster without being asked (2026-10-31):
+ * Regroup, Muster and the Stable's party block are there for it as soon as
+ * one of ours is in a party of two or more that no roster names. A member
+ * the listing names that the roster does not is added to it, so the roster
+ * follows the party as it grows; Disband is what forgets it. Making and
+ * tearing down rosters by hand was too much overhead to ask of a party.
+ */
+function keepFormedParty(id: SessionId): void {
+  const character = host?.get(id)?.manager.character;
+  if (!parties || !character || character.name === null) return;
+  const realm = labelOf(id).server;
+  const self = `${realm}|${character.name.toLowerCase()}`;
+  if (character.party.members.filter((member) => !member.invited).length < 2) {
+    disbanded.delete(self);
+    return;
+  }
+  if (disbanded.has(self)) return;
+  const next = formedParty(parties.all, realm, character, randomUUID);
+  if (next === null) return;
+  if (parties.all.some((roster) => roster.id === next.id)) parties.save(next);
+  else saveNewRoster(next);
+}
+
+/**
+ * A roster's party broken up in the realm: the leader's `disband` where the
+ * leader is ours and in the game, else each of ours in it leaves. Its members
+ * of ours are kept from being given a roster again until it is gone.
+ */
+function disband(roster: PartyRoster): void {
+  const ours = keptOn(roster.realm).filter(
+    (member) =>
+      member.character.name !== null &&
+      roster.members.some((kept) => sameName(kept.name, member.character.name!))
+  );
+  for (const member of ours)
+    disbanded.add(`${roster.realm}|${member.character.name!.toLowerCase()}`);
+  const leader =
+    roster.leader === null
+      ? undefined
+      : ours.find((member) => sameName(member.character.name!, roster.leader!));
+  if (leader !== undefined && leader.inGame) {
+    host?.get(leader.session)?.manager.partyCommand('disband', t('session.party.disband'));
+    return;
+  }
+  for (const member of ours)
+    if (member.inGame && member.character.party.members.length > 0)
+      host
+        ?.get(member.session)
+        ?.manager.partyCommand(
+          'leave',
+          t('session.party.disbandLeave', { name: member.character.name! })
+        );
 }
 
 /** One Regroup act, carried out by the character it names. Whether it was taken. */
@@ -2152,6 +2230,7 @@ function createHost(): SessionHost {
       // The realm's sys goto places, once a character has heard it list them.
       const places = host?.get(id)?.manager.character.gotoPlaces ?? [];
       if (places.length > 0) parties.gotoStated(labelOf(id).server, places);
+      keepFormedParty(id);
       partyKeeper.check(parties.all, keptOn);
     },
     partyForgot: (id, name) => parties?.forget(labelOf(id).server, name),
@@ -3097,7 +3176,6 @@ function registerIpc(): void {
   handle(Invoke.partyRosters, () => parties?.all ?? []);
   handle(Invoke.saveRoster, (_caller, roster: unknown) => {
     if (!parties) return [];
-    // A roster made just now starts with its characters' own MegaMUD sys goto words.
     const made = roster as Partial<PartyRoster> | null;
     if (
       made !== null &&
@@ -3105,17 +3183,8 @@ function registerIpc(): void {
       typeof made.realm === 'string' &&
       !parties.all.some((entry) => entry.id === made.id) &&
       (made.places ?? []).length === 0
-    ) {
-      const places = keptOn(made.realm)
-        .map(({ session }) => host?.get(session)?.manager.megaMudop.place ?? '')
-        .map(readPlace)
-        .filter((place): place is string => place !== null);
-      // And every place the realm itself has listed for sys goto.
-      return parties.save({
-        ...made,
-        places: withStatedPlaces(places, parties.gotoOn(made.realm))
-      });
-    }
+    )
+      return saveNewRoster(made as PartyRoster);
     const before = parties.all.find((entry) => entry.id === made?.id)?.leader ?? null;
     const saved = parties.save(roster);
     // A leader changed on the card: the party re-formed round them now, as a
@@ -3160,6 +3229,12 @@ function registerIpc(): void {
   handle(Invoke.removeRoster, (_caller, id: unknown) =>
     typeof id === 'string' ? (parties?.remove(id) ?? []) : (parties?.all ?? [])
   );
+  handle(Invoke.disbandParty, (_caller, id: unknown) => {
+    const roster = parties?.all.find((entry) => entry.id === id);
+    if (!parties || !roster) return parties?.all ?? [];
+    disband(roster);
+    return parties.remove(roster.id);
+  });
   handle(Invoke.roomBrief, (_caller, session: SessionId, map: number, room: number) => {
     const world = worldFor(session);
     // A realm with no world loaded knows nothing about any room, which is the

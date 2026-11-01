@@ -1,45 +1,13 @@
 import { Fragment, type ReactNode } from 'react';
 
 import { KitBar, KitLine, compact } from '../kit';
-import { ratio, vitalLevel, type CharacterState, type VitalThresholds } from '@shared/character';
+import type { CharacterState } from '@shared/character';
 import type { ExperienceStanding } from '@shared/experience';
 import { t } from '../../lib/i18n';
-import { levelWord } from '../../lib/vitals';
 import type { ExperienceView } from '../ExperienceScope';
-
-/** One vital as its bar, the figures inside it and the threshold band its fill wears. */
-function VitalBar({
-  value,
-  max,
-  unit,
-  tone,
-  thresholds
-}: {
-  value: number | null;
-  max: number | null;
-  unit: string;
-  tone: 'life' | 'mana';
-  thresholds: VitalThresholds;
-}) {
-  const fraction = ratio(value, max);
-  const level = vitalLevel(value, max, thresholds);
-  return (
-    <KitBar
-      fraction={fraction}
-      label={unit}
-      level={level}
-      max={max === null ? undefined : max.toLocaleString()}
-      tag={fraction === null ? levelWord(level) : `${Math.round(fraction * 100)}%`}
-      tone={tone}
-      unit={unit}
-      value={value === null ? '—' : value.toLocaleString()}
-    />
-  );
-}
 
 export interface VitalsGlanceProps {
   character: CharacterState;
-  thresholds: { hp: VitalThresholds; mana: VitalThresholds };
   standing: ExperienceStanding | null;
   owed: { value: number | null; derived: boolean };
   /** The experience over the card's chosen view, and the rows that draw it. */
@@ -86,14 +54,13 @@ function towards(
  */
 export default function VitalsGlance({
   character,
-  thresholds,
   standing,
   owed,
   view,
   experience,
   afflicted
 }: VitalsGlanceProps) {
-  const { vitals, progress } = character;
+  const { progress } = character;
   const hours = view.levelInMs === null ? null : view.levelInMs / 3_600_000;
   const next = standing?.next ?? (progress.level === null ? null : progress.level + 1);
   const through = towards(progress.exp, standing, progress.expTable);
@@ -136,22 +103,7 @@ export default function VitalsGlance({
       : t('cards.vitals.toLevelFormat', { level: next });
   return (
     <>
-      <VitalBar
-        max={vitals.hpMax}
-        thresholds={thresholds.hp}
-        tone="life"
-        unit="HP"
-        value={vitals.hp}
-      />
-      {vitals.mana !== null && (
-        <VitalBar
-          max={vitals.manaMax}
-          thresholds={thresholds.mana}
-          tone="mana"
-          unit={vitals.manaType ?? 'MA'}
-          value={vitals.mana}
-        />
-      )}
+      {/* Health and mana are on the line under the console (`ConsoleStatus`, 2026-11-01). */}
       {afflictions}
       <dl className="readout glance-vitals">
         <dt>{t('cards.vitals.labels.level')}</dt>

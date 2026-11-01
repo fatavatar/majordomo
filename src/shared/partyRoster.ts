@@ -151,3 +151,73 @@ export function readRoster(value: unknown): PartyRoster | null {
     places: [...new Set(places)]
   };
 }
+
+/**
+ * A roster made from the party as it stands: whoever `self`'s listing names,
+ * plus `self`, led by whoever `self` follows (or `self`). The ranks are the
+ * listing's.
+ */
+export function rosterFromListing(
+  id: string,
+  realm: string,
+  self: {
+    name: string | null;
+    party: {
+      following: string | null;
+      members: ReadonlyArray<{ name: string; rank: RosterRank | null; invited?: boolean }>;
+    };
+  }
+): PartyRoster {
+  const members = self.party.members
+    .filter((member) => !member.invited)
+    .map((member) => ({ name: member.name, rank: member.rank }));
+  const name = self.name;
+  if (name !== null && !members.some((member) => sameName(member.name, name)))
+    members.unshift({ name, rank: null });
+  const head = self.party.following ?? name;
+  return {
+    id,
+    realm,
+    leader: members.find((member) => head !== null && sameName(member.name, head))?.name ?? null,
+    members,
+    regroup: true,
+    forgotten: [],
+    places: []
+  };
+}
+
+/**
+ * The roster a party formed in the realm wants (2026-10-31), as `self`'s
+ * listing has it: a new one made from the listing where no roster names
+ * `self` or anybody in it; the roster naming one of them, grown by whoever
+ * the listing names that no roster does; or null where nothing is to change
+ * (no party of two, or its roster already names everybody).
+ */
+export function formedParty(
+  rosters: readonly PartyRoster[],
+  realm: string,
+  self: Parameters<typeof rosterFromListing>[2],
+  newId: () => string
+): PartyRoster | null {
+  if (self.name === null) return null;
+  const listed = self.party.members.filter((member) => member.invited !== true);
+  if (listed.length < 2) return null;
+  const roster =
+    rosterOf(rosters, realm, self.name) ??
+    listed.map((member) => rosterOf(rosters, realm, member.name)).find((r) => r !== null) ??
+    null;
+  if (roster === null) return rosterFromListing(newId(), realm, self);
+  const added = listed.filter(
+    (member) =>
+      !roster.members.some((kept) => sameName(kept.name, member.name)) &&
+      rosterOf(rosters, realm, member.name) === null
+  );
+  if (added.length === 0) return null;
+  return {
+    ...roster,
+    members: [
+      ...roster.members,
+      ...added.map((member) => ({ name: member.name, rank: member.rank }))
+    ]
+  };
+}

@@ -66,8 +66,19 @@ export interface ExperienceView {
  */
 export function useExperienceView(character: CharacterState, session: SessionId): ExperienceView {
   const [scope, choose] = useRememberedChoice(session, 'vitals-exp-scope', SCOPES, 'session');
+  return { ...experienceFigures(character, scope, Date.now()), scope, choose };
+}
+
+/**
+ * The figures for one view at one instant, without the choosing: what the
+ * hook reads, and what the Stable adds up across its rows (2026-10-31).
+ */
+export function experienceFigures(
+  character: CharacterState,
+  scope: string,
+  now: number
+): Omit<ExperienceView, 'scope' | 'choose'> {
   const { progress, tally, expResetAt } = character;
-  const now = Date.now();
   const standing = experienceStanding(progress.level, progress.exp, progress.expTable);
   const owed = experienceOwed(progress.expNeeded, standing);
   let made: number | null;
@@ -88,8 +99,6 @@ export function useExperienceView(character: CharacterState, session: SessionId)
       within === null ? null : ratePerHour(within.made, within.presentMs, tuning().rateFloorMs);
   }
   return {
-    scope,
-    choose,
     made,
     perHour,
     levelInMs: levelIn(owed.value, perHour),

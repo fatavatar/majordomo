@@ -372,13 +372,18 @@ notices:
       "Notify" turned off to keep the same silence. Turn it back on for the rows worth being
       interrupted for. {fileList}'
     darkConsoleStated:
-      '"ui.console" was written into {file}, on: under a light theme the console keeps a dark
-      palette, because a light one has to make the realm''s black its paper. Choose which dark
-      palette, or turn it off, there or on the Majordomo page in settings.'
+      '"ui.console" was written into {file}: under a light theme the console keeps a dark
+      palette, because a light one has to make the realm''s black its paper. Choose another, or
+      let it follow a light theme, there or on the Majordomo page in settings.'
+    consoleBecameOnePalette:
+      'The console''s colours are one setting now, "ui.console.palette", in {file}: "keepDark"
+      and "darkTheme" were taken out, and a console that followed a light theme says
+      "theme-light". Every dark theme wore the same console palette, so the dark theme chosen
+      there never changed anything.'
     consolePaletteStated:
       '"ui.console.palette" was written into {file} as "theme", which is the console you already
       have. Seven palettes repaint what the realm sends — four dark, three light — and naming one
-      there or on the Majordomo page in settings outranks the two keys beside it.'
+      there or on the Majordomo page in settings settles the console whatever the theme.'
     statusLineStated:
       '"ui.rewrites" was written into {file}, all off: the status line and listings you can design
       to draw in the realm''s place. Turn any on there or on the Rewrites section in settings.'
@@ -1481,6 +1486,14 @@ palette:
     resetCardsHint: back to the shipped arrangement
     resetCardsLabel: Reset this character’s cards
     showCardHint: in this character’s rail
+    stableLabel: Show the Stable
+    tuckCardsLabel: Tuck the cards away
+    tuckCardsHint: a thin strip at the edge, out while the pointer is on it
+    pinCardsLabel: Pin the cards out
+    pinCardsHint: beside the console, as they always stood
+    stableHint: every character in the realm at once, each beside its console
+    leaveStableLabel: Leave the Stable
+    leaveStableHint: back to the character the keyboard is talking to
     showCardLabel: 'Show card: {cardName}'
     splitLabel: 'Split: also show {characterName}'
     splitSideBySideHint: side by side
@@ -1528,8 +1541,10 @@ palette:
     debugHint: raw, framed, classified
     hideDebugLabel: Hide the debug window
     showDebugLabel: Show the debug window
-    consolePaletteFollowHint: whatever palette the theme brings
+    consolePaletteFollowHint: the theme's palette, kept dark under a light theme
     consolePaletteFollowLabel: 'Console: follow the theme'
+    consolePaletteFollowLightHint: the theme's palette, light under a light theme
+    consolePaletteFollowLightLabel: 'Console: follow the theme, light ones too'
     consolePaletteLabel: 'Console: {paletteLabel}'
     tabsLeftHint: roomier, cards on the right
     tabsOnLeftLabel: Tabs on the left
@@ -1699,6 +1714,12 @@ tabs:
     markWalking: walking
     whoTooltip: '{characterName} ({realmName})'
 # The status rail under the console.
+# The line along each console's foot (2026-11-01): health, mana, the level and the round.
+consoleStatus:
+  label: Health, mana, experience and the round
+  exp: EXP
+  through: '{into} of {span} into the level'
+  toLevel: '{percent}% to {next}'
 statusRail:
   action:
     tooltip: What automation is doing
@@ -1737,6 +1758,75 @@ statusRail:
     wait: Next combat round — a spell was cast this round; the next waits for the round to turn
   target:
     none: no realm
+# The Stable: every character in the realm at once, each beside its console (2026-10-31).
+stable:
+  tab: Stable
+  tabTitle: Every character in the realm at once, each beside its console
+  head:
+    title: Stable
+    inRealm: '{count} in the realm'
+    together: '{rate} together'
+    stopAll: Stop all
+  since:
+    title: 'Since you looked, {at} · {hours} h {minutes} m'
+    alerts:
+      one: '1 alert'
+      many: '{count} alerts'
+    dismiss: Dismiss
+  row:
+    idle: idle
+    hp: HP
+    mana: MA
+    kai: KAI
+    nowhere: Not placed yet
+    looping: '{loop} · lap {laps} · stop {stop} of {stops}'
+    walking: 'walking to {to} · {done}/{total}'
+    since: '+{made} since you looked'
+    leaveOut: Leave out
+    leaveOutTitle: 'Leave {name} out of the Stable; it is listed at the foot to bring back'
+    open: Open
+    openTitle: "Open {name}'s own screen; Esc comes back here"
+    stop: Stop
+  party:
+    label: "{leader}'s party"
+    title: "{leader}'s party"
+    inRealm: '{count} of {of} in'
+    together: same room
+    apart: spread out
+    regroup: Regroup
+    muster: Muster…
+    stop: Stop party
+    each: 'each · kills split {count} ways'
+    open: '{name} ↗'
+    leaveOutTitle: "Leave {leader}'s party out of the Stable; it is listed at the foot to bring back"
+    disbandTitle: "Disband {leader}'s party: broken up in the realm, and forgotten"
+  cards:
+    add: + Add card
+    title: "The cards on {name}'s status: a check against each placed"
+  rail:
+    following: 'Following {name}'
+    hint: click a console to switch
+  split:
+    status: The Stable's status column
+    console: "{name}'s console in the Stable"
+  leftOut:
+    label: Left out
+    show: Show
+  away:
+    label: Not in the realm
+    offline: offline
+    error: could not connect
+    connect: Connect
+# The card rail tucked away, or pinned out beside the console (2026-10-31).
+rail:
+  tucked:
+    note: Out while the pointer is here
+    pin: Pin
+    pinTitle: Pin the cards out beside the console
+  pinned:
+    note: Pinned beside the console
+    unpin: Unpin
+    unpinTitle: Tuck the cards away into a strip, out while the pointer is on it
 # The pane handles between the console and the rails.
 splitter:
   aria:
@@ -2852,6 +2942,7 @@ cards:
     followAria: 'Follow {name}'
     followButton: Follow
     keepAction: Keep this party — edit who belongs in it
+    disbandAction: Disband — break the party up and forget it
     leaveAction: Leave Party
     notYetListed: not yet listed
     ofMax: '{percent}% of {max}'
@@ -3973,6 +4064,7 @@ settings:
     saved: '{characterName} saved.'
   client:
     # Said at the head of the client's own page (2026-10-25): what Majordomo owes its existence to.
+    lineageTitle: Where Majordomo comes from
     lineage: Majordomo owes its existence to two programs. It is a fork of mudengine, Raymond
       Bennett's MajorMUD client (github.com/rayzorben/mudengine), and every character is
       played by a port of MegaMUD's own engine, read from megamud.exe. Neither project made
@@ -3981,16 +4073,18 @@ settings:
       advancedConsole: the console
       consoleFontHint: A monospace fallback and the bundled CP437 face are always appended.
       consoleFontLabel: Console font
-      consoleFontPlaceholder: LucidaProgrammer Nerd Font Mono
-      consoleDarkThemeLabel: Dark theme for the console
+      fontsBundled: Comes with Majordomo
+      fontsInstalled: On this computer
+      fontsOther: Other…
+      fontsOtherLabel: Font stack
+      fontsOtherPlaceholder: 'Family, Another family'
+      consoleLegend: Console
       consolePaletteDark: '{paletteLabel} (dark)'
-      consolePaletteFollow: Follow the theme
-      consolePaletteHint: The sixteen colours the realm's own codes are painted with. Follow the theme and the console wears whatever palette the theme brings, which is how the client has always looked. Name one instead and it settles the console outright, whichever way the chrome reads.
+      consolePaletteFollow: Follow the theme, staying dark
+      consolePaletteFollowLight: Follow the theme, light ones too
+      consolePaletteHint: The sixteen colours the realm's own codes are painted with. Following the theme, the console wears the theme's palette but stays dark under a light theme, since a light palette makes the realm's black its paper and colour-coded output arrives inverted; choose "light ones too" to follow a light theme all the way. Name a palette instead and it settles the console outright, whichever way the chrome reads.
       consolePaletteLabel: Console colours
       consolePaletteLight: '{paletteLabel} (light)'
-      consoleKeepDarkHint: A light theme has to make the realm's black its paper, so colour-coded output arrives inverted. This keeps the console on a dark palette while everything around it stays light; a dark theme ignores it.
-      consoleKeepDarkLabel: Keep the console dark
-      consoleKeepDarkOutranked: Not consulted while Console Colours names a palette — that choice settles the console on its own. Set it back to "Follow the theme" for this to decide again.
       cursorBar: Bar
       cursorBlink: Blink cursor
       cursorBlock: Block
@@ -4017,7 +4111,7 @@ settings:
         Everything except the console, which is always fixed-pitch. Blank uses the console face. The
         classic card style only, as glance sets its own; JetBrains Mono comes with the client.
       uiFontLabel: Interface font
-      uiFontPlaceholder: the same face as the console
+      uiFontSameAsConsole: The same face as the console
       vitalCautionPercent: '{vitalName} Caution, %'
       vitalCriticalPercent: Critical, %
       vitalsLegend: Vital bar thresholds
@@ -4025,6 +4119,7 @@ settings:
         nothing has stated yet reads as unknown rather than critical.
       vitalHealth: Health
       vitalMana: Mana
+      windowLegend: Window
     records:
       advancedLogSize: how big a log gets
       captureHint: A raw transcript, kept so a line the client could not read can be looked at later.
@@ -4037,6 +4132,7 @@ settings:
         The Talk card starts where it left off instead of empty. Only the conversation channels
         are kept, so the file cannot hold a password.
       conversationsLabel: Persist conversations
+      conversationsLegend: Conversations
       enabled: Keep session log
       fightsHint:
         'Nothing reads it, which is the point: every question worth asking about how a character
@@ -4045,6 +4141,7 @@ settings:
       folderLabel: Folder
       folderPlaceholder: beside the options file
       keepBytesLabel: Keep logs up to, bytes in all
+      logsLegend: Logs
       maxBytesLabel: New log after, bytes
       note: What the client writes down. Every one of these is a file beside the options, and the
         recordings hold everything the realm sent and every command sent back — including, on a
@@ -4798,6 +4895,8 @@ session:
     regroupInvite: 'Regroup: inviting {name} back into the party.'
     regroupJoin: "Regroup: joining {leader}'s party again."
     regroupLeave: 'Regroup: {name} leaves the party it follows, for the leader the Party card names.'
+    disband: 'Disband: breaking up the party; its roster is forgotten.'
+    disbandLeave: 'Disband: {name} leaves the party; its roster is forgotten.'
     regroupRank: 'Regroup: taking the {rank} rank the Party card gives.'
     regroupWalkRefused: 'Regroup could not walk to {leader}: {refused}'
     fanReason: 'Party card: {command}'

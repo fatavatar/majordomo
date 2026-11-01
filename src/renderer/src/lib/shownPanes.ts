@@ -17,17 +17,19 @@ const KEY = 'mudengine.shown';
 export interface Shown {
   panes: SessionId[];
   at: number;
+  /** The Stable shown rather than the panes (2026-10-31). */
+  stable: boolean;
 }
 
-const NOTHING = (): Shown => ({ panes: [], at: 0 });
+const NOTHING = (): Shown => ({ panes: [], at: 0, stable: false });
 
 export function parseShown(stored: string): Shown {
-  const parsed = JSON.parse(stored) as { panes?: unknown; at?: unknown } | null;
+  const parsed = JSON.parse(stored) as { panes?: unknown; at?: unknown; stable?: unknown } | null;
   const panes = Array.isArray(parsed?.panes)
     ? parsed.panes.filter((id): id is SessionId => typeof id === 'string')
     : [];
   const at = typeof parsed?.at === 'number' && Number.isInteger(parsed.at) ? parsed.at : 0;
-  return { panes, at: Math.max(0, at) };
+  return { panes, at: Math.max(0, at), stable: parsed?.stable === true };
 }
 
 const readFrom = (area: StorageArea): Shown => readStored(KEY, parseShown, NOTHING, area);

@@ -15,18 +15,14 @@ import { DEFAULT_STATS_GRAPH, clock, type StatsGraph } from '@shared/tally';
 import CardTable, { type Column } from './CardTable';
 import {
   isStated,
-  ratio,
-  vitalLevel,
   type AfflictionCause,
   type CharacterState,
-  type SessionPhase,
-  type VitalThresholds
+  type SessionPhase
 } from '@shared/character';
 import { experienceOwed, experienceStanding, type ExperienceLevel } from '@shared/experience';
 import type { SessionId } from '@shared/ipc';
 import { useRememberedChoice } from '../hooks/useRemembered';
 import { t } from '../lib/i18n';
-import { levelWord } from '../lib/vitals';
 import { useCompact } from '../lib/skin';
 
 /** What set an affliction on, for its tooltip: how it was read, when, and the line. */
@@ -56,8 +52,6 @@ export interface VitalsCardProps extends CardChrome {
   character: CharacterState;
   /** Which character's card this is, for the chosen face to be remembered against. */
   session: SessionId;
-  /** Where each meter turns yellow and red, from `ui.vitals`. */
-  thresholds: { hp: VitalThresholds; mana: VitalThresholds };
   /**
    * Sends a command on this character's behalf — `exp`, and nothing else.
    *
@@ -82,58 +76,6 @@ const PHASE_WORD: Record<Exclude<SessionPhase, 'in-game'>, string> = {
   unknown: t('cards.realm.facet.unknown'),
   authenticating: t('cards.vitals.badge.phaseAuthenticating')
 };
-
-/**
- * A tonal fill against a track. Flat, no gradient — a meter is data, and per
- * docs/ui-design.md §3.3 data does not get decorated.
- *
- * A null fraction renders as an empty track rather than a full or zero bar: not
- * knowing a maximum is a different state from being at zero, and only one of
- * them means you are about to die.
- *
- * Hue carries the level, and a word carries it too: §6 says state is never
- * colour-only, and the one meter that decides whether you run is the last
- * place to make an exception for a colour-blind player.
- *
- * `tag` says *which resource* the bar is, in the realm's own word — `HP`, and
- * `MA` or `KAI` exactly as the status line spells it. Two stacked bars with two
- * bare fractions on them is a readout you have to know the order of, and the
- * order is not the same for every class: a warrior has one bar, and a mystic's
- * second one is `KAI` rather than mana. Nothing is invented where the word is
- * not known — the tag is simply absent — and that cannot happen while a status
- * line is being read, since the line stating the figure states the word beside
- * it.
- */
-function Meter({
-  value,
-  max,
-  tag,
-  tone,
-  thresholds
-}: {
-  value: number | null;
-  max: number | null;
-  tag: string | null;
-  tone: 'hp' | 'mana';
-  thresholds: VitalThresholds;
-}) {
-  const fraction = ratio(value, max);
-  const level = vitalLevel(value, max, thresholds);
-  const word = levelWord(level);
-  return (
-    <div className={`meter ${tone}${fraction === null ? ' unknown' : ''}`} data-level={level}>
-      <div
-        className="fill"
-        style={fraction === null ? undefined : { width: `${fraction * 100}%` }}
-      />
-      {tag !== null && <span className="meter-tag">{tag}</span>}
-      <span className="meter-label">
-        {value === null ? '—' : max === null ? value : `${value}/${max}`}
-        {word !== null && <span className="meter-state">{word}</span>}
-      </span>
-    </div>
-  );
-}
 
 /** A figure the realm has not stated reads as a dash, never as zero. */
 function figure(value: number | null): string {
@@ -215,14 +157,7 @@ function ExperienceRows({
   );
 }
 
-function VitalsCard({
-  character,
-  session,
-  thresholds,
-  ask,
-  onExpReset,
-  ...chrome
-}: VitalsCardProps) {
+function VitalsCard({ character, session, ask, onExpReset, ...chrome }: VitalsCardProps) {
   const { vitals, progress, phase, inCombat, stealth, afflictions } = character;
   const [face, chooseFace] = useRememberedChoice(session, 'vitals-tab', FACE_IDS, FACE_IDS[0]!);
   const compact = useCompact();
@@ -326,23 +261,10 @@ function VitalsCard({
         experience={experience(false)}
         standing={standing}
         view={view}
-        thresholds={thresholds}
       />
     ) : (
       <>
-        <Meter max={vitals.hpMax} tag="HP" thresholds={thresholds.hp} tone="hp" value={vitals.hp} />
-        {/* No mana row at all for a class that has none — an empty bar would
-            imply a resource that does not exist. */}
-        {vitals.mana !== null && (
-          <Meter
-            max={vitals.manaMax}
-            tag={vitals.manaType}
-            thresholds={thresholds.mana}
-            tone="mana"
-            value={vitals.mana}
-          />
-        )}
-
+        {/* Health and mana are on the line under the console (`ConsoleStatus`, 2026-11-01). */}
         <dl className="readout">
           <dt>{t('cards.realm.column.name')}</dt>
           <dd className={character.name ? '' : 'inert'}>{character.name ?? '—'}</dd>

@@ -1122,8 +1122,6 @@ export class SettingsEditor {
         showLogo: config.ui.showLogo,
         skin: config.ui.skin,
         consolePalette: config.ui.console.palette,
-        consoleKeepDark: config.ui.console.keepDark,
-        consoleDarkTheme: config.ui.console.darkTheme,
         vitals: {
           hp: { ...config.ui.vitals.hp },
           mana: { ...config.ui.vitals.mana }
@@ -1216,8 +1214,6 @@ export class SettingsEditor {
         set(['ui', 'showLogo'], draft.ui.showLogo);
         set(['ui', 'skin'], draft.ui.skin);
         set(['ui', 'console', 'palette'], draft.ui.consolePalette);
-        set(['ui', 'console', 'keepDark'], draft.ui.consoleKeepDark);
-        set(['ui', 'console', 'darkTheme'], draft.ui.consoleDarkTheme);
         for (const vital of ['hp', 'mana'] as const) {
           set(['ui', 'vitals', vital, 'caution'], draft.ui.vitals[vital].caution);
           set(['ui', 'vitals', vital, 'critical'], draft.ui.vitals[vital].critical);

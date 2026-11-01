@@ -17,7 +17,7 @@ import {
   mobRowText,
   type ReferenceEntry
 } from './components/ReferenceDetail';
-import type { IconName } from './components/Icon';
+import Icon, { type IconName } from './components/Icon';
 import { entityNumber } from '@shared/entities';
 import AutomationCard from './components/AutomationCard';
 import LinkCard from './components/LinkCard';
@@ -38,6 +38,7 @@ import { knownGangs } from './lib/gangs';
 import { ago, knownPlayerNames, presentPlayerNames } from './lib/players';
 import { NameIndex } from './lib/names';
 import { readShown, writeShown } from './lib/shownPanes';
+import { stableBlocks, type StableBlock } from './lib/stable';
 import { SkinContext } from './lib/skin';
 import PlayersCard from './components/PlayersCard';
 import GangCard from './components/GangCard';
@@ -72,6 +73,21 @@ import DebugView from './components/DebugView';
 import type { DebugRecord } from '@shared/debug';
 import StatusRail from './components/StatusRail';
 import type { HeldRound } from './components/RoundTimer';
+import ConsoleStatus from './components/ConsoleStatus';
+import {
+  StableAway,
+  StableHead,
+  StableParty,
+  StableStatus,
+  inRealm,
+  madeSince,
+  useAwaySince,
+  useLeftOut,
+  useNarrow,
+  useStableSizes,
+  useStatusCards
+} from './components/StableView';
+
 import StreamCard from './components/StreamCard';
 import VitalsCard from './components/VitalsCard';
 import SelfCard from './components/SelfCard';
@@ -84,7 +100,7 @@ import LoopBuilderCard, {
   type BuilderDestination,
   type BuilderSeed
 } from './components/LoopBuilderCard';
-import ToolbarCard from './components/ToolbarCard';
+import ToolbarCard, { ToolbarRow } from './components/ToolbarCard';
 import { TOOLBAR_IDS, type ToolbarSubject } from './lib/toolbar';
 import { useToolbarPins } from './hooks/useToolbarPins';
 import { forgetStatsBase, recallStatsBase } from './hooks/useRemembered';
@@ -96,6 +112,7 @@ import {
   hidesWhenEmpty,
   useCardLayout,
   DEFAULT_FLOAT,
+  CARDS,
   HIDES_WHEN_EMPTY,
   NO_CARD_SETTINGS,
   type CardId,
@@ -228,6 +245,53 @@ import {
   type TerminalSize
 } from '@shared/types';
 import { setTuning, tuning } from './lib/tuning';
+import { readStored, writeStored } from './lib/storage';
+import { keepFocus } from './lib/focus';
+
+/** Whether the cards are tucked away or pinned out, per browser; and the beat a switch is given to settle. */
+const TUCK_KEY = 'mudengine.tuckCards';
+const TUCK_SETTLE_MS = 160;
+
+/** Each card's glyph in the tucked rail's strip. */
+const CARD_GLYPH: Partial<Record<CardId, IconName>> = {
+  toolbar: 'bolt',
+  self: 'user',
+  vitals: 'heart',
+  combat: 'swords',
+  room: 'door',
+  map: 'route',
+  builder: 'hammer',
+  navigation: 'run',
+  party: 'users',
+  notifications: 'flag',
+  realm: 'server',
+  players: 'at',
+  gang: 'shield',
+  inventory: 'bag',
+  banks: 'coins',
+  quests: 'key',
+  hunting: 'crosshair',
+  conversation: 'broadcast',
+  reference: 'search',
+  stats: 'activity',
+  gear: 'shirt',
+  session: 'terminal',
+  link: 'link',
+  automation: 'sparkle',
+  stream: 'fileText'
+};
+const CARD_TITLE = new Map<string, string>(CARDS.map((card) => [card.id, card.label]));
+
+/** How short and how tall a card placed on a status may be dragged. */
+const STATUS_CARD_MIN_PX = 60;
+const STATUS_CARD_MAX_PX = 1200;
+
+/** The Stable's status column: its width until dragged, and the least either side keeps. */
+const STABLE_STATUS_PX = 320;
+const STABLE_STATUS_MIN_PX = 240;
+const STABLE_CONSOLE_MIN_PX = 420;
+/** The gap between the Stable's rows, as `.terminal-layers` has it. */
+const STABLE_GAP_PX = 8;
 
 const INITIAL_STATE: ConnectionState = {
   phase: 'idle',
@@ -365,6 +429,7 @@ function heightOf(selector: string, fallback: number): number {
  */
 const measureTabs = (): number => widthOf('.workspace > .tab-rail', TAB_RAIL_RANGE.min);
 const measureRail = (): number => widthOf('.workspace > .rail', RAIL_RANGE.min);
+const measureSlide = (): number => widthOf('.rail-slide', RAIL_RANGE.min);
 const measureAbove = (): number => heightOf('.dock-above > .card', DOCK_RANGE.min);
 const measureBelow = (): number => heightOf('.dock-below > .card', DOCK_RANGE.min);
 
@@ -601,6 +666,8 @@ interface CardContext {
     ours: readonly OurMember[];
     save(roster: PartyRoster): void;
     remove(id: string): void;
+    /** The party broken up in the realm and its roster forgotten. */
+    disband(id: string): void;
     regroup(id: string): Promise<number>;
     muster(id: string, target: MusterTarget): Promise<string[]>;
     say(
@@ -740,7 +807,6 @@ function cardElement(id: CardId, ctx: CardContext): ReactNode {
           character={character}
           onExpReset={ctx.resetExp}
           session={ctx.session}
-          thresholds={ctx.thresholds}
         />
       );
     case 'room':
@@ -914,6 +980,7 @@ function cardElement(id: CardId, ctx: CardContext): ReactNode {
           onMuster={ctx.party.muster}
           onRegroup={ctx.party.regroup}
           onRemoveRoster={ctx.party.remove}
+          onDisband={ctx.party.disband}
           onSay={ctx.party.say}
           onSaveRoster={ctx.party.save}
           onSelect={ctx.selectPlayer}
@@ -1238,6 +1305,90 @@ function PinnedFloats({
   );
 }
 
+/**
+ * The cards placed on a status of the Stable (2026-10-31), drawn for one
+ * character through its own layout, so each keeps the settings that
+ * character gave it wherever it is drawn. A component per character, as
+ * `PinnedFloats` is, rather than a loop of hooks.
+ */
+function StatusCardStack({
+  sid,
+  ids,
+  render,
+  onRemove,
+  heightOf,
+  onHeight
+}: {
+  sid: SessionId;
+  ids: readonly CardId[];
+  render(
+    id: CardId,
+    sid: SessionId,
+    layout: CardLayoutApi,
+    remove: () => void,
+    size: Pick<CardChrome, 'onResize' | 'onResizeReset'>
+  ): ReactNode;
+  onRemove(id: CardId): void;
+  /** Its height where its corner grip was dragged on this status, px. */
+  heightOf(id: CardId): number | undefined;
+  onHeight(id: CardId, px: number | null): void;
+}) {
+  const layout = useCardLayout(sid);
+  if (ids.length === 0) return null;
+  /*
+   * The corner grip, as on the rail: the card's box follows the pointer from
+   * the height it had when the grip was pressed, a frame at a time.
+   */
+  const resize = (id: CardId, event: React.PointerEvent<HTMLElement>): void => {
+    const card = event.currentTarget.closest('.card');
+    if (card === null) return;
+    event.preventDefault();
+    const startY = event.clientY;
+    const startH = card.getBoundingClientRect().height;
+    let frame: number | null = null;
+    const move = (at: PointerEvent): void => {
+      if (frame !== null) cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() =>
+        onHeight(
+          id,
+          Math.round(
+            Math.min(STATUS_CARD_MAX_PX, Math.max(STATUS_CARD_MIN_PX, startH + at.clientY - startY))
+          )
+        )
+      );
+    };
+    const up = (): void => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  };
+  return (
+    <div className="stable-cards">
+      {ids.map((id) => {
+        const height = heightOf(id);
+        return (
+          <div
+            className="stable-card"
+            key={id}
+            style={
+              height === undefined
+                ? undefined
+                : ({ '--status-card-h': `${height}px` } as CSSProperties)
+            }
+          >
+            {render(id, sid, layout, () => onRemove(id), {
+              onResize: (event) => resize(id, event),
+              onResizeReset: () => onHeight(id, null)
+            })}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 export default function App() {
   const api = window.mudengine;
 
@@ -1281,12 +1432,46 @@ export default function App() {
   }, [paneIds, sessions]);
 
   const paneAt = Math.min(focusedPane, Math.max(0, panes.length - 1));
-  const session = panes[paneAt] ?? NO_SESSION;
+
+  /*
+   * The Stable (2026-10-31): every character in the realm at once, one row
+   * each beside its own console, shown instead of the panes. The row the
+   * keyboard is talking to is the character being shown while it is, so the
+   * status rail, the palette and every hotkey follow a click on a row as they
+   * follow a tab; and a character opened from it comes back to it on Escape.
+   */
+  const [stable, setStable] = useState(shown.stable);
+  const [stableFocus, setStableFocus] = useState<SessionId | null>(null);
+  const [fromStable, setFromStable] = useState(false);
+  const stableOn = stable && sessions.length > 0;
+  // The characters left out of it, which get no row (`useLeftOut`).
+  const { leftOut, leaveOut, bringBack } = useLeftOut();
+  const rowKey = sessions
+    .filter((entry) => inRealm(views[entry.id]) && !leftOut.includes(entry.id))
+    .map((entry) => entry.id)
+    .join('\n');
+  const stableRows = useMemo(() => {
+    const ids = rowKey.split('\n');
+    return sessions.filter((entry) => ids.includes(entry.id));
+  }, [sessions, rowKey]);
+  const stableAway = useMemo(
+    () => sessions.filter((entry) => !stableRows.includes(entry) && !leftOut.includes(entry.id)),
+    [sessions, stableRows, leftOut]
+  );
+  const stableLeftOut = useMemo(
+    () => sessions.filter((entry) => leftOut.includes(entry.id)),
+    [sessions, leftOut]
+  );
+  const focusedRow =
+    stableFocus !== null && stableRows.some((entry) => entry.id === stableFocus)
+      ? stableFocus
+      : null;
+  const session = stableOn && focusedRow !== null ? focusedRow : (panes[paneAt] ?? NO_SESSION);
   // Nothing is written before the roster arrives, or a reload would forget
   // the choice it is about to restore.
   useEffect(() => {
-    if (panes.length > 0) writeShown({ panes, at: paneAt });
-  }, [panes, paneAt]);
+    if (panes.length > 0) writeShown({ panes, at: paneAt, stable });
+  }, [panes, paneAt, stable]);
 
   /** Every session is a character with a name worth showing; none is no rail. */
   const showTabs = sessions.length > 0;
@@ -1686,12 +1871,7 @@ export default function App() {
     cycle: cycleTheme,
     choose: chooseTheme,
     chooseConsole
-  } = useTheme(
-    characterTheme ?? config.ui.theme,
-    config.ui.console.keepDark,
-    config.ui.console.darkTheme,
-    config.ui.console.palette
-  );
+  } = useTheme(characterTheme ?? config.ui.theme, config.ui.console.palette);
 
   /**
    * Same precedence as density and theme: the palette toggle is remembered, and
@@ -1719,6 +1899,19 @@ export default function App() {
    * nothing: a setting that cannot take effect is worse than one not offered.
    */
   const [railOpen, setRailOpen] = useState(false);
+  /**
+   * The cards tucked away into a strip, out while the pointer is on them
+   * (2026-10-31), or pinned out beside the console: a pin on the rail itself,
+   * remembered per browser as a layout is. Not a setting: it is a choice made
+   * where the cards are, and undone there.
+   */
+  const [tuckPreference, setTuckState] = useState<'tucked' | 'out'>(() =>
+    readStored(
+      TUCK_KEY,
+      (stored) => (stored === 'tucked' ? 'tucked' : 'out'),
+      () => 'out'
+    )
+  );
   /**
    * Whether the debug view is over the console.
    *
@@ -1792,6 +1985,10 @@ export default function App() {
    * console and how far through each of those you can see. A healer watches
    * different things from a warrior, and arranges them differently.
    */
+  /*
+   * In the Stable, the character's own (2026-10-31): the console with the
+   * keyboard brings its cards with it, as its own tab has them.
+   */
   const cards = useCardLayout(session);
 
   /*
@@ -1802,6 +1999,12 @@ export default function App() {
    */
   const widths = usePaneWidths();
   const [resizing, setResizing] = useState(false);
+  // The slid-out rail's own width being dragged, which alone holds it out.
+  const [slideDragging, setSlideDragging] = useState(false);
+  const dragSlide = useCallback((active: boolean) => {
+    setResizing(active);
+    setSlideDragging(active);
+  }, []);
   const rangeFor = useCallback(
     (which: 'rail' | 'tabs' | 'above' | 'below'): SplitRange => {
       const box = layersRef.current;
@@ -1881,6 +2084,8 @@ export default function App() {
    */
   const rangeForTabs = useCallback(() => rangeFor('tabs'), [rangeFor]);
   const rangeForRail = useCallback(() => rangeFor('rail'), [rangeFor]);
+  // Over the console rather than beside it, the slid-out rail keeps only the rail's own bounds.
+  const rangeForSlide = useCallback((): SplitRange => RAIL_RANGE, []);
   const rangeForAbove = useCallback(() => rangeFor('above'), [rangeFor]);
   const rangeForBelow = useCallback(() => rangeFor('below'), [rangeFor]);
   const resetTabs = useCallback(() => widths.setTabs(Number.NaN), [widths.setTabs]);
@@ -2587,6 +2792,27 @@ export default function App() {
    * to show, and each half decides for itself.
    */
   const railVisible = hudOpen || railOpen;
+  // In the Stable, the tabs are one compact row across the top: its rows carry the rest.
+  const tabsAt: RailSide = stableOn ? 'top' : tabSide;
+  const tucked = railVisible && tuckPreference === 'tucked';
+  /*
+   * Pinned or tucked in one step (2026-10-31): the workspace's width
+   * animation held off, so the console is resized once rather than every
+   * frame of a slide — a terminal re-wraps its scrollback at each width it is
+   * given, which read as the window scrolling and left a console part-way up
+   * its history — and every console that was following the game brought back
+   * to its newest line once it has been fitted to the new width.
+   */
+  const setTucked = useCallback((next: boolean): void => {
+    const following = [...terminals.current.values()].filter((handle) => handle.following());
+    setResizing(true);
+    setTuckState(next ? 'tucked' : 'out');
+    writeStored(TUCK_KEY, next ? 'tucked' : 'out');
+    window.setTimeout(() => {
+      for (const handle of following) handle.jumpToLatest();
+      setResizing(false);
+    }, TUCK_SETTLE_MS);
+  }, []);
 
   const connected = state.phase === 'connected';
   // Refused only while a close is under way; a dial with no answer is made again.
@@ -2666,6 +2892,11 @@ export default function App() {
    */
   const showSession = useCallback(
     (id: SessionId) => {
+      // From the Stable, a character opened is one Escape comes back from.
+      if (stableOn) {
+        setStable(false);
+        setFromStable(true);
+      }
       // Already on screen? Then this is a request to type at it, not to move it.
       const at = panes.indexOf(id);
       if (at >= 0) {
@@ -2674,8 +2905,20 @@ export default function App() {
       }
       setPaneIds(panes.map((current, index) => (index === paneAt ? id : current)));
     },
-    [paneAt, panes]
+    [paneAt, panes, stableOn]
   );
+  /** The Stable shown, and the row the keyboard was last talking to kept. */
+  const showStable = useCallback(() => {
+    setStable(true);
+    setFromStable(false);
+  }, []);
+  // Every character in the realm stopped where it stands, from the Stable's head.
+  const stopAll = useCallback(() => {
+    for (const entry of stableRows) void api.stopMoving(entry.id);
+  }, [api, stableRows]);
+  const stopIn = useCallback((id: SessionId) => void api.stopMoving(id), [api]);
+  const away = useAwaySince();
+  const narrow = useNarrow();
 
   /*
    * The alerts worth saying outside the window, for a player who has gone and
@@ -2872,10 +3115,15 @@ export default function App() {
 
   const focusPane = useCallback(
     (id: SessionId) => {
+      // A row of the Stable is the character being shown while it is.
+      if (stableOn) {
+        setStableFocus(id);
+        return;
+      }
       const at = panes.indexOf(id);
       if (at >= 0) setFocusedPane(at);
     },
-    [panes]
+    [panes, stableOn]
   );
 
   /**
@@ -3191,6 +3439,12 @@ export default function App() {
     setSettingsAt(id);
     setSettingsOpen(true);
   }, []);
+
+  /** The Stable's pencil for a character: its settings, where it has a file. */
+  const editFor = useCallback(
+    (id: SessionId) => (editable.includes(id) ? editCharacter : undefined),
+    [editable, editCharacter]
+  );
 
   /** Open settings on an empty character — the `+` at the head of the rail. */
   const newCharacter = useCallback(() => {
@@ -4846,13 +5100,17 @@ export default function App() {
         label:
           entry === 'theme'
             ? t('palette.view.consolePaletteFollowLabel')
-            : t('palette.view.consolePaletteLabel', {
-                paletteLabel: TERMINAL_THEMES[entry].label
-              }),
+            : entry === 'theme-light'
+              ? t('palette.view.consolePaletteFollowLightLabel')
+              : t('palette.view.consolePaletteLabel', {
+                  paletteLabel: TERMINAL_THEMES[entry].label
+                }),
         hint:
           entry === 'theme'
             ? t('palette.view.consolePaletteFollowHint')
-            : TERMINAL_THEMES[entry].appearance,
+            : entry === 'theme-light'
+              ? t('palette.view.consolePaletteFollowLightHint')
+              : TERMINAL_THEMES[entry].appearance,
         keywords: ['console', 'terminal', 'palette', 'ansi', 'colour', 'color'],
         group: 'view' as const,
         run: () => chooseConsole(entry)
@@ -4934,6 +5192,46 @@ export default function App() {
       },
 
       // Layout: what is on screen and how it is arranged -- panes and cards.
+      // The Stable, or back to the character the keyboard is talking to.
+      stableOn
+        ? {
+            id: 'stable',
+            icon: 'user' as const,
+            label: t('palette.layout.leaveStableLabel'),
+            hint: t('palette.layout.leaveStableHint'),
+            group: 'layout' as const,
+            keywords: ['stable', 'characters', 'all'],
+            run: () => showSession(session)
+          }
+        : {
+            id: 'stable',
+            icon: 'users' as const,
+            label: t('palette.layout.stableLabel'),
+            hint: t('palette.layout.stableHint'),
+            group: 'layout' as const,
+            keywords: ['stable', 'characters', 'all', 'overview'],
+            run: showStable
+          },
+      // The cards tucked away into a strip, out on hover, or pinned out beside the console.
+      tuckPreference === 'tucked'
+        ? {
+            id: 'tuck',
+            icon: 'pin' as const,
+            label: t('palette.layout.pinCardsLabel'),
+            hint: t('palette.layout.pinCardsHint'),
+            group: 'layout' as const,
+            keywords: ['cards', 'rail', 'tuck', 'pin', 'hide'],
+            run: () => setTucked(false)
+          }
+        : {
+            id: 'tuck',
+            icon: 'unpin' as const,
+            label: t('palette.layout.tuckCardsLabel'),
+            hint: t('palette.layout.tuckCardsHint'),
+            group: 'layout' as const,
+            keywords: ['cards', 'rail', 'tuck', 'hide', 'auto'],
+            run: () => setTucked(true)
+          },
       // Panes: only ever offered when there is something to put in one.
       ...(panes.length < tuning().maxPanes
         ? sessions
@@ -5248,6 +5546,27 @@ export default function App() {
     !railOpen &&
     !settingsOpen
       ? [{ key: 'Escape', run: closeDebug }]
+      : []),
+    /*
+     * Back to the Stable from a character opened from it (2026-10-31), last
+     * of all: only when nothing else on screen wants the key, and only after
+     * coming from the Stable, so a bare Escape still reaches the game the
+     * rest of the time.
+     */
+    ...(fromStable &&
+    !stableOn &&
+    asked === null &&
+    flyout === null &&
+    browsing === null &&
+    !debugOpen &&
+    !paletteOpen &&
+    !loopsOpen &&
+    !explorerOpen &&
+    !searchOpen &&
+    !routeOpen &&
+    !railOpen &&
+    !settingsOpen
+      ? [{ key: 'Escape', run: showStable }]
       : [])
   ]);
 
@@ -5406,6 +5725,11 @@ export default function App() {
     [api]
   );
   const regroupParty = useCallback((id: string) => api.regroupParty(id), [api]);
+  // Disband: the party broken up in the realm, and its roster forgotten (2026-10-31).
+  const disbandParty = useCallback(
+    (id: string) => void api.disbandParty(id).then(setRosters),
+    [api]
+  );
   const musterParty = useCallback(
     (id: string, target: MusterTarget) => api.musterParty(id, target),
     [api]
@@ -5441,6 +5765,7 @@ export default function App() {
         ours: realm === null ? [] : (oursByRealm.get(realm) ?? []),
         save: saveRoster,
         remove: removeRoster,
+        disband: disbandParty,
         regroup: regroupParty,
         muster: musterParty,
         say: sayAsParty
@@ -5452,6 +5777,7 @@ export default function App() {
       oursByRealm,
       saveRoster,
       removeRoster,
+      disbandParty,
       regroupParty,
       musterParty,
       sayAsParty
@@ -5856,6 +6182,77 @@ export default function App() {
     [contextFor, returnFocus, theme, views]
   );
 
+  /**
+   * A card placed on a status of the Stable (2026-10-31): drawn for that
+   * character, its settings that character's own, its close taking it off
+   * the status. Not dragged: the status is its place.
+   */
+  const renderStatusCard = useCallback(
+    (
+      id: CardId,
+      sid: SessionId,
+      layout: CardLayoutApi,
+      remove: () => void,
+      size: Pick<CardChrome, 'onResize' | 'onResizeReset'>
+    ): ReactNode => {
+      const v = views[sid] ?? EMPTY_VIEW;
+      const diagnostic =
+        id === 'session' || id === 'link' || id === 'automation' || id === 'stream';
+      if (!diagnostic && v.character.phase !== 'in-game') return null;
+      const chrome: CardChrome = {
+        cardId: id,
+        onClose: remove,
+        returnFocus,
+        settings: {
+          id,
+          value: layout.settingsOf(id),
+          appearance: theme.appearance,
+          clientTheme: theme.id,
+          onChange: (change) => layout.setSettings(id, change)
+        },
+        rolled: layout.isRolled(id),
+        onRoll: (next: boolean) => layout.roll(id, next),
+        ...size
+      };
+      return cardElement(id, contextFor(sid, v, chrome));
+    },
+    [contextFor, returnFocus, theme, views]
+  );
+  /**
+   * The line along a console's foot (`ConsoleStatus`), in every view, for a
+   * character in the realm: out of it there is nothing for the line to say.
+   */
+  const consoleStatusFor = (sid: SessionId): ReactNode => {
+    const v = views[sid];
+    if (v === undefined || v.character.phase !== 'in-game') return undefined;
+    return (
+      <ConsoleStatus
+        character={v.character}
+        round={v.round}
+        session={sid}
+        thresholds={config.ui.vitals}
+      />
+    );
+  };
+  /** A character's toolbar row, small on its status in the Stable. */
+  const toolbarFor = useCallback(
+    (sid: SessionId): ReactNode => {
+      const v = views[sid] ?? EMPTY_VIEW;
+      const ctx = contextFor(sid, v, { cardId: 'toolbar', returnFocus });
+      return (
+        <div className="stable-toolbar">
+          <ToolbarRow
+            onPinButton={ctx.pinToolbarButton}
+            pinnedButtons={ctx.toolbarPinned}
+            returnFocus={returnFocus}
+            subject={ctx.toolbar}
+          />
+        </div>
+      );
+    },
+    [contextFor, returnFocus, views]
+  );
+
   /*
    * Where a dragged card would land on the rail, or null if it would not.
    *
@@ -5923,18 +6320,175 @@ export default function App() {
     );
   };
 
+  /*
+   * The Stable laid out (2026-10-31): its rows as blocks, a party's members
+   * together under one status (`stableBlocks`), and the grid cell each status
+   * and each console takes. Beside its status a party's consoles take a row
+   * each, one under the other, the status spanning them; on a narrow window
+   * the status goes above them.
+   */
+  const stableNames = stableRows
+    .map((entry) => `${entry.id}=${views[entry.id]?.character.name ?? ''}`)
+    .join('\n');
+  const blocks = useMemo(
+    () => stableBlocks(stableRows, (id) => views[id]?.character.name ?? null, rosters),
+    // The names are what the grouping reads of the views.
+    [stableRows, stableNames, rosters] // eslint-disable-line react-hooks/exhaustive-deps
+  );
+  /*
+   * Its sizes, dragged (2026-10-31): the status column's width, by the handle
+   * between it and the consoles, and each console's height, by the handle
+   * along its foot. A console not dragged is `stable.lines` tall (half that on
+   * a narrow window); a row grows past that where its status needs the room.
+   */
+  const stableSizes = useStableSizes();
+  // The cards placed on each status, the toolbar on every one until taken off.
+  const statusCards = useStatusCards();
+  const consoleRowPx = Math.ceil(tuning().stableLines * config.terminal.font.size * 1.2) + 14;
+  /*
+   * One height a block, a solo character's or a whole party's, by the handle
+   * along its foot, the party's split evenly between its members' consoles
+   * (2026-10-31). A party starts at `stable.lines` a member. Exact tracks, so
+   * a block shrinks as far as it is dragged; its status scrolls inside it.
+   */
+  const stableCells = useMemo(() => {
+    const consoles = new Map<SessionId, { row: number; column: number }>();
+    // Which block each console is in, by the key its sizes and cards are kept under.
+    const blockOf = new Map<SessionId, string>();
+    const panels: Array<{ block: StableBlock; cell: CSSProperties }> = [];
+    const handles: Array<{
+      key: string;
+      label: string;
+      row: number;
+      members: number;
+      height: number;
+    }> = [];
+    const tracks: string[] = [];
+    const each = narrow ? Math.round(consoleRowPx / 2) : consoleRowPx;
+    let row = 1;
+    for (const block of blocks) {
+      const ids = block.kind === 'solo' ? [block.id] : block.ids;
+      const key = block.kind === 'solo' ? block.id : `party:${block.roster.id}`;
+      const height = stableSizes.heights[key] ?? each * ids.length;
+      // The block's height less the gaps between its consoles, shared out.
+      const share = Math.max(
+        1,
+        Math.floor((height - STABLE_GAP_PX * (ids.length - 1)) / ids.length)
+      );
+      if (narrow) {
+        panels.push({ block, cell: { gridRow: row, gridColumn: 1 } });
+        tracks.push('auto');
+        row += 1;
+      } else {
+        panels.push({ block, cell: { gridRow: `${row} / span ${ids.length}`, gridColumn: 1 } });
+      }
+      for (const id of ids) {
+        blockOf.set(id, key);
+        consoles.set(id, { row: row++, column: narrow ? 1 : 3 });
+        tracks.push(`${share}px`);
+      }
+      const name =
+        block.kind === 'solo'
+          ? (sessions.find((entry) => entry.id === block.id)?.name ?? block.id)
+          : t('stable.party.title', { leader: block.roster.leader ?? '' });
+      handles.push({ key, label: name, row: row - 1, members: ids.length, height });
+    }
+    return { consoles, blockOf, panels, handles, tracks: tracks.join(' '), rows: row - 1 };
+  }, [blocks, narrow, consoleRowPx, stableSizes.heights, sessions]);
+  // A console keeps a few lines a member, and no more than four times its default.
+  const blockRange = useCallback(
+    (members: number) => (): SplitRange => ({
+      min: Math.round(consoleRowPx / 4) * members,
+      max: consoleRowPx * 4 * members
+    }),
+    [consoleRowPx]
+  );
+  const statusRange = useCallback(
+    (): SplitRange => ({
+      min: STABLE_STATUS_MIN_PX,
+      max: Math.max(
+        STABLE_STATUS_MIN_PX,
+        (layersRef.current?.getBoundingClientRect().width ?? 1200) - STABLE_CONSOLE_MIN_PX
+      )
+    }),
+    []
+  );
+  const sinceFor = (id: SessionId): number | null => {
+    const character = views[id]?.character;
+    return away.since === null || character === undefined
+      ? null
+      : madeSince(character, away.since, Date.now());
+  };
+
+  /** What the card rail holds, beside the console or slid out over it, and the pin between the two. */
+  const railCards = railVisible ? (
+    <>
+      <div className="rail-tucked-head">
+        <span className="quiet">{tucked ? t('rail.tucked.note') : t('rail.pinned.note')}</span>
+        <button
+          aria-pressed={!tucked}
+          onClick={() => setTucked(!tucked)}
+          onMouseDown={keepFocus}
+          title={tucked ? t('rail.tucked.pinTitle') : t('rail.pinned.unpinTitle')}
+          type="button"
+        >
+          <Icon name={tucked ? 'pin' : 'unpin'} />
+          {tucked ? t('rail.tucked.pin') : t('rail.pinned.unpin')}
+        </button>
+      </div>
+      {/*
+              Adding one back, at the top of the rail where the gap it leaves
+              is. Only lists what is actually put away, so it is a control that
+              disappears when there is nothing to do with it.
+            */}
+      {cards.away.length > 0 && (
+        <CardPicker
+          cards={cards.away}
+          dragging={drag.state?.live === true}
+          onAdd={cards.show}
+          onFloat={floatCard}
+          // A row is a handle as well as a button: dragged onto the
+          // console it floats there, into the rail it lands there.
+          onGrab={grabCard}
+        />
+      )}
+
+      {/* In the Stable, whose cards these are: the console with the keyboard's. */}
+      {stableOn && (
+        <div className="rail-following">
+          <span aria-hidden="true" className="dot" />
+          <span>{t('stable.rail.following', { name: view.character.name ?? '' })}</span>
+          <span className="quiet">{t('stable.rail.hint')}</span>
+        </div>
+      )}
+
+      {/*
+              The rail says what it is waiting for rather than emptying out.
+              A blank column beside a live one reads as damage, not as offline.
+            */}
+      {hudOpen && !inGame && <StandbyCard character={character} state={state} />}
+
+      {/*
+              In the order this character arranged them. One list, rendered by
+              one function, so a card dragged from third to first is the same
+              card — and a new card added to the vocabulary needs no entry here.
+            */}
+      {lane('rail')}
+    </>
+  ) : null;
+
   const drawn = (
     <div className="app">
       <div
         className="workspace"
         data-dragging={drag.state?.live ? 'true' : undefined}
-        data-rail={railVisible ? 'open' : 'closed'}
+        data-rail={railVisible ? (tucked ? 'tucked' : 'open') : 'closed'}
         // A splitter or a card's corner grip: either way the pointer is the
         // animation, and no transition may lag behind it.
         data-resizing={resizing || resize.active !== null ? 'true' : undefined}
         ref={workspaceRef}
         data-rail-side={railSide}
-        data-tabs={showTabs ? tabSide : 'none'}
+        data-tabs={showTabs ? tabsAt : 'none'}
         style={widths.style as React.CSSProperties}
       >
         {/*
@@ -5946,7 +6500,7 @@ export default function App() {
           say — and no session either: the new-character form is open instead.
         */}
         <TabRail
-          active={session}
+          active={stableOn ? NO_SESSION : session}
           editable={editable}
           onClose={closeSession}
           onEdit={editCharacter}
@@ -5957,12 +6511,14 @@ export default function App() {
           onToggleConnection={toggleSessionConnection}
           restToFor={restToFor}
           sessions={showTabs ? sessions : NO_SESSIONS}
-          side={tabSide}
+          compact={stableOn}
+          side={tabsAt}
+          stable={{ active: stableOn, inRealm: stableRows.length, onSelect: showStable }}
           thresholds={config.ui.vitals}
           views={views}
         />
 
-        {showTabs && tabSide !== 'top' && (
+        {showTabs && tabsAt !== 'top' && (
           <Splitter
             // Which way a drag grows the rail; `pane` is where the handle
             // goes. The two part company the moment the workspace mirrors.
@@ -5989,7 +6545,16 @@ export default function App() {
             Rendered even while a drag is in flight over an empty strip, so
             there is somewhere to drop.
           */}
-          {(cards.above.length > 0 || drag.state?.live === true) && (
+          {stableOn && (
+            <StableHead
+              onDismiss={away.dismiss}
+              onStopAll={stopAll}
+              rows={stableRows}
+              since={away.since}
+              views={views}
+            />
+          )}
+          {!stableOn && (cards.above.length > 0 || drag.state?.live === true) && (
             <div
               className="dock dock-above"
               // An empty strip exists only while a drag is running, as somewhere
@@ -6022,16 +6587,159 @@ export default function App() {
           */}
           <div
             className="terminal-layers"
-            data-flow={paneFlow}
+            data-flow={stableOn ? 'stable' : paneFlow}
+            data-narrow={stableOn && narrow ? 'true' : undefined}
             ref={layersRef}
-            style={{ '--panes': panes.length } as CSSProperties}
+            style={
+              {
+                '--panes': stableOn ? Math.max(1, stableRows.length) : panes.length,
+                '--stable-rows': stableCells.tracks,
+                '--stable-status': `${stableSizes.status ?? STABLE_STATUS_PX}px`
+              } as CSSProperties
+            }
           >
+            {/* The width of the status column, by the handle between it and the consoles. */}
+            {stableOn && !narrow && stableCells.rows > 0 && (
+              <div
+                className="stable-col-split"
+                style={{ gridRow: `1 / span ${stableCells.rows}`, gridColumn: 2 }}
+              >
+                <Splitter
+                  edge="left"
+                  label={t('stable.split.status')}
+                  measure={() => stableSizes.status ?? STABLE_STATUS_PX}
+                  onChange={stableSizes.setStatus}
+                  onDragging={setResizing}
+                  onReset={() => stableSizes.setStatus(null)}
+                  rangeFor={statusRange}
+                />
+              </div>
+            )}
+            {/* Each block's height, a solo character's or a party's, by the handle along its foot. */}
+            {stableOn &&
+              stableCells.handles.map((handle) => (
+                <div
+                  className="stable-row-split"
+                  key={`stable:height:${handle.key}`}
+                  style={{ gridRow: handle.row, gridColumn: '1 / -1' }}
+                >
+                  <Splitter
+                    edge="top"
+                    label={t('stable.split.console', { name: handle.label })}
+                    measure={() => handle.height}
+                    onChange={(px) => stableSizes.setHeight(handle.key, px)}
+                    onDragging={setResizing}
+                    onReset={() => stableSizes.setHeight(handle.key, null)}
+                    rangeFor={blockRange(handle.members)}
+                  />
+                </div>
+              ))}
+            {/*
+              The Stable's status panels, each in the row its character's
+              console takes beside it; under it on a narrow window.
+            */}
+            {stableOn &&
+              stableCells.panels.map(({ block, cell }) => {
+                if (block.kind === 'party') {
+                  const members = block.ids.map((id) => ({
+                    id,
+                    name: sessions.find((entry) => entry.id === id)?.name ?? id,
+                    view: views[id] ?? EMPTY_VIEW
+                  }));
+                  const key = `party:${block.roster.id}`;
+                  const placed = statusCards.cardsOf(key);
+                  // A party's cards are the member's whose console has the keyboard, else the leader's.
+                  const who = block.ids.includes(session) ? session : block.ids[0]!;
+                  return (
+                    <StableParty
+                      cards={
+                        <StatusCardStack
+                          heightOf={(id) => statusCards.heightOf(key, id)}
+                          ids={placed.filter((id) => id !== 'toolbar')}
+                          key={who}
+                          onHeight={(id, px) => statusCards.setHeight(key, id, px)}
+                          onRemove={(id) => statusCards.toggle(key, id)}
+                          render={renderStatusCard}
+                          sid={who}
+                        />
+                      }
+                      onPlace={(id) => statusCards.toggle(key, id)}
+                      placed={placed}
+                      cell={cell}
+                      focused={session}
+                      key={`stable:party:${block.roster.id}`}
+                      members={members}
+                      onFocus={focusPane}
+                      onLeaveOut={leaveOut}
+                      editFor={editFor}
+                      onMuster={musterParty}
+                      onOpen={showSession}
+                      onRegroup={regroupParty}
+                      onDisband={disbandParty}
+                      onStop={stopIn}
+                      restToFor={restToFor}
+                      roster={block.roster}
+                      since={sinceFor(block.ids[0]!)}
+                      thresholds={config.ui.vitals}
+                    />
+                  );
+                }
+                const entry = sessions.find((summary) => summary.id === block.id);
+                const placed = statusCards.cardsOf(block.id);
+                return (
+                  <StableStatus
+                    cards={
+                      <StatusCardStack
+                        heightOf={(id) => statusCards.heightOf(block.id, id)}
+                        ids={placed.filter((id) => id !== 'toolbar')}
+                        onHeight={(id, px) => statusCards.setHeight(block.id, id, px)}
+                        onRemove={(id) => statusCards.toggle(block.id, id)}
+                        render={renderStatusCard}
+                        sid={block.id}
+                      />
+                    }
+                    onPlace={(id) => statusCards.toggle(block.id, id)}
+                    placed={placed}
+                    cell={cell}
+                    focused={block.id === session}
+                    key={`stable:${block.id}`}
+                    name={entry?.name ?? block.id}
+                    onFocus={focusPane}
+                    onLeaveOut={leaveOut}
+                    onEdit={editFor(block.id)}
+                    onOpen={showSession}
+                    onStop={stopIn}
+                    restTo={restToFor(block.id)}
+                    session={block.id}
+                    since={sinceFor(block.id)}
+                    view={views[block.id] ?? EMPTY_VIEW}
+                  />
+                );
+              })}
             {sessions.map((entry) => {
               const at = panes.indexOf(entry.id);
+              // In the Stable, the row it has; a character not in the realm parks hidden in the first.
+              const placed = stableOn ? stableCells.consoles.get(entry.id) : undefined;
+              const row = placed === undefined ? -1 : placed.row;
+              const cell = !stableOn
+                ? undefined
+                : (placed ?? (narrow ? { row: 2, column: 1 } : { row: 1, column: 3 }));
               return (
                 <SessionTerminal
+                  cell={cell}
+                  footer={consoleStatusFor(entry.id)}
+                  // Its toolbar over its console, where the toolbar is placed on its status.
+                  header={
+                    stableOn &&
+                    row >= 0 &&
+                    statusCards
+                      .cardsOf(stableCells.blockOf.get(entry.id) ?? entry.id)
+                      .includes('toolbar')
+                      ? toolbarFor(entry.id)
+                      : undefined
+                  }
                   flow={paneFlow}
-                  focused={at === paneAt}
+                  focused={stableOn ? entry.id === session : at === paneAt}
                   fontStack={terminalFonts}
                   key={entry.id}
                   index={nameIndexes[entry.id] ?? null}
@@ -6060,7 +6768,7 @@ export default function App() {
                   onStopRun={stopRunFor}
                   session={entry.id}
                   settings={config.terminal}
-                  shown={at >= 0}
+                  shown={stableOn ? row >= 0 : at >= 0}
                 />
               );
             })}
@@ -6098,7 +6806,16 @@ export default function App() {
             open={searchOpen}
             result={searchResult}
           />
-          {(cards.below.length > 0 || drag.state?.live === true) && (
+          {stableOn && (
+            <StableAway
+              away={stableAway}
+              leftOut={stableLeftOut}
+              onBringBack={bringBack}
+              onToggleConnection={toggleSessionConnection}
+              views={views}
+            />
+          )}
+          {!stableOn && (cards.below.length > 0 || drag.state?.live === true) && (
             <div
               className="dock dock-below"
               data-empty={cards.below.length === 0 ? 'true' : undefined}
@@ -6119,7 +6836,7 @@ export default function App() {
           )}
         </div>
 
-        {railVisible && (
+        {railVisible && !tucked && (
           <Splitter
             edge={railSide}
             label={t('splitter.aria.cardRailWidth')}
@@ -6131,37 +6848,49 @@ export default function App() {
             rangeFor={rangeForRail}
           />
         )}
+        {/*
+          The rail's cards, drawn as the rail's own children: its rules size a
+          card that is one, so the tucked rail's sliding panel is a rail too.
+        */}
         {railVisible && (
-          <div className="rail">
+          <div
+            className="rail"
+            data-sliding={tucked && slideDragging ? 'true' : undefined}
+            data-tucked={tucked ? 'true' : undefined}
+          >
             {/*
-              Adding one back, at the top of the rail where the gap it leaves
-              is. Only lists what is actually put away, so it is a control that
-              disappears when there is nothing to do with it.
+              Tucked away: a glyph a card in the strip, and the rail itself
+              sliding out over the console while the pointer or the keyboard
+              is on it, so the console keeps its width.
             */}
-            {cards.away.length > 0 && (
-              <CardPicker
-                cards={cards.away}
-                dragging={drag.state?.live === true}
-                onAdd={cards.show}
-                onFloat={floatCard}
-                // A row is a handle as well as a button: dragged onto the
-                // console it floats there, into the rail it lands there.
-                onGrab={grabCard}
-              />
+            {tucked && (
+              <div aria-hidden="true" className="rail-strip">
+                {cards.rail.map((id) => (
+                  <span className="rail-glyph" key={id} title={CARD_TITLE.get(id)}>
+                    <Icon name={CARD_GLYPH[id] ?? 'layout'} />
+                  </span>
+                ))}
+              </div>
             )}
-
+            {tucked ? <div className="rail rail-slide">{railCards}</div> : railCards}
             {/*
-              The rail says what it is waiting for rather than emptying out.
-              A blank column beside a live one reads as damage, not as offline.
+              The slid-out rail's width, by the handle along its inner edge:
+              the pinned rail's own width, which it takes from the console
+              when pinned and lies over the console with here.
             */}
-            {hudOpen && !inGame && <StandbyCard character={character} state={state} />}
-
-            {/*
-              In the order this character arranged them. One list, rendered by
-              one function, so a card dragged from third to first is the same
-              card — and a new card added to the vocabulary needs no entry here.
-            */}
-            {lane('rail')}
+            {tucked && (
+              <div className="rail-slide-edge">
+                <Splitter
+                  edge={railSide === 'left' ? 'left' : 'right'}
+                  label={t('splitter.aria.cardRailWidth')}
+                  measure={measureSlide}
+                  onChange={widths.setRail}
+                  onDragging={dragSlide}
+                  onReset={widths.reset}
+                  rangeFor={rangeForSlide}
+                />
+              </div>
+            )}
           </div>
         )}
 
@@ -6344,7 +7073,6 @@ export default function App() {
         onOpenPalette={openPalette}
         onToggleConnection={toggleConnection}
         pressure={pressure}
-        round={view.round}
         showLogo={config.ui.showLogo}
         size={size}
         state={state}

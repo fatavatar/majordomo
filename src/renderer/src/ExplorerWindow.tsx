@@ -46,8 +46,6 @@ export default function ExplorerWindow({ session: opened }: { session: SessionId
   }, [api]);
   useTheme(
     profiles.find((profile) => profile.id === session)?.theme ?? config.ui.theme,
-    config.ui.console.keepDark,
-    config.ui.console.darkTheme,
     config.ui.console.palette
   );
   useEffect(() => {

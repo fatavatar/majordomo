@@ -101,6 +101,17 @@ export interface TabRailProps {
    * (docs/greatermud/combat.md).
    */
   onToggleConnection(session: SessionId): void;
+  /**
+   * The Stable (2026-10-31): every character in the realm at once, as a tab
+   * of its own at the head of the characters, lit while it is shown. Absent
+   * where the window has none to offer.
+   */
+  stable?: { active: boolean; inRealm: number; onSelect(): void };
+  /**
+   * One compact row (2026-10-31): each tab its name and a status dot, as the
+   * Stable shows them, whose own rows carry everything else a tab would.
+   */
+  compact?: boolean;
 }
 
 function alertLabel(count: number): string {
@@ -128,7 +139,7 @@ function alertLabel(count: number): string {
  * design language forbids stating a condition by colour alone — and `info` is
  * the quiet register, for a status that is not a condition.
  */
-function attention(
+export function attention(
   view: RailView | undefined,
   restTo: number
 ): { level: 'critical' | 'warn' | 'info'; label: string; detail?: string } | null {
@@ -361,7 +372,9 @@ function TabRail({
   onNew,
   onEditGlobal,
   onEdit,
-  onToggleConnection
+  onToggleConnection,
+  stable,
+  compact = false
 }: TabRailProps) {
   /*
    * Stacked down an edge, rather than which edge.
@@ -441,7 +454,12 @@ function TabRail({
   if (sessions.length === 0) return null;
 
   return (
-    <div className="tab-rail" data-side={side} role="tablist">
+    <div
+      className="tab-rail"
+      data-compact={compact ? 'true' : undefined}
+      data-side={side}
+      role="tablist"
+    >
       {ghost}
       {/*
         Making a character, beside the characters.
@@ -489,6 +507,31 @@ function TabRail({
         stays put however many characters are loaded.
       */}
       <div className="tabs">
+        {stable !== undefined && (
+          <div
+            aria-selected={stable.active}
+            className="tab tab-stable"
+            data-active={stable.active ? 'true' : 'false'}
+            onClick={stable.onSelect}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault();
+                stable.onSelect();
+              }
+            }}
+            onMouseDown={keepFocus}
+            role="tab"
+            tabIndex={0}
+            title={t('stable.tabTitle')}
+          >
+            <span className="who">
+              <span className="name">
+                <Icon name="users" /> {t('stable.tab')}
+              </span>
+              <span className="on">{t('stable.head.inRealm', { count: stable.inRealm })}</span>
+            </span>
+          </div>
+        )}
         {sessions.map((session, at) => {
           const view = views[session.id];
           const vitals = view?.character.vitals;
