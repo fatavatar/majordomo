@@ -116,6 +116,65 @@ export class AccessTokens {
   }
 }
 
+/**
+ * How many wrong passwords a source is allowed inside the window, which is
+ * also how long it is shut out after the last of them.
+ */
+export interface GuessLimits {
+  guesses: number;
+  windowMs: number;
+}
+
+/**
+ * Wrong passwords counted by where they come from (code review B3,
+ * 2026-11-02).
+ *
+ * The delay on a wrong answer slowed a request, not a guesser: a hundred
+ * connections at once each waited their own second. So the wrong answers from
+ * one source are counted, and once there are `guesses` of them inside
+ * `windowMs` that source is shut out for `windowMs`: nothing it sends as a
+ * password is read, the right one included, so the answer cannot tell it when
+ * it guessed right. A sign-in already held is a cookie, not a password, and is
+ * never asked about here.
+ */
+export class SignInGuard {
+  private readonly sources = new Map<string, { failures: number; since: number; until: number }>();
+
+  constructor(private readonly now: () => number = Date.now) {}
+
+  /** How long a source must still wait before a password from it is read; 0 when it need not. */
+  waitFor(source: string): number {
+    const record = this.sources.get(source);
+    return record === undefined ? 0 : Math.max(0, record.until - this.now());
+  }
+
+  /** A wrong password from a source. True when it is the one that shuts the source out. */
+  failed(source: string, limits: GuessLimits): boolean {
+    const now = this.now();
+    // Sources whose count has lapsed and who are not shut out are forgotten.
+    for (const [key, record] of this.sources) {
+      if (record.until <= now && now - record.since >= limits.windowMs) this.sources.delete(key);
+    }
+    const record = this.sources.get(source) ?? { failures: 0, since: now, until: 0 };
+    if (now - record.since >= limits.windowMs) {
+      record.failures = 0;
+      record.since = now;
+    }
+    record.failures += 1;
+    this.sources.set(source, record);
+    if (record.failures < limits.guesses) return false;
+    record.until = now + limits.windowMs;
+    record.failures = 0;
+    record.since = now;
+    return true;
+  }
+
+  /** The right password: whatever the source had counted against it is forgotten. */
+  succeeded(source: string): void {
+    this.sources.delete(source);
+  }
+}
+
 /** The session token out of a `Cookie` header, or null. */
 export function cookieToken(header: string | undefined): string | null {
   if (typeof header !== 'string') return null;

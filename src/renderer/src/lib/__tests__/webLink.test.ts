@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { RpcOutbound } from '@shared/rpc';
 
-import { openWebLink, type WebLink } from '../webLink';
+import { openWebLink, signInRefusal, type WebLink } from '../webLink';
 
 /** A browser WebSocket the test drives from the client's side. */
 class FakeWebSocket {
@@ -205,5 +205,38 @@ describe('a browser tab’s link', () => {
     expect(FakeWebSocket.made).toHaveLength(1);
     vi.advanceTimersByTime(2_000);
     expect(FakeWebSocket.made).toHaveLength(2);
+  });
+});
+
+/*
+ * The cover's sign-in answered (code review B3, 2026-11-02): an address that
+ * has sent too many wrong passwords is told how long to wait, not that this
+ * one was wrong too, which it may not have been.
+ */
+describe("the cover's sign-in", () => {
+  const answer = (status: number, retryAfter: string | null = null, type = 'basic') => ({
+    type: type as ResponseType,
+    ok: status >= 200 && status < 300,
+    status,
+    headers: { get: (name: string) => (name.toLowerCase() === 'retry-after' ? retryAfter : null) }
+  });
+
+  it('says nothing when it signed in', () => {
+    expect(signInRefusal(answer(0, null, 'opaqueredirect'))).toBeNull();
+    expect(signInRefusal(answer(200))).toBeNull();
+  });
+
+  it('says a wrong password was wrong', () => {
+    expect(signInRefusal(answer(401))).toBe('That is not the password.');
+  });
+
+  it('says how long a shut-out address waits', () => {
+    expect(signInRefusal(answer(429, '900'))).toBe(
+      'Too many wrong passwords from this address. Try again in 15 minutes.'
+    );
+    expect(signInRefusal(answer(429, '30'))).toBe(
+      'Too many wrong passwords from this address. Try again in a minute.'
+    );
+    expect(signInRefusal(answer(429))).toContain('a minute');
   });
 });

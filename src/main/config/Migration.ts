@@ -6504,6 +6504,9 @@ function theTuningBlockGainedKeys(
     addKey('hunting', 'clockBound', DEFAULT_INTERNAL.tuning.hunting.clockBound);
     // The Explorer's damage simulation, worked out ahead (2026-11-01).
     addKey('hunting', 'explorerWarmMs', DEFAULT_INTERNAL.tuning.hunting.explorerWarmMs);
+    // The sign-in's guesses counted per address (code review B3, 2026-11-02).
+    addKey('web', 'loginGuesses', DEFAULT_INTERNAL.tuning.web.loginGuesses);
+    addKey('web', 'loginWindowMs', DEFAULT_INTERNAL.tuning.web.loginWindowMs);
 
     /** A key this build no longer reads, taken out rather than left to mean nothing. */
     const dropKey = (group: string, key: string): void => {

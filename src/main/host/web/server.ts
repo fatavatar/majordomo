@@ -38,7 +38,14 @@ import { RPC_PATH } from '../../../shared/rpc';
 import { t } from '../../app/i18n';
 import { isWithin } from '../../app/browse';
 import { tuning } from '../../app/tuning';
-import { AccessTokens, basicPassword, COOKIE, cookieToken, passwordMatches } from './access';
+import {
+  AccessTokens,
+  basicPassword,
+  COOKIE,
+  cookieToken,
+  passwordMatches,
+  SignInGuard
+} from './access';
 import { acceptUpgrade, isWebSocketUpgrade, type WebSocketConnection } from './sockets';
 
 export interface WebServerOptions {
@@ -46,8 +53,10 @@ export interface WebServerOptions {
   rendererDir: string;
   password: string;
   tokens: AccessTokens;
-  /** Whether `X-Forwarded-Proto` from a proxy in front is believed. */
+  /** Whether `X-Forwarded-Proto` and `X-Forwarded-For` from a proxy in front are believed. */
   trustProxy: boolean;
+  /** The wrong passwords counted per address; one of its own when not given (a test brings a clock). */
+  guard?: SignInGuard;
   /** A signed-in tab has opened the socket. */
   onSocket(connection: WebSocketConnection, remote: string): void;
   /** The server explaining itself: a refused sign-in, a refused upgrade. */
@@ -122,7 +131,13 @@ function escapeHtml(text: string): string {
  * style rather than the renderer's stylesheet. The words are the dictionary's
  * like every other string the client shows.
  */
-export function loginPage(options: { wrong: boolean; cleartext: boolean }): string {
+export function loginPage(options: {
+  wrong: boolean;
+  cleartext: boolean;
+  /** Seconds before a password from here is read again, when this address is shut out. */
+  waitSeconds?: number;
+}): string {
+  const waitMinutes = Math.max(1, Math.ceil((options.waitSeconds ?? 0) / 60));
   const lines = [
     '<!doctype html>',
     '<html lang="en">',
@@ -153,6 +168,13 @@ export function loginPage(options: { wrong: boolean; cleartext: boolean }): stri
     `<label><span>${escapeHtml(t('web.login.passwordLabel'))}</span>`,
     '<input autocomplete="current-password" autofocus name="password" type="password"></label>',
     options.wrong ? `<p class="wrong">${escapeHtml(t('web.login.wrong'))}</p>` : '',
+    options.waitSeconds === undefined
+      ? ''
+      : `<p class="wrong">${escapeHtml(
+          waitMinutes === 1
+            ? t('web.login.wait.one')
+            : t('web.login.wait.many', { minutes: waitMinutes })
+        )}</p>`,
     `<button type="submit">${escapeHtml(t('web.login.submit'))}</button>`,
     '</form>',
     `<p class="lineage">${escapeHtml(t('web.login.lineage'))}</p>`,
@@ -175,6 +197,7 @@ export function withConnectSrc(html: string, host: string): string {
 
 export function createWebServer(options: WebServerOptions): WebServer {
   const rendererDir = path.resolve(options.rendererDir);
+  const guard = options.guard ?? new SignInGuard();
   let indexHtml: string | null = null;
   let saidNoMarker = false;
 
@@ -218,14 +241,44 @@ export function createWebServer(options: WebServerOptions): WebServer {
   const remoteOf = (request: http.IncomingMessage): string =>
     `${request.socket.remoteAddress ?? '?'}:${request.socket.remotePort ?? '?'}`;
 
+  /**
+   * Where a password came from, for counting the wrong ones: the address, not
+   * the port, since each connection has a port of its own. Behind a proxy
+   * the operator vouches for (`trustProxy`), every connection is the proxy's,
+   * so the address it appended to `X-Forwarded-For` is the one counted.
+   */
+  const sourceOf = (request: http.IncomingMessage): string => {
+    const forwarded = options.trustProxy ? request.headers['x-forwarded-for'] : undefined;
+    const last = String(forwarded ?? '')
+      .split(',')
+      .map((part) => part.trim())
+      .filter((part) => part.length > 0)
+      .at(-1);
+    return last ?? request.socket.remoteAddress ?? '?';
+  };
+
+  /** Seconds before a password from this request's address is read again; 0 when it is read now. */
+  const shutOutFor = (request: http.IncomingMessage): number =>
+    Math.ceil(guard.waitFor(sourceOf(request)) / 1000);
+
   /*
-   * A wrong password, said out loud and answered slowly. The delay is the
-   * whole of the rate limit — a guess a second — and it is imposed on the
-   * wrong answer only, so somebody who mistyped once pays it once.
+   * A wrong password, said out loud and answered slowly, and counted against
+   * where it came from. The delay costs a guesser a second a guess, and
+   * somebody who mistyped once that second once; the count is what stops a
+   * hundred connections guessing at once (code review B3, 2026-11-02). Each
+   * wrong guess is said until the address is shut out, and the shutting out
+   * once, not every refusal after it.
    */
   const refusedSignIn = async (request: http.IncomingMessage, how: string): Promise<void> => {
     options.log(`web: refused a sign-in (${how}) from ${remoteOf(request)}.`);
-    await new Promise((resolve) => setTimeout(resolve, tuning().web.loginDelayMs));
+    const { loginGuesses, loginWindowMs, loginDelayMs } = tuning().web;
+    if (guard.failed(sourceOf(request), { guesses: loginGuesses, windowMs: loginWindowMs })) {
+      options.log(
+        `web: ${loginGuesses} wrong passwords from ${sourceOf(request)}; ` +
+          `no sign-in from there is read for ${Math.round(loginWindowMs / 60_000)} minutes.`
+      );
+    }
+    await new Promise((resolve) => setTimeout(resolve, loginDelayMs));
   };
 
   const reply = (
@@ -243,7 +296,8 @@ export function createWebServer(options: WebServerOptions): WebServer {
     response: http.ServerResponse,
     status: number,
     wrong: boolean,
-    headers: Record<string, string> = {}
+    headers: Record<string, string> = {},
+    waitSeconds?: number
   ): void => {
     reply(
       response,
@@ -255,9 +309,22 @@ export function createWebServer(options: WebServerOptions): WebServer {
         'Content-Security-Policy':
           "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'"
       },
-      request.method === 'HEAD' ? null : loginPage({ wrong, cleartext: !encrypted(request) })
+      request.method === 'HEAD'
+        ? null
+        : loginPage({
+            wrong,
+            cleartext: !encrypted(request),
+            ...(waitSeconds === undefined ? {} : { waitSeconds })
+          })
     );
   };
+
+  /** The sign-in page, answered 429: this address is shut out, and says for how long. */
+  const tooSoon = (
+    request: http.IncomingMessage,
+    response: http.ServerResponse,
+    seconds: number
+  ): void => page(request, response, 429, false, { 'Retry-After': String(seconds) }, seconds);
 
   const readBody = (request: http.IncomingMessage): Promise<string | null> =>
     new Promise((resolve) => {
@@ -284,9 +351,15 @@ export function createWebServer(options: WebServerOptions): WebServer {
       reply(response, 405, { Allow: 'POST', 'Content-Type': CONTENT_TYPES['.txt']! }, 'POST');
       return;
     }
+    const wait = shutOutFor(request);
+    if (wait > 0) {
+      tooSoon(request, response, wait);
+      return;
+    }
     const body = await readBody(request);
     const given = body === null ? '' : (new URLSearchParams(body).get('password') ?? '');
     if (given.length > 0 && passwordMatches(given, options.password)) {
+      guard.succeeded(sourceOf(request));
       const token = options.tokens.issue();
       const cookie = [
         `${COOKIE}=${token}`,
@@ -431,6 +504,15 @@ export function createWebServer(options: WebServerOptions): WebServer {
       return;
     }
     const credentials = credentialsOf(request);
+    // A password as Basic is a password: not read while its address is shut out.
+    if (credentials === 'basic' || credentials === 'wrong-basic') {
+      const wait = shutOutFor(request);
+      if (wait > 0) {
+        tooSoon(request, response, wait);
+        return;
+      }
+      if (credentials === 'basic') guard.succeeded(sourceOf(request));
+    }
     if (credentials === 'wrong-basic') await refusedSignIn(request, 'Basic');
     if (credentials === 'wrong-basic' || credentials === 'none') {
       page(request, response, 401, false);
@@ -449,8 +531,12 @@ export function createWebServer(options: WebServerOptions): WebServer {
   };
 
   /** A refused upgrade: one status line, and the socket goes. */
-  const refuse = (socket: Duplex, status: string): void => {
-    socket.write(`HTTP/1.1 ${status}\r\nConnection: close\r\nContent-Length: 0\r\n\r\n`);
+  const refuse = (socket: Duplex, status: string, headers: string[] = []): void => {
+    socket.write(
+      [`HTTP/1.1 ${status}`, ...headers, 'Connection: close', 'Content-Length: 0', '', ''].join(
+        '\r\n'
+      )
+    );
     socket.destroy();
   };
 
@@ -470,6 +556,14 @@ export function createWebServer(options: WebServerOptions): WebServer {
       return;
     }
     const credentials = credentialsOf(request);
+    if (credentials === 'basic' || credentials === 'wrong-basic') {
+      const wait = shutOutFor(request);
+      if (wait > 0) {
+        refuse(socket, '429 Too Many Requests', [`Retry-After: ${wait}`]);
+        return;
+      }
+      if (credentials === 'basic') guard.succeeded(sourceOf(request));
+    }
     if (credentials === 'wrong-basic' || credentials === 'none') {
       options.log(`web: refused a socket from ${remoteOf(request)}: not signed in.`);
       if (credentials === 'wrong-basic') await refusedSignIn(request, 'Basic');

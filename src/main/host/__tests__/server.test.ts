@@ -6,7 +6,7 @@ import path from 'node:path';
 
 import { DEFAULT_INTERNAL } from '../../../shared/internal';
 import { setTuning } from '../../app/tuning';
-import { AccessTokens, COOKIE } from '../web/access';
+import { AccessTokens, COOKIE, SignInGuard } from '../web/access';
 import { Downloads } from '../web/downloads';
 import { createWebServer, loginPage, withConnectSrc, type WebServer } from '../web/server';
 import type { WebSocketConnection } from '../web/sockets';
@@ -34,9 +34,11 @@ const log: string[] = [];
 
 beforeAll(async () => {
   // A wrong password waits `loginDelayMs`; a test is not the place to wait a second.
+  // The guesses these tests make between them all come from loopback, so the
+  // shutting out is left to its own server below (`a source that keeps guessing`).
   setTuning({
     ...DEFAULT_INTERNAL.tuning,
-    web: { ...DEFAULT_INTERNAL.tuning.web, loginDelayMs: 1 }
+    web: { ...DEFAULT_INTERNAL.tuning.web, loginDelayMs: 1, loginGuesses: 1000 }
   });
   dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mudengine-web-'));
   fs.mkdirSync(path.join(dir, 'assets'));
@@ -349,5 +351,122 @@ describe('the page and the policy', () => {
     expect(page).toContain('not encrypted');
     expect(page).toContain('That is not the password');
     expect(loginPage({ wrong: false, cleartext: false })).not.toContain('not encrypted');
+  });
+
+  it('says how long a shut-out address waits, in minutes', () => {
+    expect(loginPage({ wrong: false, cleartext: false, waitSeconds: 900 })).toContain(
+      'Try again in 15 minutes.'
+    );
+    expect(loginPage({ wrong: false, cleartext: false, waitSeconds: 20 })).toContain(
+      'Try again in a minute.'
+    );
+  });
+});
+
+/*
+ * Code review B3 (2026-11-02): the delay slowed each request, so a hundred
+ * connections each waited their own second. Here an address that keeps
+ * guessing is shut out, measured against a server of its own whose clock the
+ * test moves.
+ */
+describe('a source that keeps guessing', () => {
+  const clock = { now: 5_000_000 };
+  const guarded = { server: null as WebServer | null, port: 0, log: [] as string[] };
+  const at = (route: string): string => `http://127.0.0.1:${guarded.port}${route}`;
+  const guess = (password: string): Promise<Response> =>
+    fetch(at('/login'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ password }).toString(),
+      redirect: 'manual'
+    });
+  const basic = (password: string): string =>
+    `Basic ${Buffer.from(`anyone:${password}`).toString('base64')}`;
+
+  beforeAll(async () => {
+    setTuning({
+      ...DEFAULT_INTERNAL.tuning,
+      web: {
+        ...DEFAULT_INTERNAL.tuning.web,
+        loginDelayMs: 1,
+        loginGuesses: 3,
+        loginWindowMs: 600_000
+      }
+    });
+    guarded.server = createWebServer({
+      rendererDir: dir,
+      password: PASSWORD,
+      tokens,
+      trustProxy: false,
+      guard: new SignInGuard(() => clock.now),
+      onSocket: (connection) => sockets.push(connection),
+      log: (line) => guarded.log.push(line)
+    });
+    ({ port: guarded.port } = await guarded.server.listen(0, '127.0.0.1'));
+  });
+  afterAll(() => {
+    guarded.server?.close();
+    setTuning({
+      ...DEFAULT_INTERNAL.tuning,
+      web: { ...DEFAULT_INTERNAL.tuning.web, loginDelayMs: 1, loginGuesses: 1000 }
+    });
+  });
+
+  it('is refused for the window once its guesses are used up, the right password included', async () => {
+    const held = await guess(PASSWORD);
+    expect(held.status).toBe(303);
+    const cookie = /mudengine_session=[0-9a-f]{64}/.exec(held.headers.get('set-cookie') ?? '')![0];
+
+    expect((await guess('one')).status).toBe(401);
+    expect((await guess('two')).status).toBe(401);
+    expect((await guess('three')).status).toBe(401);
+    const shutOut = guarded.log.filter((line) => /wrong passwords from 127\.0\.0\.1/.test(line));
+    expect(shutOut).toHaveLength(1);
+
+    // Now nothing it sends as a password is read: the right one is answered as the wrong ones are.
+    const refused = await guess(PASSWORD);
+    expect(refused.status).toBe(429);
+    expect(refused.headers.get('retry-after')).toBe('600');
+    expect(await refused.text()).toContain('Try again in 10 minutes.');
+    expect((await fetch(at('/'), { headers: { Authorization: basic(PASSWORD) } })).status).toBe(
+      429
+    );
+    expect((await fetch(at('/'), { headers: { Authorization: basic('four') } })).status).toBe(429);
+
+    // Said once, not per refusal.
+    expect(guarded.log.filter((line) => /wrong passwords from/.test(line))).toHaveLength(1);
+    expect(guarded.log.filter((line) => /refused a sign-in/.test(line))).toHaveLength(3);
+
+    // A tab already signed in carries a cookie, and is never asked.
+    expect((await fetch(at('/'), { headers: { Cookie: cookie } })).status).toBe(200);
+  });
+
+  it('refuses a password on the socket too, and says when to come back', async () => {
+    const socket = net.connect(guarded.port, '127.0.0.1');
+    await new Promise<void>((resolve) => socket.once('connect', resolve));
+    socket.write(
+      [
+        'GET /ws HTTP/1.1',
+        `Host: 127.0.0.1:${guarded.port}`,
+        'Upgrade: websocket',
+        'Connection: Upgrade',
+        'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==',
+        'Sec-WebSocket-Version: 13',
+        `Authorization: ${basic(PASSWORD)}`,
+        '',
+        ''
+      ].join('\r\n')
+    );
+    const answer = await new Promise<string>((resolve) =>
+      socket.once('data', (chunk) => resolve(chunk.toString('latin1')))
+    );
+    socket.destroy();
+    expect(answer.split('\r\n')[0]).toBe('HTTP/1.1 429 Too Many Requests');
+    expect(answer).toMatch(/Retry-After: \d+/);
+  });
+
+  it('reads its password again once the window has passed', async () => {
+    clock.now += 600_000;
+    expect((await guess(PASSWORD)).status).toBe(303);
   });
 });

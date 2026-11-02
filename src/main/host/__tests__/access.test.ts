@@ -11,7 +11,8 @@ import {
   generatePassword,
   passwordMatches,
   PASSWORD_FILE,
-  resolveAccessPassword
+  resolveAccessPassword,
+  SignInGuard
 } from '../web/access';
 
 let home = '';
@@ -123,5 +124,51 @@ describe('basicPassword', () => {
     expect(basicPassword('Bearer abc')).toBeNull();
     expect(basicPassword(`Basic ${Buffer.from('nocolon').toString('base64')}`)).toBeNull();
     expect(basicPassword(undefined)).toBeNull();
+  });
+});
+
+describe('SignInGuard', () => {
+  const limits = { guesses: 3, windowMs: 60_000 };
+  const clocked = () => {
+    const clock = { now: 1_000_000 };
+    return { clock, guard: new SignInGuard(() => clock.now) };
+  };
+
+  it('shuts a source out at its last allowed guess, for the window, and then lets it try again', () => {
+    const { clock, guard } = clocked();
+    expect(guard.failed('10.0.0.1', limits)).toBe(false);
+    expect(guard.failed('10.0.0.1', limits)).toBe(false);
+    expect(guard.waitFor('10.0.0.1')).toBe(0);
+    expect(guard.failed('10.0.0.1', limits)).toBe(true);
+    expect(guard.waitFor('10.0.0.1')).toBe(60_000);
+
+    clock.now += 45_000;
+    expect(guard.waitFor('10.0.0.1')).toBe(15_000);
+    clock.now += 15_000;
+    expect(guard.waitFor('10.0.0.1')).toBe(0);
+    // A fresh count: one more wrong guess is one, not the fourth.
+    expect(guard.failed('10.0.0.1', limits)).toBe(false);
+    expect(guard.waitFor('10.0.0.1')).toBe(0);
+  });
+
+  it('counts only the guesses inside the window', () => {
+    const { clock, guard } = clocked();
+    guard.failed('10.0.0.1', limits);
+    guard.failed('10.0.0.1', limits);
+    clock.now += 60_000;
+    expect(guard.failed('10.0.0.1', limits)).toBe(false);
+    expect(guard.waitFor('10.0.0.1')).toBe(0);
+  });
+
+  it('keeps each source to itself, and forgets one that signed in', () => {
+    const { guard } = clocked();
+    guard.failed('10.0.0.1', limits);
+    guard.failed('10.0.0.1', limits);
+    expect(guard.failed('10.0.0.2', limits)).toBe(false);
+    guard.succeeded('10.0.0.1');
+    expect(guard.failed('10.0.0.1', limits)).toBe(false);
+    expect(guard.failed('10.0.0.1', limits)).toBe(false);
+    expect(guard.failed('10.0.0.1', limits)).toBe(true);
+    expect(guard.waitFor('10.0.0.2')).toBe(0);
   });
 });
