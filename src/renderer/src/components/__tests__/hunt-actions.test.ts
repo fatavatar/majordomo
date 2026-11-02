@@ -2,6 +2,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 
+import { windowStylesheet } from './stylesheet';
+
 /**
  * The three things that can be done with an area, drawn at every card height.
  *
@@ -50,7 +52,7 @@ describe("the hunting card's three buttons", () => {
   });
 
   it('shrinks for nothing, whatever height the card is at', () => {
-    const css = read('src/renderer/src/styles/index.css');
+    const css = windowStylesheet();
     const rule = css.slice(css.indexOf('.hunt-actions {'));
     expect(rule.slice(0, rule.indexOf('}'))).toContain('flex: 0 0 auto');
   });

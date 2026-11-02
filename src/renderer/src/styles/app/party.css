@@ -1,0 +1,323 @@
+/* ---------------------------------------------------------------- party */
+
+/*
+ * The only place another character's health is visible, and it costs one
+ * command rather than a second connection.
+ *
+ * Laid out as the card rethink's Party Board drew it (2026-10-28): a row per
+ * member — the name, two thin tracks stacked, and one chip — so a party of
+ * three is three lines somebody reads at a glance, then where everybody is,
+ * then Regroup, Muster and Say to, each under a dashed seam.
+ */
+/*
+ * The name a column of its own, the tracks the slack, the chip at the edge:
+ * columns the whole list shares (a subgrid each row), so every row's tracks
+ * start and end where the others' do whatever its chip says.
+ */
+.party-list {
+  column-gap: 8px;
+  display: grid;
+  grid-template-columns: minmax(4.5em, auto) minmax(0, 1fr) auto;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  row-gap: 5px;
+}
+
+.party-list li {
+  align-items: center;
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: subgrid;
+  min-width: 0;
+  row-gap: 3px;
+}
+
+.party-name {
+  color: var(--text-hi);
+  font-weight: 600;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* A person's name inside a row of text is text that happens to be clickable:
+   it takes the row's face and colour, and stays inline so the row's own
+   ellipsis still shortens a long name rather than clipping it. */
+.party-name > .name,
+.who > .name,
+.alert-text .name {
+  color: inherit;
+  display: inline;
+  font: inherit;
+}
+
+/* The leader, in the accent and starred: who the party follows. */
+.party-name[data-leader='true'] {
+  color: var(--accent);
+}
+
+.party-name[data-leader='true']::after {
+  content: ' ★';
+  font-size: var(--font-micro);
+}
+
+/* The row the flyout is about, in the listings' own recipe (`tr[data-selected]`). */
+.party-list li[data-selected] {
+  background: color-mix(in srgb, var(--accent) var(--tone-weak), transparent);
+  border-radius: var(--r-control);
+}
+
+.party-list li[data-status='offline'],
+.party-list li[data-status='forgotten'] {
+  opacity: 0.6;
+}
+
+.party-chip {
+  justify-self: end;
+}
+
+.party-unlisted {
+  font-size: var(--font-micro);
+}
+
+/* A member's own controls: under the row, the whole width. */
+.party-edit-row {
+  grid-column: 1 / -1;
+}
+
+/* Health over mana, each a thin track with its figures beside it. */
+.party-meters {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.party-meter {
+  align-items: center;
+  color: var(--text-lo);
+  display: grid;
+  font-size: var(--font-micro);
+  gap: 6px;
+  /* The figures a column wide enough for `2,285/2,431`, so the tracks of
+     every row end at one edge. */
+  grid-template-columns: minmax(24px, 1fr) minmax(11ch, auto);
+  line-height: 1;
+  min-width: 0;
+}
+
+/* A value that still cannot fit is shortened with an ellipsis, which says it
+   was shortened; a clipped `4,434` reading `4,4` would be a wrong maximum
+   stated confidently, the exact thing the maximum is there to prevent. */
+.party-meter-value {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.party-bar {
+  background: color-mix(in srgb, var(--text-hi) 10%, transparent);
+  border-radius: 3px;
+  display: block;
+  height: 6px;
+  overflow: hidden;
+}
+
+.party-bar > span {
+  background: var(--ok);
+  display: block;
+  height: 100%;
+}
+
+.party-meter.mana > .party-bar > span {
+  background: var(--accent);
+}
+
+/* Level outranks the resource, and equal specificity plus source order is what
+   makes that true — the same arrangement the Vitals meters use. */
+.party-meter[data-level='caution'] > .party-bar > span {
+  background: var(--pending);
+}
+
+.party-meter[data-level='critical'] {
+  color: var(--danger);
+}
+
+.party-meter[data-level='critical'] > .party-bar > span {
+  background: var(--danger);
+}
+
+/* Where everybody is, under the rows. */
+.party-where {
+  font-size: var(--font-micro);
+  margin: 6px 0 0;
+}
+
+/* No roster yet: the way to make one, said in the body. */
+.party-start {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  margin-bottom: 6px;
+}
+
+.party-start .hint {
+  font-size: var(--font-micro);
+}
+
+/* Regroup, Muster and Say to, each under a dashed seam. */
+.party-section {
+  border-top: var(--rule) dashed var(--ink-line);
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin-top: 7px;
+  padding-top: 7px;
+}
+
+.party-line {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px 6px;
+}
+
+.party-section-head {
+  color: var(--text-lo-quiet);
+  font-size: var(--font-micro);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.party-left {
+  color: var(--danger);
+  flex: 1 1 auto;
+  font-size: var(--font-micro);
+}
+
+/* A press that acts at once: Re-invite, and each place to muster to. */
+button.party-go {
+  background: color-mix(in srgb, var(--accent) var(--tone), transparent);
+  border-color: transparent;
+  box-shadow: none;
+  color: var(--accent);
+  font-size: var(--font-micro);
+  height: auto;
+  padding: 2px 7px;
+}
+
+button.party-go:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--accent) var(--tone-strong), transparent);
+  color: var(--text-hi);
+}
+
+/* Who Say to sends as: a tick on whoever is in, a quiet chip for who is not. */
+.chip.party-pick {
+  box-shadow: none;
+  cursor: pointer;
+  height: auto;
+  padding: 1px 6px;
+  font: inherit;
+  font-family: var(--font-mono);
+  font-size: var(--font-micro);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.chip.party-pick[aria-pressed='true'] {
+  background: color-mix(in srgb, var(--accent) var(--tone), transparent);
+  border-color: color-mix(in srgb, var(--accent) var(--tone-strong), transparent);
+  color: var(--accent);
+}
+
+.chip.party-pick[aria-pressed='true']::after {
+  content: ' ✓';
+}
+
+/* The line typed once, drawn as a line at the prompt. */
+.party-term {
+  align-items: center;
+  background: var(--ink-slate);
+  border: var(--rule) solid var(--ink-line);
+  border-radius: var(--r-control);
+  color: var(--text-lo);
+  display: flex;
+  font-family: var(--font-mono);
+  gap: 6px;
+  padding: 0 8px;
+}
+
+.party-term input {
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  color: var(--text-hi);
+  flex: 1 1 auto;
+  font-family: var(--font-mono);
+  min-width: 0;
+  padding-left: 0;
+}
+
+.party-report {
+  font-size: var(--font-micro);
+  margin: 0;
+}
+
+/* The editor: the roster's own controls beneath the rows. */
+.party-edit-row,
+.party-editor,
+.party-add {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.party-editor {
+  border-top: var(--rule) solid var(--ink-line);
+  margin-top: 8px;
+  padding-top: 8px;
+}
+
+.party-add input {
+  flex: 1 1 10em;
+  min-width: 0;
+}
+
+/* The places Muster offers, each with its own Remove: the whole width, one per line. */
+.party-places {
+  display: flex;
+  flex: 1 1 100%;
+  flex-direction: column;
+  gap: 2px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.party-places li {
+  align-items: center;
+  display: flex;
+  font-size: var(--font-micro);
+  gap: 6px;
+  justify-content: space-between;
+}
+
+.party-edit-row button.danger,
+.party-editor button.danger {
+  color: var(--danger);
+}
+
+.party-check {
+  align-items: center;
+  display: inline-flex;
+  font-size: var(--font-micro);
+  gap: 4px;
+}

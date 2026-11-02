@@ -1,0 +1,51 @@
+/* ============================================================== stream log */
+
+.line-log {
+  display: flex;
+  flex-direction: column;
+  font-family: var(--font-mono);
+  font-size: var(--font-micro);
+  gap: 1px;
+  line-height: 1.6;
+}
+
+.line-log .row {
+  border-left: var(--rule) solid transparent;
+  display: flex;
+  gap: 8px;
+  padding-left: 6px;
+  white-space: pre;
+}
+
+.line-log .row.fresh {
+  animation: row-wash var(--dur-enter) var(--ease-out);
+}
+
+/*
+ * The prompt repaint is the framing case worth seeing at a glance: this game
+ * rewrites its status line in place instead of sending a newline, and a
+ * tokenizer that stops recognising it breaks every downstream block boundary.
+ */
+.line-log .row.repaint {
+  border-left-color: color-mix(in srgb, var(--pending) 55%, transparent);
+}
+
+.line-log .row.flush {
+  border-left-color: color-mix(in srgb, var(--text-lo) 45%, transparent);
+}
+
+.line-log .mark {
+  color: var(--text-lo);
+  user-select: none;
+}
+
+.line-log .row.repaint .mark {
+  color: var(--pending);
+}
+
+.line-log .text {
+  /* Lines are long and columns are meaningful; clip rather than wrap so the
+     card stays a scannable list. */
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

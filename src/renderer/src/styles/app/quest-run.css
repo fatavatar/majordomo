@@ -1,0 +1,327 @@
+/* ============================================== the quest run, over the pane
+ *
+ * The run of a quest plan over the top rows of the console it is running in
+ * (`QuestRunBanner`, 2026-09-22): a multi-step form's stepper. Why it is over
+ * the pane and not docked, and why it is main's words: `mudengine-ui` ›
+ * quests, *the run is a banner*.
+ *
+ * Saturated and never blurred, the floating card's rule, but near-opaque
+ * rather than its see-through fill, measured: at 84% the room name under the
+ * head line showed through the quest's name and neither could be read. The
+ * accent's own hairline along the top is the one lit rim in colour, and it
+ * turns to the condition tone when the run ends.
+ */
+.quest-banner {
+  animation: card-enter var(--dur-surface) var(--ease-out) backwards;
+  background: var(--glass-fill-near);
+  backdrop-filter: saturate(1.2);
+  -webkit-backdrop-filter: saturate(1.2);
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--ink-line));
+  border-radius: var(--r-control);
+  box-shadow: var(--glass-rim), var(--elev-2);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  left: 10px;
+  overflow: hidden;
+  padding: 8px 10px 9px;
+  position: absolute;
+  right: 10px;
+  top: 10px;
+  z-index: 4;
+}
+
+.quest-banner::before {
+  background: linear-gradient(
+    90deg,
+    var(--accent),
+    color-mix(in srgb, var(--accent) 35%, transparent)
+  );
+  content: '';
+  height: 2px;
+  left: 0;
+  position: absolute;
+  right: 0;
+  top: 0;
+}
+
+.quest-banner[data-status='done'] {
+  border-color: color-mix(in srgb, var(--ok) 30%, var(--ink-line));
+}
+
+.quest-banner[data-status='done']::before {
+  background: linear-gradient(90deg, var(--ok), color-mix(in srgb, var(--ok) 35%, transparent));
+}
+
+.quest-banner[data-status='stopped'] {
+  border-color: color-mix(in srgb, var(--danger) 30%, var(--ink-line));
+}
+
+.quest-banner[data-status='stopped']::before {
+  background: linear-gradient(
+    90deg,
+    var(--danger),
+    color-mix(in srgb, var(--danger) 35%, transparent)
+  );
+}
+
+/* The head: the quest, the rank, which step, the phase and its subject, Stop. */
+.quest-banner-head {
+  align-items: center;
+  color: var(--text-lo);
+  display: flex;
+  font-size: var(--font-micro);
+  gap: 8px;
+  min-width: 0;
+}
+
+.quest-banner-head > .icon {
+  color: var(--accent);
+  flex: 0 0 auto;
+}
+
+.quest-banner[data-status='done'] .quest-banner-head > .icon {
+  color: var(--ok);
+}
+
+.quest-banner[data-status='stopped'] .quest-banner-head > .icon {
+  color: var(--danger);
+}
+
+/* The name gives way before the controls do: it ellipsises, Stop never leaves the row. */
+.quest-banner-title {
+  color: var(--text-hi);
+  flex: 0 1 auto;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.quest-banner-rank,
+.quest-banner-count {
+  flex: 0 0 auto;
+  font-family: var(--font-mono);
+  white-space: nowrap;
+}
+
+.quest-banner-count {
+  border-left: 1px solid var(--ink-line);
+  padding-left: 8px;
+}
+
+/* What it is doing takes the room that is left, and ellipsises before the button does. */
+.quest-banner-state {
+  align-items: baseline;
+  display: flex;
+  flex: 1 1 0;
+  gap: 6px;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.quest-banner-state > .chip {
+  flex: 0 0 auto;
+}
+
+.quest-banner-detail {
+  color: var(--text);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+button.quest-banner-stop {
+  align-items: center;
+  display: inline-flex;
+  gap: 4px;
+}
+
+button.quest-banner-dismiss {
+  flex: 0 0 auto;
+  height: 22px;
+  padding: 0 4px;
+}
+
+/*
+ * The stepper: one stop per step, a node with its number over the act's words,
+ * joined by a line from the previous node's centre to this one's. The three
+ * words run against the reading order as they do everywhere (§ *What is left
+ * is the loudest thing*): done is quiet and ticked, now is the accent, filled,
+ * with the halo, and left is ordinary ink in an outlined ring. The one thing
+ * the grammar does not say: the done node and the trail behind the walk are
+ * tinted `--ok`, the form's own mark for a stop passed; the words stay quiet.
+ */
+.quest-banner-steps {
+  display: flex;
+  list-style: none;
+  margin: 0;
+  min-width: 0;
+  padding: 0;
+  /* The node's size and the line's weight, named once: the line and the walk's
+     count are placed from them, so neither is a second guess at the node. */
+  --quest-line: 2px;
+  --quest-node: 22px;
+}
+
+.quest-banner-steps > li {
+  align-items: center;
+  display: flex;
+  flex: 1 1 0;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  position: relative;
+}
+
+.quest-banner-steps > li + li::before {
+  background: var(--ink-line);
+  content: '';
+  height: var(--quest-line);
+  left: -50%;
+  position: absolute;
+  right: 50%;
+  top: calc((var(--quest-node) - var(--quest-line)) / 2);
+}
+
+/* The line behind the walk is the trail it left; the one into `now` runs into the accent. */
+.quest-banner-steps > li[data-progress='done'] + li::before {
+  background: color-mix(in srgb, var(--ok) 65%, var(--ink-line));
+}
+
+.quest-banner-steps > li[data-progress='done'] + li[data-progress='now']::before {
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--ok) 65%, var(--ink-line)),
+    var(--accent)
+  );
+}
+
+/*
+ * The line *into* the step being walked to is how far through that walk the
+ * character is (todo 03), so the connector stops being decoration and becomes
+ * the progress indicator the count beside it states.
+ *
+ * It overrides the two rules above rather than joining them, because those
+ * describe the *chain*'s progress — done behind, accent ahead — and this one
+ * is about the journey inside one leg. The unfilled remainder keeps the line
+ * that was there, so a step with no walk under way looks exactly as before.
+ */
+.quest-banner-steps > li[data-progress='now'][style*='--through']::before {
+  background: linear-gradient(
+    to right,
+    var(--accent) var(--through, 0%),
+    color-mix(in srgb, var(--ok) 65%, var(--ink-line)) var(--through, 0%)
+  );
+}
+
+/*
+ * And the count, on the connector it is about (todo 02, 2026-09-23). Absolutely
+ * placed so it cannot widen the column — every step is `flex: 1 1 0` and a
+ * number in the flow would make the one being walked wider than the rest.
+ * The connector runs from the previous node's centre to this one's, so its
+ * midpoint is this `li`'s left edge: `left: 0` and a half-width pull back
+ * centres it on the line, and the node's half-height centres it across. A
+ * tonal glass pill over the line (z-order, like the nodes), so the line
+ * passes behind the words instead of through them.
+ */
+.quest-banner-walk {
+  background: color-mix(in srgb, var(--accent) var(--tone), var(--ink-raised));
+  border: 1px solid color-mix(in srgb, var(--accent) var(--tone-strong), transparent);
+  border-radius: var(--r-pill);
+  box-shadow: var(--glass-rim), var(--elev-1);
+  box-sizing: border-box;
+  color: var(--accent);
+  font-family: var(--font-mono);
+  font-size: 0.85em;
+  left: 0;
+  line-height: 1;
+  max-width: calc(100% - 2 * var(--quest-node));
+  overflow: hidden;
+  padding: 0.2em 0.6em;
+  position: absolute;
+  text-overflow: ellipsis;
+  top: calc(var(--quest-node) / 2);
+  transform: translate(-50%, -50%);
+  white-space: nowrap;
+  z-index: 1;
+}
+
+/* The first step has no connector into it: the count takes the stretch before its node, inside the banner's edge. */
+.quest-banner-steps > li:first-child > .quest-banner-walk {
+  max-width: calc(50% - var(--quest-node));
+  transform: translateY(-50%);
+}
+
+.quest-banner-node {
+  align-items: center;
+  background: var(--ink-raised);
+  border: 1px solid var(--ink-line);
+  border-radius: 50%;
+  box-sizing: border-box;
+  color: var(--text-lo);
+  display: flex;
+  flex: 0 0 auto;
+  font-family: var(--font-mono);
+  font-size: var(--font-micro);
+  font-weight: 600;
+  height: var(--quest-node);
+  justify-content: center;
+  line-height: 1;
+  position: relative;
+  width: var(--quest-node);
+  z-index: 1;
+}
+
+.quest-banner-steps > li[data-progress='done'] > .quest-banner-node {
+  background: color-mix(in srgb, var(--ok) var(--tone), var(--ink-raised));
+  border-color: color-mix(in srgb, var(--ok) var(--tone-strong), transparent);
+  color: var(--ok);
+}
+
+.quest-banner-steps > li[data-progress='now'] > .quest-banner-node {
+  background: var(--accent);
+  border-color: var(--accent);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) var(--tone), transparent);
+  color: var(--on-accent);
+}
+
+/* The ring breathes while the run is going, the connection dot's own cue, and stands still once it has ended. */
+.quest-banner[data-status='running']
+  .quest-banner-steps
+  > li[data-progress='now']
+  > .quest-banner-node {
+  animation: quest-banner-pulse 1.6s var(--ease-inout) infinite;
+}
+
+@keyframes quest-banner-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) var(--tone), transparent);
+  }
+  50% {
+    box-shadow: 0 0 0 8px color-mix(in srgb, var(--accent) 0%, transparent);
+  }
+}
+
+.quest-banner-name {
+  color: var(--text-hi);
+  font-size: var(--font-micro);
+  max-width: 100%;
+  overflow: hidden;
+  padding: 0 4px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.quest-banner-steps > li[data-progress='done'] > .quest-banner-name {
+  color: var(--text-lo-quiet);
+}
+
+.quest-banner-steps > li[data-progress='now'] > .quest-banner-name {
+  color: var(--accent);
+  font-weight: 600;
+}

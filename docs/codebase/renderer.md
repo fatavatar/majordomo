@@ -66,9 +66,14 @@ its case in `App.tsx`'s card switch.
   looked up with `t('literal.key', { values })` (`lib/i18n.ts`; main has the
   same in `app/i18n.ts`). Keys are always literals, never `t(variable)`, so
   they can be found and checked. YAML plain scalars must not contain `: `.
-- **Styles.** `styles/tokens.css` defines the colour and spacing tokens,
-  `styles/index.css` (about 15,000 lines) everything else, by component
-  class. Themes are `shared/themes.ts`.
+- **Styles.** `styles/tokens.css` defines the colour and spacing tokens;
+  everything else is one file per part of the window under `styles/app/`
+  (the shell, cards, the Stable, the Explorer, settings, …), which
+  `styles/index.css` imports in cascade order. Vite inlines the imports, so
+  the built sheet is what one file gave. A rule goes in the part it styles;
+  a new part goes where it belongs in that order, usually the end. A
+  relative `url()` in a part is relative to `styles/app/`. Themes are
+  `shared/themes.ts`.
 - **Preferences.** A setting that is both in the options file and a quick
   control in the window uses `usePreference`: the window's choice wins until
   the file's value actually changes.

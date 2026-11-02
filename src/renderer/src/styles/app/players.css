@@ -1,0 +1,235 @@
+/* ================================================================= player */
+
+/*
+ * A name in the listing is a control that selects somebody, and it is *text
+ * that happens to be clickable*: `button.lookup` resets the padding, border and
+ * background, and this must not put a control's height back on a row of text.
+ * That is the failure the pack's own styles record -- every row a 32px control
+ * with 12px of text in it, and nothing in the list's styles saying so.
+ */
+.player-name {
+  color: var(--text-hi);
+  font-weight: 600;
+  text-align: left;
+}
+
+/* Somebody who has logged off is still worth reading, and is not the answer to
+   "who is here" -- so it is quietened rather than hidden or coloured. */
+.player-name[data-offline],
+.player-list tr[data-offline] .player-where,
+.player-list tr[data-offline] .player-seen {
+  color: var(--text-lo-quiet);
+}
+
+.player-where,
+.player-seen {
+  color: var(--text-lo);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.player-detail {
+  margin: 0;
+}
+
+/*
+ * A figure the client is quoting rather than reading, and the time it came in.
+ *
+ * Quieter than the number beside it on purpose: it is the qualifier, and a
+ * qualifier at the same weight as the fact reads as a second fact.
+ */
+.quiet-note {
+  color: var(--text-lo-quiet);
+  font-size: var(--font-micro);
+}
+
+.player-access {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/*
+ * The `@` command permission grid, shared by the Player flyout, the Gang card
+ * and both settings screens.
+ *
+ * Fifty-seven rows of controls, so the tools stay put and only the rows move --
+ * the same rule a card table keeps, applied to a list. The height is the
+ * container's: on the rail the Gang card's `.scroller` bounds it, in the
+ * flyout the panel's own maximum does, and in a form it runs to its own cap.
+ */
+.remote-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 0;
+}
+
+.remote-list-tools {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.remote-list-tools .table-find {
+  flex: 1 1 8rem;
+  min-width: 0;
+}
+
+.remote-list-bulk {
+  display: flex;
+  gap: 4px;
+}
+
+.remote-list-count {
+  margin: 0;
+  color: var(--text-lo-quiet);
+  font-size: var(--font-micro);
+}
+
+/*
+ * Capped rather than unbounded, because this list is put inside three
+ * containers with three different heights and only one of them (the card)
+ * bounds it structurally. A form section that grew to fifty-seven rows would
+ * push every field below it off the screen.
+ */
+.remote-rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  max-height: 22rem;
+  min-height: 0;
+}
+
+.remote-rows > li {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 2px 0;
+}
+
+/* A row that cannot be set reads as text rather than as a control somebody
+   failed to press. */
+.remote-rows > li[data-settable='false'] .remote-name {
+  color: var(--text-lo-quiet);
+}
+
+.remote-name {
+  font-family: var(--font-mono);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/*
+ * Two chips in a row, sharing the chip vocabulary the table's own facets use:
+ * this is the same kind of control -- a toggle that says what it is -- and a
+ * second look for it would be a second thing to learn. Neither pressed is
+ * `unset`, which is what nearly every pair is.
+ */
+.remote-stance {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+/* The player's own commands (BotCommandList): one card a command, who may ask in one row. */
+.bot-commands {
+  display: flex;
+  flex-direction: column;
+  gap: var(--field-gap);
+}
+
+.bot-command {
+  border: 1px solid var(--ink-line);
+  border-radius: var(--r-card);
+  display: flex;
+  flex-direction: column;
+  gap: var(--field-gap);
+  padding: 8px 10px;
+}
+
+.bot-command-who {
+  align-items: end;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+}
+
+.bot-command-who > :nth-last-child(2) {
+  flex: 1 1 200px;
+}
+
+.remote-players {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* Somebody with a grant, among everyone the realm has seen: listed first, and marked. */
+.remote-players .chip.toggle[data-granted='true'][data-on='false'] {
+  font-weight: 600;
+}
+
+/* The gang's own head: which gang this character is in. */
+.gang-head {
+  margin: 0;
+}
+
+/*
+ * The leader's mark, before the name.
+ *
+ * Before rather than after, so the names still start in one column: a star
+ * trailing a name of variable length is a mark nobody can read down. Drawn in
+ * the accent at the tone §9 asks for anything reporting a condition, and it is
+ * never the only statement — the glyph carries a title naming the rank in
+ * words, which is what §6 requires of anything that would otherwise say
+ * something by appearance alone.
+ */
+.gang-rank {
+  color: var(--accent);
+  font-size: var(--font-micro);
+  margin-right: 3px;
+}
+
+/* The level reads as a figure, so it takes the numeric column's rhythm; the
+   rest are words and stay where the grid puts them. */
+.gang-table .level {
+  font-variant-numeric: tabular-nums;
+}
+
+.gang-gangpath,
+.player-auto-invite {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.gang-legend,
+.settings-subhead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 8px 0 4px;
+  font-size: var(--font-micro);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-lo-quiet);
+}
+
+/* The chips a settings form states a closed set with. Same control as a
+   table's facets, in a form rather than on a card. */
+.settings-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 0 0 4px;
+}

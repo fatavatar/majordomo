@@ -1,0 +1,210 @@
+/* ============================================================= route panel */
+
+/*
+ * The panel floats over the console on the palette's scrim and in the palette's
+ * box -- see `.palette, .route-panel` below -- rather than sitting in the strip
+ * it used to be docked in under the terminal. A docked strip appearing and
+ * disappearing takes rows from the console, which resizes the terminal and goes
+ * out over NAWS: the same reason the empty card strips overlay the console
+ * rather than taking rows.
+ *
+ * What is left here is what the route panel does *not* share with the palette.
+ */
+
+/*
+ * The field row, which is the palette's field plus a close button.
+ *
+ * The rule under it belongs to the *row* rather than to the input, because the
+ * button sits beside the input and a border on the field alone would stop short
+ * of the panel's right edge.
+ */
+.route-search {
+  align-items: center;
+  border-bottom: var(--rule) solid var(--ink-line);
+  display: flex;
+  gap: 6px;
+  padding-right: 8px;
+}
+
+/*
+ * More specific than `.palette input` on purpose: that rule is declared further
+ * down this file, so an equally specific selector here would lose the tie and
+ * the field would stop flexing.
+ */
+.route-panel .route-search input {
+  border-bottom-width: 0;
+  flex: 1;
+  min-width: 0;
+}
+
+/* The hold takes the field's track; see `.field-hold`. */
+.route-panel .route-search .field-hold {
+  flex: 1;
+}
+
+/*
+ * The palette is a column, so the hold must not be allowed to grow down it the
+ * way it grows across every row it sits in.
+ */
+.palette > .field-hold {
+  flex: 0 0 auto;
+}
+
+/* Full-bleed fields inset their own text by 16px; the glyph keeps that edge. */
+.palette .field-clear,
+.route-panel .field-clear {
+  margin-inline-end: 12px;
+}
+
+/*
+ * Everything under the field, scrolling as one.
+ *
+ * The panel is a fixed box, so the plan and the matches share the room left
+ * under the field rather than growing the dialog -- the palette's `ul` rule,
+ * applied to a body that is sometimes a list and sometimes a plan.
+ */
+.route-body {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 8px var(--gap);
+}
+
+.route-matches,
+.route-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.route-matches button {
+  align-items: center;
+  border-color: transparent;
+  box-shadow: none;
+  display: flex;
+  justify-content: space-between;
+  text-align: left;
+  width: 100%;
+}
+
+.route-matches .hint,
+.route-steps .step-name {
+  color: var(--text-lo);
+  font-family: var(--font-mono);
+  font-size: var(--font-micro);
+}
+
+.route-head {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+/*
+ * The destination's own neighbourhood, under the head.
+ *
+ * A **fixed** height, and it is the same rule the rail's cards follow: `Walk
+ * it` sits under this, and a frame that grew with the number of rooms drawn
+ * would move the panel's one filled control by a different amount for every
+ * destination. The `viewBox` in `MapPlan` does the fitting — a wide
+ * neighbourhood draws smaller rather than taller — so a fixed frame costs
+ * nothing but scale.
+ *
+ * A seam rather than a panel: it sits inside a popover that already has a
+ * surface, and a second filled box inside it would read as a card within a
+ * card.
+ */
+.route-map {
+  border-block: var(--rule) solid var(--ink-line);
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  /*
+   * Taller than the 150px the fitted strip took, because the map here is now
+   * the map everywhere — `MapView`, with the legend under it — and the legend
+   * wraps to about two rows at this width. The picture keeps what it had.
+   */
+  height: 210px;
+  margin-bottom: 6px;
+  padding: 6px 0;
+}
+
+/*
+ * The sentence, every chip that qualifies the walk, the two toggles and the
+ * two presses. It **wraps**: the toggles and the press box can neither shrink
+ * nor break (a named item, `nowrap`), so without this a route wearing several
+ * hazard chips pushed `Walk it` off the right edge of a 560px panel rather
+ * than taking a second line.
+ */
+.route-summary {
+  align-items: center;
+  color: var(--text-lo);
+  display: flex;
+  flex-wrap: wrap;
+  font-size: var(--font-micro);
+  gap: 8px;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+
+/* Why the walk was refused, said in place rather than as a notice that scrolls
+   away in the terminal while the panel is still open in front of it. */
+.route-refused {
+  background: color-mix(in srgb, var(--pending) var(--tone-weak), transparent);
+  border-radius: var(--r-chip);
+  color: var(--pending);
+  font-size: var(--font-micro);
+  margin-bottom: 6px;
+  padding: 4px 8px;
+}
+
+/* A plan asked for and not yet answered — see `planningTo` in RoutePanel. */
+.route-planning {
+  align-items: center;
+  color: var(--text-lo);
+  display: flex;
+  gap: 8px;
+  padding: 10px 8px;
+}
+
+.route-spinner {
+  animation: route-spin 0.8s linear infinite;
+  border: 2px solid color-mix(in srgb, var(--pending) var(--tone), transparent);
+  border-radius: 50%;
+  border-top-color: var(--pending);
+  flex: none;
+  height: 12px;
+  width: 12px;
+}
+
+@keyframes route-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .route-spinner {
+    animation: dot-pulse 1.6s var(--ease-inout) infinite;
+  }
+}
+
+/* The plan was drawn again from here, and why. Not the refusal's register: a
+   refusal says the press did nothing, and this says the press produced a plan
+   to read — so it wears the accent, which is what this palette says *look
+   here* with. */
+.route-redrawn {
+  background: color-mix(in srgb, var(--accent) var(--tone-weak), transparent);
+  border-radius: var(--r-chip);
+  color: var(--text-hi);
+  font-size: var(--font-micro);
+  margin-bottom: 6px;
+  padding: 4px 8px;
+}
+
+.route-redrawn-why {
+  color: var(--text-lo);
+  margin-top: 2px;
+}

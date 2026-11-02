@@ -1,0 +1,469 @@
+/*
+ * The two things on the settings screen that are still prose, and the reason
+ * they are allowed to be.
+ *
+ * `.settings-warn` is for something that can cost a character -- hanging up,
+ * opening fights unasked. One sentence, in the open, above the control, because
+ * a warning behind a hover is a warning nobody reads until afterwards. Tonal,
+ * like everything else that reports a condition (docs/ui-design.md §9): the
+ * accent at low opacity with the accent as the text, so one recipe works in
+ * both themes.
+ *
+ * `.settings-note` is the pointer to where the rest of a setting lives -- the
+ * options file, the map -- and is quiet on purpose. It says where, not why.
+ */
+/* The Player flyout's Access face carries the same warnings — Allow set while
+   `named` is not trusted — and a warning styled only under the settings form
+   read there as one more sentence of prose. */
+.settings-form .settings-warn,
+.popover .settings-warn {
+  background: color-mix(in srgb, var(--danger) var(--tone-weak), transparent);
+  border-radius: var(--r-chip);
+  color: color-mix(in srgb, var(--danger) 85%, var(--text-hi));
+  font-size: 0.88em;
+  line-height: 1.45;
+  margin: 0 0 4px;
+  padding: 7px 10px;
+}
+
+.settings-form .settings-note {
+  color: var(--text-lo);
+  font-size: 0.86em;
+  line-height: 1.45;
+  margin: 2px 0 0;
+}
+
+/*
+ * The designed status line, as the console will draw it: the console's own
+ * face and ground (the colours are inline, from the palette the console
+ * wears), one row that never wraps, scrolled rather than folded so the cell
+ * count beside it stays true. Chrome, so a radius is allowed.
+ */
+/*
+ * A listing as the console will draw it: several rows, each a run of the
+ * palette's colours, with the glyphs drawn in the cells the drawing left for
+ * them — the same pictures the console lays over those cells.
+ */
+.rewrite-preview {
+  border-radius: var(--r-control);
+  display: block;
+  font-family: var(--font-terminal, var(--font-dos));
+  line-height: 1.4;
+  overflow-x: auto;
+  padding: 6px 8px;
+  white-space: pre;
+}
+
+/*
+ * The sample of what the player types, on the prompt row only. It wears the
+ * state the template ends in, which is the whole point of drawing it (todo
+ * 08) — so the mark that says it is a sample rather than part of the drawing
+ * is a caret before it, never a colour of its own.
+ */
+.rewrite-preview .rewrite-typed::before {
+  content: '▏';
+  opacity: 0.7;
+}
+
+/*
+ * The list of designs: the loops list's rows, with the switch first. A row
+ * that is off keeps its name quiet, so the eye finds what is drawing.
+ */
+.rewrite-list li > input[type='checkbox'] {
+  flex: 0 0 auto;
+  margin: 0;
+}
+
+.rewrite-list .rewrite-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rewrite-list li[data-on='false'] .rewrite-name {
+  color: var(--text-lo);
+}
+
+/*
+ * The editor a design opens in: a dialog over the settings screen, in the
+ * file browser's box and above its scrim for the same reason (the settings
+ * scrim sits at 110). Two panes -- the figures it may name, and the template
+ * with the listing drawn under it -- because the sidebar is what makes a
+ * template writable without the file's paragraph open beside it.
+ */
+.rewrite-editor-scrim {
+  align-items: center;
+  padding-top: 0;
+  z-index: 150;
+}
+
+.rewrite-editor {
+  height: min(760px, 92vh);
+  max-height: none;
+  width: min(1100px, 94vw);
+}
+
+.rewrite-editor-head {
+  align-items: end;
+  border-bottom: 1px solid var(--ink-line);
+  display: flex;
+  flex: 0 0 auto;
+  gap: 10px;
+  overflow: visible;
+  padding: 10px 12px;
+}
+
+.rewrite-editor-head > .settings-inline {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.rewrite-editor-done {
+  align-items: center;
+  display: inline-flex;
+  flex: 0 0 auto;
+  gap: 4px;
+}
+
+.rewrite-editor-body {
+  display: grid;
+  flex: 1 1 auto;
+  grid-template-columns: minmax(220px, 280px) minmax(0, 1fr);
+  min-height: 0;
+}
+
+.rewrite-sidebar {
+  border-right: 1px solid var(--ink-line);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 8px 6px;
+}
+
+.rewrite-category > summary {
+  color: var(--text-lo-quiet);
+  cursor: pointer;
+  font-size: var(--font-micro);
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  list-style: none;
+  padding: 4px 6px;
+  text-transform: uppercase;
+  user-select: none;
+}
+
+.rewrite-category > summary::before {
+  content: '▸';
+  display: inline-block;
+  margin-right: 5px;
+  transition: transform var(--dur-control) var(--ease-out);
+}
+
+.rewrite-category[open] > summary::before {
+  transform: rotate(90deg);
+}
+
+.rewrite-category-body {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 2px 0 6px;
+}
+
+/* A figure: its tag, the sentence about it, and what kind of thing it is. */
+.rewrite-field-row {
+  align-items: center;
+  display: flex;
+  gap: 2px;
+}
+
+.rewrite-tag {
+  align-items: baseline;
+  background: transparent;
+  border: 0;
+  border-radius: var(--r-control);
+  color: var(--text-hi);
+  cursor: pointer;
+  display: flex;
+  flex: 1 1 auto;
+  font: inherit;
+  font-size: var(--font-micro);
+  gap: 6px;
+  min-width: 0;
+  padding: 3px 6px;
+  text-align: left;
+}
+
+.rewrite-tag:hover,
+.rewrite-tag:focus-visible {
+  background: color-mix(in srgb, var(--accent) var(--tone-weak), transparent);
+  outline: none;
+}
+
+.rewrite-tag code {
+  color: var(--accent);
+  flex: 0 0 auto;
+  font-family: var(--font-mono);
+}
+
+.rewrite-tag .hint {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rewrite-kind {
+  color: var(--text-lo-quiet);
+  flex: 0 0 auto;
+  font-size: calc(var(--font-micro) - 1px);
+}
+
+.rewrite-more {
+  flex: 0 0 auto;
+  padding: 2px;
+}
+
+/* The popout of a row's fields sits over the editor, so it outranks its scrim. */
+.rewrite-popout {
+  max-height: 60vh;
+  overflow-y: auto;
+  z-index: 160;
+}
+
+.rewrite-popout .entry code {
+  color: var(--accent);
+  font-family: var(--font-mono);
+}
+
+.rewrite-popout .entry .hint {
+  color: var(--text-lo);
+}
+
+.rewrite-tag-row {
+  display: flex;
+  flex-wrap: wrap;
+}
+
+.rewrite-tag-row > .rewrite-tag {
+  flex: 0 0 auto;
+}
+
+/* The sixteen, in the console's own palette, so a press shows what it puts in. */
+.rewrite-swatches {
+  display: grid;
+  gap: 3px;
+  grid-template-columns: repeat(8, 1fr);
+  padding: 2px 6px;
+}
+
+.rewrite-swatch {
+  border: 1px solid var(--ink-line);
+  border-radius: var(--r-control);
+  cursor: pointer;
+  height: 18px;
+  padding: 0;
+}
+
+.rewrite-swatch:hover,
+.rewrite-swatch:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.rewrite-check {
+  align-items: center;
+  color: var(--text-hi);
+  cursor: pointer;
+  display: flex;
+  font-size: var(--font-micro);
+  gap: 6px;
+  padding: 3px 6px;
+}
+
+.rewrite-pick input[type='color'] {
+  block-size: 18px;
+  border: 1px solid var(--ink-line);
+  border-radius: var(--r-control);
+  cursor: pointer;
+  inline-size: 28px;
+  padding: 0;
+}
+
+.rewrite-main {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 10px 12px;
+}
+
+/*
+ * Not allowed to shrink: the main pane is a flex column that scrolls, and a
+ * flex item yields its height to its neighbours before the pane overflows,
+ * which left the template two lines tall under a preview that took the rest.
+ */
+.rewrite-template-field {
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  gap: 3px;
+}
+
+/* The template, in the console's face: what is typed here is drawn there. */
+.rewrite-template {
+  background: var(--ink-void);
+  border: 1px solid var(--ink-edge);
+  border-radius: 4px;
+  color: var(--text-hi);
+  flex: 0 0 auto;
+  font-family: var(--font-terminal, var(--font-dos));
+  font-size: inherit;
+  line-height: 1.4;
+  min-height: 12em;
+  overflow: auto;
+  padding: 6px 8px;
+  resize: vertical;
+  white-space: pre;
+}
+
+/* The prompt row is one line, so its box asks for less. */
+.rewrite-template[rows='3'] {
+  min-height: 4.5em;
+}
+
+.rewrite-template:focus {
+  border-color: var(--accent);
+  outline: none;
+}
+
+.rewrite-preview .rewrite-glyph {
+  display: inline-block;
+  height: 1em;
+  vertical-align: -0.15em;
+  width: 2ch;
+}
+
+.rewrite-preview .rewrite-glyph svg {
+  height: 1.1em;
+  width: 1.1em;
+}
+
+.rewrite-preview .rewrite-glyph[data-mark='worn'] {
+  color: var(--ok);
+}
+
+.rewrite-preview .rewrite-glyph[data-mark='blocked'] {
+  color: var(--danger);
+}
+
+/* A band is a floor, a colour and a remove beside them: a control row, in
+   which the two fields still stack label over control and share the width. */
+/* A band is a percent and a colour: a short row, not the page's width. */
+.statline-band {
+  max-width: 520px;
+}
+
+.statline-band > .settings-field {
+  display: grid;
+  flex: 1 1 0;
+  gap: 3px;
+  min-width: 0;
+}
+
+/*
+ * Prose stops at a measure, and the fields do not.
+ *
+ * The two want opposite things from a wide dialog. A field grid *wants* the
+ * whole width -- more tracks is more settings per band, which is what the width
+ * was widened for. A sentence does not: the Global page has no character list
+ * beside it, so at a full-width dialog every note and warning on it ran to
+ * eleven hundred pixels, and a line that long is one the eye loses its place
+ * returning from. Stated in `ch` so it tracks whatever UI font the options file
+ * names, rather than as a pixel figure chosen against one font.
+ *
+ * On the paragraphs rather than on `.settings-form`, because a cap on the form
+ * would take the tracks with it.
+ */
+.settings-form :is(.settings-note, .settings-warn, .settings-label) {
+  max-width: 78ch;
+}
+
+/*
+ * A grid of checkboxes, for a closed set somebody picks several of.
+ *
+ * Two or three columns rather than a column of eleven: a list this long read
+ * vertically is a scroll, and the card it is in has a fixed height like every
+ * other surface here. `.settings-label` is the heading a `<div>` of them needs,
+ * because they are not one `<label>` and a legend would make a fieldset inside
+ * a fieldset.
+ */
+.settings-form .settings-label {
+  color: var(--text);
+  font-size: var(--font-micro);
+}
+
+.settings-form .settings-checks {
+  display: grid;
+  gap: 2px 12px;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+}
+
+/*
+ * The purse: the coins, then what the realm says they come to.
+ *
+ * `nowrap` and `hidden` are what make the tier measurable — the row asks the
+ * laid-out element whether it overflowed, and a `dd` that wrapped instead would
+ * always answer no while quietly becoming two lines on a card that must not
+ * change height. Nothing here is a pixel constant; the width comes from the
+ * card, which is resizable.
+ */
+.readout dd.purse {
+  display: flex;
+  gap: 6px;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.readout dd.purse .total {
+  color: var(--text-lo);
+  font-family: var(--font-mono);
+}
+
+/*
+ * A web address somebody gossiped.
+ *
+ * Underlined rather than coloured, because the card already spends its colour
+ * on the channel and on what a thing *is* — a second hue here would compete
+ * with the one that carries meaning. Underlines are what a link has looked like
+ * for thirty years and need no legend.
+ */
+.conversation-log a {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.conversation-log a:hover,
+.conversation-log a:focus-visible {
+  color: var(--accent);
+}
+
+/*
+ * What something on the floor is worth.
+ *
+ * Quiet and beside the name rather than in a column: unlike the pack, this list
+ * is a sentence — the server prints it as one — and pulling the figures into a
+ * column would mean breaking it into rows for a number most items do not have.
+ */
+.room-card .floor .price {
+  color: var(--text-lo-quiet);
+  font-variant-numeric: tabular-nums;
+}

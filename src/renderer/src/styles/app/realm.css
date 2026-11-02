@@ -1,0 +1,55 @@
+/* ----------------------------------------------------------------- realm */
+
+/*
+ * Who else is in the realm, worst first.
+ *
+ * The standing is a word before it is a colour (§6). This is the card where
+ * that matters most: a decision about whether to keep walking gets made off it,
+ * and a client that says "hostile" only by turning something red says it to
+ * some of its users and not to others.
+ */
+.realm-align {
+  color: var(--text-lo-quiet);
+  font-size: var(--font-micro);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.realm-list tr[data-hostile] .realm-align {
+  color: var(--danger);
+}
+
+/* Unknown is neither safe nor an alarm, and is coloured as neither. */
+.realm-list tr[data-unknown] .realm-align {
+  color: var(--pending);
+  opacity: 0.85;
+}
+
+/*
+ * A name here is the control that opens the Player flyout on somebody, and it is
+ * *text that happens to be clickable*: `button.lookup` resets the padding,
+ * border and background, and this must not put a control's height back on a row
+ * of text. Same rule, and same recorded failure, as the pack's own rows.
+ */
+.realm-name {
+  color: var(--text-hi);
+  font-weight: 600;
+  text-align: left;
+}
+
+.realm-list tr[data-hostile] .realm-name {
+  color: var(--danger);
+}
+
+.realm-title {
+  color: var(--text-lo);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.realm-note {
+  flex: 0 0 auto;
+  margin: 0;
+}

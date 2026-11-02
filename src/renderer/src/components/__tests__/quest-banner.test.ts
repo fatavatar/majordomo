@@ -2,6 +2,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 
+import { windowStylesheet } from './stylesheet';
+
 /**
  * The run of a quest plan, as a banner over the console (2026-09-22): three
  * halves in three files, each read out of its own source. Why each is so is
@@ -22,7 +24,7 @@ function rule(css: string, selector: string): string {
 describe('the quest run banner', () => {
   const terminal = read('src/renderer/src/components/SessionTerminal.tsx');
   const banner = read('src/renderer/src/components/QuestRunBanner.tsx');
-  const css = read('src/renderer/src/styles/index.css');
+  const css = windowStylesheet();
 
   it('is drawn inside the pane it reports on, before the terminal', () => {
     const layer = terminal.indexOf('className="terminal-layer"');

@@ -1,0 +1,57 @@
+/* ========================================================= automation card */
+
+/*
+ * A trace is read like a log: monospace, aligned columns, newest first. Same
+ * grammar as the Telnet log so the rail reads as one instrument.
+ */
+.trace-heading {
+  color: var(--text-lo);
+  font-size: var(--font-micro);
+  letter-spacing: 0.06em;
+  margin: 8px 0 2px;
+  text-transform: uppercase;
+}
+
+.trace-heading:first-child {
+  margin-top: 0;
+}
+
+.trace .row {
+  align-items: baseline;
+  display: flex;
+  font-family: var(--font-mono);
+  font-size: var(--font-micro);
+  gap: 8px;
+  padding: 1px 0;
+}
+
+/* A rule a guard rejected is not a failure, so it is dimmed rather than
+   coloured: it is the *answer* to "why did nothing happen", and answers should
+   not look like alarms. */
+.trace .row.blocked {
+  opacity: 0.62;
+}
+
+.trace-at,
+.trace-priority {
+  color: var(--text-lo);
+  flex: none;
+}
+
+.trace-command {
+  color: var(--text-hi);
+  flex: none;
+  font-weight: 600;
+  min-width: 8ch;
+}
+
+/* The reason is the point of the trace, but it is also the longest field:
+   let it take what is left and ellipsize rather than wrap the row. */
+.trace-reason {
+  color: var(--text-lo);
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

@@ -1,0 +1,302 @@
+/* ------------------------------------------------- cards over the console */
+
+/*
+ * The layer is inert and only the cards in it take the pointer.
+ *
+ * Otherwise an empty float layer sits over the console and swallows every click
+ * meant for the game, which is the worst possible way to discover this feature
+ * exists.
+ */
+.float-layer {
+  inset: 0;
+  pointer-events: none;
+  position: absolute;
+  z-index: 40;
+}
+
+.float {
+  display: flex;
+  min-height: 0;
+  pointer-events: auto;
+  position: absolute;
+}
+
+.float > .card {
+  /*
+   * Two alphas from one slider, never a single `opacity` on the card.
+   *
+   * `opacity` here would fade the readout by exactly as much as the background,
+   * and a card you can see through is useful where a *number* you can see
+   * through is not. `--card-alpha` and `--card-text-alpha` are both set by
+   * BentoCard from `floatAlphas`; the fill runs 25–60% and the text 50–90%, so
+   * at every setting the console shows through and the figures stay legible.
+   */
+  background: color-mix(in srgb, var(--ink-card) var(--card-alpha, 60%), transparent);
+  flex: 1 1 auto;
+  /*
+   * No blur behind a floating card.
+   *
+   * The glass language blurs what is behind a surface, and behind this one is
+   * the game: an 18px blur turns the console into an unreadable smear, which
+   * defeats the only reason to put a card there. The saturation is kept, so it
+   * still reads as a pane of something rather than as a hole.
+   */
+  backdrop-filter: saturate(1.2);
+  -webkit-backdrop-filter: saturate(1.2);
+}
+
+/*
+ * A float declares a height, so its card is allowed to shrink below its own
+ * content to fit it. A **rolled** float declares none -- the wrapper takes the
+ * card's heading -- so there is nothing for the card to shrink into, and this
+ * would otherwise undercut the two-glyph floor a rolled card keeps for its own
+ * close and kebab. Stated on the wrapper that knows, rather than by
+ * out-specifying the floor from the other side.
+ */
+.float:not([data-rolled]) > .card {
+  min-height: 0;
+}
+
+/*
+ * The text carries its own alpha, applied to the card's *contents* rather than
+ * to the card. Header and body have no background of their own — the fill is on
+ * the card — so this fades the readout and nothing else.
+ */
+.float > .card > header,
+.float > .card > .body {
+  opacity: var(--card-text-alpha, 0.9);
+}
+
+/*
+ * The corner grip. Small, and only obvious once the pointer is on the card.
+ *
+ * One mark for both the float's corner and a rail card's: learned once, in
+ * the same corner, and drawn the same way. The rail's moves one axis — a rail
+ * card is as wide as the rail — so its cursor says so.
+ */
+.float-grip,
+.card-resize {
+  bottom: 0;
+  cursor: nwse-resize;
+  height: 16px;
+  position: absolute;
+  right: 0;
+  touch-action: none;
+  width: 16px;
+  z-index: 2;
+}
+
+.card-resize {
+  cursor: ns-resize;
+}
+
+.float-grip::after,
+.card-resize::after {
+  border-bottom: 2px solid var(--text-lo-quiet);
+  border-right: 2px solid var(--text-lo-quiet);
+  bottom: 4px;
+  content: '';
+  height: 6px;
+  opacity: 0;
+  position: absolute;
+  right: 4px;
+  transition: opacity var(--dur-control) var(--ease-out);
+  width: 6px;
+}
+
+.float:hover .float-grip::after,
+.float-grip:focus-visible::after,
+.card:hover .card-resize::after,
+.card-resize:focus-visible::after {
+  opacity: 1;
+}
+
+/*
+ * How solid the card is. Only on a floating card, because it is only there that
+ * there is anything behind it to show.
+ */
+.card-alpha {
+  accent-color: var(--accent);
+  height: 14px;
+  margin-left: auto;
+  opacity: 0.35;
+  transition: opacity var(--dur-control) var(--ease-out);
+  width: 56px;
+}
+
+/*
+ * The roll toggle, last in the heading.
+ *
+ * Always drawn and quiet until the card is pointed at -- the card grip's rule,
+ * and the slider above shares it: an affordance you have to find by hovering
+ * is one most people never find. It keeps its full strength while the card is
+ * rolled, because then it is the only way back and there is nothing else on
+ * the card for the eye to land on.
+ */
+.card-roll {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  border-radius: var(--r-chip);
+  color: var(--text-lo-quiet);
+  cursor: pointer;
+  display: flex;
+  flex: 0 0 auto;
+  height: var(--card-action);
+  justify-content: center;
+  opacity: 0.35;
+  padding: 0;
+  transition:
+    background var(--dur-tint) var(--ease-out),
+    color var(--dur-tint) var(--ease-out),
+    opacity var(--dur-control) var(--ease-out);
+  width: var(--card-action);
+}
+
+.card-roll .icon {
+  height: 12px;
+  stroke-width: 1.9;
+  width: 12px;
+}
+
+.card:hover .card-roll,
+.card-roll:focus-visible,
+.card[data-rolled='true'] .card-roll {
+  opacity: 1;
+}
+
+.card-roll:hover,
+.card-roll:focus-visible {
+  background: color-mix(in srgb, var(--accent) var(--tone-weak), transparent);
+  color: var(--accent);
+}
+
+.card:hover .card-alpha,
+.card-alpha:focus-visible {
+  opacity: 1;
+}
+
+/*
+ * A control inside a table row.
+ *
+ * The one place a card's table carries an *action* rather than a fact — the
+ * Carrying card's per-item equip. It has to be a control that reads as a
+ * control and still takes the row's height: a name in a row of text is text
+ * that happens to be clickable, and the pack looked double-spaced for a phase
+ * because `button.lookup` reset a button's padding and left `--control-h`
+ * behind. Every one of those cells became a 32px control holding 12px of text.
+ *
+ * So the height is the line's, and nothing here restores a control's box.
+ * Quiet until the row is pointed at, the card-grip rule: an action column that
+ * is always lit reads as a column of things to press.
+ */
+.row-action {
+  align-items: center;
+  background: none;
+  border: 0;
+  border-radius: var(--r-control);
+  color: var(--text-lo-quiet);
+  cursor: pointer;
+  display: inline-flex;
+  height: auto;
+  justify-content: center;
+  line-height: 1;
+  opacity: 0.55;
+  padding: 0;
+  transition:
+    opacity var(--dur-control) var(--ease-out),
+    color var(--dur-control) var(--ease-out);
+}
+
+.row-action .icon {
+  height: 14px;
+  width: 14px;
+}
+
+tr:hover .row-action,
+.row-action:focus-visible {
+  color: var(--text-lo);
+  opacity: 1;
+}
+
+/*
+ * Kit this character may not put on.
+ *
+ * Red, because it is the one row-level statement in the pack that is a
+ * *refusal* — and the same `--danger` the Realm card spends on a hostile,
+ * rather than a second red of its own. Tonal at rest like everything else that
+ * reports a condition (§9): emphasis is spent, not sprayed, and a run of
+ * full-strength red glyphs down a pack of forty items would be a card
+ * shouting.
+ *
+ * Not a `cursor: pointer` and not a hover brighten: it is a statement, not a
+ * control, and a glyph that lights up under the pointer is one people click.
+ * It keeps a `title`, which is the whole point — the reason is the half the
+ * server's own refusal leaves out.
+ */
+.row-action.blocked {
+  color: var(--danger);
+  cursor: default;
+  opacity: 0.75;
+}
+
+tr:hover .row-action.blocked {
+  color: var(--danger);
+  opacity: 1;
+}
+
+/*
+ * Kit this character has on, and the press that takes it off.
+ *
+ * The same `--ok` the rest of the client spends on a good condition rather
+ * than a third green of its own, and pulled back at rest for the reason the
+ * refusal above is: a run of full-strength glyphs down a pack of forty items
+ * would be a card shouting, and emphasis here is spent, not sprayed (§9).
+ *
+ * Louder at rest than a plain `.row-action` and quieter than under the
+ * pointer, because unlike the equip control this one is *also a statement* —
+ * which rows are in use has to be legible without going looking for it. It
+ * stays a control in every other respect: it keeps the pointer and it lights
+ * up with its row, which is what says the green can be pressed.
+ */
+.row-action.worn {
+  color: var(--ok);
+  opacity: 0.8;
+}
+
+tr:hover .row-action.worn,
+.row-action.worn:focus-visible {
+  color: var(--ok);
+  opacity: 1;
+}
+
+/* -------------------------------------------------------------- the grip */
+
+/*
+ * The one standing mark that says a card can be moved.
+ *
+ * Always drawn, never only on hover: an affordance you have to find by hovering
+ * is one most people never find, and a rearrangeable rail nobody knows is
+ * rearrangeable is worth nothing. The same six dots in the same place on every
+ * draggable card, so it is learned once and then recognised.
+ */
+.card-grip {
+  background-image: radial-gradient(circle, var(--text-lo-quiet) 1.1px, transparent 1.2px);
+  background-position: 0 0;
+  background-size: 4px 4px;
+  flex: 0 0 auto;
+  height: 12px;
+  margin-right: 2px;
+  opacity: 0.55;
+  transition: opacity var(--dur-control) var(--ease-out);
+  width: 8px;
+}
+
+.card > header[data-grab]:hover .card-grip {
+  opacity: 1;
+}
+
+/* The badge already claims the auto margin when there is one. */
+.card > header .badge ~ .card-alpha {
+  margin-left: 0;
+}

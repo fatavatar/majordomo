@@ -1,0 +1,1219 @@
+/* ================================================================ settings */
+
+/*
+ * The way in for somebody who has not read the source.
+ *
+ * A host and a port describe a *character*, not the client, which is why the
+ * command strip was removed and that information moved into `profiles/*.yaml`.
+ * That is fine for somebody who edits YAML and is not fine as the only way in.
+ *
+ * Deliberately not an editor for the whole options file: automation rules and
+ * per-character overlays are lists with comments explaining why, which is what
+ * YAML is good at. This covers what YAML is bad at — a password, a port and a
+ * menu answer — and says where the files are for everything else.
+ */
+/*
+ * The layer the panel sits on, and it takes no pointer of its own.
+ *
+ * The screen used to be a modal over a scrim, which is the arrangement that
+ * made it impossible to change a setting and watch what it did: whatever a
+ * setting does happens in the console behind it, and the scrim ate every click
+ * meant for the console — including, once, while a character was being hit.
+ * The layer is inert and the panel takes the pointer back, which is exactly
+ * the arrangement the floating card layer already has.
+ */
+.settings-layer {
+  align-items: center;
+  display: flex;
+  inset: 0;
+  justify-content: center;
+  padding: 5vh 4vw;
+  pointer-events: none;
+  position: fixed;
+  z-index: 110;
+}
+
+/*
+ * With no characters at all there is nothing behind the screen to reach and
+ * nothing to type at, so the modal comes back whole: the scrim, the pointer,
+ * and the centring that goes with a box which is not being dragged.
+ */
+.settings-layer[data-required='true'] {
+  animation: scrim-in var(--dur-control) var(--ease-out);
+  background: var(--scrim);
+  pointer-events: auto;
+}
+
+/*
+ * How it opens, and what a drag then overrides.
+ *
+ * Wide, because height is the scarce dimension and the width was not being
+ * spent: at 900px the character form was three 190px tracks, so a section of
+ * switches was a column of one-per-row with two thirds of the dialog empty
+ * beside it and everything below it pushed off the bottom. Four tracks is what
+ * pays for itself, and `min(1180px, 94vw)` is what states it on a laptop and on
+ * a 3,000px display at once — which is why a panel nobody has dragged has **no
+ * box at all** rather than a default fraction. A fixed height like every card:
+ * the lists inside scroll rather than the panel growing past the window with a
+ * long roster of characters.
+ */
+.settings {
+  animation: palette-in var(--dur-control) var(--ease-out);
+  background: var(--glass-fill-strong);
+  display: flex;
+  flex-direction: column;
+  height: min(760px, 90vh);
+  overflow: hidden;
+  pointer-events: auto;
+  width: min(1180px, 94vw);
+}
+
+/* Once it has been dragged, the box is the geometry and the flex centring of
+   the layer no longer decides anything. */
+.settings[data-placed='true'] {
+  position: absolute;
+}
+
+/*
+ * A drag has to be instant. Any transition on the box turns the panel into
+ * something that follows the pointer a frame behind, which reads as the window
+ * being slow rather than as easing.
+ */
+.settings[data-dragging='true'] {
+  animation: none;
+  user-select: none;
+}
+
+/*
+ * The heading is the handle, as a card's is — so it says so, and the controls
+ * on it keep the pointer they need.
+ */
+.settings-layer[data-required='false'] .settings-head {
+  cursor: grab;
+}
+
+.settings[data-dragging='true'] .settings-head {
+  cursor: grabbing;
+}
+
+.settings-head button {
+  cursor: pointer;
+}
+
+/*
+ * The corner. Two hairlines rather than a glyph: it is drawn over the last
+ * eighteen pixels of a footer that already has controls in it, and anything
+ * with a fill there reads as a third button.
+ */
+.settings-grip {
+  background: linear-gradient(
+    135deg,
+    transparent 0 45%,
+    var(--ink-edge) 45% 55%,
+    transparent 55% 70%,
+    var(--ink-edge) 70% 80%,
+    transparent 80%
+  );
+  block-size: 18px;
+  border: 0;
+  bottom: 0;
+  cursor: nwse-resize;
+  inline-size: 18px;
+  padding: 0;
+  position: absolute;
+  right: 0;
+}
+
+.settings-grip:focus-visible {
+  outline: var(--focus-ring) solid var(--accent);
+  outline-offset: -2px;
+}
+
+.settings-head {
+  align-items: center;
+  border-bottom: 1px solid var(--ink-line);
+  display: flex;
+  gap: 8px;
+  padding: var(--pad-card);
+}
+
+/*
+ * Four pills now -- MudEngine, Global, Realms, Characters -- so they wrap
+ * rather than push the close button off the edge of a narrow window. The row
+ * is the sentence explaining how the four relate, and losing the end of it is
+ * losing the half that says where a character lives.
+ */
+.settings-head h2 {
+  align-items: baseline;
+  display: flex;
+  flex-wrap: wrap;
+  font-size: var(--font-micro);
+  font-weight: 600;
+  gap: 6px;
+  letter-spacing: 0.11em;
+  margin: 0;
+  margin-right: auto;
+  min-width: 0;
+  text-transform: uppercase;
+}
+
+/*
+ * The rail beside the form, on every page (todo 02).
+ *
+ * It used to be the character picker's column and collapsed away on MudEngine
+ * and Global, which have one file each and so nothing to pick. The sections are
+ * what the column is for now, and every page has those -- a screen whose
+ * navigation moved from page to page would be two screens.
+ */
+.settings-body {
+  display: grid;
+  gap: var(--gap);
+  grid-template-columns: minmax(180px, 220px) minmax(0, 1fr);
+  min-height: 0;
+  padding: var(--pad-card);
+}
+
+/*
+ * The character/realm picker and the section list were two lists in one
+ * column; the picker became a dropdown (todo 02) and `.settings-list` with it.
+ * What survives is the shape of a *row* -- name over realm, a coloured dot --
+ * which the dropdown's rows and its closed control both still draw.
+ *
+ * Both ellipsise rather than wrap, because a row that grows to fit a long name
+ * moves every row under it -- the same rule the rail's cards follow, applied to
+ * a list somebody is scanning down.
+ */
+.settings-entry {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.settings-entry .hint {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings-name {
+  margin-right: auto;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings-nav .dot {
+  border-radius: 50%;
+  flex: 0 0 auto;
+  height: 8px;
+  width: 8px;
+}
+
+.settings-nav .dot[data-accent='cyan'] {
+  background: var(--accent);
+}
+.settings-nav .dot[data-accent='green'] {
+  background: var(--ok);
+}
+.settings-nav .dot[data-accent='amber'] {
+  background: var(--pending);
+}
+.settings-nav .dot[data-accent='violet'] {
+  background: var(--marker);
+}
+
+.settings-add {
+  color: var(--text-lo) !important;
+}
+
+.settings-form {
+  /*
+   * The rhythm every field row on this screen is spaced by, stated once so a
+   * row cannot be spaced one way in the open and another behind a disclosure.
+   *
+   * Deliberately not `--gap`, which is the *workspace* gutter -- the track
+   * between the console and the rail, and the splitter's hit area. Borrowing it
+   * here would make a form row 12px, looser than the form containing it, and
+   * would tie a field's spacing to a number that moves when somebody drags a
+   * pane. `.settings-advanced-body` asked for a `--gap-tight` that was never
+   * defined anywhere, so its declaration dropped and every disclosed field lost
+   * its spacing: a consumer with no producer, which is the closed-union failure
+   * this project watches for wearing CSS clothes.
+   */
+  --field-gap: 10px;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: 4px;
+}
+
+/*
+ * Which part of a character's form is showing: Profile, Login, Health &
+ * Safety. Sits inside the form's own scroll region rather than pinned above
+ * it, so switching a section keeps the same reach for the mouse a card's own
+ * faces do -- the control and what it changes stay in one place.
+ */
+/*
+ * The settings rail: which file, then which part of it (todo 02).
+ *
+ * The sections were a horizontal strip of pills above the fields. Twelve of
+ * them no longer fit one line -- the strip wrapped to two rows, and a fieldset
+ * inside a section had no address at all -- so the strip is on its side, in
+ * the column the character picker used to have to itself.
+ */
+.settings-nav {
+  display: flex;
+  flex-direction: column;
+  gap: var(--field-gap, 10px);
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.settings-nav-sections,
+.settings-nav-fieldsets,
+.settings-nav-choices {
+  display: flex;
+  flex-direction: column;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.settings-nav-sections {
+  gap: 1px;
+}
+
+.settings-nav-section {
+  background: transparent;
+  border: 0;
+  border-radius: var(--r-chip);
+  color: var(--text-lo);
+  cursor: pointer;
+  font: inherit;
+  /*
+   * The section names are the headings of this screen, so they wear the
+   * heading grammar the rail's own group labels do rather than the pill's.
+   */
+  font-size: 0.82em;
+  letter-spacing: 0.04em;
+  padding: 6px 9px;
+  text-align: left;
+  text-transform: uppercase;
+  transition:
+    background var(--dur-control) var(--ease-out),
+    color var(--dur-control) var(--ease-out);
+  width: 100%;
+}
+
+.settings-nav-section:hover {
+  background: color-mix(in srgb, var(--text-hi) 6%, transparent);
+  color: var(--text-hi);
+}
+
+/*
+ * The active section is tinted in its own hue, which is the hue its fieldsets
+ * and its form already wear -- the `--section-hue` the rules further down set
+ * from `data-section`, so the rail and the form it is pointing at agree.
+ */
+.settings-nav-section[data-active='true'] {
+  background: color-mix(in srgb, var(--section-hue, var(--accent)) var(--tone), transparent);
+  color: var(--section-hue, var(--accent));
+}
+
+/*
+ * The fieldsets of the open section, indented under it.
+ *
+ * Sentence case against the section's upper, because they are the legends
+ * written on the fieldsets themselves and a reader should be able to match the
+ * two by eye.
+ */
+.settings-nav-fieldsets {
+  gap: 1px;
+  margin: 2px 0 4px;
+  /* The rule is the indent: one line down the column the children hang from. */
+  border-left: 1px solid var(--ink-line);
+  margin-left: 9px;
+  padding-left: 4px;
+}
+
+.settings-nav-fieldset {
+  background: transparent;
+  border: 0;
+  border-radius: var(--r-chip);
+  color: var(--text-lo-quiet);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.86em;
+  overflow: hidden;
+  padding: 4px 8px;
+  text-align: left;
+  text-overflow: ellipsis;
+  transition:
+    background var(--dur-control) var(--ease-out),
+    color var(--dur-control) var(--ease-out);
+  white-space: nowrap;
+  width: 100%;
+}
+
+.settings-nav-fieldset:hover {
+  background: color-mix(in srgb, var(--text-hi) 6%, transparent);
+  color: var(--text-hi);
+}
+
+/* Which character or realm is being edited: a themed dropdown, not a native
+   `select`, which cannot draw a coloured dot over two lines of text. */
+.settings-nav-picker {
+  position: relative;
+}
+
+.settings-nav-chosen {
+  align-items: center;
+  background: color-mix(in srgb, var(--text-hi) 5%, transparent);
+  border: 1px solid var(--ink-line);
+  border-radius: var(--r-chip);
+  color: var(--text-hi);
+  cursor: pointer;
+  display: flex;
+  font: inherit;
+  gap: 8px;
+  padding: 7px 9px;
+  text-align: left;
+  transition: background var(--dur-control) var(--ease-out);
+  width: 100%;
+}
+
+.settings-nav-chosen:hover {
+  background: color-mix(in srgb, var(--text-hi) 9%, transparent);
+}
+
+.settings-nav-chosen svg {
+  flex: 0 0 auto;
+  transition: transform var(--dur-control) var(--ease-out);
+}
+
+.settings-nav-picker[data-open='true'] .settings-nav-chosen svg {
+  transform: rotate(180deg);
+}
+
+/*
+ * The open list floats over the form rather than pushing the sections down:
+ * a picker that moved everything under it would move the section somebody was
+ * about to press.
+ */
+.settings-nav-choices {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  z-index: 30;
+  max-height: 320px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  gap: 2px;
+  padding: 4px;
+  background: var(--glass-fill-near);
+  border: 1px solid var(--ink-line);
+  border-radius: var(--r-card);
+  box-shadow: var(--glass-shadow);
+}
+
+/* The rows keep the list's own shape -- dot, name, realm under it -- which is
+   what tells one row from another. */
+.settings-nav-choices button {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  border-radius: var(--r-chip);
+  color: var(--text-hi);
+  cursor: pointer;
+  display: flex;
+  font: inherit;
+  gap: 8px;
+  padding: 7px 9px;
+  text-align: left;
+  transition: background var(--dur-control) var(--ease-out);
+  width: 100%;
+}
+
+.settings-nav-choices button:hover {
+  background: color-mix(in srgb, var(--text-hi) 6%, transparent);
+}
+
+.settings-nav-choices button[data-active='true'] {
+  background: color-mix(in srgb, var(--accent) var(--tone), transparent);
+  color: var(--accent);
+}
+
+/* A character whose file will not load is still offered, because the screen is
+   where somebody can do something about it. */
+.settings-nav-choices button[data-broken] .settings-name {
+  color: var(--danger);
+}
+
+/* The one form that is not a field grid: a sentence saying there is nothing to
+   edit, centred in the space the fields would have taken. */
+.settings-form.empty {
+  align-items: center;
+  color: var(--text-lo);
+  display: flex;
+  justify-content: center;
+  text-align: center;
+}
+
+/*
+ * One field row: a label above its control. `FormField` is the only thing that
+ * draws one, which is why this is a class rather than `.settings-form label` --
+ * the old selector claimed every label that happened to land in a form,
+ * including a search box and a checkbox that both then had to override it back.
+ */
+.settings-field {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+/*
+ * A label is one line of small caps that may carry a mark, and it is the same
+ * height either way.
+ *
+ * It was not: a hint mark is a `<button>`, and the base control rule gives every
+ * button `height: var(--control-h)` -- 26px at compact against a 10px line of
+ * small caps. So a field with an explanation had a label two and a half times
+ * the height of its neighbour's and put its input a whole line lower. Run away's
+ * pair was the visible case: one threshold with a mark, one without, and the two
+ * boxes on different lines inside one row.
+ *
+ * A flex line rather than an inline one, so where the mark sits is `align-items`
+ * rather than a `vertical-align` interacting with a line box; and a `min-height`
+ * in `em` so it tracks the type rather than being a pixel somebody chose. The
+ * smoke run measures both halves.
+ */
+.settings-field > span {
+  align-items: center;
+  color: var(--text-lo);
+  display: flex;
+  font-size: var(--font-micro);
+  gap: 4px;
+  letter-spacing: 0.06em;
+  min-height: 1.5em;
+  text-transform: uppercase;
+}
+
+/*
+ * What a percentage is, in the character's own numbers, at the right-hand end
+ * of the field that holds it.
+ *
+ * Quiet and small: it restates the value beside it rather than adding one, so
+ * it must never compete with the figure somebody is typing.
+ *
+ * **It is inside the input's own cell, and that is not a choice -- it is the
+ * only row there is.** A settings field is `grid-row: span 2` over
+ * `grid-template-rows: subgrid`: exactly two rows, the label and the control,
+ * so that every field in a row lines its label up with its neighbours' and its
+ * input with theirs. That leaves a *third* child nowhere to go, and the
+ * measured answer is that it auto-places straight back into the second row and
+ * is stretched to the input's exact box -- `56/80` painted over the `70`
+ * somebody typed, both unreadable, which is what was reported. Adding a third
+ * row is not the fix either: fields with no known maximum draw nothing here, so
+ * they would still span two, and the whole row's inputs would stop lining up.
+ *
+ * So it is deliberately an overlay, right-aligned, inset by the same 9px the
+ * input insets its own text: the value reads from the left, what it is worth
+ * reads from the right, and neither moves. `pointer-events: none` so the click
+ * target is still the whole input.
+ *
+ * `margin-inline-start: auto` does the same job in a flex column, for a field
+ * nested somewhere the subgrid rule does not reach -- there it keeps its own
+ * line under the input, which is the shape this had before and still correct.
+ */
+/*
+ * The bar under a percentage field: how full it is, in the colour the meter
+ * that crosses it will wear.
+ *
+ * A **background** on the input, not an element, and that is forced rather than
+ * preferred: the field is exactly two subgrid rows (see `.field-figure` above),
+ * so the figure is already a third child auto-placed back into the input's own
+ * cell and a fourth would have nowhere of its own to go. A background needs no
+ * cell, cannot take the pointer, and sits under the text by construction.
+ *
+ * Three pixels along the bottom edge, inset by the 9px the input insets its own
+ * text so the strip starts where the number does. The tints are the meter's own
+ * (`.meter[data-level]`), at the same 55% mix, so a threshold in the amber band
+ * is the amber the HUD will paint when it is crossed.
+ */
+.settings-form input.has-bar {
+  background-image: linear-gradient(
+    to right,
+    var(--bar-tint) var(--bar-fill),
+    transparent var(--bar-fill)
+  );
+  background-position: 9px calc(100% - 4px);
+  background-repeat: no-repeat;
+  background-size: calc(100% - 18px) 3px;
+  --bar-tint: color-mix(in srgb, var(--ok) 55%, transparent);
+}
+
+.settings-form input.has-bar[data-level='caution'] {
+  --bar-tint: color-mix(in srgb, var(--pending) 55%, transparent);
+}
+
+.settings-form input.has-bar[data-level='critical'] {
+  --bar-tint: color-mix(in srgb, var(--danger) 70%, transparent);
+}
+
+/*
+ * A figure and a bar share the field, so the figure lifts clear of the strip
+ * rather than sitting on it. Two pixels: the strip is three tall with a four
+ * pixel inset, and the figure's own line box already has room above it.
+ */
+.settings-field:has(input.has-bar) > .field-figure {
+  padding-bottom: 5px;
+}
+
+.field-figure {
+  align-self: center;
+  color: var(--text-lo);
+  font-family: var(--font-mono);
+  font-size: var(--font-micro);
+  font-variant-numeric: tabular-nums;
+  justify-self: end;
+  margin-inline-start: auto;
+  padding-inline-end: 9px;
+  pointer-events: none;
+}
+
+/*
+ * MMUD Explorer's field (`.explorer-screen input`), asked for here 2026-10-20:
+ * a box sunk to the void with an edge you can see, rather than a tint with no
+ * edge that read as a label until it was clicked. `background-color` and not
+ * the shorthand, so `.has-bar`'s strip above keeps its image. The search
+ * boxes were the browser's own and are boxed with the rest; the template
+ * (`.rewrite-template`) takes the same ground and edge in its console face.
+ */
+.settings-form input[type='text'],
+.settings-form input:not([type]),
+.settings-form input[type='password'],
+.settings-form input[type='search'],
+.settings-form select {
+  background-color: var(--ink-void);
+  border: 1px solid var(--ink-edge);
+  border-radius: 4px;
+  color: var(--text-hi);
+  font: inherit;
+  min-width: 0;
+  padding: 3px 7px;
+  transition: border-color var(--dur-control) var(--ease-out);
+}
+
+.settings-form input:focus,
+.settings-form select:focus,
+.settings-form textarea:focus {
+  border-color: color-mix(in srgb, var(--accent) var(--tone-strong), transparent);
+  outline: none;
+}
+
+.settings-form :is(input[type='checkbox'], input[type='radio']) {
+  accent-color: var(--pending);
+}
+
+/* A table's find pill is already the box; its field inside is not boxed again. */
+.settings-form .table-find input {
+  background-color: transparent;
+  border: 0;
+  padding: 0;
+}
+
+.settings-form em.hint {
+  font-style: normal;
+}
+
+/*
+ * Several fields side by side -- and the reason this is a grid.
+ *
+ * It was `flex-wrap` with `flex: 1 1 120px` per row, and a wrapping flex
+ * container distributes each *line* independently: a group of one gave its
+ * field the whole width, a group of two gave halves, and a group of four wrapped
+ * three-and-one with the fourth starting at an x nothing above it shared. Three
+ * fieldsets of percentages, one under the other, each drew its fields a
+ * different width -- Run away's threshold half the row, Hang up's the whole of
+ * it, and both of them disagreeing with Resting's four.
+ *
+ * A grid of uniform columns is the fix, and `auto-fill` rather than `auto-fit`
+ * is the load-bearing half: `auto-fit` collapses the empty tracks, which puts a
+ * lone field back to full width and reinstates exactly the defect. The trailing
+ * empty columns are the price of a field being one column wide wherever it
+ * appears, which is the whole point.
+ */
+/*
+ * A row of fields, and **the controls in it start at one y whatever their
+ * labels do**.
+ *
+ * `.settings-field`'s `min-height` made a hinted label the same height as a
+ * plain one, which fixed the case that was reported and only that case: it
+ * reserves room for the *mark*, and says nothing about a label that takes two
+ * lines. The moment a label grew past its column — `Auto-Potion: Mana
+ * Threshold %` in a 199px track — it wrapped, and its input dropped a line
+ * below its neighbour's again. Reserving more height would be a pixel somebody
+ * chose, and shortening the label would be fixing one label rather than the
+ * layout.
+ *
+ * So the field is a **subgrid of two rows**: every label in a visual row shares
+ * the first track and every control shares the second, so the tallest label
+ * sets the height for all of them and no control can be pushed out of line by
+ * a word. This is the escape hatch the card grid's own rule names for rows that
+ * are not siblings, used here for the first time and for exactly that reason.
+ *
+ * `npm run smoke` measures it: the controls' `top` in each row must be one
+ * value, hint mark or wrap or neither.
+ */
+/*
+ * **A form, a fieldset and an Advanced body are all the same field grid**, so a
+ * field is one column wide wherever it is written.
+ *
+ * The grid used to be `.settings-inline` alone -- a wrapper an author had to
+ * remember at each site -- and it was remembered at about half of them. What a
+ * forgotten wrapper produced was not a missing wrapper: it was a field taking
+ * the entire row, label on one line and a 780px box for a two-digit percentage
+ * on the next. Spells' whole Attack Spell fieldset read that way while the
+ * Healing fieldset under it was in columns, which is how the defect was
+ * reported -- one screen, two layouts, and nothing in the markup saying which
+ * one a new field would get.
+ *
+ * So the container is the grid and no wrapper is needed to opt in. That is the
+ * same move `FormField` itself made for `aria-describedby`: wiring that has to
+ * be typed at every site is wiring that will be missing at half of them, and
+ * the fix is to derive it once where it cannot be skipped.
+ *
+ * `.settings-inline` survives as the opposite instruction -- *keep these
+ * together on a row of their own* -- for the groups where a label only makes
+ * sense beside its neighbour: the vitals fieldset states "Health caution %" and
+ * then a bare "Critical %", twice, and flattened into one row the two
+ * "Critical %" fields would be indistinguishable.
+ */
+.settings-form,
+.settings-menus,
+.settings-inline,
+.settings-advanced-body {
+  display: grid;
+  gap: var(--field-gap);
+  /*
+   * The track minimum, and it is chosen for the *count* of tracks rather than
+   * for one label.
+   *
+   * It used to be 190px, "wide enough for the longest label this screen has --
+   * 'Or this many on you' and its mark -- on one line", which stopped being
+   * true the moment a longer one was written: `Auto-Potion: Mana Threshold %`
+   * is twenty-nine characters and wraps at any width this dialog can offer.
+   * Wrapping is not the failure it once was either -- a field is a two-row
+   * subgrid, so a label that takes two lines no longer drops its own control
+   * below its neighbours'.
+   *
+   * What the number decides now is how many columns a fieldset gets, and the
+   * useful threshold is **four**: a switch is two columns, so four is where two
+   * switches share a line rather than each taking one.
+   *
+   * Four needs `4 x min + 3 x gap` to fit, and the narrowest fieldset that has
+   * to reach it is the one on the character page of a 1100px window -- measured
+   * at 718px of content, not the 752px the arithmetic suggests, because the
+   * form keeps a 4px gutter and the scroll bar takes its own width. 180px was
+   * tried and gave three tracks there: every switch alone on a line, which is
+   * the defect. 165px needs 690px, which leaves ~28px of margin -- enough that
+   * a scroll bar appearing does not silently drop a column, which an 8px margin
+   * would. The cost is a field track of 172-198px rather than 199px, and a
+   * couple more captions wrapping; the subgrid means a wrapped caption no
+   * longer drops its own control out of line, which is what makes that cost
+   * payable.
+   */
+  grid-template-columns: repeat(auto-fill, minmax(165px, 1fr));
+  /* Content-sized rows. A grid's default `align-content` stretches auto rows to
+     fill the container, and the form is a scroll region taller than its fields:
+     without this, four fields on a tall dialog are spread down it. */
+  align-content: start;
+}
+
+:is(.settings-form, .settings-menus, .settings-inline, .settings-advanced-body)
+  > .settings-field:not(.settings-check) {
+  display: grid;
+  gap: 3px;
+  grid-row: span 2;
+  grid-template-rows: subgrid;
+}
+
+/*
+ * What is not one column: everything that is not a field, a checkbox row --
+ * whose label is a sentence, not a caption -- and a field that says its value
+ * needs the width.
+ */
+:is(.settings-form, .settings-menus, .settings-inline, .settings-advanced-body)
+  > :is(:not(.settings-field), .settings-check, .settings-field-wide) {
+  grid-column: 1 / -1;
+}
+
+/*
+ * ...except that a checkbox row takes *two* columns rather than the row, once
+ * there are two columns to take.
+ *
+ * A sentence is not a caption, which is why a check is wider than a field --
+ * and it is not a paragraph either, which is what a whole row made it. Movement
+ * was the case that was reported: six switches and two counts, each on a line
+ * of its own, six hundred pixels tall with two thirds of the width empty beside
+ * every one of them. The same shape is on Records, Party, Drop and Monsters.
+ * `.settings-checks` -- the alerts grid -- had already settled this for a list
+ * of channels ("eleven of them stacked is a column of scrolling"); this is the
+ * same answer for the switches that are not a list.
+ *
+ * **Two rows as well as two columns, and that is the load-bearing half.** Every
+ * field on this screen is a two-row subgrid so that labels share one track and
+ * controls share the next. A one-row item among them auto-places into whichever
+ * half-band is free, so a check would land in a *label* track beside somebody
+ * else's input -- and the next field after it would start a band nothing above
+ * it shared. Spanning both rows keeps every child of the grid the same shape,
+ * so bands stay bands. The grid subtracts the gutter it spans before
+ * distributing an item's height, so a band holding only checks is exactly as
+ * tall as a check: the second track costs nothing.
+ *
+ * `align-self: end` puts the box on the control line rather than floating it in
+ * the middle of a band, so a switch beside a field reads level with the input
+ * beside it rather than level with that input's caption.
+ *
+ * **The media query is the overflow guard, and it is not decoration.** An item
+ * spanning two columns in a grid that has one creates an *implicit* third
+ * column, and the row then overflows its container with no scrollbar to say so.
+ * The narrowest field grid on the screen is a fieldset inside the character
+ * form -- the dialog less its padding, the character list, the gutter and the
+ * fieldset's own border -- which is about 282px narrower than the window. At
+ * 800px that is 454px, comfortably two 165px tracks; below it there is only one
+ * track and a check correctly goes back to taking the row. The floor matters
+ * because the window's own minimum is 720px (`createWindow`), which is inside
+ * the range where this would otherwise overflow.
+ */
+@media (min-width: 800px) {
+  :is(.settings-form, .settings-menus, .settings-inline, .settings-advanced-body)
+    > .settings-check {
+    align-self: end;
+    grid-column: span 2;
+    grid-row: span 2;
+  }
+}
+
+/*
+ * A control with its own button beside it -- the world database and its
+ * chooser. Not a field grid: a "Choose..." button stretched to a full column is
+ * a button pretending to be a field. It shared `.settings-inline` because both
+ * were "things on one line", which is how one class came to mean two layouts.
+ */
+.settings-control-row {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+}
+
+.settings-control-row > input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/*
+ * A checkbox row is the one field that reads left to right, and it carries a
+ * hint after its label rather than inside it. How much of the row it takes is
+ * decided by the field grid above, not here -- two columns where there are two.
+ *
+ * It used to say this twice -- here with `!important` on every line, and again
+ * as `.settings-form .settings-check` -- because it was fighting
+ * `.settings-form label`, which claimed the column direction for every label on
+ * the screen. `.settings-field` claims only the rows `FormField` draws, and this
+ * comes after it, so a row of equal specificity wins on its own.
+ */
+.settings-check {
+  align-items: center;
+  display: flex;
+  flex-direction: row;
+  gap: 7px;
+}
+
+.settings-check span {
+  color: var(--text-hi);
+  font-size: inherit;
+  letter-spacing: normal;
+  text-transform: none;
+}
+
+/* The grid itself is above, with the form's; this is only what a fieldset draws
+   around it. Its own `gap: 6px` went with the flex column: a fieldset's rows are
+   spaced by `--field-gap` like every other row on the screen, which is what that
+   variable was declared to guarantee. */
+.settings-menus {
+  border: 1px solid var(--ink-line);
+  border-radius: var(--r-control);
+  margin: 0;
+  padding: 10px;
+}
+
+.settings-menus legend {
+  color: var(--group-hue);
+  font-size: var(--font-micro);
+  letter-spacing: 0.06em;
+  padding: 0 5px;
+  text-transform: uppercase;
+}
+
+/*
+ * ================================ the settings screen is not one grey =======
+ *
+ * Reported as *"the configuration pages are monochromatic and difficult to
+ * peruse"*, and it was literally so: every legend on the screen was
+ * `--text-lo`, every fieldset seam was `--ink-line`, and the only coloured
+ * thing on the page was the active crumb. Finding "Auto-Retreat" meant
+ * *reading* every legend in the Health section rather than recognising the
+ * block it lives in.
+ *
+ * **One variable does all of it: `--group-hue`.** It is declared on the form
+ * as the section's own hue and re-declared by each fieldset, so a control
+ * loose in the section reads the section's colour and a control inside a
+ * fieldset reads its group's -- one recipe, and no rule has to ask which of
+ * the two it is in.
+ *
+ * What the hue is allowed to paint is deliberately short, and it is the
+ * tonal register §9 asks for rather than a filled block: the legend's text,
+ * the seam, a wash far weaker than a chip's fill because a fieldset is a
+ * hundred times a chip's area, and the focus border of the controls inside
+ * it. It does **not** paint a field's label, its value or its background --
+ * those are what somebody is reading, and colouring them would be spraying
+ * the emphasis this app spends on purpose.
+ *
+ * `.settings-warn` keeps `--danger` and is untouched by any of this. That is
+ * the whole reason `--danger` is not one of the four hues: the two warnings
+ * on this screen are in the open because they can cost a character, and a
+ * Movement fieldset drawn in the same red would stop them reading as
+ * warnings.
+ */
+.settings-form {
+  /*
+   * The defaults, and they are complete on their own.
+   *
+   * Every form on this screen resolves a hue whether or not it names a
+   * section -- the realm form has fieldsets and no sections at all, and the
+   * empty form has neither. A `var()` with nothing behind it is invalid at
+   * computed-value time, which for `border-color` means the seam falls back
+   * to `currentcolor`: a fieldset outlined in body text, on the one form
+   * nobody would think to check. So the rotation is stated here in full and
+   * the per-section rules below only *re*-state it.
+   */
+  --section-hue: var(--section-a);
+  --group-1: var(--section-a);
+  --group-2: var(--section-b);
+  --group-3: var(--section-c);
+  --group-4: var(--section-d);
+
+  /* For the controls a section states outside any fieldset. Each fieldset
+     overrides it; nothing else does. */
+  --group-hue: var(--section-hue);
+}
+
+/*
+ * Which hue a section starts on, and the order the fieldsets in it then walk.
+ *
+ * Four rotations rather than a hue per section, because **only one section is
+ * ever on screen**: what the colour has to do is tell one block from the next
+ * within a page, and give the page an identity that matches the crumb that
+ * opened it. Two sections five apart sharing a hue is invisible.
+ *
+ * The rotations are arranged so that **no two adjacent crumbs share a hue**,
+ * in each of the three orders these screens are drawn in -- the character
+ * form's ten, the Global page's eight and the MudEngine page's two. That is
+ * the one property worth checking when a section is added: put the new name
+ * in the rotation that differs from both of its neighbours.
+ *
+ * A crumb carries the attribute as well as the form, so a crumb that is not
+ * the active one still knows its own hue and can wear it on hover. Without
+ * that it would inherit the form's, and every crumb would highlight in the
+ * colour of whichever section happened to be open.
+ */
+.settings-form[data-section='profile'],
+.settings-form[data-section='realm'],
+.settings-form[data-section='spells'],
+.settings-form[data-section='train'],
+.settings-form[data-section='talk'],
+.settings-form[data-section='appearance'],
+.settings-nav-section[data-section='profile'],
+.settings-nav-section[data-section='realm'],
+.settings-nav-section[data-section='spells'],
+.settings-nav-section[data-section='train'],
+.settings-nav-section[data-section='talk'],
+.settings-nav-section[data-section='appearance'] {
+  --section-hue: var(--section-a);
+  --group-1: var(--section-a);
+  --group-2: var(--section-b);
+  --group-3: var(--section-c);
+  --group-4: var(--section-d);
+}
+
+.settings-form[data-section='login'],
+.settings-form[data-section='party'],
+.settings-form[data-section='alerts'],
+.settings-form[data-section='records'],
+.settings-nav-section[data-section='login'],
+.settings-nav-section[data-section='party'],
+.settings-nav-section[data-section='alerts'],
+.settings-nav-section[data-section='records'] {
+  --section-hue: var(--section-b);
+  --group-1: var(--section-b);
+  --group-2: var(--section-c);
+  --group-3: var(--section-d);
+  --group-4: var(--section-a);
+}
+
+.settings-form[data-section='combat'],
+.settings-form[data-section='movement'],
+.settings-nav-section[data-section='combat'],
+.settings-nav-section[data-section='movement'] {
+  --section-hue: var(--section-c);
+  --group-1: var(--section-c);
+  --group-2: var(--section-d);
+  --group-3: var(--section-a);
+  --group-4: var(--section-b);
+}
+
+.settings-form[data-section='health'],
+.settings-form[data-section='remotes'],
+.settings-nav-section[data-section='health'],
+.settings-nav-section[data-section='remotes'] {
+  --section-hue: var(--section-d);
+  --group-1: var(--section-d);
+  --group-2: var(--section-a);
+  --group-3: var(--section-b);
+  --group-4: var(--section-c);
+}
+
+/*
+ * A fieldset takes the next hue along, and `nth-of-type` is what counts them.
+ *
+ * It counts `fieldset` elements among siblings, and on these screens every
+ * `<fieldset>` is a `.settings-menus` and every one of them is a direct child
+ * of the form -- a section is a fragment, and a fragment flattens. So the
+ * count restarts at 1 for each section for free, because only one section is
+ * rendered at a time. A `<fieldset>` added to this screen *without* the class
+ * would take a number and give the fieldset after it somebody else's colour,
+ * which is the one way to break this: the two go together.
+ */
+.settings-menus:nth-of-type(4n + 1) {
+  --group-hue: var(--group-1);
+}
+
+.settings-menus:nth-of-type(4n + 2) {
+  --group-hue: var(--group-2);
+}
+
+.settings-menus:nth-of-type(4n + 3) {
+  --group-hue: var(--group-3);
+}
+
+.settings-menus:nth-of-type(4n + 4) {
+  --group-hue: var(--group-4);
+}
+
+/*
+ * The seam and the wash.
+ *
+ * `--tone-wash` rather than `--tone-weak`: a chip's 12% over forty square
+ * pixels and over a fieldset four hundred pixels wide are not the same
+ * amount of colour, and at 12% a page of eight fieldsets reads as eight
+ * saturated blocks -- the flat-block language §9 retracted. The seam carries
+ * most of the signal and the wash only says where the block ends.
+ */
+.settings-menus {
+  background: color-mix(in srgb, var(--group-hue) var(--tone-wash), transparent);
+  border-color: color-mix(in srgb, var(--group-hue) var(--tone-strong), transparent);
+}
+
+/*
+ * A focused control answers in the colour of the block it is in, rather than
+ * in one accent everywhere. The ring is still the loud element §9 spends on
+ * purpose -- it is the same ring, told where it is.
+ */
+.settings-form input:focus,
+.settings-form select:focus,
+.settings-form textarea:focus {
+  border-color: color-mix(in srgb, var(--group-hue) var(--tone-strong), transparent);
+}
+
+/*
+ * A crumb answers in its own section's hue, and only once it is pointed at or
+ * taken. Ten permanently coloured pills would be a legend nobody asked for at
+ * the top of every page; the association is learned by using the row, which is
+ * the same bargain the card grip makes.
+ */
+.settings-sections .crumb:hover {
+  background: color-mix(in srgb, var(--section-hue) var(--tone-weak), transparent);
+}
+
+.settings-sections .crumb[data-active='true'] {
+  background: color-mix(in srgb, var(--section-hue) var(--tone), transparent);
+  color: var(--section-hue);
+}
+
+/* The heading a loose group of fields takes when it is not a fieldset: same
+   hue as the section, because that is exactly what it is part of. */
+.settings-form .settings-subhead {
+  color: var(--group-hue);
+}
+
+.settings-accents {
+  display: flex;
+  gap: 6px;
+}
+
+.accent-swatch {
+  border: 2px solid transparent;
+  border-radius: 50%;
+  cursor: pointer;
+  height: 20px;
+  padding: 0;
+  transition: border-color var(--dur-control) var(--ease-out);
+  width: 20px;
+}
+
+.accent-swatch[data-accent='cyan'] {
+  background: var(--accent);
+}
+.accent-swatch[data-accent='green'] {
+  background: var(--ok);
+}
+.accent-swatch[data-accent='amber'] {
+  background: var(--pending);
+}
+.accent-swatch[data-accent='violet'] {
+  background: var(--marker);
+}
+
+.accent-swatch[data-active='true'] {
+  border-color: var(--text-hi);
+}
+
+/*
+ * Where Majordomo comes from, at the head of its own page: set apart from the
+ * settings under it by a rule in the accent and a title, at the size of the
+ * settings themselves rather than the micro type of a note (2026-10-31).
+ */
+.settings-lineage {
+  border-left: 2px solid var(--accent);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 2px 0 2px 10px;
+}
+
+.settings-lineage strong {
+  color: var(--text-hi);
+  font-weight: 600;
+}
+
+.settings-lineage p {
+  color: var(--text);
+  margin: 0;
+  max-width: 72ch;
+}
+
+/*
+ * The console's colours read as a sentence ("Follow the theme, staying dark"),
+ * which one 165px track cuts short, so the field takes two where there are two.
+ */
+@media (min-width: 800px) {
+  .settings-field[data-field='global-console-palette'] {
+    grid-column: span 2;
+  }
+}
+
+/*
+ * A phone: the rail goes above the form as one row of sections that scrolls
+ * sideways, its fieldset jumps left out, and the form takes the width. Side by
+ * side, a 180px rail left the form a sliver that every field ran off.
+ */
+@media (max-width: 700px) {
+  .settings-body {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+
+  .settings-nav {
+    overflow: visible;
+  }
+
+  .settings-nav-sections {
+    flex-direction: row;
+    gap: 4px;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .settings-nav-sections > li {
+    flex: none;
+  }
+
+  .settings-nav-section {
+    white-space: nowrap;
+    width: auto;
+  }
+
+  .settings-nav-fieldsets {
+    display: none;
+  }
+}
+
+.settings-actions {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  padding-top: 4px;
+}
+
+/*
+ * The one deliberately loud control in this dialog, and it is a removal.
+ * Everything else here is tonal; this is the one action that cannot be undone
+ * from inside the client, and it is only reachable after a question.
+ */
+/*
+ * Shared with the reset prompt, which is the only other place in the client
+ * that offers to remove a record: one recipe for "this cannot be undone from
+ * inside the client", not two that drift.
+ */
+.settings-actions .danger,
+.reset-actions .danger {
+  background: color-mix(in srgb, var(--danger) var(--tone-strong), transparent);
+  border: 0;
+  border-radius: var(--r-chip);
+  color: var(--danger);
+  cursor: pointer;
+  font: inherit;
+  padding: 6px 12px;
+}
+
+.settings-foot {
+  align-items: center;
+  border-top: 1px solid var(--ink-line);
+  display: flex;
+  gap: 8px;
+  min-height: 0;
+  padding: 9px var(--pad-card);
+}
+
+.settings-problem {
+  color: var(--danger);
+  margin-right: auto;
+}
+
+.settings-saved {
+  color: var(--ok);
+  margin-right: auto;
+}
+
+.settings-paths {
+  display: flex;
+  gap: 6px;
+  margin-left: auto;
+}

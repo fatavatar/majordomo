@@ -1,0 +1,348 @@
+/* ======================================================= console marks */
+
+/*
+ * The glyph beside a place the console recognised — a bank's name gets a
+ * bank. An element xterm lays over the cell row (`registerDecoration`), so it
+ * lives outside the character grid: nothing the server laid out in rows and
+ * columns moves, and no escape sequence that counts either ever sees it. Quiet,
+ * in the terminal's own foreground rather than a chrome accent, because the
+ * console is not a design surface.
+ */
+.terminal-mark {
+  align-items: center;
+  color: inherit;
+  display: flex;
+  justify-content: center;
+  opacity: 0.55;
+  pointer-events: auto;
+  transition: opacity var(--dur-tint) var(--ease-out);
+}
+
+.terminal-mark:hover {
+  opacity: 1;
+}
+
+/*
+ * The buttons after a marked line's text — [Deposit All], [go manhole].
+ *
+ * On the decoration layer with the glyph, so nothing in the character grid
+ * moves. `pointer-events` is set on the buttons rather than the row: the row
+ * spans the rest of the line, and taking the pointer across all of it would
+ * swallow clicks meant for the console — a selection drag most of all.
+ */
+/*
+ * The row is exactly one cell tall and never grows.
+ *
+ * xterm sizes a decoration to the cell row it hangs off, and a button taller
+ * than that overlaps the lines above and below — which on a console being
+ * written to is every line. `height: 100%` with `overflow: visible` let the
+ * buttons spill; the box is pinned to the row and the buttons are centred
+ * within it instead.
+ */
+.terminal-actions {
+  align-items: center;
+  display: flex;
+  gap: 4px;
+  height: 100%;
+  line-height: 1;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+/*
+ * Themed like any other button, and **no taller than the line it sits on**:
+ * a control that outgrows the row would overlap the lines above and below,
+ * which on a console being written to is every line. Hence the line-height
+ * box rather than `--control-h` — the same trap `button.lookup` fell into,
+ * where a 32px control around 12px of text made the pack look double-spaced.
+ */
+.terminal-action {
+  background: color-mix(in srgb, var(--accent) var(--tone-weak), transparent);
+  border: var(--rule) solid color-mix(in srgb, var(--accent) var(--tone), transparent);
+  border-radius: var(--r-chip);
+  color: var(--accent);
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: var(--font-micro);
+  /*
+   * No taller than the row it sits on. The line box is the constraint, not a
+   * control height — the `button.lookup` trap, where `--control-h` around 12px
+   * of text made every row of the pack a 32px control.
+   */
+  line-height: 1;
+  max-height: 100%;
+  padding: 0 5px;
+  pointer-events: auto;
+  transition:
+    background var(--dur-tint) linear,
+    border-color var(--dur-tint) linear;
+  white-space: nowrap;
+}
+
+/*
+ * What a room asks of whoever would leave it (2026-10-18): tags beside its
+ * buttons, in the tone the map's bars wear for the same thing — a door amber,
+ * a hidden way violet, a toll gold, a trap and a gate red, a spell the accent.
+ * Not buttons: no fill, a hairline edge, and the title says the whole of it.
+ */
+.terminal-note {
+  --note: var(--marker);
+  border: var(--rule) solid color-mix(in srgb, var(--note) 55%, transparent);
+  border-radius: var(--r-chip);
+  color: var(--note);
+  cursor: help;
+  font-family: var(--font-mono);
+  font-size: var(--font-micro);
+  line-height: 1;
+  max-height: 100%;
+  padding: 0 5px;
+  pointer-events: auto;
+  white-space: nowrap;
+}
+
+.terminal-note[data-tone='door'],
+.terminal-note[data-tone='key'] {
+  --note: var(--pending);
+}
+
+.terminal-note[data-tone='toll'] {
+  --note: var(--mark-bank);
+}
+
+.terminal-note[data-tone='trap'],
+.terminal-note[data-tone='gate'] {
+  --note: var(--danger);
+}
+
+.terminal-note[data-tone='cast'] {
+  --note: var(--accent);
+}
+
+.terminal-action:hover {
+  background: color-mix(in srgb, var(--accent) var(--tone-strong), transparent);
+  border-color: color-mix(in srgb, var(--accent) var(--tone-strong), transparent);
+}
+
+.terminal-action:focus-visible {
+  outline: var(--focus-ring) solid var(--accent);
+  outline-offset: 1px;
+}
+
+.terminal-mark svg {
+  height: 1.05em;
+  width: 1.05em;
+}
+
+/*
+ * The other half of a name the server folded across two rows, underlined
+ * while the pointer is on this half. xterm underlines only the link under
+ * the pointer, and a folded name is two links so the empty tail of the first
+ * row is not underlined with it; this is the second half's underline, in the
+ * terminal's own ink, and it takes no pointer so the link beneath still does.
+ */
+.terminal-link-shadow {
+  border-bottom: 1px solid currentColor;
+  box-sizing: border-box;
+  color: inherit;
+  pointer-events: none;
+}
+
+/* A bank's is gold: the one glyph in the console with a colour of its own. */
+.terminal-mark[data-mark='bank'] {
+  color: var(--mark-bank);
+  opacity: 0.95;
+}
+
+/*
+ * A glyph inside a line the client drew (`ui.rewrites`): over the two cells
+ * the drawing left blank for it. One that acts — the equip gate beside a
+ * carried item — is a button and says so with the pointer; the states wear
+ * the pack card's own two tones, in use and refused, so the console and the
+ * card cannot disagree about what a shirt means.
+ */
+.terminal-glyph[data-action] {
+  cursor: pointer;
+  opacity: 0.8;
+}
+
+.terminal-glyph[data-action]:hover,
+.terminal-glyph[data-action]:focus-visible {
+  opacity: 1;
+}
+
+.terminal-glyph:focus-visible {
+  outline: var(--focus-ring) solid var(--accent);
+  outline-offset: 1px;
+}
+
+.terminal-glyph[data-mark='worn'] {
+  color: var(--ok);
+  opacity: 0.9;
+}
+
+.terminal-glyph[data-mark='blocked'] {
+  color: var(--danger);
+  opacity: 0.8;
+}
+
+/*
+ * The settings most people should never have to see, behind one press.
+ *
+ * `cp437` is the example that made the case: the right answer for every realm
+ * this client speaks to, impossible to choose well without already knowing what
+ * it is, and sitting in the middle of the form somebody opens to type a
+ * password. Drawn as a quiet row rather than a panel, because a heavy container
+ * would make the hidden half look more important than the visible one.
+ */
+.settings-advanced {
+  border-top: 1px solid var(--seam);
+  margin-top: 4px;
+  padding-top: 8px;
+}
+
+.settings-advanced-toggle {
+  align-items: center;
+  color: var(--text-lo-quiet);
+  display: flex;
+  font-size: 0.78rem;
+  gap: 6px;
+  padding: 4px 6px;
+}
+
+.settings-advanced-toggle:hover {
+  color: var(--text-hi);
+}
+
+/* The same rhythm and the same columns as the rows above it: what is behind the
+   disclosure is the same kind of row as what is in front of it, and a disclosed
+   field spaced or sized differently would say it was a different kind of thing.
+   The grid is declared with the form's. */
+.settings-advanced-body {
+  padding: 6px 0 2px 4px;
+}
+
+/*
+ * A grid of switches, for a list of channels rather than a list of decisions.
+ * Eleven of them stacked is a column of scrolling; in rows they read as one
+ * control with eleven parts, which is what they are.
+ */
+.settings-checks {
+  display: grid;
+  gap: 2px 12px;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+}
+
+/*
+ * Loops this scope walks but does not own.
+ *
+ * Quieter than the editable list and with no remove button, because the row is
+ * a *statement* rather than a control: scope is the directory a loop file sits
+ * in, so taking one off here would have to mean deleting somebody else's file.
+ * It says where the loop is edited instead.
+ */
+.settings-loops.inherited li {
+  background: transparent;
+  border: 1px solid var(--seam);
+  color: var(--text-lo-quiet);
+}
+
+/*
+ * The gear at the head of the rail, left of the `+`.
+ *
+ * The more general of the two, so it reads as "the client, and one more of
+ * these" -- and quieter than the `+`, because making a character is what
+ * somebody is usually there for. Icon-only and sized to its own padding
+ * rather than stretching with `+ New character` — a settings control that
+ * grew to match a text pill beside it would read as equally important.
+ */
+.tab-rail .rail-settings {
+  flex: 0 0 auto;
+  /* Square in the band, so the head reads as one control group rather than a
+     tall pill beside a short one. */
+  padding: 0;
+  width: var(--topbar-h);
+  background: transparent;
+  color: var(--text-lo-quiet);
+}
+
+.tab-rail .rail-settings:hover {
+  background: color-mix(in srgb, var(--accent) var(--tone-weak), transparent);
+  color: var(--text-hi);
+}
+
+/*
+ * How the saving is going, in words rather than only a tick.
+ *
+ * There is no Save button any more, so this is the only thing that says what
+ * happened -- and a refusal has to stay until the next save succeeds, because
+ * what it means is that what is on screen is not what is on disk. Quiet at
+ * rest, and the accent only for a refusal, per the rule that emphasis is spent
+ * rather than sprayed.
+ */
+.settings-saving {
+  color: var(--text-lo-quiet);
+  font-size: 0.76rem;
+  margin-left: auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings-saving[data-state='refused'] {
+  color: var(--danger);
+  white-space: normal;
+}
+
+.settings-saving[data-state='saved'] {
+  color: var(--ok);
+}
+
+/*
+ * Drawn even with nowhere to go, so the pair does not move every control beside
+ * it at the moment somebody is reaching for one -- the same rule the card rail
+ * follows for its grip.
+ */
+.settings-actions button:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+
+/*
+ * The error boundary's screen. The body already paints --ink-void behind
+ * everything, so this is one tonal panel in the middle of it — glass like any
+ * other chrome, never loud: the message is the alarming part.
+ */
+.crash-screen {
+  align-items: center;
+  display: flex;
+  height: 100%;
+  justify-content: center;
+}
+
+.crash-panel {
+  background: var(--glass-fill-strong);
+  border-radius: var(--r-card);
+  box-shadow: var(--glass-shadow), var(--glass-rim);
+  max-width: 34rem;
+  padding: 24px 28px;
+}
+
+.crash-panel h1 {
+  color: var(--text-hi);
+  font-size: calc(var(--font-ui) + 3px);
+  margin: 0 0 8px;
+}
+
+.crash-panel p {
+  margin: 0 0 12px;
+}
+
+.crash-panel pre {
+  color: var(--text-lo);
+  font-family: var(--font-mono);
+  margin: 0 0 16px;
+  max-height: 30vh;
+  overflow: auto;
+  white-space: pre-wrap;
+}

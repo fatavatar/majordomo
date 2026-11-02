@@ -1,0 +1,219 @@
+/* ========================================================= navigation card */
+
+/*
+ * The headline of either face: where the walk is going, or which loop is
+ * running. One rule for both, because the two faces answer the same question
+ * and reading one must not be a different gesture from reading the other.
+ */
+.walk-destination {
+  color: var(--text-hi);
+  font-family: var(--font-mono);
+  font-size: var(--font-micro);
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+
+/* The route bar is progress, not a vital: neutral, never the health hues. A
+   walk at one step of twenty is not a condition to be alarmed about. */
+.walk-meter .fill {
+  background: color-mix(in srgb, var(--marker) 45%, transparent);
+}
+
+.walk-reason {
+  color: var(--text-lo);
+  font-size: var(--font-micro);
+  margin-top: 6px;
+}
+
+/*
+ * The movement’s transport row: always drawn, never folded. Square quiet
+ * buttons the height of a control, in a row under the heading, so play and
+ * stop are where the eye already is rather than one kebab click away.
+ */
+.loop-controls {
+  display: flex;
+  gap: var(--gap);
+  margin-bottom: var(--gap);
+}
+
+.loop-control {
+  align-items: center;
+  display: inline-flex;
+  height: var(--control-h);
+  justify-content: center;
+  padding: 0;
+  width: var(--control-h);
+}
+
+/*
+ * Framed, so a lone Stop reads as the control it is (2026-10-24): `quiet`
+ * drew it as a bare square glyph floating over the loop's name.
+ */
+.loop-controls .loop-control {
+  background: color-mix(in srgb, var(--ink-line) 40%, transparent);
+  border: var(--rule) solid var(--ink-line);
+  border-radius: var(--r-control);
+  color: var(--text);
+}
+
+.loop-controls .loop-control:hover {
+  border-color: var(--accent);
+  color: var(--text-hi);
+}
+
+/* Not `.loop-picker`: that is the settings screen's loop shelf, and the smoke run asserts on it. */
+/*
+ * The loop to run, as a control that belongs to the client.
+ *
+ * It was the one select in the app with no rule of its own — `max-width` and
+ * nothing else — so it drew as the browser's own grey chrome inside a dark
+ * glass card, which is exactly how it looked: an OS widget sitting on the
+ * theme rather than in it. The recipe is the settings form's, not the Talk
+ * card's: a loop's name is *data*, so the fill is the neutral `--ink-line`
+ * mix rather than the accent tint the channel picker earns by carrying a
+ * meaning.
+ *
+ * Deliberately still a native `<select>`, with its own arrow and its own
+ * popup. `appearance: none` would hand this component a menu to build,
+ * position and key-handle, and the popup rows are already themed for every
+ * select at once by the `option` rule at the top of this file.
+ */
+.loop-card-picker {
+  background: color-mix(in srgb, var(--ink-line) 40%, transparent);
+  border: var(--rule) solid transparent;
+  border-radius: var(--r-chip);
+  color: var(--text-hi);
+  cursor: pointer;
+  font: inherit;
+  max-width: 100%;
+  min-width: 0;
+  padding: 2px 4px;
+  transition:
+    border-color var(--dur-control) var(--ease-out),
+    background var(--dur-control) var(--ease-out);
+}
+
+.loop-card-picker:hover {
+  background: color-mix(in srgb, var(--ink-line) 60%, transparent);
+}
+
+.loop-card-picker:focus-visible {
+  border-color: color-mix(in srgb, var(--accent) var(--tone-strong), transparent);
+  outline: none;
+}
+
+.route-steps li {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  padding: 1px 0;
+}
+
+/*
+ * The step somebody has picked out to stop short at.
+ *
+ * Tonal, like everything that reports a condition (§9), and drawn on the
+ * *row* rather than on the name: the name is already carrying a fact — it is
+ * the room — and a picked row is a statement about the whole step, the
+ * direction and the obstacle chip included.
+ *
+ * `box-shadow` rather than padding or a border, because the row must not
+ * change size when it is picked: this list scrolls, the pick is made with the
+ * pointer, and a row that grew would move every row under it out from under
+ * the hand that is about to reach for the button appearing in it.
+ */
+.route-steps li[data-picked='true'] {
+  background: color-mix(in srgb, var(--accent) var(--tone-weak), transparent);
+  border-radius: var(--r-chip);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) var(--tone-weak), transparent);
+}
+
+.route-steps li[data-picked='true'] .step-name {
+  color: var(--text-hi);
+}
+
+/*
+ * `Walk here`, in the row it belongs to.
+ *
+ * Deliberately not `.primary`: this panel spends its one filled control on
+ * `Walk it` (§3.3), and a second filled button in a scrolling list would make
+ * the emphasis mean nothing. Tonal accent, at the row's own height — the
+ * `.row-action` rule, which exists because a button that keeps `--control-h`
+ * turns a 12px row into a 32px one and makes the list look double-spaced.
+ *
+ * **No vertical padding and no border, and that is measured rather than
+ * tasteful.** The first cut had `1px 6px` and a 1px seam, which is what a chip
+ * in this same row wears — and it made the picked row two pixels taller than
+ * it had been, so every row under it stepped down at the moment somebody was
+ * reaching for the button that had just appeared. `npm run smoke` measures the
+ * row before and after the click and fails on any change at all, which is how
+ * the two pixels were found. The tonal fill and the radius carry the control
+ * on their own; the seam was the half that cost the height.
+ */
+.step-walk {
+  background: color-mix(in srgb, var(--accent) var(--tone), transparent);
+  border: 0;
+  border-radius: var(--r-chip);
+  color: var(--accent);
+  cursor: pointer;
+  flex: none;
+  font-family: var(--font-mono);
+  font-size: var(--font-micro);
+  height: auto;
+  letter-spacing: 0.04em;
+  line-height: inherit;
+  padding: 0 6px;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.step-walk:hover,
+.step-walk:focus-visible {
+  background: color-mix(in srgb, var(--accent) var(--tone-strong), transparent);
+  color: var(--text-hi);
+}
+
+/*
+ * The condition holds its width and the name yields.
+ *
+ * The step's chip carries a number now — `Toll: 5 gold`, `Key: angular key,
+ * pick 157` — where it used to carry the bare word `toll`, so it is wider and
+ * a flex row would squeeze it away to nothing. The room name is repeated on
+ * every row of a long corridor; the condition appears once and is what decides
+ * whether the route can be walked at all, so the name is the half that
+ * truncates. It keeps its full text in a tooltip.
+ */
+.route-steps .step-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.route-steps .chip {
+  flex: 0 0 auto;
+}
+
+/* The command is the operative part of a step, so it reads first and firmest. */
+.route-steps .step-command {
+  color: var(--text-hi);
+  font-family: var(--font-mono);
+  font-size: var(--font-micro);
+  font-weight: 600;
+  min-width: 10ch;
+}
+
+/*
+ * Where a teleport is used, beside the command that uses it.
+ *
+ * Quiet, because it states the room the reader is already standing in -- what
+ * it is there to stop is the destination reading as the place the plan starts
+ * from. Not a chip: chips on this row are what a step *costs*, and this is
+ * part of the sentence.
+ */
+.route-steps .step-here {
+  color: var(--text-lo);
+  flex: 0 0 auto;
+  font-size: var(--font-micro);
+}

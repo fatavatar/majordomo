@@ -1,0 +1,768 @@
+/*
+ * The login script: one row per menu, "when this → send that".
+ *
+ * A list rather than named fields, because the four this replaced were one
+ * BBS's menus. Rows are added and removed, so the row itself carries the
+ * remove button rather than a separate mode.
+ */
+.settings-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 8px 0;
+  padding: 0;
+  list-style: none;
+}
+
+.settings-steps li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.settings-steps input {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+/* The answer is short — a letter, a digit, or nothing at all. */
+.settings-steps input.answer {
+  flex: 0 0 90px;
+}
+
+.settings-steps .arrow {
+  flex: 0 0 auto;
+  color: var(--text-lo-quiet);
+}
+
+.settings-steps li > button {
+  flex: 0 0 auto;
+  padding: 4px 6px;
+}
+
+/*
+ * The pager tick, which is the row's one flag rather than another answer: a
+ * bare checkbox against the remove button, so the two inputs stay the row's
+ * shape. Its own width so `input { flex: 1 1 auto }` above cannot stretch it.
+ */
+.settings-steps input.repeat {
+  flex: 0 0 auto;
+  min-width: auto;
+}
+
+/*
+ * The realm's own *use this item there* rules, under the player's own list
+ * and under the switch that obeys them (todo 02).
+ *
+ * Read-only, so it is a list rather than a form: nothing here is a control
+ * and nothing here takes focus. The item carries the row and the reason is
+ * quiet beside it, which is `.progression`'s emphasis rule applied to two
+ * halves of one sentence rather than to three stages of one journey.
+ */
+/*
+ * How far through a journey a route is, drawn along the foot of the chip that
+ * states it (todo 03).
+ *
+ * A `background-image` on the chip rather than an element inside it: the chip
+ * is one line of text and a strip under it is a picture of the same fraction,
+ * so giving it a child would be two things to keep in step. `--through` is
+ * set from the same `done / total` the chip prints.
+ */
+.chip.walk-through {
+  background-image: linear-gradient(
+    to right,
+    color-mix(in srgb, var(--accent) 45%, transparent) var(--through, 0%),
+    transparent var(--through, 0%)
+  );
+  background-repeat: no-repeat;
+  background-position: bottom left;
+  background-size: 100% 2px;
+}
+
+.ward-rules {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ward-rules li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.ward-rules .ward-item {
+  font-family: var(--font-mono);
+}
+
+.ward-rules .ward-because {
+  color: var(--text-lo-quiet);
+}
+
+.add-step {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/*
+ * A realm's message table (`RealmMessages`): a bar that says what the table
+ * is and offers the import, then one line per message -- the switch, the name,
+ * the sentence, and chips for what it means and what it sends. Six hundred of
+ * them is a list to search, not to read, so a row stays one line until it is
+ * opened.
+ */
+.realm-messages {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.messages-bar,
+.messages-confirm {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.messages-bar button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.messages-summary {
+  color: var(--text-lo);
+  flex: 1 1 auto;
+  font-variant-numeric: tabular-nums;
+}
+
+.messages-status {
+  margin: 0;
+}
+
+.messages-status.ok {
+  color: var(--ok);
+}
+
+.messages-status.bad {
+  color: var(--danger);
+}
+
+.messages-search {
+  width: 100%;
+}
+
+.messages-list {
+  display: flex;
+  flex-direction: column;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.messages-list li {
+  border-bottom: 1px solid var(--ink-line);
+  padding: 4px 0;
+}
+
+.messages-list li:last-child {
+  border-bottom: none;
+}
+
+.messages-list li.off .message-summary {
+  opacity: 0.55;
+}
+
+.message-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.message-row > input {
+  flex: 0 0 auto;
+  margin-top: 3px;
+}
+
+/* The row itself is the button that opens it, so it reads as text, not chrome. */
+.message-summary {
+  all: unset;
+  box-sizing: border-box;
+  cursor: pointer;
+  display: flex;
+  flex: 1 1 auto;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+  min-width: 0;
+}
+
+.message-summary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.message-name {
+  color: var(--text-hi);
+  font-weight: 600;
+}
+
+.message-match {
+  color: var(--text-lo);
+  font-family: var(--font-mono);
+  overflow-wrap: anywhere;
+}
+
+.message-chips {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+/* A reply is the player's own text, so it keeps its case. */
+.message-chips .chip:not(.info):not(.warn):not(.quiet) {
+  text-transform: none;
+}
+
+.message-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 8px 0 4px 26px;
+}
+
+.message-effects {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+
+.message-effects-label {
+  color: var(--text-lo);
+  font-size: var(--font-micro);
+  letter-spacing: 0.06em;
+  margin-right: 4px;
+  text-transform: uppercase;
+}
+
+.message-editor-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/*
+ * A blessing carries more than a menu answer, so its row is two lines: the
+ * identity — order, name, spell, target — and the numbers and switches under
+ * it. The list keeps the steps' rhythm; the second line is quieter and
+ * inset past the reorder column so it reads as belonging to the row above.
+ */
+.settings-blessings li {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--ink-line);
+}
+
+.settings-blessings li:last-child {
+  border-bottom: none;
+}
+
+.blessing-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.blessing-order {
+  display: inline-flex;
+  flex: 0 0 auto;
+  gap: 2px;
+}
+
+.blessing-order button {
+  padding: 2px 3px;
+}
+
+.blessing-detail {
+  flex-wrap: wrap;
+  padding-left: 52px;
+  font-size: 0.85em;
+  color: var(--text-lo-quiet);
+}
+
+.blessing-detail label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+/*
+ * The spell field takes what the row has; the target select keeps its own
+ * width. The first build split the space between two text boxes and the
+ * select drew one letter of "Self" — a control cut to illegibility on the
+ * default dialog width.
+ */
+.blessing-line .spell-picker {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.blessing-line select {
+  flex: 0 0 auto;
+  width: auto;
+}
+
+/*
+ * The alert rows, as a grid (todo 03).
+ *
+ * They were flex rows whose controls came and went per row -- a figure on the
+ * two numeric ones, a name on the two named ones, nothing on the rest -- so no
+ * two rows put the same control in the same place and nothing lined up down the
+ * page. The columns are declared once here and a row with no metric leaves that
+ * cell empty, which is the whole of what makes a column a column.
+ *
+ * **The list owns the tracks and every line borrows them** (2026-09-13). The
+ * heading used to carry its own copy of `grid-template-columns`, so the two
+ * agreed only as long as nobody edited one of them -- and `auto` tracks are
+ * sized per grid, so a heading word longer than the control under it moved its
+ * own column and not the row's. The tracks are declared once on the list and
+ * both the heading and every row are `subgrid`, which is the same fix
+ * `.readout` rows take when they cannot be siblings.
+ *
+ * Seven tracks: the switch, the event, the metric, the measure, the level, the
+ * quiet seconds, and the controls done TO the row (order, remove). The measure
+ * takes the slack so a name to wait for has room to be read.
+ *
+ * The switch and the quiet tracks have floors in `ch` sized to their HEADINGS
+ * rather than to their controls: a checkbox is 13px and `Enabled` is seven
+ * characters, so an `auto` track sized to the box alone left the heading
+ * overlapping the one beside it -- a column heading that does not fit its
+ * column names the wrong column.
+ */
+.settings-alerts {
+  display: grid;
+  grid-template-columns:
+    minmax(7ch, auto) minmax(16ch, 1.4fr) minmax(7ch, auto)
+    minmax(9ch, 1fr) minmax(8ch, auto) minmax(5ch, 4.2em) minmax(5ch, auto);
+  /*
+   * The rows scroll sideways inside their own box rather than the form doing
+   * it. Seven columns of controls do not always fit a panel somebody has
+   * dragged narrow, and the alternative is the event picker squeezed to
+   * nothing -- which is the thing this grid exists to stop.
+   */
+  overflow-x: auto;
+}
+
+/*
+ * A row spans every track and lays its own children on them, so one set of
+ * tracks serves the heading and all the rows.
+ *
+ * Two lines stacked, not two things side by side: `.settings-steps li` is a
+ * flex ROW, which put the row's controls and the *what it does when it fires*
+ * sentence beside each other and pushed the sentence to the far right.
+ */
+.settings-alerts > li {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: subgrid;
+  min-width: 38rem;
+}
+
+.settings-alerts .alert-line {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: subgrid;
+  align-items: center;
+  gap: 6px;
+}
+
+/* A cell holding two controls -- a figure and its per-cent box -- keeps them
+   on one line and lets the pair shrink together. */
+.settings-alerts .alert-cell {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+}
+
+.settings-alerts .alert-cell > input:not([type='checkbox']),
+.settings-alerts .alert-cell > select {
+  min-width: 0;
+  width: 100%;
+}
+
+/* The figure keeps a readable width beside its per-cent box rather than being
+   squeezed to the few pixels the box leaves. */
+.settings-alerts .alert-cell > input.number {
+  flex: 1 1 5ch;
+  min-width: 5ch;
+}
+
+/*
+ * The switch under its own heading: a bare box, centred on the column the word
+ * `Enabled` names. It wore that word as a label beside it, which is a field's
+ * grammar -- in a table the heading is where the column says what it is, and a
+ * label repeating it per row is the same word drawn once per row.
+ */
+.settings-alerts .alert-enabled {
+  justify-content: center;
+}
+
+/*
+ * What is done TO a row -- move it up, move it down, remove it -- kept
+ * together at its end. They led the row until 2026-09-13, where they pushed
+ * every heading a column off the control it named.
+ */
+.settings-alerts .alert-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  justify-self: end;
+}
+
+.settings-alerts .alert-controls button {
+  padding: 2px 3px;
+}
+
+/* A comparison the event states rather than offers: `over` for money, `named`
+   for a row matched by name. Drawn as the text it is, in the column a select
+   would have taken, so the measure beside it still lines up. */
+.settings-alerts .alert-fixed {
+  color: var(--text-lo-quiet);
+  white-space: nowrap;
+}
+
+/* The column headings: quiet, and each one over the control it names. */
+/* Headings sit on their last line, so a two-line one (`Quiet (s)`) shares a
+   baseline with its neighbours instead of floating above them. */
+.settings-alerts .alert-heading .alert-line {
+  align-items: end;
+  padding-bottom: 2px;
+}
+
+.settings-alerts .alert-heading span {
+  color: var(--text-lo-quiet);
+  font-size: 0.78em;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  /* Wraps inside its own track rather than widening it past the control it
+     names, and never spills over the heading beside it. */
+  overflow-wrap: anywhere;
+  line-height: 1.15;
+}
+
+/* The switch's and the controls' headings centre on what they name, as those
+   two cells do. */
+.settings-alerts .alert-heading span:first-child,
+.settings-alerts .alert-heading .alert-controls {
+  text-align: center;
+}
+
+.settings-alerts .alert-heading .alert-controls {
+  justify-self: end;
+  text-align: right;
+}
+
+/*
+ * What the row does when it fires: three switches under the row proper.
+ *
+ * A flex line spanning every track rather than three more columns, because
+ * each would be a column every other row leaves empty -- and the three read as
+ * one sentence together, which a grid would pull apart.
+ */
+.settings-alerts .alert-detail {
+  display: flex;
+  grid-column: 1 / -1;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  /* Inset past the switch column, so the sentence reads as belonging to the
+     row above it rather than floating loose under the whole grid. */
+  padding: 2px 0 6px 28px;
+  justify-content: flex-start;
+  font-size: 0.85em;
+  color: var(--text-lo-quiet);
+}
+
+/*
+ * A switch in the sentence is a box and its words on ONE line.
+ *
+ * `.settings-field` is the form's two-row subgrid, and a `label` inheriting it
+ * here stacked each box above its words -- three little towers instead of a
+ * sentence. It is stated rather than left to `.blessing-check`, which only
+ * stops the words wrapping.
+ */
+.settings-alerts .alert-detail label {
+  display: inline-flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 5px;
+}
+
+/* The warning under a shadowed row spans the tracks rather than sitting in the
+   first one. */
+.settings-alerts .blessing-duplicate {
+  grid-column: 1 / -1;
+}
+
+.settings-alerts select,
+.settings-alerts input:not([type='checkbox']) {
+  min-width: 0;
+}
+
+/*
+ * The monster rules, as a grid rather than a flex row.
+ *
+ * Every row here has the same three parts — a monster, how it is treated, a
+ * remove — so the columns are declared once and each row fills them, and the
+ * selects line up down the page however long the monster names are.
+ * `.blessing-line` next door is a flex row because its rows genuinely differ;
+ * a column that is the same on every row is a grid's job.
+ */
+.settings-mob-rules .mob-rule-line {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 6px;
+}
+
+.settings-mob-rules .spell-picker {
+  min-width: 0;
+}
+
+.settings-mob-rules select {
+  width: auto;
+}
+
+/* A text field with the character's own book under it. */
+.spell-picker {
+  position: relative;
+  display: inline-flex;
+}
+
+.spell-picker input {
+  width: 100%;
+  min-width: 0;
+}
+
+.spell-options {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  z-index: 30;
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  max-height: 240px;
+  overflow-y: auto;
+  border-radius: var(--r-control);
+  border: var(--rule) solid var(--ink-line);
+  background: var(--glass-fill-strong);
+  backdrop-filter: var(--glass-blur);
+  box-shadow: var(--glass-shadow), var(--glass-rim);
+}
+
+.spell-options li {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 4px 8px;
+  border-radius: var(--r-chip);
+  cursor: pointer;
+  color: var(--text);
+}
+
+.spell-options li[data-active='true'] {
+  background: color-mix(in srgb, var(--accent) var(--tone), transparent);
+  color: var(--text-hi);
+}
+
+.spell-options .spell-short {
+  font-size: 0.85em;
+  color: var(--text-lo-quiet);
+}
+
+/*
+ * The three cures as one three-column row, label over field — a fixed count,
+ * unlike the auto-fill field grid, because these are one sentence read
+ * across: what cures blindness, poison, disease.
+ */
+.settings-cures {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--field-gap);
+}
+
+.blessing-detail input.number {
+  width: 56px;
+  flex: 0 0 auto;
+}
+
+.blessing-check {
+  white-space: nowrap;
+}
+
+/*
+ * The circuits a character walks, and the shelf of shipped ones they are
+ * chosen from.
+ *
+ * Two lists that look alike on purpose -- same row height, same glyph column,
+ * same trailing count -- because they are the same thing seen twice: what this
+ * character has, and what it could have. A shelf row that looked unlike the
+ * list it fills would make "is this one on?" a question about two shapes.
+ */
+.settings-loops {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 6px 0 2px;
+  padding: 0;
+  list-style: none;
+}
+
+/* The loops a character walks but does not own, closed until asked for. */
+.settings-inherited > summary {
+  cursor: pointer;
+}
+
+.settings-loops li {
+  align-items: center;
+  background: var(--ink-raised);
+  border-radius: var(--r-chip);
+  display: flex;
+  gap: 8px;
+  padding: 5px 6px 5px 9px;
+}
+
+.settings-loops li > svg {
+  color: var(--text-lo-quiet);
+  flex: 0 0 auto;
+}
+
+.settings-loops li > button {
+  flex: 0 0 auto;
+  padding: 4px 6px;
+}
+
+/*
+ * A name long enough to wrap is the ordinary case here: the shipped circuits
+ * are called `Area: Room-map room`. It takes the width and ellipsizes rather
+ * than pushing the count and the remove button out of the row, which is the
+ * one part of it that has to stay hittable.
+ */
+.loop-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/*
+ * The shelf. A fixed height, for the reason a rail card has one: it is opened
+ * over controls that are already on screen, and a box that grew from four
+ * matches to four hundred as the field was cleared would move the Save button
+ * out from under the pointer.
+ */
+.loop-picker {
+  border: 1px solid var(--ink-line);
+  border-radius: var(--r-chip);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 6px 0 2px;
+  padding: 8px;
+}
+
+.loop-picker-head {
+  align-items: center;
+  display: flex;
+  gap: 6px;
+}
+
+.loop-search {
+  align-items: center;
+  display: flex;
+  flex: 1 1 auto;
+  gap: 6px;
+  min-width: 0;
+}
+
+.loop-search > svg {
+  color: var(--text-lo-quiet);
+  flex: 0 0 auto;
+}
+
+.loop-search input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.loop-options {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  list-style: none;
+  margin: 0;
+  max-height: 240px;
+  overflow-y: auto;
+  padding: 0;
+}
+
+.loop-options button {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  border-radius: var(--r-chip);
+  color: var(--text-hi);
+  cursor: pointer;
+  display: flex;
+  font: inherit;
+  gap: 8px;
+  padding: 5px 8px;
+  text-align: left;
+  width: 100%;
+}
+
+.loop-options button > svg {
+  color: var(--text-lo-quiet);
+  flex: 0 0 auto;
+}
+
+/*
+ * Where the cursor is. One rule for the mouse and the arrow keys, because the
+ * hook points at whatever is hovered -- they cannot disagree, so they must not
+ * look as though they could.
+ *
+ * Deliberately *not* the accent, which every other list on this screen uses for
+ * its highlight: here the accent already means "on this character", and a row
+ * that turned that colour merely because the pointer crossed it would say the
+ * circuit was added when it was not.
+ */
+.loop-options button[data-active='true'] {
+  background: color-mix(in srgb, var(--text-hi) 9%, transparent);
+}
+
+/*
+ * Already on this character. Tonal with the accent as the text, per
+ * docs/ui-design.md section 9 -- the same recipe everything reporting a
+ * condition uses, so one rule works in both themes.
+ */
+.loop-options button[data-taken='true'] {
+  color: color-mix(in srgb, var(--accent) 85%, var(--text-hi));
+}
+
+.loop-options button[data-taken='true'] > svg {
+  color: var(--accent);
+}

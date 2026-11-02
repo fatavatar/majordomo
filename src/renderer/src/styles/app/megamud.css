@@ -1,0 +1,288 @@
+/*
+ * MegaMUD's settings tabs (`MegaMudSettings`): each control placed where
+ * MegaMUD's dialog template puts it, in scaled dialog units, so the page reads
+ * as the dialog a MegaMUD player knows. The page scrolls sideways inside the
+ * form rather than reflowing, because the positions are the point.
+ */
+.megamud-settings {
+  /*
+   * A block of the Character page's form now, not the form: across the whole
+   * of its grid, as every fieldset is (alone in its first column, it sat in a
+   * track of no height and the fieldsets under it were drawn over the dialog),
+   * and scrolled with the form rather than by itself (2026-10-14).
+   */
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+.megamud-page {
+  position: relative;
+  flex: none;
+}
+/*
+ * Proportional, as MegaMUD's MS Sans Serif 8 is: its labels are sized to
+ * that face, and the console's monospace runs them off their boxes. And the
+ * rest of a MegaMUD tab's row, ours under its page, in the same face
+ * (2026-10-14).
+ */
+.megamud-page,
+.settings-form[data-megamud='true'] {
+  font-family: Tahoma, Verdana, 'Segoe UI', system-ui, sans-serif;
+  font-size: 11px;
+  color: var(--text);
+}
+/*
+ * Ours under a MegaMUD tab, drawn as the tab is: a group a plain title with
+ * no box or wash, labels in the dialog's case, and small boxed controls.
+ */
+.settings-form[data-megamud='true'] {
+  --control-h: 22px;
+  --font-ui: 11px;
+  --font-micro: 11px;
+}
+.settings-form[data-megamud='true'] .settings-menus {
+  background: none;
+  border: 0;
+  border-top: 1px solid var(--ink-edge);
+  border-radius: 0;
+  padding: 6px 0 0;
+}
+.settings-form[data-megamud='true'] .settings-menus legend {
+  padding: 0 4px 0 0;
+  color: var(--text-hi);
+  letter-spacing: normal;
+  text-transform: none;
+}
+.settings-form[data-megamud='true'] .settings-field > span {
+  letter-spacing: normal;
+  text-transform: none;
+}
+/* A heading inside a group, as the group's own title reads (2026-10-16). */
+.settings-form[data-megamud='true'] .settings-subhead {
+  font-size: inherit;
+  letter-spacing: normal;
+  text-transform: none;
+  color: var(--text-hi);
+}
+.settings-form[data-megamud='true']
+  :is(input:not([type='checkbox'], [type='radio']), select, textarea) {
+  padding: 2px 6px;
+  font: inherit;
+  color: var(--text-hi);
+  background: var(--ink-void);
+  border: 1px solid var(--ink-edge);
+  border-radius: 4px;
+}
+/* A search box is already the box; its field inside is not boxed again. */
+.settings-form[data-megamud='true'] .table-find input {
+  padding: 0;
+  background: none;
+  border: 0;
+}
+.settings-form[data-megamud='true'] .chip {
+  font-family: inherit;
+  letter-spacing: normal;
+  text-transform: none;
+}
+.settings-form[data-megamud='true'] button {
+  font-size: 11px;
+  padding: 0 6px;
+}
+.megamud-control {
+  position: absolute;
+  box-sizing: border-box;
+  margin: 0;
+}
+.megamud-label {
+  display: flex;
+  align-items: flex-start;
+  color: var(--text-lo);
+  /*
+   * As written, its line breaks kept (`^min^` over `exp`), and let run past
+   * its box rather than cut: this face is wider than MS Sans Serif 8, and a
+   * label cut to `^ Max ^ O` reads as nothing (2026-10-14).
+   */
+  white-space: pre;
+  overflow: visible;
+  /* A point under the page's, nearer MS Sans Serif 8's width, so a caption
+     under a box ends before the column beside it. */
+  font-size: 10px;
+}
+.megamud-group {
+  border: 1px solid var(--rule);
+  border-radius: var(--r-chip);
+  padding: 0;
+  pointer-events: none;
+}
+.megamud-group legend {
+  padding: 0 4px;
+  margin-left: 6px;
+  color: var(--text-hi);
+  font-size: 11px;
+}
+.megamud-check {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+  overflow: visible;
+  cursor: pointer;
+}
+.megamud-check[data-wraps='true'] {
+  align-items: flex-start;
+  white-space: normal;
+}
+.megamud-check input {
+  margin: 0;
+  flex: none;
+}
+.megamud-edit,
+.megamud-combo {
+  /* Room off the frame for the text, short of cutting a five-figure
+     number in MegaMUD's narrowest boxes (2026-10-14). */
+  padding: 1px 4px 1px 5px;
+  font: inherit;
+  min-height: 0;
+  color: var(--text-hi);
+  background: var(--ink-raised);
+  border: 1px solid var(--ink-edge);
+  border-radius: var(--r-control);
+}
+.megamud-edit:disabled {
+  opacity: 0.5;
+}
+/* A box that suggests what it names: the box is placed, its field fills it,
+   and its list is as wide as the names in it rather than the box (2026-10-24). */
+.spell-picker.megamud-control > input {
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+}
+.megamud-page .spell-options,
+.megamud-dialog .spell-options {
+  right: auto;
+  min-width: 100%;
+  width: max-content;
+  max-width: 320px;
+}
+/* A setting MegaMUD 2.1 keeps but never acts on: drawn, and drawn as idle. */
+.megamud-control[data-inert='true'] {
+  opacity: 0.5;
+  cursor: help;
+}
+.megamud-button {
+  font-size: 11px;
+  padding: 0 4px;
+  min-height: 0;
+}
+.megamud-button[data-active='true'] {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+.megamud-list {
+  overflow-y: auto;
+  border: 1px solid var(--ink-edge);
+  border-radius: var(--r-control);
+  background: var(--ink-raised);
+  padding: 2px 4px;
+}
+.megamud-list label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+/* The MegaMUD connection on the Character row, in its three rows. */
+.megamud-account-row {
+  display: grid;
+  gap: var(--field-gap, 10px) 16px;
+  align-items: end;
+}
+.megamud-account-row[data-row='0'] {
+  grid-template-columns: max-content minmax(0, 220px);
+}
+.megamud-account-row[data-row='1'] {
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+}
+.megamud-account-row[data-row='2'] {
+  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+}
+
+.megamud-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: flex-end;
+  padding-block: 12px;
+}
+.megamud-rows {
+  display: flex;
+  flex-direction: column;
+  padding: 2px;
+}
+.megamud-rows button {
+  justify-content: flex-start;
+  min-height: 0;
+  padding: 1px 4px;
+  font: inherit;
+  text-align: left;
+  white-space: nowrap;
+  color: var(--text-hi);
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+}
+.megamud-rows button[aria-selected='true'] {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+.megamud-picker {
+  padding: 0;
+}
+/* An event's or a monitor's dialog, over the tab it was opened from. */
+.megamud-dialog {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  overflow-y: auto;
+  padding: 8px 12px;
+  background: var(--ink-raised);
+  border: 1px solid var(--ink-edge);
+  border-radius: var(--r-control);
+}
+.megamud-dialog fieldset {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 4px 8px 8px;
+  border: 1px solid var(--ink-edge);
+  border-radius: var(--r-control);
+}
+.megamud-dialog label,
+.megamud-dialog-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.megamud-dialog .megamud-edit,
+.megamud-dialog .megamud-combo {
+  min-height: 22px;
+}
+.megamud-dialog-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.megamud-list-head {
+  display: block;
+  color: var(--text-hi);
+  font-weight: 600;
+}
+.megamud-list label[data-choice='true'] {
+  padding-left: 12px;
+}

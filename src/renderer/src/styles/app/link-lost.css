@@ -1,0 +1,39 @@
+/* ---------------------------------------------------------------- link lost */
+
+/*
+ * The socket to the client has gone (web mode). Drawn by the bridge, outside
+ * React, because the bridge is what knows and it exists before React mounts;
+ * the same glass as the crash panel, over everything, until the link is back.
+ */
+.link-lost {
+  align-items: center;
+  background: var(--scrim);
+  display: flex;
+  inset: 0;
+  justify-content: center;
+  position: fixed;
+  z-index: 200;
+}
+
+.link-lost-panel {
+  background: var(--glass-fill-strong);
+  border-radius: var(--r-card);
+  box-shadow: var(--glass-shadow), var(--glass-rim);
+  color: var(--text-hi);
+  max-width: 34rem;
+  padding: 20px 26px;
+}
+
+/* The password, asked in the cover when the client no longer holds the sign-in. */
+.link-sign-in {
+  display: grid;
+  gap: 10px;
+}
+
+.link-sign-in p {
+  margin: 0;
+}
+
+.link-sign-in-wrong:empty {
+  display: none;
+}

@@ -1,0 +1,696 @@
+/* ======================================================= the Stable
+ *
+ * Every character in the realm at once (2026-10-31): one row each, its status
+ * on the left and its own console on the right, the consoles being the ones
+ * every character keeps mounted, placed in these rows rather than drawn
+ * again. A row is the console's `stable.lines` tall; more characters than fit
+ * scroll. Narrow, the status goes above its console and the console is half
+ * as tall.
+ */
+.terminal-layers[data-flow='stable'] {
+  align-content: start;
+  column-gap: 5px;
+  /* The status, the handle's own zero-width track, the consoles. */
+  grid-template-columns: var(--stable-status, 320px) 0 minmax(0, 1fr);
+  grid-template-rows: var(--stable-rows);
+  overflow-y: auto;
+}
+
+.terminal-layers[data-flow='stable'][data-narrow='true'] {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+/*
+ * The Stable's handles: the status column's width, down the track between it
+ * and the consoles, and each console's height, along its foot. Over the
+ * gaps, as the window's own handles are, the seam showing on hover and drag.
+ */
+.stable-col-split,
+.stable-row-split {
+  position: relative;
+}
+
+.stable-row-split {
+  align-self: end;
+  height: 0;
+  pointer-events: none;
+}
+
+.stable-col-split > .splitter {
+  bottom: 0;
+  left: -3px;
+  position: absolute;
+  top: 0;
+  width: 6px;
+}
+
+.stable-col-split > .splitter::before {
+  inset: 0 -6px;
+}
+
+.stable-row-split > .splitter {
+  bottom: -6px;
+  cursor: row-resize;
+  height: 6px;
+  left: 0;
+  pointer-events: auto;
+  position: absolute;
+  right: 0;
+}
+
+.stable-row-split > .splitter::before {
+  inset: -4px 0;
+}
+
+.stable-row-split > .splitter::after {
+  bottom: auto;
+  height: 2px;
+  left: 0;
+  margin-left: 0;
+  margin-top: -1px;
+  right: 0;
+  top: 50%;
+  width: auto;
+}
+
+.stable-status {
+  /* As short as its block is dragged: what does not fit scrolls. */
+  min-height: 0;
+  overflow-y: auto;
+  background: var(--ink-card);
+  border: 1px solid var(--ink-line);
+  border-radius: var(--r-card);
+  display: flex;
+  flex-direction: column;
+  font-family: var(--font-mono);
+  font-size: var(--font-ui);
+  gap: 8px;
+  min-width: 0;
+  padding: 8px 10px;
+}
+
+.stable-status[data-focused='true'] {
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--ink-line));
+}
+
+.stable-status .quiet {
+  color: var(--text-lo);
+  font-size: var(--font-micro);
+}
+
+.stable-head {
+  align-items: flex-start;
+  display: flex;
+  gap: 8px;
+  justify-content: space-between;
+}
+
+/* A party's state chip and its Disband, side by side at the head. */
+.stable-head-side {
+  align-items: center;
+  display: inline-flex;
+  gap: 4px;
+}
+
+.stable-disband {
+  align-items: center;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--r-card);
+  color: var(--text-lo);
+  cursor: pointer;
+  display: inline-flex;
+  height: 24px;
+  justify-content: center;
+  padding: 0;
+  width: 24px;
+}
+
+/*
+ * Whose it is, in the Stable (2026-11-01): a character's colour -- its tab's
+ * dot, `ProfileAccent` -- worn by its console's frame, as a bar down the
+ * console's left edge, by the name opening its console line, and by a dot
+ * before it on the party's member list, so a party's stacked consoles and the
+ * lines above them can be matched at a glance rather than by the keyboard
+ * highlight alone.
+ */
+[data-who] {
+  --who: var(--accent);
+}
+[data-who='green'] {
+  --who: var(--ok);
+}
+[data-who='amber'] {
+  --who: var(--pending);
+}
+[data-who='violet'] {
+  --who: var(--marker);
+}
+
+.terminal-layers[data-flow='stable']
+  .terminal-layer[data-who]
+  > :is(.terminal-cell, .console-status) {
+  border-color: color-mix(in srgb, var(--who) 40%, var(--ink-line));
+  border-left: 3px solid var(--who);
+}
+
+.terminal-layers[data-flow='stable']
+  .terminal-layer[data-who][data-focused='true']
+  > :is(.terminal-cell, .console-status) {
+  border-color: var(--who);
+  border-left-width: 3px;
+}
+
+.console-status-name {
+  color: var(--who, var(--text-hi));
+  flex: none;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.stable-who {
+  align-self: center;
+  background: var(--who);
+  border-radius: 50%;
+  flex: none;
+  height: 8px;
+  width: 8px;
+}
+
+/* A character's settings: the tab's pencil, quiet until pointed at. */
+.stable-edit {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  border-radius: var(--r-chip);
+  color: var(--text-lo-quiet);
+  cursor: pointer;
+  display: inline-flex;
+  flex: none;
+  height: 20px;
+  justify-content: center;
+  padding: 0;
+  width: 20px;
+}
+
+.stable-edit .icon {
+  height: 13px;
+  width: 13px;
+}
+
+.stable-edit:hover,
+.stable-edit:focus-visible {
+  background: color-mix(in srgb, var(--accent) var(--tone), transparent);
+  color: var(--text-hi);
+}
+
+.stable-disband:hover {
+  border-color: color-mix(in srgb, var(--danger) 45%, var(--ink-line));
+  color: var(--danger);
+}
+
+.stable-name {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.stable-name b {
+  color: var(--text-hi);
+  font-size: calc(var(--font-ui) + 2px);
+}
+
+.stable-head .chip[data-level='critical'] {
+  background: color-mix(in srgb, var(--danger) var(--tone), transparent);
+  color: var(--danger);
+}
+
+.stable-head .chip[data-level='warn'] {
+  background: color-mix(in srgb, var(--pending) var(--tone), transparent);
+  color: var(--pending);
+}
+
+.stable-head .chip[data-level='info'] {
+  background: color-mix(in srgb, var(--accent) var(--tone), transparent);
+  color: var(--accent);
+}
+
+/*
+ * The line along a console's foot (`ConsoleStatus`, 2026-11-01): health, mana,
+ * the level and its rate, and the round timer at the end. Inside the console's
+ * own frame -- the cell gives up its bottom edge and the line takes it -- so it
+ * reads as the console's status bar rather than as a card under it. One line
+ * high and never wraps: what does not fit is cut from the experience end.
+ */
+.terminal-layer[data-footed='true'] {
+  display: flex;
+  flex-direction: column;
+}
+
+.terminal-layer[data-footed='true'] > .terminal-cell {
+  border-bottom: 0;
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+  flex: 1 1 auto;
+  height: auto;
+  min-height: 0;
+}
+
+.console-status {
+  align-items: center;
+  background: var(--ink-slate);
+  border: 1px solid var(--ink-line);
+  border-bottom-left-radius: var(--r-card);
+  border-bottom-right-radius: var(--r-card);
+  display: flex;
+  flex: none;
+  font-family: var(--font-mono);
+  font-size: var(--font-micro);
+  font-variant-numeric: tabular-nums;
+  gap: 14px;
+  min-width: 0;
+  overflow: hidden;
+  padding: 3px 10px;
+  white-space: nowrap;
+}
+
+.console-status-vital,
+.console-status-exp {
+  align-items: center;
+  display: inline-flex;
+  gap: 6px;
+  min-width: 0;
+}
+
+.console-status-vital {
+  flex: 1 1 0;
+  max-width: 260px;
+}
+
+.console-status-exp {
+  flex: 1.6 1 0;
+  overflow: hidden;
+}
+
+.console-status .stable-bar {
+  flex: 1 1 40px;
+  height: 6px;
+  min-width: 24px;
+}
+
+.console-status-exp .stable-bar {
+  flex: 0 1 120px;
+}
+
+.stable-bar[data-kind='exp'] > span {
+  background: color-mix(in srgb, var(--marker) 70%, transparent);
+}
+
+.console-status-rate {
+  color: var(--ok);
+  font-weight: 600;
+}
+
+.console-status .round-timer {
+  flex: none;
+  gap: 4px;
+  margin-left: auto;
+}
+
+.console-status .round-timer b {
+  min-width: 0;
+}
+
+.console-status .round-bar {
+  height: 5px;
+  width: 28px;
+}
+
+.stable-bar {
+  background: color-mix(in srgb, var(--text-lo) var(--tone-weak), transparent);
+  border-radius: var(--r-chip);
+  display: flex;
+  height: 8px;
+  overflow: hidden;
+}
+
+.stable-bar > span {
+  background: color-mix(in srgb, var(--ok) 70%, transparent);
+  transition: width var(--dur-control) var(--ease-out);
+}
+
+.stable-bar[data-kind='mana'] > span {
+  background: color-mix(in srgb, var(--accent) 60%, transparent);
+}
+
+.stable-bar[data-level='caution'] > span {
+  background: var(--pending);
+}
+
+.stable-bar[data-level='critical'] > span {
+  background: var(--danger);
+}
+
+.stable-figure {
+  color: var(--text-hi);
+  font-variant-numeric: tabular-nums;
+}
+
+/* A character's toolbar on its status: the Toolbar card's row, smaller. */
+.stable-toolbar .toolbar-row {
+  gap: 3px;
+}
+
+.stable-toolbar .toolbar-key {
+  height: 24px;
+  min-height: 0;
+  min-width: 0;
+  width: 26px;
+}
+
+/*
+ * The strip over a console in the Stable: the character's toolbar, the
+ * console under it taking the rest of the row.
+ */
+.terminal-layer[data-headed='true'] {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.terminal-layer[data-headed='true'] > .terminal-cell {
+  flex: 1 1 auto;
+  height: auto;
+  min-height: 0;
+}
+
+.console-head {
+  flex: none;
+}
+
+/* Cards placed on a status: the card itself, in the column. */
+.stable-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* In the Stable, the rail says whose cards it is drawing. */
+.rail-following {
+  align-items: center;
+  background: color-mix(in srgb, var(--accent) var(--tone), transparent);
+  border-radius: var(--r-card);
+  color: var(--text-hi);
+  display: flex;
+  flex-wrap: wrap;
+  font-family: var(--font-mono);
+  font-size: var(--font-ui);
+  gap: 4px 8px;
+  padding: 6px 8px;
+}
+
+.rail-following .dot {
+  background: var(--accent);
+  border-radius: 50%;
+  height: 8px;
+  width: 8px;
+}
+
+.rail-following .quiet {
+  color: var(--text-lo);
+  font-size: var(--font-micro);
+  margin-left: auto;
+}
+
+/* A party's members, together: name and state, health over mana, the figures beside. */
+.stable-members {
+  border-top: 1px solid var(--ink-line);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-top: 8px;
+}
+
+.stable-member {
+  align-items: center;
+  border-radius: var(--r-chip);
+  cursor: default;
+  display: grid;
+  gap: 3px 8px;
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.stable-member[data-focused='true'] .stable-member-name b {
+  color: var(--accent);
+}
+
+.stable-member-name {
+  align-items: baseline;
+  display: flex;
+  gap: 6px;
+  min-width: 0;
+}
+
+.stable-member-name b {
+  color: var(--text-hi);
+}
+
+.stable-member-name .quiet {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.stable-member .chip[data-level='critical'] {
+  background: color-mix(in srgb, var(--danger) var(--tone), transparent);
+  color: var(--danger);
+}
+
+.stable-member .chip[data-level='warn'] {
+  background: color-mix(in srgb, var(--pending) var(--tone), transparent);
+  color: var(--pending);
+}
+
+.stable-member .chip[data-level='info'] {
+  background: color-mix(in srgb, var(--accent) var(--tone), transparent);
+  color: var(--accent);
+}
+
+.stable-member-bars {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.stable-bar.thin {
+  height: 5px;
+}
+
+.stable-member-figures {
+  align-items: flex-end;
+  display: flex;
+  flex-direction: column;
+  font-size: var(--font-micro);
+  line-height: 1.15;
+}
+
+.stable-muster {
+  background: transparent;
+  border: 1px solid var(--ink-line);
+  border-radius: var(--r-card);
+  color: var(--text);
+  font: inherit;
+  min-height: 28px;
+  padding: 0 6px;
+}
+
+.stable-where {
+  border-top: 1px solid var(--ink-line);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-top: 6px;
+}
+
+.stable-where > span:first-child {
+  color: var(--text-hi);
+}
+
+.stable-rate {
+  border-top: 1px solid var(--ink-line);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-top: 6px;
+}
+
+.stable-rate-figures {
+  align-items: baseline;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 8px;
+}
+
+.stable-rate-figures b {
+  color: var(--ok);
+  font-size: calc(var(--font-ui) + 3px);
+  font-variant-numeric: tabular-nums;
+}
+
+.stable-rate-figures b[data-none='true'] {
+  color: var(--text-lo);
+}
+
+.stable-rate .stats-graph {
+  min-width: 0;
+}
+
+.stable-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: auto;
+}
+
+/* A party's commands, under its name: in their place, not pushed to the foot. */
+.stable-commands {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.stable-actions button,
+.stable-commands button,
+.stable-away button,
+.stable-head-strip button {
+  background: transparent;
+  border: 1px solid var(--ink-line);
+  border-radius: var(--r-card);
+  color: var(--text);
+  cursor: pointer;
+  font: inherit;
+  min-height: 28px;
+  padding: 0 10px;
+}
+
+.stable-actions button.quiet {
+  border-color: transparent;
+  color: var(--text-lo);
+}
+
+.stable-actions button.primary {
+  background: color-mix(in srgb, var(--accent) var(--tone), transparent);
+  border-color: transparent;
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.stable-head-strip button.danger {
+  border-color: color-mix(in srgb, var(--danger) 45%, var(--ink-line));
+  color: var(--danger);
+}
+
+.stable-actions button:hover,
+.stable-commands button:hover,
+.stable-away button:hover:not(:disabled),
+.stable-head-strip button:hover {
+  border-color: var(--ink-edge);
+  color: var(--text-hi);
+}
+
+.stable-head-strip {
+  display: flex;
+  flex-direction: column;
+  font-family: var(--font-mono);
+  font-size: var(--font-ui);
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.stable-summary,
+.stable-since {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+}
+
+.stable-summary b {
+  color: var(--text-hi);
+}
+
+.stable-summary .quiet {
+  color: var(--text-lo);
+}
+
+.stable-head-strip .spacer {
+  flex: 1;
+}
+
+.stable-since {
+  background: var(--ink-card);
+  border: 1px solid var(--ink-line);
+  border-radius: var(--r-card);
+  padding: 6px 10px;
+}
+
+.stable-since b {
+  color: var(--text-hi);
+}
+
+.stable-since b.gain {
+  color: var(--ok);
+}
+
+.stable-away {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+}
+
+.stable-away-label {
+  color: var(--text-lo);
+  font-size: var(--font-micro);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.stable-away-tile {
+  align-items: center;
+  border: 1px dashed var(--ink-line);
+  border-radius: var(--r-card);
+  display: inline-flex;
+  gap: 8px;
+  padding: 1px 3px 1px 8px;
+}
+
+/* Smaller than the head line's own buttons: a chip's press, not a command. */
+.stable-head-strip .stable-away button {
+  min-height: 22px;
+  padding: 0 8px;
+}
+
+.stable-away-tile .quiet {
+  color: var(--text-lo);
+}
+
+.stable-away button {
+  color: var(--accent);
+}
+
+.tab-stable .name {
+  align-items: center;
+  display: inline-flex;
+  gap: 6px;
+}
+
+/* A tab put away (`Kept`): no box of its own while shown, none at all while away. */
+.kept {
+  display: contents;
+}
+
+.kept[hidden] {
+  display: none;
+}

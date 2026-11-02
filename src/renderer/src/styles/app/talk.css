@@ -1,0 +1,314 @@
+/* ========================================== talk, carrying, and card close */
+
+/*
+ * The action column: every card's controls, down its right edge.
+ *
+ * Close at the top, copy under it, then whatever the card itself can do, and a
+ * kebab when there are more than fit. One place, the same place on every card,
+ * so a control is learned once — the close used to sit in the header and copy
+ * lived only on the right-click menu, which is an affordance you have to know
+ * about. Quiet until the card is hovered, like the close was: the rail is read
+ * far more often than it is operated on, and a column of glyphs down every
+ * card is a toolbar.
+ */
+.card-side {
+  display: flex;
+  flex-direction: column;
+  gap: var(--card-side-gap);
+  opacity: 0;
+  position: absolute;
+  right: 4px;
+  top: var(--card-side-inset);
+  transition: opacity var(--dur-tint) var(--ease-out);
+  z-index: 2;
+}
+
+.card:hover .card-side,
+.card-side:focus-within,
+/* Its own panel is open, and that panel's caret is in a portal this cannot
+   see -- so the control that closes it again would fade out under the pointer. */
+.card-side[data-open='true'] {
+  opacity: 1;
+}
+
+/* The column overlays the right edge, so the heading and body keep clear of it. */
+.card > header,
+.card > .body {
+  padding-right: calc(var(--pad-card) + 16px);
+}
+
+.card-action {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  border-radius: var(--r-chip);
+  color: var(--text-lo-quiet);
+  cursor: pointer;
+  display: flex;
+  height: var(--card-action);
+  justify-content: center;
+  padding: 0;
+  transition:
+    background var(--dur-tint) var(--ease-out),
+    color var(--dur-tint) var(--ease-out);
+  width: var(--card-action);
+}
+
+.card-action .icon {
+  height: 12px;
+  stroke-width: 1.9;
+  width: 12px;
+}
+
+.card-action:hover,
+.card-action:focus-visible {
+  background: color-mix(in srgb, var(--accent) var(--tone-weak), transparent);
+  color: var(--accent);
+}
+
+/* Putting away and forgetting cost something, and say so with the tone. */
+.card-action.card-close:hover,
+.card-action[data-danger='true']:hover {
+  background: color-mix(in srgb, var(--danger) var(--tone-weak), transparent);
+  color: var(--danger);
+}
+
+/*
+ * Which channels are being watched. A muted one keeps its control so it can be
+ * brought back, and says which state it is in with the word as well as the
+ * tone — nothing here states a condition by colour alone.
+ */
+.conversation-log {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: var(--font-micro);
+}
+
+/*
+ * A line's parts, in the arrangement the card's gear is set to.
+ *
+ * Three layouts and two of them are columns, so the template is chosen by the
+ * two data attributes rather than by a class per combination: the stamp is a
+ * column of its own wherever it is drawn, and `original` has no parts to line
+ * up at all -- it is the realm's own sentence, whole.
+ */
+.conversation-log .line {
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr);
+  gap: 3px 6px;
+  align-items: baseline;
+}
+
+.conversation-log[data-stamped] .line {
+  grid-template-columns: auto auto auto minmax(0, 1fr);
+}
+
+.conversation-log[data-layout='original'] .line {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.conversation-log[data-layout='original'][data-stamped] .line {
+  grid-template-columns: auto minmax(0, 1fr);
+}
+
+/*
+ * `condensed-aligned`: one grid for the whole log, and each line a `subgrid`
+ * row of it, so every column is sized by the browser from the widest content
+ * in the card.
+ *
+ * This is the one use the `.readout` note reserved `subgrid` for -- rows that
+ * are not siblings, which is exactly what a log of `.line` wrappers is. The
+ * wrapper has to stay: `data-channel` hangs on it and carries the colour
+ * coding, and the request asks for the columns *keeping* that. `display:
+ * contents` would have flattened the rows into the outer grid and taken the
+ * hue with them.
+ *
+ * No character-count padding and no measured constant: the card is resizable,
+ * floatable, and the chrome font is whatever the options file says, so a width
+ * decided anywhere but in layout is wrong for somebody.
+ *
+ * The gutters are stated identically on both, because a subgrid uses its own
+ * and a pair that disagreed would size the shared tracks against one value and
+ * place the content against the other.
+ */
+.conversation-log[data-layout='condensed-aligned'] {
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr);
+  gap: 3px 6px;
+  align-content: start;
+}
+
+.conversation-log[data-layout='condensed-aligned'][data-stamped] {
+  grid-template-columns: auto auto auto minmax(0, 1fr);
+}
+
+.conversation-log[data-layout='condensed-aligned'] .line {
+  grid-column: 1 / -1;
+  grid-template-columns: subgrid;
+}
+
+/*
+ * The time, quiet and fixed-pitch: it is the one part of a line that is the
+ * same shape on every row, and a proportional face would make a column of
+ * digits ragged in the layout that exists to line things up.
+ *
+ * It is also the one part of a line that is **the client's and not the
+ * realm's**, so it is the one part that takes no channel hue: a stamp painted
+ * the colour of the conversation would read as something the server said.
+ */
+.conversation-log .stamp {
+  color: var(--text-lo-quiet);
+  font-family: var(--font-mono);
+  white-space: nowrap;
+}
+
+/* The day, a step quieter than the time, which is what the eye is after (2026-10-24). */
+.conversation-log .stamp-date {
+  opacity: 0.6;
+}
+
+/*
+ * Each channel wears the hue the server itself prints it in.
+ *
+ * Four channels had a hue here already and all four were picked by hand, which
+ * is how gossip came to be cyan in the card and magenta two panes away in the
+ * console. The console *is* the other half of this card -- the same sentence,
+ * printed twice -- so a hue chosen without reference to the wire teaches a
+ * second vocabulary for the same thing.
+ *
+ * Measured 2026-09-03 from the raw `.mudcap.jsonl` captures in the user data
+ * root, which record the bytes before the terminal draws them. 429 lines:
+ *
+ * | Channel        | Front of the line | The message | n   |
+ * |----------------|-------------------|-------------|-----|
+ * | gossip         | `ESC[0m` reset    | `ESC[1;35m` | 285 |
+ * | auction        | `ESC[0m` reset    | `ESC[1;35m` | 8   |
+ * | telepath       | `ESC[0;32m`       | `ESC[0;37m` | 90  |
+ * | gangpath       | `ESC[0;32m`       | `ESC[0;33m` | 6   |
+ * | broadcast      | `ESC[1;33m`       | unchanged   | 13  |
+ * | say / directed | `ESC[0;32m`       | unchanged   | 27  |
+ * | yell           | never captured    |             | 0   |
+ *
+ * So the server colours a line in **two** parts -- who said it and where, then
+ * what they said -- which is the same seam this card already draws its columns
+ * on. `--talk-name` and `--talk-body` are those two, and a channel leaves
+ * either unset where the server left it at the terminal's own foreground; the
+ * fallbacks below are then exactly what the card drew before any of this.
+ *
+ * **The tokens are the palette, not `theme.terminal`.** The five chrome
+ * accents already *are* the EGA colours in the chrome's register -- measured,
+ * same lightness and within 25 degrees of hue at about two-thirds saturation
+ * (`ok` <- bright green, `pending` <- yellow, `marker` <- bright magenta) --
+ * and they are the values `themes.test.ts` holds above 4.5:1 on a card in all
+ * sixteen themes. Publishing the raw palette to CSS instead would put
+ * `#ff55ff` on glass, which is the glare the accents exist to avoid, and would
+ * be unreadable on the light themes, whose terminal greyscale is inverted.
+ *
+ * Two collisions are the wire's own and are kept rather than designed out.
+ * Gossip and auction are one colour because the server gives them one colour;
+ * telepath, gangpath and say share a green front for the same reason. Inventing
+ * a hue to separate them is precisely the disagreement this replaced -- and
+ * every one of them is already separated by the channel's own word, by its face
+ * in the heading, and (for gangpath against broadcast) by the second half of
+ * the line.
+ *
+ * Yell gets nothing. It has never been captured, so there is no colour to
+ * match; it falls through to the plain line the whole card used to be. When a
+ * capture arrives, it is one row here.
+ */
+.conversation-log .channel {
+  color: var(--talk-name, var(--text-lo-quiet));
+  font-family: var(--font-mono);
+}
+
+.conversation-log .who {
+  color: var(--talk-name, var(--text-hi));
+  white-space: nowrap;
+}
+
+/*
+ * The message is prose, and prose at full accent strength is the spraying §9
+ * warns about -- a card of it is tiring to read and leaves nothing for the
+ * short, scannable half of the line to be emphatic *with*. So the hue is
+ * tempered into the card's own ink, which keeps it recognisable as the same
+ * colour while reading as text rather than as a chip. A channel with no body
+ * hue mixes the ink with itself and is unchanged.
+ */
+.conversation-log .said {
+  color: color-mix(in srgb, var(--talk-body, var(--text)) 55%, var(--text));
+  overflow-wrap: anywhere;
+}
+
+/*
+ * `original` quotes the realm's whole sentence, so its one span is the front of
+ * the line *and* the message. It takes the front's hue -- that is the colour
+ * the console shows where this line starts -- and falls back to the message's
+ * where the server left the front plain, which is what makes a gossip magenta
+ * and a telepath green in the layout that draws neither part separately.
+ */
+.conversation-log[data-layout='original'] .said {
+  color: color-mix(in srgb, var(--talk-name, var(--talk-body, var(--text))) 55%, var(--text));
+}
+
+.conversation-log .line[data-channel='conversation-gossip'],
+.conversation-log .line[data-channel='conversation-auction'] {
+  --talk-body: var(--marker);
+}
+
+.conversation-log .line[data-channel='conversation-broadcast'] {
+  --talk-name: var(--pending);
+  --talk-body: var(--pending);
+}
+
+.conversation-log .line[data-channel='conversation-telepath'] {
+  --talk-name: var(--ok);
+}
+
+.conversation-log .line[data-channel='conversation-gangpath'] {
+  --talk-name: var(--ok);
+  --talk-body: var(--pending);
+}
+
+.conversation-log .line[data-channel='conversation-local'],
+.conversation-log .line[data-channel='conversation-directed'] {
+  --talk-name: var(--ok);
+  --talk-body: var(--ok);
+}
+
+/* Carried weight: a fraction of a maximum, which is the one shape drawn as a bar. */
+:is(.inventory-card, .self-card) .meter {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+:is(.inventory-card, .self-card) .track {
+  flex: 1 1 auto;
+  height: 4px;
+  border-radius: var(--r-pill);
+  background: color-mix(in srgb, var(--ink-line) 70%, transparent);
+  overflow: hidden;
+}
+
+:is(.inventory-card, .self-card) .fill {
+  display: block;
+  height: 100%;
+  border-radius: var(--r-pill);
+  background: var(--ok);
+  transition: width var(--dur-control) var(--ease-out);
+}
+
+:is(.inventory-card, .self-card) .meter[data-level='caution'] .fill {
+  background: var(--pending);
+}
+:is(.inventory-card, .self-card) .meter[data-level='critical'] .fill {
+  background: var(--danger);
+}
+
+:is(.inventory-card, .self-card) .figures {
+  color: var(--text-lo-quiet);
+  font-family: var(--font-mono);
+  font-size: var(--font-micro);
+}

@@ -1,0 +1,151 @@
+/*
+ * The find field, held off the surface's own rounded corners.
+ *
+ * `.palette input` is a full-bleed field with square corners, which is right
+ * at the top of a box whose corners it can fill. Here the surface carries
+ * `--r-card` and `overflow: hidden`, so the field's top corners were sliced
+ * off by the curve above them — a control that looks cut off rather than one
+ * drawn that way. The wrapper insets it by the padding the rows below already
+ * use, so the field, the headings and the names share one left edge, and gives
+ * it back the radius a control in this client has.
+ */
+.loops-find {
+  flex: 0 0 auto;
+  padding: 8px 6px 2px;
+}
+
+.loops-modal .loops-find input {
+  border-radius: var(--r-control);
+  border-width: var(--rule);
+  /* A floor, not a height: the type this holds is a setting. See `.meter`. */
+  min-height: 38px;
+  padding: 0 10px;
+  width: 100%;
+}
+
+/* The field keeps its own 10px inset, so the glyph keeps it too. */
+.loops-modal .loops-find .field-clear {
+  margin-inline-end: 8px;
+}
+
+/*
+ * The sections above the areas: what this character last walked, and what
+ * starts or passes through this room.
+ *
+ * The accent at the tone §9 asks of anything reporting a condition — these
+ * headings state a fact about *now*, unlike an area, which is a permanent
+ * property of the realm. Tonal, never a filled block.
+ */
+.loops-modal .palette-group-label[data-section]:not([data-section='area']) {
+  border-color: color-mix(in srgb, var(--accent) var(--tone-strong), transparent);
+  color: var(--accent);
+}
+
+/*
+ * The gap between one heading and the group above it.
+ *
+ * `.palette-group-label` sets 6px for the command palette, which has four
+ * groups. This list has sixty, and at 6px each the headings read as sixty
+ * separate boxes with air between them rather than as one list with sixty
+ * sections in it — loose enough that scrolling it feels twice as long as it is.
+ */
+.loops-modal .palette-group-label:not(:first-child) {
+  margin-top: 2px;
+}
+
+/*
+ * The `n loops` count, hard against the right edge and never squeezed.
+ *
+ * `margin-left: auto` floats it, and that is only half the job: `.palette li
+ * .hint` caps every hint at `max-width: 45%` with an ellipsis — a rule written
+ * for the one hint in the palette that carries a filesystem path. A long area
+ * name (`Ancient Fortress of the Silver Dawn`) pushed against that cap and
+ * `12 loops` came out as `12 lo…`, right-aligned and unreadable. The count is
+ * three or four characters and is what the reader is scanning down the column
+ * for, so the *name* gives way here, which is the same choice `.loop-row-name`
+ * already makes one row further down.
+ */
+.loops-modal .palette-group-toggle {
+  min-width: 0;
+}
+
+.loops-modal .palette-group-toggle .hint {
+  flex: 0 0 auto;
+  max-width: none;
+}
+
+/* Then the name is the part that gives way, as it does on a row. */
+.loops-modal .loops-group-name {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/*
+ * The name, which is the part that distinguishes one row from the next.
+ *
+ * Allowed to shrink and to ellipsise, so a long room name gives way rather
+ * than pushing the stop count and the `walking` chip off the end — those are
+ * the two things somebody is checking when they read down the column.
+ */
+.loops-modal .loop-row-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/*
+ * A row handed out as a file (2026-10-19): quiet until the row is pointed
+ * at, so a column of four hundred loops is not a column of buttons.
+ */
+.loops-modal .loops-export {
+  flex: 0 0 auto;
+  font-size: 11px;
+  opacity: 0;
+  padding: 0 4px;
+}
+
+.loops-modal li:hover .loops-export,
+.loops-modal li[data-active='true'] .loops-export,
+.loops-modal .loops-export:focus-visible {
+  opacity: 1;
+}
+
+/* A row already walked states so; the count still reads last in the row. */
+.loops-modal li .chip {
+  flex: 0 0 auto;
+}
+
+.loops-modal li .hint {
+  flex: 0 0 auto;
+  margin-left: 0;
+}
+
+/*
+ * Where a chosen loop is kept, pinned under the list.
+ *
+ * Outside the scroller, like a card's own filters: a control that scrolled
+ * away with four hundred rows is one reached for exactly when it cannot be.
+ */
+.loops-destination {
+  align-items: center;
+  border-top: var(--rule) solid var(--ink-line);
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 10px 16px;
+}
+
+.loops-destination-label {
+  color: var(--text-lo-quiet);
+  font-size: var(--font-micro);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  margin-right: 2px;
+  text-transform: uppercase;
+}

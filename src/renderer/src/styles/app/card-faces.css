@@ -1,0 +1,218 @@
+/* ============================================================== card faces */
+
+/*
+ * A card's faces live in its heading, not in a strip beneath it.
+ *
+ * The first face is the card, so it wears the card's title; the rest add a
+ * crumb. `ROOM › HOW` says in one line what a title plus a tab row said in two,
+ * and does not spend the word "Room" twice to do it.
+ *
+ * Each crumb is a small tonal pill rather than plain coloured text. Text alone
+ * read as a label, not a control — the settings screen's own `Characters ›
+ * Servers` was the one place a crumb read as clickable, and purely by
+ * accident: its heading happens to be bold and letter-spaced, a property of
+ * that one heading's type scale rather than of the control. A pill carries its
+ * own affordance wherever it appears, at the tonal strength §9 asks for rather
+ * than a filled block — a card's heading is read constantly, and a filled
+ * control there would spray the one emphasis this app spends on purpose.
+ */
+.crumbs {
+  align-items: center;
+  display: flex;
+  gap: 4px;
+}
+
+.crumb {
+  padding: 2px 9px;
+  border: 0;
+  border-radius: var(--r-pill);
+  background: color-mix(in srgb, var(--text-hi) 7%, transparent);
+  color: var(--text-lo-normal);
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  cursor: pointer;
+  transition:
+    background var(--dur-tint) var(--ease-out),
+    color var(--dur-tint) var(--ease-out);
+}
+
+.crumb:hover {
+  background: color-mix(in srgb, var(--accent) var(--tone-weak), transparent);
+  color: var(--text-hi);
+}
+
+.crumb[data-active='true'] {
+  background: color-mix(in srgb, var(--accent) var(--tone), transparent);
+  color: var(--accent);
+}
+
+/*
+ * A heading of **toggles** rather than faces, and the on state has to be loud.
+ *
+ * Faces answer *which one am I looking at*, and one of a row being tonal is
+ * enough to say so. Toggles answer *which of these are on*, with any number of
+ * them at once — so the row has to be readable as a pattern from across the
+ * screen rather than as one highlighted word (asked for in todo 06: "toggled
+ * on for any button should be very visible and bright"). The filled pill is
+ * the loudest register the palette has, and it is spent here because the row
+ * is the only thing on the card that carries state.
+ */
+.crumbs[role='group'] .crumb[data-active='true'] {
+  background: var(--accent);
+  color: var(--on-accent);
+  font-weight: 600;
+}
+
+/*
+ * Under a master that is on, the rest are drawn **in their own state** and
+ * refuse the press. Hidden or blanked, turning the master off would put the
+ * reader back to nothing chosen; dimmed, the row still says what it will go
+ * back to.
+ */
+.crumbs[role='group'] .crumb:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+
+.crumbs[role='group'] .crumb:disabled:hover {
+  background: color-mix(in srgb, var(--text-hi) 7%, transparent);
+  color: var(--text-lo-normal);
+}
+
+.crumbs[role='group'] .crumb:disabled[data-active='true']:hover {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+/*
+ * The rooms the evidence still allowed, and the one that was taken.
+ *
+ * "You are at 1,219" and "you are at one of four places called Guild Street,
+ * and I chose this one because you walked south" are different claims, and only
+ * the second can be argued with.
+ */
+.candidates {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.candidates li {
+  display: flex;
+  gap: 8px;
+  padding: 3px 6px;
+  border-radius: var(--r-chip);
+  color: var(--text-lo);
+  font-size: var(--font-micro);
+}
+
+.candidates li[data-chosen='true'] {
+  background: color-mix(in srgb, var(--accent) var(--tone-weak), transparent);
+  color: var(--text-hi);
+}
+
+.candidates .at {
+  flex: 0 0 auto;
+  color: var(--text-lo-quiet);
+  font-family: var(--font-mono);
+}
+
+.candidates li[data-chosen='true'] .at {
+  color: var(--accent);
+}
+
+.candidates .of {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/*
+ * What this character has found that the realm data does not have.
+ *
+ * The command first, because it is the part somebody would have to type to do
+ * it again — a direction the map is missing and `jump cliff` are the same kind
+ * of fact here, and the second one is unguessable.
+ */
+.found {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.found li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 6px;
+  border-radius: var(--r-chip);
+  color: var(--text-lo);
+  font-size: var(--font-micro);
+}
+
+.found .how {
+  flex: 0 0 auto;
+  color: var(--accent);
+  font-family: var(--font-mono);
+}
+
+.found .what {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.found .chip {
+  margin-left: auto;
+}
+
+/*
+ * Striking a found way out. The one edit the record accepts, and a person's
+ * to make: a mistyped direction the server accepted looks exactly like a
+ * discovery to the code that wrote it down.
+ */
+.found-forget {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  border-radius: var(--r-chip);
+  color: var(--text-lo-quiet);
+  cursor: pointer;
+  display: flex;
+  flex: 0 0 auto;
+  height: 16px;
+  justify-content: center;
+  padding: 0;
+  width: 16px;
+}
+
+.found-forget .icon {
+  height: 11px;
+  width: 11px;
+}
+
+.found-forget:hover,
+.found-forget:focus-visible {
+  background: color-mix(in srgb, var(--danger) var(--tone-weak), transparent);
+  color: var(--danger);
+}
+
+/* A footnote: the rest of the record, said as a count rather than a list. */
+.aside {
+  margin-top: 8px;
+  color: var(--text-lo-quiet);
+  font-size: var(--font-micro);
+}
+
+/* The highlighted option, wherever a filtered list is shown. */
+.route-matches li[data-active='true'] > button {
+  background: color-mix(in srgb, var(--accent) var(--tone), transparent);
+  color: var(--text-hi);
+}

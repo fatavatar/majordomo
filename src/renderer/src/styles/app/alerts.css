@@ -1,0 +1,112 @@
+/* ------------------------------------------------------------- standby */
+
+/*
+ * The rail's resting state. It keeps its space and says what it is waiting for,
+ * because a blank column beside a live one reads as damage rather than as
+ * "this character is offline".
+ */
+.standby-card .standby-what {
+  color: var(--text-hi);
+  margin: 0 0 4px;
+}
+
+.standby-card .standby-who {
+  color: var(--text-lo);
+  margin: 0 0 8px;
+}
+
+/* --------------------------------------------------------------- alerts */
+
+/*
+ * The level is a word, not only a hue.
+ *
+ * §6: nothing states a condition by colour alone. A client that says "this one
+ * is urgent" only by turning something red says it to some of its users and
+ * not to others.
+ */
+.alert-level {
+  font-size: var(--font-micro);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.alert-list tr[data-level='critical'] .alert-level {
+  color: var(--danger);
+}
+
+.alert-list tr[data-level='warning'] .alert-level {
+  color: var(--pending);
+}
+
+.alert-list tr[data-level='info'] .alert-level {
+  color: var(--text-lo-quiet);
+}
+
+.alert-channel {
+  color: var(--text-lo-quiet);
+  font-size: var(--font-micro);
+}
+
+/* The one column that wraps gets a little air under it, so two three-line
+   notices do not read as one six-line one. */
+.alert-list td {
+  padding-bottom: 3px;
+}
+
+.alert-text {
+  color: var(--text-hi);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* A filter that is off is tonal-off, not absent: it still says what it hides. */
+.chip.toggle {
+  border: 0;
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--font-micro);
+}
+
+.chip.toggle[data-on='false'] {
+  opacity: 0.45;
+  text-decoration: line-through;
+}
+
+/*
+ * A ranked toggle carries its rank only while it is *on*.
+ *
+ * Off is already said by the strike-through and the drop in opacity above, and
+ * a toggle that kept its colour while struck through would be stating a
+ * condition it is not in -- a red DENY with a line through it reads, at the
+ * glance these are read at, as a denial rather than as the absence of one.
+ */
+.chip.toggle[data-level='critical'][data-on='true'] {
+  background: color-mix(in srgb, var(--danger) var(--tone), transparent);
+  color: var(--danger);
+}
+
+.chip.toggle[data-level='warning'][data-on='true'] {
+  background: color-mix(in srgb, var(--pending) var(--tone), transparent);
+  color: var(--pending);
+}
+
+/*
+ * The other end of the same pair.
+ *
+ * A two-chip permission -- ALLOW beside DENY -- had a rank on one half only, so
+ * the pressed state of the dangerous half was the single coloured thing in a
+ * column of grey and the *granting* half looked identical whether it was
+ * granting or not. The eye reads the row by its one bit of colour, so a
+ * fifty-seven-row grid answered "what is granted here" with a column of red
+ * that means the opposite.
+ *
+ * Both halves rank now, and they rank in the directions the whole client
+ * already uses for these two words: `--ok` for the thing that is permitted,
+ * `--danger` for the thing that is refused. Nothing is stated by colour alone
+ * -- each chip says ALLOW or DENY in words, and `aria-pressed` says which is
+ * held -- so this is the second statement, never the only one.
+ */
+.chip.toggle[data-level='ok'][data-on='true'] {
+  background: color-mix(in srgb, var(--ok) var(--tone), transparent);
+  color: var(--ok);
+}

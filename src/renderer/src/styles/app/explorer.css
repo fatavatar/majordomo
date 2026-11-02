@@ -1,0 +1,1295 @@
+.explorer-screen {
+  --ex-sel: color-mix(in srgb, var(--accent) var(--tone-weak), var(--ink-raised));
+  /* One height for every box and dropdown on the bars, which a checkbox's line takes too. */
+  --ex-control: 25px;
+  background: var(--ink-void);
+  border: 1px solid var(--ink-line);
+  border-radius: var(--r-card);
+  box-shadow: var(--glass-shadow);
+  color: var(--text-hi);
+  display: flex;
+  flex-direction: column;
+  font: 13px/1.45 var(--font-mono);
+  height: 92vh;
+  overflow: hidden;
+  width: min(1440px, 97vw);
+}
+
+/* In a window of its own (2026-10-29): the whole of it, edge to edge. */
+.explorer-screen[data-windowed='true'] {
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  height: 100vh;
+  width: 100vw;
+}
+
+.ex-top {
+  align-items: flex-end;
+  background: linear-gradient(180deg, var(--ink-card), var(--ink-void));
+  border-bottom: 1px solid var(--ink-line);
+  display: flex;
+  flex: 0 0 auto;
+  gap: 12px;
+  padding: 10px 14px 0;
+}
+
+/*
+ * The top row: who the Explorer answers for (2026-10-29), MME's global fields.
+ * A field changed from the character as played wears the pending colour, and
+ * so does the row's note, so a list read for somebody else is never mistaken
+ * for the character's own.
+ */
+.ex-as {
+  align-items: flex-end;
+  background: var(--ink-card);
+  border-bottom: 1px solid var(--ink-line);
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  padding: 8px 14px 0;
+}
+
+.ex-as .ex-field {
+  margin-bottom: 8px;
+}
+
+.ex-as [data-as='true'] {
+  border-color: var(--pending);
+  color: var(--pending);
+}
+
+.ex-as-note {
+  align-self: center;
+  color: var(--text-lo-quiet);
+  flex: 1 1 auto;
+  font-size: 12px;
+  margin-bottom: 8px;
+  text-align: right;
+}
+
+.ex-as[data-as='true'] .ex-as-note {
+  color: var(--pending);
+}
+
+.ex-tabs {
+  display: flex;
+  gap: 2px;
+  margin-inline-end: auto;
+}
+
+.ex-tab {
+  background: none;
+  border: 1px solid transparent;
+  border-bottom: none;
+  border-radius: 5px 5px 0 0;
+  color: var(--text);
+  cursor: pointer;
+  font: inherit;
+  padding: 7px 14px;
+}
+
+.ex-tab:hover {
+  background: var(--ink-card);
+  color: var(--text-hi);
+}
+
+.ex-tab[aria-selected='true'] {
+  background: var(--ink-void);
+  border-color: var(--ink-line);
+  box-shadow: 0 1px 0 var(--ink-void);
+  color: var(--pending);
+}
+
+/* mudtool's global filter: amber while it holds the list to the character. */
+.ex-global {
+  align-items: center;
+  align-self: center;
+  border: 1px solid var(--ink-line);
+  border-radius: 5px;
+  color: var(--text);
+  cursor: pointer;
+  display: flex;
+  font-size: 12px;
+  gap: 8px;
+  margin-bottom: 8px;
+  padding: 4px 10px;
+}
+
+.ex-global[data-on='true'] {
+  border-color: var(--pending);
+  color: var(--pending);
+}
+
+.explorer-screen input,
+.explorer-screen select {
+  background: var(--ink-void);
+  border: 1px solid var(--ink-edge);
+  border-radius: 4px;
+  box-sizing: border-box;
+  color: var(--text-hi);
+  font: inherit;
+  height: var(--ex-control);
+  padding: 0 7px;
+}
+
+.explorer-screen input:focus,
+.explorer-screen select:focus {
+  border-color: var(--pending);
+  outline: none;
+}
+
+.explorer-screen input[type='checkbox'] {
+  accent-color: var(--pending);
+  height: auto;
+  margin: 0;
+  padding: 0;
+}
+
+.ex-btn {
+  align-self: center;
+  background: var(--ink-raised);
+  border: 1px solid var(--ink-edge);
+  border-radius: 4px;
+  color: var(--text-hi);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  margin-bottom: 8px;
+  padding: 4px 11px;
+}
+
+.ex-btn:hover {
+  border-color: var(--pending);
+  color: var(--pending);
+}
+
+.ex-toolbar {
+  align-items: flex-end;
+  background: var(--ink-card);
+  border-bottom: 1px solid var(--ink-line);
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  padding: 10px 14px;
+}
+
+.ex-search {
+  width: 16em;
+}
+
+.ex-field {
+  display: flex;
+  flex-direction: column;
+  font-size: 12px;
+  gap: 3px;
+}
+
+.ex-field-label {
+  color: var(--text-lo-quiet);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+}
+
+.ex-field-row {
+  display: flex;
+  gap: 4px;
+}
+
+/* Calc. Combat and what it opens, on one line of the bar. */
+.ex-calc {
+  align-items: flex-end;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+}
+
+/*
+ * A checkbox's line is a control's height, centred, so on a bar aligned to
+ * its bottom edge it sits level with the dropdowns and boxes beside it.
+ */
+.ex-checks {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+}
+
+.ex-check {
+  align-items: center;
+  color: var(--text);
+  cursor: pointer;
+  display: flex;
+  font-size: 12px;
+  gap: 5px;
+  height: var(--ex-control);
+}
+
+.ex-count {
+  align-self: center;
+  color: var(--text-lo-quiet);
+  font-size: 12px;
+  margin-inline-start: auto;
+}
+
+/*
+ * The list across the whole width, and under it MMUD Explorer's own two
+ * panels: the detail and its comparison with what is worn, then the
+ * references. Each handle (`Splitter`) sizes the panel past it.
+ */
+.ex-body {
+  display: grid;
+  flex: 1 1 auto;
+  grid-template-rows: minmax(0, 1fr) 6px var(--ex-lower);
+  min-height: 0;
+}
+
+.ex-list {
+  min-height: 0;
+  min-width: 0;
+}
+
+.ex-lower {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 6px var(--ex-refs);
+  min-height: 0;
+}
+
+.explorer-screen .splitter {
+  background: var(--ink-line);
+}
+
+.explorer-screen .splitter:hover {
+  background: var(--pending);
+}
+
+.explorer-screen .splitter[data-edge='bottom'] {
+  cursor: row-resize;
+}
+
+.explorer-screen .splitter[data-edge='bottom']::before {
+  inset: -4px 0;
+}
+
+.explorer-screen .splitter::after {
+  display: none;
+}
+
+.ex-references {
+  min-height: 0;
+  overflow: auto;
+  padding: 10px 14px;
+}
+
+.ex-empty {
+  color: var(--text-lo-quiet);
+  padding: 14px 16px;
+}
+
+/* mudtool's virtual table: a header band, then compact rows on thin rules. */
+.ex-table {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+/*
+ * Twenty columns are wider than the pane, so the head scrolls sideways with
+ * the rows (it is inside their scroller) and stays put going down (sticky).
+ * The head, the rows and the box holding them share one width (`--ex-width`,
+ * worked out from the columns), so every column lines up down the list.
+ */
+.ex-head,
+.ex-row {
+  column-gap: 10px;
+  display: grid;
+  grid-template-columns: var(--ex-cols);
+  padding: 0 10px;
+  width: var(--ex-width);
+}
+
+.ex-spacer {
+  width: var(--ex-width);
+}
+
+.ex-head {
+  background: var(--ink-raised);
+  border-bottom: 1px solid var(--ink-line);
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.ex-th {
+  background: none;
+  border: 0;
+  color: var(--text);
+  cursor: pointer;
+  font: inherit;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  overflow: hidden;
+  padding: 5px 0;
+  text-align: start;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ex-th:hover {
+  color: var(--text-hi);
+}
+
+.ex-th[aria-sort='ascending']::after {
+  color: var(--pending);
+  content: ' ▲';
+}
+
+.ex-th[aria-sort='descending']::after {
+  color: var(--pending);
+  content: ' ▼';
+}
+
+.ex-rows {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+}
+
+.ex-spacer {
+  position: relative;
+}
+
+/* mudtool's scrollbars on the dark ground: the list scrolls both ways. */
+.explorer-screen * {
+  scrollbar-color: var(--ink-edge) var(--ink-card);
+}
+
+.explorer-screen ::-webkit-scrollbar {
+  height: 11px;
+  width: 11px;
+}
+
+.explorer-screen ::-webkit-scrollbar-track,
+.explorer-screen ::-webkit-scrollbar-corner {
+  background: var(--ink-card);
+}
+
+.explorer-screen ::-webkit-scrollbar-thumb {
+  background: var(--ink-edge);
+  border: 2px solid var(--ink-card);
+  border-radius: 6px;
+}
+
+.ex-row {
+  align-items: center;
+  border-bottom: 1px solid color-mix(in srgb, var(--ink-line) 55%, transparent);
+  cursor: default;
+  height: 22px;
+  left: 0;
+  position: absolute;
+}
+
+.ex-row:hover {
+  background: var(--ink-card);
+}
+
+.ex-row[aria-selected='true'] {
+  background: var(--ex-sel);
+  box-shadow: inset 2px 0 0 var(--pending);
+  color: var(--text-hi);
+}
+
+/* What this character cannot use, faint; what it wears, in the accent. */
+.ex-row[data-unusable='true'] {
+  color: var(--text-lo-quiet);
+}
+
+.ex-row[data-worn='true'] {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.ex-td {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ex-td[data-numeric='true'],
+.ex-th[data-numeric='true'] {
+  font-variant-numeric: tabular-nums;
+  text-align: end;
+}
+
+/* The realm's own number, quieter than the name it stands beside. */
+.ex-row .ex-td:first-child {
+  color: var(--text-lo-quiet);
+}
+
+.ex-detail {
+  min-height: 0;
+  overflow: auto;
+  padding: 10px 16px;
+}
+
+.ex-name {
+  color: var(--pending);
+  font-size: 14px;
+  letter-spacing: 0.04em;
+  margin: 0 0 2px;
+}
+
+.ex-sub {
+  color: var(--text-lo-quiet);
+  font-size: 12px;
+  margin-bottom: 10px;
+}
+
+/* Buy and Buy + Wear: where, how much, the bank first, and the press. */
+.ex-buy {
+  background: var(--ink-card);
+  border: 1px solid var(--ink-line);
+  border-radius: 5px;
+  margin: 0 0 10px;
+  padding: 8px 10px;
+}
+
+.ex-buy .ex-heading {
+  margin-bottom: 4px;
+}
+
+.ex-buy-line {
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.ex-buy [data-tone='ok'] {
+  color: var(--ok);
+}
+
+.ex-buy [data-tone='pending'] {
+  color: var(--pending);
+}
+
+.ex-buy [data-tone='danger'] {
+  color: var(--danger);
+}
+
+.ex-buy-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.ex-buy-button {
+  background: var(--ink-void);
+  border: 1px solid var(--ink-line);
+  border-radius: 4px;
+  color: var(--pending);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  padding: 3px 12px;
+}
+
+.ex-buy-button:hover:not(:disabled) {
+  border-color: var(--pending);
+  color: var(--text-hi);
+}
+
+.ex-buy-button:disabled {
+  color: var(--text-lo-quiet);
+  cursor: default;
+}
+
+.ex-buy-said {
+  font-size: 12px;
+}
+
+/*
+ * The EQ tab (2026-10-19), mudtool's `styles/eq.css`: the slots and Find
+ * Best beside MME's black stat picture, its green labels and yellow figures,
+ * white for a bonus, red for a loss, bright for the figures MME marks.
+ */
+.eq-page {
+  align-content: start;
+  display: grid;
+  flex: 1 1 auto;
+  gap: 16px;
+  grid-template-columns: minmax(380px, 1fr) minmax(420px, 1.2fr);
+  min-height: 0;
+  overflow: auto;
+  padding: 16px;
+}
+
+@media (max-width: 980px) {
+  .eq-page {
+    grid-template-columns: 1fr;
+  }
+}
+
+.eq-col {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+.eq-card {
+  border: 1px solid var(--ink-line);
+  border-radius: 6px;
+  padding: 10px 12px;
+}
+
+.eq-card h3 {
+  color: var(--pending);
+  font-size: 13px;
+  margin: 0 0 8px;
+}
+
+.eq-slots {
+  align-items: center;
+  display: grid;
+  gap: 4px 8px;
+  grid-template-columns: max-content minmax(14em, 1fr) max-content;
+}
+
+.eq-slot {
+  align-items: center;
+  display: contents;
+}
+
+.eq-slot-name {
+  align-items: center;
+  color: var(--ok);
+  display: flex;
+  font-size: 12px;
+  gap: 4px;
+}
+
+.eq-slot select {
+  min-width: 0;
+  width: 100%;
+}
+
+.eq-slot[data-warn] select {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.eq-slot[data-held] select {
+  border-color: var(--pending);
+}
+
+.eq-go {
+  align-items: center;
+  display: flex;
+  font-size: 11px;
+  gap: 6px;
+}
+
+.eq-was {
+  color: var(--text-lo);
+  font-size: 11px;
+  grid-column: 2 / -1;
+  margin-top: -3px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.eq-find {
+  align-items: flex-end;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.eq-hint {
+  color: var(--text-lo);
+  font-size: 12px;
+  margin: 6px 0 0;
+}
+
+.eq-panel {
+  background: #06070a;
+  border: 1px solid var(--ink-line);
+  border-radius: 6px;
+  padding: 12px 14px;
+}
+
+.eq-head {
+  color: #3fbf3f;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.eq-head b {
+  color: #c0c000;
+}
+
+.eq-grid {
+  display: grid;
+  gap: 1px 22px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.eq-stat {
+  background: none;
+  border: 0;
+  color: inherit;
+  cursor: pointer;
+  display: flex;
+  font: inherit;
+  gap: 8px;
+  justify-content: space-between;
+  padding: 1px 0;
+  text-align: left;
+  width: 100%;
+}
+
+.eq-stat:hover {
+  background: #11141b;
+}
+
+.eq-lbl {
+  color: #3fbf3f;
+}
+
+.eq-stat[data-adjusted] .eq-lbl {
+  color: #7dff7d;
+}
+
+.eq-val {
+  color: #c0c000;
+  font-weight: 600;
+}
+
+.eq-val[data-tone='pos'] {
+  color: #fff;
+}
+
+.eq-val[data-tone='neg'] {
+  color: #ff5050;
+}
+
+.eq-val[data-tone='hi'] {
+  color: #ffff00;
+}
+
+.eq-val[data-tone='zero'] {
+  color: #555;
+}
+
+.eq-val[data-tone='orange'] {
+  color: #ff9d00;
+}
+
+.eq-val[data-tone='yellow'] {
+  color: #e3eb0e;
+}
+
+.eq-martial {
+  display: grid;
+  gap: 1px 18px;
+  grid-template-columns: max-content repeat(3, minmax(3em, max-content));
+  margin: 8px 0;
+}
+
+.eq-ma {
+  background: none;
+  border: 0;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 600;
+  padding: 0;
+  text-align: right;
+}
+
+.eq-attack {
+  margin-top: 8px;
+}
+
+.eq-attack summary {
+  display: inline-flex;
+  list-style: none;
+}
+
+.eq-attack-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 0;
+}
+
+.eq-tip {
+  border-top: 1px solid var(--ink-line);
+  color: var(--text-lo);
+  font-size: 12px;
+  margin-top: 12px;
+  min-height: 6em;
+  padding-top: 8px;
+  white-space: pre-wrap;
+}
+
+.eq-tip b {
+  color: var(--text-hi);
+}
+
+.eq-adjust {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  white-space: normal;
+}
+
+.eq-adjust-row {
+  display: flex;
+  gap: 6px;
+}
+
+.eq-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* The bars' buttons sit on a baseline; here they sit in a row. */
+.eq-page .ex-btn {
+  margin-bottom: 0;
+}
+
+.eq-page .ex-btn[data-primary] {
+  border-color: var(--pending);
+  color: var(--pending);
+}
+
+.eq-page .ex-btn:disabled {
+  border-color: var(--ink-line);
+  color: var(--text-lo);
+  cursor: default;
+}
+
+.eq-buy {
+  padding: 1px 6px;
+}
+
+/*
+ * The Lists tab (2026-10-19), mudtool's `styles/lists.css`: a compare list
+ * or the Item Manager under a row of section tabs, the flag in amber.
+ */
+.lists-page {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+  overflow: auto;
+  padding: 10px 16px 16px;
+}
+
+.lists-nav {
+  border-bottom: 1px solid var(--ink-line);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+}
+
+.lists-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-top: 10px;
+}
+
+.lists-add,
+.lists-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 8px;
+}
+
+.lists-add input[type='search'] {
+  width: 22em;
+}
+
+.lists-page .ex-btn {
+  margin-bottom: 0;
+}
+
+.lists-page .ex-btn[data-danger] {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.lists-table {
+  border-collapse: collapse;
+  font-size: 12px;
+  width: 100%;
+}
+
+.lists-table th {
+  border-bottom: 1px solid var(--ink-line);
+  color: var(--text-lo);
+  font-weight: normal;
+  padding: 4px 8px;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.lists-table td {
+  border-bottom: 1px solid var(--ink-card);
+  padding: 3px 8px;
+  white-space: nowrap;
+}
+
+.lists-table [data-numeric] {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.lists-table tr[data-unusable] td {
+  color: var(--text-lo);
+}
+
+.lists-table tr[data-selected] td {
+  background: var(--ex-sel);
+}
+
+.lists-table td[data-worked] {
+  color: var(--pending);
+}
+
+.lists-flag {
+  color: var(--pending);
+  font-weight: 600;
+}
+
+.lists-own {
+  color: var(--text-lo);
+  font-size: 11px;
+  margin-left: 6px;
+}
+
+.lists-remove {
+  background: none;
+  border: 0;
+  color: var(--text-lo);
+  cursor: pointer;
+  font: inherit;
+}
+
+.lists-remove:hover {
+  color: var(--danger);
+}
+
+.ex-compare {
+  margin: 4px 0 8px;
+}
+
+/*
+ * The Tools tab (2026-10-19), mudtool's `styles/combat-tools.css` and
+ * `styles/tools-misc.css`: cards that wrap, a grid of figures, the result in
+ * amber, the spell book's learned spells in green.
+ */
+.tl-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-top: 10px;
+}
+
+.tl-row {
+  align-items: flex-end;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+}
+
+.tl-cols {
+  align-items: flex-start;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+}
+
+.tl-card {
+  border: 1px solid var(--ink-line);
+  border-radius: 6px;
+  flex: 1 1 300px;
+  max-width: 560px;
+  padding: 10px 12px;
+}
+
+.tl-card[data-wide] {
+  max-width: none;
+}
+
+.tl-card h3 {
+  color: var(--pending);
+  font-size: 13px;
+  margin: 12px 0 6px;
+}
+
+.tl-card h3:first-child {
+  margin-top: 0;
+}
+
+.tl-grid {
+  display: grid;
+  gap: 6px 10px;
+  grid-template-columns: repeat(auto-fill, minmax(8em, 1fr));
+}
+
+.tl-field {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.tl-field[data-off],
+.ex-check[data-off] {
+  opacity: 0.45;
+}
+
+.tl-field input {
+  box-sizing: border-box;
+  width: 100%;
+}
+
+.tl-label {
+  color: var(--text-lo);
+  font-size: 11px;
+}
+
+.tl-pick {
+  max-width: 100%;
+  width: 26em;
+}
+
+.tl-radios,
+.tl-btns {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  margin: 4px 0 8px;
+}
+
+.tl-page .ex-btn,
+.tl-body .ex-btn {
+  margin-bottom: 0;
+}
+
+.tl-body .ex-btn[data-primary] {
+  border-color: var(--pending);
+  color: var(--pending);
+}
+
+.tl-big {
+  color: var(--pending);
+  font-size: 18px;
+  line-height: 1.5;
+  margin: 4px 0;
+}
+
+.tl-lines {
+  line-height: 1.7;
+  margin-top: 10px;
+}
+
+.tl-warn {
+  color: var(--danger);
+}
+
+.tl-swings {
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+  width: 100%;
+}
+
+.tl-swings th,
+.tl-swings td {
+  border: 1px solid var(--ink-line);
+  padding: 2px 6px;
+  text-align: center;
+}
+
+.tl-swings th {
+  color: var(--text-lo);
+  font-weight: normal;
+}
+
+.tl-log {
+  color: var(--text-lo);
+  font-size: 12px;
+  margin: 0;
+  max-height: 420px;
+  overflow: auto;
+  white-space: pre;
+}
+
+.tl-exp {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.tl-exp-table {
+  max-width: 44em;
+}
+
+.lists-table tr[data-learned] td {
+  color: var(--ok);
+  font-weight: 600;
+}
+
+.tl-detail {
+  white-space: normal;
+}
+
+.tl-coin {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-width: 40em;
+}
+
+.tl-coin-row {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+}
+
+.tl-coin-amt {
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  width: 12em;
+}
+
+.tl-coin-mid {
+  color: var(--pending);
+  font-weight: 600;
+  padding-left: 3em;
+}
+
+.tl-rates {
+  color: var(--text-lo);
+  font: inherit;
+  margin: 8px 0 0;
+  white-space: pre-wrap;
+}
+
+.tl-notepad {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.tl-notepad textarea {
+  font: inherit;
+  line-height: 1.5;
+  min-height: 50vh;
+  resize: vertical;
+  width: 100%;
+}
+
+/*
+ * MMUD Explorer's detail on a card (2026-10-24): across the readout's two
+ * columns, between this client's own rows above and the places below.
+ */
+/* MMUD Explorer's facts for a room (2026-10-24): its references, then its text. */
+.mme-room-refs {
+  font-size: 12px;
+  list-style: none;
+  margin: 0 0 6px;
+  padding: 0;
+}
+
+.mme-room .rm-info {
+  margin: 0;
+}
+
+.readout > .reference-explorer {
+  grid-column: 1 / -1;
+  min-width: 0;
+}
+
+.reference-explorer .ex-text {
+  margin-top: 2px;
+}
+
+.reference-explorer .ex-heading {
+  margin-top: 8px;
+}
+
+/* The rows a monster name holds, where nothing settled which: one picked at a time. */
+.reference-rows {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  font-size: 12px;
+  gap: 4px 6px;
+  margin-bottom: 4px;
+}
+
+button.reference-explore {
+  display: block;
+  font-size: 12px;
+  margin-top: 8px;
+}
+
+/*
+ * A textblock as MME's frmResults shows it (2026-10-24), mudtool's
+ * `styles/rooms.css` on this client's tokens: the two trees side by side
+ * where there is room, one above the other in a panel.
+ */
+.ex-textblock {
+  overflow: auto;
+  padding: 12px 16px;
+}
+
+.tb-view .tb-refs {
+  font-size: 12px;
+  margin: 4px 0;
+}
+
+.tb-field {
+  color: var(--text-lo);
+}
+
+.tb-modes {
+  margin: 8px 0 6px;
+}
+
+.tb-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  font-size: 12px;
+  gap: 6px 10px;
+}
+
+.tb-trees {
+  display: grid;
+  font-size: 12px;
+  gap: 18px;
+  grid-template-columns: repeat(auto-fit, minmax(min(380px, 100%), 1fr));
+  margin-top: 10px;
+}
+
+ul.tb-tree {
+  list-style: none;
+  margin: 0;
+  padding-left: 16px;
+}
+
+ul.tb-root {
+  padding-left: 0;
+}
+
+ul.tb-tree li {
+  margin: 1px 0;
+}
+
+ul.tb-tree summary {
+  cursor: pointer;
+}
+
+ul.tb-tree li > .tb-label {
+  margin-left: 13px;
+}
+
+.tb-label[data-bold='true'] {
+  color: var(--text-hi);
+  font-weight: 600;
+}
+
+.tb-icon {
+  color: var(--text-lo-quiet);
+  display: inline-block;
+  text-align: center;
+  width: 1.1em;
+}
+
+.tb-star,
+.tb-money {
+  color: var(--pending);
+}
+
+.tb-monster,
+.tb-redarrow {
+  color: var(--danger);
+}
+
+.tb-room {
+  color: var(--ok);
+}
+
+.tb-bolt,
+.tb-item {
+  color: var(--accent);
+}
+
+.tb-raw {
+  margin-top: 16px;
+}
+
+.tb-raw pre {
+  background: var(--ink-card);
+  border: 1px solid var(--ink-line);
+  border-radius: 5px;
+  font-size: 12px;
+  padding: 8px 10px;
+  white-space: pre-wrap;
+}
+
+/* MME's own text, its line breaks kept. */
+.ex-text {
+  line-height: 1.5;
+  margin: 6px 0 10px;
+  white-space: pre-wrap;
+}
+
+.ex-heading {
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  margin: 0 0 8px;
+  text-transform: uppercase;
+}
+
+.ex-refs {
+  border-collapse: collapse;
+  font-size: 12px;
+  width: 100%;
+}
+
+.ex-refs td {
+  border-bottom: 1px solid color-mix(in srgb, var(--ink-line) 55%, transparent);
+  padding: 2px 8px 2px 0;
+  vertical-align: top;
+}
+
+.ex-pct {
+  color: var(--pending);
+  padding-inline-end: 10px;
+  text-align: end;
+  width: 4em;
+}
+
+.ex-ref {
+  color: var(--accent);
+}

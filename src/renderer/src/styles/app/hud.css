@@ -1,0 +1,341 @@
+/* ==================================================================== HUD */
+
+/*
+ * A meter is data: a flat tonal fill against a track, no gradient and no glow.
+ * See docs/ui-design.md §3.3.
+ */
+/*
+ * The bar's height has a floor, not a value.
+ *
+ * `18px` alone was a constant measured against the *default* interface type,
+ * and `--font-ui-base` is overwritten at runtime from `ui.font.size` — so a
+ * player who asked for larger chrome got `334/334` with its ascenders and
+ * descenders sheared off flat by this box's own `overflow: hidden`, which is
+ * the readout they run on. `max()` keeps the shipped look exactly (11px micro
+ * type needs 16.5 and takes the 18) and grows the box with the type past it.
+ * 1.5 is the upper end of a normal line box, which is what has to fit.
+ */
+.meter {
+  background: color-mix(in srgb, var(--text-lo) var(--tone-weak), transparent);
+  border-radius: var(--r-chip);
+  height: max(18px, calc(var(--font-micro) * 1.5));
+  margin-bottom: 6px;
+  overflow: hidden;
+  position: relative;
+}
+
+.meter .fill {
+  height: 100%;
+  transition: width var(--dur-control) var(--ease-out);
+  width: 0;
+}
+
+.meter.hp .fill {
+  background: color-mix(in srgb, var(--ok) 55%, transparent);
+}
+
+.meter.mana .fill {
+  background: color-mix(in srgb, var(--accent) 55%, transparent);
+}
+
+/*
+ * The Combat Stats card's level meter and rate graph (todo 08).
+ *
+ * The level meter is the target meter's grammar: the fill is how far into the
+ * level, the darker band inside it is what this session made, and when the
+ * character is past the level the 100% mark moves left and the overage is
+ * tinted beyond it. The graph is an SVG stretched to the card's width, one
+ * bar or point per bin, with the session's own rate ruled across it.
+ */
+/*
+ * The Vitals card's experience (2026-10-25): the view chosen — the session or
+ * the last hours — as a row of small keys, the reset for the hours views at
+ * its right edge, and the view's figures, level and graph under it.
+ */
+.exp-view {
+  margin-top: 6px;
+}
+
+.exp-scope {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  margin-bottom: 4px;
+}
+
+.exp-scope > .chip.toggle {
+  height: auto;
+  padding: 1px 7px;
+}
+
+/* A view not chosen is only quieter: the table facets' strike says *hidden*. */
+.exp-scope > .chip.toggle[data-on='false'] {
+  opacity: 0.6;
+  text-decoration: none;
+}
+
+.exp-scope-reset {
+  margin-left: auto;
+}
+
+.stats-level {
+  margin-bottom: 8px;
+}
+
+.stats-level .meter {
+  height: max(20px, calc(var(--font-micro) * 1.6));
+}
+
+.stats-level > .hint {
+  display: block;
+  font-size: var(--font-micro);
+  margin-top: -2px;
+}
+
+.meter.exp-meter .fill {
+  background: color-mix(in srgb, var(--accent) 45%, transparent);
+}
+
+.meter.exp-meter .mine {
+  background: color-mix(in srgb, var(--accent) 75%, transparent);
+  height: 100%;
+  position: absolute;
+  top: 0;
+}
+
+.meter.exp-meter .over {
+  background: color-mix(in srgb, var(--ok) 55%, transparent);
+  height: 100%;
+  position: absolute;
+  top: 0;
+}
+
+.meter.exp-meter .mark {
+  background: var(--text-hi);
+  height: 100%;
+  position: absolute;
+  top: 0;
+  width: 1px;
+}
+
+.stats-graph {
+  margin: 4px 0 10px;
+}
+
+.stats-graph-head {
+  color: var(--text-lo);
+  display: flex;
+  font-size: var(--font-micro);
+  justify-content: space-between;
+  margin-bottom: 2px;
+}
+
+.stats-graph svg {
+  background: color-mix(in srgb, var(--text-lo) var(--tone-weak), transparent);
+  border-radius: var(--r-chip);
+  display: block;
+  height: 36px;
+  width: 100%;
+}
+
+.stats-graph .bar {
+  fill: color-mix(in srgb, var(--accent) 55%, transparent);
+}
+
+.stats-graph .line {
+  fill: none;
+  stroke: color-mix(in srgb, var(--accent) 85%, transparent);
+  stroke-width: 1.5;
+  vector-effect: non-scaling-stroke;
+}
+
+.stats-graph .now {
+  stroke: var(--ok);
+  stroke-dasharray: 3 2;
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+.meter.exchange .fill {
+  background: color-mix(in srgb, var(--ok) 50%, transparent);
+}
+
+/* The room's fight, run: green is safe, and the two graver hues are the
+   meter's own `data-level` rules below. */
+.meter.survival[data-level='ok'] .fill {
+  background: color-mix(in srgb, var(--ok) 55%, transparent);
+}
+
+.combat-survival {
+  margin-bottom: 8px;
+}
+
+.combat-survival .hint {
+  display: block;
+  margin-top: -2px;
+}
+
+/*
+ * Level overrides the tone. These follow the two rules above deliberately —
+ * equal specificity, so source order decides, and "how bad is it" must win over
+ * "which resource is it": a red health bar and a red mana bar mean the same
+ * thing and should look the same.
+ *
+ * Thresholds are fractions of maximum (`ui.vitals`), so the colour changes at
+ * the same *proportion* at every level rather than at some number of points
+ * that means panic at level one and nothing at level fifty.
+ */
+.meter[data-level='caution'] .fill {
+  background: color-mix(in srgb, var(--pending) 55%, transparent);
+}
+
+/* A touch more opaque than the others: at this point the bar is short, and a
+   thin sliver at 55% is easy to miss in peripheral vision. */
+.meter[data-level='critical'] .fill {
+  background: color-mix(in srgb, var(--danger) 72%, transparent);
+}
+
+/* An unknown maximum shows an empty track, never a full or zero bar: not
+   knowing is a different state from being at zero. */
+.meter.unknown .fill {
+  background: repeating-linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--text-lo) 22%, transparent) 0 6px,
+    transparent 6px 12px
+  );
+  width: 100%;
+}
+
+/*
+ * Which resource the bar is, in the realm's own word: `HP`, `MA`, `KAI`.
+ *
+ * Two stacked bars carrying two bare fractions is a readout whose order you
+ * have to already know, and the order is not the same for every class. It sits
+ * at the left edge rather than inside the centred label so it stays put while
+ * the figure and the state word beside it change width, and the label's own
+ * start padding keeps the two from ever meeting -- in `ch` of the same
+ * fixed-pitch face the label is set in, so the gap is the width of the longest
+ * tag rather than a guess in pixels.
+ */
+.meter-tag {
+  color: var(--text-lo);
+  font-family: var(--font-mono);
+  font-size: var(--font-micro);
+  font-weight: 700;
+  left: 0.9ch;
+  letter-spacing: 0.06em;
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.meter-label {
+  align-items: center;
+  color: var(--text-hi);
+  display: flex;
+  font-family: var(--font-mono);
+  font-size: var(--font-micro);
+  font-weight: 600;
+  gap: 8px;
+  inset: 0;
+  justify-content: center;
+  position: absolute;
+}
+
+/* Only where there is a tag to clear: the Combat card's target meter carries
+   none, and padding it would push its figure off centre for nothing. */
+.meter-tag + .meter-label {
+  padding-inline: 5ch 1ch;
+}
+
+/*
+ * The same state in words. Per docs/ui-design.md §6 nothing here is conveyed by
+ * colour alone, and the meter that decides whether you run is the last place
+ * to make an exception.
+ *
+ * It sits inside the centred label rather than at one end so it can never
+ * collide with the number, whatever the threshold is set to. Ink is `--text-hi`
+ * rather than the level colour because the label straddles the edge of the
+ * fill: level-coloured text over a tint of the same hue is the one combination
+ * that cannot be made to pass contrast at every fill width.
+ */
+.meter-state {
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+/* Three lines, then an ellipsis: enough to recognise the room by, not enough
+   to push the exits off the card. */
+.room-description {
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  color: var(--text-lo);
+  display: -webkit-box;
+  font-size: var(--font-micro);
+  line-height: 1.45;
+  margin: 0 0 8px;
+  overflow: hidden;
+}
+
+.room-name {
+  color: var(--text-hi);
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+
+/* The light phrase and the placement, a chip each, in the row the exits use
+   below so the two rows share one rhythm; `.chip-row` is the same row for a
+   face that has a chip or two to say before its readout. */
+.room-light,
+.chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 6px;
+}
+
+.exits {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 6px;
+}
+
+/*
+ * What the room answers to, under its exits (todo 11) — and what the things
+ * *standing* in it answer to, under that (`.room-asks`, todo 01): one row of
+ * chips each, every one a control that sends the realm's own phrase down the
+ * path a keystroke takes.
+ *
+ * **The phrase is drawn as the realm spells it** — no uppercasing, which is
+ * why this is not the `pick` register: `touch gem` is a command somebody could
+ * type, and a client that prints it as TOUCH GEM is showing them a word the
+ * server does not use.
+ */
+.room-answers .chip,
+.room-asks .chip {
+  /*
+   * **As the realm spells it.** A chip is uppercase because a chip is a label;
+   * this one is a command somebody could type, and TOUCH GEM is a word the
+   * server does not use. Everything else about the register stays.
+   */
+  text-transform: none;
+}
+
+.room-answers button.chip,
+.room-asks button.chip {
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: var(--font-micro);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.room-answers button.chip:hover,
+.room-asks button.chip:hover {
+  background: color-mix(in srgb, var(--accent) var(--tone-weak), transparent);
+  border-color: color-mix(in srgb, var(--accent) var(--tone), transparent);
+  color: var(--text-hi);
+}

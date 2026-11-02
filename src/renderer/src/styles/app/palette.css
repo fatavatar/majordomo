@@ -1,0 +1,287 @@
+/* ========================================================= command palette */
+
+.palette-scrim {
+  align-items: flex-start;
+  animation: scrim-in var(--dur-control) var(--ease-out);
+  background: var(--scrim);
+  display: flex;
+  inset: 0;
+  justify-content: center;
+  padding-top: 14vh;
+  position: fixed;
+  z-index: 100;
+}
+
+@keyframes scrim-in {
+  from {
+    opacity: 0;
+  }
+}
+
+/*
+ * The box every dialog that floats over the console is drawn in.
+ *
+ * `.route-panel` is here rather than *on* `.palette` deliberately: it shares
+ * the surface and the field, and nothing else. Its rows are a room name and a
+ * reference rather than a glyph and a label, so `.palette li` and `.palette ul`
+ * would be styling it by accident -- which is how a second shape gets learned
+ * without anybody choosing it. `.loops-modal` does wear `.palette`, because
+ * its rows genuinely are the palette's.
+ */
+.palette,
+.route-panel {
+  animation: palette-in var(--dur-control) var(--ease-out);
+  background: var(--glass-fill-strong);
+  display: flex;
+  flex-direction: column;
+  max-height: 60vh;
+  overflow: hidden;
+  width: min(560px, 92vw);
+}
+
+@keyframes palette-in {
+  from {
+    opacity: 0;
+    transform: scale(0.98);
+  }
+}
+
+.palette input,
+.route-panel input {
+  background: transparent;
+  border-width: 0 0 1px;
+  border-radius: 0;
+  border-color: var(--ink-line);
+  font-size: 15px;
+  height: 48px;
+  padding: 0 16px;
+}
+
+.palette ul {
+  list-style: none;
+  margin: 0;
+  overflow-y: auto;
+  padding: 6px;
+}
+
+.palette li {
+  align-items: center;
+  border: var(--rule) solid transparent;
+  border-radius: var(--r-control);
+  cursor: pointer;
+  display: flex;
+  gap: 10px;
+  padding: 7px 10px;
+}
+
+.palette li[aria-selected='true'] {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  border-color: var(--accent);
+  color: var(--text-hi);
+}
+
+/*
+ * The glyph in front of every row.
+ *
+ * One weight, one size, taking its colour from the text it sits beside, so a
+ * greyed entry, a danger entry and a highlighted one carry their icon with
+ * them rather than needing a rule each. Never allowed to shrink: a flexed row
+ * with a long label would otherwise squash the one fixed landmark in it.
+ */
+.icon {
+  width: 15px;
+  height: 15px;
+  flex: none;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* On a button that is nothing but the glyph, it may have the whole box. */
+.tab .edit .icon {
+  width: 13px;
+  height: 13px;
+}
+
+/* The dial's is bigger than the pencil's: it is the one that has to be found. */
+.tab .dial .icon {
+  width: 15px;
+  height: 15px;
+  stroke-width: 2;
+}
+
+.palette li .hint {
+  color: var(--text-lo);
+  margin-left: auto;
+}
+
+/*
+ * A group's border, drawn from its edge items rather than a wrapper -- see the
+ * comment in CommandPalette.tsx for why `<ul>` cannot hold one. The label sits
+ * where a fieldset's legend would, its own row rather than overlapping the
+ * border, because a heading that overlapped an accent-coloured selection ring
+ * on the item beneath it would be unreadable at exactly the moment the item is
+ * highlighted.
+ */
+/*
+ * The collapsed group's whole row is its toggle: a chevron alone is a target
+ * nobody hits, and the label was already the thing being read. Styled as the
+ * label it replaces, not as a button -- the palette's rows are the controls
+ * here, and a second button-shape per group would out-shout all of them.
+ */
+.palette-group-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 0;
+  background: none;
+  border: none;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  cursor: pointer;
+}
+
+.palette-group-toggle .icon {
+  width: 12px;
+  height: 12px;
+}
+
+.palette-group-toggle .hint {
+  margin-left: auto;
+  color: var(--text-lo);
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+/* The one hint that carries a filesystem path must never widen the palette. */
+.palette li .hint {
+  max-width: 45%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/*
+ * The pin on every palette row.
+ *
+ * Always drawn, quiet until the row is pointed at -- the card-grip rule: an
+ * affordance you have to find by hovering is one most people never find, and a
+ * palette nobody knows can be curated stays whatever it shipped as.
+ *
+ * **Two glyphs, because this button carries no label.** It used to be one --
+ * outline off the shelf, filled and accented on it -- which stated the row's
+ * answer by hue and weight and never stated which way a press would go. The
+ * pinned row draws the *struck* pin now, so the glyph says "press to release"
+ * on its own and the accent is reinforcement rather than the only channel.
+ *
+ * Nothing fills it. The strike is an open path, and filling the glyph closes
+ * the triangle between the slash and the pin's head into a solid blob that
+ * swallows the negation mark -- which is the whole point of the second glyph.
+ */
+.palette-pin {
+  align-items: center;
+  background: none;
+  border: none;
+  border-radius: var(--r-control);
+  color: var(--text-lo-quiet);
+  cursor: pointer;
+  display: flex;
+  flex: none;
+  margin-left: 6px;
+  opacity: 0.4;
+  padding: 2px;
+}
+
+/* Without a hint the pin is what floats right; with one it follows the hint. */
+.palette li > span + .palette-pin {
+  margin-left: auto;
+}
+
+.palette li > .hint + .palette-pin {
+  margin-left: 6px;
+}
+
+.palette li[aria-selected='true'] .palette-pin {
+  opacity: 0.75;
+}
+
+.palette-pin:hover {
+  color: var(--text-hi);
+  opacity: 1;
+}
+
+.palette-pin[data-pinned='true'] {
+  color: var(--accent);
+  opacity: 1;
+}
+
+.palette-group-label {
+  padding: 8px 10px 4px;
+  border: var(--rule) solid var(--ink-line);
+  border-bottom-width: 0;
+  border-radius: var(--r-control) var(--r-control) 0 0;
+  color: var(--text-lo-quiet);
+  cursor: default;
+  font-size: var(--font-micro);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.palette-group-label:not(:first-child) {
+  margin-top: 6px;
+}
+
+/* The sides continue past every member; only the last closes the box. */
+.palette li[data-grouped='true'] {
+  border-left-color: var(--ink-line);
+  border-radius: 0;
+  border-right-color: var(--ink-line);
+}
+
+.palette li[data-grouped='true'][data-group-end='true'] {
+  border-bottom-color: var(--ink-line);
+  border-radius: 0 0 var(--r-control) var(--r-control);
+}
+
+/* The highlight ring wins outright over the group's seam while an item is
+   the one Enter would choose -- the group border is a resting state. */
+.palette li[data-grouped='true'][aria-selected='true'] {
+  border-color: var(--accent);
+}
+
+.palette .empty {
+  padding: 14px 16px;
+}
+
+/* ============================================================ loops modal */
+
+/*
+ * The shelf of every loop, grouped by area.
+ *
+ * The palette's own surface, because it is the palette's own interaction — a
+ * field at the top, collapsible groups under it, arrow keys through the rows.
+ * Taller than the palette and no wider: fifty-seven headings is a list to
+ * scroll, and a wider box would only stretch the names it holds.
+ */
+.loops-modal {
+  max-height: 72vh;
+}
+
+/*
+ * MMUD Explorer (2026-10-18), laid out as mudtool lays it out (`../mudtool`,
+ * `style.css` and `styles/explorers.css`), in this client's own tokens so the
+ * themes still hold: mudtool's amber is `--pending`, its green `--ok`, its
+ * red `--danger`, its violet `--marker`, and its three greys of ground and two
+ * of line are the `--ink-*` steps. The data is dense and told apart by colour
+ * and weight, not by boxes: an amber heading and chance, the accent for a
+ * reference, faint for what the character cannot use.
+ */
+.palette-scrim:has(> .explorer-screen) {
+  padding-top: 3vh;
+}

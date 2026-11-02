@@ -25,7 +25,7 @@
  *   is open.
  *
  * Not a tooltip library. It is thirty lines, it is styled by two rules in
- * `index.css`, and the alternative is a dependency that would have to be taught
+ * `styles/app/hints.css`, and the alternative is a dependency that would have to be taught
  * this project's tokens, its theme swap and its focus rules.
  */
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';

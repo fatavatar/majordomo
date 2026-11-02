@@ -1,0 +1,100 @@
+/* ---------------------------------------------------------- saying things */
+
+/*
+ * A reply box, pinned to the bottom of the Talk card.
+ *
+ * It sends verbatim down the same path a keystroke does — `gos hi`, `auc
+ * halberd`, `br yo`, `gb ...` — because the realm's vocabulary is the
+ * vocabulary, and a client that rewrote it would be a second thing to keep in
+ * step with a command table it does not own.
+ *
+ * This is the one surface in the HUD that holds the caret while you are
+ * playing. Escape hands it straight back to the console; Enter deliberately
+ * does not, because a conversation is more than one line.
+ */
+.conversation-say {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 5px;
+}
+
+/*
+ * The channel, to the left of the box it qualifies.
+ *
+ * Tonal and narrow: it is a *label that can be changed*, not a control
+ * competing with the message. It sits at the message's own size and in the
+ * message's own face, so the card reads as one line rather than as a widget
+ * beside a field — and at the same size as the filters above it, which name
+ * the same channels in the same words.
+ */
+.conversation-say select {
+  background: color-mix(in srgb, var(--accent) var(--tone-weak), transparent);
+  border: 1px solid transparent;
+  border-radius: var(--r-chip);
+  color: color-mix(in srgb, var(--accent) 80%, var(--text-hi));
+  cursor: pointer;
+  flex: 0 0 auto;
+  font-family: var(--font-mono);
+  font-size: var(--font-micro);
+  padding: 5px 4px 5px 6px;
+  transition:
+    border-color var(--dur-control) var(--ease-out),
+    background var(--dur-control) var(--ease-out);
+}
+
+.conversation-say select:hover {
+  background: color-mix(in srgb, var(--accent) var(--tone), transparent);
+}
+
+.conversation-say select:focus-visible {
+  border-color: color-mix(in srgb, var(--accent) var(--tone-strong), transparent);
+  outline: none;
+}
+
+.conversation-say input {
+  background: color-mix(in srgb, var(--ink-line) 40%, transparent);
+  border: 1px solid transparent;
+  border-radius: var(--r-chip);
+  color: var(--text-hi);
+  font-family: var(--font-mono);
+  font-size: var(--font-micro);
+  min-width: 0;
+  padding: 5px 8px;
+  transition:
+    border-color var(--dur-control) var(--ease-out),
+    background var(--dur-control) var(--ease-out);
+  width: 100%;
+}
+
+.conversation-say input::placeholder {
+  color: var(--text-lo-quiet);
+}
+
+.conversation-say input:focus {
+  background: color-mix(in srgb, var(--ink-line) 60%, transparent);
+  border-color: color-mix(in srgb, var(--accent) var(--tone-strong), transparent);
+  outline: none;
+}
+
+/*
+ * What is still waiting of a line of several commands, and the press that
+ * drops it. The picker's tonal pill on the other side of the box: a count
+ * that can be acted on, not a second primary action.
+ */
+.conversation-queued {
+  background: color-mix(in srgb, var(--accent) var(--tone-weak), transparent);
+  border: 1px solid transparent;
+  border-radius: var(--r-chip);
+  color: color-mix(in srgb, var(--accent) 80%, var(--text-hi));
+  cursor: pointer;
+  flex: 0 0 auto;
+  font-family: var(--font-mono);
+  font-size: var(--font-micro);
+  padding: 5px 8px;
+  transition: background var(--dur-control) var(--ease-out);
+  white-space: nowrap;
+}
+
+.conversation-queued:hover {
+  background: color-mix(in srgb, var(--accent) var(--tone), transparent);
+}

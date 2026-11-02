@@ -1,0 +1,112 @@
+/* ------------------------------------------------------------------------ */
+/* The Self card and the supplies controls                                  */
+/* ------------------------------------------------------------------------ */
+
+/*
+ * A group heading inside the one readout grid: a label row with an empty
+ * value cell, so the sheet reads as attributes, skills and sight without
+ * becoming three grids that disagree about their label column.
+ */
+.self-card .readout dt.group {
+  margin-top: var(--gap);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  font-size: 0.85em;
+  /*
+   * In the settings screen's own section rotation, so the sheet's three
+   * blocks are told apart by the grammar the rest of the client already uses
+   * rather than by a fourth palette invented here. Full strength: the
+   * headings are four short words on a card of numbers, and this is the one
+   * place on the card carrying a hue, so the `opacity: 0.8` that used to
+   * temper them would only make a coloured word muddy.
+   */
+  color: var(--group-hue, var(--text-lo));
+}
+
+.self-card .readout dt.group[data-group='1'] {
+  --group-hue: var(--section-a);
+}
+
+.self-card .readout dt.group[data-group='2'] {
+  --group-hue: var(--section-b);
+}
+
+.self-card .readout dt.group[data-group='3'] {
+  --group-hue: var(--section-c);
+}
+
+.self-card .readout dd.group {
+  margin-top: var(--gap);
+}
+
+/*
+ * An attribute drawn against the range its own race runs.
+ *
+ * `--stat-share` is set on the element as a plain number — the figure's place
+ * between the race's floor and its ceiling — and the ink is mixed from it, so
+ * no threshold is chosen here or anywhere else: a stat at the bottom of its
+ * race's range is as quiet as any muted figure on the card, one at the top is
+ * the accent outright, and every value between reads as where it actually is.
+ * `themes.test.ts` holds the ends and the middle above the text threshold.
+ *
+ * `--text-lo` and not `--text-hi` at the floor deliberately: the lowest number
+ * on a stat sheet is the least interesting one on it, and a ramp that starts
+ * at full ink has nowhere quiet to start from.
+ */
+.self-card .readout dd.stat {
+  color: color-mix(in srgb, var(--accent) calc(var(--stat-share, 0) * 100%), var(--text-lo));
+}
+
+/*
+ * A skill the sheet printed as zero. Not `inert`, which is the dash: *trained
+ * to nothing* is an answer and *nothing has said* is not, and the two rows sit
+ * beside each other on a sheet that prints plenty of both.
+ */
+.self-card .readout dd.none {
+  color: var(--text-lo-quiet);
+}
+
+.supply-control {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.supply-control select {
+  min-width: 0;
+  max-width: 100%;
+  font: inherit;
+}
+
+.supply-count {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.35em;
+}
+
+.supply-count span {
+  opacity: 0.75;
+}
+
+.supply-count input,
+.supply-cell {
+  width: 3.2em;
+  font: inherit;
+  text-align: right;
+  padding: 0 0.3em;
+  border: 1px solid color-mix(in oklab, currentColor 18%, transparent);
+  border-radius: var(--r-control);
+  background: color-mix(in oklab, currentColor 6%, transparent);
+  color: inherit;
+}
+
+.card-table .supply-cell {
+  width: 3em;
+}
+
+.card-table .short {
+  color: var(--danger);
+  font-weight: 600;
+}
