@@ -1,0 +1,21 @@
+/*
+ * The window's tests, with Node's types (2026-11-02): the whole web tree, as a
+ * composite project must list every file it compiles, and the tests import
+ * the window's code.
+ *
+ * They run in Node (`vitest.config.ts`, `environment: 'node'`) and read the
+ * repository with `node:fs` and `__dirname`; the window's own code runs
+ * sandboxed with no Node at all, so `tsconfig.web.json` leaves the tests out
+ * and keeps Node's types away from everything it does check. The two only
+ * shared a project because vitest 2's declarations dragged `@types/node` into
+ * it, which also let the window's code name Node without an error. The
+ * shared tests are already checked with Node by `tsconfig.node.json`.
+ */
+{
+  "extends": "./tsconfig.web.json",
+  "compilerOptions": {
+    "types": ["vite/client", "node"]
+  },
+  "include": ["src/renderer/**/*.ts", "src/renderer/**/*.tsx", "src/shared/**/*.ts"],
+  "exclude": []
+}
