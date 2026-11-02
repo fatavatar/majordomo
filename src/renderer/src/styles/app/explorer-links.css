@@ -1,0 +1,515 @@
+/*
+ * The Explorer's links (2026-10-18): a reference a tab here shows opens it,
+ * as mudtool's `a.xref` do, drawn as text and not as a button.
+ */
+button.ex-link {
+  background: none;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  color: var(--accent);
+  cursor: pointer;
+  font: inherit;
+  height: auto;
+  padding: 0;
+  text-align: left;
+}
+
+button.ex-link:hover {
+  text-decoration: underline;
+}
+
+.ex-back {
+  margin-left: auto;
+}
+
+.ex-back + .ex-global {
+  margin-left: 0;
+}
+
+.ex-note {
+  color: var(--text-lo-quiet);
+  font-size: 12px;
+  margin: 0 0 8px;
+}
+
+/* A shop's shelf or a trainer's table. */
+.ex-stock {
+  border-collapse: collapse;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  margin-bottom: 10px;
+  width: 100%;
+}
+
+.ex-stock th {
+  color: var(--text-lo-quiet);
+  font-weight: 600;
+  text-align: left;
+}
+
+.ex-stock th,
+.ex-stock td {
+  border-bottom: 1px solid var(--ink-line);
+  padding: 2px 8px 2px 0;
+}
+
+.ex-stock .ex-num {
+  text-align: right;
+}
+
+/* The Rooms tab: mudtool's `styles/rooms.css`, on this client's tokens. */
+.rm {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.rm-goto,
+.rm-find {
+  align-items: center;
+  display: flex;
+  gap: 6px;
+}
+
+.rm-num {
+  width: 5em;
+}
+
+.rm-said {
+  align-self: center;
+  color: var(--danger);
+  font-size: 12px;
+}
+
+.rm-options {
+  position: relative;
+}
+
+.rm-options > summary {
+  align-items: center;
+  display: inline-flex;
+  list-style: none;
+}
+
+.rm-options-menu {
+  background: var(--ink-raised);
+  border: 1px solid var(--ink-edge);
+  border-radius: 6px;
+  box-shadow: var(--glass-shadow);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 10px;
+  position: absolute;
+  right: 0;
+  top: calc(100% + 4px);
+  white-space: nowrap;
+  z-index: 5;
+}
+
+.rm-body {
+  display: grid;
+  flex: 1 1 auto;
+  grid-template-columns: minmax(0, 1fr) 340px;
+  min-height: 0;
+}
+
+.rm-map {
+  background: var(--ink-void);
+  border-right: 1px solid var(--ink-line);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+  position: relative;
+}
+
+.rm-svg {
+  display: block;
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
+}
+
+/* The key under the map, kept off its edge. */
+.rm-map > .map-legend {
+  margin: 0;
+  padding: 8px 12px 10px;
+}
+
+/* The client's map drawing (`MapGlyphs`), on MME's layout: a room is the Map card's. */
+.rm-cell-hit {
+  cursor: pointer;
+}
+
+/* A chevron, portal or arrow walks the map to where it leads; its hit ring is unseen. */
+.rm-mark {
+  cursor: pointer;
+}
+
+.rm-mark-hit {
+  fill: transparent;
+  stroke: none;
+}
+
+.rm-mark:hover {
+  --mark: var(--accent);
+}
+
+/* The room a hovered mark leads to. */
+.map-room.is-lit > .map-shape {
+  fill: var(--accent);
+  stroke: var(--accent);
+}
+
+/* The room the map is drawn from, MME's start cell. */
+.rm-start {
+  fill: none;
+  pointer-events: none;
+  stroke: var(--pending);
+}
+
+.rm-side {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-height: 0;
+  overflow: auto;
+  padding: 12px 14px;
+}
+
+.rm-here-head {
+  align-items: baseline;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.rm-sec-head {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  justify-content: space-between;
+}
+
+.rm-compass {
+  display: grid;
+  gap: 3px;
+  grid-template-columns: repeat(3, 2.6em) auto;
+  grid-template-rows: repeat(3, 1.9em);
+  margin: 8px 0;
+}
+
+.rm-dir {
+  align-items: center;
+  background: none;
+  border: 1px solid var(--ink-edge);
+  border-radius: 4px;
+  box-shadow: none;
+  color: var(--text-hi);
+  display: flex;
+  font: inherit;
+  font-size: 11px;
+  height: auto;
+  justify-content: center;
+  padding: 0;
+  text-transform: uppercase;
+}
+
+button.rm-dir {
+  cursor: pointer;
+}
+
+button.rm-dir:hover {
+  border-color: var(--pending);
+  color: var(--pending);
+}
+
+button.rm-dir.is-mapchange {
+  border-color: var(--marker);
+  color: var(--marker);
+}
+
+.rm-dir.is-off {
+  border-color: var(--ink-line);
+  color: var(--text-lo-quiet);
+  opacity: 0.5;
+}
+
+.rm-mid {
+  border: none;
+}
+
+.rm-ud {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  grid-column: 4;
+  grid-row: 1 / 4;
+  margin-left: 10px;
+}
+
+.rm-ud .rm-dir {
+  height: 1.9em;
+  width: 2.6em;
+}
+
+.rm-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.rm-walk:not(:disabled) {
+  border-color: var(--pending);
+  color: var(--pending);
+}
+
+ul.rm-refs {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+ul.rm-refs li {
+  border-bottom: 1px solid var(--ink-line);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+  padding: 2px 0;
+}
+
+.rm-none {
+  padding: 4px 0;
+}
+
+.rm-info {
+  background: var(--ink-card);
+  border: 1px solid var(--ink-line);
+  border-radius: 5px;
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  margin: 10px 0 0;
+  padding: 8px 10px;
+  white-space: pre-wrap;
+}
+
+.rm-x {
+  padding: 0 8px;
+}
+
+/* A cell's text, MME's yellow tooltip as mudtool draws it. */
+.rm-tip {
+  background: #fffbd6;
+  border: 1px solid #a89a3a;
+  border-radius: 6px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
+  color: #111;
+  font-size: 12px;
+  max-width: 460px;
+  padding: 7px 10px;
+  pointer-events: none;
+  position: fixed;
+  white-space: pre-wrap;
+  z-index: 50;
+}
+
+/* Up or down, where a cell has both. */
+.rm-menu {
+  background: var(--ink-raised);
+  border: 1px solid var(--ink-edge);
+  border-radius: 6px;
+  box-shadow: var(--glass-shadow);
+  display: flex;
+  gap: 6px;
+  padding: 6px;
+  position: fixed;
+  z-index: 60;
+}
+
+/* The Monsters bar (2026-10-18): By Mob / By Lair, and the extra filters' panel. */
+.ex-seg {
+  display: flex;
+  gap: 0;
+}
+
+.ex-seg .ex-btn {
+  border-radius: 0;
+}
+
+.ex-seg .ex-btn:first-child {
+  border-radius: 4px 0 0 4px;
+}
+
+.ex-seg .ex-btn:last-child {
+  border-radius: 0 4px 4px 0;
+}
+
+.ex-seg .ex-btn[aria-pressed='true'] {
+  border-color: var(--pending);
+  color: var(--pending);
+}
+
+.ex-extra {
+  position: relative;
+}
+
+.ex-extra > summary {
+  align-items: center;
+  display: inline-flex;
+  height: var(--ex-control);
+  list-style: none;
+}
+
+.ex-extra > summary[data-on] {
+  border-color: var(--pending);
+  color: var(--pending);
+}
+
+.ex-extra-panel {
+  background: var(--ink-raised);
+  border: 1px solid var(--ink-edge);
+  border-radius: 6px;
+  box-shadow: var(--glass-shadow);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: 90vw;
+  padding: 10px 12px;
+  position: absolute;
+  right: 0;
+  top: calc(100% + 4px);
+  width: max-content;
+  z-index: 6;
+}
+
+.ex-extra-grid {
+  display: grid;
+  gap: 6px 12px;
+  grid-template-columns: repeat(4, auto);
+}
+
+/* A monster's detail, `PullMonsterDetail`'s labelled rows. */
+.ex-mon {
+  border-collapse: collapse;
+  font-size: 12px;
+  width: 100%;
+}
+
+.ex-mon th {
+  color: var(--text-lo-quiet);
+  font-weight: normal;
+  padding: 2px 10px 2px 0;
+  text-align: left;
+  vertical-align: top;
+  white-space: nowrap;
+}
+
+.ex-mon td {
+  overflow-wrap: anywhere;
+  padding: 2px 0;
+  white-space: pre-wrap;
+}
+
+/* mudtool's row classes, on this client's tokens. */
+.ex-mon tr[data-cls='b'] th,
+.ex-mon tr[data-cls='b'] td,
+.ex-mon tr[data-cls='bh'] th {
+  color: var(--text-hi);
+  font-weight: 600;
+}
+
+.ex-mon tr[data-cls='bh'] th {
+  color: var(--pending);
+  padding-top: 4px;
+}
+
+.ex-mon tr[data-cls='red'] > *,
+.ex-mon tr[data-cls='fear'] td,
+.ex-mon tr[data-cls='slay'] td {
+  color: var(--danger);
+}
+
+.ex-mon tr[data-cls='blue'] > * {
+  color: var(--map-stairs);
+}
+
+.ex-mon tr[data-cls='purple'] > * {
+  color: var(--marker);
+}
+
+.ex-mon tr[data-cls='green'] > *,
+.ex-mon tr[data-cls='poison'] td {
+  color: var(--ok);
+}
+
+.ex-mon tr[data-cls='confusion'] td {
+  color: var(--pending);
+}
+
+.ex-mon tr[data-cls='fear'] td,
+.ex-mon tr[data-cls='poison'] td,
+.ex-mon tr[data-cls='confusion'] td,
+.ex-mon tr[data-cls='slay'] td {
+  font-weight: 700;
+}
+
+.ex-mon tr + tr th,
+.ex-mon tr + tr td {
+  border-top: 1px solid color-mix(in srgb, var(--ink-line) 50%, transparent);
+}
+
+/* A race's stat twenty off the average, as MME's `RaceColorCode` colours it. */
+.ex-td[data-tone='hi'],
+.ex-mon tr[data-cls='stat-hi'] td {
+  color: var(--ok);
+}
+
+.ex-td[data-tone='lo'],
+.ex-mon tr[data-cls='stat-lo'] td {
+  color: var(--danger);
+}
+
+/*
+ * A clicked monster's or item's Edit (2026-10-20): this character's row in
+ * the settings editor, above what the realm knows. The editor's own inset is
+ * the list's, for a row under its summary; here there is no summary.
+ */
+.reference-rule-edit {
+  border-bottom: 1px solid var(--ink-line);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 8px;
+  overflow: visible;
+  padding: 0 0 10px;
+}
+
+.reference-rule-edit .message-editor {
+  margin: 0;
+}
+
+.reference-rule-heading {
+  color: var(--text-lo);
+  font-size: var(--font-micro);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  margin: 0;
+  text-transform: uppercase;
+}
+
+.reference-rule-realm {
+  align-items: center;
+  color: var(--text-lo);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+}
+
+.reference-edit.on {
+  color: var(--pending);
+}

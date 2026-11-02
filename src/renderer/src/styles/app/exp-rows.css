@@ -1,0 +1,80 @@
+/* ============================================ the experience table's rows */
+
+/*
+ * Three states down one column, and each one is *also* said in words.
+ *
+ * A level already paid for is quietened and its Needed cell reads `reached`; the
+ * level being earned towards is tonal and is the one the readout above names;
+ * and a row this client *worked out* rather than read off the wire is marked
+ * with a rule down its left edge and accounted for in the provenance line under
+ * the table. Per docs/ui-design.md §6 none of the three is stated by colour
+ * alone -- the first two have their own words in the row and the third has its
+ * sentence, which matters most here because the difference between a number the
+ * server sent and one this client derived is exactly the thing a reader must
+ * not have to take on trust.
+ */
+.exp-chart tbody tr[data-reached] td {
+  color: var(--text-lo-quiet);
+}
+
+.exp-chart tbody tr[data-next] td {
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  color: var(--text);
+}
+
+.exp-chart tbody tr[data-derived] td:first-child {
+  border-left: 2px solid color-mix(in srgb, var(--text-lo-quiet) 55%, transparent);
+}
+
+/*
+ * The level whose experience is already made but not yet trained for.
+ *
+ * Accented because it is the one fact on this face somebody is being told they
+ * have not acted on -- a trip to a guild is owed -- and the row is only drawn
+ * at all when it differs from the granted level, so the emphasis is never spent
+ * on a character with nothing to do about it.
+ */
+.readout dd.ahead {
+  color: var(--accent);
+}
+
+/*
+ * What the realm says it weighs, in the units the encumbrance meter counts.
+ *
+ * The answer to "what is heavy" is found by running an eye down a column, and
+ * a column only exists if the figures line up. They line up because the table
+ * says so now, rather than because every row happened to push the same element
+ * right with `margin-left: auto`.
+ */
+.carried .weight {
+  color: var(--text-lo-quiet);
+}
+
+.carried .slot {
+  margin-left: auto;
+  padding: 0 6px;
+  border-radius: var(--r-chip);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  color: var(--accent);
+  font-family: var(--font-mono);
+  white-space: nowrap;
+}
+
+/* In use, slot unnamed. Quieter, because it states less. */
+.carried .slot.unknown {
+  background: transparent;
+  color: var(--text-lo-quiet);
+  font-style: italic;
+}
+
+/*
+ * The realm file's word for the slot, which no listing has confirmed. Outlined
+ * rather than filled: it says the same thing as a listed slot and stands
+ * behind it slightly less, and the difference has to survive a colour-blind
+ * reader, so the fill is what moves rather than the hue.
+ */
+.carried .slot.inferred {
+  background: transparent;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 30%, transparent);
+  color: color-mix(in srgb, var(--accent) 80%, var(--text-lo-quiet));
+}

@@ -1,0 +1,123 @@
+/* ==================================================== rearranging the HUD */
+
+/*
+ * A card's heading is its handle.
+ *
+ * The heading rather than a separate grip: it is the one part of a card that is
+ * never data, so grabbing it can never be mistaken for interacting with what
+ * the card says. The controls inside it — the close, the face crumbs, the
+ * translucency slider — stop the gesture themselves.
+ */
+.card > header[data-grab] {
+  cursor: grab;
+  /*
+   * A drag that begins on a heading must not also select the heading's text.
+   * The selection is invisible under the pointer and survives the drop, so the
+   * next keystroke replaces it in some other surface.
+   */
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: none;
+}
+
+.card > header[data-grab]:active {
+  cursor: grabbing;
+}
+
+/*
+ * The card being dragged stays where it is and dims.
+ *
+ * Lifting the real node out of the rail would collapse the gap it leaves and
+ * shift every box the drop indicator is positioned from — so the indicator
+ * would point at somewhere the card is no longer going. The ghost moves; the
+ * card stays and says it is in transit, drawn as the gap it has become: the
+ * same dashed edge the slot wears, so a drop that changes nothing shows one
+ * gap and not two.
+ */
+.card[data-dragging] {
+  opacity: 0.4;
+  outline: 1px dashed color-mix(in srgb, var(--accent) var(--tone-strong), transparent);
+  outline-offset: -1px;
+}
+
+/* Nothing else on the slate should be selectable while a drag is in flight. */
+.workspace[data-dragging] {
+  cursor: grabbing;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/*
+ * Where the card would land: a gap its own size, opened between the cards.
+ *
+ * *Between* cards, not a highlight on one — the question the player is asking
+ * mid-drag is "before or after this one", and highlighting a card answers
+ * neither. And a gap rather than a line, because a line said where and moved
+ * nothing: the cards below the gap step out of the way, which is how a card
+ * is felt to move before it is dropped. The size comes from the box that was
+ * picked up (`--slot-w` / `--slot-h`, set by the drag); a put-away card's
+ * chip has no card box to copy, so its gap is the height a rail card ships
+ * at. Tonal and dashed, per §9: it is an absence, not a control.
+ */
+.rail-slot {
+  background: color-mix(in srgb, var(--accent) var(--tone-weak), transparent);
+  border: 1px dashed color-mix(in srgb, var(--accent) var(--tone-strong), transparent);
+  border-radius: var(--r-card);
+  box-sizing: border-box;
+  flex: 0 0 auto;
+  pointer-events: none;
+}
+
+.rail > .rail-slot {
+  height: var(--slot-h, var(--card-h, 200px));
+}
+
+/*
+ * Where a released card would land beside another over the console.
+ *
+ * The landing box, not a bar on the seam: a card snapped above another takes
+ * its width and one snapped beside it takes its height, and the box is the
+ * only indicator that says so before the release. The rail's own gap
+ * (`.rail-slot`) is the same statement in the lane that has one, so it wears
+ * the same tonal dashed edge rather than a second register of its own.
+ */
+.snap-indicator {
+  background: color-mix(in srgb, var(--accent) var(--tone-weak), transparent);
+  border: 1px dashed color-mix(in srgb, var(--accent) var(--tone-strong), transparent);
+  border-radius: var(--r-card);
+  box-sizing: border-box;
+  pointer-events: none;
+  position: fixed;
+  /* Under the ghost, over the floats: it is where the card is going, and the
+     card in hand must stay readable on top of it. */
+  z-index: 50;
+}
+
+/* What is in flight, following the pointer. */
+.drag-ghost {
+  background: var(--glass-fill-strong);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid color-mix(in srgb, var(--accent) var(--tone-strong), transparent);
+  border-radius: var(--r-card);
+  box-shadow: var(--glass-shadow);
+  color: var(--accent);
+  font-size: var(--font-micro);
+  font-weight: 600;
+  letter-spacing: 0.11em;
+  /*
+   * The shape of what was picked up, held where the pointer took hold of it:
+   * the drag sets the box's size and position inline, so nothing here offsets
+   * it. The label sits where the card's own heading sits, top left, and the
+   * rest of the box is the card's silhouette over the console.
+   */
+  align-items: flex-start;
+  box-sizing: border-box;
+  display: flex;
+  overflow: hidden;
+  padding: 10px 12px;
+  pointer-events: none;
+  position: fixed;
+  text-transform: uppercase;
+  z-index: 60;
+}

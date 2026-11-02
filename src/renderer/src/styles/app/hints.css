@@ -1,0 +1,94 @@
+/*
+ * The one-sentence hint, and the mark that opens it.
+ *
+ * Quiet at rest and never competing with the label it sits beside: a question
+ * mark that read as loudly as the field's own name would make a settings screen
+ * ask to be read rather than used, which is the thing docs/terminology.md exists
+ * to stop happening twice. It brightens on hover and on focus, and the focus
+ * ring is the one the rest of the client uses -- this is a real button, reached
+ * by Tab, and not a span pretending.
+ */
+.hint-mark {
+  display: inline-flex;
+  position: relative;
+  vertical-align: middle;
+}
+
+/*
+ * The mark is a mark in a line of text, not a control on a row -- so it opts out
+ * of the height every other button on the screen takes. Left in, the base
+ * `height: var(--control-h)` made it 26px beside a 10px label and set that
+ * label's height for it.
+ */
+.hint-button {
+  align-items: center;
+  background: none;
+  border: none;
+  border-radius: 50%;
+  box-shadow: none;
+  color: var(--text-lo);
+  cursor: help;
+  display: inline-flex;
+  height: auto;
+  justify-content: center;
+  padding: 0;
+  transition: color var(--dur-control) var(--ease-out);
+}
+
+.hint-button:hover,
+.hint-button:focus-visible {
+  color: var(--accent);
+}
+
+/*
+ * The bubble itself: tonal rather than a flat block, a 1px seam rather than an
+ * outline, and soft elevation -- docs/ui-design.md §9. It is positioned rather
+ * than portaled because the settings dialog does not clip it and a portal would
+ * be a second copy of PopupMenu's measure-and-clamp for a element that is
+ * always within a few hundred pixels of its anchor.
+ */
+.hint-bubble {
+  background: var(--glass-fill-strong);
+  backdrop-filter: var(--glass-blur);
+  border: var(--rule) solid var(--ink-line);
+  border-radius: var(--r-control);
+  box-shadow: var(--elev-2);
+  color: var(--text-hi);
+  font-size: 0.86em;
+  font-weight: 400;
+  left: 0;
+  line-height: 1.45;
+  max-width: 34ch;
+  padding: 7px 10px;
+  position: absolute;
+  top: calc(100% + 6px);
+  white-space: normal;
+  width: max-content;
+  z-index: 40;
+}
+
+.hint-bubble[hidden] {
+  display: none;
+}
+
+/*
+ * A field near the right edge would push its bubble off the dialog, so it hangs
+ * from the right instead -- and which fields those are is now measured.
+ *
+ * It was `.settings-inline label:last-child`, which was near enough while a
+ * wrapping flex line stretched its last field to the right edge. Fields are
+ * uniform columns now, so the last one in a group of two sits in the *middle*
+ * of the row with two empty tracks after it, and a field in the middle of the
+ * row can push a 34ch bubble past the dialog whether or not it is last. There
+ * is no static answer left: the column count comes from the dialog's width.
+ *
+ * The read is one `getBoundingClientRect` when a bubble opens -- not per render
+ * and not per field -- which is what the earlier note was declining, having
+ * been written about portaling rather than about this. The companion
+ * `.hint-end` class it offered was never set by anything, so the flip only ever
+ * happened by the `:last-child` accident.
+ */
+.hint-mark[data-side='end'] .hint-bubble {
+  left: auto;
+  right: 0;
+}

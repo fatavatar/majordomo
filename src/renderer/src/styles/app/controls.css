@@ -1,0 +1,271 @@
+/* =============================================================== chips */
+
+/*
+ * A tonal fill: the accent at low opacity, with the accent itself as the text.
+ * Composing against whatever is behind means one recipe reads correctly in a
+ * light and a dark theme, and it stays a signal rather than a decoration --
+ * still no gradient, no glow.
+ */
+.chip {
+  background: color-mix(in srgb, var(--text-lo) var(--tone-weak), transparent);
+  border: var(--rule) solid transparent;
+  border-radius: var(--r-chip);
+  color: var(--text-lo);
+  display: inline-block;
+  font-family: var(--font-mono);
+  font-size: var(--font-micro);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  line-height: 1.35;
+  padding: 1px 6px;
+  text-transform: uppercase;
+  transition:
+    background var(--dur-tint) linear,
+    color var(--dur-tint) linear,
+    border-color var(--dur-tint) linear;
+}
+
+.chip.on {
+  background: color-mix(in srgb, var(--ok) var(--tone), transparent);
+  border-color: color-mix(in srgb, var(--ok) var(--tone-strong), transparent);
+  color: var(--ok);
+}
+
+.chip.off {
+  background: transparent;
+  border-color: var(--ink-line);
+}
+
+/*
+ * A chip that is a **control**, in a row where any number may be held.
+ *
+ * A `.chip` is a statement, and a row of them says several things at once, so
+ * nothing in the base rule changes with `aria-pressed` -- the two coin rows in
+ * the loot settings were drawn identically whether a coin was collected or not,
+ * with all five on by default, so there was no state to see and pressing one
+ * looked like pressing nothing (todo 01, 2026-09-12). It toggled correctly the
+ * whole time; it simply never said so.
+ *
+ * Keyed on `aria-pressed` and not on a class, so the drawn state and the
+ * accessible state are one fact rather than two that can drift.
+ *
+ * The register is the Talk card's, and for its reason: a row of toggles answers
+ * *which of these are on*, with any number at once, which has to read as a
+ * pattern across the row rather than as one highlighted word. The filled pill
+ * is the loudest thing the palette has. Off is left tonal and legible -- an off
+ * coin is still a coin somebody is choosing about, so it is not struck through
+ * the way a hidden *filter* is.
+ */
+.chip.pick {
+  cursor: pointer;
+  font: inherit;
+  font-family: var(--font-mono);
+  font-size: var(--font-micro);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.chip.pick:hover {
+  background: color-mix(in srgb, var(--accent) var(--tone-weak), transparent);
+  color: var(--text-hi);
+}
+
+.chip.pick[aria-pressed='true'] {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--on-accent);
+}
+
+.chip.warn {
+  background: color-mix(in srgb, var(--pending) var(--tone), transparent);
+  border-color: color-mix(in srgb, var(--pending) var(--tone-strong), transparent);
+  color: var(--pending);
+}
+
+.chip.bad {
+  background: color-mix(in srgb, var(--danger) var(--tone), transparent);
+  border-color: color-mix(in srgb, var(--danger) var(--tone-strong), transparent);
+  color: var(--danger);
+}
+
+/*
+ * A chip for a state that is neither good nor bad nor pending: a loop holding
+ * still to recover. The accent, at the same tone as its siblings, so a fourth
+ * condition gets a fourth hue rather than borrowing `warn` -- which would make
+ * a hold the client imposed read as one the player asked for.
+ */
+.chip.info {
+  background: color-mix(in srgb, var(--accent) var(--tone), transparent);
+  border-color: color-mix(in srgb, var(--accent) var(--tone-strong), transparent);
+  color: var(--accent);
+}
+
+/*
+ * A chip that states something the client is not certain of.
+ *
+ * The same word at a lower tone rather than a different word: `hostile?` and
+ * `hostile` are one fact at two confidences, and giving the uncertain one its
+ * own colour would make it read as a third kind of thing.
+ */
+.chip.quiet {
+  background: transparent;
+  border-color: color-mix(in srgb, currentcolor var(--tone), transparent);
+  opacity: 0.75;
+}
+
+/* ------------------------------------------------------------- occupants */
+
+/*
+ * Who and what is standing in the room.
+ *
+ * A player and a monster are the same kind of word on the `Also here:` line and
+ * the difference decides whether a client may swing at one, so it is worth a
+ * mark -- but a quiet one. The chip beside a hostile monster is the loud part,
+ * and this only has to separate "a person" from "a thing" at a glance.
+ *
+ * `unknown` is marked as *unresolved* rather than as a third category, with the
+ * dotted underline every unfinished thing in this client wears: nothing has
+ * said which it is, and the honest rendering of that is a word with a question
+ * hanging off it rather than a colour that implies an answer.
+ */
+.occupants .chip {
+  margin-left: 4px;
+}
+
+.occupant.player {
+  color: var(--text-hi);
+}
+
+.occupant.unknown {
+  text-decoration: underline dotted color-mix(in srgb, var(--text-lo) 50%, transparent);
+  text-underline-offset: 3px;
+}
+
+/* ============================================================== controls */
+
+input {
+  background: var(--ink-raised);
+  border: var(--rule) solid var(--ink-line);
+  border-radius: var(--r-control);
+  color: var(--text-hi);
+  font: inherit;
+  height: var(--control-h);
+  padding: 0 8px;
+  transition:
+    border-color var(--dur-control) var(--ease-out),
+    height var(--dur-control) var(--ease-out);
+}
+
+input:hover:not(:disabled) {
+  border-color: var(--ink-edge);
+}
+
+input:focus {
+  border-color: var(--accent);
+  outline: none;
+}
+
+input:disabled {
+  color: var(--text-lo);
+}
+
+button {
+  background: var(--ink-raised);
+  border: var(--rule) solid var(--ink-line);
+  box-shadow: var(--elev-1);
+  border-radius: var(--r-control);
+  color: var(--text-hi);
+  cursor: pointer;
+  font: inherit;
+  font-weight: 500;
+  height: var(--control-h);
+  padding: 0 12px;
+  transition:
+    border-color var(--dur-control) var(--ease-out),
+    transform var(--dur-tint) var(--ease-out),
+    box-shadow var(--dur-tint) var(--ease-out),
+    height var(--dur-control) var(--ease-out);
+}
+
+button:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--accent) var(--tone-weak), var(--ink-raised));
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--ink-line));
+  color: var(--text-hi);
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+/*
+ * Primary action: the one filled control. It carries a step more elevation
+ * than anything around it, and pressing settles it back down — the depth reads
+ * as the surface lifting, not as a block sliding across the page.
+ */
+button.primary {
+  background: var(--accent);
+  border-color: transparent;
+  box-shadow: var(--elev-2);
+  color: var(--on-accent);
+  font-weight: 600;
+}
+
+button.primary.destructive {
+  background: var(--danger);
+  border-color: transparent;
+}
+
+button.primary:hover:not(:disabled) {
+  background: var(--accent);
+  border-color: transparent;
+  color: var(--on-accent);
+  filter: brightness(1.06);
+}
+
+button.primary:active:not(:disabled) {
+  box-shadow: var(--elev-1);
+  transform: translateY(1px);
+}
+
+button.quiet {
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+  color: var(--text-lo);
+}
+
+button.quiet:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--text-lo) var(--tone-weak), transparent);
+  border-color: transparent;
+  color: var(--text-hi);
+}
+
+/*
+ * The command strip is gone.
+ *
+ * It carried a host and a port, which describe a *character* rather than the
+ * client -- and once there is more than one character, a pair of fields at the
+ * top of the window can only ever describe one of them. That belongs in the
+ * character's own file, and later in a screen for editing it. What was left was
+ * one action, which moved to the status rail where its state already is.
+ */
+
+/* Keyboard is a first-class input, so the palette advertises itself. */
+.kbd-hint {
+  align-items: center;
+  color: var(--text-lo);
+  display: flex;
+  gap: 6px;
+}
+
+kbd {
+  background: var(--ink-raised);
+  border: var(--rule) solid var(--ink-line);
+  border-radius: var(--r-control);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: var(--font-micro);
+  padding: 1px 5px;
+}

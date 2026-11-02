@@ -1,0 +1,613 @@
+/* ============================================================== app shell */
+
+/*
+ * Two rows: the workspace takes everything, the status rail takes its content.
+ *
+ * There were three while a command strip sat on top, and removing that element
+ * without removing its track left the workspace in the `auto` row and handed the
+ * `1fr` to the status rail -- which then grew to fill the window while the
+ * terminal shrank to its content. It reads as a strangely tall status bar; it is
+ * really the terminal refusing to fill the space.
+ *
+ * The rail must stay the height of its own content. Anything added to this grid
+ * needs a track of its own rather than borrowing one.
+ */
+.app {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+  height: 100%;
+}
+
+.app > .status-rail {
+  grid-row: 2;
+}
+
+.workspace {
+  display: grid;
+  /* The float layer is positioned against this box, and the fractions a
+     floating card is stored in are fractions of it. */
+  position: relative;
+  /*
+   * Always the same five tracks — the two rails, their two handles and the
+   * console — with each side track at zero while the pane it belongs to is
+   * absent. The gap between two panes is a *track*, not a `gap`, because it is
+   * the handle that resizes them (`.splitter`); a zero track with the seam
+   * element absent is how a closed rail costs no width at all.
+   *
+   * Five named tracks rather than a template per combination: the shape used to
+   * be re-declared per state, three columns in one and five in another, which
+   * is also why the width transition could not interpolate between them.
+   */
+  --track-tabs: 0;
+  --track-tsplit: 0;
+  --track-rail: 0;
+  --track-rsplit: 0;
+  grid-template-areas: 'tabs tsplit main rsplit rail';
+  grid-template-columns:
+    var(--track-tabs) var(--track-tsplit) minmax(0, 1fr)
+    var(--track-rsplit) var(--track-rail);
+  gap: 0;
+  min-height: 0;
+  padding: var(--gap);
+  transition:
+    grid-template-columns var(--dur-surface) var(--ease-out),
+    gap var(--dur-control) var(--ease-out);
+}
+
+/* No animation while a handle is being dragged: the pointer is the animation. */
+.workspace[data-resizing='true'] {
+  transition: none;
+  user-select: none;
+}
+
+.workspace[data-rail='open'] {
+  --track-rail: var(--rail-w);
+  --track-rsplit: var(--gap);
+}
+
+/*
+ * The cards tucked away (2026-10-31): the rail's track is a
+ * strip of glyphs, and the rail itself slides out over the console while the
+ * pointer or the keyboard is on it, so the console keeps its width and
+ * nothing goes out over NAWS. A beat before it tucks back, so a pointer that
+ * slips off the edge does not lose it.
+ */
+.workspace[data-rail='tucked'] {
+  --track-rail: 30px;
+  --track-rsplit: var(--gap);
+}
+
+.rail[data-tucked='true'] {
+  overflow: visible;
+  position: relative;
+  scrollbar-gutter: auto;
+}
+
+.rail-strip {
+  align-items: center;
+  background: var(--ink-card);
+  border: 1px solid var(--ink-line);
+  border-radius: var(--r-card);
+  color: var(--text-lo);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  height: 100%;
+  padding: 8px 0;
+}
+
+.rail-glyph {
+  display: inline-flex;
+}
+
+.rail-slide {
+  background: var(--ink-void);
+  border-left: 1px solid var(--ink-edge);
+  bottom: 0;
+  box-shadow: -12px 0 28px rgb(0 0 0 / 45%);
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding: 0 4px;
+  position: absolute;
+  right: 0;
+  top: 0;
+  transform: translateX(calc(100% + 12px));
+  transition:
+    transform var(--dur-surface) var(--ease-out) 300ms,
+    visibility 0s linear calc(var(--dur-surface) + 300ms);
+  visibility: hidden;
+  width: var(--rail-w);
+  z-index: 20;
+}
+
+.workspace[data-rail-side='left'] .rail-slide {
+  border-left: 0;
+  border-right: 1px solid var(--ink-edge);
+  box-shadow: 12px 0 28px rgb(0 0 0 / 45%);
+  left: 0;
+  right: auto;
+  transform: translateX(calc(-100% - 12px));
+}
+
+.rail[data-tucked='true']:hover .rail-slide,
+.rail[data-tucked='true']:focus-within .rail-slide {
+  transform: none;
+  transition:
+    transform var(--dur-surface) var(--ease-out),
+    visibility 0s;
+  visibility: visible;
+}
+
+/*
+ * The slid-out rail's width handle, along its inner edge, there while the
+ * rail is out; and the rail held out while that handle is dragged, so it
+ * cannot tuck itself away from under the pointer (another handle's drag,
+ * the Stable's heights, leaves it tucked).
+ */
+.rail-slide-edge {
+  bottom: 0;
+  position: absolute;
+  right: calc(var(--rail-w) - 3px);
+  top: 0;
+  visibility: hidden;
+  width: 6px;
+  z-index: 21;
+}
+
+.workspace[data-rail-side='left'] .rail-slide-edge {
+  left: calc(var(--rail-w) - 3px);
+  right: auto;
+}
+
+.rail-slide-edge > .splitter {
+  height: 100%;
+  width: 100%;
+}
+
+.rail[data-tucked='true']:hover .rail-slide-edge,
+.rail[data-tucked='true']:focus-within .rail-slide-edge,
+.rail[data-sliding='true'] .rail-slide-edge {
+  visibility: visible;
+}
+
+.rail[data-sliding='true'] .rail-slide {
+  transform: none;
+  transition: none;
+  visibility: visible;
+}
+
+.rail-tucked-head {
+  align-items: center;
+  color: var(--text-lo);
+  display: flex;
+  font-size: var(--font-micro);
+  gap: 8px;
+  justify-content: space-between;
+  padding-top: 4px;
+}
+
+.rail-tucked-head button {
+  align-items: center;
+  display: inline-flex;
+  gap: 4px;
+  background: transparent;
+  border: 1px solid var(--ink-line);
+  border-radius: var(--r-card);
+  color: var(--text);
+  cursor: pointer;
+  font: inherit;
+  padding: 2px 8px;
+}
+
+/*
+ * The tab rail takes an edge, and which edge changes the shape of the grid
+ * rather than only its rotation.
+ *
+ * `top` spends rows, which are cheap. `left` and `right` spend columns, which
+ * are not: the console needs 80 of them and no server in this family will
+ * format to fewer, so a rail down a side is a deliberate trade of terminal
+ * width for being able to read every character's health at once. See
+ * docs/ui-design.md §3.8.
+ */
+.workspace[data-tabs='left'],
+.workspace[data-tabs='right'] {
+  --track-tabs: var(--tab-rail-w);
+  --track-tsplit: var(--gap);
+}
+
+.workspace[data-tabs='top'] {
+  grid-template-areas:
+    'tabs tabs tabs tabs tabs'
+    'main main main rsplit rail';
+  grid-template-rows: auto minmax(0, 1fr);
+  row-gap: var(--gap);
+}
+
+/*
+ * Mirrored: the card rail takes the left edge and the tab rail the right.
+ *
+ * Keyed on which side the *cards* are on rather than on `data-tabs`, because
+ * the mirror has to hold in the one state where there are no tabs at all — a
+ * client with no characters yet. Keyed on `data-tabs='right'` it would put the
+ * card rail back on the right until the first character loaded, and the whole
+ * layout would jump sideways the moment one did.
+ *
+ * The five tracks are the same five; only their order changes, so each rail
+ * keeps its own width and its own handle. The handles are placed by which pane
+ * they belong to (`data-pane`) rather than by which way they grow it, which is
+ * what lets the tab rail's handle be a right edge here and still sit in the tab
+ * rail's own gap.
+ */
+.workspace[data-rail-side='left'] {
+  grid-template-areas: 'rail rsplit main tsplit tabs';
+  grid-template-columns:
+    var(--track-rail) var(--track-rsplit) minmax(0, 1fr)
+    var(--track-tsplit) var(--track-tabs);
+}
+
+/*
+ * There is deliberately no mirrored `top` variant. The cards take the left only
+ * when the tabs have asked for the right, so `data-tabs` here is `right` or —
+ * with no characters loaded at all — `none`, and never `top`. A rule for it
+ * would be a claim about a state the client cannot be in.
+ */
+
+/*
+ * The handle between two panes. See `components/Splitter.tsx`.
+ *
+ * It fills its gap track and reaches 24px wide through `::before` whatever the
+ * density's gap is (WCAG 2.5.8), while the seam it draws is a hairline that is
+ * absent at rest — §9: a border is a seam, often absent — and tonal on hover,
+ * focus and drag. The focus ring is the one deliberately loud element.
+ */
+.splitter {
+  position: relative;
+  z-index: 3;
+  cursor: col-resize;
+  touch-action: none;
+  outline: none;
+}
+
+/*
+ * Placed by which pane it belongs to, never by which way it grows that pane.
+ *
+ * They were the same fact for as long as the tab rail could only be on the
+ * left. Mirror the workspace and they part company: the tab rail's handle
+ * becomes a right edge while still belonging in the tab rail's own gap, and
+ * keyed on `data-edge` the two rails swapped handles. The docked strips'
+ * handles carry no `data-pane` — they are positioned against the strip.
+ */
+.splitter[data-pane='tabs'] {
+  grid-area: tsplit;
+}
+
+.splitter[data-pane='rail'] {
+  grid-area: rsplit;
+}
+
+.splitter::before {
+  content: '';
+  position: absolute;
+  inset: 0 calc((24px - var(--gap)) / -2);
+}
+
+.splitter::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 2px;
+  margin-left: -1px;
+  border-radius: 1px;
+  background: color-mix(in oklab, var(--accent) 55%, transparent);
+  opacity: 0;
+  transition: opacity var(--dur-control) var(--ease-out);
+}
+
+.splitter:hover::after,
+.splitter:focus-visible::after,
+.workspace[data-resizing='true'] .splitter::after {
+  opacity: 1;
+}
+
+.splitter:focus-visible::after {
+  box-shadow: 0 0 0 2px color-mix(in oklab, var(--accent) 35%, transparent);
+}
+
+.tab-rail {
+  grid-area: tabs;
+}
+
+.terminal-stack {
+  grid-area: main;
+}
+
+.rail {
+  grid-area: rail;
+}
+
+.rail {
+  /*
+   * More cards than fit at most heights, so the rail scrolls as a column.
+   * Every card in it is a fixed box; see below.
+   */
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  /*
+   * A performance rule before it is a visual one. Blink re-decides an `auto`
+   * scrollbar inside every layout that passes through the rail, and a
+   * keystroke in any card's field is one: the rail was marked *scrollbar
+   * changed* twice per keystroke, every card's inline size moved with it, and
+   * every card was laid out again at each width -- the map's SVG four times,
+   * every room and corridor in it. Measured 2026-09-04 (`npm run profile:ui`,
+   * `talk`, `--invalidations`): 28ms of layout per keystroke with the card
+   * bodies' bases fixed, 1ms with the gutter reserved, and 6,120 *SVG changed*
+   * invalidations in a 33-key run went to none. The strip it reserves is the
+   * width the scrollbar takes whenever the rail overflows, which on a rail of
+   * nine cards is always.
+   */
+  scrollbar-gutter: stable;
+}
+
+/*
+ * A card on the rail is a fixed box, and its contents scroll inside it.
+ *
+ * Not "mostly fixed". A room with four items and three people in it is taller
+ * than an empty one, so the Room card grew as the character walked and every
+ * control below it moved -- and **Stop walking** is the one control reached for
+ * *while* the thing moving it is running. The same is true of Carrying as loot
+ * accumulates, of Talk as people speak, and of Alerts as things go wrong: every
+ * card on this rail has content whose size the player does not control.
+ *
+ * So height is declared per card and never derived from content. A card that
+ * has more to say scrolls; it does not push its neighbours around.
+ *
+ * A *floating* card is exempt, because its height is dragged by the person
+ * looking at it and there is nothing below it to move.
+ */
+.rail > .card {
+  flex: 0 0 auto;
+  /* The fallback is the point: a card added without a declared height still
+     gets a box rather than growing with its contents. */
+  height: var(--card-h, 200px);
+}
+
+/*
+ * Rolled up, a card is its heading and the declared height stands down --
+ * including one dragged from the corner grip, which is *kept* and comes back
+ * with the card rather than being thrown away by a gesture that only asked to
+ * see less of it.
+ *
+ * This is the one exemption from the rule above, and it does not weaken it:
+ * the height still never follows the contents. It follows the one person who
+ * is allowed to change a card's box, who has just said they want the heading.
+ */
+.rail > .card[data-rolled='true'] {
+  height: auto;
+}
+
+/*
+ * A card placed on a status of the Stable (2026-10-31): the rail's box and
+ * declared heights, and a height of its own where its corner grip was
+ * dragged there (`--status-card-h`). Its body scrolls, as on the rail.
+ */
+.stable-card > .card {
+  flex: 0 0 auto;
+  height: var(--status-card-h, var(--card-h, 200px));
+}
+
+.stable-card > .card[data-rolled='true'] {
+  height: auto;
+}
+
+.stable-card > .card > .body:not(.paned) {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.rail > .vitals-card,
+.stable-card > .vitals-card {
+  --card-h: 196px;
+}
+.rail > .room-card,
+.stable-card > .room-card {
+  --card-h: 208px;
+}
+.rail > .map-card,
+.stable-card > .map-card {
+  --card-h: 300px;
+}
+/* Two faces, and the taller is the loop's: a transport row, the loop's name, the
+   stop bar and four figures. Declared rather than left to the fallback, per the
+   rule above — a card that has more to say scrolls, it does not grow. */
+.rail > .navigation-card,
+.stable-card > .navigation-card {
+  --card-h: 208px;
+}
+.rail > .alert-card,
+.stable-card > .alert-card {
+  --card-h: 224px;
+}
+.rail > .realm-card,
+.stable-card > .realm-card {
+  --card-h: 208px;
+}
+/* Matched to the Realm card it sits beside: they are read together, and two
+   heights for two lists of names is a seam nothing in the content justifies. */
+.rail > .players-card,
+.stable-card > .players-card {
+  --card-h: 208px;
+}
+.rail > .combat-card,
+.stable-card > .combat-card {
+  /* A name, a bar, a legend and up to three readout rows. Fixed like every rail
+     card: one that grows with its contents moves every control below it, and
+     **Stop walking** is reached for while the thing moving it is running. */
+  --card-h: 190px;
+}
+.rail > .party-card,
+.stable-card > .party-card {
+  /* Two ranks with a member each — the ordinary shape of a party of two, and of
+     a party of one with an invitation out. Grouping by rank costs a heading and
+     a box per rank, and at the old 176px the second group's meters fell under
+     the fold on the commonest listing there is. Fixed, like every rail card:
+     the body scrolls when a third rank arrives. */
+  --card-h: 216px;
+}
+.rail > .inventory-card,
+.stable-card > .inventory-card {
+  --card-h: 208px;
+}
+/*
+ * Three faces, and two of them are listings: the sheet is thirty rows, and
+ * the pack face carries the meter, the purse, a find field and a row of
+ * chips *before* its table. At the 200px fallback the table under those had
+ * the height of its own scrollbar and nothing else — which is what a
+ * horizontal scrollbar and no rows under `PACK` looked like. Declared, like
+ * every rail card; dragged from here by the corner grip.
+ */
+.rail > .self-card,
+.stable-card > .self-card {
+  --card-h: 320px;
+}
+.rail > .banks-card,
+.stable-card > .banks-card {
+  /* Two vaults with their balances and a total, which is more banking than most
+     characters do. Fixed like every rail card rather than left to the fallback:
+     the list grows one row per town banked in, and a card that grows moves every
+     control below it. The body scrolls at the third. */
+  --card-h: 176px;
+}
+.rail > .conversation-card,
+.stable-card > .conversation-card {
+  --card-h: 224px;
+}
+.rail > .standby-card,
+.stable-card > .standby-card {
+  --card-h: 152px;
+}
+.rail > .session-card,
+.stable-card > .session-card {
+  --card-h: 196px;
+}
+.rail > .link-card,
+.stable-card > .link-card {
+  --card-h: 208px;
+}
+.rail > .automation-card,
+.stable-card > .automation-card {
+  --card-h: 208px;
+}
+.rail > .stream-card,
+.stable-card > .stream-card {
+  --card-h: 224px;
+}
+
+/*
+ * The terminal and the things that belong to it. The search bar is about the
+ * stream, so it lives in this stack rather than floating over the slate.
+ */
+.terminal-stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+  min-height: 0;
+  min-width: 0;
+  /* The empty drop strips are positioned against this while a drag runs. */
+  position: relative;
+}
+
+/*
+ * The slate takes everything the search bar does not. Without this the cell
+ * keeps its content height, the terminal collapses to its fallback geometry,
+ * and that wrong size goes out over NAWS — the server then formats to a width
+ * the window does not have.
+ */
+.terminal-stack > .terminal-cell {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+/*
+ * Every loaded character's terminal, stacked in one box.
+ *
+ * They are all laid out, always. Only the shown one is visible, and
+ * `visibility: hidden` is chosen over `display: none` deliberately: a hidden
+ * element keeps its box, so each terminal still measures the geometry it would
+ * have if shown. A terminal with no box measures zero, and reporting 0x0 -- or
+ * falling back to 80x24 -- re-wraps the scrollback of a character standing
+ * still. It also takes hidden terminals out of the tab order, which the focus
+ * policy wants anyway.
+ */
+.terminal-layers {
+  display: grid;
+  flex: 1 1 auto;
+  gap: 8px;
+  min-height: 0;
+  min-width: 0;
+  /* The debug view is positioned against this rather than against the stack,
+     so it covers the console and *not* the toolbar docked above it: the
+     toolbar is a card, and a player looking at a trace has not stopped wanting
+     the switch that turns automation off. */
+  position: relative;
+}
+
+/*
+ * Stacked by default: rows are cheap and columns are not. The console needs 80
+ * of them and no server in this family will format to fewer, so dividing the
+ * slate sideways is a trade that has to be affordable -- and the client refuses
+ * the split rather than shearing every map. See docs/profiles.md §7.3.
+ */
+.terminal-layers[data-flow='rows'] {
+  grid-template-rows: repeat(var(--panes, 1), minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.terminal-layers[data-flow='columns'] {
+  grid-template-columns: repeat(var(--panes, 1), minmax(0, 1fr));
+  grid-template-rows: minmax(0, 1fr);
+}
+
+/*
+ * Panes are placed by grid coordinate, not by document order. Grid items given
+ * the same coordinates overlap, which is what lets every character keep a
+ * mounted terminal while only some have a pane: the ones without park in the
+ * focused pane's cell, hidden.
+ */
+.terminal-layer {
+  min-height: 0;
+  min-width: 0;
+  /* The quest run banner is positioned against the pane it reports on. */
+  position: relative;
+}
+
+/*
+ * `visibility: hidden` over `display: none`, deliberately. A hidden element
+ * keeps its box, so a parked terminal still measures a real geometry -- and it
+ * leaves the tab order, which the focus policy wants anyway.
+ */
+.terminal-layer[data-shown='false'] {
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.terminal-layer > .terminal-cell {
+  height: 100%;
+}
+
+/*
+ * Which pane the keyboard is talking to. Only worth saying when there is more
+ * than one -- a lone pane is not a choice, and a seam around it would be chrome
+ * reporting the obvious.
+ */
+.terminal-layers:not([style*='--panes: 1']) .terminal-layer[data-focused='true'] > .terminal-cell {
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--ink-line));
+}

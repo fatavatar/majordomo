@@ -1,0 +1,220 @@
+/* ============================================ shop and spell reference */
+
+/*
+ * What the shop you are standing in sells, from the realm data rather than from
+ * a command. Two columns: what it is, and what the realm charges before the
+ * shop's own markup — said separately in the footnote rather than multiplied
+ * in, because "250% of 4" is checkable where "10" is not.
+ */
+.stock .price {
+  color: var(--text-lo-quiet);
+  font-family: var(--font-mono);
+}
+
+/*
+ * Why a route was refused, one condition per line.
+ *
+ * A list rather than a paragraph because it is a list: a route can be stopped
+ * by a level gate *and* a locked door, and running them together into one
+ * sentence is how the second one gets skimmed past.
+ */
+.route-blocked {
+  color: var(--text-lo);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  list-style: none;
+  margin: 0;
+  padding: 8px 0;
+}
+
+/* The errand a refused way offers when a key alone would open it: the one
+   action under the refusal, so it is the filled control, as Walk is above. */
+.route-fetch {
+  display: flex;
+  justify-content: flex-end;
+}
+
+/*
+ * What the shorter way needed, on a walkable route that crosses a wall. The
+ * same list the refusal draws, under one sentence saying which way it is
+ * about; tonal, not loud — the route below it is still offered.
+ */
+.route-needs {
+  color: var(--text-lo);
+  padding: 4px 0 0;
+}
+
+.route-needs > .route-blocked {
+  padding-top: 4px;
+}
+
+/*
+ * The way through what the player keeps out of and the way round it (todo
+ * 806): two cards side by side, one question, the pick drawn tonal — never a
+ * fill, since Walk is the panel's one filled control — and never a border
+ * colour.
+ */
+.route-choice {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  padding: 4px 0 8px;
+}
+
+.route-choice-ask {
+  color: var(--text-lo);
+  grid-column: 1 / -1;
+}
+
+.route-way {
+  align-items: flex-start;
+  background: color-mix(in srgb, var(--ink-raised) var(--tone-strong), transparent);
+  border-radius: var(--r-card);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  height: auto;
+  padding: 8px 12px;
+  text-align: left;
+}
+
+.route-way:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--accent) var(--tone-weak), transparent);
+}
+
+.route-way[aria-pressed='true'] {
+  background: color-mix(in srgb, var(--accent) var(--tone-strong), transparent);
+  color: var(--text-hi);
+}
+
+.route-way-cost {
+  color: var(--text-lo);
+  font-size: var(--font-micro);
+}
+
+/* The errand a refused way offers when its keys alone would open it: the one
+   action under the refusal, so it is the filled control, as Walk is above. */
+.route-fetch {
+  display: flex;
+  justify-content: flex-end;
+}
+
+/*
+ * The alternatives, offered rather than substituted: which of the routes to
+ * walk is a judgement about the character's own state that the panel cannot
+ * make. A disclosure on its own row above the steps — closed, one line
+ * saying how many; open, one row per route with its own `Show` — so the plan
+ * on screen stays the one the button at the top walks until somebody says
+ * otherwise.
+ */
+.route-alternatives {
+  color: var(--text-lo);
+  padding: 4px 0 0;
+}
+
+.route-alternatives > button {
+  align-items: center;
+  display: inline-flex;
+  gap: 4px;
+}
+
+.route-alternatives > ul {
+  list-style: none;
+  margin: 0;
+  padding: 2px 0 0 4px;
+}
+
+.route-alternatives > ul > li {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  padding: 1px 0;
+}
+
+.route-alternatives > ul > li > span {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/*
+ * *Collect the key first* (todo 07) and *Stop before entering* (todo 03), in
+ * the head beside the press they change. Both are `.chip.pick` — the row's own
+ * control register, drawn from `aria-pressed` — rather than a checkbox and its
+ * label: the head is a row of chips already, and a box plus a word spent about
+ * twice a chip's width on one bit of state, on the one row that also has to
+ * hold both presses. `flex: 0 0 auto` because neither may shrink; no auto
+ * margin, since an auto margin eats the free space `space-between` distributes
+ * and the chips beside them would then pack differently depending on whether
+ * the way happens to name an item — one head drawn in two registers.
+ */
+.route-summary :is(.route-collect, .route-stop) {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+/*
+ * *Run it* (todo 06) and *Walk it*, in one box. They are one choice made two
+ * ways, so they wrap together or not at all: a head wearing three chips put
+ * *Run it* at the end of one line and *Walk it* alone at the start of the
+ * next, which reads as two unrelated controls and spends a row on one button.
+ * `flex: 0 0 auto` for the reason the chips have it — the head's free space is
+ * distributed the same way whether or not the way names an item, and neither
+ * press may be the child that shrinks at the rail's narrow end.
+ */
+.route-summary > .route-presses {
+  align-items: center;
+  display: flex;
+  flex: 0 0 auto;
+  gap: 8px;
+}
+
+/*
+ * A folded run of rooms that read the same: one row wearing the count, and
+ * the chevron that opens it. The commands of the run share the command
+ * column and yield with an ellipsis rather than pushing the name out, since
+ * the name is what the row is for; the full list is the tooltip.
+ */
+.route-steps li.group .step-command {
+  max-width: 14ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.route-steps .step-fold {
+  align-items: center;
+  display: inline-flex;
+  flex: 1 1 auto;
+  gap: 6px;
+  min-width: 0;
+}
+
+.route-steps .step-fold > .fold-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.route-steps .step-fold > svg {
+  flex: none;
+  height: 1em;
+  width: 1em;
+}
+
+/* A step under an opened row is indented, so where the run ends is visible. */
+.route-steps li.step[data-folded='true'] {
+  padding-left: 12px;
+}
+
+/*
+ * The last step, while *Stop before entering* is on: drawn but quiet, in the
+ * same register a progression uses for what is behind it (§ *What is left is
+ * the loudest thing*). Dimmed and never dropped — the reader searched for
+ * that room and the list still has to say where the way ends; what changes is
+ * that this row is no longer part of the walk, which its chip says in words.
+ */
+.route-steps li.step[data-skipped='true'] :is(.step-command, .step-name) {
+  color: var(--text-lo-quiet);
+}

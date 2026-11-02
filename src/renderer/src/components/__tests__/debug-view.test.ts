@@ -16,6 +16,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 
+import { windowStylesheet } from './stylesheet';
+
 import type { DebugKind } from '@shared/debug';
 
 /** The repository root, so each half is named by the path a reader would use. */
@@ -32,7 +34,7 @@ function declaredKinds(): string[] {
 
 /** The hues, off the stylesheet's own rules. */
 function styledKinds(): string[] {
-  const css = read('src/renderer/src/styles/index.css');
+  const css = windowStylesheet();
   const rules = [...css.matchAll(/\.debug-kind\[data-kind='([a-z]+)']/g)].map((m) => m[1]!);
   return [...new Set(rules)].sort();
 }

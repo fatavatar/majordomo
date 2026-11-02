@@ -364,7 +364,8 @@ const COVER_ID = 'link-lost';
 /**
  * The cover, with one sentence. Outside React on purpose: the link is what
  * knows the socket is gone, and it opens before React mounts. `.link-lost`
- * is styled in `index.css` from the same tokens as everything else.
+ * is styled in `styles/app/link-lost.css` from the same tokens as
+ * everything else.
  */
 function coverPanel(): HTMLDivElement {
   let cover = document.getElementById(COVER_ID);

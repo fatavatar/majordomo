@@ -1,0 +1,87 @@
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--ink-void);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: var(--font-ui);
+  overflow: hidden;
+  /*
+   * A single faint accent bloom behind the glass so translucency has something
+   * to reveal. Fixed and non-animated, so it costs one paint.
+   */
+  background-image:
+    radial-gradient(
+      120vw 80vh at 12% -10%,
+      color-mix(in srgb, var(--accent) 5%, transparent),
+      transparent 60%
+    ),
+    radial-gradient(
+      90vw 70vh at 95% 110%,
+      color-mix(in srgb, var(--marker) 4%, transparent),
+      transparent 60%
+    );
+}
+
+:focus-visible {
+  /* Deliberately heavier than a seam: the focus ring is the one place the UI
+   * still shouts, because it has to be found at a glance. */
+  outline: var(--focus-ring) solid var(--accent);
+  outline-offset: 2px;
+}
+
+/*
+ * The rows inside a native select's popup, everywhere at once.
+ *
+ * `color-scheme` on the root is what normally paints these, and it is set from
+ * the theme's appearance -- but only for a control the engine is styling
+ * itself. Every select in this client gives the *closed* control a translucent
+ * tonal fill, which is right against the glass and is also the thing that opts
+ * the popup out of that path: Chromium cannot paint a menu from a background it
+ * can see through, so it abandons the theme and falls back to its own light
+ * menu chrome. A dark client with a white dropdown was the symptom.
+ *
+ * So the rows state an *opaque* surface of their own. `--ink-raised` is the
+ * token for exactly this -- a surface lifted above a card -- and every theme
+ * gives it a solid colour, which is a requirement here rather than a
+ * coincidence: a translucent value would put the fallback straight back.
+ *
+ * Written once, against the element, rather than per select. The three selects
+ * that exist today are on the Talk card, the settings forms and the Realm
+ * picker, and the next one added must not have to remember this.
+ */
+option {
+  background: var(--ink-raised);
+  color: var(--text-hi);
+}
+
+/*
+ * ...and the Talk card's channel keeps its tint, which the rule above takes
+ * away from it.
+ *
+ * These are native controls -- nothing here sets `appearance: none` -- and
+ * Chromium paints the text of a *closed* select from the selected `option`'s
+ * colour, not from the select's own. So stating a colour for the rows silently
+ * repaints the control beside the message box as well, and the channel went
+ * flat `--text-hi`: the same weight as the message it qualifies, which is the
+ * one reading the tonal treatment above exists to avoid. Measured, not
+ * guessed -- the selected option computed `rgb(37, 40, 46)` where the select
+ * itself was still the accent mix.
+ *
+ * Restated on the option rather than dropped from the rule above, because
+ * `color: inherit` there would carry the accent into the *popup rows* too,
+ * where accent-on-`--ink-raised` is a pairing `themes.test.ts` does not check
+ * -- it tests text tokens against `--ink-card`.
+ */
+.conversation-say select option {
+  color: color-mix(in srgb, var(--accent) 80%, var(--text-hi));
+}

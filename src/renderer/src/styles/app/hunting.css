@@ -1,0 +1,118 @@
+/* ======================================================== hunting grounds card */
+/*
+ * The head is one line: where the sweep started and what it left out. The
+ * detail under the table is the Room card's readout grammar plus two lists
+ * (the monsters, the rooms) drawn as rows with the figure quiet at the end,
+ * and the loop's controls in the Navigation card's own row.
+ */
+.hunt-head {
+  display: flex;
+  align-items: center;
+  gap: var(--gap);
+  padding: 0 var(--pad) var(--gap-tight, 6px);
+}
+.hunt-head .hunt-note {
+  color: var(--text-lo);
+  font-size: var(--font-size-small, 0.9em);
+}
+.hunt-lair {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+}
+.hunt-afflicts,
+.hunt-subhead {
+  color: var(--text-lo);
+  font-size: var(--font-size-small, 0.9em);
+}
+.hunt-rooms li.hunt-subhead {
+  margin-top: var(--gap-tight, 6px);
+}
+.hunt-table tr[data-open='true'] {
+  background: color-mix(in srgb, var(--accent) var(--tone-wash), transparent);
+}
+/*
+ * The opened lair's figures: the paned body's second moving part.
+ *
+ * It carries `scroller`, so `.card > .body.paned > .scroller` bounds it and
+ * it moves inside its share rather than pushing the row of buttons under the
+ * card's own `overflow: hidden` — which is what a lair with a dozen rooms did
+ * to every card shorter than the list.
+ */
+.hunt-detail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+  padding: var(--gap) var(--pad);
+}
+/* Solo or Party (2026-10-29): two chips, the one priced for pressed. */
+.hunt-mode {
+  display: inline-flex;
+  gap: 4px;
+  margin-right: var(--gap);
+}
+.hunt-mode .chip[aria-pressed='true'] {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+/* An opened area's lair groups (2026-10-29), each marked with how it counts toward the area. */
+.hunt-lairs {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  list-style: none;
+  margin: 0 0 var(--gap-tight, 6px);
+  padding: 0;
+}
+.hunt-lairs li {
+  align-items: baseline;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px var(--gap);
+  justify-content: space-between;
+}
+.hunt-lairs li[data-role='main'] .chip {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.hunt-lairs li[data-role='none'],
+.hunt-lairs li[data-role='alternative'] {
+  color: var(--text-lo);
+}
+.hunt-mobs,
+.hunt-rooms {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.hunt-mobs li,
+.hunt-rooms li {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--gap);
+  align-items: baseline;
+}
+.hunt-detail .quiet {
+  color: var(--text-lo);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-small, 0.9em);
+  white-space: nowrap;
+}
+/*
+ * And the three things that can be done with it, anchored under both.
+ *
+ * `flex: 0 0 auto` is the whole of it: the two scrolling regions above absorb
+ * every pixel the card loses, and this row shrinks for nothing. It wraps
+ * rather than clips at the rail's narrow end, where three buttons do not fit
+ * on one line — a control on a second line is still a control.
+ */
+.hunt-actions {
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  justify-content: flex-start;
+  padding: var(--gap) var(--pad) 0;
+  border-top: 1px solid var(--seam);
+}

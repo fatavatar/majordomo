@@ -1,0 +1,225 @@
+/* ============================================================= status rail */
+
+.status-rail {
+  align-items: center;
+  border-radius: 0;
+  border-width: 1px 0 0;
+  display: flex;
+  font-size: var(--font-micro);
+  gap: 14px;
+  padding: 6px var(--gap);
+}
+
+/*
+ * The client's own mark, at the head of the status rail.
+ *
+ * Sized from the type rather than in pixels, for the reason every fixed height
+ * in a card has just stopped being one: `--font-ui-base` is written at runtime
+ * from `ui.font.size`, so a mark measured against the default chrome would be
+ * the wrong size for anybody who changed it — and here it would also stop
+ * matching the line of text it sits beside. `1.6em` of `--font-micro` is the
+ * line box that line already has, so the mark takes no height of its own and
+ * turning it off gives back no space.
+ *
+ * The rail's `gap` is 14px, which is a lot beside a round mark, so the mark
+ * pulls the next segment back to the spacing a heading uses.
+ */
+.app-mark {
+  background-image: url('../../assets/logo.png');
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: contain;
+  flex: 0 0 auto;
+  height: 1.6em;
+  margin-right: -6px;
+  width: 1.6em;
+}
+
+/*
+ * Connect and disconnect, in the segment that already states the condition.
+ * A button, but not a loud one: this is chrome reporting a state that happens
+ * to be actionable, not the primary action of a screen.
+ */
+.status-rail .phase {
+  align-items: center;
+  padding: 2px 8px 2px 4px;
+  border: 0;
+  border-radius: var(--r-pill);
+  background: transparent;
+  color: var(--text-hi);
+  display: flex;
+  gap: 7px;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background var(--dur-tint) var(--ease-out);
+}
+
+.status-rail .phase:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--accent) var(--tone-weak), transparent);
+}
+
+.status-rail .phase:disabled {
+  cursor: default;
+  opacity: 0.7;
+}
+
+.status-rail .kbd-hint {
+  padding: 2px 6px;
+  border: 0;
+  border-radius: var(--r-pill);
+  background: transparent;
+  font: inherit;
+  cursor: pointer;
+}
+
+.status-rail .kbd-hint:hover {
+  background: color-mix(in srgb, var(--accent) var(--tone-weak), transparent);
+}
+
+/*
+ * A solid mark with a soft halo, always beside a text label so state is never
+ * colour-only.
+ */
+.dot {
+  background: var(--text-lo);
+  border-radius: 50%;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--text-lo) var(--tone-weak), transparent);
+  display: inline-block;
+  height: 8px;
+  width: 8px;
+  transition:
+    background var(--dur-control) linear,
+    box-shadow var(--dur-control) linear;
+}
+
+.dot.connected {
+  background: var(--ok);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ok) var(--tone), transparent);
+}
+
+.dot.error {
+  background: var(--danger);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--danger) var(--tone), transparent);
+}
+
+.dot.connecting,
+.dot.negotiating,
+.dot.resolving,
+.dot.closing {
+  animation: dot-pulse 1.6s var(--ease-inout) infinite;
+  background: var(--pending);
+}
+
+@keyframes dot-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--pending) var(--tone), transparent);
+  }
+  50% {
+    box-shadow: 0 0 0 7px color-mix(in srgb, var(--pending) 0%, transparent);
+  }
+}
+
+.status-rail .detail {
+  color: var(--text-lo);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/*
+ * Automation acting, in the rail. Tonal rather than filled -- §3.3: everything
+ * that reports a condition is the accent at low opacity with the accent as the
+ * text, and this reports one.
+ */
+.status-rail .detail.acting {
+  background: color-mix(in srgb, var(--marker) var(--tone-weak), transparent);
+  border-radius: var(--r-chip);
+  color: var(--marker);
+  font-family: var(--font-mono);
+  padding: 1px 8px;
+}
+
+.status-rail .spacer {
+  flex: 1;
+}
+
+.status-rail .metric {
+  color: var(--text-lo);
+  font-family: var(--font-mono);
+}
+
+.status-rail .metric b {
+  color: var(--text);
+  font-weight: 500;
+}
+
+.status-rail .metric.pressure {
+  color: var(--pending);
+}
+
+/*
+ * MegaMUD's round timer (`RoundTimer`): the seconds left and a bar that runs
+ * down to the next round, in the colour of what the timer knows -- MegaMUD's
+ * own orange, blue and green as this theme's amber, accent and ok -- and the
+ * figure bold while a spell waits for the round to turn, as MegaMUD writes it.
+ */
+.round-timer {
+  --round-tone: var(--text-lo);
+  align-items: center;
+  color: var(--text-lo);
+  display: inline-flex;
+  font-family: var(--font-mono);
+  gap: 6px;
+}
+
+.round-timer[data-tone='unsure'] {
+  --round-tone: var(--pending);
+}
+
+.round-timer[data-tone='wait'] {
+  --round-tone: var(--accent);
+}
+
+.round-timer[data-tone='ready'] {
+  --round-tone: var(--ok);
+}
+
+.round-timer b {
+  color: var(--round-tone);
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+  min-width: 3ch;
+  text-align: end;
+}
+
+.round-timer[data-tone='wait'] b {
+  font-weight: 700;
+}
+
+.round-bar {
+  border: 1px solid var(--ink-line);
+  border-radius: 2px;
+  height: 0.8em;
+  overflow: hidden;
+  width: 64px;
+}
+
+.round-fill {
+  animation: round-run-down 5s linear infinite;
+  background: var(--round-tone);
+  display: block;
+  height: 100%;
+  transform-origin: left;
+}
+
+@keyframes round-run-down {
+  from {
+    transform: scaleX(1);
+  }
+
+  to {
+    transform: scaleX(0);
+  }
+}

@@ -1,0 +1,772 @@
+/* The Reference card: a field, then the answer, then the matches under it. */
+.reference-card input {
+  flex: none;
+  /*
+   * A floor rather than a height. A field with a declared height clips its own
+   * text the moment the type is larger than the height was written against,
+   * and `--font-ui-base` is a setting — see `.meter`.
+   */
+  min-height: 28px;
+  font-size: var(--font-micro);
+}
+
+.reference {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 6px 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--font-micro);
+}
+
+.reference li {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 3px 6px;
+  border: var(--rule) solid transparent;
+  border-radius: var(--r-chip);
+  color: var(--text-lo);
+  cursor: pointer;
+}
+
+.reference li[data-active='true'] {
+  background: color-mix(in srgb, var(--accent) var(--tone-weak), transparent);
+  border-color: var(--accent);
+  color: var(--text-hi);
+}
+
+.reference .what {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.reference .kind,
+.reference .fig {
+  flex: 0 0 auto;
+  color: var(--text-lo-quiet);
+  font-family: var(--font-mono);
+}
+
+.reference .fig {
+  margin-left: auto;
+}
+
+/*
+ * The realm's own row number beside a name — the same quiet monospace figure
+ * the reference list's `.fig` is, because that is what it is: a magnitude
+ * beside a name rather than a fact about the thing. Stated once, for the six
+ * surfaces `EntityNumber` is drawn on.
+ *
+ * `several` is the answer where a name holds more than one row. It is drawn
+ * quieter still and in the chrome face rather than the monospace one, so *4
+ * rows* cannot be misread as a number the reader can go and look up — the
+ * numbers are on the tooltip.
+ */
+.entity-id {
+  flex: 0 0 auto;
+  color: var(--text-lo-quiet);
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.entity-id.several {
+  font-family: inherit;
+  font-style: italic;
+}
+
+/* The realm's whole answer about the chosen thing, above the matches. */
+.reference-detail {
+  padding: 6px 6px 8px;
+  border-bottom: var(--rule) solid var(--seam);
+  margin-bottom: 4px;
+}
+
+.reference-name {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 4px;
+  color: var(--text-hi);
+  font-weight: 600;
+}
+
+.reference-detail .quiet {
+  color: var(--text-lo-quiet);
+}
+
+/*
+ * What an item does, as a run of `name +value` pairs rather than a row each.
+ *
+ * A ring with six effects would be six rows in the readout and would push the
+ * price and the weight off the panel — the same reason the room's occupants and
+ * its floor are one wrapping value each. `.price` beside each name is the
+ * existing quiet-figure treatment, so a magnitude reads as a magnitude here
+ * exactly as it does on the floor list.
+ */
+.reference-detail .effects {
+  line-height: 1.5;
+}
+
+/*
+ * The rooms behind a spawn group, disclosed under the name that was clicked.
+ *
+ * A block so it takes its own line rather than continuing the run of names —
+ * the row is a sentence of places and these are that place's addresses, which
+ * is a different thing and must not read as more names in the list. The
+ * addresses are the realm's own `map/room`, so they are monospace for the
+ * reason every other figure the realm states is; and they wrap, because a
+ * group runs to twelve of them on a panel whose width is measured from the
+ * room beside the anchor.
+ */
+.reference-detail .spawn-rooms {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 8px;
+  margin: 2px 0 4px;
+  font-family: var(--font-mono);
+}
+
+/*
+ * Where a script hands an item over: one act per line, not a run of names.
+ *
+ * `Sold by` and `Dropped by` are lists and read as one comma-separated
+ * sentence; this is a *sentence per entry* — a verb, a monster, the words, a
+ * room — so two of them run together would read as one act with two places in
+ * it. A block per handover, and the whole thing wraps, on the panel's measured
+ * width.
+ */
+.reference-detail .item-given {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  line-height: 1.5;
+}
+
+/*
+ * What to type, drawn as the line that goes in the console — the same register
+ * and the same reason as `.quest-ask`.
+ */
+.reference-detail .handover-say {
+  color: var(--text-hi);
+  font-family: var(--font-mono);
+  font-size: var(--font-micro);
+}
+
+/*
+ * The words a room answers.
+ *
+ * A phrase is the label and what it does is the value, which is the readout's
+ * ordinary shape — but a phrase is a *control*, so its column is the wider one
+ * here and the conditions wrap under the destination rather than pushing it off.
+ */
+.answers dt {
+  font-family: var(--font-mono);
+}
+
+/*
+ * The slide-out a clicked name opens: the realm's answer about an item
+ * (`.reference-popover`), or one other person (`.player-flyout`).
+ *
+ * Beside the name — right of it where there is room, else left, below, above,
+ * and over it as a last resort — and it slides in from the side it hangs off,
+ * so the motion says where it came from. Over the float layer and under a
+ * popup menu: a menu is the thing being operated, and this is the thing being
+ * read. No blur behind it for the same reason a floating card has none; what
+ * is behind it is usually the game. One base rule for both, so the second
+ * slide-out cannot come out a different shape from the first.
+ */
+.popover {
+  animation: popover-in var(--dur-surface) var(--ease-out) backwards;
+  backdrop-filter: saturate(1.2);
+  -webkit-backdrop-filter: saturate(1.2);
+  background: var(--glass-fill-strong);
+  max-height: min(60vh, 420px);
+  max-width: calc(100vw - 16px);
+  /*
+   * The panel clips and its body scrolls, rather than the panel scrolling.
+   *
+   * The heading used deliberately not to stay put — a sticky heading over a
+   * translucent fill lets the rows scroll through it, and the panel's own
+   * scroll was rare. Both halves of that changed on 2026-09-05: the heading now
+   * carries the **pin, the close glyph and the drag grip**, and a pinned panel
+   * whose close glyph has scrolled out of view is one that cannot be put away
+   * — while the Access face's fifty-seven rows guarantee the scroll. Clipping
+   * at the panel rather than sticking inside it is also what stops the rows
+   * showing through, which was the objection.
+   *
+   * It is what puts the corner sizer in the corner, too: an absolutely
+   * positioned child of a *scrolling* box sits at the bottom of the content,
+   * not of the visible box, so the grip that resizes the panel would have been
+   * reachable only by scrolling to the end of it.
+   */
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 8px 10px 10px;
+  position: fixed;
+  z-index: 55;
+  /*
+   * The width is written on the element by `usePopoverFrame`, from the room
+   * actually beside the name that was clicked (`popoverWidth`). It was a flat
+   * `width: 300px` here, and a panel that narrow turns a monster's sentence
+   * into a column one word wide and twenty lines tall — which the cap above
+   * then puts below the fold, on a screen with room for it three times over.
+   * The fallback is the floor from `internal.yaml`, for the frame that has not
+   * measured yet.
+   */
+  width: 300px;
+}
+
+/*
+ * A panel somebody has dragged a size onto keeps it, in both directions.
+ *
+ * The cap exists to stop an unasked-for panel filling the screen; a size
+ * asked for by hand is not unasked-for, and leaving the cap on would let the
+ * panel be dragged taller and simply not grow.
+ */
+.popover[data-sized='true'] {
+  max-height: none;
+  max-width: none;
+}
+
+/*
+ * While it is being dragged or sized, the pointer is the animation.
+ *
+ * The slide-in is `backwards`-filled off the mount, so it does not re-run —
+ * but a panel whose contents change mid-gesture would otherwise re-enter, and
+ * the transition on anything inside it would lag a pointer that is already
+ * somewhere else.
+ */
+.popover[data-moving='true'] {
+  animation: none;
+  user-select: none;
+}
+
+/*
+ * Pinned: it stays until Escape or its own close glyph, and says so.
+ *
+ * A seam rather than a fill — §9 spends emphasis rather than spraying it, and
+ * a panel that reads as *selected* when all it is is *kept* would be the
+ * loudest thing on a screen with a game on it. The pin glyph in the heading is
+ * the primary statement; this is the edge that makes it legible at a glance
+ * when several are open.
+ */
+.popover[data-pinned='true'] {
+  box-shadow: inset 0 0 0 var(--rule) color-mix(in srgb, var(--accent) 45%, transparent);
+}
+
+/*
+ * The grip and the pin, in a panel's heading.
+ *
+ * The grip is the handle — never the whole heading, which carries the face
+ * pills — so it takes the pointer itself and says so with the cursor. The
+ * corner sizer is the float's own mark, in the float's own corner, so it is
+ * learned once.
+ */
+.popover-grip {
+  cursor: grab;
+  touch-action: none;
+}
+
+.popover[data-moving='true'] .popover-grip {
+  cursor: grabbing;
+}
+
+/* The pin is the one control here that reports a state as well as acting. */
+.popover-pin.on {
+  background: color-mix(in srgb, var(--accent) var(--tone), transparent);
+  color: var(--accent);
+}
+
+/*
+ * Always visible, unlike a card's, which is quiet until the card is pointed at.
+ * A panel over the game has no card edge for the pointer to find a mark on.
+ */
+.popover .popover-sizer::after {
+  opacity: 0.5;
+}
+
+.popover:hover .popover-sizer::after {
+  opacity: 1;
+}
+
+/*
+ * The Reference panel's heading is a *name*, not a label.
+ *
+ * Every other panel's heading is a face pill or the word `GANG`, which the
+ * shared rule draws as micro uppercase with letter-spacing. This one holds
+ * `Sandals of Speed`, which is the realm's own word for a thing and is read
+ * rather than scanned — so it wears what the name row it replaced wore.
+ */
+.reference-popover .popover-head h2 {
+  color: var(--text-hi);
+  font-size: inherit;
+  font-weight: 600;
+  letter-spacing: normal;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-transform: none;
+  white-space: nowrap;
+}
+
+/*
+ * The Reference panel opens taller than the other slide-outs (2026-10-29): a
+ * monster carries MMUD Explorer's figures as well as the realm's, and capped
+ * at 420px most of it was below the fold. It is still kept inside the window
+ * and placed so all of it shows where it fits (`usePopoverFrame`).
+ */
+.reference-popover {
+  max-height: min(85vh, 800px);
+}
+
+.reference-popover .reference-detail {
+  border-bottom: 0;
+  margin-bottom: 0;
+  padding: 0;
+}
+
+/*
+ * A slide-out with faces wears them in its heading, the way a card does —
+ * the same pills, the same badge slot, the same close glyph in the same
+ * corner — because it is the same control and a second look for it would be
+ * a second thing to learn. The close glyph is always drawn rather than
+ * quiet-until-hover as on a card: a panel over the game has to be visibly
+ * dismissable, and there is no card edge for the pointer to find it on.
+ *
+ * Not sticky: a sticky heading over a translucent fill lets the rows scroll
+ * through it, and the panel's faces are short enough that its own scroll is
+ * rare.
+ */
+.popover-head {
+  align-items: center;
+  display: flex;
+  flex: 0 0 auto;
+  gap: 8px;
+  margin: 0 0 6px;
+}
+
+/* Everything the heading is not, and the only part that scrolls. */
+.popover-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+/* Stated here as well as through the heading's own auto margin, so the badge
+   does not sit where it does by accident of a rule about the title. */
+.popover-head .badge {
+  margin-left: auto;
+}
+
+.popover-head h2 {
+  color: var(--text-lo);
+  font-size: var(--font-micro);
+  font-weight: 600;
+  letter-spacing: 0.11em;
+  margin: 0 auto 0 0;
+  text-transform: uppercase;
+}
+
+.player-flyout .readout,
+.gang-flyout .readout,
+.room-peek .readout {
+  margin: 0;
+}
+
+/*
+ * The three questions, under what is known about the person.
+ *
+ * Wrapping, because the panel's width comes from the room beside the anchor
+ * and three labels do not always share a line. A legend rather than a card
+ * heading: this is one row of controls inside a face, not a section of it.
+ */
+.player-asks {
+  align-items: center;
+  border-top: 1px solid var(--rule);
+  display: flex;
+  flex-wrap: wrap;
+  gap: calc(var(--gap) / 2);
+  margin-top: var(--gap);
+  padding-top: var(--gap);
+}
+
+.player-asks-legend {
+  color: var(--text-lo);
+  font-size: var(--font-micro);
+  margin-right: auto;
+  text-transform: uppercase;
+}
+
+/*
+ * The room quick view: what the realm knows about a room nobody is standing
+ * in, opened by a pointer resting on one.
+ *
+ * It has no faces, so its rows run straight down the body: the realm's facts
+ * first, then what the lair spawns under its own heading, then the one thing
+ * to do about the room. The headings are the card's own group headings, so a
+ * panel and a card say *Lair* the same way.
+ */
+/*
+ * Above a dialog's scrim when it hangs off something inside one.
+ *
+ * The popover layer sits at 55, under the palette's scrim at 100 — which is
+ * right for a panel the palette was opened *over*, and wrong for one opened
+ * from a row inside the route panel: a scrim dims what is behind the dialog,
+ * and this is in front of it. Below the settings screen's 110 and everything
+ * above it, which are modal over the whole client.
+ */
+.room-peek[data-over-dialog='true'] {
+  z-index: 105;
+}
+
+/*
+ * One label column for the panel, across the two `<dl>`s in it.
+ *
+ * An `auto` track is sized per container, so the room's facts and the lair's
+ * monsters would each measure their own and the two columns would not line up
+ * — the rule a card keeps by having exactly one `.readout`. They cannot be one
+ * `<dl>`: the lair's rows are `LairList`'s and are drawn identically on the
+ * Room card's own face, where they are the whole readout. So the parent
+ * declares the grid and both take `subgrid`, which is what the rule names as
+ * the remedy for rows that cannot be siblings.
+ */
+.room-peek .peek-facts {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+}
+
+.room-peek .peek-facts > .readout,
+.room-peek .peek-facts > .peek-heading,
+.room-peek .peek-facts > .chip-row,
+.room-peek .peek-facts > .aside,
+.room-peek .peek-facts > .peek-answers {
+  grid-column: 1 / -1;
+}
+
+.room-peek .peek-facts > .readout {
+  display: grid;
+  grid-template-columns: subgrid;
+}
+
+.room-peek .peek-heading {
+  color: var(--text-lo);
+  font-size: var(--font-micro);
+  font-weight: 600;
+  letter-spacing: 0.11em;
+  margin: 12px 0 6px;
+  text-transform: uppercase;
+}
+
+/*
+ * The operative word, wherever this panel says one: the direction a way out
+ * goes, the phrase a room answers to.
+ *
+ * The same register the route list gives it -- mono, firm, small -- and for
+ * the same reason: it is the half of the line a reader is scanning for. It had
+ * none here, so `northwest` and `Sandbar` were drawn identically and the ways
+ * out read as one unpunctuated sentence. Without the route list's `min-width`,
+ * which belongs to a column of steps and not to a word inside a pill.
+ */
+.room-peek .step-command {
+  color: var(--text-hi);
+  font-family: var(--font-mono);
+  font-size: var(--font-micro);
+  font-weight: 600;
+}
+
+/*
+ * The ways out, wrapping as a paragraph rather than stacking one per line: a
+ * junction with four exits is four short facts and a column of them is a panel
+ * twice as tall as the lair it is above.
+ */
+.room-peek .peek-exits {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+/*
+ * **One way out is one bounded thing.** Two of one name -- `northeast Sandbar
+ * northwest Sandbar` -- ran together, because the only thing between a
+ * destination and the next direction was a slightly wider gap than the one
+ * inside the pair. A seam of its own settles it at a glance, at no cost in
+ * height; the arrow inside says which half is the way and which is where it
+ * goes.
+ */
+.room-peek .peek-exit {
+  align-items: baseline;
+  background: color-mix(in srgb, var(--text-lo) var(--tone-wash), transparent);
+  border: var(--rule) solid var(--ink-line);
+  border-radius: var(--r-chip);
+  display: inline-flex;
+  gap: 5px;
+  max-width: 100%;
+  padding: 1px 7px;
+}
+
+/* The way and the mark for it are one token and never break. */
+.room-peek .peek-exit > .step-command,
+.room-peek .peek-exit-arrow {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.room-peek .peek-exit-arrow {
+  color: var(--text-lo-quiet);
+}
+
+/*
+ * The destination is the one part that may wrap, because **nothing is hidden**
+ * and the panel's width comes from the room beside the anchor rather than from
+ * the longest name in it: `Newhaven, Village Entrance` in a pill the panel is
+ * narrower than was cut off mid-word at the edge. It takes a second line
+ * inside its own seam instead.
+ */
+.room-peek .peek-exit-to {
+  color: var(--text-hi);
+  overflow-wrap: anywhere;
+}
+
+.room-peek .peek-answers {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+/*
+ * The one action, separated from the reading above it by a seam rather than by
+ * space alone — everything above is what the room *is*, and this is what to do
+ * about it.
+ */
+.room-peek .peek-actions {
+  border-top: 1px solid var(--ink-line);
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 12px;
+  padding-top: 10px;
+}
+
+/*
+ * A gang's membership, in the panel a clicked gang opens.
+ *
+ * A list and not a `CardTable`: the table rules are for a listing whose length
+ * the player does not control and which has a dimension worth cutting by, and a
+ * gang is neither — it is a handful of names, and a header row plus a find
+ * field above three of them is chrome above content. The same test the Party
+ * card was judged by when it stopped being a table.
+ */
+.gang-members {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+}
+
+.gang-members > li {
+  align-items: baseline;
+  display: flex;
+  gap: 6px;
+  min-width: 0;
+}
+
+/* Somebody who is not logged in reads quieter, the Players card's own rule. */
+.gang-members > li[data-online='false'] .name {
+  color: var(--text-lo-quiet);
+}
+
+/* The level, race and class, which only a gang listing ever fills in. */
+.gang-member-detail {
+  margin-left: auto;
+  white-space: nowrap;
+}
+
+/* Where the facts came from, under the list rather than beside a row. */
+.gang-source {
+  margin: 8px 0 0;
+}
+
+.popover[data-side='right'] {
+  --popover-from: translateX(-8px);
+}
+.popover[data-side='left'] {
+  --popover-from: translateX(8px);
+}
+.popover[data-side='below'] {
+  --popover-from: translateY(-8px);
+}
+.popover[data-side='above'] {
+  --popover-from: translateY(8px);
+}
+.popover[data-side='over'] {
+  --popover-from: scale(0.97);
+}
+
+@keyframes popover-in {
+  from {
+    opacity: 0;
+    transform: var(--popover-from, none);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .popover {
+    animation: none;
+  }
+}
+
+/*
+ * A name that can be looked up, anywhere a card prints one.
+ *
+ * A button so Tab reaches it, styled as the text it replaces so a listing
+ * still reads as a listing — the affordance is the underline offered on
+ * hover, not chrome per name. Colour is inherited: an occupant keeps its
+ * kind's colour, an item stays an item.
+ */
+button.lookup {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: inherit;
+  cursor: pointer;
+  /*
+   * And its height, which is what made the pack look like a form.
+   *
+   * `button` declares `height: var(--control-h)` -- 32px, the size a thing you
+   * click has to be. This resets everything else a button carries and left that
+   * behind, so every row of the pack, the shop's stock and the room's floor was
+   * a 32px control with 12px of text in it: the listing looked double-spaced,
+   * and nothing in the list's own styles said why. A name in a row of text is
+   * text that happens to be clickable, and takes the row's height.
+   */
+  height: auto;
+}
+
+button.lookup:hover,
+button.lookup:focus-visible {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+/*
+ * A single-line box that clips sideways must not clip its own ascenders.
+ *
+ * Every rule below is `overflow: hidden` with an ellipsis, and the clip is the
+ * padding box -- a line box exactly one font tall. Chromium rounds the font's
+ * ascent to whole pixels *down*: at 12px the mono face's 9.47px ascent becomes
+ * a 9px line box, the `b` of `big bugbear captain` is 9.25px tall, and the
+ * synthetic bold and its anti-aliasing add most of another pixel above that.
+ * Photographed at 6x in the built app with the clip on and off (2026-09-17,
+ * todo 09): with no slack the top of the `b` is lost; with a fifth of an em,
+ * comfortably more than the rounding and the emboldening can take together,
+ * the two pictures are identical. So a fifth of an em is given back inside
+ * the clip and taken away again outside it: no row moves, and the letters
+ * are whole. The two boxes of this shape that carry their own padding are
+ * not listed.
+ */
+:is(
+  .progression .step-name,
+  .line-log .text,
+  .route-steps .step-name,
+  .quest-name-cell > button.lookup,
+  .quest-track-head .quiet-note,
+  button.lookup.quest-where,
+  .builder-waypoint .step-name,
+  .trace-reason,
+  .status-rail .detail,
+  .palette li .hint,
+  .loops-modal .loops-group-name,
+  .loops-modal .loop-row-name,
+  .tab-rail .new-character .what,
+  .tab .name,
+  .tab .on,
+  .tab .where,
+  .picker-row .entry > span,
+  .candidates .of,
+  .found .what,
+  .card-table td.wide,
+  .stock .what,
+  .loop-name,
+  .route-steps li.group .step-command,
+  .route-steps .step-fold > .fold-name,
+  .reference .what,
+  .reference-popover .popover-head h2,
+  .realm-title,
+  .player-seen,
+  .remote-name,
+  .settings-entry .hint,
+  .settings-name,
+  .combat-name .name,
+  .party-name,
+  .party-meter-value,
+  .rewrite-list .rewrite-name,
+  .rewrite-tag .hint,
+  .settings-saving,
+  .home-browser-name,
+  .quest-banner-title,
+  .quest-banner-detail,
+  .quest-banner-name
+) {
+  margin-block: -0.2em;
+  padding-block: 0.2em;
+}
+
+/*
+ * Putting a card back, at the top of the rail where its gap is. Present only
+ * while something is away, so it is a control that disappears rather than a
+ * permanent row of chrome above the instrument.
+ */
+.card-picker {
+  display: flex;
+}
+
+.card-picker .chip {
+  /*
+   * One control, and the third of the three bands across the top of the
+   * window. It fills the band so the row lines up with the rail head and the
+   * toolbar strip -- `npm run smoke` measures the three against each other.
+   *
+   * It was a chip *per card*, wrapping. A rail ships with six cards put away
+   * and every close adds one, so the band grew into three rows of buttons
+   * above the instrument and pushed every card on the rail down with it. The
+   * cards live in a list behind this now.
+   */
+  align-items: center;
+  display: inline-flex;
+  gap: 6px;
+  height: var(--topbar-h);
+  padding: 0 10px;
+  border: 0;
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--font-micro);
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.card-picker .chip .icon {
+  height: 12px;
+  stroke-width: 1.9;
+  width: 12px;
+}
+
+.card-picker .chip:hover,
+.card-picker .chip:focus-visible {
+  background: color-mix(in srgb, var(--accent) var(--tone), transparent);
+  color: var(--accent);
+}

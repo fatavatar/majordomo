@@ -1,0 +1,151 @@
+/* ================================================================ terminal */
+
+/*
+ * The slate. The frame participates in the bento grid; the ground inside it is
+ * opaque black with no radius, no blur and no animation. Nothing in this block
+ * may become translucent.
+ */
+.terminal-cell {
+  background: var(--ink-slate);
+  border: 1px solid var(--ink-line);
+  border-radius: var(--r-card);
+  min-width: 0;
+  overflow: hidden;
+  /*
+   * The breathing room lives here, on the mount's *parent*, and that is not a
+   * style choice.
+   *
+   * `FitAddon` measures the height of the element containing the terminal and
+   * subtracts only the padding of the terminal's own element -- the parent's
+   * padding is invisible to it. Padding on `.terminal-mount` therefore did not
+   * reduce the space the addon thought it had, so it proposed one row too many
+   * and the last line was clipped by exactly the padding: 1320px of rows in
+   * 1317px of room, and the bottom of the console cut off.
+   *
+   * Moving it out here makes the mount's height already exclude it, so what the
+   * addon measures is what there really is.
+   */
+  padding: 6px 8px;
+  position: relative;
+}
+
+.terminal-mount {
+  /*
+   * The console font, not the chrome font. `ui.font` is allowed to be
+   * proportional; nothing inside this element ever is. xterm sets the same
+   * stack on its own instance, so this governs the DOM-renderer fallback and
+   * makes the resolved stack visible to tests.
+   *
+   * No padding: it belongs on `.terminal-cell`, or the fit addon cannot see it.
+   */
+  font-family: var(--font-terminal, var(--font-dos));
+  height: 100%;
+  width: 100%;
+}
+
+.jump-latest {
+  animation: jump-enter var(--dur-control) var(--ease-out);
+  background: var(--marker);
+  border-color: transparent;
+  border-radius: var(--r-pill);
+  bottom: 16px;
+  box-shadow: var(--elev-2);
+  color: var(--on-accent);
+  font-weight: 600;
+  position: absolute;
+  right: 24px;
+  z-index: 5;
+}
+
+/*
+ * The Talk card's own (todo 10). The console's button, placed against the
+ * card's body rather than the workspace: the card is the positioned box, and
+ * the composer sits under the log, so it rides above that rather than over it.
+ */
+.talk-jump {
+  bottom: 56px;
+  right: 16px;
+}
+
+/*
+ * And the log manages its own scrolling, so the browser must not.
+ *
+ * Scroll anchoring moves `scrollTop` to keep what is on screen still when
+ * content changes above it — which for a feed that drops its oldest line every
+ * time a new one arrives means the box quietly stops being at the live edge,
+ * and the card reads that as the reader having scrolled away (todo 10).
+ */
+.conversation-log {
+  overflow-anchor: none;
+}
+
+.jump-latest:hover:not(:disabled) {
+  background: var(--marker);
+  border-color: transparent;
+  color: var(--on-accent);
+  filter: brightness(1.06);
+}
+
+.jump-latest:active {
+  box-shadow: var(--elev-1);
+  transform: translateY(1px);
+}
+
+@keyframes jump-enter {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+
+/* ============================================================ traffic log */
+
+.telnet-log {
+  display: flex;
+  flex-direction: column;
+  font-family: var(--font-mono);
+  font-size: var(--font-micro);
+  gap: 1px;
+  line-height: 1.6;
+}
+
+.telnet-log .row {
+  border-left: var(--rule) solid transparent;
+  display: flex;
+  gap: 8px;
+  padding-left: 6px;
+  white-space: nowrap;
+}
+
+/* Newest row washes with its direction colour, then decays. Attention, once. */
+.telnet-log .row.fresh {
+  animation: row-wash var(--dur-enter) var(--ease-out);
+}
+
+@keyframes row-wash {
+  from {
+    background: color-mix(in srgb, var(--accent) 18%, transparent);
+  }
+}
+
+.telnet-log .row.in {
+  border-left-color: color-mix(in srgb, var(--accent) 55%, transparent);
+}
+
+.telnet-log .row.out {
+  border-left-color: color-mix(in srgb, var(--marker) 45%, transparent);
+}
+
+/* Direction is a glyph as well as a hue, so it survives colour blindness. */
+.telnet-log .dir {
+  color: var(--text-lo);
+  user-select: none;
+}
+
+.telnet-log .row.in .dir {
+  color: var(--accent);
+}
+
+.telnet-log .row.out .dir {
+  color: var(--marker);
+}

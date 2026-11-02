@@ -1,0 +1,230 @@
+/* ------------------------------------------------------------------------ */
+/* The debug window                                                         */
+/* ------------------------------------------------------------------------ */
+
+/*
+ * What the client is doing, over the console rather than instead of it.
+ *
+ * Absolutely positioned against `.terminal-layers`, which keeps the terminals
+ * mounted and *laid out* underneath: unmounting one would rebuild its
+ * scrollback and parser state, and resizing the console would go out over NAWS
+ * and re-wrap a scrollback nobody asked to re-wrap. The docked strips overlay
+ * for the same reason.
+ *
+ * Against the layers and **not** the whole stack: the toolbar is docked above
+ * the console, and somebody reading a trace has not stopped wanting the switch
+ * that turns automation off.
+ *
+ * Opaque rather than glass. Every other surface in this client is translucent,
+ * and this one is read *instead of* the console rather than beside it — a trace
+ * with the game showing through it is two streams of monospace text in the same
+ * pixels, which is the one place translucency stops being a look and starts
+ * being illegibility.
+ */
+.debug-view {
+  background: var(--ink-card);
+  border-radius: var(--r-card);
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  left: 0;
+  min-height: 0;
+  position: absolute;
+  right: 0;
+  top: 0;
+  z-index: 4;
+}
+
+.debug-head {
+  align-items: center;
+  display: flex;
+  flex: 0 0 auto;
+  gap: 8px;
+  padding: var(--pad-card) calc(var(--pad-card) + 16px) 6px var(--pad-card);
+}
+
+.debug-head h2 {
+  color: var(--text-lo);
+  flex: 0 0 auto;
+  font-size: var(--font-micro);
+  font-weight: 600;
+  letter-spacing: 0.11em;
+  margin: 0;
+  text-transform: uppercase;
+}
+
+/* The pipeline, left to right. Every kind is always present — the map
+   legend's rule: a row that grew a chip the first time a rule fired would
+   change width while somebody was reading it. */
+.debug-kinds {
+  display: flex;
+  flex: 1 1 auto;
+  flex-wrap: wrap;
+  gap: 4px;
+  min-width: 0;
+}
+
+.debug-kind {
+  cursor: pointer;
+}
+
+/*
+ * One hue per kind, and the kind's own chip wears it too — so the colour in
+ * the filter row is the colour in the log, which is what makes a row findable
+ * by the chip somebody just pressed.
+ *
+ * The hues are the client's existing vocabulary rather than a new palette:
+ * `--accent` is this character and what it does, `--ok` is the realm's own
+ * confirmation, `--pending` is something in flight, `--danger` is trouble,
+ * `--marker` is the link. Nothing here invents a colour, and nothing here
+ * states a condition by hue alone: every row carries its kind in words in its
+ * own column.
+ */
+.debug-row[data-kind='in'],
+.debug-kind[data-kind='in'] {
+  --debug-hue: var(--text-lo);
+}
+.debug-row[data-kind='line'],
+.debug-kind[data-kind='line'] {
+  --debug-hue: var(--marker);
+}
+.debug-row[data-kind='block'],
+.debug-kind[data-kind='block'] {
+  --debug-hue: var(--ok);
+}
+.debug-row[data-kind='state'],
+.debug-kind[data-kind='state'] {
+  --debug-hue: var(--pending);
+}
+.debug-row[data-kind='event'],
+.debug-kind[data-kind='event'] {
+  --debug-hue: var(--accent);
+}
+.debug-row[data-kind='out'],
+.debug-kind[data-kind='out'] {
+  --debug-hue: var(--accent);
+}
+.debug-row[data-kind='link'],
+.debug-kind[data-kind='link'] {
+  --debug-hue: var(--text-lo-quiet);
+}
+.debug-row[data-kind='notice'],
+.debug-kind[data-kind='notice'] {
+  --debug-hue: var(--danger);
+}
+
+.debug-kind[aria-pressed='true'] {
+  background: color-mix(in srgb, var(--debug-hue) var(--tone), transparent);
+  color: var(--debug-hue);
+}
+
+.debug-find {
+  flex: 0 1 200px;
+  font-size: var(--font-micro);
+  min-width: 0;
+}
+
+/* The hold takes the field's track; the input fills it. See `.field-hold`. */
+.debug-head > .field-hold {
+  flex: 0 1 200px;
+}
+
+.debug-head .field-hold > .debug-find {
+  flex: 1 1 auto;
+}
+
+/* What is not on screen, and how to get it back — the narrowed-table rule,
+   and it matters more here: somebody reading this is trying to find out what
+   happened, and a filtered trace that does not say so is one that lies. */
+.debug-status {
+  align-items: center;
+  color: var(--text-lo-quiet);
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  font-size: var(--font-micro);
+  gap: 10px;
+  padding: 0 var(--pad-card) 6px;
+}
+
+.debug-saved {
+  color: var(--ok);
+}
+
+.debug-failed {
+  color: var(--danger);
+}
+
+/*
+ * The trace. Fixed-pitch and never proportional, for the console's own reason:
+ * these rows hold the server's bytes with their escape sequences made visible,
+ * and a proportional face makes two records that differ by one control byte
+ * look identical.
+ */
+.debug-log {
+  flex: 1 1 0;
+  font-family: var(--font-mono);
+  font-size: var(--font-micro);
+  line-height: 1.45;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: 0 var(--pad-card) var(--pad-card);
+  /* The gutter is reserved for the reason the rail's is: a trace that starts
+     and stops overflowing re-lays out every row at two widths. */
+  scrollbar-gutter: stable;
+}
+
+/*
+ * `auto` on the time, the kind and the tag, then the rest — one grid for the
+ * whole log, so the columns line up down it. That is the `.readout` rule
+ * applied to a listing: alignment by accident stops being true the first time
+ * a row is different, and here every row is different.
+ */
+.debug-row {
+  border-left: 2px solid color-mix(in srgb, var(--debug-hue) 55%, transparent);
+  display: grid;
+  gap: 0 10px;
+  grid-template-columns: auto auto auto minmax(0, 1fr);
+  padding: 1px 0 1px 8px;
+}
+
+.debug-row:hover {
+  background: color-mix(in srgb, var(--debug-hue) var(--tone-weak), transparent);
+}
+
+.debug-row .at {
+  color: var(--text-lo-quiet);
+  white-space: nowrap;
+}
+
+.debug-row .kind {
+  color: var(--debug-hue);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.debug-row .tag {
+  color: var(--text-lo);
+  white-space: nowrap;
+}
+
+/*
+ * The one column that may wrap, and it must: a record is a line of the game
+ * with its escapes shown, and a trace that scrolled sideways would put the
+ * evidence off the right-hand edge. `anywhere`, because an escape sequence has
+ * no spaces in it to break at.
+ */
+.debug-row .what {
+  color: var(--text-hi);
+  min-width: 0;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+/* The second half of a record — the plain text under a raw line, the groups a
+   pattern pulled out — quiet, on its own line, under the thing it explains. */
+.debug-row .detail {
+  color: var(--text-lo-quiet);
+  display: block;
+}

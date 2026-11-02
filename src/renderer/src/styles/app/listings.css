@@ -1,0 +1,442 @@
+/* ======================================= a card that states a long listing */
+
+/*
+ * A pack, a roster, a shop's stock: listings whose length the player does not
+ * control, and which each grew their own markup with their own alignment. A
+ * column of weights only lined up because `.carried` said `margin-left: auto`,
+ * which is alignment by accident -- it stops the first time a row is different.
+ * One `<table>` instead, sized by the browser from the rows it actually holds:
+ * the `.readout` rule one card further out.
+ *
+ * The tools stay put and the table scrolls under them, which is why every card
+ * using one is `paned`. A filter that scrolls away is reached for exactly when
+ * it cannot be.
+ */
+.table-tools {
+  align-items: center;
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+/*
+ * The find field: a pill rather than a boxed input, because it sits inside a
+ * card rather than in a form. The ring is on the pill, so focus is stated once.
+ */
+/*
+ * A find field and its clear, which is one box however the field around it is
+ * laid out.
+ *
+ * The button is positioned over the field's own trailing padding rather than
+ * laid out beside the input, for one reason: it appears only while something is
+ * typed, and a control that takes a track would make every one of these fields
+ * change width the first time somebody used it. The hold takes whatever the
+ * input's `flex` was in each of the seven places one of these lives, and the
+ * input inside it fills the hold.
+ */
+.field-hold {
+  align-items: center;
+  display: flex;
+  flex: 1 1 auto;
+  gap: 2px;
+  min-width: 0;
+}
+
+.field-hold > input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/*
+ * Laid out beside the input, never over it.
+ *
+ * It was an overlay with `padding-inline-end` on the input keeping the caret
+ * clear of the glyph — and every one of the seven fields sets its own padding
+ * at equal or greater specificity, so `.table-find input { padding: 0 }` simply
+ * won and the caret ran under it. `npm run smoke` measured that. A laid-out
+ * button needs no padding from anybody; it keeps its box while the field is
+ * empty (`visibility`, not `display`) so the field still never changes width.
+ */
+.field-clear {
+  align-items: center;
+  color: var(--text-lo-quiet);
+  display: flex;
+  flex: 0 0 auto;
+  height: 18px;
+  justify-content: center;
+  padding: 0;
+  width: 18px;
+}
+
+.field-clear[data-empty='true'] {
+  pointer-events: none;
+  visibility: hidden;
+}
+
+.field-clear:hover,
+.field-clear:focus-visible {
+  color: var(--text-hi);
+}
+
+.field-clear svg {
+  height: 14px;
+  width: 14px;
+}
+
+.table-find {
+  align-items: center;
+  background: color-mix(in srgb, var(--ink-line) 45%, transparent);
+  border: var(--rule) solid transparent;
+  border-radius: var(--r-pill);
+  color: var(--text-lo-quiet);
+  display: flex;
+  /*
+   * Along the row, never down the card.
+   *
+   * The Talk card puts one of these straight into a `paned` body, which is a
+   * *column* — where `flex-basis` is a height, and `1 1 9em` made the find
+   * field nine ems tall with a 24px input floating in it. The basis belongs to
+   * the tools row, which is the only place the field shares an axis with
+   * anything.
+   */
+  flex: 0 0 auto;
+  gap: 5px;
+  min-width: 0;
+  padding: 0 8px;
+}
+
+.table-tools > .table-find {
+  flex: 1 1 9em;
+}
+
+.table-find:focus-within {
+  border-color: var(--accent);
+}
+
+.table-find svg {
+  flex: 0 0 auto;
+  height: 13px;
+  width: 13px;
+}
+
+.table-find input {
+  background: none;
+  border: 0;
+  color: var(--text-hi);
+  flex: 1 1 auto;
+  font: inherit;
+  font-size: var(--font-micro);
+  height: calc(var(--control-h) - 8px);
+  min-width: 0;
+  padding: 0;
+}
+
+.table-find input:focus {
+  outline: none;
+}
+
+.table-facets {
+  display: flex;
+  flex: 0 1 auto;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+/*
+ * What a filtered table is hiding, and the way back.
+ *
+ * Present only while something *is* hidden, which is the moment it means
+ * something -- and it is what keeps a remembered filter honest: a pack narrowed
+ * to `key` a fortnight ago opens narrowed, and without this line the card would
+ * simply look like a pack with three things in it.
+ */
+.table-count {
+  align-items: center;
+  color: var(--text-lo-quiet);
+  display: flex;
+  flex: 0 0 auto;
+  font-size: var(--font-micro);
+  gap: 4px;
+}
+
+.table-count button {
+  font-size: var(--font-micro);
+  height: auto;
+  padding: 1px 6px;
+}
+
+.card-table {
+  border-collapse: collapse;
+  color: var(--text-lo);
+  font-size: var(--font-micro);
+  table-layout: auto;
+  width: 100%;
+}
+
+/*
+ * The heading stays while the rows move: a column somebody has just sorted by
+ * is one they are about to scroll, and a header that leaves takes the only
+ * statement of which way it is pointed with it.
+ */
+.card-table thead th {
+  /*
+   * Solid on the rail, and as see-through as the card that holds it when that
+   * card is floating -- `--card-alpha` is set by the float and absent
+   * everywhere else, so one declaration covers both and there is no ancestor
+   * class to keep in step. Without it the one opaque strip on a see-through
+   * card would be the row of column names.
+   */
+  background: color-mix(in srgb, var(--ink-card) var(--card-alpha, 100%), transparent);
+  border-bottom: var(--rule) solid var(--ink-line);
+  color: var(--text-lo-quiet);
+  font-size: var(--font-micro);
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  padding: 0 6px 3px;
+  position: sticky;
+  text-align: left;
+  text-transform: uppercase;
+  top: 0;
+  white-space: nowrap;
+  z-index: 1;
+}
+
+.card-table th.numeric,
+.card-table td.numeric {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+/*
+ * A column of controls, not of text.
+ *
+ * Every other cell is `vertical-align: baseline`, which is right for text and
+ * wrong for a glyph: `.row-action` is an `inline-flex` around an SVG, and a
+ * flex box's baseline is the bottom of its box, so aligning it to the row's
+ * text baseline hung the equip glyph clear above the item it belongs to. That
+ * is the `.readout` baseline failure one level out -- a value whose line box is
+ * not a line of text does not share a baseline with the label naming it.
+ *
+ * `middle` centres the glyph on the row's own line box, so the alignment is
+ * still measured from the type rather than from a number written here. The
+ * heading takes it too, by the rule `columnClassName` already encodes: a
+ * modifier that reached the cells and not the head is a column that stopped
+ * lining up with the word above it.
+ */
+.card-table th.control,
+.card-table td.control {
+  text-align: center;
+  width: 0;
+}
+
+/*
+ * The glyph is centred on the *text* of its row, and getting there took four
+ * measured attempts -- which is the whole reason `npm run smoke` reads the
+ * boxes here instead of trusting what this file says.
+ *
+ * The control is an `inline-flex` whose only child is a 14px SVG, and a flex
+ * container builds **no line box**: `line-height` on it does nothing at all, so
+ * the box is the glyph's own 14px whatever is declared. An inline-level box
+ * sits on the text baseline by its *bottom* edge, which put every pixel of the
+ * glyph above the line -- the reported misalignment.
+ *
+ * Measured at the pack's own type size: the cell runs 716-734 and the item's
+ * text runs 723-733. Three spellings that look right are not, and all three
+ * were tried: `vertical-align: middle` on the cell is 2px high (`middle` is a
+ * typographic middle -- the baseline plus half an x-height, not the middle of
+ * anything); centring on the row is 4px high, because text is seated on a
+ * baseline with descender space beneath it and is therefore never centred in
+ * its own row; and inheriting `line-height` does nothing, for the reason above.
+ *
+ * What works is giving the box the **text's own line height** so the two boxes
+ * are the same size, at which point sitting on the same baseline centres them
+ * on each other. `1lh` is exactly that and nothing else: one line of whatever
+ * type the row is set in, resolved by the browser from the row's own
+ * `line-height`. No pixel constant enters -- the card is resizable and
+ * `App.tsx` overwrites the typography tokens at runtime, so a number here would
+ * be wrong for somebody, which is the rule the purse row already records.
+ */
+.card-table td.control .row-action {
+  height: 1lh;
+  /*
+   * Both halves are needed and neither works alone.
+   *
+   * `height: 1lh` makes the control's box exactly one line of the row's own
+   * type -- the same box the item's name occupies. But an inline-level box is
+   * seated on the text baseline by its **bottom edge**, and a flex container
+   * has no baseline of its own to offer instead, so a correctly-sized box still
+   * sat 4px high: its bottom on the baseline puts its top above the text's top.
+   *
+   * `vertical-align: middle` is what pairs with it. It is the wrong answer on
+   * its own -- a typographic middle, the baseline plus half an x-height, which
+   * measured 2px out -- but against a box that is already exactly one line
+   * tall, centring it on the line is centring it on the text.
+   */
+  vertical-align: middle;
+}
+
+/* One column takes what the others leave, so the figures keep their edge. */
+.card-table th.wide {
+  width: 100%;
+}
+
+/*
+ * And it yields rather than pushing the table past the card. An auto-layout
+ * table will not shrink a cell below its content's own width, and a name
+ * that does not wrap is a content width — so a long enough item name widened
+ * the whole table and the scroll region grew a horizontal scrollbar under
+ * it. `max-width: 0` lets the column be sized by what the others leave, and
+ * the name is cut with an ellipsis where it does not fit; the full name is
+ * on the row's own tooltip and the realm's panel a click away.
+ */
+/*
+ * A chip in a cell is one phrase, never two lines (2026-10-24): the Hunting
+ * card's `up to 554,358` broke into a box two lines tall beside a one-line row.
+ */
+.card-table td .chip {
+  white-space: nowrap;
+}
+
+.card-table td.wide {
+  max-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* A table never scrolls sideways: see `CardTable`. */
+.table-scroller {
+  /*
+   * What a narrow table measures itself against (2026-10-24): its own box,
+   * which holds the table and nothing positioned that a containing block
+   * would move — the reason `.readout-box` is a wrapper of its own.
+   */
+  container-type: inline-size;
+  overflow-x: hidden;
+}
+
+/* MME's `buy / sell`, one phrase on one line where the card has room for it. */
+.card-table .item-value {
+  white-space: nowrap;
+}
+
+/* A column that steps aside on a narrow card, for the one that names the row. */
+@container (max-width: 48ch) {
+  .card-table .optional {
+    display: none;
+  }
+}
+
+.card-table th button.sort {
+  background: none;
+  border: 0;
+  box-shadow: none;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  height: auto;
+  letter-spacing: inherit;
+  padding: 0;
+  text-transform: inherit;
+}
+
+.card-table th button.sort:hover {
+  background: none;
+  border: 0;
+  color: var(--text-hi);
+}
+
+.card-table th .arrow {
+  margin-left: 3px;
+}
+
+.card-table td {
+  border-radius: var(--r-chip);
+  padding: 1px 6px;
+  vertical-align: baseline;
+}
+
+/* Only for the eye running down a long listing; never a statement of fact. */
+.card-table tbody tr:hover td {
+  background: color-mix(in srgb, var(--text-lo) 7%, transparent);
+}
+
+/*
+ * The row whose person the Player flyout is showing.
+ *
+ * A tonal fill on the *row*, never a colour on the name, because the name is
+ * already carrying a fact: on the Realm card it is `--danger` for a hostile and
+ * quietened for somebody offline on the Players card, and a selection that
+ * recoloured it would take that statement away from exactly the rows most
+ * likely to be clicked. Tonal because §9 spends emphasis once, and after the
+ * hover rule so a selected row that is also pointed at still says which it is.
+ */
+.card-table tbody tr[data-selected] td {
+  background: color-mix(in srgb, var(--accent) var(--tone-weak), transparent);
+}
+
+/*
+ * A shelf's head, over the rows it holds (`CardTable.groups`).
+ *
+ * The column headings' own register — micro, upper-case, quiet, a seam under
+ * it — one step down: it names a part of the listing the way they name a
+ * column, and a second weight for it would be a second kind of heading. Not
+ * sticky, because two stacked sticky rows on a card two hundred pixels tall
+ * would be most of the card. A shelf after the first takes air above its
+ * head, which is the whole of the separation between shelves: a rule across
+ * a table already made of rows reads as one more row.
+ */
+.card-table .table-group th {
+  border-bottom: var(--rule) solid var(--ink-line);
+  color: var(--text-lo-quiet);
+  font-size: var(--font-micro);
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  padding: 4px 6px 2px;
+  text-align: left;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.card-table tbody + tbody .table-group th {
+  padding-top: 12px;
+}
+
+/* How many are on the shelf: the figure the facet chips carry, in their place. */
+.table-group-count {
+  font-family: var(--font-mono);
+  font-weight: 400;
+  letter-spacing: 0;
+  margin-left: 6px;
+}
+
+/* Read aloud, never drawn: the caption names the table for anything reading
+   the screen, and the card's heading says the same thing to everyone else. */
+.sr-only {
+  clip-path: inset(50%);
+  height: 1px;
+  overflow: hidden;
+  position: absolute;
+  white-space: nowrap;
+  width: 1px;
+}
+
+.carried .what,
+.stock .what {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/*
+ * What is worn or wielded, set apart from what is merely in the pack.
+ *
+ * Tonal, per §9 — the accent at low opacity with the accent as the text, so one
+ * recipe works in both themes — and never colour alone: the slot is *named*
+ * beside it, which is the whole reason it is worth showing.
+ */
+.carried tr[data-equipped='true'] td {
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  color: var(--text);
+}

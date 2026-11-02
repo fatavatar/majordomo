@@ -1,6 +1,6 @@
-import fs from 'node:fs';
-import path from 'node:path';
 import { describe, expect, it } from 'vitest';
+
+import { windowStylesheet } from './stylesheet';
 
 /**
  * A toggle that never says which way it is held.
@@ -24,12 +24,9 @@ import { describe, expect, it } from 'vitest';
  * Read out of the two sources rather than restated here, for the reason that
  * test gives: a copy of either half is a third half to keep in step.
  */
-const root = path.resolve(__dirname, '..', '..', '..', '..', '..');
-const read = (file: string): string => fs.readFileSync(path.join(root, file), 'utf8');
-
 describe('a chip that is a control says which way it is held', () => {
   it('draws its pressed state from the stylesheet', () => {
-    const css = read('src/renderer/src/styles/index.css');
+    const css = windowStylesheet();
     expect(css).toMatch(/\.chip\.pick\[aria-pressed='true']\s*\{/);
   });
 });

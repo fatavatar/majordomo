@@ -1,0 +1,247 @@
+/* ======================================================= loop builder card */
+
+/*
+ * Taller than the other rail cards, because it is a map with a list under it
+ * and controls under that; it ships as a float sized to most of the workspace
+ * (`openBuilder`), and this is the box it gets when somebody docks it.
+ */
+.rail > .loop-builder-card,
+.stable-card > .loop-builder-card {
+  --card-h: 520px;
+}
+
+.loop-builder-card > .body.paned {
+  gap: 6px;
+}
+
+.builder-tools {
+  align-items: center;
+  display: flex;
+  flex: 0 0 auto;
+  gap: 4px;
+}
+
+.builder-tools input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.builder-tools > .field-hold {
+  flex: 1 1 auto;
+}
+
+/* The undo, redo and centre glyphs: square, quiet, one row of tools. */
+.builder-key {
+  align-items: center;
+  display: flex;
+  flex: 0 0 auto;
+  height: var(--control-h);
+  justify-content: center;
+  padding: 0;
+  width: var(--control-h);
+}
+
+.builder-matches {
+  flex: 0 0 auto;
+  max-height: 120px;
+  overflow-y: auto;
+}
+
+/*
+ * The picture takes the larger share and the list the rest; both flex from
+ * zero so neither is sized from its contents — the rule `.card > .body`
+ * already follows, for the layout cost it found. The window inside fills it.
+ */
+.builder-map {
+  display: flex;
+  flex: 3 1 0;
+  flex-direction: column;
+  min-height: 120px;
+}
+
+.loop-builder-card .builder-list {
+  flex: 2 1 0;
+  min-height: 60px;
+}
+
+.builder-waypoints {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.builder-waypoint {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  padding: 2px 0;
+}
+
+/* The place in the list, ringed the way the room is on the map. */
+.builder-index {
+  align-items: center;
+  border: 0.8px solid var(--ok);
+  border-radius: 50%;
+  color: var(--ok);
+  display: inline-flex;
+  flex: 0 0 auto;
+  font-family: var(--font-mono);
+  font-size: var(--font-micro);
+  font-weight: 600;
+  height: 18px;
+  justify-content: center;
+  width: 18px;
+}
+
+.builder-waypoint[data-kind='start'] .builder-index {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.builder-waypoint .step-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The commands typed at a waypoint (2026-10-23), under its name, in the console's face. */
+.builder-commands {
+  font-family: var(--font-mono);
+  font-size: var(--font-micro);
+  margin: 0 0 2px 26px;
+  width: calc(100% - 26px);
+}
+
+/* What a leg needs, indented under the waypoint it leads to. */
+.builder-leg {
+  display: flex;
+  flex-direction: column;
+  font-size: var(--font-micro);
+  gap: 2px;
+  padding: 2px 0 2px 26px;
+}
+
+.builder-note {
+  align-items: center;
+  display: flex;
+  gap: 6px;
+}
+
+.builder-note .step-command {
+  color: var(--text-hi);
+  font-family: var(--font-mono);
+  font-weight: 600;
+}
+
+.builder-hint {
+  font-size: var(--font-micro);
+  padding: 4px 0;
+}
+
+.builder-foot {
+  align-items: center;
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.builder-foot input {
+  flex: 1 1 140px;
+  min-width: 0;
+}
+
+.builder-destination {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 4px;
+}
+
+/* The saved loop being edited, which the save replaces: a line of its own. */
+.builder-editing {
+  align-items: center;
+  color: var(--text-lo);
+  display: flex;
+  flex-basis: 100%;
+  font-size: var(--font-micro);
+  gap: 4px;
+}
+
+.builder-status {
+  color: var(--text-lo);
+  flex-basis: 100%;
+  font-size: var(--font-micro);
+  margin: 0;
+}
+
+/*
+ * The builder's rings on the map: the start in the danger red the request
+ * asked for, a pick in `--ok` and a room merely walked through in the same
+ * green at a lighter stroke, so the two greens say which rooms were chosen
+ * and which the planner filled in. All three sit behind the room's shape and
+ * take no pointer, like the route halo they are modelled on.
+ */
+.map-start {
+  fill: none;
+  pointer-events: none;
+  stroke: var(--danger);
+}
+
+.map-pick {
+  fill: none;
+  pointer-events: none;
+  stroke: var(--ok);
+}
+
+.map-through {
+  fill: none;
+  opacity: 0.7;
+  pointer-events: none;
+  stroke: var(--ok);
+  /* Dashed where a clicked room's ring is solid: the two greens are told
+     apart by shape as well as weight, which at the densest zoom is all that
+     tells them apart at all (§6). */
+  stroke-dasharray: 1.2 1;
+}
+
+/*
+ * A way out that leaves the plane, as a control: the chevron the room wears
+ * on every other map, or the teleport's ring, on a hit target big enough to
+ * point at. The marker's hue at rest — it is a way, like the corridor's
+ * marker bar — and the accent under the pointer, which is what every other
+ * map control does.
+ */
+.map-away {
+  cursor: pointer;
+}
+
+.map-away:focus {
+  outline: none;
+}
+
+.map-away-hit {
+  fill: transparent;
+}
+
+.map-away {
+  --mark: var(--marker);
+}
+
+.map-away:hover,
+.map-away:focus-visible {
+  --mark: var(--accent);
+}
+
+/* A way out with something in it — a door on the stairs, a level a portal
+   wants — wears a bar across its glyph, the corridor's own mark for a shut
+   passage, in the obstacle bar's hue; the title says what with. */
+.map-away[data-gated] {
+  --mark: var(--pending);
+}
+
+.map-away-bar {
+  stroke: var(--pending);
+  stroke-linecap: round;
+}

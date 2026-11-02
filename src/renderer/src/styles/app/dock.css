@@ -1,0 +1,289 @@
+/* ------------------------------------------------- cards docked to the console */
+
+/*
+ * A strip of cards above or below the console.
+ *
+ * The placement a floating card cannot give: it does not cover the game. Asked
+ * for in TODO.md for conversation, and general because the drag machine that
+ * puts a card here does not care which card it is.
+ *
+ * Horizontal, because rows are cheap and columns are not — the console needs 80
+ * of them and no server in this family will format to fewer, so a strip that
+ * took width would be the one layout choice that shears every map.
+ */
+.dock {
+  display: flex;
+  flex: 0 0 auto;
+  gap: var(--gap);
+  min-height: 0;
+}
+
+/* Fixed, like every other docked card: the console must not resize because
+   somebody said something. */
+.dock {
+  /* The handle on a strip's console edge is positioned against it. */
+  position: relative;
+}
+
+.dock-above > .card {
+  height: var(--dock-above-h, 180px);
+}
+
+.dock-below > .card {
+  height: var(--dock-below-h, 180px);
+}
+
+.dock > .card {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+/*
+ * A strip's handle sits in the gap between it and the console, the same way
+ * the rail's sits in its track: the gap is the handle. Horizontal, so the hit
+ * area reaches 24px *tall* and the seam runs across.
+ */
+.dock > .splitter {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: var(--gap);
+  cursor: row-resize;
+}
+
+.dock-above > .splitter {
+  bottom: calc(var(--gap) * -1);
+}
+
+.dock-below > .splitter {
+  top: calc(var(--gap) * -1);
+}
+
+.dock > .splitter::before {
+  inset: calc((24px - var(--gap)) / -2) 0;
+}
+
+.dock > .splitter::after {
+  top: 50%;
+  bottom: auto;
+  left: 0;
+  right: 0;
+  width: auto;
+  height: 2px;
+  margin-left: 0;
+  margin-top: -1px;
+}
+
+.dock > .card > .body:not(.paned) {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+/*
+ * An empty strip exists only while a drag is running, as somewhere to drop —
+ * and it *overlays* the console rather than taking rows from it.
+ *
+ * Taking rows would resize the terminal twice per gesture, once when the strip
+ * appears and once when it goes; a terminal resize goes out over NAWS and
+ * re-wraps a scrollback nobody asked to re-wrap. Docking a card for real does
+ * resize it, once, which is the change somebody actually asked for.
+ */
+.dock[data-empty] {
+  align-items: center;
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  border: 1px dashed color-mix(in srgb, var(--accent) var(--tone-strong), transparent);
+  border-radius: var(--r-card);
+  height: 64px;
+  justify-content: center;
+  left: 0;
+  position: absolute;
+  right: 0;
+  z-index: 45;
+}
+
+.dock-above[data-empty] {
+  top: 0;
+}
+
+.dock-below[data-empty] {
+  bottom: 0;
+}
+
+/* The gap runs across the lane, so in a strip it takes the card's width. */
+.dock > .rail-slot {
+  height: auto;
+  width: var(--slot-w, 240px);
+}
+
+/*
+ * A path plus the picker that fills it in — and, for Realm, a select
+ * plus the button that jumps to editing what it points at, which is the same
+ * shape: one control naming a thing, one action beside it that goes to manage
+ * the thing itself.
+ */
+.settings-file {
+  display: flex;
+  gap: 6px;
+  min-width: 0;
+}
+
+.settings-file input,
+.settings-file select {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.settings-file .quiet {
+  flex: 0 0 auto;
+}
+
+/* The warning that travels with the panic button reads as prose, not a label. */
+.settings-menus em.hint code {
+  background: color-mix(in srgb, var(--ink-line) 60%, transparent);
+  border-radius: 3px;
+  padding: 0 3px;
+}
+
+/* Being fought by more than one thing is the fact that decides a retreat. */
+.combat-attackers[data-many] {
+  color: var(--danger);
+}
+
+/*
+ * The monster on the other end of the fight.
+ *
+ * Sits above the readout because it is the thing the card exists for: how much
+ * is left of what this character is hitting. Everything below it — who is
+ * hitting back, how many blows — is context for it.
+ */
+.combat-target {
+  margin-bottom: 8px;
+}
+
+.combat-target.none {
+  padding: 4px 0 8px;
+}
+
+.combat-name {
+  align-items: baseline;
+  display: flex;
+  gap: 8px;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+
+/* The realm spells monsters in lower case and so does the ledger; the name is
+   shown as the realm has it rather than title-cased into something that is not
+   what anybody would type at an `attack`. */
+.combat-name .name {
+  color: var(--text-hi);
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.combat-name .hint {
+  flex: 0 0 auto;
+  font-size: var(--font-micro);
+}
+
+/*
+ * A monster's bar is taller than a vital's, because it carries two readings
+ * rather than one: what is left, and who took the rest off.
+ */
+.target-meter {
+  /* A floor, for the reason `.meter` records: this one carries a label too. */
+  height: max(22px, calc(var(--font-micro) * 1.5));
+}
+
+/*
+ * Damage already dealt, laid over the ground the fill has given up.
+ *
+ * Positioned from the left in percent rather than the right, so it lines up
+ * with the fill's own edge under sub-pixel rounding — the two meeting exactly
+ * is what makes the marker read as a division of the damage rather than as a
+ * decoration floating over the track.
+ */
+.damage-line {
+  border-radius: 2px;
+  bottom: 3px;
+  display: flex;
+  height: 4px;
+  overflow: visible;
+  position: absolute;
+}
+
+.damage {
+  display: block;
+  height: 100%;
+}
+
+/* Blue is this character's own contribution; purple is everybody else's. Both
+   are theme accents rather than literals, so a light theme is not left with two
+   colours mixed for a dark ground. */
+.damage.mine {
+  background: var(--accent);
+  border-radius: 2px 0 0 2px;
+}
+
+.damage.others {
+  background: var(--marker);
+  border-radius: 0 2px 2px 0;
+}
+
+/*
+ * The join between the two shares.
+ *
+ * A ring rather than a dot: it sits on top of two saturated fills, and a solid
+ * mark in either of their colours disappears into one of them. The card's own
+ * surface as the ring's centre is the one value guaranteed to differ from both.
+ */
+.damage-split {
+  background: var(--ink-card);
+  border: 1.5px solid var(--text-hi);
+  border-radius: 50%;
+  height: 8px;
+  margin-left: -4px;
+  position: absolute;
+  top: -2px;
+  width: 8px;
+}
+
+/*
+ * The legend, and the only place the raw totals appear.
+ *
+ * Colour is never the whole statement (docs/ui-design.md §6), so each key
+ * carries its word and its number; the swatch only says which line on the bar
+ * the number belongs to.
+ */
+.combat-damage {
+  display: flex;
+  font-size: var(--font-micro);
+  gap: 12px;
+  margin-top: 4px;
+}
+
+.damage-key {
+  align-items: center;
+  color: var(--text-lo);
+  display: flex;
+  font-family: var(--font-mono);
+  gap: 5px;
+}
+
+.damage-key::before {
+  border-radius: 2px;
+  content: '';
+  display: block;
+  height: 3px;
+  width: 12px;
+}
+
+.damage-key.mine::before {
+  background: var(--accent);
+}
+
+.damage-key.others::before {
+  background: var(--marker);
+}

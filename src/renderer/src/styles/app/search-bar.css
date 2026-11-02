@@ -1,0 +1,36 @@
+/* ============================================================== search bar */
+
+.search-bar {
+  align-items: center;
+  display: flex;
+  flex: 0 0 auto;
+  gap: 6px;
+  padding: 8px var(--gap);
+}
+
+.search-bar input {
+  flex: 1;
+  min-width: 0;
+}
+
+.search-bar button {
+  min-width: var(--control-h);
+  padding: 0 8px;
+}
+
+.search-count {
+  color: var(--text-lo);
+  font-family: var(--font-mono);
+  font-size: var(--font-micro);
+  min-width: 6ch;
+  text-align: center;
+}
+
+.search-count.empty {
+  color: var(--danger);
+}
+
+.empty {
+  color: var(--text-lo);
+  font-family: var(--font-sans);
+}

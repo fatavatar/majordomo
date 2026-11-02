@@ -5711,7 +5711,7 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
    * from here without driving the theme, and doing that mid-run disturbs the
    * palette state every later check reads. It is covered instead by the token
    * itself being opaque in all sixteen themes, which is stated in the rule's
-   * comment in index.css because nothing enforces it: ChromeTokens types
+   * comment in styles/app/base.css because nothing enforces it: ChromeTokens types
    * ink-raised as a plain string.
    */
   console.log(

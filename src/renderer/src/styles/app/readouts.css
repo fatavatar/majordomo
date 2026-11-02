@@ -1,0 +1,212 @@
+/* ============================================ what is left, said everywhere
+ *
+ * A progression: what is behind, what is happening now, and what is still owed.
+ *
+ * The reader does not care what they have done. They care most about what they
+ * have to do next, and after that about what else is coming — so the emphasis
+ * runs the *other* way from the reading order: `done` is the quietest thing in
+ * the list, `now` is the loudest, and `left` sits between them at ordinary ink.
+ *
+ * Stated once here because it is a grammar rather than a component: the quest
+ * track already drew it with its own rings, and a route's steps and a lap's
+ * stops are the same fact in a different card. Anything with a beginning, a
+ * middle and an end can wear these three words and will read the same way.
+ *
+ * Nothing is hidden. `done` is dimmed, never removed: a list that drops what
+ * has happened cannot be checked against, and the whole point of the middle
+ * mark is that it has something on either side of it.
+ */
+.progression {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  list-style: none;
+  margin: 0;
+  min-width: 0;
+  padding: 0;
+}
+
+.progression > li {
+  align-items: baseline;
+  color: var(--text-hi);
+  display: flex;
+  gap: 6px;
+  min-width: 0;
+  padding: 1px 0;
+}
+
+/* The marker column: one glyph wide at every state, so nothing shifts as the
+   walk moves down the list. */
+.progression > li::before {
+  color: var(--text-lo-quiet);
+  content: '·';
+  flex: 0 0 auto;
+  font-family: var(--font-mono);
+  width: 1ch;
+}
+
+.progression [data-progress='done'] {
+  color: var(--text-lo-quiet);
+}
+
+.progression [data-progress='done']::before {
+  content: '✓';
+}
+
+/*
+ * The one loud row. The accent, the only bearing mark on the list, and the
+ * weight — this is the answer to "what do I do next", which is the question
+ * the whole arrangement exists for.
+ */
+.progression [data-progress='now'] {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.progression [data-progress='now']::before {
+  color: var(--accent);
+  content: '▸';
+}
+
+/* Ordinary ink: still to come, and readable without competing with `now`. */
+.progression [data-progress='left'] {
+  color: var(--text-hi);
+}
+
+.progression .step-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/*
+ * A list that would outgrow its card scrolls inside itself rather than
+ * stretching it: a card never resizes with its contents, and a forty-seven step
+ * route is exactly the case that would.
+ */
+.progression-scroller {
+  max-height: 9.5em;
+  min-width: 0;
+  overflow-y: auto;
+}
+
+/*
+ * The box a two-up readout measures itself against.
+ *
+ * Its own wrapper rather than the card's body, and that is not tidiness:
+ * `container-type` implies `contain: layout`, which makes the element a
+ * containing block for every absolutely positioned descendant. Put on
+ * `.card > .body` it would move anything a card positions against the window —
+ * and the popovers that are not portalled would be the ones to find out. A
+ * wrapper holding one `<dl>` contains nothing that could care.
+ *
+ * `inline-size` only: a card's height is the player's (`useCardResize`), and a
+ * size container would re-lay-out the sheet on every drag of the corner grip.
+ */
+.readout-box {
+  container-type: inline-size;
+  min-width: 0;
+}
+
+/*
+ * Two label/value pairs on one line, where the card is wide enough for them.
+ *
+ * A sheet of attributes and skills is twenty-four rows of a short word and a
+ * small number, in a column that has room for three of each — so the card is
+ * twice as tall as it needs to be and the reader scrolls past what they came
+ * to compare. Pairing them halves the height and puts the numbers people
+ * actually read against each other (`strength` beside `intellect`) on one line.
+ *
+ * **A container query, not a media query**: what decides is how wide *this
+ * card* is, and a rail card is dragged between 260 and 560px while the window
+ * never moves. `.card > .body` is the container, declared with the rule below.
+ *
+ * The threshold is the narrowest width at which the longest label in this
+ * client's sheet (`Spellcasting`) and a four-figure number fit twice over with
+ * the 12px gutter. **Measured**: the Self card's readout box is 244px at the
+ * width the card ships at (`npm run smoke`, 2026-09-07), so a 300px threshold
+ * never engaged at all — the check that says so is in the smoke, and it reads
+ * the laid-out card rather than trusting the number here.
+ *
+ * A row whose value is prose or a compound (`Battlemage · Human`, `510 / 12`,
+ * a light phrase) opts out with `.span` and keeps the whole width: pairing
+ * those would put an ellipsis where the answer is.
+ */
+.readout.columns > dt.span {
+  grid-column: 1;
+}
+
+/*
+ * **In characters, not pixels** (2026-10-24): the 290px this was first set at
+ * was measured in one face, and in LucidaProgrammer at 13px the two longest
+ * labels took the room and the value tracks shrank to a character, so every
+ * figure broke one digit to a line. Two `Armour class / DR`-long labels, two
+ * short figures and the gutters are about fifty characters in any face; the
+ * container's own `ch` is its own font's.
+ */
+@container (min-width: 52ch) {
+  /*
+   * `auto` label tracks, and the threshold set so they never have to give way.
+   *
+   * Measured, and the measurement is the reason for the number: the Self card's
+   * readout box is **244px** at the width the card ships at, and at 244 two
+   * pairs of this sheet's longest labels (`Armour class / DR`,
+   * `Magic resistance`) do not fit — the first attempt let the tracks shrink
+   * and the labels ellipsised, and the sheet scrolled sideways anyway, which is
+   * the one thing a card must never do.
+   *
+   * So the rule is *where the card is wide enough*, honestly: at the default
+   * rail width the sheet stays one-up, and a rail dragged wider or the card
+   * floated pairs it. `npm run smoke` measures the laid-out card and asserts
+   * whichever case it is in, so the threshold cannot rot silently.
+   *
+   * A tighter gutter than the base: four columns pay for three gaps.
+   */
+  .readout.columns {
+    column-gap: 8px;
+    grid-template-columns: repeat(2, auto minmax(0, 1fr));
+  }
+
+  .readout.columns > dd {
+    min-width: 0;
+  }
+
+  /*
+   * A heading and a full-width row each break the line, which is what makes
+   * the next pair start in the first column again — auto-placement does the
+   * rest, so nothing here has to know how many rows a group has.
+   */
+  .readout.columns > dd.span {
+    grid-column: 2 / -1;
+  }
+
+  .readout.columns > dt.group {
+    grid-column: 1 / -1;
+  }
+
+  /*
+   * A group heading is a `dt`/empty-`dd` pair, so that the two-column base
+   * keeps its shape. Once the heading spans the row the `dd` has nothing left
+   * to do and would take the next line on its own — a blank row between every
+   * heading and its first pair.
+   */
+  .readout.columns > dd.group {
+    display: none;
+  }
+}
+
+.readout dd {
+  color: var(--text-hi);
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.readout dd.inert {
+  color: var(--text-lo);
+}
+
+.readout dd.flags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}

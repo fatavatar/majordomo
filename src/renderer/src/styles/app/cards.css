@@ -1,0 +1,303 @@
+/* ============================================================ glass surface */
+
+/*
+ * The one glass recipe. Anything translucent in this app is a `.surface`;
+ * that keeps the blurred-layer count auditable against the performance budget.
+ */
+.surface {
+  background: var(--glass-fill);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--ink-line);
+  border-radius: var(--r-card);
+  box-shadow: var(--glass-rim), var(--glass-shadow);
+}
+
+/* ================================================================== cards */
+
+.card {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+  /*
+   * The action column and the corner grip are placed against the card. The
+   * glass blur did that only by the way (a backdrop filter makes the box hold
+   * its absolute children), so a skin with no blur (atlas and halo, since retired) put a
+   * railed or docked card's controls against the rail or the strip instead.
+   */
+  position: relative;
+  animation: card-enter var(--dur-surface) var(--ease-out) backwards;
+  /*
+   * The action column's own box, named here rather than in `.card-side` so the
+   * rolled card's floor below can be derived from it instead of repeating the
+   * figures. `BentoCard` measures how many glyphs fit from the laid-out
+   * elements, so these are what it reads back — two spellings of the button's
+   * height would put the count and the drawing out of step with nothing on
+   * screen to say so.
+   */
+  --card-action: 18px;
+  --card-side-gap: 2px;
+  --card-side-inset: 6px;
+}
+
+/*
+ * A card rolled up to its heading: the name, the badge, and whatever fits
+ * beside them. Asked for in todo 00 -- "only show its header with its name and
+ * relevant information".
+ *
+ * The body is hidden rather than unmounted, which is the load-bearing half. A
+ * card rolled up is still doing its job: the Talk card is still pinned to the
+ * tail of a conversation that is still arriving, a table's find field still
+ * holds the question somebody was asking, and the copy glyph still has
+ * something to put on the clipboard -- `readable` reads `innerText`, which
+ * falls back to the text content of a box that is not being rendered.
+ * Unmounting the body would have made all three quietly false.
+ *
+ * **`!important`, because equal specificity loses to source order** (todo 00,
+ * 2026-09-06, reported as *"rolled up cards are showing more than just their
+ * header"* with the Reference card in the screenshot). This selector is
+ * `(0,3,0)` -- two classes and an attribute -- and so is `.card > .body.paned`
+ * below it, which sets `display: flex`. Later wins, so **every paned card**
+ * went on laying its body out while rolled: Reference, Alerts, Players, Realm,
+ * Combat, and the loop builder through its own `.body.paned` further down. The
+ * body was then clipped rather than hidden -- the card's `overflow: hidden`
+ * against the two-glyph floor below, with the heading and the body both
+ * `flex-grow: 1` and splitting it -- so what showed was a sliver of the find
+ * field under the heading. Exactly the shape of the screenshot.
+ *
+ * Out-specifying is an arms race with the next card-specific body rule
+ * somebody adds; this is a *state* that suppresses layout rather than a
+ * competing opinion about it, which is the one thing `!important` is for and
+ * why every reset in the world spells `[hidden]` this way.
+ *
+ * `npm run smoke` rolls a **paned** card as well as the Room card, whose
+ * shown face is a readout -- which is why the check that has guarded this
+ * since it was written never saw it.
+ */
+.card[data-rolled='true'] > .body {
+  display: none !important;
+}
+
+/*
+ * Two glyphs' worth of floor, because the column is measured against the card
+ * and a rolled card *is* one heading: Close is always drawn and the kebab
+ * holds the rest, and a kebab clipped in half by the card's own `overflow` is
+ * a control that is not there. Derived from the column's own box above, so the
+ * two cannot drift.
+ */
+.card[data-rolled='true'] {
+  min-height: calc(var(--card-action) * 2 + var(--card-side-gap) + var(--card-side-inset) * 2);
+}
+
+/* And the heading takes the floor's whole height, so its one row sits in the
+   middle of it rather than against the top with a gap underneath. */
+.card[data-rolled='true'] > header {
+  flex: 1 1 auto;
+}
+
+/* Stagger down the rail so the eye reads top to bottom on open. */
+.card:nth-child(1) {
+  animation-delay: 0ms;
+}
+.card:nth-child(2) {
+  animation-delay: 40ms;
+}
+.card:nth-child(3) {
+  animation-delay: 80ms;
+}
+
+@keyframes card-enter {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+
+.card > header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: var(--pad-card) var(--pad-card) calc(var(--pad-card) - 4px);
+  transition: padding var(--dur-control) var(--ease-out);
+}
+
+.card > header h2 {
+  color: var(--text-lo);
+  font-size: var(--font-micro);
+  font-weight: 600;
+  letter-spacing: 0.11em;
+  margin: 0;
+  text-transform: uppercase;
+}
+
+.card > header .badge {
+  margin-left: auto;
+}
+
+/* With no badge, whatever chrome follows the heading takes the auto margin. */
+.card > header h2 {
+  margin-right: auto;
+}
+
+/*
+ * `flex: 1 1 0`, not `auto`, and the zero is load-bearing.
+ *
+ * A card's body is sized by the card and never by what is in it -- the rule
+ * every placement already enforces from above. With `flex-basis: auto` the
+ * card's own flex layout nevertheless re-measured the body from its contents,
+ * at an indefinite height, every time a layout passed through the card -- and
+ * a keystroke in the Talk composer is one, because the input's ancestors are
+ * dirtied up to the rail. That measure pass walked five hundred lines of
+ * backlog to learn a height the fill was about to decide anyway. Measured
+ * 2026-09-04 (`npm run profile:ui`, `talk`): with this and the scroller's
+ * basis below, layout per keystroke fell from 64ms to 28ms; the rail's gutter
+ * took the rest. A zero basis has nothing to measure.
+ */
+.card > .body {
+  flex: 1 1 0;
+  min-height: 0;
+  /*
+   * A little air at the top, which the body had none of.
+   *
+   * Not only for the look. This box *clips* — a scrolling body computes
+   * `overflow-x: auto` alongside its `overflow-y`, and a paned one is
+   * `overflow: hidden` outright — so anything the first row paints outside
+   * itself was sheared off at the heading: a focus ring (2px at 1px offset,
+   * and the one deliberately loud element on the surface) on a table's find
+   * field, or the tonal fill of a chip on the first row of a readout. Four
+   * pixels is what those need and is what the todo asked for as "a small
+   * amount".
+   */
+  padding: 4px var(--pad-card) var(--pad-card);
+  transition: padding var(--dur-control) var(--ease-out);
+}
+
+/*
+ * The overflow of a fixed box has to go somewhere, and scrolling inside the
+ * card is the only answer that leaves its neighbours alone. Applied by
+ * placement rather than by a prop, so a card cannot be added to the rail
+ * without it.
+ *
+ * A card that has its *own* scroll region opts out with `.body.paned`: Talk and
+ * Alerts keep their filters at the top and Talk keeps its composer at the
+ * bottom, and only the list between them moves. Filters and a reply box that
+ * scroll away are reached for exactly when they cannot be.
+ */
+.rail > .card > .body:not(.paned),
+.float > .card > .body:not(.paned),
+.card > .body.scroll:not(.paned) {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.card > .body.paned {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow: hidden;
+}
+
+/*
+ * The same zero basis one level down, for the same reason: the scroller is
+ * sized by the fill, and with `auto` the pane's flex layout measured five
+ * hundred lines of Talk to learn a height it was never going to use.
+ */
+.card > .body.paned > .scroller {
+  flex: 1 1 0;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+/*
+ * A card states one thing; its rows are label/value pairs.
+ *
+ * **One `.readout` per card**, and the rule is load-bearing rather than tidy: a
+ * grid sizes an `auto` track from one container's own children, so a card that
+ * states its rows in two `<dl>`s gets two label columns of different widths and
+ * two value columns starting at different x. Merge the rows into one list
+ * rather than adding a measured width -- no pixel constant may enter this path,
+ * for the reasons the column measurement records. Aligning *across* cards is
+ * deliberately not attempted: a card popped out to its own window has no rail
+ * to align to, and the rail is reorderable, so the column would resize as cards
+ * moved.
+ *
+ * `align-items: baseline` because a value is not always plain text. A `dt` and
+ * a `dd` are stretched to their row, so a value carrying a chip -- an occupant
+ * with `hostile` or an alignment cost after it -- has a taller line box, and its
+ * text was sitting **7px** below the label naming it while both boxes shared a
+ * top. Measured in the smoke run, which asserts it from a text range rather
+ * than from the boxes for exactly that reason.
+ */
+.readout {
+  align-items: baseline;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 3px 12px;
+  margin: 0;
+}
+
+.readout dt {
+  color: var(--text-lo);
+}
+
+/*
+ * The client asking whether this is still the same character.
+ *
+ * A dialog rather than a card or an alert, and unapologetically modal: it opens
+ * unasked, at most once a session, about records that are the only copy of what
+ * a character learned. The one thing it must not be is dismissible by accident,
+ * which is why the safe button takes the caret and Escape means *keep*.
+ */
+.reset-prompt {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+  max-width: min(560px, 92vw);
+  padding: var(--pad-card);
+}
+
+.reset-prompt h2 {
+  font-size: 1.05em;
+  margin: 0;
+}
+
+/*
+ * Old on the left, new on the right, as asked for: three columns rather than
+ * the readout's two, the same shape `.readout.paired` takes for its own second
+ * figure.
+ */
+.reset-diff {
+  grid-template-columns: auto minmax(0, 1fr) minmax(0, 1fr);
+}
+
+.reset-diff dt {
+  grid-column: 1;
+}
+
+.reset-head {
+  color: var(--text-lo);
+  font-size: var(--font-micro);
+  text-transform: uppercase;
+}
+
+/*
+ * A row is marked only where the two disagree. The unchanged rows are context
+ * and must not compete with the ones that are the reason this opened — the
+ * same rule the map's marks follow.
+ */
+.reset-was {
+  color: var(--text-lo);
+  text-decoration: line-through;
+}
+
+.reset-now {
+  color: var(--danger);
+}
+
+.reset-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}

@@ -1,0 +1,151 @@
+/* ------------------------------------------------------------------ toolbar */
+
+/*
+ * The toolbar: a card laid out as a *row* rather than a column.
+ *
+ * Every other card is a heading with a readout under it. This one is a heading
+ * with a row of glyphs beside it, because that is what a toolbar is — and
+ * because a toolbar two rows tall spends one of them saying its own name.
+ *
+ * It is still an ordinary card: the grip drags it, the action column closes and
+ * copies it, and it can be railed, floated or docked in either strip like any
+ * other. Only the direction changes.
+ */
+.toolbar-card {
+  flex-direction: row;
+  align-items: center;
+}
+
+.toolbar-card > header {
+  flex: 0 0 auto;
+  /*
+   * Horizontal only. The card is exactly the band tall now, and the row of
+   * keys inside it is `--control-h`; vertical padding on top of that would
+   * either push the keys out of the box or make the band taller than the two
+   * controls it lines up with.
+   */
+  padding: 0 var(--pad-card);
+}
+
+/* The name is the grip's label; on the rail it is the only word on the card. */
+.toolbar-card > header h2 {
+  margin-right: 0;
+}
+
+.toolbar-card > .body {
+  align-items: center;
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+  /* The right inset is the action column's, which still overlays this edge. */
+  padding: 0 calc(var(--pad-card) + 16px) 0 0;
+}
+
+/*
+ * One band high, whatever the strip has been dragged to.
+ *
+ * The strip's own height is per client and drives every *other* card docked in
+ * it; this one declares its own, because a toolbar with empty space under it
+ * is not a taller toolbar. It is a declared height rather than a content-derived
+ * one, so the rule that a card never resizes with its contents still holds — the
+ * row scrolls sideways when there are more buttons on it than fit.
+ *
+ * And the height it declares is `--topbar-h`, shared with the rail head and
+ * the put-away chips, because those three are the row across the top of the
+ * window. It used to be `--control-h` plus a full card's padding either side,
+ * which made it half again as tall as either of the other two.
+ */
+.dock > .card.toolbar-card,
+.rail > .card.toolbar-card {
+  height: var(--topbar-h);
+}
+
+/*
+ * The row scrolls rather than wrapping.
+ *
+ * Wrapping would make the card change height with the number of buttons on it,
+ * which is the one thing a card may not do — and on a strip it would take a
+ * second row from the console. `overflow-x` on the row itself, so the card's
+ * own `overflow: hidden` never clips a button off with no way to reach it.
+ */
+.toolbar-row {
+  align-items: center;
+  display: flex;
+  flex: 1 1 auto;
+  gap: 2px;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+}
+
+/* The picker is always reachable: it is how an emptied row is filled again. */
+.toolbar-more {
+  margin-left: auto;
+  position: sticky;
+  right: 0;
+}
+
+/*
+ * One key. Square, quiet at rest, tonal when what it names is on.
+ *
+ * Tonal rather than filled: §9 spends the one filled control on a screen's
+ * primary action, and a row of eight filled squares is the flat saturated
+ * blocks the visual language explicitly retracted. The accent at low opacity
+ * with the accent as the glyph is the recipe everything reporting a condition
+ * uses, written as `color-mix` so one rule works in both themes.
+ */
+.toolbar-key {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  border-radius: var(--r-key);
+  color: var(--text-lo-quiet);
+  cursor: pointer;
+  display: flex;
+  flex: 0 0 auto;
+  height: var(--control-h);
+  justify-content: center;
+  padding: 0;
+  transition:
+    background var(--dur-tint) var(--ease-out),
+    color var(--dur-tint) var(--ease-out);
+  width: var(--control-h);
+}
+
+.toolbar-key:hover:not(:disabled),
+.toolbar-key:focus-visible {
+  background: color-mix(in srgb, var(--accent) var(--tone-weak), transparent);
+  color: var(--accent);
+}
+
+.toolbar-key.on {
+  background: color-mix(in srgb, var(--accent) var(--tone), transparent);
+  color: var(--accent);
+}
+
+.toolbar-key.on:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--accent) var(--tone-strong), transparent);
+}
+
+/* The glyph carries the same weight the action column's do. */
+.toolbar-key .icon {
+  height: 16px;
+  stroke-width: 1.9;
+  width: 16px;
+}
+
+/*
+ * Greyed, never absent. A toolbar whose buttons come and go as the game moves
+ * is one nobody can reach for — the same rule the map's legend follows, and
+ * the reason `MenuItem` greys Copy rather than dropping it.
+ */
+.toolbar-key:disabled {
+  cursor: default;
+  opacity: 0.35;
+}
+
+/* A row somebody emptied says so, in the space the buttons would have been. */
+.toolbar-row > .empty {
+  padding-inline: 4px;
+}

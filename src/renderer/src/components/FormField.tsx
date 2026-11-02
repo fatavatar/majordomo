@@ -366,8 +366,9 @@ export function SelectField({
  * changed is that the width is a fact about the *shape* of a checkbox row
  * rather than about any one setting's value, which is what `wide` is for on the
  * other faces: a monster list needs the room wherever it appears, and no
- * checkbox does. The two columns are in `index.css` beside the field grid,
- * along with the floor that keeps a narrow dialog from overflowing.
+ * checkbox does. The two columns are in `styles/app/settings.css` beside
+ * the field grid, along with the floor that keeps a narrow dialog from
+ * overflowing.
  */
 export interface CheckFieldProps extends Omit<FaceProps, 'wide'> {
   checked: boolean;

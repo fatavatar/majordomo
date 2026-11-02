@@ -1,0 +1,79 @@
+/* ==================================================== combat statistics
+ *
+ * One readout and the accuracy table under it. The readout holds the figures
+ * that are not a listing; the table holds the one that is.
+ */
+
+/*
+ * A table directly under a readout, with air between them.
+ *
+ * Combat Stats and Carrying put a `<dl class="readout">` immediately before a
+ * `CardTable`, and in both the table's header row sat hard against the last
+ * label/value line, so the column headings read as one more row of the readout
+ * rather than as the top of a different thing.
+ *
+ * Those two, and deliberately not every card that has a readout and a table.
+ * Gang and the Room's Shop face put something between them — a note about
+ * which gang this is, the shop's own name — and both of those already carry
+ * their own bottom margin, so they have the air and this rule correctly does
+ * not reach them. Widening it to "a table that follows anything" is the
+ * tempting generalisation and the wrong one: every paned card's own scroll
+ * region is a `.scroller` too, so it would put a margin inside Talk, Alerts
+ * and the permission grid to fix a gap none of them has.
+ *
+ * This was already written down once and **matched nothing**, as
+ * `.readout + .card-table`. `CardTable` returns a *fragment*: an optional
+ * `.table-tools` and then a `.scroller` around the `<table>`. So the
+ * `.card-table` is never the readout's sibling — its wrapper is — and the rule
+ * was about a DOM the component does not produce. Both halves are stated here
+ * because which one lands next depends on whether that table has tools, and a
+ * card gaining a find field later must not silently lose its gap.
+ *
+ */
+.readout + .table-tools,
+.readout + .scroller {
+  margin-top: var(--gap);
+}
+
+/*
+ * A readout whose rows carry a **second figure**, in a column of its own.
+ *
+ * `Damage dealt  133 avg 10.2` and `Deflected  9 69.2%` used to be one value
+ * cell with the second figure appended inside it, so the averages and shares
+ * started at whatever x the figure before them happened to end at -- a
+ * different one on every row, and nothing on the card lined up but the labels.
+ * A grid can only align what it is given as separate cells, so the second
+ * figure is its own `dd` and its own track.
+ *
+ * `dt { grid-column: 1 }` is what makes a row with no second figure work.
+ * Auto-placement knows nothing about rows: without it, the next label would
+ * flow into the empty third cell and the readout would zig-zag. Pinning the
+ * term to the first column forces the next free row instead.
+ *
+ * The second column is `auto` so every figure starts at one x, and the third
+ * takes the rest -- the same shape `.readout`'s two columns already have, with
+ * one more.
+ */
+/*
+ * The second figure has a floor and the label gives way to it (2026-10-24):
+ * with `auto` labels on a rail card `Exp. needed, level 54` and its figure
+ * took the width and the second column was two characters, so `907 of
+ * 1,001` stood one character to a line. A label wraps; a figure does not.
+ */
+.readout.paired {
+  grid-template-columns: minmax(8ch, max-content) auto minmax(11ch, 1fr);
+}
+
+.readout.paired dt {
+  grid-column: 1;
+}
+
+.readout.paired > dd:not(.second) {
+  white-space: nowrap;
+}
+
+/* Quieter than the figure it qualifies: it is context, not the answer. */
+.readout.paired dd.second {
+  color: var(--text-lo);
+  font-size: var(--font-micro);
+}

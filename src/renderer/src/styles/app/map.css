@@ -1,0 +1,531 @@
+/* ================================================================ map card */
+
+/*
+ * The map is drawn, not typed.
+ *
+ * It was character cells first, on the argument that the game draws its own
+ * maps that way. But this map is not the game's -- it is derived by the client
+ * from the realm data and never crosses the wire, so the character-cell rule
+ * that governs the console does not reach it. It is chrome, and chrome follows
+ * the design language: tonal fills, themed hues, soft shapes.
+ *
+ * Every colour here is a token, and every token is one of the theme's own
+ * accents. Nothing is a literal, so a new theme repaints the map without
+ * touching this file -- and the accents are already pulled back to roughly
+ * two-thirds saturation, so the map cannot become the glare source a
+ * full-strength EGA hue beside a dark slate would be.
+ */
+/*
+ * The map is scaled into whatever the card leaves it.
+ *
+ * It used to size itself to whatever it was drawing, so the card grew and shrank
+ * with every step — six rooms in a corridor, forty in a city — and the cards
+ * below it moved under the pointer. "Stop walking" is the one control you reach
+ * for *while* the thing that is moving it is running, and it was impossible to
+ * hit.
+ *
+ * The viewBox does the work: the extent changes, the box does not, so a wider
+ * neighbourhood is drawn smaller rather than taller. `xMidYMid meet` is the
+ * default and is what fits every room inside the box it is given.
+ *
+ * The box is now the card's, not a constant of its own — the card declares a
+ * height, the legend takes what it needs, and the picture takes the rest. That
+ * is what lets a *floating* map grow when it is dragged bigger while a railed
+ * one stays exactly where it was.
+ */
+.map-card > .body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-height: 0;
+}
+
+/* Follow, the finder and the levels: one row over the picture, the builder's tools'. */
+.map-tools {
+  align-items: center;
+  display: flex;
+  flex: 0 0 auto;
+  gap: 4px;
+}
+
+.map-tools > .field-hold {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.map-tools input {
+  min-width: 0;
+  width: 100%;
+}
+
+/*
+ * A map, whole: the picture and the legend that keys it. `MapView`'s own
+ * element, so every surface that draws a map draws this same pair.
+ *
+ * Its own element rather than the surface's because the legend takes a strip
+ * underneath: the view inside measures itself, and measuring the surface would
+ * count rows the map is never drawn in. The picture takes whatever the legend
+ * leaves, which is what makes a floating map show *more rooms* when it is
+ * dragged bigger rather than the same rooms drawn larger.
+ */
+.map-box {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+}
+
+/*
+ * The window on the map (`MapView`): the box the fetch is measured from, and
+ * the surface the wheel and a drag are read off. Flexed from zero so it is
+ * sized by what is around it and never by the picture, which has no size of
+ * its own; clipped, because a window shows what it shows. `touch-action:
+ * none` hands a touch drag to the pan rather than to the page. The hand's
+ * cursor says the background drags; a room underneath keeps its own.
+ */
+.map-view {
+  cursor: grab;
+  display: flex;
+  flex: 1 1 0;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+  touch-action: none;
+  user-select: none;
+}
+
+.map-view[data-panning] {
+  cursor: grabbing;
+}
+
+.map-view > .map-plan {
+  flex: 1 1 0;
+}
+
+/*
+ * The picture clips at its own edge, and there is nothing to clip.
+ *
+ * It carried `overflow: visible` because the viewBox was padded by less than
+ * the `you` ring reaches, so the ring on any room at the edge of the
+ * neighbourhood was drawn outside the box. That only ever worked while nothing
+ * above the SVG clipped — and a card's body does, because `overflow-y: auto`
+ * computes `overflow-x: auto` with it. The ring on the top row came out
+ * sheared flat by the heading. The pad covers the marks now (`MARKS` in
+ * `MapPlan.tsx`), so nothing needs to paint outside; leaving the escape hatch
+ * open would only hide the next drawing that does.
+ */
+.map-plan {
+  display: block;
+  flex: 1 1 auto;
+  width: 100%;
+  min-height: 0;
+  margin: 0 auto;
+}
+
+.map-legend {
+  flex: 0 0 auto;
+}
+
+.map-links line {
+  stroke: var(--map-link);
+  stroke-linecap: round;
+  stroke-width: 0.7;
+}
+
+/*
+ * A corridor with something in the way is drawn as one, and the bar across it
+ * is what says so — a route that will not work should look wrong at the step
+ * that will not work, not merely fail when walked.
+ *
+ * Hue reinforces and never carries it alone (§6): the bar is the statement, and
+ * every one of them has a `<title>` naming what it is and what would get you
+ * through.
+ */
+.map-links line[data-kind] {
+  stroke-dasharray: 1.6 1.4;
+}
+
+/*
+ * The way ahead, over the corridors it walks.
+ *
+ * The accent, and deliberately the same accent the `you` ring wears: they are
+ * one sentence — where I am, and where I am going — and a second loud hue
+ * beside it would be emphasis sprayed rather than spent (§9). Thicker than a
+ * corridor and round-capped, so a route through a bend reads as one stroke
+ * rather than as a chain of separate ones.
+ *
+ * `pointer-events: none` because a room underneath it is a control: a line
+ * drawn across the gap between two rooms must not become the thing a click
+ * lands on.
+ */
+.map-trail line {
+  pointer-events: none;
+  stroke: var(--trail-0);
+  stroke-linecap: round;
+  stroke-width: 1.4;
+}
+
+/*
+ * Which pass of the way this leg belongs to.
+ *
+ * Declared on the group so the line and its arrow cannot disagree: the arrow
+ * fills with the same token the line strokes with, and a band added here
+ * reaches both without a second rule. Bands past the last one keep the last
+ * colour — `trailOf` clamps, so nothing here has to.
+ */
+/* Both shapes, because the legend's key carries the band on the `.map-trail`
+   group itself while the picture carries it on a group inside one. */
+.map-trail[data-band='1'] line,
+.map-trail g[data-band='1'] line {
+  stroke: var(--trail-1);
+}
+
+.map-trail[data-band='2'] line,
+.map-trail g[data-band='2'] line {
+  stroke: var(--trail-2);
+}
+
+/*
+ * Which way the way goes.
+ *
+ * Filled rather than stroked, because at a third of a room a stroked outline
+ * is two lines close enough to read as one thick one. `pointer-events: none`
+ * for the corridor's reason: the whole link is the hover target and a mark
+ * sitting on it must not take the pointer off it.
+ */
+.map-trail-arrow {
+  fill: var(--trail-0);
+  pointer-events: none;
+}
+
+.map-trail[data-band='1'] .map-trail-arrow,
+.map-trail g[data-band='1'] .map-trail-arrow {
+  fill: var(--trail-1);
+}
+
+.map-trail[data-band='2'] .map-trail-arrow,
+.map-trail g[data-band='2'] .map-trail-arrow {
+  fill: var(--trail-2);
+}
+
+/*
+ * A room the route has still to enter: the accent behind whatever the room
+ * already is, at the tone §9 asks of anything reporting a condition.
+ *
+ * Behind rather than instead of: a lair or a shop on the way is exactly what
+ * the map is being looked at for, and repainting the shape would take that
+ * away from the rooms most worth seeing.
+ */
+.map-onroute {
+  fill: color-mix(in srgb, var(--accent) var(--tone), transparent);
+  pointer-events: none;
+  stroke: none;
+  /* No `stroke-width` on this or the two rings below: how far each reaches is
+     what the viewBox is padded by, so both halves are stated once in
+     `MapPlan`'s own `MARKS` table and arrive as presentation attributes. A
+     rule here would outrank the attribute and the pad would be wrong again —
+     which is exactly how the `you` ring came to be drawn outside the box. */
+}
+
+/*
+ * A place the lap still owes, as a dashed ring — solid is the `you` ring, and
+ * shape has to carry the difference rather than hue alone (§6).
+ *
+ * `--ok` because it is the one hue on this map spent on nothing else: amber is
+ * a shop, red is a lair, gold is a bank, purple is a way out of the plane and
+ * the accent is this character and its route.
+ */
+.map-stop {
+  fill: none;
+  pointer-events: none;
+  stroke: var(--ok);
+  stroke-dasharray: 1.8 1.6;
+}
+
+/*
+ * A room searching has turned something up in: a filled dot on the corner.
+ *
+ * Filled and edgeless, so it cannot be mistaken for one of the rings, which are
+ * all hollow and all about *now* — the route, a lap's stops, the room the
+ * character is in. This is a note about what the realm has been hiding, and it
+ * sits over whatever the room already is rather than replacing it, which is why
+ * it is a mark and not a `RoomKind`.
+ *
+ * `--warn` rather than the accent: the accent is what the client uses for its
+ * own state, and this is the realm's. Nothing here animates.
+ */
+.map-find {
+  fill: var(--warn);
+  pointer-events: none;
+  stroke: none;
+}
+
+/*
+ * The hover target for a blocked corridor: the whole passage, invisible.
+ *
+ * The bar drawn across a corridor is two pixels at map scale, which is legible
+ * and impossible to point at. This sits under it, spans the gap between the two
+ * rooms, and carries the same title.
+ */
+.map-reach line {
+  stroke: transparent;
+  stroke-linecap: round;
+  stroke-width: 5;
+  cursor: help;
+}
+
+/*
+ * The bar across a corridor, in the tone of what stands there (mudmaps'
+ * `REQ_TONE`, 2026-10-18). Hue reinforces and never carries it alone (§6): a
+ * key's bar is heavier, a spell's dotted, a trap's the hazard triangle — a
+ * trap is not shut, the route walks through and takes the hit — and every one
+ * has a `<title>` naming it.
+ */
+.map-bar {
+  fill: none;
+  pointer-events: none;
+  stroke: var(--pending);
+  stroke-linecap: round;
+  stroke-width: 1.1;
+}
+
+.map-bar[data-tone='key'] {
+  stroke-width: 1.6;
+}
+
+.map-bar[data-tone='hidden'] {
+  stroke: var(--marker);
+}
+
+.map-bar[data-tone='toll'] {
+  stroke: var(--mark-bank);
+}
+
+.map-bar[data-tone='gate'] {
+  stroke: var(--danger);
+}
+
+.map-bar[data-tone='cast'] {
+  stroke: var(--accent);
+  stroke-dasharray: 0.6 0.5;
+}
+
+.map-bar[data-tone='trap'] {
+  fill: color-mix(in srgb, var(--danger) 55%, transparent);
+  stroke: var(--danger);
+  stroke-linejoin: round;
+  stroke-width: 0.5;
+}
+
+/*
+ * A room is a control, but it must not look like one: the map is a picture, and
+ * a button per room would turn it into a toolbar. It gets a hit target, a hover
+ * tint and a focus ring, and nothing else.
+ */
+.map-room {
+  cursor: pointer;
+}
+
+/*
+ * Every rule below names the room's *shape*, never "a circle inside a room".
+ *
+ * They were written the second way, and a room's group holds marks that are
+ * not its shape — the `you` ring, the route halo, the lap's ring. `.map-room >
+ * circle` is `(0,1,1)` and each of those has a single-class rule of its own at
+ * `(0,1,0)`, so the room's grey fill and the shop's amber won every one of
+ * them: the `you` ring drew as a filled grey disc behind the accent square for
+ * as long as this map has existed, and the two marks added for the route
+ * inherited it. A selector about *position* cannot be told apart from one
+ * about *what an element is*, and only the second is what these rules mean.
+ */
+.map-room > .map-shape {
+  fill: var(--map-room);
+  stroke: var(--map-room-edge);
+  stroke-width: 0.5;
+  transition:
+    fill var(--dur-tint) var(--ease-out),
+    stroke var(--dur-tint) var(--ease-out);
+}
+
+/* mudmaps' kinds: one colour each, the shape saying it first (§6). */
+.map-room[data-kind='stairs'] > .map-shape {
+  fill: color-mix(in srgb, var(--map-stairs) 40%, transparent);
+  stroke: var(--map-stairs);
+}
+
+.map-room[data-kind='shop'] > .map-shape {
+  fill: color-mix(in srgb, var(--pending) 45%, transparent);
+  stroke: var(--pending);
+}
+
+.map-room[data-kind='npc'] > .map-shape {
+  fill: color-mix(in srgb, var(--marker) 40%, transparent);
+  stroke: var(--marker);
+}
+
+.map-room[data-kind='cmd'] > .map-shape {
+  fill: color-mix(in srgb, var(--map-cmd) 40%, transparent);
+  stroke: var(--map-cmd);
+}
+
+.map-room[data-kind='lair'] > .map-shape {
+  fill: color-mix(in srgb, var(--danger) 55%, transparent);
+  stroke: var(--danger);
+}
+
+/* A bank: a shop's circle, gold, with the dollar the console's glyph carries. */
+.map-room[data-kind='bank'] > .map-shape {
+  fill: color-mix(in srgb, var(--mark-bank) 30%, transparent);
+  stroke: var(--mark-bank);
+}
+
+/* A shop's letter and the bank's dollar. */
+.map-sym {
+  fill: var(--text-hi);
+  font-family: var(--font-mono);
+  font-size: 3.2px;
+  font-weight: 700;
+  pointer-events: none;
+  stroke: none;
+}
+
+.map-bank {
+  fill: var(--mark-bank);
+}
+
+/* Somebody lives here; the room answers a command. */
+.map-pip {
+  fill: var(--marker);
+  pointer-events: none;
+}
+
+.map-ring {
+  fill: none;
+  pointer-events: none;
+  stroke: var(--map-cmd);
+  stroke-width: 0.5;
+}
+
+/* A lettered room that is a lair as well. */
+.map-lairbadge {
+  fill: var(--danger);
+  pointer-events: none;
+  stroke: var(--ink-void);
+  stroke-width: 0.3;
+}
+
+/* The character's own room keeps its kind's shape, in the accent. */
+.map-room[data-here='true'] > .map-shape {
+  fill: var(--accent);
+  stroke: var(--accent);
+}
+
+/* The one deliberately loud element: which room is mine. */
+.map-you {
+  fill: none;
+  stroke: var(--accent);
+}
+
+/*
+ * The ways out the plane cannot draw, beside the room (mudmaps' `vmark`):
+ * chevrons up and down, a portal, an arrow; cyan where the room it reaches is
+ * on the picture, green where it is not, edged amber where something stands
+ * in the way.
+ */
+.map-mark {
+  --mark: var(--map-jump);
+  cursor: help;
+}
+
+.map-mark[data-reach='away'] {
+  --mark: var(--map-away);
+}
+
+/* A mark that takes the eye where it leads (`MapPlan`'s `onGo`). */
+.map-mark[data-go] {
+  cursor: pointer;
+}
+
+.map-glyph {
+  fill: var(--mark, var(--map-jump));
+  stroke: none;
+}
+
+.map-chev {
+  fill: none;
+  stroke: var(--mark, var(--map-jump));
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 0.8;
+}
+
+.map-portal {
+  fill: none;
+  stroke: var(--mark, var(--map-jump));
+  stroke-dasharray: 1 0.6;
+  stroke-width: 0.6;
+}
+
+.map-portal-dot {
+  fill: var(--mark, var(--map-jump));
+}
+
+.map-mark[data-gated] .map-glyph:not(.map-chev, .map-portal) {
+  stroke: var(--pending);
+  stroke-linejoin: round;
+  stroke-width: 0.5;
+}
+
+.map-mark[data-gated] .map-chev,
+.map-mark[data-gated] .map-portal {
+  filter: drop-shadow(0 0.6px 0 var(--pending));
+}
+
+.map-room:hover > .map-shape {
+  fill: var(--accent);
+  stroke: var(--accent);
+}
+
+.map-room:focus {
+  outline: none;
+}
+
+.map-room:focus-visible > .map-shape {
+  stroke: var(--accent);
+  stroke-width: 1.2;
+}
+
+.map-legend {
+  color: var(--text-lo);
+  display: flex;
+  flex-wrap: wrap;
+  font-size: var(--font-micro);
+  gap: 10px;
+  justify-content: center;
+  margin-top: 10px;
+}
+
+/*
+ * The legend names every shape. That is what keeps the hues from being the only
+ * thing saying what a room is -- §6, and the reason shape carries the meaning
+ * here rather than colour.
+ */
+.map-legend span {
+  align-items: center;
+  display: flex;
+  gap: 4px;
+}
+
+.map-legend .key {
+  height: 12px;
+  width: 12px;
+}
+
+/* A key is a map room, so the room's own rules colour it: one look for both. */
+.map-legend .key .map-room {
+  cursor: default;
+}
+
+.map-legend .key .map-sym {
+  font-size: 4.2px;
+}

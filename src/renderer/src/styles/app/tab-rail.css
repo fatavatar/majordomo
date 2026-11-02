@@ -1,0 +1,717 @@
+/* ================================================================ tab rail */
+
+/*
+ * The characters this window holds. Not merely a switcher: what earns the space
+ * is the health bar and the current action, because the reason to look at a
+ * second character is almost never to read its scrollback.
+ *
+ * Tonal throughout, per §9 of the design language -- the accent at low opacity
+ * with the accent as the text. No outlines, no filled blocks. The one filled
+ * control in this app is the primary action in the command strip, and a tab is
+ * not it.
+ */
+.tab-rail {
+  display: flex;
+  gap: 4px;
+  min-width: 0;
+}
+
+/*
+ * The rail is the head plus a scroller, not one scrolling list. Four characters
+ * on a short window scroll the tabs; the button that makes a fifth must not
+ * scroll away with them.
+ */
+.tab-rail .tabs {
+  display: flex;
+  flex: 1 1 auto;
+  gap: 4px;
+  min-width: 0;
+  min-height: 0;
+}
+
+.tab-rail[data-side='top'] {
+  flex-direction: row;
+  align-items: center;
+}
+
+.tab-rail[data-side='top'] .tabs {
+  flex-direction: row;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+}
+
+/*
+ * Down a side, either side. `right` is `left` mirrored and nothing inside the
+ * rail changes with it — the tabs still stack and there is still room for the
+ * health in figures and the room name. Only the marker on the active tab knows
+ * which side it is on, because that one sits on the edge nearest the console.
+ */
+.tab-rail:is([data-side='left'], [data-side='right']) {
+  flex-direction: column;
+}
+
+.tab-rail:is([data-side='left'], [data-side='right']) .tabs {
+  flex-direction: column;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+/*
+ * The gear and "New character" share one row whichever way the rail runs —
+ * a group of two, not two head-of-rail buttons that happen to be adjacent.
+ * `flex: 0 0 auto` so it hugs its own content rather than stretching to the
+ * rail's full cross-axis size the way a lone head button would.
+ */
+.tab-rail .rail-head {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+/*
+ * Making a character.
+ *
+ * Tonal and quiet, per §9: this is a way in, not the primary action of the
+ * window, and the one filled control is spent elsewhere. It says what it does
+ * in words on the left rail, where there is room for them — a bare `+` is a
+ * glyph somebody has to guess at, and guessing at it is what this whole control
+ * exists because of. It takes whatever width the gear beside it leaves, so the
+ * row reads as one control group rather than two mismatched pills.
+ */
+.tab-rail .new-character {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  /*
+   * The band, not the button's own content: the head, the toolbar strip and
+   * the put-away chips are the three things across the top of the window and
+   * they share one edge top and bottom. See `--topbar-h`.
+   */
+  height: var(--topbar-h);
+  padding: 0 10px;
+  border: 0;
+  border-radius: var(--r-control);
+  background: color-mix(in srgb, var(--accent) var(--tone-weak), transparent);
+  color: var(--text-lo-normal);
+  font: inherit;
+  font-size: 0.82rem;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    background var(--dur-tint) var(--ease-out),
+    color var(--dur-tint) var(--ease-out);
+}
+
+.tab-rail .new-character:hover {
+  background: color-mix(in srgb, var(--accent) var(--tone), transparent);
+  color: var(--text-hi);
+}
+
+.tab-rail .new-character:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.tab-rail .new-character .what {
+  overflow: hidden;
+  font-size: 0.72rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The identity colour, resolved once per tab and read by everything below. */
+.tab {
+  --tab-accent: var(--accent);
+}
+.tab[data-accent='green'] {
+  --tab-accent: var(--ok);
+}
+.tab[data-accent='amber'] {
+  --tab-accent: var(--pending);
+}
+.tab[data-accent='violet'] {
+  --tab-accent: var(--marker);
+}
+
+.tab {
+  position: relative;
+  display: grid;
+  align-content: center;
+  gap: 3px;
+  min-width: 0;
+  /* Left, for the grip that drags it. The controls are a row of their own. */
+  padding: 6px 10px 6px 18px;
+  border-radius: var(--r-control);
+  background: transparent;
+  color: var(--text-lo-normal);
+  cursor: pointer;
+  transition:
+    background var(--dur-tint) var(--ease-out),
+    color var(--dur-tint) var(--ease-out);
+}
+
+/*
+ * The one standing mark that says a tab can be moved.
+ *
+ * The same six dots as `.card-grip`, in the same always-drawn, quiet-until-
+ * pointed-at register, because it is the same affordance on the other rail and
+ * an affordance you have to find by hovering is one most people never find.
+ *
+ * Absolutely positioned rather than a grid child: the tab is a grid whose
+ * columns differ between the two orientations, and adding a track to both to
+ * hold eight pixels of dots would make the grip a layout concern in two places.
+ * The tab is already `position: relative` for the active marker.
+ */
+.tab-grip {
+  background-image: radial-gradient(circle, var(--text-lo-quiet) 1.1px, transparent 1.2px);
+  background-position: 0 center;
+  background-repeat: repeat-y;
+  background-size: 4px 4px;
+  bottom: 0;
+  cursor: grab;
+  left: 5px;
+  opacity: 0.55;
+  position: absolute;
+  top: 0;
+  transition: opacity var(--dur-control) var(--ease-out);
+  width: 8px;
+}
+
+.tab:hover .tab-grip {
+  opacity: 1;
+}
+
+/*
+ * What is being dragged stays where it is and dims.
+ *
+ * Lifting it out would collapse the gap it leaves and shift every box the
+ * insertion line is measured from, so the line would point at a gap the tab is
+ * no longer going into — the card rail's own reason, and the same answer.
+ */
+.tab[data-dragging] {
+  cursor: grabbing;
+  opacity: 0.4;
+  outline: 1px dashed color-mix(in srgb, var(--accent) var(--tone-strong), transparent);
+  outline-offset: -1px;
+}
+
+.tab[data-dragging] .tab-grip {
+  cursor: grabbing;
+}
+
+/*
+ * The gap a dragged tab would land in, borrowed whole from the card rail.
+ *
+ * On a left rail the tabs stack, so the gap takes the tab's height; on top
+ * they run across, so it takes the tab's width. The size is the tab's own,
+ * set by the drag, so the tabs beyond it step aside by exactly one tab.
+ */
+.tab-rail .rail-slot {
+  height: var(--slot-h, 40px);
+}
+
+.tab-rail[data-side='top'] .rail-slot {
+  height: auto;
+  width: var(--slot-w, 120px);
+}
+
+/* A dragged tab's ghost carries the character's name where the tab does. */
+.drag-ghost.tab-ghost {
+  align-items: center;
+  text-transform: none;
+}
+
+/*
+ * On top, the tab a side rail draws, at the side rail's width: its name and
+ * realm, its health in figures as well as a bar, and where it is or what it is
+ * doing. A one-line tab across the top read as squashed, and dropped the
+ * figures and the room a player looks across for (2026-10-14). The row
+ * scrolls when the characters outrun the window.
+ */
+.tab-rail[data-side='top'] .tab {
+  flex: 0 0 var(--tab-rail-w);
+}
+
+/*
+ * In the Stable, one compact row (2026-10-31): each tab a status dot and its
+ * name, as wide as the name, everything else a tab carries being on the
+ * character's own row below.
+ */
+.tab-rail[data-compact='true'] .tab {
+  flex: 0 0 auto;
+  min-height: 0;
+  padding: 4px 12px;
+}
+
+.tab-rail[data-compact='true'] .tab :is(.tab-grip, .tab-controls, .where, .mark) {
+  display: none;
+}
+
+.tab-rail[data-compact='true'] .tab:not(.tab-stable) .on {
+  display: none;
+}
+
+.tab-rail[data-compact='true'] .tab .name::before {
+  background: var(--text-lo-quiet);
+  border-radius: 50%;
+  content: '';
+  display: inline-block;
+  height: 7px;
+  margin-right: 6px;
+  vertical-align: middle;
+  width: 7px;
+}
+
+.tab-rail[data-compact='true'] .tab[data-phase='connected'] .name::before {
+  background: var(--ok);
+}
+
+.tab-rail[data-compact='true'] .tab:is([data-phase='error'], [data-phase='closed']) .name::before {
+  background: var(--danger);
+}
+
+.tab-rail[data-compact='true'] .tab-stable .name::before {
+  display: none;
+}
+
+.tab:hover {
+  background: color-mix(in srgb, var(--tab-accent) var(--tone-weak), transparent);
+}
+
+.tab:focus-visible {
+  outline: 2px solid var(--tab-accent);
+  outline-offset: 1px;
+}
+
+.tab[data-active='true'] {
+  background: color-mix(in srgb, var(--tab-accent) var(--tone), transparent);
+  color: var(--text-hi);
+}
+
+/*
+ * The seam that says which character you are typing at. A 2px edge on the
+ * accent rather than a border on the whole tab: one deliberately loud element,
+ * spent where it answers the only question the rail is asked under pressure.
+ */
+.tab[data-active='true']::after {
+  content: '';
+  position: absolute;
+  background: var(--tab-accent);
+  border-radius: var(--r-pill);
+}
+
+.tab-rail[data-side='top'] .tab[data-active='true']::after {
+  left: 10px;
+  right: 10px;
+  bottom: 0;
+  height: 2px;
+}
+
+.tab-rail[data-side='left'] .tab[data-active='true']::after {
+  top: 8px;
+  bottom: 8px;
+  left: 0;
+  width: 2px;
+}
+
+/* Mirrored, and on the console's side of the tab for the same reason the left
+   rail's is: the seam points at the terminal it is naming. */
+.tab-rail[data-side='right'] .tab[data-active='true']::after {
+  top: 8px;
+  bottom: 8px;
+  right: 0;
+  width: 2px;
+}
+
+.tab .who {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+}
+
+/*
+ * The name gives way last. Both halves shrink to fit, but the character's name
+ * is the thing being identified and the realm is the qualifier — letting them
+ * shrink evenly turned "Vaelor" into "Vael…" so that "GreaterMUD (local)" could
+ * keep its middle.
+ */
+.tab .name {
+  flex: 1 1 auto;
+  min-width: 3em;
+  overflow: hidden;
+  font-size: 0.82rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/*
+ * The realm, on the row's right edge. Quiet: it answers "which of my characters
+ * is this" only when the name alone does not, so it must not compete with the
+ * name.
+ *
+ * Last in the row and right-aligned, because it is an *address*: the same word
+ * on every tab of the same realm, which makes a column the eye runs down and
+ * finds nothing in. That is what a right edge is for, and it is why the status
+ * sits inside it rather than on it -- the thing that changes belongs where a
+ * change is noticed, beside the one word on the row that never does. The name
+ * grows into whatever is left, so neither needs an offset of its own.
+ *
+ * It still gives way first (`flex: 0 6 auto`): the character's name is the
+ * thing being identified and the realm is the qualifier.
+ */
+.tab .on {
+  flex: 0 6 auto;
+  overflow: hidden;
+  color: var(--text-lo-quiet);
+  font-size: 0.66rem;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/*
+ * Attention is a condition, so it is a word as well as a hue -- nothing in this
+ * app states a condition by colour alone (§6).
+ *
+ * `margin-left: auto` states the right alignment rather than inheriting it from
+ * the name's `flex-grow`. The two are the same on a tab with a name on it, and
+ * they differ on one that has lost its name to an ellipsis -- and this is the
+ * pair the eye goes to when a character it is not watching starts doing
+ * something, so it may not depend on another element having room.
+ */
+.tab .mark {
+  flex: 0 0 auto;
+  margin-left: auto;
+  padding: 1px 5px;
+  border-radius: var(--r-chip);
+  font-size: 0.62rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.tab .mark[data-level='critical'] {
+  background: color-mix(in srgb, var(--danger) var(--tone), transparent);
+  color: var(--danger);
+}
+
+.tab .mark[data-level='warn'] {
+  background: color-mix(in srgb, var(--pending) var(--tone), transparent);
+  color: var(--pending);
+}
+
+/*
+ * A status rather than a condition -- fighting, walking, looping. The quiet
+ * register: the tab's own accent at the tonal recipe every reporting chip
+ * uses, so what a character is doing never shouts over what is wrong with one.
+ */
+.tab .mark[data-level='info'] {
+  background: color-mix(in srgb, var(--tab-accent) var(--tone), transparent);
+  color: var(--tab-accent);
+}
+
+/* A disconnected character is dimmed rather than marked twice over. */
+.tab[data-phase='closed'] .name,
+.tab[data-phase='idle'] .name {
+  color: var(--text-lo-quiet);
+}
+
+/*
+ * The controls row: dial, bar, pencil, close, one shape on every tab.
+ *
+ * A real flex row rather than buttons absolutely positioned over the tab's
+ * padding, because the columns lining up *between* tabs is the point — the
+ * fixed-size buttons book-end the bar, so every tab's dial starts at one x
+ * and every tab's close ends at another, and the bar takes what is left.
+ */
+.tab .tab-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.tab .hp {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.tab .track {
+  flex: 1 1 auto;
+  height: 3px;
+  border-radius: var(--r-pill);
+  background: color-mix(in srgb, var(--ink-line) 70%, transparent);
+  overflow: hidden;
+}
+
+.tab .fill {
+  display: block;
+  height: 100%;
+  background: var(--ok);
+  border-radius: var(--r-pill);
+  transition: width var(--dur-control) var(--ease-out);
+}
+
+.tab .hp[data-level='caution'] .fill {
+  background: var(--pending);
+}
+.tab .hp[data-level='critical'] .fill {
+  background: var(--danger);
+}
+/* An unknown maximum is absence. An empty track, never a full or a zero bar. */
+.tab .hp[data-level='unknown'] .fill {
+  background: transparent;
+}
+
+.tab .figures,
+.tab .where {
+  overflow: hidden;
+  color: var(--text-lo-quiet);
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tab .figures {
+  flex: 0 0 auto;
+}
+
+/*
+ * The pencil and the close button end the controls row, and only one of them
+ * is always drawn.
+ *
+ * The pencil is, because it is the way to a character's own settings and an
+ * affordance you have to find by hovering is one most people never find — the
+ * same rule the card grips are held to. Closing is destructive and frequent
+ * enough to be recognised, so it stays on hover where it cannot be hit by
+ * accident while reaching for the pencil.
+ */
+.tab .dial,
+.tab .edit,
+.tab .close {
+  display: grid;
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: var(--r-chip);
+  background: transparent;
+  color: var(--text-lo-quiet);
+  font-size: 0.8rem;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    opacity var(--dur-tint) var(--ease-out),
+    background var(--dur-tint) var(--ease-out),
+    color var(--dur-tint) var(--ease-out);
+}
+
+.tab .edit {
+  opacity: 0.5;
+}
+
+/*
+ * Dial or hang up. Always drawn, like the pencil and for the same reason: with
+ * four characters loaded, the one that has dropped is usually not the one on
+ * screen, and a way back into the realm that only appears on hover is one
+ * nobody finds while looking at somebody else's tab.
+ *
+ * **This is the one control in the rail that carries its colour at rest**, and
+ * it is a deliberate exception to "emphasis is spent, not sprayed". Everything
+ * else on a tab *reports a condition* and is therefore tonal; this is an
+ * action, and the two actions it offers are not interchangeable — one puts a
+ * character into the realm and the other takes it out, which on this realm is
+ * not free. Drawn full strength rather than at half opacity, because it went in
+ * as a quiet grey glyph and was missed: the point of it was to be the way back
+ * for a character nobody is looking at.
+ *
+ * §6 is still kept — nothing here is stated by colour alone. The glyph is a
+ * triangle or a square, and `aria-label` and `title` say "Connect Vaelor" or
+ * "Disconnect Vaelor" in words.
+ */
+.tab .dial {
+  width: 18px;
+  height: 18px;
+  opacity: 1;
+}
+
+/* Out of the realm: the way back in. */
+.tab .dial:not([data-phase='connected']) {
+  color: var(--ok);
+}
+
+/* In the realm: the half that costs something. */
+.tab .dial[data-phase='connected'] {
+  color: var(--danger);
+}
+
+.tab .dial:not([data-phase='connected']):hover {
+  background: color-mix(in srgb, var(--ok) var(--tone), transparent);
+}
+
+.tab .dial[data-phase='connected']:hover {
+  background: color-mix(in srgb, var(--danger) var(--tone), transparent);
+}
+
+/* Mid-dial: pressable again only once it has settled. */
+.tab .dial:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+.tab .dial:focus-visible {
+  outline: 2px solid var(--tab-accent);
+  outline-offset: 1px;
+}
+
+.tab:hover .edit,
+.tab[data-active='true'] .edit,
+.tab .edit:focus-visible {
+  opacity: 1;
+}
+
+.tab .edit:hover {
+  background: color-mix(in srgb, var(--tab-accent) var(--tone), transparent);
+  color: var(--text-hi);
+}
+
+.tab .edit:focus-visible,
+.tab .close:focus-visible {
+  outline: 2px solid var(--tab-accent);
+  outline-offset: 1px;
+}
+
+/*
+ * A popup menu — the terminal's right-click, a card's — in a portal
+ * because what it belongs to scrolls and would clip it.
+ *
+ * `.surface` carries the glass — one recipe for every floating pane, so this
+ * cannot drift from the palette. What is behind it is the chrome, not the
+ * console, so the blur is allowed here where it is refused behind a floating
+ * card; the terminal's own menu is the one exception the rule tolerates,
+ * because a menu is dismissed in a second and a card sits there. Under the
+ * palette's scrim deliberately: a dialog covers a menu.
+ */
+.popup-menu {
+  position: fixed;
+  z-index: 60;
+  display: flex;
+  min-width: 180px;
+  flex-direction: column;
+  padding: 4px;
+}
+
+.picker-menu {
+  position: fixed;
+  z-index: 60;
+  display: flex;
+  min-width: 200px;
+  max-height: 60vh;
+  flex-direction: column;
+  padding: 4px;
+  /* The rail ships with six cards put away and every close adds one, so this
+     is a list that genuinely runs long. It is the one popup that scrolls. */
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+/*
+ * One row, two controls: the label docks the card on the rail and the glyph at
+ * its end brings it out over the console. Two places a card can go, so two
+ * ways out of the row -- and floating one had no affordance at all before,
+ * being reachable only by knowing it could be dragged there.
+ */
+.picker-row {
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+}
+
+.picker-row .entry {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.picker-row .entry > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.picker-float {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  border-radius: var(--r-control);
+  color: var(--text-lo-quiet);
+  cursor: pointer;
+  display: flex;
+  flex: 0 0 auto;
+  justify-content: center;
+  padding: 0 8px;
+}
+
+.picker-float:hover,
+.picker-float:focus-visible {
+  background: color-mix(in srgb, var(--accent) var(--tone), transparent);
+  color: var(--accent);
+  outline: none;
+}
+
+.popup-menu .entry,
+.picker-menu .entry {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 7px 10px;
+  border: 0;
+  border-radius: var(--r-control);
+  background: transparent;
+  color: var(--text-lo-normal);
+  font: inherit;
+  font-size: 0.78rem;
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.popup-menu .entry:hover,
+.popup-menu .entry:focus-visible,
+.picker-menu .entry:hover,
+.picker-menu .entry:focus-visible {
+  background: color-mix(in srgb, var(--accent) var(--tone), transparent);
+  color: var(--text-hi);
+  outline: none;
+}
+
+/*
+ * Offered, and not available yet: Copy with nothing selected. Quiet rather
+ * than absent, so the menu keeps one shape — and so the answer to "why did
+ * nothing happen" is on screen before the question is asked.
+ */
+.popup-menu .entry:disabled {
+  color: var(--text-lo-quiet);
+  cursor: default;
+}
+
+.popup-menu .entry:disabled:hover {
+  background: transparent;
+  color: var(--text-lo-quiet);
+}
+
+/* Closing a character is the one entry that can cost something. */
+.popup-menu .entry[data-danger='true']:hover,
+.popup-menu .entry[data-danger='true']:focus-visible {
+  background: color-mix(in srgb, var(--danger) var(--tone), transparent);
+  color: var(--danger);
+}
