@@ -27,17 +27,24 @@ uses whichever is present. `client.ts` handles every `Invoke` and `Send`
 ## The app
 
 - `main.tsx` puts the bridge in place and renders `App`.
-- `App.tsx` (about 6,400 lines) is the shell: the tab rail of characters,
+- `App.tsx` (about 7,000 lines) is the shell: the tab rail of characters,
   the panes (up to four characters side by side), the card rail, every
   push subscription, and per-session view state (`patchView`). Modal
   screens (Settings, Loops, MMUD Explorer, the home browser) open over it.
+  It is the one place in the window no unit test reaches, so **new state
+  goes into a hook under `hooks/`, with its own test**, and `App` calls it.
+  The panes and the Stable (`usePanes`), the Party card's rosters
+  (`useParty`), the settings screen (`useSettingsScreen`) and the card rail
+  (`useCardRail`) live there; `hooks/__tests__/renderHook.ts` renders a hook
+  on its own in happy-dom for a test.
 - `components/`: about 100 components. Cards (`*Card.tsx`), screens
   (`SettingsScreen`, `ExplorerScreen`, `LoopsModal`), editors (monster and
   item rules, MegaMUD's settings tabs, rewrites), popovers (`Reference*`,
   `PlayerFlyout`) and the terminal (`TerminalView`, `SessionTerminal`, on
   xterm with the WebGL renderer).
-- `hooks/`: card layout, drag and resize, pane widths, preferences, theme,
-  density, hotkeys, settings panels.
+- `hooks/`: the state `App` holds (panes and the Stable, parties, the
+  settings screen, the card rail), card layout, drag and resize, pane
+  widths, preferences, theme, density, hotkeys, settings panels.
 - `lib/`: small helpers (formatting, tables, maps, routes, popovers, the
   web bridge, `i18n.ts`, `tuning.ts`).
 

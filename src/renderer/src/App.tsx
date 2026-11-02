@@ -37,17 +37,11 @@ import { canRestore, type GearAction } from '@shared/gear';
 import { knownGangs } from './lib/gangs';
 import { ago, knownPlayerNames, presentPlayerNames } from './lib/players';
 import { NameIndex } from './lib/names';
-import { readShown, writeShown } from './lib/shownPanes';
 import { stableBlocks, type StableBlock } from './lib/stable';
 import { SkinContext } from './lib/skin';
 import PlayersCard from './components/PlayersCard';
 import GangCard from './components/GangCard';
-import SettingsScreen, {
-  SETTINGS_DEFAULTS,
-  SETTINGS_GLOBAL,
-  SETTINGS_MANAGE_SERVERS,
-  SETTINGS_NEW_CHARACTER
-} from './components/SettingsScreen';
+import SettingsScreen from './components/SettingsScreen';
 import StandbyCard from './components/StandbyCard';
 import StatsCard from './components/StatsCard';
 import GearCard from './components/GearCard';
@@ -79,10 +73,8 @@ import {
   StableHead,
   StableParty,
   StableStatus,
-  inRealm,
   madeSince,
   useAwaySince,
-  useLeftOut,
   useNarrow,
   useStableSizes,
   useStatusCards
@@ -103,6 +95,10 @@ import LoopBuilderCard, {
 import ToolbarCard, { ToolbarRow } from './components/ToolbarCard';
 import { TOOLBAR_IDS, type ToolbarSubject } from './lib/toolbar';
 import { useToolbarPins } from './hooks/useToolbarPins';
+import { useParty, type PartyContext } from './hooks/useParty';
+import { useSettingsScreen } from './hooks/useSettingsScreen';
+import { usePanes } from './hooks/usePanes';
+import { useCardRail } from './hooks/useCardRail';
 import { forgetStatsBase, recallStatsBase } from './hooks/useRemembered';
 import NavigationCard from './components/NavigationCard';
 import { type TerminalHandle } from './components/TerminalView';
@@ -168,8 +164,6 @@ import {
 } from '@shared/config';
 import type { RemoteName } from '@shared/remotes';
 import { EMPTY_CHARACTER, ownGang, packRows, type CharacterState } from '@shared/character';
-import { rosterOf, type MusterTarget, type PartyRoster } from '@shared/partyRoster';
-import type { OurMember } from './lib/partyBoard';
 import { figuresOf, type StatlineFigures } from '@shared/statline';
 import { IDLE_WALK, type WalkProgress } from '@shared/walk';
 import { NO_ROUND } from '@shared/roundTimer';
@@ -245,12 +239,7 @@ import {
   type TerminalSize
 } from '@shared/types';
 import { setTuning, tuning } from './lib/tuning';
-import { readStored, writeStored } from './lib/storage';
 import { keepFocus } from './lib/focus';
-
-/** Whether the cards are tucked away or pinned out, per browser; and the beat a switch is given to settle. */
-const TUCK_KEY = 'mudengine.tuckCards';
-const TUCK_SETTLE_MS = 160;
 
 /** Each card's glyph in the tucked rail's strip. */
 const CARD_GLYPH: Partial<Record<CardId, IconName>> = {
@@ -655,28 +644,8 @@ interface CardContext {
   selectPlayer(name: string, anchor: PopoverAnchor): void;
   /** This character's resolved `automation.remotes`, for the Gang card. */
   remotes: RemotesConfig;
-  /**
-   * The Party card's world: this character's realm, the roster naming it, and
-   * every character of this client's on that realm, read from their own tabs
-   * — so every member of ours draws, and edits, the same party.
-   */
-  party: {
-    realm: string | null;
-    roster: PartyRoster | null;
-    ours: readonly OurMember[];
-    save(roster: PartyRoster): void;
-    remove(id: string): void;
-    /** The party broken up in the realm and its roster forgotten. */
-    disband(id: string): void;
-    regroup(id: string): Promise<number>;
-    muster(id: string, target: MusterTarget): Promise<string[]>;
-    say(
-      id: string,
-      sessions: readonly SessionId[],
-      line: string,
-      others: boolean
-    ): Promise<string[]>;
-  };
+  /** The Party card's world (`useParty`). */
+  party: PartyContext;
   /** The toolbar: this character's own switches, and what its buttons do. */
   toolbar: ToolbarSubject;
   /** Which toolbar buttons are on the row, and the control that moves one. */
@@ -1403,77 +1372,24 @@ export default function App() {
   const [profiles, setProfiles] = useState<ProfileSummary[]>([]);
   const [views, setViews] = useState<Record<SessionId, SessionView>>({});
 
-  /**
-   * The characters on screen, one per pane, and which pane the keyboard is
-   * talking to.
-   *
-   * Flat and at most four: a recursive split tree needs a layout algebra, drag
-   * handles and a serialisation format, and pays that back for someone tiling
-   * six documents rather than watching four characters. See docs/profiles.md
-   * §7.3.
-   */
-  // Seeded from the last panes drawn, so a remount after a lost web socket, a
-  // reload or a relaunch comes back to them (upstream 3a3eb4aa).
-  const [shown] = useState(readShown);
-  const [paneIds, setPaneIds] = useState<SessionId[]>(shown.panes);
-  const [focusedPane, setFocusedPane] = useState(shown.at);
-
-  /**
-   * The panes, filtered to characters that are still loaded.
-   *
-   * Derived rather than corrected in place: a character closing while it is on
-   * screen must not leave a pane pointing at an id nothing answers to, and
-   * there is always at least one pane while there is at least one character.
-   */
-  const panes = useMemo(() => {
-    const live = paneIds.filter((id) => sessions.some((entry) => entry.id === id));
-    if (live.length > 0) return live;
-    return sessions.length > 0 ? [sessions[0]!.id] : [];
-  }, [paneIds, sessions]);
-
-  const paneAt = Math.min(focusedPane, Math.max(0, panes.length - 1));
-
-  /*
-   * The Stable (2026-10-31): every character in the realm at once, one row
-   * each beside its own console, shown instead of the panes. The row the
-   * keyboard is talking to is the character being shown while it is, so the
-   * status rail, the palette and every hotkey follow a click on a row as they
-   * follow a tab; and a character opened from it comes back to it on Escape.
-   */
-  const [stable, setStable] = useState(shown.stable);
-  const [stableFocus, setStableFocus] = useState<SessionId | null>(null);
-  const [fromStable, setFromStable] = useState(false);
-  const stableOn = stable && sessions.length > 0;
-  // The characters left out of it, which get no row (`useLeftOut`).
-  const { leftOut, leaveOut, bringBack } = useLeftOut();
-  const rowKey = sessions
-    .filter((entry) => inRealm(views[entry.id]) && !leftOut.includes(entry.id))
-    .map((entry) => entry.id)
-    .join('\n');
-  const stableRows = useMemo(() => {
-    const ids = rowKey.split('\n');
-    return sessions.filter((entry) => ids.includes(entry.id));
-  }, [sessions, rowKey]);
-  const stableAway = useMemo(
-    () => sessions.filter((entry) => !stableRows.includes(entry) && !leftOut.includes(entry.id)),
-    [sessions, stableRows, leftOut]
-  );
-  const stableLeftOut = useMemo(
-    () => sessions.filter((entry) => leftOut.includes(entry.id)),
-    [sessions, leftOut]
-  );
-  // The row with the keyboard, or the first row: never a character with no row,
-  // which a character just left out would otherwise stay as (2026-11-01).
-  const focusedRow =
-    stableFocus !== null && stableRows.some((entry) => entry.id === stableFocus)
-      ? stableFocus
-      : (stableRows[0]?.id ?? null);
-  const session = stableOn && focusedRow !== null ? focusedRow : (panes[paneAt] ?? NO_SESSION);
-  // Nothing is written before the roster arrives, or a reload would forget
-  // the choice it is about to restore.
-  useEffect(() => {
-    if (panes.length > 0) writeShown({ panes, at: paneAt, stable });
-  }, [panes, paneAt, stable]);
+  /** The characters on screen, or the Stable in their place (`usePanes`). */
+  const {
+    panes,
+    paneAt,
+    session,
+    stableOn,
+    stableRows,
+    stableAway,
+    stableLeftOut,
+    fromStable,
+    leaveOut,
+    bringBack,
+    showSession,
+    showStable,
+    focusPane,
+    placePane,
+    closePane
+  } = usePanes(sessions, views);
 
   /** Every session is a character with a name worth showing; none is no rail. */
   const showTabs = sessions.length > 0;
@@ -1523,7 +1439,6 @@ export default function App() {
   const [explorerOpen, setExplorerOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [routeOpen, setRouteOpen] = useState(false);
-  const [settingsOpen, setSettingsOpen] = useState(false);
   /**
    * The client thinks the character in the realm is not the one its records are
    * about, and is asking.
@@ -1547,15 +1462,6 @@ export default function App() {
   const [wandered, setWandered] = useState<
     ({ session: SessionId; loop: string | null } & MovementConfirm) | null
   >(null);
-  /*
-   * Which character the settings screen opens on.
-   *
-   * `null` means "wherever it was", which is what `Ctrl/Cmd ,` and the palette
-   * want — reopening the screen on the character you were last editing. A tab's
-   * own menu names one, because "edit *this* character" is the whole point of
-   * reaching it from the tab rather than from the palette.
-   */
-  const [settingsAt, setSettingsAt] = useState<string | null>(null);
   /** A destination picked off the map, planned when the panel opens. */
   const [routeTarget, setRouteTarget] = useState<WorldRoom | null>(null);
   /** A room name clicked in the console that named more than one room. */
@@ -1876,45 +1782,6 @@ export default function App() {
   } = useTheme(characterTheme ?? config.ui.theme, config.ui.console.palette);
 
   /**
-   * Same precedence as density and theme: the palette toggle is remembered, and
-   * an edit to `ui.showHud` in the options file overrides the memory.
-   */
-  const [hudPreference, setHudPreference] = useOverridablePreference(
-    'mudengine.hud',
-    config.ui.showHud ? 'on' : 'off',
-    (value): value is 'on' | 'off' => value === 'on' || value === 'off'
-  );
-  /**
-   * The diagnostics cards, for this run of the client only.
-   *
-   * Deliberately *not* remembered and deliberately not configurable — the one
-   * piece of chrome here that is neither. Link, traffic and stream readouts are
-   * what you open when something looks wrong on the wire; they are a tool
-   * reached for, used, and put down, not part of how a player has arranged
-   * their instrument. Left remembered, an evening's debugging becomes the
-   * client's permanent shape, and the cost is paid on the rail every launch
-   * afterwards by somebody who has forgotten they ever asked.
-   *
-   * So the client always starts with them hidden, the palette toggle shows them
-   * for as long as this window is open, and closing the client puts them away.
-   * `ui.showDiagnostics` was removed with this rather than being left to mean
-   * nothing: a setting that cannot take effect is worse than one not offered.
-   */
-  const [railOpen, setRailOpen] = useState(false);
-  /**
-   * The cards tucked away into a strip, out while the pointer is on them
-   * (2026-10-31), or pinned out beside the console: a pin on the rail itself,
-   * remembered per browser as a layout is. Not a setting: it is a choice made
-   * where the cards are, and undone there.
-   */
-  const [tuckPreference, setTuckState] = useState<'tucked' | 'out'>(() =>
-    readStored(
-      TUCK_KEY,
-      (stored) => (stored === 'tucked' ? 'tucked' : 'out'),
-      () => 'out'
-    )
-  );
-  /**
    * Whether the debug view is over the console.
    *
    * A plain `useState`, and hidden on every launch, for exactly the reason the
@@ -1925,24 +1792,6 @@ export default function App() {
    * `ui.showDiagnostics` was deleted over.
    */
   const [debugOpen, setDebugOpen] = useState(false);
-
-  /**
-   * Characters other than the shown one whose *pinned* floats include the
-   * Stream card. The per-line feed is sent only while something in this window
-   * shows it (see `wantsLineFeed`), and a pinned stream float is the one
-   * consumer the shown character's layout cannot answer for — uncounted, it
-   * would quietly freeze whenever the rail was closed.
-   */
-  const [pinnedStreams, setPinnedStreams] = useState<ReadonlySet<SessionId>>(() => new Set());
-  const noteStreamFloat = useCallback((sid: SessionId, has: boolean) => {
-    setPinnedStreams((prev) => {
-      if (prev.has(sid) === has) return prev;
-      const next = new Set(prev);
-      if (has) next.add(sid);
-      else next.delete(sid);
-      return next;
-    });
-  }, []);
 
   /** Same precedence as density and theme: remembered, overridden by the file. */
   const [tabSide, setTabSide] = useOverridablePreference<RailSide>(
@@ -2136,6 +1985,20 @@ export default function App() {
    * engine message into it.
    */
   const terminals = useRef(new Map<SessionId, TerminalHandle>());
+  /** The HUD, the diagnostics cards, tucked or pinned out (`useCardRail`). */
+  const {
+    hudPreference,
+    setHudPreference,
+    hudOpen,
+    railOpen,
+    toggleRail,
+    railVisible,
+    tuckPreference,
+    tucked,
+    setTucked,
+    pinnedStreams,
+    noteStreamFloat
+  } = useCardRail(config.ui.showHud, terminals, setResizing);
   /** Bumped when a terminal registers or leaves, so effects can react to it. */
   const [handleTick, setHandleTick] = useState(0);
   const pendingNotices = useRef<string[]>([]);
@@ -2709,27 +2572,19 @@ export default function App() {
     void api.listSessions().then(setSessions);
   }, [api]);
 
-  /*
-   * A character is step one; there is no "before you have one".
-   *
-   * With no characters there is no session and no console, so the client's only
-   * job is to help make one — and the way in is the new-character form, opened
-   * here rather than described in a notice somebody has to find. The anonymous
-   * session this replaced was retired 2026-08-29 (see `NO_SESSION`).
-   *
-   * It used to be offered **once per launch** and was closeable, on the
-   * reasoning that closing it is a choice. It is not one: behind it is an empty
-   * window with no rail, no tab and nothing that says what to do, which is
-   * where a fresh installation put somebody who clicked outside the form. So
-   * while there is no character the screen is open and `required`, and the
-   * latch that made the offer once is gone with the choice it was protecting.
-   */
+  /** No character at all: the settings screen stays open on the new-character form (`useSettingsScreen`). */
   const mustMakeCharacter = profilesKnown && profiles.length === 0 && sessions.length === 0;
-  useEffect(() => {
-    if (!mustMakeCharacter) return;
-    setSettingsAt(SETTINGS_NEW_CHARACTER);
-    setSettingsOpen(true);
-  }, [mustMakeCharacter]);
+  const {
+    open: settingsOpen,
+    at: settingsAt,
+    close: closeSettings,
+    openSettings,
+    editCharacter,
+    newCharacter,
+    manageServers,
+    editGlobal,
+    editDefaults
+  } = useSettingsScreen(mustMakeCharacter, returnFocus);
 
   /**
    * Whether the Navigation card is still worth the space it takes.
@@ -2772,49 +2627,8 @@ export default function App() {
     (character.phase === 'in-game' && loops.length > 0);
 
   const inGame = character.phase === 'in-game';
-  /*
-   * The HUD is on because the player asked for it, not because the character
-   * happens to be in the realm.
-   *
-   * It used to require both, so the whole rail vanished the moment a character
-   * dropped — and with two on screen that reads as damage rather than as
-   * "offline": one has an instrument beside it and the other has a blank
-   * column, with nothing on screen saying which. It also moved the console's
-   * width, which re-wraps a scrollback nobody asked to re-wrap.
-   *
-   * So the rail keeps its space and says what it is waiting for instead.
-   */
-  const hudOpen = hudPreference === 'on';
-  /**
-   * The HUD appears on its own, without the diagnostics rail.
-   *
-   * Vitals and Room are what the player reads while playing; putting them
-   * behind a toggle labelled "diagnostics" meant they were never seen. The rail
-   * is therefore present whenever there is *either* HUD content or diagnostics
-   * to show, and each half decides for itself.
-   */
-  const railVisible = hudOpen || railOpen;
   // In the Stable, the tabs are one compact row across the top: its rows carry the rest.
   const tabsAt: RailSide = stableOn ? 'top' : tabSide;
-  const tucked = railVisible && tuckPreference === 'tucked';
-  /*
-   * Pinned or tucked in one step (2026-10-31): the workspace's width
-   * animation held off, so the console is resized once rather than every
-   * frame of a slide — a terminal re-wraps its scrollback at each width it is
-   * given, which read as the window scrolling and left a console part-way up
-   * its history — and every console that was following the game brought back
-   * to its newest line once it has been fitted to the new width.
-   */
-  const setTucked = useCallback((next: boolean): void => {
-    const following = [...terminals.current.values()].filter((handle) => handle.following());
-    setResizing(true);
-    setTuckState(next ? 'tucked' : 'out');
-    writeStored(TUCK_KEY, next ? 'tucked' : 'out');
-    window.setTimeout(() => {
-      for (const handle of following) handle.jumpToLatest();
-      setResizing(false);
-    }, TUCK_SETTLE_MS);
-  }, []);
 
   const connected = state.phase === 'connected';
   // Refused only while a close is under way; a dial with no answer is made again.
@@ -2883,37 +2697,6 @@ export default function App() {
     [dial, hangUp, sessions, views]
   );
 
-  /**
-   * Show a different character.
-   *
-   * Sends nothing. The state is already here — every character's facts arrive
-   * whether or not its terminal is on screen — so a switch is a change of view
-   * and never a command. A bare Enter to "refresh" would be a command the player
-   * did not type, and in this game a bare Enter is a full room description that
-   * re-triggers everything listening for one.
-   */
-  const showSession = useCallback(
-    (id: SessionId) => {
-      // From the Stable, a character opened is one Escape comes back from.
-      if (stableOn) {
-        setStable(false);
-        setFromStable(true);
-      }
-      // Already on screen? Then this is a request to type at it, not to move it.
-      const at = panes.indexOf(id);
-      if (at >= 0) {
-        setFocusedPane(at);
-        return;
-      }
-      setPaneIds(panes.map((current, index) => (index === paneAt ? id : current)));
-    },
-    [paneAt, panes, stableOn]
-  );
-  /** The Stable shown, and the row the keyboard was last talking to kept. */
-  const showStable = useCallback(() => {
-    setStable(true);
-    setFromStable(false);
-  }, []);
   // Every character in the realm stopped where it stands, from the Stable's head.
   const stopAll = useCallback(() => {
     for (const entry of stableRows) void api.stopMoving(entry.id);
@@ -3071,10 +2854,9 @@ export default function App() {
         return;
       }
 
-      setPaneIds([...panes, id]);
-      setFocusedPane(panes.length);
+      placePane(id);
     },
-    [paneFlow, panes, refuseNarrowSplit]
+    [paneFlow, panes, placePane, refuseNarrowSplit]
   );
 
   /**
@@ -3106,27 +2888,8 @@ export default function App() {
     [panes.length, refuseNarrowSplit, setPaneFlow]
   );
 
-  const closePane = useCallback(() => {
-    if (panes.length < 2) return;
-    setPaneIds(panes.filter((_, index) => index !== paneAt));
-    setFocusedPane(Math.max(0, paneAt - 1));
-  }, [paneAt, panes]);
-
   /** The banner's Stop, addressed at the pane's own character; one function for every pane. */
   const stopRunFor = useCallback((sid: SessionId) => void api.questStop(sid), [api]);
-
-  const focusPane = useCallback(
-    (id: SessionId) => {
-      // A row of the Stable is the character being shown while it is.
-      if (stableOn) {
-        setStableFocus(id);
-        return;
-      }
-      const at = panes.indexOf(id);
-      if (at >= 0) setFocusedPane(at);
-    },
-    [panes, stableOn]
-  );
 
   /**
    * Close a character's tab.
@@ -3272,12 +3035,6 @@ export default function App() {
   );
 
   /**
-   * The rail takes no typed input, so opening it leaves focus in the terminal
-   * and there is nothing to hand back on close.
-   */
-  const toggleRail = useCallback(() => setRailOpen((open) => !open), []);
-
-  /**
    * The debug view's three doors into main, bundled once.
    *
    * A bundle rather than three props threaded through, and memoised on `api`
@@ -3414,70 +3171,11 @@ export default function App() {
     [api, reveal]
   );
 
-  /**
-   * Settings is a form, so it hands the keyboard back to the game on the way
-   * out — Escape, the close button, or a click on the scrim. The one surface
-   * that holds the caret while a character is standing somewhere is the one
-   * that has to be reliable about giving it back.
-   */
-  const closeSettings = useCallback(() => {
-    // Nothing to hand the keyboard back *to*: there is no console behind this
-    // screen until there is a character. The screen draws no close and answers
-    // no Escape while that holds; this is the same refusal at the palette's
-    // and the shortcut's door.
-    if (mustMakeCharacter) return;
-    setSettingsOpen(false);
-    returnFocus();
-  }, [mustMakeCharacter, returnFocus]);
-
-  /** Open settings wherever it was — the palette and the shortcut. */
-  const openSettings = useCallback(() => {
-    setSettingsAt(null);
-    setSettingsOpen(true);
-  }, []);
-
-  /** Open settings on one named character — a tab's own menu. */
-  const editCharacter = useCallback((id: SessionId) => {
-    setSettingsAt(id);
-    setSettingsOpen(true);
-  }, []);
-
   /** The Stable's pencil for a character: its settings, where it has a file. */
   const editFor = useCallback(
     (id: SessionId) => (editable.includes(id) ? editCharacter : undefined),
     [editable, editCharacter]
   );
-
-  /** Open settings on an empty character — the `+` at the head of the rail. */
-  const newCharacter = useCallback(() => {
-    setSettingsAt(SETTINGS_NEW_CHARACTER);
-    setSettingsOpen(true);
-  }, []);
-
-  /** Open settings straight to the servers list — the palette's own way in. */
-  const manageServers = useCallback(() => {
-    setSettingsAt(SETTINGS_MANAGE_SERVERS);
-    setSettingsOpen(true);
-  }, []);
-
-  /**
-   * Open settings on the client's own — the gear at the head of the tab rail.
-   *
-   * Beside the `+` because that is where somebody already is when they want to
-   * change something about the client rather than about a character, and
-   * because a settings screen reachable only by a chord is one most people
-   * never find. Also in the palette, for the same reason.
-   */
-  const editGlobal = useCallback(() => {
-    setSettingsAt(SETTINGS_GLOBAL);
-    setSettingsOpen(true);
-  }, []);
-
-  /** And the other half of that file: what a new realm and character start with. */
-  const editDefaults = useCallback(() => {
-    setSettingsAt(SETTINGS_DEFAULTS);
-    setSettingsOpen(true);
-  }, []);
 
   /** Route planning is a dialog that types, so it hands focus back on close. */
   const closeRoute = useCallback(() => {
@@ -5709,82 +5407,13 @@ export default function App() {
    * one exception is `toolbar`: its subject embeds live state and is rebuilt
    * per render, which is why `ToolbarCard` is deliberately not memoised.
    */
-  /*
-   * The Party card's rosters, every realm's, kept in main and pushed on every
-   * change — an edit on one character's card reaches every other's at once.
-   */
-  const [rosters, setRosters] = useState<PartyRoster[]>([]);
-  useEffect(() => {
-    void api.partyRosters().then(setRosters);
-    return api.onPartyRosters(setRosters);
-  }, [api]);
-  const saveRoster = useCallback(
-    (roster: PartyRoster) => void api.saveRoster(roster).then(setRosters),
-    [api]
-  );
-  const removeRoster = useCallback(
-    (id: string) => void api.removeRoster(id).then(setRosters),
-    [api]
-  );
-  const regroupParty = useCallback((id: string) => api.regroupParty(id), [api]);
-  // Disband: the party broken up in the realm, and its roster forgotten (2026-10-31).
-  const disbandParty = useCallback(
-    (id: string) => void api.disbandParty(id).then(setRosters),
-    [api]
-  );
-  const musterParty = useCallback(
-    (id: string, target: MusterTarget) => api.musterParty(id, target),
-    [api]
-  );
-  /* The Party card's Say to: each character sends the line through its own talk box's path. */
-  const sayAsParty = useCallback(
-    (id: string, sids: readonly SessionId[], line: string, others: boolean) =>
-      api.partySay(id, sids, line, others),
-    [api]
-  );
-  /* Each realm's characters of ours, from their own tabs: the cross-tab half of the Party card. */
-  const oursByRealm = useMemo(() => {
-    const byRealm = new Map<string, OurMember[]>();
-    for (const summary of sessions) {
-      const character = views[summary.id]?.character;
-      if (character === undefined || character.name === null) continue;
-      const list = byRealm.get(summary.server) ?? [];
-      list.push({
-        session: summary.id,
-        character,
-        inGame: summary.state.phase === 'connected' && character.phase === 'in-game'
-      });
-      byRealm.set(summary.server, list);
-    }
-    return byRealm;
-  }, [sessions, views]);
-  const partyFor = useCallback(
-    (sid: SessionId, character: CharacterState): CardContext['party'] => {
-      const realm = sessions.find((summary) => summary.id === sid)?.server ?? null;
-      return {
-        realm,
-        roster: realm === null ? null : rosterOf(rosters, realm, character.name),
-        ours: realm === null ? [] : (oursByRealm.get(realm) ?? []),
-        save: saveRoster,
-        remove: removeRoster,
-        disband: disbandParty,
-        regroup: regroupParty,
-        muster: musterParty,
-        say: sayAsParty
-      };
-    },
-    [
-      sessions,
-      rosters,
-      oursByRealm,
-      saveRoster,
-      removeRoster,
-      disbandParty,
-      regroupParty,
-      musterParty,
-      sayAsParty
-    ]
-  );
+  const {
+    rosters,
+    regroup: regroupParty,
+    disband: disbandParty,
+    muster: musterParty,
+    partyFor
+  } = useParty(api, sessions, views);
 
   const contextFor = useCallback(
     (sid: SessionId, v: SessionView, chrome: CardChrome): CardContext => {
