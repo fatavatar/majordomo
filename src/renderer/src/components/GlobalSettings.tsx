@@ -74,7 +74,7 @@ export interface GlobalSettingsProps {
   onExportLoop(loop: Loop): void;
   /** Edit on a loop row: see `LoopSectionProps.editFor`. */
   editLoopFor?(loop: Loop, from: ScopedLoop | null): (() => void) | null;
-  firstFieldRef: React.RefObject<HTMLInputElement>;
+  firstFieldRef: React.RefObject<HTMLInputElement | null>;
   /**
    * What the spell pickers offer here: the shipped realm's castable spells.
    * This form is the *starting point* a new character copies, so there is no

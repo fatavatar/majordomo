@@ -1279,7 +1279,7 @@ function PinnedFloats({
   onStreamFloat
 }: {
   sid: SessionId;
-  boxRef: React.RefObject<HTMLElement>;
+  boxRef: React.RefObject<HTMLElement | null>;
   render(id: CardId, sid: SessionId, layout: CardLayoutApi): ReactNode;
   /** Whether this character's pinned floats include the Stream card. */
   onStreamFloat(sid: SessionId, has: boolean): void;

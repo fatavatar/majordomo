@@ -130,7 +130,7 @@ export interface BentoCardProps {
    */
   paned?: boolean;
   /** Handle on the scroll container, for cards that pin themselves to the end. */
-  bodyRef?: RefObject<HTMLDivElement>;
+  bodyRef?: RefObject<HTMLDivElement | null>;
   className?: string;
   /**
    * More than one face for the same subject.

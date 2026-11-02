@@ -178,11 +178,7 @@ function ReferenceCard({
         {empty !== null ? (
           <div className="empty">{empty}</div>
         ) : (
-          <ul
-            className="reference"
-            ref={list.listRef as React.RefObject<HTMLUListElement>}
-            role="listbox"
-          >
+          <ul className="reference" ref={list.listRef} role="listbox">
             {entries.map((entry, index) => {
               const figure = entryFigure(entry);
               return (
