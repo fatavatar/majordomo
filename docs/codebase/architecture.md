@@ -31,7 +31,11 @@ main's thread, where they would freeze the socket: route planning
 `src/main/index.ts` picks a host and starts the client on it:
 
 - **Desktop** (`host/ElectronHost.ts`): Electron windows, the preload bridge
-  (`src/preload/index.ts`) and Electron's IPC.
+  (`src/preload/index.ts`) and Electron's IPC. The windows are sandboxed, so
+  the preload is built as one CommonJS file that requires only `electron`;
+  the build refuses one that needs anything else (`electron.vite.config.ts`,
+  `sandboxedPreload`). Electron is kept within its supported three majors, and
+  a release tag on an older one fails (`release.yml`).
 - **Browser** (`host/WebHost.ts`, chosen by `MUDENGINE_WEB=1`): an HTTP server
   serving the built renderer, a password sign-in (`host/web/access.ts`), and
   one WebSocket per tab carrying the same contract (`shared/rpc.ts` is the

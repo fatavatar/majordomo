@@ -37,6 +37,7 @@ import path from 'node:path';
 import { localProfile, skip } from './lib/local-realm.mjs';
 import { homePaths } from './lib/home.mjs';
 import { judgeFailures } from './lib/smoke-baseline.mjs';
+import { electronBinary } from './lib/electron-binary.mjs';
 
 const IAC = 255,
   WILL = 251,
@@ -387,10 +388,7 @@ check(/NOT encrypted/.test(serverOut), 'the banner says the link is cleartext');
 
 // ---------------------------------------------------------------- browser
 
-const electron =
-  process.platform === 'win32'
-    ? 'node_modules/electron/dist/electron.exe'
-    : './node_modules/electron/dist/electron';
+const electron = electronBinary();
 
 const browserEnv = {
   ...process.env,

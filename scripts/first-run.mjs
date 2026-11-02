@@ -26,6 +26,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import YAML from 'yaml';
 
+import { electronBinary } from './lib/electron-binary.mjs';
+
 /*
  * The realm a new character starts on, read from the shipped character template
  * rather than from `src/shared/config.ts`.
@@ -64,10 +66,7 @@ console.log('\nMajordomo first-run check -- a fresh options directory, no charac
 
 /* -------------------------------------------------------------------- launch */
 
-const electron =
-  process.platform === 'win32'
-    ? 'node_modules/electron/dist/electron.exe'
-    : './node_modules/electron/dist/electron';
+const electron = electronBinary();
 
 // VS Code exports this to helper processes and it makes the Electron binary
 // behave as a plain Node runtime: no app, no window, and a misleading ESM error

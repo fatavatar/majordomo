@@ -78,6 +78,24 @@ jobs:
           fi
           echo "v${pkg}"
 
+      # Electron patches its newest three majors and nothing older: no
+      # Chromium or Node security fixes, in a window that draws what other
+      # players type. 1.0.11 shipped Electron 33, a year and a half out of
+      # support by then (2026-11-02). A release on one that has left support is
+      # refused here, where the fix is `npm install electron@latest`. Tags only,
+      # like the check above: a pull request should not go red because
+      # Electron released.
+      - name: Electron must still be supported
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          ours="$(node -p "require('electron/package.json').version.split('.')[0]")"
+          latest="$(npm view electron version | cut -d. -f1)"
+          if [ "$ours" -le "$((latest - 3))" ]; then
+            echo "::error::Electron ${ours} is out of support: the newest is ${latest}, and only the newest three are patched."
+            exit 1
+          fi
+          echo "Electron ${ours} (newest ${latest})"
+
       - run: npm run lint
 
       # The unit suite and the realm conversions. `test:realm` converts the real

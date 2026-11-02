@@ -107,6 +107,42 @@ const stripComments = {
  */
 const CHUNK_LIMIT_KB = { main: 1400, preload: 100, renderer: 2000 } as const;
 
+/**
+ * The preload as a sandboxed window can run it, or no build (2026-11-02).
+ *
+ * The window is sandboxed (`ElectronHost`), and a sandboxed renderer runs its
+ * preload as one plain script: `require` reaches `electron` and nothing else,
+ * there is no module loader to fetch a chunk beside it, and from Electron 45
+ * none of the Node shims either -- `Buffer`, `setImmediate`, `events`,
+ * `timers`, `url` (Electron 45 breaking changes). A preload that asks for any
+ * of them throws as the window opens, before the bridge exists, and the
+ * window is blank. Nothing on a machine without a display would see that, so
+ * the build refuses it instead: a single chunk, `electron` its only import,
+ * and none of the globals 45 took away.
+ */
+const NOT_IN_A_SANDBOX = /\b(?:Buffer|setImmediate|clearImmediate)\b/;
+const sandboxedPreload = {
+  name: 'majordomo:sandboxed-preload',
+  generateBundle(
+    _options: unknown,
+    bundle: Record<string, { type: string; code?: string; imports?: string[] }>
+  ): void {
+    const chunks = Object.entries(bundle).filter(([, item]) => item.type === 'chunk');
+    const problems: string[] = [];
+    if (chunks.length !== 1) problems.push(`${chunks.length} chunks where one can be loaded`);
+    for (const [name, chunk] of chunks) {
+      for (const imported of chunk.imports ?? []) {
+        if (imported !== 'electron') problems.push(`${name} requires ${imported}`);
+      }
+      const global = NOT_IN_A_SANDBOX.exec(chunk.code ?? '');
+      if (global !== null) problems.push(`${name} uses ${global[0]}`);
+    }
+    if (problems.length > 0) {
+      throw new Error(`The preload cannot run in a sandboxed window: ${problems.join('; ')}.`);
+    }
+  }
+};
+
 export default defineConfig({
   main: {
     ...stripComments,
@@ -129,12 +165,28 @@ export default defineConfig({
   },
   preload: {
     ...stripComments,
-    plugins: [externalizeDepsPlugin()],
+    /*
+     * Nothing externalised but `electron` (electron-vite's own default): a
+     * dependency left to be required at runtime is one a sandboxed preload
+     * cannot load, so whatever the preload uses is bundled into it.
+     */
+    plugins: [sandboxedPreload],
     resolve: { alias: { '@shared': shared } },
     build: {
       minify: 'esbuild',
       chunkSizeWarningLimit: CHUNK_LIMIT_KB.preload,
-      rollupOptions: { input: { index: resolve('src/preload/index.ts') } }
+      rollupOptions: {
+        input: { index: resolve('src/preload/index.ts') },
+        /*
+         * CommonJS, for the sandbox (`sandboxedPreload`). `package.json` says
+         * `"type": "module"`, which electron-vite reads as an ESM preload
+         * (`index.mjs`) -- and Electron loads an ESM preload only with the
+         * sandbox off, which is what the window had until 2026-11-02. `.cjs`
+         * rather than `.js` so that anything reading it as Node under that
+         * same `"type"` takes it for what it is.
+         */
+        output: { format: 'cjs', entryFileNames: '[name].cjs', inlineDynamicImports: true }
+      }
     }
   },
   renderer: {

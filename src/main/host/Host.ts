@@ -136,7 +136,7 @@ export interface ClientHooks {
  * says nothing about the preload's or the renderer's; the entry's does.
  */
 export interface Layout {
-  /** `out/preload/index.mjs`. */
+  /** `out/preload/index.cjs`. */
   preload: string;
   /** `out/renderer/`, holding `index.html` and `assets/`. */
   rendererDir: string;
@@ -189,8 +189,11 @@ export interface Host {
    * asker's own disk (upstream 8db9a39c).
    */
   deliver(caller: Caller, file: string): string | null;
-  /** The system clipboard, or null where the window has to keep its own. */
-  readonly clipboard: { read(): string; write(text: string): void } | null;
+  /**
+   * The system clipboard, or null where the window has to keep its own.
+   * Asynchronous, as Electron's has been since 44.
+   */
+  readonly clipboard: { read(): Promise<string>; write(text: string): Promise<void> } | null;
   /** Put the quit confirmation up and wait for the answer. */
   askAboutQuitting(question: QuitQuestion): QuitAnswer;
 

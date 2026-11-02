@@ -1,7 +1,9 @@
 /**
- * `npm run dev`, with Chromium's fontconfig complaints kept off the console.
+ * `npm run dev` and `npm start`, with Chromium's fontconfig complaints kept off
+ * the console.
  *
- *   npm run dev
+ *   npm run dev      electron-vite dev
+ *   npm start        electron-vite preview (`node scripts/dev.mjs preview`)
  *
  * Electron statically links its **own** copy of fontconfig — the format
  * strings that produce these lines (`invalid attribute '%s'`, `invalid
@@ -29,6 +31,8 @@ import { spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
 import path from 'node:path';
 
+import { electronBinary } from './lib/electron-binary.mjs';
+
 const require = createRequire(import.meta.url);
 
 /*
@@ -51,13 +55,30 @@ const cli = path.join(path.dirname(manifest), typeof bin === 'string' ? bin : bi
  */
 const PARSE_WARNING = /^Fontconfig warning: "[^"]*", line \d+: /;
 
+/** `dev` unless asked for `preview`, and whatever follows passed on. */
+const command =
+  process.argv[2] === 'preview' ? process.argv.slice(2) : ['dev', ...process.argv.slice(2)];
+
+/*
+ * The binary, named for electron-vite rather than left for it to find. It
+ * reads `node_modules/electron/path.txt`, which Electron writes only once the
+ * binary is downloaded -- on first use since Electron 42, not at install -- so
+ * on a fresh clone it stopped at "Electron uninstall". `electronBinary()`
+ * downloads it if need be, and `ELECTRON_EXEC_PATH` is electron-vite's own
+ * way of being told.
+ */
+const env = {
+  ...process.env,
+  ELECTRON_EXEC_PATH: process.env.ELECTRON_EXEC_PATH || electronBinary()
+};
+
 const child = spawn(
   process.execPath,
-  [cli, 'dev', ...process.argv.slice(2)],
+  [cli, ...command],
   // stdout and stdin stay attached to the real terminal so electron-vite keeps
   // its colours and anything it asks for still reaches it. Only stderr is
   // piped, because only stderr is being read.
-  { stdio: ['inherit', 'inherit', 'pipe'] }
+  { stdio: ['inherit', 'inherit', 'pipe'], env }
 );
 
 /*
