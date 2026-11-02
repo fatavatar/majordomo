@@ -7098,19 +7098,14 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
     };
     check(await reopen(), 'the answer opens again for the two-surface check');
 
-    // Counted at the window in capture, which is where the app listens and the
-    // only place a scrolling element reports at all.
-    await evaluate(`
-      (() => {
-        window.__scrolls = 0;
-        window.__countScroll = () => { window.__scrolls += 1; };
-        window.addEventListener('scroll', window.__countScroll, true);
-        return true;
-      })()
-    `);
-    const heightBefore = await evaluate(
-      `document.querySelector('.xterm-viewport')?.scrollHeight ?? -1`
-    );
+    // Read off the scrollbar xterm draws: xterm scrolls by repainting its
+    // cells, so the console raises no DOM scroll, and its slider moving is
+    // what says the output scrolled it.
+    const sliderAt = () =>
+      evaluate(
+        `document.querySelector('.xterm .xterm-scrollable-element > .scrollbar.vertical > .slider')?.style.top ?? null`
+      );
+    const sliderBefore = await sliderAt();
     liveSockets[0]?.write(
       Buffer.from(
         Array.from(
@@ -7120,18 +7115,11 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
         'latin1'
       )
     );
-    const scrolls = await readUntil(
-      () => evaluate(`window.__scrolls`),
-      (scrolls) => scrolls > 0
-    );
+    const sliderAfter = await readUntil(sliderAt, (top) => top !== sliderBefore);
     check(
-      scrolls > 0,
+      sliderBefore !== null && sliderAfter !== sliderBefore,
       'output from the game scrolls the console, which is what used to close it',
-      // Whether the lines even painted, apart from whether anything scrolled:
-      // a viewport that never grew never had a reason to.
-      `scrolls=${scrolls} sockets=${liveSockets.length} viewport=${heightBefore}->${await evaluate(
-        `document.querySelector('.xterm-viewport')?.scrollHeight ?? -1`
-      )}`
+      `slider=${sliderBefore}->${sliderAfter} sockets=${liveSockets.length}`
     );
     check(
       await evaluate(`!!document.querySelector('.reference-popover')`),
@@ -7161,7 +7149,6 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
       !(await evaluate(`!!document.querySelector('.reference-popover')`)),
       'and scrolling that does put the answer away, because the name moved'
     );
-    await evaluate(`(window.removeEventListener('scroll', window.__countScroll, true), true)`);
   }
 
   /*

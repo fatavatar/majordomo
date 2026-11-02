@@ -118,13 +118,12 @@ describe('a scroll closes a panel only when it moved the panel', () => {
     expect(scrollMovesAnchor(pack, sandals)).toBe(true);
   });
 
-  it('closes a panel opened from a word in the console when the console scrolls', () => {
-    // `within` is `.xterm-screen`, which sits inside `.xterm-viewport` — the
-    // element that actually moves. The mount is the viewport's *parent*, and
-    // would have answered no to the one scroll that does move the word.
+  it('closes a panel opened from a word in the console when what holds the console scrolls', () => {
+    // `within` is `.xterm-screen`, the element the cells are painted in, so a
+    // scroll of anything holding the console takes the panel away.
     const screen = node();
-    const viewport = node(screen);
-    expect(scrollMovesAnchor(viewport, screen)).toBe(true);
+    const holder = node(screen);
+    expect(scrollMovesAnchor(holder, screen)).toBe(true);
   });
 
   it('does not close it when a card elsewhere scrolls', () => {
