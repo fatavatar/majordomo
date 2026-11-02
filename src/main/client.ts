@@ -12,7 +12,6 @@
  * cannot do something says so, and every refusal below is worded for the
  * window that will show it.
  */
-import fs from 'node:fs/promises';
 import { cpSync, existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
@@ -32,15 +31,12 @@ import {
   type TableKind
 } from './config/RealmTableStore';
 import { LoopStore } from './config/LoopStore';
-import { detailOf, MudStatsApi } from './stats/MudStatsApi';
-import { loopFileText, SettingsEditor, type SettingsEditorOptions } from './config/SettingsEditor';
+import { SettingsEditor, type SettingsEditorOptions } from './config/SettingsEditor';
 import { LoopCatalogue } from './config/LoopCatalogue';
 import { migrateHome } from './config/Migration';
 import { homeAt, homeRoot, type Home } from './app/home';
-import { WorldGraph, type Traveller } from './world/WorldGraph';
+import { WorldGraph } from './world/WorldGraph';
 import { RealmLibrary } from './world/RealmLibrary';
-import { loopsFromMegaMud } from './world/megamudLoops';
-import { REALM_EXTENSIONS } from './world/RealmSource';
 import { WorldMemory } from './world/WorldMemory';
 import { FindBook } from './world/FindBook';
 import { WorldBook } from './world/WorldBook';
@@ -54,7 +50,6 @@ import {
 import { MegaLearned } from './world/MegaLearned';
 import { RealmLore, realmKey } from './world/RealmLore';
 import { PlayerBook, realmAddress } from './world/PlayerBook';
-import { isCombatTally } from '../shared/tally';
 import { cureGates, spellServes, spellTargeting } from '../shared/spellcraft';
 import { DestinationBook, type RealmDestinations } from './world/DestinationBook';
 import { MovementBook } from './session/MovementBook';
@@ -63,7 +58,6 @@ import {
   musterActs,
   PartyKeeper,
   type KeptMember,
-  fanOutActs,
   type FanAct,
   type FanSkip,
   type RegroupAct
@@ -77,20 +71,7 @@ import {
   type PartyRoster
 } from '../shared/partyRoster';
 import { bareName } from '../shared/items';
-import { nameAnswersTo } from '../shared/world';
-import {
-  dropAllPlan,
-  equip,
-  equipAllPlan,
-  GEAR_ACTIONS,
-  restorePlan,
-  equipBlock,
-  isWearable,
-  unequip,
-  type GearAction,
-  type GearPlan,
-  type Wearer
-} from '../shared/gear';
+import { equipBlock, isWearable, type Wearer } from '../shared/gear';
 import { Belongings, peekSpellbook } from './session/Belongings';
 import type { BelongingsSink } from '../shared/belongings';
 import { NO_LORE, type MobLore } from '../shared/lore';
@@ -108,13 +89,7 @@ import { NO_REALM_PLAYERS, type RealmPlayers } from '../shared/players';
 import { NO_FIGHTS, type FightSink } from '../shared/fights';
 import { FightLog } from './session/FightLog';
 import { NO_TALK, TalkLog, type TalkSink } from './session/TalkLog';
-import type { MobLoreEntry } from '../shared/lore';
-import type { MovementStart, WalkStart } from '../shared/movement';
-import type { FightSummary } from '../shared/fights';
-import { localMap } from './world/localMap';
-import { areaMap } from './world/areaMap';
 import type { AreaOverrides } from './world/areas';
-import { roomBrief } from './world/roomBrief';
 import { orderRing } from '../shared/hunting';
 import { areaOfRooms, realmAreas } from './world/huntingAreas';
 import {
@@ -134,116 +109,44 @@ import { WindowRegistry } from './windows/WindowRegistry';
 import { Workspace } from './windows/Workspace';
 import { quitGuard, type QuitAnswer } from './app/quit';
 import { t } from './app/i18n';
-import { listHome } from './app/browse';
 import { claimHome, type HomeLock } from './app/homeLock';
 import type { Caller, Host } from './host/Host';
 import {
-  Invoke,
   Push,
-  Send,
-  type AttachSnapshot,
-  type BackscrollPage,
-  type HomeListing,
   type Notice,
   type ProfileSummary,
   type Revealed,
   type SessionId
 } from '../shared/ipc';
 import {
-  asAutomationSwitch,
   type SupplyItem,
   automationSwitches,
   DEFAULT_CONFIG,
   type AppConfig
 } from '../shared/config';
 import { DEFAULT_INTERNAL } from '../shared/internal';
-import { isRemoteName, REMOTE_NAMES, type PlayerGrant, type RemoteName } from '../shared/remotes';
+import { isRemoteName, type PlayerGrant, type RemoteName } from '../shared/remotes';
 import type { Profile } from '../shared/profiles';
-import {
-  asMessageTriggers,
-  parseMegaMudMessages,
-  type MessageImport,
-  type MessageTable
-} from '../shared/messageTriggers';
-import {
-  asMonsterRules,
-  saysAnything,
-  type MonsterImport,
-  type MonsterTable
-} from '../shared/monsterRules';
-import {
-  asItemRules,
-  itemSaysAnything,
-  mergeItemRules,
-  type ItemImport,
-  type ItemTable
-} from '../shared/itemRules';
-import { asMegaMudPaths, type LoopImport } from '../shared/megamudPaths';
+import { type MessageTable } from '../shared/messageTriggers';
+import { type MonsterTable } from '../shared/monsterRules';
+import { mergeItemRules, type ItemTable } from '../shared/itemRules';
 import type { MegaSettings } from '../shared/megamud/settings';
 import { megamudFromConfig } from '../shared/megamud/fromConfig';
-import { asMegaToggle } from '../shared/megamud/toggles';
 import type { MegaData } from './megamud/data';
 import { megaDataFrom } from './megamud/fromWorld';
 import { explorerAsk } from './mme/ExplorerThread';
 import type { MmeParty } from './mme/Explorer';
-import { asToolRequest } from '../shared/explorerTools';
-import {
-  asExplorerOptions,
-  DEFAULT_EXPLORER_OPTIONS,
-  asGearOptions,
-  asEqPlan,
-  COMPARE_KINDS,
-  type CompareKind,
-  NO_EQ_VIEW,
-  asRoomViewRequest,
-  asTextblockRequest,
-  EXPLORER_KINDS,
-  type ExplorerBuyPlan,
-  type ExplorerKind,
-  isExplorerFocus,
-  asExplorerAs,
-  type ExplorerAs,
-  viewedAs,
-  type RoomSearch
-} from '../shared/explorer';
-import { planRoute } from './world/RoutePlanner';
-import { megaNames, type EngineMemory, type MegaEngineSetup } from './session/MegaEngine';
-import type { DebugSave, LearnedSpellTable, SessionSummary } from '../shared/ipc';
-import { EMPTY_CHARACTER, type CharacterState } from '../shared/character';
-import { IDLE_WALK } from '../shared/walk';
-import { NO_ROUND } from '../shared/roundTimer';
-import {
-  asLoopAddress,
-  asLoops,
-  isLoopScope,
-  loopFileName,
-  mergeLoops,
-  NO_LOOP
-} from '../shared/loops';
+import { DEFAULT_EXPLORER_OPTIONS, type ExplorerAs } from '../shared/explorer';
+import { type EngineMemory, type MegaEngineSetup } from './session/MegaEngine';
+import type { SessionSummary } from '../shared/ipc';
+import { type CharacterState } from '../shared/character';
+import { mergeLoops } from '../shared/loops';
 
 /** The most a shared loop file may hold: far over any loop, far under a socket's message. */
 const LOOP_FILE_MAX = 256 * 1024;
-import { EMPTY_AUTOMATION } from '../shared/automation';
-import { IDLE_QUEST_RUN } from '../shared/quests';
-import { EMPTY_ROOM_VERDICT } from '../shared/verdict';
-import { EMPTY_MAP } from '../shared/map';
-import {
-  asRoomIds,
-  asRoomReference,
-  asRoute,
-  COLLECT_ITEMS_MAX,
-  EMPTY_LOOP_DRAFT,
-  roomId,
-  type MobPlaces,
-  type MobRowBrief,
-  type RoomId,
-  type ShopPlace
-} from '../shared/world';
-import { LoopDraftCache } from './world/loopDraft';
+import { roomId, type RoomId } from '../shared/world';
 import { errorMessage } from '../shared/values';
 import { BUILD, versionWithCommit } from '../shared/build';
-import { formatDebugReport } from '../shared/debug';
-import { fileSlug } from '../shared/files';
 /*
  * The one field, by name. A default import would inline the whole manifest into
  * the main chunk — the maintainer's email address and every dependency's name
@@ -253,21 +156,12 @@ import { fileSlug } from '../shared/files';
  * is handed.
  */
 import { version as APP_VERSION } from '../../package.json';
-import {
-  asConnectionTarget,
-  TERMINAL_ACTIONS,
-  type ConnectionTarget,
-  type TerminalActionName,
-  type TerminalSize
-} from '../shared/types';
-import {
-  asGlobalDraft,
-  asLoop,
-  asProfileDraft,
-  asProfileId,
-  asServerDraft,
-  LOOP_LIMITS
-} from '../shared/drafts';
+import { type ConnectionTarget } from '../shared/types';
+import { registerSessionsIpc } from './ipc/sessions';
+import { registerPlayIpc } from './ipc/play';
+import { registerWorldIpc } from './ipc/world';
+import { registerExplorerIpc } from './ipc/explorer';
+import { registerSettingsIpc } from './ipc/settings';
 
 /**
  * What is hosting this client. Assigned first thing in `startClient`, before
@@ -2350,2365 +2244,245 @@ function reportSoftwareCompositing(to: Caller): void {
   }
 }
 
-function registerIpc(): void {
-  const { handle, on } = platform.transport;
-
-  on(Send.clientReady, (caller) => {
-    /*
-     * Replay to the window that just mounted, not to all of them: this is the
-     * state a fresh renderer is missing, and the others already have it.
-     */
-    if (host) caller.send(Push.sessions, rosterFor(caller));
-    caller.send(Push.profiles, profileSummaries());
-    if (parties) caller.send(Push.partyRosters, parties.all);
-    if (config) {
-      caller.send(Push.config, config.snapshot);
-    }
-    reportSoftwareCompositing(caller);
-
-    /*
-     * Connect on launch, and only on launch.
-     *
-     * `clientReady` is "a renderer is mounted and can receive output", and a
-     * renderer can mount more than once: React's StrictMode deliberately runs
-     * every effect twice in development, a reload or hot update mounts a fresh
-     * one, and — now — a second window mounts another. Treating each of those
-     * as a reason to dial meant `npm run dev` opened two connections a
-     * millisecond apart; the second tore down the first mid-handshake and the
-     * server dropped it, which read as the server refusing the first connection
-     * every time the app started.
-     *
-     * Autoconnect is a property of *starting the app*, so it is latched here by
-     * session id rather than guarded further down. A window appearing is never
-     * a reason to reconnect behind the player's back, even if it worked.
-     */
-    if (launched) return;
-    launched = true;
-
-    /*
-     * Nothing to dial without a character, and nothing said here either:
-     * `syncSessions` already said it, once. Two identical lines on the same
-     * launch is how a message people ought to read becomes one they learn to
-     * scroll past.
-     */
-    for (const profile of profiles?.profiles ?? []) {
-      if (!profile.autoConnect || autoConnected.has(profile.id)) continue;
-      autoConnected.add(profile.id);
-      void host?.connect(profile.id, profile.target);
-    }
-  });
-
-  // The Combat Stats card's Reset, and a baseline a window kept from before
-  // main kept them, taken while main has none (2026-10-17).
-  on(Send.statsReset, (_caller, session: SessionId) => {
-    host?.get(session)?.manager.resetStats();
-  });
-  on(Send.expReset, (_caller, session: SessionId) => {
-    host?.get(session)?.manager.resetExp();
-  });
-  on(Send.statsBase, (_caller, session: SessionId, base: unknown) => {
-    if (isCombatTally(base)) host?.get(session)?.manager.adoptStatsBase(base);
-  });
-  // Between a character's popped-out Explorer and the window showing it (2026-10-29).
-  on(Send.explorerFocus, (_caller, session: SessionId, focus: unknown) => {
-    if (host?.has(session) && (focus === null || isExplorerFocus(focus))) {
-      push(Push.explorerFocus, { session, payload: focus });
-    }
-  });
-  on(Send.explorerWalk, (_caller, session: SessionId, room: unknown) => {
-    if (host?.has(session) && typeof room === 'string') {
-      push(Push.explorerWalk, { session, payload: room });
-    }
-  });
-
-  on(Send.input, (_caller, session: SessionId, data: string) => {
-    host?.get(session)?.manager.typedInput(data);
-  });
-
-  // Parsed again in main; a payload that is not a string is not a line.
-  on(Send.macro, (_caller, session: SessionId, line: unknown) => {
-    if (typeof line !== 'string') return;
-    const manager = host?.get(session)?.manager;
-    manager?.keyPressed();
-    manager?.sendMacro(line);
-  });
-
-  on(Send.dropMacro, (_caller, session: SessionId) => {
-    host?.get(session)?.manager.dropTyped();
-  });
-
-  on(Send.resize, (_caller, session: SessionId, size: TerminalSize) => {
-    host?.get(session)?.manager.resize(size);
-  });
-
-  // Whether this window is showing the per-line diagnostics feed. Per window,
-  // like attachment: the flag lives in the registry so a destroyed window
-  // takes its interest with it.
-  on(Send.diagnostics, (caller, showing: boolean) => {
-    windows.setDiagnostics(caller.windowId, showing === true);
-  });
-
-  // The debug view's own feed. See `Send.debugFeed` for why it is not this
-  // window's diagnostics flag.
-  on(Send.debugFeed, (caller, showing: boolean) => {
-    windows.setDebugging(caller.windowId, showing === true);
-  });
-
-  // ------------------------------------------------------------- per session
-
-  /*
-   * Where a character connects is a property of the character, so the renderer
-   * does not have to know an address to dial one. An explicit target is the
-   * ad-hoc path — the palette's saved servers — and it is not written back to
-   * the profile: connecting somewhere once is not the same as moving house.
-   */
-  handle(Invoke.connect, (_caller, session: SessionId, target?: unknown) => {
-    /*
-     * An explicit target is parsed before it reaches the socket layer, where a
-     * malformed port is a throw rather than a refusal. Omitting it is the
-     * ordinary path — the character's own file says where it plays.
-     */
-    const asked = target === undefined ? null : asConnectionTarget(target);
-    if (target !== undefined && asked === null) {
-      notice(t('app.connect.invalidTarget'), session);
-      return host?.get(session)?.manager.state ?? null;
-    }
-    /*
-     * No target and no file to say where this character plays is a refusal,
-     * not a fallback onto the global `connection:` block: that block is what a
-     * *new realm* starts with, and a tab that quietly dialled it would be a tab
-     * dialling somewhere the player never chose. Reachable only for a session
-     * whose file has gone while it was connected.
-     */
-    const where = asked ?? profileFor(session)?.target ?? null;
-    if (where === null) {
-      notice(t('app.connect.noCharacterFile', { id: session }), session);
-      return host?.get(session)?.manager.state ?? null;
-    }
-    return host?.connect(session, where);
-  });
-  /*
-   * Through the host rather than straight at the manager, because pressing
-   * Disconnect also calls off a redial that is already scheduled. A character
-   * sitting at a closed socket with a retry pending has nothing for the manager
-   * to close, and this is the one way to say *stop trying*. See `Reconnect`.
-   */
-  handle(Invoke.disconnect, (_caller, session: SessionId) => host?.disconnect(session) ?? null);
-  handle(
-    Invoke.getState,
-    (_caller, session: SessionId) => host?.get(session)?.manager.state ?? null
-  );
-  handle(
-    Invoke.getTelnetLog,
-    (_caller, session: SessionId) => host?.get(session)?.manager.log ?? []
-  );
-  handle(Invoke.getLines, (_caller, session: SessionId) => host?.get(session)?.manager.lines ?? []);
-  handle(Invoke.getDebug, (_caller, session: SessionId) => {
-    const slot = host?.get(session);
-    if (!slot) return { records: [], dropped: 0 };
-    return { records: [...slot.debug.all], dropped: slot.debug.lost };
-  });
-
-  /*
-   * The bug report, written by main.
-   *
-   * Main writes it for the reason main owns the clipboard: the window has no
-   * filesystem. It goes into the same `logs/` directory the session logs and
-   * captures do, which is the directory `npm run check:secrets` already walks —
-   * a report saved anywhere else would be one nobody can promise carries no
-   * password, and this is a file whose whole purpose is being sent to somebody
-   * else.
-   *
-   * Named after the character and the moment, because a player reporting two
-   * problems in an evening has to be able to say which file is which.
-   */
-  handle(Invoke.saveDebug, async (caller, session: SessionId): Promise<DebugSave> => {
-    const slot = host?.get(session);
-    if (!slot) return { error: t('app.debug.noSession') };
-    const who = labelOf(session);
-    const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-    const directory = logDirectory();
-    const file = path.join(directory, `debug-${fileSlug(who.name)}-${stamp}.txt`);
-    try {
-      await fs.mkdir(directory, { recursive: true });
-      await fs.writeFile(
-        file,
-        formatDebugReport(
-          {
-            title: t('app.debug.reportTitle'),
-            version: appVersion(),
-            platform: `${process.platform} ${process.arch}, ${platform.runtime}`,
-            character: who.name,
-            realm: who.server.length > 0 ? who.server : t('app.debug.realmUnknown'),
-            at: Date.now(),
-            dropped: slot.debug.lost
-          },
-          slot.debug.all
-        ),
-        'utf8'
-      );
-      return { path: file, download: platform.deliver(caller, file) };
-    } catch (error) {
-      // Said out loud rather than swallowed: a save button that quietly did
-      // nothing is worse than one that reports why it could not.
-      return { error: errorMessage(error) };
-    }
-  });
-
-  handle(
-    Invoke.getCharacter,
-    (_caller, session: SessionId) => host?.get(session)?.manager.character ?? EMPTY_CHARACTER
-  );
-  handle(
-    Invoke.getWalk,
-    (_caller, session: SessionId) => host?.get(session)?.manager.walkProgress ?? IDLE_WALK
-  );
-  handle(
-    Invoke.getAutomation,
-    (_caller, session: SessionId) => host?.get(session)?.manager.automation ?? EMPTY_AUTOMATION
-  );
-
-  /**
-   * Who is walking, for pricing a route against them.
-   *
-   * One reading for every route a window asks for — the route panel's and the
-   * loop builder's — so a door graded one way on the panel and another way in
-   * the builder cannot happen. A character nobody has read the sheet of is
-   * priced as one that can force nothing, which is `edgePenalty`'s own rule.
-   */
-  const travellerOf = (session: SessionId, walking: 'route' | 'lap'): Traveller => {
-    const manager = host?.get(session)?.manager;
-    // The session's own statement of what its character costs to move — the
-    // stats off the sheet, the purse, what the server refused — so a door
-    // graded one way on the panel and another way in a loop's leg cannot
-    // happen. The builder drafts as the lap will walk, by distance and
-    // passability: see the header of `loopDraft.ts`. A character with no
-    // session yet is priced as one that can force nothing, which is
-    // `edgePenalty`'s own rule.
-    if (manager) {
-      return walking === 'lap'
-        ? manager.lapTraveller(manager.character)
-        : manager.travellerNow(manager.character);
-    }
-    return { level: null, strength: null, pickSkill: undefined, wealth: null };
-  };
-
-  /*
-   * One remembered set of drafts per session, so a pick costs its own leg
-   * rather than a plan of the whole way from scratch on main's thread.
-   */
-  const drafts = new Map<SessionId, LoopDraftCache>();
-
-  handle(Invoke.routeTo, async (_caller, session: SessionId, map: number, room: number) => {
-    const manager = host?.get(session)?.manager;
-    // This character's realm, not the client's: routing against the wrong one
-    // sends somebody to a room that does not exist.
-    const world = worldFor(session);
-    if (!world || world.size === 0) {
-      return { steps: [], cost: 0, blocked: true, reason: t('app.route.noRealmData') };
-    }
-    // Ambiguous rather than merely unresolved: asked for, then read again --
-    // see `ensureLocated`. A room already known returns at once, and a realm
-    // with nothing to ask (`locate: none`, or one that has already refused
-    // the configured word) does too, so the ordinary case pays nothing here.
-    if (manager && manager.character.room.map === null) await manager.ensureLocated();
-    const here = manager?.character.room;
-    if (!here || here.map === null || here.number === null) {
-      // Routing from an unknown position would be a guess dressed as a plan.
-      return { steps: [], cost: 0, blocked: true, reason: t('app.route.unknownRoom') };
-    }
-    // With the alternatives a reader chooses between: this is the one route
-    // planned to be read rather than walked.
-    return planRoute(
-      world,
-      roomId(here.map, here.number),
-      roomId(map, room),
-      travellerOf(session, 'route'),
-      { alternatives: true }
-    );
-  });
-
-  /*
-   * A loop being built by hand, planned. Parsed rather than trusted: every
-   * room on the way is one A* pass on this thread, so the list is bounded by
-   * the same ceiling a loop payload has (the card refuses the click before
-   * it gets here), and an entry that is not a room is refused outright —
-   * skipping it would plan a different loop from the one on the screen.
-   * Planned as a lap walks — by distance and passability, without the
-   * corridors it prefers — so the way drawn is the way the reduction
-   * reproduces and the way the lap walks; see the header of `loopDraft.ts`.
-   */
-  handle(Invoke.draftLoop, (_caller, session: SessionId, rooms: unknown, keep: unknown) => {
-    const world = worldFor(session);
-    if (!world || world.size === 0) return EMPTY_LOOP_DRAFT;
-    const picks = asRoomIds(rooms, LOOP_LIMITS.stops);
-    if (picks === null) throw new Error(t('app.loop.invalidPicks', { max: LOOP_LIMITS.stops }));
-    // The rooms to keep as stops: those the builder has commands for (2026-10-23).
-    const kept = keep === undefined ? [] : asRoomIds(keep, LOOP_LIMITS.stops);
-    if (kept === null) throw new Error(t('app.loop.invalidPicks', { max: LOOP_LIMITS.stops }));
-    let cache = drafts.get(session);
-    if (cache === undefined) {
-      cache = new LoopDraftCache();
-      drafts.set(session, cache);
-    }
-    return cache.draft(world, picks, travellerOf(session, 'lap'), new Set(kept));
-  });
-
-  /*
-   * Walking is an outbound action, so it goes to that session's arbiter rather
-   * than sending anything from here. The route is passed back in whole because
-   * the renderer has already shown it to a person: walking exactly what was
-   * reviewed is the point, and re-planning here could quietly walk a different
-   * one.
-   */
-  handle(
-    Invoke.walkRoute,
-    (_caller, session: SessionId, payload: unknown, run: unknown): WalkStart => {
-      const slot = host?.get(session);
-      if (!slot) return { refused: t('app.session.notConnected') };
-      /*
-       * Parsed, not trusted. This is the one payload a window sends that turns
-       * into commands on the socket, so it is the one that has to be proven at
-       * the boundary — a malformed route otherwise fails several frames later
-       * inside the walker, where nothing on the stack says where it came from.
-       */
-      const route = asRoute(payload);
-      if (!route) return { refused: t('app.route.invalidPayload') };
-      /*
-       * Through the manager rather than straight at the walker: a route the
-       * player asked for is one of the two moments the supply list is consulted,
-       * and the shop is visited before the route is walked. And it is the one
-       * route that can have gone stale while somebody read it, so it goes
-       * through `walkPlan`, which redraws it rather than refusing. See both.
-       */
-      return slot.manager.walkPlan(route, run === true);
-    }
-  );
-  /*
-   * Collect what a door wants, then walk the way through it (todo 07).
-   *
-   * Parsed, not trusted, for `walk:start`'s reason — this turns into commands
-   * on a socket — and each item is checked as narrowly as the route: an id and
-   * a name, both of which the realm gave the window in the first place. One
-   * bad entry refuses the lot: an errand that silently dropped an item would
-   * walk into the door that item opens.
-   */
-  handle(
-    Invoke.collectThenWalk,
-    (_caller, session: SessionId, items: unknown, payload: unknown, run: unknown) => {
-      const slot = host?.get(session);
-      if (!slot) return t('app.session.notConnected');
-      const route = asRoute(payload);
-      if (!route) return t('app.route.invalidPayload');
-      if (!Array.isArray(items) || items.length === 0 || items.length > COLLECT_ITEMS_MAX) {
-        return t('app.route.invalidPayload');
-      }
-      const wanted: Array<{ id: number; name: string }> = [];
-      for (const item of items) {
-        const asked = item as { id?: unknown; name?: unknown } | null;
-        const id = typeof asked?.id === 'number' && Number.isFinite(asked.id) ? asked.id : null;
-        const name = typeof asked?.name === 'string' ? asked.name.trim() : '';
-        if (id === null || name.length === 0) return t('app.route.invalidPayload');
-        wanted.push({ id, name });
-      }
-      return slot.manager.collectThenWalk(wanted, route, run === true);
-    }
-  );
-  /*
-   * The one play button and the one stop button.
-   *
-   * A character is routing, looping or stopped, and *stop* means the same
-   * thing in all three sentences — so main is asked to start or to stop, and
-   * decides for itself which of the two it is. See `src/shared/movement.ts`
-   * and `SessionManager.startMoving`.
-   *
-   * `loop` is what the card's picker says and `confirmed` is the answer to the
-   * one question play can ask back. Both parsed, not trusted: this turns into
-   * commands on a socket.
-   */
-  handle(
-    Invoke.startMoving,
-    async (_caller, session: SessionId, loop: unknown): Promise<MovementStart> => {
-      const slot = host?.get(session);
-      if (!slot) return { refused: t('app.session.notConnected') };
-      if (loop !== null && typeof loop !== 'string') return { refused: t('app.loop.invalidName') };
-      // See `Invoke.routeTo` — the same wait, so a route resumed or a loop
-      // started from an ambiguous room gets one chance at the real answer
-      // before `planFromHere` refuses it.
-      if (slot.manager.character.room.map === null) await slot.manager.ensureLocated();
-      return slot.manager.startMoving(loop);
-    }
-  );
-  handle(Invoke.stopMoving, (_caller, session: SessionId) => {
-    host?.get(session)?.manager.stopMoving();
-  });
-  // Back: one room the way the character came, MegaMUD's Step Back.
-  handle(Invoke.stepBack, (_caller, session: SessionId): MovementStart => {
-    const slot = host?.get(session);
-    if (!slot) return { refused: t('app.session.notConnected') };
-    return slot.manager.stepBack();
-  });
-  /*
-   * A loop is named rather than passed: unlike a route, nothing has been shown
-   * to a person to walk *exactly*, and the loop the character should run is
-   * the one their own options file defines under that name.
-   */
-  handle(
-    Invoke.listLoops,
-    (_caller, session: SessionId) => host?.get(session)?.manager.loopList ?? []
-  );
-  handle(Invoke.startLoop, async (_caller, session: SessionId, name: unknown) => {
-    const slot = host?.get(session);
-    if (!slot) return t('app.session.notConnected');
-    if (typeof name !== 'string') return t('app.loop.invalidName');
-    const loop = slot.manager.loopNamed(name);
-    if (!loop) return t('app.loop.notFound', { name });
-    // See `Invoke.routeTo` — the same wait, before the first leg is planned.
-    if (slot.manager.character.room.map === null) await slot.manager.ensureLocated();
-    // Through the manager: one movement at a time, so a lap starting takes the
-    // character off whatever route it was walking, out loud.
-    const answer = slot.manager.startLoop(loop);
-    return 'refused' in answer ? answer.refused : null;
-  });
-  /*
-   * Walk a loop that is not in this character's options at all.
-   *
-   * `loop:start` addresses a loop by *name*, resolved against the character's
-   * own resolved config — which is right for the palette and the card, whose
-   * lists are that config. The Loops modal browses the shipped shelf, and its
-   * `Don't keep it` destination means precisely a loop that was never written
-   * anywhere: there is no name for `loopNamed` to find, and filing one in
-   * order to start it and then deleting it would be a write into the user's
-   * tree on a path that promised not to make one.
-   *
-   * `SessionManager.startLoop` takes the loop itself and never a name, so this
-   * is its own shape rather than a new capability. Parsed, not
-   * trusted: it crossed the wire.
-   */
-  handle(Invoke.runLoop, async (_caller, session: SessionId, loop: unknown) => {
-    const slot = host?.get(session);
-    if (!slot) return t('app.session.notConnected');
-    const parsed = asLoop(loop);
-    if (parsed === null) return t('app.loop.invalidLoop');
-    // See `Invoke.routeTo` — the same wait, before the first leg is planned.
-    if (slot.manager.character.room.map === null) await slot.manager.ensureLocated();
-    const answer = slot.manager.startLoop(parsed);
-    return 'refused' in answer ? answer.refused : null;
-  });
-  /*
-   * A loop's stops as the rooms they name on this character's realm, for the
-   * builder to open it on (2026-10-23): resolved as a lap resolves them, so
-   * the loop drawn is the loop walked.
-   */
-  handle(Invoke.loopStops, (_caller, session: SessionId, loop: unknown) => {
-    const slot = host?.get(session);
-    if (!slot) return t('app.session.notConnected');
-    const parsed = asLoop(loop);
-    if (parsed === null) return t('app.loop.invalidLoop');
-    return slot.manager.loopStops(parsed);
-  });
-  /*
-   * The shelf, not a character's list — so it takes no session, unlike every
-   * other loop channel here. The settings screen asks for it when its picker
-   * opens; the catalogue reads the shipped file once and keeps it.
-   */
-  handle(Invoke.loopCatalogue, () => loopCatalogue().all());
-
-  // ------------------------------------------------------ sessions & windows
-
-  handle(Invoke.listSessions, (caller) => rosterFor(caller));
-
-  /*
-   * Moving a character between windows.
-   *
-   * The session does not move — it never moves, it is in main — so this is a
-   * change of *which rail has a tab for it* and nothing else. No socket is
-   * touched, no state is rebuilt, and the backscroll replays on attach exactly
-   * as it does for a renderer reload (docs/profiles.md §7.4).
-   */
-  handle(Invoke.popOut, (caller, session: SessionId) => {
-    /*
-     * A host with no second window refuses, in words the tab can show. The
-     * window does not offer the command there either (`api.host`), and both
-     * halves exist on purpose: a command that is found and does nothing is
-     * worse than one that cannot be found.
-     */
-    if (platform.windows === null) return t('app.window.noSecondWindow');
-    if (!workspace || !host?.has(session)) return t('app.profiles.noSuchCharacter');
-    // The last character in a window has nowhere useful to go: popping it out
-    // would leave an empty window behind and a new one with one tab, which is
-    // the same arrangement with an extra frame around it.
-    if (caller.windowId !== -1 && summariesFor(caller.windowId).length <= 1) {
-      return t('app.window.onlyCharacterHere');
-    }
-    const popped = platform.windows.open([session]);
-    if (popped === null) return t('app.window.createFailed');
-    publishRosters();
-    return null;
-  });
-
-  /*
-   * Everybody back here, and close whatever is left empty.
-   *
-   * Addressed to the *asking* window rather than to the main one: somebody who
-   * ran this from a pop-out meant that window, and moving their characters to a
-   * window they are not looking at would be the client deciding for them.
-   */
-  /*
-   * A window asking to be brought forward, which only ever happens because
-   * somebody clicked a desktop notification about a character in it. Nothing
-   * is refused out loud: a host with no windows to raise is a browser tab,
-   * which raises itself and never reaches this handler.
-   */
-  handle(Invoke.raiseWindow, (caller) => {
-    if (platform.windows === null || caller.windowId === -1) return;
-    platform.windows.focus(caller.windowId);
-  });
-
-  handle(Invoke.explorerWindow, (_caller, session: SessionId, create: unknown) => {
-    if (platform.windows === null || !host?.has(session)) return false;
-    return platform.windows.explorer(session, create === true);
-  });
-
-  handle(Invoke.gatherWindows, (caller) => {
-    if (platform.windows === null) return t('app.window.noSecondWindow');
-    if (!workspace || !host) return t('app.window.nothingToGather');
-    if (caller.windowId === -1) return t('app.window.unknownCaller');
-    for (const entry of host.summaries) workspace.move(entry.id, caller.windowId);
-    workspace.save();
-    publishRosters();
-    for (const windowId of windows.ids()) {
-      if (windowId === caller.windowId) continue;
-      if (summariesFor(windowId).length === 0) platform.windows.close(windowId);
-    }
-    return null;
-  });
-
-  /*
-   * The rail was dragged into a new order.
-   *
-   * The *session* does not move, the same way popping out does not move one:
-   * this changes which order a window's tabs are drawn in and nothing else. The
-   * asking window is the one reordered — a rail belongs to the window it is
-   * drawn in — and `Workspace.reorder` honours only the tabs that window
-   * actually owns, so a stale list arriving from a renderer cannot adopt
-   * somebody else's character.
-   *
-   * Republished afterwards rather than trusted: the renderer's optimistic
-   * order and main's answer must be the same list, and main's is the one that
-   * was written down.
-   */
-  handle(Invoke.reorderSessions, (caller, order: SessionId[]) => {
-    if (!workspace) return;
-    if (caller.windowId === -1) return;
-    workspace.reorder(railOf(caller.windowId), order);
-    workspace.save();
-    publishRosters();
-  });
-
-  handle(Invoke.popIn, (_caller, session: SessionId) => {
-    if (platform.windows === null) return t('app.window.noSecondWindow');
-    if (!workspace || !host?.has(session)) return t('app.profiles.noSuchCharacter');
-    const main = platform.mainWindowId();
-    if (main === null) return t('app.window.noMainWindow');
-    const from = workspace.windowOf(session);
-    workspace.move(session, main);
-    workspace.save();
-    publishRosters();
-    // A window with nothing left in it is a frame around nothing.
-    if (from !== null && from !== main && summariesFor(from).length === 0) {
-      platform.windows.close(from);
-    }
-    platform.windows.focus(main);
-    return null;
-  });
-  handle(Invoke.listProfiles, () => profileSummaries());
-
-  handle(Invoke.loadProfile, (_caller, id: SessionId) => {
-    if (!profileFor(id)) return;
-    unloaded.delete(id);
-    host?.ensure(id);
-    publishRosters();
-  });
-
-  /*
-   * Closing a character's tab. Refuses while it is holding a socket unless the
-   * caller has already asked the player: a tab closed by a stray click must not
-   * be able to drop a character in a dangerous room.
-   */
-  handle(Invoke.unloadProfile, (_caller, id: SessionId, force?: boolean) => {
-    const slot = host?.get(id);
-    if (!slot) return null;
-
-    if (!force && !DORMANT_PHASES.has(slot.manager.state.phase)) {
-      return t('app.profiles.stillConnected', { name: profileFor(id)?.name ?? id });
-    }
-
-    unloaded.add(id);
-    host?.remove(id);
-    publishRosters();
-    return null;
-  });
-
-  /*
-   * Attaching registers the window and returns the retained output in one
-   * synchronous step, so nothing can arrive between the two and be lost. The
-   * renderer holds live chunks until this resolves and writes them after the
-   * replay — otherwise the catch-up would land on top of output newer than it.
-   */
-  handle(Invoke.attach, (caller, session: SessionId): AttachSnapshot => {
-    /*
-     * Looks the session up; never creates it. Sessions come from profiles now,
-     * so a window attaching to an id nobody defines must get an empty view
-     * rather than conjure a character out of a stale tab.
-     */
-    const slot = host?.get(session);
-    if (slot) windows.attach(caller.windowId, session);
-    const manager = slot?.manager;
-    const tail = slot?.backscroll.tail(tuning().records.backscrollAttachLines);
+/*
+ * Revealing a path.
+ *
+ * On the desktop the host opens the operating system's file manager and
+ * the answer is `opened`. A host that cannot — a browser tab has no file
+ * manager on the machine the files are on — answers `listed` with the
+ * path, and the window shows it in a listing of its own (`browseHome`).
+ * Said in the answer rather than inferred from the host kind, so the
+ * window acts on what happened.
+ */
+const reveal = async (target: string, kind: 'file' | 'directory'): Promise<Revealed> =>
+  (await platform.reveal(target, kind)) ? { how: 'opened' } : { how: 'listed', path: target }; /*
+ * The realm's database file, which the Explorer's thread reads
+ * (`ExplorerThread`), or why there is none to read.
+ */
+const explorerRealm = (session: SessionId): { file: string } | string => {
+  const file = realms?.databaseFile(profileFor(session)?.database ?? '') ?? null;
+  if (file === null || !existsSync(file)) return t('app.explorer.noDatabase');
+  return { file };
+};
+/*
+ * Writing settings back.
+ *
+ * Every payload is *parsed* rather than checked — `asProfileDraft`,
+ * `asProfileId`, `asServerDraft` return the typed value or null — because
+ * these are the payloads that become files on disk holding credentials. A
+ * malformed one is a character dialling somewhere nobody chose, which is the
+ * exact failure a profile with no server is refused for.
+ *
+ * Each resolves to *why it refused*, or null. Nothing here throws at the
+ * renderer: a settings screen that takes the process down takes every
+ * character's socket with it.
+ */
+/*
+ * What the settings screen's spell pickers offer. The character's own book
+ * — the live record when a session holds one on the same realm (the disk
+ * copy lags it by a deferred write), the file otherwise — and the cure
+ * gates computed over it against that character's realm. The Global page
+ * gets the shipped realm's castable spells: it is the starting point a new
+ * character copies, and there is no character whose book could narrow it.
+ */
+const settingsSpells: NonNullable<SettingsEditorOptions['spells']> = {
+  forProfile: (id, target) => {
+    const realm = realmAddress(target);
+    const live = belongings.get(id as SessionId);
+    const book =
+      live && live.realm === realm
+        ? live.recallSpellbook()
+        : peekSpellbook(home.state('belongings', `${id}.json`), realm);
+    if (book === null) return { spellbook: null, cureGates: null };
+    const world = worldFor(id as SessionId);
     return {
-      backscroll: tail?.text ?? '',
-      backscrollFrom: tail?.from ?? 0,
-      backscrollEarlier: tail !== undefined && tail.from > (slot?.backscroll.first ?? 0),
-      lines: manager?.lines ?? [],
-      state: manager?.state ?? IDLE_STATE,
-      character: manager?.character ?? EMPTY_CHARACTER,
-      walk: manager?.walkProgress ?? IDLE_WALK,
-      round: manager?.roundTimer ?? NO_ROUND,
-      loop: manager?.loopProgress ?? NO_LOOP,
-      automation: manager?.automation ?? EMPTY_AUTOMATION,
-      verdict: manager?.verdict ?? EMPTY_ROOM_VERDICT,
-      asks: [...(manager?.asks ?? [])],
-      telnet: manager?.log ?? [],
-      learned: manager?.learned ?? [],
-      finds: manager?.foundHere ?? [],
-      questSaid: { ...(manager?.questProgress ?? {}) },
-      questRun: manager?.questRunProgress ?? IDLE_QUEST_RUN,
-      // The Talk card's history. Only for a session that exists: attach never
-      // creates one, so it must not conjure a log for a stale id either.
-      talk: slot ? talkFor(session).backlog() : []
-    };
-  });
-
-  handle(
-    Invoke.backscrollBefore,
-    (_caller, session: SessionId, at: number, lines: number): BackscrollPage =>
-      host?.get(session)?.backscroll.before(at, lines) ?? { text: '', from: 0, more: false }
-  );
-
-  handle(Invoke.detach, (caller, session: SessionId) => {
-    windows.detach(caller.windowId, session);
-  });
-
-  // ----------------------------------------------------------------- app level
-
-  handle(Invoke.getConfig, () => config?.snapshot ?? fallbackSnapshot());
-  handle(Invoke.getInternal, () => internal?.config ?? DEFAULT_INTERNAL);
-
-  /*
-   * Revealing a path.
-   *
-   * On the desktop the host opens the operating system's file manager and
-   * the answer is `opened`. A host that cannot — a browser tab has no file
-   * manager on the machine the files are on — answers `listed` with the
-   * path, and the window shows it in a listing of its own (`browseHome`).
-   * Said in the answer rather than inferred from the host kind, so the
-   * window acts on what happened.
-   */
-  const reveal = async (target: string, kind: 'file' | 'directory'): Promise<Revealed> =>
-    (await platform.reveal(target, kind)) ? { how: 'opened' } : { how: 'listed', path: target };
-
-  handle(Invoke.revealConfig, (): Promise<Revealed> =>
-    reveal(config?.path ?? home.options, 'file')
-  );
-  handle(Invoke.revealProfiles, (): Promise<Revealed> => {
-    profiles?.ensureDirectory();
-    return reveal(home.profilesDir, 'directory');
-  });
-
-  /*
-   * A directory under the home, for the window that cannot open one. Names
-   * and sizes, never contents — the reasoning is in `app/browse.ts`, and the
-   * confinement to the home root is enforced there on the resolved path.
-   * Whether a file could be a realm is decided by the same list the desktop's
-   * picker filters on, so the two answer alike.
-   */
-  handle(Invoke.browseHome, (_caller, target: unknown): Promise<HomeListing> =>
-    listHome(
-      home.root,
-      typeof target === 'string' ? target : null,
-      (name) => {
-        const extension = path.extname(name).slice(1).toLowerCase();
-        return (REALM_EXTENSIONS as readonly string[]).includes(extension);
-      },
-      {
-        outside: () => t('app.home.outside'),
-        unreadable: (at, message) => t('app.home.unreadable', { path: at, message })
-      }
-    )
-  );
-
-  /*
-   * Every world query is addressed, for the same reason every push is: with a
-   * realm per character, an unaddressed one would answer from whichever realm
-   * happened to be the client's. A destination searched on one character's
-   * realm and walked on another's is a route to a room that does not exist.
-   */
-  handle(Invoke.mobNames, (_caller, session: SessionId) => {
-    const world = worldFor(session);
-    return world ? world.mobNames() : [];
-  });
-
-  handle(Invoke.searchRooms, (_caller, session: SessionId, query: string) => {
-    const world = worldFor(session);
-    if (!world) return [];
-    /*
-     * Two numbers identify a room outright, so they never go to the name search.
-     *
-     * The realm keys every room on `map/room` and the Room card's badge shows
-     * that pair -- and typing what it showed found nothing, because this field
-     * was a substring query over room *names*. A reference is answered by the
-     * index instead, which means exactly one room or none: the candidate ladder
-     * name search needs cannot apply to a key that is already unique.
-     *
-     * Deliberately no fallback to a name search when the room is not there. A
-     * reference that misses is a room the realm does not have, and running a
-     * name query for "1/99999" afterwards would fail a second time and blame
-     * the wrong thing.
-     */
-    const reference = asRoomReference(query);
-    if (reference !== null) {
-      const room = world.get(reference.map, reference.room);
-      return room === undefined ? [] : [{ ...room, visitedAt: null }];
-    }
-
-    /*
-     * Where this character's realm has been walked to, first.
-     *
-     * `searchByName` is a substring match over 55,806 rooms, capped at 25, in
-     * the world file's own build order — so `forest` answers with whichever
-     * forests the file happens to list first, and the one the player means is
-     * usually not among them. It is almost always somewhere they have been
-     * before, and the client knows which those are because it planned the
-     * route. So the recent matches go on top, newest first.
-     *
-     * They are *added* to the realm's answer rather than replacing part of it:
-     * a room already recorded is dropped from the realm rows below rather than
-     * listed twice, and the realm's own count is unchanged, so putting the
-     * shortcut on top never costs a result somebody could have had.
-     */
-    const shown = tuning().records.destinationsShown;
-    const recent = destinationsFor(session).matching(query, shown);
-    const seen = new Set(recent.map((entry) => entry.id));
-    const found = world
-      .searchByName(query)
-      .map((room) => ({ ...room, visitedAt: null }))
-      .filter((room) => !seen.has(roomId(room.map, room.room)));
-
-    return [
-      ...recent.flatMap((entry) => {
-        /*
-         * Resolved against the realm rather than drawn from the record.
-         *
-         * The record holds a name from whenever the walk happened, and the
-         * realm underneath it can be swapped — `world.database` is a
-         * per-character setting. A row whose id the realm no longer has is
-         * dropped rather than offered: clicking it would plan a route to a
-         * room that does not exist, which is the confidently wrong answer this
-         * project refuses everywhere else. It stays in the file, because the
-         * realm may be swapped back.
-         */
-        const reference = asRoomReference(entry.id);
-        const room = reference === null ? undefined : world.get(reference.map, reference.room);
-        return room === undefined ? [] : [{ ...room, visitedAt: entry.at }];
+      /*
+       * The listing knows what this character can cast; only the realm table
+       * knows who each spell may be cast *on*, so the two are joined here.
+       * A spell the realm cannot name reads as `unknown`, which every picker
+       * offers rather than hides — a derivative realm must not empty the
+       * field. See `spellTargeting`.
+       */
+      spellbook: book.map((spell) => {
+        const row = world?.spellNamed(spell.name);
+        return {
+          name: spell.name,
+          short: spell.short,
+          targeting: spellTargeting(row?.targets),
+          /*
+           * What the realm says it serves, so each cure field offers the
+           * spells that answer its own question (todo 00). Left absent
+           * where the realm has no row: unknown offers everything, the
+           * same rule `targeting` keeps one line up.
+           */
+          ...(row === undefined || row === null
+            ? {}
+            : {
+                serves: spellServes(
+                  world?.servingAbilities(row) ?? row.abilities,
+                  (id) => world?.spellById(id)?.abilities
+                )
+              })
+        };
       }),
-      ...found
-    ];
-  });
-  handle(Invoke.worldInfo, (_caller, session: SessionId) => {
-    const world = worldFor(session);
-    return { rooms: world?.size ?? 0, source: world?.info.source ?? 'none' };
-  });
-  handle(Invoke.questBook, (_caller, session: SessionId) => {
-    // A realm with no world loaded, and one converted before quests were
-    // indexed, both answer with none — which the card says out loud.
-    return worldFor(session)?.quests() ?? [];
-  });
-  handle(Invoke.questErrand, (_caller, session: SessionId, block: unknown) => {
-    /*
-     * Parsed, not trusted. The block is a text-block id off a card that read
-     * it out of the book, and what it selects here is a travelling salesman's
-     * path costing a graph sweep per place — so a payload that is not one of
-     * the realm's own blocks answers null rather than being looked up.
-     */
-    if (typeof block !== 'number' || !Number.isInteger(block)) return null;
-    return host?.get(session)?.manager?.questErrand(block) ?? null;
-  });
-  handle(Invoke.questPlan, (_caller, session: SessionId, block: unknown, marked: unknown) => {
-    // Parsed like the errand's block, and for the same reason: a chain's plan
-    // is an A* per step, and only one of the realm's own blocks earns it.
-    if (typeof block !== 'number' || !Number.isInteger(block)) return null;
-    const rank = typeof marked === 'number' && Number.isInteger(marked) ? marked : null;
-    return host?.get(session)?.manager?.questPlan(block, rank) ?? null;
-  });
-  handle(Invoke.questRun, (_caller, session: SessionId, block: unknown, marked: unknown) => {
-    if (typeof block !== 'number' || !Number.isInteger(block)) {
-      return t('automation.quests.refusalUnknownStep', { block: String(block) });
-    }
-    const rank = typeof marked === 'number' && Number.isInteger(marked) ? marked : null;
-    const manager = host?.get(session)?.manager;
-    if (manager === undefined || manager === null) return t('automation.quests.refusalNotInRealm');
-    return manager.questRun(block, rank);
-  });
-  handle(Invoke.questStop, (_caller, session: SessionId) => {
-    host?.get(session)?.manager?.questStop();
-  });
-  handle(
-    Invoke.localMap,
-    (_caller, session: SessionId, map: number, room: number, radius?: unknown) => {
-      const world = worldFor(session);
-      if (!world || world.size === 0) return EMPTY_MAP;
-      /*
-       * Parsed, not trusted. The card measures its own box and asks for the
-       * radius it can show, and that number arrives here as a payload like any
-       * other — the search is breadth-first and exponential in it, so a window
-       * asking for a radius of four hundred would walk the realm on the main
-       * process's own thread. Bounded to the same range the card clamps to;
-       * anything else is `undefined`, which takes `DEFAULT_RADIUS`.
-       */
-      const { mapRadiusMin, mapRadiusMax } = tuning().view;
-      const asked =
-        typeof radius === 'number' && Number.isInteger(radius)
-          ? Math.max(mapRadiusMin, Math.min(mapRadiusMax, radius))
-          : undefined;
-      return localMap(world, roomId(map, room), asked);
-    }
-  );
-  handle(
-    Invoke.areaMap,
-    (_caller, session: SessionId, map: unknown, room: unknown, level: unknown) => {
-      const world = worldFor(session);
-      if (!world || world.size === 0) return null;
-      if (!Number.isInteger(map) || !Number.isInteger(room)) return null;
-      return areaMap(
-        world,
-        roomId(map as number, room as number),
-        Number.isInteger(level) ? (level as number) : null,
-        areaOverrides()
-      );
-    }
-  );
-  // Where this character earns most, by MMUD Explorer's own arithmetic (2026-10-29).
-  handle(Invoke.huntingGrounds, (_caller, session: SessionId, asParty: unknown) =>
-    huntingGroundsOf(session, explorerRealm(session), asParty === true)
-  );
-  /*
-   * Where this character may go and level. Addressed, and answered from the
-   * realm's own shop rows rather than from a room name — see `trainersTaking`.
-   * No session is an empty list, which is what the picker draws as *nowhere
-   * the realm says will take you*.
-   */
-  handle(Invoke.trainers, (_caller, session: SessionId) => {
-    return host?.get(session)?.manager?.trainers() ?? [];
-  });
-  /* Every bank counter this realm places, for the settings picker (todo 00). */
-  handle(Invoke.banks, (_caller, session: SessionId) => worldFor(session)?.banks() ?? []);
-  /*
-   * The items the realm says would serve each condition a potion rule can
-   * name. A property of the realm rather than the character, so one call
-   * answers every row the settings screen draws.
-   */
-  handle(Invoke.itemsServing, (_caller, session: SessionId) => {
-    const world = worldFor(session);
-    if (!world) return {};
-    return {
-      hp: world.itemsServing('hp').map((item) => item.name),
-      poisoned: world.itemsServing('poisoned').map((item) => item.name),
-      blind: world.itemsServing('blind').map((item) => item.name),
-      diseased: world.itemsServing('diseased').map((item) => item.name)
+      // No realm to ask means no gates, never closed ones: unknown must
+      // not disable a cure.
+      cureGates:
+        world === undefined
+          ? null
+          : cureGates(
+              book.map((spell) => {
+                const row = world.spellNamed(spell.name);
+                return row === null ? undefined : world.servingAbilities(row);
+              })
+            )
     };
-  });
+  },
   /*
-   * And the realm's own half of the same list (todo 02): where it says a
-   * spell stops a room's effect and an item's use casts that spell. A
-   * property of the realm like the line above, so one call answers the
-   * section.
-   */
-  handle(Invoke.wards, (_caller, session: SessionId) => worldFor(session)?.wards() ?? []);
-  handle(Invoke.partyRosters, () => parties?.all ?? []);
-  handle(Invoke.saveRoster, (_caller, roster: unknown) => {
-    if (!parties) return [];
-    const made = roster as Partial<PartyRoster> | null;
-    if (
-      made !== null &&
-      typeof made === 'object' &&
-      typeof made.realm === 'string' &&
-      !parties.all.some((entry) => entry.id === made.id) &&
-      (made.places ?? []).length === 0
-    )
-      return saveNewRoster(made as PartyRoster);
-    const before = parties.all.find((entry) => entry.id === made?.id)?.leader ?? null;
-    const saved = parties.save(roster);
-    // A leader changed on the card: the party re-formed round them now, as a
-    // Regroup press would, whatever the automatic switch says.
-    const after = saved.find((entry) => entry.id === made?.id);
-    if (after?.leader && before !== null && !sameName(before, after.leader))
-      partyKeeper.now(after, keptOn(after.realm));
-    return saved;
-  });
-  handle(Invoke.regroupParty, (_caller, id: unknown) => {
-    const roster = parties?.all.find((entry) => entry.id === id);
-    return roster ? partyKeeper.now(roster, keptOn(roster.realm)) : 0;
-  });
-  handle(Invoke.musterParty, (_caller, id: unknown, target: unknown) => {
-    const roster = parties?.all.find((entry) => entry.id === id);
-    const where = asMusterTarget(target);
-    if (!roster || where === null) return [];
-    return muster(roster, where);
-  });
-  /*
-   * Say to: one line typed once, fanned out — each chosen character of ours
-   * sends it as its own, as if typed there, and everybody else in the party
-   * gets the leader's @party when `others` says so.
-   */
-  handle(
-    Invoke.partySay,
-    (_caller, id: unknown, chosen: unknown, line: unknown, others: unknown) => {
-      const roster = parties?.all.find((entry) => entry.id === id);
-      const text = typeof line === 'string' ? line.trim().slice(0, 200) : '';
-      if (!roster || text === '' || !Array.isArray(chosen)) return [];
-      const sessions = new Set(chosen.filter((s): s is string => typeof s === 'string'));
-      const acts = fanOutActs(roster, keptOn(roster.realm), {
-        chosen: sessions,
-        others: others === true
-      });
-      return fanOut(roster, acts, [text], (manager) => {
-        manager.sendMacro(text);
-        return null;
-      });
-    }
-  );
-  handle(Invoke.removeRoster, (_caller, id: unknown) =>
-    typeof id === 'string' ? (parties?.remove(id) ?? []) : (parties?.all ?? [])
-  );
-  handle(Invoke.disbandParty, (_caller, id: unknown) => {
-    const roster = parties?.all.find((entry) => entry.id === id);
-    if (!parties || !roster) return parties?.all ?? [];
-    disband(roster);
-    return parties.remove(roster.id);
-  });
-  handle(Invoke.roomBrief, (_caller, session: SessionId, map: number, room: number) => {
-    const world = worldFor(session);
-    // A realm with no world loaded knows nothing about any room, which is the
-    // same answer as a room it does not hold: the panel says so either way.
-    if (!world || world.size === 0) return null;
-    /*
-     * The family the *wire* stated, not the realm file's: it decides the
-     * lair's respawn clock alone, and on the shipped configuration the two
-     * legitimately differ (a Paradigm-built world file against a GreaterMUD
-     * default realm). The same reading `CharacterTracker` resolves the Room
-     * card's own `LAIR` face with, so the panel and the card cannot answer two
-     * clocks for one room. See `WorldGraph.lair`.
-     */
-    const manager = host?.get(session)?.manager;
-    const family = manager?.family ?? null;
-    return roomBrief(world, roomId(map, room), family, manager?.level ?? null);
-  });
-
-  /*
-   * The four world queries that used to live here — `shopHere`, `lairHere`,
-   * `answersHere` and `itemsKnown` — are gone (2026-09-02).
+   * The bundled world outright, never `load('')`.
    *
-   * Every one of them answered a question main had already answered: the shop,
-   * the lair, the room's script and what the realm knows about an item are all
-   * settled the moment the room resolves or the pack listing is parsed, and
-   * `CharacterTracker` attaches them to the entities it publishes. They
-   * crossed the wire on demand only because the room was a bag of strings and
-   * the pack was a list of names when they were added — and the cost was four
-   * React effects that each ran *after* the card had drawn once without the
-   * answer, each with its own stale-value hazard when a character switched.
+   * `load` resolves **a realm's** database, and an empty one means *this
+   * realm has not said which world it runs* — so it announces the automatic
+   * choice, as a session walking an unconfirmed map must. The Global page
+   * has no realm in the question at all: it is asking what a new character
+   * would copy. Asked through `load`, opening the settings screen printed
+   * "No world database is named and this realm has not yet said which it
+   * runs" into every terminal, about nothing (2026-09-15).
    */
-
-  /**
-   * Who this character is, as the realm numbers races and classes.
-   *
-   * The stat sheet prints the realm's own words (`Race: Halfling`,
-   * `Class: Mystic`) and an item's restrictions are row ids, so the join
-   * happens here, where both tables are. Null throughout until a sheet has
-   * printed — and null is *unknown*, which the equip check never refuses on.
-   */
-  handle(Invoke.wearer, (_caller, session: SessionId): Wearer => wearerIn(session));
-
-  /**
-   * Everything the realm knows about a name — monster, item or spell.
-   *
-   * The Reference card's query, and the one behind every "what is this thing"
-   * click on a card. One handler across the three indexes because the caller
-   * has a *name* and should not need to know which table answers it.
-   */
-  /*
-   * MMUD Explorer for one character (2026-10-18): its realm's own database
-   * file, read with MME's logic, and the character as it is now.
-   */
-  /*
-   * Who each character's Explorer answers for, where not the character as
-   * played (`ExplorerAs`, 2026-10-29). The reading calls take the character
-   * through it; Buy, Wear, Learn and the Gear card do not.
-   */
-  const viewedBy = (session: SessionId, character: CharacterState): CharacterState =>
-    viewedAs(character, explorerAs.get(session) ?? null);
-  const tellExplorerAs = (session: SessionId): void =>
-    push(Push.explorerAs, { session, payload: explorerAs.get(session) ?? null });
-  handle(Invoke.explorerAs, (_caller, session: SessionId, as: unknown) => {
-    if (!host?.has(session)) return null;
-    const asked = asExplorerAs(as);
-    if (asked === null) explorerAs.delete(session);
-    else explorerAs.set(session, asked);
-    tellExplorerAs(session);
-    return asked;
-  });
-  handle(Invoke.explorerAsOf, (_caller, session: SessionId) => explorerAs.get(session) ?? null);
-  // MajorMUD's stat sheet and pack, which say the class, race, level, stats and what is worn.
-  handle(Invoke.explorerSync, (_caller, session: SessionId) => {
-    const manager = host?.get(session)?.manager;
-    if (manager === undefined) return false;
-    if (explorerAs.delete(session)) tellExplorerAs(session);
-    const stat = manager.ask('stat');
-    const pack = manager.ask('i');
-    return stat || pack;
-  });
-  /** A finder's question off the wire, or null for one that does not parse. */
-  const asRoomSearch = (value: unknown): RoomSearch | null => {
-    const o = (typeof value === 'object' && value !== null ? value : {}) as Record<string, unknown>;
-    const text = (key: string): string | null =>
-      typeof o[key] === 'string' ? (o[key] as string).slice(0, 200) : null;
-    const find = text('find');
-    if (find !== null) return { find, after: text('after') };
-    const list = text('list');
-    if (list !== null) return { list };
-    const leads = text('leads');
-    return leads !== null && /^\d+\/\d+$/.test(leads) ? { leads } : null;
-  };
-  /** A list's name off the wire; anything else is the Weapons list. */
-  const explorerKindOf = (kind: unknown): ExplorerKind =>
-    EXPLORER_KINDS.includes(kind as ExplorerKind) ? (kind as ExplorerKind) : 'weapons';
-  /*
-   * The realm's database file, which the Explorer's thread reads
-   * (`ExplorerThread`), or why there is none to read.
-   */
-  const explorerRealm = (session: SessionId): { file: string } | string => {
-    const file = realms?.databaseFile(profileFor(session)?.database ?? '') ?? null;
-    if (file === null || !existsSync(file)) return t('app.explorer.noDatabase');
-    return { file };
-  };
-  handle(
-    Invoke.explorerList,
-    async (_caller, session: SessionId, kind: unknown, options: unknown) => {
-      const none = { supported: false, columns: [], rows: [], abilities: [] };
-      const realm = explorerRealm(session);
-      const manager = host?.get(session)?.manager;
-      if (typeof realm === 'string' || manager === undefined)
-        return { ...none, reason: typeof realm === 'string' ? realm : '' };
-      const which = explorerKindOf(kind);
-      try {
-        const list = await explorerAsk(
-          'list',
-          realm.file,
-          viewedBy(session, manager.character),
-          which,
-          { ...asExplorerOptions(options), fights: fightsOf(session) }
-        );
-        return list.supported ? list : { ...list, reason: t('app.explorer.unsupported') };
-      } catch (error) {
-        return { ...none, reason: t('app.explorer.unreadable', { reason: errorMessage(error) }) };
-      }
-    }
-  );
-  handle(
-    Invoke.explorerDetail,
-    async (_caller, session: SessionId, kind: unknown, item: unknown, options: unknown) => {
-      const realm = explorerRealm(session);
-      const manager = host?.get(session)?.manager;
-      if (typeof realm === 'string' || manager === undefined || typeof item !== 'number')
-        return null;
-      try {
-        return await explorerAsk(
-          'detail',
-          realm.file,
-          viewedBy(session, manager.character),
-          explorerKindOf(kind),
-          item,
-          { ...asExplorerOptions(options), fights: fightsOf(session) }
-        );
-      } catch {
-        return null;
-      }
-    }
-  );
-  /*
-   * Buy and Buy + Wear: the counter, the price and the vault off the session
-   * (`purchaseFor`, which the press acts on too), and what comes off for it
-   * off MME's slot rule. The item is the realm's, by number.
-   */
-  const explorerWearing = async (
-    session: SessionId,
-    item: number
-  ): Promise<ExplorerBuyPlan['wear']> => {
-    const realm = explorerRealm(session);
-    const manager = host?.get(session)?.manager;
-    if (typeof realm === 'string' || manager === undefined) return { wearable: false, remove: [] };
-    try {
-      return await explorerAsk('wear', realm.file, manager.character, item);
-    } catch {
-      return { wearable: false, remove: [] };
-    }
-  };
-  handle(Invoke.explorerBuyPlan, async (_caller, session: SessionId, item: unknown) => {
-    const manager = host?.get(session)?.manager;
-    const row = typeof item === 'number' ? worldFor(session)?.item(item) : undefined;
-    if (manager === undefined || row === undefined) return null;
-    // Unplaced, the realm is asked first, as a route is (`ensureLocated`).
-    if (manager.character.room.map === null) await manager.ensureLocated();
-    const wear = await explorerWearing(session, row.id);
-    return { ...manager.purchaseFor({ id: row.id, name: row.name }), wear };
-  });
-  handle(Invoke.explorerBuy, async (_caller, session: SessionId, item: unknown, wear: unknown) => {
-    const manager = host?.get(session)?.manager;
-    const row = typeof item === 'number' ? worldFor(session)?.item(item) : undefined;
-    if (manager === undefined || row === undefined) return t('app.explorer.noSuchItem');
-    if (manager.character.room.map === null) await manager.ensureLocated();
-    let remove: string[] | null = null;
-    if (wear === true) {
-      const wearing = await explorerWearing(session, row.id);
-      if (!wearing.wearable) return t('app.explorer.notWorn', { item: row.name });
-      remove = wearing.remove;
-    }
-    return manager.buyNow({ id: row.id, name: row.name }, remove);
-  });
-  /*
-   * Buy + Learn: the scroll that teaches a spell, as Buy plans it, and the
-   * press, which buys it and reads it. The spell and the item are the
-   * realm's, by number.
-   */
-  handle(Invoke.explorerLearnPlan, async (_caller, session: SessionId, spell: unknown) => {
-    const manager = host?.get(session)?.manager;
-    if (manager === undefined || typeof spell !== 'number') return null;
-    if (manager.character.room.map === null) await manager.ensureLocated();
-    const plan = manager.learnPlanFor(spell);
-    return plan === null ? null : { ...plan, wear: { wearable: false, remove: [] } };
-  });
-  handle(Invoke.explorerLearn, async (_caller, session: SessionId, item: unknown) => {
-    const manager = host?.get(session)?.manager;
-    const row = typeof item === 'number' ? worldFor(session)?.item(item) : undefined;
-    if (manager === undefined || row === undefined) return t('app.explorer.noSuchItem');
-    if (manager.character.room.map === null) await manager.ensureLocated();
-    return manager.buyNow({ id: row.id, name: row.name }, null, true);
-  });
-  /*
-   * The Rooms tab: MME's map and finders on the realm's own rooms, the
-   * character's room marked. A request that does not parse is answered as
-   * no such room rather than a throw.
-   */
-  /*
-   * A textblock as MME's frmResults shows it (2026-10-24): the Explorer's
-   * Rooms tab and the cards' textblock panel both ask it.
-   */
-  handle(Invoke.explorerTextblock, async (_caller, session: SessionId, request: unknown) => {
-    const realm = explorerRealm(session);
-    const asked = asTextblockRequest(request);
-    const empty = { text: [], icon: 'PAPER', place: null, bold: false, kids: [] };
-    const none = {
-      supported: false,
-      found: false,
-      number: asked?.n ?? 0,
-      linkTo: null,
-      calledFrom: null,
-      commands: null,
-      command: empty,
-      executed: empty,
-      raw: ''
-    };
-    if (typeof realm === 'string' || asked === null)
-      return { ...none, reason: typeof realm === 'string' ? realm : '' };
-    try {
-      const tb = await explorerAsk('textblock', realm.file, asked);
-      return tb.supported ? tb : { ...tb, reason: t('app.explorer.unsupported') };
-    } catch (error) {
-      return { ...none, reason: t('app.explorer.unreadable', { reason: errorMessage(error) }) };
-    }
-  });
-  /*
-   * What MME says a room holds, as data (2026-10-24): the Room card's Lair and
-   * Shop faces and the room panel, without the Rooms tab's map.
-   */
-  handle(
-    Invoke.explorerRoom,
-    async (_caller, session: SessionId, rawMap: unknown, rawRoom: unknown) => {
-      const realm = explorerRealm(session);
-      const manager = host?.get(session)?.manager;
-      const map = typeof rawMap === 'number' && Number.isInteger(rawMap) ? rawMap : 0;
-      const room = typeof rawRoom === 'number' && Number.isInteger(rawRoom) ? rawRoom : 0;
-      const none = { supported: false, found: false, map, room, name: '', refs: [], info: '' };
-      if (typeof realm === 'string' || manager === undefined)
-        return { ...none, reason: typeof realm === 'string' ? realm : '' };
-      try {
-        const facts = await explorerAsk(
-          'room',
-          realm.file,
-          viewedBy(session, manager.character),
-          map,
-          room
-        );
-        return facts.supported ? facts : { ...facts, reason: t('app.explorer.unsupported') };
-      } catch (error) {
-        return { ...none, reason: t('app.explorer.unreadable', { reason: errorMessage(error) }) };
-      }
-    }
-  );
-  handle(Invoke.explorerRoomView, async (_caller, session: SessionId, request: unknown) => {
-    const realm = explorerRealm(session);
-    const manager = host?.get(session)?.manager;
-    const asked = asRoomViewRequest(request);
-    const none = {
-      supported: false,
-      found: false,
-      map: asked?.map ?? 0,
-      room: asked?.room ?? 0,
-      name: '',
-      grid: null,
-      compass: [],
-      refs: [],
-      info: '',
-      here: null
-    };
-    if (typeof realm === 'string' || manager === undefined || asked === null)
-      return { ...none, reason: typeof realm === 'string' ? realm : '' };
-    try {
-      const view = await explorerAsk(
-        'roomView',
-        realm.file,
-        viewedBy(session, manager.character),
-        asked
-      );
-      return view.supported ? view : { ...view, reason: t('app.explorer.unsupported') };
-    } catch (error) {
-      return { ...none, reason: t('app.explorer.unreadable', { reason: errorMessage(error) }) };
-    }
-  });
-  handle(
-    Invoke.explorerRoomTip,
-    async (_caller, session: SessionId, map: unknown, room: unknown, options: unknown) => {
-      const realm = explorerRealm(session);
-      const manager = host?.get(session)?.manager;
-      const asked = asRoomViewRequest({ map, room, options });
-      if (typeof realm === 'string' || manager === undefined || asked === null) return '';
-      try {
-        return await explorerAsk(
-          'roomTip',
-          realm.file,
-          viewedBy(session, manager.character),
-          asked.map,
-          asked.room,
-          asked.options
-        );
-      } catch {
-        return '';
-      }
-    }
-  );
-  handle(Invoke.explorerRoomSearch, async (_caller, session: SessionId, search: unknown) => {
-    const realm = explorerRealm(session);
-    const manager = host?.get(session)?.manager;
-    const asked = asRoomSearch(search);
-    if (typeof realm === 'string' || manager === undefined || asked === null) return {};
-    try {
-      return await explorerAsk(
-        'roomSearch',
-        realm.file,
-        viewedBy(session, manager.character),
-        asked
-      );
-    } catch {
-      return {};
-    }
-  });
-  handle(Invoke.explorerGear, async (_caller, session: SessionId, options: unknown) => {
-    const none = { supported: false, criteria: [], slots: [] };
-    const realm = explorerRealm(session);
-    const manager = host?.get(session)?.manager;
-    if (typeof realm === 'string' || manager === undefined)
-      return { ...none, reason: typeof realm === 'string' ? realm : '' };
-    const world = worldFor(session);
-    try {
-      const board = await explorerAsk(
-        'gear',
-        realm.file,
-        manager.character,
-        asGearOptions(options),
-        world?.soldItems() ?? null
-      );
-      return board.supported ? board : { ...board, reason: t('app.explorer.unsupported') };
-    } catch (error) {
-      return { ...none, reason: t('app.explorer.unreadable', { reason: errorMessage(error) }) };
-    }
-  });
-
-  /*
-   * The EQ tab: MME's page for the plan, Find Best over it, and the plan put
-   * on. A plan or a search that does not parse is the default.
-   */
-  handle(Invoke.explorerEq, async (_caller, session: SessionId, plan: unknown) => {
-    const realm = explorerRealm(session);
-    const manager = host?.get(session)?.manager;
-    if (typeof realm === 'string' || manager === undefined)
-      return { ...NO_EQ_VIEW, reason: typeof realm === 'string' ? realm : '' };
-    try {
-      const view = await explorerAsk(
-        'eq',
-        realm.file,
-        viewedBy(session, manager.character),
-        asEqPlan(plan)
-      );
-      return view.supported ? view : { ...view, reason: t('app.explorer.unsupported') };
-    } catch (error) {
-      return {
-        ...NO_EQ_VIEW,
-        reason: t('app.explorer.unreadable', { reason: errorMessage(error) })
-      };
-    }
-  });
-  handle(
-    Invoke.explorerEqBest,
-    async (_caller, session: SessionId, plan: unknown, find: unknown) => {
-      const realm = explorerRealm(session);
-      const manager = host?.get(session)?.manager;
-      const asked = asEqPlan(plan);
-      if (typeof realm === 'string' || manager === undefined)
-        return { equipped: asked.equipped ?? [], found: false };
-      const f = (typeof find === 'object' && find !== null ? find : {}) as Record<string, unknown>;
-      try {
-        return await explorerAsk(
-          'eqBest',
-          realm.file,
-          viewedBy(session, manager.character),
-          asked,
-          {
-            criterion:
-              typeof f['criterion'] === 'number' ? Math.max(0, Math.trunc(f['criterion'])) : 0,
-            next: f['next'] === true,
-            noLimited: f['noLimited'] === true
-          }
-        );
-      } catch {
-        return { equipped: asked.equipped ?? [], found: false };
-      }
-    }
-  );
-  handle(Invoke.explorerEqWear, async (_caller, session: SessionId, plan: unknown) => {
-    const realm = explorerRealm(session);
-    const manager = host?.get(session)?.manager;
-    if (typeof realm === 'string' || manager === undefined)
-      return { refusal: t('app.explorer.noCharacter'), buy: [] };
-    try {
-      const wear = await explorerAsk('eqWear', realm.file, manager.character, asEqPlan(plan));
-      return { refusal: manager.wearLoadout(wear.commands), buy: wear.buy };
-    } catch (error) {
-      return { refusal: t('app.explorer.unreadable', { reason: errorMessage(error) }), buy: [] };
-    }
-  });
-
-  /*
-   * The Lists tab: a compare list, a picker's matches and the Item Manager's
-   * columns, numbers and words parsed at the door.
-   */
-  const numbersOf = (value: unknown): number[] =>
-    Array.isArray(value)
-      ? value
-          .filter((n): n is number => typeof n === 'number' && Number.isInteger(n) && n > 0)
-          .slice(0, 500)
-      : [];
-  const compareKindOf = (value: unknown): CompareKind =>
-    COMPARE_KINDS.includes(value as CompareKind) ? (value as CompareKind) : 'weapons';
-  handle(
-    Invoke.explorerCompare,
-    async (_caller, session: SessionId, kind: unknown, numbers: unknown) => {
-      const realm = explorerRealm(session);
-      const manager = host?.get(session)?.manager;
-      const none = { supported: false, columns: [], rows: [] };
-      if (typeof realm === 'string' || manager === undefined)
-        return { ...none, reason: typeof realm === 'string' ? realm : '' };
-      try {
-        const list = await explorerAsk(
-          'compare',
-          realm.file,
-          viewedBy(session, manager.character),
-          compareKindOf(kind),
-          numbersOf(numbers)
-        );
-        return list.supported ? list : { ...list, reason: t('app.explorer.unsupported') };
-      } catch (error) {
-        return { ...none, reason: t('app.explorer.unreadable', { reason: errorMessage(error) }) };
-      }
-    }
-  );
-  handle(Invoke.explorerFind, async (_caller, session: SessionId, kind: unknown, text: unknown) => {
-    const realm = explorerRealm(session);
-    if (typeof realm === 'string' || typeof text !== 'string') return [];
-    try {
-      return await explorerAsk(
-        'find',
-        realm.file,
-        kind === 'items' ? 'items' : compareKindOf(kind),
-        text.slice(0, 64)
-      );
-    } catch {
-      return [];
-    }
-  });
-  handle(
-    Invoke.explorerItems,
-    async (_caller, session: SessionId, numbers: unknown, names: unknown) => {
-      const realm = explorerRealm(session);
-      const manager = host?.get(session)?.manager;
-      if (typeof realm === 'string' || manager === undefined) return [];
-      const words = Array.isArray(names)
-        ? names.filter((name): name is string => typeof name === 'string').slice(0, 500)
-        : [];
-      try {
-        return await explorerAsk(
-          'items',
-          realm.file,
-          viewedBy(session, manager.character),
-          numbersOf(numbers),
-          words
-        );
-      } catch {
-        return [];
-      }
-    }
-  );
-  handle(Invoke.explorerTool, async (_caller, session: SessionId, request: unknown) => {
-    const realm = explorerRealm(session);
-    const manager = host?.get(session)?.manager;
-    const asked = asToolRequest(request);
-    if (typeof realm === 'string' || manager === undefined || asked === null) return null;
-    try {
-      return await explorerAsk('tool', realm.file, viewedBy(session, manager.character), asked);
-    } catch {
-      return null;
-    }
-  });
-  /*
-   * The own rows from the character's file as written, not the resolved
-   * config: that one has the options file's rows merged in, and writing it
-   * back would pin them into this character (`ownMonsterRules`).
-   */
-  handle(Invoke.itemRulesFor, (_caller, session: unknown) => {
-    if (typeof session !== 'string') return { realm: [], own: [] };
-    return {
-      realm: realmTablesFor(session as SessionId).items,
-      own: editor().ownRules(session).items
-    };
-  });
-  handle(Invoke.setItemDetails, (_caller, session: unknown, rules: unknown) => {
-    if (typeof session !== 'string') return t('app.profiles.noSuchCharacter');
-    const result = editor().setItemDetails(session, asItemRules(rules));
-    if (result.ok) publishRosters();
-    return result.ok ? null : result.error;
-  });
-  handle(Invoke.monsterRulesFor, (_caller, session: unknown) => {
-    if (typeof session !== 'string') return { realm: [], own: [] };
-    return {
-      realm: realmTablesFor(session as SessionId).monsters,
-      own: editor().ownRules(session).monsters
-    };
-  });
-  handle(Invoke.setCombatMonsters, (_caller, session: unknown, rules: unknown) => {
-    if (typeof session !== 'string') return t('app.profiles.noSuchCharacter');
-    const result = editor().setCombatMonsters(session, asMonsterRules(rules));
-    if (result.ok) publishRosters();
-    return result.ok ? null : result.error;
-  });
-
-  handle(Invoke.lookup, async (_caller, session: SessionId, query: unknown) => {
-    const world = worldFor(session);
-    if (!world) return { mobs: [], items: [], spells: [], races: [], classes: [] };
-    /*
-     * Asked from where the reader is standing, which is what tells two of the
-     * realm's rows apart under one name: the Gnoll Tent's own lair names row
-     * 224 and the nearest room row 2204 spawns in is on another map, so the
-     * card answers `100 hp` rather than the fold's `100–830`. A session whose
-     * character has not placed itself yet passes null and gets the fold.
-     */
-    const here = host?.get(session)?.manager.character.room;
-    const at =
-      !here || here.map === null || here.number === null ? null : roomId(here.map, here.number);
-    const found = world.lookup(typeof query === 'string' ? query.slice(0, 128) : '', 12, at);
-    // And what this character's realm has learned about each monster named,
-    // beside the realm's figure. Only where fighting has taught something.
-    const lore = loreFor(session);
-    const learned: Record<string, MobLoreEntry> = {};
-    for (const mob of found.mobs) {
-      const entry = lore.learnedFor(mob.name);
-      if (entry !== null) learned[mob.name] = entry;
-    }
-    // One read of the record for every monster named, resolved through the
-    // realm table the way the lore is, so a rat king's fights stay its own.
-    const fights = Object.fromEntries(
-      (await fightLogs.get(session)?.summaries(
-        found.mobs.map((mob) => mob.name),
-        (printed) => world.mobAsPrinted(printed)?.name ?? printed
-      )) ?? []
-    ) as Record<string, FightSummary>;
-    /*
-     * Where every shop that sells one of these items is.
-     *
-     * Resolved here so that reading `Sold by` and walking to one of them is
-     * one round trip rather than two: the card would otherwise need a channel
-     * of its own, asked per click, for a join the realm file can already make.
-     * A shop the realm places in no room contributes no key, which is what
-     * leaves its name plain text on the card rather than a control that goes
-     * nowhere.
-     */
-    const shopPlaces: Record<string, ShopPlace> = {};
-    for (const item of found.items) {
-      for (const shop of item.shops ?? []) {
-        const key = shop.trim().toLowerCase();
-        if (key.length === 0 || key in shopPlaces) continue;
-        const place = world.shopPlace(shop);
-        if (place !== undefined) shopPlaces[key] = place;
-      }
-    }
-    /*
-     * And where the realm puts each monster named.
-     *
-     * Same join, made in the same place and for the same reason as the shops
-     * above: *what is this thing* and *where do I find one* are one question
-     * asked twice, and the answer to the second was in the room table with no
-     * door to it. Keyed by the monster's own name, as `learned` and `verdicts`
-     * are, so the card reads all four off one answer.
-     */
-    const mobPlaces: Record<string, MobPlaces> = {};
-    for (const mob of found.mobs) {
-      const places = world.mobPlaces(mob);
-      if (places !== undefined) mobPlaces[mob.name] = places;
-    }
-    /*
-     * And each row of a name several rows share, where nothing settled which:
-     * its own figures and where it spawns, so a name typed into Ctrl+K lists
-     * every one of them told apart (2026-10-24).
-     */
-    const mobRows: Record<string, MobRowBrief[]> = {};
-    for (const mob of found.mobs) {
-      const rows = world.rowBriefs(mob);
-      if (rows !== undefined) mobRows[mob.name] = rows;
-    }
-    /*
-     * And *can I fight this?* — each monster named, weighed against the
-     * character as it stands at this moment, by the session's own arithmetic
-     * so the card reads exactly what auto-combat ranks on. A session with no
-     * manager (a stale id) has no character to weigh against and gets none.
-     */
-    const verdicts = host?.get(session)?.manager.appraise(found.mobs.map((mob) => mob.name)) ?? {};
-    return {
-      ...found,
-      ...(Object.keys(learned).length > 0 ? { learned } : {}),
-      ...(Object.keys(fights).length > 0 ? { fights } : {}),
-      ...(Object.keys(shopPlaces).length > 0 ? { shopPlaces } : {}),
-      ...(Object.keys(mobPlaces).length > 0 ? { mobPlaces } : {}),
-      ...(Object.keys(mobRows).length > 0 ? { mobRows } : {}),
-      ...(Object.keys(verdicts).length > 0 ? { verdicts } : {})
-    };
-  });
-
-  /*
-   * Parsed, not trusted: the payload names a record to delete from a file the
-   * player owns, so a malformed one is refused rather than matched loosely.
-   */
-  /*
-   * A command asked for from a card, sent through the engine's pending list
-   * like every automated command — which is what makes it quiet when
-   * `internal.yaml` says so. Parsed: one line of printable text, no longer
-   * than a command, because this is a window handing main a string that
-   * becomes bytes on a socket. It was one bare word, which refused the Party
-   * card's `follow <name>` and the Room card's phrases outright; a window can
-   * already type any line (`Send.input`), so a line is no wider a door.
-   */
-  handle(Invoke.ask, (_caller, session: SessionId, command: unknown) => {
-    if (typeof command !== 'string' || !ASKABLE.test(command) || command.trim() !== command) {
-      return false;
-    }
-    return host?.get(session)?.manager.ask(command) ?? false;
-  });
-
-  /*
-   * *Where am I standing*, in whichever word the realm's own `locate` setting
-   * names. No argument crosses from the window: main reads the setting and
-   * picks the word itself, exactly as the gear button decides its own.
-   */
-  handle(Invoke.locate, (_caller, session: SessionId) => {
-    return host?.get(session)?.manager.askWhereIAm() ?? false;
-  });
-
-  /*
-   * A gear button: the kit back on, all of it on, all of it off, or one item.
-   *
-   * **Decided here, not in the renderer**, for the reason `actions.ts` gives
-   * about the buttons beside a room's name: the pack, the remembered loadout
-   * and the realm's own word on what can be worn all live in main, and a
-   * renderer deciding this would be a second reading of all three. What
-   * crosses the wire is an action from a closed list and, for one item, a name
-   * — and the name is resolved against the pack before it becomes a command,
-   * so a stale card cannot make this send `wear` at something that is not
-   * there. An unrecognised command on this server is said out loud in the room.
-   *
-   * The plans are pure and in `shared/gear.ts`, which is what lets the card
-   * offer only the buttons that would do something.
-   *
-   * Each command goes through `ask` — the arbiter, `probe` band, coalesced by
-   * its own text — so a bulk action is paced exactly as everything else
-   * automated is and never displaces an attack or an escape. Bounded by
-   * `tuning.spending.maxGear`, and the cap is said out loud rather than silently applied.
-   */
-  handle(Invoke.gear, (_caller, session: SessionId, action: unknown, item: unknown): number => {
-    if (typeof action !== 'string' || !(GEAR_ACTIONS as readonly string[]).includes(action)) {
-      return 0;
-    }
-    const manager = host?.get(session)?.manager;
-    if (!manager) return 0;
-    const state = manager.character;
-    const items = state.inventory.items;
-
-    const plan = ((): GearPlan => {
-      switch (action as GearAction) {
-        case 'restore':
-          return restorePlan(state.loadout, items, tuning().spending.maxGear);
-        case 'equip-all':
-          return equipAllPlan(
-            items,
-            (name) => wearableIn(session, name),
-            tuning().spending.maxGear
-          );
-        case 'drop-all':
-          return dropAllPlan(items, tuning().spending.maxGear);
-        /*
-         * One item, on or off, and the pack is what says which row.
-         *
-         * `nameAnswersTo` is the server's own rule for a typed name, so the
-         * card may send what it drew and this still finds the row — and the
-         * *listing's* spelling is what goes out, never the renderer's string.
-         *
-         * The row it finds is one the action can actually act on, which
-         * matters because a pack holds two of a name as often as one: with a
-         * ring on a finger and its twin in the pack, taking the first match
-         * would have *Take off* find the spare and *Put on* find the worn
-         * one, and both buttons would silently do nothing. A name held only
-         * in the wrong state is therefore already done rather than missing —
-         * and a name the pack does not hold at all is said out loud, because
-         * after a death the difference between "already off" and "gone" is
-         * the half the player needs.
-         */
-        case 'equip':
-        case 'remove': {
-          if (typeof item !== 'string') return { commands: [], missing: [], overflow: 0 };
-          const wanted = action === 'equip';
-          const matching = items.filter((carried) => nameAnswersTo(carried.name, item));
-          if (matching.length === 0) return { commands: [], missing: [item], overflow: 0 };
-          const held = matching.find((carried) => carried.equipped !== wanted);
-          if (!held) return { commands: [], missing: [], overflow: 0 };
-          return {
-            commands: [wanted ? equip(held.name) : unequip(held.name)],
-            missing: [],
-            overflow: 0
-          };
-        }
-      }
-    })();
-
-    for (const command of plan.commands) manager.ask(command);
-    if (plan.missing.length > 0) {
-      announce(
-        'gear',
-        t('automation.gear.missing', {
-          count: plan.missing.length,
-          items: plan.missing.join(', ')
-        })
-      );
-    }
-    if (plan.overflow > 0) {
-      announce(
-        'gear',
-        t('automation.gear.capped', { max: tuning().spending.maxGear, more: plan.overflow })
-      );
-    }
-    return plan.commands.length;
-  });
-
-  /*
-   * A button beside a room's name that main runs: `Deposit All`.
-   *
-   * Nothing crosses but the name of the action, checked against the closed
-   * list — `gear:act`'s rule, and here it carries more weight than usual,
-   * because the whole reason this is not a list of commands is that the
-   * figure a deposit names is not knowable until the `i` it sends has been
-   * answered. The engine's deposit owns the wait (`MegaEngine.depositAll`).
-   *
-   * A refusal — nothing to bank, or a button pressed from the backscroll
-   * beside a room the character left — reports itself as a notice, so `false`
-   * here is never silent.
-   */
-  handle(Invoke.terminalAct, (_caller, session: SessionId, action: unknown): boolean => {
-    if (typeof action !== 'string' || !(TERMINAL_ACTIONS as readonly string[]).includes(action)) {
-      return false;
-    }
-    const manager = host?.get(session)?.manager;
-    if (!manager) return false;
-    switch (action as TerminalActionName) {
-      case 'deposit-all':
-        return manager.depositAll();
-    }
-  });
-
-  /*
-   * A question at another player, from the palette. Parsed, for the same
-   * reason `ask` is: a name is a word the realm accepts as one, and the
-   * command is one of the closed list — anything else is refused rather than
-   * turned into bytes on the socket.
-   */
-  handle(Invoke.askRemote, (_caller, session: SessionId, who: unknown, name: unknown) => {
-    if (typeof who !== 'string' || !/^[A-Za-z][A-Za-z'-]{0,30}$/.test(who)) return false;
-    if (typeof name !== 'string' || !(REMOTE_NAMES as readonly string[]).includes(name)) {
-      return false;
-    }
-    return host?.get(session)?.manager.askRemote(who, name as RemoteName) ?? false;
-  });
-
-  handle(Invoke.names, (_caller, session: SessionId) => {
-    return (
-      worldFor(session)?.names() ?? {
-        items: [],
-        mobs: [],
-        spells: [],
-        races: [],
-        classes: [],
-        rooms: []
-      }
-    );
-  });
-
-  handle(Invoke.forget, (_caller, session: SessionId, discovery: unknown) => {
-    if (typeof discovery !== 'object' || discovery === null) return false;
-    const { from, command } = discovery as Record<string, unknown>;
-    if (typeof from !== 'string' || typeof command !== 'string') return false;
-    return host?.get(session)?.manager.forget({ from, command }) ?? false;
-  });
-
-  handle(Invoke.forgetCharacter, (_caller, session: SessionId) => {
-    return host?.get(session)?.manager.forgetCharacter() ?? false;
-  });
-
-  // Parsed, not checked, like every payload that reaches a file on disk.
-  handle(Invoke.forgetFind, (_caller, session: SessionId, find: unknown) => {
-    if (typeof find !== 'object' || find === null) return false;
-    const { room, name } = find as Record<string, unknown>;
-    if (typeof room !== 'string' || typeof name !== 'string') return false;
-    return host?.get(session)?.manager.forgetFind({ room, name }) ?? false;
-  });
-
-  /*
-   * Writing settings back.
-   *
-   * Every payload is *parsed* rather than checked — `asProfileDraft`,
-   * `asProfileId`, `asServerDraft` return the typed value or null — because
-   * these are the payloads that become files on disk holding credentials. A
-   * malformed one is a character dialling somewhere nobody chose, which is the
-   * exact failure a profile with no server is refused for.
-   *
-   * Each resolves to *why it refused*, or null. Nothing here throws at the
-   * renderer: a settings screen that takes the process down takes every
-   * character's socket with it.
-   */
-  /*
-   * What the settings screen's spell pickers offer. The character's own book
-   * — the live record when a session holds one on the same realm (the disk
-   * copy lags it by a deferred write), the file otherwise — and the cure
-   * gates computed over it against that character's realm. The Global page
-   * gets the shipped realm's castable spells: it is the starting point a new
-   * character copies, and there is no character whose book could narrow it.
-   */
-  const settingsSpells: NonNullable<SettingsEditorOptions['spells']> = {
-    forProfile: (id, target) => {
-      const realm = realmAddress(target);
-      const live = belongings.get(id as SessionId);
-      const book =
-        live && live.realm === realm
-          ? live.recallSpellbook()
-          : peekSpellbook(home.state('belongings', `${id}.json`), realm);
-      if (book === null) return { spellbook: null, cureGates: null };
-      const world = worldFor(id as SessionId);
-      return {
-        /*
-         * The listing knows what this character can cast; only the realm table
-         * knows who each spell may be cast *on*, so the two are joined here.
-         * A spell the realm cannot name reads as `unknown`, which every picker
-         * offers rather than hides — a derivative realm must not empty the
-         * field. See `spellTargeting`.
-         */
-        spellbook: book.map((spell) => {
-          const row = world?.spellNamed(spell.name);
-          return {
-            name: spell.name,
-            short: spell.short,
-            targeting: spellTargeting(row?.targets),
-            /*
-             * What the realm says it serves, so each cure field offers the
-             * spells that answer its own question (todo 00). Left absent
-             * where the realm has no row: unknown offers everything, the
-             * same rule `targeting` keeps one line up.
-             */
-            ...(row === undefined || row === null
-              ? {}
-              : {
-                  serves: spellServes(
-                    world?.servingAbilities(row) ?? row.abilities,
-                    (id) => world?.spellById(id)?.abilities
-                  )
-                })
-          };
-        }),
-        // No realm to ask means no gates, never closed ones: unknown must
-        // not disable a cure.
-        cureGates:
-          world === undefined
-            ? null
-            : cureGates(
-                book.map((spell) => {
-                  const row = world.spellNamed(spell.name);
-                  return row === null ? undefined : world.servingAbilities(row);
-                })
-              )
-      };
-    },
-    /*
-     * The bundled world outright, never `load('')`.
-     *
-     * `load` resolves **a realm's** database, and an empty one means *this
-     * realm has not said which world it runs* — so it announces the automatic
-     * choice, as a session walking an unconfirmed map must. The Global page
-     * has no realm in the question at all: it is asking what a new character
-     * would copy. Asked through `load`, opening the settings screen printed
-     * "No world database is named and this realm has not yet said which it
-     * runs" into every terminal, about nothing (2026-09-15).
-     */
-    realm: () => realms?.shippedGraph().castableSpells() ?? []
-  };
-
-  const editor = (): SettingsEditor =>
-    new SettingsEditor({ home, spells: settingsSpells, megamud: megamudSettingsOf });
-
-  handle(Invoke.settingsSnapshot, () => editor().snapshot());
-
-  /*
-   * A native picker for a realm database.
-   *
-   * A path typed by hand is a path typed wrong, and the failure — a realm that
-   * cannot be read — shows up only after connecting. The filters name what
-   * `RealmSource` understands rather than offering everything, and they name it
-   * from `REALM_EXTENSIONS` rather than restating it: a dialog offering a file
-   * the reader then refuses is a file a player can choose and not use.
-   */
-  handle(Invoke.chooseRealm, (caller) =>
-    /*
-     * The host puts the picker up, owned by the window that asked. A host
-     * with no native picker answers null — and is never asked: a browser
-     * tab's bridge opens the window's own picker over `browseHome` instead,
-     * because the disk being browsed is the client's, not the viewer's.
-     */
-    platform.chooseFile(caller, {
-      title: t('app.dialog.chooseRealmTitle'),
-      extensions: REALM_EXTENSIONS,
-      extensionsLabel: t('app.dialog.realmDatabaseFilter'),
-      allFilesLabel: t('app.dialog.allFilesFilter')
-    })
-  );
-
-  /* A realm's message table, by the realm's name (`tableAt`). */
-  handle(Invoke.loadMessages, (_caller, realm: unknown) => {
-    const at = tableAt(realmMessages, realm);
-    return at === null ? MESSAGE_TABLE.empty : at.store.forServer(at.serverId);
-  });
-
-  handle(Invoke.importMessages, (_caller, realm: unknown, fileName: unknown, text: unknown) => {
-    const at = tableAt(realmMessages, realm);
-    if (at === null)
-      return { ok: false, error: t('app.servers.noSuchServer') } satisfies MessageImport;
-    if (typeof text !== 'string') {
-      return { ok: false, error: t('app.messages.unreadable') } satisfies MessageImport;
-    }
-    const read = parseMegaMudMessages(text);
-    /*
-     * A file that yields nothing is refused rather than written: replacing a
-     * realm's table with an empty one because somebody picked the wrong file
-     * is the one outcome of an import nobody wants, and it is silent.
-     */
-    if (read.triggers.length === 0) {
-      return { ok: false, error: t('app.messages.nothingRead') } satisfies MessageImport;
-    }
-    const result = at.store.write(at.serverId, {
-      source: importedFrom(fileName, 'Messages.md'),
-      triggers: read.triggers
-    });
-    if (!result.ok) return { ok: false, error: result.error } satisfies MessageImport;
-    return {
-      ok: true,
-      count: read.triggers.length,
-      chase: read.triggers.filter((trigger) => trigger.chase).length,
-      skipped: read.skipped
-    } satisfies MessageImport;
-  });
-
-  handle(Invoke.saveMessages, (_caller, realm: unknown, triggers: unknown) => {
-    const at = tableAt(realmMessages, realm);
-    if (at === null) return t('app.servers.noSuchServer');
-    // Parsed, not trusted: the rows crossed the wire like any other payload.
-    const result = at.store.write(at.serverId, {
-      source: at.store.forServer(at.serverId).source,
-      triggers: asMessageTriggers(triggers)
-    });
-    return result.ok ? null : result.error;
-  });
-
-  /*
-   * A realm's monster table, the same way. The window decodes `Monsters.md`
-   * and hands over rows, which are parsed here like any other payload.
-   */
-  handle(Invoke.loadMonsters, (_caller, realm: unknown) => {
-    const at = tableAt(realmMonsters, realm);
-    return at === null ? MONSTER_TABLE.empty : at.store.forServer(at.serverId);
-  });
-
-  handle(Invoke.importMonsters, (_caller, realm: unknown, fileName: unknown, rows: unknown) => {
-    const at = tableAt(realmMonsters, realm);
-    if (at === null)
-      return { ok: false, error: t('app.servers.noSuchServer') } satisfies MonsterImport;
-    const monsters = asMonsterRules(rows).filter(saysAnything);
-    // Refused rather than written, for `importMessages`' reason.
-    if (monsters.length === 0) {
-      return { ok: false, error: t('app.monsters.noRows') } satisfies MonsterImport;
-    }
-    const result = at.store.write(at.serverId, {
-      source: importedFrom(fileName, 'Monsters.md'),
-      monsters
-    });
-    if (!result.ok) return { ok: false, error: result.error } satisfies MonsterImport;
-    return { ok: true, count: monsters.length } satisfies MonsterImport;
-  });
-
-  handle(Invoke.saveMonsters, (_caller, realm: unknown, rows: unknown) => {
-    const at = tableAt(realmMonsters, realm);
-    if (at === null) return t('app.servers.noSuchServer');
-    const result = at.store.write(at.serverId, {
-      source: at.store.forServer(at.serverId).source,
-      monsters: asMonsterRules(rows)
-    });
-    return result.ok ? null : result.error;
-  });
-
-  /* A realm's item table, the same way: the window decodes `Items.md`. */
-  handle(Invoke.loadItems, (_caller, realm: unknown) => {
-    const at = tableAt(realmItems, realm);
-    return at === null ? ITEM_TABLE.empty : at.store.forServer(at.serverId);
-  });
-
-  handle(Invoke.importItems, (_caller, realm: unknown, fileName: unknown, rows: unknown) => {
-    const at = tableAt(realmItems, realm);
-    if (at === null)
-      return { ok: false, error: t('app.servers.noSuchServer') } satisfies ItemImport;
-    const items = asItemRules(rows).filter(itemSaysAnything);
-    // Refused rather than written, for `importMessages`' reason.
-    if (items.length === 0) {
-      return { ok: false, error: t('app.items.noRows') } satisfies ItemImport;
-    }
-    const result = at.store.write(at.serverId, {
-      source: importedFrom(fileName, 'Items.md'),
-      items
-    });
-    if (!result.ok) return { ok: false, error: result.error } satisfies ItemImport;
-    return { ok: true, count: items.length } satisfies ItemImport;
-  });
-
-  handle(Invoke.saveItems, (_caller, realm: unknown, rows: unknown) => {
-    const at = tableAt(realmItems, realm);
-    if (at === null) return t('app.servers.noSuchServer');
-    const result = at.store.write(at.serverId, {
-      source: at.store.forServer(at.serverId).source,
-      items: asItemRules(rows)
-    });
-    return result.ok ? null : result.error;
-  });
-
-  /*
-   * A realm's learned spell sentences, by the realm's name: kept under the
-   * realm's data, as `spellLoreFor` keys them, so a realm with none has
-   * nothing to list.
-   */
-  handle(Invoke.loadSpellLore, (_caller, realm: unknown) => {
-    const source = loreSourceOf(realm);
-    if (source === null || lore === null)
-      return { known: false, rows: [] } satisfies LearnedSpellTable;
-    return { known: true, rows: lore.learnedSpells(source) } satisfies LearnedSpellTable;
-  });
-
-  handle(Invoke.saveSpellLore, (_caller, realm: unknown, rows: unknown) => {
-    const source = loreSourceOf(realm);
-    if (source === null || lore === null) return t('session.loop.noRealmData');
-    // Parsed, not trusted: the rows crossed the wire like any other payload.
-    const parsed = (Array.isArray(rows) ? rows : []).flatMap((row: unknown) => {
-      if (typeof row !== 'object' || row === null) return [];
-      const { spell, start, stop } = row as Record<string, unknown>;
-      if (typeof spell !== 'string' || typeof start !== 'string' || typeof stop !== 'string')
-        return [];
-      return [{ spell: spell.slice(0, 80), start: start.slice(0, 200), stop: stop.slice(0, 200) }];
-    });
-    lore.setLearnedSpells(source, parsed);
-    return null;
-  });
-
-  /*
-   * A MegaMUD folder's loops onto a realm, converted against **that realm's**
-   * data: a loop is a walk through rooms, and the rooms are the realm's. The
-   * window read the folder; what crossed is parsed here like any payload.
-   */
-  handle(Invoke.importLoops, async (_caller, realm: unknown, rawPaths: unknown) => {
-    const stored =
-      typeof realm === 'string' ? servers?.all.find((entry) => entry.server.name === realm) : null;
-    if (!stored) return { ok: false, error: t('app.servers.noSuchServer') } satisfies LoopImport;
-    const paths = asMegaMudPaths(rawPaths);
-    // Refused rather than written as nothing, for `importMessages`' reason.
-    if (paths.length === 0) {
-      return { ok: false, error: t('app.loop.noLoopsSent') } satisfies LoopImport;
-    }
-    const learned = worldBook?.at(realmAddress(stored.server)) ?? null;
-    const graph = realms?.load(stored.server.database, learned).graph;
-    if (!graph) return { ok: false, error: t('session.loop.noRealmData') } satisfies LoopImport;
-    const { loops: converted, dropped } = await loopsFromMegaMud(graph, paths);
-    if (converted.length === 0) {
-      return {
-        ok: false,
-        error: t('app.loop.noneFit', { count: paths.length })
-      } satisfies LoopImport;
-    }
-    const result = editor().addLoops('server', stored.server.name, converted);
-    if (!result.ok) return { ok: false, error: result.error } satisfies LoopImport;
-    // Live now rather than on the store's next poll, for `addLoop`'s reason.
-    loops?.refresh();
-    return {
-      ok: true,
-      count: converted.length,
-      replaced: result.replaced,
-      dropped
-    } satisfies LoopImport;
-  });
-
-  /*
-   * A loop as a file to hand on. The loop crossed the wire, so it is parsed;
-   * a name is the character's own, found as its laps find it.
-   */
-  handle(Invoke.exportLoop, async (_caller, session: unknown, given: unknown, format: unknown) => {
-    const manager =
-      typeof session === 'string' ? host?.get(session as SessionId)?.manager : undefined;
-    const loop =
-      typeof given === 'string' ? manager?.loopNamed(given) : asLoops([given], LOOP_LIMITS)[0];
-    if (loop === undefined) return { error: t('app.loop.noSuchLoop') };
-    if (format !== 'megamud') {
-      return { file: `${loopFileName(loop.name)}.yaml`, text: loopFileText(loop) };
-    }
-    if (manager === undefined) return { error: t('app.session.notConnected') };
-    const made = await manager.exportMegaLoop(loop);
-    return typeof made === 'string' ? { error: made } : made;
-  });
-  handle(Invoke.importLoopFile, (_caller, scope: unknown, owner: unknown, text: unknown) => {
-    if (!isLoopScope(scope) || typeof text !== 'string')
-      return { ok: false, error: t('errors.settings.loopFileEmpty') };
-    if (text.length > LOOP_FILE_MAX)
-      return { ok: false, error: t('errors.settings.loopFileTooBig') };
-    const result = editor().importLoopText(scope, typeof owner === 'string' ? owner : null, text);
-    // Live now rather than on the store's next poll, for `addLoop`'s reason.
-    if (result.ok) loops?.refresh();
-    return result;
-  });
-
-  handle(Invoke.saveProfile, (_caller, rawId: unknown, rawDraft: unknown) => {
-    const id = asProfileId(rawId);
-    if (id === null) return t('app.profiles.invalidId');
-    const draft = asProfileDraft(rawDraft);
-    if (draft === null) return t('app.profiles.incompleteDraft');
-    profiles?.ensureDirectory();
-    const result = editor().saveProfile(id, draft);
-    // The store polls, so the new character appears without being told; saying
-    // so here as well would report it twice.
-    return result.ok ? null : result.error;
-  });
-
-  handle(Invoke.megamudChoices, (_caller, rawId: unknown) => {
-    const id = asProfileId(rawId);
-    return id === null ? null : (host?.get(id)?.manager.megaChoices() ?? null);
-  });
-
-  handle(Invoke.megamudNames, (_caller, rawId: unknown) => {
-    const id = asProfileId(rawId);
-    const profile = id === null ? undefined : profileFor(id);
-    return id === null || profile === undefined ? null : megaNames(megaDataFor(id, profile));
-  });
-
-  handle(Invoke.seenPlayers, (_caller, rawId: unknown) => {
-    const id = asProfileId(rawId);
-    if (id === null) return [];
-    return playersFor(id)
-      .recall()
-      .map((facts) => facts.name);
-  });
-
-  handle(Invoke.forgetPlayer, (_caller, rawId: unknown, rawName: unknown) => {
-    const id = asProfileId(rawId);
-    const target = id === null ? undefined : profileFor(id)?.target;
-    if (target === undefined || typeof rawName !== 'string') {
-      return t('app.profiles.noSuchCharacter');
-    }
-    playerBook?.forget(realmAddress(target), rawName);
-    return null;
-  });
-
-  handle(Invoke.deleteProfile, (_caller, rawId: unknown) => {
-    const id = asProfileId(rawId);
-    if (id === null) return t('app.profiles.noSuchCharacter');
-    const result = editor().deleteProfile(id);
-    return result.ok ? null : result.error;
-  });
-
-  handle(Invoke.saveServer, (_caller, previous: unknown, rawDraft: unknown) => {
-    const draft = asServerDraft(rawDraft);
-    if (draft === null) return t('app.servers.invalidDraft');
-    const result = editor().saveServer(typeof previous === 'string' ? previous : null, draft);
-    return result.ok ? null : result.error;
-  });
-
-  handle(Invoke.saveGlobal, (_caller, rawDraft: unknown) => {
-    const draft = asGlobalDraft(rawDraft);
-    if (draft === null) return t('app.settings.invalidGlobalDraft');
-    const result = editor().saveGlobal(draft);
-    // The store polls, so the change reaches every character without being
-    // told; saying so here as well would report it twice.
-    return result.ok ? null : result.error;
-  });
-
-  /*
-   * One player's whole grant, from the Player flyout. Validated here rather
-   * than trusted: a renderer payload is a value from outside like any other,
-   * and the remotes in it are a closed union of fifty-seven.
-   */
-  handle(Invoke.setRemoteGrant, (_caller, session: unknown, name: unknown, grant: unknown) => {
-    if (typeof session !== 'string' || typeof name !== 'string') {
-      return t('app.profiles.noSuchCharacter');
-    }
-    const parsed = asGrant(grant);
-    if (parsed === null) return t('app.remotes.invalidName');
-    const result = editor().setRemoteGrant(session, name, parsed);
-    /*
-     * The store polls, so the character picks the change up without being
-     * told — but the *renderer* draws the Access face from `ProfileSummary`,
-     * which is pushed rather than polled, so the rosters are republished here
-     * or the flyout would go on showing the grant it had before the click.
-     */
-    if (result.ok) publishRosters();
-    return result.ok ? null : result.error;
-  });
-
-  /* What anybody in this character's gang may ask for, from the Gang card. */
-  handle(Invoke.setGangRemotes, (_caller, session: unknown, remotes: unknown) => {
-    if (typeof session !== 'string') return t('app.profiles.noSuchCharacter');
-    const parsed = asRemoteNames(remotes);
-    if (parsed === null) return t('app.remotes.invalidName');
-    const result = editor().setGangRemotes(session, parsed);
-    if (result.ok) publishRosters();
-    return result.ok ? null : result.error;
-  });
-
-  /*
-   * The realm's mudstats board. The link runs on the character's own session,
-   * which is what reads the code off the telepath the board sends; the key it
-   * gets is written beside the password, and the profile's reload hands it to
-   * the session's reporter. Nothing here ever returns the key.
-   */
-  const keepStatsKey =
-    (session: string) =>
-    (key: string): string | null => {
-      const result = editor().setStatsKey(session, key);
-      return result.ok ? null : result.error;
-    };
-  handle(Invoke.statsLink, async (_caller, session: unknown) => {
-    if (typeof session !== 'string') return t('app.profiles.noSuchCharacter');
-    const manager = host?.get(session)?.manager;
-    if (!manager) return t('mudstats.link.notConnected');
-    return manager.statsLink(keepStatsKey(session));
-  });
-  handle(Invoke.statsUnlink, async (_caller, session: unknown) => {
-    if (typeof session !== 'string') return t('app.profiles.noSuchCharacter');
-    const manager = host?.get(session)?.manager;
-    if (!manager) return t('mudstats.link.notConnected');
-    return manager.statsUnlink(keepStatsKey(session));
-  });
-  handle(Invoke.statsStatus, async (_caller, session: unknown) => {
-    if (typeof session !== 'string') return t('app.profiles.noSuchCharacter');
-    const manager = host?.get(session)?.manager;
-    if (!manager) return t('mudstats.link.notConnected');
-    return manager.statsStatus();
-  });
-  handle(Invoke.statsTest, async (_caller, url: unknown) => {
-    if (typeof url !== 'string' || url.trim() === '') return t('mudstats.test.noUrl');
-    const answer = await new MudStatsApi(url.trim()).fields();
-    if (answer.status !== 200) return t('mudstats.test.failed', { detail: detailOf(answer) });
-    const floor = Number(answer.body['min_interval']);
-    return t('mudstats.test.ok', { seconds: Number.isFinite(floor) ? floor : '?' });
-  });
-
-  /* Whether the gang's own channel is answered on at all. Same card, same push. */
-  handle(Invoke.setRemoteGangpath, (_caller, session: unknown, on: unknown) => {
-    if (typeof session !== 'string') return t('app.profiles.noSuchCharacter');
-    const result = editor().setRemoteGangpath(session, on === true);
-    if (result.ok) publishRosters();
-    return result.ok ? null : result.error;
-  });
-
-  /*
-   * This character's supplies list, from the Self card or the item panel.
-   * Same shape and same push: the list rides on `ProfileSummary`, and a card
-   * that drew the old list until the store's poll came round would show the
-   * row somebody just added as missing.
-   */
-  handle(Invoke.setSupplies, (_caller, session: unknown, items: unknown) => {
-    if (typeof session !== 'string') return t('app.profiles.noSuchCharacter');
-    const parsed = asSupplyItems(items);
-    if (parsed === null) return t('app.supplies.invalidList');
-    const result = editor().setSupplies(session, parsed);
-    if (result.ok) publishRosters();
-    return result.ok ? null : result.error;
-  });
-
-  /*
-   * One automation switch, from the toolbar. Same shape and same push: the
-   * store's poll brings the change back to the *session* on its own, and the
-   * rosters are republished here because the toolbar draws from
-   * `ProfileSummary`, which is pushed rather than polled — without it the
-   * button would stay where it was until something else moved.
-   */
-  handle(Invoke.megamudToggle, (_caller, session: unknown, name: unknown) => {
-    const slot = typeof session === 'string' ? host?.get(session as SessionId) : undefined;
-    if (!slot) return t('app.session.notConnected');
-    // Parsed rather than trusted: this crossed the wire.
-    const parsed = asMegaToggle(name);
-    if (parsed === null) return t('app.automation.unknownSwitch');
-    return slot.manager.megaToggle(parsed);
-  });
-
-  handle(Invoke.megamudAnswer, (_caller, session: unknown, question: unknown, yes: unknown) => {
-    if (typeof session !== 'string' || typeof question !== 'string') return;
-    host?.get(session as SessionId)?.manager.megaAnswer(question, yes === true);
-  });
-
-  handle(Invoke.setAutomationSwitch, (_caller, session: unknown, name: unknown, on: unknown) => {
-    if (typeof session !== 'string') return t('app.profiles.noSuchCharacter');
-    // Parsed rather than checked: this crossed the wire, and a path built
-    // from an unvalidated name is a write into somebody's YAML at a key
-    // nothing reads.
-    const parsed = asAutomationSwitch(name);
-    if (parsed === null) return t('app.automation.unknownSwitch');
-    const result = editor().setAutomationSwitch(session, parsed, on === true);
-    if (result.ok) publishRosters();
-    return result.ok ? null : result.error;
-  });
-
-  /*
-   * One loop into one scope, from the Loops modal.
-   *
-   * Parsed rather than trusted: this payload becomes a file in the user's own
-   * tree, and `asLoop` is the same parser the options file goes through, so a
-   * loop filed from the modal and one typed by hand cannot mean different
-   * things. The scope is a closed union and is checked against its own list
-   * rather than interpolated into a path — the failure a wire-built path
-   * causes here is a write into somebody's YAML at a key nothing reads.
-   */
-  handle(
-    Invoke.addLoop,
-    (_caller, scope: unknown, owner: unknown, loop: unknown, replaces: unknown) => {
-      if (!isLoopScope(scope)) return t('app.loop.unknownScope');
-      const parsed = asLoop(loop);
-      if (parsed === null) return t('app.loop.invalidLoop');
-      // The loop an edit was opened from, which a save under another name replaces.
-      const replaced = replaces === undefined || replaces === null ? null : asLoopAddress(replaces);
-      if (replaces !== undefined && replaces !== null && replaced === null)
-        return t('app.loop.invalidLoop');
-      const result = editor().addLoop(
-        scope,
-        typeof owner === 'string' && owner.trim().length > 0 ? owner.trim() : null,
-        parsed,
-        replaced
-      );
-      // The store's poll would find it within the tick; refreshing now is what
-      // makes the modal's own list show it before the player looks away.
-      if (result.ok) loops?.refresh();
-      return result.ok ? null : result.error;
-    }
-  );
-
-  handle(Invoke.deleteServer, (_caller, name: unknown) => {
-    if (typeof name !== 'string' || name.trim().length === 0) return t('app.servers.noSuchServer');
-    const result = editor().deleteServer(name.trim());
-    return result.ok ? null : result.error;
-  });
-
-  handle(Invoke.revealLogs, async (): Promise<Revealed> => {
-    const directory = logDirectory();
-    // The directory may not exist yet if nothing has been logged; opening a
-    // missing path silently does nothing, which reads as a broken menu item.
-    await fs.mkdir(directory, { recursive: true }).catch(() => undefined);
-    return reveal(directory, 'directory');
-  });
-
-  /*
-   * The clipboard, for the terminal's copy and paste. See the channel's own
-   * note for why this is here rather than `navigator.clipboard` in the window.
-   *
-   * The payload is checked rather than trusted, like every other one that
-   * crosses this boundary — and an empty write is refused rather than
-   * performed, because clearing somebody's clipboard is not what "copy
-   * nothing" should mean.
-   *
-   * A host with no clipboard is never asked: a browser tab's bridge keeps
-   * the window's own (`navigator.clipboard`), for the reason the desktop
-   * does not — there the browser's chord is bound and its permission is the
-   * tab's to grant. Answered honestly all the same, so a bridge that did ask
-   * would learn nothing was written.
-   */
-  handle(Invoke.copyText, async (_caller, text: unknown) => {
-    if (typeof text !== 'string' || text.length === 0) return;
-    if (platform.clipboard === null) {
-      announce('clipboard', t('app.clipboard.none'));
-      return;
-    }
-    await platform.clipboard.write(text);
-  });
-  handle(Invoke.pasteText, () => {
-    if (platform.clipboard === null) {
-      announce('clipboard', t('app.clipboard.none'));
-      return '';
-    }
-    return platform.clipboard.read();
-  });
-}
+  realm: () => realms?.shippedGraph().castableSpells() ?? []
+};
+const editor = (): SettingsEditor =>
+  new SettingsEditor({ home, spells: settingsSpells, megamud: megamudSettingsOf });
 
 /** Sessions this launch has already dialled on its own. See `clientReady`. */
 const autoConnected = new Set<SessionId>();
+
+/**
+ * What the IPC handlers in `ipc/` reach of this module: its state, read at
+ * the moment a handler runs (a getter, as the variable was), and its helpers.
+ */
+const ipcContext = {
+  announce,
+  appVersion,
+  areaOverrides,
+  asGrant,
+  ASKABLE,
+  asMusterTarget,
+  asRemoteNames,
+  asSupplyItems,
+  autoConnected,
+  get config() {
+    return config;
+  },
+  destinationsFor,
+  disband,
+  DORMANT_PHASES,
+  editor,
+  explorerAs,
+  explorerRealm,
+  fallbackSnapshot,
+  fanOut,
+  fightLogs,
+  fightsOf,
+  get home() {
+    return home;
+  },
+  get host() {
+    return host;
+  },
+  huntingGroundsOf,
+  IDLE_STATE,
+  importedFrom,
+  get internal() {
+    return internal;
+  },
+  keptOn,
+  labelOf,
+  get launched() {
+    return launched;
+  },
+  set launched(value: typeof launched) {
+    launched = value;
+  },
+  logDirectory,
+  LOOP_FILE_MAX,
+  loopCatalogue,
+  get loops() {
+    return loops;
+  },
+  get lore() {
+    return lore;
+  },
+  loreFor,
+  loreSourceOf,
+  megaDataFor,
+  muster,
+  notice,
+  get parties() {
+    return parties;
+  },
+  partyKeeper,
+  get platform() {
+    return platform;
+  },
+  get playerBook() {
+    return playerBook;
+  },
+  playersFor,
+  profileFor,
+  get profiles() {
+    return profiles;
+  },
+  profileSummaries,
+  publishRosters,
+  push,
+  railOf,
+  get realmItems() {
+    return realmItems;
+  },
+  get realmMessages() {
+    return realmMessages;
+  },
+  get realmMonsters() {
+    return realmMonsters;
+  },
+  get realms() {
+    return realms;
+  },
+  realmTablesFor,
+  reportSoftwareCompositing,
+  reveal,
+  rosterFor,
+  saveNewRoster,
+  get servers() {
+    return servers;
+  },
+  summariesFor,
+  tableAt,
+  talkFor,
+  unloaded,
+  wearableIn,
+  wearerIn,
+  windows,
+  get workspace() {
+    return workspace;
+  },
+  get worldBook() {
+    return worldBook;
+  },
+  worldFor
+};
+export type IpcContext = typeof ipcContext;
+
+/** Every handler behind `IpcApi`, one function per area under `ipc/`. */
+function registerIpc(): void {
+  const { transport } = platform;
+  registerSessionsIpc(transport, ipcContext);
+  registerPlayIpc(transport, ipcContext);
+  registerWorldIpc(transport, ipcContext);
+  registerExplorerIpc(transport, ipcContext);
+  registerSettingsIpc(transport, ipcContext);
+}
 
 /** Whether this launch has done its autoconnect pass. See `clientReady`. */
 let launched = false;

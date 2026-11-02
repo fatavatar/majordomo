@@ -99,7 +99,7 @@ all of them pass `prettier --check`.
 | `config/Migration.ts` | 7,000 | about 90 migration steps |
 | `renderer/src/App.tsx` | 6,400 | the whole shell, with about 230 hooks in one component |
 | `session/SessionManager.ts` | 6,100 | the connection, the line pipeline, the engine bridge, buying and learning, quests, routes |
-| `client.ts` | 4,200 | every IPC handler |
+| `client.ts` | 2,900 | the stores, the realm data and the sessions; the IPC handlers are in `ipc/`, one file per area |
 | `renderer/src/styles/index.css` | 14,900 | every component's styles in one sheet |
 
 The hunting survey and the fight verdicts (about 1,000 lines with their own

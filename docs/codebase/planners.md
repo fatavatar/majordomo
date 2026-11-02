@@ -50,7 +50,8 @@ engine's, at the hang-up level.
 
 ## What the player starts
 
-Cards and screens start these through IPC calls handled in `client.ts`, which
-calls the session: `walkRoute` and `startLoop` (the route panel and loops),
-`questRun`, `buyNow` (MMUD Explorer's Buy), `collectThenWalk`. Each answers
-with why it would not start, and that is shown where it was asked.
+Cards and screens start these through IPC calls handled under
+`src/main/ipc/`, which calls the session: `walkRoute` and `startLoop` (the
+route panel and loops), `questRun`, `buyNow` (MMUD Explorer's Buy),
+`collectThenWalk`. Each answers with why it would not start, and that is
+shown where it was asked.

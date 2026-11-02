@@ -93,7 +93,7 @@ These keep this fork's changes mergeable with upstream:
 
 **A new IPC call.** Add the channel to `Invoke` (or `Send`, `Push`) and the
 method to `IpcApi` in `src/shared/ipc.ts`, named as the channel's key is;
-handle it in `src/main/client.ts`. Both bridges are built from the channel
+handle it in its area's file under `src/main/ipc/` (`register<Area>Ipc`). Both bridges are built from the channel
 tables (`bridgeOver`), so neither needs touching, and the build fails where
 a method and its channel are named differently.
 

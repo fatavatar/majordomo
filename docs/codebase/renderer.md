@@ -21,8 +21,9 @@ compile time. `bridgeOver` in `shared/ipc.ts` builds the whole object from
 the channel tables over a carrier that can invoke, send and subscribe:
 `src/preload/index.ts` lends it Electron's IPC on the desktop, and
 `renderer/src/lib/webBridge.ts` the WebSocket in a browser tab. `main.tsx`
-uses whichever is present. `client.ts` handles every `Invoke` and `Send`
-(`handle(Invoke.x, …)`), and `ipc-wiring.test.ts` checks that it does.
+uses whichever is present. Main handles every `Invoke` and `Send`
+(`handle(Invoke.x, …)`), one file per area under `src/main/ipc/`, and
+`ipc-wiring.test.ts` checks that it does.
 
 ## The app
 

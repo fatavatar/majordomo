@@ -84,7 +84,8 @@ socket. Three classes keep this straight:
 
 | Directory | What is in it |
 |---|---|
-| `src/main/index.ts`, `client.ts` | The entry point, and the client: every store, the realm data, the sessions, and the handler behind every IPC call (`client.ts` is about 4,200 lines). |
+| `src/main/index.ts`, `client.ts` | The entry point, and the client: every store, the realm data and the sessions (`client.ts` is about 2,900 lines). |
+| `src/main/ipc/` | The handler behind every IPC call, one `register<Area>Ipc` per area (sessions, play, world, explorer, settings), reaching the client's state through `IpcContext`. |
 | `src/main/app/` | Process-wide facts: the home directory (`home.ts`), one client per home (`homeLock.ts`), the UI dictionary for main (`i18n.ts`), `tuning` (`tuning.ts`), quitting. |
 | `src/main/host/` | The two hosts and the web server, sockets and sign-in. |
 | `src/main/net/` | Telnet: the socket (`TelnetClient`), the protocol parser (`TelnetParser`), line framing (`LineTokenizer`), the terminal's quirks and the cursor-position answer. |
@@ -109,5 +110,5 @@ socket. Three classes keep this straight:
 
 About 200,000 lines outside the tests. The largest single files are
 `WorldGraph.ts` (9,700), `CharacterTracker.ts` (7,300), `Migration.ts`
-(7,000), `App.tsx` (6,400), `SessionManager.ts` (6,100) and `client.ts`
-(4,200). `src/shared` alone is 45,000 lines across 78 modules.
+(7,000), `App.tsx` (7,000), `SessionManager.ts` (6,100) and `client.ts`
+(2,900). `src/shared` alone is 45,000 lines across 78 modules.
