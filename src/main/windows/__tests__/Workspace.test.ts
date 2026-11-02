@@ -195,6 +195,32 @@ describe('remembering the arrangement', () => {
     expect(workspace().restore()).toEqual([]);
   });
 
+  /*
+   * Code review B6 (2026-11-02): written in place, a save that did not finish
+   * left a truncated file, and the arrangement saved before it went with it.
+   * A temp file renamed over the old one is all or nothing.
+   */
+  it('leaves no temp file behind a save', () => {
+    const space = workspace();
+    space.open(1);
+    space.save();
+    expect(fs.readdirSync(dir)).toEqual(['workspace.json']);
+  });
+
+  it('keeps the last arrangement whole when a save cannot finish', () => {
+    const space = workspace();
+    space.open(1);
+    space.open(2);
+    space.move('thorn', 2);
+    space.save();
+
+    // Somewhere the temp file cannot be written: the save fails part way.
+    fs.mkdirSync(`${file}.tmp`);
+    space.move('thorn', 1);
+    expect(() => space.save()).not.toThrow();
+    expect(workspace().restore()).toEqual([['thorn']]);
+  });
+
   /* An arrangement that cannot be written is a convenience lost, not a reason
      to fail: everything still works, in one window. */
   it('does not throw when it cannot write', () => {

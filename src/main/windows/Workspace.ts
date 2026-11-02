@@ -224,12 +224,25 @@ export class Workspace {
         ...kept
       ]
     };
+    /*
+     * Temp file and rename, like every other file this client owns (code
+     * review B6, 2026-11-02): written in place, a crash or a full disk part
+     * way through left a truncated file, and the arrangement saved before it
+     * was lost with the one that never finished.
+     */
+    const temporary = `${this.options.file}.tmp`;
     try {
       fs.mkdirSync(path.dirname(this.options.file), { recursive: true });
-      fs.writeFileSync(this.options.file, `${JSON.stringify(layout, null, 2)}\n`, 'utf8');
+      fs.writeFileSync(temporary, `${JSON.stringify(layout, null, 2)}\n`, 'utf8');
+      fs.renameSync(temporary, this.options.file);
     } catch {
       // An arrangement that cannot be written is a convenience lost, not a
       // reason to fail: everything still works, in one window.
+      try {
+        fs.rmSync(temporary, { force: true });
+      } catch {
+        // A temp file that will not go away is not a crash either.
+      }
     }
   }
 
