@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
+import { parseAst } from 'vite';
 import YAML from 'yaml';
-import ts from 'typescript';
 
 import { DEFAULT_INTERNAL, normalizeInternal, pinnedMatches } from '../internal';
 
@@ -229,18 +229,13 @@ describe('the tuning block', () => {
   it('names every interval period, never a bare number', () => {
     // The detector on a snippet it must and must not flag: the positive
     // control an empty list of offenders needs before it can mean anything.
-    const probe = ts.createSourceFile(
-      'probe.ts',
-      [
-        'setInterval(f, 1000);',
-        'window.setInterval(f, 60 * 1000);',
-        'setInterval(f, tuning().files.pollIntervalMs);',
-        'setInterval(f, every);'
-      ].join('\n'),
-      ts.ScriptTarget.Latest,
-      true
-    );
-    expect(barePeriods(probe)).toEqual([1, 2]);
+    const probe = [
+      'setInterval(f, 1000);',
+      'window.setInterval(f, 60 * 1000);',
+      'setInterval(f, tuning().files.pollIntervalMs);',
+      'setInterval(f, every);'
+    ].join('\n');
+    expect(barePeriods(probe, 'ts')).toEqual([1, 2]);
 
     const offenders: string[] = [];
     const files = walk(path.resolve('src')).filter(
@@ -250,14 +245,7 @@ describe('the tuning block', () => {
       const text = fs.readFileSync(file, 'utf8');
       // A file without the word has no call to walk.
       if (!text.includes('setInterval')) continue;
-      const source = ts.createSourceFile(
-        file,
-        text,
-        ts.ScriptTarget.Latest,
-        true,
-        file.endsWith('.tsx') ? ts.ScriptKind.TSX : ts.ScriptKind.TS
-      );
-      for (const line of barePeriods(source)) {
+      for (const line of barePeriods(text, file.endsWith('.tsx') ? 'tsx' : 'ts')) {
         offenders.push(`${path.relative(process.cwd(), file)}:${line}`);
       }
     }
@@ -273,32 +261,58 @@ function walk(dir: string): string[] {
   });
 }
 
+/**
+ * A node of the syntax tree vite's parser hands back (ESTree, from Rolldown's
+ * Oxc), as far as this walk reads one. The compiler's own tree is not there to
+ * read: TypeScript 7 has no stable API for it.
+ */
+interface AstNode {
+  type: string;
+  start: number;
+  [field: string]: unknown;
+}
+
+function isNode(value: unknown): value is AstNode {
+  return typeof value === 'object' && value !== null && typeof (value as AstNode).type === 'string';
+}
+
+/** A node's children, in whichever of its fields they are held. */
+function children(node: AstNode): AstNode[] {
+  return Object.values(node).flatMap((value) =>
+    Array.isArray(value) ? value.filter(isNode) : isNode(value) ? [value] : []
+  );
+}
+
 /** The line of every `setInterval` in a file whose period is literals through and through. */
-function barePeriods(source: ts.SourceFile): number[] {
+function barePeriods(text: string, lang: 'ts' | 'tsx'): number[] {
   const lines: number[] = [];
-  const visit = (node: ts.Node): void => {
-    if (ts.isCallExpression(node) && calleeOf(node) === 'setInterval') {
-      const period = node.arguments[1];
-      if (period === undefined || !namesSomething(period)) {
-        lines.push(source.getLineAndCharacterOfPosition(node.getStart(source)).line + 1);
+  const visit = (node: AstNode): void => {
+    if (node.type === 'CallExpression' && calleeOf(node) === 'setInterval') {
+      const period = Array.isArray(node.arguments) ? node.arguments[1] : undefined;
+      if (!isNode(period) || !namesSomething(period)) {
+        // The parser's offsets count UTF-16 units, as a string's index does.
+        lines.push(text.slice(0, node.start).split('\n').length);
       }
     }
-    ts.forEachChild(node, visit);
+    children(node).forEach(visit);
   };
-  visit(source);
+  const program: unknown = parseAst(text, { lang });
+  if (isNode(program)) visit(program);
   return lines;
 }
 
 /** What a call is a call to: `setInterval(...)` and `window.setInterval(...)` alike. */
-function calleeOf(call: ts.CallExpression): string | null {
-  const callee = call.expression;
-  if (ts.isIdentifier(callee)) return callee.text;
-  if (ts.isPropertyAccessExpression(callee)) return callee.name.text;
+function calleeOf(call: AstNode): string | null {
+  const callee = call.callee;
+  if (!isNode(callee)) return null;
+  if (callee.type === 'Identifier') return typeof callee.name === 'string' ? callee.name : null;
+  if (callee.type === 'MemberExpression' && !callee.computed && isNode(callee.property)) {
+    return typeof callee.property.name === 'string' ? callee.property.name : null;
+  }
   return null;
 }
 
 /** Whether an expression names anything — a call, a field, a variable — or is literals through and through. */
-function namesSomething(node: ts.Node): boolean {
-  if (ts.isIdentifier(node)) return true;
-  return ts.forEachChild(node, namesSomething) === true;
+function namesSomething(node: AstNode): boolean {
+  return node.type === 'Identifier' || children(node).some(namesSomething);
 }

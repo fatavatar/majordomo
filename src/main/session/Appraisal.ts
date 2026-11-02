@@ -596,11 +596,11 @@ export class Appraisal {
           verdicts[index]?.rounds?.value ??
           (casting === null
             ? null
-            : (castsToKill(casting, {
+            : castsToKill(casting, {
                 hp: verdicts[index]?.menace?.hp ?? entity.hp ?? null,
                 magicRes: entity.magicResist ?? null,
                 abilities: entity.abilities
-              })?.rounds ?? null)) ??
+              })?.rounds) ??
           recorded(verdicts[index]?.menace?.hp ?? entity.hp ?? null),
         perRound: verdicts[index]?.menace?.perRound ?? null,
         nakedPerRound: bare[index]?.perRound ?? null,
