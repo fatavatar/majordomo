@@ -156,13 +156,12 @@ export function openWebLink(events: WebLinkEvents, signal: AbortSignal): WebLink
         redirect: 'manual',
         cache: 'no-store'
       });
-      // The sign-in answers with a redirect home, which `manual` leaves unread.
-      const signedIn = response.type === 'opaqueredirect' || response.ok;
-      if (signedIn) {
+      const refusal = signInRefusal(response);
+      if (refusal === null) {
         showCover(t('web.link.lost'));
         connect();
       }
-      return signedIn;
+      return refusal;
     });
   };
 
@@ -391,7 +390,25 @@ function hideCover(): void {
 }
 
 /** The password field in the cover; `submit` answers whether it signed in. */
-function showSignIn(submit: (password: string) => Promise<boolean>): void {
+/**
+ * What the cover says to the sign-in's answer: nothing when it signed in (a
+ * redirect home, which `manual` leaves unread), that the password was wrong,
+ * or, when this address has sent too many wrong ones and is shut out (429,
+ * code review B3, 2026-11-02), how long until it may try again.
+ */
+export function signInRefusal(
+  response: Pick<Response, 'type' | 'ok' | 'status'> & {
+    headers: { get(name: string): string | null };
+  }
+): string | null {
+  if (response.type === 'opaqueredirect' || response.ok) return null;
+  if (response.status !== 429) return t('web.link.wrongPassword');
+  const seconds = Number(response.headers.get('retry-after'));
+  const minutes = Math.max(1, Math.ceil((Number.isFinite(seconds) ? seconds : 60) / 60));
+  return minutes === 1 ? t('web.login.wait.one') : t('web.login.wait.many', { minutes });
+}
+
+function showSignIn(submit: (password: string) => Promise<string | null>): void {
   const panel = coverPanel();
   const form = document.createElement('form');
   form.className = 'link-sign-in';
@@ -413,8 +430,8 @@ function showSignIn(submit: (password: string) => Promise<boolean>): void {
     button.disabled = true;
     wrong.textContent = '';
     submit(field.value)
-      .then((signedIn) => {
-        if (!signedIn) wrong.textContent = t('web.link.wrongPassword');
+      .then((refusal) => {
+        if (refusal !== null) wrong.textContent = refusal;
       })
       .catch(() => {
         wrong.textContent = t('web.link.lost');

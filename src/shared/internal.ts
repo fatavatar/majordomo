@@ -1456,6 +1456,20 @@ const TUNING_DEFAULTS = {
      */
     loginDelayMs: 1000,
     /**
+     * How many wrong passwords one address may send inside `loginWindowMs`
+     * before it is shut out (code review B3, 2026-11-02). The delay above
+     * slows each guess; this is what stops a hundred connections guessing at
+     * once. Somebody who mistyped a few times is well inside it.
+     */
+    loginGuesses: 5,
+    /**
+     * The window those guesses are counted over, and how long an address
+     * that used them up is refused: its sign-ins are answered 429 with a
+     * `Retry-After`, and no password it sends is read, the right one included.
+     * A tab already signed in carries a cookie and is never asked.
+     */
+    loginWindowMs: 900_000,
+    /**
      * How often the client pings each tab. A proxy closes an idle socket and
      * a tab that vanished never says goodbye; a ping unanswered by the next
      * one is how either is found, and the interval is what it costs. Each

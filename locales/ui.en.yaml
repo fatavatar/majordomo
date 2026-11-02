@@ -5486,6 +5486,10 @@ web:
     passwordLabel: Password
     submit: Sign in
     wrong: That is not the password.
+    # Too many wrong passwords from one address: it is shut out for a while.
+    wait:
+      one: Too many wrong passwords from this address. Try again in a minute.
+      many: Too many wrong passwords from this address. Try again in {minutes} minutes.
     cleartext:
       'This connection is not encrypted: the password travels in the clear. Use it only on a
       link you trust, or put a TLS proxy in front of the client.'
