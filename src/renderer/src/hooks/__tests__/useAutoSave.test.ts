@@ -1,8 +1,10 @@
+// @vitest-environment happy-dom
+// react-dom renders the probe, and react-dom needs a document to render into.
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createElement, type MutableRefObject } from 'react';
-import { act, create, type ReactTestRenderer } from 'react-test-renderer';
+import { act, createElement, type RefObject } from 'react';
+import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { useAutoSave, type AutoSave } from '../useAutoSave';
@@ -22,7 +24,7 @@ interface ProbeProps {
   identity: string;
   value: Form;
   write: Write;
-  out: MutableRefObject<AutoSave | null>;
+  out: RefObject<AutoSave | null>;
   /** Off when the form is not on screen — another page, or the blank new form. */
   enabled?: boolean;
 }
@@ -46,10 +48,35 @@ function Probe({ identity, value, write, out, enabled = true }: ProbeProps): nul
 
 const DELAY = 700;
 
+/**
+ * A root the probe is rendered into, each render and the unmount inside `act`.
+ * React's own, as react-test-renderer is deprecated from React 19.
+ */
+interface Host {
+  render(props: ProbeProps): void;
+  unmount(): void;
+}
+
+function host(): Host {
+  let root: Root | null = null;
+  return {
+    render(props) {
+      root ??= createRoot(document.createElement('div'));
+      const live = root;
+      act(() => live.render(createElement(Probe, props)));
+    },
+    unmount() {
+      const live = root;
+      root = null;
+      if (live !== null) act(() => live.unmount());
+    }
+  };
+}
+
 describe('switching what is being edited before the delay has run', () => {
   let dir: string;
-  let renderer: ReactTestRenderer | null = null;
-  const out: MutableRefObject<AutoSave | null> = { current: null };
+  const probe = host();
+  const out: RefObject<AutoSave | null> = { current: null };
 
   const fileOf = (identity: string): string => join(dir, `${identity}.json`);
   const readBack = (identity: string): Form =>
@@ -61,16 +88,23 @@ describe('switching what is being edited before the delay has run', () => {
     return Promise.resolve(null);
   };
 
-  const render = (identity: string, value: Form, write: Write, enabled = true): void => {
-    const element = createElement(Probe, { identity, value, write, out, enabled });
-    if (renderer === null) {
-      act(() => {
-        renderer = create(element);
-      });
-    } else {
-      const live = renderer;
-      act(() => live.update(element));
-    }
+  const render = (identity: string, value: Form, write: Write, enabled = true): void =>
+    probe.render({ identity, value, write, out, enabled });
+
+  /**
+   * What `choose()` does, in the order it does it: flush, then switch. Both
+   * are one handler, and the switch has rendered before a write can answer,
+   * as a real save answers over IPC. React 19's `act` holds a nested render
+   * until the outermost `act` ends, by when a write that answers at once has
+   * answered, so the handler is one synchronous `act` and the answers are let
+   * in after it.
+   */
+  const choose = async (identity: string, value: Form, write: Write): Promise<void> => {
+    act(() => {
+      out.current?.flush();
+      render(identity, value, write);
+    });
+    await act(async () => {});
   };
 
   /**
@@ -97,8 +131,7 @@ describe('switching what is being edited before the delay has run', () => {
   });
 
   afterEach(() => {
-    if (renderer !== null) act(() => renderer?.unmount());
-    renderer = null;
+    probe.unmount();
     out.current = null;
     vi.useRealTimers();
     rmSync(dir, { recursive: true, force: true });
@@ -115,11 +148,7 @@ describe('switching what is being edited before the delay has run', () => {
     render('aria', { ...aria, note: 'runs at 40%' }, writeNow);
     expect(out.current?.state).toBe('pending');
 
-    // What `choose()` does, in the order it does it: flush, then switch.
-    await act(async () => {
-      out.current?.flush();
-      render('bram', { name: 'Bram', note: '' }, writeNow);
-    });
+    await choose('bram', { name: 'Bram', note: '' }, writeNow);
 
     expect(readBack('aria')).toEqual({ name: 'Aria', note: 'runs at 40%' });
     expect(existsSync(fileOf('bram'))).toBe(false);
@@ -134,10 +163,7 @@ describe('switching what is being edited before the delay has run', () => {
   it('does not spend a save on the character switched to', async () => {
     render('aria', { name: 'Aria', note: '' }, writeNow);
     render('aria', { name: 'Aria', note: 'edited' }, writeNow);
-    await act(async () => {
-      out.current?.flush();
-      render('bram', { name: 'Bram', note: '' }, writeNow);
-    });
+    await choose('bram', { name: 'Bram', note: '' }, writeNow);
     await act(async () => {
       vi.advanceTimersByTime(DELAY * 3);
     });
@@ -182,10 +208,7 @@ describe('switching what is being edited before the delay has run', () => {
     expect(writes).toHaveLength(1);
 
     render('aria', { name: 'Aria', note: 'second' }, writeSlowly);
-    await act(async () => {
-      out.current?.flush();
-      render('bram', { name: 'Bram', note: '' }, writeSlowly);
-    });
+    await choose('bram', { name: 'Bram', note: '' }, writeSlowly);
     expect(writes).toHaveLength(1);
 
     await act(async () => {
@@ -215,10 +238,7 @@ describe('switching what is being edited before the delay has run', () => {
       vi.advanceTimersByTime(DELAY);
     });
     render('aria', { name: 'Aria', note: 'second' }, writeSlowly);
-    await act(async () => {
-      out.current?.flush();
-      render('bram', { name: 'Bram', note: '' }, writeSlowly);
-    });
+    await choose('bram', { name: 'Bram', note: '' }, writeSlowly);
     await act(async () => {
       release();
     });
@@ -292,10 +312,7 @@ describe('switching what is being edited before the delay has run', () => {
     expect(writes).toEqual(['aria:off']);
 
     render('aria', { name: 'Aria', note: 'on' }, write);
-    await act(async () => {
-      out.current?.flush();
-      render('bram', { name: 'Bram', note: '' }, write);
-    });
+    await choose('bram', { name: 'Bram', note: '' }, write);
     expect(writes).toEqual(['aria:off']);
 
     await act(async () => {
@@ -371,24 +388,15 @@ describe('switching what is being edited before the delay has run', () => {
 
 describe('taking the form away before the delay has run', () => {
   let dir: string;
-  let renderer: ReactTestRenderer | null = null;
-  const out: MutableRefObject<AutoSave | null> = { current: null };
+  const probe = host();
+  const out: RefObject<AutoSave | null> = { current: null };
   const fileOf = (identity: string): string => join(dir, `${identity}.json`);
   const writeNow: Write = (identity, value) => {
     writeFileSync(fileOf(identity), JSON.stringify(value));
     return Promise.resolve(null);
   };
-  const render = (identity: string, value: Form, enabled: boolean): void => {
-    const element = createElement(Probe, { identity, value, write: writeNow, out, enabled });
-    if (renderer === null) {
-      act(() => {
-        renderer = create(element);
-      });
-    } else {
-      const live = renderer;
-      act(() => live.update(element));
-    }
-  };
+  const render = (identity: string, value: Form, enabled: boolean): void =>
+    probe.render({ identity, value, write: writeNow, out, enabled });
 
   beforeEach(() => {
     (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -397,8 +405,7 @@ describe('taking the form away before the delay has run', () => {
   });
 
   afterEach(() => {
-    if (renderer !== null) act(() => renderer?.unmount());
-    renderer = null;
+    probe.unmount();
     out.current = null;
     vi.useRealTimers();
     rmSync(dir, { recursive: true, force: true });

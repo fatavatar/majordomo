@@ -28,7 +28,7 @@ export interface ListNavigation<T> {
    * Typed as the `<ul>` every filtered list here actually is, so no call site
    * has to cast — a surface whose list is not a `<ul>` widens this then.
    */
-  listRef: RefObject<HTMLUListElement>;
+  listRef: RefObject<HTMLUListElement | null>;
   /** Whether an option is the highlighted one. */
   isActive(index: number): boolean;
 }

@@ -6,7 +6,7 @@ import { t } from '../lib/i18n';
 export interface FloatLayerProps {
   layout: CardLayoutApi;
   /** The workspace the fractions are measured against. */
-  boxRef: React.RefObject<HTMLElement>;
+  boxRef: React.RefObject<HTMLElement | null>;
   /** Renders one card. Returns null for a card that has nothing to say yet. */
   render(id: CardId): ReactNode;
   /** Which floats to draw; absent means all of them — a pinned-only layer for another character. */
@@ -52,7 +52,7 @@ function Float({
   layout,
   children
 }: {
-  boxRef: React.RefObject<HTMLElement>;
+  boxRef: React.RefObject<HTMLElement | null>;
   float: FloatState;
   layout: CardLayoutApi;
   children: ReactNode;

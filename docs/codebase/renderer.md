@@ -1,6 +1,6 @@
 # The renderer
 
-`src/renderer/src/`: a React 18 app, built by electron-vite. It holds no game
+`src/renderer/src/`: a React 19 app, built by electron-vite. It holds no game
 logic of its own: facts come from main, decisions are main's, and the
 renderer shows them and sends what the player does.
 

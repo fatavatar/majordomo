@@ -24,7 +24,7 @@ export interface FontFieldProps {
   kind: 'console' | 'interface';
   /** What an empty value means, offered first where empty is allowed. */
   blankLabel?: string;
-  inputRef?: React.RefObject<HTMLInputElement>;
+  inputRef?: React.RefObject<HTMLInputElement | null>;
 }
 
 /**

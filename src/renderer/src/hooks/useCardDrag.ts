@@ -94,7 +94,7 @@ interface Origin {
  */
 export function useCardDrag(
   layout: CardLayoutApi,
-  workspaceRef: React.RefObject<HTMLElement>
+  workspaceRef: React.RefObject<HTMLElement | null>
 ): CardDrag {
   const [state, setState] = useState<DragState | null>(null);
   const origin = useRef<Origin | null>(null);

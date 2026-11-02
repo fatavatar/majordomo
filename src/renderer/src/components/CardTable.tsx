@@ -165,7 +165,7 @@ export interface CardTableProps<Row> {
   /** Hands the caret back to the game when the find field is left. */
   returnFocus?(): void;
   /** Handle on the scroll region, for a table that pins itself to its newest row. */
-  scrollerRef?: RefObject<HTMLDivElement>;
+  scrollerRef?: RefObject<HTMLDivElement | null>;
   /**
    * The key of the row whose *detail* the card is drawing under the table.
    *

@@ -161,7 +161,7 @@ export default function LoopPicker({
       ) : matches.length === 0 ? (
         <p className="settings-note">{t('settings.loopPicker.noMatches', { query })}</p>
       ) : (
-        <ul className="loop-options" ref={nav.listRef as React.RefObject<HTMLUListElement>}>
+        <ul className="loop-options" ref={nav.listRef}>
           {matches.map((loop, index) => {
             const taken = chosen.has(loop.name);
             return (

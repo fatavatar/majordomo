@@ -123,7 +123,7 @@ export interface TextFieldProps extends FaceProps {
    * For the one field a screen opens focused. Only the form that owns the
    * dialog knows which that is, so it is passed rather than guessed at here.
    */
-  inputRef?: React.RefObject<HTMLInputElement>;
+  inputRef?: React.RefObject<HTMLInputElement | null>;
   /**
    * Enter means *take this one*, for a field that adds an entry rather than
    * editing one.
