@@ -45,6 +45,7 @@ import path from 'node:path';
 import { execSync, spawn, spawnSync } from 'node:child_process';
 
 import { analyse, loadMapper, spread } from './lib/cpuprofile.mjs';
+import { electronBinary } from './lib/electron-binary.mjs';
 
 const IAC = 255,
   WILL = 251,
@@ -284,10 +285,7 @@ character('beta', ['name: Beta', 'server: Profile Realm', 'autoConnect: false'])
 
 // -------------------------------------------------------------------- launch
 
-const electron =
-  process.platform === 'win32'
-    ? 'node_modules/electron/dist/electron.exe'
-    : './node_modules/electron/dist/electron';
+const electron = electronBinary();
 if (!fs.existsSync('out/main/index.js')) {
   console.error('\nNothing built. Run: npx electron-vite build --sourcemap\n');
   process.exit(1);

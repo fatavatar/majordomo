@@ -116,9 +116,18 @@ export function createElectronHost(layout: Layout): Host {
        * complaint about one is less useful than the default icon.
        */
       ...(existsSync(icon) ? { icon } : {}),
+      /*
+       * Sandboxed (2026-11-02). The window draws what other players write, so
+       * a flaw in the renderer is reachable from the realm, and the sandbox is
+       * what keeps one there: the preload gets `electron`'s renderer modules
+       * and nothing of Node, and the process itself is confined by the
+       * operating system. It was off because the preload was built as ESM,
+       * which Electron loads only unsandboxed; it is CommonJS now, and the
+       * build refuses one a sandbox could not run (`electron.vite.config.ts`).
+       */
       webPreferences: {
         preload: layout.preload,
-        sandbox: false,
+        sandbox: true,
         contextIsolation: true,
         nodeIntegration: false
       }
@@ -372,6 +381,7 @@ export function createElectronHost(layout: Layout): Host {
 
     // The window shares this machine's disk: the file is already where it is shown.
     deliver: () => null,
+    // Promises since Electron 44, which rebuilt the clipboard on the W3C one.
     clipboard: {
       read: () => clipboard.readText(),
       write: (text) => clipboard.writeText(text)

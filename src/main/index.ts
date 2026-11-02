@@ -34,7 +34,8 @@ import { setExplorerWorkerFile } from './mme/ExplorerThread';
  */
 const outMain = path.dirname(fileURLToPath(import.meta.url));
 const layout = {
-  preload: path.join(outMain, '../preload/index.mjs'),
+  // CommonJS, which a sandboxed window can load (`electron.vite.config.ts`).
+  preload: path.join(outMain, '../preload/index.cjs'),
   rendererDir: path.join(outMain, '../renderer'),
   // `out/main` is two levels below the project root.
   resources: path.join(outMain, '../../resources')

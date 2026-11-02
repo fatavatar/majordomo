@@ -49,9 +49,11 @@ WORKDIR /src
 # The dependency layer on its own, so editing a source file does not re-run a
 # thousand-package install. `npm ci` honours the lockfile exactly.
 #
-# `--ignore-scripts`, deliberately: Electron's postinstall downloads a 100MB
-# binary this image never runs. `electron-vite build` needs the package's
-# types and version and neither needs the binary.
+# `--ignore-scripts`, deliberately: no install script of a dependency runs in
+# the build. (Electron's own fetched a 100MB binary this image never runs; since
+# Electron 42 the package fetches it on first use instead, which nothing here
+# does.) `electron-vite build` needs the package's types and version and
+# neither needs the binary.
 COPY package.json package-lock.json ./
 RUN npm ci --ignore-scripts
 

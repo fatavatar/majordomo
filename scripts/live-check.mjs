@@ -27,6 +27,7 @@ import YAML from 'yaml';
 
 import { HOST, PORT, isLocalRealm } from './lib/local-realm.mjs';
 import { homePaths } from './lib/home.mjs';
+import { electronBinary } from './lib/electron-binary.mjs';
 
 /** Fixed before launch, so only files this run produced are examined later. */
 const startedAt = Date.now();
@@ -279,10 +280,7 @@ const appEnv = { ...process.env, MUDENGINE_HOME: runHome };
 // plain Node runtime: no app, no window. See CLAUDE.md.
 delete appEnv.ELECTRON_RUN_AS_NODE;
 
-const electron =
-  process.platform === 'win32'
-    ? 'node_modules/electron/dist/electron.exe'
-    : './node_modules/electron/dist/electron';
+const electron = electronBinary();
 const args = [
   'out/main/index.js',
   '--no-sandbox',

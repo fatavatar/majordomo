@@ -21,6 +21,7 @@ import { execSync, spawn, spawnSync } from 'node:child_process';
 import { parseDocument } from 'yaml';
 
 import { judgeFailures } from './lib/smoke-baseline.mjs';
+import { electronBinary } from './lib/electron-binary.mjs';
 
 /** This repository's own version, which is the one a bug report must name. */
 const pkg = JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
@@ -678,10 +679,7 @@ console.log(`\nmudengine smoke test -- fake host on 127.0.0.1:${PORT}\n`);
 
 // ------------------------------------------------------------------- launch
 
-const electron =
-  process.platform === 'win32'
-    ? 'node_modules/electron/dist/electron.exe'
-    : './node_modules/electron/dist/electron';
+const electron = electronBinary();
 
 /**
  * `ELECTRON_RUN_AS_NODE` makes the Electron binary behave as a plain Node

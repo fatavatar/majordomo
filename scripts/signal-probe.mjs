@@ -31,6 +31,8 @@ import { spawn, execSync } from 'node:child_process'
 import net from 'node:net'
 import fs from 'node:fs'
 
+import { electronBinary } from './lib/electron-binary.mjs'
+
 const mode = process.argv[2] === 'dead' ? 'dead' : 'live';
 let port = 1
 let server = null
@@ -59,7 +61,7 @@ fs.writeFileSync(`${cfgHome}/global/default.yaml`, `connection:\n  host: 127.0.0
 const env = { ...process.env, MUDENGINE_HOME: cfgHome }
 delete env.WAYLAND_DISPLAY
 delete env.ELECTRON_RUN_AS_NODE
-const child = spawn('xvfb-run', ['-a', './node_modules/electron/dist/electron', '--ozone-platform=x11',
+const child = spawn('xvfb-run', ['-a', electronBinary(), '--ozone-platform=x11',
   'out/main/index.js', '--no-sandbox', '--user-data-dir=/tmp/sig5profile'], {
   stdio: ['ignore','pipe','pipe'], env, detached: true
 })

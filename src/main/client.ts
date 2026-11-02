@@ -4690,13 +4690,13 @@ function registerIpc(): void {
    * tab's to grant. Answered honestly all the same, so a bridge that did ask
    * would learn nothing was written.
    */
-  handle(Invoke.copyText, (_caller, text: unknown) => {
+  handle(Invoke.copyText, async (_caller, text: unknown) => {
     if (typeof text !== 'string' || text.length === 0) return;
     if (platform.clipboard === null) {
       announce('clipboard', t('app.clipboard.none'));
       return;
     }
-    platform.clipboard.write(text);
+    await platform.clipboard.write(text);
   });
   handle(Invoke.pasteText, () => {
     if (platform.clipboard === null) {
