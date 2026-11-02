@@ -373,10 +373,7 @@ export default function TerminalView({
       fontSize: initial.current.settings.font.size,
       lineHeight: 1,
       letterSpacing: 0,
-      theme: initial.current.palette,
-      // Server output is never rewrapped by us; the game formats to a fixed
-      // width and rewrapping would corrupt ASCII maps and box art.
-      windowsMode: false
+      theme: initial.current.palette
     });
 
     const fit = new FitAddon();
@@ -792,24 +789,28 @@ export default function TerminalView({
       else setPinned(false);
     };
 
+    /*
+     * Every scroll, the reader's and the output's. Since xterm 6 the wheel,
+     * the scrollbar and a selection dragged past the edge all move the buffer
+     * through `scrollLines` and raise `onScroll`, so it is the one listener
+     * needed; xterm 5 kept it quiet for a scroll the reader made, and a native
+     * `scroll` listener on `.xterm-viewport` had to hear those, where now that
+     * element never scrolls.
+     */
     const scrollListener = term.onScroll(syncPin);
 
-    /**
-     * The DOM listener is not redundant. `onScroll` covers the buffer scrolling
-     * because output arrived, but xterm's viewport suppresses that event for
-     * scrolls the *user* initiates — wheel, scrollbar drag, keyboard — to avoid
-     * feeding its own DOM scroll handler back into itself. Listening only to
-     * `onScroll` therefore means the pin never releases: writes keep yanking
-     * the view back down, and the jump-to-latest affordance never appears at
-     * all, because from React's point of view the viewport is always pinned.
-     */
-    const viewport = mount.querySelector('.xterm-viewport');
-    viewport?.addEventListener('scroll', syncPin, { passive: true });
     // On the way down rather than up: xterm takes the wheel and the touch for
     // itself, and an event it stops never reaches a listener on the bubble.
     mount.addEventListener('wheel', userScrolled, { passive: true, capture: true });
     mount.addEventListener('touchmove', userScrolled, { passive: true, capture: true });
-    viewport?.addEventListener('pointerdown', pressBar, { capture: true });
+    /*
+     * The scrollbar xterm draws, by the selector xterm's own stylesheet uses
+     * for it: a press there is the reader taking hold of the scroll.
+     */
+    const pressScrollbar = (event: PointerEvent): void => {
+      if (event.target instanceof Element && event.target.closest(SCROLLBAR) !== null) pressBar();
+    };
+    mount.addEventListener('pointerdown', pressScrollbar, { capture: true });
     document.addEventListener('pointerup', releaseBar);
 
     /**
@@ -976,10 +977,9 @@ export default function TerminalView({
       if (enterTimer !== null) clearTimeout(enterTimer);
       links.dispose();
       observer.disconnect();
-      viewport?.removeEventListener('scroll', syncPin);
       mount.removeEventListener('wheel', userScrolled, { capture: true });
       mount.removeEventListener('touchmove', userScrolled, { capture: true });
-      viewport?.removeEventListener('pointerdown', pressBar, { capture: true });
+      mount.removeEventListener('pointerdown', pressScrollbar, { capture: true });
       document.removeEventListener('pointerup', releaseBar);
       scrollListener.dispose();
       selectionListener.dispose();
@@ -1158,6 +1158,9 @@ const USER_SCROLL_MS = 600;
 
 /** The keys xterm scrolls the viewport with, held with Shift; without it they go to the realm. */
 const SCROLL_KEYS = new Set(['PageUp', 'PageDown', 'Home', 'End', 'ArrowUp', 'ArrowDown']);
+
+/** The scrollbar xterm draws beside the cells, as its own stylesheet selects it. */
+const SCROLLBAR = '.xterm-scrollable-element > .scrollbar';
 
 /**
  * SGR colour sequences, for counting the cells a line actually paints.
@@ -1436,11 +1439,11 @@ function linkUnderPointer(
  * terminal has been laid out, the caller's fallback stands in: the pointer's
  * own position, which is where the click was whatever the buffer says.
  *
- * `.xterm-screen` is what travels with the box, not `mount`. It sits *inside*
- * `.xterm-viewport`, which is the element that actually scrolls when output
- * arrives, so a panel anchored here can ask "did that scroll move me" and get
- * the right answer — where the mount, being the viewport's parent, would say
- * no to the one scroll that does move it.
+ * `.xterm-screen` is what travels with the box, not `mount`: the element the
+ * cells are painted in, so a panel anchored here asks "did that scroll move
+ * me" of what holds the console. xterm scrolls by repainting the cells, and
+ * raises no DOM scroll of its own, so the output arriving under the word does
+ * not take the panel away.
  */
 function cellAnchor(
   term: Terminal,
