@@ -17,10 +17,17 @@ import { bridgeOver, Invoke, Push, pushMethod, Send, type IpcApi } from '../ipc'
  * What is checked of them here is that the builder routes every channel.
  *
  * Read as source text, deliberately. Importing `src/main/client.ts` would
- * start the client.
+ * start the client. Its handlers are registered by one function per area
+ * under `src/main/ipc/` (2026-11-02), read with it.
  */
 const read = (file: string): string => fs.readFileSync(path.resolve(file), 'utf8');
-const main = read('src/main/client.ts');
+const main = [
+  read('src/main/client.ts'),
+  ...fs
+    .readdirSync(path.resolve('src/main/ipc'))
+    .filter((name) => name.endsWith('.ts'))
+    .map((name) => read(path.join('src/main/ipc', name)))
+].join('\n');
 const preload = read('src/preload/index.ts');
 const web = read('src/renderer/src/lib/webBridge.ts');
 

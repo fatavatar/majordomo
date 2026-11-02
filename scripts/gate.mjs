@@ -189,6 +189,7 @@ const SMOKE_PATHS = [
 const WEB_SMOKE_PATHS = [
   'src/main/host/',
   'src/main/client.ts',
+  'src/main/ipc/',
   'src/main/index.ts',
   'src/preload/',
   'src/shared/ipc.ts',
