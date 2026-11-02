@@ -2997,16 +2997,19 @@ function shopStockBecameTheRealms(home: Home, note: (message: string) => void): 
     });
 
     try {
-      fs.writeFileSync(
-        target,
-        `${JSON.stringify({ version: 1, realm: record.realm, discoveries: [...existing, ...added] }, null, 2)}\n`,
-        'utf8'
-      );
-      fs.writeFileSync(
-        file,
-        `${JSON.stringify({ ...record, discoveries: record.discoveries.filter((entry: unknown) => (entry as { reason?: unknown }).reason !== 'unknown-stock') }, null, 2)}\n`,
-        'utf8'
-      );
+      // Each whole or not at all (code review B6, 2026-11-02): both files are
+      // the player's, and this rewrites them where they lie.
+      writeJsonAtomically(target, {
+        version: 1,
+        realm: record.realm,
+        discoveries: [...existing, ...added]
+      });
+      writeJsonAtomically(file, {
+        ...record,
+        discoveries: record.discoveries.filter(
+          (entry: unknown) => (entry as { reason?: unknown }).reason !== 'unknown-stock'
+        )
+      });
     } catch {
       // Reported by the count staying at zero rather than by a half-move: the
       // character's file is only rewritten after the realm's has been written.
