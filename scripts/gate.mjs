@@ -322,6 +322,7 @@ const CONFIGS = [
   'tsconfig.json',
   'tsconfig.node.json',
   'tsconfig.web.json',
+  'tsconfig.web-tests.json',
   'vitest.config.ts',
   'vitest.realm.config.ts',
   '.prettierrc',

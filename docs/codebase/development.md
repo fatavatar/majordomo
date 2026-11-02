@@ -16,7 +16,7 @@ Node is pinned by `.nvmrc`; run `nvm use` before any `npm` command.
 
 | Command | What it does |
 |---|---|
-| `npm run typecheck` | both TypeScript projects: `tsconfig.node.json` (main, preload, shared) and `tsconfig.web.json` (renderer, shared) |
+| `npm run typecheck` | the TypeScript projects: `tsconfig.node.json` (main, preload, shared, with Node's types), `tsconfig.web.json` (the window and shared, without them) and `tsconfig.web-tests.json` (the same with Node's types, for the window's tests, which run in Node) |
 | `npm test` | the unit suite, `src/**/*.test.ts` |
 | `npm run test:realm` | `src/**/*.realm.test.ts`: tests that need the shipped realm data |
 | `npm run lint`, `npm run format` | prettier over `src/` (never over the YAML files, whose comments and layout are the user's), and typecheck |

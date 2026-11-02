@@ -1,5 +1,5 @@
 import { resolve } from 'node:path';
-import { defineConfig, externalizeDepsPlugin } from 'electron-vite';
+import { defineConfig } from 'electron-vite';
 import react from '@vitejs/plugin-react';
 
 import { buildStamp } from './scripts/lib/build-stamp.mjs';
@@ -35,15 +35,27 @@ const BUNDLED = ['yaml', 'mdb-reader'];
  * hostname of a private server, in a file handed to strangers. Found by
  * grepping the built `app.asar` for a character name on 2026-09-02.
  *
- * **`build.minify` is the lever, not the `esbuild` block.** Two settings were
- * tried and measured before this one: `legalComments: 'none'` governs only
- * licence banners, and `esbuild.minifyWhitespace` is ignored — Vite's `esbuild`
- * options configure the per-module *transform*, and minification is a separate
- * step it does not reach. Both built clean and both still shipped every one of
- * those listings, which is why the measurement is written down here: the way to
+ * **The minifier is the lever, not the per-module transform.** Under esbuild
+ * (Vite 5), two settings were tried and measured before the one that worked:
+ * `legalComments: 'none'` governs only licence banners, and
+ * `esbuild.minifyWhitespace` is ignored, because Vite's `esbuild` options
+ * configure the per-module *transform* and minification is a separate step it
+ * does not reach. Both built clean and both still shipped every one of those
+ * listings, which is why the measurement is written down here: the way to
  * check this is to grep the built `out/main/index.js`, not to read the config.
  *
- * **`minifyIdentifiers` and `minifySyntax` stay off, and that is not a
+ * **Since Vite 8 (2026-11-02) the minifier is Rolldown's (Oxc)**, and the
+ * lever is each half's output. `build.minify: 'oxc'` switches it on, and
+ * `output.minify` says what it may do: whitespace only. `output.comments:
+ * false` takes out every comment. Rolldown drops a plain comment of itself
+ * but *keeps* JSDoc, legal and annotation comments unless told, and nearly
+ * all of this repository's documentation is JSDoc. Vite clears those when it
+ * minifies, but that is an inference about Vite's defaults, so it is said
+ * here instead. Measured the same way: the built main, preload and window
+ * carry none of the JSDoc phrases the Vite 5 build also lacked.
+ *
+ * **Renaming and syntax rewriting stay off (`mangle`, `compress`; under
+ * esbuild `minifyIdentifiers` and `minifySyntax`), and that is not a
  * preference — it is what the smoke harness measured.** Letting esbuild rename
  * identifiers in the window broke the client: 8 checks failed and the run hung,
  * against 663 of 663 passing on the same tree with minification off (2026-09-02,
@@ -71,7 +83,8 @@ const BUNDLED = ['yaml', 'mdb-reader'];
  * them, which would cost the thing that makes them worth having.
  */
 const stripComments = {
-  esbuild: { minifyIdentifiers: false, minifySyntax: false, legalComments: 'none' }
+  minify: { compress: false, mangle: false, codegen: { removeWhitespace: true } },
+  comments: false
 } as const;
 
 /**
@@ -145,14 +158,14 @@ const sandboxedPreload = {
 
 export default defineConfig({
   main: {
-    ...stripComments,
     define: stamp,
-    plugins: [externalizeDepsPlugin({ exclude: BUNDLED })],
     resolve: { alias: { '@shared': shared, '@main': resolve('src/main') } },
     build: {
-      minify: 'esbuild',
+      externalizeDeps: { exclude: BUNDLED },
+      minify: 'oxc',
       chunkSizeWarningLimit: CHUNK_LIMIT_KB.main,
-      rollupOptions: {
+      rolldownOptions: {
+        output: stripComments,
         input: {
           index: resolve('src/main/index.ts'),
           // Its own thread: see `src/main/world/RoutePlanner.ts`.
@@ -164,18 +177,19 @@ export default defineConfig({
     }
   },
   preload: {
-    ...stripComments,
-    /*
-     * Nothing externalised but `electron` (electron-vite's own default): a
-     * dependency left to be required at runtime is one a sandboxed preload
-     * cannot load, so whatever the preload uses is bundled into it.
-     */
     plugins: [sandboxedPreload],
     resolve: { alias: { '@shared': shared } },
     build: {
-      minify: 'esbuild',
+      /*
+       * Nothing externalised but `electron`, which electron-vite always
+       * leaves out: a dependency left to be required at runtime is one a
+       * sandboxed preload cannot load, so whatever the preload uses is bundled
+       * into it. electron-vite 6 externalises by default, so this says no.
+       */
+      externalizeDeps: false,
+      minify: 'oxc',
       chunkSizeWarningLimit: CHUNK_LIMIT_KB.preload,
-      rollupOptions: {
+      rolldownOptions: {
         input: { index: resolve('src/preload/index.ts') },
         /*
          * CommonJS, for the sandbox (`sandboxedPreload`). `package.json` says
@@ -185,20 +199,27 @@ export default defineConfig({
          * rather than `.js` so that anything reading it as Node under that
          * same `"type"` takes it for what it is.
          */
-        output: { format: 'cjs', entryFileNames: '[name].cjs', inlineDynamicImports: true }
+        output: {
+          ...stripComments,
+          format: 'cjs',
+          entryFileNames: '[name].cjs',
+          codeSplitting: false
+        }
       }
     }
   },
   renderer: {
-    ...stripComments,
     define: stamp,
     root: resolve('src/renderer'),
     plugins: [react()],
     resolve: { alias: { '@shared': shared, '@renderer': resolve('src/renderer/src') } },
     build: {
-      minify: 'esbuild',
+      minify: 'oxc',
       chunkSizeWarningLimit: CHUNK_LIMIT_KB.renderer,
-      rollupOptions: { input: { index: resolve('src/renderer/index.html') } }
+      rolldownOptions: {
+        output: stripComments,
+        input: { index: resolve('src/renderer/index.html') }
+      }
     }
   }
 });
