@@ -1715,12 +1715,24 @@ export class MegaEngine {
     this.sentHooks = this.sentHooks.filter((hook) => hook.command !== command);
   }
 
-  /** A pending command went out (`0x48ad60` echoes it): its sender told. */
+  /**
+   * A pending command went out (`0x48ad60` echoes it): its sender told.
+   *
+   * Once the send is over rather than during it (code review A1, 2026-11-05).
+   * The pump echoes a command *before* it shifts it off the pending list --
+   * `0x48ad60`'s order, kept -- so a hook told synchronously saw its own
+   * command still waiting, and one that put the same text back on, as the
+   * Inventory card's chained drops do, was refused as a duplicate. Deferred
+   * here, once, every hook sees the list without it, rather than each caller
+   * that re-queues having to know to wait.
+   */
   private sent(text: string): void {
     const at = this.sentHooks.findIndex((hook) => hook.command === text);
     if (at === -1) return;
     const [hook] = this.sentHooks.splice(at, 1);
-    hook!.onSent();
+    queueMicrotask(() => {
+      if (!this.disposed) hook!.onSent();
+    });
   }
 
   /** The console's Deposit All (`0x4bc190`): the wealth over what is kept deposited. */

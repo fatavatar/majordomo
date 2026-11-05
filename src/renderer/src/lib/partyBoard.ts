@@ -202,3 +202,21 @@ export function together(rows: readonly BoardRow[]): { in: number; of: number } 
 
 // Made from the party as it stands; in shared, since main makes rosters on its own too (2026-10-31).
 export { rosterFromListing } from '@shared/partyRoster';
+
+/**
+ * A roster's members by name, the same array for as long as the roster is the
+ * same object (code review A5, 2026-11-05). Mapped afresh in `cardElement`, it
+ * was a new prop each time the element was made, and a card dropped down from
+ * the toolbar is made again on every push: the Hunting Grounds card's `memo`
+ * never held while it was open, and the whole table was drawn again each time.
+ */
+const MEMBER_NAMES = new WeakMap<PartyRoster, string[]>();
+export function memberNames(roster: PartyRoster | null): string[] | null {
+  if (roster === null) return null;
+  let names = MEMBER_NAMES.get(roster);
+  if (names === undefined) {
+    names = roster.members.map((member) => member.name);
+    MEMBER_NAMES.set(roster, names);
+  }
+  return names;
+}

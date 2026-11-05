@@ -2466,12 +2466,10 @@ export class SessionManager {
           return;
         }
         this.askedAgain.set(command, left - 1);
-        // Once the send is over: the engine says it sent a command before it
-        // takes it off its list, and a repeat put on while it is still there
-        // is refused.
-        queueMicrotask(() => {
-          if (!this.keptQueue.enqueue(intent())) this.askedAgain.delete(command);
-        });
+        // The engine tells a sender once its command is off the pending
+        // list (`MegaEngine.sent`), so the repeat is not refused as one
+        // still waiting.
+        if (!this.keptQueue.enqueue(intent())) this.askedAgain.delete(command);
       }
     });
     if (!this.keptQueue.enqueue(intent())) return false;

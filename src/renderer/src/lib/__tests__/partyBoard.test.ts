@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { EMPTY_CHARACTER, type CharacterState, type PartyMember } from '@shared/character';
 import type { PartyRoster } from '@shared/partyRoster';
-import { boardRows, rosterFromListing, together, type OurMember } from '../partyBoard';
+import { boardRows, memberNames, rosterFromListing, together, type OurMember } from '../partyBoard';
 
 const member = (name: string, over: Partial<PartyMember> = {}): PartyMember => ({
   name,
@@ -134,5 +134,21 @@ describe('the Party card’s rows', () => {
       forgotten: [],
       places: []
     });
+  });
+});
+
+// Code review A5 (2026-11-05): a card's memo holds only on props that stay put.
+describe('a roster’s member names, for the Hunting card', () => {
+  it('are the same array while the roster is the same object', () => {
+    const party = roster(['Skinny', 'Fatty']);
+    const names = memberNames(party);
+    expect(names).toEqual(['Skinny', 'Fatty']);
+    expect(memberNames(party)).toBe(names);
+  });
+
+  it('are made again for a roster that changed, and none for no roster', () => {
+    const before = memberNames(roster(['Skinny']));
+    expect(memberNames(roster(['Skinny', 'Bowel']))).not.toBe(before);
+    expect(memberNames(null)).toBeNull();
   });
 });

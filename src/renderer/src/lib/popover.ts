@@ -214,3 +214,21 @@ export function holdsDrop(
   if (target === null) return false;
   return keepers.some((keeper) => keeper !== null && keeper.contains(target));
 }
+
+/**
+ * Whether Escape, pressed with the caret at `target`, puts a toolbar's dropped
+ * card away (code review A2, 2026-11-05).
+ *
+ * The card never takes the caret, so the panel's own Escape was only heard
+ * once something inside it had been clicked into: with the caret in the game,
+ * where it nearly always is, Escape did nothing. So a press anywhere outside
+ * the card and what it opened puts it away. Inside, the panel's own handler
+ * and a popup's answer for it, and a popup the card opened is put away first.
+ */
+export function escapePutsDropAway(
+  key: string,
+  target: Enclosing | null,
+  keepers: ReadonlyArray<Enclosing | null>
+): boolean {
+  return key === 'Escape' && !holdsDrop(target, keepers);
+}

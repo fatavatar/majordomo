@@ -96,6 +96,7 @@ import ToolbarCard, { ToolbarRow } from './components/ToolbarCard';
 import { TOOLBAR_IDS, type ToolbarSubject } from './lib/toolbar';
 import { useToolbarPins } from './hooks/useToolbarPins';
 import { useParty, type PartyContext } from './hooks/useParty';
+import { memberNames } from './lib/partyBoard';
 import { useSettingsScreen } from './hooks/useSettingsScreen';
 import { usePanes } from './hooks/usePanes';
 import { useCardRail } from './hooks/useCardRail';
@@ -1117,7 +1118,7 @@ function cardElement(id: CardId, ctx: CardContext): ReactNode {
           chooseOnMap={ctx.chooseOnMap}
           createLoop={ctx.chooseOnMap === null ? null : ctx.createHunt}
           loadHunting={ctx.loadHunting}
-          partyMembers={ctx.party.roster?.members.map((member) => member.name) ?? null}
+          partyMembers={memberNames(ctx.party.roster)}
           ready={readyToPrice(ctx.character)}
           runLoop={ctx.chooseOnMap === null ? null : ctx.runHunt}
           session={ctx.session}
