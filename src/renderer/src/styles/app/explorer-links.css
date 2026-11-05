@@ -513,3 +513,242 @@ ul.rm-refs li {
 .reference-edit.on {
   color: var(--pending);
 }
+
+/* A card dropped down from a toolbar button (2026-11-01): the card is its own
+   surface, so the panel is only where it hangs. Under the popups (60) the card
+   itself opens. Declared a height like every rail card -- a card's body is
+   sized by the card, never by what is in it -- and a taller one than the
+   rail's: it is over the console for a look, not holding a slot. */
+.toolbar-drop {
+  position: fixed;
+  z-index: 58;
+  display: flex;
+  width: min(28rem, calc(100vw - 16px));
+  height: min(65vh, 32rem);
+  flex-direction: column;
+}
+
+.toolbar-drop > .card {
+  min-height: 0;
+  flex: 1 1 auto;
+}
+
+/* The Hunting Grounds is a table of areas, wider than a pack. */
+.toolbar-drop[data-card='card:hunting'] {
+  width: min(44rem, calc(100vw - 16px));
+}
+
+/*
+ * Between the switches and transport and the buttons that drop a card down:
+ * one acts on the character, the other is looked up.
+ */
+.toolbar-divider {
+  align-self: stretch;
+  background: var(--ink-line);
+  flex: none;
+  margin: 4px 4px;
+  width: 1px;
+}
+
+/* ======================================================= the pack (2026-11-01) */
+
+/*
+ * The pack by what it is and what it weighs: each group a colour from the
+ * client's own conditions, carried by `--group` so the meter's share, the
+ * legend's swatch, the heading and every row's bar agree without a second
+ * list of colours.
+ */
+[data-group='worn']:is(.pack-share, .pack-legend > span, .pack-group, .pack-row) {
+  --group: var(--ok);
+}
+[data-group='kit']:is(.pack-share, .pack-legend > span, .pack-group, .pack-row) {
+  --group: var(--accent);
+}
+[data-group='supplies']:is(.pack-share, .pack-legend > span, .pack-group, .pack-row) {
+  --group: var(--pending);
+}
+[data-group='other']:is(.pack-share, .pack-legend > span, .pack-group, .pack-row) {
+  --group: var(--marker);
+}
+[data-group='unweighed'].pack-share {
+  --group: var(--text-lo-quiet);
+}
+
+.pack-badge[data-level='caution'] {
+  color: var(--pending);
+}
+.pack-badge[data-level='critical'] {
+  color: var(--danger);
+}
+
+.pack-load {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.pack-meter {
+  background: var(--ink-raised);
+  border-radius: 3px;
+  display: flex;
+  height: 8px;
+  overflow: hidden;
+}
+
+.pack-share {
+  background: var(--group);
+  border-right: 1px solid var(--ink-card);
+  flex: none;
+  height: 100%;
+  min-width: 2px;
+}
+
+.pack-legend {
+  color: var(--text-lo);
+  display: flex;
+  flex-wrap: wrap;
+  font-size: var(--font-micro);
+  gap: 2px 12px;
+}
+
+.pack-legend i {
+  background: var(--group);
+  border-radius: 2px;
+  display: inline-block;
+  height: 8px;
+  margin-right: 5px;
+  width: 8px;
+}
+
+.pack-legend b {
+  color: var(--text-lo-quiet);
+  font-variant-numeric: tabular-nums;
+  font-weight: inherit;
+}
+
+.pack-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.pack-group h3 {
+  align-items: baseline;
+  color: var(--group);
+  display: flex;
+  font-size: var(--font-micro);
+  font-weight: 600;
+  gap: 8px;
+  letter-spacing: 0.1em;
+  margin: 8px 0 2px;
+  text-transform: uppercase;
+}
+
+.pack-group:first-child h3 {
+  margin-top: 2px;
+}
+
+.pack-group h3 span {
+  color: var(--text-lo-quiet);
+  font-weight: 400;
+  letter-spacing: 0;
+}
+
+/*
+ * One row: the name and what is said beside it, a bar against the heaviest
+ * row, the weight, and two glyphs in two fixed places so they line up.
+ */
+.pack-row {
+  align-items: center;
+  border-radius: var(--r-control);
+  display: grid;
+  gap: 8px;
+  grid-template-columns: minmax(0, 1fr) 3.5em 2.5em auto;
+  min-height: 26px;
+  padding: 0 2px;
+}
+
+.pack-row:hover {
+  background: color-mix(in srgb, var(--ink-raised) 70%, transparent);
+}
+
+.pack-name {
+  align-items: baseline;
+  display: flex;
+  gap: 6px;
+  min-width: 0;
+}
+
+.pack-name .what {
+  color: var(--text-hi);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pack-count,
+.pack-slot,
+.pack-note {
+  color: var(--text-lo);
+  flex: none;
+  font-size: var(--font-micro);
+  white-space: nowrap;
+}
+
+.pack-note {
+  color: var(--text-lo-quiet);
+}
+
+.pack-bar {
+  background: var(--ink-raised);
+  border-radius: 2px;
+  height: 4px;
+  overflow: hidden;
+}
+
+.pack-bar i {
+  background: var(--group);
+  display: block;
+  height: 100%;
+}
+
+.pack-weight {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.pack-actions {
+  display: grid;
+  gap: 4px;
+  grid-template-columns: repeat(2, 24px);
+}
+
+/* Tiles rather than the table's bare glyphs: dimmed at rest, full on the row
+   pointed at, and Drop red under the pointer, which is the one that costs. */
+.pack-actions .row-action {
+  background: var(--ink-raised);
+  border: 1px solid var(--ink-line);
+  border-radius: 5px;
+  color: var(--text-lo);
+  height: 24px;
+  width: 24px;
+}
+
+.pack-row:hover .row-action,
+.pack-actions .row-action:focus-visible {
+  color: var(--text);
+  opacity: 1;
+}
+
+.pack-actions .row-action.worn,
+.pack-row:hover .row-action.worn {
+  color: var(--ok);
+}
+
+.pack-actions .row-action.drop:hover {
+  background: color-mix(in srgb, var(--danger) 18%, transparent);
+  border-color: color-mix(in srgb, var(--danger) 45%, transparent);
+  color: var(--danger);
+}

@@ -213,7 +213,7 @@ function figures(now: number | null, max: number | null, guessed = false): strin
 }
 
 /** Which of the card's three sections the last answer belongs under. */
-type ReportFrom = 'regroup' | 'muster' | 'say';
+type ReportFrom = 'regroup' | 'muster';
 
 /**
  * The party: who should be travelling together, who is, and how they are
@@ -257,13 +257,8 @@ function PartyCard({
 }: PartyCardProps) {
   const [editing, setEditing] = useState(false);
   const [adding, setAdding] = useState('');
-  /** What the last Regroup, Muster or Say to did, a line each, under its own section until the next press. */
+  /** What the last Regroup or Muster did, a line each, under its own section until the next press. */
   const [report, setReport] = useState<{ from: ReportFrom; lines: string[] } | null>(null);
-  /** Who `Say to` leaves out; everybody of ours on the roster is in by default. */
-  const [quiet, setQuiet] = useState<ReadonlySet<SessionId>>(new Set());
-  /** Whether Say to leaves out everybody else in the party (the leader's @party). */
-  const [othersQuiet, setOthersQuiet] = useState(false);
-  const [line, setLine] = useState('');
   /** A sys goto place being added while editing, for Muster. */
   const [placing, setPlacing] = useState('');
   const rows = [...boardRows(roster, character, ours)].sort((a, b) => orderOf(a) - orderOf(b));
@@ -401,7 +396,6 @@ function PartyCard({
 
   /* Say to: only with a roster, since every control on it acts on the roster's members. */
   const speakers = rows.filter((row) => row.ours !== null && row.status !== 'offline');
-  const sayTo = speakers.map((row) => row.ours!).filter((sid) => !quiet.has(sid));
   /*
    * Everybody else in the party, whom only the leader's @party reaches — so
    * only while the leader is one of ours and in it.
@@ -410,8 +404,6 @@ function PartyCard({
   const othersIn = leaderOurs
     ? rows.filter((row) => row.ours === null && row.status === 'in').map((row) => row.name)
     : [];
-  const toOthers = othersIn.length > 0 && !othersQuiet;
-  const reach = sayTo.length + (toOthers ? othersIn.length : 0);
   const regroupNow = (): void => {
     if (roster === null || !onRegroup) return;
     void onRegroup(roster.id).then((count) =>
@@ -442,13 +434,6 @@ function PartyCard({
     );
     setPlacing('');
   };
-  const say = (): void => {
-    const text = line.trim();
-    if (text === '' || reach === 0 || !onSay || roster === null) return;
-    void onSay(roster.id, sayTo, text, toOthers).then(said('say'));
-    setLine('');
-  };
-
   return (
     <BentoCard
       {...chrome}
@@ -706,63 +691,11 @@ function PartyCard({
         </div>
       )}
       {roster !== null && onSay && speakers.length > 0 && (
-        <form
-          className="party-section party-say"
-          onSubmit={(event) => {
-            event.preventDefault();
-            say();
-          }}
-        >
-          <div className="party-line">
-            {speakers.map((row) => (
-              <button
-                aria-pressed={!quiet.has(row.ours!)}
-                className="chip party-pick"
-                key={row.ours}
-                onClick={() => {
-                  const next = new Set(quiet);
-                  if (next.has(row.ours!)) next.delete(row.ours!);
-                  else next.add(row.ours!);
-                  setQuiet(next);
-                }}
-                onMouseDown={keepFocus}
-                title={t('cards.party.sayToggle', { name: row.name })}
-                type="button"
-              >
-                {row.name}
-              </button>
-            ))}
-            {othersIn.length > 0 && (
-              <button
-                aria-pressed={!othersQuiet}
-                className="chip party-pick"
-                onClick={() => setOthersQuiet(!othersQuiet)}
-                onMouseDown={keepFocus}
-                title={t('cards.party.sayOthersHint', { names: othersIn.join(', ') })}
-                type="button"
-              >
-                {t('cards.party.sayOthers', { count: othersIn.length })}
-              </button>
-            )}
-          </div>
-          <label className="party-term">
-            <span aria-hidden="true">›</span>
-            <input
-              aria-label={t('cards.party.sayAria')}
-              onChange={(event) => setLine(event.target.value)}
-              placeholder={
-                reach === 0
-                  ? t('cards.party.sayPlaceholder.zero')
-                  : reach === 1
-                    ? t('cards.party.sayPlaceholder.one')
-                    : t('cards.party.sayPlaceholder.many', { count: reach })
-              }
-              spellCheck={false}
-              value={line}
-            />
-          </label>
-          {reported('say')}
-        </form>
+        <PartySay
+          onSay={(sids, text, others) => onSay(roster.id, sids, text, others)}
+          others={othersIn}
+          speakers={speakers.map((row) => ({ session: row.ours!, name: row.name }))}
+        />
       )}
       {open && roster !== null && (
         <div className="party-editor">
@@ -898,3 +831,96 @@ function fightingWord(character: CharacterState, name: string): string | null {
 }
 
 export default memo(PartyCard);
+
+/**
+ * Say to (2026-10-28, a component of its own 2026-11-01): one line typed once
+ * and sent by each chosen character of ours as its own, and by the leader's
+ * `@party` to everybody else in the party where `others` names any. The
+ * Party card and the Stable's party block draw the same one.
+ */
+export function PartySay({
+  speakers,
+  others,
+  onSay
+}: {
+  speakers: ReadonlyArray<{ session: SessionId; name: string }>;
+  /** Everybody else in the party, whom only the leader's @party reaches; empty for none. */
+  others: readonly string[];
+  onSay(sessions: readonly SessionId[], line: string, others: boolean): Promise<string[]>;
+}) {
+  /** Who it leaves out; everybody of ours is in by default. */
+  const [quiet, setQuiet] = useState<ReadonlySet<SessionId>>(new Set());
+  /** Whether it leaves out everybody else in the party. */
+  const [othersQuiet, setOthersQuiet] = useState(false);
+  const [line, setLine] = useState('');
+  /** What the last line did, a line each, until the next. */
+  const [report, setReport] = useState<string[]>([]);
+  const sayTo = speakers.map((row) => row.session).filter((sid) => !quiet.has(sid));
+  const toOthers = others.length > 0 && !othersQuiet;
+  const reach = sayTo.length + (toOthers ? others.length : 0);
+  const say = (): void => {
+    const text = line.trim();
+    if (text === '' || reach === 0) return;
+    void onSay(sayTo, text, toOthers).then(setReport);
+    setLine('');
+  };
+  return (
+    <form
+      className="party-section party-say"
+      onSubmit={(event) => {
+        event.preventDefault();
+        say();
+      }}
+    >
+      <div className="party-line">
+        {speakers.map((row) => (
+          <button
+            aria-pressed={!quiet.has(row.session)}
+            className="chip party-pick"
+            key={row.session}
+            onClick={() => {
+              const next = new Set(quiet);
+              if (next.has(row.session)) next.delete(row.session);
+              else next.add(row.session);
+              setQuiet(next);
+            }}
+            onMouseDown={keepFocus}
+            title={t('cards.party.sayToggle', { name: row.name })}
+            type="button"
+          >
+            {row.name}
+          </button>
+        ))}
+        {others.length > 0 && (
+          <button
+            aria-pressed={!othersQuiet}
+            className="chip party-pick"
+            onClick={() => setOthersQuiet(!othersQuiet)}
+            onMouseDown={keepFocus}
+            title={t('cards.party.sayOthersHint', { names: others.join(', ') })}
+            type="button"
+          >
+            {t('cards.party.sayOthers', { count: others.length })}
+          </button>
+        )}
+      </div>
+      <label className="party-term">
+        <span aria-hidden="true">›</span>
+        <input
+          aria-label={t('cards.party.sayAria')}
+          onChange={(event) => setLine(event.target.value)}
+          placeholder={
+            reach === 0
+              ? t('cards.party.sayPlaceholder.zero')
+              : reach === 1
+                ? t('cards.party.sayPlaceholder.one')
+                : t('cards.party.sayPlaceholder.many', { count: reach })
+          }
+          spellCheck={false}
+          value={line}
+        />
+      </label>
+      {report.length > 0 && <p className="party-report hint">{report.join(' · ')}</p>}
+    </form>
+  );
+}

@@ -1,7 +1,7 @@
 import { memo } from 'react';
 
 import RoundTimer, { type HeldRound } from './RoundTimer';
-import { levelReading, rate, useExperienceView } from './ExperienceScope';
+import { rate, reachingReading, useExperienceView } from './ExperienceScope';
 import { barOf } from './StableView';
 import { t } from '../lib/i18n';
 import type { CharacterState } from '@shared/character';
@@ -22,6 +22,9 @@ export interface ConsoleStatusProps {
   name?: string;
 }
 
+/** Dots drawn for levels reached and not trained before the rest are a count. */
+const UNTRAINED_DOTS = 5;
+
 /**
  * A line of its own along the foot of every console (2026-11-01): health and
  * mana as bars with their figures, the way through the level with the rate
@@ -30,6 +33,11 @@ export interface ConsoleStatusProps {
  * console rather than once a window, as MegaMUD's status bar is under its
  * one, so every character in the Stable carries its own. The bars it draws
  * left the Vitals card and the Stable's status for it.
+ *
+ * The experience bar runs to the next level the experience does not reach,
+ * with a dot before it for each level it reaches and the trainer has not been
+ * asked for (2026-11-01), where a character past its threshold showed a full
+ * bar however many levels it held.
  */
 function ConsoleStatus({ session, character, round, thresholds, name }: ConsoleStatusProps) {
   const { vitals, progress } = character;
@@ -37,8 +45,9 @@ function ConsoleStatus({ session, character, round, thresholds, name }: ConsoleS
   const mana = barOf(vitals.mana, vitals.manaMax, thresholds.mana);
   // The view the character's Vitals card has chosen, so the two agree.
   const view = useExperienceView(character, session);
-  const reading = levelReading(progress, view.made ?? 0);
+  const reading = reachingReading(progress);
   const through = reading === null ? null : Math.min(1, reading.into / reading.span);
+  const untrained = reading?.untrained ?? 0;
   return (
     <div className="console-status" aria-label={t('consoleStatus.label')}>
       {name !== undefined && <b className="console-status-name">{name}</b>}
@@ -62,6 +71,25 @@ function ConsoleStatus({ session, character, round, thresholds, name }: ConsoleS
       )}
       <span className="console-status-exp">
         <span className="quiet">{t('consoleStatus.exp')}</span>
+        {untrained > 0 && reading !== null && (
+          <span
+            className="console-status-untrained"
+            title={
+              untrained === 1
+                ? t('consoleStatus.untrained.one', { level: reading.next - 1 })
+                : t('consoleStatus.untrained.many', {
+                    count: untrained,
+                    from: reading.next - untrained,
+                    to: reading.next - 1
+                  })
+            }
+          >
+            {Array.from({ length: Math.min(untrained, UNTRAINED_DOTS) }, (_, index) => (
+              <i key={index} />
+            ))}
+            {untrained > UNTRAINED_DOTS && <b>+{untrained - UNTRAINED_DOTS}</b>}
+          </span>
+        )}
         <span
           className="stable-bar"
           data-kind="exp"

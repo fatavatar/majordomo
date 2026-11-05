@@ -2436,6 +2436,52 @@ export class SessionManager {
   }
 
   /**
+   * A command a card asks for again and again, each sent (2026-11-01): a drop
+   * a press, or a stack dropped a piece at a time, since the server takes no
+   * count for an item. The engine's pending list takes a command once
+   * (`keptQueue`), so a repeat is not put beside the one waiting but after
+   * it: each is queued once the one before it is sent, up to `most` in all --
+   * the spares the pack holds. A chain whose command has left the list
+   * without being sent is over, and the next press starts a fresh one.
+   */
+  askAgain(command: string, most: number): boolean {
+    const after = this.askedAgain.get(command);
+    if (after !== undefined) {
+      if (this.keptQueue.queued((intent) => intent.command === command)) {
+        if (after + 2 > most) return false;
+        this.askedAgain.set(command, after + 1);
+        return true;
+      }
+      this.askedAgain.delete(command);
+    }
+    if (most < 1) return false;
+    const intent = (): Intent => ({
+      command,
+      priority: 'probe',
+      reason: t('session.probe.askedFromCard'),
+      onSent: () => {
+        const left = this.askedAgain.get(command) ?? 0;
+        if (left <= 0) {
+          this.askedAgain.delete(command);
+          return;
+        }
+        this.askedAgain.set(command, left - 1);
+        // Once the send is over: the engine says it sent a command before it
+        // takes it off its list, and a repeat put on while it is still there
+        // is refused.
+        queueMicrotask(() => {
+          if (!this.keptQueue.enqueue(intent())) this.askedAgain.delete(command);
+        });
+      }
+    });
+    if (!this.keptQueue.enqueue(intent())) return false;
+    this.askedAgain.set(command, 0);
+    return true;
+  }
+  /** How many more of each `askAgain` command follow the one waiting. */
+  private readonly askedAgain = new Map<string, number>();
+
+  /**
    * The console's `Deposit All`, pressed: MegaMUD's own (`0x4bc190`), the
    * wealth over what it keeps deposited (2026-10-14).
    */

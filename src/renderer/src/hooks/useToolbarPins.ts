@@ -1,8 +1,9 @@
 import { useCallback, useMemo, useState } from 'react';
 
 import { pinnedMatches } from '@shared/internal';
+import type { SessionId } from '@shared/ipc';
 
-import { readDeviations, isPinned, withPin, type PinDeviations } from '../lib/pins';
+import { asDeviations, readDeviations, isPinned, withPin, type PinDeviations } from '../lib/pins';
 
 /**
  * Which toolbar buttons are drawn, and which live behind the kebab.
@@ -20,17 +21,26 @@ import { readDeviations, isPinned, withPin, type PinDeviations } from '../lib/pi
  * button belongs to no group because the row *is* the group. So the patterns
  * are one flat list.
  *
- * Per client, not per character, and not in a file — which side of that line
- * this falls on is decided by whether it describes the player or the moment,
- * and which buttons somebody keeps to hand is the player. What the buttons
- * *say* is per character, and comes from that character's own YAML.
+ * **Per character** (2026-11-05), not per client. In the Stable every
+ * character's console wears its own row, and a healer's row and a fighter's
+ * are different rows: kept per client, a button pinned over one console
+ * turned up over all of them, and over whichever character was shown next. Not
+ * in a file, as before, because it is chrome rather than a setting.
  */
-const KEY = 'mudengine.toolbar.pins';
+const KEY = 'mudengine.toolbar.pinsByCharacter';
 
-export interface PinnedToolbar {
-  /** The button ids currently on the row, as a set. */
-  pinned: ReadonlySet<string>;
-  toggle(id: string): void;
+/**
+ * Where the row was kept while it was one row for every character. Read and
+ * never written: a character with no row of its own yet starts from it, so the
+ * buttons somebody had already arranged are where they left them.
+ */
+const CLIENT_KEY = 'mudengine.toolbar.pins';
+
+export interface PinnedToolbars {
+  /** The button ids on this character's row, as a set — the same set while nothing changes. */
+  pinnedFor(session: SessionId): ReadonlySet<string>;
+  /** Moves a button on or off this character's row, and no other's. */
+  toggle(session: SessionId, id: string): void;
 }
 
 /** The row as the file states it. */
@@ -42,33 +52,78 @@ export function shippedToolbar(patterns: readonly string[], ids: readonly string
   return kept;
 }
 
-export function useToolbarPins(patterns: readonly string[], ids: readonly string[]): PinnedToolbar {
-  const [deviations, setDeviations] = useState<PinDeviations>(() => {
-    try {
-      return readDeviations(window.localStorage.getItem(KEY));
-    } catch {
-      // Private mode, or storage disabled. The shipped row is the fallback.
-      return {};
-    }
-  });
+/** Each character's clicks, from whatever `localStorage` holds; untrusted, like `readDeviations`. */
+export function readByCharacter(stored: string | null): Record<string, PinDeviations> {
+  if (stored === null) return {};
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(stored);
+  } catch {
+    return {};
+  }
+  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return {};
+  const kept: Record<string, PinDeviations> = {};
+  for (const [session, value] of Object.entries(parsed as Record<string, unknown>)) {
+    kept[session] = asDeviations(value);
+  }
+  return kept;
+}
 
-  const pinned = useMemo(() => {
-    const shipped = shippedToolbar(patterns, ids);
-    const kept = new Set<string>();
-    for (const id of ids) {
-      if (isPinned(id, shipped.has(id), deviations)) kept.add(id);
-    }
-    return kept;
-  }, [patterns, ids, deviations]);
+function stored(key: string): string | null {
+  try {
+    return window.localStorage.getItem(key);
+  } catch {
+    // Private mode, or storage disabled. The shipped row is the fallback.
+    return null;
+  }
+}
+
+export function useToolbarPins(
+  patterns: readonly string[],
+  ids: readonly string[]
+): PinnedToolbars {
+  const [shared] = useState<PinDeviations>(() => readDeviations(stored(CLIENT_KEY)));
+  const [own, setOwn] = useState<Record<string, PinDeviations>>(() => readByCharacter(stored(KEY)));
+
+  /*
+   * One set per record of clicks rather than per character, so every
+   * character still on the shared row is handed the same set, and a click on
+   * one character's row leaves every other character's set as it was.
+   */
+  const rows = useMemo(
+    () => ({
+      shipped: shippedToolbar(patterns, ids),
+      sets: new WeakMap<PinDeviations, ReadonlySet<string>>()
+    }),
+    [patterns, ids]
+  );
+  const pinnedFor = useCallback(
+    (session: SessionId): ReadonlySet<string> => {
+      const deviations = own[session] ?? shared;
+      const known = rows.sets.get(deviations);
+      if (known) return known;
+      const kept = new Set<string>();
+      for (const id of ids) {
+        if (isPinned(id, rows.shipped.has(id), deviations)) kept.add(id);
+      }
+      rows.sets.set(deviations, kept);
+      return kept;
+    },
+    [rows, ids, own, shared]
+  );
 
   const toggle = useCallback(
-    (id: string) => {
-      setDeviations((current) => {
+    (session: SessionId, id: string) => {
+      setOwn((current) => {
         // Recomputed here rather than closed over, so a config push landing
         // between the render and the click cannot make the click record what
         // the file no longer says.
         const shipped = shippedToolbar(patterns, ids).has(id);
-        const next = withPin(current, id, shipped, !isPinned(id, shipped, current));
+        const was = current[session] ?? shared;
+        const next = {
+          ...current,
+          [session]: withPin(was, id, shipped, !isPinned(id, shipped, was))
+        };
         try {
           window.localStorage.setItem(KEY, JSON.stringify(next));
         } catch {
@@ -77,8 +132,8 @@ export function useToolbarPins(patterns: readonly string[], ids: readonly string
         return next;
       });
     },
-    [patterns, ids]
+    [patterns, ids, shared]
   );
 
-  return { pinned, toggle };
+  return { pinnedFor, toggle };
 }

@@ -20,7 +20,7 @@ import type { UiLookup } from './i18n';
 import { sameItem } from './items';
 
 /**
- * The five things a gear button can ask for.
+ * The things a gear button can ask for.
  *
  * A closed union, checked in main against this list before anything reaches a
  * socket, for the reason `ask` checks its own command: a string arriving from a
@@ -31,7 +31,16 @@ import { sameItem } from './items';
  * `Drop` — rather than for what the card calls the button, so that adding an
  * action is choosing a verb the realm already has.
  */
-export const GEAR_ACTIONS = ['restore', 'equip-all', 'drop-all', 'equip', 'remove'] as const;
+export const GEAR_ACTIONS = [
+  'restore',
+  'equip-all',
+  'drop-all',
+  'equip',
+  'remove',
+  // One of a carried item onto the floor, or every spare of it (2026-11-01): the pack's own rows.
+  'drop',
+  'drop-stack'
+] as const;
 
 export type GearAction = (typeof GEAR_ACTIONS)[number];
 
@@ -177,6 +186,43 @@ export function dropAllPlan(items: readonly CarriedItem[], max: number): GearPla
     [],
     max
   );
+}
+
+/**
+ * One of a carried item onto the floor, or every spare of it (2026-11-01):
+ * the Inventory card's own rows. A `drop` per piece either way, because the
+ * server takes no count for an item -- only coins drop by the amount.
+ *
+ * Only what is **carried and not in use**. The server drops spares before
+ * anything worn (`lost`), and a row that drops is a row in the pack: the kit
+ * on comes off by `remove` first, from its own row, rather than going to the
+ * floor of a room anybody standing in can pick it up from. A name worn and
+ * not spare is therefore nothing to do, and a name the pack does not hold is
+ * missing. Bounded like every other bulk action here.
+ */
+export function dropPlan(
+  items: readonly CarriedItem[],
+  name: string,
+  all: boolean,
+  max: number
+): GearPlan {
+  const matching = items.filter((item) => sameItem(item.name, name));
+  if (matching.length === 0) return { commands: [], missing: [name], overflow: 0 };
+  const held = sparesOf(items, name);
+  if (held === 0) return NOTHING;
+  const named = matching.find((item) => !item.equipped)!.name;
+  return capped(
+    Array.from({ length: all ? held : 1 }, () => `drop ${named}`),
+    [],
+    max
+  );
+}
+
+/** How many of a name the pack holds that are not in use: what a drop may take. */
+export function sparesOf(items: readonly CarriedItem[], name: string): number {
+  return items
+    .filter((item) => !item.equipped && sameItem(item.name, name))
+    .reduce((sum, item) => sum + Math.max(1, item.count ?? 1), 0);
 }
 
 /** One item, put on. The single-row button, and the unit the plans are built of. */

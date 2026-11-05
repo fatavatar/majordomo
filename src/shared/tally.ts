@@ -87,6 +87,43 @@ export function isStatsGraph(value: unknown): value is StatsGraph {
   return typeof value === 'string' && (STATS_GRAPHS as readonly string[]).includes(value);
 }
 
+/**
+ * What a character did with its time in the realm outside a fight
+ * (2026-11-01): resting or meditating, walking -- the room changed within
+ * `parse.walkingMs` -- or standing idle. Fighting is the engaged clock.
+ */
+export const DOINGS = ['rest', 'walk', 'idle'] as const;
+export type Doing = (typeof DOINGS)[number];
+
+/**
+ * The time spent on each `Doing`, kept as the engaged clock is: the settled
+ * milliseconds of the intervals that have ended, and the one still open. It
+ * changes only when what the character is doing changes, or a walk takes
+ * another step, so it rides in the tally as a handful of numbers -- where the
+ * Timeline card's record (1.0.10) grew a span per change and was retired for
+ * what it cost every push.
+ */
+export interface TimeSpent {
+  rest: number;
+  walk: number;
+  idle: number;
+  /** What the open interval is, or null in a fight and out of the realm. */
+  doing: Doing | null;
+  /** When the open interval began. */
+  since: number | null;
+  /** While walking: when the walk becomes idling, unless the room changes again first. */
+  walkUntil: number | null;
+}
+
+export const NO_TIME_SPENT: TimeSpent = {
+  rest: 0,
+  walk: 0,
+  idle: 0,
+  doing: null,
+  since: null,
+  walkUntil: null
+};
+
 /** A stretch spent off the realm: from leaving it to arriving again. */
 export interface AwaySpell {
   from: number;
@@ -334,6 +371,11 @@ export interface CombatTally {
   leftAt: number | null;
   /** What the MegaMUD engine counted, where it ran (`MegaTally`). */
   mega?: MegaTally;
+  /**
+   * Resting, walking and idle time (`TimeSpent`). Optional, as `mega` is: a
+   * tally saved before it existed loads without one.
+   */
+  spent?: TimeSpent;
 }
 
 export const NO_TALLY: CombatTally = {
@@ -483,6 +525,7 @@ export function sinceBaseline(now: CombatTally, baseline: CombatTally | null): C
             .filter((spell) => spell.to > since)
             .map((spell) => ({ from: Math.max(spell.from, since), to: spell.to })),
     leftAt: now.leftAt,
+    ...(now.spent === undefined ? {} : { spent: spentSince(now.spent, baseline.spent, since) }),
     ...(now.mega === undefined
       ? {}
       : { mega: megaBetween(now.mega, baseline.mega ?? NO_MEGA_TALLY) })
@@ -530,6 +573,93 @@ function clockSince(now: Clock, baseline: Clock, resetAt: number | null): Clock 
     settled: now.settled - baseline.settled - openAtBaseline,
     since: now.since === null ? null : Math.max(now.since, resetAt ?? now.since)
   };
+}
+
+/**
+ * Time spent read from a baseline: the baseline's totals at the reset come off
+ * the settled ones, the open interval being read at the same moment in both.
+ */
+function spentSince(
+  now: TimeSpent,
+  baseline: TimeSpent | undefined,
+  resetAt: number | null
+): TimeSpent {
+  if (baseline === undefined || resetAt === null) return now;
+  const before = spentAt(baseline, resetAt);
+  return {
+    ...now,
+    rest: now.rest - before.rest,
+    walk: now.walk - before.walk,
+    idle: now.idle - before.idle
+  };
+}
+
+/**
+ * The time spent on each `Doing` at `now`, the open interval included: a walk
+ * past its `walkUntil` counts as walking up to it and idle after.
+ */
+export function spentAt(spent: TimeSpent, now: number): Record<Doing, number> {
+  const totals = { rest: spent.rest, walk: spent.walk, idle: spent.idle };
+  if (spent.doing === null || spent.since === null) return totals;
+  const end = Math.max(spent.since, now);
+  if (spent.doing === 'walk' && spent.walkUntil !== null && spent.walkUntil < end) {
+    totals.walk += Math.max(0, spent.walkUntil - spent.since);
+    totals.idle += end - Math.max(spent.since, spent.walkUntil);
+  } else {
+    totals[spent.doing] += end - spent.since;
+  }
+  return totals;
+}
+
+/**
+ * The tally doing `doing` from `at`, null being in a fight or out of the
+ * realm: the open interval settled and a new one opened where it changes, and
+ * the tally itself returned where it does not, so a block that changes nothing
+ * changes nothing. A walk's `walkUntil` moves on with every step; a walk that
+ * lapsed before `at` is already idling.
+ */
+export function withDoing(
+  tally: CombatTally,
+  doing: Doing | null,
+  at: number,
+  walkUntil: number | null = null
+): CombatTally {
+  const spent = tally.spent ?? NO_TIME_SPENT;
+  const lapsed = spent.doing === 'walk' && spent.walkUntil !== null && spent.walkUntil < at;
+  const current = lapsed ? 'idle' : spent.doing;
+  if (current === doing && (doing !== 'walk' || walkUntil === null)) return tally;
+  if (current === 'walk' && doing === 'walk') {
+    return walkUntil === spent.walkUntil ? tally : { ...tally, spent: { ...spent, walkUntil } };
+  }
+  return {
+    ...tally,
+    spent: {
+      ...spentAt(spent, at),
+      doing,
+      since: doing === null ? null : at,
+      walkUntil: doing === 'walk' ? walkUntil : null
+    }
+  };
+}
+
+/**
+ * The Combat Stats card's breakdown of the time in the realm: fighting (the
+ * engaged clock), resting, walking and idle, with their sum to take shares of.
+ * Null for a tally that has never kept time spent.
+ */
+export function timeBreakdown(
+  tally: CombatTally,
+  now: number
+): (Record<'fight' | Doing, number> & { total: number }) | null {
+  if (tally.spent === undefined) return null;
+  const doing = spentAt(tally.spent, now);
+  const parts = {
+    fight: Math.max(0, engagedFor(tally, now)),
+    rest: Math.max(0, doing.rest),
+    walk: Math.max(0, doing.walk),
+    idle: Math.max(0, doing.idle)
+  };
+  return { ...parts, total: parts.fight + parts.rest + parts.walk + parts.idle };
 }
 
 /**
@@ -676,7 +806,7 @@ export function onlineFor(tally: CombatTally, now: number): number {
 export function settleClocks(tally: CombatTally, at: number): CombatTally {
   if (tally.engagedSince === null && tally.onlineSince === null) return tally;
   return {
-    ...tally,
+    ...withDoing(tally, null, at),
     engagedMs:
       tally.engagedMs + (tally.engagedSince === null ? 0 : Math.max(0, at - tally.engagedSince)),
     engagedSince: null,
@@ -716,6 +846,7 @@ export function isCombatTally(value: unknown): value is CombatTally {
   const dealt = tally['dealt'];
   if (typeof dealt !== 'object' || dealt === null) return false;
   if (tally['mega'] !== undefined && !isMegaTally(tally['mega'])) return false;
+  if (tally['spent'] !== undefined && !isTimeSpent(tally['spent'])) return false;
   return BLOW_KINDS.every((kind) => isBlowTally((dealt as Record<string, unknown>)[kind]));
 }
 
@@ -737,6 +868,20 @@ function isMegaTally(value: unknown): value is MegaTally {
     isBlowTally(mega.rounds) &&
     counts(mega.items, ['collected', 'sold', 'stashed']) &&
     counts(mega.copper, ['deposited', 'stashed'])
+  );
+}
+
+function isTimeSpent(value: unknown): value is TimeSpent {
+  if (typeof value !== 'object' || value === null) return false;
+  const spent = value as Partial<TimeSpent>;
+  const moment = (entry: unknown): boolean => entry === null || isCount(entry);
+  return (
+    isCount(spent.rest) &&
+    isCount(spent.walk) &&
+    isCount(spent.idle) &&
+    (spent.doing === null || (DOINGS as readonly unknown[]).includes(spent.doing)) &&
+    moment(spent.since) &&
+    moment(spent.walkUntil)
   );
 }
 

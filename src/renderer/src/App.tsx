@@ -257,10 +257,10 @@ const CARD_GLYPH: Partial<Record<CardId, IconName>> = {
   realm: 'server',
   players: 'at',
   gang: 'shield',
-  inventory: 'bag',
+  inventory: 'backpack',
   banks: 'coins',
   quests: 'key',
-  hunting: 'crosshair',
+  hunting: 'paw',
   conversation: 'broadcast',
   reference: 'search',
   stats: 'activity',
@@ -718,6 +718,8 @@ interface AddressedActions {
   resetStats(): void;
   /** Restart the Vitals card's experience hours views; the session's stays. */
   resetExp(): void;
+  /** Moves a button on or off this character's toolbar row. */
+  pinToolbarButton(id: string): void;
   startLoop(name: string): void;
   selectPlayer(name: string, anchor: PopoverAnchor): void;
   setGangRemotes(remotes: RemoteName[]): void;
@@ -4021,6 +4023,45 @@ export default function App() {
   }, [cards, returnFocus, session]);
 
   /*
+   * A screen opened from a Stable console's own toolbar (2026-11-05).
+   *
+   * The Loops modal, the Explorer and the loop builder are the shown
+   * character's, so a toolbar over anybody else's console had no way to open
+   * them and drew no button — and in the Stable, where every console wears its
+   * row, the buttons came and went as the shown character changed. So the
+   * press makes that character's row the shown one, as a click on it does,
+   * and the screen opens once they are shown, for them. Opened rather than toggled: a modal already up for the
+   * character before is not what the press means to shut.
+   */
+  type ShownScreen = 'loops' | 'explorer' | 'builder';
+  const openOnShow = useRef<{ sid: SessionId; screen: ShownScreen } | null>(null);
+  const openers = useRef<Record<ShownScreen, () => void>>({
+    loops: () => undefined,
+    explorer: () => undefined,
+    builder: () => undefined
+  });
+  openers.current = {
+    loops: () => setLoopsOpen(true),
+    explorer: () => {
+      if (!explorerOpen) toggleExplorer();
+    },
+    builder: openBuilder
+  };
+  useEffect(() => {
+    const pending = openOnShow.current;
+    if (pending === null || pending.sid !== session) return;
+    openOnShow.current = null;
+    openers.current[pending.screen]();
+  }, [session]);
+  const openShowing = useCallback(
+    (sid: SessionId, screen: ShownScreen) => {
+      openOnShow.current = { sid, screen };
+      focusPane(sid);
+    },
+    [focusPane]
+  );
+
+  /*
    * A loop the Hunting card drew, handed to the builder as picks closed on
    * the first room, with its name offered (todo 00, 2026-09-13). The seed is
    * a request and not a state of the builder: the card takes it once, and
@@ -5277,6 +5318,8 @@ export default function App() {
   const resetStats = useCallback((sid: SessionId) => api.statsReset(sid), [api]);
   const resetStatsRef = useRef(resetStats);
   resetStatsRef.current = resetStats;
+  const pinToolbarRef = useRef(toolbarPins.toggle);
+  pinToolbarRef.current = toolbarPins.toggle;
 
   /**
    * The addressed callbacks for one character, built once and kept.
@@ -5316,6 +5359,7 @@ export default function App() {
         // in `App` rather than sending anything, and the bound object has to
         // stay the same object across renders or every card's memo is defeated.
         resetStats: () => resetStatsRef.current(sid),
+        pinToolbarButton: (id) => pinToolbarRef.current(sid, id),
         // Main's, with the tally, as the Combat Stats card's is, and apart from it.
         resetExp: () => void api.expReset(sid),
         startLoop: (name) =>
@@ -5398,6 +5442,7 @@ export default function App() {
     regroup: regroupParty,
     disband: disbandParty,
     muster: musterParty,
+    say: sayAsParty,
     partyFor
   } = useParty(api, sessions, views);
 
@@ -5405,7 +5450,7 @@ export default function App() {
     (sid: SessionId, v: SessionView, chrome: CardChrome): CardContext => {
       const shown = sid === session;
       const bound = boundFor(sid);
-      return {
+      const ctx: CardContext = {
         session: sid,
         chrome,
         character: v.character,
@@ -5516,22 +5561,38 @@ export default function App() {
            * it was opened for. On a pinned float the button opens it for the
            * character on screen rather than for the float's own — so it is
            * `null` there and the button is not drawn, which is the rule a
-           * control bound to nowhere already follows in this client.
+           * control bound to nowhere already follows in this client. A Stable
+           * console's row shows its character and opens it for them
+           * (`openShowing`).
            */
-          openLoops: shown ? toggleLoops : null,
-          openExplorer: shown ? toggleExplorer : null,
-          openBuilder: shown ? openBuilder : null
+          openLoops: shown ? toggleLoops : stableOn ? () => openShowing(sid, 'loops') : null,
+          openExplorer: shown
+            ? toggleExplorer
+            : stableOn
+              ? () => openShowing(sid, 'explorer')
+              : null,
+          openBuilder: shown ? openBuilder : stableOn ? () => openShowing(sid, 'builder') : null,
+          /*
+           * A card dropped down from a toolbar button, drawn for this
+           * character with the card's own settings and none of the rail's
+           * chrome: it is not on the rail, so it is not closed, dragged or
+           * rolled there.
+           */
+          card: (id) =>
+            cardElement(id, {
+              ...ctx,
+              chrome: { cardId: id, returnFocus, settings: chromeFor(id).settings }
+            })
         },
-        // Per client, not per character: which buttons somebody keeps to hand
-        // is a fact about the person at the keyboard, so every character's
-        // toolbar draws the same row with its own answers on it.
-        toolbarPinned: toolbarPins.pinned,
-        pinToolbarButton: toolbarPins.toggle,
+        // Per character: each console in the Stable wears its own row.
+        toolbarPinned: toolbarPins.pinnedFor(sid),
+        pinToolbarButton: bound.pinToolbarButton,
         nameIndex: nameIndexes[sid] ?? null,
         onSend: shown ? sayOnChannel : bound.send,
         onMacro: bound.macro,
         dropMacro: bound.dropMacro
       };
+      return ctx;
     },
     [
       api,
@@ -5554,7 +5615,7 @@ export default function App() {
       pressure,
       remotesFor,
       switchesFor,
-      toolbarPins,
+      toolbarPins.pinnedFor,
       dial,
       hangUp,
       sayRefusal,
@@ -5570,6 +5631,8 @@ export default function App() {
       startLoop,
       sayRefusal,
       openExplorerAt,
+      openShowing,
+      stableOn,
       partyFor
     ]
   );
@@ -6387,6 +6450,7 @@ export default function App() {
                       onOpen={showSession}
                       onRegroup={regroupParty}
                       onDisband={disbandParty}
+                      onSay={sayAsParty}
                       onStop={stopIn}
                       restToFor={restToFor}
                       roster={block.roster}

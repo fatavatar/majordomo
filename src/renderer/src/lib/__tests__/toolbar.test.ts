@@ -30,6 +30,7 @@ const subject = (over: Partial<ToolbarSubject> = {}): ToolbarSubject => ({
   openLoops: vi.fn(),
   openExplorer: vi.fn(),
   openBuilder: vi.fn(),
+  card: vi.fn(() => null),
   ...over
 });
 
@@ -314,5 +315,29 @@ describe('the MegaMUD engine’s toggles', () => {
     const nuke = toolbarButtons(subject({ mega, setMegaToggle })).find((b) => b.id === 'mega:nuke');
     nuke!.run();
     expect(setMegaToggle).toHaveBeenCalledWith('nuke');
+  });
+});
+
+// 2026-11-01: a card dropped down from a toolbar button.
+describe('the buttons that drop a card down', () => {
+  it('draw the card for the character the toolbar is for, and press nothing', () => {
+    const card = vi.fn(() => 'the pack');
+    const button = toolbarButtons(subject({ card })).find((b) => b.id === 'card:inventory')!;
+    expect(button.card?.()).toBe('the pack');
+    expect(card).toHaveBeenCalledWith('inventory');
+    expect(button.icon).toBe('backpack');
+  });
+
+  it('are greyed out of the realm, where the card has nothing to draw', () => {
+    const button = toolbarButtons(subject({ inRealm: false })).find(
+      (b) => b.id === 'card:inventory'
+    )!;
+    expect(button.disabled).toBe(true);
+  });
+
+  it('are on the row a fresh client draws', () => {
+    expect(shippedToolbar(DEFAULT_INTERNAL.toolbar.pinned, TOOLBAR_IDS).has('card:inventory')).toBe(
+      true
+    );
   });
 });

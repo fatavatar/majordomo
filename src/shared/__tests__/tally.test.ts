@@ -19,11 +19,15 @@ import {
   settleClocks,
   share,
   sinceBaseline,
+  spentAt,
+  timeBreakdown,
+  withDoing,
   swings,
   turnedAside,
   withArrival,
   withBlow,
   withMegaCount,
+  NO_TIME_SPENT,
   type CombatTally
 } from '../tally';
 
@@ -592,5 +596,76 @@ describe("the MegaMUD engine's counts", () => {
     const broken = JSON.parse(JSON.stringify(counted()));
     broken.mega.modes.multi = null;
     expect(isCombatTally(broken)).toBe(false);
+  });
+});
+
+// 2026-11-01: resting, walking and idle time, the Combat Stats card's breakdown.
+describe('time spent out of a fight', () => {
+  it('settles the open interval only when what the character does changes', () => {
+    const idle = withDoing(NO_TALLY, 'idle', 1_000);
+    expect(withDoing(idle, 'idle', 5_000)).toBe(idle);
+    const resting = withDoing(idle, 'rest', 6_000);
+    expect(resting.spent).toEqual({ ...NO_TIME_SPENT, idle: 5_000, doing: 'rest', since: 6_000 });
+    expect(spentAt(resting.spent!, 9_000)).toEqual({ rest: 3_000, walk: 0, idle: 5_000 });
+  });
+
+  it('moves a walk on with each step, and reads it as idle once it lapses', () => {
+    const walking = withDoing(NO_TALLY, 'walk', 1_000, 16_000);
+    const further = withDoing(walking, 'walk', 4_000, 19_000);
+    expect(further.spent).toMatchObject({ doing: 'walk', since: 1_000, walkUntil: 19_000 });
+    expect(spentAt(further.spent!, 10_000)).toEqual({ rest: 0, walk: 9_000, idle: 0 });
+    expect(spentAt(further.spent!, 25_000)).toEqual({ rest: 0, walk: 18_000, idle: 6_000 });
+    // A block after the lapse that changes nothing leaves the tally alone.
+    expect(withDoing(further, 'idle', 25_000)).toBe(further);
+    // And resting later settles the walk at its lapse and the idling after it.
+    expect(withDoing(further, 'rest', 30_000).spent).toEqual({
+      ...NO_TIME_SPENT,
+      walk: 18_000,
+      idle: 11_000,
+      doing: 'rest',
+      since: 30_000
+    });
+  });
+
+  it('stops every interval in a fight, which is the engaged clock', () => {
+    const tally = withDoing(withDoing(NO_TALLY, 'idle', 0), null, 4_000);
+    const fighting: CombatTally = { ...tally, engagedSince: 4_000 };
+    expect(timeBreakdown(fighting, 10_000)).toEqual({
+      fight: 6_000,
+      rest: 0,
+      walk: 0,
+      idle: 4_000,
+      total: 10_000
+    });
+  });
+
+  it('has no breakdown for a tally that never kept one', () => {
+    expect(timeBreakdown(NO_TALLY, 10_000)).toBeNull();
+    expect(withDoing(NO_TALLY, null, 10_000)).toBe(NO_TALLY);
+  });
+
+  it('reads from a baseline, an interval open at the reset counted from it', () => {
+    const baseline: CombatTally = { ...withDoing(NO_TALLY, 'rest', 0), since: 0, at: 4_000 };
+    expect(timeBreakdown(sinceBaseline(baseline, baseline), 4_000)).toMatchObject({
+      rest: 0,
+      total: 0
+    });
+    const now = withDoing(baseline, 'idle', 10_000);
+    expect(timeBreakdown(sinceBaseline(now, baseline), 12_000)).toMatchObject({
+      rest: 6_000,
+      idle: 2_000,
+      total: 8_000
+    });
+  });
+
+  it('settles with the other clocks when the socket closes', () => {
+    const tally: CombatTally = { ...withDoing(NO_TALLY, 'idle', 2_000), onlineSince: 2_000 };
+    expect(settleClocks(tally, 8_000).spent).toEqual({ ...NO_TIME_SPENT, idle: 6_000 });
+  });
+
+  it('is read back from disk, and a broken one refused', () => {
+    const tally = withDoing(NO_TALLY, 'walk', 1_000, 16_000);
+    expect(isCombatTally(JSON.parse(JSON.stringify(tally)))).toBe(true);
+    expect(isCombatTally({ ...tally, spent: { ...tally.spent, doing: 'dance' } })).toBe(false);
   });
 });

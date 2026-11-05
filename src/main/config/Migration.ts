@@ -284,6 +284,7 @@ function migrateAll(options: MigrationOptions): void {
   theHangPenaltiesWent(home, note);
   theOldSwitchesUnpinned(home, note);
   statedTheSkin(home, note);
+  theToolbarDropsCards(home, note, options.internalTemplate);
 }
 
 /**
@@ -6507,6 +6508,10 @@ function theTuningBlockGainedKeys(
     addKey('hunting', 'clockBound', DEFAULT_INTERNAL.tuning.hunting.clockBound);
     // The Explorer's damage simulation, worked out ahead (2026-11-01).
     addKey('hunting', 'explorerWarmMs', DEFAULT_INTERNAL.tuning.hunting.explorerWarmMs);
+    // The Combat Stats card's breakdown of time spent (2026-11-01).
+    addKey('parse', 'walkingMs', DEFAULT_INTERNAL.tuning.parse.walkingMs);
+    // A card dropped down from the toolbar (2026-11-01).
+    addKey('view', 'toolbarCardCloseMs', DEFAULT_INTERNAL.tuning.view.toolbarCardCloseMs);
     // The sign-in's guesses counted per address (code review B3, 2026-11-02).
     addKey('web', 'loginGuesses', DEFAULT_INTERNAL.tuning.web.loginGuesses);
     addKey('web', 'loginWindowMs', DEFAULT_INTERNAL.tuning.web.loginWindowMs);
@@ -6542,6 +6547,11 @@ function theTuningBlockGainedKeys(
      */
     dropKey('parse', 'activityWalkMs');
     dropKey('parse', 'activityKept');
+    /*
+     * How long the pointer rested on a toolbar card's button before it opened
+     * (2026-11-01), retired the same day: the button opens on a press.
+     */
+    dropKey('view', 'toolbarCardOpenMs');
     /*
      * The suggestion cap moved with the sweep: twelve rows out of a radius
      * were a neighbourhood, twelve out of the realm are a keyhole. A file
@@ -6812,6 +6822,60 @@ function theToolbarGainedBack(
   });
   if (changed) note(t('notices.migration.toolbarGainedBack', { file: home.internal }));
 }
+
+/**
+ * The buttons that drop a card down added to an existing toolbar row
+ * (2026-11-01, `TOOLBAR_CARDS`): Inventory, Realm, Players and Hunting. At the
+ * end, where the shipped row puts them, for `pinTheGearButton`'s reason: a
+ * button added to the shipped row reaches nobody who has run the client
+ * before without this. Each is added on its own where it is missing, the
+ * first with a note above it. The paragraph above `toolbar:` names every
+ * button, so it is refreshed from the shipped template while it lacks them.
+ */
+function theToolbarDropsCards(
+  home: Home,
+  note: (message: string) => void,
+  template: string | undefined
+): void {
+  const added: string[] = [];
+  edit(home.internal, (document) => {
+    const list = document.getIn(['toolbar', 'pinned'], true);
+    if (!isSeq(list)) return false;
+    const has = (id: string): boolean =>
+      list.items.some((item) => isScalar(item) && item.value === id);
+    const missing = CARD_BUTTONS.filter((id) => !has(id));
+    if (missing.length === 0) return false;
+    const first = !CARD_BUTTONS.some(has);
+    missing.forEach((id, at) => {
+      const pin = new Scalar(id);
+      if (first && at === 0) pin.commentBefore = CARD_BUTTONS_COMMENT;
+      list.items.push(pin);
+    });
+
+    const lead = document.contents;
+    if (isMap(lead)) {
+      const pair = lead.items.find((item) => keyText(item) === 'toolbar');
+      const key = pair === undefined ? null : (pair.key as Scalar);
+      const current = key === null ? undefined : key.commentBefore;
+      if (typeof current === 'string' && !CARD_BUTTONS.every((id) => current.includes(id))) {
+        const fresh = templateLead(template, 'toolbar');
+        if (fresh !== undefined) key!.commentBefore = fresh;
+      }
+    }
+    added.push(...missing);
+    return true;
+  });
+  if (added.length > 0) {
+    note(
+      t('notices.migration.cardButtonsPinned', { cards: added.join(', '), file: home.internal })
+    );
+  }
+}
+
+const CARD_BUTTONS = ['card:inventory', 'card:realm', 'card:players', 'card:hunting'];
+
+const CARD_BUTTONS_COMMENT = ` Cards dropped down under their buttons when pressed and put away when the
+ pointer leaves: the pack, who is on, who has been seen, where to hunt.`;
 
 /**
  * MegaMUD's toggles onto the toolbar's pins (2026-10-14).

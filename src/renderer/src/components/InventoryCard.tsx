@@ -2,9 +2,9 @@ import { memo, useEffect, useLayoutEffect, useRef, useState } from 'react';
 
 import BentoCard, { type CardAction, type CardChrome } from './BentoCard';
 import Icon from './Icon';
-import CardTable, { type Column, type Facet } from './CardTable';
-import EntityNumber, { entityNumberText } from './EntityNumber';
+import { FindField } from './CardTable';
 import { keepFocus } from '../lib/focus';
+import { groupWeights, PACK_GROUPS, packRows, type PackGroup, type PackRow } from '../lib/pack';
 import { entityNumber } from '@shared/entities';
 import {
   equip,
@@ -18,7 +18,7 @@ import type { ItemFacts } from '@shared/explorer';
 import { t } from '../lib/i18n';
 import { coinText } from '../lib/coins';
 import { type CarriedItem, type CharacterState, type Coins } from '@shared/character';
-import { countedList, ITEM_KIND_WORD, type ItemKind } from '@shared/items';
+import { countedList } from '@shared/items';
 import type { SessionId } from '@shared/ipc';
 import type { WorldItem } from '@shared/world';
 
@@ -73,28 +73,6 @@ function Purse({ coins, wealth }: { coins: Coins; wealth: number | null }): Reac
     </dd>
   );
 }
-
-/**
- * What a pack can be cut down to: the kinds the realm's own item table
- * distinguishes (`Items.ItemType`, read as words in `shared/items.ts`).
- *
- * `unknown` is one of them and is not a tidy-up. Most of what a monster drops
- * is a name the realm data cannot place, so it is a real group with real things
- * in it — and one somebody filters *to* as often as away from, because it is
- * where everything the client cannot tell them about has collected.
- *
- * Every kind is listed here whether or not anything in the pack is one: the
- * remembered filters are checked against this list, so a kind missing from it
- * would silently drop a player's choice the first time they were carrying none.
- * Which chips are *drawn* is a separate question, and the table answers it.
- */
-const KIND_FACETS: readonly Facet[] = [
-  ...(Object.entries(ITEM_KIND_WORD) as [ItemKind, string][]).map(([kind, word]) => ({
-    id: kind,
-    label: word
-  })),
-  { id: 'unknown', label: t('cards.realm.facet.unknown') }
-];
 
 export interface InventoryCardProps extends CardChrome {
   character: CharacterState;
@@ -166,7 +144,7 @@ function InventoryCard({
   session,
   ...chrome
 }: InventoryCardProps) {
-  const { items } = character.inventory;
+  const { items, encumbrance, encumbranceMax } = character.inventory;
   void load;
   const [finding, setFinding] = useState(false);
 
@@ -201,7 +179,28 @@ function InventoryCard({
   return (
     <BentoCard
       badge={
-        items.length > 0 ? (
+        /*
+         * What it weighs against what it can (2026-11-01), in the colour the
+         * server would grade it -- the figure the split meter below is a
+         * picture of. A count where the server has not said its limit.
+         */
+        encumbrance !== null && encumbranceMax !== null && encumbranceMax > 0 ? (
+          <span
+            className="chip off pack-badge"
+            data-level={
+              encumbrance / encumbranceMax >= 0.9
+                ? 'critical'
+                : encumbrance / encumbranceMax >= 0.7
+                  ? 'caution'
+                  : 'ok'
+            }
+          >
+            {t('cards.inventory.loadBadge', {
+              carried: encumbrance.toLocaleString(),
+              max: encumbranceMax.toLocaleString()
+            })}
+          </span>
+        ) : items.length > 0 ? (
           <span className="chip off">
             {t('cards.inventory.carriedBadge', { count: items.length })}
           </span>
@@ -410,101 +409,226 @@ export function InventoryBody({
       ? Math.min(1, encumbrance / encumbranceMax)
       : null;
 
-  /**
-   * The pack, as three columns: what it is, what it weighs, and where it is worn.
-   *
-   * The weight is the whole reason this card asks the realm for anything. The
-   * meter above says 917 of 3,360 and cannot say *what is heavy*, which is the
-   * only question anybody puts to it — the one that decides what to drop. It is
-   * absent, never zero, for a name the realm cannot place: that is most of what
-   * a monster drops, and a `0` beside it would be a claim the data does not
-   * make. The column sorts those to the bottom whichever way it points, so
-   * "what is heaviest" is one click and not a screen of blanks.
-   */
-  const columns: Column<CarriedItem>[] = [
-    /*
-     * Put this one on, or take it off again, from its own row.
-     *
-     * A column of its own and to the *left* of the name, which is where it was
-     * asked for and where it belongs: it is the one control on the row that
-     * acts rather than explains, and beside the weight it would read as a
-     * property of the item. The column has no header — a word above a run of
-     * glyphs would be a label for a thing that is not a fact.
-     *
-     * The cell is empty rather than greyed for a row the question does not
-     * apply to at all: drawing a control that does nothing is worse than
-     * drawing none.
-     */
-    {
-      id: 'equip',
-      label: '',
-      control: true,
-      value: (item) => item.name,
-      cell: (item) => {
-        if (!gear) return null;
-        /*
-         * Decided once, in `equipVerdict`, for this cell and for the console's
-         * rewritten listing alike — a second reading of the same rules had
-         * the two disagreeing about a private realm's kit. Worn is tested
-         * first there, before anything the realm file says: a lit torch has
-         * no `Worn` slot and still comes off. Green is the one row-level
-         * statement in the pack that is *in force*, drawn on every worn row;
-         * a refusal is a `span`, not a disabled `button`, so the reason on it
-         * stays reachable from the keyboard; a thing that is not kit gets no
-         * control at all, because one could only ever earn a refusal.
-         */
-        const verdict = mmeVerdict(equipVerdict(item, wearer, t), item, factsOf(item));
-        switch (verdict.state) {
-          case 'worn':
-            return (
-              <button
-                className="row-action worn"
-                onClick={() => gear('remove', item.name)}
-                onMouseDown={keepFocus}
-                title={verdict.label}
-                type="button"
-              >
-                <Icon name="shirtWorn" />
-              </button>
-            );
-          case 'blocked':
-            return (
-              <span
-                aria-label={verdict.label}
-                className="row-action blocked"
-                role="img"
-                title={verdict.label}
-              >
-                <Icon name="shirtOff" />
+  const weightOf = (item: CarriedItem): number | null =>
+    factsOf(item)?.enc ?? item.encumbrance ?? null;
+  const rows = packRows(items, weightOf);
+  const weights = groupWeights(rows);
+  // Each row's bar is a share of the heaviest row, so the one worth dropping
+  // stands out down the whole list rather than within its group.
+  const heaviest = Math.max(1, ...rows.map((row) => row.weight ?? 0));
+  const weighed = PACK_GROUPS.reduce((sum, group) => sum + weights[group], 0);
+  const [query, setQuery] = useState('');
+  useEffect(() => {
+    if (finding === false) setQuery('');
+  }, [finding]);
+  const wanted = query.trim().toLowerCase();
+  const shown =
+    wanted === ''
+      ? rows
+      : rows.filter(
+          (row) =>
+            row.item.name.toLowerCase().includes(wanted) ||
+            String(entityNumber(row.item) ?? '').includes(wanted)
+        );
+
+  return (
+    <>
+      {!seen ? (
+        <div className="empty">{t('cards.inventory.emptyUnseen')}</div>
+      ) : (
+        <>
+          {/*
+            The load, split by what carries it (2026-11-01): a share of the
+            meter per group, in the group's colour, and what the realm cannot
+            weigh as what is left of the server's own figure. The level the
+            server would grade it at is the figures' colour, not the fill's.
+          */}
+          {encumbranceMax !== null && encumbranceMax > 0 && (
+            <div
+              className="pack-load"
+              data-level={
+                carried === null
+                  ? 'ok'
+                  : carried >= 0.9
+                    ? 'critical'
+                    : carried >= 0.7
+                      ? 'caution'
+                      : 'ok'
+              }
+            >
+              <span className="pack-meter">
+                {PACK_GROUPS.map((group) =>
+                  weights[group] > 0 ? (
+                    <span
+                      className="pack-share"
+                      data-group={group}
+                      key={group}
+                      style={{
+                        width: `${Math.min(100, (weights[group] / encumbranceMax) * 100)}%`
+                      }}
+                    />
+                  ) : null
+                )}
+                {encumbrance !== null && encumbrance > weighed && (
+                  <span
+                    className="pack-share"
+                    data-group="unweighed"
+                    style={{
+                      width: `${Math.min(100, ((encumbrance - weighed) / encumbranceMax) * 100)}%`
+                    }}
+                    title={t('cards.inventory.unweighedTooltip')}
+                  />
+                )}
               </span>
-            );
-          case 'wearable':
-            return (
-              <button
-                className="row-action"
-                onClick={() => gear('equip', item.name)}
-                onMouseDown={keepFocus}
-                title={verdict.label}
-                type="button"
-              >
-                <Icon name="shirt" />
-              </button>
-            );
-          case 'none':
-            return null;
-        }
-      }
-    },
-    {
-      id: 'item',
-      label: t('cards.room.shop.columnItem'),
-      wide: true,
-      value: (item) => item.name,
-      cell: (item) =>
-        inspect ? (
-          /* The name opens the Reference card: price, provenance, everything
-             the weight figure here leaves out. Clicked, never typed into, so
-             the caret stays with the game. */
+              <span className="pack-legend">
+                {PACK_GROUPS.filter((group) => weights[group] > 0).map((group) => (
+                  <span data-group={group} key={group}>
+                    <i />
+                    {groupLabel(group)} <b>{weights[group]}</b>
+                  </span>
+                ))}
+              </span>
+            </div>
+          )}
+
+          {(hasPurse || keys.length > 0) && (
+            <dl className="readout">
+              {hasPurse && (
+                <>
+                  <dt>{t('cards.inventory.wealthLabel')}</dt>
+                  <Purse coins={coins} wealth={wealth} />
+                </>
+              )}
+              {keys.length > 0 && (
+                <>
+                  {/* Keys stay a row rather than joining the pack: they are not
+                  carried things the listing counts. */}
+                  <dt>{t('cards.inventory.keysLabel')}</dt>
+                  <dd>{countedList(keys).join(', ')}</dd>
+                </>
+              )}
+            </dl>
+          )}
+
+          {finding === true && (
+            <FindField
+              autoFocus
+              label={t('cards.inventory.findPlaceholder')}
+              onChange={setQuery}
+              onDismiss={onFindDismiss}
+              query={query}
+              returnFocus={returnFocus}
+            />
+          )}
+
+          <div
+            className="scroller pack-list"
+            role="list"
+            aria-label={t('cards.inventory.tableCaption')}
+          >
+            {shown.length === 0 && (
+              <div className="empty">
+                {rows.length === 0 ? t('cards.inventory.tableEmpty') : t('cards.inventory.noMatch')}
+              </div>
+            )}
+            {PACK_GROUPS.map((group) => {
+              const mine = shown.filter((row) => row.group === group);
+              if (mine.length === 0) return null;
+              return (
+                <section className="pack-group" data-group={group} key={group}>
+                  <h3>
+                    {groupLabel(group)}
+                    {weights[group] > 0 && <span>{weights[group]}</span>}
+                  </h3>
+                  {mine.map((row) => (
+                    <PackLine
+                      gear={gear}
+                      heaviest={heaviest}
+                      inspect={inspect}
+                      key={row.key}
+                      row={row}
+                      slot={slotOf(row.item, factsOf(row.item))}
+                      verdict={mmeVerdict(
+                        equipVerdict(row.item, wearer, t),
+                        row.item,
+                        factsOf(row.item)
+                      )}
+                    />
+                  ))}
+                </section>
+              );
+            })}
+          </div>
+        </>
+      )}
+    </>
+  );
+}
+
+/** A group's heading, one literal key per group for the dictionary's coverage test. */
+function groupLabel(group: PackGroup): string {
+  switch (group) {
+    case 'worn':
+      return t('cards.inventory.group.worn');
+    case 'kit':
+      return t('cards.inventory.group.kit');
+    case 'supplies':
+      return t('cards.inventory.group.supplies');
+    case 'other':
+      return t('cards.inventory.group.other');
+  }
+}
+
+/**
+ * Where a worn thing sits, and where the word came from: the slot the game
+ * named, else MME's word for it, else the realm file's -- each saying so on
+ * hover, as it is not the server's -- or "in use" where nothing names one.
+ */
+function slotOf(
+  item: CarriedItem,
+  facts: ItemFacts | undefined
+): { word: string; tooltip?: string } | null {
+  if (!item.equipped) return null;
+  if (item.slot !== null && item.slotSource !== 'realm') return { word: item.slot };
+  const mme = mmeSlot(facts);
+  if (mme !== null) return { word: mme, tooltip: t('cards.inventory.mmeSlotTooltip') };
+  if (item.slot !== null)
+    return { word: item.slot, tooltip: t('cards.inventory.realmSlotTooltip') };
+  return { word: t('cards.inventory.inUseStatus'), tooltip: t('cards.inventory.inUseTooltip') };
+}
+
+/**
+ * One row: the name (which opens the Reference card), how many, where it is
+ * worn, its weight as a bar against the heaviest row and as a figure, and two
+ * glyphs at the end -- put on or take off, and drop.
+ *
+ * The glyphs keep two fixed places, empty where the row has nothing to do
+ * there, so they line up down the list. A worn thing has no Drop: it comes
+ * off by its own glyph first rather than going to a floor anybody standing
+ * there can pick it up from. Drop takes one; Shift takes every spare of the
+ * name, which main sends a `drop` at a time -- the server takes no count for
+ * an item, only for coins.
+ */
+function PackLine({
+  row,
+  slot,
+  verdict,
+  heaviest,
+  gear,
+  inspect
+}: {
+  row: PackRow;
+  slot: { word: string; tooltip?: string } | null;
+  verdict: EquipVerdict;
+  heaviest: number;
+  gear?: InventoryBodyProps['gear'];
+  inspect?: InventoryBodyProps['inspect'];
+}) {
+  const { item, count, weight } = row;
+  return (
+    <div className="pack-row" data-group={row.group} role="listitem">
+      <span className="pack-name">
+        {inspect ? (
           <button
             className="what lookup"
             onClick={(event) => inspect(item.name, event.currentTarget)}
@@ -516,160 +640,73 @@ export function InventoryBody({
           </button>
         ) : (
           <span className="what">{item.name}</span>
-        )
-    },
-    {
-      /*
-       * The realm's own `Items` row — the number MegaMUD printed and the
-       * number the realm editor is indexed by, which the client has held
-       * since the data was indexed and drew nowhere.
-       *
-       * A column rather than a figure beside the name, because in a table it
-       * earns the two things a column is: it is **findable**, so typing
-       * `1234` narrows a hundred-item pack to the thing, and sortable, which
-       * groups a realm's content by when it was authored. Numeric, so it
-       * sorts as a magnitude and sits under a right-aligned heading like the
-       * weight beside it.
-       *
-       * `value` is the plain text and `cell` the drawn figure, which is the
-       * split every column here makes — and it is what puts the *rows* answer
-       * (`iron key` is three) into the find text as well as on screen.
-       */
-      id: 'number',
-      optional: true,
-      label: t('entity.numberColumn'),
-      name: t('entity.numberColumnLabel'),
-      numeric: true,
-      value: (item) => entityNumber(item) ?? entityNumberText(item),
-      cell: (item) => <EntityNumber of={item} />
-    },
-    {
-      id: 'weight',
-      label: t('cards.inventory.columns.weight'),
-      numeric: true,
-      value: (item) => factsOf(item)?.enc ?? item.encumbrance ?? null,
-      // The figure and nothing around it: the cell is already the `weight`
-      // column, and a span inside it carrying the same name would be a second
-      // thing to select by that can disagree with the first.
-      cell: (item) => factsOf(item)?.enc ?? item.encumbrance ?? null
-    },
-    {
-      // What it fetches and costs at this character's charm, MME's short words (2026-10-24).
-      id: 'value',
-      optional: true,
-      label: t('cards.inventory.columns.value'),
-      value: (item) => factsOf(item)?.value || null,
-      cell: (item) => <span className="item-value">{factsOf(item)?.value || null}</span>
-    },
-    {
-      /*
-       * Worn and wielded things read differently from things in the pack,
-       * because the question the card answers is not only "what have I got" but
-       * "what have I got *on*" — the difference between carrying a shield and
-       * holding one.
-       *
-       * The slot is shown when anything names it and nothing at all is shown
-       * when nothing does. An item in use whose slot is unknown gets a plain
-       * "in use" instead, deliberately in lower case so it cannot be misread
-       * as one of the server's own slot words.
-       *
-       * A word the *realm file* supplied — the item's `Worn` code, for an item
-       * no listing has ever named a slot for — is drawn outlined rather than
-       * filled and says so on hover. It is a real answer and is shown as one;
-       * it is this client reading a number rather than the server printing a
-       * word, and this column would otherwise look like the server's
-       * throughout (`CarriedItem.slotSource`).
-       */
-      id: 'where',
-      label: t('cards.player.detail.where'),
-      value: (item) => item.slot ?? (item.equipped ? t('cards.inventory.inUseStatus') : null),
-      cell: (item) =>
-        // A slot the game named stands; one read off the data is MME's word (2026-10-24).
-        (item.slot === null || item.slotSource === 'realm') && mmeSlot(factsOf(item)) !== null ? (
-          <span className="slot inferred" title={t('cards.inventory.mmeSlotTooltip')}>
-            {mmeSlot(factsOf(item))}
+        )}
+        {count > 1 && <span className="pack-count">×{count}</span>}
+        {slot !== null && (
+          <span className="pack-slot" title={slot.tooltip}>
+            {slot.word}
           </span>
-        ) : item.slot !== null ? (
-          item.slotSource === 'realm' ? (
-            <span className="slot inferred" title={t('cards.inventory.realmSlotTooltip')}>
-              {item.slot}
-            </span>
-          ) : (
-            <span className="slot">{item.slot}</span>
-          )
-        ) : item.equipped ? (
-          <span className="slot unknown" title={t('cards.inventory.inUseTooltip')}>
-            {t('cards.inventory.inUseStatus')}
+        )}
+        {verdict.state === 'blocked' && (
+          <span className="pack-note" title={verdict.label}>
+            {t('cards.inventory.cantUse')}
           </span>
-        ) : null
-    }
-  ];
-
-  return (
-    <>
-      {!seen ? (
-        <div className="empty">{t('cards.inventory.emptyUnseen')}</div>
-      ) : (
-        <>
-          {carried !== null && (
-            <div
-              className="meter"
-              data-level={carried >= 0.9 ? 'critical' : carried >= 0.7 ? 'caution' : 'ok'}
-            >
-              <span className="track">
-                <span className="fill" style={{ width: `${carried * 100}%` }} />
-              </span>
-              <span className="figures">
-                {encumbrance}/{encumbranceMax}
-              </span>
-            </div>
-          )}
-
-          <dl className="readout">
-            {hasPurse && (
-              <>
-                <dt>{t('cards.inventory.wealthLabel')}</dt>
-                <Purse coins={coins} wealth={wealth} />
-              </>
-            )}
-            {keys.length > 0 && (
-              <>
-                {/* Keys stay a row rather than joining the table: they are not
-                carried things the listing counts, and a `key` filter over
-                the pack answers a different question from this one. */}
-                <dt>{t('cards.inventory.keysLabel')}</dt>
-                <dd>{countedList(keys).join(', ')}</dd>
-              </>
-            )}
-          </dl>
-
-          {/*
-        A pack is the listing on this client whose length the player least
-        controls — a hundred things after an hour of looting — so it is the
-        table this all started with. Filtered by what the realm says a thing
-        *is*, which costs no command: `Items.ItemType` is shipped in the
-        realm file and already asked for, one query per set of names.
-      */}
-          <CardTable
-            caption={t('cards.inventory.tableCaption')}
-            className="carried"
-            columns={columns}
-            empty={t('cards.inventory.tableEmpty')}
-            facetOf={(item) => item.kind ?? 'unknown'}
-            facets={KIND_FACETS}
-            find={t('cards.inventory.findPlaceholder')}
-            findOpen={finding}
-            keyOf={(item, at) => `${item.name}-${at}`}
-            onFindDismiss={onFindDismiss}
-            name="inventory"
-            returnFocus={returnFocus}
-            rowAttrs={(item) => ({ 'data-equipped': item.equipped ? 'true' : 'false' })}
-            rows={items}
-            session={session}
-          />
-        </>
-      )}
-    </>
+        )}
+      </span>
+      <span className="pack-bar" aria-hidden="true">
+        {weight !== null && <i style={{ width: `${Math.max(3, (weight / heaviest) * 100)}%` }} />}
+      </span>
+      <span className="pack-weight">{weight}</span>
+      <span className="pack-actions">
+        {gear && verdict.state === 'worn' ? (
+          <button
+            aria-label={verdict.label}
+            className="row-action worn"
+            onClick={() => gear('remove', item.name)}
+            onMouseDown={keepFocus}
+            title={verdict.label}
+            type="button"
+          >
+            <Icon name="shirtOff" />
+          </button>
+        ) : gear && verdict.state === 'wearable' ? (
+          <button
+            aria-label={verdict.label}
+            className="row-action"
+            onClick={() => gear('equip', item.name)}
+            onMouseDown={keepFocus}
+            title={verdict.label}
+            type="button"
+          >
+            <Icon name="shirt" />
+          </button>
+        ) : (
+          <span />
+        )}
+        {gear && row.group !== 'worn' ? (
+          <button
+            aria-label={
+              count > 1
+                ? t('cards.inventory.dropStackTooltip', { item: item.name, count })
+                : t('cards.inventory.dropTooltip', { item: item.name })
+            }
+            className="row-action drop"
+            onClick={(event) => gear(event.shiftKey ? 'drop-stack' : 'drop', item.name)}
+            onMouseDown={keepFocus}
+            title={
+              count > 1
+                ? t('cards.inventory.dropStackTooltip', { item: item.name, count })
+                : t('cards.inventory.dropTooltip', { item: item.name })
+            }
+            type="button"
+          >
+            <Icon name="drop" />
+          </button>
+        ) : (
+          <span />
+        )}
+      </span>
+    </div>
   );
 }
 

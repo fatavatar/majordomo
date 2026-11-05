@@ -1804,6 +1804,9 @@ stops:
  * beside them, which `pinTheMegaToggles` adds to every row and asserts in
  * its own describe.
  */
+/** The buttons that drop a card down, which `theToolbarDropsCards` adds to every row. */
+const CARDS = ['card:inventory', 'card:realm', 'card:players', 'card:hunting'];
+
 function pinnedBesideMega(): string[] {
   const row = (parse(fs.readFileSync(home.internal, 'utf8')) as { toolbar: { pinned: string[] } })
     .toolbar.pinned;
@@ -1896,7 +1899,9 @@ toolbar:
       // which is what keeps it here rather than appended past the shelf.
       'move:toggle',
       // And back goes in beside it (`theToolbarGainedBack`).
-      'move:back'
+      'move:back',
+      // And the buttons that drop a card down at the end (`theToolbarDropsCards`).
+      ...CARDS
     ]);
   });
 
@@ -1932,7 +1937,7 @@ toolbar:
     // — the gear button lands after `connect`, which is, and back has no
     // `move:toggle` to sit beside so it goes on the end. The bless switch has
     // none of its neighbours here either, and runs last, so it takes the front.
-    expect(pinned()).toEqual(['loop:open', 'connect', 'gear:restore', 'move:back']);
+    expect(pinned()).toEqual(['loop:open', 'connect', 'gear:restore', 'move:back', ...CARDS]);
   });
 
   /* A deviation from the shipped row lives in `localStorage`, which this
@@ -2138,7 +2143,14 @@ tuning:
      client draws is the row it draws, in order.) */
   it('adds it after the transport, leaving the rest alone', () => {
     migrate();
-    expect(pinned()).toEqual(['connect', 'gear:restore', 'move:toggle', 'move:back', 'loop:open']);
+    expect(pinned()).toEqual([
+      'connect',
+      'gear:restore',
+      'move:toggle',
+      'move:back',
+      'loop:open',
+      ...CARDS
+    ]);
   });
 
   it('does nothing on a second run', () => {
@@ -2185,7 +2197,7 @@ describe('the gear button on an existing toolbar', () => {
      arriving, not while walking. */
   it('adds it beside the dial, leaving the rest alone', () => {
     migrate();
-    expect(pinned()).toEqual(['connect', 'gear:restore', 'loop:open', 'move:back']);
+    expect(pinned()).toEqual(['connect', 'gear:restore', 'loop:open', 'move:back', ...CARDS]);
   });
 
   it('says so, because a toolbar that changed silently is one nobody trusts', () => {
@@ -2207,7 +2219,51 @@ describe('the gear button on an existing toolbar', () => {
   it('goes to the front of a row with no dial on it', () => {
     fs.writeFileSync(home.internal, 'toolbar:\n  pinned:\n    - combat\n', 'utf8');
     migrate();
-    expect(pinned()).toEqual(['gear:restore', 'loop:open', 'move:back']);
+    expect(pinned()).toEqual(['gear:restore', 'loop:open', 'move:back', ...CARDS]);
+  });
+
+  it('leaves a file that states no toolbar alone', () => {
+    fs.writeFileSync(home.internal, 'terminal:\n  scrollback: 5000\n', 'utf8');
+    migrate();
+    expect(fs.readFileSync(home.internal, 'utf8')).toBe('terminal:\n  scrollback: 5000\n');
+  });
+});
+
+// 2026-11-01: the cards a toolbar button drops down.
+describe('the card buttons on an existing toolbar', () => {
+  const ROW = `toolbar:
+  pinned:
+    # A note the user wrote.
+    - connect
+    - 'move:toggle'
+`;
+
+  const pinned = pinnedBesideMega;
+
+  beforeEach(() => {
+    fs.mkdirSync(path.dirname(home.internal), { recursive: true });
+    fs.writeFileSync(home.internal, ROW, 'utf8');
+  });
+
+  it('adds them at the end, where the shipped row has them, and says so', () => {
+    migrate();
+    expect((pinned() as string[]).slice(-4)).toEqual(CARDS);
+    expect(said.join(' ')).toContain('drop a card down');
+    expect(fs.readFileSync(home.internal, 'utf8')).toContain('A note the user wrote');
+  });
+
+  /* A row that has Inventory already, from the day it came alone. */
+  it('adds only those missing', () => {
+    fs.writeFileSync(home.internal, `${ROW}    - 'card:inventory'\n`, 'utf8');
+    migrate();
+    expect((pinned() as string[]).slice(-4)).toEqual(CARDS);
+    expect(said.join(' ')).toContain('card:realm, card:players, card:hunting');
+  });
+
+  it('does nothing on a second run', () => {
+    migrate();
+    migrate();
+    expect((pinned() as string[]).filter((id) => id === 'card:hunting')).toHaveLength(1);
   });
 
   it('leaves a file that states no toolbar alone', () => {
@@ -2320,7 +2376,9 @@ describe('the roster cap in an existing tuning file', () => {
       'mobRegenMs',
       'staleMoveMs',
       // Which attack a `*Combat Engaged*` answers, appended by the same pass.
-      'engageBindMs'
+      'engageBindMs',
+      // And the walking window of the Combat Stats card's breakdown.
+      'walkingMs'
     ]);
     expect(block()['rosterLines']).toBe(400);
     expect(fs.readFileSync(home.internal, 'utf8')).toContain('A note the user wrote');
@@ -4730,6 +4788,29 @@ describe('the hunting survey’s reach', () => {
     migrate();
     expect(block('view')['huntReaskMs']).toBeUndefined();
     expect(block('view')['clockTickMs']).toBe(1000);
+  });
+
+  // The Combat Stats card's breakdown of time spent (2026-11-01).
+  it('writes the walking window in beside the parse keys the file states', () => {
+    fs.writeFileSync(home.internal, `${withReach}  parse:\n    statsSamplesKept: 1440\n`, 'utf8');
+    migrate();
+    expect(block('parse')['walkingMs']).toBe(DEFAULT_INTERNAL.tuning.parse.walkingMs);
+    expect(block('parse')['statsSamplesKept']).toBe(1440);
+  });
+
+  // A toolbar card's hover delay, retired for a press the day it came (2026-11-01).
+  it("takes the toolbar card's hover delay out of a file that states it", () => {
+    fs.writeFileSync(
+      home.internal,
+      withReach.replace(
+        'clockTickMs: 1000',
+        'clockTickMs: 1000\n    toolbarCardOpenMs: 200\n    toolbarCardCloseMs: 350'
+      ),
+      'utf8'
+    );
+    migrate();
+    expect(block('view')['toolbarCardOpenMs']).toBeUndefined();
+    expect(block('view')['toolbarCardCloseMs']).toBe(350);
   });
 
   // The Timeline card's record, written in by 1.0.10 and retired (2026-11-01).

@@ -180,6 +180,43 @@ export function levelReading(
   return { next: level + 1, into, span, over: Math.max(0, into - span), made: Math.max(0, made) };
 }
 
+/** The level still to be reached, past every one reached and not yet trained. */
+export interface ReachingReading {
+  /** Levels the experience reaches that the trainer has not been asked for. */
+  untrained: number;
+  /** The first level the experience does not reach. */
+  next: number;
+  into: number;
+  span: number;
+}
+
+/**
+ * Where the character stands on the way to the next level it has not reached
+ * (2026-11-01): from the threshold of the last level the experience reaches,
+ * trained or not, to the next one's, and how many levels are reached and not
+ * trained before it. What the console's experience bar draws, a dot for each
+ * of those levels before it; the time to the level (`levelInMs`) is to the
+ * same one.
+ */
+export function reachingReading(progress: CharacterState['progress']): ReachingReading | null {
+  const { level, exp, expTable } = progress;
+  const standing = experienceStanding(level, exp, expTable);
+  if (standing === null || standing.next === null || exp === null || expTable === null) {
+    return null;
+  }
+  const rowAt = (which: number): number | null =>
+    expTable.rows.find((row) => row.level === which)?.experience ?? null;
+  const base = rowAt(standing.earned) ?? (standing.earned <= 1 ? 0 : null);
+  const top = rowAt(standing.next);
+  if (base === null || top === null || top <= base) return null;
+  return {
+    untrained: standing.earned - standing.level,
+    next: standing.next,
+    into: Math.max(0, exp - base),
+    span: top - base
+  };
+}
+
 /**
  * The level meter. The scale is the larger of the way into the level and the
  * level's span, so a character past the threshold fills the whole track, the

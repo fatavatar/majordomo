@@ -86,9 +86,10 @@ palette:
 #
 # The vocabulary is far longer than a row, so this is the row you *start* with:
 # the `...` at the end of the toolbar lists every button there is and pins or
-# unpins it, and that choice is remembered without rewriting this file. Editing
-# a line here still wins for the button it changes its mind about. Stating this
-# block replaces the default list whole.
+# unpins it on that character's row, and that choice is remembered per
+# character without rewriting this file. Editing a line here still wins for the
+# button it changes its mind about. Stating this block replaces the default
+# list whole.
 #
 # Names are button ids: `connect`, `gear:restore`,
 # `loop:open` (the shelf of every loop), `loop:build` (the card a loop is drawn
@@ -98,8 +99,9 @@ palette:
 # own toggles, `mega:noHangup`, `mega:allOff`, `mega:combat`, `mega:preAttack`,
 # `mega:melee`, `mega:nuke`, `mega:heal`, `mega:bless`, `mega:light`,
 # `mega:get`, `mega:cash`, `mega:sneak`, `mega:hide`, `mega:search` and
-# `mega:afk`; and `fleeGoto`, our flee to a named room, which writes the
-# character's own file.
+# `mega:afk`; `fleeGoto`, our flee to a named room, which writes the
+# character's own file; and the cards dropped down under their buttons when
+# pressed, `card:inventory`, `card:realm`, `card:players` and `card:hunting`.
 toolbar:
   pinned:
     - connect
@@ -136,6 +138,12 @@ toolbar:
     # a door that shut behind you is answered too (it asks first when the way
     # back is not a single step).
     - 'move:back'
+    # Cards dropped down under their buttons when pressed and put away when the
+    # pointer leaves: the pack, who is on, who has been seen, where to hunt.
+    - 'card:inventory'
+    - 'card:realm'
+    - 'card:players'
+    - 'card:hunting'
 
 # Every number the client uses to decide something.
 #
@@ -359,6 +367,11 @@ tuning:
     statsSampleMs: 60000
 
     statsSamplesKept: 1440
+
+    # How lately the room must have changed for a character out of a fight
+    # to be walking rather than idle, in the Combat Stats card's breakdown of
+    # its time. A hunting loop's steps come a few seconds apart.
+    walkingMs: 15000
 
     # The band a line has to be inside to be read as a room's name.
     #
@@ -1356,6 +1369,11 @@ tuning:
 
     # How close a popup menu may come to the edge of the window.
     menuMargin: 4
+
+    # A card dropped down from the toolbar: how long after the pointer leaves
+    # the button and the card it is put away, so crossing the gap between them
+    # does not lose it.
+    toolbarCardCloseMs: 350
 
     # Room radius on the map, and the margin that keeps one in the viewBox.
     mapRoomRadius: 3

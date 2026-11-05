@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   canRestore,
   dropAllPlan,
+  dropPlan,
   equip,
   equipAllPlan,
   equipBlock,
@@ -10,6 +11,7 @@ import {
   isWearable,
   learnLoadout,
   restorePlan,
+  sparesOf,
   unequip,
   UNKNOWN_WEARER,
   type EquipRestrictions,
@@ -212,6 +214,54 @@ describe('putting the pack on the floor', () => {
 
   it('does nothing with an empty pack', () => {
     expect(dropAllPlan([], 10)).toEqual({ commands: [], missing: [], overflow: 0 });
+  });
+});
+
+// 2026-11-01: the Inventory card's own rows.
+describe('one of a thing onto the floor, or every spare of it', () => {
+  const pack = [
+    worn('padded gloves', 'Hands'),
+    carried({ name: 'padded gloves' }),
+    carried({ name: 'cudgel' }),
+    carried({ name: 'cudgel' }),
+    carried({ name: 'cudgel' })
+  ];
+
+  it('drops one, by the name the listing spelled', () => {
+    expect(dropPlan(pack, 'Cudgel', false, 10).commands).toEqual(['drop cudgel']);
+  });
+
+  /* The server takes no count for an item, only for coins: a drop a piece. */
+  it('drops every spare a piece at a time', () => {
+    expect(dropPlan(pack, 'cudgel', true, 10).commands).toEqual([
+      'drop cudgel',
+      'drop cudgel',
+      'drop cudgel'
+    ]);
+    expect(sparesOf(pack, 'cudgel')).toBe(3);
+  });
+
+  it('stops at the cap and says how many were left', () => {
+    expect(dropPlan(pack, 'cudgel', true, 2)).toMatchObject({ overflow: 1 });
+  });
+
+  /* Spares only: what is on comes off by `remove`, never onto the floor. */
+  it('leaves what is worn on, and drops only the spare beside it', () => {
+    expect(dropPlan(pack, 'padded gloves', true, 10).commands).toEqual(['drop padded gloves']);
+    expect(dropPlan([worn('padded helm', 'Head')], 'padded helm', false, 10).commands).toEqual([]);
+  });
+
+  it('says what the pack does not hold', () => {
+    expect(dropPlan(pack, 'rope', false, 10)).toEqual({
+      commands: [],
+      missing: ['rope'],
+      overflow: 0
+    });
+  });
+
+  it('is in the closed union main checks against', () => {
+    expect(GEAR_ACTIONS).toContain('drop');
+    expect(GEAR_ACTIONS).toContain('drop-stack');
   });
 });
 
