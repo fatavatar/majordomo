@@ -92,7 +92,10 @@ export const DESKTOP_ALERTS = ['attacked', 'hurt', 'arrived', 'hungup', 'critica
 export type DesktopAlert = (typeof DESKTOP_ALERTS)[number];
 
 export interface Notice {
-  /** Stable within a session, so a list can key on it without an index. */
+  /**
+   * Stable within a session, so a list can key on it without an index, and
+   * distinct within a character's log, which `logNotices` sees to.
+   */
   id: string;
   at: number;
   severity: Severity;
@@ -903,6 +906,36 @@ export function wanted(
     kept.push(notice);
   }
   return kept;
+}
+
+/**
+ * A character's notices with these added, the oldest let go past `limit`, and
+ * every id in it distinct (2026-11-05).
+ *
+ * An id is made from what happened and when — `m<name>-<moment>` for a monster
+ * walking in — so two dark oceanids walking in together were two notices with
+ * one id. The card keys its rows on the id, and React cannot tell two rows with
+ * one key apart: when the older of them aged out of the log its row stayed in
+ * the page, and another joined it every time it happened again. A tab left
+ * open on a busy character held thousands of rows the log had long since let
+ * go. So a notice whose id the log already holds takes the next free one here,
+ * the one place a notice enters the log, rather than every rule that makes one
+ * having to know what else happened in the same moment.
+ *
+ * Nothing raised is the log itself, so a flush with nothing in it changes
+ * nothing that is compared by identity.
+ */
+export function logNotices(log: Notice[], raised: readonly Notice[], limit: number): Notice[] {
+  if (raised.length === 0) return log;
+  const taken = new Set(log.map((notice) => notice.id));
+  const added = raised.map((notice) => {
+    let id = notice.id;
+    for (let again = 2; taken.has(id); again += 1) id = `${notice.id}~${again}`;
+    taken.add(id);
+    return id === notice.id ? notice : { ...notice, id };
+  });
+  const next = [...log, ...added];
+  return next.length > limit ? next.slice(-limit) : next;
 }
 
 /**
