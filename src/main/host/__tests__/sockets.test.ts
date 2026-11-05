@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import http from 'node:http';
 import type { AddressInfo } from 'node:net';
 import net from 'node:net';
+import { Duplex } from 'node:stream';
 import { constants as zlibConstants, deflateRawSync, inflateRawSync } from 'node:zlib';
 
 import {
@@ -456,6 +457,88 @@ describe('permessage-deflate', () => {
     connection.send('{"k":"beat"}');
     expect(await second).toEqual({ rsv1: false, payload: Buffer.from('{"k":"beat"}') });
     socket.destroy();
+  });
+
+  /*
+   * Code review B7 (2026-11-02): an attach snapshot is over 11 MB, and it was
+   * deflated in `send`, on main's thread, holding every character's socket
+   * while zlib worked. It is deflated on zlib's threads now, and written in
+   * the order it was sent.
+   */
+  describe('deflated off the thread that sent it', () => {
+    const sink = () => {
+      const writes: Buffer[] = [];
+      const stream = new Duplex({
+        read() {},
+        write(chunk: Buffer, _encoding, callback) {
+          writes.push(chunk);
+          callback();
+        }
+      });
+      return { writes, connection: new WebSocketConnection(stream, GENEROUS, true) };
+    };
+    const opened = (bytes: Buffer): { rsv1: boolean; opcode: number; payload: Buffer } => {
+      let length = bytes[1]! & 0x7f;
+      let offset = 2;
+      if (length === 126) {
+        length = bytes.readUInt16BE(2);
+        offset = 4;
+      } else if (length === 127) {
+        length = Number(bytes.readBigUInt64BE(2));
+        offset = 10;
+      }
+      return {
+        rsv1: (bytes[0]! & 0x40) !== 0,
+        opcode: bytes[0]! & 0x0f,
+        payload: bytes.subarray(offset, offset + length)
+      };
+    };
+    const inflated = (payload: Buffer): string =>
+      inflateRawSync(Buffer.concat([payload, Buffer.from([0, 0, 0xff, 0xff])]), {
+        finishFlush: zlibConstants.Z_SYNC_FLUSH
+      }).toString();
+    const until = async (holds: () => boolean): Promise<void> => {
+      for (let i = 0; i < 200 && !holds(); i += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 5));
+      }
+    };
+
+    it('returns before a long message is deflated, and writes what follows it in its turn', async () => {
+      const { writes, connection } = sink();
+      const long = JSON.stringify({ lines: 'The torchlight flickers. '.repeat(20_000) });
+      connection.send(long);
+      connection.send('{"k":"beat"}');
+      // Nothing yet: the long one is with zlib, and the short one waits behind it.
+      expect(writes).toHaveLength(0);
+
+      await until(() => writes.length === 2);
+      const [first, second] = writes.map(opened);
+      expect(first!.rsv1).toBe(true);
+      expect(inflated(first!.payload)).toBe(long);
+      expect(second).toEqual({
+        rsv1: false,
+        opcode: OPCODE.text,
+        payload: Buffer.from('{"k":"beat"}')
+      });
+    });
+
+    it('writes a short message at once when nothing waits ahead of it', () => {
+      const { writes, connection } = sink();
+      connection.send('{"k":"beat"}');
+      expect(writes).toHaveLength(1);
+    });
+
+    it('says goodbye after what was sent before it, and sends nothing after', async () => {
+      const { writes, connection } = sink();
+      const long = 'x'.repeat(50_000);
+      connection.send(long);
+      connection.close(1001, 'going');
+      connection.send('{"k":"too late"}');
+      await until(() => writes.length === 2);
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(writes.map((bytes) => opened(bytes).opcode)).toEqual([OPCODE.text, OPCODE.close]);
+      expect(inflated(opened(writes[0]!).payload)).toBe(long);
+    });
   });
 
   it('reads a message the browser deflated', async () => {

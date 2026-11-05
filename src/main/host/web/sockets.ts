@@ -19,10 +19,12 @@
  * `permessage-deflate` (RFC 7692) when the browser offers it, each message
  * on its own (no context takeover either way): the browser inflates in its
  * network layer, off the page's thread, and nothing is kept per socket. A
- * compressed message is inflated under the same cap.
+ * compressed message is inflated under the same cap. What this side sends is
+ * deflated on zlib's own threads, not on main's (code review B7, 2026-11-02),
+ * and written in the order it was sent.
  */
 import { createHash } from 'node:crypto';
-import { constants as zlib, deflateRawSync, inflateRawSync } from 'node:zlib';
+import { constants as zlib, deflateRaw, inflateRawSync } from 'node:zlib';
 import type { IncomingMessage } from 'node:http';
 import type { Duplex } from 'node:stream';
 
@@ -46,6 +48,16 @@ const RSV1 = 0x40;
 /** The extension this server agrees to: each message deflated on its own. */
 const DEFLATE_RESPONSE =
   'permessage-deflate; server_no_context_takeover; client_no_context_takeover';
+
+/** A message deflated as RFC 7692 sends it, on zlib's threads: the sync flush's tail taken off. */
+function deflated(payload: Buffer): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    deflateRaw(payload, { finishFlush: zlib.Z_SYNC_FLUSH }, (error, out) => {
+      if (error) reject(error);
+      else resolve(out.subarray(0, out.length - DEFLATE_TAIL.length));
+    });
+  });
+}
 
 /** Whether the browser offered `permessage-deflate`. */
 export function offersDeflate(request: IncomingMessage): boolean {
@@ -146,6 +158,12 @@ export class WebSocketConnection {
   private takenBefore = 0;
   /** The message being reassembled was sent compressed. */
   private fragmentsDeflated = false;
+  /**
+   * The last of the messages still waiting to be written, in the order they
+   * were sent, or null when nothing waits and a message goes straight out.
+   * See `send`.
+   */
+  private waiting: Promise<void> | null = null;
   private closeSent = false;
   private closed = false;
   /** What this side said on the way out, so the end is reported as it was meant. */
@@ -184,10 +202,53 @@ export class WebSocketConnection {
    * long as anybody waited. What waits behind answers has a ceiling of its
    * own (`BEHIND_ANSWERS`), so a peer that stalls mid-answer is still closed.
    */
+  /*
+   * Deflated off main's thread (code review B7, 2026-11-02). An attach
+   * snapshot is over 11 MB, and deflating it in place held main, and every
+   * character's socket with it, for as long as zlib took. Now it is started
+   * the moment it is sent, on zlib's threads, and written in its turn: every
+   * message waits behind the ones sent before it, so the order on the wire is
+   * the order of `send`, and a short one with nothing ahead of it still goes
+   * out at once. What is written, and how it is counted, is what it was.
+   */
   send(text: string, requested = false): void {
     if (!this.open) return;
     if (!this.roomToWrite(requested)) return;
-    const bytes = this.textFrame(Buffer.from(text, 'utf8'));
+    const payload = Buffer.from(text, 'utf8');
+    if (!this.deflate || payload.length < this.options.deflateMinBytes) {
+      const bytes = frame(OPCODE.text, payload);
+      if (this.waiting === null) this.put(bytes, requested);
+      else this.inTurn(() => this.put(bytes, requested));
+      return;
+    }
+    const deflating = deflated(payload);
+    // Handled now, though awaited only in its turn: a refusal is reported there.
+    deflating.catch(() => undefined);
+    this.inTurn(async () => {
+      const body = await deflating;
+      this.put(frame(OPCODE.text, body, true), requested);
+    });
+  }
+
+  /** A step taken once every message sent before it has been written. */
+  private inTurn(step: () => void | Promise<void>): void {
+    const tail = (this.waiting ?? Promise.resolve()).then(step).catch(() => {
+      // zlib refusing a message is not the peer's doing, and nothing it sent
+      // can be answered now: the tab is closed and dials again.
+      this.close(1011, 'could not compress');
+    });
+    this.waiting = tail;
+    void tail.then(() => {
+      if (this.waiting === tail) this.waiting = null;
+    });
+  }
+
+  /**
+   * One frame onto the socket. An answer, and what is queued behind one, is
+   * counted apart from the cap (see `send`); anything else is written as it is.
+   */
+  private put(bytes: Buffer, requested: boolean): void {
+    if (this.closed) return;
     if (!requested && this.answeringBytes === 0) {
       this.socket.write(bytes, () => {
         this.taken += bytes.length;
@@ -199,14 +260,6 @@ export class WebSocketConnection {
       this.answeringBytes -= bytes.length;
       this.taken += bytes.length;
     });
-  }
-
-  private textFrame(payload: Buffer): Buffer {
-    if (!this.deflate || payload.length < this.options.deflateMinBytes) {
-      return frame(OPCODE.text, payload);
-    }
-    const deflated = deflateRawSync(payload, { finishFlush: zlib.Z_SYNC_FLUSH });
-    return frame(OPCODE.text, deflated.subarray(0, deflated.length - DEFLATE_TAIL.length), true);
   }
 
   /**
@@ -249,6 +302,14 @@ export class WebSocketConnection {
     if (this.closeSent || this.closed) return;
     this.closeSent = true;
     this.saidGoodbye = { code, reason };
+    // After whatever was sent before it, as it was when every message went
+    // out the moment it was sent.
+    if (this.waiting !== null) this.inTurn(() => this.goodbye(code, reason));
+    else this.goodbye(code, reason);
+  }
+
+  private goodbye(code: number, reason: string): void {
+    if (this.closed) return;
     const text = Buffer.from(reason, 'utf8').subarray(0, 123);
     const payload = Buffer.alloc(2 + text.length);
     payload.writeUInt16BE(code, 0);
