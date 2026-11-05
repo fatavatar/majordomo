@@ -11205,6 +11205,24 @@ describe('the spellbook and the belongings record', () => {
       expect(state.stats?.tally.onlineSince).toBe(T0 + 2_000);
     });
 
+    // 2026-11-01: the Combat Stats card's breakdown, read off the state after each block.
+    it('keeps the time spent idle and resting, and none of it in a fight', () => {
+      const tracker = new CharacterTracker();
+      feedThrough(tracker, [
+        ...ARRIVE,
+        '*Combat Engaged*',
+        'You gain 66 experience.',
+        '*Combat Off*',
+        '[HP=34]:',
+        'You are now resting.'
+      ]);
+      const spent = tracker.current.tally.spent!;
+      expect(spent.doing).toBe('rest');
+      expect(spent.walk).toBe(0);
+      expect(spent.idle).toBeGreaterThan(0);
+      expect(spent.rest).toBe(0);
+    });
+
     it('settles both clocks when the realm is left, and keeps the totals', () => {
       const { state, sink } = fakeBelongings();
       const tracker = new CharacterTracker();

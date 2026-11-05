@@ -17,7 +17,15 @@ import type { Block } from '../../shared/blocks';
 import { DENOMINATIONS, type Denomination } from '../../shared/character';
 import type { CharacterState } from '../../shared/character';
 import { COPPER_PER } from '../../shared/coins';
-import { blowKind, withArrival, withBlow, withSample, type CombatTally } from '../../shared/tally';
+import {
+  blowKind,
+  withArrival,
+  withBlow,
+  withDoing,
+  withSample,
+  type CombatTally,
+  type Doing
+} from '../../shared/tally';
 import { tuning } from '../app/tuning';
 
 /** `You` and this character's own name are the same swing, said to two audiences. */
@@ -251,5 +259,31 @@ export function trackTally(
     };
   }
 
-  return next;
+  return withWhatItIsDoing(next, block, after, before);
+}
+
+/**
+ * What the character is doing outside a fight (2026-11-01), for the Combat
+ * Stats card's breakdown of its time: resting or meditating, walking where
+ * the room just changed, else idle -- and nothing in a fight, which is the
+ * engaged clock, or out of the realm. A walk lapses to idle `parse.walkingMs`
+ * after the last step, which `withDoing` reads without a block to say so.
+ */
+function withWhatItIsDoing(
+  tally: CombatTally,
+  block: Block,
+  after: CharacterState,
+  before: CharacterState
+): CombatTally {
+  if (after.phase !== 'in-game' || after.inCombat) return withDoing(tally, null, block.at);
+  if (after.vitals.resting || after.vitals.meditating) return withDoing(tally, 'rest', block.at);
+  const moved =
+    after.room.name !== before.room.name ||
+    after.room.map !== before.room.map ||
+    after.room.number !== before.room.number;
+  if (moved) return withDoing(tally, 'walk', block.at, block.at + tuning().parse.walkingMs);
+  // Still walking until the last step lapses, and a lapsed walk is idle from its lapse.
+  const until = tally.spent?.doing === 'walk' ? tally.spent.walkUntil : null;
+  const doing: Doing = until !== null && until >= block.at ? 'walk' : 'idle';
+  return withDoing(tally, doing, block.at);
 }

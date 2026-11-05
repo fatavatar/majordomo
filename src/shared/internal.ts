@@ -389,6 +389,12 @@ const TUNING_DEFAULTS = {
     statsSampleMs: 60_000,
     statsSamplesKept: 1440,
     /**
+     * How lately the room must have changed for a character out of a fight
+     * to be walking rather than idle, in the Combat Stats card's breakdown of
+     * its time (2026-11-01). A hunting loop's steps come a few seconds apart.
+     */
+    walkingMs: 15_000,
+    /**
      * The band a line has to be inside to be read as a room's name.
      *
      * Tuned against the capture corpus: the shipped realm's longest is well
@@ -1742,6 +1748,12 @@ const TUNING_DEFAULTS = {
     popoverMinHeight: 120,
     /** How close a popup menu may come to the edge of the window. */
     menuMargin: 4,
+    /**
+     * A card dropped down from the toolbar (2026-11-01): how long after the
+     * pointer leaves the button and the card it is put away, so crossing the
+     * gap between them or overshooting the card's edge does not lose it.
+     */
+    toolbarCardCloseMs: 350,
     /** Room radius on the map, and the margin that keeps one in the viewBox. */
     mapRoomRadius: 3,
     /**
@@ -1994,7 +2006,12 @@ export const DEFAULT_INTERNAL: InternalConfig = {
       // And one room back the way you came, beside the transport: a walk into
       // a room nobody meant to be in is answered by a press, not by working
       // out which direction undoes it.
-      'move:back'
+      'move:back',
+      // Cards dropped down under their buttons (2026-11-01).
+      'card:inventory',
+      'card:realm',
+      'card:players',
+      'card:hunting'
     ]
   }
 };

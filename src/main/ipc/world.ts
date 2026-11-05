@@ -7,12 +7,14 @@
 import type { FightSummary } from '../../shared/fights';
 import {
   dropAllPlan,
+  dropPlan,
   equip,
   equipAllPlan,
   GEAR_ACTIONS,
   type GearAction,
   type GearPlan,
   restorePlan,
+  sparesOf,
   unequip,
   type Wearer
 } from '../../shared/gear';
@@ -515,6 +517,12 @@ export function registerWorldIpc(transport: Transport, ctx: IpcContext): void {
           );
         case 'drop-all':
           return dropAllPlan(items, tuning().spending.maxGear);
+        // One of a carried item, or every spare of it a piece at a time: the Inventory card's rows.
+        case 'drop':
+        case 'drop-stack':
+          return typeof item === 'string'
+            ? dropPlan(items, item, action === 'drop-stack', tuning().spending.maxGear)
+            : { commands: [], missing: [], overflow: 0 };
         /*
          * One item, on or off, and the pack is what says which row.
          *
@@ -549,7 +557,20 @@ export function registerWorldIpc(transport: Transport, ctx: IpcContext): void {
       }
     })();
 
-    for (const command of plan.commands) manager.ask(command);
+    /*
+     * A drop is the one command a card sends the same text of several times
+     * over -- a press each, or a stack a piece at a time -- and a repeat of
+     * one still waiting would be refused. Each goes after the one before it,
+     * up to the spares the pack holds (`askAgain`).
+     */
+    const repeats =
+      (action === 'drop' || action === 'drop-stack') && typeof item === 'string'
+        ? sparesOf(items, item)
+        : null;
+    for (const command of plan.commands) {
+      if (repeats === null) manager.ask(command);
+      else manager.askAgain(command, repeats);
+    }
     if (plan.missing.length > 0) {
       ctx.announce(
         'gear',

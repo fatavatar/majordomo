@@ -201,3 +201,16 @@ function isEnclosing(value: unknown): value is Enclosing {
     typeof (value as Enclosing).contains === 'function'
   );
 }
+
+/**
+ * Whether the pointer over `target` holds a toolbar's dropped card open
+ * (2026-11-01): it is inside one of `keepers` -- the button, the card, or a
+ * popup the card opened.
+ */
+export function holdsDrop(
+  target: Enclosing | null,
+  keepers: ReadonlyArray<Enclosing | null>
+): boolean {
+  if (target === null) return false;
+  return keepers.some((keeper) => keeper !== null && keeper.contains(target));
+}

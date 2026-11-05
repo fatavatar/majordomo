@@ -9,7 +9,7 @@ import {
   useExperienceView
 } from './ExperienceScope';
 import { attention, type RailView } from './TabRail';
-import { musterChoices } from './PartyCard';
+import { musterChoices, PartySay } from './PartyCard';
 import PopupMenu from './PopupMenu';
 import Icon from './Icon';
 import { CARDS, type CardId } from '../hooks/useCardLayout';
@@ -306,6 +306,13 @@ export interface StablePartyProps {
   onMuster(roster: string, target: MusterTarget): void;
   /** Disband: the party broken up in the realm and its roster forgotten. */
   onDisband(roster: string): void;
+  /** Say to: one line sent by each chosen member as its own, the Party card's (2026-11-01). */
+  onSay(
+    roster: string,
+    sessions: readonly SessionId[],
+    line: string,
+    others: boolean
+  ): Promise<string[]>;
   /** The other cards placed on it, drawn for the member with the keyboard. */
   cards: ReactNode;
   placed: readonly CardId[];
@@ -336,6 +343,7 @@ export const StableParty = memo(function StableParty({
   onRegroup,
   onMuster,
   onDisband,
+  onSay,
   cards,
   placed,
   onPlace
@@ -429,6 +437,15 @@ export const StableParty = memo(function StableParty({
           </button>
         )}
       </div>
+      {/*
+        One line for every member at once, the Party card's Say to: the
+        members' consoles are beside it, so each one's answer is read there.
+      */}
+      <PartySay
+        onSay={(sessions, line, others) => onSay(roster.id, sessions, line, others)}
+        others={[]}
+        speakers={members.map((member) => ({ session: member.id, name: member.name }))}
+      />
       <div className="stable-members">
         {members.map(({ id, name, accent, view }) => {
           const { character } = view;

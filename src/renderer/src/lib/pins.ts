@@ -61,12 +61,15 @@ export function shippedPins(
  */
 export function readDeviations(stored: string | null): PinDeviations {
   if (stored === null) return {};
-  let parsed: unknown;
   try {
-    parsed = JSON.parse(stored);
+    return asDeviations(JSON.parse(stored));
   } catch {
     return {};
   }
+}
+
+/** The same reading of a value already parsed, for a record that holds several. */
+export function asDeviations(parsed: unknown): PinDeviations {
   if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return {};
   const kept: Record<string, PinDeviation> = {};
   for (const [id, value] of Object.entries(parsed as Record<string, unknown>)) {

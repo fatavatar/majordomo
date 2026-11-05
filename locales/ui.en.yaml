@@ -163,6 +163,9 @@ notices:
       "MegaMUD's toggles are pinned on the toolbar like its other buttons, and the Character page's
       Toolbar row is gone. {file} was migrated to pin the ones MegaMUD's own toolbar shows; the
       toolbar's ... menu pins or unpins any of them."
+    cardButtonsPinned:
+      'The toolbar has buttons that drop a card down when pressed ({cards}), and {file} was migrated
+      to put them on the row.'
     toolbarGainedBack:
       'The toolbar has a back button — one room back the way the character came, per press — and
       {file} was migrated to put it on the row, with the length of trail it walks.'
@@ -1693,6 +1696,12 @@ toolbar:
   startMoving: Start Moving / Resume
   stopMoving: Stop Moving
   stepBack: Step Back One Room
+  # A card dropped down from the toolbar when its button is pressed.
+  card:
+    inventory: Inventory
+    realm: Realm (who's on)
+    players: Players (who's been seen)
+    hunting: Hunting Grounds
 tabs:
   head:
     newCharacterAria: New character
@@ -1741,6 +1750,10 @@ consoleStatus:
   exp: EXP
   through: '{into} of {span} into the level'
   toLevel: '{percent}% to {next}'
+  # A dot before the bar for each level reached and not yet trained (2026-11-01).
+  untrained:
+    one: 'Level {level} reached, not yet trained'
+    many: 'Levels {from} to {to} reached, not yet trained ({count})'
 statusRail:
   action:
     tooltip: What automation is doing
@@ -2677,6 +2690,19 @@ cards:
     title: Gang
   inventory:
     carriedBadge: '{count} carried'
+    # What the pack weighs against what it can (2026-11-01).
+    loadBadge: '{carried} / {max}'
+    # The pack by what it is and what it weighs (2026-11-01).
+    group:
+      worn: Worn
+      kit: Kit
+      supplies: Supplies
+      other: Other
+    cantUse: can't use
+    dropTooltip: Drop {item}
+    dropStackTooltip: 'Drop one {item} (Shift: all {count}, one at a time)'
+    noMatch: Nothing carried matches.
+    unweighedTooltip: Carried, but the world data does not say what it weighs
     coin:
       copper:
         long: copper
@@ -2698,8 +2724,6 @@ cards:
         mid: sil
         short: s
     columns:
-      # MMUD Explorer's buy / sell at this character's charm (2026-10-24).
-      value: Value
       weight: Weight
     copy:
       keysPrefix: 'keys: {keyList}'
@@ -3709,6 +3733,7 @@ cards:
     deflectedLabel: Deflected
     dodgeLabel: Dodge
     hitLabel: Hit
+    idleLabel: Idle
     missLabel: Miss
     ofCount: '{part} of {whole}'
     empty: Nothing has been fought yet.
@@ -3747,12 +3772,14 @@ cards:
     noSwings: Nothing has swung yet.
     percent: '{value}%'
     perRoundLabel: Damage a round
+    restingLabel: Resting
     ratePerHour: '{value}/hr'
     resetAction: Reset Combat Statistics
     sneakLabel: Sneak
     span: '{least}–{most}'
     tableCaption: Accuracy
     takenLabel: Damage taken
+    walkingLabel: Walking
     title: Combat Stats
     willLevelLabel: Will level in
   standby:

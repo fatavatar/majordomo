@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   clampPanel,
+  holdsDrop,
   placePopover,
   popoverWidth,
   scrollMovesAnchor,
@@ -224,5 +225,24 @@ describe('a panel kept inside the window', () => {
   it('pins one larger than the window to the corner its controls are in', () => {
     const huge = { width: 2000, height: 2000 };
     expect(clampPanel({ top: 300, left: 300 }, huge, viewport)).toEqual({ top: 8, left: 8 });
+  });
+});
+
+// 2026-11-01: a card dropped down from a toolbar button.
+describe('what holds a dropped card open', () => {
+  const field = node();
+  const card = node(node(field));
+  const button = node();
+  const menu = node();
+
+  it('is the pointer over the button, the card, or a popup the card opened', () => {
+    expect(holdsDrop(button, [button, card, menu])).toBe(true);
+    expect(holdsDrop(field, [button, card, menu])).toBe(true);
+    expect(holdsDrop(menu, [button, card, menu])).toBe(true);
+  });
+
+  it('is not the pointer anywhere else, or nowhere', () => {
+    expect(holdsDrop(node(), [button, card, menu])).toBe(false);
+    expect(holdsDrop(null, [button, card, null])).toBe(false);
   });
 });

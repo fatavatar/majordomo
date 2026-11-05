@@ -3234,6 +3234,48 @@ describe('the actions kept beside the MegaMUD engine', () => {
     expect(inside.mega.s.pending).toEqual([]);
   });
 
+  /* The pack's Drop, a press each or a stack a piece at a time (2026-11-01). */
+  it('sends a repeated command one after another, up to how many there are', async () => {
+    engine();
+    const inside = manager as unknown as { mega: MegaEngine };
+    inside.mega.s.inGame = 1;
+    const waiting = () => inside.mega.s.pending.map((p) => p.text);
+    expect(manager!.askAgain('drop cudgel', 3)).toBe(true);
+    expect(manager!.askAgain('drop cudgel', 3)).toBe(true);
+    expect(manager!.askAgain('drop cudgel', 3)).toBe(true);
+    // A fourth is more than the pack holds.
+    expect(manager!.askAgain('drop cudgel', 3)).toBe(false);
+    // One on the list at a time, the next when it is sent.
+    expect(waiting()).toEqual(['drop cudgel\r']);
+    pendingPump(inside.mega.s);
+    await Promise.resolve();
+    expect(waiting()).toEqual(['drop cudgel\r']);
+    pendingPump(inside.mega.s);
+    await Promise.resolve();
+    expect(waiting()).toEqual(['drop cudgel\r']);
+    pendingPump(inside.mega.s);
+    await Promise.resolve();
+    expect(waiting()).toEqual([]);
+    // Over, so the next press starts again.
+    expect(manager!.askAgain('drop cudgel', 1)).toBe(true);
+    expect(waiting()).toEqual(['drop cudgel\r']);
+  });
+
+  it('starts afresh where the chain’s command left the list unsent', async () => {
+    engine();
+    const inside = manager as unknown as { mega: MegaEngine };
+    inside.mega.s.inGame = 1;
+    expect(manager!.askAgain('drop cudgel', 3)).toBe(true);
+    expect(manager!.askAgain('drop cudgel', 3)).toBe(true);
+    inside.mega.unqueue('drop cudgel');
+    expect(manager!.askAgain('drop cudgel', 3)).toBe(true);
+    expect(inside.mega.s.pending.map((p) => p.text)).toEqual(['drop cudgel\r']);
+    pendingPump(inside.mega.s);
+    await Promise.resolve();
+    // The fresh chain was one long: nothing follows it.
+    expect(inside.mega.s.pending).toEqual([]);
+  });
+
   /* MegaMUD buys only on its loop's start detour: an errand's purchase is ours (2026-10-14). */
   it('buy at the counter a buy at a time, done when the pack holds it, given up when nothing came', () => {
     vi.useFakeTimers();

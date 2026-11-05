@@ -7,7 +7,10 @@ import {
 import { MEGA_TOGGLES, type MegaToggle, type MegaToggles } from '@shared/megamud/toggles';
 import type { Movement } from '@shared/movement';
 
+import type { ReactNode } from 'react';
+
 import type { IconName } from '../components/Icon';
+import type { CardId } from '../hooks/useCardLayout';
 import { t } from './i18n';
 
 /**
@@ -30,7 +33,25 @@ import { t } from './i18n';
  * room for words, which is the whole reason `Icon` is required here as it is
  * on a `MenuItem`.
  */
-export type ToolbarItemId = AutomationSwitch | ToolbarActionId | `mega:${MegaToggle}`;
+export type ToolbarItemId =
+  AutomationSwitch | ToolbarActionId | `mega:${MegaToggle}` | `card:${ToolbarCardId}`;
+
+/**
+ * The cards a toolbar button can drop down (2026-11-01): a third kind of
+ * button, beside switches and actions, for a card somebody uses now and then
+ * rather than watches. A press opens the card under the button, the card's
+ * own controls and all, and it is put away when the pointer leaves -- where
+ * the rail would have it found, added, used and closed.
+ * The card stays a card besides; this is one more place it can be.
+ */
+export const TOOLBAR_CARDS = [
+  'inventory',
+  // Who is on, who has been seen, and where to hunt (2026-11-01): looked up, not watched.
+  'realm',
+  'players',
+  'hunting'
+] as const satisfies readonly CardId[];
+export type ToolbarCardId = (typeof TOOLBAR_CARDS)[number];
 
 export const TOOLBAR_ACTIONS = [
   'connect',
@@ -69,8 +90,32 @@ export type ToolbarActionId = (typeof TOOLBAR_ACTIONS)[number];
 export const TOOLBAR_IDS: readonly ToolbarItemId[] = [
   ...AUTOMATION_SWITCH_NAMES,
   ...MEGA_TOGGLES.map((toggle) => `mega:${toggle.name}` as const),
-  ...TOOLBAR_ACTIONS
+  ...TOOLBAR_ACTIONS,
+  ...TOOLBAR_CARDS.map((card) => `card:${card}` as const)
 ];
+
+/** The glyph for each card a button drops down: the card's own, where it has one. */
+const CARD_ICONS: Record<ToolbarCardId, IconName> = {
+  inventory: 'backpack',
+  realm: 'server',
+  players: 'at',
+  // Not the crosshair the rail drew: that is MegaMUD's Auto-Pre-Attack on this row.
+  hunting: 'paw'
+};
+
+/** The label for each card button, one literal key per line for `switchLabel`'s reason. */
+function cardLabel(card: ToolbarCardId): string {
+  switch (card) {
+    case 'inventory':
+      return t('toolbar.card.inventory');
+    case 'realm':
+      return t('toolbar.card.realm');
+    case 'players':
+      return t('toolbar.card.players');
+    case 'hunting':
+      return t('toolbar.card.hunting');
+  }
+}
 
 /**
  * Which glyph names each switch.
@@ -183,6 +228,11 @@ export interface ToolbarButton {
    */
   disabled?: boolean;
   run(): void;
+  /**
+   * The card this button drops down, drawn for the character the toolbar is
+   * for; `run` is not pressed for one. See `TOOLBAR_CARDS`.
+   */
+  card?: () => ReactNode;
 }
 
 /** What the toolbar needs about the character it is drawn for. */
@@ -250,6 +300,8 @@ export interface ToolbarSubject {
    * character's realm and files into its scope.
    */
   openBuilder: (() => void) | null;
+  /** A card drawn for this character, for a button that drops one down (`TOOLBAR_CARDS`). */
+  card(id: ToolbarCardId): ReactNode;
 }
 
 /**
@@ -279,7 +331,8 @@ export function toolbarButtons(subject: ToolbarSubject): ToolbarButton[] {
     openExplorer,
     openBuilder,
     canRestoreGear,
-    restoreGear
+    restoreGear,
+    card
   } = subject;
 
   const dial: ToolbarButton = {
@@ -440,5 +493,19 @@ export function toolbarButtons(subject: ToolbarSubject): ToolbarButton[] {
     }
   ];
 
-  return [dial, gear, ...toggles, ...flee, ...transport];
+  /*
+   * The cards, last: they are looked at rather than pressed, and greyed out of
+   * the realm, where the card has nothing to draw.
+   */
+  const cards: ToolbarButton[] = TOOLBAR_CARDS.map((id) => ({
+    id: `card:${id}` as const,
+    label: cardLabel(id),
+    icon: CARD_ICONS[id],
+    on: false,
+    disabled: !inRealm,
+    run: () => undefined,
+    card: () => card(id)
+  }));
+
+  return [dial, gear, ...toggles, ...flee, ...transport, ...cards];
 }

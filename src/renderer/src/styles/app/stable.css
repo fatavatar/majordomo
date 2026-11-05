@@ -306,6 +306,27 @@
   background: color-mix(in srgb, var(--marker) 70%, transparent);
 }
 
+/* A dot for each level reached and not trained, in the bar's own colour: a whole bar each. */
+.console-status-untrained {
+  align-items: center;
+  display: inline-flex;
+  flex: none;
+  gap: 3px;
+}
+
+.console-status-untrained i {
+  background: color-mix(in srgb, var(--marker) 70%, transparent);
+  border-radius: 50%;
+  display: inline-block;
+  height: 7px;
+  width: 7px;
+}
+
+.console-status-untrained b {
+  color: var(--marker);
+  font-weight: 600;
+}
+
 .console-status-rate {
   color: var(--ok);
   font-weight: 600;

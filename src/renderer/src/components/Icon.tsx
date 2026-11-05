@@ -95,6 +95,9 @@ export type IconName =
   | 'broadcast'
   | 'flame'
   | 'bag'
+  | 'backpack'
+  | 'drop'
+  | 'paw'
   | 'flag';
 
 const ICONS: Record<IconName, ReactNode> = {
@@ -556,6 +559,34 @@ const ICONS: Record<IconName, ReactNode> = {
     <>
       <path d="M5 8.5h14l-1 12H6l-1-12Z" />
       <path d="M9 8.5V7a3 3 0 0 1 6 0v1.5" />
+    </>
+  ),
+  /* A backpack: what the character carries, set apart from the Get toggle's
+     shopping bag where both sit on the toolbar (2026-11-01). */
+  backpack: (
+    <>
+      <path d="M6 10a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v9a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2Z" />
+      <path d="M10 6V5a2 2 0 0 1 4 0v1" />
+      <path d="M9 21v-5h6v5" />
+      <path d="M9.5 11h5" />
+    </>
+  ),
+  /* A paw print: where the game is, for the Hunting Grounds (2026-11-01). */
+  paw: (
+    <>
+      <circle cx="6.5" cy="10" r="1.7" />
+      <circle cx="10" cy="6" r="1.7" />
+      <circle cx="14.5" cy="6" r="1.7" />
+      <circle cx="18" cy="10" r="1.7" />
+      <path d="M12.2 11.5c-2.7 0-5.2 2.8-5.2 5.3 0 1.8 1.4 2.7 3 2.3 1.4-.4 3-.4 4.4 0 1.6.4 3-.5 3-2.3 0-2.5-2.5-5.3-5.2-5.3Z" />
+    </>
+  ),
+  /* Down onto the floor: one item out of the pack (2026-11-01). */
+  drop: (
+    <>
+      <path d="M12 4v11" />
+      <path d="m7.5 10.5 4.5 4.5 4.5-4.5" />
+      <path d="M5 20h14" />
     </>
   ),
   /* A flag on a pole: the mark a place is given when somebody chooses it,

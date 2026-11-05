@@ -20,10 +20,13 @@ import {
   clock,
   sinceCardBaseline,
   swings,
+  timeBreakdown,
   turnedAside,
+  DOINGS,
   type BlowKind,
   type BlowTally,
   type CombatTally,
+  type Doing,
   type MegaMode
 } from '@shared/tally';
 import type { SessionId } from '@shared/ipc';
@@ -91,6 +94,13 @@ const KIND_LABEL: Record<BlowKind, string> = {
   backstab: t('cards.stats.kind.backstab'),
   spell: t('cards.stats.kind.cast'),
   proc: t('cards.stats.kind.proc')
+};
+
+/** The breakdown's rows beside Attacking: what the character did out of a fight. */
+const DOING_LABEL: Record<Doing, string> = {
+  rest: t('cards.stats.restingLabel'),
+  walk: t('cards.stats.walkingLabel'),
+  idle: t('cards.stats.idleLabel')
 };
 
 /**
@@ -172,7 +182,8 @@ const MORE_ROWS: ReadonlySet<string> = new Set([
   'deposited',
   'stashed',
   'income',
-  'attacking'
+  'attacking',
+  ...DOINGS
 ]);
 
 function StatsCard({ baseline, character, onReset, session, ...chrome }: StatsCardProps) {
@@ -219,6 +230,12 @@ function StatsCard({ baseline, character, onReset, session, ...chrome }: StatsCa
    * disconnected is not an hour the character earned nothing in.
    */
   const elapsed = onlineFor(shown, now);
+  /*
+   * And what that time went on: fighting, resting, walking, idle, each a share
+   * of their sum. A tally kept before the breakdown existed has none, and
+   * Attacking stays a share of the time in the realm.
+   */
+  const time = timeBreakdown(shown, now);
 
   /*
    * **Which rows exist is read from the session, not from the reset.**
@@ -457,8 +474,16 @@ function StatsCard({ baseline, character, onReset, session, ...chrome }: StatsCa
         key: 'attacking',
         label: t('cards.stats.attackingLabel'),
         value: clock(engagedFor(shown, now)),
-        second: percent(engagedShare(shown, now))
-      }
+        second: percent(time === null ? engagedShare(shown, now) : share(time.fight, time.total))
+      },
+      ...(time === null
+        ? []
+        : DOINGS.map((doing) => ({
+            key: doing,
+            label: DOING_LABEL[doing],
+            value: clock(time[doing]),
+            second: percent(share(time[doing], time.total))
+          })))
     ].filter((row) => row.when !== false);
 
   const mainRows = readout.filter((row) => !MORE_ROWS.has(row.key));
