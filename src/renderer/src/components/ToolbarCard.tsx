@@ -7,7 +7,7 @@ import PopupMenu from './PopupMenu';
 import { keepFocus } from '../lib/focus';
 import { t } from '../lib/i18n';
 import { menuPosition } from '../lib/menu';
-import { holdsDrop, scrollMovesAnchor } from '../lib/popover';
+import { escapePutsDropAway, holdsDrop, scrollMovesAnchor } from '../lib/popover';
 import { tuning } from '../lib/tuning';
 import { toolbarButtons, type ToolbarButton, type ToolbarSubject } from '../lib/toolbar';
 
@@ -255,13 +255,27 @@ function ToolbarCardKey({ button }: { button: ToolbarButton }) {
       if (scrollMovesAnchor(event.target, key.current)) setOpen(false);
     };
     const resized = (): void => setOpen(false);
+    /*
+     * Escape puts it away wherever the caret is (code review A2). Captured on
+     * the document and stopped there, so the console under the caret does
+     * not send it on to the game as well; only while the card is open, so
+     * the console's own Escape is untouched otherwise.
+     */
+    const escaped = (event: KeyboardEvent): void => {
+      if (!escapePutsDropAway(event.key, event.target as Node | null, keepers())) return;
+      event.preventDefault();
+      event.stopPropagation();
+      setOpen(false);
+    };
     document.addEventListener('pointerover', over);
     document.addEventListener('pointerdown', away, true);
+    document.addEventListener('keydown', escaped, true);
     window.addEventListener('scroll', scrolled, true);
     window.addEventListener('resize', resized);
     return () => {
       document.removeEventListener('pointerover', over);
       document.removeEventListener('pointerdown', away, true);
+      document.removeEventListener('keydown', escaped, true);
       window.removeEventListener('scroll', scrolled, true);
       window.removeEventListener('resize', resized);
     };

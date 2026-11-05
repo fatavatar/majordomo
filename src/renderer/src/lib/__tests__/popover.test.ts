@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   clampPanel,
+  escapePutsDropAway,
   holdsDrop,
   placePopover,
   popoverWidth,
@@ -244,5 +245,28 @@ describe('what holds a dropped card open', () => {
   it('is not the pointer anywhere else, or nowhere', () => {
     expect(holdsDrop(node(), [button, card, menu])).toBe(false);
     expect(holdsDrop(null, [button, card, null])).toBe(false);
+  });
+});
+
+// Code review A2 (2026-11-05): the card never takes the caret.
+describe('what Escape does to a dropped card', () => {
+  const field = node();
+  const card = node(node(field));
+  const button = node();
+  const menu = node();
+  const keepers = [button, card, menu];
+
+  it('puts it away with the caret anywhere outside it, the game’s console included', () => {
+    expect(escapePutsDropAway('Escape', node(), keepers)).toBe(true);
+    expect(escapePutsDropAway('Escape', null, keepers)).toBe(true);
+  });
+
+  it('leaves it to the card, or to a popup the card opened, when the caret is there', () => {
+    expect(escapePutsDropAway('Escape', field, keepers)).toBe(false);
+    expect(escapePutsDropAway('Escape', menu, keepers)).toBe(false);
+  });
+
+  it('is only Escape', () => {
+    expect(escapePutsDropAway('Enter', node(), keepers)).toBe(false);
   });
 });

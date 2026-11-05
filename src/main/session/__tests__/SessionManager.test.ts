@@ -3202,7 +3202,7 @@ describe('the actions kept beside the MegaMUD engine', () => {
   };
 
   /* A ward or a key off the floor: MegaMUD's pending list, which holds its walk (2026-10-14). */
-  it('put their commands on the engine’s pending list, said sent when it sends them', () => {
+  it('put their commands on the engine’s pending list, said sent when it sends them', async () => {
     engine();
     type Probe = { command: string; priority: 'probe'; coalesceKey?: string; onSent?: () => void };
     const inside = manager as unknown as {
@@ -3227,11 +3227,27 @@ describe('the actions kept beside the MegaMUD engine', () => {
     expect([sent.mock.calls.length, inside.keptQueue.queued(ours)]).toEqual([0, true]);
 
     pendingPump(inside.mega.s);
+    await Promise.resolve();
     expect([sent.mock.calls.length, inside.keptQueue.queued(ours)]).toEqual([1, false]);
 
     inside.keptQueue.enqueue({ command: 'say hi', priority: 'probe', coalesceKey: 'ward' });
     expect(inside.keptQueue.cancel(ours)).toBe(1);
     expect(inside.mega.s.pending).toEqual([]);
+  });
+
+  /* Code review A1 (2026-11-05): the pump echoes before it takes the command off. */
+  it('tells a sender once its command is off the pending list', async () => {
+    engine();
+    const inside = manager as unknown as { mega: MegaEngine };
+    inside.mega.s.inGame = 1;
+    let waiting: boolean | null = null;
+    inside.mega.queue('say hi', () => {
+      waiting = inside.mega.pendingHas('say hi');
+    });
+    pendingPump(inside.mega.s);
+    expect(waiting).toBeNull();
+    await Promise.resolve();
+    expect(waiting).toBe(false);
   });
 
   /* The pack's Drop, a press each or a stack a piece at a time (2026-11-01). */
@@ -3277,7 +3293,7 @@ describe('the actions kept beside the MegaMUD engine', () => {
   });
 
   /* MegaMUD buys only on its loop's start detour: an errand's purchase is ours (2026-10-14). */
-  it('buy at the counter a buy at a time, done when the pack holds it, given up when nothing came', () => {
+  it('buy at the counter a buy at a time, done when the pack holds it, given up when nothing came', async () => {
     vi.useFakeTimers();
     engine();
     const inside = manager as unknown as {
@@ -3300,12 +3316,14 @@ describe('the actions kept beside the MegaMUD engine', () => {
     inside.megaBuyTick(holding([]));
     expect(inside.mega.s.pending).toHaveLength(1);
     pendingPump(inside.mega.s);
+    await Promise.resolve();
     inside.megaBuyTick(holding(['torch']));
     expect(inside.megaBuying).toBeNull();
 
     inside.megaBuying = counter();
     inside.megaBuyTick(holding([]));
     pendingPump(inside.mega.s);
+    await Promise.resolve();
     vi.advanceTimersByTime(tuning().supplies.buyTimeoutMs + 1);
     inside.megaBuyTick(holding([]));
     expect(inside.megaBuying).toBeNull();
@@ -3480,7 +3498,7 @@ describe('the actions kept beside the MegaMUD engine', () => {
     let pendingNow: () => Array<{ text: string }> = () => [];
     const said = () => pendingNow().map((p) => p.text);
 
-    it('says bank at the vault, then withdraws, reads the purse back and walks on', () => {
+    it('says bank at the vault, then withdraws, reads the purse back and walks on', async () => {
       vi.useFakeTimers();
       const { inside, set, state } = setUp(200, []);
       pendingNow = () => inside.mega.s.pending;
@@ -3490,6 +3508,7 @@ describe('the actions kept beside the MegaMUD engine', () => {
       inside.megaBuyTick(state());
       expect(said()).toEqual(['bank\r']);
       pendingPump(inside.mega.s);
+      await Promise.resolve();
       inside.megaBuyTick(state());
       expect(said()).toEqual([]);
 
@@ -3508,7 +3527,7 @@ describe('the actions kept beside the MegaMUD engine', () => {
     });
 
     /* The realm's balance holds the price and not the minimum besides: the price alone. */
-    it('withdraws the price alone where the vault holds less than the minimum as well', () => {
+    it('withdraws the price alone where the vault holds less than the minimum as well', async () => {
       vi.useFakeTimers();
       const { inside, set, state } = setUp(200, []);
       pendingNow = () => inside.mega.s.pending;
@@ -3519,6 +3538,7 @@ describe('the actions kept beside the MegaMUD engine', () => {
       inside.megaBuying = buying;
       inside.megaBuyTick(state());
       pendingPump(inside.mega.s);
+      await Promise.resolve();
       vi.advanceTimersByTime(100);
       set({ banks: [{ shop: 7, name: vault.name, copper: 400, at: Date.now() }] });
       inside.megaBuyTick(state());
@@ -3527,7 +3547,7 @@ describe('the actions kept beside the MegaMUD engine', () => {
     });
 
     /* Only the minimum to top up, and the vault cannot: bought from the purse. */
-    it('goes on to the counter where only the minimum was to be topped up and cannot be', () => {
+    it('goes on to the counter where only the minimum was to be topped up and cannot be', async () => {
       vi.useFakeTimers();
       const { inside, set, state } = setUp(600, []);
       pendingNow = () => inside.mega.s.pending;
@@ -3539,6 +3559,7 @@ describe('the actions kept beside the MegaMUD engine', () => {
       inside.megaBuying = buying;
       inside.megaBuyTick(state());
       pendingPump(inside.mega.s);
+      await Promise.resolve();
       vi.advanceTimersByTime(100);
       set({ banks: [{ shop: 7, name: vault.name, copper: 50, at: Date.now() }] });
       inside.megaBuyTick(state());
@@ -3548,13 +3569,14 @@ describe('the actions kept beside the MegaMUD engine', () => {
       expect(inside.megaBuying).not.toBeNull();
     });
 
-    it('takes the balance the realm says over the record, and gives up where it is short', () => {
+    it('takes the balance the realm says over the record, and gives up where it is short', async () => {
       vi.useFakeTimers();
       const { inside, set, state } = setUp(200, [{ name: vault.name, copper: 900 }]);
       pendingNow = () => inside.mega.s.pending;
       inside.megaBuying = atVault();
       inside.megaBuyTick(state());
       pendingPump(inside.mega.s);
+      await Promise.resolve();
       // The record's 900, read before the ask, is not the answer.
       inside.megaBuyTick(state());
       expect(said()).toEqual([]);
@@ -3575,12 +3597,13 @@ describe('the actions kept beside the MegaMUD engine', () => {
       );
     });
 
-    it('gives the purchase up when the vault says no balance', () => {
+    it('gives the purchase up when the vault says no balance', async () => {
       vi.useFakeTimers();
       const { inside, state } = setUp(200, []);
       inside.megaBuying = atVault();
       inside.megaBuyTick(state());
       pendingPump(inside.mega.s);
+      await Promise.resolve();
       vi.advanceTimersByTime(tuning().supplies.buyTimeoutMs + 1);
       inside.megaBuyTick(state());
       expect(inside.megaBuying).toBeNull();
@@ -3593,12 +3616,13 @@ describe('the actions kept beside the MegaMUD engine', () => {
       );
     });
 
-    it('gives the purchase up when the vault pays nothing out', () => {
+    it('gives the purchase up when the vault pays nothing out', async () => {
       vi.useFakeTimers();
       const { inside, set, state } = setUp(200, []);
       inside.megaBuying = atVault();
       inside.megaBuyTick(state());
       pendingPump(inside.mega.s);
+      await Promise.resolve();
       vi.advanceTimersByTime(100);
       set({ banks: [{ shop: 7, name: vault.name, copper: 900, at: Date.now() }] });
       inside.megaBuyTick(state());
