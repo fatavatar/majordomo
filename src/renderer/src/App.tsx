@@ -193,6 +193,7 @@ import ResetPrompt from './components/ResetPrompt';
 import type { GlobalDraft, ProfileDraft, ServerDraft } from '@shared/drafts';
 import {
   linkNotices,
+  logNotices,
   alertQuiet,
   mayNotice,
   noticeFor,
@@ -2376,10 +2377,7 @@ export default function App() {
           return {
             ...v,
             state: payload,
-            notices: raised.reduce(
-              (log, notice) => capped(log, notice, tuning().noticeLimit),
-              v.notices
-            ),
+            notices: logNotices(v.notices, raised, tuning().noticeLimit),
             unseen: missed(v.unseen, raised, shownRef.current.has(id))
           };
         })
@@ -2431,10 +2429,7 @@ export default function App() {
           return {
             ...v,
             character: payload,
-            notices: raised.reduce(
-              (log, notice) => capped(log, notice, tuning().noticeLimit),
-              v.notices
-            ),
+            notices: logNotices(v.notices, raised, tuning().noticeLimit),
             unseen: missed(v.unseen, raised, shownRef.current.has(id))
           };
         })
@@ -2453,10 +2448,7 @@ export default function App() {
           return {
             ...v,
             walk: payload,
-            notices: raised.reduce(
-              (log, notice) => capped(log, notice, tuning().noticeLimit),
-              v.notices
-            ),
+            notices: logNotices(v.notices, raised, tuning().noticeLimit),
             unseen: missed(v.unseen, raised, shownRef.current.has(id))
           };
         })
@@ -2495,10 +2487,7 @@ export default function App() {
           return {
             ...v,
             automation: payload,
-            notices: raised.reduce(
-              (log, notice) => capped(log, notice, tuning().noticeLimit),
-              v.notices
-            ),
+            notices: logNotices(v.notices, raised, tuning().noticeLimit),
             unseen: missed(v.unseen, raised, shownRef.current.has(id))
           };
         })
@@ -2536,10 +2525,7 @@ export default function App() {
           return {
             ...v,
             talk: conversation ? capped(v.talk, payload, tuning().talkLimit) : v.talk,
-            notices: raised.reduce(
-              (log, notice) => capped(log, notice, tuning().noticeLimit),
-              v.notices
-            ),
+            notices: logNotices(v.notices, raised, tuning().noticeLimit),
             unseen: missed(v.unseen, raised, shownRef.current.has(id))
           };
         });

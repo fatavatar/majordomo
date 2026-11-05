@@ -8,6 +8,7 @@ import {
   desktopAlert,
   namedNotices,
   linkNotices,
+  logNotices,
   escapeNotices,
   TAB_ALERTS,
   noticeFor,
@@ -1102,5 +1103,52 @@ describe('the quiet time after a row fires', () => {
     const rules = [rule({ on: 'died' })];
     expect(wanted({ rules }, [said(0)])).toHaveLength(1);
     expect(wanted({ rules }, [said(1)])).toHaveLength(1);
+  });
+});
+
+describe('the log the Alerts card keys its rows on', () => {
+  /** Two monsters of one name walking in together, the way `roomNotices` raises them. */
+  const twoOceanids = (at: number): Notice[] => {
+    const room: CharacterState = {
+      ...EMPTY_CHARACTER,
+      room: {
+        ...EMPTY_CHARACTER.room,
+        occupants: ['dark oceanid', 'dark oceanid'].map((name) =>
+          classifyOccupant(name, {
+            players: new Set<string>(),
+            mob: () => ({ disposition: 'hostile', uncertain: false, costly: 'never' })
+          })
+        )
+      },
+      updatedAt: at
+    };
+    return roomNotices(EMPTY_CHARACTER, room, t);
+  };
+
+  it('gives a notice whose id is already in the log the next free one', () => {
+    const raised = twoOceanids(7000);
+    // The collision this is for: one moment, one name, one id.
+    expect(raised.map((notice) => notice.id)).toEqual(['mdark oceanid-7000', 'mdark oceanid-7000']);
+    const log = logNotices([], raised, 400);
+    expect(log.map((notice) => notice.id)).toEqual(['mdark oceanid-7000', 'mdark oceanid-7000~2']);
+    expect(log.map((notice) => notice.text)).toEqual(raised.map((notice) => notice.text));
+    const again = logNotices(log, twoOceanids(7000), 400);
+    expect(again.map((notice) => notice.id).slice(2)).toEqual([
+      'mdark oceanid-7000~3',
+      'mdark oceanid-7000~4'
+    ]);
+  });
+
+  it('keeps every id distinct however long it runs, and only the newest', () => {
+    let log: Notice[] = [];
+    for (let at = 0; at < 50; at += 1) log = logNotices(log, twoOceanids(1000 + at), 10);
+    expect(log).toHaveLength(10);
+    expect(new Set(log.map((notice) => notice.id)).size).toBe(10);
+    expect(log.at(-1)?.at).toBe(1049);
+  });
+
+  it('hands back the log itself when nothing was raised', () => {
+    const log = logNotices([], twoOceanids(7000), 400);
+    expect(logNotices(log, [], 400)).toBe(log);
   });
 });
