@@ -17,7 +17,7 @@ import fs from 'node:fs';
 
 import { by, db, loadDB, roomKey } from './vendor/js/db.js';
 import { detectEngine, engine } from './vendor/js/mmud/engine.js';
-import { blankChar, char, EQ_SLOTS, roster, switchChar } from './vendor/js/char.js';
+import { blankChar, char, EQ_SLOTS, roster, switchChar, type MmeChar } from './vendor/js/char.js';
 import { setSetting, setView, settings } from './vendor/js/state.js';
 import { isInGame, itemUsableBy, spellUsableBy } from './vendor/js/mmud/usable.js';
 import {
@@ -378,6 +378,13 @@ function useCharacter(state: CharacterState, options?: ExplorerOptions): void {
     const id = held.row?.id ?? held.id;
     if (id !== undefined && by.item.has(id)) equipItem(c, id, { toggle: false });
   }
+  /*
+   * The pack too, as the EQ tab weighs it (2026-11-06): left off, every swing
+   * was counted at the weight of what is worn alone. Skinny's elemental
+   * warhammer swung 5 at 11%, with quick-and-deadly's crits, where at the 25%
+   * the game reports he swings 4.8 and gets none.
+   */
+  carry(c, state, c.equipped);
   // The book names its spells; MME numbers them.
   c.learnedSpells = (state.spellbook ?? []).flatMap((spell) => {
     const n = numberNamed(db.Spells, spell.name);
@@ -1365,6 +1372,41 @@ function learnedAttackSpells(): Array<[number, string]> {
 }
 
 /**
+ * The pack on a character, read off the inventory: everything held its
+ * loadout does not put on as MME's carried items, and the rest of what it
+ * carries, by the encumbrance the game reports, as MME's additional weight —
+ * the reported figure less what is known of it, which is what is `worn` and
+ * everything held besides. What that rest weighs, or null unreported.
+ */
+function carry(c: MmeChar, state: CharacterState, worn: readonly number[]): number | null {
+  const encum = (n: number): number => (by.item.get(n)?.['Encum'] as number | undefined) ?? 0;
+  // The pack: everything held, less one of each the loadout puts on.
+  const held = new Map<number, number>();
+  for (const item of state.inventory.items) {
+    const id = item.row?.id ?? item.id;
+    if (id === undefined || !by.item.has(id)) continue;
+    held.set(id, (held.get(id) ?? 0) + Math.max(1, item.count ?? 1));
+  }
+  for (const n of c.equipped) if (n > 0 && held.has(n)) held.set(n, held.get(n)! - 1);
+  c.itemManager = [...held]
+    .filter(([, qty]) => qty > 0)
+    .map(([item, qty]) => ({ item, flag: 'CARRIED', qty, fieldQty: qty, source: 'Inventory' }));
+  // The rest of the pack, as `cmdEquipButtons(2)` works it out from the reported figure.
+  const reported = state.inventory.encumbrance;
+  if (reported === null) return null;
+  let known = 0;
+  for (const n of worn) if (n > 0) known += encum(n);
+  for (const item of state.inventory.items) {
+    const id = item.row?.id ?? item.id;
+    if (id !== undefined && !item.equipped) known += encum(id) * Math.max(1, item.count ?? 1);
+  }
+  const packWeight = Math.max(0, reported - known);
+  c.addWeight = packWeight;
+  c.useAddWeight = packWeight > 0;
+  return packWeight;
+}
+
+/**
  * The character as the EQ tab plans it (2026-10-19): what it wears, or the
  * plan's loadout; the pack, read off the inventory, as MME's carried items
  * (everything held the loadout does not put on); the rest of what it
@@ -1377,32 +1419,7 @@ export function useEqCharacter(state: CharacterState, plan: EqPlan): number | nu
   const worn = char.equipped.slice();
   const equipped = plan.equipped ?? worn;
   char.equipped = equipped.slice();
-  const encum = (n: number): number => (by.item.get(n)?.['Encum'] as number | undefined) ?? 0;
-  // The pack: everything held, less one of each the loadout puts on.
-  const held = new Map<number, number>();
-  for (const item of state.inventory.items) {
-    const id = item.row?.id ?? item.id;
-    if (id === undefined || !by.item.has(id)) continue;
-    held.set(id, (held.get(id) ?? 0) + Math.max(1, item.count ?? 1));
-  }
-  for (const n of equipped) if (n > 0 && held.has(n)) held.set(n, held.get(n)! - 1);
-  char.itemManager = [...held]
-    .filter(([, qty]) => qty > 0)
-    .map(([item, qty]) => ({ item, flag: 'CARRIED', qty, fieldQty: qty, source: 'Inventory' }));
-  // The rest of the pack, as `cmdEquipButtons(2)` works it out from the reported figure.
-  const reported = state.inventory.encumbrance;
-  let packWeight: number | null = null;
-  if (reported !== null) {
-    let known = 0;
-    for (const n of worn) if (n > 0) known += encum(n);
-    for (const item of state.inventory.items) {
-      const id = item.row?.id ?? item.id;
-      if (id !== undefined && !item.equipped) known += encum(id) * Math.max(1, item.count ?? 1);
-    }
-    packWeight = Math.max(0, reported - known);
-    char.addWeight = packWeight;
-    char.useAddWeight = packWeight > 0;
-  }
+  const packWeight = carry(char, state, worn);
   char.bless = Array.from({ length: 10 }, (_, i) => {
     const buff = state.buffs[i];
     return buff === undefined ? 0 : numberNamed(db.Spells, buff.spell);
