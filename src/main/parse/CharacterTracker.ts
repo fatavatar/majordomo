@@ -49,7 +49,13 @@ import {
   type ExperienceTable
 } from '../../shared/experience';
 import { readingOf, statlineMatcher, type StatlineReading } from '../../shared/statline';
-import { answersTo, attacksOnSight, classifyOccupant, rowNameOf } from '../../shared/mobs';
+import {
+  answersTo,
+  attacksOnSight,
+  classifyOccupant,
+  mobNameCandidates,
+  rowNameOf
+} from '../../shared/mobs';
 import {
   gained,
   lost,
@@ -85,7 +91,8 @@ import {
   unnamedEffect,
   unnamedEffectSentence,
   wordsOf,
-  type SpellLore
+  type SpellLore,
+  type SpellMessageKind
 } from '../../shared/spell-messages';
 import { castIn, confuses, holdsMovement, sharedBy } from '../../shared/spellcraft';
 import { afflictionOnset, PLAYER_STATUS_HEADER, sheetLines, STATUS_LINE } from './patterns';
@@ -463,6 +470,24 @@ const STATED_AFFLICTIONS: ReadonlyArray<readonly [MessageEffect, keyof Afflictio
 const ABOUT_CASTING = /\b(?:cast|casting|spells?|mana)\b/i;
 
 /**
+ * The party rank the `st` sheet prints among the effects at its foot: the
+ * shape of an effect sentence, and no effect. Learned as the start of the
+ * spell cast before the sheet, it was the start of spirit of the wolf and of
+ * antidote on Mudrev (Archer, 2026-10-27), and every buff sharing it ended
+ * with either.
+ */
+const PARTY_RANK = /^You are in the \w+ rank of your group\.$/;
+
+/**
+ * Somebody's cast, as the room is told of it: `Thom attempted to cast song of
+ * disharmonic blast, but failed.` was learned as the end of an effect with
+ * Thom out of the room listing (Archer, 2026-11-06). Narrower than
+ * `ABOUT_CASTING`, which the realm's own sentences fail (`Your starlight
+ * spell fades away.`).
+ */
+const CASTING_ATTEMPT = /\b(?:attempt(?:s|ed)?|moves?) to cast\b/i;
+
+/**
  * Whether a line nothing recognised is shaped like an effect sentence: one
  * sentence, beginning with a capital and ending in a full stop or a bang,
  * carrying no figure and no speech, and short. Every start and stop in the
@@ -472,7 +497,47 @@ const ABOUT_CASTING = /\b(?:cast|casting|spells?|mana)\b/i;
  */
 export function looksLikeEffectSentence(text: string): boolean {
   if (!/^[A-Z][^\d"]*[.!]$/.test(text)) return false;
+  if (PARTY_RANK.test(text) || CASTING_ATTEMPT.test(text)) return false;
   return wordsOf(text).length <= 14;
+}
+
+/**
+ * The lore as the tracker reads it: a sentence it only learned that is no
+ * effect sentence is no sentence, and is unlearned where it is met. What
+ * `looksLikeEffectSentence` refuses now was learned before it did — the party
+ * rank, as the start of spirit of the wolf — and a start that is never printed
+ * again tells every sheet the spell is down. The realm's own sentences are
+ * read as they are, whatever their shape.
+ */
+function effectsOnly(lore: SpellLore): SpellLore {
+  const misread = (spell: string, kind: SpellMessageKind, text: string | null): boolean => {
+    if (text === null || looksLikeEffectSentence(text) || !lore.taught(spell, kind)) return false;
+    lore.unlearn(spell, kind);
+    return true;
+  };
+  return {
+    match: (text) => {
+      const hit = lore.match(text);
+      if (hit === null || looksLikeEffectSentence(text)) return hit;
+      const starts = hit.starts.filter((spell) => !misread(spell, 'start', text));
+      const stops = hit.stops.filter((spell) => !misread(spell, 'stop', text));
+      return starts.length === 0 && stops.length === 0 ? null : { starts, stops };
+    },
+    startOf: (spell) => {
+      const text = lore.startOf(spell);
+      return misread(spell, 'start', text) ? null : text;
+    },
+    stopOf: (spell) => {
+      const text = lore.stopOf(spell);
+      return misread(spell, 'stop', text) ? null : text;
+    },
+    learn: (spell, kind, text, at) => {
+      if (looksLikeEffectSentence(text)) lore.learn(spell, kind, text, at);
+    },
+    unlearn: (spell, kind) => lore.unlearn(spell, kind),
+    taught: (spell, kind) => lore.taught(spell, kind),
+    effects: lore.effects
+  };
 }
 
 /** Whether `exp` has paid for every level `table` holds, so the level it is going towards is past it. */
@@ -483,6 +548,8 @@ function outrun(table: ExperienceTable | null, exp: number | null): boolean {
 
 export class CharacterTracker {
   private state: CharacterState = structuredClone(EMPTY_CHARACTER);
+  /** The realm's sentences, through `effectsOnly`. See the constructor's `spellLore`. */
+  private readonly spellLore: SpellLore;
   /** The server's lineage, as `SessionManager` read it. See `useFamily`. */
   private serverFamily: RealmFamily | null = null;
 
@@ -821,8 +888,9 @@ export class CharacterTracker {
      * `patterns.ts` and the watchdog clock as the only readers of a buff's
      * life, exactly as before the table existed.
      */
-    private readonly spellLore: SpellLore = NO_SPELL_LORE
+    spellLore: SpellLore = NO_SPELL_LORE
   ) {
+    this.spellLore = effectsOnly(spellLore);
     // Classification asks the realm's monster table and the roster, so a blow
     // that puts its attacker in the room comes back here to do it.
     this.fight = new FightTracker({
@@ -1122,8 +1190,20 @@ export class CharacterTracker {
     const stop = this.spellLore.stopOf(effect);
     this.spellLore.unlearn(effect, 'start');
     this.spellLore.unlearn(effect, 'stop');
-    if (start !== null) this.spellLore.learn(spell, 'start', start, at);
-    if (stop !== null) this.spellLore.learn(spell, 'stop', stop, at);
+    /*
+     * In place of whatever the spell had only been guessed to print: a
+     * learned book keeps a spell's first sentence, so a spell holding a
+     * guessed ending (spirit of the lion's was a griffon dying, 2026-11-01)
+     * would lose the effect's real one in the move.
+     */
+    if (start !== null) {
+      this.spellLore.unlearn(spell, 'start');
+      this.spellLore.learn(spell, 'start', start, at);
+    }
+    if (stop !== null) {
+      this.spellLore.unlearn(spell, 'stop');
+      this.spellLore.learn(spell, 'stop', stop, at);
+    }
   }
 
   /**
@@ -3568,7 +3648,22 @@ export class CharacterTracker {
     );
   }
 
-  /** Whether a sentence names this character, anybody in the room or anybody in the party. */
+  /**
+   * Whether a sentence names this character, anybody in the room or anybody in
+   * the party — or opens on a monster here or in the fight.
+   *
+   * A monster's own sentences call it by part of its name: the realm's
+   * message record never carries the room's modifiers, so a big red griffon
+   * dies to `The griffon lets out a bloodcurdling screech, and plummets to the
+   * ground!`, and a dragoon scout to `The dragoon drops to his knees and falls
+   * forward.` Nothing claimed the griffon's line on Mudrev, whose griffons die
+   * in the harpy's words, and it was learned as the ending of three spells;
+   * every griffon killed after ended them, and Archer recast spirit of the
+   * wolf 941 times in a morning (2026-11-06). Only as the subject, `The
+   * <name>` at the front: an effect's own sentence may mention an animal
+   * standing in the room (`The spirit of the wolf inhabits your body!` beside
+   * a grey wolf).
+   */
   private namesSomebody(s: CharacterState, text: string): boolean {
     const names = [
       s.name,
@@ -3576,7 +3671,7 @@ export class CharacterTracker {
       ...s.party.members.map((member) => member.name)
     ];
     const lower = text.toLowerCase();
-    return names.some((name) => {
+    const said = names.some((name) => {
       if (name === null || name.trim().length === 0) return false;
       const needle = name.trim().toLowerCase();
       const at = lower.indexOf(needle);
@@ -3585,6 +3680,18 @@ export class CharacterTracker {
       const after = lower[at + needle.length] ?? ' ';
       return !/[a-z0-9']/.test(before) && !/[a-z0-9]/.test(after);
     });
+    if (said) return true;
+    const monsters = [
+      ...s.room.occupants.filter((who) => who.kind !== 'player').map((who) => who.name),
+      ...(s.combat.target === null ? [] : [s.combat.target]),
+      ...s.combat.attackers
+    ];
+    return monsters.some((name) =>
+      mobNameCandidates(name.toLowerCase()).some((candidate) => {
+        const opening = `the ${candidate}`;
+        return lower.startsWith(opening) && !/[a-z0-9]/.test(lower[opening.length] ?? ' ');
+      })
+    );
   }
 
   /**
@@ -6359,9 +6466,24 @@ export class CharacterTracker {
        */
       case 'spell-onset': {
         const effect = g['effect']?.trim().toLowerCase();
-        const candidates = splitSpells(g['spells']);
+        const spells = splitSpells(g['spells']);
+        // The classifier reads the lore as stored; a start read here as none
+        // was only learned, and nothing began.
+        const candidates = spells.filter(
+          (spell) =>
+            !this.spellLore.taught(spell, 'start') || this.spellLore.startOf(spell) !== null
+        );
+        if (candidates.length === 0 && spells.length > 0) return null;
         const cast = this.lastSelfCast;
-        const followsCast = cast !== null && block.at - cast.at <= tuning().spells.onsetWindowMs;
+        /*
+         * A line of the sheet restates what is up and follows no cast, however
+         * soon after one it is printed: the wolf's line on a sheet asked for
+         * with an antidote just cast was learned as the antidote's start
+         * (Archer, 2026-11-06). What a sheet says about a cast,
+         * `learnStartFromSheet` reads.
+         */
+        const followsCast =
+          !this.sheetOpen && cast !== null && block.at - cast.at <= tuning().spells.onsetWindowMs;
 
         /*
          * **A hold is an onset the character cannot walk out of**, and the
@@ -6522,9 +6644,21 @@ export class CharacterTracker {
        */
       case 'user-buff-expired': {
         const spell = g['spell']?.trim();
-        const names = splitSpells(g['spells']);
+        let names = splitSpells(g['spells']);
         if (names.length === 0 && spell) names.push(spell);
         if (names.length === 0) return null;
+        /*
+         * A learned ending that opens on a monster here is the monster's own
+         * line, learned before `namesSomebody` knew a monster by its noun: the
+         * guess goes, rather than ending the buffs again at every kill. The
+         * realm's own sentences are never second-guessed.
+         */
+        if (this.namesSomebody(s, block.text.trim())) {
+          const guessed = names.filter((name) => this.spellLore.taught(name, 'stop'));
+          for (const name of guessed) this.spellLore.unlearn(name, 'stop');
+          names = names.filter((name) => !guessed.includes(name));
+          if (names.length === 0) return null;
+        }
         /*
          * **A wear-off ends whatever its own start turned on**, which for four
          * spells is a *condition* rather than a buff (todo 02, 2026-09-06,
@@ -6575,16 +6709,24 @@ export class CharacterTracker {
          * record 8542, `You feel safe from good!` — and matched by name alone
          * the aura stayed on the list and was never recast (skinny,
          * 2026-09-23).
+         *
+         * The realm's own starts only, on both sides. A learned start is a
+         * guess from adjacency, and one wrong guess shared by two spells ends
+         * the second with the first: spirit of the wolf and antidote had both
+         * learned the party rank line, so every ending learned for antidote
+         * took the wolf down too (Archer, 2026-11-06).
          */
+        const shippedStart = (name: string): string | null =>
+          this.spellLore.taught(name, 'start') ? null : this.spellLore.startOf(name);
         const starts = new Set(
           names
-            .map((name) => this.spellLore.startOf(name))
+            .map(shippedStart)
             .filter((start): start is string => start !== null)
             .map(effectKey)
         );
         const sameEffect = (buff: ActiveBuff): boolean =>
           this.buffNames(buff).some((name) => {
-            const start = this.spellLore.startOf(name);
+            const start = shippedStart(name);
             return start !== null && starts.has(effectKey(start));
           });
         const ended = next.buffs.filter(

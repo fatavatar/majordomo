@@ -9535,6 +9535,252 @@ describe('the spell message table and what it teaches', () => {
   });
 
   /*
+   * Archer on Mudrev (2026-11-06): the realm's griffons die in the harpy's
+   * words, under their noun alone, so nothing claimed the line and the sheet
+   * after it — the buff having worn off unheard — made it an ending.
+   */
+  const GRIFFON_DIES = 'The griffon lets out a bloodcurdling screech, and plummets to the ground!';
+  const GRIFFON_ROOM = ['Rocky Cliffs', 'Also here: big red griffon.', 'Obvious exits: west'];
+
+  it('learns no ending from a monster’s own line, named by its noun', () => {
+    const { lore, taught } = table();
+    const tracker = play(
+      [
+        ...GRIFFON_ROOM,
+        '[HP=34]:',
+        'You cast strange glow on yourself!',
+        'You shimmer with a strange light.',
+        { wait: 1_000 },
+        ...sheet('You shimmer with a strange light.'),
+        { wait: 60_000 },
+        GRIFFON_DIES,
+        { wait: 2_000 },
+        ...sheet()
+      ],
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      lore
+    );
+    expect(taught.filter((lesson) => lesson.kind === 'stop')).toEqual([]);
+    expect(names(tracker)).toEqual([]);
+  });
+
+  it('still learns an effect that mentions a monster here, past its subject', () => {
+    const { lore, taught } = table();
+    play(
+      [
+        'Forest Path',
+        'Also here: grey wolf.',
+        'Obvious exits: north',
+        '[HP=34]:',
+        'You cast strange glow on yourself!',
+        'The spirit of the wolf inhabits your body!',
+        { wait: 1_000 },
+        ...sheet('The spirit of the wolf inhabits your body!')
+      ],
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      lore
+    );
+    expect(taught).toEqual([
+      { spell: 'strange glow', kind: 'start', text: 'The spirit of the wolf inhabits your body!' }
+    ]);
+  });
+
+  it('unlearns an ending it took from a monster’s line, and keeps the buff', () => {
+    const { lore, forgot } = table();
+    lore.learn('strange glow', 'stop', GRIFFON_DIES, 0);
+    const tracker = play(
+      [
+        ...GRIFFON_ROOM,
+        '[HP=34]:',
+        'You cast strange glow on yourself!',
+        'You shimmer with a strange light.',
+        { wait: 5_000 },
+        GRIFFON_DIES
+      ],
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      lore
+    );
+    expect(forgot).toEqual([{ spell: 'strange glow', kind: 'stop' }]);
+    expect(names(tracker)).toEqual(['strange glow']);
+  });
+
+  /*
+   * The sheet prints the party rank among the effects. Archer's was learned
+   * as the start of the spell cast before a sheet it was new on (2026-10-27).
+   */
+  const FRONT_RANK = 'You are in the front rank of your group.';
+
+  it('learns no start from the party rank the sheet prints', () => {
+    const { lore, taught } = table();
+    play(
+      [
+        ...sheet(),
+        { wait: 1_000 },
+        '[HP=34]:',
+        'You cast strange glow on yourself!',
+        'You shimmer with a strange light.',
+        { wait: 1_000 },
+        ...sheet(FRONT_RANK)
+      ],
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      lore
+    );
+    expect(taught.map((lesson) => lesson.text)).not.toContain(FRONT_RANK);
+  });
+
+  it('unlearns the party rank as a start, and lists nothing for it', () => {
+    const { lore, forgot } = table();
+    lore.learn('strange glow', 'start', FRONT_RANK, 0);
+    const tracker = play(
+      ['[HP=34]:', ...sheet(FRONT_RANK)],
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      lore
+    );
+    expect(forgot).toEqual([{ spell: 'strange glow', kind: 'start' }]);
+    expect(names(tracker)).toEqual([]);
+  });
+
+  // And a sheet that no longer prints the rank does not say the spell is down.
+  it('keeps a buff up whose only learned start is the party rank', () => {
+    const { lore } = table();
+    lore.learn('strange glow', 'start', FRONT_RANK, 0);
+    const tracker = play(
+      [
+        '[HP=34]:',
+        'You cast strange glow on yourself!',
+        'You shimmer with a strange light.',
+        { wait: 5_000 },
+        ...sheet('You shimmer with a strange light.')
+      ],
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      lore
+    );
+    expect(names(tracker)).toContain('strange glow');
+    expect(lore.startOf('strange glow')).not.toBe(FRONT_RANK);
+  });
+
+  /*
+   * The sheet restates what is up. A sheet asked for straight after a cast
+   * printed spirit of the wolf's line, and the antidote just cast learned it
+   * (Archer, 2026-11-06).
+   */
+  it('learns no start for a cast from another spell’s line restated on a sheet', () => {
+    const { lore, taught } = table();
+    lore.learn('odd hum', 'start', 'You hum oddly.', 0);
+    const tracker = play(
+      [
+        '[HP=34]:',
+        'You cast odd hum on yourself!',
+        'You hum oddly.',
+        { wait: 60_000 },
+        'You cast strange glow on yourself!',
+        ...sheet('You hum oddly.')
+      ],
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      lore
+    );
+    expect(taught.filter((lesson) => lesson.spell === 'strange glow')).toEqual([]);
+    expect(names(tracker)).toContain('odd hum');
+  });
+
+  it('learns no ending from somebody else’s cast', () => {
+    const { lore, taught } = table();
+    play(
+      [
+        '[HP=34]:',
+        'You cast strange glow on yourself!',
+        'You shimmer with a strange light.',
+        { wait: 1_000 },
+        ...sheet('You shimmer with a strange light.'),
+        { wait: 60_000 },
+        'Thom attempted to cast song of disharmonic blast, but failed.',
+        { wait: 2_000 },
+        ...sheet()
+      ],
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      lore
+    );
+    expect(taught.filter((lesson) => lesson.kind === 'stop')).toEqual([]);
+  });
+
+  it('learns no ending from a monster named by the front of its name', () => {
+    const { lore, taught } = table();
+    play(
+      [
+        'Rocky Trail',
+        'Also here: dragoon scout.',
+        'Obvious exits: east',
+        '[HP=34]:',
+        'You cast strange glow on yourself!',
+        'You shimmer with a strange light.',
+        { wait: 1_000 },
+        ...sheet('You shimmer with a strange light.'),
+        { wait: 60_000 },
+        'The dragoon drops to his knees and falls forward.',
+        { wait: 2_000 },
+        ...sheet()
+      ],
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      lore
+    );
+    expect(taught.filter((lesson) => lesson.kind === 'stop')).toEqual([]);
+  });
+
+  /*
+   * One learned start shared by two spells is a guess, not the realm saying
+   * they are one effect: the ending of one leaves the other up.
+   */
+  it('ends no other buff through a start that was only learned', () => {
+    const { lore } = table();
+    lore.learn('strange glow', 'start', 'You glow.', 0);
+    lore.learn('odd hum', 'start', 'You glow.', 0);
+    lore.learn('strange glow', 'stop', 'The glow fades.', 0);
+    const tracker = play(
+      [
+        '[HP=34]:',
+        'You cast strange glow on yourself!',
+        { wait: 5_000 },
+        'You cast odd hum on yourself!',
+        { wait: 5_000 },
+        'The glow fades.'
+      ],
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      lore
+    );
+    expect(names(tracker)).toEqual(['odd hum']);
+  });
+
+  /*
    * An effect somebody *else* landed, which the learning here could never see
    * before (todo 00, 2026-09-12): it matches no frame, follows no cast of this
    * character's, and names no spell any table on disk holds. The stat sheet is
