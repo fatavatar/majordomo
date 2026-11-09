@@ -141,6 +141,54 @@ describe('the Tools tab', () => {
     expect(book.find((row) => row.name === 'magic missile')?.learned).toBe(true);
   });
 
+  /*
+   * A namesake ahead of the spell the book holds (2026-11-09): Mudrev names a
+   * spell more than once, and the first by name alone was a monster's copy
+   * with no casting word, so the book's own spell was never marked learned.
+   */
+  it('marks the book’s own spell learned past a namesake, by its casting word', async () => {
+    const twinned: MmeRealm = {
+      key: 'fixture:tools:namesake',
+      async read(name) {
+        const table = (await realm.read(name)) as { cols: string[]; rows: unknown[][] } | null;
+        if (name !== 'Spells' || table === null) return table;
+        const col = (field: string): number => table.cols.indexOf(field);
+        const own = table.rows.find((row) => row[col('Name')] === 'magic missile')!;
+        const twin = own.slice();
+        for (const [field, value] of [
+          ['Number', 9001],
+          ['Short', ''],
+          ['Magery', 0],
+          ['MageryLVL', 0],
+          ['Learnable', 0],
+          ['ReqLevel', 0]
+        ] as const)
+          twin[col(field)] = value;
+        return { ...table, rows: [twin, ...table.rows] };
+      }
+    };
+    const spells = (await realm.read('Spells')) as { cols: string[]; rows: unknown[][] };
+    const short = spells.rows.find((row) => row[spells.cols.indexOf('Name')] === 'magic missile')![
+      spells.cols.indexOf('Short')
+    ] as string;
+    const mage = warrior({
+      className: 'Mage',
+      spellbook: [{ name: 'magic missile', short, level: null, cost: null }]
+    });
+    const start = await explorerTool(twinned, mage, { tool: 'start' });
+    const book = await explorerTool(twinned, mage, {
+      tool: 'spellbook',
+      cls: start.profile.cls,
+      level: 50,
+      align: 0
+    });
+    const listed = book.filter((row) => row.name === 'magic missile');
+    expect(listed.map((row) => [row.number, row.learned])).toEqual([
+      [9001, false],
+      [1, true]
+    ]);
+  });
+
   it('runs a monster’s attacks against the character’s defences', async () => {
     const start = await explorerTool(realm, warrior(), { tool: 'start' });
     const sim = await explorerTool(realm, warrior(), {

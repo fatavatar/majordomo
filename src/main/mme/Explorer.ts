@@ -309,6 +309,38 @@ function numberNamed(rows: Array<Record<string, unknown>>, name: string | null):
 }
 
 /**
+ * A spell's number by what the book says of it (2026-11-09): its name, then
+ * its casting word, then one this class learns, then its level, each kept
+ * only where it leaves any. Mudrev names a spell more than once — a monster's
+ * copy, a later rank, a quest's — and the first by name alone was another
+ * spell: Skinny's necromantic storm was #899, a monster's with no casting
+ * word, not his #1448 (`nsto`), so MME never marked it learned.
+ */
+function spellNumbered(
+  cls: number,
+  spell: { name: string; short: string | null; level: number | null }
+): number {
+  const key = spell.name.trim().toLowerCase();
+  let rows = db.Spells.filter((row) => String(row['Name'] ?? '').toLowerCase() === key);
+  const narrow = (keep: (row: Row) => boolean): void => {
+    const kept = rows.filter(keep);
+    if (kept.length > 0) rows = kept;
+  };
+  const short = spell.short?.trim().toLowerCase() ?? '';
+  if (short !== '')
+    narrow(
+      (row) =>
+        String(row['Short'] ?? '')
+          .trim()
+          .toLowerCase() === short
+    );
+  narrow((row) => spellUsableBy(row, cls, 0, 0, true));
+  if (spell.level !== null) narrow((row) => row['ReqLevel'] === spell.level);
+  const n = rows[0]?.['Number'];
+  return typeof n === 'number' ? n : 0;
+}
+
+/**
  * The character being played, as MME's character (`char.js`): its class,
  * race, level, standing and stats off the tracker, and what it wears placed
  * in MME's slots by MME's own rule (`equipItem`). Made the active one.
@@ -387,7 +419,7 @@ function useCharacter(state: CharacterState, options?: ExplorerOptions): void {
   carry(c, state, c.equipped);
   // The book names its spells; MME numbers them.
   c.learnedSpells = (state.spellbook ?? []).flatMap((spell) => {
-    const n = numberNamed(db.Spells, spell.name);
+    const n = spellNumbered(c.cls, spell);
     return n > 0 ? [n] : [];
   });
   // Calc. Combat's target (`txtWeaponExtras(2..4)`), which MME keeps on the character.
@@ -1422,7 +1454,11 @@ export function useEqCharacter(state: CharacterState, plan: EqPlan): number | nu
   const packWeight = carry(char, state, worn);
   char.bless = Array.from({ length: 10 }, (_, i) => {
     const buff = state.buffs[i];
-    return buff === undefined ? 0 : numberNamed(db.Spells, buff.spell);
+    if (buff === undefined) return 0;
+    // As the book has it, where it does: its casting word picks among namesakes.
+    const named = buff.spell.trim().toLowerCase();
+    const known = state.spellbook?.find((spell) => spell.name.trim().toLowerCase() === named);
+    return spellNumbered(char.cls, known ?? { name: buff.spell, short: null, level: null });
   });
   char.statAdjustments = plan.adjustments.slice();
   char.attack = attackOf(plan.attack, char.level);
