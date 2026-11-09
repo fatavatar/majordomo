@@ -2,7 +2,7 @@ import { memo } from 'react';
 
 import RoundTimer, { type HeldRound } from './RoundTimer';
 import { rate, reachingReading, useExperienceView } from './ExperienceScope';
-import { barOf } from './StableView';
+import { barOf } from './GroupView';
 import { t } from '../lib/i18n';
 import type { CharacterState } from '@shared/character';
 import type { VitalsUiConfig } from '@shared/config';
@@ -52,21 +52,21 @@ function ConsoleStatus({ session, character, round, thresholds, name }: ConsoleS
     <div className="console-status" aria-label={t('consoleStatus.label')}>
       {name !== undefined && <b className="console-status-name">{name}</b>}
       <span className="console-status-vital">
-        <span className="quiet">{t('stable.row.hp')}</span>
-        <span className="stable-bar" data-kind="hp" data-level={hp.level}>
+        <span className="quiet">{t('group.row.hp')}</span>
+        <span className="group-bar" data-kind="hp" data-level={hp.level}>
           <span style={{ width: hp.width }} />
         </span>
-        <span className="stable-figure">{hp.text}</span>
+        <span className="group-figure">{hp.text}</span>
       </span>
       {vitals.mana !== null && (
         <span className="console-status-vital">
           <span className="quiet">
-            {vitals.manaType === 'KAI' ? t('stable.row.kai') : t('stable.row.mana')}
+            {vitals.manaType === 'KAI' ? t('group.row.kai') : t('group.row.mana')}
           </span>
-          <span className="stable-bar" data-kind="mana" data-level={mana.level}>
+          <span className="group-bar" data-kind="mana" data-level={mana.level}>
             <span style={{ width: mana.width }} />
           </span>
-          <span className="stable-figure">{mana.text}</span>
+          <span className="group-figure">{mana.text}</span>
         </span>
       )}
       <span className="console-status-exp">
@@ -91,7 +91,7 @@ function ConsoleStatus({ session, character, round, thresholds, name }: ConsoleS
           </span>
         )}
         <span
-          className="stable-bar"
+          className="group-bar"
           data-kind="exp"
           title={
             reading === null

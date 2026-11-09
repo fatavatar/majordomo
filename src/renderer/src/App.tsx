@@ -37,7 +37,7 @@ import { canRestore, type GearAction } from '@shared/gear';
 import { knownGangs } from './lib/gangs';
 import { ago, knownPlayerNames, presentPlayerNames } from './lib/players';
 import { NameIndex } from './lib/names';
-import { stableBlocks, type StableBlock } from './lib/stable';
+import { groupBlocks, type GroupBlock } from './lib/groupBlocks';
 import { SkinContext } from './lib/skin';
 import PlayersCard from './components/PlayersCard';
 import GangCard from './components/GangCard';
@@ -60,25 +60,23 @@ import RoomQuickView, { type RoomAsked } from './components/RoomQuickView';
 import { ownAlignment } from './components/LairList';
 import TabRail, { type RailSide } from './components/TabRail';
 
-/** How the panes divide the slate. */
-type PaneFlow = 'rows' | 'columns';
-
 import DebugView from './components/DebugView';
 import type { DebugRecord } from '@shared/debug';
 import StatusRail from './components/StatusRail';
 import type { HeldRound } from './components/RoundTimer';
 import ConsoleStatus from './components/ConsoleStatus';
 import {
-  StableAway,
-  StableHead,
-  StableParty,
-  StableStatus,
+  GroupParty,
+  GroupSince,
+  GroupSlim,
+  GroupStatus,
+  inRealm,
   madeSince,
   useAwaySince,
   useNarrow,
-  useStableSizes,
+  useGroupSizes,
   useStatusCards
-} from './components/StableView';
+} from './components/GroupView';
 
 import StreamCard from './components/StreamCard';
 import VitalsCard from './components/VitalsCard';
@@ -98,7 +96,7 @@ import { useToolbarPins } from './hooks/useToolbarPins';
 import { useParty, type PartyContext } from './hooks/useParty';
 import { memberNames } from './lib/partyBoard';
 import { useSettingsScreen } from './hooks/useSettingsScreen';
-import { usePanes } from './hooks/usePanes';
+import { useView } from './hooks/useView';
 import { useCardRail } from './hooks/useCardRail';
 import { forgetStatsBase, recallStatsBase } from './hooks/useRemembered';
 import NavigationCard from './components/NavigationCard';
@@ -130,7 +128,6 @@ import { usePaneWidths } from './hooks/usePaneWidths';
 import { usePinnedCommands } from './hooks/usePins';
 import { Splitter } from './components/Splitter';
 import {
-  CONSOLE_COLUMNS as MIN_COLUMNS,
   CONSOLE_ROWS,
   DOCK_RANGE,
   RAIL_RANGE,
@@ -277,12 +274,12 @@ const CARD_TITLE = new Map<string, string>(CARDS.map((card) => [card.id, card.la
 const STATUS_CARD_MIN_PX = 60;
 const STATUS_CARD_MAX_PX = 1200;
 
-/** The Stable's status column: its width until dragged, and the least either side keeps. */
-const STABLE_STATUS_PX = 320;
-const STABLE_STATUS_MIN_PX = 240;
-const STABLE_CONSOLE_MIN_PX = 420;
-/** The gap between the Stable's rows, as `.terminal-layers` has it. */
-const STABLE_GAP_PX = 8;
+/** A group's status column: its width until dragged, and the least either side keeps. */
+const GROUP_STATUS_PX = 320;
+const GROUP_STATUS_MIN_PX = 240;
+const GROUP_CONSOLE_MIN_PX = 420;
+/** One character on screen: its console's cell, where every other one parks hidden. */
+const ONE_CELL = { row: 1, column: 1 };
 
 const INITIAL_STATE: ConnectionState = {
   phase: 'idle',
@@ -1338,12 +1335,12 @@ function StatusCardStack({
     window.addEventListener('pointerup', up);
   };
   return (
-    <div className="stable-cards">
+    <div className="group-cards">
       {ids.map((id) => {
         const height = heightOf(id);
         return (
           <div
-            className="stable-card"
+            className="group-card"
             key={id}
             style={
               height === undefined
@@ -1376,24 +1373,32 @@ export default function App() {
   const [profiles, setProfiles] = useState<ProfileSummary[]>([]);
   const [views, setViews] = useState<Record<SessionId, SessionView>>({});
 
-  /** The characters on screen, or the Stable in their place (`usePanes`). */
+  /** The character on screen, or its tab group a row each (`useView`). */
   const {
-    panes,
-    paneAt,
     session,
-    stableOn,
-    stableRows,
-    stableAway,
-    stableLeftOut,
-    fromStable,
-    leaveOut,
-    bringBack,
+    rows: groupRows,
+    groups,
+    order: railSessions,
+    fromGroup,
     showSession,
-    showStable,
-    focusPane,
-    placePane,
-    closePane
-  } = usePanes(sessions, views);
+    openAlone,
+    backToGroup,
+    focusRow,
+    addToView,
+    removeFromView
+  } = useView(sessions);
+  /** A group on screen, a row each, rather than one character. */
+  const groupOn = groupRows !== null;
+  /*
+   * Its sizes (2026-10-31): the status column's width, dragged by the handle
+   * between it and the consoles, and the column slimmed (2026-11-09).
+   */
+  const groupSizes = useGroupSizes();
+  /** The characters in the view on screen. */
+  const inView = useMemo(
+    () => (groupRows === null ? [session] : groupRows.map((entry) => entry.id)),
+    [groupRows, session]
+  );
 
   /** Every session is a character with a name worth showing; none is no rail. */
   const showTabs = sessions.length > 0;
@@ -1820,20 +1825,6 @@ export default function App() {
   const railSide: 'left' | 'right' = tabSide === 'right' ? 'left' : 'right';
 
   /**
-   * Stacked or side by side.
-   *
-   * Stacked is the default because rows are cheap and columns are not: the
-   * console needs 80 of them and no server in this family will format to fewer.
-   * That is the opposite of the browser convention, and it follows from the
-   * game rather than from taste.
-   */
-  const [paneFlow, setPaneFlow] = useOverridablePreference<PaneFlow>(
-    'mudengine.panes',
-    'rows',
-    (value): value is PaneFlow => value === 'rows' || value === 'columns'
-  );
-
-  /**
    * How this character's rail is arranged, remembered per character.
    *
    * Which cards are on it, in what order, which have been lifted off onto the
@@ -2017,11 +2008,14 @@ export default function App() {
    */
   const shownRef = useRef<Set<SessionId>>(new Set());
 
-  /** The character on screen, for callbacks that must not go stale. */
+  /**
+   * The character on screen, for callbacks that must not go stale. Kept in
+   * the render rather than an effect: a console becoming visible republishes
+   * its size from its own effect, which runs before the window's, and was
+   * taken for another character's (2026-11-09, a group's member shown alone).
+   */
   const activeRef = useRef(session);
-  useEffect(() => {
-    activeRef.current = session;
-  }, [session]);
+  activeRef.current = session;
 
   /** For the line-feed catch-up, which must not re-run on a roster push. */
   const sessionsRef = useRef(sessions);
@@ -2246,16 +2240,16 @@ export default function App() {
 
   /*
    * Putting a character on screen is what "seen" means, so its unseen count
-   * clears here rather than on a click: a split that brings a second character
-   * up, a pane closing, and a tab switch are all the same event as far as
-   * having looked at it is concerned.
+   * clears here rather than on a click: a character added to the view, one
+   * taken out, and a tab switch are all the same event as far as having looked
+   * at it is concerned.
    */
   useEffect(() => {
-    shownRef.current = new Set(panes);
-    for (const id of panes) {
+    shownRef.current = new Set(inView);
+    for (const id of inView) {
       patchView(id, (v) => (v.unseen.alerts === 0 ? v : { ...v, unseen: EMPTY_UNSEEN }));
     }
-  }, [panes, patchView]);
+  }, [inView, patchView]);
 
   /**
    * Throughput is reported for the character being watched.
@@ -2616,8 +2610,8 @@ export default function App() {
     (character.phase === 'in-game' && loops.length > 0);
 
   const inGame = character.phase === 'in-game';
-  // In the Stable, the tabs are one compact row across the top: its rows carry the rest.
-  const tabsAt: RailSide = stableOn ? 'top' : tabSide;
+  // A group shown, the tabs are one compact row across the top: its rows carry the rest.
+  const tabsAt: RailSide = groupOn ? 'top' : tabSide;
 
   const connected = state.phase === 'connected';
   // Refused only while a close is under way; a dial with no answer is made again.
@@ -2686,10 +2680,19 @@ export default function App() {
     [dial, hangUp, sessions, views]
   );
 
-  // Every character in the realm stopped where it stands, from the Stable's head.
+  /** The characters in the realm, or on their way there, whatever is on screen. */
+  const realmKey = sessions
+    .filter((entry) => inRealm(views[entry.id]))
+    .map((entry) => entry.id)
+    .join('\n');
+  const realmRows = useMemo(
+    () => sessions.filter((entry) => realmKey.split('\n').includes(entry.id)),
+    [sessions, realmKey]
+  );
+  // Every character in the realm stopped where it stands, from the palette.
   const stopAll = useCallback(() => {
-    for (const entry of stableRows) void api.stopMoving(entry.id);
-  }, [api, stableRows]);
+    for (const entry of realmRows) void api.stopMoving(entry.id);
+  }, [api, realmRows]);
   const stopIn = useCallback((id: SessionId) => void api.stopMoving(id), [api]);
   const away = useAwaySince();
   const narrow = useNarrow();
@@ -2767,115 +2770,16 @@ export default function App() {
 
   const stepSession = useCallback(
     (delta: number) => {
-      if (sessions.length < 2) return;
-      const at = sessions.findIndex((entry) => entry.id === session);
-      const next = sessions[(at + delta + sessions.length) % sessions.length];
+      if (railSessions.length < 2) return;
+      const at = railSessions.findIndex((entry) => entry.id === session);
+      const next = railSessions[(at + delta + railSessions.length) % railSessions.length];
       if (next) showSession(next.id);
     },
-    [session, sessions, showSession]
+    [session, railSessions, showSession]
   );
 
-  /** The element the panes divide, so a split can be measured before it is made. */
+  /** The element the consoles are laid out in. */
   const layersRef = useRef<HTMLDivElement | null>(null);
-
-  /**
-   * How many columns each pane would get if the slate were divided `count` ways
-   * side by side.
-   *
-   * Arithmetic on a *measured* cell width, never on a constant. There is no
-   * minimum-pane-width in pixels anywhere in this path and there cannot be:
-   * display scaling differs per user, a window can be dragged to a monitor with
-   * another scale factor, and the terminal font size is a setting. The live
-   * terminal's own geometry is the only honest source for what a column costs.
-   *
-   * A prediction only — once the split lands each pane measures itself for real
-   * and reality wins. This exists to avoid making the mess, not to be believed
-   * afterwards.
-   */
-  const columnsIfSplit = useCallback(
-    (count: number): number | null => {
-      const box = layersRef.current;
-      if (!box || size.cols <= 0) return null;
-      const cell = box.clientWidth / size.cols;
-      if (!Number.isFinite(cell) || cell <= 0) return null;
-      // The gaps between panes are not available to any of them.
-      const gap = 8 * (count - 1);
-      return Math.floor((box.clientWidth - gap) / count / cell);
-    },
-    [size.cols]
-  );
-
-  /**
-   * The one gate on going side by side: predicts the split, and when each
-   * console would fall under the floor, prints the caller's refusal into the
-   * shown terminal. True means refused, so the caller stands down. Shared by
-   * `addPane` and `turnPanes` because the arithmetic and the reporting must
-   * not drift apart — only the remedy clause differs.
-   */
-  const refuseNarrowSplit = useCallback(
-    (count: number, message: (columns: number) => string): boolean => {
-      const predicted = columnsIfSplit(count);
-      if (predicted === null || predicted >= MIN_COLUMNS) return false;
-      terminals.current.get(session)?.notice(message(predicted));
-      return true;
-    },
-    [columnsIfSplit, session]
-  );
-
-  /**
-   * Put another character on screen beside this one.
-   *
-   * Refused when the slate cannot carry it side by side, with the only two
-   * remedies there are: stack instead, or use a smaller terminal font. There is
-   * no third — the server never negotiates NAWS, so "tell it we are narrower"
-   * is not a thing that exists.
-   */
-  const addPane = useCallback(
-    (id: SessionId) => {
-      if (panes.length >= tuning().maxPanes || panes.includes(id)) return;
-
-      if (
-        paneFlow === 'columns' &&
-        refuseNarrowSplit(panes.length + 1, (columns) =>
-          t('notices.panes.splitTooNarrowStack', { columns, minColumns: MIN_COLUMNS })
-        )
-      ) {
-        return;
-      }
-
-      placePane(id);
-    },
-    [paneFlow, panes, placePane, refuseNarrowSplit]
-  );
-
-  /**
-   * Turn the split, if the slate can carry it.
-   *
-   * Guarded for the same reason `addPane` is, and it is the same gate: asking
-   * for side by side is a deliberate action, so it is refused with a reason
-   * rather than granted and then complained about. Turning *back* to stacked is
-   * always allowed — it can only ever give a console more room.
-   *
-   * This is not the same case as a split that drifts under the floor because
-   * the window was dragged narrower. That one is reported and never corrected:
-   * a layout that reorganises itself under someone's hands mid-combat is a
-   * hazard, and the status rail says `narrow` instead.
-   */
-  const turnPanes = useCallback(
-    (next: PaneFlow) => {
-      if (
-        next === 'columns' &&
-        panes.length > 1 &&
-        refuseNarrowSplit(panes.length, (columns) =>
-          t('notices.panes.splitTooNarrowKeep', { columns, minColumns: MIN_COLUMNS })
-        )
-      ) {
-        return;
-      }
-      setPaneFlow(next);
-    },
-    [panes.length, refuseNarrowSplit, setPaneFlow]
-  );
 
   /** The banner's Stop, addressed at the pane's own character; one function for every pane. */
   const stopRunFor = useCallback((sid: SessionId) => void api.questStop(sid), [api]);
@@ -4057,9 +3961,9 @@ export default function App() {
   const openShowing = useCallback(
     (sid: SessionId, screen: ShownScreen) => {
       openOnShow.current = { sid, screen };
-      focusPane(sid);
+      focusRow(sid);
     },
-    [focusPane]
+    [focusRow]
   );
 
   /*
@@ -4919,27 +4823,37 @@ export default function App() {
         run: () => reveal(() => api.revealLogs())
       },
 
-      // Layout: what is on screen and how it is arranged -- panes and cards.
-      // The Stable, or back to the character the keyboard is talking to.
-      stableOn
-        ? {
-            id: 'stable',
-            icon: 'user' as const,
-            label: t('palette.layout.leaveStableLabel'),
-            hint: t('palette.layout.leaveStableHint'),
-            group: 'layout' as const,
-            keywords: ['stable', 'characters', 'all'],
-            run: () => showSession(session)
-          }
-        : {
-            id: 'stable',
-            icon: 'users' as const,
-            label: t('palette.layout.stableLabel'),
-            hint: t('palette.layout.stableHint'),
-            group: 'layout' as const,
-            keywords: ['stable', 'characters', 'all', 'overview'],
-            run: showStable
-          },
+      // Layout: what is on screen and how it is arranged -- the view and cards.
+      // Back to the group of a character opened alone from it.
+      ...(fromGroup
+        ? [
+            {
+              id: 'group:back',
+              icon: 'users' as const,
+              label: t('palette.layout.backToGroupLabel'),
+              hint: t('palette.layout.backToGroupHint'),
+              group: 'layout' as const,
+              keywords: ['group', 'view', 'characters', 'back'],
+              run: backToGroup
+            }
+          ]
+        : []),
+      // A group shown: its status column put away or brought out.
+      ...(groupOn
+        ? [
+            {
+              id: 'group:status',
+              icon: 'columns' as const,
+              label: groupSizes.collapsed
+                ? t('palette.layout.showStatusLabel')
+                : t('palette.layout.hideStatusLabel'),
+              hint: t('palette.layout.statusHint'),
+              group: 'layout' as const,
+              keywords: ['group', 'status', 'collapse', 'cards', 'side'],
+              run: () => groupSizes.setCollapsed(!groupSizes.collapsed)
+            }
+          ]
+        : []),
       // The cards tucked away into a strip, out on hover, or pinned out beside the console.
       tuckPreference === 'tucked'
         ? {
@@ -4960,47 +4874,31 @@ export default function App() {
             keywords: ['cards', 'rail', 'tuck', 'hide', 'auto'],
             run: () => setTucked(true)
           },
-      // Panes: only ever offered when there is something to put in one.
-      ...(panes.length < tuning().maxPanes
+      // The view on screen (2026-11-09): every other character added to it,
+      // every member of the group shown taken out of it.
+      ...sessions
+        .filter((entry) => !inView.includes(entry.id))
+        .map((entry) => ({
+          id: `view:add:${entry.id}`,
+          icon: 'plus' as const,
+          label: t('palette.layout.addToViewLabel', { characterName: entry.name }),
+          hint: t('palette.layout.addToViewHint'),
+          group: 'layout' as const,
+          keywords: ['group', 'view', 'add', 'split', 'together', entry.name],
+          run: () => addToView(entry.id)
+        })),
+      ...(groupOn
         ? sessions
-            .filter((entry) => !panes.includes(entry.id))
+            .filter((entry) => inView.includes(entry.id))
             .map((entry) => ({
-              id: `pane:${entry.id}`,
-              icon: 'split' as const,
-              label: t('palette.layout.splitLabel', { characterName: entry.name }),
-              hint:
-                paneFlow === 'columns'
-                  ? t('palette.layout.splitSideBySideHint')
-                  : t('palette.layout.splitStackedHint'),
+              id: `view:remove:${entry.id}`,
+              icon: 'minus' as const,
+              label: t('palette.layout.removeFromViewLabel', { characterName: entry.name }),
+              hint: t('palette.layout.removeFromViewHint'),
               group: 'layout' as const,
-              run: () => addPane(entry.id)
+              keywords: ['group', 'view', 'remove', 'ungroup', 'alone', entry.name],
+              run: () => removeFromView(entry.id)
             }))
-        : []),
-      ...(panes.length > 1
-        ? [
-            {
-              id: 'unsplit',
-              icon: 'close' as const,
-              label: t('palette.layout.unsplitLabel'),
-              hint: t('palette.layout.unsplitPanesHint', { paneCount: panes.length }),
-              group: 'layout' as const,
-              run: closePane
-            },
-            {
-              id: 'paneflow',
-              icon: 'columns' as const,
-              label:
-                paneFlow === 'rows'
-                  ? t('palette.layout.panesSideBySideLabel')
-                  : t('palette.layout.panesStackedLabel'),
-              hint:
-                paneFlow === 'rows'
-                  ? t('palette.layout.paneflowNeedsColumnsHint', { minColumns: MIN_COLUMNS })
-                  : t('palette.layout.paneflowRowsCheapHint'),
-              group: 'layout' as const,
-              run: () => turnPanes(paneFlow === 'rows' ? 'columns' : 'rows')
-            }
-          ]
         : []),
       // Bringing a card back. Only the ones actually put away, so the palette
       // does not list six things that are already on screen.
@@ -5113,11 +5011,14 @@ export default function App() {
       showTabs,
       phases,
       cards,
-      panes,
-      paneFlow,
-      turnPanes,
-      addPane,
-      closePane,
+      inView,
+      groupOn,
+      fromGroup,
+      backToGroup,
+      addToView,
+      removeFromView,
+      groupSizes.collapsed,
+      groupSizes.setCollapsed,
       session,
       showSession,
       closeSession,
@@ -5182,13 +5083,15 @@ export default function App() {
     { key: 't', mod: true, shift: true, run: cycleTheme },
     { key: 'f', mod: true, run: toggleSearch },
     // Browser muscle memory, and the game has no use for either chord.
+    // The next character not on screen added to the view, or, every one on
+    // it, the one with the keyboard taken out again (the old split's chord).
     {
       key: '\\',
       mod: true,
       run: () => {
-        const next = sessions.find((entry) => !panes.includes(entry.id));
-        if (next) addPane(next.id);
-        else closePane();
+        const next = railSessions.find((entry) => !inView.includes(entry.id));
+        if (next) addToView(next.id);
+        else if (groupOn) removeFromView(session);
       }
     },
     { key: 'Tab', mod: true, run: () => stepSession(1) },
@@ -5276,13 +5179,12 @@ export default function App() {
       ? [{ key: 'Escape', run: closeDebug }]
       : []),
     /*
-     * Back to the Stable from a character opened from it (2026-10-31), last
-     * of all: only when nothing else on screen wants the key, and only after
-     * coming from the Stable, so a bare Escape still reaches the game the
+     * Back to the group from a character opened alone from it (2026-10-31),
+     * last of all: only when nothing else on screen wants the key, and only
+     * after coming from the group, so a bare Escape still reaches the game the
      * rest of the time.
      */
-    ...(fromStable &&
-    !stableOn &&
+    ...(fromGroup &&
     asked === null &&
     flyout === null &&
     browsing === null &&
@@ -5294,7 +5196,7 @@ export default function App() {
     !routeOpen &&
     !railOpen &&
     !settingsOpen
-      ? [{ key: 'Escape', run: showStable }]
+      ? [{ key: 'Escape', run: backToGroup }]
       : [])
   ]);
 
@@ -5562,17 +5464,17 @@ export default function App() {
            * it was opened for. On a pinned float the button opens it for the
            * character on screen rather than for the float's own — so it is
            * `null` there and the button is not drawn, which is the rule a
-           * control bound to nowhere already follows in this client. A Stable
-           * console's row shows its character and opens it for them
+           * control bound to nowhere already follows in this client. A group's
+           * console row shows its character and opens it for them
            * (`openShowing`).
            */
-          openLoops: shown ? toggleLoops : stableOn ? () => openShowing(sid, 'loops') : null,
+          openLoops: shown ? toggleLoops : groupOn ? () => openShowing(sid, 'loops') : null,
           openExplorer: shown
             ? toggleExplorer
-            : stableOn
+            : groupOn
               ? () => openShowing(sid, 'explorer')
               : null,
-          openBuilder: shown ? openBuilder : stableOn ? () => openShowing(sid, 'builder') : null,
+          openBuilder: shown ? openBuilder : groupOn ? () => openShowing(sid, 'builder') : null,
           /*
            * A card dropped down from a toolbar button, drawn for this
            * character with the card's own settings and none of the rail's
@@ -5585,7 +5487,7 @@ export default function App() {
               chrome: { cardId: id, returnFocus, settings: chromeFor(id).settings }
             })
         },
-        // Per character: each console in the Stable wears its own row.
+        // Per character: each console in a group wears its own row.
         toolbarPinned: toolbarPins.pinnedFor(sid),
         pinToolbarButton: bound.pinToolbarButton,
         nameIndex: nameIndexes[sid] ?? null,
@@ -5633,7 +5535,7 @@ export default function App() {
       sayRefusal,
       openExplorerAt,
       openShowing,
-      stableOn,
+      groupOn,
       partyFor
     ]
   );
@@ -5909,22 +5811,22 @@ export default function App() {
     return (
       <ConsoleStatus
         character={v.character}
-        name={stableOn ? (v.character.name ?? sessions.find((s) => s.id === sid)?.name) : undefined}
+        name={groupOn ? (v.character.name ?? sessions.find((s) => s.id === sid)?.name) : undefined}
         round={v.round}
         session={sid}
         thresholds={config.ui.vitals}
       />
     );
   };
-  /** The experience's hours views restarted for a character, from the Stable's picker. */
+  /** The experience's hours views restarted for a character, from a status's picker. */
   const resetExpOf = useCallback((sid: SessionId) => void api.expReset(sid), [api]);
-  /** A character's toolbar row, small on its status in the Stable. */
+  /** A character's toolbar row, small over its console in a group. */
   const toolbarFor = useCallback(
     (sid: SessionId): ReactNode => {
       const v = views[sid] ?? EMPTY_VIEW;
       const ctx = contextFor(sid, v, { cardId: 'toolbar', returnFocus });
       return (
-        <div className="stable-toolbar">
+        <div className="group-toolbar">
           <ToolbarRow
             onPinButton={ctx.pinToolbarButton}
             pinnedButtons={ctx.toolbarPinned}
@@ -6005,34 +5907,39 @@ export default function App() {
   };
 
   /*
-   * The Stable laid out (2026-10-31): its rows as blocks, a party's members
-   * together under one status (`stableBlocks`), and the grid cell each status
+   * A group laid out (2026-10-31): its rows as blocks, a party's members
+   * together under one status (`groupBlocks`), and the grid cell each status
    * and each console takes. Beside its status a party's consoles take a row
    * each, one under the other, the status spanning them; on a narrow window
-   * the status goes above them.
+   * the status goes above them. The palette's party verbs read the same
+   * blocks over every character in the realm.
    */
-  const stableNames = stableRows
+  const groupNames = sessions
     .map((entry) => `${entry.id}=${views[entry.id]?.character.name ?? ''}`)
     .join('\n');
   const blocks = useMemo(
-    () => stableBlocks(stableRows, (id) => views[id]?.character.name ?? null, rosters),
+    () => groupBlocks(groupRows ?? [], (id) => views[id]?.character.name ?? null, rosters),
     // The names are what the grouping reads of the views.
-    [stableRows, stableNames, rosters] // eslint-disable-line react-hooks/exhaustive-deps
+    [groupRows, groupNames, rosters] // eslint-disable-line react-hooks/exhaustive-deps
+  );
+  const realmBlocks = useMemo(
+    () => groupBlocks(realmRows, (id) => views[id]?.character.name ?? null, rosters),
+    [realmRows, groupNames, rosters] // eslint-disable-line react-hooks/exhaustive-deps
   );
   /**
    * Verbs in the palette (2026-11-01, the card rethink's V4): what the party
    * and every character can be told, as words to type -- `regroup`, `muster`,
    * a party's or everyone's `stop`, `disband` -- each the Party card's or the
-   * Stable's own action, so typing one is pressing that button. A party is
-   * offered while two or more of it are in the realm, as the Stable groups it.
+   * group's own action, so typing one is pressing that button. A party is
+   * offered while two or more of it are in the realm.
    */
   const verbCommands = useMemo<Command[]>(() => {
     const verbs: Command[] = [];
     const nameOf = (id: SessionId): string => sessions.find((entry) => entry.id === id)?.name ?? id;
-    for (const block of blocks) {
+    for (const block of realmBlocks) {
       if (block.kind !== 'party') continue;
       const { roster } = block;
-      const party = t('stable.party.title', { leader: roster.leader ?? nameOf(block.ids[0]!) });
+      const party = t('group.party.title', { leader: roster.leader ?? nameOf(block.ids[0]!) });
       const words = ['party', 'group', ...block.ids.map(nameOf)];
       verbs.push({
         id: `party:${roster.id}:regroup`,
@@ -6074,7 +5981,7 @@ export default function App() {
         run: () => disbandParty(roster.id)
       });
     }
-    if (stableRows.length > 0) {
+    if (realmRows.length > 0) {
       verbs.push({
         id: 'everyone:stop',
         icon: 'stop',
@@ -6085,7 +5992,7 @@ export default function App() {
         run: stopAll
       });
     }
-    for (const entry of stableRows) {
+    for (const entry of realmRows) {
       verbs.push({
         id: `stop:${entry.id}`,
         icon: 'stop',
@@ -6097,82 +6004,65 @@ export default function App() {
       });
     }
     return verbs;
-  }, [blocks, sessions, stableRows, regroupParty, musterParty, disbandParty, stopIn, stopAll]);
+  }, [realmBlocks, sessions, realmRows, regroupParty, musterParty, disbandParty, stopIn, stopAll]);
   const paletteCommands = useMemo(() => [...commands, ...verbCommands], [commands, verbCommands]);
-  /*
-   * Its sizes, dragged (2026-10-31): the status column's width, by the handle
-   * between it and the consoles, and each console's height, by the handle
-   * along its foot. A console not dragged is `stable.lines` tall (half that on
-   * a narrow window); a row grows past that where its status needs the room.
-   */
-  const stableSizes = useStableSizes();
+  // The status column slimmed to a strip a console, and back (2026-11-09).
+  const { setCollapsed } = groupSizes;
+  const collapseStatus = useCallback(() => setCollapsed(true), [setCollapsed]);
+  const expandStatus = useCallback(() => setCollapsed(false), [setCollapsed]);
   // The cards placed on each status, the toolbar on every one until taken off.
   const statusCards = useStatusCards();
-  const consoleRowPx = Math.ceil(tuning().stableLines * config.terminal.font.size * 1.2) + 14;
   /*
-   * One height a block, a solo character's or a whole party's, by the handle
-   * along its foot, the party's split evenly between its members' consoles
-   * (2026-10-31). A party starts at `stable.lines` a member. Exact tracks, so
-   * a block shrinks as far as it is dragged; its status scrolls inside it.
+   * The consoles share the height evenly, filling it (2026-11-09; they were
+   * `view.groupLines` tall each, dragged per block, and scrolled past the
+   * foot). A block's status spans its consoles and scrolls inside them; on a
+   * narrow window it sits above them, no taller than its content and two
+   * fifths of the block's share.
    */
-  const stableCells = useMemo(() => {
+  const groupCells = useMemo(() => {
     const consoles = new Map<SessionId, { row: number; column: number }>();
     // Which block each console is in, by the key its sizes and cards are kept under.
     const blockOf = new Map<SessionId, string>();
-    const panels: Array<{ block: StableBlock; cell: CSSProperties }> = [];
-    const handles: Array<{
-      key: string;
-      label: string;
-      row: number;
-      members: number;
-      height: number;
-    }> = [];
+    const panels: Array<{ block: GroupBlock; cell: CSSProperties }> = [];
+    // Slimmed, a strip beside each console rather than a status a block.
+    const slims: Array<{ id: SessionId; cell: CSSProperties }> = [];
     const tracks: string[] = [];
-    const each = narrow ? Math.round(consoleRowPx / 2) : consoleRowPx;
+    const { collapsed } = groupSizes;
     let row = 1;
     for (const block of blocks) {
       const ids = block.kind === 'solo' ? [block.id] : block.ids;
       const key = block.kind === 'solo' ? block.id : `party:${block.roster.id}`;
-      const height = stableSizes.heights[key] ?? each * ids.length;
-      // The block's height less the gaps between its consoles, shared out.
-      const share = Math.max(
-        1,
-        Math.floor((height - STABLE_GAP_PX * (ids.length - 1)) / ids.length)
-      );
-      if (narrow) {
+      if (collapsed) {
+        ids.forEach((id, at) => slims.push({ id, cell: { gridRow: row + at, gridColumn: 1 } }));
+      } else if (narrow) {
         panels.push({ block, cell: { gridRow: row, gridColumn: 1 } });
-        tracks.push('auto');
+        // At most two fifths of the block's share, or its consoles are slits.
+        tracks.push(`fit-content(${Math.floor(40 / blocks.length)}%)`);
         row += 1;
       } else {
         panels.push({ block, cell: { gridRow: `${row} / span ${ids.length}`, gridColumn: 1 } });
       }
       for (const id of ids) {
         blockOf.set(id, key);
-        consoles.set(id, { row: row++, column: narrow ? 1 : 3 });
-        tracks.push(`${share}px`);
+        consoles.set(id, { row: row++, column: narrow && !collapsed ? 1 : 3 });
+        tracks.push('minmax(0, 1fr)');
       }
-      const name =
-        block.kind === 'solo'
-          ? (sessions.find((entry) => entry.id === block.id)?.name ?? block.id)
-          : t('stable.party.title', { leader: block.roster.leader ?? '' });
-      handles.push({ key, label: name, row: row - 1, members: ids.length, height });
     }
-    return { consoles, blockOf, panels, handles, tracks: tracks.join(' '), rows: row - 1 };
-  }, [blocks, narrow, consoleRowPx, stableSizes.heights, sessions]);
-  // A console keeps a few lines a member, and no more than four times its default.
-  const blockRange = useCallback(
-    (members: number) => (): SplitRange => ({
-      min: Math.round(consoleRowPx / 4) * members,
-      max: consoleRowPx * 4 * members
-    }),
-    [consoleRowPx]
-  );
+    return {
+      consoles,
+      blockOf,
+      panels,
+      slims,
+      tracks: tracks.join(' '),
+      rows: row - 1
+    };
+  }, [blocks, narrow, groupSizes.collapsed]);
   const statusRange = useCallback(
     (): SplitRange => ({
-      min: STABLE_STATUS_MIN_PX,
+      min: GROUP_STATUS_MIN_PX,
       max: Math.max(
-        STABLE_STATUS_MIN_PX,
-        (layersRef.current?.getBoundingClientRect().width ?? 1200) - STABLE_CONSOLE_MIN_PX
+        GROUP_STATUS_MIN_PX,
+        (layersRef.current?.getBoundingClientRect().width ?? 1200) - GROUP_CONSOLE_MIN_PX
       )
     }),
     []
@@ -6217,12 +6107,12 @@ export default function App() {
         />
       )}
 
-      {/* In the Stable, whose cards these are: the console with the keyboard's. */}
-      {stableOn && (
+      {/* A group shown, whose cards these are: the console with the keyboard's. */}
+      {groupOn && (
         <div className="rail-following">
           <span aria-hidden="true" className="dot" />
-          <span>{t('stable.rail.following', { name: view.character.name ?? '' })}</span>
-          <span className="quiet">{t('stable.rail.hint')}</span>
+          <span>{t('group.rail.following', { name: view.character.name ?? '' })}</span>
+          <span className="quiet">{t('group.rail.hint')}</span>
         </div>
       )}
 
@@ -6264,7 +6154,7 @@ export default function App() {
           say — and no session either: the new-character form is open instead.
         */}
         <TabRail
-          active={stableOn ? NO_SESSION : session}
+          active={session}
           editable={editable}
           onClose={closeSession}
           onEdit={editCharacter}
@@ -6274,10 +6164,13 @@ export default function App() {
           onSelect={showSession}
           onToggleConnection={toggleSessionConnection}
           restToFor={restToFor}
-          sessions={showTabs ? sessions : NO_SESSIONS}
-          compact={stableOn}
+          sessions={showTabs ? railSessions : NO_SESSIONS}
+          compact={groupOn}
           side={tabsAt}
-          stable={{ active: stableOn, inRealm: stableRows.length, onSelect: showStable }}
+          groups={groups}
+          inView={inView}
+          onAddToView={addToView}
+          onRemoveFromView={removeFromView}
           thresholds={config.ui.vitals}
           views={views}
         />
@@ -6309,25 +6202,15 @@ export default function App() {
             Rendered even while a drag is in flight over an empty strip, so
             there is somewhere to drop.
           */}
-          {stableOn && (
-            <StableHead
-              away={
-                <StableAway
-                  away={stableAway}
-                  leftOut={stableLeftOut}
-                  onBringBack={bringBack}
-                  onToggleConnection={toggleSessionConnection}
-                  views={views}
-                />
-              }
+          {groupRows !== null && (
+            <GroupSince
               onDismiss={away.dismiss}
-              onStopAll={stopAll}
-              rows={stableRows}
+              rows={groupRows}
               since={away.since}
               views={views}
             />
           )}
-          {!stableOn && (cards.above.length > 0 || drag.state?.live === true) && (
+          {!groupOn && (cards.above.length > 0 || drag.state?.live === true) && (
             <div
               className="dock dock-above"
               // An empty strip exists only while a drag is running, as somewhere
@@ -6360,59 +6243,41 @@ export default function App() {
           */}
           <div
             className="terminal-layers"
-            data-flow={stableOn ? 'stable' : paneFlow}
-            data-narrow={stableOn && narrow ? 'true' : undefined}
+            data-flow={groupOn ? 'group' : 'one'}
+            data-narrow={groupOn && narrow ? 'true' : undefined}
+            data-collapsed={groupOn && groupSizes.collapsed ? 'true' : undefined}
             ref={layersRef}
             style={
               {
-                '--panes': stableOn ? Math.max(1, stableRows.length) : panes.length,
-                '--stable-rows': stableCells.tracks,
-                '--stable-status': `${stableSizes.status ?? STABLE_STATUS_PX}px`
+                '--panes': inView.length,
+                '--group-rows': groupCells.tracks,
+                '--group-status': `${groupSizes.status ?? GROUP_STATUS_PX}px`
               } as CSSProperties
             }
           >
             {/* The width of the status column, by the handle between it and the consoles. */}
-            {stableOn && !narrow && stableCells.rows > 0 && (
+            {groupOn && !narrow && !groupSizes.collapsed && groupCells.rows > 0 && (
               <div
-                className="stable-col-split"
-                style={{ gridRow: `1 / span ${stableCells.rows}`, gridColumn: 2 }}
+                className="group-col-split"
+                style={{ gridRow: `1 / span ${groupCells.rows}`, gridColumn: 2 }}
               >
                 <Splitter
                   edge="left"
-                  label={t('stable.split.status')}
-                  measure={() => stableSizes.status ?? STABLE_STATUS_PX}
-                  onChange={stableSizes.setStatus}
+                  label={t('group.split.status')}
+                  measure={() => groupSizes.status ?? GROUP_STATUS_PX}
+                  onChange={groupSizes.setStatus}
                   onDragging={setResizing}
-                  onReset={() => stableSizes.setStatus(null)}
+                  onReset={() => groupSizes.setStatus(null)}
                   rangeFor={statusRange}
                 />
               </div>
             )}
-            {/* Each block's height, a solo character's or a party's, by the handle along its foot. */}
-            {stableOn &&
-              stableCells.handles.map((handle) => (
-                <div
-                  className="stable-row-split"
-                  key={`stable:height:${handle.key}`}
-                  style={{ gridRow: handle.row, gridColumn: '1 / -1' }}
-                >
-                  <Splitter
-                    edge="top"
-                    label={t('stable.split.console', { name: handle.label })}
-                    measure={() => handle.height}
-                    onChange={(px) => stableSizes.setHeight(handle.key, px)}
-                    onDragging={setResizing}
-                    onReset={() => stableSizes.setHeight(handle.key, null)}
-                    rangeFor={blockRange(handle.members)}
-                  />
-                </div>
-              ))}
             {/*
-              The Stable's status panels, each in the row its character's
+              A group's status panels, each in the row its character's
               console takes beside it; under it on a narrow window.
             */}
-            {stableOn &&
-              stableCells.panels.map(({ block, cell }) => {
+            {groupOn &&
+              groupCells.panels.map(({ block, cell }) => {
                 if (block.kind === 'party') {
                   const members = block.ids.map((id) => ({
                     id,
@@ -6425,7 +6290,7 @@ export default function App() {
                   // A party's cards are the member's whose console has the keyboard, else the leader's.
                   const who = block.ids.includes(session) ? session : block.ids[0]!;
                   return (
-                    <StableParty
+                    <GroupParty
                       cards={
                         <StatusCardStack
                           heightOf={(id) => statusCards.heightOf(key, id)}
@@ -6441,14 +6306,15 @@ export default function App() {
                       placed={placed}
                       cell={cell}
                       focused={session}
-                      key={`stable:party:${block.roster.id}`}
+                      key={`group:party:${block.roster.id}`}
                       members={members}
-                      onFocus={focusPane}
-                      onLeaveOut={leaveOut}
+                      onFocus={focusRow}
+                      onRemove={removeFromView}
+                      onCollapse={collapseStatus}
                       onExpReset={resetExpOf}
                       editFor={editFor}
                       onMuster={musterParty}
-                      onOpen={showSession}
+                      onOpen={openAlone}
                       onRegroup={regroupParty}
                       onDisband={disbandParty}
                       onSay={sayAsParty}
@@ -6463,7 +6329,7 @@ export default function App() {
                 const entry = sessions.find((summary) => summary.id === block.id);
                 const placed = statusCards.cardsOf(block.id);
                 return (
-                  <StableStatus
+                  <GroupStatus
                     cards={
                       <StatusCardStack
                         heightOf={(id) => statusCards.heightOf(block.id, id)}
@@ -6478,13 +6344,14 @@ export default function App() {
                     placed={placed}
                     cell={cell}
                     focused={block.id === session}
-                    key={`stable:${block.id}`}
+                    key={`group:${block.id}`}
                     name={entry?.name ?? block.id}
-                    onFocus={focusPane}
-                    onLeaveOut={leaveOut}
+                    onFocus={focusRow}
+                    onRemove={removeFromView}
+                    onCollapse={collapseStatus}
                     onExpReset={resetExpOf}
                     onEdit={editFor(block.id)}
-                    onOpen={showSession}
+                    onOpen={openAlone}
                     onStop={stopIn}
                     restTo={restToFor(block.id)}
                     session={block.id}
@@ -6493,36 +6360,59 @@ export default function App() {
                   />
                 );
               })}
+            {/* Slimmed: a strip beside each console, in its row. */}
+            {groupOn &&
+              groupCells.slims.map(({ id, cell }) => {
+                const entry = sessions.find((summary) => summary.id === id);
+                return (
+                  <GroupSlim
+                    accent={entry?.accent ?? 'cyan'}
+                    cell={cell}
+                    focused={id === session}
+                    key={`group:slim:${id}`}
+                    name={entry?.name ?? id}
+                    onExpand={expandStatus}
+                    onFocus={focusRow}
+                    onOpen={openAlone}
+                    restTo={restToFor(id)}
+                    session={id}
+                    thresholds={config.ui.vitals}
+                    view={views[id] ?? EMPTY_VIEW}
+                  />
+                );
+              })}
             {sessions.map((entry) => {
-              const at = panes.indexOf(entry.id);
-              // In the Stable, the row it has; a character not in the realm parks hidden in the first.
-              const placed = stableOn ? stableCells.consoles.get(entry.id) : undefined;
-              const row = placed === undefined ? -1 : placed.row;
-              const cell = !stableOn
-                ? undefined
-                : (placed ?? (narrow ? { row: 2, column: 1 } : { row: 1, column: 3 }));
+              /*
+               * In a group, the row it has; one not in the group parks hidden
+               * in the first console's cell, laid out, so it stays measurable,
+               * and out of the tab order. Alone, every console has the one cell.
+               */
+              const placed = groupOn ? groupCells.consoles.get(entry.id) : undefined;
+              const cell = groupOn
+                ? (placed ?? groupCells.consoles.values().next().value ?? ONE_CELL)
+                : ONE_CELL;
+              const shown = groupOn ? placed !== undefined : entry.id === session;
               return (
                 <SessionTerminal
                   cell={cell}
                   footer={consoleStatusFor(entry.id)}
-                  who={stableOn ? entry.accent : undefined}
+                  who={groupOn ? entry.accent : undefined}
                   // Its toolbar over its console, where the toolbar is placed on its status.
                   header={
-                    stableOn &&
-                    row >= 0 &&
+                    groupOn &&
+                    shown &&
                     statusCards
-                      .cardsOf(stableCells.blockOf.get(entry.id) ?? entry.id)
+                      .cardsOf(groupCells.blockOf.get(entry.id) ?? entry.id)
                       .includes('toolbar')
                       ? toolbarFor(entry.id)
                       : undefined
                   }
-                  flow={paneFlow}
-                  focused={stableOn ? entry.id === session : at === paneAt}
+                  focused={entry.id === session}
                   fontStack={terminalFonts}
                   key={entry.id}
                   index={nameIndexes[entry.id] ?? null}
                   onChunk={noteChunk}
-                  onFocusPane={focusPane}
+                  onFocusPane={focusRow}
                   onHandle={registerHandle}
                   onInput={handleInput}
                   onInspect={inspectAt}
@@ -6533,9 +6423,6 @@ export default function App() {
                   onSelectGang={selectGang}
                   onSearchResult={setSearchResult}
                   onSnapshot={applySnapshot}
-                  // A character with no pane parks in the focused one, hidden:
-                  // laid out, so it stays measurable, and out of the tab order.
-                  pane={at >= 0 ? at : paneAt}
                   palette={consolePalette}
                   // The run banner over this pane: the push main addresses at
                   // this character, whichever pane is being read.
@@ -6546,7 +6433,7 @@ export default function App() {
                   onStopRun={stopRunFor}
                   session={entry.id}
                   settings={config.terminal}
-                  shown={stableOn ? row >= 0 : at >= 0}
+                  shown={shown}
                 />
               );
             })}
@@ -6584,7 +6471,7 @@ export default function App() {
             open={searchOpen}
             result={searchResult}
           />
-          {!stableOn && (cards.below.length > 0 || drag.state?.live === true) && (
+          {!groupOn && (cards.below.length > 0 || drag.state?.live === true) && (
             <div
               className="dock dock-below"
               data-empty={cards.below.length === 0 ? 'true' : undefined}

@@ -102,14 +102,19 @@ export interface TabRailProps {
    */
   onToggleConnection(session: SessionId): void;
   /**
-   * The Stable (2026-10-31): every character in the realm at once, as a tab
-   * of its own at the head of the characters, lit while it is shown. Absent
-   * where the window has none to offer.
+   * Tab groups (2026-11-09): each group's members, together in `sessions`,
+   * drawn as one joined block. A click on a member shows the group.
    */
-  stable?: { active: boolean; inRealm: number; onSelect(): void };
+  groups: ReadonlyArray<readonly SessionId[]>;
+  /** The characters in the view on screen: the group shown, or the one character. */
+  inView: readonly SessionId[];
+  /** A character added to the view on screen, its tab joining the group. */
+  onAddToView(session: SessionId): void;
+  /** A character of the group shown taken out of it, its tab standing alone again. */
+  onRemoveFromView(session: SessionId): void;
   /**
-   * One compact row (2026-10-31): each tab its name and a status dot, as the
-   * Stable shows them, whose own rows carry everything else a tab would.
+   * One compact row (2026-10-31): each tab its name and a status dot, as a
+   * group's rows show them, whose own rows carry everything else a tab would.
    */
   compact?: boolean;
 }
@@ -373,7 +378,10 @@ function TabRail({
   onEditGlobal,
   onEdit,
   onToggleConnection,
-  stable,
+  groups,
+  inView,
+  onAddToView,
+  onRemoveFromView,
   compact = false
 }: TabRailProps) {
   /*
@@ -451,6 +459,307 @@ function TabRail({
         )
       : null;
 
+  /*
+   * A group's tabs together in one joined block (2026-11-09): `sessions` has
+   * them side by side already (`railOrder`), so the blocks are runs of it.
+   */
+  const segments: SessionSummary[][] = [];
+  for (const entry of sessions) {
+    const last = segments[segments.length - 1];
+    const group = groups.find((members) => members.includes(entry.id));
+    if (group !== undefined && last !== undefined && group.includes(last[0]!.id)) last.push(entry);
+    else segments.push([entry]);
+  }
+
+  const drawTab = (session: SessionSummary): React.JSX.Element => {
+    const at = sessions.indexOf(session);
+    const view = views[session.id];
+    const vitals = view?.character.vitals;
+    const hp = ratio(vitals?.hp ?? null, vitals?.hpMax ?? null);
+    const hpLevel = vitalLevel(vitals?.hp ?? null, vitals?.hpMax ?? null, thresholds.hp);
+    const mark = attention(view, restToFor(session.id));
+    const doing = activity(view);
+    const room = view?.character.room.name ?? null;
+    const isActive = session.id === active;
+    const here = inView.includes(session.id);
+    const phase = view?.state.phase ?? 'idle';
+    // A close is not instant, and a button that stays pressable through
+    // one reads as one that did nothing. A dial with no answer is made
+    // again by a press (upstream 74005e34).
+    const busy = dialWaits(phase);
+    /*
+     * A retry pending reads as *dialling*, because it is.
+     *
+     * The phase during a ladder's wait is `closed`, so a dial that
+     * branched on the phase alone offered **Connect** while a reconnect
+     * ran — and there was then no control anywhere in the client that
+     * meant *stop trying*. See `SessionSummary.retrying`.
+     */
+    const retrying = session.retrying;
+    // One string for the dial's aria-label and its title, so the two
+    // cannot drift; the busy tooltips layer on top of it below.
+    const dialLabel =
+      phase === 'connected'
+        ? t('tabs.tab.dialDisconnectAria', { characterName: session.name })
+        : retrying
+          ? t('tabs.tab.dialStopRetryingAria', { characterName: session.name })
+          : t('tabs.tab.dialConnectAria', { characterName: session.name });
+
+    return (
+      <Fragment key={session.id}>
+        {/*
+          Where the tab would land.
+
+          A gap *between* tabs and never a highlight on one — the same
+          `.rail-slot` the card rail opens, because the question mid-drag
+          is "before or after this one" and highlighting a tab answers
+          neither. Drawn continuously as the pointer moves, so releasing
+          never does something the player was not already looking at.
+        */}
+        {dropAt === at && slot}
+        <div
+          aria-selected={isActive}
+          className="tab"
+          data-accent={session.accent}
+          data-active={isActive ? 'true' : 'false'}
+          data-dragging={drag.session === session.id ? 'true' : undefined}
+          // Two characters can share a display name — the realm names them,
+          // and one account's alts often differ only by slot — so anything
+          // identifying a tab has to key on the id.
+          data-session={session.id}
+          data-phase={phase}
+          onClick={() => onSelect(session.id)}
+          // The caret goes to the terminal of the character being shown, not
+          // to the tab that was clicked.
+          onMouseDown={keepFocus}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter' || event.key === ' ') {
+              event.preventDefault();
+              onSelect(session.id);
+            }
+          }}
+          role="tab"
+          tabIndex={0}
+        >
+          {/*
+          The one standing mark that says a tab can be moved.
+
+          Always drawn, never only on hover — the card grip's rule, and
+          the same six dots, so the affordance is learned once and then
+          recognised on both rails. On the left, where the character's own
+          name starts, because that is the edge a row is dragged by
+          everywhere else in this client.
+
+          Its own element rather than the whole tab: a tab is a control
+          that selects a character, and a press anywhere on it that turned
+          into a drag would make switching characters a gamble on how
+          still somebody's hand is.
+        */}
+          <span
+            aria-hidden="true"
+            className="tab-grip"
+            onPointerDown={(event) => drag.begin(session.id, event)}
+            title={t('tabs.tab.dragHint')}
+          />
+
+          <span
+            className="who"
+            title={t('tabs.tab.whoTooltip', {
+              characterName: session.name,
+              realmName: session.server
+            })}
+          >
+            <span className="name">{session.name}</span>
+            {/*
+          Then the two right-aligned facts, in this order: what the
+          character is doing, and which realm it is doing it on.
+
+          The realm is the **rightmost** thing on the row and the status
+          sits against it, because the two are read differently. The
+          realm is an *address* — it is the same word on every tab of the
+          same realm, so it makes a column the eye runs down and finds
+          nothing in, which is exactly what a right edge is for. The
+          status is what changes, and it belongs where a change is
+          noticed: beside the edge rather than on it, next to the one
+          thing on the row that never moves.
+
+          They were the other way round, with the status on the edge and
+          the realm between it and the name — which put the *most*
+          variable thing in the column position and the least variable
+          thing where it had to be re-read. The name grows into whatever
+          is left (`.tab .name`, `flex: 1 1 auto`), so both hug the right
+          without either needing an offset of its own.
+        */}
+            {mark && (
+              // The newest alert as the tooltip: the count says how much and
+              // this says what, without the tab growing to hold a sentence.
+              <span className="mark" data-level={mark.level} title={mark.detail}>
+                {mark.label}
+              </span>
+            )}
+            {/*
+          Which realm, because a character name alone stops identifying
+          anyone the moment two of them are logged in — and a player with
+          one character on each of two realms is exactly who tabs are for.
+        */}
+            {session.server && <span className="on">{session.server}</span>}
+          </span>
+
+          {/*
+        The controls row, one shape on every tab so the columns line up
+        across the rail: the dial, the health bar, the pencil, the close.
+        A real row rather than buttons absolutely positioned over the
+        padding, because alignment between tabs is the point and four
+        `right:` offsets are four chances to disagree with the bar they
+        sit beside.
+      */}
+          <span className="tab-controls">
+            {/*
+          Dial or hang up, from the tab that says who it is.
+
+          Until this existed the only way to reconnect a character was
+          `Ctrl/Cmd K` and a command whose label names *the character on
+          screen* — and the rail exists precisely because three of four
+          characters are not on screen. A player watching one tab go
+          `offline` had to switch to it, connect, and switch back.
+
+          It states the *action*, not the state: a play triangle where
+          the character is disconnected, a stop square where it is in
+          the realm. The phase is already on the tab in words and
+          colour, so a button repeating it would be a third statement of
+          the same fact and no way to act on it.
+        */}
+            <button
+              aria-label={dialLabel}
+              className="dial"
+              data-phase={phase}
+              disabled={busy}
+              onClick={(event) => {
+                // The tab underneath would otherwise select the character
+                // being dialled, which is a switch nobody asked for — and on
+                // a hang-up it would put the character being disconnected on
+                // screen, which is the opposite of what was asked.
+                event.stopPropagation();
+                onToggleConnection(session.id);
+              }}
+              // Clicked, never typed into: the caret stays in the game.
+              onMouseDown={keepFocus}
+              title={
+                busy
+                  ? t('tabs.tab.dialClosingTooltip')
+                  : phase === 'connecting'
+                    ? t('tabs.tab.dialAgainTooltip', { characterName: session.name })
+                    : dialLabel
+              }
+              type="button"
+            >
+              <Icon name={phase === 'connected' || retrying ? 'stop' : 'play'} />
+            </button>
+
+            {/*
+          A null fraction renders as an empty track rather than a full or
+          a zero bar. An unknown maximum is absence, and a bar painted
+          red for want of a number that has not arrived is the lie that
+          makes a player run from a fight they were winning.
+        */}
+            <span className="hp" data-level={hpLevel}>
+              <span className="track">
+                <span className="fill" style={{ width: hp === null ? 0 : `${hp * 100}%` }} />
+              </span>
+              <span className="figures">
+                {vitals?.hp ?? '—'}
+                {vitals?.hpMax === null || vitals?.hpMax === undefined ? '' : `/${vitals.hpMax}`}
+              </span>
+            </span>
+
+            {/*
+          The character's own settings, one press instead of a menu.
+
+          It replaced a kebab whose menu held exactly this and Close —
+          two entries a button each can say directly, and a menu is a
+          second surface to dismiss. Always drawn, quiet until pointed
+          at, the card-grip rule: it is the way to a character's settings
+          and an affordance found only by hovering is one most people
+          never find. Only for a character that has a file — a session
+          whose file was deleted has nothing to open, and a button that
+          does nothing is worse than none.
+        */}
+            {/*
+              Into the view on screen, or out of it (2026-11-09): a plus on a
+              tab not in it joins the two, a minus on a member of the group
+              shown takes it out. None on a character shown alone: there is
+              nothing to take it out of.
+            */}
+            {(!here || inView.length > 1) && (
+              <button
+                aria-label={
+                  here
+                    ? t('group.tabs.removeAria', { characterName: session.name })
+                    : t('group.tabs.addAria', { characterName: session.name })
+                }
+                className="join"
+                data-here={here ? 'true' : 'false'}
+                onClick={(event) => {
+                  // A press here is not a switch to the character.
+                  event.stopPropagation();
+                  if (here) onRemoveFromView(session.id);
+                  else onAddToView(session.id);
+                }}
+                onMouseDown={keepFocus}
+                title={
+                  here
+                    ? t('group.tabs.removeAria', { characterName: session.name })
+                    : t('group.tabs.addAria', { characterName: session.name })
+                }
+                type="button"
+              >
+                <Icon name={here ? 'minus' : 'plus'} />
+              </button>
+            )}
+
+            {editable.includes(session.id) && (
+              <button
+                aria-label={t('tabs.tab.editAria', { characterName: session.name })}
+                className="edit"
+                onClick={(event) => {
+                  // The tab underneath would otherwise select the character
+                  // being edited, which is a switch nobody asked for.
+                  event.stopPropagation();
+                  onEdit(session.id);
+                }}
+                // The settings screen takes the caret itself; the button
+                // must not fight it for one on the way there.
+                onMouseDown={keepFocus}
+                title={t('tabs.tab.editAria', { characterName: session.name })}
+                type="button"
+              >
+                <Icon name="edit" />
+              </button>
+            )}
+
+            <button
+              aria-label={t('tabs.tab.closeAria', { characterName: session.name })}
+              className="close"
+              onClick={(event) => {
+                // The tab underneath would otherwise select the character being
+                // closed, which is a switch nobody asked for.
+                event.stopPropagation();
+                onClose(session.id);
+              }}
+              onMouseDown={keepFocus}
+              title={t('tabs.tab.closeAria', { characterName: session.name })}
+              type="button"
+            >
+              <Icon name="close" />
+            </button>
+          </span>
+
+          {(room || doing) && <span className="where">{doing ?? room}</span>}
+        </div>
+      </Fragment>
+    );
+  };
+
   if (sessions.length === 0) return null;
 
   return (
@@ -507,286 +816,23 @@ function TabRail({
         stays put however many characters are loaded.
       */}
       <div className="tabs">
-        {stable !== undefined && (
-          <div
-            aria-selected={stable.active}
-            className="tab tab-stable"
-            data-active={stable.active ? 'true' : 'false'}
-            onClick={stable.onSelect}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter' || event.key === ' ') {
-                event.preventDefault();
-                stable.onSelect();
-              }
-            }}
-            onMouseDown={keepFocus}
-            role="tab"
-            tabIndex={0}
-            title={t('stable.tabTitle')}
-          >
-            <span className="who">
-              <span className="name">
-                <Icon name="users" /> {t('stable.tab')}
-              </span>
-              <span className="on">{t('stable.head.inRealm', { count: stable.inRealm })}</span>
-            </span>
-          </div>
+        {segments.map((segment) =>
+          segment.length > 1 ? (
+            <div
+              aria-label={t('group.tabs.label', {
+                names: segment.map((entry) => entry.name).join(', ')
+              })}
+              className="tab-group"
+              data-active={segment.some((entry) => entry.id === active) ? 'true' : 'false'}
+              key={`group:${segment[0]!.id}`}
+              role="group"
+            >
+              {segment.map(drawTab)}
+            </div>
+          ) : (
+            segment.map(drawTab)
+          )
         )}
-        {sessions.map((session, at) => {
-          const view = views[session.id];
-          const vitals = view?.character.vitals;
-          const hp = ratio(vitals?.hp ?? null, vitals?.hpMax ?? null);
-          const hpLevel = vitalLevel(vitals?.hp ?? null, vitals?.hpMax ?? null, thresholds.hp);
-          const mark = attention(view, restToFor(session.id));
-          const doing = activity(view);
-          const room = view?.character.room.name ?? null;
-          const isActive = session.id === active;
-          const phase = view?.state.phase ?? 'idle';
-          // A close is not instant, and a button that stays pressable through
-          // one reads as one that did nothing. A dial with no answer is made
-          // again by a press (upstream 74005e34).
-          const busy = dialWaits(phase);
-          /*
-           * A retry pending reads as *dialling*, because it is.
-           *
-           * The phase during a ladder's wait is `closed`, so a dial that
-           * branched on the phase alone offered **Connect** while a reconnect
-           * ran — and there was then no control anywhere in the client that
-           * meant *stop trying*. See `SessionSummary.retrying`.
-           */
-          const retrying = session.retrying;
-          // One string for the dial's aria-label and its title, so the two
-          // cannot drift; the busy tooltips layer on top of it below.
-          const dialLabel =
-            phase === 'connected'
-              ? t('tabs.tab.dialDisconnectAria', { characterName: session.name })
-              : retrying
-                ? t('tabs.tab.dialStopRetryingAria', { characterName: session.name })
-                : t('tabs.tab.dialConnectAria', { characterName: session.name });
-
-          return (
-            <Fragment key={session.id}>
-              {/*
-                Where the tab would land.
-
-                A gap *between* tabs and never a highlight on one — the same
-                `.rail-slot` the card rail opens, because the question mid-drag
-                is "before or after this one" and highlighting a tab answers
-                neither. Drawn continuously as the pointer moves, so releasing
-                never does something the player was not already looking at.
-              */}
-              {dropAt === at && slot}
-              <div
-                aria-selected={isActive}
-                className="tab"
-                data-accent={session.accent}
-                data-active={isActive ? 'true' : 'false'}
-                data-dragging={drag.session === session.id ? 'true' : undefined}
-                // Two characters can share a display name — the realm names them,
-                // and one account's alts often differ only by slot — so anything
-                // identifying a tab has to key on the id.
-                data-session={session.id}
-                data-phase={phase}
-                onClick={() => onSelect(session.id)}
-                // The caret goes to the terminal of the character being shown, not
-                // to the tab that was clicked.
-                onMouseDown={keepFocus}
-                onKeyDown={(event) => {
-                  if (event.key === 'Enter' || event.key === ' ') {
-                    event.preventDefault();
-                    onSelect(session.id);
-                  }
-                }}
-                role="tab"
-                tabIndex={0}
-              >
-                {/*
-                The one standing mark that says a tab can be moved.
-
-                Always drawn, never only on hover — the card grip's rule, and
-                the same six dots, so the affordance is learned once and then
-                recognised on both rails. On the left, where the character's own
-                name starts, because that is the edge a row is dragged by
-                everywhere else in this client.
-
-                Its own element rather than the whole tab: a tab is a control
-                that selects a character, and a press anywhere on it that turned
-                into a drag would make switching characters a gamble on how
-                still somebody's hand is.
-              */}
-                <span
-                  aria-hidden="true"
-                  className="tab-grip"
-                  onPointerDown={(event) => drag.begin(session.id, event)}
-                  title={t('tabs.tab.dragHint')}
-                />
-
-                <span
-                  className="who"
-                  title={t('tabs.tab.whoTooltip', {
-                    characterName: session.name,
-                    realmName: session.server
-                  })}
-                >
-                  <span className="name">{session.name}</span>
-                  {/*
-                Then the two right-aligned facts, in this order: what the
-                character is doing, and which realm it is doing it on.
-
-                The realm is the **rightmost** thing on the row and the status
-                sits against it, because the two are read differently. The
-                realm is an *address* — it is the same word on every tab of the
-                same realm, so it makes a column the eye runs down and finds
-                nothing in, which is exactly what a right edge is for. The
-                status is what changes, and it belongs where a change is
-                noticed: beside the edge rather than on it, next to the one
-                thing on the row that never moves.
-
-                They were the other way round, with the status on the edge and
-                the realm between it and the name — which put the *most*
-                variable thing in the column position and the least variable
-                thing where it had to be re-read. The name grows into whatever
-                is left (`.tab .name`, `flex: 1 1 auto`), so both hug the right
-                without either needing an offset of its own.
-              */}
-                  {mark && (
-                    // The newest alert as the tooltip: the count says how much and
-                    // this says what, without the tab growing to hold a sentence.
-                    <span className="mark" data-level={mark.level} title={mark.detail}>
-                      {mark.label}
-                    </span>
-                  )}
-                  {/*
-                Which realm, because a character name alone stops identifying
-                anyone the moment two of them are logged in — and a player with
-                one character on each of two realms is exactly who tabs are for.
-              */}
-                  {session.server && <span className="on">{session.server}</span>}
-                </span>
-
-                {/*
-              The controls row, one shape on every tab so the columns line up
-              across the rail: the dial, the health bar, the pencil, the close.
-              A real row rather than buttons absolutely positioned over the
-              padding, because alignment between tabs is the point and four
-              `right:` offsets are four chances to disagree with the bar they
-              sit beside.
-            */}
-                <span className="tab-controls">
-                  {/*
-                Dial or hang up, from the tab that says who it is.
-
-                Until this existed the only way to reconnect a character was
-                `Ctrl/Cmd K` and a command whose label names *the character on
-                screen* — and the rail exists precisely because three of four
-                characters are not on screen. A player watching one tab go
-                `offline` had to switch to it, connect, and switch back.
-
-                It states the *action*, not the state: a play triangle where
-                the character is disconnected, a stop square where it is in
-                the realm. The phase is already on the tab in words and
-                colour, so a button repeating it would be a third statement of
-                the same fact and no way to act on it.
-              */}
-                  <button
-                    aria-label={dialLabel}
-                    className="dial"
-                    data-phase={phase}
-                    disabled={busy}
-                    onClick={(event) => {
-                      // The tab underneath would otherwise select the character
-                      // being dialled, which is a switch nobody asked for — and on
-                      // a hang-up it would put the character being disconnected on
-                      // screen, which is the opposite of what was asked.
-                      event.stopPropagation();
-                      onToggleConnection(session.id);
-                    }}
-                    // Clicked, never typed into: the caret stays in the game.
-                    onMouseDown={keepFocus}
-                    title={
-                      busy
-                        ? t('tabs.tab.dialClosingTooltip')
-                        : phase === 'connecting'
-                          ? t('tabs.tab.dialAgainTooltip', { characterName: session.name })
-                          : dialLabel
-                    }
-                    type="button"
-                  >
-                    <Icon name={phase === 'connected' || retrying ? 'stop' : 'play'} />
-                  </button>
-
-                  {/*
-                A null fraction renders as an empty track rather than a full or
-                a zero bar. An unknown maximum is absence, and a bar painted
-                red for want of a number that has not arrived is the lie that
-                makes a player run from a fight they were winning.
-              */}
-                  <span className="hp" data-level={hpLevel}>
-                    <span className="track">
-                      <span className="fill" style={{ width: hp === null ? 0 : `${hp * 100}%` }} />
-                    </span>
-                    <span className="figures">
-                      {vitals?.hp ?? '—'}
-                      {vitals?.hpMax === null || vitals?.hpMax === undefined
-                        ? ''
-                        : `/${vitals.hpMax}`}
-                    </span>
-                  </span>
-
-                  {/*
-                The character's own settings, one press instead of a menu.
-
-                It replaced a kebab whose menu held exactly this and Close —
-                two entries a button each can say directly, and a menu is a
-                second surface to dismiss. Always drawn, quiet until pointed
-                at, the card-grip rule: it is the way to a character's settings
-                and an affordance found only by hovering is one most people
-                never find. Only for a character that has a file — a session
-                whose file was deleted has nothing to open, and a button that
-                does nothing is worse than none.
-              */}
-                  {editable.includes(session.id) && (
-                    <button
-                      aria-label={t('tabs.tab.editAria', { characterName: session.name })}
-                      className="edit"
-                      onClick={(event) => {
-                        // The tab underneath would otherwise select the character
-                        // being edited, which is a switch nobody asked for.
-                        event.stopPropagation();
-                        onEdit(session.id);
-                      }}
-                      // The settings screen takes the caret itself; the button
-                      // must not fight it for one on the way there.
-                      onMouseDown={keepFocus}
-                      title={t('tabs.tab.editAria', { characterName: session.name })}
-                      type="button"
-                    >
-                      <Icon name="edit" />
-                    </button>
-                  )}
-
-                  <button
-                    aria-label={t('tabs.tab.closeAria', { characterName: session.name })}
-                    className="close"
-                    onClick={(event) => {
-                      // The tab underneath would otherwise select the character being
-                      // closed, which is a switch nobody asked for.
-                      event.stopPropagation();
-                      onClose(session.id);
-                    }}
-                    onMouseDown={keepFocus}
-                    title={t('tabs.tab.closeAria', { characterName: session.name })}
-                    type="button"
-                  >
-                    <Icon name="close" />
-                  </button>
-                </span>
-
-                {(room || doing) && <span className="where">{doing ?? room}</span>}
-              </div>
-            </Fragment>
-          );
-        })}
         {/* The gap past the last tab: dropping below the rail means the end. */}
         {dropAt === sessions.length && slot}
       </div>

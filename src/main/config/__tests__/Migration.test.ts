@@ -4813,6 +4813,28 @@ describe('the hunting survey’s reach', () => {
     expect(block('view')['toolbarCardCloseMs']).toBe(350);
   });
 
+  // Tab groups in place of the Stable and the split panes (2026-11-09).
+  it("carries the Stable's away figure to a group's name and takes the retired keys out", () => {
+    fs.writeFileSync(
+      home.internal,
+      withReach.replace(
+        'clockTickMs: 1000',
+        'clockTickMs: 1000\n    maxPanes: 4\n    stableLines: 30\n    stableAwayMinMs: 600000'
+      ),
+      'utf8'
+    );
+    migrate();
+    const view = block('view');
+    expect(view['maxPanes']).toBeUndefined();
+    expect(view['stableLines']).toBeUndefined();
+    expect(view['groupLines']).toBeUndefined();
+    expect(view['stableAwayMinMs']).toBeUndefined();
+    expect(view['groupAwayMinMs']).toBe(600000);
+    // Said as carried, with the file's own figure, not as a shipped value added.
+    expect(said.some((line) => line.includes('stableAwayMinMs → groupAwayMinMs'))).toBe(true);
+    expect(said.some((line) => /added [^;]*stableAwayMinMs/.test(line))).toBe(false);
+  });
+
   // The Timeline card's record, written in by 1.0.10 and retired (2026-11-01).
   it("takes the Timeline card's keys out of a file that states them", () => {
     fs.writeFileSync(

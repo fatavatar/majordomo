@@ -399,62 +399,62 @@
  * declared heights, and a height of its own where its corner grip was
  * dragged there (`--status-card-h`). Its body scrolls, as on the rail.
  */
-.stable-card > .card {
+.group-card > .card {
   flex: 0 0 auto;
   height: var(--status-card-h, var(--card-h, 200px));
 }
 
-.stable-card > .card[data-rolled='true'] {
+.group-card > .card[data-rolled='true'] {
   height: auto;
 }
 
-.stable-card > .card > .body:not(.paned) {
+.group-card > .card > .body:not(.paned) {
   overflow-y: auto;
   overscroll-behavior: contain;
 }
 
 .rail > .vitals-card,
-.stable-card > .vitals-card {
+.group-card > .vitals-card {
   --card-h: 196px;
 }
 .rail > .room-card,
-.stable-card > .room-card {
+.group-card > .room-card {
   --card-h: 208px;
 }
 .rail > .map-card,
-.stable-card > .map-card {
+.group-card > .map-card {
   --card-h: 300px;
 }
 /* Two faces, and the taller is the loop's: a transport row, the loop's name, the
    stop bar and four figures. Declared rather than left to the fallback, per the
    rule above — a card that has more to say scrolls, it does not grow. */
 .rail > .navigation-card,
-.stable-card > .navigation-card {
+.group-card > .navigation-card {
   --card-h: 208px;
 }
 .rail > .alert-card,
-.stable-card > .alert-card {
+.group-card > .alert-card {
   --card-h: 224px;
 }
 .rail > .realm-card,
-.stable-card > .realm-card {
+.group-card > .realm-card {
   --card-h: 208px;
 }
 /* Matched to the Realm card it sits beside: they are read together, and two
    heights for two lists of names is a seam nothing in the content justifies. */
 .rail > .players-card,
-.stable-card > .players-card {
+.group-card > .players-card {
   --card-h: 208px;
 }
 .rail > .combat-card,
-.stable-card > .combat-card {
+.group-card > .combat-card {
   /* A name, a bar, a legend and up to three readout rows. Fixed like every rail
      card: one that grows with its contents moves every control below it, and
      **Stop walking** is reached for while the thing moving it is running. */
   --card-h: 190px;
 }
 .rail > .party-card,
-.stable-card > .party-card {
+.group-card > .party-card {
   /* Two ranks with a member each — the ordinary shape of a party of two, and of
      a party of one with an invitation out. Grouping by rank costs a heading and
      a box per rank, and at the old 176px the second group's meters fell under
@@ -463,7 +463,7 @@
   --card-h: 216px;
 }
 .rail > .inventory-card,
-.stable-card > .inventory-card {
+.group-card > .inventory-card {
   --card-h: 208px;
 }
 /*
@@ -475,11 +475,11 @@
  * every rail card; dragged from here by the corner grip.
  */
 .rail > .self-card,
-.stable-card > .self-card {
+.group-card > .self-card {
   --card-h: 320px;
 }
 .rail > .banks-card,
-.stable-card > .banks-card {
+.group-card > .banks-card {
   /* Two vaults with their balances and a total, which is more banking than most
      characters do. Fixed like every rail card rather than left to the fallback:
      the list grows one row per town banked in, and a card that grows moves every
@@ -487,27 +487,27 @@
   --card-h: 176px;
 }
 .rail > .conversation-card,
-.stable-card > .conversation-card {
+.group-card > .conversation-card {
   --card-h: 224px;
 }
 .rail > .standby-card,
-.stable-card > .standby-card {
+.group-card > .standby-card {
   --card-h: 152px;
 }
 .rail > .session-card,
-.stable-card > .session-card {
+.group-card > .session-card {
   --card-h: 196px;
 }
 .rail > .link-card,
-.stable-card > .link-card {
+.group-card > .link-card {
   --card-h: 208px;
 }
 .rail > .automation-card,
-.stable-card > .automation-card {
+.group-card > .automation-card {
   --card-h: 208px;
 }
 .rail > .stream-card,
-.stable-card > .stream-card {
+.group-card > .stream-card {
   --card-h: 224px;
 }
 
@@ -560,27 +560,17 @@
   position: relative;
 }
 
-/*
- * Stacked by default: rows are cheap and columns are not. The console needs 80
- * of them and no server in this family will format to fewer, so dividing the
- * slate sideways is a trade that has to be affordable -- and the client refuses
- * the split rather than shearing every map. See docs/profiles.md §7.3.
- */
-.terminal-layers[data-flow='rows'] {
-  grid-template-rows: repeat(var(--panes, 1), minmax(0, 1fr));
+/* One character on screen: its console the whole box, the others parked under it. */
+.terminal-layers[data-flow='one'] {
   grid-template-columns: minmax(0, 1fr);
-}
-
-.terminal-layers[data-flow='columns'] {
-  grid-template-columns: repeat(var(--panes, 1), minmax(0, 1fr));
   grid-template-rows: minmax(0, 1fr);
 }
 
 /*
- * Panes are placed by grid coordinate, not by document order. Grid items given
- * the same coordinates overlap, which is what lets every character keep a
- * mounted terminal while only some have a pane: the ones without park in the
- * focused pane's cell, hidden.
+ * Consoles are placed by grid coordinate, not by document order. Grid items
+ * given the same coordinates overlap, which is what lets every character keep
+ * a mounted terminal while only some are on screen: the others park in a shown
+ * one's cell, hidden.
  */
 .terminal-layer {
   min-height: 0;
@@ -604,9 +594,9 @@
 }
 
 /*
- * Which pane the keyboard is talking to. Only worth saying when there is more
- * than one -- a lone pane is not a choice, and a seam around it would be chrome
- * reporting the obvious.
+ * Which console the keyboard is talking to. Only worth saying when there is
+ * more than one -- a lone console is not a choice, and a seam around it would
+ * be chrome reporting the obvious.
  */
 .terminal-layers:not([style*='--panes: 1']) .terminal-layer[data-focused='true'] > .terminal-cell {
   border-color: color-mix(in srgb, var(--accent) 55%, var(--ink-line));

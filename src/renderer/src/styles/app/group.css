@@ -1,42 +1,39 @@
-/* ======================================================= the Stable
+/* ======================================================= a tab group
  *
- * Every character in the realm at once (2026-10-31): one row each, its status
- * on the left and its own console on the right, the consoles being the ones
- * every character keeps mounted, placed in these rows rather than drawn
- * again. A row is the console's `stable.lines` tall; more characters than fit
- * scroll. Narrow, the status goes above its console and the console is half
- * as tall.
+ * A group's characters (2026-11-09; the Stable, 2026-10-31): one row each, its
+ * status on the left and its own console on the right, the consoles being the
+ * ones every character keeps mounted, placed in these rows rather than drawn
+ * again. The consoles share the height evenly, filling it (2026-11-09).
+ * Narrow, the status goes above its console at its own height; slimmed, it
+ * is a strip beside it.
  */
-.terminal-layers[data-flow='stable'] {
-  align-content: start;
+.terminal-layers[data-flow='group'] {
   column-gap: 5px;
   /* The status, the handle's own zero-width track, the consoles. */
-  grid-template-columns: var(--stable-status, 320px) 0 minmax(0, 1fr);
-  grid-template-rows: var(--stable-rows);
+  grid-template-columns: var(--group-status, 320px) 0 minmax(0, 1fr);
+  grid-template-rows: var(--group-rows);
   overflow-y: auto;
 }
 
-.terminal-layers[data-flow='stable'][data-narrow='true'] {
+.terminal-layers[data-flow='group'][data-narrow='true'] {
   grid-template-columns: minmax(0, 1fr);
 }
 
+/* Slimmed (2026-11-09): a strip beside each console, narrow window or wide. */
+.terminal-layers[data-flow='group'][data-collapsed='true'] {
+  grid-template-columns: 52px 0 minmax(0, 1fr);
+}
+
 /*
- * The Stable's handles: the status column's width, down the track between it
- * and the consoles, and each console's height, along its foot. Over the
- * gaps, as the window's own handles are, the seam showing on hover and drag.
+ * The status column's width, by the handle down the track between it and the
+ * consoles: over the gap, as the window's own handles are, the seam showing
+ * on hover and drag.
  */
-.stable-col-split,
-.stable-row-split {
+.group-col-split {
   position: relative;
 }
 
-.stable-row-split {
-  align-self: end;
-  height: 0;
-  pointer-events: none;
-}
-
-.stable-col-split > .splitter {
+.group-col-split > .splitter {
   bottom: 0;
   left: -3px;
   position: absolute;
@@ -44,37 +41,12 @@
   width: 6px;
 }
 
-.stable-col-split > .splitter::before {
+.group-col-split > .splitter::before {
   inset: 0 -6px;
 }
 
-.stable-row-split > .splitter {
-  bottom: -6px;
-  cursor: row-resize;
-  height: 6px;
-  left: 0;
-  pointer-events: auto;
-  position: absolute;
-  right: 0;
-}
-
-.stable-row-split > .splitter::before {
-  inset: -4px 0;
-}
-
-.stable-row-split > .splitter::after {
-  bottom: auto;
-  height: 2px;
-  left: 0;
-  margin-left: 0;
-  margin-top: -1px;
-  right: 0;
-  top: 50%;
-  width: auto;
-}
-
-.stable-status {
-  /* As short as its block is dragged: what does not fit scrolls. */
+.group-status {
+  /* As short as its consoles' share: what does not fit scrolls. */
   min-height: 0;
   overflow-y: auto;
   background: var(--ink-card);
@@ -89,16 +61,16 @@
   padding: 8px 10px;
 }
 
-.stable-status[data-focused='true'] {
+.group-status[data-focused='true'] {
   border-color: color-mix(in srgb, var(--accent) 55%, var(--ink-line));
 }
 
-.stable-status .quiet {
+.group-status .quiet {
   color: var(--text-lo);
   font-size: var(--font-micro);
 }
 
-.stable-head {
+.group-head {
   align-items: flex-start;
   display: flex;
   gap: 8px;
@@ -106,13 +78,13 @@
 }
 
 /* A party's state chip and its Disband, side by side at the head. */
-.stable-head-side {
+.group-head-side {
   align-items: center;
   display: inline-flex;
   gap: 4px;
 }
 
-.stable-disband {
+.group-disband {
   align-items: center;
   background: transparent;
   border: 1px solid transparent;
@@ -127,7 +99,7 @@
 }
 
 /*
- * Whose it is, in the Stable (2026-11-01): a character's colour -- its tab's
+ * Whose it is, in a group (2026-11-01): a character's colour -- its tab's
  * dot, `ProfileAccent` -- worn by its console's frame, as a bar down the
  * console's left edge, by the name opening its console line, and by a dot
  * before it on the party's member list, so a party's stacked consoles and the
@@ -147,14 +119,14 @@
   --who: var(--marker);
 }
 
-.terminal-layers[data-flow='stable']
+.terminal-layers[data-flow='group']
   .terminal-layer[data-who]
   > :is(.terminal-cell, .console-status) {
   border-color: color-mix(in srgb, var(--who) 40%, var(--ink-line));
   border-left: 3px solid var(--who);
 }
 
-.terminal-layers[data-flow='stable']
+.terminal-layers[data-flow='group']
   .terminal-layer[data-who][data-focused='true']
   > :is(.terminal-cell, .console-status) {
   border-color: var(--who);
@@ -168,7 +140,7 @@
   letter-spacing: 0.04em;
 }
 
-.stable-who {
+.group-who {
   align-self: center;
   background: var(--who);
   border-radius: 50%;
@@ -178,7 +150,7 @@
 }
 
 /* A character's settings: the tab's pencil, quiet until pointed at. */
-.stable-edit {
+.group-edit {
   align-items: center;
   background: transparent;
   border: 0;
@@ -193,44 +165,44 @@
   width: 20px;
 }
 
-.stable-edit .icon {
+.group-edit .icon {
   height: 13px;
   width: 13px;
 }
 
-.stable-edit:hover,
-.stable-edit:focus-visible {
+.group-edit:hover,
+.group-edit:focus-visible {
   background: color-mix(in srgb, var(--accent) var(--tone), transparent);
   color: var(--text-hi);
 }
 
-.stable-disband:hover {
+.group-disband:hover {
   border-color: color-mix(in srgb, var(--danger) 45%, var(--ink-line));
   color: var(--danger);
 }
 
-.stable-name {
+.group-name {
   display: flex;
   flex-direction: column;
   min-width: 0;
 }
 
-.stable-name b {
+.group-name b {
   color: var(--text-hi);
   font-size: calc(var(--font-ui) + 2px);
 }
 
-.stable-head .chip[data-level='critical'] {
+.group-head .chip[data-level='critical'] {
   background: color-mix(in srgb, var(--danger) var(--tone), transparent);
   color: var(--danger);
 }
 
-.stable-head .chip[data-level='warn'] {
+.group-head .chip[data-level='warn'] {
   background: color-mix(in srgb, var(--pending) var(--tone), transparent);
   color: var(--pending);
 }
 
-.stable-head .chip[data-level='info'] {
+.group-head .chip[data-level='info'] {
   background: color-mix(in srgb, var(--accent) var(--tone), transparent);
   color: var(--accent);
 }
@@ -292,17 +264,17 @@
   overflow: hidden;
 }
 
-.console-status .stable-bar {
+.console-status .group-bar {
   flex: 1 1 40px;
   height: 6px;
   min-width: 24px;
 }
 
-.console-status-exp .stable-bar {
+.console-status-exp .group-bar {
   flex: 0 1 120px;
 }
 
-.stable-bar[data-kind='exp'] > span {
+.group-bar[data-kind='exp'] > span {
   background: color-mix(in srgb, var(--marker) 70%, transparent);
 }
 
@@ -347,7 +319,7 @@
   width: 28px;
 }
 
-.stable-bar {
+.group-bar {
   background: color-mix(in srgb, var(--text-lo) var(--tone-weak), transparent);
   border-radius: var(--r-chip);
   display: flex;
@@ -355,34 +327,34 @@
   overflow: hidden;
 }
 
-.stable-bar > span {
+.group-bar > span {
   background: color-mix(in srgb, var(--ok) 70%, transparent);
   transition: width var(--dur-control) var(--ease-out);
 }
 
-.stable-bar[data-kind='mana'] > span {
+.group-bar[data-kind='mana'] > span {
   background: color-mix(in srgb, var(--accent) 60%, transparent);
 }
 
-.stable-bar[data-level='caution'] > span {
+.group-bar[data-level='caution'] > span {
   background: var(--pending);
 }
 
-.stable-bar[data-level='critical'] > span {
+.group-bar[data-level='critical'] > span {
   background: var(--danger);
 }
 
-.stable-figure {
+.group-figure {
   color: var(--text-hi);
   font-variant-numeric: tabular-nums;
 }
 
 /* A character's toolbar on its status: the Toolbar card's row, smaller. */
-.stable-toolbar .toolbar-row {
+.group-toolbar .toolbar-row {
   gap: 3px;
 }
 
-.stable-toolbar .toolbar-key {
+.group-toolbar .toolbar-key {
   height: 24px;
   min-height: 0;
   min-width: 0;
@@ -390,7 +362,7 @@
 }
 
 /*
- * The strip over a console in the Stable: the character's toolbar, the
+ * The strip over a console in a group: the character's toolbar, the
  * console under it taking the rest of the row.
  */
 .terminal-layer[data-headed='true'] {
@@ -410,13 +382,13 @@
 }
 
 /* Cards placed on a status: the card itself, in the column. */
-.stable-cards {
+.group-cards {
   display: flex;
   flex-direction: column;
   gap: 6px;
 }
 
-/* In the Stable, the rail says whose cards it is drawing. */
+/* In a group, the rail says whose cards it is drawing. */
 .rail-following {
   align-items: center;
   background: color-mix(in srgb, var(--accent) var(--tone), transparent);
@@ -444,7 +416,7 @@
 }
 
 /* A party's members, together: name and state, health over mana, the figures beside. */
-.stable-members {
+.group-members {
   border-top: 1px solid var(--ink-line);
   display: flex;
   flex-direction: column;
@@ -452,7 +424,7 @@
   padding-top: 8px;
 }
 
-.stable-member {
+.group-member {
   align-items: center;
   border-radius: var(--r-chip);
   cursor: default;
@@ -461,53 +433,53 @@
   grid-template-columns: minmax(0, 1fr) auto;
 }
 
-.stable-member[data-focused='true'] .stable-member-name b {
+.group-member[data-focused='true'] .group-member-name b {
   color: var(--accent);
 }
 
-.stable-member-name {
+.group-member-name {
   align-items: baseline;
   display: flex;
   gap: 6px;
   min-width: 0;
 }
 
-.stable-member-name b {
+.group-member-name b {
   color: var(--text-hi);
 }
 
-.stable-member-name .quiet {
+.group-member-name .quiet {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.stable-member .chip[data-level='critical'] {
+.group-member .chip[data-level='critical'] {
   background: color-mix(in srgb, var(--danger) var(--tone), transparent);
   color: var(--danger);
 }
 
-.stable-member .chip[data-level='warn'] {
+.group-member .chip[data-level='warn'] {
   background: color-mix(in srgb, var(--pending) var(--tone), transparent);
   color: var(--pending);
 }
 
-.stable-member .chip[data-level='info'] {
+.group-member .chip[data-level='info'] {
   background: color-mix(in srgb, var(--accent) var(--tone), transparent);
   color: var(--accent);
 }
 
-.stable-member-bars {
+.group-member-bars {
   display: flex;
   flex-direction: column;
   gap: 3px;
 }
 
-.stable-bar.thin {
+.group-bar.thin {
   height: 5px;
 }
 
-.stable-member-figures {
+.group-member-figures {
   align-items: flex-end;
   display: flex;
   flex-direction: column;
@@ -515,7 +487,7 @@
   line-height: 1.15;
 }
 
-.stable-muster {
+.group-muster {
   background: transparent;
   border: 1px solid var(--ink-line);
   border-radius: var(--r-card);
@@ -525,7 +497,7 @@
   padding: 0 6px;
 }
 
-.stable-where {
+.group-where {
   border-top: 1px solid var(--ink-line);
   display: flex;
   flex-direction: column;
@@ -533,11 +505,11 @@
   padding-top: 6px;
 }
 
-.stable-where > span:first-child {
+.group-where > span:first-child {
   color: var(--text-hi);
 }
 
-.stable-rate {
+.group-rate {
   border-top: 1px solid var(--ink-line);
   display: flex;
   flex-direction: column;
@@ -545,28 +517,28 @@
   padding-top: 6px;
 }
 
-.stable-rate-figures {
+.group-rate-figures {
   align-items: baseline;
   display: flex;
   flex-wrap: wrap;
   gap: 2px 8px;
 }
 
-.stable-rate-figures b {
+.group-rate-figures b {
   color: var(--ok);
   font-size: calc(var(--font-ui) + 3px);
   font-variant-numeric: tabular-nums;
 }
 
-.stable-rate-figures b[data-none='true'] {
+.group-rate-figures b[data-none='true'] {
   color: var(--text-lo);
 }
 
-.stable-rate .stats-graph {
+.group-rate .stats-graph {
   min-width: 0;
 }
 
-.stable-actions {
+.group-actions {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
@@ -574,16 +546,15 @@
 }
 
 /* A party's commands, under its name: in their place, not pushed to the foot. */
-.stable-commands {
+.group-commands {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
 }
 
-.stable-actions button,
-.stable-commands button,
-.stable-away button,
-.stable-head-strip button {
+.group-actions button,
+.group-commands button,
+.group-since button {
   background: transparent;
   border: 1px solid var(--ink-line);
   border-radius: var(--r-card);
@@ -594,117 +565,205 @@
   padding: 0 10px;
 }
 
-.stable-actions button.quiet {
+.group-actions button.quiet {
   border-color: transparent;
   color: var(--text-lo);
 }
 
-.stable-actions button.primary {
+.group-actions button.primary {
   background: color-mix(in srgb, var(--accent) var(--tone), transparent);
   border-color: transparent;
   color: var(--accent);
   font-weight: 600;
 }
 
-.stable-head-strip button.danger {
-  border-color: color-mix(in srgb, var(--danger) 45%, var(--ink-line));
-  color: var(--danger);
-}
-
-.stable-actions button:hover,
-.stable-commands button:hover,
-.stable-away button:hover:not(:disabled),
-.stable-head-strip button:hover {
+.group-actions button:hover,
+.group-commands button:hover,
+.group-since button:hover {
   border-color: var(--ink-edge);
   color: var(--text-hi);
 }
 
-.stable-head-strip {
-  display: flex;
-  flex-direction: column;
-  font-family: var(--font-mono);
-  font-size: var(--font-ui);
-  gap: 6px;
-  margin-bottom: 8px;
-}
-
-.stable-summary,
-.stable-since {
+/* What was made while the person was away, over the rows until dismissed. */
+.group-since {
   align-items: center;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px 16px;
-}
-
-.stable-summary b {
-  color: var(--text-hi);
-}
-
-.stable-summary .quiet {
-  color: var(--text-lo);
-}
-
-.stable-head-strip .spacer {
-  flex: 1;
-}
-
-.stable-since {
   background: var(--ink-card);
   border: 1px solid var(--ink-line);
   border-radius: var(--r-card);
+  display: flex;
+  flex-wrap: wrap;
+  font-family: var(--font-mono);
+  font-size: var(--font-ui);
+  gap: 4px 16px;
+  margin-bottom: 8px;
   padding: 6px 10px;
 }
 
-.stable-since b {
+.group-since b {
   color: var(--text-hi);
 }
 
-.stable-since b.gain {
+.group-since b.gain {
   color: var(--ok);
 }
 
-.stable-away {
-  align-items: center;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  min-width: 0;
+.group-since .spacer {
+  flex: 1;
 }
 
-.stable-away-label {
-  color: var(--text-lo);
-  font-size: var(--font-micro);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.stable-away-tile {
+/*
+ * A status slimmed (2026-11-09), as the card rail tucks: one strip beside
+ * its console, top to bottom what it is doing, health and mana upright, the
+ * health in per cent, the rate, and the name up the strip in its colour.
+ */
+.group-slim {
   align-items: center;
-  border: 1px dashed var(--ink-line);
+  background: var(--ink-card);
+  border: 1px solid var(--ink-line);
+  border-left: 3px solid color-mix(in srgb, var(--who) 55%, var(--ink-line));
   border-radius: var(--r-card);
-  display: inline-flex;
-  gap: 8px;
-  padding: 1px 3px 1px 8px;
-}
-
-/* Smaller than the head line's own buttons: a chip's press, not a command. */
-.stable-head-strip .stable-away button {
-  min-height: 22px;
-  padding: 0 8px;
-}
-
-.stable-away-tile .quiet {
   color: var(--text-lo);
-}
-
-.stable-away button {
-  color: var(--accent);
-}
-
-.tab-stable .name {
-  align-items: center;
-  display: inline-flex;
+  display: flex;
+  flex-direction: column;
+  font-family: var(--font-mono);
+  font-size: var(--font-micro);
   gap: 6px;
+  min-height: 0;
+  overflow: hidden;
+  padding: 4px 0 6px;
+}
+
+.group-slim[data-focused='true'] {
+  border-color: var(--who);
+}
+
+.group-slim-button {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  border-radius: var(--r-chip);
+  color: var(--text-lo-quiet);
+  cursor: pointer;
+  display: inline-flex;
+  flex: none;
+  height: 20px;
+  justify-content: center;
+  padding: 0;
+  width: 24px;
+}
+
+.group-slim-button:hover,
+.group-slim-button:focus-visible {
+  background: color-mix(in srgb, var(--accent) var(--tone), transparent);
+  color: var(--text-hi);
+}
+
+.group-slim-mark {
+  align-items: center;
+  color: var(--text-lo);
+  display: inline-flex;
+  flex: none;
+  height: 16px;
+  justify-content: center;
+}
+
+.group-slim-mark .icon {
+  height: 15px;
+  width: 15px;
+}
+
+.group-slim-mark[data-level='warn'] {
+  color: var(--pending);
+}
+
+.group-slim-mark[data-level='critical'] {
+  color: var(--danger);
+}
+
+.group-slim-dot {
+  background: var(--text-lo-quiet);
+  border-radius: 50%;
+  height: 6px;
+  width: 6px;
+}
+
+/* Health and mana, upright side by side, taking whatever height the row has. */
+.group-slim-bars {
+  display: flex;
+  flex: 1 1 auto;
+  gap: 4px;
+  min-height: 24px;
+}
+
+.group-slim-bar {
+  background: color-mix(in srgb, var(--text-lo) var(--tone-weak), transparent);
+  border-radius: var(--r-chip);
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  overflow: hidden;
+  width: 8px;
+}
+
+.group-slim-bar > span {
+  background: color-mix(in srgb, var(--ok) 70%, transparent);
+  transition: height var(--dur-control) var(--ease-out);
+}
+
+.group-slim-bar[data-kind='mana'] {
+  width: 5px;
+}
+
+.group-slim-bar[data-kind='mana'] > span {
+  background: color-mix(in srgb, var(--accent) 60%, transparent);
+}
+
+.group-slim-bar[data-level='caution'] > span {
+  background: var(--pending);
+}
+
+.group-slim-bar[data-level='critical'] > span {
+  background: var(--danger);
+}
+
+.group-slim-figure {
+  color: var(--text-hi);
+  font-variant-numeric: tabular-nums;
+}
+
+.group-slim-figure[data-level='caution'] {
+  color: var(--pending);
+}
+
+.group-slim-figure[data-level='critical'] {
+  color: var(--danger);
+}
+
+.group-slim-rate {
+  color: var(--ok);
+  font-variant-numeric: tabular-nums;
+}
+
+/*
+ * The name up the strip, a press to open the character alone. Its height is
+ * its own length: an upright line in a column is measured short otherwise.
+ */
+.group-slim-name {
+  background: transparent;
+  border: 0;
+  color: var(--who);
+  cursor: pointer;
+  flex: none;
+  font: inherit;
+  font-weight: 700;
+  height: max-content;
+  max-height: 10em;
+  overflow: hidden;
+  padding: 0;
+  text-overflow: ellipsis;
+  transform: rotate(180deg);
+  white-space: nowrap;
+  writing-mode: vertical-rl;
 }
 
 /* A tab put away (`Kept`): no box of its own while shown, none at all while away. */

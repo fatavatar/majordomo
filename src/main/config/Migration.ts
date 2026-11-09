@@ -6260,6 +6260,8 @@ function theTuningBlockGainedKeys(
   const comments = templateComments(template, 'tuning');
   const added: string[] = [];
   const removed: string[] = [];
+  // Carried to a new name with the value the file stated, so said apart.
+  const renamed: string[] = [];
 
   edit(home.internal, (document) => {
     const tuning = document.getIn(['tuning'], true);
@@ -6500,9 +6502,24 @@ function theTuningBlockGainedKeys(
     // The Reference panel's own width (2026-10-29).
     addKey('view', 'referenceWidthMin', DEFAULT_INTERNAL.tuning.view.referenceWidthMin);
     addKey('view', 'referenceWidthMax', DEFAULT_INTERNAL.tuning.view.referenceWidthMax);
-    // The Stable's rows (2026-10-31).
-    addKey('view', 'stableLines', DEFAULT_INTERNAL.tuning.view.stableLines);
-    addKey('view', 'stableAwayMinMs', DEFAULT_INTERNAL.tuning.view.stableAwayMinMs);
+    /*
+     * The Stable's time away (2026-10-31), a tab group's since the groups
+     * replaced it (2026-11-09): a figure the player stated is carried to the
+     * new name.
+     */
+    const renameKey = (group: string, from: string, to: string): void => {
+      const block = document.getIn(['tuning', group], true);
+      if (!isMap(block)) return;
+      const pair = block.items.find((item) => keyText(item) === from);
+      if (pair === undefined || block.items.some((item) => keyText(item) === to)) return;
+      if (isScalar(pair.key)) pair.key.value = to;
+      const comment = comments.get(`tuning.${group}.${to}`);
+      if (typeof comment === 'string' && isScalar(pair.key)) pair.key.commentBefore = comment;
+      renamed.push(`tuning.${group}.${from} → ${to}`);
+      changed = true;
+    };
+    renameKey('view', 'stableAwayMinMs', 'groupAwayMinMs');
+    addKey('view', 'groupAwayMinMs', DEFAULT_INTERNAL.tuning.view.groupAwayMinMs);
     // The Hunting card's areas (2026-10-29).
     addKey('hunting', 'areaRadius', DEFAULT_INTERNAL.tuning.hunting.areaRadius);
     addKey('hunting', 'clockBound', DEFAULT_INTERNAL.tuning.hunting.clockBound);
@@ -6552,6 +6569,19 @@ function theTuningBlockGainedKeys(
      * (2026-11-01), retired the same day: the button opens on a press.
      */
     dropKey('view', 'toolbarCardOpenMs');
+    /*
+     * The most split panes (docs/profiles.md §7.3), retired with them when tab
+     * groups became the one way to put several characters on screen
+     * (2026-11-09): a group has as many rows as it has members.
+     */
+    dropKey('view', 'maxPanes');
+    /*
+     * The lines a console of the Stable or a group showed (2026-10-31),
+     * retired when a group's consoles came to share the height evenly
+     * (2026-11-09).
+     */
+    dropKey('view', 'stableLines');
+    dropKey('view', 'groupLines');
     /*
      * The suggestion cap moved with the sweep: twelve rows out of a radius
      * were a neighbourhood, twelve out of the realm are a keyhole. A file
@@ -6619,6 +6649,11 @@ function theTuningBlockGainedKeys(
     return changed;
   });
 
+  if (renamed.length > 0) {
+    note(
+      t('notices.migration.tuningKeysRenamed', { renamed: renamed.join(', '), file: home.internal })
+    );
+  }
   if (added.length === 0 && removed.length === 0) return;
   note(
     t('notices.migration.tuningKeysChanged', {

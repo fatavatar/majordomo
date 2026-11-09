@@ -1,31 +1,31 @@
 /**
- * The Stable's rows grouped (2026-10-31): a party's members of ours together.
- * See `StableView`.
+ * A tab group's rows grouped (2026-10-31): a party's members of ours together.
+ * See `GroupView`.
  */
 import type { SessionId } from '@shared/ipc';
 import { rosterOf, sameName, type PartyRoster } from '@shared/partyRoster';
 
 /**
- * A row of the Stable, or a party's rows (2026-10-31): characters of ours on
- * one party roster, two or more of them in the realm, are one block, the
+ * A row of a group, or a party's rows (2026-10-31): characters of ours on
+ * one party roster, two or more of them in the group, are one block, the
  * leader first and the rest in the roster's order; everybody else is a row
  * of their own. In the order the rail has them, a party where its first
  * member would be.
  */
-export type StableBlock =
+export type GroupBlock =
   { kind: 'solo'; id: SessionId } | { kind: 'party'; roster: PartyRoster; ids: SessionId[] };
 
-export function stableBlocks(
+export function groupBlocks(
   rows: ReadonlyArray<{ id: SessionId; server: string }>,
   nameOf: (id: SessionId) => string | null,
   rosters: readonly PartyRoster[]
-): StableBlock[] {
+): GroupBlock[] {
   const rosterFor = new Map<SessionId, PartyRoster>();
   for (const row of rows) {
     const roster = rosterOf(rosters, row.server, nameOf(row.id));
     if (roster !== null) rosterFor.set(row.id, roster);
   }
-  const blocks: StableBlock[] = [];
+  const blocks: GroupBlock[] = [];
   const placed = new Set<SessionId>();
   for (const row of rows) {
     if (placed.has(row.id)) continue;
