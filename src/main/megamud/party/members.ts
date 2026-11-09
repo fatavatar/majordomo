@@ -1,7 +1,7 @@
 /** The party list (`party`, six records). Read 2026-10-12. */
 import type { Session } from '../Session';
 import { newPlayer } from '../data';
-import { findPlayer, looksLikeName } from '../room/checkNames';
+import { findPlayer, looksLikeName, partyIndex } from '../room/checkNames';
 import { queueCommand } from '../script/send';
 import { newMember } from '../Session';
 import { stamp } from '../script/events';
@@ -124,6 +124,23 @@ export function addMember(s: Session, name: string, leader: number): number {
   s.partySize += 1;
   s.membersOnNewTargets = 0;
   return 1;
+}
+
+/**
+ * Ours: the member of this name, put back on the list when the realm's party
+ * listing, as the client keeps it, still has them joined (`SessionHost.inParty`);
+ * -1 when neither has them. Leading, MegaMUD drops a member it sees leave the
+ * room (`0x4739f9`), and the Ethereal Prison's exits all lead back into it:
+ * Skinny followed Fatty out and in at every step, was dropped, and his next
+ * room spell was taken for PvP — a hang-up and an enemy mark (2026-11-09).
+ * This character goes back on first when the drop left a party of none.
+ */
+export function memberIndex(s: Session, name: string): number {
+  const i = partyIndex(s, name);
+  if (i !== -1 || name === s.Player_Name || s.host.inParty?.(name) !== true) return i;
+  if (s.partySize === 0) addMember(s, s.Player_Name, 0);
+  addMember(s, name, 0);
+  return partyIndex(s, name);
 }
 
 /**

@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
 import { newPlayer } from '../data';
-import { knownPlayer, pvpAttack } from '../combat/events';
+import { combatEventLine, knownPlayer, pvpAttack } from '../combat/events';
+import { comingsLine } from '../room/comings';
+import { partyIndex } from '../room/checkNames';
 import { addMember, partyRefresh } from '../party/members';
 import { newEntity } from '../Session';
 import { session } from './fixture';
@@ -74,6 +76,45 @@ describe('a player attacking (0x42b8f0)', () => {
     pvpAttack(s, 'Orc', 1);
     expect(out.trace).toEqual([]);
     expect(s.skipRedialOnce).toBe(0);
+  });
+});
+
+/*
+ * The Ethereal Prison's exits all lead back into it (2026-11-09): Skinny,
+ * following Fatty, left and walked in again at every step, and MegaMUD,
+ * leading, drops a member it sees leave (`0x4739f9`). His next room spell was
+ * taken for PvP and Fatty hung up. The client's own party listing still had
+ * him, and is asked before a member's attack is taken for a stranger's.
+ */
+describe('a member dropped for leaving the room, still in the party', () => {
+  function leading(inParty: boolean) {
+    const fixture = inGame();
+    const { s } = fixture;
+    s.Player_Name = 'Fatty';
+    s.leaderName = 'Fatty';
+    s.PvP_PvpAction = 0;
+    newPlayer(s.data, s.now).name = 'Skinny';
+    addMember(s, 'Fatty', 1);
+    addMember(s, 'Skinny', 0);
+    s.host.inParty = (name) => inParty && name === 'Skinny';
+    comingsLine(s, 'Skinny just left to the east.');
+    return fixture;
+  }
+
+  it('is a member again when the listing has them, and their room spell no PvP', () => {
+    const { s, out } = leading(true);
+    expect(partyIndex(s, 'Skinny')).toBe(-1);
+    combatEventLine(s, 'Skinny moves to attack everyone in the room.');
+    expect(out.trace.join('')).not.toContain('[PVP detected!');
+    expect(s.skipRedialOnce).toBe(0);
+    expect(s.party.slice(0, s.partySize).map((m) => m.name)).toEqual(['Fatty', 'Skinny']);
+  });
+
+  it('is still taken for PvP when the listing does not have them', () => {
+    const { s, out } = leading(false);
+    combatEventLine(s, 'Skinny moves to attack everyone in the room.');
+    expect(out.trace.join('')).toContain('[PVP detected!');
+    expect(s.skipRedialOnce).toBe(1);
   });
 });
 

@@ -372,6 +372,12 @@ export interface SessionHost {
    */
   partyAlreadyDone?(leader: string, command: string): boolean;
   /**
+   * Ours: whether the realm's own party listing, as the client keeps it, has
+   * this player joined — which a departure does not change, where MegaMUD's
+   * list drops a member it sees leave the leader's room (`0x4739f9`).
+   */
+  inParty?(name: string): boolean;
+  /**
    * Ours: the lines about to be sent are the player's own words (a timed
    * event's command), shown in the console whatever their first word.
    */

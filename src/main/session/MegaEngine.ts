@@ -178,6 +178,8 @@ export interface MegaEngineHost {
   partyForgot?(name: string): void;
   /** A leader's `@party` already done by this character itself (`SessionHost.partyAlreadyDone`). */
   partyAlreadyDone?(leader: string, command: string): boolean;
+  /** Whether the client's party listing has this player joined (`SessionHost.inParty`). */
+  inParty?(name: string): boolean;
   /** Lines about to be sent that the player wrote (`SessionHost.ownCommand`). */
   ownCommand?(text: string): void;
   /** The engine closes the connection. */
@@ -615,6 +617,7 @@ export class MegaEngine {
       activity: (text) => this.host.logged?.('doing', text),
       partyForgot: (name) => this.host.partyForgot?.(name),
       partyAlreadyDone: (leader, command) => this.host.partyAlreadyDone?.(leader, command) ?? false,
+      inParty: (name) => this.host.inParty?.(name) ?? false,
       ownCommand: (text) => this.host.ownCommand?.(text),
       show: (text) => this.said(text),
       clock: () => Math.floor(Date.now() / 1000),
