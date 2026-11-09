@@ -48,17 +48,20 @@ volumes:
 
 ## What to know
 
-| | |
-|---|---|
-| `-v majordomo:/config` | **Keep this.** Your options file, realms, characters, logs and the access password live here. Without it they go with the container. |
-| `-e MUDENGINE_PASSWORD=…` | Choose the sign-in password instead of having one generated. |
-| `-e MUDENGINE_TRUST_PROXY=1` | Set only when a TLS proxy you control is in front; the client then believes its `X-Forwarded-Proto`. |
+|                              |                                                                                                                                      |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `-v majordomo:/config`       | **Keep this.** Your options file, realms, characters, logs and the access password live here. Without it they go with the container. |
+| `-e MUDENGINE_PASSWORD=…`    | Choose the sign-in password instead of having one generated.                                                                         |
+| `-e MUDENGINE_TRUST_PROXY=1` | Set only when a TLS proxy you control is in front; the client then believes its `X-Forwarded-Proto`.                                 |
 
 - **The connection is not encrypted.** The password and the session cookie
   travel in the clear on a plain `http://` hop. On anything but a machine you
   are sitting at, put a TLS-terminating proxy in front of the port.
-- The image runs as uid 1000. A bind-mounted directory owned by anybody else
-  cannot be written; the named volume above needs no arrangement.
+- The client runs as whoever owns `/config`: uid 1000 on the named volume
+  above, the folder's own owner on a bind mount (`-v ~/majordomo:/config`).
+  Under rootless Docker a folder of yours works as it is. Under rootful
+  Docker a folder owned by root is not run as root: give it to a user
+  (`chown 1000:1000`) first.
 - A realm database of your own goes under `/config` (`docker cp` it in); the
   client's picker browses the container's files, not your browser's.
 - `docker stop` disconnects every character cleanly and flushes what the

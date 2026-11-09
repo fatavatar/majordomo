@@ -2599,7 +2599,27 @@ function build(): void {
    * refusal names the holder and where the lock is, then leaves the way a
    * bounced second launch leaves — nothing built, nothing to tear down.
    */
-  const claim = claimHome(home.root);
+  let claim: ReturnType<typeof claimHome>;
+  try {
+    claim = claimHome(home.root);
+  } catch (error) {
+    /*
+     * A home this process may not write, said in words rather than as a stack
+     * (2026-11-09): rootless Docker with a bind mount ran the image as a uid
+     * that was not the folder's owner, and `.lock` is the first file written.
+     */
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code !== 'EACCES' && code !== 'EPERM' && code !== 'EROFS') throw error;
+    console.log(
+      t('app.instance.homeUnwritable', {
+        home: home.root,
+        uid: process.getuid?.() ?? '?',
+        message: (error as Error).message
+      })
+    );
+    exitOnceItHasBeenSaid(1);
+    return;
+  }
   if (!claim.held) {
     console.log(t('app.instance.homeHeld', { home: home.root, pid: claim.by, file: claim.file }));
     exitOnceItHasBeenSaid(1);
