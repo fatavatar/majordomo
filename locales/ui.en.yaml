@@ -745,7 +745,7 @@ notices:
       writeError: 'could not write {file}: {message}'
       spellLearned: 'Learned the {kind} of {spell}: "{text}"'
       deathLearned: 'Learned how {mob} dies: "{text}" — it leaves the room on that line from now on, whoever killed it.'
-      spellUnlearned: 'Unlearned the {kind} of {spell}: "{text}" — the stat sheet still showed it'
+      spellUnlearned: 'Unlearned the {kind} of {spell}: "{text}"'
       effectLasting: 'Learned an effect nothing here names: "{text}" — the stat sheet carries it, so it lasts and is tracked from now on.'
       effectPassing: 'Not a lasting effect: "{text}" — the stat sheet did not carry it, so no further stat sheet is spent on it.'
       effectCauseSuspected: '"{text}" is suspected of causing {condition} — nothing else up explains it.'
