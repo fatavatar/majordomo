@@ -1,17 +1,19 @@
-import { memo, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import {
+  memo,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type ReactNode
+} from 'react';
 
 import type { HeldRound } from './RoundTimer';
-import {
-  experienceFigures,
-  rate,
-  RateGraph,
-  ScopePicker,
-  useExperienceView
-} from './ExperienceScope';
+import { rate, RateGraph, ScopePicker, useExperienceView } from './ExperienceScope';
 import { attention, type RailView } from './TabRail';
 import { musterChoices, PartySay } from './PartyCard';
 import PopupMenu from './PopupMenu';
-import Icon from './Icon';
+import Icon, { type IconName } from './Icon';
 import { CARDS, type CardId } from '../hooks/useCardLayout';
 import { keepFocus } from '../lib/focus';
 import { t } from '../lib/i18n';
@@ -20,25 +22,26 @@ import { ratio, vitalLevel, type CharacterState } from '@shared/character';
 import type { VitalsUiConfig } from '@shared/config';
 import type { SessionId } from '@shared/ipc';
 import { DEFAULT_STATS_GRAPH, experienceWithin } from '@shared/tally';
-import { dialWaits } from '@shared/types';
 import { sameName, type MusterTarget, type PartyRoster } from '@shared/partyRoster';
 
 /**
- * The Stable (2026-10-31): every character in the realm at once, one row
- * each, its status beside its own console. The card rethink's V1, asked for
- * because the client was built around one character at a keyboard and is
+ * A tab group on screen (2026-11-09; the Stable, 2026-10-31): its characters
+ * one row each, a status beside its own console. The card rethink's V1, asked
+ * for because the client was built around one character at a keyboard and is
  * played as a stable of them, mostly unattended: the question on sitting down
  * is how all of them are doing, and before this it took a tab switch each.
+ * The Stable showed every character in the realm; a group shows the ones
+ * added to it (`lib/tabGroups.ts`).
  *
  * The consoles are the window's own, the ones every character keeps mounted
- * (`SessionTerminal`), placed in the Stable's grid beside these panels rather
+ * (`SessionTerminal`), placed in the group's grid beside these panels rather
  * than drawn again; this file is the rest of it.
  */
 
 /** What a row's status reads: the rail's view, and the round timer. */
-export type StableRowView = RailView & { round: HeldRound };
+export type GroupRowView = RailView & { round: HeldRound };
 
-/** Whether a character is in the realm, or on its way there: it gets a row, not a tile. */
+/** Whether a character is in the realm, or on its way there. */
 export function inRealm(view: Pick<RailView, 'state'> | undefined): boolean {
   const phase = view?.state.phase ?? 'idle';
   return phase !== 'idle' && phase !== 'closed' && phase !== 'error';
@@ -81,7 +84,7 @@ function whoOf(character: CharacterState): string {
 function doingOf(view: RailView): string | null {
   const { loop, walk } = view;
   if (loop.status === 'running' && loop.name !== null) {
-    return t('stable.row.looping', {
+    return t('group.row.looping', {
       loop: loop.name,
       laps: loop.laps,
       stop: loop.stop,
@@ -89,7 +92,7 @@ function doingOf(view: RailView): string | null {
     });
   }
   if (walk.status === 'walking') {
-    return t('stable.row.walking', {
+    return t('group.row.walking', {
       to: walk.destination ?? '',
       done: walk.done,
       total: walk.total
@@ -98,11 +101,11 @@ function doingOf(view: RailView): string | null {
   return null;
 }
 
-export interface StableStatusProps {
+export interface GroupStatusProps {
   session: SessionId;
   name: string;
-  view: StableRowView;
-  /** The Stable's grid cell this panel takes. */
+  view: GroupRowView;
+  /** The group's grid cell this panel takes. */
   cell: CSSProperties;
   focused: boolean;
   restTo: number;
@@ -111,10 +114,12 @@ export interface StableStatusProps {
   onOpen(session: SessionId): void;
   onStop(session: SessionId): void;
   onFocus(session: SessionId): void;
-  /** Leave it out of the Stable (`useLeftOut`). */
-  onLeaveOut(session: SessionId): void;
+  /** Take it out of the view, its tab standing alone again. */
+  onRemove(session: SessionId): void;
   /** The experience's hours views restarted, as the Vitals card's reset does. */
   onExpReset(session: SessionId): void;
+  /** The status column slimmed to a strip beside each console (`GroupSlim`). */
+  onCollapse(): void;
   /** Its settings, as its tab's pencil opens them; absent for a character with no file. */
   onEdit?: (session: SessionId) => void;
   /** The other cards placed on it, drawn for this character. */
@@ -125,7 +130,7 @@ export interface StableStatusProps {
 }
 
 /** One character's status, to the left of its console. */
-export const StableStatus = memo(function StableStatus({
+export const GroupStatus = memo(function GroupStatus({
   session,
   name,
   view,
@@ -136,13 +141,14 @@ export const StableStatus = memo(function StableStatus({
   onOpen,
   onStop,
   onFocus,
-  onLeaveOut,
+  onRemove,
   onExpReset,
+  onCollapse,
   onEdit,
   cards,
   placed,
   onPlace
-}: StableStatusProps) {
+}: GroupStatusProps) {
   const { character } = view;
   const { room } = character;
   const mark = attention(view, restTo);
@@ -152,63 +158,64 @@ export const StableStatus = memo(function StableStatus({
   return (
     <section
       aria-label={name}
-      className="stable-status"
+      className="group-status"
       data-focused={focused ? 'true' : 'false'}
       onMouseDown={() => onFocus(session)}
       style={cell}
     >
-      <header className="stable-head">
-        <span className="stable-name">
+      <header className="group-head">
+        <span className="group-name">
           <b>{character.name ?? name}</b>
           {who !== '' && <span className="quiet">{who}</span>}
         </span>
-        <span className="stable-head-side">
+        <span className="group-head-side">
           <span
             className="chip"
             data-level={mark?.level ?? 'info'}
             title={mark?.detail ?? undefined}
           >
-            {mark?.label ?? t('stable.row.idle')}
+            {mark?.label ?? t('group.row.idle')}
           </span>
           {onEdit !== undefined && <EditCharacter name={name} onEdit={() => onEdit(session)} />}
+          <SlimButton onCollapse={onCollapse} />
         </span>
       </header>
-      <div className="stable-where">
-        <span>{room.name ?? t('stable.row.nowhere')}</span>
+      <div className="group-where">
+        <span>{room.name ?? t('group.row.nowhere')}</span>
         {doing !== null && <span className="quiet">{doing}</span>}
       </div>
       {cards}
-      <StableRate
+      <GroupRate
         character={character}
         note={null}
         onReset={() => onExpReset(session)}
         session={session}
         since={since}
       />
-      <footer className="stable-actions">
+      <footer className="group-actions">
         <button
           className="primary"
           onClick={() => onOpen(session)}
           onMouseDown={keepFocus}
-          title={t('stable.row.openTitle', { name })}
+          title={t('group.row.openTitle', { name })}
           type="button"
         >
-          {t('stable.row.open')}
+          {t('group.row.open')}
         </button>
         {moving && (
           <button onClick={() => onStop(session)} onMouseDown={keepFocus} type="button">
-            {t('stable.row.stop')}
+            {t('group.row.stop')}
           </button>
         )}
         <CardPlacer name={name} onPlace={onPlace} placed={placed} />
         <button
           className="quiet"
-          onClick={() => onLeaveOut(session)}
+          onClick={() => onRemove(session)}
           onMouseDown={keepFocus}
-          title={t('stable.row.leaveOutTitle', { name })}
+          title={t('group.row.removeTitle', { name })}
           type="button"
         >
-          {t('stable.row.leaveOut')}
+          {t('group.row.remove')}
         </button>
       </footer>
     </section>
@@ -216,14 +223,14 @@ export const StableStatus = memo(function StableStatus({
 });
 
 /**
- * A character's settings from the Stable (2026-10-31): the pencil its tab
- * draws, beside its state, so the Stable has the way in the tab rail has.
+ * A character's settings from its status (2026-10-31): the pencil its tab
+ * draws, beside its state, so the group has the way in the tab rail has.
  */
 function EditCharacter({ name, onEdit }: { name: string; onEdit(): void }): React.JSX.Element {
   return (
     <button
       aria-label={t('tabs.tab.editAria', { characterName: name })}
-      className="stable-edit"
+      className="group-edit"
       onClick={onEdit}
       // The settings screen takes the caret itself, as from the tab.
       onMouseDown={keepFocus}
@@ -235,12 +242,140 @@ function EditCharacter({ name, onEdit }: { name: string; onEdit(): void }): Reac
   );
 }
 
+/** The status column slimmed (2026-11-09): from any status, as the column is one. */
+function SlimButton({ onCollapse }: { onCollapse(): void }): React.JSX.Element {
+  return (
+    <button
+      aria-label={t('group.status.collapse')}
+      className="group-edit"
+      onClick={onCollapse}
+      onMouseDown={keepFocus}
+      title={t('group.status.collapse')}
+      type="button"
+    >
+      <Icon name="chevronLeft" />
+    </button>
+  );
+}
+
+/** What a character is doing, as the slim strip's one glyph, or none for standing about. */
+function glyphOf(view: RailView): IconName | null {
+  if (view.unseen.alerts > 0) return 'flag';
+  if (view.state.phase === 'error' || view.state.phase === 'closed') return 'unplug';
+  if (view.character.inCombat) return 'sword';
+  if (view.character.vitals.resting || view.character.vitals.meditating) return 'moon';
+  if (view.walk.status === 'walking') return 'route';
+  if (view.loop.status === 'running') return 'loop';
+  return null;
+}
+
+export interface GroupSlimProps {
+  session: SessionId;
+  name: string;
+  accent: string;
+  view: GroupRowView;
+  /** The grid cell: beside its own console. */
+  cell: CSSProperties;
+  focused: boolean;
+  restTo: number;
+  thresholds: VitalsUiConfig;
+  onFocus(session: SessionId): void;
+  onOpen(session: SessionId): void;
+  /** The status column back to its width. */
+  onExpand(): void;
+}
+
+/**
+ * A character's status slimmed (2026-11-09), as the card rail tucks to a
+ * strip: what is worth a glance beside its console, top to bottom — what it
+ * is doing as a glyph (the tab's word as its title), its health and mana as
+ * two upright bars, its health in per cent, the experience rate in the
+ * window its status shows, and its name up the strip in its colour.
+ */
+export const GroupSlim = memo(function GroupSlim({
+  session,
+  name,
+  accent,
+  view,
+  cell,
+  focused,
+  restTo,
+  thresholds,
+  onFocus,
+  onOpen,
+  onExpand
+}: GroupSlimProps) {
+  const { character } = view;
+  const { vitals } = character;
+  const mark = attention(view, restTo);
+  const glyph = glyphOf(view);
+  const hp = barOf(vitals.hp, vitals.hpMax, thresholds.hp);
+  const mana = barOf(vitals.mana, vitals.manaMax, thresholds.mana);
+  const share = ratio(vitals.hp, vitals.hpMax);
+  const exp = useExperienceView(character, session);
+  const shown = character.name ?? name;
+  return (
+    <section
+      aria-label={shown}
+      className="group-slim"
+      data-focused={focused ? 'true' : 'false'}
+      data-who={accent}
+      onMouseDown={() => onFocus(session)}
+      style={cell}
+    >
+      <button
+        aria-label={t('group.status.expand')}
+        className="group-slim-button"
+        onClick={onExpand}
+        onMouseDown={keepFocus}
+        title={t('group.status.expand')}
+        type="button"
+      >
+        <Icon name="chevronRight" />
+      </button>
+      <span
+        className="group-slim-mark"
+        data-level={mark?.level ?? 'info'}
+        title={mark?.detail ?? mark?.label ?? t('group.row.idle')}
+      >
+        {glyph === null ? <span className="group-slim-dot" /> : <Icon name={glyph} />}
+      </span>
+      <span
+        className="group-slim-bars"
+        title={`${t('group.row.hp')} ${hp.text} · ${t('group.row.mana')} ${mana.text}`}
+      >
+        <span className="group-slim-bar" data-kind="hp" data-level={hp.level}>
+          <span style={{ height: hp.width }} />
+        </span>
+        <span className="group-slim-bar" data-kind="mana" data-level={mana.level}>
+          <span style={{ height: mana.width }} />
+        </span>
+      </span>
+      <span className="group-slim-figure" data-level={hp.level}>
+        {share === null ? '–' : `${Math.round(share * 100)}%`}
+      </span>
+      <span className="group-slim-rate" title={rate(exp.perHour)}>
+        {exp.perHour === null ? '–' : amount(exp.perHour)}
+      </span>
+      <button
+        className="group-slim-name"
+        onClick={() => onOpen(session)}
+        onMouseDown={keepFocus}
+        title={t('group.row.openTitle', { name })}
+        type="button"
+      >
+        {shown}
+      </button>
+    </section>
+  );
+});
+
 /**
  * The experience as the Vitals card has it, the session or the hours it last
  * chose for the character: the figure, what was made since the person last
  * looked, and the card's own graph, a bar a bin with the rate ruled across.
  */
-function StableRate({
+function GroupRate({
   character,
   session,
   since,
@@ -256,14 +391,14 @@ function StableRate({
 }) {
   const exp = useExperienceView(character, session);
   return (
-    <div className="stable-rate">
+    <div className="group-rate">
       {/* The Vitals card's own choice of window (2026-11-01): one choice, read by both. */}
       <ScopePicker onReset={onReset} view={exp} />
-      <span className="stable-rate-figures">
+      <span className="group-rate-figures">
         <b data-none={exp.perHour === null ? 'true' : undefined}>{rate(exp.perHour)}</b>
         {note !== null && <span className="quiet">{note}</span>}
         {since !== null && since > 0 && (
-          <span className="quiet">{t('stable.row.since', { made: amount(since) })}</span>
+          <span className="quiet">{t('group.row.since', { made: amount(since) })}</span>
         )}
       </span>
       <RateGraph
@@ -284,10 +419,10 @@ function StableRate({
   );
 }
 
-export interface StablePartyProps {
+export interface GroupPartyProps {
   roster: PartyRoster;
-  members: ReadonlyArray<{ id: SessionId; name: string; accent: string; view: StableRowView }>;
-  /** The Stable's grid cell: the rows its members' consoles take. */
+  members: ReadonlyArray<{ id: SessionId; name: string; accent: string; view: GroupRowView }>;
+  /** The group's grid cell: the rows its members' consoles take. */
   cell: CSSProperties;
   focused: SessionId;
   thresholds: VitalsUiConfig;
@@ -297,9 +432,11 @@ export interface StablePartyProps {
   onOpen(session: SessionId): void;
   onStop(session: SessionId): void;
   onFocus(session: SessionId): void;
-  onLeaveOut(session: SessionId): void;
+  onRemove(session: SessionId): void;
   /** The experience's hours views restarted, as the Vitals card's reset does. */
   onExpReset(session: SessionId): void;
+  /** The status column slimmed to a strip beside each console (`GroupSlim`). */
+  onCollapse(): void;
   /** A member's settings; absent for one with no file. */
   editFor(session: SessionId): ((session: SessionId) => void) | undefined;
   onRegroup(roster: string): void;
@@ -324,9 +461,9 @@ export interface StablePartyProps {
  * party and its commands at the head — Regroup, Muster and Stop, what the
  * Party card offers — then every member's state, health and mana together,
  * where the party is and what it is walking, and the leader's experience.
- * One block in place of the Party card, which the Stable has no rail for.
+ * One block in place of the Party card, which a group has no rail for.
  */
-export const StableParty = memo(function StableParty({
+export const GroupParty = memo(function GroupParty({
   roster,
   members,
   cell,
@@ -337,8 +474,9 @@ export const StableParty = memo(function StableParty({
   onOpen,
   onStop,
   onFocus,
-  onLeaveOut,
+  onRemove,
   onExpReset,
+  onCollapse,
   editFor,
   onRegroup,
   onMuster,
@@ -347,7 +485,7 @@ export const StableParty = memo(function StableParty({
   cards,
   placed,
   onPlace
-}: StablePartyProps) {
+}: GroupPartyProps) {
   const lead = members[0]!;
   const leader = roster.leader ?? lead.name;
   const rooms = new Set(
@@ -365,51 +503,52 @@ export const StableParty = memo(function StableParty({
   const choices = musterChoices(roster);
   return (
     <section
-      aria-label={t('stable.party.label', { leader })}
-      className="stable-status stable-party"
+      aria-label={t('group.party.label', { leader })}
+      className="group-status group-party"
       data-focused={members.some((member) => member.id === focused) ? 'true' : 'false'}
       style={cell}
     >
-      <header className="stable-head">
-        <span className="stable-name">
-          <b>{t('stable.party.title', { leader })}</b>
+      <header className="group-head">
+        <span className="group-name">
+          <b>{t('group.party.title', { leader })}</b>
           <span className="quiet">
-            {t('stable.party.inRealm', {
+            {t('group.party.inRealm', {
               count: members.length,
               of: roster.members.length - roster.forgotten.length
             })}
             {' · '}
-            {rooms.size === 1 ? t('stable.party.together') : t('stable.party.apart')}
+            {rooms.size === 1 ? t('group.party.together') : t('group.party.apart')}
           </span>
         </span>
-        <span className="stable-head-side">
+        <span className="group-head-side">
           <span
             className="chip"
             data-level={fighting ? 'info' : (leadMark?.level ?? 'info')}
             title={leadMark?.detail ?? undefined}
           >
-            {fighting ? t('tabs.tab.markFighting') : (leadMark?.label ?? t('stable.row.idle'))}
+            {fighting ? t('tabs.tab.markFighting') : (leadMark?.label ?? t('group.row.idle'))}
           </span>
           <button
-            aria-label={t('stable.party.disbandTitle', { leader })}
-            className="stable-disband"
+            aria-label={t('group.party.disbandTitle', { leader })}
+            className="group-disband"
             onClick={() => onDisband(roster.id)}
             onMouseDown={keepFocus}
-            title={t('stable.party.disbandTitle', { leader })}
+            title={t('group.party.disbandTitle', { leader })}
             type="button"
           >
             <Icon name="clearCircle" />
           </button>
+          <SlimButton onCollapse={onCollapse} />
         </span>
       </header>
-      <div className="stable-commands">
+      <div className="group-commands">
         <button onClick={() => onRegroup(roster.id)} onMouseDown={keepFocus} type="button">
-          {t('stable.party.regroup')}
+          {t('group.party.regroup')}
         </button>
         {choices.length > 0 && (
           <select
-            aria-label={t('stable.party.muster')}
-            className="stable-muster"
+            aria-label={t('group.party.muster')}
+            className="group-muster"
             onChange={(event) => {
               const choice = choices.find((option) => option.key === event.target.value);
               if (choice !== undefined) onMuster(roster.id, choice.target);
@@ -417,7 +556,7 @@ export const StableParty = memo(function StableParty({
             }}
             value=""
           >
-            <option value="">{t('stable.party.muster')}</option>
+            <option value="">{t('group.party.muster')}</option>
             {choices.map((option) => (
               <option key={option.key} title={option.title} value={option.key}>
                 {option.label}
@@ -433,7 +572,7 @@ export const StableParty = memo(function StableParty({
             onMouseDown={keepFocus}
             type="button"
           >
-            {t('stable.party.stop')}
+            {t('group.party.stop')}
           </button>
         )}
       </div>
@@ -446,7 +585,7 @@ export const StableParty = memo(function StableParty({
         others={[]}
         speakers={members.map((member) => ({ session: member.id, name: member.name }))}
       />
-      <div className="stable-members">
+      <div className="group-members">
         {members.map(({ id, name, accent, view }) => {
           const { character } = view;
           const { vitals } = character;
@@ -457,78 +596,78 @@ export const StableParty = memo(function StableParty({
           const edit = editFor(id);
           return (
             <div
-              className="stable-member"
+              className="group-member"
               data-focused={id === focused ? 'true' : 'false'}
               data-who={accent}
               key={id}
               onMouseDown={() => onFocus(id)}
             >
-              <span className="stable-member-name">
-                <span aria-hidden="true" className="stable-who" />
+              <span className="group-member-name">
+                <span aria-hidden="true" className="group-who" />
                 <b>
                   {character.name ?? name}
                   {isLeader ? ' ★' : ''}
                 </b>
                 <span className="quiet">{whoOf(character)}</span>
               </span>
-              <span className="stable-head-side">
+              <span className="group-head-side">
                 <span className="chip" data-level={mark?.level ?? 'info'} title={mark?.detail}>
-                  {mark?.label ?? t('stable.row.idle')}
+                  {mark?.label ?? t('group.row.idle')}
                 </span>
                 {edit !== undefined && <EditCharacter name={name} onEdit={() => edit(id)} />}
               </span>
-              <span className="stable-member-bars">
-                <span className="stable-bar" data-kind="hp" data-level={hp.level}>
+              <span className="group-member-bars">
+                <span className="group-bar" data-kind="hp" data-level={hp.level}>
                   <span style={{ width: hp.width }} />
                 </span>
-                <span className="stable-bar thin" data-kind="mana" data-level={mana.level}>
+                <span className="group-bar thin" data-kind="mana" data-level={mana.level}>
                   <span style={{ width: mana.width }} />
                 </span>
               </span>
-              <span className="stable-member-figures">
-                <span className="stable-figure">{hp.text}</span>
+              <span className="group-member-figures">
+                <span className="group-figure">{hp.text}</span>
                 <span className="quiet">{mana.text}</span>
               </span>
             </div>
           );
         })}
       </div>
-      <div className="stable-where">
-        <span>{lead.view.character.room.name ?? t('stable.row.nowhere')}</span>
+      <div className="group-where">
+        <span>{lead.view.character.room.name ?? t('group.row.nowhere')}</span>
         {doing !== null && <span className="quiet">{doing}</span>}
       </div>
       {cards}
-      <StableRate
+      <GroupRate
         character={lead.view.character}
-        note={t('stable.party.each', { count: members.length })}
+        note={t('group.party.each', { count: members.length })}
         onReset={() => onExpReset(lead.id)}
         session={lead.id}
         since={since}
       />
-      <footer className="stable-actions">
+      <footer className="group-actions">
         {members.map((member, at) => (
           <button
             className={at === 0 ? 'primary' : undefined}
             key={member.id}
             onClick={() => onOpen(member.id)}
             onMouseDown={keepFocus}
-            title={t('stable.row.openTitle', { name: member.name })}
+            title={t('group.row.openTitle', { name: member.name })}
             type="button"
           >
-            {t('stable.party.open', { name: member.name })}
+            {t('group.party.open', { name: member.name })}
           </button>
         ))}
-        <CardPlacer name={t('stable.party.title', { leader })} onPlace={onPlace} placed={placed} />
+        <CardPlacer name={t('group.party.title', { leader })} onPlace={onPlace} placed={placed} />
         <button
           className="quiet"
           onClick={() => {
-            for (const member of members) onLeaveOut(member.id);
+            for (const member of members) onRemove(member.id);
           }}
           onMouseDown={keepFocus}
-          title={t('stable.party.leaveOutTitle', { leader })}
+          title={t('group.party.removeTitle', { leader })}
           type="button"
         >
-          {t('stable.row.leaveOut')}
+          {t('group.row.remove')}
         </button>
       </footer>
     </section>
@@ -536,37 +675,37 @@ export const StableParty = memo(function StableParty({
 });
 
 /**
- * The Stable's sizes (2026-10-31): the status column's width, and each
- * character's console height where it was dragged from the default. Per
- * browser, as the Explorer's split is: one person's screen.
+ * A group's sizes (2026-10-31): the status column's width, and whether it is
+ * slimmed (2026-11-09). Per browser, as the Explorer's split is: one person's
+ * screen. Under the Stable's key, which they were first kept under; the
+ * console heights it also kept are read past, the consoles sharing the
+ * height evenly since 2026-11-09.
  */
-export interface StableSizes {
+export interface GroupSizes {
   status: number | null;
-  /** By block: a solo character's id, or `party:<roster>`. */
-  heights: Record<string, number>;
+  /** The status column slimmed to a strip beside each console. */
+  collapsed: boolean;
 }
 const SIZES_KEY = 'mudengine.stable.sizes';
-function readSizes(): StableSizes {
+function readSizes(): GroupSizes {
   try {
     const stored = JSON.parse(localStorage.getItem(SIZES_KEY) ?? 'null') as {
       status?: unknown;
-      heights?: unknown;
+      collapsed?: unknown;
     } | null;
-    const heights: Record<string, number> = {};
-    if (typeof stored?.heights === 'object' && stored.heights !== null) {
-      for (const [id, px] of Object.entries(stored.heights as Record<string, unknown>))
-        if (typeof px === 'number' && px > 0) heights[id] = px;
-    }
-    return { status: typeof stored?.status === 'number' ? stored.status : null, heights };
+    return {
+      status: typeof stored?.status === 'number' ? stored.status : null,
+      collapsed: stored?.collapsed === true
+    };
   } catch {
-    return { status: null, heights: {} };
+    return { status: null, collapsed: false };
   }
 }
-export function useStableSizes(): StableSizes & {
+export function useGroupSizes(): GroupSizes & {
   setStatus(px: number | null): void;
-  setHeight(block: string, px: number | null): void;
+  setCollapsed(collapsed: boolean): void;
 } {
-  const [sizes, setSizes] = useState<StableSizes>(readSizes);
+  const [sizes, setSizes] = useState<GroupSizes>(readSizes);
   useEffect(() => {
     try {
       localStorage.setItem(SIZES_KEY, JSON.stringify(sizes));
@@ -574,21 +713,19 @@ export function useStableSizes(): StableSizes & {
       // Storage refused: the sizes last this visit.
     }
   }, [sizes]);
-  return {
-    ...sizes,
-    setStatus: (px) => setSizes((was) => ({ ...was, status: px })),
-    setHeight: (block, px) =>
-      setSizes((was) => {
-        const heights = { ...was.heights };
-        if (px === null) delete heights[block];
-        else heights[block] = px;
-        return { ...was, heights };
-      })
-  };
+  // Stable setters, so a status handed one is not drawn again for it.
+  const setters = useMemo(
+    () => ({
+      setStatus: (px: number | null) => setSizes((was) => ({ ...was, status: px })),
+      setCollapsed: (collapsed: boolean) => setSizes((was) => ({ ...was, collapsed }))
+    }),
+    []
+  );
+  return { ...sizes, ...setters };
 }
 
 /**
- * The cards placed on each status of the Stable (2026-10-31), by block: a
+ * The cards placed on each status of a group (2026-10-31), by block: a
  * solo character's id, or `party:<roster>`. The toolbar is on every status
  * until it is taken off; the rest are put on from the status's own picker.
  * Per browser, as a card layout is.
@@ -693,10 +830,10 @@ function CardPlacer({
         onClick={() => setOpen((was) => !was)}
         onMouseDown={keepFocus}
         ref={button}
-        title={t('stable.cards.title', { name })}
+        title={t('group.cards.title', { name })}
         type="button"
       >
-        {t('stable.cards.add')}
+        {t('group.cards.add')}
       </button>
       {open && button.current && (
         <PopupMenu
@@ -713,7 +850,7 @@ function CardPlacer({
   );
 }
 
-/** A window too narrow for a console beside the status: the Stable stacks them. */
+/** A window too narrow for a console beside the status: a group stacks them. */
 const NARROW = '(max-width: 760px)';
 export function useNarrow(): boolean {
   const [narrow, setNarrow] = useState(() => window.matchMedia(NARROW).matches);
@@ -727,102 +864,10 @@ export function useNarrow(): boolean {
 }
 
 /**
- * The characters left out and those loaded but not in the realm, small, one
- * press to bring each in: on the Stable's head line since 2026-11-01, where
- * they took a strip of their own under the rows and the height with it.
- */
-export function StableAway({
-  away,
-  leftOut,
-  views,
-  onToggleConnection,
-  onBringBack
-}: {
-  away: ReadonlyArray<{ id: SessionId; name: string }>;
-  /** The characters left out of the Stable, each to be brought back. */
-  leftOut: ReadonlyArray<{ id: SessionId; name: string }>;
-  views: Record<SessionId, RailView>;
-  onToggleConnection(session: SessionId): void;
-  onBringBack(session: SessionId): void;
-}) {
-  if (away.length === 0 && leftOut.length === 0) return null;
-  return (
-    <section aria-label={t('stable.away.label')} className="stable-away">
-      {leftOut.length > 0 && <span className="stable-away-label">{t('stable.leftOut.label')}</span>}
-      {leftOut.map((entry) => (
-        <span className="stable-away-tile" key={entry.id}>
-          <b>{entry.name}</b>
-          <button onClick={() => onBringBack(entry.id)} onMouseDown={keepFocus} type="button">
-            {t('stable.leftOut.show')}
-          </button>
-        </span>
-      ))}
-      {away.length > 0 && <span className="stable-away-label">{t('stable.away.label')}</span>}
-      {away.map((entry) => {
-        const phase = views[entry.id]?.state.phase ?? 'idle';
-        return (
-          <span className="stable-away-tile" key={entry.id}>
-            <b>{entry.name}</b>
-            <span className="quiet">
-              {phase === 'error' ? t('stable.away.error') : t('stable.away.offline')}
-            </span>
-            <button
-              disabled={dialWaits(phase)}
-              onClick={() => onToggleConnection(entry.id)}
-              onMouseDown={keepFocus}
-              type="button"
-            >
-              {t('stable.away.connect')}
-            </button>
-          </span>
-        );
-      })}
-    </section>
-  );
-}
-
-/**
- * The characters left out of the Stable (2026-10-31): a character that plays
- * on its own and needs no watching, a bot standing in a temple, has no row,
- * and is listed under the rows to be brought back. Per browser, as a card
- * layout is: what one screen has room to watch is that screen's choice.
- */
-const LEFT_OUT_KEY = 'mudengine.stable.leftOut';
-function readLeftOut(): SessionId[] {
-  try {
-    const stored = JSON.parse(localStorage.getItem(LEFT_OUT_KEY) ?? '[]') as unknown;
-    return Array.isArray(stored)
-      ? stored.filter((id): id is SessionId => typeof id === 'string')
-      : [];
-  } catch {
-    return [];
-  }
-}
-export function useLeftOut(): {
-  leftOut: readonly SessionId[];
-  leaveOut(session: SessionId): void;
-  bringBack(session: SessionId): void;
-} {
-  const [leftOut, setLeftOut] = useState<SessionId[]>(readLeftOut);
-  useEffect(() => {
-    try {
-      localStorage.setItem(LEFT_OUT_KEY, JSON.stringify(leftOut));
-    } catch {
-      // Storage refused: the choice lasts this visit.
-    }
-  }, [leftOut]);
-  return {
-    leftOut,
-    leaveOut: (session) => setLeftOut((was) => (was.includes(session) ? was : [...was, session])),
-    bringBack: (session) => setLeftOut((was) => was.filter((id) => id !== session))
-  };
-}
-
-/**
  * When the person last looked (2026-10-31): kept as the window is put away and
- * read when it is looked at again, so the Stable can say what the characters
+ * read when it is looked at again, so a group can say what the characters
  * made in between, which is the first thing wanted after leaving them to it.
- * Under `stable.awayMinMs` away is not away. Per browser, as a layout is.
+ * Under `view.groupAwayMinMs` away is not away. Per browser, as a layout is.
  */
 const LOOKED_KEY = 'mudengine.stable.lookedAt';
 function readLooked(): number | null {
@@ -837,7 +882,7 @@ function keepLooked(at: number): void {
   try {
     localStorage.setItem(LOOKED_KEY, String(at));
   } catch {
-    // Storage refused: the Stable says nothing of the time away.
+    // Storage refused: the group says nothing of the time away.
   }
 }
 
@@ -845,14 +890,14 @@ function keepLooked(at: number): void {
 export function useAwaySince(): { since: number | null; dismiss(): void } {
   const [since, setSince] = useState<number | null>(() => {
     const looked = readLooked();
-    return looked !== null && Date.now() - looked >= tuning().stableAwayMinMs ? looked : null;
+    return looked !== null && Date.now() - looked >= tuning().groupAwayMinMs ? looked : null;
   });
   useEffect(() => {
     const note = (): void => {
       if (document.visibilityState === 'hidden') keepLooked(Date.now());
       else {
         const looked = readLooked();
-        if (looked !== null && Date.now() - looked >= tuning().stableAwayMinMs) setSince(looked);
+        if (looked !== null && Date.now() - looked >= tuning().groupAwayMinMs) setSince(looked);
       }
     };
     const leaving = (): void => keepLooked(Date.now());
@@ -878,82 +923,56 @@ export function madeSince(character: CharacterState, from: number, now: number):
 }
 
 /**
- * The Stable's head: the stable's rate together and Stop all, and what each
- * character made while the person was away, until it is dismissed.
+ * What each character of a group made while the person was away, over its
+ * rows until it is dismissed (2026-10-31). Nothing otherwise: the group's
+ * own figures are on its rows, and a standing line above them was a row of
+ * console given up for a count (2026-11-09).
  */
-export function StableHead({
+export function GroupSince({
   rows,
   views,
   since,
-  away,
-  onDismiss,
-  onStopAll
+  onDismiss
 }: {
   rows: ReadonlyArray<{ id: SessionId; name: string }>;
-  views: Record<SessionId, StableRowView>;
+  views: Record<SessionId, GroupRowView>;
   since: number | null;
-  /** The characters left out and out of the realm (`StableAway`), on the head line. */
-  away: ReactNode;
   onDismiss(): void;
-  onStopAll(): void;
 }) {
+  if (since === null) return null;
   const now = Date.now();
-  // Over each character's session, as the Vitals card's first view.
-  const together = rows.reduce((sum, row) => {
-    const character = views[row.id]?.character;
-    return (
-      sum +
-      (character === undefined ? 0 : (experienceFigures(character, 'session', now).perHour ?? 0))
-    );
-  }, 0);
-  const awayFor = since === null ? 0 : now - since;
+  const awayFor = now - since;
   const hours = Math.floor(awayFor / 3_600_000);
   const minutes = Math.floor((awayFor % 3_600_000) / 60_000);
   return (
-    <div className="stable-head-strip">
-      <div className="stable-summary">
-        <b>{t('stable.head.title')}</b>
-        <span className="quiet">
-          {t('stable.head.inRealm', { count: rows.length })}
-          {together > 0 ? ` · ${t('stable.head.together', { rate: rate(together) })}` : ''}
-        </span>
-        {away}
-        <span className="spacer" />
-        <button className="danger" onClick={onStopAll} onMouseDown={keepFocus} type="button">
-          {t('stable.head.stopAll')}
-        </button>
-      </div>
-      {since !== null && (
-        <div className="stable-since" role="status">
-          <b>
-            {t('stable.since.title', {
-              at: new Date(since).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-              hours,
-              minutes
-            })}
-          </b>
-          {rows.map((row) => {
-            const view = views[row.id];
-            if (view === undefined) return null;
-            const made = madeSince(view.character, since, now);
-            const alerts = view.unseen.alerts;
-            return (
-              <span key={row.id}>
-                {row.name} <b className="gain">{made === null ? '–' : `+${amount(made)}`}</b>
-                {alerts === 1
-                  ? ` · ${t('stable.since.alerts.one')}`
-                  : alerts > 1
-                    ? ` · ${t('stable.since.alerts.many', { count: alerts })}`
-                    : ''}
-              </span>
-            );
-          })}
-          <span className="spacer" />
-          <button onClick={onDismiss} onMouseDown={keepFocus} type="button">
-            {t('stable.since.dismiss')}
-          </button>
-        </div>
-      )}
+    <div className="group-since" role="status">
+      <b>
+        {t('group.since.title', {
+          at: new Date(since).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          hours,
+          minutes
+        })}
+      </b>
+      {rows.map((row) => {
+        const view = views[row.id];
+        if (view === undefined) return null;
+        const made = madeSince(view.character, since, now);
+        const alerts = view.unseen.alerts;
+        return (
+          <span key={row.id}>
+            {row.name} <b className="gain">{made === null ? '–' : `+${amount(made)}`}</b>
+            {alerts === 1
+              ? ` · ${t('group.since.alerts.one')}`
+              : alerts > 1
+                ? ` · ${t('group.since.alerts.many', { count: alerts })}`
+                : ''}
+          </span>
+        );
+      })}
+      <span className="spacer" />
+      <button onClick={onDismiss} onMouseDown={keepFocus} type="button">
+        {t('group.since.dismiss')}
+      </button>
     </div>
   );
 }

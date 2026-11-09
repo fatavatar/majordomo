@@ -29,12 +29,12 @@ uses whichever is present. Main handles every `Invoke` and `Send`
 
 - `main.tsx` puts the bridge in place and renders `App`.
 - `App.tsx` (about 7,000 lines) is the shell: the tab rail of characters,
-  the panes (up to four characters side by side), the card rail, every
+  the view (one character, or a tab group a row each), the card rail, every
   push subscription, and per-session view state (`patchView`). Modal
   screens (Settings, Loops, MMUD Explorer, the home browser) open over it.
   It is the one place in the window no unit test reaches, so **new state
   goes into a hook under `hooks/`, with its own test**, and `App` calls it.
-  The panes and the Stable (`usePanes`), the Party card's rosters
+  The view and its tab groups (`useView`, `lib/tabGroups.ts`), the Party card's rosters
   (`useParty`), the settings screen (`useSettingsScreen`) and the card rail
   (`useCardRail`) live there; `hooks/__tests__/renderHook.ts` renders a hook
   on its own in happy-dom for a test.
@@ -43,7 +43,7 @@ uses whichever is present. Main handles every `Invoke` and `Send`
   item rules, MegaMUD's settings tabs, rewrites), popovers (`Reference*`,
   `PlayerFlyout`) and the terminal (`TerminalView`, `SessionTerminal`, on
   xterm with the WebGL renderer).
-- `hooks/`: the state `App` holds (panes and the Stable, parties, the
+- `hooks/`: the state `App` holds (the view and tab groups, parties, the
   settings screen, the card rail), card layout, drag and resize, pane
   widths, preferences, theme, density, hotkeys, settings panels.
 - `lib/`: small helpers (formatting, tables, maps, routes, popovers, the
@@ -68,7 +68,7 @@ its case in `App.tsx`'s card switch.
   they can be found and checked. YAML plain scalars must not contain `: `.
 - **Styles.** `styles/tokens.css` defines the colour and spacing tokens;
   everything else is one file per part of the window under `styles/app/`
-  (the shell, cards, the Stable, the Explorer, settings, …), which
+  (the shell, cards, tab groups, the Explorer, settings, …), which
   `styles/index.css` imports in cascade order. Vite inlines the imports, so
   the built sheet is what one file gave. A rule goes in the part it styles;
   a new part goes where it belongs in that order, usually the end. A

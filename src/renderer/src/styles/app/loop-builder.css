@@ -6,7 +6,7 @@
  * (`openBuilder`), and this is the box it gets when somebody docks it.
  */
 .rail > .loop-builder-card,
-.stable-card > .loop-builder-card {
+.group-card > .loop-builder-card {
   --card-h: 520px;
 }
 

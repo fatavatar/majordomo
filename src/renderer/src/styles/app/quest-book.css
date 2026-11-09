@@ -10,7 +10,7 @@
  * moving.
  */
 .rail > .quest-card,
-.stable-card > .quest-card {
+.group-card > .quest-card {
   --card-h: 420px;
 }
 

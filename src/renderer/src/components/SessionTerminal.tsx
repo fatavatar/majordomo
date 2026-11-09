@@ -30,16 +30,15 @@ export interface SessionTerminalProps {
   onChooseRoom?(name: string): void;
   /** A console button main runs — `Deposit All`. See `TerminalIntentAction`. */
   onAct?(session: SessionId, action: TerminalActionName): void;
-  /** Whether a pane is currently showing this character. */
+  /** Whether the view on screen is showing this character. */
   shown: boolean;
-  /** Whether this is the pane the keyboard is talking to. */
+  /** Whether this is the console the keyboard is talking to. */
   focused: boolean;
-  /** Which pane it occupies. A character with no pane parks in the focused one. */
-  pane: number;
-  /** How the panes are laid out, which decides the axis `pane` indexes. */
-  flow: 'rows' | 'columns';
-  /** The grid cell it takes instead, where the window lays it out itself (the Stable's rows). */
-  cell?: { row: number; column: number };
+  /**
+   * The grid cell it takes: its row of a group, or the one cell a character
+   * alone has. A character not on screen parks in a shown one's, hidden.
+   */
+  cell: { row: number; column: number };
   /**
    * A line along the console's foot: the character's health, mana, experience
    * and round (`ConsoleStatus`, 2026-11-01), in every view.
@@ -47,12 +46,12 @@ export interface SessionTerminalProps {
   footer?: ReactNode;
   /**
    * The character's colour (its tab's), worn by the console's frame in the
-   * Stable so a party's stacked consoles are told apart at a glance.
+   * a group so a party's stacked consoles are told apart at a glance.
    */
   who?: string;
-  /** A strip over the console: the character's toolbar, in the Stable (2026-10-31). */
+  /** A strip over the console: the character's toolbar, in a group (2026-10-31). */
   header?: ReactNode;
-  /** Clicking a pane makes it the one the keyboard talks to. */
+  /** Clicking a console makes it the one the keyboard talks to. */
   onFocusPane(session: SessionId): void;
   settings: TerminalConfig;
   fontStack: string;
@@ -105,8 +104,6 @@ function SessionTerminal({
   session,
   shown,
   focused,
-  pane,
-  flow,
   cell,
   footer,
   who,
@@ -321,16 +318,12 @@ function SessionTerminal({
 
   /*
    * Placed by grid coordinate rather than by document order, which is what lets
-   * every character keep a mounted terminal while only some have a pane. Grid
-   * items given the same coordinates overlap, so a character with no pane parks
-   * in the focused one, hidden — laid out, and therefore still measurable.
+   * every character keep a mounted terminal while only some are on screen. Grid
+   * items given the same coordinates overlap, so a character not on screen
+   * parks in a shown one's cell, hidden — laid out, and therefore still
+   * measurable.
    */
-  const place =
-    cell !== undefined
-      ? { gridRow: cell.row, gridColumn: cell.column }
-      : flow === 'columns'
-        ? { gridColumn: pane + 1, gridRow: 1 }
-        : { gridRow: pane + 1, gridColumn: 1 };
+  const place = { gridRow: cell.row, gridColumn: cell.column };
 
   // Addressed at this character, whose console was clicked — not the shown one.
   const selectPlayer = useCallback(

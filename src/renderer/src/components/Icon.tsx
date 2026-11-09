@@ -52,6 +52,7 @@ export type IconName =
   | 'paste'
   | 'edit'
   | 'plus'
+  | 'minus'
   | 'check'
   | 'login'
   | 'reset'
@@ -60,6 +61,7 @@ export type IconName =
   | 'unpin'
   | 'help'
   | 'chevronDown'
+  | 'chevronLeft'
   | 'chevronRight'
   | 'chevronUp'
   | 'undo'
@@ -233,6 +235,7 @@ const ICONS: Record<IconName, ReactNode> = {
   ),
   // A disclosure chevron, one stroke each way: which way a collapsed thing opens.
   chevronDown: <path d="M6 9l6 6 6-6" />,
+  chevronLeft: <path d="M15 6l-6 6 6 6" />,
   chevronRight: <path d="M9 6l6 6-6 6" />,
   // And upward, for reordering a priority list: the row moves the way it points.
   chevronUp: <path d="M6 15l6-6 6 6" />,
@@ -357,6 +360,7 @@ const ICONS: Record<IconName, ReactNode> = {
     </>
   ),
   plus: <path d="M12 5.5v13M5.5 12h13" />,
+  minus: <path d="M5.5 12h13" />,
   /* On a shelf row that is already taken: what is chosen, not what to press. */
   check: <path d="M5 12.5l4.5 4.5L19 7" />,
   login: (

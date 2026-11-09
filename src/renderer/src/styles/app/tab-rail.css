@@ -42,6 +42,33 @@
 }
 
 /*
+ * A tab group (2026-11-09): its members' tabs joined in one frame, the way the
+ * rail runs, lit while the group is on screen. A frame rather than a colour,
+ * because the tabs keep their own characters' colours.
+ */
+.tab-rail .tab-group {
+  border: 1px solid var(--ink-line);
+  border-radius: var(--r-control);
+  display: flex;
+  flex: 0 0 auto;
+  gap: 2px;
+  padding: 2px;
+}
+
+.tab-rail[data-side='top'] .tab-group {
+  flex-direction: row;
+}
+
+.tab-rail:is([data-side='left'], [data-side='right']) .tab-group {
+  flex-direction: column;
+}
+
+.tab-rail .tab-group[data-active='true'] {
+  background: color-mix(in srgb, var(--accent) var(--tone-weak), transparent);
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--ink-line));
+}
+
+/*
  * Down a side, either side. `right` is `left` mirrored and nothing inside the
  * rail changes with it — the tabs still stack and there is still room for the
  * health in figures and the room name. Only the marker on the active tab knows
@@ -122,6 +149,21 @@
   font-size: 0.72rem;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/*
+ * A group shown, the compact row (2026-11-09): the gear and the `+` as tall
+ * as the tabs beside them rather than the toolbar band, which the row no
+ * longer lines up with.
+ */
+.tab-rail[data-compact='true'] .rail-head {
+  align-items: stretch;
+  align-self: stretch;
+}
+
+.tab-rail[data-compact='true'] .new-character {
+  height: auto;
+  padding: 0 8px;
 }
 
 /* The identity colour, resolved once per tab and read by everything below. */
@@ -238,21 +280,25 @@
 }
 
 /*
- * In the Stable, one compact row (2026-10-31): each tab a status dot and its
- * name, as wide as the name, everything else a tab carries being on the
- * character's own row below.
+ * A group shown, one compact row (2026-10-31): each tab a status dot and its
+ * name, as wide as the name, and the press that takes it into the view or out
+ * of it (2026-11-09); everything else a tab carries is on the character's own
+ * row below.
  */
 .tab-rail[data-compact='true'] .tab {
+  align-items: center;
+  column-gap: 6px;
   flex: 0 0 auto;
+  grid-auto-flow: column;
   min-height: 0;
-  padding: 4px 12px;
+  padding: 4px 8px 4px 12px;
 }
 
-.tab-rail[data-compact='true'] .tab :is(.tab-grip, .tab-controls, .where, .mark) {
+.tab-rail[data-compact='true'] .tab :is(.tab-grip, .where, .mark, .on) {
   display: none;
 }
 
-.tab-rail[data-compact='true'] .tab:not(.tab-stable) .on {
+.tab-rail[data-compact='true'] .tab .tab-controls > :not(.join) {
   display: none;
 }
 
@@ -273,10 +319,6 @@
 
 .tab-rail[data-compact='true'] .tab:is([data-phase='error'], [data-phase='closed']) .name::before {
   background: var(--danger);
-}
-
-.tab-rail[data-compact='true'] .tab-stable .name::before {
-  display: none;
 }
 
 .tab:hover {
@@ -497,6 +539,7 @@
  */
 .tab .dial,
 .tab .edit,
+.tab .join,
 .tab .close {
   display: grid;
   flex: 0 0 auto;
@@ -517,8 +560,16 @@
     color var(--dur-tint) var(--ease-out);
 }
 
-.tab .edit {
+.tab .edit,
+.tab .join {
   opacity: 0.5;
+}
+
+/* Into the view on screen, or out of it: the tab's own colour when pointed at. */
+.tab .join:hover {
+  background: color-mix(in srgb, var(--tab-accent) var(--tone), transparent);
+  color: var(--text-hi);
+  opacity: 1;
 }
 
 /*

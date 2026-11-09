@@ -305,6 +305,9 @@ notices:
       'Your internal.yaml was brought up to date: added {added}; removed {removed}. The values are
       the shipped ones, so nothing behaves differently — what changes is that they are in the file
       you edit. {file}'
+    tuningKeysRenamed:
+      'Your internal.yaml carried {renamed} to the name this build reads, each with the value the
+      file stated. {file}'
     tuningNothingAdded: nothing
     tuningNothingRemoved: nothing
     megamudDataMovedIn:
@@ -684,13 +687,6 @@ notices:
         'The "party" ground is gone and was not carried across: a party is a group anybody can
         invite anybody into, so it was a permission anybody could grant themselves. Name the people
         you meant, or grant your gang.'
-  panes:
-    splitTooNarrowKeep:
-      Side by side would leave each console about {columns} columns, and this realm
-      formats to {minColumns}. Keep them stacked, or set a smaller terminal font size.
-    splitTooNarrowStack:
-      Side by side would leave each console about {columns} columns, and this realm
-      formats to {minColumns}. Stack them instead, or set a smaller terminal font size.
   session:
     backscroll:
       readError:
@@ -1479,7 +1475,7 @@ palette:
     realm: In the realm
     view: View
   # What the party and every character can be told at once (2026-11-01): the
-  # Party card's and the Stable's own actions, as words to type.
+  # Party card's and a group's own actions, as words to type.
   verbs:
     everyoneStop: 'Everyone: stop'
     everyoneStopHint: every character in the realm, where it stands
@@ -1497,27 +1493,23 @@ palette:
     cardAlwaysLabel: '{cardName} card: always show'
     cardHideEmptyHint: it holds its place whether or not it has anything to say
     cardHideEmptyLabel: '{cardName} card: hide while empty'
-    paneflowNeedsColumnsHint: needs {minColumns} columns each
-    paneflowRowsCheapHint: rows are cheap, columns are not
-    panesSideBySideLabel: Panes side by side
-    panesStackedLabel: Panes stacked
     resetCardsHint: back to the shipped arrangement
     resetCardsLabel: Reset this character’s cards
     showCardHint: in this character’s rail
-    stableLabel: Show the Stable
     tuckCardsLabel: Tuck the cards away
     tuckCardsHint: a thin strip at the edge, out while the pointer is on it
     pinCardsLabel: Pin the cards out
     pinCardsHint: beside the console, as they always stood
-    stableHint: every character in the realm at once, each beside its console
-    leaveStableLabel: Leave the Stable
-    leaveStableHint: back to the character the keyboard is talking to
     showCardLabel: 'Show card: {cardName}'
-    splitLabel: 'Split: also show {characterName}'
-    splitSideBySideHint: side by side
-    splitStackedHint: stacked
-    unsplitLabel: Close this pane
-    unsplitPanesHint: '{paneCount} panes'
+    addToViewLabel: 'Add {characterName} to this view'
+    addToViewHint: its tab joins this view's group
+    removeFromViewLabel: 'Take {characterName} out of this view'
+    removeFromViewHint: its tab stands alone again
+    backToGroupLabel: Back to the group
+    backToGroupHint: every member beside its console
+    hideStatusLabel: Slim the group's status column
+    showStatusLabel: Widen the group's status column
+    statusHint: health, mana, what each is doing and its rate, in a strip
     widthsResetHint: the console and the rails back to their defaults
     widthsResetLabel: Reset pane widths
   navigate:
@@ -1792,15 +1784,16 @@ statusRail:
     wait: Next combat round — a spell was cast this round; the next waits for the round to turn
   target:
     none: no realm
-# The Stable: every character in the realm at once, each beside its console (2026-10-31).
-stable:
-  tab: Stable
-  tabTitle: Every character in the realm at once, each beside its console
-  head:
-    title: Stable
-    inRealm: '{count} in the realm'
-    together: '{rate} together'
-    stopAll: Stop all
+# Tab groups (2026-11-09): characters whose tabs are joined and shown together, each
+# beside its console, in place of the Stable (2026-10-31) and the split panes.
+group:
+  status:
+    collapse: Slim the status column
+    expand: Widen the status column
+  tabs:
+    label: '{names} together'
+    addAria: 'Add {characterName} to this view'
+    removeAria: 'Take {characterName} out of this view'
   since:
     title: 'Since you looked, {at} · {hours} h {minutes} m'
     alerts:
@@ -1816,15 +1809,15 @@ stable:
     looping: '{loop} · lap {laps} · stop {stop} of {stops}'
     walking: 'walking to {to} · {done}/{total}'
     since: '+{made} since you looked'
-    leaveOut: Leave out
-    leaveOutTitle: 'Leave {name} out of the Stable; it is listed at the foot to bring back'
+    remove: Remove
+    removeTitle: 'Take {name} out of this view; its tab stands alone again'
     open: Open
     openTitle: "Open {name}'s own screen; Esc comes back here"
     stop: Stop
   party:
     label: "{leader}'s party"
     title: "{leader}'s party"
-    inRealm: '{count} of {of} in'
+    inRealm: '{count} of {of} here'
     together: same room
     apart: spread out
     regroup: Regroup
@@ -1832,7 +1825,7 @@ stable:
     stop: Stop party
     each: 'each · kills split {count} ways'
     open: '{name} ↗'
-    leaveOutTitle: "Leave {leader}'s party out of the Stable; it is listed at the foot to bring back"
+    removeTitle: "Take {leader}'s party out of this view"
     disbandTitle: "Disband {leader}'s party: broken up in the realm, and forgotten"
   cards:
     add: + Add card
@@ -1841,16 +1834,7 @@ stable:
     following: 'Following {name}'
     hint: click a console to switch
   split:
-    status: The Stable's status column
-    console: "{name}'s console in the Stable"
-  leftOut:
-    label: Left out
-    show: Show
-  away:
-    label: Not in the realm
-    offline: offline
-    error: could not connect
-    connect: Connect
+    status: The status column
 # The card rail tucked away, or pinned out beside the console (2026-10-31).
 rail:
   tucked:
