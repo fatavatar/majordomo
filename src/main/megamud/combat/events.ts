@@ -18,7 +18,7 @@ import {
 } from './engaged';
 import { immunityOf, maybeImmunityOf, weaponKinds } from './hits';
 import { combatRoundEnd } from './rounds';
-import { removeMember } from '../party/members';
+import { memberIndex, removeMember } from '../party/members';
 import { prioritize } from '../room/alsoHere';
 import {
   checkNames,
@@ -439,7 +439,7 @@ export function pvpAttack(s: Session, name: string, tell: number): void {
     if (s.allOff === 0) s.host.trace(`[PVP detected! (${stamp(s)})]`);
     s.pvpFleeAt = s.now;
     if (s.allOff === 0) {
-      const member = partyIndex(s, name);
+      const member = memberIndex(s, name);
       if (member !== -1) {
         const p = findPlayer(s, name);
         let listed = (s.party[member]!.flags28 & PartyFlag.Unlisted) === 0;
@@ -566,7 +566,7 @@ function attackEveryone(s: Session, line: string, at: number): number {
     return 1;
   }
   const name = trimSpaces(line.slice(0, at));
-  const member = partyIndex(s, name);
+  const member = memberIndex(s, name);
   if (member !== -1) {
     if (s.MegaMud_AutoCombat !== 0) {
       if (name === s.leaderName) s.probablyLeaderResting = 0;

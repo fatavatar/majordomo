@@ -64,6 +64,7 @@ import { isPrompt, type Block } from '../../shared/blocks';
 import {
   balanceOf,
   bankKey,
+  joinedTheParty,
   ownAlignment,
   packRows,
   type AbilitySums,
@@ -3430,6 +3431,7 @@ export class SessionManager {
           partyForgot: (name) => this.sink.partyForgot?.(name),
           partyAlreadyDone: (leader, command) =>
             this.sink.partyAlreadyDone?.(leader, command) ?? false,
+          inParty: (name) => joinedTheParty(this.tracker.current, name),
           world: () => this.world,
           /*
            * With the way a refusal for a key would take once it is carried,
