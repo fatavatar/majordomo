@@ -221,6 +221,36 @@ describe('MMUD Explorer for the character being played', () => {
   });
 
   /*
+   * The pack weighs on every figure, not the EQ tab's alone (2026-11-06):
+   * Skinny's warhammer was counted at the weight of what he wore, and swung
+   * 5 where the 25% the game reported gives 4.8 — which the EQ tab said.
+   */
+  it('swings at the weight the game reports, the pack and all', async () => {
+    const base = character({
+      progress: { ...EMPTY_CHARACTER.progress, level: 20, strength: 60, agility: 50 }
+    });
+    const carrying = (encumbrance: number | null) =>
+      ({
+        ...base,
+        inventory: {
+          ...base.inventory,
+          encumbrance,
+          items: [{ id: 78, name: 'greatsword', equipped: true, slot: 'Weapon Hand' }]
+        }
+      }) as unknown as CharacterState;
+    const swings = async (encumbrance: number | null) =>
+      (await explorerList(fixture(), carrying(encumbrance), 'weapons')).rows.find(
+        (row) => row.number === 78
+      )?.cells['swings'];
+    const light = await swings(null);
+    const heavy = await swings(2500);
+    expect(light).toBeGreaterThan(0);
+    expect(heavy).toBeLessThan(light as number);
+    const page = await explorerEq(fixture(), carrying(2500), DEFAULT_EQ_PLAN);
+    expect(page.encumbrance.now).toBe(2500);
+  });
+
+  /*
    * The EQ tab (2026-10-19): MME's equipment page for the character as the
    * game reports it — the vest worn, a longsword in the pack, 500 the
    * reported encumbrance — and a plan picked over it.
