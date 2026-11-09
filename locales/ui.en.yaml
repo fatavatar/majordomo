@@ -47,6 +47,10 @@ app:
       write the same files and dial the same characters; stop the other one first, or delete
       {file} if it is not running.'
     staleLock: The lock left by pid {pid}, which is no longer running, was taken over.
+    homeUnwritable: 'Majordomo cannot write to {home} (running as uid {uid}): {message}. Make the
+      folder writable by that uid. In Docker the client runs as the owner of /config, except a
+      folder owned by root under rootful Docker: give it to a user (chown 1000:1000), or use a
+      named volume.'
   loop:
     invalidName: Invalid path/loop name.
     invalidLoop: Invalid loop definition.

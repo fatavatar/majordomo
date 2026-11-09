@@ -95,12 +95,15 @@ COPY --from=build /src/out /opt/mudengine/out
 COPY --from=build /src/resources /opt/mudengine/resources
 COPY --from=build /src/package.json /opt/mudengine/package.json
 COPY --from=deps /src/node_modules /opt/mudengine/node_modules
+COPY docker/entrypoint.sh /usr/local/bin/majordomo-entrypoint
 
 # The user to run as, and the one directory that outlives the container.
 #
 # The Node images ship a `node` user at uid 1000 already, so that is the one
-# used — a `useradd --uid 1000` here fails on the collision, which is how
-# this line was arrived at. The uid is what matters to a bind mount.
+# a fresh volume is given — a `useradd --uid 1000` here fails on the
+# collision, which is how this line was arrived at. The client itself runs as
+# whoever owns /config (`docker/entrypoint.sh`), so a bind mount works under
+# rootless Docker too, where uid 1000 is not the person.
 #
 # `/config` is `MUDENGINE_HOME`, which `homeRoot()` treats as an instruction
 # rather than a candidate — so the options file, the realms, the profiles,
@@ -124,7 +127,6 @@ ENV MUDENGINE_WEB=1 \
 VOLUME ["/config"]
 EXPOSE 8080
 
-USER node
 WORKDIR /opt/mudengine
 
 # `/health` answers `ok` to anybody and nothing else, so the check needs no
@@ -136,4 +138,5 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
 # Node is PID 1 and handles SIGTERM itself: `docker stop` runs the same
 # teardown Ctrl-C does — every character disconnected cleanly, every deferred
 # write flushed — and then exits. There are no children to reap.
+ENTRYPOINT ["/usr/local/bin/majordomo-entrypoint"]
 CMD ["node", "out/main/index.js"]
