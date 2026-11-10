@@ -5550,7 +5550,7 @@ web:
     cancel: Cancel
     chosen: '{name} · {size}'
     sending: 'Sending… {percent}%'
-    checking: Checking it opens as a realm…
+    checking: Checking it opens as a realm, and reading it…
     lost: The upload stopped before it finished. Try again.
     notHere: Uploads are taken only from the client's own page.
     badName: 'That is not a realm database: the file should end in {extensions}.'
@@ -5558,6 +5558,19 @@ web:
     failed: 'The client could not keep the file: {message}'
     notARealm: 'That file does not open as a realm database: {message}'
     noRooms: That file opens, but it has no rooms table, so it is not a MajorMUD realm.
+    summary:
+      title: Realm uploaded
+      classes: classes
+      races: races
+      monsters: monsters
+      items: items
+      rooms: rooms
+      messages: messages
+      noMessages: no message table
+      loops: hunting loops created
+      lead: The realm reads it from now on. Its monster and item tables, and its message table where the database has one, are built from it, and the hunting loops are in the realm's loops.
+      unsaid: The realm reads it from now on, and its tables and hunting loops are built from it.
+      done: Done
   rpc:
     noHandler: Nothing in the client answers {channel}.
 # The client's files, listed in the window, where the host has no file manager.

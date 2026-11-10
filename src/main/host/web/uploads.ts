@@ -16,10 +16,11 @@ import fs from 'node:fs';
 import path from 'node:path';
 import type { Readable } from 'node:stream';
 
-import { REALM_EXTENSIONS } from '../../../shared/realmFiles';
+import { REALM_EXTENSIONS, type RealmSummary } from '../../../shared/realmFiles';
 
 export type UploadResult =
-  { ok: true; path: string } | { ok: false; status: number; error: string };
+  | { ok: true; path: string; summary: RealmSummary | null }
+  | { ok: false; status: number; error: string };
 
 export interface RealmUploadOptions {
   /** The folder kept files go in, made when the first arrives. */
@@ -30,6 +31,8 @@ export interface RealmUploadOptions {
   maxBytes: number;
   /** Why the written file is not a realm, or null when it opens as one. */
   check(file: string): string | null;
+  /** What the kept file holds, said back to whoever sent it; null where it cannot be said. */
+  describe?(file: string): RealmSummary | null;
   /** The sentences for a refusal, from the caller's locale. */
   say: {
     badName: string;
@@ -113,8 +116,17 @@ export function receiveRealm(body: Readable, options: RealmUploadOptions): Promi
       }
       const kept = path.join(options.dir, freeName(options.dir, name));
       fs.rename(temp, kept, (error) => {
-        if (error) fail({ ok: false, status: 500, error: options.say.failed(String(error)) });
-        else resolve({ ok: true, path: kept });
+        if (error) {
+          fail({ ok: false, status: 500, error: options.say.failed(String(error)) });
+          return;
+        }
+        let summary: RealmSummary | null = null;
+        try {
+          summary = options.describe?.(kept) ?? null;
+        } catch {
+          // Kept all the same: what it holds is said once a realm reads it.
+        }
+        resolve({ ok: true, path: kept, summary });
       });
     });
     body.pipe(out);

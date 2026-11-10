@@ -5,7 +5,7 @@ import type { RealmSource, RealmTable } from '../RealmSource';
 
 /** A realm database made of literals, as `buildRealm.test.ts` builds one. */
 function fake(tables: Record<string, Record<string, unknown>[]>): RealmSource {
-  return {
+  const source: RealmSource = {
     path: '/tmp/test.mdb',
     kind: 'mdb',
     tableNames: () => Object.keys(tables),
@@ -16,8 +16,10 @@ function fake(tables: Record<string, Record<string, unknown>[]>): RealmSource {
       if (!found) return null;
       return { name: found[0], columns: Object.keys(found[1][0] ?? {}), rows: found[1] };
     },
-    close: () => {}
+    close: () => {},
+    count: (name) => source.table(name)?.rows.length ?? null
   };
+  return source;
 }
 
 const naming = { classes: [], races: [], spells: [] };

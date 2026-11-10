@@ -28,6 +28,7 @@ import type { Home } from '../app/home';
 import type { QuitAnswer, QuitGuard } from '../app/quit';
 import type { WindowRegistry } from '../windows/WindowRegistry';
 import type { Workspace } from '../windows/Workspace';
+import type { RealmSummary } from '../../shared/realmFiles';
 
 /**
  * Whoever made a call: the window (or tab) it came from, and a way to answer
@@ -128,6 +129,8 @@ export interface ClientHooks {
   abort(reason: string): void;
   /** Where the session logs go, as the options file says (`logging.directory`). */
   logDirectory(): string;
+  /** What a realm database holds, for a host that took one in (`WebHost`'s upload). */
+  describeRealm(file: string): RealmSummary | null;
 }
 
 /**

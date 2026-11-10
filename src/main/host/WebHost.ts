@@ -339,6 +339,7 @@ export function createWebHost(layout: Layout): Host {
             name,
             maxBytes: tuning().web.uploadMaxBytes,
             check: realmProblem,
+            describe: (file) => hooks.describeRealm(file),
             say: {
               badName: t('web.upload.badName', { extensions: REALM_EXTENSIONS.join(', ') }),
               tooLarge: (max) => t('web.upload.tooLarge', { max }),

@@ -535,7 +535,7 @@ export function createWebServer(options: WebServerOptions): WebServer {
     const result = await options.uploadRealm(request, query.get('name') ?? '');
     if (result.ok) {
       options.log(`web: ${remoteOf(request)} sent up the realm database ${result.path}.`);
-      json(200, { path: result.path });
+      json(200, { path: result.path, summary: result.summary });
     } else {
       options.log(`web: refused an upload from ${remoteOf(request)}: ${result.error}`);
       // The rest of a refused body is not read: the socket goes once the answer is out.

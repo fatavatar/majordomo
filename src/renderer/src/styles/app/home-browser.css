@@ -211,3 +211,30 @@
   color: var(--pending);
   margin: 0;
 }
+
+/* What the kept file holds: a figure each, the number under its word. */
+.realm-upload-summary {
+  display: grid;
+  gap: 8px 12px;
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+  margin: 2px 0 0;
+}
+
+.realm-upload-summary > div {
+  display: flex;
+  flex-direction: column-reverse;
+  gap: 1px;
+}
+
+.realm-upload-summary dt {
+  color: var(--text-lo);
+  font-size: calc(var(--font-ui) - 2px);
+}
+
+.realm-upload-summary dd {
+  color: var(--text-hi);
+  font-family: var(--font-mono);
+  font-size: calc(var(--font-ui) + 3px);
+  font-variant-numeric: tabular-nums;
+  margin: 0;
+}

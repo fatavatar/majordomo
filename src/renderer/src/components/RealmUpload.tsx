@@ -3,11 +3,13 @@ import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import Icon from './Icon';
 import { keepFocus } from '../lib/focus';
 import { t } from '../lib/i18n';
-import { REALM_EXTENSIONS } from '@shared/realmFiles';
+import { REALM_EXTENSIONS, type RealmSummary } from '@shared/realmFiles';
 
 export interface RealmUploadProps {
-  /** The path the client kept the file at, or null when put away unsent. */
-  onDone(file: string | null): void;
+  /** The path the client kept the file at, as soon as it is kept: the realm takes it then. */
+  onKept(file: string): void;
+  /** Put away: unsent, or after saying what was kept. */
+  onClose(): void;
 }
 
 /** Where the window sends a realm's database, and the header that says it is this page. */
@@ -24,7 +26,26 @@ type Stage =
   | { kind: 'idle' }
   | { kind: 'sending'; percent: number }
   | { kind: 'checking' }
-  | { kind: 'refused'; error: string };
+  | { kind: 'refused'; error: string }
+  | { kind: 'kept'; summary: RealmSummary | null };
+
+/** A count as a person reads it. */
+const counted = (n: number): string => n.toLocaleString();
+
+/** What the client says it found, in the order a realm is thought of. */
+function figures(summary: RealmSummary): Array<{ value: string; label: string }> {
+  return [
+    { value: counted(summary.classes), label: t('web.upload.summary.classes') },
+    { value: counted(summary.races), label: t('web.upload.summary.races') },
+    { value: counted(summary.monsters), label: t('web.upload.summary.monsters') },
+    { value: counted(summary.items), label: t('web.upload.summary.items') },
+    { value: counted(summary.rooms), label: t('web.upload.summary.rooms') },
+    summary.messages === null
+      ? { value: '–', label: t('web.upload.summary.noMessages') }
+      : { value: counted(summary.messages), label: t('web.upload.summary.messages') },
+    { value: counted(summary.loops), label: t('web.upload.summary.loops') }
+  ];
+}
 
 /**
  * A realm database sent up from this browser (2026-11-10): the realm picker
@@ -39,7 +60,7 @@ type Stage =
  * the same rules: Escape puts it away and a click on the scrim does, unless
  * a file is on its way.
  */
-export default function RealmUpload({ onDone }: RealmUploadProps) {
+export default function RealmUpload({ onKept, onClose }: RealmUploadProps) {
   const [file, setFile] = useState<File | null>(null);
   const [stage, setStage] = useState<Stage>({ kind: 'idle' });
   const input = useRef<HTMLInputElement | null>(null);
@@ -53,9 +74,15 @@ export default function RealmUpload({ onDone }: RealmUploadProps) {
     return () => request.current?.abort();
   }, []);
 
+  const done = useRef<HTMLButtonElement | null>(null);
+  const kept = stage.kind === 'kept';
+  useEffect(() => {
+    if (kept) done.current?.focus();
+  }, [kept]);
+
   const dismiss = (): void => {
     if (busy) return;
-    onDone(null);
+    onClose();
   };
 
   const send = (): void => {
@@ -73,14 +100,16 @@ export default function RealmUpload({ onDone }: RealmUploadProps) {
     xhr.upload.onload = () => setStage({ kind: 'checking' });
     xhr.onload = () => {
       request.current = null;
-      let answer: { path?: unknown; error?: unknown } = {};
+      let answer: { path?: unknown; error?: unknown; summary?: RealmSummary | null } = {};
       try {
         answer = JSON.parse(xhr.responseText) as typeof answer;
       } catch {
         // An answer that is not ours: said below as a stopped upload.
       }
       if (xhr.status === 200 && typeof answer.path === 'string') {
-        onDone(answer.path);
+        // The realm takes it now; what it holds is said until put away.
+        onKept(answer.path);
+        setStage({ kind: 'kept', summary: answer.summary ?? null });
         return;
       }
       setStage({
@@ -117,7 +146,9 @@ export default function RealmUpload({ onDone }: RealmUploadProps) {
         tabIndex={-1}
       >
         <header className="realm-upload-head">
-          <span className="realm-upload-title">{t('web.upload.title')}</span>
+          <span className="realm-upload-title">
+            {kept ? t('web.upload.summary.title') : t('web.upload.title')}
+          </span>
           <button
             aria-label={t('web.upload.cancel')}
             className="quiet"
@@ -129,53 +160,85 @@ export default function RealmUpload({ onDone }: RealmUploadProps) {
             <Icon name="close" />
           </button>
         </header>
-        <p className="hint">{t('web.upload.lead')}</p>
-        <input
-          accept={REALM_EXTENSIONS.map((extension) => `.${extension}`).join(',')}
-          hidden
-          onChange={(event) => {
-            setFile(event.target.files?.[0] ?? null);
-            setStage({ kind: 'idle' });
-          }}
-          ref={input}
-          type="file"
-        />
-        <div className="realm-upload-row">
-          <button disabled={busy} onClick={() => input.current?.click()} type="button">
-            <Icon name="folder" />
-            {t('web.upload.choose')}
-          </button>
-          {file !== null && (
-            <span className="realm-upload-file">
-              {t('web.upload.chosen', { name: file.name, size: formatSize(file.size) })}
-            </span>
-          )}
-        </div>
-        {busy && (
-          <div className="realm-upload-progress" role="status">
-            <span className="realm-upload-bar">
-              <span
-                style={{ width: `${stage.kind === 'sending' ? stage.percent : 100}%` }}
-                data-checking={stage.kind === 'checking' ? 'true' : undefined}
-              />
-            </span>
-            <span className="hint">
-              {stage.kind === 'sending'
-                ? t('web.upload.sending', { percent: stage.percent })
-                : t('web.upload.checking')}
-            </span>
-          </div>
+        {kept ? (
+          <>
+            {stage.summary !== null && (
+              <dl className="realm-upload-summary">
+                {figures(stage.summary).map((figure) => (
+                  <div key={figure.label}>
+                    <dt>{figure.label}</dt>
+                    <dd>{figure.value}</dd>
+                  </div>
+                ))}
+              </dl>
+            )}
+            <p className="hint">
+              {stage.summary === null
+                ? t('web.upload.summary.unsaid')
+                : t('web.upload.summary.lead')}
+            </p>
+            <footer className="realm-upload-actions">
+              <button className="primary" onClick={onClose} ref={done} type="button">
+                {t('web.upload.summary.done')}
+              </button>
+            </footer>
+          </>
+        ) : (
+          <>
+            <p className="hint">{t('web.upload.lead')}</p>
+            <input
+              accept={REALM_EXTENSIONS.map((extension) => `.${extension}`).join(',')}
+              hidden
+              onChange={(event) => {
+                setFile(event.target.files?.[0] ?? null);
+                setStage({ kind: 'idle' });
+              }}
+              ref={input}
+              type="file"
+            />
+            <div className="realm-upload-row">
+              <button disabled={busy} onClick={() => input.current?.click()} type="button">
+                <Icon name="folder" />
+                {t('web.upload.choose')}
+              </button>
+              {file !== null && (
+                <span className="realm-upload-file">
+                  {t('web.upload.chosen', { name: file.name, size: formatSize(file.size) })}
+                </span>
+              )}
+            </div>
+            {busy && (
+              <div className="realm-upload-progress" role="status">
+                <span className="realm-upload-bar">
+                  <span
+                    style={{ width: `${stage.kind === 'sending' ? stage.percent : 100}%` }}
+                    data-checking={stage.kind === 'checking' ? 'true' : undefined}
+                  />
+                </span>
+                <span className="hint">
+                  {stage.kind === 'sending'
+                    ? t('web.upload.sending', { percent: stage.percent })
+                    : t('web.upload.checking')}
+                </span>
+              </div>
+            )}
+            {stage.kind === 'refused' && <p className="settings-warn">{stage.error}</p>}
+            <footer className="realm-upload-actions">
+              <button className="quiet" disabled={busy} onClick={dismiss} type="button">
+                {t('web.upload.cancel')}
+              </button>
+              <button
+                className="primary"
+                disabled={file === null || busy}
+                onClick={send}
+                type="button"
+              >
+                <Icon name="upload" />
+                {t('web.upload.send')}
+              </button>
+            </footer>
+          </>
         )}
-        {stage.kind === 'refused' && <p className="settings-warn">{stage.error}</p>}
-        <footer className="realm-upload-actions">
-          <button className="quiet" disabled={busy} onClick={dismiss} type="button">
-            {t('web.upload.cancel')}
-          </button>
-          <button className="primary" disabled={file === null || busy} onClick={send} type="button">
-            <Icon name="upload" />
-            {t('web.upload.send')}
-          </button>
-        </footer>
       </div>
     </div>
   );

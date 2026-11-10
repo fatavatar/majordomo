@@ -9,3 +9,18 @@
  * the window can name it without reaching into main.
  */
 export const REALM_EXTENSIONS = ['mdb', 'accdb', 'sqlite', 'db', 'sqlite3', 'zip'] as const;
+
+/**
+ * What an uploaded realm database holds (2026-11-10), said once it is kept:
+ * the realm's own rows, its message table where it carries one (null where
+ * not), and the hunting loops the realm is given from it, one an area.
+ */
+export interface RealmSummary {
+  classes: number;
+  races: number;
+  monsters: number;
+  items: number;
+  rooms: number;
+  messages: number | null;
+  loops: number;
+}
