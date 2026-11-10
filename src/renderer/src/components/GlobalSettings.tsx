@@ -373,17 +373,6 @@ export default function GlobalSettings({
                 ]}
                 value={draft.ui.density}
               />
-              <SelectField
-                label={t('settings.client.appearance.tabPlacementLabel')}
-                name="global-tabs"
-                onChange={(value) => patch('ui', { tabs: value as GlobalDraft['ui']['tabs'] })}
-                options={[
-                  { value: 'left', label: t('settings.client.appearance.tabsLeft') },
-                  { value: 'right', label: t('settings.client.appearance.tabsRight') },
-                  { value: 'top', label: t('settings.client.appearance.tabsTop') }
-                ]}
-                value={draft.ui.tabs}
-              />
               <FontField
                 blankLabel={t('settings.client.appearance.uiFontSameAsConsole')}
                 hint={t('settings.client.appearance.uiFontHint')}

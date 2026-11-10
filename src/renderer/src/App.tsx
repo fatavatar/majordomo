@@ -58,7 +58,7 @@ import ReferencePopover, { type Asked } from './components/ReferencePopover';
 import TextblockPopover, { type TextblockAsked } from './components/TextblockPopover';
 import RoomQuickView, { type RoomAsked } from './components/RoomQuickView';
 import { ownAlignment } from './components/LairList';
-import TabRail, { type RailSide } from './components/TabRail';
+import TabRail from './components/TabRail';
 
 import DebugView from './components/DebugView';
 import type { DebugRecord } from '@shared/debug';
@@ -128,21 +128,13 @@ import { CONSOLE_PALETTES, TERMINAL_THEMES, THEME_PREFERENCES, THEMES } from '@s
 import { usePaneWidths } from './hooks/usePaneWidths';
 import { usePinnedCommands } from './hooks/usePins';
 import { Splitter } from './components/Splitter';
-import {
-  CONSOLE_ROWS,
-  DOCK_RANGE,
-  RAIL_RANGE,
-  TAB_RAIL_RANGE,
-  ceilingFor,
-  type SplitRange
-} from './lib/splitter';
+import { CONSOLE_ROWS, DOCK_RANGE, RAIL_RANGE, ceilingFor, type SplitRange } from './lib/splitter';
 import { useCardDrag } from './hooks/useCardDrag';
 import { useCardResize } from './hooks/useCardResize';
 import { reordered } from './lib/reorder';
 import { useDensity } from './hooks/useDensity';
 import { useDesktopAlerts } from './hooks/useDesktopAlerts';
 import { useHotkeys } from './hooks/useHotkeys';
-import { useOverridablePreference } from './hooks/usePreference';
 import { useTheme } from './hooks/useTheme';
 import { usePageLook } from './hooks/usePageLook';
 import { purseKey, useExplorer, wornKey } from './hooks/useExplorer';
@@ -416,7 +408,6 @@ function heightOf(selector: string, fallback: number): number {
  * `getBoundingClientRect` in a render is a forced layout, three panes' worth
  * per commit.
  */
-const measureTabs = (): number => widthOf('.workspace > .tab-rail', TAB_RAIL_RANGE.min);
 const measureRail = (): number => widthOf('.workspace > .rail', RAIL_RANGE.min);
 const measureSlide = (): number => widthOf('.rail-slide', RAIL_RANGE.min);
 const measureAbove = (): number => heightOf('.dock-above > .card', DOCK_RANGE.min);
@@ -1803,28 +1794,6 @@ export default function App() {
    */
   const [debugOpen, setDebugOpen] = useState(false);
 
-  /** Same precedence as density and theme: remembered, overridden by the file. */
-  const [tabSide, setTabSide] = useOverridablePreference<RailSide>(
-    'mudengine.tabs',
-    config.ui.tabs,
-    (value): value is RailSide => value === 'top' || value === 'left' || value === 'right'
-  );
-  /*
-   * Which edge the *cards* take, which is the other one.
-   *
-   * One setting decides both, because the two side rails cannot share an edge:
-   * a client that let each be asked for independently would have to pick a
-   * winner when both said left, and the pick would be arbitrary. So the tab
-   * rail's side is the setting and the card rail takes what is left.
-   *
-   * Stated as its own attribute rather than read off `data-tabs` in the
-   * stylesheet, because it has to hold in the one state where there is no tab
-   * rail at all — a client with no characters yet. Keyed on the tabs, the card
-   * rail would sit on the right until the first character loaded and then jump
-   * across the window.
-   */
-  const railSide: 'left' | 'right' = tabSide === 'right' ? 'left' : 'right';
-
   /**
    * How this character's rail is arranged, remembered per character.
    *
@@ -1853,7 +1822,7 @@ export default function App() {
     setSlideDragging(active);
   }, []);
   const rangeFor = useCallback(
-    (which: 'rail' | 'tabs' | 'above' | 'below'): SplitRange => {
+    (which: 'rail' | 'above' | 'below'): SplitRange => {
       const box = layersRef.current;
       if (which === 'above' || which === 'below') {
         // A strip takes rows from the console; it keeps its own floor of them.
@@ -1867,13 +1836,9 @@ export default function App() {
           CONSOLE_ROWS
         );
       }
-      const base = which === 'rail' ? RAIL_RANGE : TAB_RAIL_RANGE;
-      const current = widthOf(
-        which === 'rail' ? '.workspace > .rail' : '.workspace > .tab-rail',
-        base.min
-      );
-      if (!box || size.cols <= 0) return base;
-      return ceilingFor(base, current, box.clientWidth, box.clientWidth / size.cols);
+      const current = widthOf('.workspace > .rail', RAIL_RANGE.min);
+      if (!box || size.cols <= 0) return RAIL_RANGE;
+      return ceilingFor(RAIL_RANGE, current, box.clientWidth, box.clientWidth / size.cols);
     },
     [size.cols, size.rows]
   );
@@ -1929,13 +1894,11 @@ export default function App() {
    * the measuring itself moved out of the render path with them — see
    * `Splitter`.
    */
-  const rangeForTabs = useCallback(() => rangeFor('tabs'), [rangeFor]);
   const rangeForRail = useCallback(() => rangeFor('rail'), [rangeFor]);
   // Over the console rather than beside it, the slid-out rail keeps only the rail's own bounds.
   const rangeForSlide = useCallback((): SplitRange => RAIL_RANGE, []);
   const rangeForAbove = useCallback(() => rangeFor('above'), [rangeFor]);
   const rangeForBelow = useCallback(() => rangeFor('below'), [rangeFor]);
-  const resetTabs = useCallback(() => widths.setTabs(Number.NaN), [widths.setTabs]);
   const resetAbove = useCallback(() => widths.setAbove(Number.NaN), [widths.setAbove]);
   const resetBelow = useCallback(() => widths.setBelow(Number.NaN), [widths.setBelow]);
 
@@ -2629,8 +2592,6 @@ export default function App() {
     (character.phase === 'in-game' && loops.length > 0);
 
   const inGame = character.phase === 'in-game';
-  // A group shown, the tabs are one compact row across the top: its rows carry the rest.
-  const tabsAt: RailSide = groupOn ? 'top' : tabSide;
 
   const connected = state.phase === 'connected';
   // Refused only while a close is under way; a dial with no answer is made again.
@@ -4766,46 +4727,6 @@ export default function App() {
         group: 'view' as const,
         run: () => chooseConsole(entry)
       })),
-      ...(showTabs
-        ? [
-            {
-              id: 'tabside',
-              icon: 'columns' as const,
-              /*
-               * One row that cycles left → top → right, labelled with where
-               * the next press puts the rail and hinted with what that costs.
-               *
-               * A row per placement was the alternative and is what the theme
-               * commands do — but a theme has sixteen values and no order,
-               * while this has three that are literally one control moved
-               * around a window. Three rows would put two dead ones in the
-               * `view` group at all times, and the group is already the
-               * longest in the palette.
-               *
-               * The keywords carry what the label cannot: a cycle's label only
-               * ever names the *next* stop, so without them somebody typing
-               * `right` would find this row only one press in three — and a
-               * command nobody can find does not exist.
-               */
-              label:
-                tabSide === 'top'
-                  ? t('palette.view.tabsOnRightLabel')
-                  : tabSide === 'left'
-                    ? t('palette.view.tabsOnTopLabel')
-                    : t('palette.view.tabsOnLeftLabel'),
-              hint:
-                tabSide === 'top'
-                  ? t('palette.view.tabsTopHint')
-                  : tabSide === 'left'
-                    ? t('palette.view.tabsLeftHint')
-                    : t('palette.view.tabsRightHint'),
-              keywords: ['tabs', 'left', 'right', 'top', 'side', 'edge', 'rail', 'mirror', 'swap'],
-              group: 'view' as const,
-              run: () =>
-                setTabSide(tabSide === 'left' ? 'top' : tabSide === 'top' ? 'right' : 'left')
-            }
-          ]
-        : []),
       {
         id: 'config',
         icon: 'fileText' as const,
@@ -4984,10 +4905,7 @@ export default function App() {
           ]
         : []),
       // A rail dragged somewhere awkward, put back to the density's default.
-      ...(widths.rail !== null ||
-      widths.tabs !== null ||
-      widths.above !== null ||
-      widths.below !== null
+      ...(widths.rail !== null || widths.above !== null || widths.below !== null
         ? [
             {
               id: 'layout:widths-reset',
@@ -5042,8 +4960,6 @@ export default function App() {
       showSession,
       closeSession,
       connected,
-      tabSide,
-      setTabSide,
       activeTerminal,
       config.logging.enabled,
       hudPreference,
@@ -5069,7 +4985,6 @@ export default function App() {
       toggleExplorer,
       view.loop.status,
       widths.rail,
-      widths.tabs,
       widths.above,
       widths.below,
       widths.reset
@@ -6177,8 +6092,7 @@ export default function App() {
         // animation, and no transition may lag behind it.
         data-resizing={resizing || resize.active !== null ? 'true' : undefined}
         ref={workspaceRef}
-        data-rail-side={railSide}
-        data-tabs={showTabs ? tabsAt : 'none'}
+        data-tabs={showTabs ? 'top' : 'none'}
         style={widths.style as React.CSSProperties}
       >
         {/*
@@ -6201,8 +6115,6 @@ export default function App() {
           onToggleConnection={toggleSessionConnection}
           restToFor={restToFor}
           sessions={showTabs ? railSessions : NO_SESSIONS}
-          compact={groupOn}
-          side={tabsAt}
           groups={groups}
           inView={inView}
           onAddToView={addToView}
@@ -6210,21 +6122,6 @@ export default function App() {
           thresholds={config.ui.vitals}
           views={views}
         />
-
-        {showTabs && tabsAt !== 'top' && (
-          <Splitter
-            // Which way a drag grows the rail; `pane` is where the handle
-            // goes. The two part company the moment the workspace mirrors.
-            edge={tabSide === 'right' ? 'right' : 'left'}
-            label={t('splitter.aria.tabRailWidth')}
-            measure={measureTabs}
-            onChange={widths.setTabs}
-            onDragging={setResizing}
-            onReset={resetTabs}
-            pane="tabs"
-            rangeFor={rangeForTabs}
-          />
-        )}
 
         <div className="terminal-stack">
           {/*
@@ -6530,7 +6427,7 @@ export default function App() {
 
         {railVisible && !tucked && (
           <Splitter
-            edge={railSide}
+            edge="right"
             label={t('splitter.aria.cardRailWidth')}
             measure={measureRail}
             onChange={widths.setRail}
@@ -6573,7 +6470,7 @@ export default function App() {
             {tucked && (
               <div className="rail-slide-edge">
                 <Splitter
-                  edge={railSide === 'left' ? 'left' : 'right'}
+                  edge="right"
                   label={t('splitter.aria.cardRailWidth')}
                   measure={measureSlide}
                   onChange={widths.setRail}

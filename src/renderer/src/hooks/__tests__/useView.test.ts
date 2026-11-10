@@ -93,6 +93,14 @@ describe('useView', () => {
     expect(rows(shown.current)).toEqual(['a', 'b']);
   });
 
+  // The first tab, standing in for no choice, is kept when the rail is reordered (2026-11-10).
+  it('keeps the character shown when another tab is moved to the front', () => {
+    const shown = mount(tabs('a', 'b'));
+    expect(shown.current.session).toBe('a');
+    shown.rerender(tabs('b', 'a'));
+    expect(shown.current.session).toBe('a');
+  });
+
   it('comes back to what was on screen after a reload', () => {
     const first = mount(tabs('a', 'b', 'c'));
     act(() => first.current.addToView('c'));

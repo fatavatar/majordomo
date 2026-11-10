@@ -3,7 +3,6 @@ import { describe, expect, it } from 'vitest';
 import {
   CONSOLE_COLUMNS,
   RAIL_RANGE,
-  TAB_RAIL_RANGE,
   ceilingFor,
   clampWidth,
   keyAdjust,
@@ -26,6 +25,9 @@ describe('a pane width', () => {
 });
 
 describe('the console floor', () => {
+  // A narrow pane's range, as the side tab rail had (retired 2026-11-10).
+  const PANE = { min: 140, max: 320 };
+
   it('lets a pane take only the console’s slack beyond eighty columns', () => {
     // 10px cells, console 1000px wide: 200px of slack over the floor.
     const range = ceilingFor(RAIL_RANGE, 300, 1000, 10);
@@ -39,11 +41,11 @@ describe('the console floor', () => {
 
   it('gives width back to a console already under the floor, down to the pane’s minimum', () => {
     // 50px short of eighty columns: the pane yields exactly that much.
-    const range = ceilingFor(TAB_RAIL_RANGE, 200, CONSOLE_COLUMNS * 10 - 50, 10);
+    const range = ceilingFor(PANE, 200, CONSOLE_COLUMNS * 10 - 50, 10);
     expect(clampWidth(200, range)).toBe(150);
     // And no further than its own minimum, however short the console is.
-    const worse = ceilingFor(TAB_RAIL_RANGE, 200, CONSOLE_COLUMNS * 10 - 500, 10);
-    expect(clampWidth(200, worse)).toBe(TAB_RAIL_RANGE.min);
+    const worse = ceilingFor(PANE, 200, CONSOLE_COLUMNS * 10 - 500, 10);
+    expect(clampWidth(200, worse)).toBe(PANE.min);
   });
 
   it('falls back to the pane’s own range when nothing has been measured', () => {

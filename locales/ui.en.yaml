@@ -435,6 +435,13 @@ notices:
         now, and turning auto-combat off during one declines it — and "avoidUndead",
         "avoidDeathSpell" and the attack priority list have been removed. The two named potion
         slots became rows in "potions", keeping any threshold you had set. {fileList}'
+    tabsWentToTheTop:
+      many: '"ui.tabs" was removed from {count} files: the character tabs are one row across the
+        top now, each with its health and mana beside its name, and the card rail stays on the
+        right. {fileList}'
+      one: '"ui.tabs" was removed from {count} file: the character tabs are one row across the
+        top now, each with its health and mana beside its name, and the card rail stays on the
+        right. {fileList}'
     combatFloorDropped:
       many: '"combat.minHealth" was removed from {count} files: there is no longer a health floor on
         opening a fight. Low health is the retreat''s business and the rest''s, which act on the
@@ -1563,12 +1570,6 @@ palette:
     consolePaletteFollowLightHint: the theme's palette, light under a light theme
     consolePaletteFollowLightLabel: 'Console: follow the theme, light ones too'
     consolePaletteLabel: 'Console: {paletteLabel}'
-    tabsLeftHint: roomier, cards on the right
-    tabsOnLeftLabel: Tabs on the left
-    tabsOnRightLabel: Tabs on the right
-    tabsOnTopLabel: Tabs on top
-    tabsRightHint: roomier, cards on the left
-    tabsTopHint: compact, costs rows
     themeCycleLabel: Cycle theme
     themeCycleSystemHint: system · {themeLabel}
     themeFollowSystemLabel: 'Theme: follow the system'
@@ -1719,7 +1720,6 @@ tabs:
     dialAgainTooltip: Still dialing with no answer. Press to dial {characterName} again.
     dialDisconnectAria: Disconnect {characterName}
     dialStopRetryingAria: Stop reconnecting {characterName}
-    dragHint: Drag to reorder the characters
     editAria: Edit {characterName}…
     markError: error
     markFighting: fighting
@@ -1857,7 +1857,6 @@ splitter:
   aria:
     bottomStripHeight: Bottom strip height
     cardRailWidth: Card rail width
-    tabRailWidth: Character rail width
     topStripHeight: Top strip height
   tooltip: '{paneName} — drag, or use the arrow keys; double-click to reset'
 # Shared listing chrome: find, filter chips, sorting, the N-of-M line.
@@ -4155,10 +4154,6 @@ settings:
       skins:
         classic: Classic
         glance: Glance (colour and shape, shorter cards)
-      tabPlacementLabel: Character tabs
-      tabsLeft: Down the left, cards right
-      tabsRight: Down the right, cards left
-      tabsTop: Across the top
       uiFontHint:
         Everything except the console, which is always fixed-pitch. Blank uses the console face. The
         classic card style only, as glance sets its own; JetBrains Mono comes with the client.
