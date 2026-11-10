@@ -184,4 +184,37 @@ describe('realmMessageTriggers', () => {
     expect(triggers).toHaveLength(1);
     expect(triggers[0]).toMatchObject({ name: 'sleep', endsWith: '', effects: [], action: 'none' });
   });
+
+  /* Fatty sang his songs over and over: every wear-off line ended their cast lines (2026-11-10). */
+  it("leaves out a lasting spell's lines with no end, but keeps one that reports damage", () => {
+    const triggers = realmMessageTriggers([
+      {
+        Name: 'song of agility',
+        Message: 'You sing the song of agility to {target}!',
+        Kind: 'cast'
+      },
+      {
+        Name: 'song of agility',
+        Message: 'You feel agile!',
+        EndMessage: 'Your agility returns to normal.',
+        Kind: 'effect'
+      },
+      { Name: 'plague', Message: 'You cast plague on {target}!', Kind: 'cast' },
+      { Name: 'plague', Message: 'Plague eats at you for {dmg} damage!', Kind: 'hit' },
+      {
+        Name: 'plague',
+        Message: 'You are diseased!',
+        EndMessage: 'You feel well.',
+        Kind: 'effect'
+      },
+      // Not a lasting spell: its line stays.
+      { Name: 'song of harmony', Message: 'You sing the song of harmony.', Kind: 'cast' }
+    ]);
+    expect(triggers.map((trigger) => trigger.match)).toEqual([
+      'You feel agile!',
+      'Plague eats at you for {dmg} damage!',
+      'You are diseased!',
+      'You sing the song of harmony.'
+    ]);
+  });
 });

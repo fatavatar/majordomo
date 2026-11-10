@@ -272,12 +272,36 @@ function megaMudTrigger(row: {
  * Read through the same record as the file, so a row means what the same
  * row in `Messages.md` would; a row with no sentence is dropped, as the
  * file's is.
+ *
+ * **A lasting spell's other lines are left out (2026-11-10), unless they
+ * report damage.** On any wear-off line MegaMUD tries the end of every row,
+ * active or not (`0x46bb10`). A row with no end line ends on any line, and a
+ * row that ends makes a blessing of its name due again (`0x46bb70`).
+ * MegaMUD's own `Messages.md` never names an end-less row after a lasting
+ * spell. A realm's server writes one for every line of every spell, so
+ * "You sing the song of agility to {target}!" sits beside "You feel agile!"
+ * under one name. Fatty's songs were then due again at every wear-off line,
+ * including the old song's own when he recast it, and he cast them over and
+ * over. The lasting row says the blessing took and when it ended, which is
+ * all a blessing needs. A line with damage in it is kept for counting an
+ * attack.
  */
 export function realmMessageTriggers(rows: readonly Record<string, unknown>[]): MessageTrigger[] {
+  const lasting = new Set(
+    rows
+      .filter((row) => text(row['EndMessage']).trim().length > 0)
+      .map((row) => text(row['Name']).trim().toLowerCase())
+  );
   const triggers: MessageTrigger[] = [];
   for (const row of rows) {
     const match = text(row['Message']).trim();
     if (match.length === 0) continue;
+    if (
+      text(row['EndMessage']).trim().length === 0 &&
+      lasting.has(text(row['Name']).trim().toLowerCase()) &&
+      !match.includes('{dmg}')
+    )
+      continue;
     triggers.push(
       megaMudTrigger({
         name: text(row['Name']),

@@ -84,7 +84,12 @@ import {
 } from '../shared/spell-messages';
 import { loadSpellMessageRows } from './world/SpellMessages';
 import { loadShippedSentences } from './world/ShippedSentences';
-import { databaseTables, shopkeepers, type DatabaseTables } from './world/realmTables';
+import {
+  DATABASE_TABLES_SINCE,
+  databaseTables,
+  shopkeepers,
+  type DatabaseTables
+} from './world/realmTables';
 import { realmLoopCount, realmLoopsYielding } from './world/realmLoops';
 import { openRealm } from './world/RealmSource';
 import type { RealmSummary } from '../shared/realmFiles';
@@ -2108,8 +2113,11 @@ function realmFromDatabase(serverId: string, database: string): void {
     // No such file: the realm's loader says so.
     return;
   }
+  // Made from this database as it now is, and the way tables are made now.
   const current = (source: RealmTable['source']): boolean =>
-    source !== null && source.file === file && Date.parse(source.importedAt) >= builtAt;
+    source !== null &&
+    source.file === file &&
+    Date.parse(source.importedAt) >= Math.max(builtAt, DATABASE_TABLES_SINCE);
   const loopsDir = home.server(serverId).loops;
   const stores = [realmMessages, realmMonsters, realmItems];
   if (
