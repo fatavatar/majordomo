@@ -63,6 +63,16 @@ describe('RealmTableStore, the message table', () => {
     expect(errors).toHaveLength(1);
   });
 
+  it('fills a realm with no table, and never replaces one it has', () => {
+    const source = { file: 'realm.mdb', importedAt: '2026-11-10T12:00:00.000Z' };
+    expect(store.fill('paradigm', { source, triggers: [confusion] })).toEqual({ ok: true });
+    expect(store.forServer('paradigm').triggers).toEqual([confusion]);
+    // The player's own table, emptied by hand, stays theirs.
+    store.write('paradigm', { source: null, triggers: [] });
+    expect(store.fill('paradigm', { source, triggers: [confusion] })).toBeNull();
+    expect(store.forServer('paradigm')).toEqual({ source: null, triggers: [] });
+  });
+
   it('announces a write so sessions on the realm pick it up', () => {
     let changes = 0;
     store.on('change', () => (changes += 1));

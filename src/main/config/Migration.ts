@@ -7210,8 +7210,7 @@ function theMegaMudDataMovedIn(home: Home, note: (message: string) => void): voi
     const fill = <Table extends RealmTable>(kind: TableKind<Table>, table: Table): boolean => {
       const store = new RealmTableStore(home, kind);
       try {
-        if (fs.existsSync(store.file(serverId))) return true;
-        return store.write(serverId, table).ok;
+        return store.fill(serverId, table)?.ok ?? true;
       } finally {
         store.dispose();
       }

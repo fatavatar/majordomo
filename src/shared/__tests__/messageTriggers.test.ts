@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
-import { asMessageTable, parseMegaMudMessages, triggerForFile } from '../messageTriggers';
+import {
+  asMessageTable,
+  parseMegaMudMessages,
+  realmMessageTriggers,
+  triggerForFile
+} from '../messageTriggers';
 
 /** Records copied from MegaMUD 2.1's shipped `Default/Messages.md`, CRLF and all. */
 const FILE = [
@@ -117,5 +122,66 @@ describe('the realm file', () => {
     });
     expect(table.triggers).toHaveLength(1);
     expect(table.triggers[0]!.effects).toEqual(['blind']);
+  });
+});
+
+describe('realmMessageTriggers', () => {
+  it("reads a realm database's Messages rows as Messages.md's records", () => {
+    const triggers = realmMessageTriggers([
+      {
+        Name: 'flash',
+        Message: 'You are blind!',
+        EndMessage: 'You can see again!',
+        Response: '',
+        Source: 'Spell #12',
+        Flags: 0x0001,
+        Action: 0,
+        Kind: 'effect'
+      },
+      {
+        Name: 'magic missile',
+        Message: 'You fire a magic missile at {target} for {dmg} damage!',
+        EndMessage: '',
+        Response: 'say ow',
+        Flags: 0x8000 | 0x0400,
+        Action: 2,
+        Kind: 'cast'
+      }
+    ]);
+    expect(triggers).toEqual([
+      {
+        name: 'flash',
+        match: 'You are blind!',
+        endsWith: 'You can see again!',
+        response: '',
+        effects: ['blind'],
+        action: 'none',
+        anywhere: false,
+        conversations: false,
+        chase: false,
+        enabled: true
+      },
+      {
+        name: 'magic missile',
+        match: 'You fire a magic missile at {target} for {dmg} damage!',
+        endsWith: '',
+        response: 'say ow',
+        effects: [],
+        action: 'wait',
+        anywhere: true,
+        conversations: false,
+        chase: false,
+        enabled: false
+      }
+    ]);
+  });
+
+  it('drops a row with no sentence and reads an empty or odd column as nothing', () => {
+    const triggers = realmMessageTriggers([
+      { Name: 'nothing', Message: '  ', Flags: 1, Action: 0 },
+      { Name: 'sleep', Message: '{source} casts sleep on you!', EndMessage: null, Flags: null }
+    ]);
+    expect(triggers).toHaveLength(1);
+    expect(triggers[0]).toMatchObject({ name: 'sleep', endsWith: '', effects: [], action: 'none' });
   });
 });

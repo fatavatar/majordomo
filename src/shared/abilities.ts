@@ -352,6 +352,13 @@ export const CONFUSE_MESSAGE_ABILITY = 101;
 export const OPEN_DOOR_ABILITY = 161;
 
 /**
+ * `BSAccu`: a weapon's backstab accuracy. The weapons MegaMUD's players
+ * marked to backstab with are the ones carrying it (432 of MudRev's 534
+ * rows, 2026-11-10), which is how a realm's own item table marks them.
+ */
+export const BACKSTAB_ACCURACY = 116;
+
+/**
  * What a character can *do*, from the realm's own class and race rows
  * (todo 22, 2026-09-12).
  *

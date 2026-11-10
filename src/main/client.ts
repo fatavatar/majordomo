@@ -12,7 +12,7 @@
  * cannot do something says so, and every refusal below is worded for the
  * window that will show it.
  */
-import { cpSync, existsSync, readFileSync } from 'node:fs';
+import { copyFileSync, cpSync, existsSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 
@@ -84,6 +84,9 @@ import {
 } from '../shared/spell-messages';
 import { loadSpellMessageRows } from './world/SpellMessages';
 import { loadShippedSentences } from './world/ShippedSentences';
+import { databaseTables, shopkeepers, type DatabaseTables } from './world/realmTables';
+import { realmLoopsYielding } from './world/realmLoops';
+import { databaseLoopsCurrent, writeDatabaseLoops } from './world/realmLoopFiles';
 import type { ShippedSentences } from '../shared/sentences';
 import { NO_REALM_PLAYERS, type RealmPlayers } from '../shared/players';
 import { NO_FIGHTS, type FightSink } from '../shared/fights';
@@ -2016,12 +2019,132 @@ function createRealmTable<T extends RealmTable>(
 function realmTablesFor(id: SessionId): RealmTables {
   const profile = profileFor(id);
   const serverId = profile === undefined ? undefined : servers?.idFor(profile.serverName);
-  if (serverId === undefined) return NO_REALM_TABLES;
+  if (profile === undefined || serverId === undefined) return NO_REALM_TABLES;
+  realmFromDatabase(serverId, profile.database);
   return {
     messages: realmMessages?.forServer(serverId).triggers ?? [],
     monsters: realmMonsters?.forServer(serverId).monsters ?? [],
     items: realmItems?.forServer(serverId).items ?? []
   };
+}
+
+/** Each realm database already read for its tables, by realm, file and stamp. */
+const tablesAsked = new Set<string>();
+
+/**
+ * A realm played from its own database takes its message, monster and item
+ * tables and its hunting loops from it (`world/realmTables.ts`,
+ * `world/realmLoops.ts`, 2026-11-10), in place of MegaMUD's `Messages.md`,
+ * `Monsters.md`, `Items.md` and recorded loops or anything shipped: the
+ * database is the realm's one source. The loops are files in the realm's
+ * loops folder, rebuilt when the database changes but for any the player
+ * edited (`world/realmLoopFiles.ts`). A table is rebuilt when it did not come
+ * from this database as it now is — imported from MegaMUD, made before the
+ * database changed, or not there at all — and a table that came from
+ * somewhere else is copied aside once first (`<file>.before-database`).
+ * Edits to a table built from the database are kept until the database
+ * changes. A database with no `Messages` table leaves that table as it is.
+ *
+ * On the next turn rather than here: a table's write reconfigures every
+ * session, and this is asked while one is being configured. That
+ * reconfiguration is what hands the characters the new tables.
+ */
+function realmFromDatabase(serverId: string, database: string): void {
+  const file = realms?.databaseFile(database) ?? null;
+  if (file === null) return;
+  let builtAt: number;
+  try {
+    builtAt = statSync(file).mtimeMs;
+  } catch {
+    // No such file: the realm's loader says so.
+    return;
+  }
+  const current = (source: RealmTable['source']): boolean =>
+    source !== null && source.file === file && Date.parse(source.importedAt) >= builtAt;
+  const loopsDir = home.server(serverId).loops;
+  const stores = [realmMessages, realmMonsters, realmItems];
+  if (
+    stores.every((store) => store === null || current(store.forServer(serverId).source)) &&
+    databaseLoopsCurrent(loopsDir, file, builtAt)
+  )
+    return;
+  const key = `${serverId}\n${file}\n${builtAt}`;
+  if (tablesAsked.has(key)) return;
+  tablesAsked.add(key);
+  setImmediate(() => {
+    const loaded = realms?.load(database);
+    // A database that did not convert is the bundled world standing in: nothing of it is this realm's.
+    const world = loaded !== undefined && loaded.problem === undefined ? loaded.graph : undefined;
+    let tables: DatabaseTables;
+    try {
+      tables = databaseTables(file, world ? shopkeepers(world) : new Set());
+    } catch {
+      // A file that does not open: the realm's loader says so.
+      return;
+    }
+    const source = { file, importedAt: new Date().toISOString() };
+    const rebuild = <T extends RealmTable>(store: RealmTableStore<T> | null, table: T): boolean => {
+      if (store === null || current(store.forServer(serverId).source)) return false;
+      const at = store.file(serverId);
+      const aside = `${at}.before-database`;
+      if (existsSync(at) && store.forServer(serverId).source?.file !== file && !existsSync(aside))
+        copyFileSync(at, aside);
+      return store.write(serverId, table).ok;
+    };
+    const counts = {
+      messages:
+        tables.messages !== null && tables.messages.length > 0
+          ? rebuild(realmMessages, { source, triggers: tables.messages })
+            ? tables.messages.length
+            : null
+          : null,
+      monsters: rebuild(realmMonsters, { source, monsters: tables.monsters })
+        ? tables.monsters.length
+        : null,
+      items: rebuild(realmItems, { source, items: tables.items }) ? tables.items.length : null,
+      loops: null as number | null
+    };
+    const said = (): void => {
+      if (Object.values(counts).every((count) => count === null)) return;
+      announce(
+        'world',
+        t('notices.world.tablesFromDatabase', {
+          file: path.basename(file),
+          messages: counts.messages ?? '-',
+          monsters: counts.monsters ?? '-',
+          items: counts.items ?? '-',
+          loops: counts.loops ?? '-'
+        }),
+        'log'
+      );
+    };
+    if (world === undefined || databaseLoopsCurrent(loopsDir, file, builtAt)) {
+      said();
+      return;
+    }
+    // The loops an area at a time, everything else running between them.
+    const steps = realmLoopsYielding(world, tuning().hunting.areaRadius);
+    const step = (): void => {
+      const next = steps.next();
+      if (next.done !== true) {
+        setImmediate(step);
+        return;
+      }
+      try {
+        counts.loops = writeDatabaseLoops(
+          loopsDir,
+          { file, builtAt },
+          next.value,
+          ` ${t('notices.world.loopFromDatabase', { file: path.basename(file) })}`
+        );
+        loops?.refresh();
+      } catch (error) {
+        announce('loops', errorMessage(error));
+      }
+      said();
+    };
+    step();
+  });
 }
 
 /**
