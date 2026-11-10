@@ -1476,6 +1476,12 @@ const TUNING_DEFAULTS = {
      */
     loginWindowMs: 900_000,
     /**
+     * The largest realm database a tab may send up, in bytes (2026-11-10).
+     * MudRev's is 20 MB and more; a sent file past this is refused as it
+     * arrives and nothing of it is kept.
+     */
+    uploadMaxBytes: 268_435_456,
+    /**
      * How often the client pings each tab. A proxy closes an idle socket and
      * a tab that vanished never says goodbye; a ping unanswered by the next
      * one is how either is found, and the interval is what it costs. Each

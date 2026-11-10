@@ -62,8 +62,9 @@ volumes:
   Under rootless Docker a folder of yours works as it is. Under rootful
   Docker a folder owned by root is not run as root: give it to a user
   (`chown 1000:1000`) first.
-- A realm database of your own goes under `/config` (`docker cp` it in); the
-  client's picker browses the container's files, not your browser's.
+- A realm database of your own is uploaded from your browser: **Upload…** on
+  the realm's page sends it into `/config/databases` (up to 256 MB, the
+  tuning key `web.uploadMaxBytes`).
 - `docker stop` disconnects every character cleanly and flushes what the
   client keeps, the same way Ctrl-C does on the desktop.
 

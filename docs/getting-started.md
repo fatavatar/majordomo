@@ -140,14 +140,20 @@ from a **realm database**.
 - **Stock MajorMUD or Paradigm:** leave **World database** blank. Both worlds
   ship with the client, and it picks the right one from what the realm calls
   itself at its menu. You can also type `majormud` or `paradigm` to pin one.
-- **A customised realm** (MudRev, or any realm whose rooms differ): click
-  **Browse…** and choose the realm's `.mdb`. This is the same Access database
-  that MMUD Explorer reads, usually from the sysop or the realm's website. A
-  SQLite copy or a `.zip` of either works too. The client converts it once and
-  keeps the result under `realms/`.
-  - **In Docker**, copy the file into the `/config` volume first. The Browse
-    button sees only the container's own `/config`, so the path must start
-    with `/config/`, e.g. `/config/mudrev.mdb`.
+- **A customised realm** (MudRev, or any realm whose rooms differ): give it the
+  realm's `.mdb`. This is the same Access database that MMUD Explorer reads,
+  usually from the sysop or the realm's website. A SQLite copy or a `.zip` of
+  either works too. The client converts it once and keeps the result under
+  `realms/`. How you hand it over depends on where you play:
+  - **Desktop app:** click **Browse…** and pick the file on your computer.
+  - **In a browser (Docker or `npm run web`):** click **Upload…**, choose the
+    file on the computer you are browsing from, and **Send it**. It is sent to
+    the client with a progress bar (MudRev's is 20 MB and more), checked to
+    open as a realm, kept in the client's `databases` folder (`/config/databases`
+    in Docker), and the field fills in with where it went. Nothing needs
+    copying into the container by hand. A file with the name of one already
+    there is kept beside it as `mudrev-2.mdb`, so a realm using the old one is
+    never changed under it.
 
 > [!IMPORTANT]
 > ### MDB import: a customised realm needs its own `.mdb`
@@ -156,9 +162,11 @@ from a **realm database**.
 > and locked doors would all be wrong.
 
 > [!WARNING]
-> ### In Docker the path must start with `/config/`
-> A path from your own computer (`C:\…` or `/home/…`) does not exist inside
-> the container, and the client quietly falls back to the stock world.
+> ### In a browser, upload; don't type a path from your computer
+> A path typed into the field is read on the machine the client runs on. A
+> path from your own computer (`C:\…` or `/home/…`) does not exist there (in
+> Docker, nothing outside `/config/` does), and the client quietly falls back
+> to the stock world. **Upload…** sends the file and fills the path in for you.
 
 With a realm database in place you get the Map card's areas, routes to any
 room, where to buy things, which doors are locked and what opens them, and

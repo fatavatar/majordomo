@@ -8,6 +8,7 @@ import { DEFAULT_INTERNAL } from '../../../shared/internal';
 import { setTuning } from '../../app/tuning';
 import { AccessTokens, COOKIE, SignInGuard } from '../web/access';
 import { Downloads } from '../web/downloads';
+import { receiveRealm } from '../web/uploads';
 import { createWebServer, loginPage, withConnectSrc, type WebServer } from '../web/server';
 import type { WebSocketConnection } from '../web/sockets';
 
@@ -54,7 +55,16 @@ beforeAll(async () => {
       connection.onMessage = (text) => connection.send(`echo:${text}`);
     },
     log: (line) => log.push(line),
-    download: (token) => downloads.take(token)
+    download: (token) => downloads.take(token),
+    // A realm here is a file that says ROOMS; anything past 1 KB is too large.
+    uploadRealm: (body, name) =>
+      receiveRealm(body, {
+        dir: path.join(dir, 'databases'),
+        name,
+        maxBytes: 1024,
+        check: (file) => (fs.readFileSync(file, 'utf8').includes('ROOMS') ? null : 'not a realm'),
+        say: { badName: 'bad name', tooLarge: (max) => `over ${max}`, failed: (m) => m }
+      })
   });
   ({ port } = await server.listen(0, '127.0.0.1'));
 });
@@ -282,6 +292,46 @@ describe('with a session', () => {
     expect(await first.text()).toBe('the trace');
     expect((await get(link, { Cookie: cookie })).status).toBe(404);
     expect((await get('/download/abc123/index.html', { Cookie: cookie })).status).toBe(404);
+  });
+
+  /* A realm database sent up from a tab (2026-11-10). */
+  it('keeps a realm database a signed-in tab sends up, beside one of its name', async () => {
+    const send = (name: string, body: string, headers: Record<string, string>): Promise<Response> =>
+      fetch(`${base()}/upload/realm?name=${encodeURIComponent(name)}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/octet-stream', ...headers },
+        body
+      });
+    const ours = { 'X-Majordomo-Upload': '1' };
+    expect((await send('mudrev.mdb', 'ROOMS', ours)).status).toBe(401);
+    const cookie = await signIn();
+    const signed = { ...ours, Cookie: cookie };
+    // The header a form elsewhere cannot set, and this host's origin.
+    expect((await send('mudrev.mdb', 'ROOMS', { Cookie: cookie })).status).toBe(403);
+    expect(
+      (await send('mudrev.mdb', 'ROOMS', { ...signed, Origin: 'http://evil.example' })).status
+    ).toBe(403);
+    const first = await send('mudrev.mdb', 'ROOMS', signed);
+    expect(first.status).toBe(200);
+    const kept = ((await first.json()) as { path: string }).path;
+    expect(kept).toBe(path.join(dir, 'databases', 'mudrev.mdb'));
+    expect(fs.readFileSync(kept, 'utf8')).toBe('ROOMS');
+    const again = (await (await send('mudrev.mdb', 'ROOMS too', signed)).json()) as {
+      path: string;
+    };
+    expect(path.basename(again.path)).toBe('mudrev-2.mdb');
+    // Refused: not a realm, not a realm's name, past the size; nothing left behind.
+    const notRealm = await send('other.mdb', 'nothing', signed);
+    expect([notRealm.status, ((await notRealm.json()) as { error: string }).error]).toEqual([
+      422,
+      'not a realm'
+    ]);
+    expect((await send('../../evil.sh', 'ROOMS', signed)).status).toBe(400);
+    expect((await send('big.mdb', `ROOMS${'x'.repeat(4096)}`, signed)).status).toBe(413);
+    expect(fs.readdirSync(path.join(dir, 'databases')).sort()).toEqual([
+      'mudrev-2.mdb',
+      'mudrev.mdb'
+    ]);
   });
 
   it('refuses a socket opened from another origin', async () => {

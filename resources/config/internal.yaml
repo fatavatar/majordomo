@@ -1143,6 +1143,11 @@ tuning:
     # signed in is never asked.
     loginWindowMs: 900000
 
+    # The largest realm database a browser tab may send up, in bytes. MudRev's
+    # is 20 MB and more; a file past this is refused as it arrives and nothing
+    # of it is kept.
+    uploadMaxBytes: 268435456
+
     # How often the client pings each tab. A proxy closes an idle socket and a
     # tab that vanished never says goodbye; a ping unanswered by the next one
     # is how either is found. Each ping goes with a beat the page hears, and a
