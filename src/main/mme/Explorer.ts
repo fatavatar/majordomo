@@ -2793,6 +2793,47 @@ function lairGroups(): { groups: Map<string, LairGroupDef>; bosses: Row[] } {
   return lairGroupsOf;
 }
 
+/**
+ * Where each lair room is, by `map/room`: the area Hunting Grounds files it
+ * under (`world/huntingAreas.ts`), for `byArea`.
+ */
+export type LairAreas = Readonly<Record<string, string>>;
+
+/**
+ * The realm's lair groups split by area (2026-11-10): one group's lairs in
+ * each area it spawns in, priced apart, keyed `lair:<index>@<area>`; a group
+ * in one area keeps its own key. A realm reuses one group for places that
+ * have nothing to do with each other — MudRev's griffon group 1-491-491 is
+ * 59 lairs of two on the Rocky Cliffs and 144 lairs, nearly all of one, in
+ * the Darkened Forest on another map — and priced as one, the cliffs were
+ * averaged into the forest, filed under it as the area with most of the
+ * group's rooms, and never shown, while a loop of them earned more than the
+ * forest was priced at. A room no area holds is one place with the others.
+ */
+function byArea(
+  groups: ReadonlyMap<string, LairGroupDef>,
+  areas: LairAreas | null
+): Map<string, LairGroupDef> {
+  const split = new Map<string, LairGroupDef>();
+  for (const group of groups.values()) {
+    const parts = new Map<string, LairGroupDef>();
+    group.rooms.forEach((at, i) => {
+      const area = areas?.[`${at.map}/${at.room}`] ?? '';
+      let part = parts.get(area);
+      if (part === undefined) {
+        part = { index: group.index, entries: [], rooms: [], mobs: group.mobs };
+        parts.set(area, part);
+      }
+      part.rooms.push(at);
+      part.entries.push(group.entries[i]!);
+    });
+    for (const [area, part] of parts) {
+      split.set(parts.size === 1 ? `lair:${group.index}` : `lair:${group.index}@${area}`, part);
+    }
+  }
+  return split;
+}
+
 /** A boss's rooms: the lairs it spawns in, and the rooms that place it. */
 function bossRooms(m: Row): Array<{ map: number; room: number }> {
   return String(m['Summoned By'] ?? '')
@@ -2939,7 +2980,8 @@ export async function explorerHunting(
   state: CharacterState,
   how: HowItFights | null,
   reach: readonly string[],
-  party: MmeParty | null = null
+  party: MmeParty | null = null,
+  areas: LairAreas | null = null
 ): Promise<{ supported: boolean; groups: LairPrice[]; setup: string | null }> {
   await useRealm(realm);
   if (!supported()) return { supported: false, groups: [], setup: null };
@@ -2953,19 +2995,19 @@ export async function explorerHunting(
     const reached = (rooms: ReadonlyArray<{ map: number; room: number }>): boolean =>
       rooms.some((at) => inReach.has(`${at.map}/${at.room}`));
     const { groups, bosses } = lairGroups();
-    const lairs = [...groups.values()].filter(
-      (group) => reached(group.rooms) && group.mobs.length > 0
+    const lairs = [...byArea(groups, areas)].filter(
+      ([, group]) => reached(group.rooms) && group.mobs.length > 0
     );
     const placed = bosses.filter((m) => reached(bossRooms(m)));
     // The blows first: the estimate's inputs are read once they are all in.
-    for (const m of [...lairs.flatMap((group) => group.mobs), ...placed]) {
+    for (const m of [...lairs.flatMap(([, group]) => group.mobs), ...placed]) {
       const n = m['Number'] as number;
       if (!monsterDamageIn(n).calculated) calcMonsterDamage(n, asParty);
     }
     const { env } = expHrEnv();
     const priced: LairPrice[] = [];
-    for (const group of lairs) {
-      const price = pricePooled(`lair:${group.index}`, [group], env);
+    for (const [key, group] of lairs) {
+      const price = pricePooled(key, [group], env);
       if (price !== null) priced.push(price);
     }
     for (const m of placed) {
@@ -3193,7 +3235,8 @@ export async function explorerHuntingPools(
   state: CharacterState,
   how: HowItFights | null,
   pools: ReadonlyArray<{ key: string; groups: readonly string[] }>,
-  party: MmeParty | null = null
+  party: MmeParty | null = null,
+  areas: LairAreas | null = null
 ): Promise<LairPrice[]> {
   await useRealm(realm);
   if (!supported()) return [];
@@ -3203,10 +3246,10 @@ export async function explorerHuntingPools(
     if (how !== null) healFromBlessings(how);
     const asParty = party !== null && party.size > 1;
     setView('monstersByLair', true);
-    const { groups } = lairGroups();
+    const groups = byArea(lairGroups().groups, areas);
     const defsOf = (keys: readonly string[]): LairGroupDef[] =>
       keys.flatMap((key) => {
-        const def = key.startsWith('lair:') ? groups.get(key.slice(5)) : undefined;
+        const def = groups.get(key);
         return def === undefined ? [] : [def];
       });
     for (const pool of pools) {

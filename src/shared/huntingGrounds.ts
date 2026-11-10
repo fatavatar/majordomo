@@ -32,7 +32,7 @@ export interface GroundRoom {
  * named and stepped in main, which has the world.
  */
 export interface LairPrice {
-  /** `lair:<group index>` or `mob:<monster number>`. */
+  /** `lair:<group index>`, `lair:<group index>@<area>` for one area of a group spread over several, or `mob:<monster number>`. */
   key: string;
   kind: 'lair' | 'mob';
   mobs: string[];

@@ -13,6 +13,7 @@ import {
   explorerEqWear,
   explorerGear,
   explorerHunting,
+  explorerHuntingPools,
   explorerList,
   explorerRoomSearch,
   explorerRoomTip,
@@ -733,6 +734,40 @@ describe('a lair cleared with a room spell, as MegaMUD casts it', () => {
     expect(rats.recovering).toBeGreaterThan(before.get(rats.key)!.recovering);
     expect(rats.expPerHour!).toBeLessThan(before.get(rats.key)!.expPerHour!);
     expect(nuked.setup).toContain('room spells fbal');
+  });
+
+  // 2026-11-10: MudRev's griffon lairs on the Rocky Cliffs were priced as part of the Darkened Forest's.
+  it('prices a lair group spread over two areas an area at a time', async () => {
+    const every = rooms();
+    const whole = await explorerHunting(fixture(), mage, how, every);
+    const spread = whole.groups.find((group) => group.kind === 'lair' && group.rooms.length >= 4)!;
+    // Its first half in one area, the rest in another.
+    const half = Math.floor(spread.rooms.length / 2);
+    const areas = Object.fromEntries(
+      spread.rooms.map((at, i) => [`${at.map}/${at.room}`, i < half ? 'cliffs' : 'forest'])
+    );
+    const split = await explorerHunting(fixture(), mage, how, every, null, areas);
+    const index = spread.key.slice('lair:'.length);
+    const cliffs = split.groups.find((group) => group.key === `lair:${index}@cliffs`)!;
+    const forest = split.groups.find((group) => group.key === `lair:${index}@forest`)!;
+    expect(split.groups.some((group) => group.key === spread.key)).toBe(false);
+    expect(cliffs.rooms).toEqual(spread.rooms.slice(0, half));
+    expect(forest.rooms).toEqual(spread.rooms.slice(half));
+    expect(cliffs.lairs + forest.lairs).toBe(spread.lairs);
+    // Every other group is priced as it was.
+    const others = (groups: typeof whole.groups) =>
+      groups.filter((group) => !group.key.startsWith(`lair:${index}`));
+    expect(others(split.groups)).toEqual(others(whole.groups));
+    // And a pool names the parts by those keys.
+    const [pool] = await explorerHuntingPools(
+      fixture(),
+      mage,
+      how,
+      [{ key: 'pool:both', groups: [cliffs.key, forest.key] }],
+      null,
+      areas
+    );
+    expect(pool!.rooms).toEqual(spread.rooms);
   });
 
   // 2026-10-31: Skinny's forgotten dragons, placed by a room of the Dark Cavern, went unpriced.
