@@ -149,9 +149,9 @@ same characters. A lock left by a client that died is taken over and said so.
 **What a browser tab cannot do.** Moving a character to a second window is a
 desktop feature and the tab does not offer it. *Show the options file* and its
 siblings list the directory in the window instead of opening a file manager
-on a machine you are not at, and choosing a realm database browses the
-container's `/config` — copy a database there first. Copy and paste use the
-browser's own clipboard.
+on a machine you are not at, and a realm database is uploaded from the
+browser (**Upload…** on the realm's page) rather than chosen from the
+client's disk. Copy and paste use the browser's own clipboard.
 
 **Bind mounts.** The image runs as uid 1000. A bind-mounted directory owned by
 anybody else is a container that cannot write its options file; the named

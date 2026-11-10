@@ -39,9 +39,33 @@ import type { Caller, ClientHooks, Handler, Host, Layout, Transport } from './Ho
 import { AccessTokens, resolveAccessPassword, type AccessPassword } from './web/access';
 import { createWebServer, type WebServer } from './web/server';
 import { Downloads } from './web/downloads';
+import { receiveRealm } from './web/uploads';
+import { openRealm } from '../world/RealmSource';
+import { REALM_EXTENSIONS } from '../../shared/realmFiles';
 import { WebLog } from './web/log';
 import { TabSessions, type Tab } from './web/tabs';
 import { Send } from '../../shared/ipc';
+
+/** Where a realm database a tab sent up is kept, under the home (`uploads.ts`). */
+const UPLOADED_REALMS = 'databases';
+
+/**
+ * Why a file sent up is not a realm database, or null when it is one: it
+ * opens, and it has the rooms a realm is walked by. Read once and let go.
+ */
+function realmProblem(file: string): string | null {
+  try {
+    const realm = openRealm(file);
+    try {
+      const names = realm.tableNames().map((name) => name.toLowerCase());
+      return names.includes('rooms') ? null : t('web.upload.noRooms');
+    } finally {
+      realm.close();
+    }
+  } catch (error) {
+    return t('web.upload.notARealm', { message: errorMessage(error) });
+  }
+}
 
 /** The one rail every tab draws. Tabs are numbered from the next id up. */
 export const WEB_RAIL = 1;
@@ -308,7 +332,19 @@ export function createWebHost(layout: Layout): Host {
         trustProxy,
         onSocket: (connection, remote) => tabs.connect(connection, remote),
         log: say,
-        download: (token) => downloads.take(token)
+        download: (token) => downloads.take(token),
+        uploadRealm: (body, name) =>
+          receiveRealm(body, {
+            dir: hooks.home.state(UPLOADED_REALMS),
+            name,
+            maxBytes: tuning().web.uploadMaxBytes,
+            check: realmProblem,
+            say: {
+              badName: t('web.upload.badName', { extensions: REALM_EXTENSIONS.join(', ') }),
+              tooLarge: (max) => t('web.upload.tooLarge', { max }),
+              failed: (message) => t('web.upload.failed', { message })
+            }
+          })
       });
       server.listen(port, bind).then(
         (bound) => {

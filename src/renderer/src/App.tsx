@@ -85,6 +85,7 @@ import type { SupplyList } from './components/SupplyControls';
 import LoopsModal from './components/LoopsModal';
 import ExplorerScreen from './components/ExplorerScreen';
 import HomeBrowser from './components/HomeBrowser';
+import RealmUpload from './components/RealmUpload';
 import { registerRealmPicker } from './lib/pickers';
 import LoopBuilderCard, {
   type BuilderDestination,
@@ -2062,19 +2063,24 @@ export default function App() {
   }, [activeTerminal]);
 
   /**
-   * A directory of the client's, drawn in the window.
-   *
-   * Two things open it. Revealing a path — the options file, the characters
-   * folder, the logs — answers `listed` from a host that has no file manager
-   * to open on the machine the files are on, and the listing is what the
-   * window shows instead of nothing. And the realm picker in web mode: the
-   * bridge asks the window for one (`lib/pickers.ts`) because the disk being
-   * chosen from is the client's, and `pick` is the promise it is waiting on.
+   * A directory of the client's, drawn in the window: revealing a path — the
+   * options file, the characters folder, the logs — answers `listed` from a
+   * host that has no file manager to open on the machine the files are on,
+   * and the listing is what the window shows instead of nothing.
    */
   const [browsing, setBrowsing] = useState<{
     start: string | null;
-    pick: ((file: string | null) => void) | null;
     /** The dialog control holding the caret when the browser was asked for, if any. */
+    opener: HTMLElement | null;
+  } | null>(null);
+  /**
+   * The realm picker in web mode (2026-11-10): the bridge asks the window
+   * for one (`lib/pickers.ts`), and the realm's database is sent up from this
+   * browser (`RealmUpload`) rather than chosen from the client's disk, which
+   * a tab's player cannot reach. `done` is the promise the bridge waits on.
+   */
+  const [uploading, setUploading] = useState<{
+    done(file: string | null): void;
     opener: HTMLElement | null;
   } | null>(null);
 
@@ -2084,15 +2090,15 @@ export default function App() {
    * picker, and a caret sent past it into the game left that screen deaf to
    * its own Escape (2026-09-07). `mudengine-ui` § Focus lives in the terminal.
    */
-  const openBrowser = useCallback(
-    (start: string | null, pick: ((file: string | null) => void) | null) => {
-      const active = document.activeElement;
-      const opener =
-        active instanceof HTMLElement && active.closest('[role="dialog"]') !== null ? active : null;
-      setBrowsing({ start, pick, opener });
-    },
-    []
-  );
+  const dialogOpener = (): HTMLElement | null => {
+    const active = document.activeElement;
+    return active instanceof HTMLElement && active.closest('[role="dialog"]') !== null
+      ? active
+      : null;
+  };
+  const openBrowser = useCallback((start: string | null) => {
+    setBrowsing({ start, opener: dialogOpener() });
+  }, []);
 
   const closeBrowser = useCallback(() => {
     const opener = browsing?.opener ?? null;
@@ -2105,16 +2111,29 @@ export default function App() {
   const reveal = useCallback(
     (ask: () => Promise<Revealed>) => {
       void ask().then((revealed) => {
-        if (revealed.how === 'listed') openBrowser(revealed.path, null);
+        if (revealed.how === 'listed') openBrowser(revealed.path);
       });
     },
     [openBrowser]
   );
 
   useEffect(() => {
-    registerRealmPicker(() => new Promise((resolve) => openBrowser(null, resolve)));
+    registerRealmPicker(
+      () => new Promise((resolve) => setUploading({ done: resolve, opener: dialogOpener() }))
+    );
     return () => registerRealmPicker(null);
-  }, [openBrowser]);
+  }, []);
+  // The caret back to the settings screen that asked, as the browser hands it back.
+  const doneUploading = useCallback(
+    (file: string | null) => {
+      const opener = uploading?.opener ?? null;
+      uploading?.done(file);
+      setUploading(null);
+      if (opener !== null && opener.isConnected) window.requestAnimationFrame(() => opener.focus());
+      else returnFocus();
+    },
+    [uploading, returnFocus]
+  );
 
   /**
    * Say the client is ready exactly once.
@@ -6821,12 +6840,11 @@ export default function App() {
 
       {/*
         The client's files, listed in the window, where the host has no file
-        manager to open them in — and the realm picker in web mode, which
-        chooses from the client's disk rather than the viewer's.
+        manager to open them in.
       */}
-      {browsing !== null && (
-        <HomeBrowser onClose={closeBrowser} onPick={browsing.pick} start={browsing.start} />
-      )}
+      {browsing !== null && <HomeBrowser onClose={closeBrowser} start={browsing.start} />}
+      {/* A realm's database, sent up from this browser (`lib/pickers.ts`). */}
+      {uploading !== null && <RealmUpload onDone={doneUploading} />}
 
       {/*
         The way in for somebody who has not read the source. Everything it does

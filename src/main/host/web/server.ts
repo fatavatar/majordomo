@@ -47,6 +47,7 @@ import {
   SignInGuard
 } from './access';
 import { acceptUpgrade, isWebSocketUpgrade, type WebSocketConnection } from './sockets';
+import type { UploadResult } from './uploads';
 
 export interface WebServerOptions {
   /** `out/renderer`: the built window. */
@@ -63,12 +64,22 @@ export interface WebServerOptions {
   log(line: string): void;
   /** The file a tab was handed to download, given once (`downloads.ts`). */
   download?(token: string): string | null;
+  /** A realm database a tab sent up, its name as sent (`uploads.ts`); absent, refused. */
+  uploadRealm?(body: http.IncomingMessage, name: string): Promise<UploadResult>;
 }
 
 export interface WebServer {
   listen(port: number, host: string): Promise<{ port: number; host: string }>;
   close(): void;
 }
+
+/**
+ * A realm database a tab sends up (2026-11-10): `POST /upload/realm?name=…`,
+ * the file's bytes as the body, from this host only and with the header a
+ * form on another site cannot set.
+ */
+export const UPLOAD_REALM_PATH = '/upload/realm';
+export const UPLOAD_HEADER = 'x-majordomo-upload';
 
 /** A file handed to a tab: `/download/<token>/<name>` (upstream 8db9a39c). */
 const DOWNLOAD_PATH = /^\/download\/([0-9a-f]+)\/[^/]+$/;
@@ -478,13 +489,71 @@ export function createWebServer(options: WebServerOptions): WebServer {
     });
   };
 
+  /**
+   * A realm database sent up, written as it arrives (`uploads.ts`). Signed in
+   * already; and from this host, by the `Origin` a browser always sends on a
+   * POST and the header a form elsewhere cannot set, since the cookie rides
+   * along on a cross-site request too.
+   */
+  const serveUpload = async (
+    request: http.IncomingMessage,
+    response: http.ServerResponse,
+    query: URLSearchParams
+  ): Promise<void> => {
+    const json = (status: number, body: object): void =>
+      reply(
+        response,
+        status,
+        { 'Content-Type': CONTENT_TYPES['.json']!, 'Cache-Control': 'no-store' },
+        JSON.stringify(body)
+      );
+    if (request.method !== 'POST') {
+      reply(response, 405, { Allow: 'POST', 'Content-Type': CONTENT_TYPES['.txt']! }, 'POST');
+      return;
+    }
+    const origin = request.headers['origin'];
+    let originHost = '';
+    try {
+      originHost = typeof origin === 'string' ? new URL(origin).host : '';
+    } catch {
+      // Not a URL, so not this host.
+    }
+    if (
+      request.headers[UPLOAD_HEADER] !== '1' ||
+      (typeof origin === 'string' && originHost !== String(request.headers['host'] ?? ''))
+    ) {
+      options.log(`web: refused an upload from ${remoteOf(request)}: not from this page.`);
+      request.resume();
+      json(403, { error: t('web.upload.notHere') });
+      return;
+    }
+    if (options.uploadRealm === undefined) {
+      request.resume();
+      json(404, { error: t('web.upload.notHere') });
+      return;
+    }
+    const result = await options.uploadRealm(request, query.get('name') ?? '');
+    if (result.ok) {
+      options.log(`web: ${remoteOf(request)} sent up the realm database ${result.path}.`);
+      json(200, { path: result.path });
+    } else {
+      options.log(`web: refused an upload from ${remoteOf(request)}: ${result.error}`);
+      // The rest of a refused body is not read: the socket goes once the answer is out.
+      response.setHeader('Connection', 'close');
+      json(result.status, { error: result.error });
+    }
+  };
+
   const handle = async (
     request: http.IncomingMessage,
     response: http.ServerResponse
   ): Promise<void> => {
     let pathname: string;
+    let query: URLSearchParams;
     try {
-      pathname = new URL(request.url ?? '/', 'http://localhost').pathname;
+      const url = new URL(request.url ?? '/', 'http://localhost');
+      pathname = url.pathname;
+      query = url.searchParams;
     } catch {
       reply(response, 400, { 'Content-Type': CONTENT_TYPES['.txt']! }, 'bad request');
       return;
@@ -516,6 +585,10 @@ export function createWebServer(options: WebServerOptions): WebServer {
     if (credentials === 'wrong-basic') await refusedSignIn(request, 'Basic');
     if (credentials === 'wrong-basic' || credentials === 'none') {
       page(request, response, 401, false);
+      return;
+    }
+    if (pathname === UPLOAD_REALM_PATH) {
+      await serveUpload(request, response, query);
       return;
     }
     if (request.method !== 'GET' && request.method !== 'HEAD') {

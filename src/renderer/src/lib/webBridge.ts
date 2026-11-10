@@ -45,7 +45,7 @@ import {
 } from '@shared/ipc';
 import { trimArgs, type RpcOutbound } from '@shared/rpc';
 import { t } from './i18n';
-import { hasRealmPicker, pickRealm } from './pickers';
+import { chooseRealmsByUpload, hasRealmPicker, pickRealm } from './pickers';
 import { openWebLink } from './webLink';
 
 type Listener = (payload: unknown) => void;
@@ -63,6 +63,7 @@ const TYPED: ReadonlySet<string> = new Set([Send.input, Send.macro]);
  * @param signal Ends the bridge: its timers, its listeners and its socket.
  */
 export function createWebBridge(onRenewed: () => void, signal: AbortSignal): IpcApi {
+  chooseRealmsByUpload();
   const listeners = new Map<string, Set<Listener>>();
   const pending = new Map<number, Pending>();
   let nextId = 1;
@@ -199,9 +200,9 @@ export function createWebBridge(onRenewed: () => void, signal: AbortSignal): Ipc
         }
       },
       /*
-       * The window's own picker over the client's disk (`lib/pickers.ts`),
-       * never the channel: main in web mode has no dialog to put up, and a
-       * `<input type="file">` would browse the wrong machine.
+       * The window's own picker (`lib/pickers.ts`), never the channel: main
+       * in web mode has no dialog to put up, and the database is sent up from
+       * this tab, since the client's disk is out of the player's reach.
        */
       chooseRealm: () => {
         if (!hasRealmPicker()) {

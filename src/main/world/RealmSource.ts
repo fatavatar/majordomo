@@ -66,15 +66,8 @@ export function realmKind(file: string): 'mdb' | 'sqlite' | null {
   return null;
 }
 
-/**
- * Every extension `openRealm` accepts, for the file picker and for prose.
- *
- * Here rather than beside the picker because it is the same closed union
- * `realmKind` and `isZip` decide between, and a list of extensions the dialog
- * offers that the reader then refuses is a file a player can choose and not
- * use. The archive is last: it is the container, not a shape of its own.
- */
-export const REALM_EXTENSIONS = ['mdb', 'accdb', 'sqlite', 'db', 'sqlite3', 'zip'] as const;
+// Every extension `openRealm` accepts, in shared so a tab's upload offers the same (`realmFiles`).
+export { REALM_EXTENSIONS } from '../../shared/realmFiles';
 
 /**
  * Either reader, chosen by extension — through a zip, when that is what it is.

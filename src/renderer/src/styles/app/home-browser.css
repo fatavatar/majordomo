@@ -4,8 +4,7 @@
  * A directory of the client's, drawn in the window.
  *
  * Only where the host cannot open a file manager on the machine the files
- * are on — a browser tab — and for the realm picker there, which chooses from
- * the client's disk rather than the viewer's. The same box every dialog over
+ * are on — a browser tab. The same box every dialog over
  * the console is drawn in, and rows that are the palette's in shape: a glyph,
  * a name, a hint at the right.
  */
@@ -23,7 +22,8 @@
  * reached through drawn over it (2026-09-07). Only the lost-link cover is
  * higher, because a client that is gone outranks a file that cannot be chosen.
  */
-.home-browser-scrim {
+.home-browser-scrim,
+.realm-upload-scrim {
   z-index: 150;
 }
 
@@ -62,12 +62,6 @@
   padding: 2px 12px 10px;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.home-browser-scope {
-  color: var(--text-lo);
-  font-size: calc(var(--font-ui) - 1px);
-  padding: 8px 12px 0;
 }
 
 .home-browser-row {
@@ -109,4 +103,111 @@
 .home-browser-row .hint {
   color: var(--text-lo);
   font-variant-numeric: tabular-nums;
+}
+
+/* ------------------------------------------------------------ realm upload */
+
+/*
+ * A realm database sent up from this browser (2026-11-10), opened from the
+ * realm form in place of choosing from the client's disk: the same box, over
+ * the settings screen as the file dialog above is, with how far the file has
+ * got drawn as a bar.
+ */
+.realm-upload {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 10px 14px 12px;
+  width: min(520px, 92vw);
+}
+
+.realm-upload-head {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+}
+
+.realm-upload-title {
+  color: var(--text-hi);
+  flex: 1;
+  font-size: calc(var(--font-ui) - 1px);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.realm-upload .hint {
+  color: var(--text-lo);
+  margin: 0;
+}
+
+.realm-upload-row,
+.realm-upload-actions {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+}
+
+.realm-upload-actions {
+  justify-content: flex-end;
+}
+
+.realm-upload button {
+  align-items: center;
+  display: inline-flex;
+  gap: 6px;
+}
+
+.realm-upload-file {
+  color: var(--text-hi);
+  font-family: var(--font-mono);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.realm-upload-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.realm-upload-bar {
+  background: color-mix(in srgb, var(--text-lo) var(--tone-weak), transparent);
+  border-radius: var(--r-pill);
+  display: flex;
+  height: 6px;
+  overflow: hidden;
+}
+
+.realm-upload-bar > span {
+  background: var(--accent);
+  transition: width var(--dur-control) var(--ease-out);
+}
+
+/* Checking: the file is all there, and the client is opening it. */
+.realm-upload-bar > span[data-checking='true'] {
+  animation: realm-upload-check 1.2s ease-in-out infinite alternate;
+}
+
+@keyframes realm-upload-check {
+  from {
+    opacity: 0.45;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .realm-upload-bar > span[data-checking='true'] {
+    animation: none;
+  }
+}
+
+/* Why the client would not keep the file, in the warning's colour. */
+.realm-upload .settings-warn {
+  color: var(--pending);
+  margin: 0;
 }

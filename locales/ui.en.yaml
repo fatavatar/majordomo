@@ -4772,6 +4772,7 @@ settings:
       coin blank if the realm uses the usual name.
     confirmRemove: Remove this realm?
     databaseBrowse: Browse…
+    databaseUpload: Upload…
     databaseClear: Clear
     empty: Choose a realm, or add one.
     locateHint:
@@ -5537,18 +5538,32 @@ web:
     writeRefused: The browser would not take the copy; select the text and copy it yourself.
   picker:
     unavailable: There is nothing here to choose a realm database with.
+  # A realm database sent up from this browser to the client (2026-11-10).
+  upload:
+    title: Send a realm database
+    lead: Choose the realm's database on this computer. It is sent to the client and kept in its
+      databases folder, and the realm reads it from there.
+    choose: Choose a file…
+    send: Send it
+    cancel: Cancel
+    chosen: '{name} · {size}'
+    sending: 'Sending… {percent}%'
+    checking: Checking it opens as a realm…
+    lost: The upload stopped before it finished. Try again.
+    notHere: Uploads are taken only from the client's own page.
+    badName: 'That is not a realm database: the file should end in {extensions}.'
+    tooLarge: That file is larger than the client takes ({max}).
+    failed: 'The client could not keep the file: {message}'
+    notARealm: 'That file does not open as a realm database: {message}'
+    noRooms: That file opens, but it has no rooms table, so it is not a MajorMUD realm.
   rpc:
     noHandler: Nothing in the client answers {channel}.
 # The client's files, listed in the window, where the host has no file manager.
 browser:
   title: The client's files
-  pickTitle: Choose a realm database
-  pickScope: "From the client's own files under {root} — the machine the client runs on, not this
-    one. Put a database there first."
   up: Up
   copyPath: Copy path
   close: Close
   loading: Listing…
   empty: Nothing here.
-  use: use this file
   realmChip: realm

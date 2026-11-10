@@ -50,6 +50,7 @@ import RemoteList from './RemoteList';
 import RewritesDesigner from './RewriteDesigner';
 
 import { keepFocus } from '../lib/focus';
+import { realmsAreUploaded } from '../lib/pickers';
 import { t } from '../lib/i18n';
 import { COIN_NAME } from '../lib/coins';
 import { barOf, figureOf, fractionOf, joinNames, percentOf, splitNames } from '../lib/form';
@@ -3496,7 +3497,9 @@ export default function SettingsScreen({
                               onMouseDown={keepFocus}
                               type="button"
                             >
-                              {t('settings.realms.databaseBrowse')}
+                              {realmsAreUploaded()
+                                ? t('settings.realms.databaseUpload')
+                                : t('settings.realms.databaseBrowse')}
                             </button>
                             {serverForm.database.length > 0 && (
                               <button
