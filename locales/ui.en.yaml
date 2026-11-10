@@ -1719,9 +1719,7 @@ tabs:
     alertPlural: '{count} alerts'
     alertSingular: 1 alert
     closeAria: Close {characterName}
-    dialClosingTooltip: Closing…
     dialConnectAria: Connect {characterName}
-    dialAgainTooltip: Still dialing with no answer. Press to dial {characterName} again.
     dialDisconnectAria: Disconnect {characterName}
     dialStopRetryingAria: Stop reconnecting {characterName}
     editAria: Edit {characterName}…
@@ -1745,6 +1743,7 @@ tabs:
     markRestingToFull: resting to full
     markStopped: stopped
     markWalking: walking
+    moreAria: Options for {characterName}…
     whoTooltip: '{characterName} ({realmName})'
 # The status rail under the console.
 # The line along each console's foot (2026-11-01): health, mana, the level and the round.

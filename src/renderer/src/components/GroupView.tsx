@@ -10,7 +10,7 @@ import {
 
 import type { HeldRound } from './RoundTimer';
 import { rate, RateGraph, ScopePicker, useExperienceView } from './ExperienceScope';
-import { attention, glyphOf, type RailView } from './TabRail';
+import { attention, glyphOf, whereOf, type RailView } from './TabRail';
 import { musterChoices, PartySay } from './PartyCard';
 import PopupMenu from './PopupMenu';
 import Icon from './Icon';
@@ -267,7 +267,6 @@ export interface GroupSlimProps {
   cell: CSSProperties;
   focused: boolean;
   restTo: number;
-  thresholds: VitalsUiConfig;
   onFocus(session: SessionId): void;
   onOpen(session: SessionId): void;
   /** The status column back to its width. */
@@ -277,9 +276,11 @@ export interface GroupSlimProps {
 /**
  * A character's status slimmed (2026-11-09), as the card rail tucks to a
  * strip: what is worth a glance beside its console, top to bottom — what it
- * is doing as a glyph (the tab's word as its title), its health and mana as
- * two upright bars, its health in per cent, the experience rate in the
- * window its status shows, and its name up the strip in its colour.
+ * is doing as a glyph (the tab's word as its title), where it is or how far
+ * through its walk up the strip, and its name up the strip in its colour.
+ * Where it is was the tabs' until 2026-11-10, which spent the row's width on
+ * it; the strip's health and mana bars, its health in per cent and its rate
+ * gave way to it, the tabs keeping the bars.
  */
 export const GroupSlim = memo(function GroupSlim({
   session,
@@ -289,20 +290,14 @@ export const GroupSlim = memo(function GroupSlim({
   cell,
   focused,
   restTo,
-  thresholds,
   onFocus,
   onOpen,
   onExpand
 }: GroupSlimProps) {
-  const { character } = view;
-  const { vitals } = character;
   const mark = attention(view, restTo);
   const glyph = glyphOf(view);
-  const hp = barOf(vitals.hp, vitals.hpMax, thresholds.hp);
-  const mana = barOf(vitals.mana, vitals.manaMax, thresholds.mana);
-  const share = ratio(vitals.hp, vitals.hpMax);
-  const exp = useExperienceView(character, session);
-  const shown = character.name ?? name;
+  const where = whereOf(view);
+  const shown = view.character.name ?? name;
   return (
     <section
       aria-label={shown}
@@ -329,22 +324,8 @@ export const GroupSlim = memo(function GroupSlim({
       >
         {glyph === null ? <span className="group-slim-dot" /> : <Icon name={glyph} />}
       </span>
-      <span
-        className="group-slim-bars"
-        title={`${t('group.row.hp')} ${hp.text} · ${t('group.row.mana')} ${mana.text}`}
-      >
-        <span className="group-slim-bar" data-kind="hp" data-level={hp.level}>
-          <span style={{ height: hp.width }} />
-        </span>
-        <span className="group-slim-bar" data-kind="mana" data-level={mana.level}>
-          <span style={{ height: mana.width }} />
-        </span>
-      </span>
-      <span className="group-slim-figure" data-level={hp.level}>
-        {share === null ? '–' : `${Math.round(share * 100)}%`}
-      </span>
-      <span className="group-slim-rate" title={rate(exp.perHour)}>
-        {exp.perHour === null ? '–' : amount(exp.perHour)}
+      <span className="group-slim-where" title={where ?? undefined}>
+        {where}
       </span>
       <button
         className="group-slim-name"

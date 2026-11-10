@@ -337,6 +337,14 @@ function activity(view: RailView | undefined): string | null {
 }
 
 /**
+ * Where a character is, or how far through its walk: said up a group's
+ * slimmed status (`GroupSlim`), and no longer on its tab (2026-11-10).
+ */
+export function whereOf(view: RailView): string | null {
+  return activity(view) ?? view.character.room.name ?? null;
+}
+
+/**
  * What a character is doing, as one glyph (2026-11-10): the word `attention`
  * gives is its title. Shared with a group's slimmed status (`GroupSlim`).
  */
@@ -357,16 +365,18 @@ export function glyphOf(view: RailView): IconName | null {
  * Not merely a switcher. The reason to look at a second character is almost
  * never to read its scrollback — it is to see that it is at 20% health, or that
  * its walk stopped. So each tab is its health and mana as two upright bars, its
- * name, what it is doing as a glyph (the word as its title), where it is or how
- * far through its walk, and the alerts raised while nobody was looking. The
+ * name, and what it is doing as a glyph (the word as its title), or the alerts
+ * raised while nobody was looking in the glyph's place. Every tab is one
+ * width, whatever it is doing (2026-11-10): where it is or how far through
+ * its walk changed it by the step, and is said beside the console instead
+ * (`GroupSlim`). The
  * rail down a side, which spent the console's columns on the same facts in
  * three rows, is retired: the row costs one line of height and the console
  * keeps its width.
  *
- * The tab being shown carries its own controls — dial, settings, close — and
- * every tab answers a right-click with them all, and with the view's add and
- * remove; the others stay a name and its state, which is what keeps the row
- * one line. A tab is dragged by itself, past the slop, into the order wanted.
+ * Every tab's controls — dial, settings, close, and the view's add and
+ * remove — are its right-click and its one ⋯ press (2026-11-10), so a tab is
+ * a name and its state, and showing it changes nothing of its width. A tab is dragged by itself, past the slop, into the order wanted.
  * A tab group's tabs are one frame (`lib/tabGroups.ts`).
  */
 function TabRail({
@@ -518,8 +528,6 @@ function TabRail({
     const manaLevel = vitalLevel(vitals?.mana ?? null, vitals?.manaMax ?? null, thresholds.mana);
     const mark = view === undefined ? null : attention(view, restToFor(session.id));
     const glyph = view === undefined ? null : glyphOf(view);
-    // Where it is, or how far through its walk: the room the tab carries after its state.
-    const where = activity(view) ?? view?.character.room.name ?? null;
     const isActive = session.id === active;
     const phase = view?.state.phase ?? 'idle';
     const alerts = view?.unseen.alerts ?? 0;
@@ -530,13 +538,6 @@ function TabRail({
           (vitals.manaMax === null
             ? ''
             : ` · ${t('group.row.mana')} ${vitals.mana ?? '–'}/${vitals.manaMax}`);
-    const busy = dialWaits(phase);
-    const dialLabel =
-      phase === 'connected'
-        ? t('tabs.tab.dialDisconnectAria', { characterName: session.name })
-        : session.retrying
-          ? t('tabs.tab.dialStopRetryingAria', { characterName: session.name })
-          : t('tabs.tab.dialConnectAria', { characterName: session.name });
 
     return (
       <Fragment key={session.id}>
@@ -593,83 +594,41 @@ function TabRail({
             </span>
           </span>
           <span className="name">{session.name}</span>
-          {glyph !== null && (
-            <span
-              className="tab-glyph"
-              data-level={mark?.level ?? 'info'}
-              title={mark?.detail ?? mark?.label}
-            >
-              <Icon name={glyph} />
-            </span>
-          )}
-          {where !== null && (
-            <span className="where" title={where}>
-              {where}
-            </span>
-          )}
-          {alerts > 0 && (
-            <span className="tab-alerts" title={mark?.detail ?? mark?.label}>
-              {alerts}
-            </span>
-          )}
-          {/* The tab being shown carries its controls; every tab has them on a right-click. */}
-          {isActive && (
-            <span className="tab-controls">
-              <button
-                aria-label={dialLabel}
-                className="dial"
-                data-phase={phase}
-                disabled={busy}
-                onClick={(event) => {
-                  // The tab underneath would otherwise select the character.
-                  event.stopPropagation();
-                  onToggleConnection(session.id);
-                }}
-                onMouseDown={keepFocus}
-                onPointerDown={(event) => event.stopPropagation()}
-                title={
-                  busy
-                    ? t('tabs.tab.dialClosingTooltip')
-                    : phase === 'connecting'
-                      ? t('tabs.tab.dialAgainTooltip', { characterName: session.name })
-                      : dialLabel
-                }
-                type="button"
-              >
-                <Icon name={phase === 'connected' || session.retrying ? 'stop' : 'play'} />
-              </button>
-              {editable.includes(session.id) && (
-                <button
-                  aria-label={t('tabs.tab.editAria', { characterName: session.name })}
-                  className="edit"
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    onEdit(session.id);
-                  }}
-                  onMouseDown={keepFocus}
-                  onPointerDown={(event) => event.stopPropagation()}
-                  title={t('tabs.tab.editAria', { characterName: session.name })}
-                  type="button"
-                >
-                  <Icon name="edit" />
-                </button>
-              )}
-              <button
-                aria-label={t('tabs.tab.closeAria', { characterName: session.name })}
-                className="close"
-                onClick={(event) => {
-                  event.stopPropagation();
-                  onClose(session.id);
-                }}
-                onMouseDown={keepFocus}
-                onPointerDown={(event) => event.stopPropagation()}
-                title={t('tabs.tab.closeAria', { characterName: session.name })}
-                type="button"
-              >
-                <Icon name="close" />
-              </button>
-            </span>
-          )}
+          {/*
+            What it is doing, or the alerts raised while nobody was looking,
+            in one place kept for them, so neither moves the tab's width.
+          */}
+          <span
+            className="tab-glyph"
+            data-level={mark?.level ?? 'info'}
+            title={mark?.detail ?? mark?.label}
+          >
+            {alerts > 0 ? (
+              <span className="tab-alerts">{alerts}</span>
+            ) : (
+              glyph !== null && <Icon name={glyph} />
+            )}
+          </span>
+          {/*
+            Its controls, as its right-click has them, under one press on every
+            tab (2026-11-10): three on the tab being shown made it wider than
+            its name the moment it was shown.
+          */}
+          <button
+            aria-label={t('tabs.tab.moreAria', { characterName: session.name })}
+            className="tab-more"
+            onClick={(event) => {
+              // The tab underneath would otherwise select the character.
+              event.stopPropagation();
+              setMenu({ id: session.id, at: event.currentTarget });
+            }}
+            onMouseDown={keepFocus}
+            onPointerDown={(event) => event.stopPropagation()}
+            title={t('tabs.tab.moreAria', { characterName: session.name })}
+            type="button"
+          >
+            <Icon name="more" />
+          </button>
         </div>
       </Fragment>
     );
