@@ -14,6 +14,7 @@ import {
   databaseLoopsCurrent,
   writeDatabaseLoops
 } from '../realmLoopFiles';
+import { mergeMonsterRules } from '../../../shared/monsterRules';
 import { realmItemRules, realmMonsterRules } from '../realmTables';
 
 function makeWorld(
@@ -63,7 +64,7 @@ describe('the monster table from a realm database', () => {
     Type
   });
 
-  it('befriends shopkeepers and monsters it costs alignment to attack, and fights the hostile first', () => {
+  it('befriends shopkeepers and monsters it costs alignment to attack, fights the hostile first, and leaves the rest alone', () => {
     const rules = realmMonsterRules(
       [
         row(1, 'Mariana', 3),
@@ -79,9 +80,15 @@ describe('the monster table from a realm database', () => {
       { mob: 'mariana', relationship: 'friend', notHostile: true },
       { mob: 'town guard', relationship: 'friend', notHostile: true },
       { mob: 'black griffon', priority: 'high' },
-      { mob: 'seagull', notHostile: true }
+      { mob: 'seagull', notHostile: true, relationship: 'avoid' }
       // Two giant rats that disagree: neither a friend nor always hostile, so no row.
     ]);
+    // A character's own row still fights it.
+    expect(
+      mergeMonsterRules(rules, [{ mob: 'seagull', relationship: 'enemy' }]).find(
+        (rule) => rule.mob === 'seagull'
+      )
+    ).toEqual({ mob: 'seagull', notHostile: true, relationship: 'enemy' });
   });
 });
 
