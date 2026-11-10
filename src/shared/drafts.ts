@@ -26,8 +26,7 @@ import {
   type PotionRule,
   type PotionWhen,
   type StatsReportConfig,
-  type LocateMethod,
-  type TabsPreference
+  type LocateMethod
 } from './config';
 import { DENOMINATIONS, type Denomination } from './character';
 import { asCoinNames, type CoinNames } from './coins';
@@ -185,7 +184,6 @@ export interface GlobalDraft {
     fontFamily: string;
     theme: ThemePreference;
     density: DensityPreference;
-    tabs: TabsPreference;
     showHud: boolean;
     showLogo: boolean;
     skin: SkinId;
@@ -1003,7 +1001,6 @@ export function asGlobalDraft(value: unknown): GlobalDraft | null {
       fontFamily: text(ui['fontFamily']).slice(0, 200),
       theme: isThemePreference(ui['theme']) ? ui['theme'] : 'system',
       density: oneOf(ui['density'], ['auto', 'comfortable', 'compact'] as const, 'auto'),
-      tabs: oneOf(ui['tabs'], ['top', 'left', 'right'] as const, 'left'),
       showHud: ui['showHud'] !== false,
       showLogo: ui['showLogo'] !== false,
       skin: isSkin(ui['skin']) ? ui['skin'] : DEFAULT_SKIN,

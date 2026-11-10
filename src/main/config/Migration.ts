@@ -285,6 +285,41 @@ function migrateAll(options: MigrationOptions): void {
   theOldSwitchesUnpinned(home, note);
   statedTheSkin(home, note);
   theToolbarDropsCards(home, note, options.internalTemplate);
+  theTabsWentToTheTop(home, note);
+}
+
+/**
+ * `ui.tabs` off the files that state it (2026-11-10).
+ *
+ * The character tabs are one row across the top, each a name with its health
+ * and mana upright beside it, what it is doing and where; the rail down the
+ * left or right edge, which spent the console's columns on the same facts in
+ * three rows, is retired, and the card rail stays on the right. What goes is
+ * the option, so no file is left naming a placement nothing reads.
+ */
+function theTabsWentToTheTop(home: Home, note: (message: string) => void): void {
+  const files = [home.options, ...directories(home.profilesDir).map((id) => home.profile(id).file)];
+  const cleaned: string[] = [];
+
+  for (const file of files) {
+    edit(file, (document) => {
+      const ui = document.getIn(['ui'], true);
+      if (!isMap(ui) || !ui.has('tabs')) return false;
+      ui.delete('tabs');
+      // An emptied block reads as a setting somebody meant to fill in.
+      if (ui.items.length === 0) document.deleteIn(['ui']);
+      cleaned.push(file);
+      return true;
+    });
+  }
+
+  if (cleaned.length === 0) return;
+  const params = { count: cleaned.length, fileList: cleaned.join(', ') };
+  note(
+    cleaned.length === 1
+      ? t('notices.migration.tabsWentToTheTop.one', params)
+      : t('notices.migration.tabsWentToTheTop.many', params)
+  );
 }
 
 /**

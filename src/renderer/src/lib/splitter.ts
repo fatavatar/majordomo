@@ -31,8 +31,6 @@ export interface SplitRange {
 
 /** The card rail beside the console. */
 export const RAIL_RANGE: SplitRange = { min: 260, max: 560 };
-/** The tab rail on the left edge. */
-export const TAB_RAIL_RANGE: SplitRange = { min: 140, max: 320 };
 /**
  * A strip docked above or below the console. Under ~120px a card shows its
  * heading and one row; past ~480px it is a second console's worth of height

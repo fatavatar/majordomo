@@ -10,10 +10,10 @@ import {
 
 import type { HeldRound } from './RoundTimer';
 import { rate, RateGraph, ScopePicker, useExperienceView } from './ExperienceScope';
-import { attention, type RailView } from './TabRail';
+import { attention, glyphOf, type RailView } from './TabRail';
 import { musterChoices, PartySay } from './PartyCard';
 import PopupMenu from './PopupMenu';
-import Icon, { type IconName } from './Icon';
+import Icon from './Icon';
 import { CARDS, type CardId } from '../hooks/useCardLayout';
 import { keepFocus } from '../lib/focus';
 import { t } from '../lib/i18n';
@@ -256,17 +256,6 @@ function SlimButton({ onCollapse }: { onCollapse(): void }): React.JSX.Element {
       <Icon name="chevronLeft" />
     </button>
   );
-}
-
-/** What a character is doing, as the slim strip's one glyph, or none for standing about. */
-function glyphOf(view: RailView): IconName | null {
-  if (view.unseen.alerts > 0) return 'flag';
-  if (view.state.phase === 'error' || view.state.phase === 'closed') return 'unplug';
-  if (view.character.inCombat) return 'sword';
-  if (view.character.vitals.resting || view.character.vitals.meditating) return 'moon';
-  if (view.walk.status === 'walking') return 'route';
-  if (view.loop.status === 'running') return 'loop';
-  return null;
 }
 
 export interface GroupSlimProps {

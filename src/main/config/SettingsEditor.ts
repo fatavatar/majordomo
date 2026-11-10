@@ -1166,7 +1166,6 @@ export class SettingsEditor {
         fontFamily: config.ui.font.family.join(', '),
         theme: config.ui.theme,
         density: config.ui.density,
-        tabs: config.ui.tabs,
         showHud: config.ui.showHud,
         showLogo: config.ui.showLogo,
         skin: config.ui.skin,
@@ -1258,7 +1257,6 @@ export class SettingsEditor {
         set(['ui', 'font', 'family'], splitNames(draft.ui.fontFamily));
         set(['ui', 'theme'], draft.ui.theme);
         set(['ui', 'density'], draft.ui.density);
-        set(['ui', 'tabs'], draft.ui.tabs);
         set(['ui', 'showHud'], draft.ui.showHud);
         set(['ui', 'showLogo'], draft.ui.showLogo);
         set(['ui', 'skin'], draft.ui.skin);

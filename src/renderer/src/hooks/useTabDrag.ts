@@ -37,9 +37,18 @@ export interface TabDrag {
    * until the pointer has travelled far enough to be a drag.
    */
   ghost: { x: number; y: number; w: number; h: number } | null;
-  /** Put on the grip. Starts a drag if the pointer travels far enough. */
+  /** Put on the tab. Starts a drag if the pointer travels far enough. */
   begin(session: SessionId, event: React.PointerEvent): void;
+  /**
+   * Whether the click that follows a drop is the drop's, and so not a switch
+   * (2026-11-10): the whole tab is dragged now, and a drop that came to rest
+   * on its own tab clicked it. Reading it clears it.
+   */
+  consumeClick(): boolean;
 }
+
+/** How long after a drop a click is still the drop's own. */
+const DROP_CLICK_MS = 250;
 
 interface Origin {
   session: SessionId;
@@ -64,6 +73,8 @@ export function useTabDrag(
    * whether the slop has already been broken.
    */
   const latest = useRef<{ live: boolean; index: number | null }>({ live: false, index: null });
+  // When a drag last ended: the click it leaves behind is not a press.
+  const droppedAt = useRef(0);
   // The list as it is drawn now, so a roster republished mid-drag is what the
   // drop is committed against rather than the one measured at pointerdown.
   const current = useRef<readonly SessionId[]>(order);
@@ -92,9 +103,9 @@ export function useTabDrag(
   }, []);
 
   const begin = useCallback((id: SessionId, event: React.PointerEvent) => {
-    // Only the primary button. A right-click on the grip is a context menu.
+    // Only the primary button. A right-click on a tab is its menu.
     if (event.button !== 0) return;
-    // The tab behind the grip, measured now: the ghost is that shape and the
+    // The tab, measured now: the ghost is that shape and the
     // gap opened for it is that size, so the tab is felt to move rather than
     // a line to appear.
     const tab =
@@ -115,7 +126,7 @@ export function useTabDrag(
     setGhost(null);
     /*
      * Refuses the mouse's attempt to park the caret, exactly as `keepFocus`
-     * does everywhere else in the rail: the grip is dragged, never typed into,
+     * does everywhere else in the rail: a tab is pressed, never typed into,
      * and a swallowed keystroke can cost a character.
      */
     event.preventDefault();
@@ -154,8 +165,9 @@ export function useTabDrag(
       setSession(null);
       setIndex(null);
       setGhost(null);
-      // A press that never travelled is a click on the grip, and a click on the
-      // grip is not a request to reorder anything.
+      if (live) droppedAt.current = performance.now();
+      // A press that never travelled is a click on the tab, which selects it,
+      // and is not a request to reorder anything.
       if (!at || !live || gap === null) return;
       /*
        * The caller is handed the *new order*, not a move: main writes down a
@@ -193,5 +205,16 @@ export function useTabDrag(
     // would be churn for nothing.
   }, [dragging, measure, onReorder]);
 
-  return { session, index, ghost, begin };
+  /*
+   * By time rather than by a flag cleared on the next turn: the drop's own
+   * click can come after the rail has re-rendered in its new order, and one
+   * that never comes (the drop landed off any tab) must not swallow the next.
+   */
+  const consumeClick = useCallback((): boolean => {
+    const recent = performance.now() - droppedAt.current < DROP_CLICK_MS;
+    droppedAt.current = 0;
+    return recent;
+  }, []);
+
+  return { session, index, ghost, begin, consumeClick };
 }

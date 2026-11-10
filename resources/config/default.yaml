@@ -192,29 +192,6 @@ ui:
   # `auto` follows the viewport. Never the terminal grid, which NAWS depends on.
   density: auto
 
-  # Where the character tabs sit when more than one character is loaded:
-  # top | left | right. They are not one control at three angles.
-  #
-  # `left` costs horizontal space, which is the expensive axis -- the console
-  # needs 80 columns and no MajorMUD-family server will format to less -- but it
-  # buys room for each character's health in numbers, the room they are in and
-  # what they are doing. That is the multiboxing instrument: the reason to look
-  # at a second character is almost never to read its scrollback.
-  #
-  # `top` costs rows, which are cheap, and collapses each tab to a name, a state
-  # dot and a health bar.
-  #
-  # `right` is `left` mirrored, and the mirror takes the card rail with it: the
-  # tabs move to the right edge and the cards to the left. It costs exactly what
-  # `left` costs. Which side each rail is on is your hand and your monitor, not
-  # a trade -- so it is one setting and not two, because the two rails cannot
-  # both have the same edge.
-  #
-  # `left` is the default: this is a client for playing several characters, and
-  # the roomier rail is the one that earns its space the moment there is more
-  # than one of them.
-  tabs: left
-
   # dark | light | system
   #
   # `system` follows the OS appearance and repaints live when it changes.
@@ -594,7 +571,6 @@ automation:
   # plus that beat. It is not a pacing figure -- pacing comes from the prompt,
   # below.
   walk:
-
     # How long a finished walk stays on screen before the card clears itself.
     # A walk that has arrived is news for a moment and clutter after it, and the
     # card sits above the rest of the rail -- leaving it there moves everything

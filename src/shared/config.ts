@@ -63,17 +63,6 @@ import { DEFAULT_REWRITES, isRewriteEntity, type RewriteDesign, type VitalBands 
 /** Chrome density, mirroring the `useDensity` preference. */
 export type DensityPreference = 'auto' | 'comfortable' | 'compact';
 
-/**
- * Which edge the character tabs sit on.
- *
- * `left` and `right` are the same rail mirrored, and the mirror takes the card
- * rail with it: whichever side the tabs are on, the cards are on the other. It
- * is one setting rather than two because the two side rails cannot share an
- * edge — a client that let both be asked for on the left would have to pick a
- * winner, and the pick would be arbitrary.
- */
-export type TabsPreference = 'top' | 'left' | 'right';
-
 /** One realm-specific prompt the block vocabulary does not cover. */
 export interface LoginStep {
   /** Substring of the prompt line. */
@@ -336,21 +325,6 @@ export interface UiConfig {
   density: DensityPreference;
   /** A registered theme id, or `system` to follow the OS. See `./themes.ts`. */
   theme: ThemePreference;
-  /**
-   * Where the character tabs live when more than one is loaded.
-   *
-   * Not one control at two angles. `left` costs horizontal space, which is the
-   * expensive axis — the console needs 80 columns and cannot be told otherwise
-   * — and buys room for vitals in numbers, the room name and what the character
-   * is doing. `top` costs rows, which are cheap, and collapses to a name, a
-   * state dot and a bar. See docs/ui-design.md §3.8.
-   *
-   * `right` is `left` mirrored, and mirrors the whole workspace: the tabs take
-   * the right edge and the card rail takes the left. It costs exactly what
-   * `left` costs — which side of the console each rail is on is the player's
-   * hand and their monitor, not a trade.
-   */
-  tabs: TabsPreference;
   /**
    * Show the Vitals and Room cards once in the realm.
    *
@@ -1812,7 +1786,6 @@ export const DEFAULT_CONFIG: AppConfig = {
     },
     density: 'auto',
     theme: DEFAULT_THEME,
-    tabs: 'left',
     showHud: true,
     showLogo: true,
     skin: DEFAULT_SKIN,
@@ -2251,7 +2224,6 @@ export function normalizeConfig(input: unknown): AppConfig {
     },
     ui: {
       font: normalizeFont(ui['font'], DEFAULT_CONFIG.ui.font),
-      tabs: oneOf(ui['tabs'], ['top', 'left', 'right'] as const, DEFAULT_CONFIG.ui.tabs),
       density: oneOf(
         ui['density'],
         ['auto', 'comfortable', 'compact'] as const,

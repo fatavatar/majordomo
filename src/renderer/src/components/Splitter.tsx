@@ -42,18 +42,11 @@ export interface SplitterProps {
   /** Where the pane sits; decides which way a drag grows it, and the axis. */
   edge: 'left' | 'right' | 'top' | 'bottom';
   /**
-   * Which pane this handle belongs to, for the workspace grid.
-   *
-   * Deliberately not derived from `edge`. The two are the same fact only while
-   * the tab rail is on the left: mirror the workspace (`ui.tabs: right`) and
-   * the tab rail's handle becomes a right edge while still belonging in the
-   * tab rail's own gap. The grid area was keyed on `edge` and the two rails
-   * swapped their handles the moment the mirror existed.
-   *
+   * Which pane this handle belongs to, for the workspace grid: the card rail.
    * Absent for the docked strips, whose handles are positioned against the
    * strip itself rather than placed in the grid.
    */
-  pane?: 'tabs' | 'rail';
+  pane?: 'rail';
   /** Called with the range in force when a gesture starts. */
   rangeFor(): SplitRange;
   onChange(px: number): void;

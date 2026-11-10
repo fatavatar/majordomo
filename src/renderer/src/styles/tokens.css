@@ -264,8 +264,6 @@
   --font-ui: var(--font-ui-base);
   --font-micro: calc(var(--font-ui-base) - 2px);
   --rail-w: 340px;
-  /* Wide enough for a name, health in numbers and a room name. See §3.8. */
-  --tab-rail-w: 200px;
 }
 
 :root[data-density='compact'] {
@@ -279,7 +277,6 @@
   --font-ui: calc(var(--font-ui-base) - 1px);
   --font-micro: calc(var(--font-ui-base) - 3px);
   --rail-w: 300px;
-  --tab-rail-w: 176px;
 }
 
 /*

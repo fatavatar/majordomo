@@ -1384,6 +1384,36 @@ describe('the potion rules', () => {
   });
 });
 
+/* The character tabs along the top only (2026-11-10). */
+describe('the tabs placement', () => {
+  beforeEach(() => {
+    fs.mkdirSync(home.globalDir, { recursive: true });
+    fs.writeFileSync(home.options, 'ui:\n  # Mine.\n  density: compact\n  tabs: right\n', 'utf8');
+  });
+
+  it('goes from the files that state it, leaving the rest of the block, and says so', () => {
+    const scope = home.profile('main');
+    fs.mkdirSync(scope.dir, { recursive: true });
+    fs.writeFileSync(scope.file, 'ui:\n  tabs: top\n', 'utf8');
+    migrate();
+    const ui = parse(fs.readFileSync(home.options, 'utf8')).ui as Record<string, unknown>;
+    expect(ui['tabs']).toBeUndefined();
+    expect(ui['density']).toBe('compact');
+    expect(fs.readFileSync(home.options, 'utf8')).toContain('# Mine.');
+    expect(parse(fs.readFileSync(scope.file, 'utf8'))?.ui).toBeUndefined();
+    expect(said.join('\n')).toMatch(/"ui.tabs" was removed from 2 files/);
+  });
+
+  it('is safe to run again', () => {
+    migrate();
+    const after = fs.readFileSync(home.options, 'utf8');
+    said = [];
+    migrate();
+    expect(fs.readFileSync(home.options, 'utf8')).toBe(after);
+    expect(said.join('\n')).not.toContain('ui.tabs');
+  });
+});
+
 describe('the floor on opening a fight', () => {
   const OPTIONS_WITH = `automation:
   combat:

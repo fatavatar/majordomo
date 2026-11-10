@@ -94,6 +94,14 @@ export function useView(sessions: readonly SessionSummary[]): View {
   useEffect(() => {
     if (session !== NO_SESSION) writeShown({ session, alone });
   }, [session, alone]);
+  /*
+   * The first tab stood in for a character nobody had chosen, or one closed,
+   * and is kept as the choice (2026-11-10): left to the derivation, dragging
+   * another tab to the front switched the character on screen.
+   */
+  useEffect(() => {
+    if (session !== NO_SESSION && wanted !== session) setWanted(session);
+  }, [session, wanted]);
 
   const showSession = useCallback((id: SessionId) => {
     setWanted(id);
