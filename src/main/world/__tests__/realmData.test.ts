@@ -6,7 +6,9 @@ import zlib from 'node:zlib';
 import { parse } from 'yaml';
 
 import { WorldGraph } from '../WorldGraph';
-import { realmLoops } from '../realmLoops';
+import { bossRooms } from '../huntingAreas';
+import { realmLoopCount, realmLoops } from '../realmLoops';
+import type { RoomId } from '../../../shared/world';
 import {
   DATABASE_LOOPS_MANIFEST,
   databaseLoopsCurrent,
@@ -37,7 +39,9 @@ function makeWorld(
 }
 
 /** A corridor of rooms on map 1, each one east of the last. */
-function corridor(rooms: Array<{ n: string; lair?: string }>): Array<Record<string, unknown>> {
+function corridor(
+  rooms: Array<{ n: string; lair?: string; npc?: number }>
+): Array<Record<string, unknown>> {
   return rooms.map((room, i) => ({
     m: 1,
     r: i + 1,
@@ -46,7 +50,8 @@ function corridor(rooms: Array<{ n: string; lair?: string }>): Array<Record<stri
       ...(i > 0 ? { w: { m: 1, r: i } } : {}),
       ...(i < rooms.length - 1 ? { e: { m: 1, r: i + 2 } } : {})
     },
-    ...(room.lair === undefined ? {} : { lair: room.lair, dl: 1 })
+    ...(room.lair === undefined ? {} : { lair: room.lair, dl: 1 }),
+    ...(room.npc === undefined ? {} : { npc: room.npc })
   }));
 }
 
@@ -99,14 +104,19 @@ describe('the item table from a realm database', () => {
 describe('the hunting loops from a realm database', () => {
   const mobs = [
     { n: 'black griffon', hp: 100, i: [1], xp: 100 },
-    { n: 'seagull', hp: 100, i: [2], xp: 100 }
+    { n: 'seagull', hp: 100, i: [2], xp: 100 },
+    // On a clock, but in every lair of the cliffs: part of the hunt.
+    { n: 'opalescant griffon', hp: 300, i: [3], xp: 1000, rt: 1 },
+    // On a clock, and in one room: a boss.
+    { n: 'Rathi Dragonite', hp: 16055, i: [4], xp: 100000, rt: 21 }
   ];
   const world = makeWorld(
     corridor([
-      { n: 'Rocky Cliffs', lair: '(Max 2): 1' },
+      { n: 'Rocky Cliffs', lair: '(Max 2): 1,3' },
       { n: 'Rocky Cliffs' },
-      { n: 'Rocky Cliffs', lair: '(Max 2): 1' },
-      { n: 'Rocky Cliffs', lair: '(Max 2): 1' },
+      { n: 'Rocky Cliffs', lair: '(Max 2): 1,3' },
+      { n: 'Rocky Cliffs', lair: '(Max 2): 1,3', npc: 4 },
+      { n: 'Rocky Cliffs', lair: '(Max 2): 1,3' },
       ...Array.from({ length: 12 }, () => ({ n: 'Long Road' })),
       { n: 'Sandy Beach', lair: '(Max 1): 2' },
       { n: 'Sandy Beach', lair: '(Max 1): 2' },
@@ -117,20 +127,37 @@ describe('the hunting loops from a realm database', () => {
   );
 
   it('walks each area of two lairs or more, nearest first, named for the place and what spawns there', () => {
-    expect(realmLoops(world, 6)).toEqual([
+    expect(realmLoops(world, 6)).toContainEqual({
+      name: 'Sandy Beach: seagull',
+      stops: [{ room: 'Sandy Beach 1/18' }, { room: 'Sandy Beach 1/19' }]
+    });
+    expect(realmLoopCount(world, 6)).toBe(3);
+  });
+
+  it('makes an area with a boss twice: with its bosses, and never entering their rooms', () => {
+    const cliffs = realmLoops(world, 6).filter((loop) => loop.name.startsWith('Rocky Cliffs'));
+    expect(cliffs).toEqual([
       {
-        name: 'Rocky Cliffs: black griffon',
+        // 1/5 is reached only through the boss's room, so it is left out with it.
+        name: 'Rocky Cliffs: black griffon, opalescant griffon (no bosses)',
+        stops: [{ room: 'Rocky Cliffs 1/1' }, { room: 'Rocky Cliffs 1/3' }],
+        avoid: ['Rocky Cliffs 1/4']
+      },
+      {
+        name: 'Rocky Cliffs: black griffon, opalescant griffon (with bosses)',
         stops: [
           { room: 'Rocky Cliffs 1/1' },
           { room: 'Rocky Cliffs 1/3' },
-          { room: 'Rocky Cliffs 1/4' }
+          { room: 'Rocky Cliffs 1/4' },
+          { room: 'Rocky Cliffs 1/5' }
         ]
-      },
-      {
-        name: 'Sandy Beach: seagull',
-        stops: [{ room: 'Sandy Beach 1/17' }, { room: 'Sandy Beach 1/18' }]
       }
     ]);
+  });
+
+  it('takes a monster on a clock in one room for a boss, and one in every room for the hunt', () => {
+    expect([...bossRooms(world, ['1/1', '1/3', '1/4', '1/5'] as RoomId[])]).toEqual(['1/4']);
+    expect([...bossRooms(world, ['1/1', '1/3'] as RoomId[])]).toEqual([]);
   });
 });
 
@@ -159,6 +186,15 @@ describe('the loops folder a realm database fills', () => {
     expect(fs.existsSync(path.join(dir, DATABASE_LOOPS_MANIFEST))).toBe(true);
     expect(databaseLoopsCurrent(dir, source.file, source.builtAt)).toBe(true);
     expect(databaseLoopsCurrent(dir, source.file, 2000)).toBe(false);
+  });
+
+  it('makes them again when the way they are made has changed', () => {
+    // Written before loops were made with and without their bosses.
+    fs.writeFileSync(
+      path.join(dir, DATABASE_LOOPS_MANIFEST),
+      JSON.stringify({ ...source, written: {} })
+    );
+    expect(databaseLoopsCurrent(dir, source.file, source.builtAt)).toBe(false);
   });
 
   it('replaces only its own untouched files, and leaves the player’s', () => {

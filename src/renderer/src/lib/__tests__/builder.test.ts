@@ -115,6 +115,10 @@ describe('the loop a draft saves as', () => {
     });
     // And preferred when the player leaves the toggle on.
     expect(loopFor(draft, ['1/1', '1/5', '1/1'], 'Round', true)).toMatchObject({ prefer: true });
+    // An edited loop's rooms it never enters, kept through the edit.
+    expect(loopFor(draft, ['1/1', '1/5', '1/1'], 'Round', true, {}, ['Lair 1/9'])).toMatchObject({
+      avoid: ['Lair 1/9']
+    });
   });
 
   it('refuses a draft with a blocked leg', () => {

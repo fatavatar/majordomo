@@ -207,13 +207,24 @@ export interface MegaEngineHost {
    * The way between two rooms, planned off main's thread (`RoutePlanner`); a
    * string when there is nothing to plan on. `walking` is what for: a walk
    * to a room, planned as the route panel plans one, or a loop's leg, as the
-   * loop was drawn (2026-10-18).
+   * loop was drawn (2026-10-18). `avoid` is the rooms the loop walked never
+   * enters (`Loop.avoid`), for every way planned while the loop runs.
    */
-  plan(from: RoomId, to: RoomId, walking: PlanFor): Promise<Route> | string;
-  /** A loop's stops as rooms, with the commands typed at each, or why not. */
-  loopRooms(
-    name: string
-  ): { rooms: RoomId[]; bounce: boolean; commands: (readonly string[])[] } | string;
+  plan(
+    from: RoomId,
+    to: RoomId,
+    walking: PlanFor,
+    avoid?: readonly RoomId[]
+  ): Promise<Route> | string;
+  /** A loop's stops as rooms, with the commands typed at each and the rooms it avoids, or why not. */
+  loopRooms(name: string):
+    | {
+        rooms: RoomId[];
+        bounce: boolean;
+        commands: (readonly string[])[];
+        avoid: RoomId[];
+      }
+    | string;
   /** MegaMUD's yes-or-no questions; no when absent. */
   ask?(text: string): boolean;
   /** One of MegaMUD's alerts, where it would play its sound. See `MegaEngine.alert`. */
@@ -277,6 +288,8 @@ interface MadeLoop {
   bounce: boolean;
   /** `begins[i]`: the step the leg out of stop `i` begins at. */
   begins: number[];
+  /** The rooms the loop never enters (`Loop.avoid`). */
+  avoid: RoomId[];
   /**
    * The loop as it stood when its path was made — its stops, their
    * commands and its bounce — so a loop edited since is made again
@@ -425,8 +438,9 @@ export interface FleeGoto {
 /** What a way is planned for: a walk to a room (`route`), or a loop's leg (`lap`). */
 export type PlanFor = 'route' | 'lap';
 
-/** A plan kept: what for, and between which rooms. */
-const planKey = (walking: PlanFor, from: RoomId, to: RoomId): string => `${walking}:${from}>${to}`;
+/** A plan kept: what for, between which rooms, and round which. */
+const planKey = (walking: PlanFor, from: RoomId, to: RoomId, avoid: readonly RoomId[]): string =>
+  `${walking}:${from}>${to}${avoid.length === 0 ? '' : `!${avoid.join(',')}`}`;
 
 /** How long a way planned is used again before it is planned afresh. */
 const PLAN_KEPT_MS = 60_000;
@@ -1815,7 +1829,7 @@ export class MegaEngine {
      */
     const start = planned?.steps[0]?.from;
     if (planned !== undefined && start !== undefined && !planned.blocked)
-      this.plans.set(planKey('route', start, room), { route: planned, at: Date.now() });
+      this.plans.set(planKey('route', start, room, []), { route: planned, at: Date.now() });
     const sig = this.signatureOf(room) ?? this.standInFor(room);
     const s = this.s;
     if (alone) {
@@ -2346,6 +2360,12 @@ export class MegaEngine {
     }
     let best: Route | null = null;
     let pending = false;
+    // On a loop, or on the way to its start: never through a room it avoids.
+    const onLoop =
+      this.s.looping !== 0 || this.s.loopPath.start === to
+        ? this.madeFor(this.s.loopPath)?.loop
+        : null;
+    const avoid = onLoop?.avoid ?? [];
     const going = this.goingTo;
     const standIn = this.standIns.get(to);
     const rooms =
@@ -2360,7 +2380,7 @@ export class MegaEngine {
     for (const room of rooms) {
       if (room === here)
         return { flags: 0, path: this.makePath(this.routeName(), 'route', [], from, to), steps: 0 };
-      const plan = this.plan(here, room, 'route');
+      const plan = this.plan(here, room, 'route', avoid);
       if (plan === 'pending') pending = true;
       if (typeof plan !== 'string' && plan.blocked && plan.unlocks?.needs !== undefined)
         unlocks ??= { needs: plan.unlocks.needs, room };
@@ -2401,12 +2421,17 @@ export class MegaEngine {
    * The way between two rooms: kept from an earlier ask, or asked of the
    * planner's thread and `pending` until it answers (`planArrived`).
    */
-  private plan(from: RoomId, to: RoomId, walking: PlanFor): Route | string | 'pending' {
-    const key = planKey(walking, from, to);
+  private plan(
+    from: RoomId,
+    to: RoomId,
+    walking: PlanFor,
+    avoid: readonly RoomId[] = []
+  ): Route | string | 'pending' {
+    const key = planKey(walking, from, to, avoid);
     const kept = this.plans.get(key);
     if (kept === 'pending') return kept;
     if (kept !== undefined && Date.now() - kept.at < PLAN_KEPT_MS) return kept.route;
-    const asked = this.host.plan(from, to, walking);
+    const asked = this.host.plan(from, to, walking, avoid);
     if (typeof asked === 'string') return asked;
     this.plans.set(key, 'pending');
     asked
@@ -2460,7 +2485,7 @@ export class MegaEngine {
     // Every leg asked for at once, so the planner's thread works on them together.
     const planned = rooms.map((from, i) => {
       const to = rooms[(i + 1) % rooms.length]!;
-      return from === to ? null : this.plan(from, to, 'lap');
+      return from === to ? null : this.plan(from, to, 'lap', stops.avoid);
     });
     if (planned.includes('pending')) return 'pending';
     for (const [i, plan] of planned.entries()) {
@@ -2489,6 +2514,7 @@ export class MegaEngine {
       listed: stops.rooms.length,
       bounce: stops.bounce,
       begins,
+      avoid: stops.avoid,
       drawn
     };
     // The path made before an edit gives way to this one.
@@ -2519,7 +2545,7 @@ export class MegaEngine {
     const legs = rooms.map((from, i): [RoomId, RoomId] => [from, rooms[(i + 1) % rooms.length]!]);
     for (const [from, to] of legs) {
       if (from === to) continue;
-      const asked = this.host.plan(from, to, 'lap');
+      const asked = this.host.plan(from, to, 'lap', stops.avoid);
       if (typeof asked === 'string') return asked;
       const route = await asked.catch((error: unknown): Route => ({
         steps: [],
@@ -2528,7 +2554,7 @@ export class MegaEngine {
         reason: error instanceof Error ? error.message : String(error)
       }));
       if (route.blocked) return route.reason ?? `No way from ${from} to ${to}.`;
-      this.plans.set(planKey('lap', from, to), { route, at: Date.now() });
+      this.plans.set(planKey('lap', from, to, stops.avoid), { route, at: Date.now() });
     }
     const p = this.loopPath(name);
     if (typeof p === 'string')

@@ -94,6 +94,32 @@ export function realmAreas(world: WorldGraph, radius: number): RealmAreas {
   return found;
 }
 
+/**
+ * Which of these rooms hold a boss (2026-11-10): a monster on a clock of its
+ * own (`regenHours`) that none of the others holds, either a room's placed
+ * resident or a lair of one room. A loop without its bosses leaves these out.
+ * MudRev's Rocky Cliffs griffon loop went through the Rathi Dragonite's room,
+ * a 16,055-point resident on a 21-hour clock. A monster on a clock that
+ * spawns all over the rooms, like the opalescant griffon in every griffon
+ * lair, is part of the hunt and not a boss: leaving out all its rooms would
+ * leave no loop.
+ */
+export function bossRooms(world: WorldGraph, ids: Iterable<RoomId>): Set<RoomId> {
+  const holding = new Map<string, RoomId[]>();
+  for (const id of ids) {
+    const room = world.byId(id);
+    if (room === undefined) continue;
+    const onClock = [...world.lairEntities(room), ...world.residentEntities(room)].filter(
+      (entity) => entity.regenHours !== undefined && entity.regenHours > 0
+    );
+    for (const name of new Set(onClock.map((entity) => entity.name)))
+      holding.set(name, [...(holding.get(name) ?? []), id]);
+  }
+  const bosses = new Set<RoomId>();
+  for (const rooms of holding.values()) if (rooms.length === 1) bosses.add(rooms[0]!);
+  return bosses;
+}
+
 /** The area most of these rooms are in; null where none is. */
 export function areaOfRooms(realm: RealmAreas, rooms: readonly RoomId[]): string | null {
   const counts = new Map<string, number>();

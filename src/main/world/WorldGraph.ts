@@ -377,8 +377,11 @@ export interface Traveller {
    * so *there is no other way* stops being an assertion off a single search
    * and becomes something the client actually looked for.
    *
-   * Never set by a caller planning a walk. A route the reader chooses from
-   * `Route.otherWay` is a route already planned; nothing re-plans through this.
+   * Also the rooms a loop never enters (`Loop.avoid`, 2026-11-10): a loop
+   * made without its bosses plans every leg with their rooms here, and the
+   * way round is asked with them still kept out. A route the reader chooses
+   * from `Route.otherWay` is a route already planned; nothing re-plans
+   * through this.
    */
   avoid?: ReadonlySet<RoomId>;
   /**
@@ -7773,7 +7776,7 @@ export class WorldGraph {
       from,
       to,
       goal,
-      { ...traveller, avoid: worst, avoidEdges: walls },
+      { ...traveller, avoid: new Set([...(traveller.avoid ?? []), ...worst]), avoidEdges: walls },
       true,
       draws
     ).found;

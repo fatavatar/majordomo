@@ -110,9 +110,14 @@ function engine(here: string | null = '1/1', ways: Record<string, Route> = {}) {
     fetchFirst: (items, then) => fetches.push([items.map((item) => item.name), then]),
     loopRooms: (name) =>
       name === 'Ring'
-        ? { rooms: ['1/2', '1/3'], bounce: false, commands: [[], []] }
+        ? { rooms: ['1/2', '1/3'], bounce: false, commands: [[], []], avoid: [] }
         : name === 'Hammer'
-          ? { rooms: ['1/2', '1/3'], bounce: false, commands: [[], ['touch hammer', 'look']] }
+          ? {
+              rooms: ['1/2', '1/3'],
+              bounce: false,
+              commands: [[], ['touch hammer', 'look']],
+              avoid: []
+            }
           : 'no such loop'
   };
   const e = new MegaEngine(host, {
@@ -301,9 +306,38 @@ describe('the engine in a session', () => {
         .map((line) => line.split(':').slice(2).join(':'));
     };
     expect(await commands()).toEqual(['s', 'e', 'w', 'n']);
-    host.loopRooms = () => ({ rooms: ['1/2', '1/3'], bounce: false, commands: [['look'], []] });
+    host.loopRooms = () => ({
+      rooms: ['1/2', '1/3'],
+      bounce: false,
+      commands: [['look'], []],
+      avoid: []
+    });
     expect(await commands()).toEqual(['look', 's', 'e', 'w', 'n']);
     expect(e.s.paths.filter((p) => p.title === 'Ring')).toHaveLength(1);
+    e.dispose();
+  });
+
+  /* A loop made without its bosses walked its legs through their rooms (2026-11-10). */
+  it('plans every leg of a loop round the rooms it avoids', async () => {
+    const { e } = engine('1/1');
+    const host = (e as unknown as { host: MegaEngineHost }).host;
+    const asked: Array<[string, string, readonly string[]]> = [];
+    const plain = host.plan;
+    host.plan = (from, to, walking, avoid = []) => {
+      asked.push([from, to, avoid]);
+      return plain(from, to, walking, avoid);
+    };
+    host.loopRooms = () => ({
+      rooms: ['1/2', '1/3'],
+      bounce: false,
+      commands: [[], []],
+      avoid: ['1/1']
+    });
+    expect(typeof (await e.exportLoop('Ring'))).toBe('object');
+    expect(asked).toEqual([
+      ['1/2', '1/3', ['1/1']],
+      ['1/3', '1/2', ['1/1']]
+    ]);
     e.dispose();
   });
 

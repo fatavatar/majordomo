@@ -96,7 +96,7 @@ import { FightLog } from './session/FightLog';
 import { NO_TALK, TalkLog, type TalkSink } from './session/TalkLog';
 import type { AreaOverrides } from './world/areas';
 import { orderRing } from '../shared/hunting';
-import { areaOfRooms, realmAreas } from './world/huntingAreas';
+import { areaOfRooms, bossRooms, realmAreas } from './world/huntingAreas';
 import {
   howItFights,
   loopGroups,
@@ -149,7 +149,7 @@ import { mergeLoops } from '../shared/loops';
 
 /** The most a shared loop file may hold: far over any loop, far under a socket's message. */
 const LOOP_FILE_MAX = 256 * 1024;
-import { roomId, type RoomId } from '../shared/world';
+import { roomId, type RoomId, type WorldRoom } from '../shared/world';
 import { errorMessage } from '../shared/values';
 import { BUILD, versionWithCommit } from '../shared/build';
 /*
@@ -470,12 +470,23 @@ async function huntingGroundsOf(
    * The loop each of the best areas is walked by: the main group's lairs and
    * the added groups' rooms, nearest first round a ring of measured legs
    * (`orderRing`), an added room carrying its own clock so the lap walks to
-   * it only when it is due (`LoopStop.every`).
+   * it only when it is due (`LoopStop.every`). Priced without its bosses, the
+   * loop leaves their rooms out too (`bossRooms`): a boss's room is often one
+   * of the lairs, and walking into it is fighting it (2026-11-10).
    */
   const { clusterRadius, maxSpots } = tuning().hunting;
   for (const area of areas.slice(0, maxSpots)) {
+    const lairs = area.loop?.rooms ?? [];
+    const bosses =
+      area.bosses === 'without'
+        ? bossRooms(
+            world,
+            lairs.map((room) => room.id)
+          )
+        : new Set<RoomId>();
+    if (bosses.size > 0) area.avoid = lairs.filter((room) => bosses.has(room.id));
     const stops = [
-      ...(area.loop?.rooms ?? []),
+      ...lairs.filter((room) => !bosses.has(room.id)),
       ...area.groups.flatMap(({ group, role }) =>
         role === 'added'
           ? group.rooms.map((room) => ({ ...room, respawnSeconds: group.respawnMinutes * 60 }))
@@ -483,8 +494,9 @@ async function huntingGroundsOf(
       )
     ];
     const sweeps = new Map<RoomId, Map<RoomId, number>>();
+    const away = (room: WorldRoom): boolean => !bosses.has(roomId(room.map, room.room));
     for (const room of stops)
-      sweeps.set(room.id, world.withinSteps(room.id, clusterRadius, traveller));
+      sweeps.set(room.id, world.withinSteps(room.id, clusterRadius, traveller, away));
     const { order } = orderRing(
       [...stops].sort((a, b) => a.steps - b.steps),
       (a, b) => sweeps.get(a)?.get(b) ?? sweeps.get(b)?.get(a) ?? null

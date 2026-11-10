@@ -120,7 +120,10 @@ function areaLoop(area: GroundArea): Loop {
       ...(room.respawnSeconds === undefined || room.respawnSeconds <= 0
         ? {}
         : { every: Math.round(room.respawnSeconds) })
-    }))
+    })),
+    ...(area.avoid === undefined || area.avoid.length === 0
+      ? {}
+      : { avoid: area.avoid.map((room) => `${room.name} ${room.map}/${room.room}`) })
   };
 }
 

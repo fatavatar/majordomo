@@ -1682,7 +1682,9 @@ describe('a shared loop file', () => {
     const loop = {
       name: 'Sewer circuit',
       bounce: true,
-      stops: [{ room: 'Sewer Tunnel 1/606' }, { room: 'Sewer Junction 1/610', linger: 30 }]
+      stops: [{ room: 'Sewer Tunnel 1/606' }, { room: 'Sewer Junction 1/610', linger: 30 }],
+      // The rooms it never enters, read back as they were written.
+      avoid: ['Sewer Lair 1/608']
     };
     const text = loopFileText(loop);
     expect(text).toContain('A mudengine loop');

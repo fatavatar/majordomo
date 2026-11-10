@@ -118,6 +118,11 @@ export interface GroundArea {
    * Drawn for the best areas only; empty past them.
    */
   walk: Array<GroundRoom & { respawnSeconds?: number }>;
+  /**
+   * The bosses' rooms the loop never enters, priced without them: neither
+   * stops nor on the way between them (`Loop.avoid`, 2026-11-10).
+   */
+  avoid?: GroundRoom[];
 }
 
 /** What the card is answered. */
