@@ -26,6 +26,7 @@ import {
   parseMegaMudMessages
 } from '../../shared/messageTriggers';
 import { asMonsterRules, type MonsterImport, saysAnything } from '../../shared/monsterRules';
+import { asPlayerStance } from '../../shared/remotes';
 import { t } from '../app/i18n';
 import type { IpcContext } from '../client';
 import { ITEM_TABLE, MESSAGE_TABLE, MONSTER_TABLE } from '../config/RealmTableStore';
@@ -338,6 +339,25 @@ export function registerSettingsIpc(transport: Transport, ctx: IpcContext): void
      */
     if (result.ok) ctx.publishRosters();
     return result.ok ? null : result.error;
+  });
+  /*
+   * What MegaMUD treats one player as, from the Player flyout (2026-11-10):
+   * the file for the next load, and the engine now, where unknown is the way
+   * to clear a mark a PvP blow made.
+   */
+  handle(Invoke.setPlayerStance, (_caller, session: unknown, name: unknown, stance: unknown) => {
+    if (typeof session !== 'string' || typeof name !== 'string') {
+      return t('app.profiles.noSuchCharacter');
+    }
+    const parsed = stance === 'unknown' ? 'unknown' : asPlayerStance(stance);
+    if (parsed === null) return t('app.remotes.invalidStance');
+    const result = ctx
+      .editor()
+      .setPlayerStance(session, name, parsed === 'unknown' ? null : parsed);
+    if (!result.ok) return result.error;
+    ctx.host?.get(session as SessionId)?.manager.megaPlayerStance(name, parsed);
+    ctx.publishRosters();
+    return null;
   });
   /* What anybody in this character's gang may ask for, from the Gang card. */
   handle(Invoke.setGangRemotes, (_caller, session: unknown, remotes: unknown) => {

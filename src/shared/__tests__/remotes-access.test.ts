@@ -268,6 +268,27 @@ describe('the two halves of the remote union move together', () => {
     expect(config.automation.remotes.gang).toEqual<RemoteName[]>(['health', 'where']);
   });
 
+  /* MegaMUD's relationship for a player (2026-11-10): one of its four, or none. */
+  it('reads a player’s stance, merging cases, and drops one it does not know', () => {
+    const config = normalizeConfig({
+      automation: {
+        remotes: {
+          players: {
+            Soul: { allow: ['health'], stance: 'enemy' },
+            soul: { deny: ['do'] },
+            rend: { stance: 'nemesis' },
+            bob: { stance: 'friend' }
+          }
+        }
+      }
+    });
+    expect(config.automation.remotes.players).toEqual({
+      soul: { allow: ['health'], deny: ['do'], stance: 'enemy' },
+      rend: { allow: [], deny: [] },
+      bob: { allow: [], deny: [], stance: 'friend' }
+    });
+  });
+
   it('reads a leading @ off, because that is how a person writes one', () => {
     const config = normalizeConfig({ automation: { remotes: { gang: ['@health'] } } });
     expect(config.automation.remotes.gang).toEqual(['health']);

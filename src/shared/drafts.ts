@@ -55,6 +55,7 @@ import type { StreamEncoding } from './types';
 import { isRecord } from './values';
 import {
   asBotCommands,
+  asPlayerStance,
   isRemoteName,
   type BotCommand,
   type PlayerGrant,
@@ -1144,7 +1145,10 @@ function playerGrants(value: unknown): Record<string, PlayerGrant> {
     out[key] = {
       allow: remoteNames(grant['allow']),
       deny: remoteNames(grant['deny']),
-      ...(grant['autoInviteWhenSeen'] === true ? { autoInviteWhenSeen: true } : {})
+      ...(grant['autoInviteWhenSeen'] === true ? { autoInviteWhenSeen: true } : {}),
+      ...(asPlayerStance(grant['stance']) !== null
+        ? { stance: asPlayerStance(grant['stance'])! }
+        : {})
     };
   }
   return out;

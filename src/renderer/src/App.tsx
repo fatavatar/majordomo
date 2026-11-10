@@ -31,7 +31,7 @@ import NotificationsCard from './components/NotificationsCard';
 import CombatCard from './components/CombatCard';
 import PartyCard, { musterChoices } from './components/PartyCard';
 import RealmCard from './components/RealmCard';
-import PlayerFlyout, { type PlayerAsked } from './components/PlayerFlyout';
+import PlayerFlyout, { type PlayerAsked, type PlayerFlyoutProps } from './components/PlayerFlyout';
 import GangFlyout, { type GangAsked } from './components/GangFlyout';
 import { canRestore, type GearAction } from '@shared/gear';
 import { knownGangs } from './lib/gangs';
@@ -6131,6 +6131,23 @@ export default function App() {
     </>
   ) : null;
 
+  /**
+   * The Player flyout's MegaMUD relationship (2026-11-10): the clicked
+   * character's engine's own reading of the person, and the setter, where an
+   * engine runs that character (its marks are pushed with its toggles).
+   */
+  const stanceFor = (asked: PlayerAsked): Pick<PlayerFlyoutProps, 'mark' | 'onStance'> => {
+    const marks = views[asked.session]?.automation.megaPlayers;
+    if (marks === undefined) return {};
+    const key = asked.name.trim().toLowerCase();
+    return {
+      mark: marks.find((entry) => entry.name.toLowerCase() === key) ?? null,
+      onStance: (name, stance) => {
+        void api.setPlayerStance(asked.session, name, stance).then(sayRefusal(asked.session));
+      }
+    };
+  };
+
   const drawn = (
     <div className="app">
       <div
@@ -6698,6 +6715,7 @@ export default function App() {
           onAsk={askPlayer}
           onDismiss={dismissFlyout}
           onGrant={(name, grant) => void api.setRemoteGrant(flyout.session, name, grant)}
+          {...stanceFor(flyout)}
           onSelectGang={(gang, anchor) => selectGang(flyout.session, gang, anchor)}
           remotes={remotesFor(flyout.session)}
           returnFocus={returnFocus}

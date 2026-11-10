@@ -26,7 +26,7 @@ import { StatsReporter, type KeepKey } from '../stats/StatsReporter';
 import { REPORTED_AS, statsSnapshot } from '../stats/snapshot';
 import { version as APP_VERSION } from '../../../package.json';
 import type { MegaChoices } from '../../shared/ipc';
-import type { RemoteName } from '../../shared/remotes';
+import type { PlayerStance, RemoteName } from '../../shared/remotes';
 import { NO_LOOP, type LoopProgress } from '../../shared/loops';
 import { doorSpell } from '../../shared/spellcraft';
 import {
@@ -5952,7 +5952,7 @@ export class SessionManager {
       // Newest first: a trace is read backwards from whatever just happened.
       sent: [...this.sentLog].reverse(),
       safety: [...this.safetyLog].reverse(),
-      ...(this.mega ? { mega: this.mega.toggles } : {}),
+      ...(this.mega ? { mega: this.mega.toggles, megaPlayers: this.mega.playerMarks } : {}),
       ...(this.megaQuestion !== null ? { megaQuestion: this.megaQuestion } : {})
     };
   }
@@ -6028,6 +6028,16 @@ export class SessionManager {
     this.megaAgreed = question;
     const retry = this.megaRetry;
     if (retry !== null) retry();
+  }
+
+  /**
+   * A player's relationship set from the Player flyout (2026-11-10), at once
+   * in the engine: the profile's grant carries it from the next load on, and
+   * unknown clears a mark a PvP blow made, which a settings load leaves.
+   */
+  megaPlayerStance(name: string, stance: PlayerStance | 'unknown'): void {
+    this.mega?.setPlayerStance(name, stance);
+    this.publishAutomation();
   }
 
   /** One of the MegaMUD engine's toolbar toggles pressed; why not, when it cannot be. */

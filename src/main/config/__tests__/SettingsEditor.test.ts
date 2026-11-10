@@ -1390,8 +1390,9 @@ describe('one player’s @ command permissions', () => {
     const automation = read(id)['automation'] as Record<string, unknown>;
     return automation['remotes'] as Record<string, unknown>;
   };
-  const grantsOf = (id: string): Record<string, { allow: string[]; deny: string[] }> =>
-    (remotesOf(id)['players'] ?? {}) as Record<string, { allow: string[]; deny: string[] }>;
+  type Grant = { allow: string[]; deny: string[]; stance?: string };
+  const grantsOf = (id: string): Record<string, Grant> =>
+    (remotesOf(id)['players'] ?? {}) as Record<string, Grant>;
 
   beforeEach(() => {
     editor.saveProfile(
@@ -1456,6 +1457,26 @@ describe('one player’s @ command permissions', () => {
   it('removes an emptied grant, and the map with the last one', () => {
     editor.setRemoteGrant('vaelor', 'Soul', { allow: ['health'], deny: [] });
     editor.setRemoteGrant('vaelor', 'Soul', { allow: [], deny: [] });
+    expect(remotesOf('vaelor')['players']).toBeUndefined();
+  });
+
+  /* MegaMUD's relationship for one player, from the Player flyout (2026-11-10). */
+  it('writes a stance beside the grant, keeps it through a grant, and takes it off', () => {
+    editor.setRemoteGrant('vaelor', 'Soul', { allow: ['health'], deny: [] });
+    expect(editor.setPlayerStance('vaelor', 'Soul', 'enemy').ok).toBe(true);
+    expect(grantsOf('vaelor')['soul']).toEqual({ allow: ['health'], deny: [], stance: 'enemy' });
+    editor.setRemoteGrant('vaelor', 'Soul', { allow: ['health', 'do'], deny: [], stance: 'enemy' });
+    expect(grantsOf('vaelor')['soul']!.stance).toBe('enemy');
+    editor.setPlayerStance('vaelor', 'Soul', null);
+    expect(grantsOf('vaelor')['soul']).toEqual({ allow: ['health', 'do'], deny: [] });
+  });
+
+  it('writes a stance alone, and removes the entry and the map with it', () => {
+    editor.setPlayerStance('vaelor', 'Rend', 'friend');
+    expect(grantsOf('vaelor')['rend']).toEqual({ stance: 'friend' });
+    const text = fs.readFileSync(home.profile('vaelor').file, 'utf8');
+    expect(text).toMatch(/players:\n\s+rend:\n\s+stance: friend/);
+    editor.setPlayerStance('vaelor', 'Rend', null);
     expect(remotesOf('vaelor')['players']).toBeUndefined();
   });
 

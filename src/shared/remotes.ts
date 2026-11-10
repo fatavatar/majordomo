@@ -705,6 +705,40 @@ export interface PlayerGrant extends RemoteGrant {
    * unchanged.
    */
   autoInviteWhenSeen?: boolean;
+  /**
+   * What MegaMUD treats this player as (2026-11-10): the Players dialog's
+   * relationship, which the engine reads as it reads a monster's. Absent is
+   * MegaMUD's unknown, which leaves the engine's own reading of them alone.
+   */
+  stance?: PlayerStance;
+}
+
+/**
+ * A player's relationship, as MegaMUD's Players dialog sets it (its table at
+ * `0x562410`, the values the engine's `Stance` holds): a friend is forgiven a
+ * room spell, an enemy is fought, and the last two are run from or hung up
+ * on sight. Unknown is no entry at all; a player record starts at 3, which
+ * a player reads as unknown and a monster as avoid (`0x491870`).
+ */
+export const PLAYER_STANCES = ['friend', 'enemy', 'run', 'hangup'] as const;
+export type PlayerStance = (typeof PLAYER_STANCES)[number];
+
+/** A stance off the wire or out of a file, or null. */
+export function asPlayerStance(value: unknown): PlayerStance | null {
+  return typeof value === 'string' && (PLAYER_STANCES as readonly string[]).includes(value)
+    ? (value as PlayerStance)
+    : null;
+}
+
+/**
+ * What the MegaMUD engine holds of a player now (2026-11-10): its stance,
+ * which a PvP blow can have set this session (`pvpAttack`) where nobody chose
+ * it, and whether they attacked this character since it connected.
+ */
+export interface MegaPlayerMark {
+  name: string;
+  stance: PlayerStance | 'unknown';
+  attacked: boolean;
 }
 
 /**

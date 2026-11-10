@@ -6,6 +6,7 @@ import { comingsLine } from '../room/comings';
 import { partyIndex } from '../room/checkNames';
 import { addMember, partyRefresh } from '../party/members';
 import { newEntity } from '../Session';
+import { grantPlayers, setPlayerStance, stanceName } from '../character';
 import { session } from './fixture';
 
 /* `0x42b8f0`, `0x472d10` and `0x4816b0`, read 2026-10-14. */
@@ -43,6 +44,30 @@ describe('a player attacking (0x42b8f0)', () => {
     expect(bob.kind).toBe(4);
     expect(bob.remote).toBe(0);
     expect(s.room.some((e) => e.name === 'Bob' && e.player === bob)).toBe(true);
+  });
+
+  /* The Player flyout's relationship (2026-11-10): the mark a blow made, taken back. */
+  it('clears the mark from the flyout, in the room too, and applies a stance a grant holds', () => {
+    const { s } = inGame();
+    const bob = newPlayer(s.data, s.now);
+    Object.assign(bob, { name: 'Bob', remote: 0x200, kind: 3 });
+    s.PvP_PvpAction = 0;
+    pvpAttack(s, 'Bob', 1);
+    expect(stanceName(bob.kind)).toBe('enemy');
+    setPlayerStance(s, 'bob', 'unknown');
+    expect([bob.kind, stanceName(bob.kind)]).toEqual([3, 'unknown']);
+    expect(s.room.find((e) => e.name === 'Bob')?.kind).toBe(3);
+    // A grant's stance stands over the engine's, and its remote control comes back.
+    grantPlayers(s, { bob: { allow: ['health'], deny: [], stance: 'hangup' } });
+    expect([stanceName(bob.kind), s.room.find((e) => e.name === 'Bob')?.kind]).toEqual([
+      'hangup',
+      6
+    ]);
+    expect(bob.remote).not.toBe(0);
+    // None leaves the engine's own reading alone.
+    setPlayerStance(s, 'Bob', 'friend');
+    grantPlayers(s, { bob: { allow: [], deny: [] } });
+    expect(stanceName(bob.kind)).toBe('friend');
   });
 
   it('runs and marks them one to flee with PvpAction 2', () => {

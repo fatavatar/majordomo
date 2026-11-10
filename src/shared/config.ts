@@ -47,6 +47,7 @@ import {
 } from './notifications';
 import {
   asBotCommands,
+  asPlayerStance,
   isRemoteName,
   type BotCommand,
   type PlayerGrant,
@@ -2778,6 +2779,10 @@ function playerGrants(
       // One yes between `Soul:` and `soul:` is a yes, as the lists are a union.
       ...(held.autoInviteWhenSeen === true || bool(grant['autoInviteWhenSeen'], false)
         ? { autoInviteWhenSeen: true }
+        : {}),
+      // MegaMUD's relationship; one stated wins over none, as `Soul:` and `soul:` merge.
+      ...((asPlayerStance(grant['stance']) ?? held.stance) !== undefined
+        ? { stance: (asPlayerStance(grant['stance']) ?? held.stance)! }
         : {})
     };
   }

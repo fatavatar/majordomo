@@ -28,7 +28,14 @@ import {
 import { applyItemRule } from '../megamud/fromWorld';
 import { bbsSetup } from '../megamud/bbs';
 import { CAST_IMMUNITY, refreshImmunities } from '../megamud/combat/immunity';
-import { grantPlayers, loadCharacter, profileChanged, reloadCharacter } from '../megamud/character';
+import {
+  grantPlayers,
+  loadCharacter,
+  profileChanged,
+  reloadCharacter,
+  setPlayerStance,
+  stanceName
+} from '../megamud/character';
 import { newTerminal, parseData, type TerminalState } from '../megamud/input/ParseData';
 import { typedCommand } from '../megamud/input/typed';
 import {
@@ -95,7 +102,7 @@ import {
 import type { MegaSettings } from '../../shared/megamud/settings';
 import { MEGA_TOGGLES, type MegaToggle, type MegaToggles } from '../../shared/megamud/toggles';
 import type { MegaChoices, MegaNames } from '../../shared/ipc';
-import type { BotCommand, PlayerGrant } from '../../shared/remotes';
+import type { BotCommand, MegaPlayerMark, PlayerGrant, PlayerStance } from '../../shared/remotes';
 import { IDLE_WALK, type WalkProgress } from '../../shared/walk';
 import { NO_LOOP, type LoopProgress } from '../../shared/loops';
 import type { RoundTimer } from '../../shared/roundTimer';
@@ -123,7 +130,8 @@ import {
   RouteFlag,
   RoomFlag,
   Exit,
-  Darkness
+  Darkness,
+  PlayerFlag
 } from '../megamud/flags';
 import { worldSignature } from '../world/megamudSignature';
 
@@ -528,6 +536,8 @@ export class MegaEngine {
   private locateGaveUp = false;
   /** In the game at the last chunk: entering it is when a room is first wanted. */
   private wasInGame = false;
+  /** The grants last applied, for a stance set between loads (`setPlayerStance`). */
+  private granted: Pick<MegaEngineSetup, 'grants' | 'joinWhenInvited'> = { grants: {} };
   /** The toggles as last said (`noteToggles`). */
   private toggled = '';
   /** The realm's own word on which spells last has been put on the spell list. */
@@ -673,6 +683,7 @@ export class MegaEngine {
     }
     this.marksKept = JSON.stringify(this.s.monsterMarks);
     grantPlayers(this.s, setup.grants, setup.joinWhenInvited);
+    this.granted = setup;
     this.s.botCommands = setup.botCommands ?? [];
     findLongestFirst(this.s);
     for (const [room, sig] of memory?.signatures ?? []) this.learn(room, sig);
@@ -845,6 +856,7 @@ export class MegaEngine {
     else keepSchedule(s, events);
     if (s.monitorsChanged !== 0) s.monitors = monitors;
     grantPlayers(s, setup.grants, setup.joinWhenInvited);
+    this.granted = setup;
     s.botCommands = setup.botCommands ?? [];
     if (setup.data !== this.dataFrom) this.newData(setup.data);
     this.noteToggles();
@@ -1280,6 +1292,38 @@ export class MegaEngine {
   }
 
   /**
+   * The players this engine holds a stance on, or that attacked this
+   * character since it connected (2026-11-10), for the Player flyout: a mark
+   * `pvpAttack` makes lives only here, and was shown nowhere.
+   */
+  get playerMarks(): MegaPlayerMark[] {
+    return (this.s.data.players ?? []).flatMap((p) => {
+      const stance = stanceName(p.kind);
+      const attacked = (p.flags & PlayerFlag.AttackedUs) !== 0;
+      return stance === 'unknown' && !attacked ? [] : [{ name: p.name, stance, attacked }];
+    });
+  }
+
+  /**
+   * A player's relationship set from the Player flyout (`setPlayerStance`),
+   * and their grants put back: the blow that marked them took their remote
+   * control too, which only a settings load gave back.
+   */
+  setPlayerStance(name: string, stance: PlayerStance | 'unknown'): void {
+    this.safely(() => {
+      setPlayerStance(this.s, name, stance);
+      const { grants, joinWhenInvited } = this.granted;
+      const key = name.trim().toLowerCase();
+      // Without the stance the last load read: the one chosen now stands.
+      const own = Object.entries(grants)
+        .filter(([who]) => who.toLowerCase() === key)
+        .map(([who, { stance: _was, ...grant }]) => [who, grant] as const);
+      grantPlayers(this.s, Object.fromEntries(own), joinWhenInvited);
+    });
+    this.noteToggles();
+  }
+
+  /**
    * The toggles as MegaMUD's window draws them (`0x460d50`), which this
    * character's toolbar shows, and whether it is walking: with All Off on,
    * every other toggle reads off and Go is not to be pressed.
@@ -1473,7 +1517,7 @@ export class MegaEngine {
       this.host.redialChanged?.();
     }
     const { on, walking, looping, canGo, ran, fled } = this.toggles;
-    const now = JSON.stringify([on, walking, looping, canGo, ran, fled]);
+    const now = JSON.stringify([on, walking, looping, canGo, ran, fled, this.playerMarks]);
     if (now === this.toggled) return;
     this.toggled = now;
     this.host.toggled?.();
