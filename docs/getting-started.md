@@ -178,6 +178,31 @@ tables for that realm. If you have MegaMUD's data folder for the realm, use
 those pages. Importing replaces the whole table. Each character can still
 override single rows on its own page.
 
+When a realm's database is a file (uploaded or chosen), the client builds the
+realm's data from it the first time a character on that realm opens, and
+again whenever the database file changes. It says so in the log.
+
+- **Monsters**: shopkeepers, and monsters that cost alignment to attack, are
+  friends. Monsters that attack on sight are fought first. Monsters that
+  never start a fight are marked not hostile, so a character may rest beside
+  them.
+- **Items**: weapons with backstab accuracy are marked to backstab with.
+  Items the realm won't let you pick up are marked cannot-take.
+- **Messages**: filled from the database's own message table when it carries
+  one, such as the database a silvermere realm serves on its Tools page. A
+  stock MMUD Explorer export has none, and then the realm's message table is
+  left as it is.
+- **Loops**: one hunting loop for each area the Hunting card prices, of two
+  lairs or more, walking its lairs nearest first. They go into the realm's
+  loops folder (`servers/<realm>/loops/`), so every character on the realm
+  has them.
+
+This replaces a monster, item or message table imported from MegaMUD; the
+old file is kept beside it as `<table>.yaml.before-database`. A table you
+edit after that is kept until the database changes. A generated loop you
+edit is yours and is never rebuilt; your own and imported loops are never
+touched.
+
 > [!IMPORTANT]
 > ### Import data: `Messages.md`, `Monsters.md` and `Items.md`
 > The MegaMUD engine plays by these tables: which monsters to fight and which

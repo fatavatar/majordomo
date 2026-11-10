@@ -721,6 +721,8 @@ notices:
       writeError: 'Could not write {file}: {message}. Changes to the party rosters are not kept for the next launch.'
   world:
     megamudData: 'MegaMUD data for {name} from {realm}: {monsters} monsters, {items} items, {spells} spells, {messages} messages.'
+    tablesFromDatabase: "The realm's data from {file}: {messages} message rows, {monsters} monster rows, {items} item rows, {loops} loops (- left as it was)."
+    loopFromDatabase: A hunting loop made from {file}. Edit it and it is yours; left as it is, it is rebuilt when the database changes.
     converted: 'Realm {file}: {rooms} rooms in {seconds}s.'
     converting: Converting the realm database {file}…
     destinations:

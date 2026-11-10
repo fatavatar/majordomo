@@ -221,23 +221,80 @@ export function parseMegaMudMessages(text: string): MegaMudImport {
       continue;
     }
 
-    const flags = Number.parseInt(parts[2]!, 16);
-    const actionIndex = Number(parts[3]);
-    triggers.push({
-      name: parts[1]!.trim(),
-      match,
-      endsWith,
-      response: parts[4]!,
-      effects: MESSAGE_EFFECTS.filter((effect) => (flags & MEGAMUD_EFFECT_BITS[effect]) !== 0),
-      action: MESSAGE_ACTIONS[actionIndex] ?? 'none',
-      anywhere: (flags & MEGAMUD_ANYWHERE) !== 0,
-      conversations: (flags & MEGAMUD_CONVERSATIONS) !== 0,
-      chase: (flags & MEGAMUD_CHASE) !== 0,
-      enabled: (flags & MEGAMUD_DISABLED) === 0
-    });
+    triggers.push(
+      megaMudTrigger({
+        name: parts[1]!,
+        match,
+        endsWith,
+        response: parts[4]!,
+        flags: Number.parseInt(parts[2]!, 16),
+        action: Number(parts[3])
+      })
+    );
   }
 
   return { triggers, skipped };
+}
+
+/** One MegaMUD record, its flag word and action index read out. */
+function megaMudTrigger(row: {
+  name: string;
+  match: string;
+  endsWith: string;
+  response: string;
+  flags: number;
+  action: number;
+}): MessageTrigger {
+  const { flags } = row;
+  return {
+    name: row.name.trim(),
+    match: row.match,
+    endsWith: row.endsWith,
+    response: row.response,
+    effects: MESSAGE_EFFECTS.filter((effect) => (flags & MEGAMUD_EFFECT_BITS[effect]) !== 0),
+    action: MESSAGE_ACTIONS[row.action] ?? 'none',
+    anywhere: (flags & MEGAMUD_ANYWHERE) !== 0,
+    conversations: (flags & MEGAMUD_CONVERSATIONS) !== 0,
+    chase: (flags & MEGAMUD_CHASE) !== 0,
+    enabled: (flags & MEGAMUD_DISABLED) === 0
+  };
+}
+
+/**
+ * The `Messages` table a realm's own database may carry (2026-11-10):
+ * MegaMUD's `Messages.md` as rows — `Name`, `Message`, `EndMessage`,
+ * `Response`, the flag word in `Flags` and the action index in `Action` —
+ * built by the realm's server from its own spells, so the sentences are the
+ * ones this realm prints rather than a hand file's for another. silvermere
+ * writes it into the MMUD Explorer database it serves (fatavatar/silvermere#2);
+ * no stock export has one. Its `Kind` and `Source` columns have no field here.
+ *
+ * Read through the same record as the file, so a row means what the same
+ * row in `Messages.md` would; a row with no sentence is dropped, as the
+ * file's is.
+ */
+export function realmMessageTriggers(rows: readonly Record<string, unknown>[]): MessageTrigger[] {
+  const triggers: MessageTrigger[] = [];
+  for (const row of rows) {
+    const match = text(row['Message']).trim();
+    if (match.length === 0) continue;
+    triggers.push(
+      megaMudTrigger({
+        name: text(row['Name']),
+        match,
+        endsWith: text(row['EndMessage']).trim(),
+        response: text(row['Response']),
+        flags: whole(row['Flags']),
+        action: whole(row['Action'])
+      })
+    );
+  }
+  return triggers;
+}
+
+/** A number column as a whole number, and 0 for anything else. */
+function whole(value: unknown): number {
+  return typeof value === 'number' && Number.isInteger(value) ? value : 0;
 }
 
 /* --------------------------------------------------- the file on the realm */

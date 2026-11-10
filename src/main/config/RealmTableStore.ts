@@ -238,6 +238,16 @@ export class RealmTableStore<Table extends RealmTable> extends EventEmitter {
     return result;
   }
 
+  /**
+   * Writes one realm's table only where it has none, so a table the player
+   * imported or edited is never replaced by one filled in for them. Null
+   * when there already was one.
+   */
+  fill(serverId: string, table: Table): EditResult | null {
+    if (fs.existsSync(this.file(serverId))) return null;
+    return this.write(serverId, table);
+  }
+
   watch(): void {
     this.poller.start();
   }

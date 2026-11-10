@@ -1685,9 +1685,12 @@ function loopNode(loop: Loop): Record<string, unknown> {
  * A loop as a file another player's client reads (2026-10-19): the file this
  * client writes for it (`loopNode`), with a line saying what it is.
  */
-export function loopFileText(loop: Loop): string {
+export function loopFileText(
+  loop: Loop,
+  comment = ' A mudengine loop. Import it from a loop list in Settings.'
+): string {
   const document = new Document(loopNode(loop));
-  document.commentBefore = ' A mudengine loop. Import it from a loop list in Settings.';
+  document.commentBefore = comment;
   return document.toString();
 }
 
