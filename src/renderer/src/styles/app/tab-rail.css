@@ -97,8 +97,10 @@
 }
 
 /*
- * One line: the bars, the name, the glyph, where, the alerts, and on the tab
- * being shown its controls. As wide as it says; the row scrolls past that.
+ * One line: the bars, the name, the glyph or the alerts, and its controls'
+ * one press. As wide as its name says, and never wider or narrower for what
+ * it is doing or whether it is shown (2026-11-10): the glyph keeps its room
+ * when there is none. The row scrolls past its width.
  */
 .tab {
   align-items: center;
@@ -107,7 +109,7 @@
   color: var(--text-lo-normal);
   cursor: pointer;
   display: flex;
-  flex: 0 0 auto;
+  flex: none;
   gap: 6px;
   height: 30px;
   max-width: 320px;
@@ -221,11 +223,13 @@
   white-space: nowrap;
 }
 
-/* What it is doing, one glyph in its level; the word is its title. */
+/* What it is doing, one glyph in its level, the word its title; or the alerts. */
 .tab-glyph {
   color: var(--text-lo);
   display: inline-flex;
   flex: none;
+  justify-content: center;
+  min-width: 15px;
 }
 
 .tab-glyph .icon {
@@ -239,17 +243,6 @@
 
 .tab-glyph[data-level='critical'] {
   color: var(--danger);
-}
-
-/* Where it is, or how far through its walk: quiet, and the first to give way. */
-.tab .where {
-  color: var(--text-lo-quiet);
-  flex: 0 3 auto;
-  font-size: 0.72rem;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 /* The alerts raised while nobody was looking: the one thing a tab must shout. */
@@ -266,71 +259,39 @@
   text-align: center;
 }
 
-/* The tab being shown: dial, settings, close. Every tab has them on a right-click. */
-.tab .tab-controls {
-  align-items: center;
-  display: flex;
-  flex: none;
-  gap: 2px;
-  margin-left: 2px;
-}
-
-.tab .dial,
-.tab .edit,
-.tab .close {
+/*
+ * Its controls, as its right-click has them: one quiet press on every tab,
+ * so showing a tab changes nothing of its width (2026-11-10).
+ */
+.tab .tab-more {
   background: transparent;
   border: 0;
   border-radius: var(--r-chip);
-  color: var(--text-lo);
+  color: var(--text-lo-quiet);
   cursor: pointer;
   display: grid;
-  flex: 0 0 auto;
+  flex: none;
   height: 18px;
+  margin-left: -2px;
   padding: 0;
   place-items: center;
   transition:
     background var(--dur-tint) var(--ease-out),
     color var(--dur-tint) var(--ease-out);
-  width: 18px;
+  width: 16px;
 }
 
-/* In or out of the realm, said in its colour as well as its glyph. */
-.tab .dial:not([data-phase='connected']) {
-  color: var(--ok);
+.tab .tab-more .icon {
+  height: 14px;
+  width: 14px;
 }
 
-.tab .dial[data-phase='connected'] {
-  color: var(--danger);
-}
-
-.tab .dial:not([data-phase='connected']):hover {
-  background: color-mix(in srgb, var(--ok) var(--tone), transparent);
-}
-
-.tab .dial[data-phase='connected']:hover {
-  background: color-mix(in srgb, var(--danger) var(--tone), transparent);
-}
-
-.tab .edit .icon,
-.tab .close .icon {
-  height: 13px;
-  width: 13px;
-}
-
-.tab .dial:disabled {
-  cursor: default;
-  opacity: 0.3;
-}
-
-.tab .edit:hover,
-.tab .close:hover {
+.tab .tab-more:hover {
   background: color-mix(in srgb, var(--tab-accent) var(--tone), transparent);
   color: var(--text-hi);
 }
 
-.tab .dial:focus-visible,
-.tab .edit:focus-visible,
-.tab .close:focus-visible {
+.tab .tab-more:focus-visible {
   outline: 2px solid var(--tab-accent);
   outline-offset: 1px;
 }

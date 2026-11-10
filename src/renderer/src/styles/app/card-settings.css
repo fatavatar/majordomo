@@ -170,21 +170,6 @@
   padding: 4px 6px;
 }
 
-/* Hidden until the pointer is in the tab: destructive, and easily recognised. */
-.tab .close {
-  opacity: 0;
-}
-
-.tab:hover .close,
-.tab .close:focus-visible {
-  opacity: 1;
-}
-
-.tab .close:hover {
-  background: color-mix(in srgb, var(--danger) var(--tone-weak), transparent);
-  color: var(--danger);
-}
-
 /*
  * Too narrow to be a character grid. Tonal and worded, never colour alone (§6),
  * and it states the condition rather than correcting it: a layout that

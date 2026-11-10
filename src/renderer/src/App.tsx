@@ -6309,7 +6309,6 @@ export default function App() {
                     onOpen={openAlone}
                     restTo={restToFor(id)}
                     session={id}
-                    thresholds={config.ui.vitals}
                     view={views[id] ?? EMPTY_VIEW}
                   />
                 );

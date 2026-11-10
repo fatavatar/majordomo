@@ -19,9 +19,12 @@
   grid-template-columns: minmax(0, 1fr);
 }
 
-/* Slimmed (2026-11-09): a strip beside each console, narrow window or wide. */
+/*
+ * Slimmed (2026-11-09): a strip beside each console, narrow window or wide,
+ * as narrow as its buttons, everything else on it upright (2026-11-10).
+ */
 .terminal-layers[data-flow='group'][data-collapsed='true'] {
-  grid-template-columns: 52px 0 minmax(0, 1fr);
+  grid-template-columns: 28px 0 minmax(0, 1fr);
 }
 
 /*
@@ -613,8 +616,8 @@
 
 /*
  * A status slimmed (2026-11-09), as the card rail tucks: one strip beside
- * its console, top to bottom what it is doing, health and mana upright, the
- * health in per cent, the rate, and the name up the strip in its colour.
+ * its console, top to bottom what it is doing, where it is up the strip
+ * (2026-11-10), and the name up the strip in its colour.
  */
 .group-slim {
   align-items: center;
@@ -649,7 +652,7 @@
   height: 20px;
   justify-content: center;
   padding: 0;
-  width: 24px;
+  width: 20px;
 }
 
 .group-slim-button:hover,
@@ -687,61 +690,19 @@
   width: 6px;
 }
 
-/* Health and mana, upright side by side, taking whatever height the row has. */
-.group-slim-bars {
-  display: flex;
-  flex: 1 1 auto;
-  gap: 4px;
-  min-height: 24px;
-}
-
-.group-slim-bar {
-  background: color-mix(in srgb, var(--text-lo) var(--tone-weak), transparent);
-  border-radius: var(--r-chip);
-  display: flex;
-  flex-direction: column;
-  justify-content: flex-end;
+/*
+ * Where it is, or how far through its walk, up the strip as the name is:
+ * whatever height the row has, and cut short where that is not enough.
+ */
+.group-slim-where {
+  color: var(--text);
+  flex: 1 1 0;
+  min-height: 0;
   overflow: hidden;
-  width: 8px;
-}
-
-.group-slim-bar > span {
-  background: color-mix(in srgb, var(--ok) 70%, transparent);
-  transition: height var(--dur-control) var(--ease-out);
-}
-
-.group-slim-bar[data-kind='mana'] {
-  width: 5px;
-}
-
-.group-slim-bar[data-kind='mana'] > span {
-  background: color-mix(in srgb, var(--accent) 60%, transparent);
-}
-
-.group-slim-bar[data-level='caution'] > span {
-  background: var(--pending);
-}
-
-.group-slim-bar[data-level='critical'] > span {
-  background: var(--danger);
-}
-
-.group-slim-figure {
-  color: var(--text-hi);
-  font-variant-numeric: tabular-nums;
-}
-
-.group-slim-figure[data-level='caution'] {
-  color: var(--pending);
-}
-
-.group-slim-figure[data-level='critical'] {
-  color: var(--danger);
-}
-
-.group-slim-rate {
-  color: var(--ok);
-  font-variant-numeric: tabular-nums;
+  text-overflow: ellipsis;
+  transform: rotate(180deg);
+  white-space: nowrap;
+  writing-mode: vertical-rl;
 }
 
 /*

@@ -412,13 +412,9 @@
 
 /* -------------------------------------------------------- character tabs */
 
-/* A character's tab in the skin's inks: the name bright, what it is doing green, its figures white. */
+/* A character's tab in the skin's inks: the name bright, its figures white. */
 [data-skin='glance'] .tab .name {
   color: var(--text-hi);
-}
-
-[data-skin='glance'] .tab .where {
-  color: var(--g-label);
 }
 
 [data-skin='glance'] .tab .figures {
