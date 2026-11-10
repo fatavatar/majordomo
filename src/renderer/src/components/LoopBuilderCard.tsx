@@ -119,9 +119,10 @@ export interface BuilderSeed {
   stamp: number;
   /**
    * A saved loop opened to be edited (2026-10-23): what its stops carry, its
-   * preference, and where it is filed, which a save replaces.
+   * preference, the rooms it never enters, and where it is filed, which a
+   * save replaces.
    */
-  edit?: { extras: StopExtras; prefer: boolean; at: LoopAddress };
+  edit?: { extras: StopExtras; prefer: boolean; avoid?: string[]; at: LoopAddress };
 }
 
 export interface LoopBuilderCardProps extends CardChrome {
@@ -227,6 +228,8 @@ function LoopBuilderCard({
    * command is not read away under the caret.
    */
   const [extras, setExtras] = useState<StopExtras>({});
+  // An edited loop's rooms it never enters, kept through the edit.
+  const [avoid, setAvoid] = useState<string[] | undefined>(undefined);
   const [typed, setTyped] = useState<Readonly<Record<RoomId, string>>>({});
   /** The saved loop being edited, which a save replaces; null for a new one. */
   const [editing, setEditing] = useState<LoopAddress | null>(null);
@@ -255,6 +258,7 @@ function LoopBuilderCard({
     setHistory(begin([...seed.picks]));
     setTypedName(seed.name);
     setExtras(seed.edit?.extras ?? {});
+    setAvoid(seed.edit?.avoid);
     setTyped({});
     setEditing(seed.edit?.at ?? null);
     if (seed.edit !== undefined) {
@@ -400,8 +404,10 @@ function LoopBuilderCard({
     const start = picks[0];
     if (start === undefined || picks.length < 2) return;
     commit([start]);
-    // Starting over is a new loop: saving it no longer replaces the one opened.
+    // Starting over is a new loop: saving it no longer replaces the one opened,
+    // nor keeps out of the rooms that one avoided.
     setEditing(null);
+    setAvoid(undefined);
   }, [commit, picks]);
 
   const stepBack = useCallback((): void => {
@@ -476,7 +482,7 @@ function LoopBuilderCard({
     (place) => t('cards.builder.loopName', { place })
   );
   const name = typedName ?? offered;
-  const loop = loopFor(plan, picks, name, prefer, extras);
+  const loop = loopFor(plan, picks, name, prefer, extras, avoid);
   const blocked = plan.legs.find((leg) => leg.route.blocked);
 
   /** Whether a waypoint row is a loop's close, the start again. */

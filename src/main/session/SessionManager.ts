@@ -3439,20 +3439,24 @@ export class SessionManager {
            * route panel plans one, its preferred corridors and its dangers
            * weighed, so a walk planned again on the way is the planner the
            * player chose by; a loop's leg as the loop was drawn, by distance
-           * and passability (`lapTraveller`, 2026-10-18).
+           * and passability (`lapTraveller`, 2026-10-18). Round the rooms
+           * the loop walked avoids, apart from the room the way goes to.
            */
-          plan: (from, to, walking) =>
-            this.world
-              ? planRoute(
-                  this.world,
-                  from,
-                  to,
-                  walking === 'route'
-                    ? this.travellerNow(this.tracker.current)
-                    : this.lapTraveller(this.tracker.current),
-                  { unlocks: true }
-                )
-              : t('session.loop.noRealmData'),
+          plan: (from, to, walking, avoid = []) => {
+            if (!this.world) return t('session.loop.noRealmData');
+            const traveller =
+              walking === 'route'
+                ? this.travellerNow(this.tracker.current)
+                : this.lapTraveller(this.tracker.current);
+            const kept = avoid.filter((id) => id !== to);
+            return planRoute(
+              this.world,
+              from,
+              to,
+              kept.length === 0 ? traveller : { ...traveller, avoid: new Set(kept) },
+              { unlocks: true }
+            );
+          },
           fetchFirst: (items, then) => this.megaFetchFirst(items, then),
           opensAWay: (name) => this.opensAWay(name),
           leaveFor: (name) => this.leaveFor(name),
@@ -3464,10 +3468,16 @@ export class SessionManager {
             if (loop === undefined) return t('session.move.noSuchLoop', { name });
             const rooms = this.loopStops(loop);
             if (typeof rooms === 'string') return rooms;
+            const avoid = this.loopStops({
+              ...loop,
+              stops: (loop.avoid ?? []).map((room) => ({ room }))
+            });
+            if (typeof avoid === 'string') return avoid;
             return {
               rooms,
               bounce: loop.bounce === true,
-              commands: loop.stops.map((stop) => stop.commands ?? [])
+              commands: loop.stops.map((stop) => stop.commands ?? []),
+              avoid
             };
           }
         },

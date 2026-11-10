@@ -20,10 +20,19 @@ import { loopFileText } from '../config/SettingsEditor';
 
 export const DATABASE_LOOPS_MANIFEST = '.from-database.json';
 
+/**
+ * How the loops are made, raised when that changes so a realm's untouched
+ * loops are made again from a database that has not: 2 is an area's bosses
+ * left out of a second loop (2026-11-10).
+ */
+const LOOPS_MADE = 2;
+
 interface Manifest {
   /** The database the loops were built from, and its modification time then. */
   file: string;
   builtAt: number;
+  /** `LOOPS_MADE` when they were written; absent before it was kept. */
+  made?: number;
   /** Each file written, by its name in the folder, and a hash of what it said. */
   written: Record<string, string>;
 }
@@ -34,7 +43,12 @@ function manifestIn(dir: string): Manifest | null {
   try {
     const value = JSON.parse(fs.readFileSync(path.join(dir, DATABASE_LOOPS_MANIFEST), 'utf8'));
     return typeof value?.file === 'string' && typeof value?.builtAt === 'number'
-      ? { file: value.file, builtAt: value.builtAt, written: value.written ?? {} }
+      ? {
+          file: value.file,
+          builtAt: value.builtAt,
+          ...(typeof value.made === 'number' ? { made: value.made } : {}),
+          written: value.written ?? {}
+        }
       : null;
   } catch {
     return null;
@@ -44,7 +58,12 @@ function manifestIn(dir: string): Manifest | null {
 /** Whether `dir` holds the loops of this database as it now is. */
 export function databaseLoopsCurrent(dir: string, file: string, builtAt: number): boolean {
   const manifest = manifestIn(dir);
-  return manifest !== null && manifest.file === file && manifest.builtAt === builtAt;
+  return (
+    manifest !== null &&
+    manifest.file === file &&
+    manifest.builtAt === builtAt &&
+    manifest.made === LOOPS_MADE
+  );
 }
 
 /** Replaces the loops last built from a database with `loops`; how many were written. */
@@ -88,7 +107,7 @@ export function writeDatabaseLoops(
     fs.writeFileSync(path.join(dir, `${slug}.yaml`), text);
     written[`${slug}.yaml`] = hash(text);
   }
-  const manifest: Manifest = { ...source, written };
+  const manifest: Manifest = { ...source, made: LOOPS_MADE, written };
   fs.writeFileSync(path.join(dir, DATABASE_LOOPS_MANIFEST), `${JSON.stringify(manifest)}\n`);
   return Object.keys(written).length;
 }

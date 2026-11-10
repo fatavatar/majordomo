@@ -108,6 +108,14 @@ export interface Loop {
    */
   prefer?: boolean;
   /**
+   * Rooms the loop never enters, written in the same way as its stops
+   * (2026-11-10). Every leg is planned around them, including the walk back
+   * to the loop after a fight or a rest. A hunting loop made without its
+   * bosses lists the bosses' rooms here: leaving them out as stops still let
+   * a leg walk through one, and walking in means fighting the boss.
+   */
+  avoid?: string[];
+  /**
    * Which area of the realm this loop is in, for a list too long to read.
    *
    * Four hundred and twenty shipped loops in one column is a wall nobody
@@ -303,10 +311,21 @@ export function asLoops(value: unknown, limits?: LoopLimits): Loop[] {
       stops,
       ...(record['bounce'] === true ? { bounce: true } : {}),
       ...(record['prefer'] === true ? { prefer: true } : {}),
+      ...avoidOf(record['avoid']),
       category: stated.length > 0 ? stated : loopCategory(name)
     });
   }
   return loops;
+}
+
+/** A loop's `avoid`: its rooms written as stops are, and nothing when it lists none. */
+function avoidOf(value: unknown): Pick<Loop, 'avoid'> {
+  if (!Array.isArray(value)) return {};
+  const rooms = value
+    .filter((room): room is string => typeof room === 'string')
+    .map((room) => room.trim())
+    .filter((room) => room.length > 0);
+  return rooms.length === 0 ? {} : { avoid: rooms };
 }
 
 /**
@@ -356,6 +375,7 @@ export function sameLoops(a: readonly Loop[], b: readonly Loop[]): boolean {
      * would then have to keep in step with a name they are free to edit.
      */
     if (loop.category !== other.category) return false;
+    if ((loop.avoid ?? []).join('\n') !== (other.avoid ?? []).join('\n')) return false;
     if (loop.stops.length !== other.stops.length) return false;
     return loop.stops.every((stop, at) => {
       const twin = other.stops[at];

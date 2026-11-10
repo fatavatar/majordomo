@@ -4021,7 +4021,7 @@ export default function App() {
           picks,
           name: loop.name,
           stamp: Date.now(),
-          edit: { extras, prefer: loop.prefer === true, at }
+          edit: { extras, prefer: loop.prefer === true, avoid: loop.avoid, at }
         });
         openBuilder();
       });

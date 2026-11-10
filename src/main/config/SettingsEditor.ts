@@ -1675,7 +1675,8 @@ function loopNode(loop: Loop): Record<string, unknown> {
             ...(stop.every === undefined ? {} : { every: stop.every }),
             ...(stop.commands === undefined ? {} : { commands: stop.commands })
           }
-    )
+    ),
+    ...(loop.avoid === undefined ? {} : { avoid: loop.avoid.map(quoted) })
   };
 }
 

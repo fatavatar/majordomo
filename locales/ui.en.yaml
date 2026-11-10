@@ -1457,6 +1457,10 @@ loops:
   exportMegaTitle: Export as a MegaMUD loop path (.mp), its way planned for this character
   exporting: 'Exporting {loopName}…'
   exported: 'Exported {loopName}.'
+  # A realm database's loop for an area with bosses in it, made two ways (2026-11-10).
+  fromDatabase:
+    withBosses: '{name} (with bosses)'
+    noBosses: '{name} (no bosses)'
 # Command palette: entries, groups, hints and chrome.
 palette:
   character:

@@ -73,7 +73,8 @@ export function loopFor(
   picks: readonly RoomId[],
   name: string,
   prefer: boolean,
-  extras: StopExtras = {}
+  extras: StopExtras = {},
+  avoid?: readonly string[]
 ): Loop | null {
   const shape = shapeOf(picks);
   if (shape === 'empty' || shape === 'start') return null;
@@ -99,7 +100,9 @@ export function loopFor(
     // the router then follows its corridors for every route this character
     // plans afterwards, which is what saving a way somebody drew is for, and
     // what makes the way drawn the way walked (`loopDraft.ts`).
-    ...(prefer ? { prefer: true } : {})
+    ...(prefer ? { prefer: true } : {}),
+    // An edited loop's rooms it never enters, as it came.
+    ...(avoid === undefined || avoid.length === 0 ? {} : { avoid: [...avoid] })
   };
 }
 
