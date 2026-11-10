@@ -63,6 +63,16 @@ beforeAll(async () => {
         name,
         maxBytes: 1024,
         check: (file) => (fs.readFileSync(file, 'utf8').includes('ROOMS') ? null : 'not a realm'),
+        // What it holds, said back: its length as its rooms.
+        describe: (file) => ({
+          classes: 1,
+          races: 2,
+          monsters: 3,
+          items: 4,
+          rooms: fs.statSync(file).size,
+          messages: null,
+          loops: 5
+        }),
         say: { badName: 'bad name', tooLarge: (max) => `over ${max}`, failed: (m) => m }
       })
   });
@@ -313,8 +323,19 @@ describe('with a session', () => {
     ).toBe(403);
     const first = await send('mudrev.mdb', 'ROOMS', signed);
     expect(first.status).toBe(200);
-    const kept = ((await first.json()) as { path: string }).path;
+    const answer = (await first.json()) as { path: string; summary: unknown };
+    const kept = answer.path;
     expect(kept).toBe(path.join(dir, 'databases', 'mudrev.mdb'));
+    // And what the kept file holds, said back to the tab.
+    expect(answer.summary).toEqual({
+      classes: 1,
+      races: 2,
+      monsters: 3,
+      items: 4,
+      rooms: 5,
+      messages: null,
+      loops: 5
+    });
     expect(fs.readFileSync(kept, 'utf8')).toBe('ROOMS');
     const again = (await (await send('mudrev.mdb', 'ROOMS too', signed)).json()) as {
       path: string;

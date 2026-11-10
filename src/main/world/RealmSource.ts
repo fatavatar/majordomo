@@ -48,6 +48,8 @@ export interface RealmSource {
   tableNames(): string[];
   /** Every row of one table, or null if the file does not have it. */
   table(name: string): RealmTable | null;
+  /** How many rows one table has, without reading them; null if the file does not have it. */
+  count(name: string): number | null;
   close(): void;
 }
 
@@ -171,6 +173,7 @@ function archivedSqlite(file: string, entry: ZipEntry): RealmSource {
     kind: 'sqlite',
     tableNames: () => inner.tableNames(),
     table: (name) => inner.table(name),
+    count: (name) => inner.count(name),
     close: () => {
       inner.close();
       fs.rmSync(directory, { recursive: true, force: true });
@@ -228,14 +231,26 @@ class MdbSource implements RealmSource {
     return this.open().getTableNames();
   }
 
-  table(name: string): RealmTable | null {
-    const reader = this.open();
-    // Matched case-insensitively: the same table is `Rooms` in one export and
-    // `rooms` in another, and a client that refuses one of them is refusing a
-    // realm for a difference nobody chose.
-    const actual = reader
+  count(name: string): number | null {
+    const actual = this.named(name);
+    return actual === undefined ? null : this.open().getTable(actual).rowCount;
+  }
+
+  /**
+   * A table's name as this file spells it. Matched case-insensitively: the
+   * same table is `Rooms` in one export and `rooms` in another, and a client
+   * that refuses one of them is refusing a realm for a difference nobody
+   * chose.
+   */
+  private named(name: string): string | undefined {
+    return this.open()
       .getTableNames()
       .find((entry) => entry.toLowerCase() === name.toLowerCase());
+  }
+
+  table(name: string): RealmTable | null {
+    const reader = this.open();
+    const actual = this.named(name);
     if (actual === undefined) return null;
     const table = reader.getTable(actual);
     return {
@@ -315,6 +330,13 @@ class SqliteSource implements RealmSource {
     if (actual === undefined) return null;
     const rows = this.query(`SELECT * FROM "${actual.replace(/"/g, '""')}";`);
     return { name: actual, columns: Object.keys(rows[0] ?? {}), rows };
+  }
+
+  count(name: string): number | null {
+    const actual = this.tableNames().find((entry) => entry.toLowerCase() === name.toLowerCase());
+    if (actual === undefined) return null;
+    const [row] = this.query(`SELECT COUNT(*) AS n FROM "${actual.replace(/"/g, '""')}";`);
+    return Number(row?.['n'] ?? 0);
   }
 
   close(): void {

@@ -153,7 +153,9 @@ from a **realm database**.
     in Docker), and the field fills in with where it went. Nothing needs
     copying into the container by hand. A file with the name of one already
     there is kept beside it as `mudrev-2.mdb`, so a realm using the old one is
-    never changed under it.
+    never changed under it. Once kept, the dialog says what the realm holds
+    (its classes, races, monsters, items, rooms and messages) and how many
+    hunting loops it was given; **Done** closes it.
 
 > [!IMPORTANT]
 > ### MDB import: a customised realm needs its own `.mdb`

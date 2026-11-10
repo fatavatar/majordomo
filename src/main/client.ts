@@ -85,7 +85,9 @@ import {
 import { loadSpellMessageRows } from './world/SpellMessages';
 import { loadShippedSentences } from './world/ShippedSentences';
 import { databaseTables, shopkeepers, type DatabaseTables } from './world/realmTables';
-import { realmLoopsYielding } from './world/realmLoops';
+import { realmLoopCount, realmLoopsYielding } from './world/realmLoops';
+import { openRealm } from './world/RealmSource';
+import type { RealmSummary } from '../shared/realmFiles';
 import { databaseLoopsCurrent, writeDatabaseLoops } from './world/realmLoopFiles';
 import type { ShippedSentences } from '../shared/sentences';
 import { NO_REALM_PLAYERS, type RealmPlayers } from '../shared/players';
@@ -1993,6 +1995,11 @@ function publishTree(): void {
 function createServers(): ServerStore {
   const store = new ServerStore(home, (message) => announce('servers', message));
   store.on('change', publishTree);
+  // A realm given a database builds its data from it there and then, not at
+  // its next character's connection (2026-11-10).
+  store.on('change', () => {
+    for (const { id, server } of store.all) realmFromDatabase(id, server.database);
+  });
   store.watch();
   return store;
 }
@@ -2026,6 +2033,36 @@ function realmTablesFor(id: SessionId): RealmTables {
     monsters: realmMonsters?.forServer(serverId).monsters ?? [],
     items: realmItems?.forServer(serverId).items ?? []
   };
+}
+
+/**
+ * What a realm database holds (2026-11-10), said to whoever uploaded it: its
+ * rows, without reading them, and the hunting loops a realm is given from it
+ * (`realmLoopCount`). Converting it for the count is the conversion its first
+ * character would otherwise wait for, kept for when it does.
+ */
+function describeRealm(file: string): RealmSummary | null {
+  const realm = openRealm(file);
+  let counts: Omit<RealmSummary, 'loops'>;
+  try {
+    const rows = (name: string): number => realm.count(name) ?? 0;
+    counts = {
+      classes: rows('Classes'),
+      races: rows('Races'),
+      monsters: rows('Monsters'),
+      items: rows('Items'),
+      rooms: rows('Rooms'),
+      messages: realm.count('Messages')
+    };
+  } finally {
+    realm.close();
+  }
+  const loaded = realms?.load(file);
+  const loops =
+    loaded !== undefined && loaded.problem === undefined && loaded.graph !== undefined
+      ? realmLoopCount(loaded.graph, tuning().hunting.areaRadius)
+      : 0;
+  return { ...counts, loops };
 }
 
 /** Each realm database already read for its tables, by realm, file and stamp. */
@@ -2860,7 +2897,8 @@ function build(): void {
     quitting,
     appIcon,
     abort,
-    logDirectory
+    logDirectory,
+    describeRealm
   });
 }
 

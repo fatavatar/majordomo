@@ -2123,17 +2123,17 @@ export default function App() {
     );
     return () => registerRealmPicker(null);
   }, []);
+  // The kept file to the realm at once; the dialog stays to say what it holds.
+  const keptUpload = useCallback((file: string) => uploading?.done(file), [uploading]);
   // The caret back to the settings screen that asked, as the browser hands it back.
-  const doneUploading = useCallback(
-    (file: string | null) => {
-      const opener = uploading?.opener ?? null;
-      uploading?.done(file);
-      setUploading(null);
-      if (opener !== null && opener.isConnected) window.requestAnimationFrame(() => opener.focus());
-      else returnFocus();
-    },
-    [uploading, returnFocus]
-  );
+  const doneUploading = useCallback(() => {
+    const opener = uploading?.opener ?? null;
+    // Unsent, nothing is chosen; sent, this answers nobody (`done` already did).
+    uploading?.done(null);
+    setUploading(null);
+    if (opener !== null && opener.isConnected) window.requestAnimationFrame(() => opener.focus());
+    else returnFocus();
+  }, [uploading, returnFocus]);
 
   /**
    * Say the client is ready exactly once.
@@ -6844,7 +6844,7 @@ export default function App() {
       */}
       {browsing !== null && <HomeBrowser onClose={closeBrowser} start={browsing.start} />}
       {/* A realm's database, sent up from this browser (`lib/pickers.ts`). */}
-      {uploading !== null && <RealmUpload onDone={doneUploading} />}
+      {uploading !== null && <RealmUpload onClose={doneUploading} onKept={keptUpload} />}
 
       {/*
         The way in for somebody who has not read the source. Everything it does

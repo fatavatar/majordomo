@@ -31,6 +31,20 @@ const RING_REACH = 12;
 /** The most monster names a loop's name lists. */
 const NAMED_MOBS = 2;
 
+/** The areas a loop is made for, each with its lairs: those of two lairs or more. */
+function loopAreas(world: WorldGraph, radius: number): Map<string, RoomId[]> {
+  const lairsOf = new Map<string, RoomId[]>();
+  for (const [id, area] of realmAreas(world, radius).areaOf)
+    lairsOf.set(area, [...(lairsOf.get(area) ?? []), id]);
+  for (const [area, ids] of lairsOf) if (ids.length < 2) lairsOf.delete(area);
+  return lairsOf;
+}
+
+/** How many loops `realmLoops` makes, without making them: for saying so (`RealmSummary`). */
+export function realmLoopCount(world: WorldGraph, radius: number): number {
+  return loopAreas(world, radius).size;
+}
+
 /** One loop for each of the realm's hunting areas of two lairs or more, by area name. */
 export function realmLoops(world: WorldGraph, radius: number): Loop[] {
   const steps = realmLoopsYielding(world, radius);
@@ -47,13 +61,9 @@ export function realmLoops(world: WorldGraph, radius: number): Loop[] {
  */
 export function* realmLoopsYielding(world: WorldGraph, radius: number): Generator<void, Loop[]> {
   const places = realmAreas(world, radius);
-  const lairsOf = new Map<string, RoomId[]>();
-  for (const [id, area] of places.areaOf) lairsOf.set(area, [...(lairsOf.get(area) ?? []), id]);
-
   const loops: Loop[] = [];
   const names = new Map<string, number>();
-  for (const [area, ids] of lairsOf) {
-    if (ids.length < 2) continue;
+  for (const [area, ids] of loopAreas(world, radius)) {
     const rooms: HuntingRoom[] = ids.flatMap((id) => {
       const room = world.byId(id);
       return room === undefined
