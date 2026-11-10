@@ -13,14 +13,15 @@ import type { MegaSettings, ProfiledSection } from '../../shared/megamud/setting
 import { clearCastMode } from './combat/engaged';
 import { refreshImmunities } from './combat/immunity';
 import { forgetRoomMonsters, forgetRoomPlayers } from './script/game';
-import type { PlayerGrant, RemoteName } from '../../shared/remotes';
+import type { PlayerGrant, PlayerStance, RemoteName } from '../../shared/remotes';
 import { loadMonitors } from './abilities/monitors';
 import { newPlayer } from './data';
 import { applySettings, fieldName } from './fieldNames';
 import { loadEvents } from './script/events';
 import { loadRules } from './script/rules';
 import type { Session } from './Session';
-import { PlayerFlag, RemoteFlag } from './flags';
+import { EntityType, PlayerFlag, RemoteFlag, Stance } from './flags';
+import { prioritize } from './room/alsoHere';
 
 /** A section outside the schema, its keys read without regard to case ('' when missing). */
 function reader(mega: MegaSettings, name: string): (key: string) => string {
@@ -256,10 +257,58 @@ export function grantPlayers(
       p.name = name.slice(0, 19);
     }
     p.remote = remoteBits(grant.allow, grant.deny);
+    // A relationship chosen stands over one a blow made; none leaves the engine's.
+    if (grant.stance !== undefined) markPlayer(s, p, STANCE_OF[grant.stance]);
     const join = joinWhenInvited && grant.allow.includes('join') && !grant.deny.includes('join');
     p.flags =
       (p.flags & ~(PlayerFlag.InviteIfSeen | PlayerFlag.JoinIfInvited)) |
       (grant.autoInviteWhenSeen === true ? PlayerFlag.InviteIfSeen : 0) |
       (join ? PlayerFlag.JoinIfInvited : 0);
   }
+}
+
+/** The Players dialog's relationships, as the engine holds them (`Stance`, `0x562410`). */
+const STANCE_OF: Record<PlayerStance, number> = {
+  friend: Stance.Friend,
+  enemy: Stance.Enemy,
+  run: Stance.Flee,
+  hangup: Stance.Hangup
+};
+
+/** The engine's stance as the Player flyout names it: a fresh record's 3 and 0 are unknown. */
+export function stanceName(kind: number): PlayerStance | 'unknown' {
+  const entry = Object.entries(STANCE_OF).find(([, value]) => value === kind);
+  return entry === undefined ? 'unknown' : (entry[0] as PlayerStance);
+}
+
+/**
+ * Ours: a player's relationship set as MegaMUD's Players dialog sets it
+ * (2026-11-10), on their record and on them in the room now, the room put in
+ * its order again. Unknown clears a mark a blow made (`pvpAttack`), which
+ * nothing else did short of a fresh engine.
+ */
+export function setPlayerStance(s: Session, name: string, stance: PlayerStance | 'unknown'): void {
+  const key = name.trim().toLowerCase();
+  if (key === '') return;
+  let p = s.data.players?.find((x) => x.name.toLowerCase() === key);
+  if (!p) {
+    if (stance === 'unknown') return;
+    p = newPlayer(s.data, s.now);
+    p.name = (key.charAt(0).toUpperCase() + key.slice(1)).slice(0, 19);
+  }
+  // Unknown is what a record starts at (`newPlayer`), as a fresh engine gave.
+  markPlayer(s, p, stance === 'unknown' ? Stance.Avoid : STANCE_OF[stance]);
+}
+
+function markPlayer(s: Session, p: { name: string; kind: number }, kind: number): void {
+  if (p.kind === kind) return;
+  p.kind = kind;
+  s.playersChanged = 1;
+  let moved = false;
+  for (const e of s.room) {
+    if (e.type !== EntityType.Player || e.name.toLowerCase() !== p.name.toLowerCase()) continue;
+    e.kind = kind;
+    moved = true;
+  }
+  if (moved) prioritize(s);
 }

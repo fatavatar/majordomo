@@ -11,7 +11,7 @@ import path from 'node:path';
 import { Document, isMap, isSeq, parse, Scalar } from 'yaml';
 
 import { editYaml, removeYaml, type EditResult } from './YamlFile';
-import type { PlayerGrant, RemoteName } from '../../shared/remotes';
+import type { PlayerGrant, PlayerStance, RemoteName } from '../../shared/remotes';
 import { LoopStore, readLoops } from './LoopStore';
 import { ServerStore } from './ServerStore';
 import { directoryNames } from './dirs';
@@ -523,10 +523,16 @@ export class SettingsEditor {
     const deny = [...new Set(grant.deny)];
     const allow = [...new Set(grant.allow)].filter((remote) => !deny.includes(remote));
     const autoInvite = grant.autoInviteWhenSeen === true ? { autoInviteWhenSeen: true } : {};
+    const stance = grant.stance !== undefined ? { stance: grant.stance } : {};
 
     return editYaml(file, {
       mutate: (document) => {
-        if (allow.length === 0 && deny.length === 0 && grant.autoInviteWhenSeen !== true) {
+        if (
+          allow.length === 0 &&
+          deny.length === 0 &&
+          grant.autoInviteWhenSeen !== true &&
+          grant.stance === undefined
+        ) {
           document.deleteIn(['automation', 'remotes', 'players', key]);
           /*
            * And the map itself once the last name comes off it, so a file that
@@ -541,7 +547,7 @@ export class SettingsEditor {
         }
         document.setIn(
           ['automation', 'remotes', 'players', key],
-          document.createNode({ allow, deny, ...autoInvite })
+          document.createNode({ allow, deny, ...autoInvite, ...stance })
         );
         /*
          * Block style, explicitly, because the map this writes into is usually
@@ -553,6 +559,49 @@ export class SettingsEditor {
          */
         const players = document.getIn(['automation', 'remotes', 'players'], true);
         if (isMap(players)) players.flow = false;
+      }
+    });
+  }
+  /**
+   * What MegaMUD treats one player as on one character (2026-11-10): the
+   * Players dialog's relationship, written beside the rest of their grant and
+   * nothing else touched, or taken off for unknown. The grant as the file has
+   * it is read and written back, so a flyout holding an older copy cannot
+   * undo a permission set elsewhere.
+   */
+  setPlayerStance(id: string, name: string, stance: PlayerStance | null): EditResult {
+    const key = name.trim().toLowerCase();
+    if (key.length === 0) return { ok: false, error: t('errors.settings.remoteNameRequired') };
+    const file = this.profilePath(id);
+    if (!fs.existsSync(file)) {
+      return { ok: false, error: t('errors.settings.characterNotFound', { id }) };
+    }
+    const at = ['automation', 'remotes', 'players', key];
+    return editYaml(file, {
+      mutate: (document) => {
+        if (stance !== null) {
+          if (!isMap(document.getIn(at, true))) document.setIn(at, document.createNode({}));
+          document.setIn([...at, 'stance'], stance);
+          const players = document.getIn(['automation', 'remotes', 'players'], true);
+          if (isMap(players)) players.flow = false;
+          const entry = document.getIn(at, true);
+          if (isMap(entry)) entry.flow = false;
+          return;
+        }
+        document.deleteIn([...at, 'stance']);
+        // An entry left saying nothing goes, as `setRemoteGrant` leaves none.
+        const entry = document.getIn(at, true);
+        const says = (field: string): boolean => {
+          const value = isMap(entry) ? entry.get(field, true) : undefined;
+          return isSeq(value) ? value.items.length > 0 : value !== undefined && value !== null;
+        };
+        if (isMap(entry) && !says('allow') && !says('deny') && !says('autoInviteWhenSeen')) {
+          document.deleteIn(at);
+          const players = document.getIn(['automation', 'remotes', 'players'], true);
+          if (isMap(players) && players.items.length === 0) {
+            document.deleteIn(['automation', 'remotes', 'players']);
+          }
+        }
       }
     });
   }

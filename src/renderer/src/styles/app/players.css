@@ -233,3 +233,39 @@
   gap: 4px;
   margin: 0 0 4px;
 }
+
+/*
+ * What MegaMUD treats this person as (2026-11-10): the Players dialog's
+ * relationship, under what is known of them; a hostile one says so in its
+ * colour as well as its word.
+ */
+.player-stance {
+  border-top: 1px solid var(--ink-line);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 8px;
+  padding-top: 8px;
+}
+
+.player-stance-row {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  justify-content: space-between;
+}
+
+.player-stance-row select[data-stance='enemy'],
+.player-stance-row select[data-stance='hangup'] {
+  border-color: color-mix(in srgb, var(--danger) 55%, var(--ink-line));
+  color: var(--danger);
+}
+
+.player-stance-row select[data-stance='run'] {
+  border-color: color-mix(in srgb, var(--pending) 55%, var(--ink-line));
+  color: var(--pending);
+}
+
+.player-stance-row select[data-stance='friend'] {
+  color: var(--ok);
+}

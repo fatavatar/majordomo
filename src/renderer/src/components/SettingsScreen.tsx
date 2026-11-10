@@ -176,7 +176,12 @@ function PlayerGrants({
     // An emptied grant is removed, exactly as `SettingsEditor` removes it from
     // the file: two places that disagreed about what "nothing" looks like would
     // leave a name in the form that vanished on the next load.
-    if (next.allow.length === 0 && next.deny.length === 0 && !next.autoInviteWhenSeen) {
+    if (
+      next.allow.length === 0 &&
+      next.deny.length === 0 &&
+      !next.autoInviteWhenSeen &&
+      next.stance === undefined
+    ) {
       delete rest[key];
     } else rest[key] = next;
     onChange(rest);

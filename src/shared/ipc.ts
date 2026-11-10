@@ -61,7 +61,7 @@ import type {
   SupplyItem
 } from './config';
 import type { GlobalDraft, LoginStepDraft, ProfileDraft, ServerDraft } from './drafts';
-import type { PlayerGrant, RemoteName } from './remotes';
+import type { PlayerGrant, PlayerStance, RemoteName } from './remotes';
 import type { CureGates, SpellTargeting } from './spellcraft';
 import type { ThemePreference } from './themes';
 import type { ProfileAccent } from './profiles';
@@ -1003,6 +1003,12 @@ export const Invoke = {
    */
   setGangRemotes: 'settings:gang-remotes',
   /**
+   * What MegaMUD treats one player as on one character (2026-11-10), the
+   * Players dialog's relationship: written to the character's file, and set at
+   * once in its engine, where `unknown` clears a mark a PvP blow made.
+   */
+  setPlayerStance: 'settings:player-stance',
+  /**
    * The realm's mudstats board (`Server.statsUrl`): link this character (the
    * handshake, its code read off the telepath the board sends), unlink it
    * (its key retired there), what the board says of it, and whether a board
@@ -1613,6 +1619,12 @@ export interface IpcApi {
   setRemoteGrant(session: SessionId, name: string, grant: PlayerGrant): Promise<string | null>;
   /** Writes this character's whole gang list, for the same reason. */
   setGangRemotes(session: SessionId, remotes: RemoteName[]): Promise<string | null>;
+  /** Sets what MegaMUD treats one player as on this character, file and engine. Why not, or null. */
+  setPlayerStance(
+    session: SessionId,
+    name: string,
+    stance: PlayerStance | 'unknown'
+  ): Promise<string | null>;
   /** Links this character to its realm's mudstats board, in the game. What happened. */
   statsLink(session: SessionId): Promise<string>;
   /** Retires this character's mudstats key and forgets it. What happened. */

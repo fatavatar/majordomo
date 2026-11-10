@@ -10,6 +10,7 @@
  * representations of a direction: the two agree until one of them is edited.
  */
 import type { MegaToggles } from './megamud/toggles';
+import type { MegaPlayerMark } from './remotes';
 
 /**
  * Priority bands. Higher wins.
@@ -127,6 +128,12 @@ export interface AutomationSnapshot {
    * automation is set to do, pushed whenever they change.
    */
   mega?: MegaToggles;
+  /**
+   * The players the MegaMUD engine holds a stance on or was attacked by, for
+   * the Player flyout: a mark a blow made is in memory only, and was not shown
+   * anywhere (2026-11-10).
+   */
+  megaPlayers?: MegaPlayerMark[];
   /** A yes-or-no question the MegaMUD engine is waiting on the player for. */
   megaQuestion?: string;
 }

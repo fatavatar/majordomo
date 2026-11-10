@@ -125,7 +125,7 @@ import {
   type AppConfig
 } from '../shared/config';
 import { DEFAULT_INTERNAL } from '../shared/internal';
-import { isRemoteName, type PlayerGrant, type RemoteName } from '../shared/remotes';
+import { asPlayerStance, isRemoteName, type PlayerGrant, type RemoteName } from '../shared/remotes';
 import type { Profile } from '../shared/profiles';
 import { type MessageTable } from '../shared/messageTriggers';
 import { type MonsterTable } from '../shared/monsterRules';
@@ -1868,9 +1868,13 @@ function asGrant(value: unknown): PlayerGrant | null {
   const allow = asRemoteNames(record['allow']);
   const deny = asRemoteNames(record['deny']);
   if (allow === null || deny === null) return null;
-  return record['autoInviteWhenSeen'] === true
-    ? { allow, deny, autoInviteWhenSeen: true }
-    : { allow, deny };
+  const stance = asPlayerStance(record['stance']);
+  return {
+    allow,
+    deny,
+    ...(record['autoInviteWhenSeen'] === true ? { autoInviteWhenSeen: true } : {}),
+    ...(stance !== null ? { stance } : {})
+  };
 }
 
 /**

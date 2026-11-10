@@ -96,6 +96,7 @@ app:
       one: '{name} is still in the realm.'
   remotes:
     invalidName: Unrecognized remote (@) command.
+    invalidStance: Not one of MegaMUD's relationships for a player.
   route:
     invalidPayload: Invalid route path.
     noRealmData: No realm data loaded
@@ -3002,6 +3003,19 @@ cards:
     resizeHint: Drag to resize — double-click to fit it to the name again
     unpinHint: 'Unpin: close on the next click elsewhere'
   player:
+    # MegaMUD's Players dialog's relationship (2026-11-10).
+    stance:
+      label: MegaMUD treats them as
+      unknown: Unknown
+      friend: Friend
+      enemy: Enemy
+      run: Run from
+      hangup: Hang up on
+      hint: MegaMUD's Players dialog. A friend's room spells are forgiven; an enemy is hostile, and
+        run from and hang up on act when they are seen. Kept in this character's file.
+      marked: '{name} attacked {character} this session, so MegaMUD marked them {stance} and took
+        their remote control, until you choose otherwise. Unknown clears it and gives the remote
+        control back.'
     access:
       allowedValue: '{granted} of {total}'
       answering: Answering

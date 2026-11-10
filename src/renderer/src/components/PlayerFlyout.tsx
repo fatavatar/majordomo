@@ -18,7 +18,10 @@ import {
   ACTIONABLE_REMOTES,
   grantFor,
   judgeRemote,
+  PLAYER_STANCES,
+  type MegaPlayerMark,
   type PlayerGrant,
+  type PlayerStance,
   type RemoteName
 } from '@shared/remotes';
 import { playerKey, type PlayerRecord } from '@shared/players';
@@ -63,6 +66,14 @@ export interface PlayerFlyoutProps {
    * of the same file racing each other. See `App.tsx`.
    */
   onGrant(name: string, grant: PlayerGrant): void;
+  /**
+   * What MegaMUD treats this person as on the character (2026-11-10), the
+   * Players dialog's relationship: its engine's own reading of them now, null
+   * for none. Absent where no engine runs the character, and with it the row.
+   */
+  mark?: MegaPlayerMark | null;
+  /** Set it: written to the character's file and set in its engine at once. */
+  onStance?(name: string, stance: PlayerStance | 'unknown'): void;
   /**
    * A worn item clicked, asking the realm what it is.
    *
@@ -162,6 +173,8 @@ export default function PlayerFlyout({
   character,
   remotes,
   onGrant,
+  mark,
+  onStance,
   onSelectGang,
   onAsk,
   onDismiss,
@@ -292,6 +305,15 @@ export default function PlayerFlyout({
         ) : face === 'player' ? (
           <>
             <PlayerDetail now={now} onSelectGang={onSelectGang} record={record} />
+            {onStance !== undefined && mark !== undefined && (
+              <PlayerStanceRow
+                character={character.name ?? ''}
+                mark={mark}
+                name={record.name}
+                onStance={onStance}
+                saved={grantFor(remotes, record.name).stance}
+              />
+            )}
             {onAsk && <PlayerAsks name={record.name} onAsk={onAsk} />}
           </>
         ) : face === 'equipment' ? (
@@ -684,6 +706,67 @@ function effective(
 ): readonly RemoteName[] {
   return ACTIONABLE_REMOTES.filter(
     (remote) => judgeRemote(name, remote, remotes, { inGang, inParty }).allowed
+  );
+}
+
+/**
+ * What MegaMUD treats this person as (2026-11-10), as its Players dialog
+ * set it: the engine's reading now, chosen from MegaMUD's relationships. A
+ * PvP blow marks the attacker an enemy and takes their remote control, in
+ * the engine's memory only, and nothing showed it or took it back short of a
+ * fresh engine: the note says so, and Unknown clears it.
+ */
+export function PlayerStanceRow({
+  name,
+  character,
+  mark,
+  saved,
+  onStance
+}: {
+  name: string;
+  character: string;
+  mark: MegaPlayerMark | null;
+  /** The stance the character's file holds, which a load applies. */
+  saved: PlayerStance | undefined;
+  onStance(name: string, stance: PlayerStance | 'unknown'): void;
+}) {
+  const now = mark?.stance ?? 'unknown';
+  // A mark the engine made itself: theirs differs from the file's.
+  const madeByBlow = mark?.attacked === true && now !== (saved ?? 'unknown');
+  const label = (stance: PlayerStance | 'unknown'): string =>
+    stance === 'friend'
+      ? t('cards.player.stance.friend')
+      : stance === 'enemy'
+        ? t('cards.player.stance.enemy')
+        : stance === 'run'
+          ? t('cards.player.stance.run')
+          : stance === 'hangup'
+            ? t('cards.player.stance.hangup')
+            : t('cards.player.stance.unknown');
+  return (
+    <div className="player-stance">
+      <label className="player-stance-row">
+        <span>{t('cards.player.stance.label')}</span>
+        <select
+          data-stance={now}
+          onChange={(event) => onStance(name, event.target.value as PlayerStance | 'unknown')}
+          value={now}
+        >
+          {(['unknown', ...PLAYER_STANCES] as const).map((stance) => (
+            <option key={stance} value={stance}>
+              {label(stance)}
+            </option>
+          ))}
+        </select>
+      </label>
+      {madeByBlow ? (
+        <p className="settings-warn">
+          {t('cards.player.stance.marked', { name, character, stance: label(now) })}
+        </p>
+      ) : (
+        <p className="settings-note">{t('cards.player.stance.hint')}</p>
+      )}
+    </div>
   );
 }
 
