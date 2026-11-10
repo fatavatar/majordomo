@@ -353,6 +353,15 @@ async function huntingGroundsOf(
   const { from, reach } = swept;
   const how = howItFights(megamudSettingsOf(session, profile).live);
   const party = asParty ? huntingPartyOf(session) : null;
+  const { areaRadius, clockBound, maxDamageShare } = tuning().hunting;
+  /*
+   * The realm's areas, worked out once per load of its room data
+   * (`realmAreas`): a lair group spread over several is priced an area at a
+   * time (`LairAreas`), and each group goes to the area most of its rooms
+   * are in, the best groups first so an area's order is its best's.
+   */
+  const places = realmAreas(world, areaRadius);
+  const lairAreas = Object.fromEntries(places.areaOf);
   let answer: Awaited<ReturnType<typeof explorerAsk<'hunting'>>>;
   try {
     answer = await explorerAsk(
@@ -361,7 +370,8 @@ async function huntingGroundsOf(
       manager.character,
       how,
       [...reach.keys()],
-      party?.mme ?? null
+      party?.mme ?? null,
+      lairAreas
     );
   } catch (error) {
     return refused(errorMessage(error));
@@ -380,14 +390,7 @@ async function huntingGroundsOf(
     // The router's danger check, at full health: too dangerous a group is not hunted.
     return [{ ...group, rooms, danger: manager.huntingDanger(rooms.map((room) => room.id)) }];
   });
-  const { areaRadius, clockBound, maxDamageShare } = tuning().hunting;
   const traveller = manager.travellerNow(manager.character);
-  /*
-   * Into the realm's areas, worked out once per load of its room data
-   * (`realmAreas`): each group goes to the area most of its rooms are in, the
-   * best groups first so an area's order is its best's.
-   */
-  const places = realmAreas(world, areaRadius);
   const byArea = new Map<string, GroundGroup[]>();
   for (const group of [...groups].sort((a, b) => (b.expPerHour ?? -1) - (a.expPerHour ?? -1))) {
     const area =
@@ -420,7 +423,8 @@ async function huntingGroundsOf(
       manager.character,
       how,
       pools.filter((pool) => pool.groups.length > 1),
-      party?.mme ?? null
+      party?.mme ?? null,
+      lairAreas
     );
   } catch {
     // Unpriced pools fall back to their best group, below.
