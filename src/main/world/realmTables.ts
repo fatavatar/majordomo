@@ -13,7 +13,9 @@
  *   2026-11-10). Its friends are shopkeepers and monsters attacking which
  *   costs alignment (`costsAlignment`); its first-fought are the monsters
  *   that attack on sight; and a monster that never starts a fight is not
- *   hostile, so a character may rest beside it.
+ *   hostile, so a character may rest beside it, and is not started on
+ *   either (`avoid`, 2026-11-10): one that is no danger is left alone unless
+ *   the character's own row says to fight it, or a quest wants it dead.
  * - **Items**: a weapon with backstab accuracy (`BSAccu`) is one to backstab
  *   with, as MegaMUD's rows chose 432 times of 534; one the realm will not
  *   let be picked up cannot be taken.
@@ -35,9 +37,10 @@ import type { WorldGraph } from './WorldGraph';
  * database had changed: a realm keeps the tables it was given until then, so
  * a change to how they are made reaches it only this way. Raised to when the
  * change was made. 2026-11-10: a lasting spell's end-less lines left out of
- * the message table (`realmMessageTriggers`).
+ * the message table (`realmMessageTriggers`); then a monster that is not
+ * hostile left alone (`realmMonsterRules`).
  */
-export const DATABASE_TABLES_SINCE = Date.parse('2026-11-10T16:10:00Z');
+export const DATABASE_TABLES_SINCE = Date.parse('2026-11-10T18:15:00Z');
 
 export interface DatabaseTables {
   /** Null where the database carries no `Messages` table. */
@@ -78,7 +81,10 @@ export function realmMonsterRules(
     const rule: MonsterRule = { mob };
     if (friend) rule.relationship = 'friend';
     else if (disposition.every((one) => one === 'hostile')) rule.priority = 'high';
-    if (disposition.every((one) => one === 'passive')) rule.notHostile = true;
+    if (disposition.every((one) => one === 'passive')) {
+      rule.notHostile = true;
+      rule.relationship ??= 'avoid';
+    }
     if (Object.keys(rule).length > 1) rules.push(rule);
   }
   return rules;
