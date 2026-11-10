@@ -30,6 +30,15 @@ import { mobKey } from '../../shared/world';
 import { openRealm } from './RealmSource';
 import type { WorldGraph } from './WorldGraph';
 
+/**
+ * Tables made from a database before this are made again, as though the
+ * database had changed: a realm keeps the tables it was given until then, so
+ * a change to how they are made reaches it only this way. Raised to when the
+ * change was made. 2026-11-10: a lasting spell's end-less lines left out of
+ * the message table (`realmMessageTriggers`).
+ */
+export const DATABASE_TABLES_SINCE = Date.parse('2026-11-10T16:10:00Z');
+
 export interface DatabaseTables {
   /** Null where the database carries no `Messages` table. */
   messages: MessageTrigger[] | null;
