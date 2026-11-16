@@ -683,7 +683,7 @@ function warmExplorer(id: SessionId): void {
 /**
  * Characters of ours whose party was disbanded from the Stable or the Party
  * card, by `realm|name`: no roster is made for them again until their listing
- * shows the party gone, or one made before the `disband` reached the realm
+ * shows the party gone, or one made before the `disband party` reached the realm
  * would bring the party back.
  */
 const disbanded = new Set<string>();
@@ -713,7 +713,7 @@ function keepFormedParty(id: SessionId): void {
 }
 
 /**
- * A roster's party broken up in the realm: the leader's `disband` where the
+ * A roster's party broken up in the realm: the leader's `disband party` where the
  * leader is ours and in the game, else each of ours in it leaves. Its members
  * of ours are kept from being given a roster again until it is gone.
  */
@@ -730,7 +730,7 @@ function disband(roster: PartyRoster): void {
       ? undefined
       : ours.find((member) => sameName(member.character.name!, roster.leader!));
   if (leader !== undefined && leader.inGame) {
-    host?.get(leader.session)?.manager.partyCommand('disband', t('session.party.disband'));
+    host?.get(leader.session)?.manager.partyCommand('disband party', t('session.party.disband'));
     return;
   }
   for (const member of ours)
