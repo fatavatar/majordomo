@@ -1161,7 +1161,7 @@ export const Invoke = {
   removeRoster: 'party:remove',
   /**
    * Disband pressed (2026-10-31): the party broken up in the realm — the
-   * leader's `disband` where the leader is ours, else each of ours leaves —
+   * leader's `disband party` where the leader is ours, else each of ours leaves —
    * and its roster forgotten. Answers every roster after.
    */
   disbandParty: 'party:disband',

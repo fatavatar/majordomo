@@ -121,6 +121,39 @@ describe('Regroup, when the leader is ours', () => {
 
   it('does nothing while the leader is out of the game', () => {
     expect(regroupActs(roster(), [kept('Fatty', { inGame: false }), kept('Skinny')])).toEqual([]);
+    // Not even taking one of ours out of another party (2026-11-14).
+    expect(
+      regroupActs(roster(), [
+        kept('Fatty', { inGame: false }),
+        kept('Skinny', { following: 'healbot' }),
+        kept('healbot', { party: [member('Skinny'), member('healbot')] })
+      ])
+    ).toEqual([]);
+  });
+});
+
+describe('Regroup, when the leader is not open here', () => {
+  // Skinny leads on the card, with no session of Skinny's open (2026-11-14).
+  const skinnyLeads = roster({
+    leader: 'Skinny',
+    members: [
+      { name: 'Skinny', rank: null },
+      { name: 'Bowel', rank: null },
+      { name: 'Archer', rank: null }
+    ]
+  });
+
+  it('lets one of ours follow another member while the leader is not around', () => {
+    const bowel = kept('Bowel', { party: [member('Archer'), member('Bowel')], sees: ['Archer'] });
+    const archer = kept('Archer', { following: 'Bowel', sees: ['Bowel'] });
+    expect(regroupActs(skinnyLeads, [bowel, archer])).toEqual([]);
+  });
+
+  it('takes it out of that party once standing with the leader', () => {
+    const archer = kept('Archer', { following: 'Bowel', sees: ['Bowel', 'Skinny'] });
+    expect(regroupActs(skinnyLeads, [kept('Bowel'), archer])).toEqual([
+      { session: 'archer', act: 'leave', name: 'Archer' }
+    ]);
   });
 });
 
@@ -218,10 +251,28 @@ describe('the roster’s ranks', () => {
         { name: 'Skinny', rank: 'back' }
       ]
     });
-    const skinny = kept('Skinny', { party: [at('Zed', 'front'), at('Skinny', 'mid')] });
+    const skinny = kept('Skinny', {
+      following: 'Zed',
+      party: [at('Zed', 'front'), at('Skinny', 'mid')]
+    });
     expect(rankActs(zedLeads, [skinny])).toEqual([
       { session: 'skinny', act: 'rank', rank: 'back' }
     ]);
+  });
+
+  it('leaves alone a party the roster’s leader is not in', () => {
+    const skinnyLeads = roster({
+      leader: 'Skinny',
+      members: [
+        { name: 'Skinny', rank: 'front' },
+        { name: 'Bowel', rank: 'mid' },
+        { name: 'Archer', rank: null }
+      ]
+    });
+    const bowel = kept('Bowel', { party: [at('Archer', 'mid'), at('Bowel', 'front')] });
+    const archer = kept('Archer', { following: 'Bowel' });
+    expect(rankActs(skinnyLeads, [bowel, archer])).toEqual([]);
+    expect(rankActs(skinnyLeads, [kept('Skinny', { inGame: false }), bowel, archer])).toEqual([]);
   });
 });
 

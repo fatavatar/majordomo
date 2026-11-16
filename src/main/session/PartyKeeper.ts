@@ -82,6 +82,8 @@ export function regroupActs(
   if ((!roster.regroup && !asked) || roster.leader === null) return [];
   const leaderName = roster.leader;
   const leader = ourOf(ours, leaderName);
+  // A leader of ours out of the game has no party to put back together.
+  if (leader !== null && !leader.inGame) return [];
   const acts: RegroupAct[] = [];
   /*
    * A leader changed on the card (2026-10-28): one of ours made leader while
@@ -100,15 +102,20 @@ export function regroupActs(
     if (sameName(name, leaderName) || isForgotten(roster, name)) continue;
     const member = ourOf(ours, name);
     if (member !== null && !member.inGame) continue;
-    // One of ours following somebody else: out of that party first.
+    /*
+     * One of ours following somebody else: out of that party first. Where
+     * the leader is not ours, only once standing with them, to ask for the
+     * invitation next (2026-11-14): Bowel leading Archer with the roster's
+     * leader, Skinny, not open here, had Archer leave each time it joined.
+     */
     const following = member?.character.party.following ?? null;
     if (member !== null && following !== null && !sameName(following, leaderName)) {
-      if (!member.character.inCombat) acts.push({ session: member.session, act: 'leave', name });
+      if (!member.character.inCombat && (leader !== null || sees(member.character, leaderName)))
+        acts.push({ session: member.session, act: 'leave', name });
       continue;
     }
 
     if (leader !== null) {
-      if (!leader.inGame) return [];
       const row = leader.character.party.members.find((m) => sameName(m.name, name));
       if (row !== undefined && !row.invited) continue;
       const together = sees(leader.character, name);
@@ -148,7 +155,9 @@ export function regroupActs(
  * Party tab, at Midrank behind Bowel). A member left "As listed" has no rank
  * here, and MegaMUD's own `Party.PartyRank`, taken on every join, decides.
  * Only once the listing shows them travelling with the party, and not in a
- * fight.
+ * fight. Where the leader is not ours in the game, only a member following
+ * that leader: another party is not the roster's (Bowel told `midrank` while
+ * leading Archer, which the realm refuses a party's only front rank).
  */
 export function rankActs(roster: PartyRoster, ours: readonly KeptMember[]): RegroupAct[] {
   const leader = roster.leader === null ? null : ourOf(ours, roster.leader);
@@ -157,6 +166,13 @@ export function rankActs(roster: PartyRoster, ours: readonly KeptMember[]): Regr
     if (rank === null || isForgotten(roster, name)) continue;
     const member = ourOf(ours, name);
     if (member === null || !member.inGame || member.character.inCombat) continue;
+    const followed = member.character.party.following;
+    if (
+      leader?.inGame !== true &&
+      roster.leader !== null &&
+      (followed === null || !sameName(followed, roster.leader))
+    )
+      continue;
     // The leader's listing where the leader is ours, else the member's own.
     const listing = (leader?.inGame ? leader : member).character.party.members;
     const row = listing.find((m) => sameName(m.name, name));
