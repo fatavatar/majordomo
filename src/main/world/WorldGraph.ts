@@ -110,7 +110,7 @@ import {
   shopKind
 } from '../../shared/world';
 import { trainersFor, type TrainerRow } from '../../shared/training';
-import { spellServes } from '../../shared/spellcraft';
+import { spellServes, spellsCastBy, type SpellCasters } from '../../shared/spellcraft';
 import { itemInvocation } from '../../shared/items';
 import { alignmentRank, type Alignment } from '../../shared/alignment';
 import {
@@ -1878,6 +1878,8 @@ export class WorldGraph {
   private spells: WorldSpell[] = [];
   /** The same rows by id — see `spellById` for why this is not a scan. */
   private spellsById = new Map<number, WorldSpell>();
+  /** Every spell some monster casts (`spellCasters`), read once: the monsters load with the realm. */
+  private monsterSpells: Set<number> | null = null;
   /** `spellNamed`'s index, for the spell list it was built from. */
   private spellIndex: {
     of: readonly WorldSpell[];
@@ -2363,15 +2365,7 @@ export class WorldGraph {
      * made from the room's occupants, with no realm to ask per status line.
      */
     if (known.profiles !== undefined) entity.profiles = known.profiles;
-    const named = new Set<number>();
-    for (const profile of known.profiles ?? []) {
-      for (const attack of profile.attacks) {
-        if (attack.kind === 'spell') named.add(attack.spell);
-        else if (attack.onHit !== undefined) named.add(attack.onHit);
-      }
-      for (const cast of profile.casts) named.add(cast.spell);
-    }
-    if (known.deathSpell !== undefined) named.add(known.deathSpell);
+    const named = spellsCastBy({ profiles: known.profiles, deathSpell: known.deathSpell });
     const spells: Record<number, WorldSpell> = {};
     let resolved = 0;
     for (const id of named) {
@@ -3785,6 +3779,38 @@ export class WorldGraph {
     if (needle.length === 0) return null;
     const index = this.spellNameIndex();
     return index.byName.get(needle) ?? index.byShort.get(needle) ?? null;
+  }
+
+  /**
+   * Every spell the realm names this, where `spellNamed` gives the first: a
+   * realm can hold two spells of one name that do different things — the
+   * monsters' `ethereal chains` and the players' (`landedHere`). By name,
+   * else by short, as `spellNamed` reads a word.
+   */
+  spellsNamed(word: string): WorldSpell[] {
+    const needle = word.trim().toLowerCase();
+    if (needle.length === 0) return [];
+    const named = this.spells.filter((spell) => spell.name.toLowerCase() === needle);
+    return named.length > 0
+      ? named
+      : this.spells.filter((spell) => spell.short?.toLowerCase() === needle);
+  }
+
+  /**
+   * Who casts a spell, as the realm states it: a monster, in an attack, on a
+   * blow, between rounds or on its death (`spellsCastBy`); and a player, for
+   * a spell with a school of magic or one no monster casts. What
+   * `landedHere` weighs a room against.
+   */
+  spellCasters(id: number): SpellCasters {
+    if (this.monsterSpells === null) {
+      this.monsterSpells = new Set();
+      for (const mob of this.mobs.values())
+        for (const spell of spellsCastBy(mob)) this.monsterSpells.add(spell);
+    }
+    const monsters = this.monsterSpells.has(id);
+    const magery = this.spellsById.get(id)?.magery ?? 0;
+    return { monsters, players: magery > 0 || !monsters };
   }
 
   /**

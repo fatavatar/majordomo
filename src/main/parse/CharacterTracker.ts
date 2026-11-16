@@ -77,7 +77,7 @@ import {
 } from './inventory';
 import { resolveByDeadReckoning, resolveFromCoordinates, resolveRoom } from '../world/resolve';
 import type { WorldGraph } from '../world/WorldGraph';
-import type { Direction, RoomId, TrailStep, WorldRoom } from '../../shared/world';
+import type { Direction, RoomId, TrailStep, WorldRoom, WorldSpell } from '../../shared/world';
 import { mobKey, nameAnswersTo, roomAddress, roomId, spellLasts } from '../../shared/world';
 import type { Block } from '../../shared/blocks';
 import { NO_LORE, type MobLore } from '../../shared/lore';
@@ -94,7 +94,7 @@ import {
   type SpellLore,
   type SpellMessageKind
 } from '../../shared/spell-messages';
-import { castIn, confuses, holdsMovement, sharedBy } from '../../shared/spellcraft';
+import { castIn, confuses, holdsMovement, landedHere, sharedBy } from '../../shared/spellcraft';
 import { afflictionOnset, PLAYER_STATUS_HEADER, sheetLines, STATUS_LINE } from './patterns';
 import type { Discovery } from '../../shared/memory';
 import { NO_FIGHTS, type FightSink } from '../../shared/fights';
@@ -3324,7 +3324,7 @@ export class CharacterTracker {
    */
   private conditionsOfAny(names: readonly string[]): Array<keyof Afflictions> {
     const conditions = new Set<keyof Afflictions>();
-    const rows: Array<ReturnType<WorldGraph['spellNamed']> | undefined> = [];
+    const named: string[] = [];
     for (const name of names) {
       const sentence = unnamedEffectSentence(name);
       if (sentence !== null) {
@@ -3333,11 +3333,12 @@ export class CharacterTracker {
           if (causes[condition] === 'confirmed') conditions.add(condition);
         continue;
       }
-      rows.push(this.world?.spellNamed(name));
+      named.push(name);
       const start = this.spellLore.startOf(name);
       const stated = start === null ? null : afflictionOnset(start);
       if (stated !== null) conditions.add(stated);
     }
+    const rows = this.landedRows(named, this.state);
     if (sharedBy(rows, holdsMovement)) conditions.add('held');
     if (sharedBy(rows, confuses)) conditions.add('confused');
     return [...conditions];
@@ -3575,9 +3576,9 @@ export class CharacterTracker {
     candidates: readonly string[],
     block: Block
   ): CharacterState | null {
-    const rows = candidates.map((name) => this.world?.spellNamed(name));
-    const by = (test: (row: (typeof rows)[number]) => boolean): AfflictionCause =>
-      causeOf(block, 'spell', candidates[rows.findIndex(test)]);
+    const rows = this.landedRows(candidates, s);
+    const by = (test: (row: WorldSpell) => boolean): AfflictionCause =>
+      causeOf(block, 'spell', rows.find(test)?.name);
     let next: CharacterState | null = null;
     if (sharedBy(rows, holdsMovement)) {
       this.expect.shiftHeldMove();
@@ -3588,6 +3589,29 @@ export class CharacterTracker {
     if (sharedBy(rows, confuses))
       next = afflicted(next ?? s, 'confused', 'yes', by(confuses)) ?? next;
     return next;
+  }
+
+  /**
+   * The realm's spells by these names, less those nobody in the room could
+   * have cast (`landedHere`): a name the realm gives two spells is read as
+   * the one cast here — the Quest Knights' `ethereal chains` holds, the
+   * monsters' other one confuses as well.
+   */
+  private landedRows(names: readonly string[], s: CharacterState): WorldSpell[] {
+    const world = this.world;
+    if (!world) return [];
+    const casts = new Set<number>();
+    let players = false;
+    for (const occupant of s.room.occupants) {
+      if (occupant.kind === 'player') players = true;
+      for (const id of Object.keys(occupant.mob?.spells ?? {})) casts.add(Number(id));
+    }
+    const book = new Set((s.spellbook ?? []).map((known) => spellKey(known.name)));
+    return landedHere(
+      names.flatMap((name) => world.spellsNamed(name)),
+      (spell) => world.spellCasters(spell.id),
+      { casts, players, knows: (spell) => book.has(spellKey(spell.name)) }
+    );
   }
 
   private withBuff(s: CharacterState, buff: ActiveBuff): CharacterState {

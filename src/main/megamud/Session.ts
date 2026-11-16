@@ -378,6 +378,14 @@ export interface SessionHost {
    */
   inParty?(name: string): boolean;
   /**
+   * Ours: of these realm spells, which printing one line, those that could
+   * have been cast on this character here — by a monster in the room that
+   * casts it, by a player for a spell players cast, or by anything for one
+   * no monster casts (`landedHere`). A Messages.md row several spells print
+   * means what those agree on (`landedEffects`).
+   */
+  landable?(spells: readonly number[]): number[];
+  /**
    * Ours: the lines about to be sent are the player's own words (a timed
    * event's command), shown in the console whatever their first word.
    */

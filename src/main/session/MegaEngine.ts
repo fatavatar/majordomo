@@ -107,7 +107,7 @@ import { IDLE_WALK, type WalkProgress } from '../../shared/walk';
 import { NO_LOOP, type LoopProgress } from '../../shared/loops';
 import type { RoundTimer } from '../../shared/roundTimer';
 import { roundTimer } from '../megamud/combat/timer';
-import { doorSpell } from '../../shared/spellcraft';
+import { doorSpell, landedHere, spellsCastBy } from '../../shared/spellcraft';
 import {
   asRoomReference,
   DIRECTIONS,
@@ -123,6 +123,7 @@ import {
 import type { WorldGraph } from '../world/WorldGraph';
 import { State } from '../megamud/states';
 import {
+  EntityType,
   SpellFlag,
   MessageFlag,
   ItemFlag,
@@ -642,6 +643,7 @@ export class MegaEngine {
       partyForgot: (name) => this.host.partyForgot?.(name),
       partyAlreadyDone: (leader, command) => this.host.partyAlreadyDone?.(leader, command) ?? false,
       inParty: (name) => this.host.inParty?.(name) ?? false,
+      landable: (spells) => this.landable(spells),
       ownCommand: (text) => this.host.ownCommand?.(text),
       show: (text) => this.said(text),
       clock: () => Math.floor(Date.now() / 1000),
@@ -907,6 +909,8 @@ export class MegaEngine {
       if (old === undefined) continue;
       rec.flags |= old.flags & (MessageFlag.Active | MessageFlag.RestedOn);
       rec.firedAt = old.firedAt;
+      // What it set as it started (`landedEffects`), for its end to clear.
+      rec.effects = old.effects;
     }
     s.data.players = was.players;
     s.data.rooms = was.rooms;
@@ -1123,6 +1127,39 @@ export class MegaEngine {
    * MegaMUD database can miss it: the shipped one has necropotence, which
    * lasts, without it, so it was never cast as a blessing (2026-10-13).
    */
+  /**
+   * The session's `landable`: the spells, of these, somebody in the room as
+   * the engine has it could have cast (`landedHere`) — its monsters by the
+   * realm's rows for their names, another player, and the spells its book
+   * knows. A spell the realm does not hold is not ruled out.
+   */
+  private landable(ids: readonly number[]): number[] {
+    const world = this.host.world();
+    if (!world) return [...ids];
+    const casts = new Set<number>();
+    let players = false;
+    for (const entity of this.s.room) {
+      if (entity.type === EntityType.Player) players = true;
+      if (entity.type !== EntityType.Monster) continue;
+      const mob = world.mob(entity.name);
+      if (mob !== undefined) for (const id of spellsCastBy(mob)) casts.add(id);
+    }
+    const known = new Set(
+      this.s.data.spells
+        .filter((spell) => (spell.flags & SpellFlag.Known) !== 0)
+        .map((spell) => spell.name.toLowerCase())
+    );
+    const spells = ids.flatMap((id) => world.spellById(id) ?? []);
+    const landed = new Set(
+      landedHere(spells, (spell) => world.spellCasters(spell.id), {
+        casts,
+        players,
+        knows: (spell) => known.has(spell.name.toLowerCase())
+      }).map((spell) => spell.id)
+    );
+    return ids.filter((id) => landed.has(id) || world.spellById(id) === null);
+  }
+
   private markLasting(): void {
     if (this.lastingMarked) return;
     const world = this.host.world();
@@ -2682,7 +2719,7 @@ function sameMessage(a: MessageRec, b: MessageRec): boolean {
   return (
     a.msg === b.msg &&
     a.endMsg === b.endMsg &&
-    a.effects === b.effects &&
+    (a.stated ?? a.effects) === (b.stated ?? b.effects) &&
     a.number === b.number &&
     a.action === b.action
   );

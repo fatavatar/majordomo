@@ -32,6 +32,7 @@ import { blowStruck, castForgotten } from '../combat/timer';
 import { State } from '../states';
 import { LineFlag, MessageFlag, MessageEffect, EntityFlag, EntityType } from '../flags';
 import { castTook } from '../stats/window';
+import { agreedFlags } from '../../../shared/messageTriggers';
 
 /** What a template's fields captured (`0x59c300`…), kept on the session when it matches. */
 interface Captures {
@@ -134,7 +135,7 @@ export function messageLine(s: Session, line: string, anywhere: number): number 
   let result = 0;
   let configured: SpellRec | null = null;
   for (const rec of rows) {
-    const eff = rec.effects;
+    let eff = rec.effects;
     if ((eff & MessageEffect.Disabled) !== 0) continue;
     if (
       anywhere === 0
@@ -147,6 +148,7 @@ export function messageLine(s: Session, line: string, anywhere: number): number 
       if ((rec.flags & MessageFlag.Active) !== 0 && messageEnded(s, line, rec) !== 0) result = 1;
       continue;
     }
+    eff = landedEffects(s, rec);
     s.msgSpell = rec.name.slice(0, 30);
     if ((eff & MessageEffect.Blinded) !== 0) s.blind = 1;
     if ((eff & MessageEffect.Confused) !== 0) s.confused = 1;
@@ -258,6 +260,36 @@ export function messageLine(s: Session, line: string, anywhere: number): number 
     }
   }
   return result;
+}
+
+/** The bits of a row's effects that say how it matches rather than what it means. */
+const MATCHING =
+  MessageEffect.InConversations |
+  MessageEffect.Anywhere |
+  MessageEffect.WhenChasing |
+  MessageEffect.Disabled;
+
+/**
+ * Ours, not the exe's (2026-11-12): a row several realm spells print, which
+ * do not agree (`MessageRec.spells`), means what those that could have been
+ * cast here agree on (`host.landable`); where the room rules none of them
+ * out, or all, what the row states. Kept as the row's effects while it lasts,
+ * so its end clears what it set. A Quest Knight's `ethereal chains` holds;
+ * read as the monsters' other one, which also stops a fight, Bowel stood
+ * through every chaining without a swing.
+ */
+function landedEffects(s: Session, rec: MessageRec): number {
+  if (rec.spells === undefined || rec.stated === undefined) return rec.effects;
+  const could = s.host.landable?.(rec.spells.map((each) => each.id)) ?? [];
+  let means = rec.stated & ~MATCHING;
+  if (could.length > 0 && could.length < rec.spells.length) {
+    means = agreedFlags(
+      rec.spells.filter((each) => could.includes(each.id)).map((each) => each.effects)
+    );
+    if (s.debug !== 0) s.host.trace(`{${rec.name}:${could.join(',')}}`);
+  }
+  rec.effects = (rec.stated & MATCHING) | means;
+  return rec.effects;
 }
 
 /** The part of `0x46a920` after `0x46b8b6`: the fight's spell is seen working, by its message. */

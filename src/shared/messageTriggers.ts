@@ -128,6 +128,22 @@ export interface MessageTrigger {
    */
   chase: boolean;
   enabled: boolean;
+  /**
+   * Every realm spell that prints `match`, each with the conditions it gives
+   * by itself, where they differ (2026-11-12): the realm's two `ethereal
+   * chains` both print `You are restrained by silvery manacles!`, and the
+   * monsters' holds and confuses where the players' only holds. `effects` is
+   * what they agree on (`agreedFlags`); the engine takes the agreement of
+   * those somebody in the room could have cast. Absent for one spell, for
+   * several that agree, and for every row not a realm database's.
+   */
+  spells?: MessageSpell[];
+}
+
+/** A realm spell that prints a trigger's start, and what it gives by itself. */
+export interface MessageSpell {
+  spell: number;
+  effects: MessageEffect[];
 }
 
 /** Where a realm's table came from, for the settings screen to say. */
@@ -251,7 +267,7 @@ function megaMudTrigger(row: {
     match: row.match,
     endsWith: row.endsWith,
     response: row.response,
-    effects: MESSAGE_EFFECTS.filter((effect) => (flags & MEGAMUD_EFFECT_BITS[effect]) !== 0),
+    effects: effectsIn(flags),
     action: MESSAGE_ACTIONS[row.action] ?? 'none',
     anywhere: (flags & MEGAMUD_ANYWHERE) !== 0,
     conversations: (flags & MEGAMUD_CONVERSATIONS) !== 0,
@@ -260,6 +276,35 @@ function megaMudTrigger(row: {
   };
 }
 
+/** The effects a MegaMUD flag word holds. */
+function effectsIn(flags: number): MessageEffect[] {
+  return MESSAGE_EFFECTS.filter((effect) => (flags & MEGAMUD_EFFECT_BITS[effect]) !== 0);
+}
+
+/** The flag word of these effects. */
+export function effectFlags(effects: readonly MessageEffect[]): number {
+  let flags = 0;
+  for (const effect of effects) flags |= MEGAMUD_EFFECT_BITS[effect];
+  return flags;
+}
+
+/**
+ * What several spells printing one line agree it means, as the realm's
+ * exporter agrees it (silvermere `agree_on_shared_lines`): the flags most of
+ * them give, and where no one set is the most given, what those sets share.
+ */
+export function agreedFlags(flags: readonly number[]): number {
+  const counts = new Map<number, number>();
+  for (const each of flags) counts.set(each, (counts.get(each) ?? 0) + 1);
+  const most = Math.max(0, ...counts.values());
+  let agreed = ~0;
+  for (const [each, count] of counts) if (count === most) agreed &= each;
+  return counts.size === 0 ? 0 : agreed;
+}
+
+/** A condition row's `Source` as silvermere writes it: `Spell #309 (flags 48)`, the flags its own. */
+const SPELL_SOURCE = /^Spell #(\d+)(?: \(flags (\d+)\))?$/;
+
 /**
  * The `Messages` table a realm's own database may carry (2026-11-10):
  * MegaMUD's `Messages.md` as rows — `Name`, `Message`, `EndMessage`,
@@ -267,7 +312,8 @@ function megaMudTrigger(row: {
  * built by the realm's server from its own spells, so the sentences are the
  * ones this realm prints rather than a hand file's for another. silvermere
  * writes it into the MMUD Explorer database it serves (fatavatar/silvermere#2);
- * no stock export has one. Its `Kind` and `Source` columns have no field here.
+ * no stock export has one. `Kind` and `Source` have no field of their own:
+ * they say which condition rows each spell gives, for `spells`.
  *
  * Read through the same record as the file, so a row means what the same
  * row in `Messages.md` would; a row with no sentence is dropped, as the
@@ -292,28 +338,65 @@ export function realmMessageTriggers(rows: readonly Record<string, unknown>[]): 
       .filter((row) => text(row['EndMessage']).trim().length > 0)
       .map((row) => text(row['Name']).trim().toLowerCase())
   );
+  const printedBy = linesSpells(rows);
+  const made = new Set<string>();
   const triggers: MessageTrigger[] = [];
   for (const row of rows) {
     const match = text(row['Message']).trim();
     if (match.length === 0) continue;
+    const name = text(row['Name']).trim().toLowerCase();
     if (
       text(row['EndMessage']).trim().length === 0 &&
-      lasting.has(text(row['Name']).trim().toLowerCase()) &&
+      lasting.has(name) &&
       !match.includes('{dmg}')
     )
       continue;
-    triggers.push(
-      megaMudTrigger({
-        name: text(row['Name']),
-        match,
-        endsWith: text(row['EndMessage']).trim(),
-        response: text(row['Response']),
-        flags: whole(row['Flags']),
-        action: whole(row['Action'])
-      })
-    );
+    // One row a name and line: a line two spells of one name print is the realm's twice.
+    const key = `${name}\n${match}`;
+    if (made.has(key)) continue;
+    made.add(key);
+    const trigger = megaMudTrigger({
+      name: text(row['Name']),
+      match,
+      endsWith: text(row['EndMessage']).trim(),
+      response: text(row['Response']),
+      flags: whole(row['Flags']),
+      action: whole(row['Action'])
+    });
+    const spells = text(row['Kind']) === 'effect' ? printedBy.get(match) : undefined;
+    if (spells !== undefined) trigger.spells = spells;
+    triggers.push(trigger);
   }
   return triggers;
+}
+
+/**
+ * The spells each condition's line is printed by, each with the flags its
+ * `Source` gives it, for the lines whose spells do not all mean the same
+ * (`MessageTrigger.spells`). A database from before silvermere wrote them
+ * states none of its own, and none differ.
+ */
+function linesSpells(rows: readonly Record<string, unknown>[]): Map<string, MessageSpell[]> {
+  const byLine = new Map<string, Array<{ spell: number; flags: number }>>();
+  for (const row of rows) {
+    if (text(row['Kind']) !== 'effect') continue;
+    const source = SPELL_SOURCE.exec(text(row['Source']).trim());
+    if (source === null) continue;
+    const match = text(row['Message']).trim();
+    const spells = byLine.get(match) ?? byLine.set(match, []).get(match)!;
+    const spell = Number(source[1]);
+    if (!spells.some((known) => known.spell === spell))
+      spells.push({ spell, flags: Number(source[2] ?? 0) });
+  }
+  const differ = new Map<string, MessageSpell[]>();
+  for (const [match, spells] of byLine) {
+    if (spells.every((each) => each.flags === spells[0]!.flags)) continue;
+    differ.set(
+      match,
+      spells.map((each) => ({ spell: each.spell, effects: effectsIn(each.flags) }))
+    );
+  }
+  return differ;
 }
 
 /** A number column as a whole number, and 0 for anything else. */
@@ -364,7 +447,7 @@ export function asMessageTrigger(value: unknown): MessageTrigger | null {
     ? MESSAGE_EFFECTS.filter((effect) => (value['effects'] as unknown[]).includes(effect))
     : [];
   const action = MESSAGE_ACTIONS.find((known) => known === value['action']) ?? 'none';
-  return {
+  const trigger: MessageTrigger = {
     name: text(value['name']).trim(),
     match,
     endsWith: text(value['endsWith']).trim(),
@@ -376,6 +459,22 @@ export function asMessageTrigger(value: unknown): MessageTrigger | null {
     chase: value['chase'] === true,
     enabled: value['enabled'] !== false
   };
+  const spells = asMessageSpells(value['spells']);
+  if (spells.length > 1) trigger.spells = spells;
+  return trigger;
+}
+
+function asMessageSpells(value: unknown): MessageSpell[] {
+  if (!Array.isArray(value)) return [];
+  const out: MessageSpell[] = [];
+  for (const entry of value) {
+    if (!isRecord(entry) || !Number.isInteger(entry['spell'])) continue;
+    const effects = Array.isArray(entry['effects'])
+      ? MESSAGE_EFFECTS.filter((effect) => (entry['effects'] as unknown[]).includes(effect))
+      : [];
+    out.push({ spell: entry['spell'] as number, effects });
+  }
+  return out;
 }
 
 /**
@@ -393,6 +492,13 @@ export function triggerForFile(trigger: MessageTrigger): Record<string, unknown>
   if (trigger.conversations) out['conversations'] = true;
   if (trigger.chase) out['chase'] = true;
   if (!trigger.enabled) out['enabled'] = false;
+  if (trigger.spells !== undefined) {
+    out['spells'] = trigger.spells.map((each) =>
+      each.effects.length > 0
+        ? { spell: each.spell, effects: [...each.effects] }
+        : { spell: each.spell }
+    );
+  }
   return out;
 }
 
