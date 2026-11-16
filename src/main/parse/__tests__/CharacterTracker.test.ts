@@ -8831,6 +8831,101 @@ describe('what the server has said is wrong with the character', () => {
     });
 
     /*
+     * Reported 2026-11-12: the realm has two `ethereal chains` printing one
+     * sentence. The monsters' #309 holds and confuses; the players' #1620,
+     * which the Quest Knights cast, only holds. Read by its name, every
+     * Quest Knight's chains confused Bowel. The room says which it was.
+     */
+    describe('a name the realm gives two spells', () => {
+      function chainsRealm(): WorldGraph {
+        const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mudengine-chains-'));
+        const file = path.join(dir, 'rooms.jsonl.gz');
+        const header = {
+          v: 32,
+          source: 'test',
+          rooms: 0,
+          generatedAt: 'x',
+          mobs: [
+            {
+              n: 'Quest Knight',
+              hp: 900,
+              d: 'h',
+              pf: [{ a: [[2, 0.5, 1620, 1, 30, 666]], c: [] }]
+            },
+            { n: 'jailer', hp: 900, d: 'h', pf: [{ a: [], c: [[309, 1, 100]] }] }
+          ],
+          spells: [
+            {
+              id: 309,
+              n: 'ethereal chains',
+              dur: 6,
+              ab: [
+                [74, 100],
+                [71, 100]
+              ]
+            },
+            { id: 1620, n: 'ethereal chains', dur: 4, mg: 2, ab: [[74, 100]] }
+          ]
+        };
+        fs.writeFileSync(file, zlib.gzipSync(JSON.stringify(header) + '\n'));
+        const graph = WorldGraph.load(file);
+        fs.rmSync(dir, { recursive: true, force: true });
+        return graph;
+      }
+      const chainsLore = (): SpellLore =>
+        spellLoreOf(
+          SpellMessageBook.fromRows([
+            {
+              spell: 'ethereal chains',
+              start: 'You are restrained by silvery manacles!',
+              stop: 'The silvery manacles restraining you shimmer and fade.'
+            }
+          ]),
+          new SpellMessageBook()
+        );
+      const chained = (here: string): CharacterTracker =>
+        play(
+          [
+            'Bloody Hallways',
+            `Also here: ${here}.`,
+            'Obvious exits: north, east',
+            '[HP=1185/MA=220]:',
+            'You are restrained by silvery manacles!'
+          ],
+          chainsRealm(),
+          undefined,
+          undefined,
+          undefined,
+          chainsLore()
+        );
+
+      it('reads a Quest Knight’s chains as the hold its own spell is', () => {
+        const tracker = chained('Quest Knight');
+        expect(tracker.current.afflictions.held).toBe('yes');
+        expect(tracker.current.afflictions.confused).not.toBe('yes');
+      });
+
+      it('reads the chains of a monster casting the other one as both', () => {
+        const tracker = chained('jailer');
+        expect(tracker.current.afflictions.held).toBe('yes');
+        expect(tracker.current.afflictions.confused).toBe('yes');
+      });
+
+      it('holds and no more where nobody here says which', () => {
+        const tracker = play(
+          ['[HP=1185/MA=220]:', 'You are restrained by silvery manacles!'],
+          chainsRealm(),
+          undefined,
+          undefined,
+          undefined,
+          chainsLore()
+        );
+        expect(tracker.current.afflictions.held).toBe('yes');
+        expect(tracker.current.afflictions.confused).not.toBe('yes');
+      });
+    });
+
+    /*
      * `You are held!` is the literal `CheckForHoldPerson` falls back to when
      * the ability is on the character but no active effect carries a sentence
      * to print. Fixed in the server's code, so it is a pattern and needs no

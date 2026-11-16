@@ -348,6 +348,15 @@ export interface MessageRec {
   number: number;
   /** +0x120: when it started. */
   firedAt: number;
+  /**
+   * Ours, not the exe's: the realm spells that print `msg`, each with the
+   * effect bits it gives by itself (`MessageTrigger.spells`), for a row whose
+   * spells do not agree. `effects` then holds what they agree on until the
+   * row starts, and what it set while it lasts (`messageLine`).
+   */
+  spells?: Array<{ id: number; effects: number }>;
+  /** Ours: `effects` as the row states them, beside `spells`. */
+  stated?: number;
 }
 
 /** Two hex digits, as `0x4ad190` reads them (a missing digit reads as 0). */

@@ -4,7 +4,7 @@ import { beginCast } from '../combat/casts';
 import { messagesFrom, type SpellRec } from '../data';
 import { messageRec } from '../fromWorld';
 import { messageLine, templateMatch } from '../messages/messages';
-import { blankTrigger } from '../../../shared/messageTriggers';
+import { blankTrigger, type MessageTrigger } from '../../../shared/messageTriggers';
 import { session } from './fixture';
 import { State } from '../states';
 import { MessageFlag } from '../flags';
@@ -113,5 +113,53 @@ describe('a row found in conversations', () => {
     ];
     expect(messageLine(s, 'Fatty telepaths: @heal', 1)).toBe(1);
     expect(s.pending.map((p) => p.text)).toEqual(['mend Fatty\r']);
+  });
+});
+
+/*
+ * Ours (2026-11-12): one line two realm spells print, which mean different
+ * things. The Quest Knights' ethereal chains (#1620) holds; the monsters'
+ * other one (#309) also stops a fight. Bowel stood through every Quest
+ * Knight's chaining without a swing.
+ */
+describe('a row two spells print (landedEffects)', () => {
+  const chains = (): MessageTrigger => ({
+    ...blankTrigger(),
+    name: 'ethereal chains',
+    match: 'You are restrained by silvery manacles!',
+    endsWith: 'The silvery manacles restraining you shimmer and fade.',
+    effects: ['held'],
+    spells: [
+      { spell: 309, effects: ['held', 'no-attack'] },
+      { spell: 1620, effects: ['held'] }
+    ]
+  });
+  const chained = (landable?: (spells: readonly number[]) => number[], trigger = chains()) => {
+    const { s } = session({ messages: [messageRec(trigger)] });
+    if (landable) Object.assign(s.host, { landable });
+    messageLine(s, 'You are restrained by silvery manacles!', 0);
+    return s;
+  };
+
+  it('means what the spell cast here means', () => {
+    const s = chained(() => [1620]);
+    expect([s.held, s.attackPrevented]).toEqual([1, 0]);
+  });
+
+  it('means the other where that is the one cast here, and ends what it set', () => {
+    const s = chained(() => [309]);
+    expect([s.held, s.attackPrevented]).toEqual([1, 1]);
+    messageLine(s, 'The silvery manacles restraining you shimmer and fade.', 0);
+    expect([s.held, s.attackPrevented]).toEqual([0, 0]);
+  });
+
+  it('means what the row states where the room cannot say', () => {
+    expect(chained(() => [309, 1620]).attackPrevented).toBe(0);
+    expect(chained().attackPrevented).toBe(0);
+  });
+
+  it('keeps the effects the player gave the row', () => {
+    const s = chained(() => [309], { ...chains(), effects: ['blind'] });
+    expect([s.blind, s.held, s.attackPrevented]).toEqual([1, 0, 0]);
   });
 });

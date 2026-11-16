@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  agreedFlags,
   asMessageTable,
+  asMessageTrigger,
   parseMegaMudMessages,
   realmMessageTriggers,
   triggerForFile
@@ -216,5 +218,52 @@ describe('realmMessageTriggers', () => {
       'You are diseased!',
       'You sing the song of harmony.'
     ]);
+  });
+
+  /* The realm's two ethereal chains print one line and mean different things (2026-11-12). */
+  it('keeps what each spell printing a line gives by itself, one row a name', () => {
+    const effect = (source: string) => ({
+      Name: 'ethereal chains',
+      Message: 'You are restrained by silvery manacles!',
+      EndMessage: 'The silvery manacles restraining you shimmer and fade.',
+      Source: source,
+      Flags: 0x10,
+      Kind: 'effect'
+    });
+    const triggers = realmMessageTriggers([
+      effect('Spell #309 (flags 48)'),
+      effect('Spell #1620 (flags 16)'),
+      {
+        Name: 'speed',
+        Message: 'You feel fast!',
+        EndMessage: 'You slow down.',
+        Source: 'Spell #12',
+        Kind: 'effect'
+      }
+    ]);
+    expect(triggers).toHaveLength(2);
+    expect(triggers[0]).toMatchObject({
+      effects: ['held'],
+      spells: [
+        { spell: 309, effects: ['held', 'no-attack'] },
+        { spell: 1620, effects: ['held'] }
+      ]
+    });
+    // One spell, or a database from before the flags were written: nothing to tell apart.
+    expect(triggers[1]!.spells).toBeUndefined();
+    expect(realmMessageTriggers([effect('Spell #309'), effect('Spell #1620')])).toEqual([
+      expect.not.objectContaining({ spells: expect.anything() })
+    ]);
+    // And through the file.
+    expect(asMessageTrigger(triggerForFile(triggers[0]!))).toEqual(triggers[0]);
+  });
+});
+
+describe('agreedFlags', () => {
+  it('takes the most given, and on a tie what the tied share', () => {
+    expect(agreedFlags([0, 0, 1])).toBe(0);
+    expect(agreedFlags([0x30, 0x10])).toBe(0x10);
+    expect(agreedFlags([0x02, 0x0a, 0x0a])).toBe(0x0a);
+    expect(agreedFlags([])).toBe(0);
   });
 });

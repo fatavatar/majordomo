@@ -30,7 +30,7 @@
 import { HAZARD_ABILITY, OPEN_DOOR_ABILITY } from './abilities';
 import { commandOf } from './commands';
 import { scaledPower } from './menace';
-import type { WorldSpell } from './world';
+import type { WorldMob, WorldSpell } from './world';
 
 /**
  * One spell as a cast resolver needs it — `KnownSpell` (the `sp`/`pow`
@@ -438,6 +438,73 @@ export function sharedBy(
     spells.some((spell) => spell != null && test(spell)) &&
     spells.every((spell) => spell == null || (spell.abilities ?? []).length === 0 || test(spell))
   );
+}
+
+/**
+ * Every spell a monster casts: in place of a blow, on a blow that lands,
+ * between rounds, and on its death. What the realm says may come from it.
+ */
+export function spellsCastBy(
+  mob: Pick<WorldMob, 'profiles' | 'casts' | 'deathSpell'>
+): Set<number> {
+  const named = new Set<number>(mob.casts ?? []);
+  for (const profile of mob.profiles ?? []) {
+    for (const attack of profile.attacks) {
+      if (attack.kind === 'spell') named.add(attack.spell);
+      else if (attack.onHit !== undefined) named.add(attack.onHit);
+    }
+    for (const cast of profile.casts) named.add(cast.spell);
+  }
+  if (mob.deathSpell !== undefined) named.add(mob.deathSpell);
+  return named;
+}
+
+/** Who the realm has casting a spell (`WorldGraph.spellCasters`). */
+export interface SpellCasters {
+  /** Some monster casts it. */
+  monsters: boolean;
+  /**
+   * A player may: it has a school of magic, or no monster casts it (an
+   * item's, a room's) — the realm's exporter's own test for a player's spell.
+   */
+  players: boolean;
+}
+
+/** Who is about to have cast a spell on the character: the room as it stands. */
+export interface CastersHere {
+  /** Every spell the monsters here cast (`spellsCastBy`). */
+  casts: ReadonlySet<number>;
+  /** Another player is here. */
+  players: boolean;
+  /** The character knows a spell by this name. */
+  knows(spell: WorldSpell): boolean;
+}
+
+/**
+ * The spells, of several that print one line, that could have printed it
+ * here (2026-11-12). The realm has two `ethereal chains`, both printing `You
+ * are restrained by silvery manacles!`: the monsters' #309 holds and
+ * confuses, the players' #1620, which the Quest Knights cast, only holds.
+ * By its name alone Bowel read every Quest Knight's chains as a confusion.
+ *
+ * A monster's spell needs a monster here that casts it, or for one players
+ * cast too, another player here or the character's own book; a spell no
+ * monster casts (an item's, a room's) may always have. Where the room rules
+ * out none, or all, they all stand: the line is as ambiguous as it was.
+ */
+export function landedHere<T extends WorldSpell>(
+  spells: readonly T[],
+  casters: (spell: T) => SpellCasters,
+  here: CastersHere
+): T[] {
+  if (spells.length < 2) return [...spells];
+  const could = spells.filter((spell) => {
+    if (here.casts.has(spell.id)) return true;
+    const who = casters(spell);
+    if (!who.monsters) return true;
+    return who.players && (here.players || here.knows(spell));
+  });
+  return could.length > 0 ? could : [...spells];
 }
 
 /**

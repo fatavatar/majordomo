@@ -22,8 +22,9 @@ import {
   MEGAMUD_CHASE,
   MEGAMUD_CONVERSATIONS,
   MEGAMUD_DISABLED,
-  MEGAMUD_EFFECT_BITS,
   MESSAGE_ACTIONS,
+  agreedFlags,
+  effectFlags,
   type MessageTrigger
 } from '../../shared/messageTriggers';
 import type { WorldClass, WorldItem, WorldMob, WorldRace, WorldSpell } from '../../shared/world';
@@ -246,8 +247,7 @@ export function applyItemRule(rec: ItemRec, rule: ItemRule, world?: WorldGraph):
 
 /** One of our message rows as MegaMUD's (`0x467b60`'s record). */
 export function messageRec(trigger: MessageTrigger): MessageRec {
-  let effects = 0;
-  for (const effect of trigger.effects) effects |= MEGAMUD_EFFECT_BITS[effect];
+  let effects = effectFlags(trigger.effects);
   if (trigger.anywhere) effects |= MEGAMUD_ANYWHERE;
   if (trigger.conversations) effects |= MEGAMUD_CONVERSATIONS;
   if (trigger.chase) effects |= MEGAMUD_CHASE;
@@ -257,7 +257,7 @@ export function messageRec(trigger: MessageTrigger): MessageRec {
   let flags = 0;
   if (msg.includes('{')) flags |= 4;
   if (endMsg.includes('{')) flags |= 8;
-  return {
+  const rec: MessageRec = {
     layer: 0,
     name: trigger.name.slice(0, 30),
     msg,
@@ -268,6 +268,22 @@ export function messageRec(trigger: MessageTrigger): MessageRec {
     number: Math.max(0, MESSAGE_ACTIONS.indexOf(trigger.action)),
     firedAt: 0
   };
+  /*
+   * The spells it is printed by, while the row still says what they agree
+   * on: a row the player has given other effects is theirs to mean.
+   */
+  const spells = trigger.spells?.map((each) => ({
+    id: each.spell,
+    effects: effectFlags(each.effects)
+  }));
+  if (
+    spells !== undefined &&
+    agreedFlags(spells.map((each) => each.effects)) === effectFlags(trigger.effects)
+  ) {
+    rec.spells = spells;
+    rec.stated = effects;
+  }
+  return rec;
 }
 
 /**

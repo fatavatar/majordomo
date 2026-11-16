@@ -11,6 +11,7 @@ import {
   doorSpell,
   holdsMovement,
   isShortIn,
+  landedHere,
   resolveSpell,
   sameSpell,
   spellCost,
@@ -443,5 +444,39 @@ describe('doorSpell', () => {
 
   it('is none where the book does not hold one', () => {
     expect(doorSpell([bolt, knock], (spell) => spell.id !== 750, 30)).toBeNull();
+  });
+});
+
+/* The realm's two ethereal chains, and the rooms that tell them apart (2026-11-12). */
+describe('landedHere', () => {
+  const monsters: WorldSpell = { id: 309, name: 'ethereal chains' };
+  const players: WorldSpell = { id: 1620, name: 'ethereal chains', magery: 2 };
+  const potion: WorldSpell = { id: 77, name: 'ethereal chains' };
+  const casters = (spell: WorldSpell) =>
+    spell.id === 77
+      ? { monsters: false, players: true }
+      : { monsters: true, players: spell.id === 1620 };
+  const room = (casts: number[], others = false, knows = false) => ({
+    casts: new Set(casts),
+    players: others,
+    knows: () => knows
+  });
+  const ids = (spells: WorldSpell[]) => spells.map((spell) => spell.id);
+
+  it('keeps the one a monster here casts', () => {
+    expect(ids(landedHere([monsters, players], casters, room([1620])))).toEqual([1620]);
+    expect(ids(landedHere([monsters, players], casters, room([309])))).toEqual([309]);
+  });
+
+  it('keeps a players’ spell where a player or the book could have cast it', () => {
+    expect(ids(landedHere([monsters, players], casters, room([], true)))).toEqual([1620]);
+    expect(ids(landedHere([monsters, players], casters, room([309], false, true)))).toEqual([
+      309, 1620
+    ]);
+  });
+
+  it('never rules out a spell no monster casts, and rules out none where all would go', () => {
+    expect(ids(landedHere([monsters, potion], casters, room([])))).toEqual([77]);
+    expect(ids(landedHere([monsters, players], casters, room([])))).toEqual([309, 1620]);
   });
 });
