@@ -119,7 +119,12 @@ jobs:
           - os: windows-latest
             platform: win
             name: Windows (installer, zip)
-          - os: macos-latest
+          # Intel, not `macos-latest`: the Apple silicon pool that names went
+          # three runs in a row (v1.0.17, v1.0.18 twice) without a runner ever
+          # picking the job up, and the release waits on every platform. An
+          # Intel runner builds the arm64 files as well, as electron-builder
+          # fetches the arm64 Electron (2026-11-16). `macos-13` is retired.
+          - os: macos-15-intel
             platform: mac
             name: macOS (dmg, zip — Intel and Apple silicon)
     runs-on: ${{ matrix.os }}
