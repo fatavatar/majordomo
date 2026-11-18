@@ -81,6 +81,7 @@ describe('walking a path (D48)', () => {
     s.host.beforeStep = () => {
       asked += 1;
       if (asked === 1) s.pending.push({ text: 'use amulet\r', expand: 0, checked: 0, tag: 0 });
+      return false;
     };
     expect(walkPath(s)).toBe(0);
     expect(out.sent).toEqual([]);

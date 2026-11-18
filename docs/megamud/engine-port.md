@@ -275,7 +275,18 @@ MageryLVL`; a race's experience is its `ExpTable`;
   not move, before the leg out of the stop, as a MegaMUD path writes them;
   the room is looked at after each, so what one brings is fought first. A
   loop edited since its path was made is made again when it is next
-  started. A room's
+  started. A stop behind a room script that works only while an item lies
+  in its room (`roomitem`, 2026-11-17: the Flame Pit, through the portal the
+  Greater Glabrezu drops at 2/8602) is ours as a side trip: the lap's path
+  leaves it out and passes the gate's room, and where it leaves that room
+  with the item there, the trip's stops and the stop it comes back to are
+  put as MegaMUD's own detours, the loop's own given way. The last arrival
+  takes the loop up again (`resumeLoop`), from its first step, and the walk
+  is put on the step out of the stop it stands in (`MegaEngine.takeTrip`,
+  `backFromTrip`, `world/sideTrips.ts`). An exported loop leaves its side
+  trips out. A stop marked a stash point (`LoopStop.stash`, 2026-11-18) puts
+  MegaMUD's `StashPoint` flag on the first step out of it, a side trip's
+  included, so `takeStep` stashes there before it goes on. A room's
   signature is learned whenever the engine and our tracker stand in it
   together, else worked out from the realm data (`worldSignature`); a room
   whose exits the realm data cannot say how the game lists is given the

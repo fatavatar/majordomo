@@ -21,11 +21,13 @@
  *   rooms, in the options file with everything else — no recorder, no binary,
  *   no per-step flags to learn.
  *
- * What is deliberately *not* here: MegaMUD's per-step flags (dark room, pick
- * lock, disarm trap, stash point). Every one of them is a property of a room
- * or an edge, and the realm data already carries them — the route planner
- * grades a door against the character (CLAUDE.md), the walker opens what it
- * can. A flag on a step would be a second copy of the realm, kept by hand.
+ * What is deliberately *not* here: MegaMUD's per-step flags for a dark room,
+ * a lock or a trap. Each is a property of a room or an edge, and the realm data
+ * already carries them — the route planner grades a door against the character
+ * (CLAUDE.md), the walker opens what it can. A flag on a step would be a second
+ * copy of the realm, kept by hand. A stash point is the exception
+ * (`LoopStop.stash`): where to leave the loot is the player's choice, and no
+ * realm data states it.
  *
  * What *is* here, since 2026-10-23: the commands typed at a stop
  * (`LoopStop.commands`), which no realm data states — `touch hammer` where
@@ -75,6 +77,13 @@ export interface LoopStop {
    * so what it brings is fought before the walk goes on.
    */
   commands?: string[];
+  /**
+   * Leave the loot here (asked for 2026-11-18): MegaMUD's stash point
+   * (`StepFlag.StashPoint`). Each lap, before leaving this room, the walk
+   * stashes the items marked to sell (or stash) and the coins `Cash.StashCoin`
+   * names (`stashItems`, `script/cash.ts`).
+   */
+  stash?: boolean;
 }
 
 /**
@@ -384,7 +393,8 @@ export function sameLoops(a: readonly Loop[], b: readonly Loop[]): boolean {
         stop.room === twin.room &&
         (stop.linger ?? 0) === (twin.linger ?? 0) &&
         (stop.every ?? 0) === (twin.every ?? 0) &&
-        (stop.commands ?? []).join('\n') === (twin.commands ?? []).join('\n')
+        (stop.commands ?? []).join('\n') === (twin.commands ?? []).join('\n') &&
+        (stop.stash === true) === (twin.stash === true)
       );
     });
   });
@@ -422,7 +432,8 @@ function asStops(value: unknown, limit?: number): LoopStop[] {
       ...(typeof every === 'number' && Number.isFinite(every) && every > 0
         ? { every: Math.round(every) }
         : {}),
-      ...stopCommands(record['commands'])
+      ...stopCommands(record['commands']),
+      ...(record['stash'] === true ? { stash: true } : {})
     });
   }
   return stops;

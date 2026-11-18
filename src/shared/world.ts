@@ -2774,6 +2774,32 @@ export interface RouteStep {
   pull?: RoutePull;
 }
 
+/**
+ * The first step of a way that a room's script lets through only while an
+ * item lies in the room, and the items it wants (2026-11-17).
+ *
+ * The realm writes the guard `roomitem <item>` (`roomitem flaming portal` at
+ * 2/8602), and nothing a character carries or is satisfies it: the portal is
+ * dropped by the Greater Glabrezu the room summons and is there only once it
+ * is dead. So a loop's stop behind one can be reached only some of the time,
+ * and the engine visits it as a side trip from this step's room when the
+ * items are there (`MegaEngine.loopPath`). Null for a way with no such guard,
+ * and for one whose item the realm build could not name (`roomitem 3389`):
+ * nobody can see a number lying in a room.
+ */
+export function itemGate(
+  steps: readonly RouteStep[]
+): { at: number; room: RoomId; items: string[] } | null {
+  for (const [at, step] of steps.entries()) {
+    const items = (step.requirement?.unread ?? []).flatMap((guard) => {
+      const item = /^roomitem\s+(.+)$/i.exec(guard.trim())?.[1]?.trim();
+      return item === undefined || item === '' || /^\d+$/.test(item) ? [] : [item];
+    });
+    if (items.length > 0) return { at, room: step.from, items };
+  }
+  return null;
+}
+
 /** What `RouteStep.pull` says, and the door it is said for. */
 export interface RoutePull {
   /** One phrase per lever, the realm's own spelling. */
@@ -3766,6 +3792,12 @@ export interface LoopDraftLeg {
 export interface LoopDraftWaypoint {
   id: RoomId;
   name: string;
+  /**
+   * The item gate this stop lies behind (2026-11-17): the room the gate is
+   * in, and what must lie there. The loop goes to it only on the laps it
+   * does (`lapWithTrips`). Absent for a stop walked every lap.
+   */
+  gate?: { room: RoomId; roomName: string; items: string[] };
 }
 
 /** Nothing picked yet. A constant, so an empty draft is one value everywhere. */

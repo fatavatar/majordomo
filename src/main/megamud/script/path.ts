@@ -456,9 +456,10 @@ export function walkPath(s: Session): number {
   if ((path.steps?.length ?? 0) <= path.step) seekStep(path);
   const st = path.steps?.[path.step];
   if (!st) return 0;
-  // Ours: a command queued for the room ahead goes first (`SessionHost.beforeStep`).
+  // Ours: a command queued for the room ahead goes first (`SessionHost.beforeStep`),
+  // and a walk the host turned elsewhere goes there instead.
   if (s.host.beforeStep !== undefined) {
-    s.host.beforeStep();
+    if (s.host.beforeStep()) return 2;
     if (pendingHeld(s) !== 0) return 0;
   }
   return walkStep(s, st);

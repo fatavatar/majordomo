@@ -98,12 +98,55 @@
   color: var(--danger);
 }
 
+/*
+ * The stop's number and name as one control (2026-11-17): clicked, the row
+ * offers to take the stop out or add after it. Drawn as the text it was, the
+ * row's tint saying which is open.
+ */
+.builder-stop {
+  align-items: center;
+  background: none;
+  border: 0;
+  color: inherit;
+  cursor: pointer;
+  display: flex;
+  flex: 1 1 auto;
+  font: inherit;
+  gap: 8px;
+  min-width: 0;
+  padding: 0;
+  text-align: left;
+}
+
+.builder-waypoint[data-selected='true'] {
+  background: color-mix(in srgb, var(--accent) var(--tone), transparent);
+  border-radius: var(--r-control);
+}
+
 .builder-waypoint .step-name {
   flex: 1 1 auto;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* A stop walked only while an item lies in the room before it (2026-11-17). */
+.builder-gate {
+  color: var(--pending);
+  font-size: var(--font-micro);
+  padding: 0 0 2px 26px;
+}
+
+/* Stops being added after one: what the map's clicks now do, and the way out. */
+.builder-inserting {
+  align-items: center;
+  color: var(--text-lo);
+  display: flex;
+  flex: 0 0 auto;
+  font-size: var(--font-micro);
+  gap: 6px;
+  justify-content: space-between;
 }
 
 /* The commands typed at a waypoint (2026-10-23), under its name, in the console's face. */

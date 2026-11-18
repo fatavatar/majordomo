@@ -5,6 +5,7 @@ import {
   asRoute,
   describeBlock,
   hazardFor,
+  itemGate,
   type SpellHazard,
   newDemands,
   forcibleBy,
@@ -524,5 +525,31 @@ describe('a hazard as it applies to one character', () => {
     const summonsHigh: SpellHazard = { summons: true, levels: { summons: { min: 50 } } };
     expect(hazardFor(summonsHigh, 21).summons).toBe(false);
     expect(hazardFor(summonsHigh, 50).summons).toBe(true);
+  });
+});
+
+/* A room script that works only while an item lies in its room (2026-11-17). */
+describe('itemGate', () => {
+  const walk = (unread?: string[]): RouteStep =>
+    ({
+      from: '2/8602',
+      to: '16/5066',
+      direction: 'portal',
+      command: 'enter flaming portal',
+      name: 'Flame Pit',
+      requirement: unread === undefined ? null : ({ kind: 'text', raw: '', unread } as Requirement),
+      dark: false
+    }) as RouteStep;
+
+  it('finds the first step that wants an item lying in its room, and the room', () => {
+    const plain = { ...walk(), from: '2/8600', to: '2/8602', direction: 'ne' } as RouteStep;
+    expect(
+      itemGate([plain, walk(['nomonsters', 'roomitem flaming portal', 'summon 2003'])])
+    ).toEqual({ at: 1, room: '2/8602', items: ['flaming portal'] });
+  });
+
+  it('is nothing for a way with no such guard, or one whose item has no name', () => {
+    expect(itemGate([walk(), walk(['nomonsters'])])).toBeNull();
+    expect(itemGate([walk(['roomitem 3389'])])).toBeNull();
   });
 });

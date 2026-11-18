@@ -47,7 +47,7 @@ import {
 } from '../megamud/move/buttons';
 import { blessCommand } from '../megamud/player/cast';
 import { clearDetours, goTo, headFor, startWalking } from '../megamud/move/destinations';
-import { clearPath, copyPath, freeSteps, stepsShown } from '../megamud/move/path';
+import { atStep, clearPath, copyPath, freeSteps, seekStep, stepsShown } from '../megamud/move/path';
 import { depositAll } from '../megamud/items/all';
 import { connected, connectFailed, connectionClosed } from '../megamud/script/game';
 import { reEngage } from '../megamud/script/modes';
@@ -121,6 +121,7 @@ import {
   type WorldRoom
 } from '../../shared/world';
 import type { WorldGraph } from '../world/WorldGraph';
+import { lapWithTrips } from '../world/sideTrips';
 import { State } from '../megamud/states';
 import {
   EntityType,
@@ -217,12 +218,17 @@ export interface MegaEngineHost {
     walking: PlanFor,
     avoid?: readonly RoomId[]
   ): Promise<Route> | string;
-  /** A loop's stops as rooms, with the commands typed at each and the rooms it avoids, or why not. */
+  /**
+   * A loop's stops as rooms, with the commands typed at each, which of them
+   * are stash points (`LoopStop.stash`; none where absent) and the rooms it
+   * avoids, or why not.
+   */
   loopRooms(name: string):
     | {
         rooms: RoomId[];
         bounce: boolean;
         commands: (readonly string[])[];
+        stash?: readonly boolean[];
         avoid: RoomId[];
       }
     | string;
@@ -297,6 +303,41 @@ interface MadeLoop {
    * (2026-10-23).
    */
   drawn: string;
+  /** The stops it visits only while an item lies in a room on the way (`SideTrip`). */
+  trips: SideTrip[];
+}
+
+/**
+ * Ours (2026-11-17): stops of a loop behind a room script that works only
+ * while an item lies in its room (`itemGate`) — the portal at 2/8602 the
+ * Greater Glabrezu drops, the way to the Flame Pit. The path walked every lap
+ * leaves them out and passes the gate's room (`at`); leaving it with the
+ * items there, the walk goes to them as MegaMUD's own detours and is back on
+ * the loop at `rejoin`, the first stop after them it can reach without the
+ * gate. Not there, the loop walks on as though they were not in it.
+ */
+interface SideTrip {
+  /** The gate's room, a room of the lap. */
+  at: RoomId;
+  /** The step of the lap that leaves it, where the items are looked for. */
+  step: number;
+  /** The items the gate wants lying in the room, as the realm names them. */
+  items: string[];
+  /** Each leg of the trip, planned as a lap's, and what is done at its stop before it sets out. */
+  legs: ({ from: RoomId; to: RoomId; route: Route } & StopActs)[];
+  /** The stop of the lap it ends at, and the step of the lap that leaves it. */
+  rejoin: RoomId;
+  rejoinStep: number;
+}
+
+/**
+ * What is done at a loop's stop before the walk leaves it: the commands typed
+ * there (`LoopStop.commands`), and whether it is a stash point
+ * (`LoopStop.stash`).
+ */
+interface StopActs {
+  say: readonly string[];
+  stash: boolean;
 }
 
 /** A path the engine made from one of our routes or loops, with the room each step is taken from. */
@@ -569,6 +610,18 @@ export class MegaEngine {
    * for this one rather than the nearest of them (2026-10-16).
    */
   private goingTo: { sig: number; room: RoomId } | null = null;
+  /** The planner's answers still to come (`plan`), for an export to wait on. */
+  private readonly asking = new Set<Promise<void>>();
+  /**
+   * Ours (2026-11-17): the loop's side trip being walked (`takeTrip`) — its
+   * legs as planned, each with its destination's signature, which is what
+   * MegaMUD's detours name — and the step of the loop it comes back to.
+   */
+  private trip: {
+    legs: (SideTrip['legs'][number] & { sig: number })[];
+    rejoin: RoomId;
+    rejoinStep: number;
+  } | null = null;
   /**
    * Stand-in signatures for rooms walked to whose own the realm data cannot
    * work out (an exit of a kind it cannot say how the game lists) and that
@@ -1767,6 +1820,7 @@ export class MegaEngine {
     if (typeof p === 'string') return p;
     const s = this.s;
     clearDetours(s);
+    this.trip = null;
     freeSteps(s.loopPath);
     copyPath(s, s.loopPath, p, 0);
     if (goTo(s, 0, p) === 0) return `Could not head for the loop "${name}".`;
@@ -1838,13 +1892,22 @@ export class MegaEngine {
     this.act(() => depositAll(this.s));
   }
 
-  /** The room the path's next step goes into, for the host to queue what it wants first. */
-  private beforeStep(): void {
-    if (this.host.beforeStep === undefined) return;
+  /**
+   * The room the path's next step goes into, for the host to queue what it
+   * wants first; and a loop's side trip taken, or come back from (ours,
+   * 2026-11-17), which turns the walk and is true.
+   */
+  private beforeStep(): boolean {
     const made = this.madeFor(this.s.path);
-    if (made === undefined) return;
+    if (made === undefined) return false;
+    if (this.backFromTrip(made) || this.takeTrip(made)) {
+      wake(this.s);
+      return true;
+    }
+    if (this.host.beforeStep === undefined) return false;
     const to = made.rooms[this.s.path.at + 1] ?? made.end;
     if (to !== null) this.host.beforeStep(to);
+    return false;
   }
 
   /**
@@ -1874,6 +1937,7 @@ export class MegaEngine {
       s.looping = 0;
     }
     clearDetours(s);
+    this.trip = null;
     this.goingTo = { sig, room };
     goTo(s, sig, null);
     headFor(s, 1);
@@ -2280,8 +2344,11 @@ export class MegaEngine {
   }
 
   /**
-   * `legs` walked one after another as one path; `said[i]`, where given, the
-   * commands typed in its room before leg `i` sets out (a loop's stop's own).
+   * `legs` walked one after another as one path; `said[i]`, where given, what
+   * is done in its room before leg `i` sets out (a loop's stop's own): the
+   * commands typed there, and, at a stash point, the first step out of it
+   * flagged as MegaMUD's (`StepFlag.StashPoint`), so the loot is stashed
+   * before it is taken (`takeStep`).
    */
   private makePath(
     name: string,
@@ -2289,7 +2356,7 @@ export class MegaEngine {
     legs: Route[],
     start: number,
     end: number,
-    said: readonly ({ at: RoomId; say: readonly string[] } | null)[] = []
+    said: readonly (({ at: RoomId } & StopActs) | null)[] = []
   ): PathRec {
     const p = newPath();
     p.name = name;
@@ -2299,6 +2366,7 @@ export class MegaEngine {
     const walked: (RouteStep | null)[] = [];
     const steps: PathStep[] = [];
     for (const [i, leg] of legs.entries()) {
+      const leaves = steps.length;
       /*
        * Ours (2026-10-23): a stop's commands (`LoopStop.commands`, `touch
        * hammer` where the frost giant is summoned), as path steps that do not
@@ -2345,6 +2413,8 @@ export class MegaEngine {
         if (st.requirement?.kind === 'trap') step.flags |= StepFlag.DisarmTrap;
         steps.push(step);
       }
+      if (said[i]?.stash === true && steps[leaves] !== undefined)
+        steps[leaves]!.flags |= StepFlag.StashPoint;
     }
     p.steps = steps;
     p.count = steps.length;
@@ -2414,6 +2484,14 @@ export class MegaEngine {
     let unlocks: { needs: Route['needs']; room: RoomId } | null = null;
     /** Why the first way refused was refused, the planner's own sentence. */
     let why: string | null = null;
+    // Ours (2026-11-17): a side trip's leg, the one planned with the lap (`takeTrip`).
+    const tripLeg = this.trip?.legs.find((leg) => leg.from === here && leg.sig === to);
+    if (tripLeg !== undefined) {
+      const said = [{ at: here, say: tripLeg.say, stash: tripLeg.stash }];
+      const p = this.makePath(this.routeName(), 'route', [tripLeg.route], from, to, said);
+      if (p.steps!.length > 0) p.steps![0]!.room = from;
+      return { flags: 0, path: p, steps: p.count };
+    }
     for (const room of rooms) {
       if (room === here)
         return { flags: 0, path: this.makePath(this.routeName(), 'route', [], from, to), steps: 0 };
@@ -2471,7 +2549,7 @@ export class MegaEngine {
     const asked = this.host.plan(from, to, walking, avoid);
     if (typeof asked === 'string') return asked;
     this.plans.set(key, 'pending');
-    asked
+    const answered = asked
       .catch((error: unknown): Route => ({
         steps: [],
         cost: 0,
@@ -2479,9 +2557,11 @@ export class MegaEngine {
         reason: error instanceof Error ? error.message : String(error)
       }))
       .then((route) => {
+        this.asking.delete(answered);
         this.plans.set(key, { route, at: Date.now() });
         this.safely(() => this.planArrived());
       });
+    this.asking.add(answered);
     return 'pending';
   }
 
@@ -2511,15 +2591,34 @@ export class MegaEngine {
     const drawn = JSON.stringify(stops);
     const known = this.made.get(shortName('L', name).toLowerCase());
     if (known?.loop?.drawn === drawn) return known.path;
-    const rooms = bounced(stops.rooms, stops.bounce);
-    const commands = bounced(stops.commands, stops.bounce);
-    if (rooms.length < 2) return `The loop "${name}" has fewer than two stops.`;
+    const listedRooms = bounced(stops.rooms, stops.bounce);
+    if (listedRooms.length < 2) return `The loop "${name}" has fewer than two stops.`;
+    // Every leg asked for at once, so the planner's thread works on them together.
+    const asked = listedRooms.map((from, i) => {
+      const to = listedRooms[(i + 1) % listedRooms.length]!;
+      return from === to ? null : this.plan(from, to, 'lap', stops.avoid);
+    });
+    if (asked.includes('pending')) return 'pending';
+    const acts = stops.rooms.map((_, i): StopActs => ({
+      say: stops.commands[i] ?? [],
+      stash: stops.stash?.[i] === true
+    }));
+    // Ours (2026-11-17): the stops behind an item gate taken out, as side trips.
+    const lap = this.sideTrips(
+      listedRooms,
+      bounced(acts, stops.bounce),
+      stops.avoid,
+      stops.rooms.length
+    );
+    if (typeof lap === 'string') return lap;
+    const { rooms } = lap;
     const start = this.signatureOf(rooms[0]!) ?? this.standInFor(rooms[0]!);
     const legs: Route[] = [];
-    const said: ({ at: RoomId; say: readonly string[] } | null)[] = [];
+    const said: (({ at: RoomId } & StopActs) | null)[] = [];
     const begins: number[] = [];
     let steps = 0;
-    // Every leg asked for at once, so the planner's thread works on them together.
+    // A stash point listed twice in a row has no leg of its own: the next leg out of it carries it.
+    let stashCarried = false;
     const planned = rooms.map((from, i) => {
       const to = rooms[(i + 1) % rooms.length]!;
       return from === to ? null : this.plan(from, to, 'lap', stops.avoid);
@@ -2529,7 +2628,8 @@ export class MegaEngine {
       begins.push(steps);
       const from = rooms[i]!;
       const to = rooms[(i + 1) % rooms.length]!;
-      const say = commands[i] ?? [];
+      const say = lap.acts[i]?.say ?? [];
+      const stash: boolean = lap.acts[i]?.stash === true || stashCarried;
       if (plan === 'pending') continue;
       if (typeof plan === 'string') return plan;
       if (plan !== null && plan.blocked) {
@@ -2538,25 +2638,178 @@ export class MegaEngine {
         return plan.reason ?? `No way from ${from} to ${to}.`;
       }
       // A stop listed twice in a row: no leg, but its commands are still typed.
-      if (plan === null && say.length === 0) continue;
+      if (plan === null && say.length === 0) {
+        stashCarried = stash;
+        continue;
+      }
+      stashCarried = false;
       const leg = plan ?? { steps: [], cost: 0, blocked: false };
       legs.push(leg);
-      said.push(say.length > 0 ? { at: from, say } : null);
+      said.push(say.length > 0 || stash ? { at: from, say, stash } : null);
       steps += say.length + pathLength(leg);
     }
     const p = this.makePath(shortName('L', name), name, legs, start, start, said);
+    // A trip is looked for where the lap leaves its gate's room, after what is typed there.
+    const leaves = (at: number): number => (begins[at] ?? 0) + (lap.acts[at]?.say.length ?? 0);
     this.madeFor(p)!.loop = {
       name,
       stops: rooms,
-      listed: stops.rooms.length,
+      listed: lap.listed,
       bounce: stops.bounce,
       begins,
       avoid: stops.avoid,
-      drawn
+      drawn,
+      trips: lap.trips.map(({ atIndex, rejoinIndex, ...trip }) => ({
+        ...trip,
+        step: leaves(atIndex),
+        rejoinStep: begins[rejoinIndex] ?? 0
+      }))
     };
     // The path made before an edit gives way to this one.
     this.s.paths = [...this.s.paths.filter((other) => other.name !== p.name), p];
     return p;
+  }
+
+  /**
+   * Ours (2026-11-17): a loop's stops as the lap walks them, with the ones
+   * behind an item gate taken out as side trips (`lapWithTrips`, `SideTrip`),
+   * each trip's legs planned as a lap's so it walks what the loop would have.
+   * `listedIn` is how many of `rooms` the loop itself lists, the rest a
+   * bounce loop's way back; `listed` is how many of the lap's are those.
+   */
+  private sideTrips(
+    rooms: readonly RoomId[],
+    acts: readonly StopActs[],
+    avoid: readonly RoomId[],
+    listedIn: number
+  ):
+    | {
+        rooms: RoomId[];
+        acts: StopActs[];
+        listed: number;
+        trips: (Omit<SideTrip, 'step' | 'rejoinStep'> & { atIndex: number; rejoinIndex: number })[];
+      }
+    | string
+    | 'pending' {
+    const plan = lapWithTrips(rooms, (from, to) => this.plan(from, to, 'lap', avoid));
+    if (plan === 'pending') return plan;
+    const { lap } = plan;
+    // A gate's room put in is walked through, nothing done there.
+    const none: StopActs = { say: [], stash: false };
+    const said = lap.map(({ stop }) => (stop === null ? none : (acts[stop] ?? none)));
+    const back = lap.findIndex(({ stop }) => stop !== null && stop >= listedIn);
+    const trips: (Omit<SideTrip, 'step' | 'rejoinStep'> & {
+      atIndex: number;
+      rejoinIndex: number;
+    })[] = [];
+    for (const trip of plan.trips) {
+      const at = lap[trip.at]!.room;
+      const rejoin = rooms[trip.rejoin] ?? rooms[0]!;
+      const through = [at, ...trip.stops.map((stop) => rooms[stop]!), rejoin];
+      const legs: SideTrip['legs'] = [];
+      for (let k = 0; k + 1 < through.length; k += 1) {
+        const from = through[k]!;
+        const to = through[k + 1]!;
+        if (from === to) continue;
+        const route = this.plan(from, to, 'lap', avoid);
+        if (typeof route === 'string') return route;
+        if (route.blocked) return route.reason ?? `No way from ${from} to ${to}.`;
+        /*
+         * What is done at a stop is done before the leg out of it. The gate's
+         * room typed its commands on the lap before the trip turned the walk,
+         * but the trip is taken in place of the lap's step out of it, the one
+         * that would have stashed there.
+         */
+        const stop = k === 0 ? lap[trip.at]!.stop : trip.stops[k - 1];
+        const done = stop === undefined || stop === null ? none : (acts[stop] ?? none);
+        legs.push({ from, to, route, say: k === 0 ? [] : done.say, stash: done.stash });
+      }
+      const rejoinIndex = lap.findIndex(({ stop }) => stop === trip.rejoin);
+      trips.push({
+        at,
+        atIndex: trip.at,
+        items: trip.items,
+        legs,
+        rejoin,
+        rejoinIndex: rejoinIndex === -1 ? 0 : rejoinIndex
+      });
+    }
+    return {
+      rooms: lap.map(({ room }) => room),
+      acts: said,
+      listed: back === -1 ? lap.length : back,
+      trips
+    };
+  }
+
+  /**
+   * Ours (2026-11-17): the side trip out of this step of the loop, taken when
+   * the items its gate wants lie in the room: its stops and the stop it comes
+   * back to, as MegaMUD's own detours (`goTo`, the last asked the first
+   * walked), each leg the one planned with the lap (`route`). True when the
+   * walk was turned onto it, and this step is not taken.
+   */
+  private takeTrip(made: MadePath): boolean {
+    const s = this.s;
+    const trip = made.loop?.trips.find((each) => each.step === s.path.at);
+    if (trip === undefined || s.looping === 0) return false;
+    const here = s.room.filter((entity) => entity.type === EntityType.Item);
+    const lying = (item: string): boolean =>
+      here.some((entity) => stricmp(entity.name, item) === 0);
+    if (!trip.items.every(lying)) {
+      if (s.debug !== 0) s.host.trace(`{trip:not ${trip.items.join(', ')}}`);
+      return false;
+    }
+    const legs = trip.legs.map((leg) => ({
+      ...leg,
+      sig: this.signatureOf(leg.to) ?? this.standInFor(leg.to)
+    }));
+    // MegaMUD holds ten destinations, and one room once.
+    if (
+      legs.length === 0 ||
+      legs.length > 9 ||
+      new Set(legs.map((leg) => leg.sig)).size < legs.length
+    )
+      return false;
+    /*
+     * The loop's own destination, its start, gives way: looping, it is the
+     * only one, and left under the trip it would be walked to from the stop
+     * the trip ends at. Without it the last arrival takes the loop up again
+     * (`resumeLoop`), as after any detour, and `backFromTrip` puts it there.
+     */
+    clearDetours(s);
+    for (const leg of [...legs].reverse()) goTo(s, leg.sig, null);
+    // Headed off from a room MegaMUD knows, as one the walk has learned always is.
+    this.know(trip.at, s.roomSignature);
+    this.trip = { legs, rejoinStep: trip.rejoinStep, rejoin: trip.rejoin };
+    const to = this.roomName(legs[0]!.to) ?? legs[0]!.to;
+    s.detours[0]!.why = `to ${to}`;
+    s.host.show(`[${trip.items.join(', ')} here: detouring to ${to}]`);
+    headFor(s, 0);
+    return true;
+  }
+
+  /**
+   * Ours (2026-11-17): a side trip back on the loop at its stop, as MegaMUD
+   * takes a loop up after a detour (`resumeLoop`) — from its first step, which
+   * is not where the trip ended. The walk is put on the step that leaves the
+   * stop it is standing in. True when it was.
+   */
+  private backFromTrip(made: MadePath): boolean {
+    const trip = this.trip;
+    if (trip === null) return false;
+    const s = this.s;
+    const path = s.path;
+    if (s.looping === 0 || made.loop === null) return false;
+    this.trip = null;
+    // A trip that ends at the loop's start ended a lap, which `resumeLoop`
+    // counts only from a walk that was looping.
+    if (trip.rejoinStep === 0 && path.at === 0) s.laps += 1;
+    if (path.at !== 0 || trip.rejoinStep === 0 || !atStep(s, path, trip.rejoinStep)) return false;
+    path.at = trip.rejoinStep;
+    seekStep(path);
+    if (s.debug !== 0) s.host.trace(`{trip:back ${trip.rejoin}}`);
+    return true;
   }
 
   /**
@@ -2569,7 +2822,8 @@ export class MegaEngine {
    *
    * A leg the planner refuses is said, never fetched for: an export is not
    * a walk. Nor is a start no signature can be worked out for, which MegaMUD
-   * could never find itself in.
+   * could never find itself in. A side trip (`SideTrip`) is left out, its
+   * gate's room walked past: a MegaMUD path cannot look for an item first.
    */
   async exportLoop(name: string): Promise<{ file: string; text: string } | string> {
     const stops = this.host.loopRooms(name);
@@ -2593,7 +2847,12 @@ export class MegaEngine {
       if (route.blocked) return route.reason ?? `No way from ${from} to ${to}.`;
       this.plans.set(planKey('lap', from, to, stops.avoid), { route, at: Date.now() });
     }
-    const p = this.loopPath(name);
+    // And the ways out of a side trip's gate room, which the stops alone do not name.
+    let p = this.loopPath(name);
+    for (let tries = 0; p === 'pending' && tries < 8; tries += 1) {
+      await Promise.all([...this.asking]);
+      p = this.loopPath(name);
+    }
     if (typeof p === 'string')
       return p === 'pending' ? `The loop "${name}" is still being planned.` : p;
     const room = this.worldRoom(rooms[0]!);

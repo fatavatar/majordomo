@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   commandsOf,
   commandsText,
+  editableStops,
   editedLoop,
   keptRooms,
   loopFor,
@@ -10,7 +11,10 @@ import {
   pickRoom,
   shapeOf,
   suggestedName,
-  withCommands
+  withCommands,
+  withoutStop,
+  withStash,
+  withStopsAfter
 } from '../builder';
 import type { LoopDraft, RouteStep } from '@shared/world';
 
@@ -224,6 +228,15 @@ describe('commands at a waypoint (2026-10-23)', () => {
     });
   });
 
+  /* A stash point (2026-11-18): kept as commands are, and the room with it. */
+  it('marks a stash point, keeps its room a stop, and lets it go when unmarked', () => {
+    const one = withStash({ '1/3': { commands: ['look'] } }, '1/3', true);
+    expect(one).toEqual({ '1/3': { commands: ['look'], stash: true } });
+    expect(keptRooms(withStash({}, '1/4', true))).toEqual(['1/4']);
+    expect(withStash(one, '1/3', false)).toEqual({ '1/3': { commands: ['look'] } });
+    expect(withStash(withStash({}, '1/4', true), '1/4', false)).toEqual({});
+  });
+
   it('saves what a room carries on its stop', () => {
     const draft = draftOf(
       [
@@ -259,5 +272,69 @@ describe('commands at a waypoint (2026-10-23)', () => {
       ['1/1', '1/2']
     );
     expect(there).toEqual({ picks: ['1/1', '1/2'], extras: { '1/1': { every: 30 } } });
+  });
+});
+
+/* A stop clicked in the list: taken out, or stops added after it (2026-11-17). */
+describe('editing the stops in the list', () => {
+  const ring = ['1/1', '1/2', '1/3', '1/1'];
+
+  it('edits the rows of the plan the picks were planned into', () => {
+    const draft = draftOf(
+      [
+        ['1/1', 'A'],
+        ['1/5', 'E'],
+        ['1/3', 'C']
+      ],
+      [
+        { from: '1/1', to: '1/2' },
+        { from: '1/2', to: '1/3' }
+      ]
+    );
+    expect(editableStops(draft, ['1/1', '1/2', '1/3'])).toEqual(['1/1', '1/5', '1/3']);
+    // A click since, not planned yet: the rows are the old plan's.
+    expect(editableStops(draft, ['1/1', '1/2', '1/3', '1/4'])).toBeNull();
+    expect(editableStops(draft, ['1/1', '1/9', '1/3'])).toBeNull();
+  });
+
+  it('keeps the picks a blocked plan never reached, after its rows', () => {
+    const draft = draftOf(
+      [
+        ['1/1', 'A'],
+        ['1/2', 'B']
+      ],
+      [
+        { from: '1/1', to: '1/2' },
+        { from: '1/2', to: '1/3', blocked: true }
+      ]
+    );
+    expect(editableStops(draft, ['1/1', '1/2', '1/3', '1/4'])).toEqual([
+      '1/1',
+      '1/2',
+      '1/3',
+      '1/4'
+    ]);
+  });
+
+  it('takes a stop out, the rooms either side joined', () => {
+    expect(withoutStop(['1/1', '1/2', '1/3'], 1)).toEqual(['1/1', '1/3']);
+    expect(withoutStop(ring, 2)).toEqual(['1/1', '1/2', '1/1']);
+    expect(withoutStop(['1/1', '1/2', '1/1', '1/3'], 1)).toEqual(['1/1', '1/3']);
+    expect(withoutStop(['1/1'], 0)).toEqual([]);
+    expect(withoutStop(['1/1', '1/2'], 5)).toBeNull();
+  });
+
+  it('closes a ring on the stop after a start taken out', () => {
+    expect(withoutStop(ring, 0)).toEqual(['1/2', '1/3', '1/2']);
+    expect(withoutStop(ring, 3)).toEqual(['1/2', '1/3', '1/2']);
+    expect(withoutStop(['1/1', '1/2', '1/1'], 0)).toEqual(['1/2']);
+  });
+
+  it('adds stops after one, a ring still closing on its start', () => {
+    expect(withStopsAfter(['1/1', '1/2', '1/3'], 0, ['1/7'])).toEqual(['1/1', '1/7', '1/2', '1/3']);
+    expect(withStopsAfter(ring, 3, ['1/7'])).toEqual(['1/1', '1/2', '1/3', '1/7', '1/1']);
+    // The portal's room and where it lands, from a teleport: the room already there once.
+    expect(withStopsAfter(['1/1', '1/2'], 0, ['1/1', '1/9'])).toEqual(['1/1', '1/9', '1/2']);
+    expect(withStopsAfter(['1/1', '1/2'], 0, ['1/2'])).toBeNull();
   });
 });

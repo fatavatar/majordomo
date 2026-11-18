@@ -921,6 +921,10 @@ automation:
   # written by hand does; the Hunting card puts one on each stop of the loops
   # it builds, from the realm's own regeneration times.
   #
+  # `stash: true` makes a stop MegaMUD's stash point: each lap, before leaving
+  # it, the walk stashes the items marked to sell (or stash) and the coins the
+  # Cash tab names. The loop builder sets it on a stop.
+  #
   # One file looks like this, and its name inside it is what the palette shows:
   #
   #   name: Newhaven arena
@@ -928,6 +932,7 @@ automation:
   #     - 'Newhaven, Arena 1/2150'
   #     - { room: 'Dungeon, Entrance 1/2152', linger: 20 }
   #     - { room: 'Dungeon, Deep Cell 1/2160', every: 120 }
+  #     - { room: 'Dungeon, Guard Room 1/2155', stash: true }
   #
   # 420 of MegaMUD's own are shipped in resources/loops/megamud.yaml, and the
   # settings screen offers them at each of the three scopes -- that is the easy
