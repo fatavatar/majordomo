@@ -1682,7 +1682,12 @@ describe('a shared loop file', () => {
     const loop = {
       name: 'Sewer circuit',
       bounce: true,
-      stops: [{ room: 'Sewer Tunnel 1/606' }, { room: 'Sewer Junction 1/610', linger: 30 }],
+      stops: [
+        { room: 'Sewer Tunnel 1/606' },
+        { room: 'Sewer Junction 1/610', linger: 30 },
+        // A stash point (2026-11-18), written and read back.
+        { room: 'Sewer Ledge 1/612', stash: true }
+      ],
       // The rooms it never enters, read back as they were written.
       avoid: ['Sewer Lair 1/608']
     };

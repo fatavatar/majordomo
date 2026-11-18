@@ -2853,6 +2853,25 @@ cards:
     editing: 'Editing {name}. Saving replaces it.'
     editingDetach: Save as a new loop instead
     cannotEdit: 'The loop cannot be opened in the builder: {reason}'
+    # A stop clicked in the list, taken out or added after (2026-11-17).
+    stopAria: 'Stop {index}, {roomName}: show what can be done with it'
+    deleteStop: Take this stop out of the way
+    insertAfter: Add stops after this one
+    inserting: 'Click rooms on the map to add them after {roomName}.'
+    insertingDone: Done adding
+    stillPlanning: Still planning the way. Click again in a moment.
+    # A stop made MegaMUD's stash point (2026-11-18).
+    stashAria: 'Stash loot at {roomName}'
+    stashChip: Stash
+    stashTitle:
+      Stash point. Each lap, before leaving this room, the walk stashes the items marked to sell (or
+      stash) and the coins the Cash tab names.
+    # A stop behind a room script that wants an item lying in the room (2026-11-17).
+    gated: 'Only when {items} lies in {roomName}; walked past otherwise.'
+    gatedTitle:
+      The way in is a room script that works only while this lies in the room, as a portal a boss
+      drops does. The loop looks for it each time it leaves {roomName}, goes through when it is
+      there, and walks on to the next stop when it is not.
   # Where the character is going, in the two ways it can be going anywhere: a
   # route somebody chose and walks once, or a loop walked round and round. One
   # card and one face, named for whichever is happening — routing, looping or

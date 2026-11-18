@@ -25,7 +25,8 @@ import type { LoopProgress } from '../../../shared/loops';
 import { State } from '../../megamud/states';
 import { readMegaMudLoop } from '../../../shared/megamudPaths';
 import { headFor } from '../../megamud/move/destinations';
-import { Darkness, ItemFlag, MessageFlag, SpellFlag } from '../../megamud/flags';
+import { copyPath, freeSteps, seekStep } from '../../megamud/move/path';
+import { Darkness, EntityType, ItemFlag, MessageFlag, SpellFlag } from '../../megamud/flags';
 import { messageRec } from '../../megamud/fromWorld';
 import type { MessageTrigger } from '../../../shared/messageTriggers';
 
@@ -118,7 +119,15 @@ function engine(here: string | null = '1/1', ways: Record<string, Route> = {}) {
               commands: [[], ['touch hammer', 'look']],
               avoid: []
             }
-          : 'no such loop'
+          : name === 'Stash'
+            ? {
+                rooms: ['1/2', '1/3'],
+                bounce: false,
+                commands: [[], ['touch hammer']],
+                stash: [true, true],
+                avoid: []
+              }
+            : 'no such loop'
   };
   const e = new MegaEngine(host, {
     settings: defaultSettings(),
@@ -289,6 +298,23 @@ describe('the engine in a session', () => {
       `${hex(worldSignature(SQUARE)!)}:0000:e`,
       `${shop}:0000:touch hammer`,
       `${shop}:0000:look`,
+      `${shop}:0000:w`,
+      `${hex(worldSignature(SQUARE)!)}:0000:n`
+    ]);
+    e.dispose();
+  });
+
+  /* A stash point (2026-11-18): MegaMUD's flag on the first step out of the stop. */
+  it('flags the first step out of a stash point, before what is typed there', async () => {
+    const { e } = engine('1/1');
+    const made = await e.exportLoop('Stash');
+    const { text } = made as { file: string; text: string };
+    const hex = (n: number): string => (n >>> 0).toString(16).toUpperCase().padStart(8, '0');
+    const shop = hex(worldSignature(SHOP)!);
+    expect(text.split('\r\n').slice(3, -1)).toEqual([
+      `${hex(worldSignature(ALLEY)!)}:0010:s`,
+      `${hex(worldSignature(SQUARE)!)}:0000:e`,
+      `${shop}:0010:touch hammer`,
       `${shop}:0000:w`,
       `${hex(worldSignature(SQUARE)!)}:0000:n`
     ]);
@@ -1030,6 +1056,166 @@ describe('the engine in a session', () => {
     e.startLoop('Ring');
     await planned();
     expect(e.s.lost).toBe(1);
+    e.dispose();
+  });
+});
+
+/*
+ * Ours (2026-11-17): a stop behind a room script that wants an item lying in
+ * the room — the Flame Pit, through the portal the Greater Glabrezu drops at
+ * 2/8602. Here the shop's portal to the back room.
+ */
+describe('a loop’s stop behind an item gate', () => {
+  const portal: Route = {
+    steps: [
+      {
+        ...step(3, 4, 'go portal'),
+        direction: 'portal',
+        requirement: {
+          kind: 'text',
+          raw: 'go portal; nomonsters; roomitem flaming portal',
+          unread: ['nomonsters', 'roomitem flaming portal']
+        }
+      } as RouteStep
+    ],
+    cost: 61,
+    blocked: false
+  };
+  const back: Route = {
+    steps: [{ ...step(4, 3, 'go door'), direction: 'n' }, step(3, 1, 'w')],
+    cost: 2,
+    blocked: false
+  };
+
+  /** Alley, shop, the back room behind the portal, the square: `look` typed in the back room. */
+  function gated(stash?: boolean[]) {
+    const made = engine('1/1', { '1/3>1/4': portal, '1/4>1/1': back });
+    const host = (made.e as unknown as { host: MegaEngineHost }).host;
+    host.loopRooms = () => ({
+      rooms: ['1/2', '1/3', '1/4', '1/1'],
+      bounce: false,
+      commands: [[], [], ['look'], []],
+      ...(stash === undefined ? {} : { stash }),
+      avoid: []
+    });
+    const engineOf = made.e as unknown as {
+      beforeStep(): boolean;
+      route(
+        from: number,
+        to: number
+      ): { path: { steps: { command: string; flags: number }[] } | null };
+    };
+    return { ...made, engineOf };
+  }
+
+  /** On the loop at step `at`, standing in `room`. */
+  function onLoop(e: MegaEngine, at: number, room: WorldRoom): void {
+    freeSteps(e.s.path);
+    copyPath(e.s, e.s.path, e.s.loopPath, 1);
+    e.s.walking = 1;
+    e.s.looping = 1;
+    e.s.path.at = at;
+    seekStep(e.s.path);
+    e.s.roomSignature = worldSignature(room)!;
+  }
+
+  it('walks the lap without it, past the room its gate is in', async () => {
+    const { e } = gated();
+    const { text } = (await e.exportLoop('Trip')) as { file: string; text: string };
+    expect(
+      text
+        .split('\r\n')
+        .slice(3, -1)
+        .map((line) => line.split(':').slice(2).join(':'))
+    ).toEqual(['s', 'e', 'w', 'n']);
+    e.dispose();
+  });
+
+  it('walks on past it while the item is not in the room', async () => {
+    vi.useFakeTimers();
+    const { e, engineOf } = gated();
+    e.s.inGame = 1;
+    e.s.online = 1;
+    expect(e.startLoop('Trip')).toBeNull();
+    await planned();
+    await planned();
+    onLoop(e, 2, SHOP);
+    expect(e.s.path.steps![2]!.command).toBe('w');
+    expect(engineOf.beforeStep()).toBe(false);
+    expect(e.s.path.at).toBe(2);
+    e.dispose();
+  });
+
+  it('goes to it when the item lies there, and comes back to the loop at the stop after it', async () => {
+    vi.useFakeTimers();
+    const { e, at, shown, engineOf } = gated();
+    e.s.inGame = 1;
+    e.s.online = 1;
+    expect(e.startLoop('Trip')).toBeNull();
+    await planned();
+    await planned();
+    onLoop(e, 2, SHOP);
+    at.here = '1/3';
+    e.s.room.push(Object.assign(newEntity(), { type: EntityType.Item, name: 'Flaming Portal' }));
+    expect(engineOf.beforeStep()).toBe(true);
+    await planned();
+    // Its stop and the one it comes back to, as MegaMUD's detours.
+    expect(e.s.detours.slice(0, 3).map((d) => d.room)).toEqual([
+      e.signatureOf('1/4') ?? e.s.detours[0]!.room,
+      worldSignature(SQUARE),
+      0
+    ]);
+    expect(shown.at(-1)).toBe('[flaming portal here: detouring to Back Room]');
+    expect(e.s.path.steps!.map((st) => st.command)).toEqual(['@party go portal']);
+
+    // In the back room: its commands, then the way to the square, as the lap planned it.
+    at.here = '1/4';
+    const out = engineOf.route(e.s.detours[0]!.room, worldSignature(SQUARE)!);
+    expect(out.path!.steps.map((st) => st.command)).toEqual(['look', '@party go door', 'w']);
+
+    // Back on the loop, which MegaMUD takes up from its first step: put on the square's.
+    at.here = '1/1';
+    onLoop(e, 0, SQUARE);
+    expect(engineOf.beforeStep()).toBe(true);
+    expect(e.s.path.at).toBe(3);
+    expect(e.s.path.steps![3]!.command).toBe('n');
+    // And only the once.
+    expect(engineOf.beforeStep()).toBe(false);
+    e.dispose();
+  });
+
+  /* Stash points on the gate's room and behind it (2026-11-18). */
+  it('stashes where the trip leaves the lap, and at a stop behind the gate', async () => {
+    vi.useFakeTimers();
+    const { e, at, engineOf } = gated([false, true, true, false]);
+    e.s.inGame = 1;
+    e.s.online = 1;
+    expect(e.startLoop('Trip')).toBeNull();
+    await planned();
+    await planned();
+    // The lap's step out of the gate's room is flagged, for a lap the portal is not there.
+    expect(e.s.loopPath.steps!.map((st) => [st.command, st.flags & 0x10])).toEqual([
+      ['s', 0],
+      ['e', 0],
+      ['w', 0x10],
+      ['n', 0]
+    ]);
+    onLoop(e, 2, SHOP);
+    at.here = '1/3';
+    e.s.room.push(Object.assign(newEntity(), { type: EntityType.Item, name: 'Flaming Portal' }));
+    expect(engineOf.beforeStep()).toBe(true);
+    await planned();
+    // The trip took that step's place, so its first leg stashes instead.
+    expect(e.s.path.steps!.map((st) => [st.command, st.flags & 0x10])).toEqual([
+      ['@party go portal', 0x10]
+    ]);
+    at.here = '1/4';
+    const out = engineOf.route(e.s.detours[0]!.room, worldSignature(SQUARE)!);
+    expect(out.path!.steps.map((st) => [st.command, st.flags & 0x10])).toEqual([
+      ['look', 0x10],
+      ['@party go door', 0],
+      ['w', 0]
+    ]);
     e.dispose();
   });
 });

@@ -35,6 +35,65 @@ export function pickRoom(picks: readonly RoomId[], room: RoomId): RoomId[] | nul
 }
 
 /**
+ * The stops the list shows, as picks an edit can change (2026-11-17), or null
+ * while the plan on screen is older than the picks.
+ *
+ * The list is the plan's waypoints, not the picks, so an edit made on a row
+ * is made on them — they reproduce the way the picks drew, which is what
+ * makes them a pick list as good as the clicks. A blocked plan routed nothing
+ * past its door, and the picks it never reached follow its waypoints as they
+ * were clicked, so deleting the room behind the door is not deleting
+ * everything after it.
+ */
+export function editableStops(draft: LoopDraft, picks: readonly RoomId[]): RoomId[] | null {
+  const current = draft.legs.every((leg, at) => leg.from === picks[at] && leg.to === picks[at + 1]);
+  if (!current) return null;
+  const blocked = draft.legs.some((leg) => leg.route.blocked);
+  if (picks.length === 1) return draft.waypoints[0]?.id === picks[0] ? [...picks] : null;
+  if (!blocked && draft.legs.length !== picks.length - 1) return null;
+  const stops = draft.waypoints.map((stop) => stop.id);
+  return blocked ? [...stops, ...picks.slice(draft.legs.length)] : stops;
+}
+
+/**
+ * `stops` with the one at `index` taken out, or null for none there.
+ *
+ * Taking out a ring's start takes out its close too, and the ring closes on
+ * the stop after it instead. The same room twice in a row after the cut is
+ * one stop, because a leg from a room to itself is no steps (`pickRoom`).
+ */
+export function withoutStop(stops: readonly RoomId[], index: number): RoomId[] | null {
+  if (index < 0 || index >= stops.length) return null;
+  const ring = shapeOf(stops) === 'loop';
+  if (ring && (index === 0 || index === stops.length - 1)) {
+    const inner = stops.slice(1, -1);
+    return oneEach(inner.length > 1 ? [...inner, inner[0]!] : inner);
+  }
+  return oneEach([...stops.slice(0, index), ...stops.slice(index + 1)]);
+}
+
+/**
+ * `stops` with `rooms` put in after the one at `index`, or null where that
+ * changes nothing. After a ring's close is after its last stop: the close
+ * stays the start.
+ */
+export function withStopsAfter(
+  stops: readonly RoomId[],
+  index: number,
+  rooms: readonly RoomId[]
+): RoomId[] | null {
+  if (index < 0 || index >= stops.length) return null;
+  const at = shapeOf(stops) === 'loop' && index === stops.length - 1 ? index - 1 : index;
+  const next = oneEach([...stops.slice(0, at + 1), ...rooms, ...stops.slice(at + 1)]);
+  return next.length === stops.length && next.every((id, i) => id === stops[i]) ? null : next;
+}
+
+/** A list with no room twice in a row. */
+function oneEach(rooms: readonly RoomId[]): RoomId[] {
+  return rooms.filter((id, at) => at === 0 || rooms[at - 1] !== id);
+}
+
+/**
  * What the picks add up to.
  *
  * `loop` is a way that ends where it began — three picks at least, because
@@ -206,6 +265,16 @@ export function withCommands(extras: StopExtras, room: RoomId, text: string): St
   const commands = commandsOf(text);
   const { commands: _gone, ...rest } = extras[room] ?? {};
   const next = commands.length > 0 ? { ...rest, commands } : rest;
+  const out: Record<RoomId, Omit<LoopStop, 'room'>> = { ...extras };
+  if (Object.keys(next).length > 0) out[room] = next;
+  else delete out[room];
+  return out;
+}
+
+/** `extras` with the stop at `room` a stash point or not (`LoopStop.stash`), nothing kept for not. */
+export function withStash(extras: StopExtras, room: RoomId, stash: boolean): StopExtras {
+  const { stash: _gone, ...rest } = extras[room] ?? {};
+  const next = stash ? { ...rest, stash: true } : rest;
   const out: Record<RoomId, Omit<LoopStop, 'room'>> = { ...extras };
   if (Object.keys(next).length > 0) out[room] = next;
   else delete out[room];

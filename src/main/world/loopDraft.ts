@@ -27,10 +27,13 @@
 import { splitStop, type Loop } from '../../shared/loops';
 import {
   EMPTY_LOOP_DRAFT,
+  itemGate,
   type LoopDraft,
   type LoopDraftLeg,
+  type LoopDraftWaypoint,
   type RoomId
 } from '../../shared/world';
+import { lapWithTrips } from './sideTrips';
 import type { Traveller, WorldGraph } from './WorldGraph';
 
 /**
@@ -157,10 +160,16 @@ function extend(
   // Ours (2026-10-23): a pick with commands to type there stays a stop.
   const kept = new Set(ends.filter((at) => keep.has(path[at]!)));
   const reduction = reduceMore(graph, path, traveller, base.reduction, kept);
-  const waypoints = waypointsOf(reduction, path).map((id) => ({
-    id,
-    name: graph.byId(id)?.name ?? id
-  }));
+  const waypoints = withGates(
+    graph,
+    waypointsOf(reduction, path).map((id) => ({
+      id,
+      name: graph.byId(id)?.name ?? id
+    })),
+    legs,
+    picks.length >= 3 && picks[0] === picks[picks.length - 1],
+    traveller
+  );
   return {
     picks: [...picks],
     legs,
@@ -170,6 +179,34 @@ function extend(
     blocked,
     draft: { legs, path, waypoints }
   };
+}
+
+/**
+ * Ours (2026-11-17): the waypoints behind an item gate marked with it, read
+ * as the engine walks them (`lapWithTrips`): on the laps the item lies in
+ * the gate's room. Planned again only where a leg crosses a gate at all,
+ * which almost none does. A ring's close is its start again, not a stop.
+ */
+function withGates(
+  graph: WorldGraph,
+  waypoints: LoopDraftWaypoint[],
+  legs: readonly LoopDraftLeg[],
+  ring: boolean,
+  traveller: Traveller
+): LoopDraftWaypoint[] {
+  if (!legs.some((leg) => !leg.route.blocked && itemGate(leg.route.steps) !== null))
+    return waypoints;
+  const stops = waypoints.map((stop) => stop.id);
+  if (ring && stops.length > 1) stops.pop();
+  const plan = lapWithTrips(stops, (from, to) => graph.route(from, to, traveller));
+  if (plan === 'pending') return waypoints;
+  const out = [...waypoints];
+  for (const trip of plan.trips) {
+    const room = plan.lap[trip.at]!.room;
+    const gate = { room, roomName: graph.byId(room)?.name ?? room, items: trip.items };
+    for (const stop of trip.stops) out[stop] = { ...out[stop]!, gate };
+  }
+  return out;
 }
 
 function fresh(

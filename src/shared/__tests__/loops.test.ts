@@ -66,6 +66,21 @@ describe('reading a loop out of the options file', () => {
     ]);
   });
 
+  /* A stash point (2026-11-18): `stash: true` alone, anything else nothing. */
+  it('takes a stop’s stash point, and tells two loops apart by it', () => {
+    const [loop] = asLoops([
+      {
+        name: 'L',
+        stops: [
+          { room: 'A', stash: true },
+          { room: 'B', stash: 'yes' }
+        ]
+      }
+    ]);
+    expect(loop?.stops).toEqual([{ room: 'A', stash: true }, { room: 'B' }]);
+    expect(sameLoops([loop!], asLoops([{ name: 'L', stops: ['A', 'B'] }]))).toBe(false);
+  });
+
   it('tells two loops apart by the commands at a stop', () => {
     const one = asLoops([{ name: 'L', stops: [{ room: 'A', commands: ['touch hammer'] }, 'B'] }]);
     const two = asLoops([{ name: 'L', stops: ['A', 'B'] }]);

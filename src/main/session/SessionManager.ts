@@ -3477,6 +3477,7 @@ export class SessionManager {
               rooms,
               bounce: loop.bounce === true,
               commands: loop.stops.map((stop) => stop.commands ?? []),
+              stash: loop.stops.map((stop) => stop.stash === true),
               avoid
             };
           }

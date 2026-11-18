@@ -1667,13 +1667,17 @@ function loopNode(loop: Loop): Record<string, unknown> {
     ...(loop.bounce === true ? { bounce: true } : {}),
     ...(loop.prefer === true ? { prefer: true } : {}),
     stops: loop.stops.map((stop) =>
-      stop.linger === undefined && stop.every === undefined && stop.commands === undefined
+      stop.linger === undefined &&
+      stop.every === undefined &&
+      stop.commands === undefined &&
+      stop.stash !== true
         ? quoted(stop.room)
         : {
             room: quoted(stop.room),
             ...(stop.linger === undefined ? {} : { linger: stop.linger }),
             ...(stop.every === undefined ? {} : { every: stop.every }),
-            ...(stop.commands === undefined ? {} : { commands: stop.commands })
+            ...(stop.commands === undefined ? {} : { commands: stop.commands }),
+            ...(stop.stash === true ? { stash: true } : {})
           }
     ),
     ...(loop.avoid === undefined ? {} : { avoid: loop.avoid.map(quoted) })

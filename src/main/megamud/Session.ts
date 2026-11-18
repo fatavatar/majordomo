@@ -413,9 +413,11 @@ export interface SessionHost {
   /**
    * Ours: a path's step is about to go out. What is kept beside the engine
    * (a ward the room ahead wants) queues its command here, and a command
-   * queued holds the step as any pending command does (2026-10-14).
+   * queued holds the step as any pending command does (2026-10-14). True
+   * when the host has turned the walk elsewhere — a loop's side trip, and
+   * its way back (2026-11-17) — and the step is not taken.
    */
-  beforeStep?(): void;
+  beforeStep?(): boolean;
   /**
    * The `stat` display took every blessing as gone (`0x494e70`); MegaMUD
    * sees the ones still up again on the display's own lines, by their

@@ -56,6 +56,7 @@ import MapView from './MapView';
 import { useListNavigation } from '../hooks/useListNavigation';
 import {
   commandsText,
+  editableStops,
   keptRooms,
   loopFor,
   notableSteps,
@@ -64,6 +65,9 @@ import {
   stopParts,
   suggestedName,
   withCommands,
+  withStash,
+  withoutStop,
+  withStopsAfter,
   type StopExtras
 } from '../lib/builder';
 import { keepFocus } from '../lib/focus';
@@ -233,6 +237,19 @@ function LoopBuilderCard({
   const [typed, setTyped] = useState<Readonly<Record<RoomId, string>>>({});
   /** The saved loop being edited, which a save replaces; null for a new one. */
   const [editing, setEditing] = useState<LoopAddress | null>(null);
+  /** The row clicked in the list, which shows what can be done with that stop (2026-11-17). */
+  const [selected, setSelected] = useState<number | null>(null);
+  /**
+   * Where clicks on the map go in, while stops are being added after one:
+   * after `index` of the list's rows (`rows`), or of the picks, once a click
+   * has made them the rows' rooms (`picks`) — the plan of the new picks is
+   * not back yet when the next click comes, and the rows are the old plan.
+   */
+  const [inserting, setInserting] = useState<{
+    index: number;
+    of: 'rows' | 'picks';
+    after: RoomId;
+  } | null>(null);
   const finder = useRef<HTMLInputElement>(null);
 
   const { map: area, number } = character.room;
@@ -261,6 +278,8 @@ function LoopBuilderCard({
     setAvoid(seed.edit?.avoid);
     setTyped({});
     setEditing(seed.edit?.at ?? null);
+    setSelected(null);
+    setInserting(null);
     if (seed.edit !== undefined) {
       setPrefer(seed.edit.prefer);
       setDestination(seed.edit.at.scope);
@@ -336,10 +355,10 @@ function LoopBuilderCard({
     }
   });
 
-  /** Commits a new list of picks, moving the picture to the last of them. */
-  const commit = useCallback((next: RoomId[]): void => {
+  /** Commits a new list of picks, moving the picture to `look`, else the last of them. */
+  const commit = useCallback((next: RoomId[], look?: RoomId): void => {
     setHistory((current) => record(current, next, samePicks));
-    const last = next[next.length - 1];
+    const last = look ?? next[next.length - 1];
     if (last !== undefined) setCentre(last);
     setStatus(null);
   }, []);
@@ -355,15 +374,70 @@ function LoopBuilderCard({
     return true;
   }, [picks]);
 
+  /*
+   * Rooms clicked while stops are being added after one go in there, rather
+   * than on the end (2026-11-17), and the next click goes in after the last
+   * of them, so a stretch is added in the order it is walked.
+   */
+  const insert = useCallback(
+    (rooms: readonly RoomId[]): void => {
+      if (inserting === null) return;
+      const base = inserting.of === 'picks' ? picks : editableStops(plan, picks);
+      if (base === null) {
+        setStatus({ text: t('cards.builder.stillPlanning'), failed: false });
+        return;
+      }
+      const next = withStopsAfter(base, inserting.index, rooms);
+      if (next === null) return;
+      if (next.length > LOOP_LIMITS.stops) {
+        setStatus({
+          text: t('cards.builder.tooManyPicks', { max: LOOP_LIMITS.stops }),
+          failed: true
+        });
+        return;
+      }
+      const last = rooms[rooms.length - 1]!;
+      const index = next.indexOf(last, inserting.index + 1);
+      commit(next, last);
+      setSelected(null);
+      setInserting({ index: index === -1 ? inserting.index : index, of: 'picks', after: last });
+    },
+    [commit, inserting, picks, plan]
+  );
+
   const choose = useCallback(
     (mapNumber: number, room: number): void => {
+      if (inserting !== null) {
+        insert([roomId(mapNumber, room)]);
+        return;
+      }
       const next = pickRoom(picks, roomId(mapNumber, room));
       if (next === null) return;
       if (next.length > picks.length && full()) return;
       commit(next);
     },
-    [commit, full, picks]
+    [commit, full, insert, inserting, picks]
   );
+
+  /** Takes the stop at `index` of the list out of the way. */
+  const deleteStop = (index: number): void => {
+    const stops = editableStops(plan, picks);
+    if (stops === null) {
+      setStatus({ text: t('cards.builder.stillPlanning'), failed: false });
+      return;
+    }
+    const next = withoutStop(stops, index);
+    if (next === null) return;
+    const gone = stops[index];
+    // What was typed there goes with it, or the plan would keep the room a stop.
+    if (gone !== undefined && !next.includes(gone)) {
+      setExtras(({ [gone]: _dropped, ...rest }) => rest);
+      setTyped(({ [gone]: _dropped, ...rest }) => rest);
+    }
+    setSelected(null);
+    setInserting(null);
+    commit(next, next[Math.min(index, next.length - 1)]);
+  };
 
   /*
    * A way out that leaves the plane. Up or down takes the eye there and
@@ -387,12 +461,16 @@ function LoopBuilderCard({
         });
         return;
       }
+      if (inserting !== null) {
+        insert([from, away.to]);
+        return;
+      }
       if (full()) return;
       const viaFrom = picks[picks.length - 1] === from ? picks : (pickRoom(picks, from) ?? picks);
       const next = pickRoom(viaFrom, away.to);
       commit(next ?? viaFrom);
     },
-    [commit, full, picks]
+    [commit, full, insert, inserting, picks]
   );
 
   /*
@@ -408,9 +486,13 @@ function LoopBuilderCard({
     // nor keeps out of the rooms that one avoided.
     setEditing(null);
     setAvoid(undefined);
+    setSelected(null);
+    setInserting(null);
   }, [commit, picks]);
 
   const stepBack = useCallback((): void => {
+    setSelected(null);
+    setInserting(null);
     setHistory((current) => {
       const next = undo(current);
       const last = next.present[next.present.length - 1];
@@ -420,6 +502,8 @@ function LoopBuilderCard({
     setStatus(null);
   }, []);
   const stepForward = useCallback((): void => {
+    setSelected(null);
+    setInserting(null);
     setHistory((current) => {
       const next = redo(current);
       const last = next.present[next.present.length - 1];
@@ -497,8 +581,21 @@ function LoopBuilderCard({
     setStatus(null);
   };
 
+  /** Makes the stop in `room` a stash point (`LoopStop.stash`), or not. */
+  const markStash = (room: RoomId, stash: boolean): void => {
+    setExtras((current) => withStash(current, room, stash));
+    setStatus(null);
+  };
+
   /* The legs between consecutive waypoints, read off the planned steps. */
   const legs = useMemo(() => legsBetweenWaypoints(plan), [plan]);
+  /** A room's name as the plan has it, for one the list may not show as a stop. */
+  const nameOf = (room: RoomId): string =>
+    plan.waypoints.find((stop) => stop.id === room)?.name ??
+    plan.legs.flatMap((leg) => leg.route.steps).find((step) => step.to === room)?.name ??
+    room;
+  /** Whether the rows are the picks' own plan, so an edit on one is an edit on them. */
+  const editable = editableStops(plan, picks) !== null;
 
   const file = (): void => {
     if (loop === null) return;
@@ -648,6 +745,20 @@ function LoopBuilderCard({
         />
       </div>
 
+      {inserting !== null && (
+        <div className="builder-inserting">
+          <span>{t('cards.builder.inserting', { roomName: nameOf(inserting.after) })}</span>
+          <button
+            className="quiet"
+            onClick={() => setInserting(null)}
+            onMouseDown={keepFocus}
+            type="button"
+          >
+            {t('cards.builder.insertingDone')}
+          </button>
+        </div>
+      )}
+
       <div className="scroller builder-list">
         {shape === 'empty' ? (
           <div className="empty">{t('cards.builder.emptyHint')}</div>
@@ -655,6 +766,9 @@ function LoopBuilderCard({
           <ol className="builder-waypoints">
             {plan.waypoints.map((stop, index) => {
               const leg = legs[index - 1];
+              const gate = stop.gate ?? null;
+              const open = selected === index;
+              const addingHere = inserting?.of === 'rows' && inserting.index === index;
               return (
                 <li key={`${stop.id}-${index}`}>
                   {leg !== undefined && (
@@ -682,14 +796,79 @@ function LoopBuilderCard({
                       ))}
                     </div>
                   )}
-                  <div className="builder-waypoint" data-kind={index === 0 ? 'start' : 'waypoint'}>
-                    <span className="builder-index">{index + 1}</span>
-                    <span className="step-name" title={stop.name}>
-                      {stop.name}
-                    </span>
+                  <div
+                    className="builder-waypoint"
+                    data-kind={index === 0 ? 'start' : 'waypoint'}
+                    data-selected={open ? 'true' : undefined}
+                  >
+                    {/* The stop as a control (2026-11-17): clicked, it offers
+                        to be taken out, or to have stops added after it. */}
+                    <button
+                      aria-expanded={open}
+                      aria-label={t('cards.builder.stopAria', {
+                        index: index + 1,
+                        roomName: stop.name
+                      })}
+                      className="builder-stop"
+                      onClick={() => setSelected((current) => (current === index ? null : index))}
+                      onMouseDown={keepFocus}
+                      title={stop.name}
+                      type="button"
+                    >
+                      <span className="builder-index">{index + 1}</span>
+                      <span className="step-name">{stop.name}</span>
+                    </button>
                     <span className="chip off">
                       {stopParts({ room: `${stop.name} ${stop.id}` }).at}
                     </span>
+                    {extras[stop.id]?.stash === true && (
+                      <span className="chip" title={t('cards.builder.stashTitle')}>
+                        {t('cards.builder.stashChip')}
+                      </span>
+                    )}
+                    {open && (
+                      <>
+                        <button
+                          aria-label={t('cards.builder.deleteStop')}
+                          className="quiet builder-key"
+                          disabled={!editable}
+                          onClick={() => deleteStop(index)}
+                          onMouseDown={keepFocus}
+                          title={t('cards.builder.deleteStop')}
+                          type="button"
+                        >
+                          <Icon name="trash" />
+                        </button>
+                        <button
+                          aria-label={t('cards.builder.insertAfter')}
+                          aria-pressed={addingHere}
+                          className="quiet builder-key"
+                          disabled={!editable}
+                          onClick={() =>
+                            setInserting(addingHere ? null : { index, of: 'rows', after: stop.id })
+                          }
+                          onMouseDown={keepFocus}
+                          title={t('cards.builder.insertAfter')}
+                          type="button"
+                        >
+                          <Icon name="plus" />
+                        </button>
+                        {/* The closing row is the start again, a stash point on its own row. */}
+                        {!closes(index) && (
+                          <button
+                            aria-label={t('cards.builder.stashAria', { roomName: stop.name })}
+                            aria-pressed={extras[stop.id]?.stash === true}
+                            className="quiet builder-key"
+                            onClick={() => markStash(stop.id, extras[stop.id]?.stash !== true)}
+                            onMouseDown={keepFocus}
+                            title={t('cards.builder.stashTitle')}
+                            type="button"
+                          >
+                            <Icon name="bag" />
+                          </button>
+                        )}
+                      </>
+                    )}
                     {/* The closing row is the start again, whose commands are its own row's. */}
                     {!closes(index) && commandsAt(stop.id) === null && (
                       <button
@@ -703,6 +882,17 @@ function LoopBuilderCard({
                       </button>
                     )}
                   </div>
+                  {gate !== null && (
+                    <div
+                      className="builder-gate"
+                      title={t('cards.builder.gatedTitle', { roomName: gate.roomName })}
+                    >
+                      {t('cards.builder.gated', {
+                        items: gate.items.join(', '),
+                        roomName: gate.roomName
+                      })}
+                    </div>
+                  )}
                   {!closes(index) && commandsAt(stop.id) !== null && (
                     <input
                       aria-label={t('cards.builder.commandsAria', { roomName: stop.name })}
