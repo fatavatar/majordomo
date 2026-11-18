@@ -5,7 +5,7 @@ Decided 2026-10-12: mudengine's own decision engine is replaced by a port of
 by MegaMUD's own. The world graph, the display, the parsers that feed it and
 the connection stay. The work is on the `megamud-engine` branch. The swap
 happened on 2026-10-14: every character runs on the port, and the old engine's
-modules (*Deleted at the swap*, below) are gone.
+modules (_Deleted at the swap_, below) are gone.
 
 How the port sits inside the client is described in
 [`docs/codebase/engine.md`](../codebase/engine.md).
@@ -43,49 +43,49 @@ partial line is held and bit 0 of `d904` is set. Each pass
 asks the steps below in order, and the first that sends something ends the
 pass. The numbers are the `{D%d}` debug tags MegaMUD logs.
 
-| D | Address | Step |
-|---|---|---|
-| — | `0x416f80` | housekeeping before anything |
-| — | `0x48ad60` | the pending list: `@wait`, `@comeback`, `drop`, `suicide`, `reroll` |
-| — | `0x42c150` | `break` out of a fight that is over |
-| 10 | `0x414300` | health, first pass (only while `e23c`) |
-| 12 | `0x40b520` | backstab kit: shield off, BS weapon on, sneak |
-| 13 | `0x40b200` | game setup: `set statline`, `brief`, … |
-| 14 | `0x40d0e0` | `exp`, `spells`/`powers`, `stat` when stale |
-| 15 | `0x407e40` | inventory when stale |
-| 16 | `0x40d820` | who's online |
-| 17 | `0x408e40` | party status, `@health` |
-| 18 | `0x410780` | discard unwanted coins |
-| 51 | `0x497840` | recover a corpse |
-| 19 | `0x40e080` | get what we collect |
-| 20 | `0x410d00` | auto-equip |
-| 21 | `0x49c570` | rules (`[Rules]`): conditions and actions |
-| 22 | `0x4066f0` | bless, in combat |
-| 23 | `0x4120b0` | combat: heal (`0x412120`) and attack (`0x412b10` → `0x40f510`) |
-| 24 | `0x410440` | stay hidden, in combat |
-| 26 | `0x410130` | cures, in combat |
-| 27 | `0x407ee0` | invite players |
-| 28 | `0x413760` | heal casts |
-| 29 | `0x407390` | events: logon, logoff, re-log, timed, repeated |
-| 50 | `0x403c70` | ability monitors |
-| 30 | `0x40dc20`, `0x40e190` | low-HP escape, then running away |
-| 31 | `0x4118f0` | exit: BBS shutdown, timed logoff, relog |
-| 33/34 | `0x410440`, `0x410130` | hide and cures, out of combat |
-| 35 | `0x408100` | look at a player |
-| 36 | `0x40d2e0` | track a player |
-| 37 | `0x40b300` | share cash with the party |
-| 38 | `0x46fee0` | `sys stat room` check |
-| 39 | `0x414300` | health: full spells, regen, rest, meditate |
-| 40 | `0x406d90` | deposit |
-| 41 | `0x40d8a0` | withdraw |
-| 42 | `0x406b60` | buy |
-| 43 | `0x40b0b0` | sell |
-| 44 | `0x407c90` | an imported path's commands |
-| 45 | `0x40aff0` | search |
-| 46 | `0x40ce50` | stash |
-| 47 | `0x408270` | roaming, and finding the way back when lost |
-| 48 | `0x409170` | walk the path (the way to it is our world graph's) |
-| 49 | `0x407ac0`, `0x40b520` | hide, sneak |
+| D     | Address                | Step                                                                |
+| ----- | ---------------------- | ------------------------------------------------------------------- |
+| —     | `0x416f80`             | housekeeping before anything                                        |
+| —     | `0x48ad60`             | the pending list: `@wait`, `@comeback`, `drop`, `suicide`, `reroll` |
+| —     | `0x42c150`             | `break` out of a fight that is over                                 |
+| 10    | `0x414300`             | health, first pass (only while `e23c`)                              |
+| 12    | `0x40b520`             | backstab kit: shield off, BS weapon on, sneak                       |
+| 13    | `0x40b200`             | game setup: `set statline`, `brief`, …                              |
+| 14    | `0x40d0e0`             | `exp`, `spells`/`powers`, `stat` when stale                         |
+| 15    | `0x407e40`             | inventory when stale                                                |
+| 16    | `0x40d820`             | who's online                                                        |
+| 17    | `0x408e40`             | party status, `@health`                                             |
+| 18    | `0x410780`             | discard unwanted coins                                              |
+| 51    | `0x497840`             | recover a corpse                                                    |
+| 19    | `0x40e080`             | get what we collect                                                 |
+| 20    | `0x410d00`             | auto-equip                                                          |
+| 21    | `0x49c570`             | rules (`[Rules]`): conditions and actions                           |
+| 22    | `0x4066f0`             | bless, in combat                                                    |
+| 23    | `0x4120b0`             | combat: heal (`0x412120`) and attack (`0x412b10` → `0x40f510`)      |
+| 24    | `0x410440`             | stay hidden, in combat                                              |
+| 26    | `0x410130`             | cures, in combat                                                    |
+| 27    | `0x407ee0`             | invite players                                                      |
+| 28    | `0x413760`             | heal casts                                                          |
+| 29    | `0x407390`             | events: logon, logoff, re-log, timed, repeated                      |
+| 50    | `0x403c70`             | ability monitors                                                    |
+| 30    | `0x40dc20`, `0x40e190` | low-HP escape, then running away                                    |
+| 31    | `0x4118f0`             | exit: BBS shutdown, timed logoff, relog                             |
+| 33/34 | `0x410440`, `0x410130` | hide and cures, out of combat                                       |
+| 35    | `0x408100`             | look at a player                                                    |
+| 36    | `0x40d2e0`             | track a player                                                      |
+| 37    | `0x40b300`             | share cash with the party                                           |
+| 38    | `0x46fee0`             | `sys stat room` check                                               |
+| 39    | `0x414300`             | health: full spells, regen, rest, meditate                          |
+| 40    | `0x406d90`             | deposit                                                             |
+| 41    | `0x40d8a0`             | withdraw                                                            |
+| 42    | `0x406b60`             | buy                                                                 |
+| 43    | `0x40b0b0`             | sell                                                                |
+| 44    | `0x407c90`             | an imported path's commands                                         |
+| 45    | `0x40aff0`             | search                                                              |
+| 46    | `0x40ce50`             | stash                                                               |
+| 47    | `0x408270`             | roaming, and finding the way back when lost                         |
+| 48    | `0x409170`             | walk the path (the way to it is our world graph's)                  |
+| 49    | `0x407ac0`, `0x40b520` | hide, sneak                                                         |
 
 After a pass that sent, the status (`0x4ac2a0`: Resting, Meditating, Party
 Wait, …) is refreshed.
@@ -166,7 +166,7 @@ character that had a `megamud.ini` beside its profile had it taken into its
   the class's weapon type and a monster's `ExpMulti`). Checked against
   Skinny's own files on the same realm, class by class and spell by spell:
   - a class's chart is `100 + ExpTable` and its magic `MageryType << 8 |
-    MageryLVL`; a race's experience is its `ExpTable`;
+MageryLVL`; a race's experience is its `ExpTable`;
   - a spell's magic is a fixed table of the realm's `Magery` and `MageryLVL`,
     its target bits one of `Targets`, `2` its `Dur`, and `4` the abilities
     Damage, DrainLife, Damage(-MR) and EvilInCombat;
@@ -185,6 +185,7 @@ character that had a `megamud.ini` beside its profile had it taken into its
   folder (`profiles/<id>/Default`) is taken into those tables once, where
   the realm has none, and renamed `Default.imported`. Without realm data
   MegaMUD learns monsters and items as it meets them and knows no spells.
+
 - **Learned data** follows MegaMUD's rule and lands in our own stores.
   MegaMUD marks the databases it changed in play (`0xe24c` players, `0xe254`
   monsters, `0xe258` items) and writes the marked ones on the way out
@@ -260,9 +261,9 @@ character that had a `megamud.ini` beside its profile had it taken into its
   A run started by `@loop` or by MegaMUD taking the loop up again counts as a
   run; a route walked in its place ends it.
 - **Its questions** (MegaMUD's message boxes: a path step to relearn, the
-  key, gold or level a destination needs) are answered *no* where asked, as
+  key, gold or level a destination needs) are answered _no_ where asked, as
   MegaMUD cannot be kept waiting here, and put to the player in a dialog; a
-  *yes* is kept for that question and the player's action that asked it
+  _yes_ is kept for that question and the player's action that asked it
   (Go To, a loop's start) is run again, where MegaMUD asks once more and is
   told yes (`SessionManager.megaAsk`).
 - **Its alerts** (`0x4c0640`) are said in the console where MegaMUD would
@@ -395,38 +396,38 @@ the line. Only on a realm that answers `sys status`.
 
 The modules being deleted, with what replaces each:
 
-| Module | Replaced by |
-|---|---|
-| `AutoCombat` | MegaMUD's combat |
-| `Recovery` | MegaMUD's rest |
-| `Regen` | MegaMUD's regen |
-| `AutoHeal` | MegaMUD's heal |
-| `Cures` | MegaMUD's cures |
-| `Blessings` | MegaMUD's bless |
-| `Potions` | MegaMUD's health |
-| `AutoLoot` | MegaMUD's get |
-| `AutoDrop` | MegaMUD's discard |
-| `AutoDeposit` | MegaMUD's deposit |
-| `Supplies` | MegaMUD's buy and sell |
-| `AutoSearch` | MegaMUD's search |
-| `AutoStealth` | MegaMUD's sneak and hide |
-| `AutoLight` | MegaMUD's AutoLight |
-| `Afk` | MegaMUD's AFK |
-| `Remotes` | MegaMUD's `@` set only |
-| `Events` | MegaMUD's events |
-| `Routines` | MegaMUD's setup steps |
-| `MessageTriggers` | MegaMUD's Messages.md handling |
-| `GearRecovery` | MegaMUD's corpse recovery |
-| `HangUp` | MegaMUD's hang-up rules |
-| `CombatLease` | none |
-| `castRound` | none |
-| `AutoInvoke` | none |
-| `RuleEngine` | none |
-| `EquipmentManager` / gear sets | none |
-| `RestAway` | none |
-| `TrainErrand` | none |
-| `StatScreen` | none |
-| learned mob lore | none |
+| Module                         | Replaced by                    |
+| ------------------------------ | ------------------------------ |
+| `AutoCombat`                   | MegaMUD's combat               |
+| `Recovery`                     | MegaMUD's rest                 |
+| `Regen`                        | MegaMUD's regen                |
+| `AutoHeal`                     | MegaMUD's heal                 |
+| `Cures`                        | MegaMUD's cures                |
+| `Blessings`                    | MegaMUD's bless                |
+| `Potions`                      | MegaMUD's health               |
+| `AutoLoot`                     | MegaMUD's get                  |
+| `AutoDrop`                     | MegaMUD's discard              |
+| `AutoDeposit`                  | MegaMUD's deposit              |
+| `Supplies`                     | MegaMUD's buy and sell         |
+| `AutoSearch`                   | MegaMUD's search               |
+| `AutoStealth`                  | MegaMUD's sneak and hide       |
+| `AutoLight`                    | MegaMUD's AutoLight            |
+| `Afk`                          | MegaMUD's AFK                  |
+| `Remotes`                      | MegaMUD's `@` set only         |
+| `Events`                       | MegaMUD's events               |
+| `Routines`                     | MegaMUD's setup steps          |
+| `MessageTriggers`              | MegaMUD's Messages.md handling |
+| `GearRecovery`                 | MegaMUD's corpse recovery      |
+| `HangUp`                       | MegaMUD's hang-up rules        |
+| `CombatLease`                  | none                           |
+| `castRound`                    | none                           |
+| `AutoInvoke`                   | none                           |
+| `RuleEngine`                   | none                           |
+| `EquipmentManager` / gear sets | none                           |
+| `RestAway`                     | none                           |
+| `TrainErrand`                  | none                           |
+| `StatScreen`                   | none                           |
+| learned mob lore               | none                           |
 
 The settings that belonged to the deleted modules went with them
 (2026-10-22, `Migration.theOldAutomationFieldsWent`). A character with no
@@ -481,6 +482,14 @@ the terminal's reset (`0x418280`).
   (`diseaseToCure`), and takes no Messages.md row's disease as a reason to rest
   on (`actOnNumber`); it still cures a member who asks. A row of ours in the
   Other tab's list, under Ignore confusion (`ADDED_LIST_ROWS`).
+- **A member hit by something unseen is looked for** (asked for 2026-11-18).
+  When a blow names a party member, `0x428e60` takes it off their HP and
+  stops there. A blow at this character from something not in the room
+  looks at the room. On 2026-11-18 fallen angels sneaked into the Ethereal
+  Prison and beat Skinny for half a minute while Fatty rested beside him.
+  Fatty never looked, so he never fought. Such a blow now looks at the room
+  on the same terms as a blow at this character (`unseenAttacker` in
+  `combat/blows.ts`). Whatever the room then shows is fought as usual.
 
 ## Order of work
 

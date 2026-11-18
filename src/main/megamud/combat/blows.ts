@@ -150,6 +150,7 @@ export function blowLine(s: Session, line: string): number {
     }
   }
   let attacker = '';
+  let memberHit = false;
   const you = indexOf(line, ' you');
   const aimedAtYou =
     you !== -1 &&
@@ -186,6 +187,7 @@ export function blowLine(s: Session, line: string): number {
         }
         partyRefresh(s, 1);
         findVerb = true;
+        memberHit = true;
         attacker = '';
       }
     }
@@ -231,8 +233,27 @@ export function blowLine(s: Session, line: string): number {
   if (!atMe) {
     if (attacker === '' || attacker.length > 0x1e || stricmp(attacker, 'you') === 0) return 0;
   }
+  if (memberHit && !atMe && isBlow && indexOf(line, ' healing ') === -1)
+    unseenAttacker(s, attacker);
   if (indexOf(line, ' healing ') !== -1 || !isBlow || !atMe) return 0;
   return struck(s, line, attacker, damage);
+}
+
+/**
+ * Ours (2026-11-18): a party member hit by something this character has not
+ * seen come in. megamud.exe only takes the member's HP down, so a character
+ * resting beside them rests on while they are beaten: Fatty, resting in the
+ * Ethereal Prison, while fallen angels that sneak in rather than walk in
+ * beat Skinny for half a minute. A blow at this character looks at the room
+ * (`struck`), and so does this one, on the same terms; what the room then
+ * shows is fought as any monster in it is.
+ */
+function unseenAttacker(s: Session, attacker: string): void {
+  if (attacker === '' || findEntity(s, attacker, 0)) return;
+  if (partyIndex(s, attacker) !== -1 || s.whoList.some((w) => attacker.startsWith(w.name))) return;
+  if (s.blind !== 0 || s.darkness >= Darkness.Dark) return;
+  if (s.runCount !== 0 && s.following !== 1 && s.held !== 1) return;
+  s.lookDue = 1;
 }
 
 /**
