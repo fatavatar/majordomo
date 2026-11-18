@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { blowLine } from '../combat/blows';
 import { hitLine } from '../combat/hits';
 import type { MonsterRec } from '../data';
+import { addMember } from '../party/members';
 import { addEntity } from '../room/entities';
 import { session } from './fixture';
 import { State } from '../states';
@@ -54,6 +55,54 @@ describe('a blow taken (0x428e60)', () => {
     const { s } = withRat(7, line);
     expect(blowLine(s, line)).toBe(0);
     expect(s.hp).toBe(50);
+  });
+});
+
+/*
+ * Ours (2026-11-18): Fatty resting beside Skinny in the Ethereal Prison, and
+ * fallen angels that sneak in beating Skinny unseen, with Fatty resting on.
+ */
+describe('a party member hit by something unseen', () => {
+  function beside(colour: number, text: string) {
+    const fixture = withRat(colour, text);
+    const { s } = fixture;
+    s.Player_Name = 'Fatty';
+    s.state = State.Resting;
+    addMember(s, 'Skinny', 0);
+    const skinny = addEntity(s);
+    skinny.name = 'Skinny';
+    skinny.type = EntityType.Player;
+    s.party[0]!.maxHp = 1500;
+    s.party[0]!.hp = 1400;
+    return fixture;
+  }
+
+  it('looks at the room, as a blow at this character does', () => {
+    const line = 'The fallen angel slashes Skinny for 25 damage!';
+    const { s } = beside(9, line);
+    expect(blowLine(s, line)).toBe(0);
+    expect(s.party[0]!.hp).toBe(1375);
+    expect(s.lookDue).toBe(1);
+  });
+
+  it('leaves the room alone when the attacker is one it sees', () => {
+    const line = 'The giant rat bites Skinny for 5 damage!';
+    const { s } = beside(9, line);
+    blowLine(s, line);
+    expect(s.party[0]!.hp).toBe(1395);
+    expect(s.lookDue).toBe(0);
+  });
+
+  it('and when it cannot see, or the blow is at somebody outside the party', () => {
+    const dark = 'The fallen angel slashes Skinny for 25 damage!';
+    const blind = beside(9, dark).s;
+    blind.blind = 1;
+    blowLine(blind, dark);
+    expect(blind.lookDue).toBe(0);
+    const other = 'The fallen angel slashes Bob for 25 damage!';
+    const { s } = beside(9, other);
+    blowLine(s, other);
+    expect(s.lookDue).toBe(0);
   });
 });
 
